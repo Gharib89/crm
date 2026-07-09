@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from crm.utils.d365_backend import D365Backend
 from crm.utils.repl_skin import ReplSkin
 from crm.commands._helpers import (
+    _apply_jq,
     _normalize_odata_envelope,
     _project_fields,
     _project_table_columns,
@@ -69,6 +70,11 @@ class CLIContext:
         # top-level keys to project the curated `data` payload down to, or None
         # for no shaping. Per-invocation (never sticky), set in the root callback.
         self.fields: list[str] | None = None
+        # Compiled jq program behind the global `--jq` flag (#736), or None for no
+        # shaping. A `jq.compile(...)` object built (and syntax-validated) in the
+        # root callback; mutually exclusive with `fields`. Per-invocation, never
+        # sticky. Typed `Any` because jq is imported lazily (kept out of cold start).
+        self.jq_program: Any = None
         self.profile_name: str | None = None
         self.password: str | None = None
         self.auth_scheme: str | None = None
@@ -116,12 +122,26 @@ class CLIContext:
                     if paging:
                         meta = {**(meta or {}), **paging}
                     data = _strip_odata_keys(data)
-                # Output shaping (#735): project `data` to the `--fields` keys at
-                # this seam — after ADR 0008 curation, before serialization — so
-                # every command inherits it. Gated on `ok` so an error envelope
-                # bypasses shaping; a dry-run preview is shaped like any other data.
+                # Output shaping (#735/#736): reshape `data` at this seam — after
+                # ADR 0008 curation, before serialization — so every command inherits
+                # it. Gated on `ok` so an error envelope bypasses shaping; a dry-run
+                # preview is shaped like any other data. `--fields` and `--jq` are
+                # mutually exclusive (enforced at parse time), so at most one runs.
                 if ok and self.fields is not None:
                     data, shape_warnings = _project_fields(data, self.fields)
+                elif ok and self.jq_program is not None:
+                    data, jq_error = _apply_jq(data, self.jq_program)
+                    if jq_error is not None:
+                        # Compiled but failed at eval time: the success payload it was
+                        # piped through is unusable, so surface an error envelope via
+                        # the canonical error path (which stamps meta.dry_run and keeps
+                        # the ok:false shape consistent with every other error) rather
+                        # than a hand-built one. The accumulated paging meta describes
+                        # the now-discarded payload, so it is not carried onto the
+                        # error. emit(False) exits in JSON mode; return guards against
+                        # falling through if that ever changes.
+                        self.emit(False, error=f"--jq: {jq_error}")
+                        return
                 envelope["data"] = _sanitize(data)
             if error:
                 envelope["error"] = error
@@ -622,6 +642,10 @@ def _complete_entity_set_names(ctx: click.Context, param: click.Parameter, incom
               help="Project the data payload down to these comma-separated top-level "
                    "keys (JSON: per row/record; human: table columns). Applied after "
                    "curation; the ok/error/meta envelope is untouched.")
+@click.option("--jq", "jq_program", default=None, metavar="PROGRAM",
+              help="Run a jq program over the curated data payload; the result "
+                   "replaces data in the envelope. Implies --json. Mutually exclusive "
+                   "with --fields. An invalid program is a usage error (exit 2).")
 @click.option("--dry-run", is_flag=True,
               help="Preview writes without issuing them; reads run normally.")
 @click.option("--profile", "profile_name", shell_complete=_complete_profile_names,
@@ -657,7 +681,8 @@ def _complete_entity_set_names(ctx: click.Context, param: click.Parameter, incom
 @click.option("--session", "session_name", default="default", help="Session name.")
 @click.version_option(__version__, prog_name="crm")
 @click.pass_context
-def cli(ctx: click.Context, json_mode: bool, fields: str | None, dry_run: bool,
+def cli(ctx: click.Context, json_mode: bool, fields: str | None,
+        jq_program: str | None, dry_run: bool,
         profile_name: str | None, password: str | None,
         log_level: str | None, verbose: bool, log_format: str | None,
         auth_scheme: str | None, stage_only: bool, retry_on_ambiguous: bool,
@@ -690,11 +715,32 @@ def cli(ctx: click.Context, json_mode: bool, fields: str | None, dry_run: bool,
     # re-decides whether to project, so a bare later line clears a prior --fields.
     # An empty/whitespace-only value is a usage error (nothing to project).
     cli_ctx.fields = None
+    # --fields and --jq are two spellings of the same shaping seam; running both at
+    # once is undefined, so it's a usage error (exit 2, ADR 0001) — checked before
+    # parsing either so no backend/profile work happens.
+    if fields is not None and jq_program is not None:
+        raise click.UsageError("--fields and --jq are mutually exclusive")
     if fields is not None:
         parsed = [f.strip() for f in fields.split(",") if f.strip()]
         if not parsed:
             raise click.BadParameter("no field names given", param_hint="--fields")
         cli_ctx.fields = parsed
+    # --jq (#736): compile the program NOW — before any profile resolution or
+    # network call — so a syntactically invalid program fails fast with exit 2 and
+    # provably issues no request (validate-before-backend). The jq module is imported
+    # lazily, only when --jq is passed, to keep CLI cold-start cheap on the common
+    # no-jq path (agents fire hundreds of one-shot invocations). --jq implies JSON
+    # mode: a jq result has no meaningful human render.
+    cli_ctx.jq_program = None
+    if jq_program is not None:
+        import jq  # lazy: never imported unless --jq is used
+
+        try:
+            cli_ctx.jq_program = jq.compile(jq_program)
+        except ValueError as exc:
+            raise click.BadParameter(str(exc), param_hint="--jq") from exc
+        json_mode = True
+        cli_ctx.json_mode = True
     cli_ctx.dry_run = dry_run
     # Per-invocation, NOT sticky: each command (each REPL line) re-decides whether
     # it opened a connection, so emit() never stamps identity onto a local verb

@@ -1,11 +1,11 @@
-"""Global `--fields` output-shaping contract (ADR 0023 / #735, addendum to ADR 0008).
+"""Global `--fields`/`--jq` output-shaping contract (ADR 0023 / #735, #736; addendum to ADR 0008).
 
-`--fields` projects the curated `data` payload down to the named top-level keys at
-the single emit seam — after ADR 0008 curation, before serialization/render — so
-every command inherits it with no per-command code. Tests exercise external
-behavior only: invoke through the CLI runner with a mocked backend (or drive the
-public `emit` seam directly) and assert on the emitted envelope — never on shaper
-internals.
+`--fields` projects the curated `data` payload down to the named top-level keys and
+`--jq` runs a jq program over it, both at the single emit seam — after ADR 0008
+curation, before serialization/render — so every command inherits them with no
+per-command code. Tests exercise external behavior only: invoke through the CLI
+runner with a mocked backend (or drive the public `emit` seam directly) and assert
+on the emitted envelope — never on shaper internals.
 """
 # pyright: basic
 from __future__ import annotations
@@ -13,6 +13,8 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import subprocess
+import sys
 
 import click
 import pytest
@@ -59,6 +61,25 @@ def _emit_json(**kwargs: object) -> dict:
     with contextlib.redirect_stdout(buf):
         with contextlib.suppress(SystemExit):
             ctx.emit(True, **kwargs)  # type: ignore[arg-type]
+    return json.loads(buf.getvalue())
+
+
+def _emit_jq(program: str, *, ok: bool = True, **kwargs: object) -> dict:
+    """Drive the public emit seam with a compiled `--jq` program; return the envelope.
+
+    Compiles `program` (as the root callback does) and drives emit in JSON mode.
+    """
+    import jq
+
+    ctx = CLIContext()
+    ctx.json_mode = True
+    ctx.jq_program = jq.compile(program)
+    dry_run = kwargs.pop("dry_run", False)
+    ctx.dry_run = bool(dry_run)
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        with contextlib.suppress(SystemExit, click.exceptions.Exit):
+            ctx.emit(ok, **kwargs)  # type: ignore[arg-type]
     return json.loads(buf.getvalue())
 
 
@@ -216,3 +237,130 @@ class TestUsageErrors:
             cli, ["--json", "--fields", "  ", "query", "odata", "accounts"]
         )
         assert result.exit_code == 2, result.output
+
+
+class TestJqProjection:
+    def test_length_collapses_list_to_scalar(self, make_fake_backend, inject_backend):
+        inject_backend(make_fake_backend(
+            responses={"get": _collection(_row("A"), _row("B"), _row("C"))}))
+        result = CliRunner().invoke(
+            cli, ["--json", "--jq", "length", "query", "odata", "accounts"]
+        )
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.output)["data"] == 3
+
+    def test_stream_result_becomes_list(self):
+        # `.[]` emits one output per row → the multi-output stream lands as a list.
+        env = _emit_jq(".[]", data=[{"name": "A"}, {"name": "B"}])
+        assert env["data"] == [{"name": "A"}, {"name": "B"}]
+
+    def test_single_array_output_preserved(self):
+        # A program producing one array output keeps it as an array, not unwrapped.
+        env = _emit_jq("map(.name)", data=[{"name": "A"}, {"name": "B"}])
+        assert env["data"] == ["A", "B"]
+
+    def test_object_construction(self):
+        env = _emit_jq("{n: length}", data=[1, 2])
+        assert env["data"] == {"n": 2}
+
+    def test_single_record_projected(self):
+        env = _emit_jq(".name", data={"name": "Contoso", "accountid": GUID})
+        assert env["data"] == "Contoso"
+
+    def test_empty_output_is_null(self):
+        env = _emit_jq("empty", data=[1, 2, 3])
+        assert env["data"] is None
+
+
+class TestJqImpliesJson:
+    def test_jq_forces_json_even_without_json_flag(self, make_fake_backend, inject_backend):
+        # No --json, but --jq implies it: output must be a JSON envelope.
+        inject_backend(make_fake_backend(responses={"get": _collection(_row(), _row())}))
+        result = CliRunner().invoke(
+            cli, ["--jq", "length", "query", "odata", "accounts"]
+        )
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.output)["data"] == 2
+
+
+class TestJqFieldsMutualExclusion:
+    def test_fields_and_jq_together_is_usage_error(self, make_fake_backend, inject_backend):
+        be = inject_backend(make_fake_backend(responses={"get": _collection(_row())}))
+        result = CliRunner().invoke(
+            cli, ["--json", "--fields", "name", "--jq", ".", "query", "odata", "accounts"]
+        )
+        assert result.exit_code == 2, result.output
+        assert not be.called  # rejected before any backend work
+
+
+class TestJqCompileBeforeBackend:
+    def test_invalid_program_exits_2_without_backend_call(self, make_fake_backend, inject_backend):
+        be = inject_backend(make_fake_backend(responses={"get": _collection(_row())}))
+        result = CliRunner().invoke(
+            cli, ["--json", "--jq", "((( not valid", "query", "odata", "accounts"]
+        )
+        assert result.exit_code == 2, result.output
+        # Compiled at parse time → the backend was never touched (validate-before-backend).
+        assert not be.called
+
+
+class TestJqErrorEnvelopeBypass:
+    def test_error_envelope_not_shaped(self):
+        env = _emit_jq("length", ok=False, error="boom", meta={"status": 412})
+        assert env["ok"] is False
+        assert env["error"] == "boom"
+        assert "data" not in env
+
+
+class TestJqDryRunShaped:
+    def test_dry_run_preview_is_shaped(self):
+        env = _emit_jq(
+            ".would_create.body",
+            dry_run=True,
+            data={"_dry_run": True, "would_create": {"body": {"name": "x"}},
+                  "would_skip": False},
+        )
+        assert env["data"] == {"name": "x"}
+        assert env["meta"]["dry_run"] is True
+
+
+class TestJqRuntimeError:
+    def test_eval_error_becomes_error_envelope(self):
+        # Compiles fine, but indexing a number with a string fails at eval time →
+        # the success payload is unusable, so it surfaces as an error envelope.
+        env = _emit_jq(".foo", data=42)
+        assert env["ok"] is False
+        assert "jq" in env["error"].lower()
+        assert "data" not in env
+
+    def test_eval_error_envelope_is_canonical(self):
+        # The eval-error envelope goes through the normal error path, so canonical
+        # fields like meta.dry_run are stamped (not a hand-built minimal envelope).
+        env = _emit_jq(".foo", data=42, dry_run=True)
+        assert env["ok"] is False
+        assert env["meta"]["dry_run"] is True
+
+
+class TestJqLazyImport:
+    def test_jq_not_imported_without_flag(self, tmp_path):
+        # The jq C-extension must stay out of the no-flag startup path (cold-start
+        # guard): importing crm.cli and running a command without --jq imports no jq.
+        code = (
+            "import sys; from click.testing import CliRunner; from crm.cli import cli; "
+            "CliRunner().invoke(cli, ['profile', 'list']); "
+            "mods = [m for m in sys.modules if m == 'jq' or m.startswith('jq.')]; "
+            "assert not mods, mods"
+        )
+        env = {**__import__("os").environ, "CRM_HOME": str(tmp_path)}
+        result = subprocess.run(
+            [sys.executable, "-c", code], capture_output=True, text=True, env=env
+        )
+        assert result.returncode == 0, result.stderr
+
+    def test_jq_imported_when_flag_used(self, tmp_path, make_fake_backend, inject_backend):
+        # Sanity peer of the guard: with --jq the module IS available (proves the
+        # guard above measures the real thing, not a permanently-absent import).
+        inject_backend(make_fake_backend(responses={"get": _collection(_row())}))
+        result = CliRunner().invoke(cli, ["--jq", "length", "query", "odata", "accounts"])
+        assert result.exit_code == 0, result.output
+        assert "jq" in sys.modules

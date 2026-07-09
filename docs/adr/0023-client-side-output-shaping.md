@@ -2,7 +2,7 @@
 status: accepted
 ---
 
-# Client-side output shaping: `--fields` (and future `--jq`) at the emit seam
+# Client-side output shaping: `--fields` and `--jq` at the emit seam
 
 ## Context
 
@@ -42,9 +42,13 @@ This ADR records the whole shaping decision. It is delivered in slices:
     entry naming it (the typo tripwire, on the existing warnings channel).
   - **Human mode** → the named fields select and order the rendered table columns
     (matched against header cells case-insensitively).
-- **`--jq PROGRAM`** (follow-up, #736): run a jq program over the curated `data`;
-  compiled before any backend call; `--fields` + `--jq` is a usage error (exit 2).
-  Not part of this slice.
+- **`--jq PROGRAM`** (#736): run a jq program (libjq via the `jq` PyPI binding,
+  imported lazily) over the curated `data`; the result — scalar, string, array, or
+  object — replaces `data`. A jq stream of one output becomes that value, no output
+  becomes `null`, many outputs become a list. Compiled at option-parse time, so an
+  invalid program is a usage error (exit 2) *before* any profile resolution or
+  network call; a program that fails at eval time yields an error envelope. Implies
+  `--json`. `--fields` + `--jq` is a usage error (exit 2).
 
 Shaping applies to **success** envelopes only. **Error envelopes bypass shaping
 entirely** (`ok: false` emits exactly as today, so an error message is never

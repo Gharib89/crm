@@ -20,6 +20,7 @@ optimized for AI agents or shell scripting. This harness gives you:
 - A stateful REPL for ad-hoc admin work
 - `--json` everywhere for agent consumption
 - `--fields KEY[,KEY...]` to project any response down to a few columns client-side, so a fat list verb (e.g. `--fields uniquename,version solution list`) fits an agent's context budget — post-curation, envelope-preserving, works in human mode too (selects table columns)
+- `--jq PROGRAM` to run a jq program over any response client-side, so `--jq length solution list` returns a single count and `group_by`/`map` expressions produce census-style summaries instead of the full payload — same emit seam as `--fields` (mutually exclusive with it), implies `--json`, envelope-preserving
 - `--dry-run` to preview writes without issuing them (reads still run for real); on writes that name another object — a lookup's target entity, a picklist's option set, a plug-in step's message/type/entity — the preview also reports whether each reference exists (`data.references[]`, dangling ones flagged in `meta.warnings`)
 - An append-only JSONL audit journal (`~/.crm/audit/<session>.jsonl`) of every
   mutating command; `crm session audit` to review it

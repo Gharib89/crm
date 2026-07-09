@@ -158,6 +158,35 @@ def _project_fields(data: Any, fields: list[str]) -> "tuple[Any, list[str]]":
     return data, [_NON_OBJECT_WARNING]
 
 
+def _apply_jq(data: Any, program: Any) -> "tuple[Any, str | None]":
+    """Run a compiled jq `program` over the curated `data` payload (#736).
+
+    The client-side jq shaper behind the global `--jq` flag, applied at the emit
+    seam *after* ADR 0008 curation and *before* serialization — a peer of
+    `_project_fields`. `program` is a `jq.compile(...)` object built at option-parse
+    time (a syntax error is caught there, before any backend call); this only runs
+    it. The expression's input is the curated `data` value only; its result replaces
+    `data` inside the unchanged envelope.
+
+    Returns ``(result, error)``:
+    - A jq program is a stream of outputs. **Exactly one** output → that value
+      (so `length` → a bare number, not `[number]`); **zero** outputs (e.g.
+      `empty`) → ``None``; **many** outputs (e.g. `.[]`) → the list of outputs.
+    - A program that compiled but fails at **eval** time (e.g. indexing a number
+      with a string) returns ``(None, message)`` — the caller turns that into an
+      error envelope; the success payload it was piped through is unusable.
+    """
+    try:
+        outputs = program.input_value(data).all()
+    except ValueError as exc:  # libjq raises ValueError for eval-time errors
+        return None, str(exc)
+    if len(outputs) == 1:
+        return outputs[0], None
+    if not outputs:
+        return None, None
+    return outputs, None
+
+
 _NON_OBJECT_WARNING = (
     "--fields ignored: data is not an object or a list of objects, so there are no "
     "keys to project."

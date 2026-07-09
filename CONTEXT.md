@@ -157,17 +157,22 @@ _Avoid_: verbose dump, minimal mode (name the specific knob: `--minimal` / `--fu
 
 **Shaped payload**:
 The `data` payload after a client-side output shaper has run at the emit seam —
-today the global `--fields KEY[,KEY...]` flag, which projects `data` down to the
-named top-level keys (list rows or a single record) so an agent can fit a fat
-verb inside its context budget. Shaping is **post-curation** (runs after the
-**Data payload** / **List payload** curation), **envelope-preserving** (only
-`data` changes; `ok`/`error`/`meta` — including `next_link`/`count`/`warnings` —
-are untouched), and **success-only** (error envelopes bypass shaping; dry-run
-previews are shaped like any other data). A `--fields` name that matched no
-row/record adds a `meta.warnings` typo tripwire; a non-object payload (e.g. a
-formxml string) passes through unchanged with a warning. Purely additive — no
-shaping flag means byte-identical output. Human mode: `--fields` selects/orders
-the table columns. Formalized in
+either the global `--fields KEY[,KEY...]` flag, which projects `data` down to the
+named top-level keys (list rows or a single record), or the global `--jq PROGRAM`
+flag, which runs a jq program over `data` and puts its result back (a scalar like
+`length`, or a `group_by`/`map` summary) — so an agent can fit a fat verb inside
+its context budget. The two are **mutually exclusive** (using both is a usage
+error, exit 2). Shaping is **post-curation** (runs after the **Data payload** /
+**List payload** curation), **envelope-preserving** (only `data` changes;
+`ok`/`error`/`meta` — including `next_link`/`count`/`warnings` — are untouched),
+and **success-only** (error envelopes bypass shaping; dry-run previews are shaped
+like any other data). A `--fields` name that matched no row/record adds a
+`meta.warnings` typo tripwire; a non-object payload (e.g. a formxml string) passes
+through `--fields` unchanged with a warning. `--jq` implies `--json`; an invalid
+jq program is a usage error caught before any backend call, and a jq program that
+fails at eval time yields an error envelope. Purely additive — no shaping flag
+means byte-identical output. Human mode: `--fields` selects/orders the table
+columns. Formalized in
 [ADR 0023](docs/adr/0023-client-side-output-shaping.md), an addendum to ADR 0008.
 _Avoid_: filter (that's a query `--filter`), `--select` (that's server-side field
 selection in the request; shaping is client-side, post-response).

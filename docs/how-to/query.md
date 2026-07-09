@@ -55,6 +55,33 @@ envelopes are never shaped; `--dry-run` previews are (ADR 0023).
 `--select` (server-side, request) and `--fields` (client-side, response) compose:
 `--select` cuts what the server sends, `--fields` cuts what you read.
 
+## Reshape or summarize a payload with `--jq` (client-side jq)
+
+When projecting to a few columns isn't enough — you want a count, a filtered
+subset, or a `group_by` summary — `--jq PROGRAM` runs a [jq](https://jqlang.org)
+program over the same curated `data` payload and puts the result back in the
+envelope. Like `--fields` it is a **global** flag applied client-side at the emit
+seam; it **implies `--json`** and is **mutually exclusive with `--fields`**
+(using both is a usage error, exit 2).
+
+```bash
+# 932-row solution list → a single number
+crm --jq 'length' solution list
+
+# census summary: how many managed vs unmanaged solutions
+crm --jq 'group_by(.ismanaged) | map({managed: .[0].ismanaged, n: length})' solution list
+```
+
+The expression's input is the curated `data` value only (never `ok`/`error`/`meta`),
+and its result — scalar, string, array, or object — replaces `data`; the rest of
+the envelope is untouched. A jq program is a stream of outputs: one output becomes
+that value (so `length` → a bare number), no output (e.g. `empty`) becomes `null`,
+and many outputs (e.g. `.[]`) become a list. The program is compiled **before any
+network call**, so an invalid program fails fast (exit 2) without hitting the org;
+a program that compiles but fails at run time (e.g. indexing a number) returns an
+error envelope. Error envelopes bypass shaping; `--dry-run` previews are shaped
+(ADR 0023).
+
 ## Aggregate / group by with `$apply` (`--apply`)
 
 ```bash
