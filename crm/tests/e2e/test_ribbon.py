@@ -272,6 +272,10 @@ def test_ribbon_set_label_relabels_custom_button(
         "--label", f"SL{unique}", "--location", "form",
         "--webresource", wr_name, "--function", "ns.e2eSetLabel",
         "--param", "PrimaryControl",
+        # --publish: set-label locates the button by exporting the solution, and
+        # an UNPUBLISHED RibbonDiffXml is not carried by ExportSolution on either
+        # target (#766). Publish so the staged button is exportable/editable.
+        "--publish",
     ])
     assert add_result.returncode == 0, (
         f"ribbon add-button failed:\n{add_result.stderr}\n{add_result.stdout}"
@@ -486,6 +490,10 @@ def test_ribbon_set_rules_and_add_custom_rule(
         "--label", button_label, "--location", "form",
         "--webresource", wr_name, "--function", js_func,
         "--param", "PrimaryControl",
+        # --publish: set-rules locates the CommandDefinition by exporting the
+        # solution, and an UNPUBLISHED RibbonDiffXml is not carried by
+        # ExportSolution on either target (#766). Publish so it is exportable.
+        "--publish",
     ])
     assert add_result.returncode == 0, (
         f"ribbon add-button failed:\n{add_result.stderr}\nstdout: {add_result.stdout}"

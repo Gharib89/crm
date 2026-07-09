@@ -35,6 +35,13 @@ crm ribbon add-button cwx_ticket --solution MySolution \
 `--group <id>`. The web resource must already exist in the org/solution. The edit
 **stages** by default (no publish); pass `--publish` to publish it immediately.
 
+!!! warning "Publish before editing a staged button"
+    Unlike forms and views, an **unpublished** `RibbonDiffXml` is not carried by the
+    solution export that `set-label`, `set-rules`, and `add-custom-rule` read to find
+    their target. A button added **without `--publish`** is therefore invisible to
+    those verbs (they fail with `… not found` / `available: []`). Add the button with
+    `--publish`, or run `crm solution publish-all` before the follow-up edit.
+
 ## Remove a button
 
 ```bash

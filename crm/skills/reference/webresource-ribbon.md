@@ -115,6 +115,16 @@ pipeline, `add-button` / `set-label` / `remove` / `hide-button` / `set-rules` /
 ticks. The command has not hung; **do not retry** a slow call (a second, parallel
 attempt races the first import). Confirm the outcome afterward with `ribbon list`.
 
+**Publish before you edit a staged button — ribbon edits do NOT chain unpublished.**
+`add-button` **stages** by default (like every customization write). But unlike
+forms/views, an **unpublished `RibbonDiffXml` is not carried by the solution export**
+that `set-label` / `set-rules` / `add-custom-rule` read to locate their target — so a
+button you just added without `--publish` is invisible to them, and they fail with
+`… not found` / `available: []`. So either add the button **with `--publish`**, or run
+`crm solution publish-all` before the follow-up edit. (The error now says this when it
+sees an empty diff.) This also means multi-button ribbon builds cannot batch-then-publish
+like other customizations — each edit needs the prior one published first.
+
 **Platform rule allow-list — the server silently ignores unknown `Mscrm.*` ids.**
 `set-rules` validates each `Mscrm.*` id against a curated allow-list and rejects
 unrecognised platform ids before touching the solution, because the server would
