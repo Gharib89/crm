@@ -59,11 +59,17 @@ def _sha256_file(base_dir: str | None, file: str) -> str:
     a missing/unreadable payload is a clean reported failure, not a crash.
     """
     path = os.path.join(base_dir or "", file)
+    digest = hashlib.sha256()
     try:
         with open(path, "rb") as fh:
-            return hashlib.sha256(fh.read()).hexdigest()
+            # Stream in chunks so a large plug-in DLL / web-resource body is not
+            # read wholesale into memory just to hash it.
+            for chunk in iter(lambda: fh.read(65536), b""):
+                digest.update(chunk)
     except OSError as exc:
-        raise D365Error(f"could not read referenced payload {file!r}: {exc}") from exc
+        raise D365Error(
+            f"could not read referenced payload {file!r} ({path}): {exc}") from exc
+    return digest.hexdigest()
 
 
 def _payload_pins(spec: dict[str, Any], base_dir: str | None) -> dict[str, str]:
