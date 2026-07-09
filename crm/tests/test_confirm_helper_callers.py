@@ -81,10 +81,33 @@ def _jsonl_file(tmp_path: Path, name: str) -> str:
     return str(path)
 
 
+def _plan_file(tmp_path: Path) -> str:
+    """A prune-intent plan whose pre-flight passes without touching the backend.
+
+    Empty header ``url`` skips the (backend-reading) URL-mismatch check; the org
+    matches the stubbed WhoAmI in `_setup_case`; verdicts are clean and payloads
+    empty — so `_apply_from_plan` reaches its destructive-confirm gate, which is
+    what this sweep exercises."""
+    path = tmp_path / "sweep.plan.json"
+    path.write_text(json.dumps({
+        "plan_format": 1,
+        "header": {"url": "", "organization_id": "sweep-org",
+                   "solution": "ContosoCore", "cli_version": "x",
+                   "created_at": "2026-01-01T00:00:00+00:00",
+                   "intent": {"prune": True, "allow_data_loss": False,
+                              "stage_only": False}},
+        "spec": {"solution": {"unique_name": "ContosoCore"}},
+        "payloads": {},
+        "verdicts": [{"kind": "entity", "name": "contoso_x", "verdict": "skipped"}],
+    }), encoding="utf-8")
+    return str(path)
+
+
 def _argv_map(tmp_path: Path, prefix: list[str]) -> dict[str, list[str]]:
     return {
         "app:app_delete": [*prefix, "app", "delete", "cwx_crmworx"],
         "apply:apply_cmd": [*prefix, "apply", "-f", _spec_file(tmp_path), "--prune"],
+        "apply:_apply_from_plan": [*prefix, "apply", "--from-plan", _plan_file(tmp_path)],
         "async_ops:async_cancel": [*prefix, "async", "cancel", _GUID],
         "chart:chart_delete": [*prefix, "chart", "delete", _GUID],
         "data:data_delete": [*prefix, "data", "delete", "contacts", "--fetchxml", _FETCH],
@@ -166,6 +189,14 @@ def _setup_case(case_id: str, monkeypatch, tmp_path: Path, called: dict) -> None
                 "replace_blocked": [], "pruned": [], "planned": [], "failed": [], "staged": False,
             }),
         )
+    elif case_id == "apply:_apply_from_plan":
+        # Pre-flight reads WhoAmI (stub a matching org) and `run_plan` is the
+        # single core call the confirm gate guards (stub it to record the hit).
+        monkeypatch.setattr("crm.core.connection.whoami",
+                            lambda *a, **k: {"OrganizationId": "sweep-org"})
+        monkeypatch.setattr(
+            "crm.core.plan.run_plan",
+            lambda *a, **k: _record(called, "from-plan", {"status": "valid", "ok": True}))
     elif case_id in {"async_ops:async_cancel", "solution:solution_job_cancel"}:
         monkeypatch.setattr("crm.commands.async_ops.async_ops_mod.cancel_async_operation",
                             lambda *a, **k: _record(called, "async"))

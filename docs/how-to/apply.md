@@ -318,6 +318,58 @@ and the exit code is unchanged. A plan captures:
 
 The command's own JSON envelope also reports the written path in `meta.plan_out`.
 
+## Execute a plan — approval-gated apply
+
+`--from-plan <path>` runs a saved plan, but **only if it is still exactly true**.
+This closes the approval gap: what you reviewed in the plan is what runs, or
+nothing runs. It is mutually exclusive with `-f` (exactly one is required).
+
+```bash
+# 1. plan (review plan.json, attach it to a PR/ticket, get it approved)
+crm --dry-run --json apply -f project.yaml -o project.plan.json
+# 2. re-verify without executing — the CI pre-check
+crm --dry-run --json apply --from-plan project.plan.json
+# 3. execute the approved plan
+crm --json apply --from-plan project.plan.json
+```
+
+**Plan intent is replayed, not re-specified.** `--prune`, `--allow-data-loss`,
+and `--stage-only` are fixed when the plan is created and read back from its
+header — passing any of them (or `-o`) alongside `--from-plan` is a usage error
+(exit 2). The destructive confirmation (`--yes` / TTY prompt) still applies when
+the plan carries prune intent.
+
+**Pre-flight refusals (exit 1, no writes):**
+
+- an unknown/newer `plan_format` the CLI can't read;
+- an `organization_id` that doesn't match the connected org's WhoAmI (a mismatched
+  URL or CLI version is a `meta.warnings` note, not a refusal — hostnames may be
+  aliased);
+- a plan carrying `replace_blocked` / `failed` components (the **clean-plan rule** —
+  such a plan approves an outcome apply will never converge to);
+- any pinned payload that is missing or whose content changed since plan time.
+  Payload `file` paths are resolved relative to **the plan file's directory**, so
+  keep referenced web-resource/DLL files next to the plan.
+
+**The whole-run gate.** Execution first recomputes the drift report from live
+reads and compares it to the plan at the **action level** — the component set,
+each verdict, and each `updated` component's changed-field set must match exactly
+(live field *values* need no byte equality). Any divergence is a **stale plan**:
+zero writes, `ok=false`, exit 1, with each diverged component reported under
+`data.divergences` as "plan said X, live now computes Y". The remedy is always to
+re-plan and re-approve. Without prune intent, a stray new solution component that
+surfaces live is informational and does not invalidate the plan; under prune
+intent the approved deletions participate in the gate.
+
+`--dry-run --from-plan` stops after the compare (verify mode): it reports
+`data.plan_valid` (`true`/`false`) and writes nothing — use it as a CI gate that a
+pending plan is still applicable.
+
+> **TOCTOU note.** A residual window survives between the verify pass and the
+> writes — metadata writes are not transactional — so a concurrent customization
+> could still slip in after the gate passes. The gate shrinks the window from
+> preview-to-apply to verify-to-write; it does not eliminate it.
+
 ## Stage without publishing
 
 ```bash

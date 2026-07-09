@@ -105,6 +105,36 @@ and leaves staged-but-unpublished residue.** A new table's views may report
 `planned` until the first publish assigns its ObjectTypeCode — **re-apply to land
 them.**
 
+### Approval-gated apply (plan → verify → execute)
+
+For an unattended/agent-driven apply where "what was approved must be what runs",
+serialize the dry-run drift report as a **plan** and later execute it only if the
+org has not drifted since:
+
+```bash
+crm --dry-run --json apply -f project.yaml -o plan.json  # 1. plan (review plan.json)
+crm --dry-run --json apply --from-plan plan.json         # 2. verify (CI pre-check)
+crm --json apply --from-plan plan.json                   # 3. execute the approved plan
+```
+
+- `--from-plan` is mutually exclusive with `-f`. It **replays** the plan's intent
+  (`--prune` / `--allow-data-loss` / `--stage-only`) from the plan header — passing
+  any of them (or `-o`) alongside `--from-plan` is a usage error (exit 2).
+- Before executing, it recomputes the drift report and compares at the **action
+  level** (component set + verdict + each `updated` component's changed-field set;
+  live values are not byte-compared). **Any divergence → stale plan: zero writes,
+  `ok=false`, exit 1**, with `data.divergences` = `[{kind, name, plan, live}]`. The
+  fix is always re-plan, not a weaker gate.
+- `--dry-run --from-plan` is **verify mode**: it reports `data.plan_valid`
+  (`true`/`false`) and writes nothing.
+- Pre-flight **refuses** (exit 1) a plan whose `plan_format` is unknown, whose
+  `organization_id` ≠ the live WhoAmI, that carries `replace_blocked`/`failed`
+  components, or whose pinned payloads are missing/changed. A URL or CLI-version
+  mismatch is only a `meta.warnings` note. **Payload `file`s resolve relative to the
+  plan file's directory** — keep referenced web-resource/DLL files beside the plan.
+- Residual TOCTOU: the gate shrinks the window to verify-to-write but cannot close
+  it (metadata writes are not transactional).
+
 ```yaml
 publisher: {unique_name: contosopub, prefix: contoso, option_value_prefix: 10000}
 solution:  {unique_name: ContosoCore}

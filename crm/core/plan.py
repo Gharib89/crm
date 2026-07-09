@@ -161,3 +161,251 @@ def write_plan(path: str, plan: dict[str, Any]) -> None:
             fh.write("\n")
     except OSError as exc:
         raise D365Error(f"could not write plan to {path!r}: {exc}") from exc
+
+
+# ── slice 2 (#747): approval-gated execution (`apply --from-plan`) ─────────────
+#
+# A plan is executed **only if it is still exactly true**. `run_plan` recomputes
+# the drift report from live reads on a dry-run twin, compares it to the plan at
+# the *action* level (component set + verdict + changed-field set), and — unless
+# in verify mode or the plan is stale — executes it for real via the same apply
+# engine. `preflight_plan` runs the refusals that must precede any read of the
+# spec; `diff_plan` is the whole-run divergence gate. See ADR 0022.
+
+
+def load_plan(path: str) -> dict[str, Any]:
+    """Read and parse a plan JSON file into a dict.
+
+    A read error, malformed JSON, or a non-object top level maps to a D365Error
+    so the command reports a clean failure. ``utf-8-sig`` tolerates a leading BOM,
+    matching crm's file-boundary read policy (#683).
+    """
+    try:
+        with open(path, encoding="utf-8-sig") as fh:
+            doc = json.load(fh)
+    except OSError as exc:
+        raise D365Error(f"could not read plan {path!r}: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise D365Error(f"plan {path!r} is not valid JSON: {exc}") from exc
+    if not isinstance(doc, dict):
+        raise D365Error(f"plan {path!r} must be a JSON object.")
+    return cast("dict[str, Any]", doc)
+
+
+def plan_intent(plan: dict[str, Any]) -> dict[str, bool]:
+    """The plan's fixed intent — ``{prune, allow_data_loss, stage_only}``.
+
+    Replayed at execution, never re-specified (ADR 0022). Missing/absent flags
+    default to ``False`` so a hand-trimmed plan header degrades safely.
+    """
+    header = cast("dict[str, Any]", plan.get("header") or {})
+    intent = cast("dict[str, Any]", header.get("intent") or {})
+    return {
+        "prune": bool(intent.get("prune")),
+        "allow_data_loss": bool(intent.get("allow_data_loss")),
+        "stage_only": bool(intent.get("stage_only")),
+    }
+
+
+def _payload_mismatches(payloads: dict[str, Any], base_dir: str | None) -> list[str]:
+    """Files whose on-disk sha256 no longer matches the plan's pin.
+
+    Each referenced payload must be present and byte-identical to what was pinned
+    at plan time (ADR 0022). A pin recorded as ``None`` (unpinnable at plan time)
+    can never satisfy present-and-matching, so it is reported too — though a clean
+    plan never carries one (an unreadable payload routes its component to the
+    ``failed`` bucket, which the clean-plan rule already refuses).
+    """
+    out: list[str] = []
+    for file, pinned in payloads.items():
+        if not isinstance(pinned, str):
+            out.append(f"{file} (could not be pinned at plan time)")
+            continue
+        actual = _sha256_file(base_dir, file)
+        if actual is None:
+            out.append(f"{file} (missing)")
+        elif actual != pinned:
+            out.append(f"{file} (content changed)")
+    return out
+
+
+def preflight_plan(
+    plan: dict[str, Any], backend: D365Backend, *,
+    organization_id: str | None, base_dir: str | None,
+) -> list[str]:
+    """Refuse an un-executable plan before any read of its spec; return warnings.
+
+    Refusals (raise D365Error, no write): an unknown/newer ``plan_format``; an
+    ``organization_id`` that does not match the live target (WhoAmI); a plan that
+    carries ``replace_blocked`` / ``failed`` components (the clean-plan rule — such
+    a plan approves an outcome apply will never converge to); any pinned payload
+    that is missing or content-changed. A mismatched target URL or CLI version is
+    a **warning**, not a refusal — aliased hostnames are legitimate, and pinning
+    the CLI version would let every release invalidate every pending plan.
+    """
+    warnings: list[str] = []
+    fmt = plan.get("plan_format")
+    if fmt != PLAN_FORMAT_VERSION:
+        raise D365Error(
+            f"plan format {fmt!r} is not supported (this CLI writes and reads "
+            f"format {PLAN_FORMAT_VERSION}); re-create the plan.")
+    header = cast("dict[str, Any]", plan.get("header") or {})
+    plan_org = header.get("organization_id")
+    if plan_org and organization_id and plan_org != organization_id:
+        raise D365Error(
+            f"plan targets organization {plan_org!r} but the active connection is "
+            f"organization {organization_id!r}; refusing to apply it here.")
+    plan_url = header.get("url")
+    if plan_url and plan_url != backend.profile.api_base:
+        warnings.append(
+            f"plan was built against {plan_url!r}; the active connection is "
+            f"{backend.profile.api_base!r} — proceeding (hostnames may be aliased).")
+    plan_cli = header.get("cli_version")
+    if plan_cli and plan_cli != __version__:
+        warnings.append(
+            f"plan was built with CLI version {plan_cli}; this is {__version__} — "
+            "proceeding.")
+    blocking = [v for v in _as_list(plan.get("verdicts"))
+                if v.get("verdict") in ("replace_blocked", "failed")]
+    if blocking:
+        names = "; ".join(f"{v.get('kind')} {v.get('name')} ({v.get('verdict')})"
+                          for v in blocking)
+        raise D365Error(
+            "plan is not executable — it records replace_blocked/failed components "
+            f"({names}); fix the spec and re-plan.")
+    mismatches = _payload_mismatches(
+        cast("dict[str, Any]", plan.get("payloads") or {}), base_dir)
+    if mismatches:
+        raise D365Error(
+            "plan payload(s) no longer match what was pinned at plan time: "
+            + "; ".join(mismatches) + "; re-create the plan.")
+    return warnings
+
+
+def _changed_fields(record: dict[str, Any]) -> frozenset[str]:
+    """The set of field names an ``updated`` verdict record would change.
+
+    The engine records drift in one of two shapes: a ``{field: {old, new}}``
+    mapping (metadata/view updates) or a ``{"fields": [...]}`` list (web
+    resource / plug-in / security-role updates). Either way the *set of field
+    names* is the action-level identity — the live ``old`` values are ignored, so
+    a shifted live value does not read as a divergence (ADR 0022).
+    """
+    diff = record.get("diff")
+    if not isinstance(diff, dict):
+        return frozenset()
+    diff = cast("dict[str, Any]", diff)
+    fields = diff.get("fields")
+    if isinstance(fields, list):
+        return frozenset(str(f) for f in cast("list[Any]", fields))
+    return frozenset(diff.keys())
+
+
+def _action_key(record: dict[str, Any]) -> tuple[Any, ...]:
+    """The action-level comparison key for one verdict record.
+
+    ``(kind, name, verdict)`` for most verdicts; ``updated`` also carries its
+    changed-field set, and ``pruned`` whether it would actually delete
+    (``would_prune``) versus was refused. Live field values are deliberately
+    excluded — only the *action* is compared.
+    """
+    verdict = record.get("verdict")
+    base: tuple[Any, ...] = (record.get("kind"), record.get("name"), verdict)
+    if verdict == "updated":
+        return base + (tuple(sorted(_changed_fields(record))),)
+    if verdict == "pruned":
+        return base + (bool(record.get("would_prune")),)
+    return base
+
+
+def _describe(record: dict[str, Any] | None) -> str:
+    """A short human-readable rendering of a verdict record for a stale report."""
+    if record is None:
+        return "absent"
+    verdict = record.get("verdict")
+    if verdict == "updated":
+        fields = sorted(_changed_fields(record))
+        return f"updated ({', '.join(fields)})" if fields else "updated"
+    if verdict == "pruned":
+        return "pruned (would delete)" if record.get("would_prune") else "pruned (refused)"
+    return str(verdict)
+
+
+def diff_plan(
+    plan: dict[str, Any], live_report: dict[str, Any], *,
+    prune_intent: bool | None = None,
+) -> list[dict[str, Any]]:
+    """The whole-run divergence gate: how a recomputed report departs from the plan.
+
+    Compares the plan's verdict records to those a live dry-run reconcile now
+    computes (``live_report`` is an ``apply_spec`` return under dry-run), keyed by
+    ``(kind, name)``, at the action level (``_action_key``). Returns one entry per
+    diverged component — ``{kind, name, plan, live}`` in drift-report shape — or
+    ``[]`` when the plan is still exactly true.
+
+    ``pruned`` records participate only under prune intent (``prune_intent``,
+    defaulting to the plan's own intent); without it they are informational, so a
+    stray new solution component surfacing live never invalidates the plan.
+    """
+    if prune_intent is None:
+        prune_intent = plan_intent(plan)["prune"]
+
+    def participates(record: dict[str, Any]) -> bool:
+        return record.get("verdict") != "pruned" or bool(prune_intent)
+
+    def by_id(records: list[dict[str, Any]]) -> dict[tuple[Any, Any], dict[str, Any]]:
+        return {(r.get("kind"), r.get("name")): r for r in records if participates(r)}
+
+    plan_map = by_id(_as_list(plan.get("verdicts")))
+    live_map = by_id(_verdict_records(live_report))
+    out: list[dict[str, Any]] = []
+    for key in sorted(set(plan_map) | set(live_map), key=lambda k: (str(k[0]), str(k[1]))):
+        p, live = plan_map.get(key), live_map.get(key)
+        p_key = _action_key(p) if p is not None else None
+        live_key = _action_key(live) if live is not None else None
+        if p_key != live_key:
+            out.append({"kind": key[0], "name": key[1],
+                        "plan": _describe(p), "live": _describe(live)})
+    return out
+
+
+def run_plan(
+    backend: D365Backend, plan: dict[str, Any], *,
+    base_dir: str | None, verify_only: bool,
+    include_referenced_optionsets: bool = True,
+) -> dict[str, Any]:
+    """Verify a plan against the live org and, unless stale or in verify mode, run it.
+
+    Recomputes the drift report read-only on a dry-run twin of ``backend`` using
+    the plan's fixed intent, and compares it to the plan (``diff_plan``). Any
+    divergence is a **stale plan** — zero writes, ``{status: "stale"}``. When the
+    plan still holds: in verify mode (``verify_only``) it reports ``"valid"`` and
+    writes nothing (the CI pre-check); otherwise it executes the embedded spec for
+    real on ``backend`` and returns ``{status: "executed", result}``.
+
+    A residual TOCTOU window survives between this verify pass and the writes —
+    metadata writes are not transactional — so a concurrent customization could
+    still slip in; ADR 0022 documents this honestly rather than engineering around
+    it. The gate shrinks the window from preview-to-apply to verify-to-write.
+    """
+    from crm.core.apply import apply_spec  # lazy: avoids a core import cycle
+
+    intent = plan_intent(plan)
+    spec = cast("dict[str, Any]", plan.get("spec") or {})
+    apply_kwargs: dict[str, Any] = {
+        "stage_only": intent["stage_only"],
+        "include_referenced_optionsets": include_referenced_optionsets,
+        "base_dir": base_dir,
+        "prune": intent["prune"],
+        "allow_data_loss": intent["allow_data_loss"],
+    }
+    # Verify pass: recompute the drift report with writes suppressed.
+    report = apply_spec(backend.as_dry_run(), spec, **apply_kwargs)
+    divergences = diff_plan(plan, report, prune_intent=intent["prune"])
+    if divergences:
+        return {"status": "stale", "ok": False, "divergences": divergences}
+    if verify_only:
+        return {"status": "valid", "ok": True}
+    # The plan is still exactly true → execute the approved actions for real.
+    result = apply_spec(backend, spec, **apply_kwargs)
+    return {"status": "executed", "ok": result["ok"], "result": result}

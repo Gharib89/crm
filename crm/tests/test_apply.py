@@ -16,6 +16,7 @@ import pytest
 import requests_mock
 from click.testing import CliRunner
 
+from crm import __version__
 from crm.cli import CLIContext, cli
 from crm.core import apply as apply_mod
 from crm.core import views as views_mod
@@ -4746,3 +4747,269 @@ def test_apply_dry_run_writes_plan_even_when_replace_blocked(dry_backend, monkey
     blocked = [v for v in plan["verdicts"] if v["verdict"] == "replace_blocked"]
     assert [v["kind"] for v in blocked] == ["entity"]
     assert "reason" in blocked[0]
+
+
+# ── --from-plan: approval-gated execution of a saved plan (#747) ───────────────
+
+
+def _write_plan_file(tmp_path, *, verdicts, org_id="org-live", intent=None,
+                     payloads=None, plan_format=1, spec=None, name="p.json"):
+    """Hand-write a plan JSON file for the refusal/gate command tests."""
+    plan = {
+        "plan_format": plan_format,
+        "header": {
+            "url": "https://crm.contoso.local/contoso/api/data/v9.2/",
+            "organization_id": org_id,
+            "solution": _SOLUTION["unique_name"],
+            "cli_version": __version__,
+            "created_at": "2026-07-09T00:00:00+00:00",
+            "intent": intent or {"prune": False, "allow_data_loss": False,
+                                 "stage_only": False},
+        },
+        "spec": spec or {"solution": _SOLUTION, "entities": [_ENTITY]},
+        "payloads": payloads or {},
+        "verdicts": verdicts,
+    }
+    path = tmp_path / name
+    path.write_text(json.dumps(plan), encoding="utf-8")
+    return path
+
+
+# — usage errors (exit 2, before any backend work) —
+
+
+def test_apply_from_plan_and_file_are_mutually_exclusive(tmp_path):
+    spec_path = _write_spec(tmp_path)
+    plan_path = _write_plan_file(tmp_path, verdicts=[])
+    result = CliRunner().invoke(
+        cli, ["--json", "apply", "-f", str(spec_path), "--from-plan", str(plan_path)])
+    assert result.exit_code == 2
+    assert "exactly one" in json.loads(result.output)["error"]
+
+
+def test_apply_requires_a_spec_or_a_plan(tmp_path):
+    result = CliRunner().invoke(cli, ["--json", "apply"])
+    assert result.exit_code == 2
+    assert "exactly one" in json.loads(result.output)["error"]
+
+
+# --stage-only is a global (pre-subcommand) flag; --prune / --allow-data-loss are
+# `apply` options (post-subcommand). Each is placed where Click expects it.
+@pytest.mark.parametrize("argv", [
+    ["--json", "apply", "--from-plan", "{plan}", "--prune"],
+    ["--json", "apply", "--from-plan", "{plan}", "--allow-data-loss"],
+    ["--json", "--stage-only", "apply", "--from-plan", "{plan}"],
+])
+def test_apply_from_plan_rejects_replayed_intent_flags(tmp_path, argv):
+    # Intent is fixed in the plan and replayed; re-specifying it at apply time
+    # would break approval integrity (ADR 0022).
+    plan_path = _write_plan_file(tmp_path, verdicts=[])
+    result = CliRunner().invoke(
+        cli, [a.replace("{plan}", str(plan_path)) for a in argv])
+    assert result.exit_code == 2
+    assert "from-plan" in json.loads(result.output)["error"]
+
+
+def test_apply_from_plan_rejects_plan_out(tmp_path):
+    plan_path = _write_plan_file(tmp_path, verdicts=[])
+    out = tmp_path / "out.json"
+    result = CliRunner().invoke(
+        cli, ["--json", "apply", "--from-plan", str(plan_path), "-o", str(out)])
+    assert result.exit_code == 2
+    assert "from-plan" in json.loads(result.output)["error"]
+
+
+# — pre-flight refusals (exit 1, no writes) —
+
+
+def test_apply_from_plan_refuses_org_mismatch(backend, monkeypatch, tmp_path):
+    monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
+    plan_path = _write_plan_file(
+        tmp_path, org_id="a-different-org",
+        verdicts=[{"kind": "entity", "name": "contoso_Project", "verdict": "planned"}])
+    with requests_mock.Mocker() as m:
+        _mock_whoami(m, backend, org_id="the-live-org")
+        result = CliRunner().invoke(
+            cli, ["--json", "apply", "--from-plan", str(plan_path)])
+    assert result.exit_code == 1
+    assert "organization" in json.loads(result.output)["error"]
+
+
+def test_apply_from_plan_refuses_unclean_plan(backend, monkeypatch, tmp_path):
+    # A plan carrying a replace_blocked component is not executable.
+    monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
+    plan_path = _write_plan_file(
+        tmp_path, org_id="live",
+        verdicts=[{"kind": "entity", "name": "contoso_Old",
+                   "verdict": "replace_blocked", "reason": "ownership"}])
+    with requests_mock.Mocker() as m:
+        _mock_whoami(m, backend, org_id="live")
+        result = CliRunner().invoke(
+            cli, ["--json", "apply", "--from-plan", str(plan_path)])
+    assert result.exit_code == 1
+    assert "not executable" in json.loads(result.output)["error"]
+
+
+def test_apply_from_plan_refuses_changed_payload(backend, monkeypatch, tmp_path):
+    monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
+    (tmp_path / "app.js").write_bytes(b"changed-since-plan-time")
+    plan_path = _write_plan_file(
+        tmp_path, org_id="live", payloads={"app.js": "0" * 64},
+        verdicts=[{"kind": "webresource", "name": "contoso_/app.js", "verdict": "skipped"}])
+    with requests_mock.Mocker() as m:
+        _mock_whoami(m, backend, org_id="live")
+        result = CliRunner().invoke(
+            cli, ["--json", "apply", "--from-plan", str(plan_path)])
+    assert result.exit_code == 1
+    assert "payload" in json.loads(result.output)["error"]
+
+
+# — verify mode (--dry-run --from-plan): recompute + compare, write nothing —
+
+
+def test_apply_from_plan_verify_valid_round_trip(dry_backend, monkeypatch, tmp_path):
+    # Plan a greenfield spec, then verify it against the same (still-greenfield)
+    # org: the plan is still exactly true → plan_valid, exit 0, no writes.
+    monkeypatch.setattr(CLIContext, "backend", lambda self: dry_backend)
+    spec = {"solution": _SOLUTION, "entities": [_ENTITY]}
+    spec_path = _write_spec(tmp_path, spec)
+    plan_path = tmp_path / "p.json"
+
+    def _greenfield(m):
+        _mock_whoami(m, dry_backend, org_id="org-x")
+        m.get(dry_backend.url_for("solutions"), json={"value": []})
+        m.get(dry_backend.url_for("EntityDefinitions(LogicalName='contoso_project')"),
+              status_code=404)
+
+    with requests_mock.Mocker() as m:
+        _greenfield(m)
+        r1 = CliRunner().invoke(
+            cli, ["--dry-run", "--json", "apply", "-f", str(spec_path), "-o", str(plan_path)])
+    assert r1.exit_code == 0, r1.output
+    with requests_mock.Mocker() as m:
+        _greenfield(m)
+        r2 = CliRunner().invoke(
+            cli, ["--dry-run", "--json", "apply", "--from-plan", str(plan_path)])
+    assert r2.exit_code == 0, r2.output
+    env = json.loads(r2.output)
+    assert env["ok"] is True
+    assert env["data"]["plan_valid"] is True
+    assert env["meta"]["from_plan"] == str(plan_path)
+
+
+def test_apply_from_plan_verify_detects_stale(backend, dry_backend, monkeypatch, tmp_path):
+    # Plan greenfield (entity `planned`); then the entity exists live → recompute
+    # says `skipped`, diverging from the plan → stale, exit 1, no writes.
+    spec = {"solution": _SOLUTION, "entities": [_ENTITY]}
+    spec_path = _write_spec(tmp_path, spec)
+    plan_path = tmp_path / "p.json"
+    monkeypatch.setattr(CLIContext, "backend", lambda self: dry_backend)
+    with requests_mock.Mocker() as m:
+        _mock_whoami(m, dry_backend, org_id="org-x")
+        m.get(dry_backend.url_for("solutions"), json={"value": []})
+        m.get(dry_backend.url_for("EntityDefinitions(LogicalName='contoso_project')"),
+              status_code=404)
+        r1 = CliRunner().invoke(
+            cli, ["--dry-run", "--json", "apply", "-f", str(spec_path), "-o", str(plan_path)])
+    assert r1.exit_code == 0, r1.output
+    # Re-verify against an org where the entity now exists (matches spec → skipped).
+    with requests_mock.Mocker() as m:
+        _mock_whoami(m, dry_backend, org_id="org-x")
+        m.get(dry_backend.url_for("solutions"), json={"value": []})
+        _mock_entity_live(m, dry_backend, display_name="Project")
+        r2 = CliRunner().invoke(
+            cli, ["--dry-run", "--json", "apply", "--from-plan", str(plan_path)])
+    assert r2.exit_code == 1, r2.output
+    env = json.loads(r2.output)
+    assert env["ok"] is False
+    assert env["data"]["plan_valid"] is False
+    div = env["data"]["divergences"]
+    assert any(d["kind"] == "entity" and d["plan"] == "planned" and d["live"] == "skipped"
+               for d in div)
+    assert "stale plan" in env["error"]
+
+
+# — real execution: verify then apply on the same connection —
+
+
+def test_apply_from_plan_executes_when_plan_holds(backend, dry_backend, monkeypatch, tmp_path):
+    # Plan an update (live display drifts from spec), then execute the plan for
+    # real: the verify pass matches → the write fires and the run publishes once.
+    ent = {"schema_name": "contoso_Project", "display_name": "Project",
+           "primary_attr": {"schema_name": "contoso_Name", "label": "Name"}}
+    spec = {"solution": _SOLUTION, "entities": [ent]}
+    spec_path = _write_spec(tmp_path, spec)
+    plan_path = tmp_path / "p.json"
+
+    def _drifted(m, be):
+        _mock_whoami(m, be, org_id="org-x")
+        _mock_solution_create(m, be, exists=True)
+        m.get(be.url_for("solutioncomponents"), json={"value": []})  # dry prune scan
+        _mock_entity_live(m, be, display_name="Old Project")
+
+    monkeypatch.setattr(CLIContext, "backend", lambda self: dry_backend)
+    with requests_mock.Mocker() as m:
+        _drifted(m, dry_backend)
+        r1 = CliRunner().invoke(
+            cli, ["--dry-run", "--json", "apply", "-f", str(spec_path), "-o", str(plan_path)])
+    assert r1.exit_code == 0, r1.output
+
+    monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
+    with requests_mock.Mocker() as m:
+        _drifted(m, backend)
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        r2 = CliRunner().invoke(cli, ["--json", "apply", "--from-plan", str(plan_path)])
+    assert r2.exit_code == 0, r2.output
+    env = json.loads(r2.output)
+    assert env["ok"] is True
+    assert _kinds(env["data"]["updated"]) == ["entity"]
+    assert env["meta"]["from_plan"] == str(plan_path)
+    assert len([r for r in m.request_history if r.method == "PUT"]) == 1
+
+
+def test_apply_from_plan_stale_execution_writes_nothing(backend, dry_backend,
+                                                        monkeypatch, tmp_path):
+    # A real --from-plan whose live state has diverged since planning must make
+    # ZERO writes — the whole-run gate refuses before executing.
+    ent = {"schema_name": "contoso_Project", "display_name": "Project",
+           "primary_attr": {"schema_name": "contoso_Name", "label": "Name"}}
+    spec = {"solution": _SOLUTION, "entities": [ent]}
+    spec_path = _write_spec(tmp_path, spec)
+    plan_path = tmp_path / "p.json"
+    monkeypatch.setattr(CLIContext, "backend", lambda self: dry_backend)
+    with requests_mock.Mocker() as m:
+        _mock_whoami(m, dry_backend, org_id="org-x")
+        m.get(dry_backend.url_for("solutions"), json={"value": []})
+        m.get(dry_backend.url_for("EntityDefinitions(LogicalName='contoso_project')"),
+              status_code=404)
+        r1 = CliRunner().invoke(
+            cli, ["--dry-run", "--json", "apply", "-f", str(spec_path), "-o", str(plan_path)])
+    assert r1.exit_code == 0, r1.output
+    # Live now has the entity (matches → skipped) → diverges from the planned verdict.
+    monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
+    with requests_mock.Mocker() as m:
+        _mock_whoami(m, backend, org_id="org-x")
+        m.get(backend.url_for("solutions"), json={"value": []})
+        _mock_entity_live(m, backend, display_name="Project")
+        r2 = CliRunner().invoke(cli, ["--json", "apply", "--from-plan", str(plan_path)])
+    assert r2.exit_code == 1, r2.output
+    assert json.loads(r2.output)["data"]["plan_valid"] is False
+    # No mutation of any kind reached the wire.
+    assert [r for r in m.request_history if r.method in ("POST", "PUT", "PATCH", "DELETE")] == []
+
+
+def test_apply_from_plan_prune_intent_requires_confirmation(backend, monkeypatch, tmp_path):
+    # A plan with prune intent replays the destructive gate at execution: under
+    # --json (non-TTY) a real run refuses without --yes rather than prompting.
+    monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
+    plan_path = _write_plan_file(
+        tmp_path, org_id="live",
+        intent={"prune": True, "allow_data_loss": False, "stage_only": False},
+        verdicts=[{"kind": "entity", "name": "contoso_Project", "verdict": "skipped"}])
+    with requests_mock.Mocker() as m:
+        _mock_whoami(m, backend, org_id="live")
+        result = CliRunner().invoke(cli, ["--json", "apply", "--from-plan", str(plan_path)])
+    assert result.exit_code == 1
+    assert "--yes" in json.loads(result.output)["error"]
+    # Refused before any recompute or write.
+    assert [r for r in m.request_history if r.method in ("POST", "PUT", "PATCH", "DELETE")] == []
