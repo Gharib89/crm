@@ -122,6 +122,77 @@ def _short_repr(v: Any, limit: int = 80) -> str:
     return s if len(s) <= limit else s[: limit - 3] + "..."
 
 
+def _project_fields(data: Any, fields: list[str]) -> "tuple[Any, list[str]]":
+    """Project the curated `data` payload down to the named top-level keys (#735).
+
+    The client-side output shaper behind the global `--fields` flag, applied at the
+    emit seam *after* ADR 0008 curation and *before* serialization. Returns
+    ``(shaped, warnings)`` — the warnings feed the `meta.warnings` channel so a
+    typo'd field name surfaces instead of silently returning empty rows.
+
+    - **List of objects** → each dict row is projected to the named keys, in the
+      order named; a key missing from a row is omitted from that row (not nulled).
+      Non-dict rows are left untouched (a mixed list keeps its scalars).
+    - **Single object** → the same projection on the record.
+    - **Non-object** (scalar, string like a formxml blob, or a list carrying no
+      dicts) → passed through unchanged with a warning; there is nothing to project.
+
+    A field that matched **zero** rows/records adds one warning naming the unmatched
+    fields (the typo tripwire). The envelope's `ok`/`error`/`meta` are never touched
+    here — only what sits inside `data`.
+    """
+    def _project_one(record: dict[str, Any]) -> dict[str, Any]:
+        return {f: record[f] for f in fields if f in record}
+
+    if isinstance(data, list):
+        if not data:
+            return data, []  # empty result set — nothing to project, not a typo
+        if not any(isinstance(row, dict) for row in data):
+            return data, [_NON_OBJECT_WARNING]
+        shaped = [_project_one(row) if isinstance(row, dict) else row for row in data]
+        matched = {f for row in data if isinstance(row, dict) for f in fields if f in row}
+        return shaped, _unmatched_warning(fields, matched)
+    if isinstance(data, dict):
+        matched = {f for f in fields if f in data}
+        return _project_one(data), _unmatched_warning(fields, matched)
+    return data, [_NON_OBJECT_WARNING]
+
+
+_NON_OBJECT_WARNING = (
+    "--fields ignored: data is not an object or a list of objects, so there are no "
+    "keys to project."
+)
+
+
+def _unmatched_warning(fields: list[str], matched: "set[str]") -> list[str]:
+    """One `meta.warnings` entry naming the requested fields that matched nothing."""
+    missing = [f for f in fields if f not in matched]
+    if not missing:
+        return []
+    return [f"--fields: no rows had these keys: {', '.join(missing)}"]
+
+
+def _project_table_columns(
+    table: dict[str, Any], fields: list[str]
+) -> "tuple[dict[str, Any], list[str]]":
+    """Select and order the human-mode table columns named by `--fields` (#735).
+
+    Matches field names against the table's header cells case-insensitively (the
+    curated list verbs use the data key as the header), keeping only the matched
+    columns in the flag's order and slicing every row to match. A field naming no
+    column adds a warning, mirroring the JSON path's typo tripwire.
+    """
+    headers = list(table.get("headers", []))
+    rows = list(table.get("rows", []))
+    index_of = {str(h).lower(): i for i, h in enumerate(headers)}
+    kept = [(f, index_of[f.lower()]) for f in fields if f.lower() in index_of]
+    new_headers = [headers[i] for _, i in kept]
+    new_rows = [[row[i] for _, i in kept] for row in rows]
+    matched = {f for f, _ in kept}
+    shaped = {**table, "headers": new_headers, "rows": new_rows}
+    return shaped, _unmatched_warning(fields, matched)
+
+
 def _emit_with_warning(
     ctx: "CLIContext", data: Any, warning: str | None,
     *, meta: dict[str, Any] | None = None,
