@@ -43,6 +43,22 @@ from crm.commands._helpers import (
 )
 
 
+def _audit_option(f):
+    """Stack the tri-state `--audit/--no-audit` flag on a create/update verb.
+
+    `default=None` keeps the flag optional: omitted leaves the server default
+    (create) or the current value (update) untouched. Uniform name/help across
+    the four entity/attribute create+update verbs, mapping to the platform's
+    `IsAuditEnabled` managed property.
+    """
+    return click.option(
+        "--audit/--no-audit", "audit", default=None,
+        help="Enable/disable auditing (IsAuditEnabled). Requires org-level "
+             "auditing to be turned on for audit records to be written; omit "
+             "to leave unchanged.",
+    )(f)
+
+
 class _CommaIntListType(click.ParamType):
     """A comma-separated list of integers, e.g. ``1,2,7`` → ``[1, 2, 7]`` (#595).
 
@@ -465,6 +481,7 @@ def metadata_dependencies(ctx: CLIContext, target, kind, for_):
 @click.option("--has-notes", is_flag=True)
 @click.option("--is-activity", is_flag=True,
               help="Create as an activity entity.")
+@_audit_option
 @click.option("--data-provider", "data_provider", default=None,
               help="Virtual-table data-provider record GUID. Setting any --external-* "
                    "/ --data-* option creates a VIRTUAL table (rows live in an external "
@@ -485,7 +502,7 @@ def metadata_dependencies(ctx: CLIContext, target, kind, for_):
 def metadata_create_entity(
     ctx: CLIContext, schema_name, display_name, display_collection, primary_attr_schema,
     primary_attr_label, primary_max_length, description, ownership,
-    has_activities, has_notes, is_activity, data_provider, data_source,
+    has_activities, has_notes, is_activity, audit, data_provider, data_source,
     external_name, external_collection_name, solution, if_exists, publish,
 ):
     """Create a new custom entity (table).
@@ -512,6 +529,7 @@ def metadata_create_entity(
             has_activities=has_activities,
             has_notes=has_notes,
             is_activity=is_activity,
+            is_audit_enabled=audit,
             data_provider_id=data_provider,
             data_source_id=data_source,
             external_name=external_name,
@@ -589,12 +607,13 @@ def metadata_clone_entity(
               help="Enable/disable activities.")
 @click.option("--has-notes/--no-has-notes", "has_notes", default=None,
               help="Enable/disable notes.")
+@_audit_option
 @_solution_option
 @_publish_option
 @pass_ctx
 def metadata_update_entity(
     ctx: CLIContext, logical_name, display_name, display_collection_name,
-    description, ownership, has_activities, has_notes, solution, publish,
+    description, ownership, has_activities, has_notes, audit, solution, publish,
 ):
     """Update an entity (table) definition (retrieve-merge-write)."""
     solution = _resolve_solution(ctx, solution)
@@ -609,6 +628,7 @@ def metadata_update_entity(
             ownership=ownership,
             has_activities=has_activities,
             has_notes=has_notes,
+            is_audit_enabled=audit,
             publish=publish,
             solution=solution,
         )
@@ -631,12 +651,13 @@ def metadata_update_entity(
 @click.option("--max", "max_value", type=float, default=None, help="Numeric: maximum value.")
 @click.option("--format", "format_name", default=None,
               help="String: Text|Email|Url|Phone|TextArea. Datetime: DateOnly|DateAndTime.")
+@_audit_option
 @_solution_option
 @_publish_option
 @pass_ctx
 def metadata_update_attribute(
     ctx: CLIContext, entity, attribute, display_name, description, required,
-    max_length, precision, min_value, max_value, format_name, solution, publish,
+    max_length, precision, min_value, max_value, format_name, audit, solution, publish,
 ):
     """Update an attribute (column) definition (retrieve-merge-write).
 
@@ -657,6 +678,7 @@ def metadata_update_attribute(
             min_value=min_value,
             max_value=max_value,
             format_name=format_name,
+            is_audit_enabled=audit,
             publish=publish,
             solution=solution,
         )
@@ -860,6 +882,7 @@ def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution, check_d
               help="Rollup/calculated: path to the formula XAML file. Sent "
                    "verbatim — the formula body is officially editor-authored, "
                    "so hand-written XAML is unsupported (not validated here).")
+@_audit_option
 @_solution_option
 @click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error",
               help="If the attribute already exists: error (default) or skip (no-op success).")
@@ -870,7 +893,7 @@ def metadata_add_attribute(
     max_length, format_name, auto_number_format, behavior_name, min_value, max_value, precision,
     true_label, false_label, default_value,
     optionset_name, options, target_entity, relationship_schema,
-    max_size_kb, source_type, formula_file, solution, if_exists, publish,
+    max_size_kb, source_type, formula_file, audit, solution, if_exists, publish,
 ):
     """Add an attribute (column) to an existing entity."""
     schema_name = _resolve_schema_name(ctx, schema_name, display_name, "--schema-name")
@@ -922,6 +945,7 @@ def metadata_add_attribute(
             max_size_kb=max_size_kb,
             source_type=source_type,
             formula_definition=formula_definition,
+            is_audit_enabled=audit,
             publish=publish,
             solution=solution,
             if_exists=if_exists,

@@ -1331,6 +1331,7 @@ REGISTRY: dict[str, Adapter] = {
             "max_size_kb": "max_size_kb",
             "source_type": "source_type",
             "formula_definition": "formula_definition",
+            "is_audit_enabled": "is_audit_enabled",
         },
         transforms={
             "options": lambda b: (
@@ -1366,6 +1367,7 @@ REGISTRY: dict[str, Adapter] = {
             "menu_behavior": "menu_behavior",
             "menu_order": "menu_order",
             "is_hierarchical": "is_hierarchical",
+            "is_audit_enabled": "is_audit_enabled",
         },
         transforms={},
         injected=frozenset({"backend", "solution", "if_exists", "publish"}),
@@ -1397,6 +1399,7 @@ REGISTRY: dict[str, Adapter] = {
             "has_activities": "has_activities",
             "has_notes": "has_notes",
             "is_activity": "is_activity",
+            "is_audit_enabled": "is_audit_enabled",
             "data_provider_id": "data_provider_id",
             "data_source_id": "data_source_id",
             "external_name": "external_name",

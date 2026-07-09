@@ -190,6 +190,83 @@ def test_update_integer_attribute_bounds(cli, ephemeral_entity, unique, ephemera
         ], check=False)
 
 
+@covers("metadata add-attribute", "metadata update-attribute", "metadata update-entity")
+@pytest.mark.slow
+def test_audit_enablement_on_attribute_and_entity(
+    cli, ephemeral_entity, unique, ephemeral_solution
+):
+    """--audit/--no-audit toggles the IsAuditEnabled managed property, read back
+    from the server on both a column and the table.
+
+    Setting the metadata property is independent of org-level auditing (that only
+    gates whether audit *records* are written), so the read-back reflects the
+    flag regardless of the org's audit setting.
+    """
+    attr_schema = f"new_e2eaudit{unique}"
+    attr_logical = attr_schema.lower()
+
+    # Create the column with auditing ON; confirm the server stored Value=True.
+    r_add = cli([
+        "--json", "metadata", "add-attribute", ephemeral_entity,
+        "--kind", "string",
+        "--schema-name", attr_schema,
+        "--display", f"E2E Audit {unique}",
+        "--audit",
+        "--no-publish",
+        "--solution", ephemeral_solution,
+    ])
+    assert r_add.returncode == 0, r_add.stderr
+    assert json.loads(r_add.stdout)["ok"], r_add.stdout
+
+    try:
+        r_read = cli(["--json", "metadata", "attribute", ephemeral_entity, attr_logical])
+        assert r_read.returncode == 0, r_read.stderr
+        col = json.loads(r_read.stdout)["data"]
+        assert (col.get("IsAuditEnabled") or {}).get("Value") is True, (
+            f"Expected IsAuditEnabled.Value=True, got: {col.get('IsAuditEnabled')}"
+        )
+
+        # Toggle the column OFF via update-attribute; confirm Value=False and that
+        # the retrieve-merge-write kept the type-specific MaxLength intact.
+        r_upd = cli([
+            "--json", "metadata", "update-attribute", ephemeral_entity, attr_logical,
+            "--no-audit",
+            "--no-publish",
+            "--solution", ephemeral_solution,
+        ])
+        assert r_upd.returncode == 0, r_upd.stderr
+        assert json.loads(r_upd.stdout)["data"].get("updated") is True
+
+        r_read2 = cli(["--json", "metadata", "attribute", ephemeral_entity, attr_logical])
+        col2 = json.loads(r_read2.stdout)["data"]
+        assert (col2.get("IsAuditEnabled") or {}).get("Value") is False, (
+            f"Expected IsAuditEnabled.Value=False, got: {col2.get('IsAuditEnabled')}"
+        )
+        assert col2.get("MaxLength") == 100, col2.get("MaxLength")
+
+        # Entity-level: enable auditing on the table and read it back.
+        r_ent = cli([
+            "--json", "metadata", "update-entity", ephemeral_entity,
+            "--audit",
+            "--no-publish",
+            "--solution", ephemeral_solution,
+        ])
+        assert r_ent.returncode == 0, r_ent.stderr
+        assert json.loads(r_ent.stdout)["data"].get("updated") is True
+
+        r_ent_read = cli(["--json", "metadata", "entity", ephemeral_entity])
+        ent = json.loads(r_ent_read.stdout)["data"]
+        assert (ent.get("IsAuditEnabled") or {}).get("Value") is True, (
+            f"Expected entity IsAuditEnabled.Value=True, got: {ent.get('IsAuditEnabled')}"
+        )
+    finally:
+        cli([
+            "--json", "metadata", "delete-attribute", ephemeral_entity, attr_logical,
+            "--yes",
+            "--solution", ephemeral_solution,
+        ], check=False)
+
+
 # ---------------------------------------------------------------------------
 # metadata create-many-to-many  +  metadata delete-relationship (lifecycle)
 # ---------------------------------------------------------------------------

@@ -366,6 +366,7 @@ def create_one_to_many(
     lookup_display: str,
     lookup_required: str = "None",
     lookup_description: str | None = None,
+    is_audit_enabled: bool | None = None,
     cascade_assign: str = "NoCascade",
     cascade_delete: str = "RemoveLink",
     cascade_reparent: str = "NoCascade",
@@ -427,6 +428,10 @@ def create_one_to_many(
     }
     if lookup_description:
         lookup_payload["Description"] = label(lookup_description)
+    if is_audit_enabled is not None:
+        # IsAuditEnabled is a BooleanManagedProperty on the lookup column; only
+        # Value is written (the server fills CanBeChanged on create).
+        lookup_payload["IsAuditEnabled"] = {"Value": is_audit_enabled}
 
     menu_config: dict[str, Any] = {
         "Behavior": menu_behavior,
@@ -529,6 +534,7 @@ def create_customer_relationships(
     lookup_display: str,
     lookup_required: str = "None",
     lookup_description: str | None = None,
+    is_audit_enabled: bool | None = None,
     publish: bool = False,
     solution: str | None = None,
     if_exists: str = "error",
@@ -579,6 +585,10 @@ def create_customer_relationships(
     }
     if lookup_description:
         lookup_payload["Description"] = label(lookup_description)
+    if is_audit_enabled is not None:
+        # IsAuditEnabled is a BooleanManagedProperty on the composite lookup;
+        # only Value is written (the server fills CanBeChanged on create).
+        lookup_payload["IsAuditEnabled"] = {"Value": is_audit_enabled}
     body: dict[str, Any] = {
         "Lookup": lookup_payload,
         "OneToManyRelationships": [

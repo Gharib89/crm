@@ -62,9 +62,10 @@ the spec rather than blindly skipped. Three outcomes per component:
 >
 > - **Attribute** — `default_value`, `true_label` / `false_label`, `min_value` /
 >   `max_value`, `max_size_kb`, `auto_number_format`, `behavior_name`,
->   `relationship_schema`.
+>   `relationship_schema`, `is_audit_enabled`.
 > - **Entity** — `primary_attr_max_length`, `data_provider_id`, `data_source_id`,
->   `external_name`, `external_collection_name`.
+>   `external_name`, `external_collection_name`, `is_audit_enabled`.
+> - **Relationship** — `is_audit_enabled` (on the backing lookup column).
 >
 > `export-spec` emits the subset of these keys that map to live Web API fields
 > (the flat `cascade_*`/`menu_*`/`is_hierarchical`/`lookup_description`, view

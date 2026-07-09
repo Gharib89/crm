@@ -547,11 +547,17 @@ def add_attribute(
     max_size_kb: int | None = None,
     source_type: str = "simple",
     formula_definition: str | None = None,
+    is_audit_enabled: bool | None = None,
     publish: bool = False,
     solution: str | None = None,
     if_exists: str = "error",
 ) -> dict[str, Any]:
     """Add an attribute (column) to an existing entity.
+
+    ``is_audit_enabled`` toggles the column's ``IsAuditEnabled`` managed
+    property (requires org-level auditing to be on); omit to leave the server
+    default. It applies to every kind, including lookup/customer columns whose
+    creation is delegated to the relationship builders.
 
     A ``source_type`` of ``rollup`` or ``calculated`` turns the typed column
     (chosen by ``kind``) into a rollup/calculated field by setting ``SourceType``
@@ -595,6 +601,7 @@ def add_attribute(
             lookup_display=display_name,
             lookup_required=required,
             lookup_description=description,
+            is_audit_enabled=is_audit_enabled,
             publish=publish,
             solution=solution,
             if_exists=if_exists,
@@ -636,6 +643,7 @@ def add_attribute(
             lookup_display=display_name,
             lookup_required=required,
             lookup_description=description,
+            is_audit_enabled=is_audit_enabled,
             publish=publish,
             solution=solution,
             if_exists=if_exists,
@@ -691,6 +699,10 @@ def add_attribute(
     if kind in LENGTH_KIND_DEFAULTS and opts["max_length"] is None:
         opts["max_length"] = LENGTH_KIND_DEFAULTS[kind]
     body = builder(opts)
+    if is_audit_enabled is not None:
+        # BooleanManagedProperty on the base AttributeMetadata (valid for every
+        # typed kind); only Value is written, matching the update path.
+        body["IsAuditEnabled"] = {"Value": is_audit_enabled}
     if source_type != "simple":
         # SourceType + FormulaDefinition live on the base AttributeMetadata, so
         # they ride on whatever typed body the builder produced (rollup=2,
