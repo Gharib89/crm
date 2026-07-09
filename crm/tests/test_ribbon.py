@@ -370,9 +370,13 @@ def test_set_command_rules_never_touches_command_id():
 
 def test_set_command_rules_unknown_command_raises():
     diff = _diff_with_command()
-    with pytest.raises(D365Error, match="command-id .* not found"):
+    with pytest.raises(D365Error, match="command-id .* not found") as exc:
         ribbon.set_command_rules(diff, command_id="nope.Command",
                                  enable_rules=["Mscrm.ShowOnGrid"], display_rules=[])
+    # The diff already carries a command — it is not "effectively empty", so the
+    # staged/unpublished hint must NOT fire (it would misleadingly claim there are
+    # no customizations). This is the narrowing Copilot flagged on PR #775.
+    assert "publish" not in str(exc.value).lower()
 
 
 def test_validate_rule_ids_accepts_known_platform_and_custom():
