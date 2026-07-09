@@ -52,8 +52,8 @@ carries `meta.completed_steps` and `meta.failed_stage`.
 | code | meaning |
 |------|---------|
 | 0 | success (`ok: true`) |
-| 1 | operational failure: server / validation / declined |
-| 2 | usage error: bad/unknown flag, missing arg, or bare `crm` when non-interactive — `--json` still emits `{"ok":false,"error":"…"}` on stdout |
+| 1 | operational failure: server error, declined write, or a server-data-dependent check |
+| 2 | usage error: bad/unknown flag, bad flag *combination*, missing arg, or bare `crm` when non-interactive — a caller mistake caught before any backend call; `--json` still emits `{"ok":false,"error":"…"}` on stdout |
 
 Non-zero = the operation did not take effect.
 
