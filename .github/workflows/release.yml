@@ -55,12 +55,18 @@ jobs:
         run: |
           ./dist/crm/crm --version
           ./dist/crm/crm --help
+          # Prove the bundled jq C-extension loads and shapes output before we
+          # ship the archive. profile list is fully offline (no live org).
+          ./dist/crm/crm --json --jq 'length' profile list
+          ./dist/crm/crm --json --fields name profile list
 
       - name: Smoke test (Windows)
         if: runner.os == 'Windows'
         run: |
           .\dist\crm\crm.exe --version
           .\dist\crm\crm.exe --help
+          .\dist\crm\crm.exe --json --jq 'length' profile list
+          .\dist\crm\crm.exe --json --fields name profile list
 
       - name: Archive (Linux)
         if: runner.os != 'Windows'
