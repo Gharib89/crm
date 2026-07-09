@@ -575,6 +575,11 @@ def add_attribute(
         raise D365Error("--auto-number-format is not valid for this kind.")
     if default_value is not None and kind not in ("boolean", "picklist"):
         raise D365Error("--default-value is not valid for this kind.")
+    # true_label/false_label default to "Yes"/"No" (not None, unlike the guards
+    # above), so we can only reject a value that *differs* from the default — i.e.
+    # one the caller actually supplied and that a non-boolean kind would silently
+    # drop. Rejecting the bare defaults would need a None sentinel, which means
+    # changing the flag defaults (out of scope: "no flag additions or removals").
     if kind != "boolean" and (true_label != "Yes" or false_label != "No"):
         raise D365Error("--true-label and --false-label are only valid for the boolean kind.")
     if source_type not in ("simple", "rollup", "calculated"):
