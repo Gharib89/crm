@@ -870,11 +870,6 @@ def test_validate_icon_webresource_unknown_slot_raises_d365error(
 # ── Ribbon working-copy file flow (#773) ─────────────────────────────────────
 
 
-def _empty_diff() -> ET.Element:
-    """A bare <RibbonDiffXml> with the standard skeleton, as the flow produces."""
-    return ribbon.ensure_ribbon_diff_skeleton(ET.fromstring("<RibbonDiffXml/>"))
-
-
 def test_ensure_ribbon_diff_skeleton_adds_all_containers():
     diff = ribbon.ensure_ribbon_diff_skeleton(ET.fromstring("<RibbonDiffXml/>"))
     tags = {c.tag for c in diff}
@@ -888,7 +883,8 @@ def test_ensure_ribbon_diff_skeleton_preserves_existing():
                          "</CustomActions></RibbonDiffXml>")
     ribbon.ensure_ribbon_diff_skeleton(diff)
     assert len(diff.findall("CustomActions")) == 1
-    assert diff.find("CustomActions/CustomAction").get("Id") == "x"
+    action = diff.find("CustomActions/CustomAction")
+    assert action is not None and action.get("Id") == "x"
 
 
 def test_serialize_ribbon_diff_is_pretty_and_stable():
