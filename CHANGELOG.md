@@ -9,6 +9,38 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.53.0 (2026-07-09)
+
+### Bug Fixes
+
+- Bulk-detect reports flagged records, not pairs ([#761](https://github.com/Gharib89/crm/pull/761),
+  [`f823283`](https://github.com/Gharib89/crm/commit/f823283ad8a25bb426861d41f7f99e7ea1c2647f))
+
+- Fail fast on malformed FetchXML; narrow dry-run test comment
+  ([#761](https://github.com/Gharib89/crm/pull/761),
+  [`f823283`](https://github.com/Gharib89/crm/commit/f823283ad8a25bb426861d41f7f99e7ea1c2647f))
+
+- Follow paging in bulk-detect result read; placeholder test GUID
+  ([#761](https://github.com/Gharib89/crm/pull/761),
+  [`f823283`](https://github.com/Gharib89/crm/commit/f823283ad8a25bb426861d41f7f99e7ea1c2647f))
+
+- Wrap app set-sitemap --xml-file read in clean error envelope
+  ([#755](https://github.com/Gharib89/crm/pull/755),
+  [`f8f92ff`](https://github.com/Gharib89/crm/commit/f8f92ff789efc472a6519967f2784ce3e7fb056a))
+
+### Documentation
+
+- Include job_name in bulk-detect examples; assert full pair in e2e
+  ([#761](https://github.com/Gharib89/crm/pull/761),
+  [`f823283`](https://github.com/Gharib89/crm/commit/f823283ad8a25bb426861d41f7f99e7ea1c2647f))
+
+### Features
+
+- Dup bulk-detect verb wrapping BulkDetectDuplicates job
+  ([#761](https://github.com/Gharib89/crm/pull/761),
+  [`f823283`](https://github.com/Gharib89/crm/commit/f823283ad8a25bb426861d41f7f99e7ea1c2647f))
+
+
 ## v1.52.1 (2026-07-09)
 
 ### Bug Fixes
