@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.55.0 (2026-07-09)
+
+### Features
+
+- Global --fields output projection at the emit seam
+  ([#772](https://github.com/Gharib89/crm/pull/772),
+  [`377c0be`](https://github.com/Gharib89/crm/commit/377c0be0b7fdc0768f4fa288fd78eaee048a1410))
+
+
 ## v1.54.0 (2026-07-09)
 
 ### Features
