@@ -331,6 +331,14 @@ class TestJqRuntimeError:
         env = _emit_jq(".foo", data=42)
         assert env["ok"] is False
         assert "jq" in env["error"].lower()
+        assert "data" not in env
+
+    def test_eval_error_envelope_is_canonical(self):
+        # The eval-error envelope goes through the normal error path, so canonical
+        # fields like meta.dry_run are stamped (not a hand-built minimal envelope).
+        env = _emit_jq(".foo", data=42, dry_run=True)
+        assert env["ok"] is False
+        assert env["meta"]["dry_run"] is True
 
 
 class TestJqLazyImport:

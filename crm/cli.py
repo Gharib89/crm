@@ -133,12 +133,15 @@ class CLIContext:
                     data, jq_error = _apply_jq(data, self.jq_program)
                     if jq_error is not None:
                         # Compiled but failed at eval time: the success payload it was
-                        # piped through is unusable, so surface an error envelope (exit
-                        # 1) rather than emit half-shaped data.
-                        click.echo(json.dumps(
-                            {"ok": False, "error": f"--jq: {jq_error}"},
-                            indent=2, default=str))
-                        raise click.exceptions.Exit(FAILURE_EXIT_CODE)
+                        # piped through is unusable, so surface an error envelope via
+                        # the canonical error path (which stamps meta.dry_run and keeps
+                        # the ok:false shape consistent with every other error) rather
+                        # than a hand-built one. The accumulated paging meta describes
+                        # the now-discarded payload, so it is not carried onto the
+                        # error. emit(False) exits in JSON mode; return guards against
+                        # falling through if that ever changes.
+                        self.emit(False, error=f"--jq: {jq_error}")
+                        return
                 envelope["data"] = _sanitize(data)
             if error:
                 envelope["error"] = error
