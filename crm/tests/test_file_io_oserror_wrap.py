@@ -8,6 +8,7 @@ Sweeps the file read/write paths that previously did unguarded disk IO:
 - ``crm form export`` — formxml output write (command layer)
 - ``crm query fetchxml --file`` — FetchXML file input read (command layer)
 - ``crm solution publish --xml-file`` — Publish XML file input read (command layer)
+- ``crm app set-sitemap --xml-file`` — SiteMap XML file input read (command layer)
 
 Each site is exercised with a monkeypatched filesystem failure (an ``OSError``
 raised from the underlying ``pathlib`` operation — the portable stand-in for a
@@ -130,6 +131,8 @@ _CMD_READ_CASES = [
                  id="query-fetchxml-file"),
     pytest.param(["solution", "publish", "--xml-file"], "publish.xml",
                  id="solution-publish-xml-file"),
+    pytest.param(["app", "set-sitemap", "MySite", "--xml-file"], "sitemap.xml",
+                 id="app-set-sitemap-xml-file"),
 ]
 
 

@@ -1,6 +1,7 @@
 """Model-driven app (appmodule) commands."""
 # pyright: basic
 from __future__ import annotations
+from pathlib import Path
 import click
 from crm.core import appmodule as app_mod
 from crm.core import webresource as wr_mod
@@ -212,8 +213,14 @@ def app_build_sitemap(ctx: CLIContext, sitemap_name, areas, groups, subareas,
 def app_set_sitemap(ctx: CLIContext, sitemap_name, xml_file, unique_name,
                     solution, publish):
     """Create a sitemap from a SiteMapXml file."""
-    with open(xml_file, "r", encoding="utf-8") as fh:
-        xml = fh.read()
+    # click.Path(exists=True) validated the file at parse, but a permission
+    # edge or a delete-after-check race can still fail the read — surface it
+    # as the clean envelope (exit 1), matching this command's own errors.
+    try:
+        xml = Path(xml_file).read_text(encoding="utf-8")
+    except OSError as exc:
+        ctx.emit(False, error=f"Could not read {xml_file!r}: {exc}")
+        return
     solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
