@@ -14,7 +14,7 @@ from crm.tests.e2e.coverage import covers
 # Reused from the production BulkDelete path so the seed goes through the exact
 # FetchXmlToQueryExpression conversion the CLI uses — the BulkDelete action's
 # QuerySet accepts only QueryExpression, not raw FetchXml.
-from crm.core.bulk_delete import _to_query_expression
+from crm.core.bulk_delete import fetchxml_to_query_expression
 
 
 # ── query count ──────────────────────────────────────────────────────────────
@@ -280,7 +280,7 @@ def _seed_future_bulkdelete(backend, unique):
         f'<filter><condition attribute="lastname" operator="eq" value="{nomatch}"/>'
         "</filter></entity></fetch>"
     )
-    query = _to_query_expression(backend, fetch)
+    query = fetchxml_to_query_expression(backend, fetch)
     # Start a decade out so the async service never picks the job up mid-test.
     start = (datetime.now(timezone.utc) + timedelta(days=3650)).strftime("%Y-%m-%dT%H:%M:%SZ")
     resp = backend.post("BulkDelete", json_body={

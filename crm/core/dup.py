@@ -22,9 +22,11 @@ pyright-strict.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from typing import Any, cast
 
 from crm.core import entity as entity_mod
+from crm.core.bulk_delete import QE_ODATA_TYPE, fetchxml_to_query_expression
 from crm.utils.d365_backend import (
     D365Backend,
     D365Error,
@@ -379,3 +381,98 @@ def check(
         "count": len(duplicates),
         "duplicates": duplicates,
     }
+
+
+# ── Bulk detect (async job over a query scope) ────────────────────────────────
+
+# The detected duplicates are logged as `duplicaterecord` rows linked to the job
+# via `_asyncoperationid_value`; `_baserecordid_value` is the flagged record. The
+# async job does NOT populate `_duplicaterecordid_value` (the matched-counterpart
+# lookup) — verified live 2026-07-09 — and `duplicateid` is only the log row's own
+# PK, so neither is a usable counterpart ref. The server caps a job at 5,000 results.
+_DUPLICATE_RECORDS_SET = "duplicaterecords"
+_DUP_RECORD_SELECT = "_baserecordid_value,duplicateid,_asyncoperationid_value,createdon"
+
+
+def _read_duplicate_records(backend: D365Backend, job_id: str) -> list[dict[str, Any]]:
+    """Read the duplicaterecord rows a completed detect job logged for *job_id*.
+
+    Uses ``get_collection`` so ``@odata.nextLink`` paging is followed — a sweep
+    can log up to 5,000 rows, well over one page.
+    """
+    return backend.get_collection(_DUPLICATE_RECORDS_SET, params={
+        "$select": _DUP_RECORD_SELECT,
+        "$filter": f"_asyncoperationid_value eq {job_id}",
+    })
+
+
+def bulk_detect(
+    backend: D365Backend,
+    entity: str,
+    *,
+    fetch_xml: str | None = None,
+    job_name: str | None = None,
+    wait: bool = False,
+    timeout: int | None = None,
+) -> dict[str, Any]:
+    """Submit a ``BulkDetectDuplicates`` async job sweeping *entity*.
+
+    The job detects duplicates among the *entity* rows matched by the scope,
+    according to the **published** duplicate rules for that table, and logs them
+    as ``duplicaterecord`` rows. Scope is the whole table by default, or the
+    records matched by *fetch_xml* (whose ``<entity>`` must be *entity*); the
+    FetchXML is converted to a ``QueryExpression`` server-side because the
+    action's ``Query`` parameter does not accept raw FetchXml (same constraint as
+    :func:`crm.core.bulk_delete.bulk_delete`).
+
+    Returns the job's id immediately; with ``wait=True`` this polls the async
+    operation to completion and attaches the logged ``duplicates``. Detection
+    only — nothing is merged or deleted.
+    """
+    if not entity:
+        raise D365Error("entity is required (the table to sweep).")
+    if fetch_xml:
+        query = fetchxml_to_query_expression(backend, fetch_xml)
+        scope_entity = query.get("EntityName")
+        if scope_entity and scope_entity != entity:
+            raise D365Error(
+                f"--fetchxml sweeps {scope_entity!r} but ENTITY is {entity!r}; "
+                "the FetchXML <entity> must match the swept table.",
+            )
+    else:
+        query = {"@odata.type": QE_ODATA_TYPE, "EntityName": entity}
+    name = job_name or f"crm dup bulk-detect {entity}"
+    body: dict[str, Any] = {
+        "Query": query,
+        "JobName": name,
+        "SendEmailNotification": False,
+        # TemplateId is a required parameter of the action signature even though
+        # no mail is sent (SendEmailNotification=False); the empty GUID satisfies
+        # it. Omitting it is rejected server-side (0x80048d19, "missing TemplateId").
+        "TemplateId": "00000000-0000-0000-0000-000000000000",
+        "ToRecipients": [],
+        "CCRecipients": [],
+        "RecurrencePattern": "",
+        # "now" runs the job immediately (it still only sweeps rows present when
+        # it starts); the server requires the field in the payload.
+        "RecurrenceStartTime": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    resp = as_dict(backend.post("BulkDetectDuplicates", json_body=body))
+    if "_dry_run" in resp:
+        return {
+            "_dry_run": True,
+            "would_submit": "BulkDetectDuplicates",
+            "entity": entity,
+            "job_name": name,
+        }
+    job_id = resp.get("JobId")
+    if not job_id:
+        raise D365Error("BulkDetectDuplicates returned no JobId.", response_body=resp)
+    result: dict[str, Any] = {"job_id": job_id, "job_name": name, "entity": entity}
+    if not wait:
+        result["status"] = "submitted"
+        return result
+    backend.poll_async_operation(job_id, timeout=timeout)
+    duplicates = _read_duplicate_records(backend, cast("str", job_id))
+    result.update(status="completed", count=len(duplicates), duplicates=duplicates)
+    return result

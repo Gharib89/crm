@@ -19,7 +19,7 @@ from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_litera
 
 # The QuerySet element is typed Collection(QueryExpression); the converted query
 # object must carry its OData type so the server binds it to the right subtype.
-_QE_ODATA_TYPE = "Microsoft.Dynamics.CRM.QueryExpression"
+QE_ODATA_TYPE = "Microsoft.Dynamics.CRM.QueryExpression"
 
 
 def _with_total_record_count(fetch_xml: str) -> str:
@@ -38,8 +38,23 @@ def _with_total_record_count(fetch_xml: str) -> str:
     return ET.tostring(root, encoding="unicode")
 
 
-def _to_query_expression(backend: D365Backend, fetch_xml: str) -> dict[str, Any]:
-    """Convert a FetchXML document to a QueryExpression via the server function."""
+def fetchxml_to_query_expression(backend: D365Backend, fetch_xml: str) -> dict[str, Any]:
+    """Convert a FetchXML document to a QueryExpression via the server function.
+
+    Shared by every action whose ``Query``/``QuerySet`` parameter takes a
+    ``QueryExpression`` rather than raw FetchXml (``BulkDelete``,
+    ``BulkDetectDuplicates``); the returned object carries its ``@odata.type`` so
+    the server binds it to the right subtype.
+
+    Validates well-formedness locally first, so a typo'd fetch fails fast with a
+    clear message instead of an opaque server round-trip.
+    """
+    try:
+        root = ET.fromstring(fetch_xml)
+    except ET.ParseError as exc:
+        raise D365Error(f"FetchXML is not well-formed XML: {exc}") from exc
+    if root.tag != "fetch":
+        raise D365Error("FetchXML must have a <fetch> root element.")
     resp = as_dict(backend.get(
         "FetchXmlToQueryExpression(FetchXml=@p1)",
         params={"@p1": odata_literal(fetch_xml)},
@@ -50,7 +65,7 @@ def _to_query_expression(backend: D365Backend, fetch_xml: str) -> dict[str, Any]
             "FetchXmlToQueryExpression returned no Query object.", response_body=resp
         )
     query: dict[str, Any] = dict(cast("dict[str, Any]", raw_query))
-    query["@odata.type"] = _QE_ODATA_TYPE
+    query["@odata.type"] = QE_ODATA_TYPE
     return query
 
 
@@ -94,7 +109,7 @@ def bulk_delete(
     # Validate well-formedness locally first, so a typo'd fetch fails fast with a
     # clear message instead of a server round-trip.
     counting_fetch = _with_total_record_count(fetch_xml)
-    query = _to_query_expression(backend, fetch_xml)
+    query = fetchxml_to_query_expression(backend, fetch_xml)
     match_count = _preview_count(backend, entity_set, counting_fetch)
     name = job_name or f"crm data delete {entity_set}"
     body: dict[str, Any] = {
