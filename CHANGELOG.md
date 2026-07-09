@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.53.1 (2026-07-09)
+
+### Bug Fixes
+
+- Add canonical --user-owned/--user-id/--display flags with hidden aliases
+  ([#765](https://github.com/Gharib89/crm/pull/765),
+  [`b3b2848`](https://github.com/Gharib89/crm/commit/b3b2848d0ced366b46047be268aeab57d5414637))
+
+
 ## v1.53.0 (2026-07-09)
 
 ### Bug Fixes
