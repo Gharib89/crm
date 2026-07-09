@@ -154,8 +154,7 @@ def query_fetchxml(ctx: CLIContext, entity_set, xml_inline, xml_file, annotation
       crm --json query fetchxml accounts --xml '<fetch>...</fetch>'
     """
     if xml_inline and xml_file:
-        ctx.emit(False, error="Provide --xml or --file, not both.")
-        return
+        raise click.UsageError("Provide --xml or --file, not both.")
     if xml_file:
         # click.Path(exists=True) validated the file at parse, but a permission
         # edge or a delete-after-check race can still fail the read — surface it
@@ -168,8 +167,7 @@ def query_fetchxml(ctx: CLIContext, entity_set, xml_inline, xml_file, annotation
     else:
         fetch_xml = xml_inline
     if not fetch_xml:
-        ctx.emit(False, error="Either --xml or --file is required.")
-        return
+        raise click.UsageError("Either --xml or --file is required.")
 
     # Derive entity_set from the FetchXML when the positional is omitted.
     # Parse raises click.UsageError (exit 2) for bad XML — escapes the D365Error try below.

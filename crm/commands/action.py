@@ -46,16 +46,14 @@ def action_function(ctx: CLIContext, name, params_json, bind_set, bind_id, cast)
     binds to a single record (set(id)/Ns.Fn(...)). --bind-id requires --bind-set.
     """
     if bind_id and not bind_set:
-        ctx.emit(False, error="--bind-id requires --bind-set.")
-        return
+        raise click.UsageError("--bind-id requires --bind-set.")
     try:
         params = json.loads(params_json) if params_json else None
         if params is not None and not isinstance(params, dict):
             raise ValueError("--params must be a JSON object of parameter name/value pairs.")
         inline, aliases = encode_function_params(params) if params else ("", {})
     except ValueError as exc:
-        ctx.emit(False, error=str(exc))
-        return
+        raise click.UsageError(str(exc)) from exc
     call = f"{name}({inline})"
     if bind_set and bind_id:
         path = f"{bind_set}({bind_id})/{cast}.{call}"
@@ -90,8 +88,7 @@ def action_function(ctx: CLIContext, name, params_json, bind_set, bind_id, cast)
 def action_invoke(ctx: CLIContext, name, body_json, body_file, bind_set, bind_id, cast):
     """POST an OData action — unbound by default, bound when --bind-set/--bind-id given."""
     if bool(bind_set) ^ bool(bind_id):
-        ctx.emit(False, error="--bind-set and --bind-id must be used together.")
-        return
+        raise click.UsageError("--bind-set and --bind-id must be used together.")
     payload = _load_payload(body_json, body_file) if (body_json or body_file) else {}
     if bind_set and bind_id:
         path = f"{bind_set}({bind_id})/{cast}.{name}"

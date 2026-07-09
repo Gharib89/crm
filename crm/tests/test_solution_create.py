@@ -363,12 +363,13 @@ class TestSolutionCreateCommands:
         ["--publisher", "crmworx", "--publisher-id", _PUB_ID],  # both
         [],                                                     # neither
     ])
-    def test_create_solution_publisher_flag_xor_exit_1(self, monkeypatch, extra):
+    def test_create_solution_publisher_flag_xor_usage_error(self, monkeypatch, extra):
         # --publisher / --publisher-id: providing both OR neither hits the same
-        # `bool(publisher) == bool(publisher_id)` guard → exit 1.
+        # `bool(publisher) == bool(publisher_id)` guard — a bad flag combination
+        # caught before any backend call → usage error, exit 2 (#713, ADR 0001).
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = CliRunner().invoke(cli, [
             "--json", "solution", "create", "--name", "CRMWorx", *extra,
         ])
-        assert result.exit_code == 1, result.output
+        assert result.exit_code == 2, result.output
         assert json.loads(result.output)["ok"] is False

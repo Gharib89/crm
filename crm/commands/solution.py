@@ -363,8 +363,7 @@ def solution_create(ctx: CLIContext, name, display, version, publisher,
                     publisher_id, if_exists):
     """Create an unmanaged solution bound to a publisher (solutions)."""
     if bool(publisher) == bool(publisher_id):
-        ctx.emit(False, error="Provide exactly one of --publisher or --publisher-id.")
-        return
+        raise click.UsageError("Provide exactly one of --publisher or --publisher-id.")
     with d365_errors(ctx):
         info = sol_mod.create_solution(
             ctx.backend(), name=name, friendly_name=display, version=version,
@@ -688,8 +687,7 @@ def solution_publish_all(ctx: CLIContext):
 def solution_publish(ctx: CLIContext, parameter_xml, xml_file):
     """Call PublishXml with a Publish Request Schema XML payload."""
     if parameter_xml and xml_file:
-        ctx.emit(False, error="Provide --xml or --xml-file, not both.")
-        return
+        raise click.UsageError("Provide --xml or --xml-file, not both.")
     if xml_file:
         # click.Path(exists=True) validated the file at parse, but a permission
         # edge or a delete-after-check race can still fail the read — surface it
@@ -700,8 +698,7 @@ def solution_publish(ctx: CLIContext, parameter_xml, xml_file):
             ctx.emit(False, error=f"Could not read {xml_file!r}: {exc}")
             return
     if not parameter_xml:
-        ctx.emit(False, error="Either --xml or --xml-file is required.")
-        return
+        raise click.UsageError("Either --xml or --xml-file is required.")
     with d365_errors(ctx):
         result = sol_mod.publish_xml(ctx.backend(), parameter_xml)
     data = result or {"published": True}

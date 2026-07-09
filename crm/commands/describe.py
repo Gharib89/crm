@@ -121,8 +121,10 @@ def describe_cmd(ctx: CLIContext, group: str | None):
         # one explicitly must not bypass the exclusion the full walk applies.
         cmd = None if group in _EXCLUDED else cli.get_command(click_ctx, group)
         if cmd is None:
-            ctx.emit(False, error=f"No such command {group!r}.")
-            return  # unreachable: emit(False) raises Exit (narrows cmd for the checker)
+            # An unknown GROUP is a caller mistake caught before any backend call →
+            # usage error, exit 2 (ADR 0001). The raise also narrows cmd to non-None
+            # for the checker below.
+            raise click.UsageError(f"No such command {group!r}.")
         commands = [_describe_command(cmd, [group])]
         if isinstance(cmd, click.Group):
             commands.extend(_walk(cmd, click_ctx, [group]))

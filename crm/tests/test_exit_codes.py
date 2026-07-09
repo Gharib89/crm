@@ -16,12 +16,15 @@ from crm.commands import query as query_cmds
 from crm.utils.d365_backend import D365Error
 
 
-def test_in_command_validation_exits_1():
-    """Operational failure: in-command validation (--bind-set without --bind-id)."""
+def test_in_command_bad_argument_exits_2():
+    """Usage error: a validate-before-backend bad-argument check (--bind-set without
+    --bind-id) is a caller mistake → exit 2, not the exit-1 transport-failure shape
+    (#713). Data-dependent in-command validation stays exit 1 — see
+    test_solution_layer_conflicts.py::test_solution_not_managed_exit1_names_flag."""
     result = CliRunner().invoke(
         cli, ["--json", "action", "invoke", "foo", "--bind-set", "workflows"]
     )
-    assert result.exit_code == 1, result.output
+    assert result.exit_code == 2, result.output
     assert json.loads(result.output)["ok"] is False
 
 
