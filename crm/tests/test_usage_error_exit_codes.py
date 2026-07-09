@@ -66,6 +66,7 @@ def test_action_function_non_object_params_exits_2():
 def test_action_function_malformed_params_json_exits_2():
     _assert_usage_error(
         _run(["--json", "action", "function", "WhoAmI", "--params", "{bad"]),
+        "invalid JSON in --params",
     )
 
 

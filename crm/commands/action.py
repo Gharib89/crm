@@ -53,6 +53,10 @@ def action_function(ctx: CLIContext, name, params_json, bind_set, bind_id, cast)
             raise ValueError("--params must be a JSON object of parameter name/value pairs.")
         inline, aliases = encode_function_params(params) if params else ("", {})
     except ValueError as exc:
+        # Prefix the flag on a raw JSON parse error (mirrors _load_payload's
+        # "invalid JSON in --data"); the other ValueErrors already name --params.
+        if isinstance(exc, json.JSONDecodeError):
+            raise click.UsageError(f"invalid JSON in --params: {exc}") from exc
         raise click.UsageError(str(exc)) from exc
     call = f"{name}({inline})"
     if bind_set and bind_id:
