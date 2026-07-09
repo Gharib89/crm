@@ -135,3 +135,67 @@ id because it reads `Id` while the platform returns the `asyncoperation` entity 
 When a paid/partner Dynamics 365 license becomes available, the durable-sandbox plan in the
 body of this ADR can be revisited (re-point `agent-cloud` + the CI secret, drop the
 ephemeral-trial caveats).
+
+## Addendum (2026-07-09): free durable target — the procurement question is closed
+
+The 2026-06-22 addendum deferred the durable cloud org as *"a procurement decision that wasn't
+taken now."* That premise is now **false**, and this addendum closes it. Trigger: the
+subscription-based trial backing `agent-cloud` expired and was disabled, taking the cloud-ship
+routine offline (issue #760) — the recurring failure the trial model guarantees.
+
+A primary-source research pass
+([`docs/research/2026-07-cloud-e2e-org-strategy-research.md`](../research/2026-07-cloud-e2e-org-strategy-research.md))
+found a **free, non-expiring** path that the earlier addendum missed: a **Power Apps Developer
+environment** has no fixed expiry and its only cleanup trigger is inactivity (30 days idle →
+disable, +15 → delete), and Microsoft counts *automated* activity (a scheduled flow, or the
+routine's own daily runs) as activity. So a Developer env that is touched inside every 30-day
+window never expires — at $0, no procurement.
+
+**Decision:**
+
+- **`agent-cloud` → a free Power Apps Developer environment**, kept alive by the routine's daily
+  activity (heartbeat). This replaces the expired trial as the general cloud e2e + routine target.
+  Its URL/tenant/client-id live in the routine's cloud env settings, **not** this repo.
+- **`agent-cs-trial` (CS-dependent verbs) → unchanged** — a Developer env **cannot** install
+  Customer Service (a Dynamics 365 license is required; `pac --templates` names the app but does
+  not grant the entitlement). CS coverage stays on the ephemeral CS trial exactly as the
+  2026-06-22 addendum set it.
+
+**Proven, not assumed** (live, this session): the new env was stood up, `agent-cloud` repointed,
+and — because the new env is in the **same tenant** as the existing Entra app registration — the
+S2S creds were **reused verbatim with no secret rotation** (only the per-env application user +
+security role had to be recreated). The full cloud e2e suite ran green bar the known residuals
+below; the seed baseline (org auditing, a draft + an activated classic no-op workflow on
+`account`) was applied and unblocked all seedable skips.
+
+**Realities worth recording:**
+
+- **The classic no-op workflow seed is manual UI authoring — there is no CLI/import path.** Neither
+  `agent-cloud` nor `agent-on-prem` had a category=0 classic workflow to `clone`/export, and the
+  Web API rejects a workflow definition built from hand-authored XAML (`0x80045040`, #534). So a
+  maintainer authors one classic on-demand background
+  workflow on `account` in the web app (draft), and `crm workflow clone --activate` produces the
+  activated copy the dispatch tests need.
+- **`connection whoami` is privilege-free** — it returns exit 0 for an app user with no security
+  role. A green whoami is a false all-clear; verify a rebuilt org with a **write** (`entity
+  create`), not whoami.
+- **Residual e2e gaps are tracked, not blockers:** #766 (ribbon `set-label`/`set-rules` cloud
+  divergence, pre-existing), #767 (no `metadata update-entity --audit` → account auditing needs a
+  UI toggle), #768 (diagnostics cursor test should self-seed contacts), #769 (e2e artifact
+  marker/sweep). CS/SLA stays permanently skipped on this target by design.
+
+**No re-provision runbook or seed script is shipped** — deliberately. A durable env is provisioned
+and seeded **once** (done); automating a rebuild that should essentially never happen is
+speculative. The one scenario that kills a "durable" free env is **>30 days with no activity**
+(routine paused / project freeze) → disable, then delete at +15 days. If that happens, rebuild
+manually:
+
+1. Sign up for the Power Apps Developer Plan with a work account **in the app registration's
+   tenant** (viral/internal license must be allowed in the tenant); it auto-creates the env.
+2. Create an application user for the **existing** client-id and assign System Administrator
+   (`pac admin assign-user --application-user`, or PPAC → Application users). Do **not** mint a new
+   service principal — reuse the saved secret.
+3. Point `agent-cloud` (and the routine's `D365_URL`) at the new host; keep the network allowlist
+   region-correct (`*.crm.dynamics.com` is NAM-only — use `*.crm*.dynamics.com` for other regions).
+4. Seed: enable org auditing; author the classic no-op workflow (draft) + `clone --activate` it.
+5. Verify with a **write** (an `entity create` CRUD roundtrip), not `whoami`.
