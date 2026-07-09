@@ -15,11 +15,11 @@ with `chart create`.
 
 ```bash
 crm chart list contact                 # system charts (the default)
-crm chart list contact --user          # user-owned charts
+crm chart list contact --user-owned          # user-owned charts
 ```
 
 Output columns: `name`, the id (`savedqueryvisualizationid`, or
-`userqueryvisualizationid` with `--user`), and `isdefault` (system charts only).
+`userqueryvisualizationid` with `--user-owned`), and `isdefault` (system charts only).
 `list` returns only these list-oriented fields — to read a chart's
 `datadescription` / `presentationdescription` XML, use `chart get <id>`.
 
@@ -27,7 +27,7 @@ Output columns: `name`, the id (`savedqueryvisualizationid`, or
 
 ```bash
 crm chart get 1111aaaa-2222-bbbb-3333-cccccccccccc
-crm chart get 1111aaaa-2222-bbbb-3333-cccccccccccc --user
+crm chart get 1111aaaa-2222-bbbb-3333-cccccccccccc --user-owned
 ```
 
 `get` returns the chart's XML in the `--json` envelope — pipe it to files to
@@ -40,7 +40,7 @@ crm --json chart get <id> | jq -r '.data.presentationdescription' > chart.pres.x
 
 ## Create a chart
 
-A system chart is the default; `--user` creates a user-owned chart. There are
+A system chart is the default; `--user-owned` creates a user-owned chart. There are
 two mutually exclusive authoring modes.
 
 ### XML mode — from datadescription + presentationdescription files
@@ -80,7 +80,7 @@ crm chart create contact --name "My View" \
     --data-description chart.data.xml \
     --presentation-description chart.pres.xml \
     --solution cwx_crmworx \
-    --user
+    --user-owned
 ```
 
 ### Publishing
@@ -115,7 +115,7 @@ before any backend call.
 
 ```bash
 crm chart delete 1111aaaa-2222-bbbb-3333-cccccccccccc --yes
-crm chart delete 1111aaaa-2222-bbbb-3333-cccccccccccc --user --yes
+crm chart delete 1111aaaa-2222-bbbb-3333-cccccccccccc --user-owned --yes
 ```
 
 `delete` is destructive: omitting `--yes` prompts on a TTY, and under `--json`
@@ -123,7 +123,7 @@ or a non-TTY it fails fast with an error that names `--yes`.
 
 Under `--dry-run`, delete returns
 `{_dry_run: true, would_delete: true, savedqueryvisualizationid: <id>}` (or
-`userqueryvisualizationid` with `--user`) without issuing the `DELETE`. To remove
+`userqueryvisualizationid` with `--user-owned`) without issuing the `DELETE`. To remove
 a chart from a solution (rather than delete it), use
 `crm solution remove-component`.
 
@@ -162,7 +162,7 @@ a chart to a different table is not supported.
 `update` follows the same `--publish` / `--no-publish` / `--solution` contract
 as `create` (see above) — `--solution` is required, and it **stages** by
 default. For system charts the change is only visible in the UI after
-`PublishAllXml` runs; user charts (`--user`) are never published and take
+`PublishAllXml` runs; user charts (`--user-owned`) are never published and take
 effect immediately.
 
 ```bash
@@ -178,7 +178,7 @@ while leaving the `<categorycollection>` (grouping categories) intact:
 
 ```bash
 crm chart set-fetch <id> --fetch new_query.xml --solution cwx_crmworx           # staged
-crm chart set-fetch <id> --fetch new_query.xml --solution cwx_crmworx --user
+crm chart set-fetch <id> --fetch new_query.xml --solution cwx_crmworx --user-owned
 crm chart set-fetch <id> --fetch new_query.xml --solution cwx_crmworx --publish # publish immediately
 ```
 
@@ -221,7 +221,7 @@ presentation `<Series>`:
 
 ```bash
 crm chart remove-series <id> --alias total_value --solution cwx_crmworx
-crm chart remove-series <id> --alias opp_count --solution cwx_crmworx --user
+crm chart remove-series <id> --alias opp_count --solution cwx_crmworx --user-owned
 ```
 
 Removing the **last** series is refused — a chart must have at least one — as is
@@ -251,7 +251,7 @@ This applies to all editor verbs (`update`, `set-fetch`, `add-series`,
   default — no `PublishAllXml` runs. The change is only reflected in the UI
   after publish. Pass `--publish` per edit, or batch a run of staged edits and
   publish once with `crm solution publish-all`.
-- **User charts** (`userqueryvisualization`, `--user`) are **never published**
+- **User charts** (`userqueryvisualization`, `--user-owned`) are **never published**
   — edits reflect immediately and `--publish` / `--no-publish` is accepted but
   has no effect.
 
@@ -260,7 +260,7 @@ This applies to all editor verbs (`update`, `set-fetch`, `add-series`,
     second staged (flagless) edit reads the chart without the first edit's
     pending change and overwrites it. To make several system-chart edits
     safely: either pass `--publish` on each one, or publish between edits with
-    `crm solution publish-all`. User charts (`--user`) are unaffected — they
+    `crm solution publish-all`. User charts (`--user-owned`) are unaffected — they
     aren't published, so each edit reads the previous one's result.
 
 ## Relationship to `metadata clone-entity --with-charts`

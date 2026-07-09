@@ -7,7 +7,7 @@ and assign profiles to users or teams. Group: `fieldsec`. Flags/choices:
 ```bash
 crm --json fieldsec create-profile "Compensation" --description "Salary access" --solution ContosoCore
 crm --json fieldsec add-permission "Compensation" account creditlimit --read --update --solution ContosoCore
-crm --json fieldsec assign "Compensation" --user <user-guid>     # or --team <team-guid>
+crm --json fieldsec assign "Compensation" --user-id <user-guid>     # or --team <team-guid>
 crm --json fieldsec list
 crm --json fieldsec get "Compensation"
 ```
@@ -31,7 +31,7 @@ fieldpermission `CanRead` / `CanCreate` / `CanUpdate` level — **`4` = Allowed*
 when the flag is set, **`0` = Not Allowed** otherwise. These numeric values
 surface verbatim in `get` output.
 
-**`assign` takes exactly one principal.** Pass one of `--user` / `--team` (a
+**`assign` takes exactly one principal.** Pass one of `--user-id` / `--team` (a
 GUID); both or neither exits 2. Assignment is the N:N association
 (`systemuserprofiles_association` / `teamprofiles_association`) — cumulative, like
 a team/role membership.

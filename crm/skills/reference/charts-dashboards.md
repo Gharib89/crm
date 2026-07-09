@@ -7,16 +7,16 @@ contract); `delete` verbs take no `--solution`.
 
 ## Charts — `chart` (savedqueryvisualization / userqueryvisualization)
 
-System charts (org-wide, `savedqueryvisualization`) are the default; `--user`
+System charts (org-wide, `savedqueryvisualization`) are the default; `--user-owned`
 targets user-owned charts (`userqueryvisualization`), which have no `isdefault`
 flag and a `userqueryvisualizationid` id field.
 
 ```bash
 crm --json chart list contact                          # system charts (default)
-crm --json chart list contact --user                   # user charts
+crm --json chart list contact --user-owned                   # user charts
 crm --json chart get <id>                              # single chart, with its XML
 crm --json chart delete <id> --yes                     # delete
-crm --json chart delete <id> --user --yes              # delete a user chart
+crm --json chart delete <id> --user-owned --yes              # delete a user chart
 ```
 
 A chart carries two XML columns: `datadescription` (aggregate FetchXML, references
@@ -48,7 +48,7 @@ without deleting it, use `solution remove-component`.
 ### Chart editors — `update`, `set-fetch`, `add-series`, `remove-series`, `set-groupby`
 
 Five in-place editor verbs mutate a chart without recreating it. All are
-solution-scoped and honor `--user` and `--publish` / `--no-publish`.
+solution-scoped and honor `--user-owned` and `--publish` / `--no-publish`.
 
 ```bash
 # update: replace XML, name, description, or ChartType on every <Series>
@@ -87,7 +87,7 @@ different table. To move a chart, use `chart get` to export it and `chart create
 on the new entity.
 
 **User charts are never published.** System charts follow the staged-writes rule
-(SKILL.md); user charts (`--user`, `userqueryvisualization`) reflect edits
+(SKILL.md); user charts (`--user-owned`, `userqueryvisualization`) reflect edits
 immediately regardless of the `--publish` flag.
 
 ## Dashboards — `dashboard` (systemform type=0)

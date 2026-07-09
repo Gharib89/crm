@@ -50,11 +50,11 @@ present and **Not Allowed** otherwise. Supports `--solution` and `--dry-run`.
 ## Assign a profile to a user or team
 
 ```bash
-crm --json fieldsec assign "Compensation" --user 00000000-0000-0000-0000-000000000002
+crm --json fieldsec assign "Compensation" --user-id 00000000-0000-0000-0000-000000000002
 crm --json fieldsec assign "Compensation" --team 00000000-0000-0000-0000-000000000003
 ```
 
-`PROFILE` is a name or id. Pass **exactly one** of `--user` / `--team` (a GUID);
+`PROFILE` is a name or id. Pass **exactly one** of `--user-id` / `--team` (a GUID);
 passing both or neither is a usage error (exit 2). Assignment is the N:N
 association via `systemuserprofiles_association` / `teamprofiles_association`.
 
