@@ -9,6 +9,26 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.59.0 (2026-07-09)
+
+### Documentation
+
+- Fix --to → --output in ribbon apply flow references (#784 review)
+  ([#784](https://github.com/Gharib89/crm/pull/784),
+  [`5b0c272`](https://github.com/Gharib89/crm/commit/5b0c2726c07d5caf12b14074148c8f55eb3f7b04))
+
+### Features
+
+- Ribbon working-copy flow — offline --diff-file edits + ribbon apply
+  ([#784](https://github.com/Gharib89/crm/pull/784),
+  [`5b0c272`](https://github.com/Gharib89/crm/commit/5b0c2726c07d5caf12b14074148c8f55eb3f7b04))
+
+### Testing
+
+- Fix pyright errors in ribbon working-copy tests ([#784](https://github.com/Gharib89/crm/pull/784),
+  [`5b0c272`](https://github.com/Gharib89/crm/commit/5b0c2726c07d5caf12b14074148c8f55eb3f7b04))
+
+
 ## v1.58.1 (2026-07-09)
 
 ### Bug Fixes
