@@ -74,16 +74,29 @@ def test_query_odata_contacts(cli):
     assert isinstance(env["data"], list)
 
 
+def _seed_contacts(backend, request, unique, n: int = 2) -> None:
+    """Create ``n`` throwaway contacts and register a finalizer to delete each, so a
+    cursor-dependent read never relies on ambient data that another test may delete
+    mid-run (#768). No return value — callers need the rows to exist, not their ids."""
+    for i in range(n):
+        created = backend.post(
+            "contacts",
+            json_body={"firstname": "CLI", "lastname": f"E2ECursor-{unique}-{i}"},
+            extra_headers={"If-None-Match": "null", "Prefer": "return=representation"},
+        )
+        cid = str(created["contactid"])
+        request.addfinalizer(lambda cid=cid: _safe_delete(backend, f"contacts({cid})"))
+
+
 @covers("query odata")
-def test_query_odata_default_page_with_more_rows_is_self_describing(cli):
+def test_query_odata_default_page_with_more_rows_is_self_describing(backend, cli, unique, request):
     """A default (non-`--all`) read that leaves a live `@odata.nextLink` cursor
     sets `meta.has_more: true` and warns to use `--all`/`--max-records` (#626,
-    #625). `--page-size 1` forces a cursor cheaply — no need for a huge table —
-    as long as contacts has at least 2 rows on this org."""
-    cr = cli(["--json", "query", "count", "contact"])
-    assert cr.returncode == 0, cr.stderr  # a count failure must not masquerade as a skip
-    if json.loads(cr.stdout)["data"]["count"] < 2:
-        pytest.skip("contacts has fewer than 2 rows on this org; cannot force a cursor")
+    #625). Self-seeds at least 2 throwaway contacts so the assertion runs
+    deterministically on a bare org regardless of ambient data (#768); `--page-size
+    1` then forces a cursor cheaply — no huge table needed — and the finalizer
+    deletes the seeds, matching the suite's create→assert→delete discipline."""
+    _seed_contacts(backend, request, unique, n=2)
 
     r = cli(["--json", "query", "odata", "contacts", "--select", "fullname",
              "--page-size", "1"])
