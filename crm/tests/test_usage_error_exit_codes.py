@@ -86,6 +86,19 @@ def test_query_fetchxml_neither_xml_nor_file_exits_2():
     )
 
 
+def test_query_fetchxml_empty_file_is_operational_failure(tmp_path: Path):
+    """An empty --file is a file-content problem, not a bad argument: it keeps the
+    exit-1 clean envelope, not the exit-2 usage error — the flag *was* provided, so
+    'required' would misclassify it."""
+    f = tmp_path / "empty.xml"
+    f.write_text("", encoding="utf-8")
+    result = _run(["--json", "query", "fetchxml", "--file", str(f)])
+    assert result.exit_code == 1, result.output
+    env = json.loads(result.output)
+    assert env["ok"] is False
+    assert "empty" in env["error"]
+
+
 # --- solution --------------------------------------------------------------- #
 def test_solution_create_both_publisher_forms_exits_2():
     _assert_usage_error(
@@ -116,6 +129,18 @@ def test_solution_publish_neither_xml_nor_file_exits_2():
         _run(["--json", "solution", "publish"]),
         "Either --xml or --xml-file is required",
     )
+
+
+def test_solution_publish_empty_file_is_operational_failure(tmp_path: Path):
+    """An empty --xml-file is a file-content problem → exit-1 clean envelope, not
+    the exit-2 usage error (the flag was provided)."""
+    f = tmp_path / "empty.xml"
+    f.write_text("", encoding="utf-8")
+    result = _run(["--json", "solution", "publish", "--xml-file", str(f)])
+    assert result.exit_code == 1, result.output
+    env = json.loads(result.output)
+    assert env["ok"] is False
+    assert "empty" in env["error"]
 
 
 # --- describe --------------------------------------------------------------- #

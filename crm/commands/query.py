@@ -164,6 +164,11 @@ def query_fetchxml(ctx: CLIContext, entity_set, xml_inline, xml_file, annotation
         except OSError as exc:
             ctx.emit(False, error=f"Could not read {xml_file!r}: {exc}")
             return
+        # An empty file is a content problem, not a bad argument — the flag *was*
+        # provided — so keep the clean envelope (exit 1), like the read error above.
+        if not fetch_xml:
+            ctx.emit(False, error=f"{xml_file!r} is empty.")
+            return
     else:
         fetch_xml = xml_inline
     if not fetch_xml:
