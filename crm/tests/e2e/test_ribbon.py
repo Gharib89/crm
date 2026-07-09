@@ -405,10 +405,9 @@ def test_ribbon_set_icon_sets_modern_image(
     assert js_id, "webresourceid missing from js create response"
 
     def _cleanup_wrs():
-        # Best-effort delete of the two web resources. A delete blocked because the
-        # button still references the icon web resource (0x8004f01f) is swallowed —
-        # the ephemeral solution/entity teardown removes the button (and with it the
-        # $webresource: references), after which the resources are collected too.
+        # Best-effort delete of the two web resources. The _remove_button finalizer
+        # below runs first (LIFO) and strips the button — and with it the
+        # $webresource: icon reference — so the delete is no longer blocked.
         for wid in (svg_id, js_id):
             try:
                 backend.delete(f"webresourceset({wid})")
@@ -436,6 +435,21 @@ def test_ribbon_set_icon_sets_modern_image(
     assert button_id, "button_id missing from add-button response"
     # composed-ribbon Button Id shares the base, suffixed .Button (CustomAction base)
     composed_btn_id = button_id[: -len(".CustomAction")] + ".Button"
+
+    # Remove the published button in teardown so its $webresource: icon reference
+    # does not dangle on the session-scoped ephemeral_entity after _cleanup_wrs
+    # deletes the icon — otherwise the next ribbon test's export→validate→import
+    # trips pre-import validation (on-prem permits deleting a ribbon-referenced web
+    # resource, unlike cloud). Registered after _cleanup_wrs so it runs first (LIFO),
+    # stripping the button while the icon still exists.
+    def _remove_button():
+        cli([
+            "--json", "ribbon", "remove", ephemeral_entity,
+            "--solution", ephemeral_solution,
+            "--button-id", button_id, "--yes", "--publish",
+        ], check=False)
+
+    request.addfinalizer(_remove_button)
 
     # ── SET-ICON (--modern-image → ModernImage=$webresource:<svg>) ────────────
     # check=False so a non-zero exit surfaces the CLI's JSON error envelope in the
