@@ -23,16 +23,22 @@ def webresource_group():
               help="Web resource unique name, e.g. 'cwx_/scripts/foo.js'.")
 @click.option("--file", required=True, type=click.Path(exists=True, dir_okay=False),
               help="Source file whose bytes become the web resource content.")
-@click.option("--display-name", "display_name", default=None)
+@click.option("--display", "display_name", default=None,
+              help="Display name (defaults to the unique name).")
+# `--display` is canonical, matching metadata and solution; `--display-name`
+# stays a hidden back-compat alias (#712), folded in by presence.
+@click.option("--display-name", "display_name_alias", default=None, hidden=True,
+              help="Alias for --display.")
 @click.option("--type", "wr_type", type=int, default=None,
               help="Override the D365 webresourcetype int; inferred from the "
                    "file extension if omitted.")
 @_solution_option
 @_publish_option
 @pass_ctx
-def webresource_create(ctx: CLIContext, name, file, display_name, wr_type,
-                       solution, publish):
+def webresource_create(ctx: CLIContext, name, file, display_name, display_name_alias,
+                       wr_type, solution, publish):
     """Create a web resource."""
+    display_name = display_name if display_name is not None else display_name_alias
     solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
@@ -50,13 +56,17 @@ def webresource_create(ctx: CLIContext, name, file, display_name, wr_type,
 @click.argument("name")
 @click.option("--file", default=None, type=click.Path(exists=True, dir_okay=False),
               help="New source file whose bytes replace the web resource content.")
-@click.option("--display-name", "display_name", default=None)
+@click.option("--display", "display_name", default=None,
+              help="New display name.")
+@click.option("--display-name", "display_name_alias", default=None, hidden=True,
+              help="Alias for --display.")
 @_solution_option
 @_publish_option
 @pass_ctx
-def webresource_update(ctx: CLIContext, name, file, display_name,
+def webresource_update(ctx: CLIContext, name, file, display_name, display_name_alias,
                        solution, publish):
     """Update a web resource by name (content and/or display name)."""
+    display_name = display_name if display_name is not None else display_name_alias
     solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     content = Path(file).read_bytes() if file else None

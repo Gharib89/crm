@@ -8,7 +8,7 @@ Create and manage web resources (HTML/JS/CSS/images) and set them as model-drive
 ```bash
 crm --json webresource create --name cwx_/scripts/ribbon.js --file ./ribbon.js --solution cwx_crmworx
 ```
-The file's bytes from `--file` are base64-encoded into the `content` column. The D365 `webresourcetype` is inferred from the file extension (`.js` → 3 / JScript above), so you don't pass a type for a known extension. `--display-name` defaults to the `--name` value when omitted, and `--solution` sends the `MSCRM.SolutionUniqueName` header so the resource lands in that solution. `create` **stages** by default (no publish) — pass `--publish` to publish it immediately.
+The file's bytes from `--file` are base64-encoded into the `content` column. The D365 `webresourcetype` is inferred from the file extension (`.js` → 3 / JScript above), so you don't pass a type for a known extension. `--display` defaults to the `--name` value when omitted, and `--solution` sends the `MSCRM.SolutionUniqueName` header so the resource lands in that solution. `create` **stages** by default (no publish) — pass `--publish` to publish it immediately.
 
 ## Supported file types
 
@@ -36,7 +36,7 @@ Pass `--type <int>` to override the inferred type — needed for an extensionles
 ```bash
 crm --json webresource update cwx_/scripts/ribbon.js --file ./ribbon.js
 ```
-`update` resolves the web resource by its name, then issues a plain PATCH of only the fields you pass — the content from `--file` and/or `--display-name` — not a retrieve-merge-write. At least one of `--file` / `--display-name` is required. `--solution` and the publish-after-write behavior match `create`.
+`update` resolves the web resource by its name, then issues a plain PATCH of only the fields you pass — the content from `--file` and/or `--display` — not a retrieve-merge-write. At least one of `--file` / `--display` is required. `--solution` and the publish-after-write behavior match `create`.
 
 ## Inspect web resources
 

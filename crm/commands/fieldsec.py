@@ -91,16 +91,22 @@ def fieldsec_add_permission(ctx: CLIContext, profile, entity, attribute,
 
 @fieldsec_group.command("assign")
 @click.argument("profile")
-@click.option("--user", "user_id", default=None, help="System user id to assign.")
+@click.option("--user-id", "user_id", default=None, help="System user id to assign.")
+# `--user-id` is canonical; `--user` stays a hidden back-compat alias (#712),
+# folded in by presence — a bare `--user` on chart is a boolean, so the explicit
+# spelling disambiguates. Separate dest so neither default clobbers the other.
+@click.option("--user", "user_id_alias", default=None, hidden=True,
+              help="Alias for --user-id.")
 @click.option("--team", "team_id", default=None, help="Team id to assign.")
 @pass_ctx
-def fieldsec_assign(ctx: CLIContext, profile, user_id, team_id) -> None:
+def fieldsec_assign(ctx: CLIContext, profile, user_id, user_id_alias, team_id) -> None:
     """Assign PROFILE (name or id) to a user or a team.
 
-    Pass exactly one of --user / --team.
+    Pass exactly one of --user-id / --team.
     """
+    user_id = user_id if user_id is not None else user_id_alias
     if bool(user_id) == bool(team_id):
-        raise click.UsageError("pass exactly one of --user / --team.")
+        raise click.UsageError("pass exactly one of --user-id / --team.")
     with d365_errors(ctx):
         info = fieldsec_mod.assign(
             ctx.backend(), profile=profile, user_id=user_id, team_id=team_id,
