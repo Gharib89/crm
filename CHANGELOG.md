@@ -9,6 +9,48 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.58.0 (2026-07-09)
+
+### Bug Fixes
+
+- Validate plan shape at load so a malformed plan is a clean error
+  ([#781](https://github.com/Gharib89/crm/pull/781),
+  [`e9940fb`](https://github.com/Gharib89/crm/commit/e9940fb12c0317bbd99e935679bf1b323a74a56f))
+
+### Features
+
+- Execute an approved plan with apply --from-plan (ADR 0022 slice 2)
+  ([#781](https://github.com/Gharib89/crm/pull/781),
+  [`e9940fb`](https://github.com/Gharib89/crm/commit/e9940fb12c0317bbd99e935679bf1b323a74a56f))
+
+### Testing
+
+- Add # pyright: basic header to marker guard test
+  ([#782](https://github.com/Gharib89/crm/pull/782),
+  [`55e80fd`](https://github.com/Gharib89/crm/commit/55e80fda24328928bc893da1e088ddde072c98d1))
+
+- Mark shared e2e fixtures with a greppable E2E_MARKER
+  ([#782](https://github.com/Gharib89/crm/pull/782),
+  [`55e80fd`](https://github.com/Gharib89/crm/commit/55e80fda24328928bc893da1e088ddde072c98d1))
+
+- Mark shared e2e fixtures with a greppable E2E_MARKER (#769)
+  ([#782](https://github.com/Gharib89/crm/pull/782),
+  [`55e80fd`](https://github.com/Gharib89/crm/commit/55e80fda24328928bc893da1e088ddde072c98d1))
+
+- Satisfy pyright strict in the marker guard test ([#782](https://github.com/Gharib89/crm/pull/782),
+  [`55e80fd`](https://github.com/Gharib89/crm/commit/55e80fda24328928bc893da1e088ddde072c98d1))
+
+- Self-seed contacts in odata cursor e2e test ([#780](https://github.com/Gharib89/crm/pull/780),
+  [`a6b4841`](https://github.com/Gharib89/crm/commit/a6b4841496e350058582e6d9184daabc18682299))
+
+- Self-seed contacts in odata cursor e2e test so it runs on a bare org (#768)
+  ([#780](https://github.com/Gharib89/crm/pull/780),
+  [`a6b4841`](https://github.com/Gharib89/crm/commit/a6b4841496e350058582e6d9184daabc18682299))
+
+- Sharpen _marker_prefix wording (self-review) ([#782](https://github.com/Gharib89/crm/pull/782),
+  [`55e80fd`](https://github.com/Gharib89/crm/commit/55e80fda24328928bc893da1e088ddde072c98d1))
+
+
 ## v1.57.0 (2026-07-09)
 
 ### Bug Fixes
