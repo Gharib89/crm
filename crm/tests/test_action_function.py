@@ -164,20 +164,22 @@ def test_mixed_inline_and_alias_params(inject_backend, make_fake_backend):
 
 @pytest.mark.parametrize("bad", [{"id": "x"}, {"@odata.id": "accounts(1111)", "x": 1}])
 def test_malformed_reference_missing_odata_id_fails(inject_backend, make_fake_backend, bad):
-    """A dict param that isn't exactly {'@odata.id': ...} is a malformed reference: exit 1, no GET."""
+    """A dict param that isn't exactly {'@odata.id': ...} is a malformed --params
+    value — a caller mistake caught before any GET → usage error, exit 2 (#713)."""
     result, backend = _run(
         inject_backend, make_fake_backend, ["CalcRollup", "--params", json.dumps({"Target": bad})]
     )
-    assert result.exit_code == 1, result.output
+    assert result.exit_code == 2, result.output
     assert json.loads(result.output)["ok"] is False
     assert backend.count("get") == 0
 
 
-def test_bind_id_without_bind_set_is_operational_failure(inject_backend, make_fake_backend):
-    """--bind-id alone is invalid: a record needs its collection (exit 1, ADR 0001)."""
+def test_bind_id_without_bind_set_is_usage_error(inject_backend, make_fake_backend):
+    """--bind-id alone is a bad flag combination caught before any GET → usage
+    error, exit 2 (#713); a record binding needs its collection via --bind-set."""
     result, backend = _run(
         inject_backend, make_fake_backend, ["RetrieveUserPrivileges", "--bind-id", "x"]
     )
-    assert result.exit_code == 1, result.output
+    assert result.exit_code == 2, result.output
     assert json.loads(result.output)["ok"] is False
     assert backend.count("get") == 0

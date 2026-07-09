@@ -395,9 +395,11 @@ customization XML through a known grammar.
 ## Flagged ambiguities
 
 - "validation error" was used for both a bad `--flag` (Click, exit 2) and an
-  in-command rejection like `--bind-set without --bind-id` (emit, exit 1).
-  Resolved: the former is a **usage error**; the latter is an **operational
-  failure**.
+  in-command rejection (emit, exit 1). Resolved by *when* the check fires: a
+  caller mistake caught **before any backend call** — a bad flag or a bad flag
+  *combination* like `--bind-id` without `--bind-set` — is a **usage error**
+  (exit 2, #713); an in-command rejection that depends on **server data** (e.g.
+  `--solution X is not a managed solution`) is an **operational failure** (exit 1).
 - "preview" meant both the request echo a read returned under `--dry-run` and
   the would-write description a mutation returned. Resolved by the
   **reads-execute rule**: reads are never previewed; **dry-run preview** refers
