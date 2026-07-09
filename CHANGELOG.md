@@ -9,6 +9,30 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.52.1 (2026-07-09)
+
+### Bug Fixes
+
+- Address Copilot review — presence-based alias precedence, docstring
+  ([#763](https://github.com/Gharib89/crm/pull/763),
+  [`69e7d08`](https://github.com/Gharib89/crm/commit/69e7d0890d2946a2f87d1285eb6a024d2c869a47))
+
+- Canonical --order-by for OData ordering with hidden aliases
+  ([#763](https://github.com/Gharib89/crm/pull/763),
+  [`69e7d08`](https://github.com/Gharib89/crm/commit/69e7d0890d2946a2f87d1285eb6a024d2c869a47))
+
+### Chores
+
+- **skills**: Sync-skills tool + vendor personal skills
+  ([#762](https://github.com/Gharib89/crm/pull/762),
+  [`88c328d`](https://github.com/Gharib89/crm/commit/88c328d8111cd9e5228a4e45eec8045a920e84c7))
+
+### Documentation
+
+- **merge-gate**: Harden review-skill invocation, e2e completion, issues section
+  ([`99989bf`](https://github.com/Gharib89/crm/commit/99989bf7670fee885087153fbe04c79309028889))
+
+
 ## v1.52.0 (2026-07-09)
 
 ### Features
