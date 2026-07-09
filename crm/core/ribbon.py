@@ -300,8 +300,15 @@ def validate_icon_webresource(
     (mirroring the `--webresource` existence check `add-button` already runs). Per
     ADR 0001 this in-command validation is an operational failure (exit 1), not a
     Click usage error."""
+    if slot not in _ICON_SLOTS:
+        # Guard the internal enum-like arg so a bad slot surfaces as a D365Error
+        # (through the CLI's error seam) rather than a raw KeyError — mirrors
+        # `validate_rule_ids`' `kind` guard.
+        raise D365Error(
+            f"unknown icon slot {slot!r}; expected one of {sorted(_ICON_SLOTS)}")
     _attr, allowed, human = _ICON_SLOTS[slot]
-    record = get_webresource(backend, name)  # raises WebResourceNotFound if absent
+    # get_webresource raises D365Error (code WebResourceNotFound) if the name is absent.
+    record = get_webresource(backend, name)
     raw = record.get("webresourcetype")
     # Option-set values may arrive as an int or a numeric string; anything else
     # (None, non-numeric) is treated as "unknown type" and fails the slot check.

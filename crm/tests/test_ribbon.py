@@ -846,3 +846,12 @@ def test_validate_icon_webresource_missing_raises(
     be = inject_backend(make_fake_backend(responses={"get_collection": []}))
     with pytest.raises(D365Error, match="not found"):
         ribbon.validate_icon_webresource(be, slot="modern_image", name="cwx_/gone.svg")  # type: ignore[arg-type]
+
+
+def test_validate_icon_webresource_unknown_slot_raises_d365error(
+        make_fake_backend, inject_backend):
+    # A bad slot must surface as a D365Error (through the CLI error seam), not a raw
+    # KeyError — and without touching the backend.
+    be = inject_backend(make_fake_backend(forbid=("get_collection",)))
+    with pytest.raises(D365Error, match="unknown icon slot"):
+        ribbon.validate_icon_webresource(be, slot="bogus", name="cwx_/i.svg")  # type: ignore[arg-type]

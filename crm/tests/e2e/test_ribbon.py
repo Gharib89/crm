@@ -405,8 +405,10 @@ def test_ribbon_set_icon_sets_modern_image(
     assert js_id, "webresourceid missing from js create response"
 
     def _cleanup_wrs():
-        # Delete the button first (it depends on the icon web resource); then the
-        # web resources. The ephemeral solution/entity teardown removes the rest.
+        # Best-effort delete of the two web resources. A delete blocked because the
+        # button still references the icon web resource (0x8004f01f) is swallowed —
+        # the ephemeral solution/entity teardown removes the button (and with it the
+        # $webresource: references), after which the resources are collected too.
         for wid in (svg_id, js_id):
             try:
                 backend.delete(f"webresourceset({wid})")
