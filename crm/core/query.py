@@ -85,7 +85,7 @@ def odata_query(
         )
     if track_changes or delta_token is not None:
         bad = [name for name, val in (
-            ("--filter", filter_), ("--orderby", orderby),
+            ("--filter", filter_), ("--order-by", orderby),
             ("--expand", expand), ("--top", top),
             ("--all", all_pages), ("--max-records", max_records is not None),
         ) if val]

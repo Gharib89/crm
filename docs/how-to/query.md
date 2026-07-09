@@ -172,7 +172,7 @@ keys by the normal envelope normalisation.
 
 **Conflicting options.**  The Dataverse Web API forbids system query options
 alongside change tracking.  `--track-changes` and `--delta-token` both reject
-combination with `--filter`, `--orderby`, `--expand`, `--top`, `--all`, and
+combination with `--filter`, `--order-by`, `--expand`, `--top`, `--all`, and
 `--max-records`; the command errors client-side before any request.
 `--select`, `--count`, and `--page-size` are compatible.
 `--track-changes` and `--delta-token` are mutually exclusive with each other.
