@@ -9,6 +9,29 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.58.1 (2026-07-09)
+
+### Bug Fixes
+
+- Exit 2 for a half-supplied disassociate flag pair
+  ([#783](https://github.com/Gharib89/crm/pull/783),
+  [`66d1e90`](https://github.com/Gharib89/crm/commit/66d1e905a0f053f32d6468a43ec72f6892f88aee))
+
+- Reject invalid input and harden edge cases across nine commands
+  ([#783](https://github.com/Gharib89/crm/pull/783),
+  [`66d1e90`](https://github.com/Gharib89/crm/commit/66d1e905a0f053f32d6468a43ec72f6892f88aee))
+
+### Documentation
+
+- Explain the true/false-label compare-to-default guard rationale
+  ([#783](https://github.com/Gharib89/crm/pull/783),
+  [`66d1e90`](https://github.com/Gharib89/crm/commit/66d1e905a0f053f32d6468a43ec72f6892f88aee))
+
+- Sync plugin image-type and auto-number-format guards with #693
+  ([#783](https://github.com/Gharib89/crm/pull/783),
+  [`66d1e90`](https://github.com/Gharib89/crm/commit/66d1e905a0f053f32d6468a43ec72f6892f88aee))
+
+
 ## v1.58.0 (2026-07-09)
 
 ### Bug Fixes
