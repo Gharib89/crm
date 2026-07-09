@@ -9,6 +9,14 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.54.0 (2026-07-09)
+
+### Features
+
+- Add ribbon button icon support (add-button flags + set-icon verb)
+  ([`97b791c`](https://github.com/Gharib89/crm/commit/97b791cafa0a0c91cfebe83c8dcd8f29850c4f84))
+
+
 ## v1.53.3 (2026-07-09)
 
 ### Bug Fixes
