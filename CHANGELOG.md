@@ -9,6 +9,19 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.53.3 (2026-07-09)
+
+### Bug Fixes
+
+- Retry CustomizationLockException on all customization writes
+  ([#774](https://github.com/Gharib89/crm/pull/774),
+  [`a8064eb`](https://github.com/Gharib89/crm/commit/a8064eb7fa047a60cd9921577c6c37a9ea0f051b))
+
+- Ribbon set-label/set-rules guide to publish when staged diff is empty
+  ([#766](https://github.com/Gharib89/crm/pull/766),
+  [`05926ea`](https://github.com/Gharib89/crm/commit/05926ea5194352736addec953087b41f03bc4141))
+
+
 ## v1.53.2 (2026-07-09)
 
 ### Bug Fixes
