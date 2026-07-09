@@ -317,9 +317,11 @@ E2E_MARKER = "ae2e"
 
 def _marker_prefix(suffix: str) -> str:
     """Customization prefix for a throwaway publisher: the marker plus a short
-    unique tail, capped at Dataverse's 8-char prefix limit. Stays unique per run
-    (not a fixed literal) so concurrent runs on the shared org never collide on the
-    environment-unique publisher prefix."""
+    random tail, capped at Dataverse's 8-char prefix limit (so only the first
+    ``8 - len(marker)`` chars of ``suffix`` survive). Deriving it from the per-run
+    suffix keeps it collision-resistant across concurrent runs on the shared org —
+    unlike a fixed literal, which would always clash on the environment-unique
+    publisher prefix."""
     return f"{E2E_MARKER}{suffix}"[:8]
 
 

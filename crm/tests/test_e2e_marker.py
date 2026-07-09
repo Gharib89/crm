@@ -31,7 +31,8 @@ def test_marker_prefix_stays_db_legal_for_any_suffix(suffix):
     validate_customization_prefix(prefix)  # 2-8 alnum, letter-start, not 'mscrm'
 
 
-def test_marker_prefix_is_unique_per_suffix():
-    # Different runs must get different prefixes or concurrent runs on the shared
-    # org collide on the (environment-unique) publisher prefix.
+def test_marker_prefix_varies_with_the_run_suffix():
+    # The prefix must track the random per-run suffix, not be a fixed literal, or
+    # concurrent runs on the shared org clash on the environment-unique publisher
+    # prefix. (Only the surviving head of the suffix matters — see _marker_prefix.)
     assert _marker_prefix("aaaabbbb") != _marker_prefix("ccccdddd")
