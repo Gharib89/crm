@@ -9,6 +9,21 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.56.1 (2026-07-09)
+
+### Bug Fixes
+
+- **test**: Remove leaked ribbon button before deleting its icon web resource
+  ([#779](https://github.com/Gharib89/crm/pull/779),
+  [`f9e6e0e`](https://github.com/Gharib89/crm/commit/f9e6e0e5adb1a7c1efc8c13f8c87a96d2488ce27))
+
+### Chores
+
+- **build**: Bundle jq engine in PyInstaller binaries
+  ([#777](https://github.com/Gharib89/crm/pull/777),
+  [`21947d7`](https://github.com/Gharib89/crm/commit/21947d7022d5479d137e3dca9b61cf4e6df0457b))
+
+
 ## v1.56.0 (2026-07-09)
 
 ### Bug Fixes
