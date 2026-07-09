@@ -1035,3 +1035,215 @@ def test_ribbon_add_custom_rule_validation_error_in_apply(monkeypatch):
         "--webresource", "cwx_/x.js", "--function", "ns.canRun"])
     assert res.exit_code == 1
     assert "entity mismatch" in res.output
+
+
+# ---------------------------------------------------------------------------
+# ribbon add-button — icon flags (issue #679)
+# ---------------------------------------------------------------------------
+
+def test_ribbon_add_button_writes_icon_attributes(monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_apply(backend, *, solution, entity, mutate, **kw):
+        root = ET.fromstring(
+            "<ImportExportXml><Entities><Entity><Name>cwx_ticket</Name>"
+            "</Entity></Entities></ImportExportXml>")
+        _apply_mutate(mutate, root, entity)
+        captured["root"] = root
+        return {"status": "succeeded"}
+
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change", fake_apply)
+    monkeypatch.setattr(ribbon_mod, "resolve_webresource_id",
+                        lambda backend, name: "guid-1")
+    monkeypatch.setattr(ribbon_mod, "validate_icon_webresource",
+                        lambda backend, *, slot, name: None)
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "ribbon", "add-button", "cwx_ticket", "--solution", "MySol",
+        "--label", "Validate", "--location", "form",
+        "--webresource", "cwx_/scripts/x.js", "--function", "ns.fn",
+        "--param", "PrimaryControl",
+        "--modern-image", "cwx_/i.svg", "--image16", "cwx_/i16.png"])
+    assert res.exit_code == 0, res.output
+    root = captured["root"]
+    assert isinstance(root, ET.Element)
+    btn = root.find(".//Button")
+    assert btn is not None
+    assert btn.get("ModernImage") == "$webresource:cwx_/i.svg"
+    assert btn.get("Image16by16") == "$webresource:cwx_/i16.png"
+    assert btn.get("Image32by32") is None
+
+
+def test_ribbon_add_button_rejects_wrong_type_icon(monkeypatch):
+    """A wrong-type icon web resource errors (exit 1, ADR 0001 in-command
+    validation) before any solution round-trip."""
+    def bad_icon(backend, *, slot, name):
+        raise D365Error(f"web resource {name!r} is not valid for --{slot}")
+    applied: list[str] = []
+    monkeypatch.setattr(ribbon_mod, "resolve_webresource_id",
+                        lambda backend, name: "guid-1")
+    monkeypatch.setattr(ribbon_mod, "validate_icon_webresource", bad_icon)
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change",
+                        lambda *a, **k: applied.append("x") or {"status": "ok"})
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "add-button", "cwx_ticket", "--solution", "MySol",
+        "--label", "Validate", "--location", "form",
+        "--webresource", "cwx_/scripts/x.js", "--function", "ns.fn",
+        "--param", "PrimaryControl", "--modern-image", "cwx_/i.png"])
+    assert res.exit_code == 1
+    assert "not valid for" in res.output
+    assert applied == []  # never reached the export/import round-trip
+
+
+def test_ribbon_add_button_no_icons_omits_attributes(monkeypatch):
+    """Without any icon flag the button carries no image attribute (byte-for-byte
+    parity with the pre-#679 behavior)."""
+    captured: dict[str, object] = {}
+
+    def fake_apply(backend, *, solution, entity, mutate, **kw):
+        root = ET.fromstring(
+            "<ImportExportXml><Entities><Entity><Name>cwx_ticket</Name>"
+            "</Entity></Entities></ImportExportXml>")
+        _apply_mutate(mutate, root, entity)
+        captured["root"] = root
+        return {"status": "succeeded"}
+
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change", fake_apply)
+    monkeypatch.setattr(ribbon_mod, "resolve_webresource_id",
+                        lambda backend, name: "guid-1")
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "ribbon", "add-button", "cwx_ticket", "--solution", "MySol",
+        "--label", "Validate", "--location", "form",
+        "--webresource", "cwx_/scripts/x.js", "--function", "ns.fn",
+        "--param", "PrimaryControl"])
+    assert res.exit_code == 0, res.output
+    btn = captured["root"].find(".//Button")  # type: ignore[union-attr]
+    assert btn is not None
+    for attr in ("ModernImage", "Image16by16", "Image32by32"):
+        assert attr not in btn.attrib
+
+
+# ---------------------------------------------------------------------------
+# ribbon set-icon (issue #679)
+# ---------------------------------------------------------------------------
+
+def _patch_set_icon_apply(monkeypatch, captured):
+    def fake_apply(backend, *, solution, entity, mutate, publish=True, **kw):
+        root = ET.fromstring(_CUST_WITH_BUTTON)
+        _apply_mutate(mutate, root, entity)
+        captured["root"] = root
+        captured["solution"] = solution
+        captured["publish"] = publish
+        return {"status": "succeeded"}
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change", fake_apply)
+    monkeypatch.setattr(ribbon_mod, "validate_icon_webresource",
+                        lambda backend, *, slot, name: None)
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+
+
+def test_ribbon_set_icon_sets_attributes(monkeypatch):
+    captured: dict[str, object] = {}
+    _patch_set_icon_apply(monkeypatch, captured)
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "set-icon", "cwx_ticket", "--solution", "MySol",
+        "--button-id", _BID, "--modern-image", "cwx_/i.svg",
+        "--image16", "cwx_/i16.png", "--image32", "cwx_/i32.png"])
+    assert res.exit_code == 0, res.output
+    root = captured["root"]
+    assert isinstance(root, ET.Element)
+    btn = root.find(".//Button")
+    assert btn is not None
+    assert btn.get("ModernImage") == "$webresource:cwx_/i.svg"
+    assert btn.get("Image16by16") == "$webresource:cwx_/i16.png"
+    assert btn.get("Image32by32") == "$webresource:cwx_/i32.png"
+    # protected attributes untouched
+    assert btn.get("Command") == "cwx_ticket.form.Validate.Command"
+    assert btn.get("LabelText") == "Validate"
+    assert btn.get("TemplateAlias") == "o1"
+    data = json.loads(res.output)
+    assert data["ok"] is True
+    assert data["data"]["button_id"] == _BID
+
+
+def test_ribbon_set_icon_requires_a_slot(monkeypatch):
+    captured: dict[str, object] = {}
+    _patch_set_icon_apply(monkeypatch, captured)
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "set-icon", "cwx_ticket", "--solution", "MySol",
+        "--button-id", _BID])
+    assert res.exit_code == 2  # usage error (ADR 0001)
+    assert "root" not in captured  # never reached apply
+
+
+def test_ribbon_set_icon_missing_webresource_errors(monkeypatch):
+    """A missing/wrong-type icon web resource errors (exit 1) before apply."""
+    def boom(backend, *, slot, name):
+        raise D365Error(f"Web resource not found: {name}")
+    applied: list[str] = []
+    monkeypatch.setattr(ribbon_mod, "validate_icon_webresource", boom)
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change",
+                        lambda *a, **k: applied.append("x") or {"status": "ok"})
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "set-icon", "cwx_ticket", "--solution", "MySol",
+        "--button-id", _BID, "--modern-image", "cwx_/gone.svg"])
+    assert res.exit_code == 1
+    assert "not found" in res.output
+    assert applied == []
+
+
+def test_ribbon_set_icon_unknown_button_errors(monkeypatch):
+    captured: dict[str, object] = {}
+    _patch_set_icon_apply(monkeypatch, captured)
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "set-icon", "cwx_ticket", "--solution", "MySol",
+        "--button-id", "does.not.exist", "--modern-image", "cwx_/i.svg"])
+    assert res.exit_code == 1
+    assert "not found" in res.output
+
+
+def test_ribbon_set_icon_no_publish_passes_through(monkeypatch):
+    captured: dict[str, object] = {}
+    _patch_set_icon_apply(monkeypatch, captured)
+    res = CliRunner().invoke(cli, [
+        "ribbon", "set-icon", "cwx_ticket", "--solution", "MySol",
+        "--button-id", _BID, "--modern-image", "cwx_/i.svg", "--no-publish"])
+    assert res.exit_code == 0, res.output
+    assert captured["publish"] is False
+
+
+def test_ribbon_set_icon_dry_run_does_not_import(monkeypatch):
+    """--dry-run previews via the export short-circuit without importing/publishing."""
+    imported: list[str] = []
+
+    def fake_export(backend, name, output_path, **kw):
+        return {"_dry_run": True, "would_export": name}
+
+    monkeypatch.setattr(ribbon_mod, "export_solution", fake_export)
+    monkeypatch.setattr(ribbon_mod, "import_solution",
+                        lambda *a, **k: imported.append("x"))
+    monkeypatch.setattr(ribbon_mod, "publish_all", lambda *a, **k: None)
+    monkeypatch.setattr(ribbon_mod, "validate_icon_webresource",
+                        lambda backend, *, slot, name: None)
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "--dry-run", "ribbon", "set-icon", "cwx_ticket",
+        "--solution", "MySol", "--button-id", _BID, "--modern-image", "cwx_/i.svg"])
+    assert res.exit_code == 0, res.output
+    assert imported == []
+
+
+def test_ribbon_set_icon_d365error_in_apply(monkeypatch):
+    monkeypatch.setattr(ribbon_mod, "validate_icon_webresource",
+                        lambda backend, *, slot, name: None)
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change",
+                        lambda *a, **k: (_ for _ in ()).throw(D365Error("apply failed", status=500)))
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "set-icon", "cwx_ticket", "--solution", "MySol",
+        "--button-id", _BID, "--modern-image", "cwx_/i.svg"])
+    assert res.exit_code == 1
+    data = json.loads(res.output)
+    assert data["ok"] is False
