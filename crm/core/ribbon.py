@@ -93,6 +93,33 @@ class RibbonButton:
     library: str
 
 
+# A ribbon edit is located by exporting the solution and reading the entity's
+# RibbonDiffXml. Unlike forms/views, an UNPUBLISHED RibbonDiffXml is not carried
+# by ExportSolution (live-confirmed on-prem v9.1, #766) — so a button staged with
+# `add-button` (without --publish) exports as an empty diff and is invisible to
+# set-label/set-rules/add-custom-rule. When the diff has zero custom elements the
+# opaque "available: []" is almost always that missing publish; say so.
+_STAGED_UNPUBLISHED_HINT = (
+    " — the exported RibbonDiffXml has no custom buttons or commands for this "
+    "entity. Ribbon edits (unlike forms/views) are NOT exportable until published, "
+    "so a button just staged with `add-button` (without --publish) is invisible "
+    "here: run `crm solution publish-all` (or re-run add-button with --publish), "
+    "then retry. If you already published, check the id, --solution and entity."
+)
+
+
+def _diff_is_effectively_empty(ribbon_diff: ET.Element) -> bool:
+    """True when the diff carries no ``CustomAction`` and no ``CommandDefinition``.
+
+    That is the signature of a staged-but-unpublished ``add-button`` (which always
+    creates both) surfacing as an empty ExportSolution diff — the case the publish
+    hint speaks to. Gated on both, not just buttons/commands alone, so the hint is
+    not appended when the diff holds only unrelated elements (rules, LocLabels).
+    """
+    return (next(ribbon_diff.iter("CustomAction"), None) is None
+            and next(ribbon_diff.iter("CommandDefinition"), None) is None)
+
+
 def list_custom_buttons(ribbon_diff: ET.Element) -> list[RibbonButton]:
     """Enumerate the custom buttons declared in a RibbonDiffXml element."""
     commands: dict[str, tuple[str, str]] = {}  # command id -> (function, library)
@@ -406,9 +433,11 @@ def set_button_label(
     button = action.find(".//Button") if action is not None else None
     if button is None:
         available = [b.button_id for b in list_custom_buttons(ribbon_diff)]
-        raise D365Error(
-            f"button-id {button_id!r} not found as a custom Button; "
-            f"available: {available}")
+        msg = (f"button-id {button_id!r} not found as a custom Button; "
+               f"available: {available}")
+        if _diff_is_effectively_empty(ribbon_diff):
+            msg += _STAGED_UNPUBLISHED_HINT
+        raise D365Error(msg)
     btn_id = button.get("Id") or button_id
     for key, text in fields.items():
         if text is None:
@@ -520,8 +549,10 @@ def find_command_definition(ribbon_diff: ET.Element, command_id: str) -> ET.Elem
         if cdef is not None:
             return cdef
     available = [c.get("Id") for c in ribbon_diff.iter("CommandDefinition")]
-    raise D365Error(
-        f"command-id {command_id!r} not found; available: {available}")
+    msg = f"command-id {command_id!r} not found; available: {available}"
+    if _diff_is_effectively_empty(ribbon_diff):
+        msg += _STAGED_UNPUBLISHED_HINT
+    raise D365Error(msg)
 
 
 def _ensure_command_child(cdef: ET.Element, tag: str) -> ET.Element:

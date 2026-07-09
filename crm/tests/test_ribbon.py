@@ -370,9 +370,13 @@ def test_set_command_rules_never_touches_command_id():
 
 def test_set_command_rules_unknown_command_raises():
     diff = _diff_with_command()
-    with pytest.raises(D365Error, match="command-id .* not found"):
+    with pytest.raises(D365Error, match="command-id .* not found") as exc:
         ribbon.set_command_rules(diff, command_id="nope.Command",
                                  enable_rules=["Mscrm.ShowOnGrid"], display_rules=[])
+    # The diff already carries a command — it is not "effectively empty", so the
+    # staged/unpublished hint must NOT fire (it would misleadingly claim there are
+    # no customizations). This is the narrowing Copilot flagged on PR #775.
+    assert "publish" not in str(exc.value).lower()
 
 
 def test_validate_rule_ids_accepts_known_platform_and_custom():
@@ -568,8 +572,28 @@ def test_set_button_label_protects_command_alias_sequence_id():
 
 def test_set_button_label_unknown_button_raises():
     diff = _diff_with_button()
-    with pytest.raises(D365Error, match="not found"):
+    with pytest.raises(D365Error, match="not found") as exc:
         ribbon.set_button_label(diff, button_id="nope.CustomAction", label="x")
+    # A populated diff (button present, wrong id) is a genuine not-found — the
+    # staged/unpublished hint must NOT fire here.
+    assert "publish" not in str(exc.value).lower()
+
+
+def test_set_button_label_empty_diff_hints_publish():
+    # An empty RibbonDiffXml is the signature of a button staged without publish
+    # (#766): the export carries no custom actions. The error must point the user
+    # at publishing rather than the opaque "available: []".
+    diff = _empty_diff()
+    with pytest.raises(D365Error, match="publish-all") as exc:
+        ribbon.set_button_label(diff, button_id="x.CustomAction", label="x")
+    assert "exportable until published" in str(exc.value)
+
+
+def test_find_command_definition_empty_diff_hints_publish():
+    diff = _empty_diff()
+    with pytest.raises(D365Error, match="publish-all") as exc:
+        ribbon.find_command_definition(diff, "x.Command")
+    assert "exportable until published" in str(exc.value)
 
 
 def test_set_button_label_requires_a_field():
