@@ -74,9 +74,9 @@ subagent and the poll loop with a model explicitly — never default-inherit.
 
 Triage and code review are judgment — running them on the cheap tier under-reads
 diffs. Poll loops, file-mapping, and running the gates are mechanical — running them
-on the strong tier burns budget for nothing. The `code-review` skill sets its own
-per-axis models (Standards = opus, Spec = sonnet). Fall back to the nearest
-available tier rather than running everything on one model.
+on the strong tier burns budget for nothing. When you invoke the `code-review`
+skill, tier its two axes yourself (Standards = opus, Spec = sonnet — rows above).
+Fall back to the nearest available tier rather than running everything on one model.
 
 ## The lanes
 
@@ -108,9 +108,9 @@ until that list exists.
 
 **Compose, don't reinline.** Load the `tdd` skill (phase 2) and the `code-review` skill
 (phases 4, 7) through the Skill tool when their phase begins — never hand-roll
-their logic. The `code-review` skill picks its own per-axis tiers (opus code / sonnet
-spec); run finding-**triage** at the judgment tier, mechanical helpers at the cheap
-tier (table above).
+their logic. Set the `code-review` skill's per-axis tiers yourself when you invoke it
+(opus code / sonnet spec, table above); run finding-**triage** at the judgment tier,
+mechanical helpers at the cheap tier (table above).
 
 **0 · Isolate.** **Pre-flight:** confirm the issue is actionable and not already in
 flight — if it's closed, already has an open or merged PR, or a branch already

@@ -36,10 +36,6 @@ The agent needs to know when it's done. Every agent brief must have concrete, te
 
 State what is out of scope. This prevents the agent from gold-plating or making assumptions about adjacent features.
 
-### Known unknowns, declared
-
-The brief is a map; the codebase is the territory. Pretending the map is complete makes the shipping agent guess silently at every gap. Instead, declare the **known unknowns** — anything triage could not resolve: an unverified root-cause hypothesis, a platform behavior nobody probed, a naming or contract choice left open. For each, say what is unknown and how the agent should settle it (probe the live target, follow the codebase convention, pick the conservative option). The shipping agent resolves each one and logs the resolution in its PR's **Deviations from plan** section — resolve-or-log, never silent guessing. An empty section is a claim, not a default: write "None" only when triage genuinely closed every question.
-
 ## Template
 
 ```markdown
@@ -65,11 +61,6 @@ Be specific about edge cases and error conditions.
 - [ ] Specific, testable criterion 1
 - [ ] Specific, testable criterion 2
 - [ ] Specific, testable criterion 3
-
-**Known unknowns:**
-- What triage couldn't resolve — and how to settle it (probe X, follow the
-  convention in Y, take the conservative option). "None" only if every
-  question genuinely closed.
 
 **Out of scope:**
 - Thing that should NOT be changed or addressed in this issue
@@ -107,10 +98,6 @@ and append "..." to indicate truncation.
       before 1024 chars
 - [ ] Truncated descriptions end with "..."
 - [ ] The total length including "..." does not exceed 1024 chars
-
-**Known unknowns:**
-- None — the bug reproduces from the reporter's steps and the truncation
-  behavior is unambiguous.
 
 **Out of scope:**
 - Changing the 1024 char limit itself
@@ -152,11 +139,6 @@ checked for matches.
 - [ ] During triage, existing `.out-of-scope/` files are checked and surfaced
       when a new issue matches a prior rejection
 
-**Known unknowns:**
-- Whether concept matching should read file names only or full file contents —
-  triage didn't decide; start with the cheaper option and log the choice as a
-  deviation.
-
 **Out of scope:**
 - Automated matching (human confirms the match)
 - Reopening previously rejected features
@@ -194,10 +176,6 @@ is untouched when the flag is absent.
 - [ ] Exit codes match the non-JSON command
 - [ ] A test covers the `--json` success output and one error case
 - [ ] Default (non-JSON) output is byte-for-byte unchanged
-
-**Known unknowns:**
-- Whether the contributor's serializer handles non-ASCII issue titles — untested
-  in the diff; probe it and cover it in the new test if it breaks.
 
 **Out of scope:**
 - Adding `--json` to any other command
