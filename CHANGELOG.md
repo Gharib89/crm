@@ -9,6 +9,31 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.56.0 (2026-07-09)
+
+### Bug Fixes
+
+- Route --jq eval-error through the canonical error envelope
+  ([#776](https://github.com/Gharib89/crm/pull/776),
+  [`fc0f56a`](https://github.com/Gharib89/crm/commit/fc0f56a85c6914613fe9abb238e624242bafc762))
+
+### Chores
+
+- Color-code e2e_all.py live output by test outcome
+  ([`89f2279`](https://github.com/Gharib89/crm/commit/89f2279cc6b539b96ea2994423e1df7a0a7aaed3))
+
+### Documentation
+
+- Document global --jq output shaper ([#776](https://github.com/Gharib89/crm/pull/776),
+  [`fc0f56a`](https://github.com/Gharib89/crm/commit/fc0f56a85c6914613fe9abb238e624242bafc762))
+
+### Features
+
+- Add global --jq output shaper for --json payloads
+  ([#776](https://github.com/Gharib89/crm/pull/776),
+  [`fc0f56a`](https://github.com/Gharib89/crm/commit/fc0f56a85c6914613fe9abb238e624242bafc762))
+
+
 ## v1.55.0 (2026-07-09)
 
 ### Features
