@@ -45,7 +45,16 @@ def fetchxml_to_query_expression(backend: D365Backend, fetch_xml: str) -> dict[s
     ``QueryExpression`` rather than raw FetchXml (``BulkDelete``,
     ``BulkDetectDuplicates``); the returned object carries its ``@odata.type`` so
     the server binds it to the right subtype.
+
+    Validates well-formedness locally first, so a typo'd fetch fails fast with a
+    clear message instead of an opaque server round-trip.
     """
+    try:
+        root = ET.fromstring(fetch_xml)
+    except ET.ParseError as exc:
+        raise D365Error(f"FetchXML is not well-formed XML: {exc}") from exc
+    if root.tag != "fetch":
+        raise D365Error("FetchXML must have a <fetch> root element.")
     resp = as_dict(backend.get(
         "FetchXmlToQueryExpression(FetchXml=@p1)",
         params={"@p1": odata_literal(fetch_xml)},

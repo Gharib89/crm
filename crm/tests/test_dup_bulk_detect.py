@@ -85,7 +85,9 @@ class TestSubmit:
 
     def test_dry_run_previews_without_submitting(self, dry_backend, profile):
         with requests_mock.Mocker() as m:
-            # No BulkDetectDuplicates POST is mocked: dry-run must never hit the wire.
+            # No BulkDetectDuplicates POST is mocked: under dry-run the POST is
+            # previewed, never submitted (GET reads would still execute, but a
+            # bare-entity sweep issues none).
             result = dup.bulk_detect(dry_backend, "account")
         assert result["_dry_run"] is True
         assert result["would_submit"] == "BulkDetectDuplicates"
@@ -95,6 +97,13 @@ class TestSubmit:
     def test_missing_entity_raises(self, backend):
         with pytest.raises(D365Error, match="entity is required"):
             dup.bulk_detect(backend, "")
+
+    def test_malformed_fetchxml_raises_before_any_call(self, backend):
+        with requests_mock.Mocker() as m:
+            with pytest.raises(D365Error, match="well-formed"):
+                dup.bulk_detect(backend, "account", fetch_xml="<fetch><entity")
+            # Fails fast locally — no FetchXmlToQueryExpression round-trip.
+            assert m.call_count == 0
 
     def test_submit_without_job_id_raises(self, backend, profile):
         base = profile.api_base
