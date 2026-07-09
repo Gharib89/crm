@@ -506,6 +506,27 @@ class TestRegisterStep:
                 configuration="someconfig")
         assert _posts(m)[0].json()["configuration"] == "someconfig"
 
+    def test_secure_configuration_deep_insert(self, backend):
+        import json
+        from crm.core import plugin
+        step_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
+        with requests_mock.Mocker() as m:
+            _mock_step_resolution(m, backend)
+            m.post(backend.url_for("sdkmessageprocessingsteps"), status_code=204,
+                   headers={"OData-EntityId": step_url})
+            out = plugin.register_step(
+                backend, message="Update",
+                plugin_type="Contoso.Plugins.PreCreateAccount", entity="account",
+                secure_configuration="s3cr3t")
+        body = _posts(m)[0].json()
+        # Secure config is a separate related record linked from the step, so it
+        # rides in on a deep insert under the lookup nav-property, not as a plain
+        # body field (contrast unsecure `configuration`).
+        assert body["sdkmessageprocessingstepsecureconfigid"] == {
+            "secureconfig": "s3cr3t"}
+        # Write-only: the value is never echoed back in the command output.
+        assert "s3cr3t" not in json.dumps(out)
+
     def test_asyncautodelete_passed_through(self, backend):
         from crm.core import plugin
         step_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
@@ -1886,6 +1907,7 @@ class TestPluginCommands:
         assert captured["name"] is None
         assert captured["assembly"] is None
         assert captured["service_endpoint"] is None
+        assert captured["secure_configuration"] is None
 
     def test_register_step_command_threads_service_endpoint(self, monkeypatch):
         from click.testing import CliRunner
@@ -1904,6 +1926,25 @@ class TestPluginCommands:
         assert result.exit_code == 0, result.output
         assert captured["service_endpoint"] == "Contoso Hook"
         assert captured["plugin_type"] is None
+
+    def test_register_step_command_threads_secure_configuration(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+        monkeypatch.setattr(
+            "crm.core.plugin.register_step",
+            lambda backend, **kw: captured.update(kw) or {
+                "created": True, "sdkmessageprocessingstepid": _STEP_ID})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "plugin", "register-step",
+            "--message", "Create",
+            "--plugin-type", "Contoso.Plugins.PreCreateAccount",
+            "--secure-configuration", "s3cr3t",
+            "--solution", "cwx_sol",
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured["secure_configuration"] == "s3cr3t"
 
     def test_register_webhook_command_wires_core(self, monkeypatch):
         import json

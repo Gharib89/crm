@@ -145,6 +145,14 @@ Key points:
   requires `--stage postoperation` — other combinations are rejected.
 - `--async-auto-delete` configures an async step to delete its system job upon success.
 - `--configuration` stores an unsecure configuration string on the step, passed to the plug-in constructor.
+- `--secure-configuration` stores the secure configuration, passed to the
+  plug-in constructor alongside the unsecure string. Unlike `--configuration`,
+  the secure value lives in a **separate related record**
+  (`sdkmessageprocessingstepsecureconfig`) created and linked to the step on
+  registration. It is write-only per platform semantics — the value is never
+  returned by the platform and is omitted from normal command output. A
+  `--dry-run` preview echoes the request body verbatim, so it *does* include
+  the value; treat dry-run output as sensitive.
 - `--entity` sets the `primaryobjecttypecode`. Omit it to fire on all entities.
 - `--filtering-attributes` (comma-separated) restricts an Update step to
   specific columns; ignored for non-Update messages.

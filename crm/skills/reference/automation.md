@@ -48,7 +48,11 @@ crm --json plugin register-webhook \
 # postoperation. --entity sets primaryobjecttypecode (omit = all entities);
 # --filtering-attributes (comma-separated) restricts an Update step. The step
 # name is auto-derived as '<handler>: <message> of <entity>'; pass --name when
-# that would exceed the 256-char platform limit.
+# that would exceed the 256-char platform limit. --configuration is the unsecure
+# config string; --secure-configuration is the secure config, stored in a
+# separate related record linked on registration and write-only (platform never
+# returns it, omitted from normal output — but a --dry-run preview echoes the
+# request body incl. the value, so treat dry-run output as sensitive).
 crm --json plugin register-step \
     --message Update \
     --plugin-type Contoso.Plugins.AccountPostUpdate \
