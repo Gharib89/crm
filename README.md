@@ -445,6 +445,10 @@ never auto-retried — refetch a fresh ETag and retry), but a non-idempotent `PO
 may mean the write already landed. Pass
 `--retry-on-ambiguous` (env: `CRM_RETRY_ON_AMBIGUOUS`) to opt back into retrying
 POSTs when re-sending is acceptable. `$batch` keeps its own retry loop regardless.
+The one POST exception is the `CustomizationLockException` family (the org-wide
+customization lock held by a concurrent publish/customization) — because the lock
+fails the call *before* the operation starts, re-sending is always safe, so it is
+auto-retried on any verb regardless of `--retry-on-ambiguous`.
 
 `meta.profile` and `meta.url` appear on every success envelope from a command
 that opened a connection — the resolved profile name and Web API base URL, so a
