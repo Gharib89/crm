@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.52.0 (2026-07-09)
+
+### Features
+
+- Audit enablement via --audit/--no-audit on metadata create/update verbs
+  ([#759](https://github.com/Gharib89/crm/pull/759),
+  [`f5925a9`](https://github.com/Gharib89/crm/commit/f5925a9ce72f4d08c8bd59163af7160981967eed))
+
+
 ## v1.51.24 (2026-07-09)
 
 ### Bug Fixes
