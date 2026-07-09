@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.51.23 (2026-07-09)
+
+### Bug Fixes
+
+- **profile**: Add SSL-verification toggle to profile edit
+  ([#757](https://github.com/Gharib89/crm/pull/757),
+  [`1b82dfe`](https://github.com/Gharib89/crm/commit/1b82dfe4d3532352852de34a8fd04060b3ae4b9a))
+
+
 ## v1.51.22 (2026-07-08)
 
 ### Bug Fixes
