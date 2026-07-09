@@ -873,7 +873,8 @@ class TestPublish:
         self, backend, monkeypatch,
     ):
         """Once the retry budget is spent the original 0x80071151 is surfaced
-        (not swallowed), and the waits are a bounded exponential sequence."""
+        (not swallowed). The retry now lives in the backend (#741), so the loop
+        exhausts after profile.retry_max+1 attempts before re-raising."""
         import time as _t
         from crm.core import solution as sol_mod_local
         sleeps: list[float] = []
@@ -881,12 +882,13 @@ class TestPublish:
         lock_err = {"error": {"code": "0x80071151", "message": "locked"}}
         with requests_mock.Mocker() as m:
             m.post(backend.url_for("PublishAllXml"),
-                   [{"status_code": 400, "json": lock_err}] * 6)
+                   [{"status_code": 400, "json": lock_err}] * 10)
             with pytest.raises(D365Error) as exc_info:
                 sol_mod_local.publish_all(backend)
         assert exc_info.value.code == "0x80071151"
-        assert m.call_count == 5                     # 5 attempts, no more
-        assert sleeps == [2.0, 4.0, 8.0, 16.0]       # bounded exponential backoff
+        # profile.retry_max defaults to 5 → 1 initial + 5 retries = 6 attempts.
+        assert m.call_count == 6
+        assert len(sleeps) == 5                       # one wait before each retry
 
     def test_publish_all_does_not_retry_other_errors(self, backend, monkeypatch):
         """The retry is code-specific: a non-lock D365 error raises immediately."""

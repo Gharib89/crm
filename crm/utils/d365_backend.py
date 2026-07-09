@@ -777,6 +777,13 @@ class D365Backend:
             # accounts for the method/POST gate) and has rate-limit headers;
             # otherwise emit only when CRM_VERBOSE=1 is set.
             retryable = _is_response_retryable(resp, method, self._retry_on_ambiguous)
+            # CustomizationLockException (#741): a lock body code means the
+            # org-wide customization lock was held and the op never started, so
+            # the retry is safe on any verb — it overrides the status/verb policy
+            # that would otherwise refuse a POST (create/publish/import are POSTs).
+            lock_code = None if retryable else _customization_lock_code(resp)
+            if lock_code is not None:
+                retryable = True
             _log_rate_limit_headers(resp, on_retryable=retryable)
 
             if not retryable:
@@ -787,8 +794,9 @@ class D365Backend:
 
             retry_after = _parse_retry_after(resp.headers.get("Retry-After"))
             delay = _compute_delay(attempt, self.profile, retry_after=retry_after)
-            _log_retry(method, url, attempt, delay,
-                       effective_max=max_retries, reason=f"HTTP {resp.status_code}")
+            _log_retry(method, url, attempt, delay, effective_max=max_retries,
+                       reason=(f"HTTP {resp.status_code} {lock_code}"
+                               if lock_code else f"HTTP {resp.status_code}"))
             resp.close()
             time.sleep(delay)
             attempt += 1
@@ -1196,6 +1204,49 @@ def _is_response_retryable(resp: "requests.Response", method: str, retry_on_ambi
     if status in (502, 503, 504) and method_upper in ("GET", "PUT", "PATCH", "DELETE"):
         return True
     return False
+
+
+# CustomizationLockException family (#741). The server serializes all
+# customization work — entity/attribute/relationship writes, PublishAllXml,
+# solution install/uninstall — behind one org-wide lock. When a concurrent
+# operation holds it (another dev's UI publish, a second live e2e run), the
+# platform fails the call with one of these body codes *before the requested
+# operation starts*. Because the op never ran, retrying is safe on any verb — no
+# double-write risk — unlike the general 429 policy, which refuses non-idempotent
+# POSTs (#84). The codes ride different HTTP statuses by target (429 on cloud,
+# 400 on the on-prem publish path), so the retry keys on the body code alone.
+# Stored lowercase for case-insensitive matching.
+_CUSTOMIZATION_LOCK_CODES = frozenset({
+    "0x80071151",  # "another [EntityCustomization]/[PublishAll] is running"
+    "0x7c27f812",  # CustomizationLockException
+    "0x7c27f9fd",  # CustomizationLockException
+    "0x7c27f89f",  # CustomizationLockException
+})
+
+
+def _customization_lock_code(resp: "requests.Response") -> str | None:
+    """Return the CustomizationLockException body code if this error carries one.
+
+    Detection is status-independent (the codes arrive as 429 or 400 by target),
+    so this is checked separately from the status/verb policy in
+    ``_is_response_retryable``. Returns None for success responses (2xx are never
+    parsed here) and for non-lock errors.
+    """
+    if resp.status_code < 400:
+        return None
+    try:
+        body = resp.json()
+    except ValueError:
+        return None
+    if not isinstance(body, dict):
+        return None
+    err = cast(dict[str, Any], body).get("error")
+    if not isinstance(err, dict):
+        return None
+    code = cast(dict[str, Any], err).get("code")
+    if isinstance(code, str) and code.lower() in _CUSTOMIZATION_LOCK_CODES:
+        return code
+    return None
 
 
 def _is_transport_retryable(exc: BaseException) -> bool:

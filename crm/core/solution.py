@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import base64
 import re
-import time
 import urllib.parse
 from pathlib import Path
 from typing import Any
@@ -539,39 +538,16 @@ def retrieve_missing_components(
 
 # ── Publish utilities ────────────────────────────────────────────────────────
 
-# On-prem Dataverse serializes customization/publish operations org-wide behind a
-# single [EntityCustomization]/[PublishAll] lock. When a concurrent operator holds
-# it — another dev's UI publish, or a second live e2e run — the platform fails the
-# call with body error code 0x80071151 ("another … operation is running"). Since
-# PublishAllXml is idempotent, retry it with bounded exponential backoff instead of
-# failing hard. This is publish-specific and keys on the body code alone; it does
-# NOT touch the general HTTP-status-based backend retry policy (which never sees a
-# body error code). Defaults: 5 attempts, waits 2→4→8→16s (per-wait cap 30s), so
-# the total wait is ~30s before the original 0x80071151 error is surfaced.
-_PUBLISH_LOCK_CODE = "0x80071151"
-_PUBLISH_LOCK_RETRIES = 5
-_PUBLISH_LOCK_BASE_DELAY = 2.0
-_PUBLISH_LOCK_MAX_DELAY = 30.0
-
 
 def publish_all(backend: D365Backend) -> dict[str, Any]:
     """Call PublishAllXml — publishes all unpublished customizations.
 
     Action returns 204 No Content on success, so we synthesize a confirmation dict.
-    Retries the org-wide publish-lock error (0x80071151) with bounded exponential
-    backoff; if still locked after the last attempt the original error is surfaced.
+    The org-wide customization-lock error is retried centrally by the backend for
+    every customization write (see ``_customization_lock_code`` in the backend), so
+    this path no longer carries its own retry loop (#741).
     """
-    attempt = 0
-    while True:
-        try:
-            result = as_dict(backend.post("PublishAllXml"))
-            break
-        except D365Error as exc:
-            attempt += 1
-            if exc.code != _PUBLISH_LOCK_CODE or attempt >= _PUBLISH_LOCK_RETRIES:
-                raise
-            time.sleep(min(_PUBLISH_LOCK_BASE_DELAY * 2 ** (attempt - 1),
-                           _PUBLISH_LOCK_MAX_DELAY))
+    result = as_dict(backend.post("PublishAllXml"))
     # Bust the cache on any successful non-dry-run publish, regardless of whether
     # the action returned a body (dry-run yields a truthy preview dict — its body
     # must NOT trigger invalidation, hence the guard before the early return).

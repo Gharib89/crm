@@ -19,6 +19,7 @@ from crm.utils.d365_backend import (
     D365Backend,
     D365Error,
     _compute_delay,
+    _customization_lock_code,
     _is_response_retryable,
     _is_transport_retryable,
     _log_rate_limit_headers,
@@ -483,6 +484,133 @@ class TestRetryLoop:
         assert "ratelimit" in err
         assert "time-remaining=30" in err
         assert "retry " in err  # _log_retry line
+
+
+# ── CustomizationLockException retry (#741) ─────────────────────────────
+
+
+# The four CustomizationLockException body codes the server emits when the
+# org-wide customization lock is held. They arrive on different HTTP statuses
+# by target — 429 on cloud, 400 on the on-prem publish path — so the retry
+# keys on the body code alone. 0x80071151 was previously retried only by the
+# bespoke publish_all loop; the other three were never retried anywhere (#741).
+_LOCK_CODES = ["0x80071151", "0x7c27f812", "0x7c27f9fd", "0x7c27f89f"]
+
+
+class TestCustomizationLockCode:
+    @pytest.mark.parametrize("code", _LOCK_CODES)
+    def test_detects_each_lock_code_on_429(self, code):
+        resp = requests.Response()
+        resp.status_code = 429
+        resp._content = (
+            b'{"error":{"code":"' + code.encode() + b'","message":"locked"}}'
+        )
+        assert _customization_lock_code(resp) == code
+
+    def test_detects_lock_code_on_400(self):
+        # The on-prem publish lock surfaces as HTTP 400 with the same code —
+        # detection is status-independent so that path keeps retrying.
+        resp = requests.Response()
+        resp.status_code = 400
+        resp._content = b'{"error":{"code":"0x80071151","message":"locked"}}'
+        assert _customization_lock_code(resp) == "0x80071151"
+
+    def test_case_insensitive(self):
+        resp = requests.Response()
+        resp.status_code = 429
+        resp._content = b'{"error":{"code":"0X7C27F812","message":"locked"}}'
+        assert _customization_lock_code(resp) == "0X7C27F812"
+
+    def test_non_lock_code_returns_none(self):
+        resp = requests.Response()
+        resp.status_code = 429
+        resp._content = b'{"error":{"code":"0x80072322","message":"rate"}}'
+        assert _customization_lock_code(resp) is None
+
+    def test_success_response_returns_none(self):
+        # A 2xx is never a lock error; the body must not even be parsed here.
+        resp = requests.Response()
+        resp.status_code = 200
+        resp._content = b'{"value":[]}'
+        assert _customization_lock_code(resp) is None
+
+    def test_non_json_body_returns_none(self):
+        resp = requests.Response()
+        resp.status_code = 429
+        resp._content = b"not json"
+        assert _customization_lock_code(resp) is None
+
+
+class TestCustomizationLockRetry:
+    def _lock_body(self, code: str) -> dict[str, Any]:
+        return {"error": {"code": code, "message":
+                          "Cannot start [EntityCustomization]; another is running."}}
+
+    @pytest.mark.parametrize("code", _LOCK_CODES)
+    def test_post_retries_on_lock_code(self, backend, monkeypatch, code):
+        # A customization write is a POST — the #84 gate blocks POST 429 retries,
+        # but a lock error means the op never started, so it must retry anyway.
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        url = backend.url_for("PublishAllXml")
+        with requests_mock.Mocker() as m:
+            m.post(url, [
+                {"status_code": 429, "json": self._lock_body(code)},
+                {"status_code": 204, "text": ""},
+            ])
+            result = backend.post("PublishAllXml")
+        assert m.call_count == 2
+        assert result is None or isinstance(result, dict)
+
+    def test_post_retries_on_lock_code_400(self, backend, monkeypatch):
+        # On-prem surfaces the lock as HTTP 400 — the body-code retry covers it.
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        url = backend.url_for("PublishAllXml")
+        with requests_mock.Mocker() as m:
+            m.post(url, [
+                {"status_code": 400, "json": self._lock_body("0x80071151")},
+                {"status_code": 204, "text": ""},
+            ])
+            result = backend.post("PublishAllXml")
+        assert m.call_count == 2
+        assert result is None or isinstance(result, dict)
+
+    def test_post_lock_exhausts_then_raises_with_code(self, profile, monkeypatch):
+        for var in ("CRM_RETRY_MAX", "CRM_NO_RETRY", "CRM_RETRY_ON_AMBIGUOUS"):
+            monkeypatch.delenv(var, raising=False)
+        be = D365Backend(profile, password="pw")  # profile.retry_max=3
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        url = be.url_for("PublishAllXml")
+        with requests_mock.Mocker() as m:
+            m.post(url, status_code=429, json=self._lock_body("0x7c27f812"))
+            with pytest.raises(D365Error) as exc_info:
+                be.post("PublishAllXml")
+        assert exc_info.value.status == 429
+        assert exc_info.value.code == "0x7c27f812"
+        # retry_max=3 → 1 initial + 3 retries = 4 attempts.
+        assert m.call_count == 4
+
+    def test_post_non_lock_429_still_not_retried(self, backend, monkeypatch):
+        # Regression guard for #84: a plain (non-lock) 429 POST is NOT retried.
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        url = backend.url_for("accounts")
+        with requests_mock.Mocker() as m:
+            m.post(url, status_code=429, json=self._lock_body("0x80072322"))
+            with pytest.raises(D365Error) as exc_info:
+                backend.post("accounts", json_body={"name": "Acme"})
+        assert exc_info.value.status == 429
+        assert m.call_count == 1
+
+    def test_no_retry_env_disables_lock_retry(self, profile, monkeypatch):
+        # CRM_NO_RETRY=1 forces retry_max=0, so even a lock error is not retried.
+        monkeypatch.setenv("CRM_NO_RETRY", "1")
+        be = D365Backend(profile, password="pw")
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        url = be.url_for("PublishAllXml")
+        with requests_mock.Mocker() as m:
+            m.post(url, status_code=429, json=self._lock_body("0x7c27f812"))
+            with pytest.raises(D365Error):
+                be.post("PublishAllXml")
+        assert m.call_count == 1
 
 
 # ── _resolve_retry_max ──────────────────────────────────────────────────
