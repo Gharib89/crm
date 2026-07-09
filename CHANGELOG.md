@@ -9,6 +9,29 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.53.2 (2026-07-09)
+
+### Bug Fixes
+
+- Convert validation-before-backend bad-argument sites to usage errors (exit 2)
+  ([#770](https://github.com/Gharib89/crm/pull/770),
+  [`8a502d8`](https://github.com/Gharib89/crm/commit/8a502d84a9e44986abda0b37bc1ae5abaa1c09fb))
+
+- Keep empty --file/--xml-file as exit-1 content error, not a usage error
+  ([#770](https://github.com/Gharib89/crm/pull/770),
+  [`8a502d8`](https://github.com/Gharib89/crm/commit/8a502d84a9e44986abda0b37bc1ae5abaa1c09fb))
+
+### Documentation
+
+- Align exit-code contract notes with the usage-error reclassification
+  ([#770](https://github.com/Gharib89/crm/pull/770),
+  [`8a502d8`](https://github.com/Gharib89/crm/commit/8a502d84a9e44986abda0b37bc1ae5abaa1c09fb))
+
+- **adr**: Reopen ADR 0012 — free durable cloud e2e org
+  ([#760](https://github.com/Gharib89/crm/pull/760),
+  [`dca1c4f`](https://github.com/Gharib89/crm/commit/dca1c4f212e184d42e7d35f8064e9e7b934fd86e))
+
+
 ## v1.53.1 (2026-07-09)
 
 ### Bug Fixes
