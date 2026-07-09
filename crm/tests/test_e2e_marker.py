@@ -9,6 +9,7 @@ instead of only surfacing mid-suite against the org.
 
 Lives OUTSIDE crm/tests/e2e/ so it is not auto-marked `e2e` and runs offline.
 """
+# pyright: basic
 from __future__ import annotations
 
 import pytest
