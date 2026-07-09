@@ -49,11 +49,13 @@ carries `meta.completed_steps` and `meta.failed_stage`.
 
 **Mind your context budget on fat list verbs.** Some read verbs return hundreds
 to tens of thousands of rows (`solution list`, `metadata entities`, `webresource
-list`, `solution components`) — enough to blow a per-call token budget. The global
-`--fields KEY[,KEY...]` flag projects the response down to the columns you need
-*client-side, post-response* (distinct from a request's `--select`), preserving
-the `ok`/`data`/`meta` envelope so you can still page. Project (or count) a fat
-verb before loading it, rather than reading the whole payload into context.
+list`, `solution components`) — enough to blow a per-call token budget. Two global
+shaper flags reshape the response *client-side, post-response* (distinct from a
+request's `--select`), preserving the `ok`/`data`/`meta` envelope so you can still
+page: `--fields` projects each row/record down to named top-level keys, and `--jq`
+runs a jq program over the payload (count it, filter it, `group_by` it into a
+summary). Project, count, or summarize a fat verb *before* loading it, rather than
+reading the whole payload into context.
 
 **Exit codes** — check `$?`, then read the envelope:
 
