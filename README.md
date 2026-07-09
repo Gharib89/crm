@@ -26,7 +26,7 @@ optimized for AI agents or shell scripting. This harness gives you:
   mutating command; `crm session audit` to review it
 - `--cache-metadata` for a persistent per-profile entity-definition cache
   (speeds up repeated one-shot agent calls; env: `CRM_CACHE_METADATA=1`)
-- `crm ribbon` to read and edit entity command-bar buttons (export / list / add-button / set-label / set-icon / remove / hide-button / set-rules / add-custom-rule) without manual solution-XML editing; `add-button` and `set-icon` can set a button's icon (`--modern-image` SVG for the Unified Interface, `--image16`/`--image32` classic rasters); `ribbon export --application` exports the application-wide ribbon
+- `crm ribbon` to read and edit entity command-bar buttons (export / list / add-button / set-label / set-icon / remove / hide-button / set-rules / add-custom-rule / apply) without manual solution-XML editing; `add-button` and `set-icon` can set a button's icon (`--modern-image` SVG for the Unified Interface, `--image16`/`--image32` classic rasters); `ribbon export --application` exports the application-wide ribbon; a working-copy flow (`ribbon export --solution` → `--diff-file` edits → `ribbon apply`) composes several ribbon edits offline into a single publish
 - `crm solution layer-conflicts` to detect components shared by a managed and an unmanaged solution (unmanaged-layer conflicts) — works on-prem too, where XrmToolBox's layer explorer can't
 
 ## Documentation

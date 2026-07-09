@@ -11,6 +11,7 @@ import io
 import re
 import tempfile
 import zipfile
+import xml.dom.minidom as minidom
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
@@ -236,16 +237,33 @@ def find_entity_node(cust_root: ET.Element, entity: str) -> ET.Element:
     raise D365Error(f"entity {entity!r} not found in solution customizations")
 
 
+# The RibbonDiffXml child containers, in schema order. A freshly-created diff (or
+# a working-copy file) must carry all of them so the mutate builders can append
+# into a stable skeleton.
+_RIBBON_DIFF_CONTAINERS = ("CustomActions", "Templates", "CommandDefinitions",
+                           "RuleDefinitions", "LocLabels")
+
+
+def ensure_ribbon_diff_skeleton(diff: ET.Element) -> ET.Element:
+    """Ensure a ``<RibbonDiffXml>`` element carries the standard child containers.
+
+    Adds any missing ``CustomActions`` / ``Templates`` / ``CommandDefinitions`` /
+    ``RuleDefinitions`` / ``LocLabels`` child, so a diff read from a working-copy
+    file (or created empty) is a valid target for the mutate builders. Returns the
+    same element for chaining.
+    """
+    for child in _RIBBON_DIFF_CONTAINERS:
+        if diff.find(child) is None:
+            ET.SubElement(diff, child)
+    return diff
+
+
 def get_or_create_ribbon_diff(entity_node: ET.Element) -> ET.Element:
     """Return the entity's ``<RibbonDiffXml>``, creating an empty skeleton if absent."""
     diff = entity_node.find("RibbonDiffXml")
     if diff is None:
         diff = ET.SubElement(entity_node, "RibbonDiffXml")
-    for child in ("CustomActions", "Templates", "CommandDefinitions",
-                  "RuleDefinitions", "LocLabels"):
-        if diff.find(child) is None:
-            ET.SubElement(diff, child)
-    return diff
+    return ensure_ribbon_diff_skeleton(diff)
 
 
 # Button icon attributes (issue #679). Each CLI icon flag maps to a <Button>
@@ -855,3 +873,103 @@ def load_solution_ribbon_diff(
                 f"could not parse exported solution {solution!r}: {exc}") from exc
     node = find_entity_node(cust_root, entity)
     return get_or_create_ribbon_diff(node)
+
+
+# ── Ribbon working-copy file flow (#773) ─────────────────────────────────────
+# The offline flow lets N ribbon edits compose against a LOCAL RibbonDiffXml file
+# with a single publish at the end: `ribbon export --solution` writes the entity's
+# editable fragment to a file, the `--diff-file` write verbs mutate that file with
+# no backend calls, and `ribbon apply` full-replaces the entity's live diff with
+# the file and publishes once. This exists because — unlike forms/views — an
+# unpublished RibbonDiffXml is NOT carried by ExportSolution, so the per-verb
+# export→import→publish round-trip cannot compose without a publish between every
+# verb (#766). The file is the single source of truth in this flow.
+
+
+def _strip_ribbon_whitespace(el: ET.Element) -> None:
+    """Drop whitespace-only ``text`` / ``tail`` from ``el`` and its descendants.
+
+    A fragment read back from a pretty-printed file carries the indentation as
+    whitespace text nodes; re-pretty-printing it would then accrue blank lines on
+    every save. Stripping first keeps the working-copy file stable across the N
+    edits of a compose session (export → edit → edit → … → apply).
+    """
+    if el.text is not None and not el.text.strip():
+        el.text = None
+    if el.tail is not None and not el.tail.strip():
+        el.tail = None
+    for child in el:
+        _strip_ribbon_whitespace(child)
+
+
+def serialize_ribbon_diff(diff: ET.Element) -> str:
+    """Pretty-print a ``<RibbonDiffXml>`` fragment to a stable, round-trippable string.
+
+    Strips pre-existing whitespace nodes first so repeated load→edit→save cycles do
+    not accumulate blank lines. Mutates ``diff`` in place (harmless — callers pass a
+    transient element they are about to serialize and discard)."""
+    _strip_ribbon_whitespace(diff)
+    return minidom.parseString(ET.tostring(diff)).toprettyxml(indent="  ")
+
+
+def load_ribbon_diff_file(path: "str | Path") -> ET.Element:
+    """Parse a local working-copy ``RibbonDiffXml`` file into its root element.
+
+    The file must be a ``<RibbonDiffXml>`` fragment as written by
+    `ribbon export --solution`. Ensures the standard child containers exist so the
+    result is a valid mutate target. Raises D365Error (behind the CLI error seam) on
+    a missing file, malformed XML, or a wrong root element.
+    """
+    p = Path(path)
+    try:
+        text = p.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise D365Error(f"could not read diff file {p}: {exc}") from exc
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError as exc:
+        raise D365Error(f"diff file {p} is not valid XML: {exc}") from exc
+    if root.tag != "RibbonDiffXml":
+        raise D365Error(
+            f"diff file {p} has root <{root.tag}>, expected <RibbonDiffXml> — pass a "
+            "file written by `crm ribbon export ENTITY --solution S --output FILE`")
+    return ensure_ribbon_diff_skeleton(root)
+
+
+def save_ribbon_diff_file(path: "str | Path", diff: ET.Element) -> None:
+    """Write a ``<RibbonDiffXml>`` fragment to ``path`` as stable pretty XML."""
+    p = Path(path)
+    try:
+        p.write_text(serialize_ribbon_diff(diff), encoding="utf-8")
+    except OSError as exc:
+        raise D365Error(f"could not write diff file {p}: {exc}") from exc
+
+
+def edit_ribbon_diff_file(
+    path: "str | Path", mutate: Callable[[ET.Element], None]
+) -> None:
+    """Load a working-copy fragment, apply ``mutate`` to it, and write it back.
+
+    The offline analogue of `apply_ribbon_change`: it hands ``mutate`` the file's
+    ``<RibbonDiffXml>`` element (same contract as the live path) and makes ZERO
+    backend calls, so `--diff-file` edits compose locally.
+    """
+    diff = load_ribbon_diff_file(path)
+    mutate(diff)
+    save_ribbon_diff_file(path, diff)
+
+
+def replace_ribbon_diff(diff: ET.Element, replacement: ET.Element) -> None:
+    """Full-replace ``diff``'s content (attributes + children) with ``replacement``'s.
+
+    Desired-state semantics (consistent with the spec-apply ADRs): the entity's live
+    ``<RibbonDiffXml>`` becomes exactly the working-copy file, so an element removed
+    offline does not reappear from live state. ``diff`` keeps its identity in the
+    parent tree; only its attributes and children are swapped.
+    """
+    diff.attrib.clear()
+    diff.attrib.update(replacement.attrib)
+    for child in list(diff):
+        diff.remove(child)
+    for child in list(replacement):
+        diff.append(child)

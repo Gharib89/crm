@@ -865,3 +865,109 @@ def test_validate_icon_webresource_unknown_slot_raises_d365error(
     be = inject_backend(make_fake_backend(forbid=("get_collection",)))
     with pytest.raises(D365Error, match="unknown icon slot"):
         ribbon.validate_icon_webresource(be, slot="bogus", name="cwx_/i.svg")  # type: ignore[arg-type]
+
+
+# ── Ribbon working-copy file flow (#773) ─────────────────────────────────────
+
+
+def test_ensure_ribbon_diff_skeleton_adds_all_containers():
+    diff = ribbon.ensure_ribbon_diff_skeleton(ET.fromstring("<RibbonDiffXml/>"))
+    tags = {c.tag for c in diff}
+    assert {"CustomActions", "Templates", "CommandDefinitions",
+            "RuleDefinitions", "LocLabels"} <= tags
+
+
+def test_ensure_ribbon_diff_skeleton_preserves_existing():
+    # An existing container is not duplicated.
+    diff = ET.fromstring("<RibbonDiffXml><CustomActions><CustomAction Id='x'/>"
+                         "</CustomActions></RibbonDiffXml>")
+    ribbon.ensure_ribbon_diff_skeleton(diff)
+    assert len(diff.findall("CustomActions")) == 1
+    action = diff.find("CustomActions/CustomAction")
+    assert action is not None and action.get("Id") == "x"
+
+
+def test_serialize_ribbon_diff_is_pretty_and_stable():
+    diff = _empty_diff()
+    ids = ribbon.build_button_ids("cwx_ticket", "form", "Ping", None)
+    ribbon.add_custom_action(
+        diff, ids=ids, group="G", label="Ping", webresource="cwx_/s.js",
+        function="ns.ping", param="PrimaryControl", sequence=50)
+    first = ribbon.serialize_ribbon_diff(diff)
+    assert first.splitlines()[0].startswith("<?xml")
+    assert "RibbonDiffXml" in first
+    # Re-parsing and re-serializing must not accrue blank lines (compose stability).
+    second = ribbon.serialize_ribbon_diff(ET.fromstring(first))
+    assert first == second
+
+
+def test_save_then_load_ribbon_diff_file_round_trips(tmp_path):
+    diff = _empty_diff()
+    ids = ribbon.build_button_ids("cwx_ticket", "form", "Ping", None)
+    ribbon.add_custom_action(
+        diff, ids=ids, group="G", label="Ping", webresource="cwx_/s.js",
+        function="ns.ping", param="PrimaryControl", sequence=50)
+    f = tmp_path / "diff.xml"
+    ribbon.save_ribbon_diff_file(f, diff)
+
+    loaded = ribbon.load_ribbon_diff_file(f)
+    assert loaded.tag == "RibbonDiffXml"
+    buttons = ribbon.list_custom_buttons(loaded)
+    assert [b.button_id for b in buttons] == [ids.custom_action]
+
+
+def test_load_ribbon_diff_file_rejects_wrong_root(tmp_path):
+    f = tmp_path / "bad.xml"
+    f.write_text("<NotARibbon/>", encoding="utf-8")
+    with pytest.raises(D365Error, match="expected <RibbonDiffXml>"):
+        ribbon.load_ribbon_diff_file(f)
+
+
+def test_load_ribbon_diff_file_rejects_malformed_xml(tmp_path):
+    f = tmp_path / "bad.xml"
+    f.write_text("<RibbonDiffXml>", encoding="utf-8")  # unclosed
+    with pytest.raises(D365Error, match="not valid XML"):
+        ribbon.load_ribbon_diff_file(f)
+
+
+def test_load_ribbon_diff_file_missing_raises(tmp_path):
+    with pytest.raises(D365Error, match="could not read diff file"):
+        ribbon.load_ribbon_diff_file(tmp_path / "nope.xml")
+
+
+def test_edit_ribbon_diff_file_composes_edits_offline(tmp_path):
+    """Two offline edits against the same file compose — the second sees the first,
+    with no backend anywhere in the loop (edit_ribbon_diff_file takes no backend)."""
+    f = tmp_path / "diff.xml"
+    ribbon.save_ribbon_diff_file(f, _empty_diff())
+
+    ids = ribbon.build_button_ids("cwx_ticket", "form", "Ping", None)
+    ribbon.edit_ribbon_diff_file(f, lambda d: ribbon.add_custom_action(
+        d, ids=ids, group="G", label="Ping", webresource="cwx_/s.js",
+        function="ns.ping", param="PrimaryControl", sequence=50))
+    # set-label finds the button the first edit created — proving composition.
+    ribbon.edit_ribbon_diff_file(f, lambda d: ribbon.set_button_label(
+        d, button_id=ids.custom_action, label="Pong"))
+
+    loaded = ribbon.load_ribbon_diff_file(f)
+    btn = loaded.find(".//Button")
+    assert btn is not None and btn.get("LabelText") == "Pong"
+
+
+def test_replace_ribbon_diff_full_replaces_not_merges():
+    """A button present live but absent from the replacement must not survive."""
+    live = _empty_diff()
+    old_ids = ribbon.build_button_ids("cwx_ticket", "form", "Old", None)
+    ribbon.add_custom_action(
+        live, ids=old_ids, group="G", label="Old", webresource="cwx_/s.js",
+        function="ns.old", param="PrimaryControl", sequence=50)
+
+    replacement = _empty_diff()
+    new_ids = ribbon.build_button_ids("cwx_ticket", "form", "New", None)
+    ribbon.add_custom_action(
+        replacement, ids=new_ids, group="G", label="New", webresource="cwx_/s.js",
+        function="ns.new", param="PrimaryControl", sequence=50)
+
+    ribbon.replace_ribbon_diff(live, replacement)
+    got = {b.button_id for b in ribbon.list_custom_buttons(live)}
+    assert got == {new_ids.custom_action}  # old button gone, new one present

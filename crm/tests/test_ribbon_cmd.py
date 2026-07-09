@@ -1247,3 +1247,232 @@ def test_ribbon_set_icon_d365error_in_apply(monkeypatch):
     assert res.exit_code == 1
     data = json.loads(res.output)
     assert data["ok"] is False
+
+
+# ── Ribbon working-copy flow (#773): export --solution, --diff-file, apply ────
+
+
+def _no_backend(monkeypatch):
+    """Make ctx.backend() raise, so any verb that touches the backend fails the
+    test — the way we assert an offline `--diff-file` path makes zero backend calls."""
+    def boom(self):
+        raise AssertionError("offline --diff-file path must not touch the backend")
+    monkeypatch.setattr("crm.cli.CLIContext.backend", boom)
+
+
+def _seed_diff_file(tmp_path, body=""):
+    """Write a minimal working-copy RibbonDiffXml file, as `export --solution` would."""
+    f = tmp_path / "diff.xml"
+    f.write_text(f"<RibbonDiffXml>{body}</RibbonDiffXml>", encoding="utf-8")
+    return f
+
+
+def test_ribbon_export_solution_emits_fragment(monkeypatch):
+    diff = ET.fromstring("<RibbonDiffXml><CustomActions>"
+                         "<CustomAction Id='x.CustomAction'/></CustomActions>"
+                         "</RibbonDiffXml>")
+    captured = {}
+
+    def fake_load(backend, solution, entity):
+        captured["solution"] = solution
+        captured["entity"] = entity
+        return diff
+
+    monkeypatch.setattr(ribbon_mod, "load_solution_ribbon_diff", fake_load)
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "export", "cwx_ticket", "--solution", "MySol"])
+    assert res.exit_code == 0, res.output
+    data = json.loads(res.output)["data"]
+    assert data["entity"] == "cwx_ticket"
+    assert data["solution"] == "MySol"
+    assert "<RibbonDiffXml>" in data["ribbonxml"].replace("\n", "")
+    assert captured == {"solution": "MySol", "entity": "cwx_ticket"}
+
+
+def test_ribbon_export_solution_rejects_application(monkeypatch):
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "export", "--application", "--solution", "MySol"])
+    assert res.exit_code == 2
+    assert "solution" in res.output.lower()
+
+
+def test_ribbon_add_button_diff_file_offline(monkeypatch, tmp_path):
+    _no_backend(monkeypatch)
+    f = _seed_diff_file(tmp_path)
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "add-button", "cwx_ticket", "--diff-file", str(f),
+        "--label", "Validate", "--location", "form",
+        "--webresource", "cwx_/x.js", "--function", "ns.fn",
+        "--param", "PrimaryControl"])
+    assert res.exit_code == 0, res.output
+    data = json.loads(res.output)["data"]
+    assert data["diff_file"] == str(f)
+    assert data["button_id"] == "cwx_ticket.form.Validate.CustomAction"
+    # the edit landed in the file
+    root = ET.fromstring(f.read_text(encoding="utf-8"))
+    assert root.find(".//Button[@LabelText='Validate']") is not None
+
+
+def test_ribbon_diff_file_rejects_solution(monkeypatch, tmp_path):
+    _no_backend(monkeypatch)
+    f = _seed_diff_file(tmp_path)
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "add-button", "cwx_ticket", "--diff-file", str(f),
+        "--solution", "MySol", "--label", "V", "--location", "form",
+        "--webresource", "cwx_/x.js", "--function", "ns.fn",
+        "--param", "PrimaryControl"])
+    assert res.exit_code == 2
+    assert "diff-file" in res.output.lower() and "solution" in res.output.lower()
+
+
+def test_ribbon_diff_file_rejects_publish(monkeypatch, tmp_path):
+    _no_backend(monkeypatch)
+    f = _seed_diff_file(tmp_path)
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "add-button", "cwx_ticket", "--diff-file", str(f),
+        "--publish", "--label", "V", "--location", "form",
+        "--webresource", "cwx_/x.js", "--function", "ns.fn",
+        "--param", "PrimaryControl"])
+    assert res.exit_code == 2
+    assert "diff-file" in res.output.lower() and "publish" in res.output.lower()
+
+
+def test_ribbon_diff_file_composes_three_edits(monkeypatch, tmp_path):
+    """add-button → set-label → set-rules against one file compose offline."""
+    _no_backend(monkeypatch)
+    f = _seed_diff_file(tmp_path)
+    runner = CliRunner()
+
+    r1 = runner.invoke(cli, [
+        "ribbon", "add-button", "cwx_ticket", "--diff-file", str(f),
+        "--label", "Go", "--location", "form",
+        "--webresource", "cwx_/x.js", "--function", "ns.go",
+        "--param", "PrimaryControl"])
+    assert r1.exit_code == 0, r1.output
+    button_id = "cwx_ticket.form.Go.CustomAction"
+    command_id = "cwx_ticket.form.Go.Command"
+
+    r2 = runner.invoke(cli, [
+        "ribbon", "set-label", "cwx_ticket", "--diff-file", str(f),
+        "--button-id", button_id, "--label", "Launch"])
+    assert r2.exit_code == 0, r2.output
+
+    r3 = runner.invoke(cli, [
+        "ribbon", "set-rules", "cwx_ticket", "--diff-file", str(f),
+        "--command-id", command_id,
+        "--enable-rule", "Mscrm.SelectionCountExactlyOne"])
+    assert r3.exit_code == 0, r3.output
+
+    root = ET.fromstring(f.read_text(encoding="utf-8"))
+    btn = root.find(".//Button")
+    assert btn is not None and btn.get("LabelText") == "Launch"
+    cdef = next(c for c in root.iter("CommandDefinition")
+                if c.get("Id") == command_id)
+    refs = [e.get("Id") for e in cdef.findall("EnableRules/EnableRule")]
+    assert refs == ["Mscrm.SelectionCountExactlyOne"]
+
+
+def test_ribbon_remove_diff_file_offline(monkeypatch, tmp_path):
+    _no_backend(monkeypatch)
+    f = _seed_diff_file(
+        tmp_path,
+        "<CustomActions><CustomAction Id='b.CustomAction'>"
+        "<CommandUIDefinition><Button Id='b' Command='b.Command' "
+        "LabelText='X'/></CommandUIDefinition></CustomAction></CustomActions>"
+        "<CommandDefinitions><CommandDefinition Id='b.Command'/></CommandDefinitions>")
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "remove", "cwx_ticket", "--diff-file", str(f),
+        "--button-id", "b.CustomAction", "--yes"])
+    assert res.exit_code == 0, res.output
+    root = ET.fromstring(f.read_text(encoding="utf-8"))
+    assert root.find(".//CustomAction") is None
+
+
+def test_ribbon_apply_full_replaces_and_publishes(monkeypatch, tmp_path):
+    f = _seed_diff_file(
+        tmp_path,
+        "<CustomActions><CustomAction Id='new.CustomAction'/></CustomActions>")
+    captured = {}
+
+    def fake_apply(backend, *, solution, entity, mutate, publish, **kw):
+        # a live diff carrying an OLD button that must NOT survive the replace
+        root = ET.fromstring(
+            "<ImportExportXml><Entities><Entity><Name>cwx_ticket</Name>"
+            "<RibbonDiffXml><CustomActions>"
+            "<CustomAction Id='old.CustomAction'/></CustomActions>"
+            "</RibbonDiffXml></Entity></Entities></ImportExportXml>")
+        _apply_mutate(mutate, root, entity)
+        ids = {a.get("Id") for a in root.iter("CustomAction")}
+        captured["ids"] = ids
+        captured["publish"] = publish
+        captured["solution"] = solution
+        return {"status": "succeeded"}
+
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change", fake_apply)
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "apply", "cwx_ticket",
+        "--solution", "MySol", "--from", str(f)])
+    assert res.exit_code == 0, res.output
+    assert captured["ids"] == {"new.CustomAction"}  # old gone, new present
+    assert captured["publish"] is True              # apply defaults to publish
+    assert captured["solution"] == "MySol"
+
+
+def test_ribbon_apply_no_publish(monkeypatch, tmp_path):
+    f = _seed_diff_file(tmp_path)
+    captured = {}
+
+    def fake_apply(backend, *, solution, entity, mutate, publish, **kw):
+        captured["publish"] = publish
+        return {"status": "succeeded"}
+
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change", fake_apply)
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "apply", "cwx_ticket",
+        "--solution", "MySol", "--from", str(f), "--no-publish"])
+    assert res.exit_code == 0, res.output
+    assert captured["publish"] is False
+
+
+def test_ribbon_apply_rejects_bad_root(monkeypatch, tmp_path):
+    f = tmp_path / "bad.xml"
+    f.write_text("<NotARibbon/>", encoding="utf-8")
+    monkeypatch.setattr(
+        ribbon_mod, "apply_ribbon_change",
+        lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("must fail before apply")))
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "apply", "cwx_ticket",
+        "--solution", "MySol", "--from", str(f)])
+    assert res.exit_code == 1
+    assert "expected <RibbonDiffXml>" in res.output
+
+
+def test_ribbon_apply_dry_run_does_not_import(monkeypatch, tmp_path):
+    """--dry-run previews via the export short-circuit in apply_ribbon_change and
+    never imports or publishes (same contract as the other ribbon write verbs)."""
+    imported: list[str] = []
+    published: list[str] = []
+    f = _seed_diff_file(
+        tmp_path,
+        "<CustomActions><CustomAction Id='x.CustomAction'/></CustomActions>")
+
+    def fake_export(backend, name, output_path, **kw):
+        return {"_dry_run": True, "would_export": name}
+
+    monkeypatch.setattr(ribbon_mod, "export_solution", fake_export)
+    monkeypatch.setattr(ribbon_mod, "import_solution",
+                        lambda *a, **k: imported.append("x"))
+    monkeypatch.setattr(ribbon_mod, "publish_all",
+                        lambda *a, **k: published.append("x"))
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "--dry-run", "ribbon", "apply", "cwx_ticket",
+        "--solution", "MySol", "--from", str(f)])
+    assert res.exit_code == 0, res.output
+    assert imported == [] and published == []  # no writes under --dry-run

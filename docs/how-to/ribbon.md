@@ -17,6 +17,55 @@ crm ribbon export --application --output app_ribbon.xml
 Pass `ENTITY` for one table's ribbon, or `--application` / `-a` for the app-wide
 ribbon. Passing both, or neither, is an error. Read-only.
 
+With `--solution`, `export` emits the entity's **editable `RibbonDiffXml` fragment**
+from that solution — the importable working-copy file for the offline flow below —
+instead of the composed read-only ribbon:
+
+```bash
+crm ribbon export cwx_ticket --solution MySolution --output ribbon_diff.xml
+```
+
+`--solution` requires `ENTITY` and cannot be combined with `--application`.
+
+## Compose edits offline (working-copy flow)
+
+The per-verb write commands each run a full solution export → import → publish
+round-trip, and — unlike forms/views — an **unpublished** `RibbonDiffXml` is not
+carried by the solution export (see the warning under *Add a JavaScript button*).
+To compose several edits with a **single** publish, edit a local working-copy file
+instead:
+
+```bash
+# 1. Export the entity's editable RibbonDiffXml fragment to a file
+crm ribbon export cwx_ticket --solution MySolution --output ribbon_diff.xml
+
+# 2. Apply N edits to the local file — --diff-file makes ZERO backend calls
+crm ribbon add-button cwx_ticket --diff-file ribbon_diff.xml \
+    --label Validate --location form \
+    --webresource cwx_/scripts/x.js --function ns.fn --param PrimaryControl
+crm ribbon set-label cwx_ticket --diff-file ribbon_diff.xml \
+    --button-id cwx_ticket.form.Validate.CustomAction --label "Validate Ticket"
+crm ribbon set-rules cwx_ticket --diff-file ribbon_diff.xml \
+    --command-id cwx_ticket.form.Validate.Command \
+    --enable-rule Mscrm.SelectionCountExactlyOne
+
+# 3. Import + publish the finished file once
+crm ribbon apply cwx_ticket --solution MySolution --from ribbon_diff.xml
+```
+
+`--diff-file` is available on `add-button`, `add-custom-rule`, `set-label`,
+`set-rules`, and `remove`. In this mode the verb parses the file, applies the same
+edit, and writes it back — **no backend calls** — so the edits compose locally and
+the live pre-validations (web-resource existence, `--lcid` provisioned-language
+check) are deferred to `apply`'s import. `--diff-file` is mutually exclusive with
+`--solution` and `--publish` (passing either together is a usage error).
+
+`ribbon apply` **full-replaces** the entity's live `RibbonDiffXml` with the file
+verbatim (desired-state: a button you removed offline does not reappear from live
+state) and publishes once by default; pass `--no-publish` to stage the import.
+`hide-button` has **no** `--diff-file` mode — it needs the live composed ribbon to
+validate its target and derive the command, so it stays live-only.
+
 ## List custom buttons
 
 ```bash
@@ -45,7 +94,10 @@ three creates an icon-less button exactly as before.
     solution export that `set-label`, `set-rules`, and `add-custom-rule` read to find
     their target. A button added **without `--publish`** is therefore invisible to
     those verbs (they fail with `… not found` / `available: []`). Add the button with
-    `--publish`, or run `crm solution publish-all` before the follow-up edit.
+    `--publish`, or run `crm solution publish-all` before the follow-up edit — or
+    compose the whole set offline with the
+    [working-copy flow](#compose-edits-offline-working-copy-flow), which needs no
+    inter-edit publish at all.
 
 ## Remove a button
 
