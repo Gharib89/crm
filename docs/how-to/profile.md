@@ -115,10 +115,13 @@ where its secret lives (`cred=keyring`, `cred=plaintext`, or `cred=none`), and a
 crm profile edit                # interactive picker (no argument)
 crm profile edit prod --publisher-prefix cwx
 crm profile edit online --url https://contoso.crm.dynamics.com --client-id <new-id>
+crm profile edit lab --no-verify-ssl    # skip SSL verification (--verify-ssl re-enables)
 ```
 
 `edit` changes any non-secret field — URL, identity fields, api-version,
-publisher prefix, and the read-only guardrail (see [Mark a profile
+publisher prefix, SSL-certificate verification (`--verify-ssl/--no-verify-ssl`,
+the same toggle `profile add` sets, flippable in place either way), and the
+read-only guardrail (see [Mark a profile
 read-only](#mark-a-profile-read-only)). To change the secret, use `set-password`
 (below). An invalid
 `--publisher-prefix` is rejected the same way as on `add` (exit 2). Omitting

@@ -359,6 +359,41 @@ class TestListEditRm:
         assert result.exit_code == 2, result.output
         assert session_mod.load_profile("a").username == "u"  # unchanged
 
+    def test_edit_no_verify_ssl_disables_in_place(self, crm_home):
+        # --no-verify-ssl flips verify_ssl off on an existing profile without a
+        # delete-and-recreate, leaving every other field untouched (#707).
+        self._seed("a")
+        assert session_mod.load_profile("a").verify_ssl is True
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "profile", "edit", "a", "--no-verify-ssl"])
+        assert result.exit_code == 0, result.output
+        p = session_mod.load_profile("a")
+        assert p.verify_ssl is False
+        assert p.url == "https://a.contoso.local/o" and p.username == "u"  # unchanged
+
+    def test_edit_verify_ssl_reenables(self, crm_home):
+        # The toggle works both ways: --verify-ssl turns verification back on.
+        from crm.utils.d365_backend import ConnectionProfile
+        session_mod.save_profile(ConnectionProfile(
+            name="a", url="https://a.contoso.local/o",
+            domain="C", username="u", verify_ssl=False))
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "profile", "edit", "a", "--verify-ssl"])
+        assert result.exit_code == 0, result.output
+        assert session_mod.load_profile("a").verify_ssl is True
+
+    def test_edit_verify_ssl_untouched_when_flag_absent(self, crm_home):
+        # Omitting the flag leaves verify_ssl as-is (default-None means unchanged).
+        from crm.utils.d365_backend import ConnectionProfile
+        session_mod.save_profile(ConnectionProfile(
+            name="a", url="https://a.contoso.local/o",
+            domain="C", username="u", verify_ssl=False))
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "--json", "profile", "edit", "a", "--url", "https://a.contoso.local/o2"])
+        assert result.exit_code == 0, result.output
+        assert session_mod.load_profile("a").verify_ssl is False  # unchanged
+
     def test_rm_deletes_profile_and_secret(self, crm_home):
         self._seed("a")
         session_mod.save_profile_secret_plaintext("a", "pw")
