@@ -74,6 +74,11 @@ SYNC: list[SkillEntry] = [
 # pointless and a footgun inside a repo clone.
 EXCLUDE = {"setup-matt-pocock-skills"}
 
+# Hand-authored in this repo — `.claude/skills/` IS their source of truth. Never
+# vendor over these: a same-named personal skill (via SYNC or a dependency
+# reference) must never `rmtree` the tracked copy and destroy project edits.
+PROJECT_NATIVE = {"ship", "cloud-ship", "merge-gate", "live-e2e"}
+
 # A backticked `/name` or `name` token that matches a known skill directory.
 _REF = re.compile(r"`/?([a-z][a-z0-9-]+)`")
 
@@ -102,7 +107,7 @@ def resolve_closure(
         src = SRC / name
         if not src.is_dir():
             continue
-        for dep in find_refs(src, universe) - set(wanted) - EXCLUDE:
+        for dep in find_refs(src, universe) - set(wanted) - EXCLUDE - PROJECT_NATIVE:
             wanted[dep] = False
             auto.add(dep)
             stack.append(dep)
@@ -141,6 +146,17 @@ def main() -> int:
     universe = {p.name for p in SRC.iterdir() if p.is_dir()}
     seed = {e["name"]: e["model_invokable"] for e in SYNC}
     wanted, auto = resolve_closure(seed, universe)
+
+    # Hard guard: refuse to vendor over a project-native skill, even if one was
+    # named in SYNC. resolve_closure already skips them as deps; this catches a
+    # direct SYNC edit before any rmtree runs.
+    clash = PROJECT_NATIVE & set(wanted)
+    if clash:
+        print(
+            f"error: refusing to overwrite project-native skill(s): {', '.join(sorted(clash))}",
+            file=sys.stderr,
+        )
+        return 1
 
     DST.mkdir(parents=True, exist_ok=True)
     missing: list[str] = []
