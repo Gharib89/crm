@@ -51,12 +51,17 @@ def _as_list(value: Any) -> list[dict[str, Any]]:
     return cast("list[dict[str, Any]]", value) if isinstance(value, list) else []
 
 
-def _sha256_file(base_dir: str | None, file: str) -> str:
-    """Hex sha256 of a referenced payload, resolved against the spec's directory.
+def _sha256_file(base_dir: str | None, file: str) -> str | None:
+    """Hex sha256 of a referenced payload, or ``None`` when it cannot be read.
 
     A relative ``file`` is joined to ``base_dir`` (the spec file's directory), the
-    same resolution apply uses to read the payload. OSError maps to a D365Error so
-    a missing/unreadable payload is a clean reported failure, not a crash.
+    same resolution apply uses to read the payload. An unreadable payload pins as
+    ``None`` rather than raising: the plan is written on *every* dry-run (ADR 0022),
+    and apply already routes the identical read failure to the drift report's
+    ``failed`` bucket — which this plan serializes. A ``None`` pin records
+    "unpinnable at plan time" without aborting the write; slice-2 ``--from-plan``
+    refuses any plan carrying a ``failed`` entry, so a ``None`` pin never reaches a
+    present-and-matching check.
     """
     path = os.path.join(base_dir or "", file)
     digest = hashlib.sha256()
@@ -66,19 +71,19 @@ def _sha256_file(base_dir: str | None, file: str) -> str:
             # read wholesale into memory just to hash it.
             for chunk in iter(lambda: fh.read(65536), b""):
                 digest.update(chunk)
-    except OSError as exc:
-        raise D365Error(
-            f"could not read referenced payload {file!r} ({path}): {exc}") from exc
+    except OSError:
+        return None
     return digest.hexdigest()
 
 
-def _payload_pins(spec: dict[str, Any], base_dir: str | None) -> dict[str, str]:
+def _payload_pins(spec: dict[str, Any], base_dir: str | None) -> dict[str, str | None]:
     """``{file: sha256}`` for every referenced file payload in the spec.
 
     Web resources may inline their body as base64 ``content`` — already embedded in
     the spec, so no pin is needed; only a ``file`` reference is pinned. Plug-in
     assemblies always reference a DLL ``file``. A path shared by several components
-    is read and hashed once, keyed by the spec-relative string apply reads it by.
+    is read and hashed once, keyed by the spec-relative string apply reads it by. An
+    unreadable payload maps to ``None`` (see ``_sha256_file``).
     """
     files: list[str] = []
     for block in (*_as_list(spec.get("webresources")), *_as_list(spec.get("plugins"))):

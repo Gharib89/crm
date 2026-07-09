@@ -125,6 +125,25 @@ def test_build_plan_pins_referenced_payloads_by_sha256(backend, tmp_path):
     assert "contoso_/inline.css" not in plan["payloads"]
 
 
+def test_build_plan_unreadable_payload_pins_none_and_still_builds(backend):
+    # ADR 0022: -o always writes the plan. A referenced payload that can't be read
+    # pins as None instead of aborting the build — apply routes the same read
+    # failure to the drift report's `failed` bucket, which the plan serializes.
+    spec = {
+        "solution": {"unique_name": "ContosoCore"},
+        "webresources": [{"name": "contoso_/missing.js", "file": "does/not/exist.js"}],
+    }
+    report = _report(failed=[{"kind": "webresource", "name": "contoso_/missing.js",
+                              "error": "cannot read file 'does/not/exist.js'"}])
+    plan = plan_mod.build_plan(
+        spec=spec, report=report, backend=backend, organization_id=None,
+        solution="ContosoCore", base_dir="/nonexistent-base",
+        prune=False, allow_data_loss=False, stage_only=False)
+    assert plan["payloads"] == {"does/not/exist.js": None}
+    # The failed component is serialized, so the plan doubles as the drift report.
+    assert [v["verdict"] for v in plan["verdicts"]] == ["failed"]
+
+
 def test_build_plan_no_payloads_when_no_file_references(backend):
     plan = plan_mod.build_plan(
         spec=_SPEC, report=_report(), backend=backend, organization_id=None,
