@@ -246,9 +246,11 @@ Key points:
   are ambiguous (`FaxId`, `EmailId`, or `TemplateId`) and require an explicit
   `--message-property-name`; messages outside that table do not support
   images and are rejected client-side.
-- Platform validity rules are enforced before any write: no pre-image on a
-  `Create` step, no post-image on a `Delete` step, and post-images (or `both`) require a
-  step registered in the **PostOperation** stage.
+- Platform validity rules are enforced before any write, identically whether
+  the image type is `pre`, `post`, or `both` (a `both` image counts as *both*
+  a pre- and a post-image for these checks): no pre-image on a `Create` step,
+  no post-image on a `Delete` step, and post-images require a step registered
+  in the **PostOperation** stage.
 - `--solution` lands the image row in a target solution and is required (same
   semantics as on `register-step` and `register-assembly`).
 

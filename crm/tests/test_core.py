@@ -544,6 +544,37 @@ class TestAssociate:
             )
         assert "$id=" not in m.request_history[0].url
 
+    def test_disassociate_half_supplied_pair_rejected(self, backend):
+        # Only one of related_set/related_id is a caller mistake — it must error,
+        # not silently fall through to the single-valued (N:1) delete path.
+        with requests_mock.Mocker() as m:
+            m.delete(requests_mock.ANY, status_code=204)
+            with pytest.raises(D365Error, match=r"together.*or neither"):
+                entity_mod.disassociate(
+                    backend, "accounts", _GUID,
+                    "contact_customer_accounts", related_set="contacts",
+                )
+            with pytest.raises(D365Error, match=r"together.*or neither"):
+                entity_mod.disassociate(
+                    backend, "accounts", _GUID,
+                    "contact_customer_accounts",
+                    related_id="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                )
+        assert not m.request_history  # nothing sent to the server
+
+    def test_disassociate_half_pair_cli_exit_2(self):
+        # On the CLI the same half-pair mistake is a usage error (exit 2, before
+        # any backend call), like `--bind-id` without `--bind-set`.
+        from click.testing import CliRunner
+        from crm import cli as cli_mod
+        result = CliRunner().invoke(
+            cli_mod.cli,
+            ["--json", "entity", "disassociate", "accounts", _GUID,
+             "contact_customer_accounts", "--related-set", "contacts"],
+        )
+        assert result.exit_code == 2, result.output
+        assert json.loads(result.output)["ok"] is False
+
     def test_set_lookup_patches_odata_bind(self, backend):
         other = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
         with requests_mock.Mocker() as m:
@@ -952,6 +983,26 @@ class TestExport:
         text = out.read_text()
         assert "fullname,telephone1" in text.splitlines()[0]
         assert "Alice" in text and "Bob" in text
+
+    @pytest.mark.parametrize("max_records,expected", [(0, 0), (1, 1), (2, 2)])
+    def test_export_honors_max_records_exactly(
+        self, backend, tmp_path, max_records, expected
+    ):
+        # --max-records must be honored exactly; a cutoff of 0 exports 0, not 1
+        # (the cutoff is checked before the record is yielded).
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("contacts"),
+                json={"value": [
+                    {"fullname": "Alice"},
+                    {"fullname": "Bob"},
+                ]},
+            )
+            out = tmp_path / "contacts.json"
+            info = export_mod.export_records(
+                backend, "contacts", out, max_records=max_records,
+            )
+        assert info["count"] == expected
 
 
 class TestWorkflow:
@@ -2047,6 +2098,17 @@ class TestLoadPayload:
         from crm.commands._helpers import _load_payload
 
         assert _load_payload('{"name":"x"}', None) == {"name": "x"}
+
+    def test_data_and_data_file_are_mutually_exclusive(self, tmp_path):
+        import click
+        from crm.commands._helpers import _load_payload
+
+        # Both supplied must be rejected, not silently resolved (file-wins) —
+        # otherwise a caller bug is hidden.
+        f = tmp_path / "payload.json"
+        f.write_text('{"name": "from-file"}', encoding="utf-8")
+        with pytest.raises(click.UsageError, match=r"mutually exclusive"):
+            _load_payload('{"name": "from-flag"}', str(f))
 
     def test_data_at_prefix_hints_data_file(self):
         import click

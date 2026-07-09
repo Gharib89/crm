@@ -7,6 +7,10 @@ import click
 
 
 def _load_payload(data_json: str | None, data_file: str | None) -> dict[str, Any]:
+    if data_json and data_file:
+        raise click.UsageError(
+            "--data and --data-file are mutually exclusive; pass only one."
+        )
     if data_file:
         try:
             with open(data_file, "r", encoding="utf-8") as f:

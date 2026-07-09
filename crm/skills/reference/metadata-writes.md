@@ -41,7 +41,9 @@ Omitting `--behavior` leaves the column at the server default (`UserLocal`).
 `metadata add-attribute --kind string --auto-number-format "<pattern>"` sets
 `AutoNumberFormat` so the server generates the value on insert. Patterns use
 `{SEQNUM:n}` (zero-padded sequence) and `{RANDSTRING:n}` (random alphanumerics),
-e.g. `INV-{SEQNUM:5}`. String-kind only; ignored/invalid for other kinds.
+e.g. `INV-{SEQNUM:5}`. String-kind only — passing it with any other `--kind`
+is rejected client-side before any HTTP call (same pattern as `--behavior`
+above).
 
 ## Rollup and calculated columns (`--type rollup` / `--type calculated`)
 

@@ -373,6 +373,20 @@ class TestCreateManyToMany:
                 intersect_entity="bad_intersect",
             )
 
+    def test_rejects_uselabel_without_label(self, backend):
+        # Mirror the 1:N guard: a UseLabel associated menu with no label is
+        # rejected client-side rather than sent to the server (which rejects it).
+        from crm.core import relationships as rel
+        with pytest.raises(D365Error, match="UseLabel"):
+            rel.create_many_to_many(
+                backend,
+                schema_name="new_account_project",
+                entity1_logical="account",
+                entity2_logical="new_project",
+                intersect_entity="new_account_project",
+                entity2_menu_behavior="UseLabel",
+            )
+
     def test_rejects_bad_if_exists(self, backend):
         from crm.core import relationships as rel
         with pytest.raises(D365Error, match="if_exists"):

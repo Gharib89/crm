@@ -663,6 +663,15 @@ def create_many_to_many(
         ("entity2_menu_behavior", entity2_menu_behavior),
     ):
         mc.validate_menu_behavior(value, subject=name)
+    for behavior, menu_label, flag in (
+        (entity1_menu_behavior, entity1_menu_label, "--entity1-menu-label"),
+        (entity2_menu_behavior, entity2_menu_label, "--entity2-menu-label"),
+    ):
+        if behavior == "UseLabel" and not menu_label:
+            raise D365Error(
+                f"menu_behavior 'UseLabel' requires {flag}; the server rejects a "
+                "custom-label associated menu without a label."
+            )
 
     exists = target_exists(
         backend, f"RelationshipDefinitions(SchemaName='{schema_name}')"

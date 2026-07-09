@@ -1226,6 +1226,37 @@ class TestRegisterImage:
                     backend, step=_STEP_ID, image_type="post", alias="postimg")
         assert not _posts(m)
 
+    def test_both_image_requires_postoperation_stage(self, backend):
+        # "both" captures a post-image too, so the PostOperation-stage rule applies
+        # to it — it must not silently bypass the guard (#693).
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            _mock_image_resolution(m, backend, stage=20)
+            with pytest.raises(D365Error, match="[Pp]ost.*PostOperation"):
+                plugin.register_image(
+                    backend, step=_STEP_ID, image_type="both", alias="bothimg")
+        assert not _posts(m)
+
+    def test_both_image_on_create_step_raises(self, backend):
+        # "both" captures a pre-image too, invalid on Create (record not yet there).
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            _mock_image_resolution(m, backend, stage=40, message="Create")
+            with pytest.raises(D365Error, match="[Pp]re-image.*Create"):
+                plugin.register_image(
+                    backend, step=_STEP_ID, image_type="both", alias="bothimg")
+        assert not _posts(m)
+
+    def test_both_image_on_delete_step_raises(self, backend):
+        # "both" captures a post-image too, invalid on Delete (record gone after).
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            _mock_image_resolution(m, backend, stage=40, message="Delete")
+            with pytest.raises(D365Error, match="[Pp]ost-image.*Delete"):
+                plugin.register_image(
+                    backend, step=_STEP_ID, image_type="both", alias="bothimg")
+        assert not _posts(m)
+
     def test_unsupported_message_without_override_raises(self, backend):
         # Send is ambiguous (FaxId/EmailId/TemplateId) so it is absent from the
         # derivation table; without an explicit property the call must fail

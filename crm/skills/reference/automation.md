@@ -71,7 +71,9 @@ crm --json plugin register-step \
 # --message-property-name FaxId|EmailId|TemplateId). Always pass --attributes:
 # omitting it snapshots ALL columns (documented performance anti-pattern).
 # Rejected client-side: pre-image on Create, post-image on Delete, post-image
-# on a non-PostOperation step, messages that don't support images.
+# on a non-PostOperation step, messages that don't support images. A "both"
+# image counts as pre AND post for these checks — none of the four rules is
+# bypassed by choosing "both".
 crm --json plugin register-image \
     --step "Contoso.Plugins.AccountPostUpdate: Update of account" \
     --type pre --alias preimg --attributes name,telephone1 --solution ContosoCore

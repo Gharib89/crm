@@ -117,15 +117,16 @@ def rc_line(shell: str, dest: Path | str) -> str:
     """The line a user adds to their shell startup file to load the script.
 
     PowerShell dot-sources from ``$PROFILE`` (``. '<path>'``); the Unix shells
-    ``source`` it. The PowerShell path is single-quoted so spaces/special chars in
-    the destination (common on Windows, e.g. a custom ``--path`` under
-    ``C:\\Program Files``) don't break the line; embedded single quotes are doubled
-    per PowerShell's single-quote literal rules.
+    ``source`` it. Both paths are single-quoted so spaces/special chars in the
+    destination (common on Windows, e.g. a custom ``--path`` under
+    ``C:\\Program Files``) don't break the line. PowerShell doubles an embedded
+    single quote (``''``); bash/zsh close-escape-reopen it (``'\\''``).
     """
     if shell == "powershell":
         quoted = str(dest).replace("'", "''")
         return f". '{quoted}'"
-    return f"source {dest}"
+    quoted = str(dest).replace("'", "'\\''")
+    return f"source '{quoted}'"
 
 
 def detect_shell() -> str | None:
