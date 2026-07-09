@@ -797,6 +797,16 @@ def test_set_button_icon_unknown_button_raises():
             diff, button_id="nope.CustomAction", modern_image="cwx_/icons/i.svg")
 
 
+def test_set_button_icon_empty_diff_hints_publish():
+    # Same staged-without-publish signature as set-label/set-rules (#766): an empty
+    # export diff must point at publishing, not just "available: []".
+    diff = _empty_diff()
+    with pytest.raises(D365Error, match="publish-all") as exc:
+        ribbon.set_button_icon(
+            diff, button_id="x.CustomAction", modern_image="cwx_/icons/i.svg")
+    assert "exportable until published" in str(exc.value)
+
+
 def test_set_button_icon_updates_existing_icon_in_place():
     diff = _diff_with_button_for_icon()
     bid = "cwx_ticket.form.Validate.CustomAction"

@@ -566,9 +566,11 @@ def set_button_icon(
     button = action.find(".//Button") if action is not None else None
     if button is None:
         available = [b.button_id for b in list_custom_buttons(ribbon_diff)]
-        raise D365Error(
-            f"button-id {button_id!r} not found as a custom Button; "
-            f"available: {available}")
+        msg = (f"button-id {button_id!r} not found as a custom Button; "
+               f"available: {available}")
+        if _diff_is_effectively_empty(ribbon_diff):
+            msg += _STAGED_UNPUBLISHED_HINT
+        raise D365Error(msg)
     _set_icon_attrs(button, modern_image=modern_image, image16=image16,
                     image32=image32)
 
