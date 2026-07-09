@@ -220,6 +220,25 @@ def test_load_plan_rejects_non_object(tmp_path):
         plan_mod.load_plan(str(p))
 
 
+@pytest.mark.parametrize("bad, match", [
+    ({"plan_format": 1, "header": []}, "header"),
+    ({"plan_format": 1, "header": {"intent": []}}, "intent"),
+    ({"plan_format": 1, "verdicts": {}}, "verdicts.*list"),
+    ({"plan_format": 1, "verdicts": ["not-an-object"]}, "verdict"),
+    ({"plan_format": 1, "payloads": []}, "payloads"),
+    ({"plan_format": 1, "payloads": {"x.js": 123}}, "payloads"),
+    ({"plan_format": 1, "spec": []}, "spec"),
+])
+def test_load_plan_rejects_malformed_shapes(tmp_path, bad, match):
+    # A JSON-valid but structurally-wrong plan (hand-edited / corrupt) must fail as
+    # a clean D365Error at the parse boundary — not an AttributeError/TypeError that
+    # escapes the error envelope downstream in preflight/run_plan.
+    p = tmp_path / "bad.json"
+    p.write_text(json.dumps(bad), encoding="utf-8")
+    with pytest.raises(D365Error, match=match):
+        plan_mod.load_plan(str(p))
+
+
 # ── preflight_plan: refusals + warnings ────────────────────────────────────────
 
 

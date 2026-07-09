@@ -189,7 +189,40 @@ def load_plan(path: str) -> dict[str, Any]:
         raise D365Error(f"plan {path!r} is not valid JSON: {exc}") from exc
     if not isinstance(doc, dict):
         raise D365Error(f"plan {path!r} must be a JSON object.")
-    return cast("dict[str, Any]", doc)
+    plan = cast("dict[str, Any]", doc)
+    _validate_plan_shape(plan, path)
+    return plan
+
+
+def _validate_plan_shape(plan: dict[str, Any], path: str) -> None:
+    """Reject a JSON-valid but structurally-wrong plan as a clean D365Error.
+
+    ``load_plan`` only guarantees a JSON object; a hand-edited or corrupt plan
+    could still carry the wrong *types* for the keys preflight / run_plan
+    dereference (``.get``/``.items``/``os.path.join``). Validating the shape here,
+    at the parse boundary, keeps those a reported failure rather than an
+    AttributeError/TypeError escaping the error envelope downstream.
+    """
+    label = f"plan {path!r}"
+    header = plan.get("header", {})
+    if not isinstance(header, dict):
+        raise D365Error(f"{label}: 'header' must be an object.")
+    if not isinstance(cast("dict[str, Any]", header).get("intent", {}), dict):
+        raise D365Error(f"{label}: 'header.intent' must be an object.")
+    verdicts = plan.get("verdicts", [])
+    if not isinstance(verdicts, list):
+        raise D365Error(f"{label}: 'verdicts' must be a list.")
+    if not all(isinstance(v, dict) for v in cast("list[Any]", verdicts)):
+        raise D365Error(f"{label}: each verdict must be an object.")
+    payloads = plan.get("payloads", {})
+    if not isinstance(payloads, dict):
+        raise D365Error(f"{label}: 'payloads' must be an object.")
+    for key, val in cast("dict[Any, Any]", payloads).items():
+        if not isinstance(key, str) or not (val is None or isinstance(val, str)):
+            raise D365Error(
+                f"{label}: 'payloads' must map file paths to sha256 strings (or null).")
+    if not isinstance(plan.get("spec", {}), dict):
+        raise D365Error(f"{label}: 'spec' must be an object.")
 
 
 def plan_intent(plan: dict[str, Any]) -> dict[str, bool]:
