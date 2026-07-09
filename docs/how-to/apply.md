@@ -290,6 +290,34 @@ picklist on a new option set, a solution on a new publisher) are reported
 > final publish, so its **views land as `planned`**. Run `apply` a second time
 > after the first publish to create them.
 
+## Save a drift report as a plan artifact
+
+`-o/--plan-out <path>` serializes the `--dry-run` drift report to a **plan** — a
+self-contained JSON artifact you can review, attach to a PR or ticket, and (in a
+later release) execute. It is valid **only** with the global `--dry-run` flag
+(a usage error, exit 2, otherwise).
+
+```bash
+crm --dry-run --json apply -f project.yaml -o project.plan.json
+```
+
+The plan is written on **every** dry-run, including one that exits 1 because a
+component is `replace_blocked` — the plan doubles as the drift-report artifact,
+and the exit code is unchanged. A plan captures:
+
+- a **header** — plan-format version, the target Web API base URL and
+  `organizationid` (from WhoAmI), the solution `unique_name`, the CLI version, a
+  timestamp, and the **plan intent** (`prune`, `allow_data_loss`, `stage_only` as
+  passed at plan time);
+- the resolved **spec** embedded verbatim (not a path reference);
+- **payload pins** — a `sha256` per referenced file payload (web-resource bodies,
+  plug-in assembly DLLs), pinning content without inlining it; and
+- **verdict records** — one per component: its `kind`, `name`, `verdict`
+  (`planned` / `updated` / `skipped` / `replace_blocked` / `pruned` / `failed`),
+  and the field-level `diff` where the engine computes one.
+
+The command's own JSON envelope also reports the written path in `meta.plan_out`.
+
 ## Stage without publishing
 
 ```bash

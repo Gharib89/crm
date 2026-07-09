@@ -547,8 +547,10 @@ The full envelope is
 `--dry-run` reads the live org and reports the full drift without writing —
 `planned` (would create), `updated` (would update), `replace_blocked`, and
 `pruned` — so you can preview exactly what an apply would converge; in `--json`
-mode the envelope's `meta` also carries `dry_run: true`. See
-[how-to/apply](docs/how-to/apply.md).
+mode the envelope's `meta` also carries `dry_run: true`. Add `-o/--plan-out FILE`
+(dry-run only) to serialize that drift report as a self-contained **plan**
+artifact — spec, payload `sha256` pins, and per-component verdicts — for review in
+a PR or ticket. See [how-to/apply](docs/how-to/apply.md).
 
 `crm scaffold table DISPLAY --column 'DISPLAY:KIND[:opts]' ...` is the quick
 one-liner path: builds an entity + N columns in memory and runs them through the
