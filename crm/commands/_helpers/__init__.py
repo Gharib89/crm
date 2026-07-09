@@ -32,6 +32,7 @@ from .rendering import (
     _emit_expectation_failure,
     _project_fields,
     _project_table_columns,
+    _apply_jq,
 )
 from .options import (
     _output_option,
@@ -91,7 +92,7 @@ __all__ = [
     "_sanitize", "_strip_odata_keys", "_concise_record", "_normalize_odata_envelope",
     "_short_repr", "_emit_with_warning", "_emit_query_result",
     "_infer_columns", "_prune_annotations", "_emit_expectation_failure",
-    "_project_fields", "_project_table_columns",
+    "_project_fields", "_project_table_columns", "_apply_jq",
     # generic option decorators
     "_output_option",
     # d365 errors

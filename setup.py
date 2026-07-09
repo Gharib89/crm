@@ -34,6 +34,10 @@ setup(
         # would be unreachable there. On Windows this pulls only pywin32-ctypes
         # (auto) and the always-present Credential Manager backend.
         "keyring>=24",
+        # libjq binding behind the global --jq output shaper (#736). Imported
+        # lazily (only when --jq is passed) to keep CLI cold-start cheap; wheels
+        # cover the Python 3.9 floor and all three release OSes (verified v1.11.0).
+        "jq>=1.8",
     ],
     extras_require={
         # pyright is pinned EXACT, not floored: the pip wrapper's bundled node
