@@ -25,6 +25,8 @@ if TYPE_CHECKING:
 from crm.utils.repl_skin import ReplSkin
 from crm.commands._helpers import (
     _normalize_odata_envelope,
+    _project_fields,
+    _project_table_columns,
     _sanitize,
     _short_repr,
     _strip_odata_keys,
@@ -63,6 +65,10 @@ class CLIContext:
     def __init__(self):
         self.json_mode: bool = False
         self.dry_run: bool = False
+        # Output-shaping selection behind the global `--fields` flag (#735): the
+        # top-level keys to project the curated `data` payload down to, or None
+        # for no shaping. Per-invocation (never sticky), set in the root callback.
+        self.fields: list[str] | None = None
         self.profile_name: str | None = None
         self.password: str | None = None
         self.auth_scheme: str | None = None
@@ -94,6 +100,7 @@ class CLIContext:
         """
         if self.json_mode:
             envelope: dict[str, Any] = {"ok": ok}
+            shape_warnings: list[str] = []
             if data is not None:
                 # Curate `data` into the CLI-owned shape (ADR 0008): unwrap an
                 # OData collection envelope to a bare array (paging → meta), then
@@ -109,6 +116,12 @@ class CLIContext:
                     if paging:
                         meta = {**(meta or {}), **paging}
                     data = _strip_odata_keys(data)
+                # Output shaping (#735): project `data` to the `--fields` keys at
+                # this seam — after ADR 0008 curation, before serialization — so
+                # every command inherits it. Gated on `ok` so an error envelope
+                # bypasses shaping; a dry-run preview is shaped like any other data.
+                if ok and self.fields is not None:
+                    data, shape_warnings = _project_fields(data, self.fields)
                 envelope["data"] = _sanitize(data)
             if error:
                 envelope["error"] = error
@@ -117,11 +130,12 @@ class CLIContext:
             # Build a fresh dict so the caller's meta is not mutated.
             if self.dry_run:
                 meta = {**(meta or {}), "dry_run": True}
-            if warnings:
+            all_warnings = [*(warnings or []), *shape_warnings]
+            if all_warnings:
                 existing = (meta or {}).get("warnings") or []
                 if not isinstance(existing, list):
                     existing = [existing]
-                meta = {**(meta or {}), "warnings": [*existing, *warnings]}
+                meta = {**(meta or {}), "warnings": [*existing, *all_warnings]}
             # Connection identity (#624): a success envelope from a command that
             # resolved a backend self-identifies the serving profile + Web API
             # base, so an agent can tell which org a result came from. Gated so
@@ -147,6 +161,19 @@ class CLIContext:
         if not ok:
             self.skin.error(error or "Operation failed.")
             raise click.exceptions.Exit(FAILURE_EXIT_CODE)
+
+        # Output shaping (#735), human mode: `--fields` selects/orders the table
+        # columns (or projects a record's key/value render). Only reached on
+        # success, so error output is never shaped. Warnings print via the skin.
+        if self.fields is not None:
+            if table:
+                table, shape_ws = _project_table_columns(table, self.fields)
+            elif data is not None:
+                data, shape_ws = _project_fields(data, self.fields)
+            else:
+                shape_ws = []
+            for w in shape_ws:
+                self.skin.warning(w)
 
         if table:
             headers = table.get("headers", [])
@@ -591,6 +618,10 @@ def _complete_entity_set_names(ctx: click.Context, param: click.Parameter, incom
 
 @click.group(cls=_LazyJsonAwareGroup, name="crm", invoke_without_command=True, context_settings={"help_option_names": ["-h", "--help"]})
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON output.")
+@click.option("--fields", "fields", default=None, metavar="KEY[,KEY...]",
+              help="Project the data payload down to these comma-separated top-level "
+                   "keys (JSON: per row/record; human: table columns). Applied after "
+                   "curation; the ok/error/meta envelope is untouched.")
 @click.option("--dry-run", is_flag=True,
               help="Preview writes without issuing them; reads run normally.")
 @click.option("--profile", "profile_name", shell_complete=_complete_profile_names,
@@ -626,7 +657,7 @@ def _complete_entity_set_names(ctx: click.Context, param: click.Parameter, incom
 @click.option("--session", "session_name", default="default", help="Session name.")
 @click.version_option(__version__, prog_name="crm")
 @click.pass_context
-def cli(ctx: click.Context, json_mode: bool, dry_run: bool,
+def cli(ctx: click.Context, json_mode: bool, fields: str | None, dry_run: bool,
         profile_name: str | None, password: str | None,
         log_level: str | None, verbose: bool, log_format: str | None,
         auth_scheme: str | None, stage_only: bool, retry_on_ambiguous: bool,
@@ -655,6 +686,15 @@ def cli(ctx: click.Context, json_mode: bool, dry_run: bool,
 
     cli_ctx = ctx.ensure_object(CLIContext)
     cli_ctx.json_mode = json_mode
+    # Shaping is per-invocation, never sticky: each command (each REPL line)
+    # re-decides whether to project, so a bare later line clears a prior --fields.
+    # An empty/whitespace-only value is a usage error (nothing to project).
+    cli_ctx.fields = None
+    if fields is not None:
+        parsed = [f.strip() for f in fields.split(",") if f.strip()]
+        if not parsed:
+            raise click.BadParameter("no field names given", param_hint="--fields")
+        cli_ctx.fields = parsed
     cli_ctx.dry_run = dry_run
     # Per-invocation, NOT sticky: each command (each REPL line) re-decides whether
     # it opened a connection, so emit() never stamps identity onto a local verb

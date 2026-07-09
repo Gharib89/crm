@@ -47,6 +47,14 @@ changes, created-but-read-back-failed records, and partial-optionset advisories.
 a multi-stage optionset update fails mid-way the **error** envelope additionally
 carries `meta.completed_steps` and `meta.failed_stage`.
 
+**Mind your context budget on fat list verbs.** Some read verbs return hundreds
+to tens of thousands of rows (`solution list`, `metadata entities`, `webresource
+list`, `solution components`) — enough to blow a per-call token budget. The global
+`--fields KEY[,KEY...]` flag projects the response down to the columns you need
+*client-side, post-response* (distinct from a request's `--select`), preserving
+the `ok`/`data`/`meta` envelope so you can still page. Project (or count) a fat
+verb before loading it, rather than reading the whole payload into context.
+
 **Exit codes** — check `$?`, then read the envelope:
 
 | code | meaning |

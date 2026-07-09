@@ -155,6 +155,23 @@ an added round-trip); `--full` expands to every field including nulls. So JSON
 defaults verbose-for-agents, human defaults concise-for-people.
 _Avoid_: verbose dump, minimal mode (name the specific knob: `--minimal` / `--full`).
 
+**Shaped payload**:
+The `data` payload after a client-side output shaper has run at the emit seam —
+today the global `--fields KEY[,KEY...]` flag, which projects `data` down to the
+named top-level keys (list rows or a single record) so an agent can fit a fat
+verb inside its context budget. Shaping is **post-curation** (runs after the
+**Data payload** / **List payload** curation), **envelope-preserving** (only
+`data` changes; `ok`/`error`/`meta` — including `next_link`/`count`/`warnings` —
+are untouched), and **success-only** (error envelopes bypass shaping; dry-run
+previews are shaped like any other data). A `--fields` name that matched no
+row/record adds a `meta.warnings` typo tripwire; a non-object payload (e.g. a
+formxml string) passes through unchanged with a warning. Purely additive — no
+shaping flag means byte-identical output. Human mode: `--fields` selects/orders
+the table columns. Formalized in
+[ADR 0023](docs/adr/0023-client-side-output-shaping.md), an addendum to ADR 0008.
+_Avoid_: filter (that's a query `--filter`), `--select` (that's server-side field
+selection in the request; shaping is client-side, post-response).
+
 ### Dry-run
 
 **Dry-run preview**:

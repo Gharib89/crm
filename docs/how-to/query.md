@@ -31,6 +31,30 @@ crm --json query odata workflows \
   --filter "Microsoft.Dynamics.CRM.In(PropertyName='workflowid',PropertyValues=['<id1>','<id2>'])"
 ```
 
+## Shrink a fat payload with `--fields` (client-side projection)
+
+`--fields` is a **global** flag (valid on every command, like `--json`) that
+projects the *response* down to a few top-level keys, so a fat list verb fits an
+agent's context budget. It is post-response and distinct from `--select`, which
+narrows the *request* server-side:
+
+```bash
+# 260 KB → ~90 KB: keep only two columns of every solution row
+crm --json --fields uniquename,version solution list
+```
+
+Semantics: a list payload projects each row to the named keys (in flag order,
+missing keys omitted per row); a single-record payload projects that record; a
+non-object payload (e.g. a `form export` formxml string) passes through unchanged
+with a `meta.warnings` advisory. A field name that matched no row adds a
+`meta.warnings` typo tripwire. The `ok`/`error`/`meta` envelope — including
+`meta.next_link`/`meta.count` — is never touched, so you can still page after
+projecting. In human mode `--fields` selects and orders the table columns. Error
+envelopes are never shaped; `--dry-run` previews are (ADR 0023).
+
+`--select` (server-side, request) and `--fields` (client-side, response) compose:
+`--select` cuts what the server sends, `--fields` cuts what you read.
+
 ## Aggregate / group by with `$apply` (`--apply`)
 
 ```bash
