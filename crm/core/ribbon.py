@@ -18,7 +18,10 @@ from typing import TYPE_CHECKING, Any, Callable, Sequence
 
 from crm.core.solution import export_solution, import_solution, publish_all
 from crm.core.solution_validate import validate_solution
-from crm.core.webresource import resolve_webresource_id  # pyright: ignore[reportUnusedImport]; re-exported for the command layer
+from crm.core.webresource import (
+    get_webresource,
+    resolve_webresource_id,  # pyright: ignore[reportUnusedImport]; re-exported for the command layer
+)
 from crm.utils.d365_backend import D365Error, odata_literal
 
 if TYPE_CHECKING:
@@ -245,6 +248,77 @@ def get_or_create_ribbon_diff(entity_node: ET.Element) -> ET.Element:
     return diff
 
 
+# Button icon attributes (issue #679). Each CLI icon flag maps to a <Button>
+# attribute, the webresourcetype values valid for that slot, and a human hint for
+# the type-gate error. All three are written with the `$webresource:<name>`
+# directive, which is what establishes the solution dependency on the icon web
+# resource (MS Learn: always use `$webresource:` when a ribbon control references a
+# web resource). `ModernImage` is the Unified-Interface SVG icon (verified live on a
+# Dataverse org: `ModernImage="$webresource:msdyn_/<name>.svg"`); `Image16by16` /
+# `Image32by32` are the classic raster slots (MS Learn Button element). The
+# webresource_webresourcetype option set: 5=PNG, 6=JPG, 7=GIF, 10=ICO, 11=SVG.
+_SVG_WEBRESOURCE_TYPE = 11
+_RASTER_WEBRESOURCE_TYPES: frozenset[int] = frozenset({5, 6, 7, 10})
+_ICON_SLOTS: dict[str, tuple[str, frozenset[int], str]] = {
+    "modern_image": ("ModernImage", frozenset({_SVG_WEBRESOURCE_TYPE}),
+                     "an SVG web resource (webresourcetype 11)"),
+    "image16": ("Image16by16", _RASTER_WEBRESOURCE_TYPES,
+                "a raster image web resource (PNG/JPG/GIF/ICO)"),
+    "image32": ("Image32by32", _RASTER_WEBRESOURCE_TYPES,
+                "a raster image web resource (PNG/JPG/GIF/ICO)"),
+}
+
+
+def _set_icon_attrs(
+    button: ET.Element,
+    *,
+    modern_image: str | None,
+    image16: str | None,
+    image32: str | None,
+) -> None:
+    """Write each given icon web-resource name onto ``button`` as a ``$webresource:``
+    reference. A ``None`` slot is left untouched (so a subset — or nothing — is safe
+    and the icon-less button stays byte-for-byte unchanged)."""
+    for slot, name in (("modern_image", modern_image), ("image16", image16),
+                       ("image32", image32)):
+        if name is None:
+            continue
+        button.set(_ICON_SLOTS[slot][0], f"$webresource:{name}")
+
+
+def validate_icon_webresource(
+    backend: "D365Backend", *, slot: str, name: str
+) -> None:
+    """Confirm the icon web resource ``name`` exists and matches ``slot``'s type.
+
+    ``slot`` is one of the :data:`_ICON_SLOTS` keys
+    (``modern_image`` / ``image16`` / ``image32``). Raises D365Error if the web
+    resource does not exist (via `get_webresource`) or its ``webresourcetype`` is not
+    valid for the slot — SVG (11) for ``modern_image``, a raster type
+    (PNG/JPG/GIF/ICO) for ``image16`` / ``image32``. A forced live read, so a missing
+    or wrong-type reference is caught before the slow export → import round-trip
+    (mirroring the `--webresource` existence check `add-button` already runs). Per
+    ADR 0001 this in-command validation is an operational failure (exit 1), not a
+    Click usage error."""
+    _attr, allowed, human = _ICON_SLOTS[slot]
+    record = get_webresource(backend, name)  # raises WebResourceNotFound if absent
+    raw = record.get("webresourcetype")
+    # Option-set values may arrive as an int or a numeric string; anything else
+    # (None, non-numeric) is treated as "unknown type" and fails the slot check.
+    wtype: int | None
+    if isinstance(raw, int):
+        wtype = raw
+    elif isinstance(raw, str) and raw.strip().lstrip("-").isdigit():
+        wtype = int(raw)
+    else:
+        wtype = None
+    if wtype not in allowed:
+        flag = slot.replace("_", "-")
+        raise D365Error(
+            f"web resource {name!r} (webresourcetype {raw}) is not valid for "
+            f"--{flag}, which requires {human}")
+
+
 def add_custom_action(
     ribbon_diff: ET.Element,
     *,
@@ -255,10 +329,16 @@ def add_custom_action(
     function: str,
     param: str,
     sequence: int,
+    modern_image: str | None = None,
+    image16: str | None = None,
+    image32: str | None = None,
 ) -> None:
     """Inject a CustomAction + CommandDefinition for a JS button into RibbonDiffXml.
 
-    Raises D365Error if any of the three IDs already exists in the diff.
+    Raises D365Error if any of the three IDs already exists in the diff. Any of
+    ``modern_image`` / ``image16`` / ``image32`` (plain web-resource names) sets the
+    corresponding icon attribute on the button as a ``$webresource:`` reference;
+    omitting all three leaves the button icon-less exactly as before.
     """
     existing = {el.get("Id") for el in ribbon_diff.iter()
                 if el.tag in ("CustomAction", "Button", "CommandDefinition")}
@@ -278,10 +358,12 @@ def add_custom_action(
         "Sequence": str(sequence),
     })
     uidef = ET.SubElement(action, "CommandUIDefinition")
-    ET.SubElement(uidef, "Button", {
+    button = ET.SubElement(uidef, "Button", {
         "Id": ids.button, "Command": ids.command, "LabelText": label,
         "ToolTipTitle": label, "TemplateAlias": "o1", "Sequence": str(sequence),
     })
+    _set_icon_attrs(button, modern_image=modern_image, image16=image16,
+                    image32=image32)
 
     cdef = ET.SubElement(cmds, "CommandDefinition", {"Id": ids.command})
     ET.SubElement(cdef, "EnableRules")
@@ -449,6 +531,39 @@ def set_button_label(
             loclabel_id = f"{btn_id}.{attr}"
             button.set(attr, f"$LocLabels:{loclabel_id}")
             _upsert_loclabel_title(ribbon_diff, loclabel_id, lcid, text)
+
+
+def set_button_icon(
+    ribbon_diff: ET.Element,
+    *,
+    button_id: str,
+    modern_image: str | None = None,
+    image16: str | None = None,
+    image32: str | None = None,
+) -> None:
+    """Set a custom button's icon attributes (ModernImage / Image16by16 / Image32by32).
+
+    ``button_id`` is the CustomAction Id (what `ribbon list` reports). Each provided
+    icon is written as a ``$webresource:<name>`` reference; a slot left ``None`` is
+    untouched, so re-running with a single flag re-icons that slot in place. Only the
+    icon attributes are written — Command, LabelText, TemplateAlias, Sequence and Id
+    are protected. Pass at least one of ``modern_image`` / ``image16`` / ``image32``.
+    """
+    if modern_image is None and image16 is None and image32 is None:
+        raise D365Error(
+            "set_button_icon needs at least one of modern_image / image16 / image32")
+    actions = ribbon_diff.find("CustomActions")
+    action = (next((a for a in actions.findall("CustomAction")
+                    if a.get("Id") == button_id), None)
+              if actions is not None else None)
+    button = action.find(".//Button") if action is not None else None
+    if button is None:
+        available = [b.button_id for b in list_custom_buttons(ribbon_diff)]
+        raise D365Error(
+            f"button-id {button_id!r} not found as a custom Button; "
+            f"available: {available}")
+    _set_icon_attrs(button, modern_image=modern_image, image16=image16,
+                    image32=image32)
 
 
 def remove_custom_action(ribbon_diff: ET.Element, button_id: str) -> bool:

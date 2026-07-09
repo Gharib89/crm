@@ -352,6 +352,116 @@ def test_ribbon_set_label_relabels_custom_button(
     )
 
 
+# ── ribbon set-icon (set a custom button's ModernImage icon) ──────────────────
+
+
+@covers("ribbon set-icon")
+@pytest.mark.slow
+def test_ribbon_set_icon_sets_modern_image(
+    cli, backend, ephemeral_entity, ephemeral_solution, unique, request, tmp_path
+):
+    """Add a custom button, create an SVG icon web resource, then `ribbon set-icon`
+    --modern-image it, publish, and re-read the composed ribbon (RetrieveEntityRibbon)
+    asserting the button now carries ModernImage="$webresource:<name>" (T3, parsed
+    value). The button's protected Command attribute must survive the icon write.
+
+    The full path exercised: create SVG web resource → add-button (stage) →
+    set-icon --modern-image --publish → export composed ribbon → assert persisted.
+    """
+    _add_entity_to_solution(backend, ephemeral_solution, ephemeral_entity)
+
+    # ── CREATE SVG ICON WEB RESOURCE ──────────────────────────────────────────
+    svg_name = f"new_e2eicon_{unique}.svg"
+    svg_src = tmp_path / f"{unique}.svg"
+    svg_src.write_bytes(
+        b'<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" '
+        b'viewBox="0 0 16 16"><rect width="16" height="16" '
+        b'fill="currentColor"/></svg>'
+    )
+    svg_result = cli([
+        "--json", "webresource", "create", "--name", svg_name,
+        "--file", str(svg_src), "--display-name", f"E2E Icon {unique}",
+        "--solution", ephemeral_solution,
+    ])
+    assert svg_result.returncode == 0, (
+        f"webresource create (svg) failed:\n{svg_result.stderr}\n{svg_result.stdout}"
+    )
+    svg_id = json.loads(svg_result.stdout)["data"].get("webresourceid")
+    assert svg_id, "webresourceid missing from svg create response"
+
+    # A JS web resource for the button's command (add-button requires --webresource).
+    js_name = f"new_e2eiconjs_{unique}.js"
+    js_src = tmp_path / f"{unique}.js"
+    js_src.write_bytes(b"// e2e set-icon test")
+    js_result = cli([
+        "--json", "webresource", "create", "--name", js_name,
+        "--file", str(js_src), "--display-name", f"E2E Icon JS {unique}",
+        "--solution", ephemeral_solution,
+    ])
+    assert js_result.returncode == 0, (
+        f"webresource create (js) failed:\n{js_result.stderr}\n{js_result.stdout}"
+    )
+    js_id = json.loads(js_result.stdout)["data"].get("webresourceid")
+    assert js_id, "webresourceid missing from js create response"
+
+    def _cleanup_wrs():
+        # Delete the button first (it depends on the icon web resource); then the
+        # web resources. The ephemeral solution/entity teardown removes the rest.
+        for wid in (svg_id, js_id):
+            try:
+                backend.delete(f"webresourceset({wid})")
+            except Exception:
+                pass
+
+    request.addfinalizer(_cleanup_wrs)
+
+    # ── ADD-BUTTON (--publish so the button materializes for set-icon to read) ─
+    # set-icon locates the button in the exported solution's RibbonDiffXml; on a
+    # cloud target a staged-but-unpublished custom button is not read back (the same
+    # cross-verb behavior the add/remove lifecycle test publishes for, and tracked
+    # for set-label/set-rules in #766). Publish here so the button is materialized.
+    add_result = cli([
+        "--json", "ribbon", "add-button", ephemeral_entity,
+        "--solution", ephemeral_solution,
+        "--label", f"IC{unique}", "--location", "form",
+        "--webresource", js_name, "--function", "ns.e2eSetIcon",
+        "--param", "PrimaryControl", "--publish",
+    ], check=False)
+    assert add_result.returncode == 0, (
+        f"ribbon add-button failed:\n{add_result.stderr}\n{add_result.stdout}"
+    )
+    button_id = json.loads(add_result.stdout)["data"].get("button_id")
+    assert button_id, "button_id missing from add-button response"
+    # composed-ribbon Button Id shares the base, suffixed .Button (CustomAction base)
+    composed_btn_id = button_id[: -len(".CustomAction")] + ".Button"
+
+    # ── SET-ICON (--modern-image → ModernImage=$webresource:<svg>) ────────────
+    # check=False so a non-zero exit surfaces the CLI's JSON error envelope in the
+    # assertion message rather than an opaque CalledProcessError.
+    set_result = cli([
+        "--json", "ribbon", "set-icon", ephemeral_entity,
+        "--solution", ephemeral_solution, "--publish",
+        "--button-id", button_id, "--modern-image", svg_name,
+    ], check=False)
+    assert set_result.returncode == 0, (
+        f"ribbon set-icon failed:\n{set_result.stderr}\n{set_result.stdout}"
+    )
+    set_env = json.loads(set_result.stdout)
+    assert set_env["ok"], set_env
+    assert set_env["data"].get("modern_image") == svg_name, set_env["data"]
+
+    # ── VERIFY (T3): the composed ribbon's custom Button carries ModernImage ──
+    composed = _composed_ribbon(cli, ephemeral_entity)
+    btn = next((b for b in composed.iter("Button")
+                if b.get("Id") == composed_btn_id), None)
+    assert btn is not None, (
+        f"custom button {composed_btn_id!r} missing from composed ribbon after set-icon"
+    )
+    assert btn.get("ModernImage") == f"$webresource:{svg_name}", btn.attrib
+    # protected attribute survived the icon write
+    assert btn.get("Command"), "protected Command attribute was lost after set-icon"
+
+
 # ── ribbon hide-button (hide an OOB button reversibly) ────────────────────────
 
 

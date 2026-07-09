@@ -695,3 +695,154 @@ def test_load_solution_ribbon_diff_bad_zip_raises_d365error(monkeypatch):
     monkeypatch.setattr(ribbon, "export_solution", fake_export_bad)
     with pytest.raises(D365Error, match="could not parse exported solution"):
         ribbon.load_solution_ribbon_diff(object(), "MySol", "cwx_ticket")  # type: ignore[arg-type]
+
+
+# ── button icons (issue #679): add_custom_action icon args + set_button_icon ──
+
+
+def test_add_custom_action_writes_icon_attributes_as_webresource_refs():
+    diff = _empty_diff()
+    ids = ribbon.build_button_ids("cwx_ticket", "form", "Validate", None)
+    ribbon.add_custom_action(
+        diff, ids=ids, group="G", label="Validate",
+        webresource="cwx_/scripts/x.js", function="ns.fn",
+        param="PrimaryControl", sequence=50,
+        modern_image="cwx_/icons/i.svg", image16="cwx_/icons/i16.png",
+        image32="cwx_/icons/i32.png")
+    btn = diff.find(".//Button")
+    assert btn is not None
+    # each icon is written as a $webresource: directive (establishes the dependency)
+    assert btn.get("ModernImage") == "$webresource:cwx_/icons/i.svg"
+    assert btn.get("Image16by16") == "$webresource:cwx_/icons/i16.png"
+    assert btn.get("Image32by32") == "$webresource:cwx_/icons/i32.png"
+
+
+def test_add_custom_action_icon_subset_only_writes_given_slots():
+    diff = _empty_diff()
+    ids = ribbon.build_button_ids("cwx_ticket", "form", "Validate", None)
+    ribbon.add_custom_action(
+        diff, ids=ids, group="G", label="Validate",
+        webresource="cwx_/scripts/x.js", function="ns.fn",
+        param="PrimaryControl", sequence=50, modern_image="cwx_/icons/i.svg")
+    btn = diff.find(".//Button")
+    assert btn is not None
+    assert btn.get("ModernImage") == "$webresource:cwx_/icons/i.svg"
+    assert btn.get("Image16by16") is None
+    assert btn.get("Image32by32") is None
+
+
+def test_add_custom_action_no_icons_omits_attributes_entirely():
+    # Omitting every icon flag must preserve the icon-less button byte-for-byte:
+    # no image attribute appears on the Button at all.
+    diff = _empty_diff()
+    ids = ribbon.build_button_ids("cwx_ticket", "form", "Validate", None)
+    ribbon.add_custom_action(
+        diff, ids=ids, group="G", label="Validate",
+        webresource="cwx_/scripts/x.js", function="ns.fn",
+        param="PrimaryControl", sequence=50)
+    btn = diff.find(".//Button")
+    assert btn is not None
+    for attr in ("ModernImage", "Image16by16", "Image32by32"):
+        assert attr not in btn.attrib
+
+
+def _diff_with_button_for_icon() -> ET.Element:
+    diff = _empty_diff()
+    ids = ribbon.build_button_ids("cwx_ticket", "form", "Validate", None)
+    ribbon.add_custom_action(
+        diff, ids=ids, group="Mscrm.Form.cwx_ticket.MainTab.Save",
+        label="Validate", webresource="cwx_/scripts/x.js", function="ns.fn",
+        param="PrimaryControl", sequence=50)
+    return diff
+
+
+def test_set_button_icon_sets_attributes_as_webresource_refs():
+    diff = _diff_with_button_for_icon()
+    bid = "cwx_ticket.form.Validate.CustomAction"
+    ribbon.set_button_icon(
+        diff, button_id=bid, modern_image="cwx_/icons/i.svg",
+        image16="cwx_/icons/i16.png", image32="cwx_/icons/i32.png")
+    btn = diff.find(".//Button")
+    assert btn is not None
+    assert btn.get("ModernImage") == "$webresource:cwx_/icons/i.svg"
+    assert btn.get("Image16by16") == "$webresource:cwx_/icons/i16.png"
+    assert btn.get("Image32by32") == "$webresource:cwx_/icons/i32.png"
+
+
+def test_set_button_icon_protects_command_label_alias_sequence_id():
+    diff = _diff_with_button_for_icon()
+    bid = "cwx_ticket.form.Validate.CustomAction"
+    btn = diff.find(".//Button")
+    assert btn is not None
+    before = (btn.get("Id"), btn.get("Command"), btn.get("LabelText"),
+              btn.get("TemplateAlias"), btn.get("Sequence"))
+    ribbon.set_button_icon(diff, button_id=bid, modern_image="cwx_/icons/i.svg")
+    after = (btn.get("Id"), btn.get("Command"), btn.get("LabelText"),
+             btn.get("TemplateAlias"), btn.get("Sequence"))
+    assert before == after
+    assert btn.get("ModernImage") == "$webresource:cwx_/icons/i.svg"
+
+
+def test_set_button_icon_requires_a_slot():
+    diff = _diff_with_button_for_icon()
+    with pytest.raises(D365Error, match="at least one"):
+        ribbon.set_button_icon(
+            diff, button_id="cwx_ticket.form.Validate.CustomAction")
+
+
+def test_set_button_icon_unknown_button_raises():
+    diff = _diff_with_button_for_icon()
+    with pytest.raises(D365Error, match="not found"):
+        ribbon.set_button_icon(
+            diff, button_id="nope.CustomAction", modern_image="cwx_/icons/i.svg")
+
+
+def test_set_button_icon_updates_existing_icon_in_place():
+    diff = _diff_with_button_for_icon()
+    bid = "cwx_ticket.form.Validate.CustomAction"
+    ribbon.set_button_icon(diff, button_id=bid, modern_image="cwx_/icons/old.svg")
+    ribbon.set_button_icon(diff, button_id=bid, modern_image="cwx_/icons/new.svg")
+    btn = diff.find(".//Button")
+    assert btn is not None
+    assert btn.get("ModernImage") == "$webresource:cwx_/icons/new.svg"
+
+
+# ── validate_icon_webresource (type gate) ─────────────────────────────────────
+
+
+def test_validate_icon_webresource_accepts_svg_for_modern_image(
+        make_fake_backend, inject_backend):
+    be = inject_backend(make_fake_backend(responses={"get_collection": [
+        {"webresourceid": "g1", "name": "cwx_/i.svg", "webresourcetype": 11}]}))
+    # no raise = pass
+    ribbon.validate_icon_webresource(be, slot="modern_image", name="cwx_/i.svg")  # type: ignore[arg-type]
+
+
+def test_validate_icon_webresource_rejects_raster_for_modern_image(
+        make_fake_backend, inject_backend):
+    be = inject_backend(make_fake_backend(responses={"get_collection": [
+        {"webresourceid": "g1", "name": "cwx_/i.png", "webresourcetype": 5}]}))
+    with pytest.raises(D365Error, match="not valid for"):
+        ribbon.validate_icon_webresource(be, slot="modern_image", name="cwx_/i.png")  # type: ignore[arg-type]
+
+
+def test_validate_icon_webresource_accepts_png_for_image16(
+        make_fake_backend, inject_backend):
+    be = inject_backend(make_fake_backend(responses={"get_collection": [
+        {"webresourceid": "g1", "name": "cwx_/i.png", "webresourcetype": 5}]}))
+    ribbon.validate_icon_webresource(be, slot="image16", name="cwx_/i.png")  # type: ignore[arg-type]
+
+
+def test_validate_icon_webresource_rejects_svg_for_image32(
+        make_fake_backend, inject_backend):
+    be = inject_backend(make_fake_backend(responses={"get_collection": [
+        {"webresourceid": "g1", "name": "cwx_/i.svg", "webresourcetype": 11}]}))
+    with pytest.raises(D365Error, match="not valid for"):
+        ribbon.validate_icon_webresource(be, slot="image32", name="cwx_/i.svg")  # type: ignore[arg-type]
+
+
+def test_validate_icon_webresource_missing_raises(
+        make_fake_backend, inject_backend):
+    be = inject_backend(make_fake_backend(responses={"get_collection": []}))
+    with pytest.raises(D365Error, match="not found"):
+        ribbon.validate_icon_webresource(be, slot="modern_image", name="cwx_/gone.svg")  # type: ignore[arg-type]

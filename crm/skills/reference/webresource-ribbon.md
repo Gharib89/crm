@@ -89,6 +89,7 @@ crm --json ribbon export --application           # application-wide ribbon (no E
 crm --json ribbon list account --solution ContosoCore
 crm --json ribbon add-button account --solution ContosoCore ...
 crm --json ribbon set-label account --solution ContosoCore --button-id <CustomAction_Id> ...
+crm --json ribbon set-icon account --solution ContosoCore --button-id <CustomAction_Id> --modern-image contoso_/icons/x.svg
 crm --json ribbon remove account --solution ContosoCore ...
 crm --json ribbon hide-button account --solution ContosoCore --target-id <OOB_Id>
 crm --json ribbon set-rules account --solution ContosoCore \
@@ -110,8 +111,8 @@ This is why a cloned entity's ribbon does not come across (see the clone caveats
 `reference/metadata.md`) — there is no API write path to copy it.
 
 **Ribbon writes are slow and synchronous.** Because every write rides the solution-zip
-pipeline, `add-button` / `set-label` / `remove` / `hide-button` / `set-rules` /
-`add-custom-rule` run a **full solution import per call** — 60–120s with no progress
+pipeline, `add-button` / `set-label` / `set-icon` / `remove` / `hide-button` /
+`set-rules` / `add-custom-rule` run a **full solution import per call** — 60–120s with no progress
 ticks. The command has not hung; **do not retry** a slow call (a second, parallel
 attempt races the first import). Confirm the outcome afterward with `ribbon list`.
 
@@ -153,6 +154,18 @@ misspell the id's casing, the label silently falls back to the raw directive str
 in the UI. `--lcid` is validated against the org's provisioned languages and errors
 if not provisioned. Re-running for a second LCID adds a sibling `<Title>` (does not
 overwrite).
+
+**Button icons (`add-button` / `set-icon`) go in as `$webresource:` refs.** You pass
+a plain web-resource name; the CLI writes it as `$webresource:<name>` on the button,
+which is what establishes the solution dependency (so the icon can't be deleted while
+a button references it — and why deleting an in-use icon fails with `0x8004f01f`, same
+as a JS resource). Each reference is validated **before** the slow import: it must
+exist **and** match its slot's type — the modern (SVG) slot needs a Vector-format
+(SVG) web resource; the classic 16/16 and 32/32 slots need a raster (PNG/JPG/GIF/ICO).
+A missing or wrong-type reference is an operational error (exit 1), raised up front.
+`set-icon` re-icons an **existing custom** button in place and touches only the icon
+attributes (Command/LabelText/TemplateAlias/Sequence/Id are protected); `add-button`
+sets the icon at creation. Both are custom-buttons-only, like `set-label`.
 
 **`hide-button` — validate the target-id first.** `--target-id` is the OOB control Id
 from `crm ribbon export ENTITY`. The command validates it against the live composed

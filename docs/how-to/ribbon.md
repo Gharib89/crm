@@ -35,6 +35,11 @@ crm ribbon add-button cwx_ticket --solution MySolution \
 `--group <id>`. The web resource must already exist in the org/solution. The edit
 **stages** by default (no publish); pass `--publish` to publish it immediately.
 
+Optionally give the button an icon at creation with `--modern-image`,
+`--image16`, and/or `--image32` (any subset) — see
+[Set a button's icon](#set-a-buttons-icon) below for the slot rules. Omitting all
+three creates an icon-less button exactly as before.
+
 !!! warning "Publish before editing a staged button"
     Unlike forms and views, an **unpublished** `RibbonDiffXml` is not carried by the
     solution export that `set-label`, `set-rules`, and `add-custom-rule` read to find
@@ -99,6 +104,50 @@ name; do not hand-edit the directive.
 **Only custom buttons.** `set-label` locates the button by its CustomAction Id.
 Out-of-box buttons have no CustomAction entry and will not be found; use
 `hide-button` to suppress OOB buttons instead.
+
+## Set a button's icon
+
+Give a **custom** command-bar button an icon — at creation via `add-button`, or on
+an existing button via `set-icon`. Both take the same three flags (any subset), and
+each points at a web resource that must already exist:
+
+| Flag | Button attribute | Web-resource type |
+|---|---|---|
+| `--modern-image` | `ModernImage` | SVG (Unified Interface icon) |
+| `--image16` | `Image16by16` | raster: PNG / JPG / GIF / ICO (classic 16×16) |
+| `--image32` | `Image32by32` | raster: PNG / JPG / GIF / ICO (classic 32×32) |
+
+```bash
+# Set the modern (SVG) icon on an existing custom button
+crm ribbon set-icon cwx_ticket --solution MySolution \
+    --button-id cwx_ticket.form.Validate.CustomAction \
+    --modern-image cwx_/icons/validate.svg
+
+# Set classic + modern icons at once
+crm ribbon set-icon cwx_ticket --solution MySolution \
+    --button-id cwx_ticket.form.Validate.CustomAction \
+    --modern-image cwx_/icons/validate.svg \
+    --image16 cwx_/icons/validate16.png \
+    --image32 cwx_/icons/validate32.png
+
+# Create a button with its icon in one step
+crm ribbon add-button cwx_ticket --solution MySolution \
+    --label Validate --location form \
+    --webresource cwx_/scripts/x.js --function ns.fn --param PrimaryControl \
+    --modern-image cwx_/icons/validate.svg
+```
+
+You pass the **plain web-resource name**; the CLI writes it as a `$webresource:<name>`
+directive, which adds a solution dependency so the icon web resource can't be deleted
+while a button still references it. Each reference is validated **up front** — it must
+exist and match its slot type (`--modern-image` → SVG; `--image16`/`--image32` →
+raster) — so a typo or wrong-type reference fails before the slow solution round-trip.
+
+`set-icon` writes only the icon attributes; the button's Command, LabelText,
+TemplateAlias, Sequence, and Id are protected. Pass at least one icon flag (zero is a
+usage error). Like the other mutating verbs it **stages** by default; pass `--publish`
+to publish immediately. Only **custom** buttons can be re-iconed — `set-icon` locates
+the button by its CustomAction Id (as reported by `crm ribbon list`).
 
 ## Hide an out-of-box button
 
