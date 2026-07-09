@@ -393,13 +393,15 @@ _DUP_RECORD_SELECT = "_baserecordid_value,duplicateid,_asyncoperationid_value,cr
 
 
 def _read_duplicate_records(backend: D365Backend, job_id: str) -> list[dict[str, Any]]:
-    """Read the duplicaterecord rows a completed detect job logged for *job_id*."""
-    raw = as_dict(backend.get(_DUPLICATE_RECORDS_SET, params={
+    """Read the duplicaterecord rows a completed detect job logged for *job_id*.
+
+    Uses ``get_collection`` so ``@odata.nextLink`` paging is followed — a sweep
+    can log up to 5,000 rows, well over one page.
+    """
+    return backend.get_collection(_DUPLICATE_RECORDS_SET, params={
         "$select": _DUP_RECORD_SELECT,
         "$filter": f"_asyncoperationid_value eq {job_id}",
-    }))
-    value = raw.get("value")
-    return cast("list[dict[str, Any]]", value) if isinstance(value, list) else []
+    })
 
 
 def bulk_detect(
