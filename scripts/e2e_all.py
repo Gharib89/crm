@@ -41,6 +41,28 @@ from typing import Dict, List, Optional, Set, Tuple
 REPO = Path(__file__).resolve().parent.parent
 CRM_HOME = Path(os.environ.get("CRM_HOME") or (Path.home() / ".crm"))
 CYAN, DIM, YEL, RST = "\033[1;36m", "\033[2m", "\033[33m", "\033[0m"
+GREEN, RED = "\033[32m", "\033[31m"
+
+# Colorize live output only when stdout is an interactive terminal (respecting NO_COLOR);
+# the log file always gets the raw text so ANSI codes never pollute the transcript.
+_COLOR = sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
+# A pytest -v result line's outcome (from _VLINE) or a -ra short-summary line's leading
+# keyword maps to a color: green ok, red broken, yellow skipped, dim expected-fail.
+_OUTCOME_COLOR = {"PASSED": GREEN, "XPASS": GREEN, "FAILED": RED, "ERROR": RED,
+                  "SKIPPED": YEL, "XFAIL": DIM}
+# A -ra short-summary line: "SKIPPED [1] crm/...: reason", "FAILED crm/...::test", etc.
+_RALINE = re.compile(r"^(PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASS)\b")
+
+
+def _colorize(line: str) -> str:
+    """Wrap a pytest result/summary line in its outcome color, preserving the newline.
+    Non-result lines pass through untouched."""
+    vm = _VLINE.match(line)
+    outcome = vm.group(2) if vm else (m.group(1) if (m := _RALINE.match(line)) else None)
+    if outcome is None:
+        return line
+    body, nl = (line[:-1], "\n") if line.endswith("\n") else (line, "")
+    return f"{_OUTCOME_COLOR[outcome]}{body}{RST}{nl}"
 
 
 @dataclass(frozen=True)
@@ -110,7 +132,7 @@ def _stream(cmd: List[str], env: Dict[str, str], log: Path) -> int:
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         assert proc.stdout is not None
         for line in proc.stdout:
-            sys.stdout.write(line)
+            sys.stdout.write(_colorize(line) if _COLOR else line)
             lf.write(line)
         return proc.wait()
 
