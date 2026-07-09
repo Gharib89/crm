@@ -63,7 +63,7 @@ def _parse_column(raw: str) -> tuple[str, int]:
 def _parse_order(raw: str) -> tuple[str, bool]:
     """Parse '<attribute> [asc|desc]' → (attribute, descending).
 
-    Mirrors the OData `$orderby` idiom (`query odata --orderby`). Direction
+    Mirrors the OData `$orderby` idiom (`query odata --order-by`). Direction
     token is case-insensitive; default ascending. Anything else is a usage error.
     """
     parts = raw.split()
@@ -76,7 +76,7 @@ def _parse_order(raw: str) -> tuple[str, bool]:
         if direction == "desc":
             return parts[0], True
     raise click.UsageError(
-        f"--order must be '<attribute>' or '<attribute> asc|desc': {raw!r}")
+        f"order must be '<attribute>' or '<attribute> asc|desc': {raw!r}")
 
 
 def _parse_width(raw: str) -> tuple[str, int]:
@@ -101,9 +101,11 @@ def _parse_width(raw: str) -> tuple[str, int]:
               help="Entity ObjectTypeCode (from `metadata entity <name>`).")
 @click.option("--column", "columns", multiple=True, required=True,
               help="Repeatable 'logicalname[:width]'. Order preserved.")
-@click.option("--order", "order_by", default=None,
+@click.option("--order-by", "order_by", default=None,
               help="Sort attribute, optional 'asc'/'desc' suffix "
                    "(e.g. 'createdon desc'). Default: ascending.")
+@click.option("--order", "order_alias", default=None, hidden=True,
+              help="Deprecated alias for --order-by.")
 @click.option("--filter-active", is_flag=True, help="Filter to statecode=0 (active) rows.")
 @click.option("--default", "is_default", is_flag=True, help="Mark as the default view.")
 @click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error")
@@ -115,10 +117,14 @@ def _parse_width(raw: str) -> tuple[str, int]:
 @_publish_option
 @pass_ctx
 def view_create(ctx: CLIContext, entity, name, object_type_code, columns,
-                order_by, filter_active, is_default, if_exists,
+                order_by, order_alias, filter_active, is_default, if_exists,
                 query_type, description,
                 solution, publish):
     """Create a system view on ENTITY (public by default; see --query-type)."""
+    # --order-by is canonical; --order is a hidden deprecated alias (#711).
+    # Precedence by presence, not truthiness: an explicit --order-by "" stays
+    # "provided" and reaches _parse_order (a usage error), as it did pre-#711.
+    order_by = order_by if order_by is not None else order_alias
     parsed = [_parse_column(c) for c in columns]
     order_desc = False
     if order_by is not None:

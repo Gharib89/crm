@@ -56,7 +56,9 @@ def query_group():
 @click.option("--select", multiple=True)
 @click.option("--filter", "filter_", help="OData $filter expression.")
 @click.option("--top", type=int)
-@click.option("--orderby")
+@click.option("--order-by", "order_by", help="OData $orderby expression.")
+@click.option("--orderby", "orderby", hidden=True,
+              help="Deprecated alias for --order-by.")
 @click.option("--expand", multiple=True)
 @click.option("--apply", "apply_", metavar="EXPR",
               help="OData $apply aggregation expression, e.g. "
@@ -74,7 +76,7 @@ def query_group():
 @click.option("--track-changes", is_flag=True, default=False,
               help="Request a change-tracking delta link (Prefer: odata.track-changes): "
                    "returns the current rows plus meta.delta_token/meta.delta_link to "
-                   "resume from later. Rejects --filter/--orderby/--expand/--top/--all.")
+                   "resume from later. Rejects --filter/--order-by/--expand/--top/--all.")
 @click.option("--delta-token",
               help="Resume change tracking from a prior meta.delta_token: returns only "
                    "rows created/updated/deleted since (deletes carry reason=\"deleted\").")
@@ -83,8 +85,8 @@ def query_group():
                    "like @odata.etag, *@FormattedValue, *@lookuplogicalname); keeps "
                    "business fields, _*_value lookup GUIDs, and the primary id.")
 @pass_ctx
-def query_odata(ctx: CLIContext, entity_set, select, filter_, top, orderby, expand,
-                apply_, count, page_size, all_pages, max_records, annotations,
+def query_odata(ctx: CLIContext, entity_set, select, filter_, top, order_by, orderby,
+                expand, apply_, count, page_size, all_pages, max_records, annotations,
                 track_changes, delta_token, minimal):
     """OData v4 GET — entity set, bound-function path, or metadata path.
 
@@ -97,6 +99,10 @@ def query_odata(ctx: CLIContext, entity_set, select, filter_, top, orderby, expa
     OData query options go through --select/--filter/etc., never inline.
     A '?' or '$' in the positional arg is rejected client-side before the request.
     """
+    # --order-by is canonical; --orderby is a hidden deprecated alias (#711).
+    # Precedence by presence, not truthiness (an explicit --order-by wins even
+    # if empty; core then treats an empty $orderby as "no ordering" as before).
+    orderby = order_by if order_by is not None else orderby
     with d365_errors(ctx):
         result = query_mod.odata_query(
             ctx.backend(), entity_set,
