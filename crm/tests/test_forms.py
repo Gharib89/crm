@@ -252,6 +252,59 @@ class TestRegenerateFormCloneIds:
         from crm.core.forms import regenerate_form_clone_ids
         assert regenerate_form_clone_ids("") == ""
 
+    def test_forcontrol_ref_regenerated_with_its_uniqueid(self):
+        """A ``<controlDescription forControl="{uniqueid}">`` points at an on-form
+        control's ``uniqueid`` — an intra-form reference. Regeneration must rewrite
+        ``forControl`` in lock-step with the ``uniqueid`` it names, so the link
+        survives and the external-reference guard does not trip (issue #785:
+        account "Customer profile cases" subgrid + custom-control descriptor)."""
+        from crm.core.forms import regenerate_form_clone_ids
+        uid = "9d3423bd-754d-4a56-bbad-67f21e7ad4d1"
+        xml = (
+            '<form><tabs><tab><columns><column><sections><section><rows><row><cell>'
+            f'<control id="Recent_Cases" uniqueid="{{{uid}}}"><parameters />'
+            "</control></cell></row></rows></section></sections></column></columns>"
+            f'</tab></tabs><controlDescriptions><controlDescription '
+            f'forControl="{{{uid}}}"><customControl id="cc"><parameters />'
+            "</customControl></controlDescription></controlDescriptions></form>"
+        )
+        # Must not raise the external-reference guard.
+        out = regenerate_form_clone_ids(xml)
+        # The source uniqueid is gone from both carriers…
+        assert uid.lower() not in out.lower(), f"source uniqueid survived: {out}"
+        # …and uniqueid + forControl still share one fresh value (link intact).
+        new_uid = re.search(r'uniqueid="\{(' + _G + r')\}"', out)
+        new_ref = re.search(r'forControl="\{(' + _G + r')\}"', out)
+        assert new_uid and new_ref, f"carriers missing after regen: {out}"
+        assert new_uid.group(1) == new_ref.group(1), (
+            f"forControl decoupled from its uniqueid: "
+            f"{new_uid.group(1)} != {new_ref.group(1)}")
+
+    def test_customcontrol_id_reference_is_preserved(self):
+        """``<customControl id="{GUID}">`` references a registered custom control —
+        an external object — even though it rides on the bare ``id`` attribute the
+        layout ids use. Regenerating it points the clone at a control the org does
+        not have, so the server rejects the POST with *"Custom control with Id …
+        does not exist"* (#785). It must survive byte-identical, while the layout
+        ``id`` on the same form is still regenerated."""
+        from crm.core.forms import regenerate_form_clone_ids
+        cc = "e7a81278-8635-4d9e-8d4d-59480b391c5b"
+        cell = "aaaaaaaa-1111-2222-3333-444444444444"
+        xml = (
+            '<form><tabs><tab><columns><column><sections><section><rows><row>'
+            f'<cell id="{{{cell}}}"><control id="Recent_Cases">'
+            '<parameters /></control></cell></row></rows></section></sections>'
+            "</column></columns></tab></tabs><controlDescriptions>"
+            f'<controlDescription><customControl id="{{{cc}}}"><parameters />'
+            "</customControl></controlDescription></controlDescriptions></form>"
+        )
+        out = regenerate_form_clone_ids(xml)
+        # The registered-control reference survives exactly.
+        assert f'customControl id="{{{cc}}}"' in out, (
+            f"customControl id reference was altered: {out}")
+        # The layout cell id on the same form is still regenerated.
+        assert cell not in out.lower(), f"layout cell id not regenerated: {out}"
+
 
 class TestCloneRegeneratesIds:
     def _post_clone_twice(self, backend, forms):

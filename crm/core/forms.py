@@ -102,16 +102,35 @@ def retarget_formxml(formxml: str, *, src_entity: str, dst_entity: str) -> str:
 #                  control instance ids — all form-internal) but NOT `classid`
 #                  (control TYPE id), `labelid`, `uniqueid`, nor the capital `Id`
 #                  of `<Role Id="…">` (a security-role ref).
+#   - `forControl` is a <controlDescription>'s back-reference to an on-form
+#                  control's `uniqueid` (intra-form), so it must be regenerated in
+#                  lock-step with that uniqueid or the descriptor dangles (#785).
 #   - non-GUID ids (`id="WebResource_…"`, `id="new_code"`) never match.
 # Everything NOT listed here — `classid`, `Role Id`, `<ViewId>`/`<ViewIds>`,
 # `<QuickFormId>` — references an external object and is deliberately preserved;
 # the guard in regenerate_form_clone_ids is the backstop if that ever slips.
+#
+# One external reference DOES ride on the bare `id` attribute the layout ids use:
+# `<customControl id="{GUID}">` points at a registered custom control, so the
+# broad `id` branch matches it too. That id must be PRESERVED, not regenerated —
+# a fresh value references a control the org does not have and the server rejects
+# the POST with "Custom control with Id … does not exist" (#785). It appears only
+# once, so the guard cannot catch it by diffing; _CUSTOMCONTROL_ID_RE collects
+# those GUIDs up front and regenerate_form_clone_ids passes them as `preserve`.
 _REGEN_ATTR_RE = re.compile(
-    r"""(?P<attr>(?<![\w])id|labelid|uniqueid|handlerUniqueId|libraryUniqueId)
+    r"""(?P<attr>(?<![\w])id|labelid|uniqueid|handlerUniqueId|libraryUniqueId
+        |forControl)
         (?P<eq>\s*=\s*)(?P<q>["'])
         (?P<brace>\{)?(?P<guid>""" + xml_edit.GUID + r""")(?(brace)\})(?P=q)""",
     re.VERBOSE,
 )
+
+# The GUID on a `<customControl id="{GUID}">` — a reference to a registered custom
+# control (external), matched here so regenerate_form_clone_ids can exempt it from
+# the bare-`id` regeneration above.
+_CUSTOMCONTROL_ID_RE = re.compile(
+    r"""<customControl\b[^>]*?\bid\s*=\s*["']\{?(?P<guid>"""
+    + xml_edit.GUID + r""")\}?["']""")
 
 
 def regenerate_form_clone_ids(formxml: str) -> str:
@@ -127,15 +146,22 @@ def regenerate_form_clone_ids(formxml: str) -> str:
     carries no ``id`` at all, so there is no single PK to regenerate.)
 
     Each matched GUID is replaced with a fresh ``uuid4``, *consistently* — one new
-    value per distinct source GUID — so any intra-form reference stays intact.
-    GUIDs that point at external objects (``classid`` control types, ``<Role Id>``
-    security roles, ``<ViewId>``/``<QuickFormId>`` lookups) are left untouched. A
-    guard re-reads every GUID we did **not** target and refuses to return a form
-    whose external references changed, rather than POST a corrupt clone.
+    value per distinct source GUID — so any intra-form reference stays intact
+    (e.g. a ``<controlDescription forControl>`` moves with the ``uniqueid`` it
+    names). GUIDs that point at external objects (``classid`` control types,
+    ``<Role Id>`` security roles, ``<ViewId>``/``<QuickFormId>`` lookups, and a
+    ``<customControl id>`` registered-control reference) are left untouched — the
+    customControl id rides on the bare ``id`` attribute the layout ids use, so it
+    is collected up front and exempted explicitly. A guard re-reads every GUID we
+    did **not** target and refuses to return a form whose external references
+    changed, rather than POST a corrupt clone.
     """
     if not formxml:
         return formxml
-    new_xml, mapping = xml_edit.regenerate_guids(formxml, _REGEN_ATTR_RE)
+    preserve = {m.group("guid").lower()
+                for m in _CUSTOMCONTROL_ID_RE.finditer(formxml)}
+    new_xml, mapping = xml_edit.regenerate_guids(
+        formxml, _REGEN_ATTR_RE, preserve=preserve)
     xml_edit.assert_external_guids_intact(
         formxml, new_xml, regenerated=mapping,
         message="form-clone id regeneration altered a non-target GUID (external "

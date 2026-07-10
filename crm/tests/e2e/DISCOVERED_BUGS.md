@@ -117,6 +117,20 @@ with distinct formids.
 (now runs on both targets — no `@requires_cloud` gate — and clones twice to assert
 the repeat-collision is gone; CI runs the cloud leg, the maintainer the on-prem leg).
 
+**Follow-on (FIXED, #785)** — the internal-id set was too narrow: a
+`<controlDescription forControl="{uniqueid}">` back-references an on-form
+control's `uniqueid` (an **intra-form** reference), but `forControl` was not in
+the regenerated-attribute set. Cloning regenerated the `uniqueid` while leaving
+`forControl` pointing at the old value, so the external-reference guard correctly
+refused to POST with *"form-clone id regeneration altered a non-target GUID
+(external reference)"* — exit 1. This reproduced on `agent-cloud` for the account
+form **"Customer profile cases"** (a subgrid with a custom-control descriptor),
+which is now `forms[0]`, so `test_form_clone_account_to_ephemeral` picked it as
+the source and failed. **Fix** — `forControl` is added to
+`crm.core.forms._REGEN_ATTR_RE`, so it is regenerated in lock-step with the
+`uniqueid` it names; the intra-form link survives and the guard passes. Offline
+coverage: `test_forms.py::TestRegenerateFormCloneIds::test_forcontrol_ref_regenerated_with_its_uniqueid`.
+
 ---
 
 ## 4. `ribbon add-button` / `ribbon remove` blocked by new-install validation (both targets)
