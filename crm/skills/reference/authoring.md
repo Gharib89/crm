@@ -85,18 +85,31 @@ expressible in the spec. **Reconciled on re-apply:**
   form is not yet readable is `planned` — re-apply to land it. Forms are **out of
   scope for `--prune`**. The entry carries `components: [{kind, name, …}]`; a
   converged component adds `change: "converged"` and (under `--dry-run`) a `diff`.
-- **Model-driven app** (`apps:` top-level, ADR 0024) — **create path only**. A
-  declared app that does not exist is created through the app-module + sitemap
-  builders: `components[]` (`{kind, id}`, kind view/chart/form/dashboard/bpf/sitemap)
-  bound via `AddAppComponents`, and a nested `sitemap` (`areas[] → groups[] →
-  subareas[]`, subarea `entity` = logical name) set wholesale and auto-linked to the
-  app by its `unique_name`. **Tables reach the app via a sitemap subarea, not
-  `components[]`.** An app that already exists is `skipped` (reconcile is a later
-  slice); dry-run → `planned`. Apps/sitemaps are publishable (defer to the end-of-run
-  publish; `--stage-only` honoured) and **out of scope for `--prune`**. The `applied`
-  entry carries the live `appmoduleid` / `sitemapid`. Gotcha: a freshly created
-  appmodule is not reliably GET-retrievable until published (the create path treats
-  the read-back miss as non-fatal) — operate on the returned id, don't re-query.
+- **Model-driven app** (`apps:` top-level, ADR 0024) — an absent app is **created**
+  through the app-module + sitemap builders: `components[]` (`{kind, id}`, kind
+  view/chart/form/dashboard/bpf/sitemap) bound via `AddAppComponents`, and a nested
+  `sitemap` (`areas[] → groups[] → subareas[]`, subarea `entity` = logical name) set
+  wholesale and auto-linked to the app by its `unique_name`. **Tables reach the app
+  via a sitemap subarea, not `components[]`.** Dry-run on an absent app → `planned`.
+  An **existing** app is **reconciled** (#796): the declared `components[]` set is
+  converged against the live app's bound components (over view/chart/form/dashboard/bpf
+  only — the sitemap and a table's implicit binding are never added/removed here) —
+  a declared-but-unbound component is added, a bound-but-undeclared one is removed;
+  the sitemap converges by **whole-document replacement** — the live `sitemapxml` is
+  replaced wholesale whenever it differs from the built document (an app with no
+  linked sitemap yet gets one created). Unchanged → `skipped`; any component or
+  sitemap change → `updated`, the entry carrying a `components: [{kind, id, change:
+  "added"|"removed"}]` list and/or `sitemap: "converged"|"added"`. A **managed** app
+  is `replace_blocked` (no write, exit 1, siblings still reconcile) — converge it
+  through its parent solution instead. `--dry-run` reads the live app and reports
+  the full drift as `updated`, every write suppressed. Apps/sitemaps are publishable
+  (defer to the end-of-run publish; `--stage-only` honoured) and **out of scope for
+  `--prune`**. The `applied`/`updated` entry carries the live `appmoduleid` /
+  `sitemapid`. Gotcha: a freshly created appmodule is not reliably GET-retrievable
+  until published — the create path treats the read-back miss as non-fatal (operate
+  on the returned id, don't re-query), and on an org where that window persists past
+  publish, a re-apply that would reconcile an existing app instead reports it
+  `skipped` (the app can't be read back to diff, so there is nothing to converge).
 
 **Create-only** (re-applying an existing component does not yet reconcile these):
 attribute — `default_value`, `true_label/false_label`, `min_value/max_value`,
