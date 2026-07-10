@@ -102,6 +102,28 @@ def test_build_plan_verdict_records_map_buckets_and_carry_diff(backend):
     assert set(by_name["contoso_priority"]) == {"kind", "name", "verdict"}
 
 
+def test_build_plan_records_ui_kind_changed_field_sets(backend):
+    # #798: the UI kinds (form, app) ride the plan's kind-agnostic verdict records
+    # like every schema kind — each `updated` entry's engine-computed changed-field
+    # set (a form's per-component converge map; an app's component/sitemap token
+    # list) is preserved verbatim, so the plan records the action identity ADR 0022
+    # compares on. No plan_format bump: `kind` is a free string (ADR 0024).
+    report = _report(updated=[
+        {"kind": "form", "name": "contoso_project main form",
+         "diff": {"field:tab0/contoso_code": {"label": {"old": "Code", "new": "Ref"}}}},
+        {"kind": "app", "name": "cwx_crmworx",
+         "diff": {"fields": ["component:added:view:g-1", "sitemap:converged"]}}])
+    verdicts = plan_mod.build_plan(
+        spec=_SPEC, report=report, backend=backend, organization_id=None,
+        solution="ContosoCore", base_dir=None,
+        prune=False, allow_data_loss=False, stage_only=False)["verdicts"]
+    by_name = {v["name"]: v for v in verdicts}
+    assert by_name["contoso_project main form"]["diff"] == {
+        "field:tab0/contoso_code": {"label": {"old": "Code", "new": "Ref"}}}
+    assert by_name["cwx_crmworx"]["diff"] == {
+        "fields": ["component:added:view:g-1", "sitemap:converged"]}
+
+
 def test_build_plan_pins_referenced_payloads_by_sha256(backend, tmp_path):
     (tmp_path / "scripts").mkdir()
     (tmp_path / "scripts" / "project.js").write_bytes(b"abc")
@@ -398,6 +420,36 @@ def test_diff_plan_update_same_field_set_different_live_value_is_not_stale(backe
     live = _report(updated=[{"kind": "entity", "name": "contoso_Project",
                              "diff": {"display_name": {"old": "SHIFTED", "new": "Project"}}}])
     assert plan_mod.diff_plan(plan, live) == []
+
+
+def test_diff_plan_flags_app_action_change_from_live_ui_edit(backend):
+    # #798 / AC2: a live UI edit between plan and apply invalidates the plan even
+    # when the verdict stays `updated`. The plan approved adding a component AND
+    # converging the sitemap; a live edit binds that component out of band, so the
+    # recomputed action is sitemap-only — a different changed-field set → stale.
+    plan_report = _report(updated=[{"kind": "app", "name": "cwx_crmworx", "diff": {
+        "fields": ["component:added:view:g-1", "sitemap:converged"]}}])
+    plan = plan_mod.build_plan(
+        spec=_SPEC, report=plan_report, backend=backend, organization_id="org-guid-123",
+        solution="ContosoCore", base_dir=None,
+        prune=False, allow_data_loss=False, stage_only=False)
+    live = _report(updated=[{"kind": "app", "name": "cwx_crmworx", "diff": {
+        "fields": ["sitemap:converged"]}}])
+    div = plan_mod.diff_plan(plan, live)
+    assert [(d["kind"], d["name"]) for d in div] == [("app", "cwx_crmworx")]
+
+
+def test_diff_plan_app_same_action_is_not_stale(backend):
+    # The whole-document sitemap stance (ADR 0024): a re-plan against the same live
+    # drift recomputes the identical token set → not stale, so an unchanged plan
+    # stays executable.
+    report = _report(updated=[{"kind": "app", "name": "cwx_crmworx", "diff": {
+        "fields": ["component:added:view:g-1", "sitemap:converged"]}}])
+    plan = plan_mod.build_plan(
+        spec=_SPEC, report=report, backend=backend, organization_id="org-guid-123",
+        solution="ContosoCore", base_dir=None,
+        prune=False, allow_data_loss=False, stage_only=False)
+    assert plan_mod.diff_plan(plan, report) == []
 
 
 def test_diff_plan_pruned_ignored_without_prune_intent(backend):

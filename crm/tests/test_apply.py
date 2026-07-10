@@ -4930,6 +4930,45 @@ def test_apply_from_plan_verify_detects_stale(backend, dry_backend, monkeypatch,
     assert "stale plan" in env["error"]
 
 
+def test_apply_from_plan_app_live_ui_edit_detected_stale(dry_backend, monkeypatch, tmp_path):
+    # #798 / AC2: the UI kinds flow through the whole plan → verify loop. Plan an
+    # app change (a component to bind + a sitemap to converge → `updated`); then a
+    # live edit binds the component and lands the declared sitemap, so the app now
+    # matches → recompute says `skipped`, diverging from the plan → stale, exit 1,
+    # zero writes. Proves an app's changed action invalidates the plan like a
+    # schema kind's does.
+    monkeypatch.setattr(CLIContext, "backend", lambda self: dry_backend)
+    spec = {"solution": _SOLUTION, "apps": [_app_block()]}
+    spec_path = _write_spec(tmp_path, spec)
+    plan_path = tmp_path / "p.json"
+    with requests_mock.Mocker() as m:
+        _mock_whoami(m, dry_backend, org_id="org-x")
+        m.get(dry_backend.url_for("solutioncomponents"), json={"value": []})
+        _mock_solution_create(m, dry_backend, exists=True)
+        _mock_app_reconcile(m, dry_backend, live_components=[],
+                            live_sitemap_xml="<SiteMap><Area Id='old' /></SiteMap>")
+        r1 = CliRunner().invoke(
+            cli, ["--dry-run", "--json", "apply", "-f", str(spec_path), "-o", str(plan_path)])
+    assert r1.exit_code == 0, r1.output
+    # Re-verify against an org where the app now matches the spec (component bound,
+    # declared sitemap present) → skipped, diverging from the planned `updated`.
+    with requests_mock.Mocker() as m:
+        _mock_whoami(m, dry_backend, org_id="org-x")
+        m.get(dry_backend.url_for("solutioncomponents"), json={"value": []})
+        _mock_solution_create(m, dry_backend, exists=True)
+        _mock_app_reconcile(m, dry_backend,
+                            live_components=[(26, _APP_COMPONENT_GUID)],
+                            live_sitemap_xml=_declared_sitemap_xml())
+        r2 = CliRunner().invoke(
+            cli, ["--dry-run", "--json", "apply", "--from-plan", str(plan_path)])
+    assert r2.exit_code == 1, r2.output
+    env = json.loads(r2.output)
+    assert env["data"]["plan_valid"] is False
+    div = env["data"]["divergences"]
+    assert any(d["kind"] == "app" and d["plan"].startswith("updated")
+               and d["live"] == "skipped" for d in div)
+
+
 # — real execution: verify then apply on the same connection —
 
 
@@ -5683,6 +5722,39 @@ def test_apply_apps_reconcile_dry_run_reports_drift_no_write(dry_backend):
     assert _sitemap_patches(m, dry_backend) == []
     assert _app_posts(m, dry_backend, "sitemaps") == []
     assert res["staged"] is False
+
+
+def test_apply_apps_reconcile_dry_run_records_changed_field_set_for_plan(dry_backend):
+    # #798: an app `updated` entry under --dry-run carries a `diff` changed-field
+    # set — one token per component add/remove plus a sitemap token — so the plan
+    # artifact records the app's action identity and the divergence gate can tell
+    # two structurally-different app updates apart (ADR 0022). Mirrors the forms
+    # slice, which already attaches its converge diff under dry-run.
+    spec = {"solution": _SOLUTION, "apps": [_app_block()]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_create(m, dry_backend, exists=True)
+        m.get(dry_backend.url_for("solutioncomponents"), json={"value": []})
+        _mock_app_reconcile(m, dry_backend, live_components=[],
+                            live_sitemap_xml="<SiteMap><Area Id='old' /></SiteMap>")
+        res = apply_mod.apply_spec(dry_backend, spec, stage_only=False)
+    assert _kinds(res["updated"]) == ["app"]
+    assert res["updated"][0]["diff"] == {"fields": [
+        f"component:added:view:{_APP_COMPONENT_GUID}", "sitemap:converged"]}
+
+
+def test_apply_apps_reconcile_real_run_carries_no_diff(backend):
+    # The changed-field-set `diff` is a plan-artifact concern, built only from a
+    # dry-run report (a plan is never built from a real apply). A real reconcile's
+    # `updated` entry carries the human change list (`components`/`sitemap`) but no
+    # `diff` — guards the dry-run gating so a real run stays unchanged.
+    spec = {"solution": _SOLUTION, "apps": [_app_block()]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_create(m, backend, exists=True)
+        _mock_app_reconcile(m, backend, live_components=[],
+                            live_sitemap_xml="<SiteMap><Area Id='old' /></SiteMap>")
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert _kinds(res["updated"]) == ["app"]
+    assert "diff" not in res["updated"][0]
 
 
 def test_apply_apps_phase_stage_only_defers_publish(backend):

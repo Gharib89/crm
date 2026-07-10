@@ -321,6 +321,17 @@ def _reconcile_app(
         entry["components"] = changes
     if sitemap_change:
         entry["sitemap"] = sitemap_change
+    # The changed-field set that identifies this app's action for the plan artifact
+    # and the divergence gate (ADR 0022): one token per component add/remove
+    # (`component:<change>:<kind>:<id>`) plus a `sitemap:<change>` token. Carried
+    # only under --dry-run — a plan is only ever built from a dry-run report —
+    # mirroring the forms slice. A live edit between plan and apply that resolves or
+    # alters one of these actions shifts the token set, so the plan reads stale.
+    if backend.dry_run:
+        fields = [f"component:{c['change']}:{c['kind']}:{c['id']}" for c in changes]
+        if sitemap_change:
+            fields.append(f"sitemap:{sitemap_change}")
+        entry["diff"] = {"fields": sorted(fields)}
     return "updated", entry
 
 
@@ -1855,8 +1866,10 @@ def _expanded(row: dict[str, Any], nav: str, field: str) -> Any:
 # not declared in the spec — limited to the six prune-eligible kinds below.
 # Solution membership bounds the blast radius: prune can never reach a component
 # outside the solution apply manages. Every other component type a solution can
-# hold (option sets, relationships, plug-in types/assemblies, forms) is out of
-# scope. Detection runs only under --prune or --dry-run (see apply_spec).
+# hold (option sets, relationships, plug-in types/assemblies, forms, model-driven
+# apps) is out of scope — a form or app under spec control is a converged platform
+# component, not an independently owned one, so neither is prune-eligible (ADR
+# 0024). Detection runs only under --prune or --dry-run (see apply_spec).
 
 # Top-level kinds resolved straight from a solution objectid:
 # componenttype -> (record-path template keyed by objectid, name column, kind).
