@@ -30,18 +30,17 @@ crm --json org brief
     },
     "solutions": {
       "managed": 42, "unmanaged": 3,
-      "unmanaged_names": ["ContosoCore", "ContosoExt"], "unmanaged_names_total": 2
+      "unmanaged_names": ["ContosoCore", "ContosoExt"]
     },
     "publishers": {
       "count": 2,
-      "items": [{"unique_name": "contoso", "prefix": "cts", "friendly_name": "Contoso"}],
-      "items_total": 2
+      "items": [{"unique_name": "contoso", "prefix": "cts", "friendly_name": "Contoso"}]
     },
     "schema": {
       "custom_entities": 12, "custom_entity_names": ["cts_widget"],
-      "custom_entity_names_total": 12, "global_optionsets": 30
+      "global_optionsets": 30
     },
-    "apps": {"count": 2, "names": ["Sales Hub"], "names_total": 2},
+    "apps": {"count": 2, "names": ["Sales Hub"]},
     "automation": {
       "plugin_assemblies": 4, "plugin_steps": 37,
       "workflows": {"total": 9, "by_category": {"workflow": {"total": 5, "activated": 4}}},
@@ -69,8 +68,10 @@ crm --json org brief
   workflow counts (workflows broken down by category and activated state); SLA,
   web-resource (by type), custom-security-role, and duplicate-rule counts.
 
-Name lists are capped (the true total rides alongside as `*_total`), so a large
-org never floods the payload.
+Key-name lists are capped at 200 entries, while the accompanying count field
+(`count`, `custom_entities`, `unmanaged`) always carries the true total — so a
+large org never floods the payload, and you can still tell when a list was
+truncated (in practice these sets stay well under the cap).
 
 ## Read-only and target-agnostic
 

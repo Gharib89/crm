@@ -138,11 +138,13 @@ def _solutions(backend: D365Backend) -> dict[str, Any]:
         r["uniquename"] for r in rows
         if r.get("uniquename") and r.get("uniquename") not in _SYSTEM_SOLUTIONS
     ]
+    # `unmanaged` (from @odata.count) is the true total; `unmanaged_names` is the
+    # capped, Default/Active-excluded candidate list. Unmanaged solutions number in
+    # the low dozens even on large orgs, so the cap effectively never truncates.
     return {
         "managed": managed,
         "unmanaged": unmanaged,
         "unmanaged_names": candidates,
-        "unmanaged_names_total": len(candidates),
     }
 
 
@@ -159,7 +161,8 @@ def _publishers(backend: D365Backend) -> dict[str, Any]:
         }
         for r in rows
     ]
-    return {"count": total, "items": items, "items_total": len(items)}
+    # `count` is the true total (@odata.count); `items` is capped at _NAME_CAP.
+    return {"count": total, "items": items}
 
 
 def _schema(backend: D365Backend) -> dict[str, Any]:
@@ -169,10 +172,11 @@ def _schema(backend: D365Backend) -> dict[str, Any]:
     entities = metadata_mod.list_entities(backend, custom_only=True)
     names = [e["LogicalName"] for e in entities if e.get("LogicalName")]
     optionsets = optionsets_mod.list_optionsets(backend)
+    # `list_entities` returns the full metadata set in one response, so
+    # `custom_entities` is the true total; only the names list is capped.
     return {
         "custom_entities": len(names),
         "custom_entity_names": names[:_NAME_CAP],
-        "custom_entity_names_total": len(names),
         "global_optionsets": len(optionsets),
     }
 
@@ -180,7 +184,8 @@ def _schema(backend: D365Backend) -> dict[str, Any]:
 def _apps(backend: D365Backend) -> dict[str, Any]:
     rows, total = _page(backend, "appmodules", select="name,uniquename", orderby="name")
     names = [r["name"] for r in rows if r.get("name")]
-    return {"count": total, "names": names, "names_total": len(names)}
+    # `count` is the true total (@odata.count); `names` is capped at _NAME_CAP.
+    return {"count": total, "names": names}
 
 
 def _automation(backend: D365Backend) -> dict[str, Any]:

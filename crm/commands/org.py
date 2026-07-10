@@ -13,6 +13,11 @@ from crm.commands._helpers import d365_errors
 from crm.core import org as org_mod
 
 
+def _cell(value) -> str:
+    """Render a table cell: None → '' (never the literal string 'None')."""
+    return "" if value is None else str(value)
+
+
 @click.group("org")
 def org_group():
     """Org-level orientation (inventory, recon)."""
@@ -50,7 +55,7 @@ def org_brief(ctx: CLIContext):
     ctx.skin.section("Identity")
     ctx.skin.table(
         ["key", "value"],
-        [[k, str(ident.get(k, ""))] for k in
+        [[k, _cell(ident.get(k))] for k in
          ("org_name", "version", "url", "profile", "api_version",
           "user_id", "organization_id")],
     )
@@ -67,7 +72,8 @@ def org_brief(ctx: CLIContext):
     pubs = brief["publishers"]["items"]
     ctx.skin.table(
         ["unique_name", "prefix", "friendly_name"],
-        [[str(p["unique_name"]), str(p["prefix"]), str(p["friendly_name"])] for p in pubs]
+        [[_cell(p.get("unique_name")), _cell(p.get("prefix")), _cell(p.get("friendly_name"))]
+         for p in pubs]
         or [["(none)", "", ""]],
     )
 
