@@ -9,6 +9,63 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.60.0 (2026-07-10)
+
+### Bug Fixes
+
+- Honest totals + None-safe human rendering in org brief
+  ([#804](https://github.com/Gharib89/crm/pull/804),
+  [`553f706`](https://github.com/Gharib89/crm/commit/553f7067094b0fbd370f26427fbc8b9879c3d46f))
+
+- Make org brief request budget truly constant + generic docs placeholders
+  ([#804](https://github.com/Gharib89/crm/pull/804),
+  [`553f706`](https://github.com/Gharib89/crm/commit/553f7067094b0fbd370f26427fbc8b9879c3d46f))
+
+### Documentation
+
+- Clarify export-gap docstrings + sharpen completeness diagnostic
+  ([#789](https://github.com/Gharib89/crm/pull/789),
+  [`09cc3ed`](https://github.com/Gharib89/crm/commit/09cc3edc5fda5735afa6a2b6efc3ca3a4d5c297b))
+
+- Tighten export-gap contract comments to modelled surface
+  ([#789](https://github.com/Gharib89/crm/pull/789),
+  [`09cc3ed`](https://github.com/Gharib89/crm/commit/09cc3edc5fda5735afa6a2b6efc3ca3a4d5c297b))
+
+### Features
+
+- Add `crm org brief` — one-call agent-first org inventory
+  ([#804](https://github.com/Gharib89/crm/pull/804),
+  [`553f706`](https://github.com/Gharib89/crm/commit/553f7067094b0fbd370f26427fbc8b9879c3d46f))
+
+### Performance Improvements
+
+- Narrow org brief $count reads with $select; clarify workflow page bound
+  ([#804](https://github.com/Gharib89/crm/pull/804),
+  [`553f706`](https://github.com/Gharib89/crm/commit/553f7067094b0fbd370f26427fbc8b9879c3d46f))
+
+### Testing
+
+- Prove EXPORTED_KEYS emit via maximal-payload roundtrip
+  ([#799](https://github.com/Gharib89/crm/pull/799),
+  [`f3dc245`](https://github.com/Gharib89/crm/commit/f3dc24529307d134f510e9611dfdeddaf6d10aa2))
+
+- Prove EXPORTED_KEYS emit via maximal-payload roundtrip (#788)
+  ([#799](https://github.com/Gharib89/crm/pull/799),
+  [`f3dc245`](https://github.com/Gharib89/crm/commit/f3dc24529307d134f510e9611dfdeddaf6d10aa2))
+
+- Reify export-spec adapter gaps as data + contract test
+  ([#789](https://github.com/Gharib89/crm/pull/789),
+  [`09cc3ed`](https://github.com/Gharib89/crm/commit/09cc3edc5fda5735afa6a2b6efc3ca3a4d5c297b))
+
+- Reify export-spec adapter gaps as data + contract test (#787)
+  ([#789](https://github.com/Gharib89/crm/pull/789),
+  [`09cc3ed`](https://github.com/Gharib89/crm/commit/09cc3edc5fda5735afa6a2b6efc3ca3a4d5c297b))
+
+- Report both directions in roundtrip-coverage guard message
+  ([#799](https://github.com/Gharib89/crm/pull/799),
+  [`f3dc245`](https://github.com/Gharib89/crm/commit/f3dc24529307d134f510e9611dfdeddaf6d10aa2))
+
+
 ## v1.59.1 (2026-07-10)
 
 ### Bug Fixes
