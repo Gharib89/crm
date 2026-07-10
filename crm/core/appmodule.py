@@ -510,19 +510,24 @@ def update_sitemap(
     *,
     sitemap_id: str,
     sitemap_xml: str,
+    solution: str | None = None,
     publish: bool = False,
 ) -> dict[str, Any]:
     """Replace a sitemap's SiteMapXml wholesale (whole-document converge, ADR 0024).
 
     A sitemap is edited as one XML document — converge replaces the declared XML
-    rather than diffing nodes. Honors ``backend.dry_run`` (the PATCH is suppressed).
+    rather than diffing nodes. ``solution`` scopes the PATCH to the target unmanaged
+    solution (same as ``set_sitemap``), so the converged sitemap lands in that
+    solution's layer rather than the default. Honors ``backend.dry_run`` (the PATCH
+    is suppressed).
     """
     if not sitemap_id:
         raise D365Error("sitemap_id is required.")
     if not sitemap_xml.strip():
         raise D365Error("sitemap_xml must not be empty.")
     result = as_dict(backend.patch(f"sitemaps({sitemap_id})",
-                                   json_body={"sitemapxml": sitemap_xml}))
+                                   json_body={"sitemapxml": sitemap_xml},
+                                   solution=solution))
     if result.get("_dry_run"):
         return result
     out: dict[str, Any] = {"updated": True, "sitemapid": sitemap_id}
@@ -649,7 +654,8 @@ def reconcile_app(
                         unique_name=unique_name, solution=solution)
             out["sitemap_change"] = "added"
         elif live_xml != sitemap_xml:
-            update_sitemap(backend, sitemap_id=str(smid), sitemap_xml=sitemap_xml)
+            update_sitemap(backend, sitemap_id=str(smid), sitemap_xml=sitemap_xml,
+                           solution=solution)
             out["sitemap_change"] = "converged"
     return out
 

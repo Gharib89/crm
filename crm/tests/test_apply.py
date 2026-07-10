@@ -5527,6 +5527,8 @@ def test_apply_apps_reconcile_converges_sitemap_wholesale(backend):
     patches = _sitemap_patches(m, backend)
     assert len(patches) == 1
     assert 'Entity="contoso_project"' in patches[0].json()["sitemapxml"]
+    # The converge PATCH is scoped to the target solution (like set_sitemap).
+    assert patches[0].headers.get("MSCRM.SolutionUniqueName") == "ContosoCore"
     assert res["updated"][0]["sitemap"] == "converged"
     assert len(_publish_hits(m, backend)) == 1
 
@@ -5554,7 +5556,7 @@ def test_apply_apps_reconcile_managed_sibling_still_reconciles(backend):
     managed_block = {"name": "OOB", "unique_name": "cwx_oob"}
     sibling = {"name": "Mine", "unique_name": "cwx_mine", "components": []}
     spec = {"solution": _SOLUTION, "apps": [managed_block, sibling]}
-    other_id = "0f595b32-35df-4f1c-9c94-31e7e7348e08"
+    other_id = "dddddddd-dddd-dddd-dddd-dddddddddddd"
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
         # The managed app resolves managed; the sibling resolves unmanaged with no
