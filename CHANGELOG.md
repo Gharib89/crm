@@ -9,6 +9,31 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.66.0 (2026-07-10)
+
+### Bug Fixes
+
+- **export-spec**: Warn on failed app-bindings read; fail-fast e2e poll
+  ([#811](https://github.com/Gharib89/crm/pull/811),
+  [`02f3bf9`](https://github.com/Gharib89/crm/commit/02f3bf91d45a1c221df5b722eccd105a28fe57c4))
+
+### Features
+
+- **export-spec**: Project model-driven apps + sitemap
+  ([#811](https://github.com/Gharib89/crm/pull/811),
+  [`02f3bf9`](https://github.com/Gharib89/crm/commit/02f3bf91d45a1c221df5b722eccd105a28fe57c4))
+
+- **export-spec**: Project model-driven apps + sitemap (#797)
+  ([#811](https://github.com/Gharib89/crm/pull/811),
+  [`02f3bf9`](https://github.com/Gharib89/crm/commit/02f3bf91d45a1c221df5b722eccd105a28fe57c4))
+
+### Performance Improvements
+
+- **export-spec**: Filter app bindings-count query server-side
+  ([#811](https://github.com/Gharib89/crm/pull/811),
+  [`02f3bf9`](https://github.com/Gharib89/crm/commit/02f3bf91d45a1c221df5b722eccd105a28fe57c4))
+
+
 ## v1.65.0 (2026-07-10)
 
 ### Features
