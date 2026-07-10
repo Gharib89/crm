@@ -5013,3 +5013,178 @@ def test_apply_from_plan_prune_intent_requires_confirmation(backend, monkeypatch
     assert "--yes" in json.loads(result.output)["error"]
     # Refused before any recompute or write.
     assert [r for r in m.request_history if r.method in ("POST", "PUT", "PATCH", "DELETE")] == []
+
+
+# ── Slice: forms phase (ADR 0024) — converge the entity's main form ──────────
+
+_FORM_MAIN = (
+    '<form><tabs>'
+    '<tab name="general" id="{aaaa1111-0000-0000-0000-000000000001}">'
+    '<labels><label description="General" languagecode="1033" /></labels>'
+    '<columns><column width="100%"><sections>'
+    '<section name="summary" id="{bbbb2222-0000-0000-0000-000000000002}">'
+    '<rows></rows></section></sections></column></columns></tab></tabs></form>'
+)
+_FORM_ROW = {"formid": "cccc3333-0000-0000-0000-000000000003", "name": "Information",
+             "objecttypecode": "contoso_project", "type": 2, "formxml": _FORM_MAIN,
+             "isdefault": True}
+
+
+def _forms_block():
+    return {"tabs": [{"name": "custom", "label": "Custom",
+                      "sections": [{"name": "extra", "label": "Extra"}]}]}
+
+
+def test_apply_forms_phase_converges_existing_main_form(backend):
+    spec = {"solution": _SOLUTION,
+            "entities": [{**_ENTITY, "forms": [_forms_block()]}]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_create(m, backend, exists=True)
+        _mock_entity_create(m, backend, schema="contoso_Project", logical="contoso_project", exists=True)
+        m.get(backend.url_for("systemforms"), json={"value": [_FORM_ROW]})
+        patched = m.patch(backend.url_for(f"systemforms({_FORM_ROW['formid']})"),
+                          status_code=204)
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert _kinds(res["applied"]) == ["form"]
+    # Reports the resolved main-form identity, not the placeholder label.
+    assert res["applied"][0]["name"] == "Information"
+    assert res["applied"][0]["formid"] == _FORM_ROW["formid"]
+    assert res["applied"][0]["components"] == [
+        {"kind": "tab", "name": "custom"},
+        {"kind": "section", "name": "extra", "tab": "custom"}]
+    assert patched.called
+    assert len(_publish_hits(m, backend)) == 1
+    assert res["ok"] is True
+
+
+def test_apply_forms_phase_stage_only_defers_publish(backend):
+    # A form is a publishable customization, so --stage-only writes the PATCH but
+    # defers the end-of-run publish and records meta.staged (ADR 0024 / issue AC).
+    spec = {"solution": _SOLUTION,
+            "entities": [{**_ENTITY, "forms": [_forms_block()]}]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_create(m, backend, exists=True)
+        _mock_entity_create(m, backend, schema="contoso_Project", logical="contoso_project", exists=True)
+        m.get(backend.url_for("systemforms"), json={"value": [_FORM_ROW]})
+        patched = m.patch(backend.url_for(f"systemforms({_FORM_ROW['formid']})"),
+                          status_code=204)
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=True)
+    assert _kinds(res["applied"]) == ["form"]
+    assert patched.called
+    assert res["staged"] is True
+    assert _publish_hits(m, backend) == []
+
+
+def test_apply_forms_phase_dry_run_planned_writes_nothing(dry_backend):
+    spec = {"solution": _SOLUTION,
+            "entities": [{**_ENTITY, "forms": [_forms_block()]}]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_create(m, dry_backend, exists=True)
+        _mock_entity_create(m, dry_backend, schema="contoso_Project", logical="contoso_project", exists=True)
+        m.get(dry_backend.url_for("systemforms"), json={"value": [_FORM_ROW]})
+        m.get(dry_backend.url_for("solutioncomponents"), json={"value": []})
+        patched = m.patch(dry_backend.url_for(f"systemforms({_FORM_ROW['formid']})"),
+                          status_code=204)
+        res = apply_mod.apply_spec(dry_backend, spec, stage_only=False)
+    assert _kinds(res["planned"]) == ["form"]
+    assert res["planned"][0]["components"] == [
+        {"kind": "tab", "name": "custom"},
+        {"kind": "section", "name": "extra", "tab": "custom"}]
+    assert not patched.called
+    assert res["staged"] is False
+
+
+def test_apply_forms_phase_idempotent_skip(backend):
+    # A form that already carries the declared tab/section is skipped (no PATCH).
+    already = (
+        '<form><tabs>'
+        '<tab name="custom" id="{dddd4444-0000-0000-0000-000000000004}">'
+        '<labels><label description="Custom" languagecode="1033" /></labels>'
+        '<columns><column width="100%"><sections>'
+        '<section name="extra" id="{eeee5555-0000-0000-0000-000000000005}">'
+        '<rows></rows></section></sections></column></columns></tab></tabs></form>')
+    form_row = {**_FORM_ROW, "formxml": already}
+    spec = {"solution": _SOLUTION,
+            "entities": [{**_ENTITY, "forms": [_forms_block()]}]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_create(m, backend, exists=True)
+        _mock_entity_create(m, backend, schema="contoso_Project", logical="contoso_project", exists=True)
+        m.get(backend.url_for("systemforms"), json={"value": [form_row]})
+        patched = m.patch(backend.url_for(f"systemforms({_FORM_ROW['formid']})"),
+                          status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert "form" in _kinds(res["skipped"])
+    assert res["applied"] == [] and res["updated"] == []
+    assert not patched.called
+    assert _publish_hits(m, backend) == []
+
+
+def test_apply_rejects_malformed_form_handler(backend):
+    spec = {"solution": _SOLUTION, "entities": [{**_ENTITY, "forms": [
+        {"handlers": [{"function": "F", "library": "l.js"}]}]}]}  # missing event
+    with pytest.raises(D365Error, match="event must be one of"):
+        apply_mod.apply_spec(backend, spec, stage_only=False)
+
+
+def test_apply_rejects_onchange_handler_without_field(backend):
+    spec = {"solution": _SOLUTION, "entities": [{**_ENTITY, "forms": [
+        {"handlers": [{"event": "onchange", "function": "F", "library": "l.js"}]}]}]}
+    with pytest.raises(D365Error, match="onchange handler requires a 'field'"):
+        apply_mod.apply_spec(backend, spec, stage_only=False)
+
+
+def test_apply_rejects_form_tab_missing_name(backend):
+    spec = {"solution": _SOLUTION, "entities": [{**_ENTITY, "forms": [
+        {"tabs": [{"label": "no name"}]}]}]}
+    with pytest.raises(D365Error, match="missing required field 'name'"):
+        apply_mod.apply_spec(backend, spec, stage_only=False)
+
+
+def test_apply_rejects_non_mapping_form_tab(backend):
+    # A non-mapping list item fails as a clean usage error, not a TypeError.
+    spec = {"solution": _SOLUTION, "entities": [{**_ENTITY, "forms": [
+        {"tabs": ["bad"]}]}]}
+    with pytest.raises(D365Error, match="tab must be a mapping"):
+        apply_mod.apply_spec(backend, spec, stage_only=False)
+
+
+def test_apply_rejects_non_mapping_form_handler(backend):
+    spec = {"solution": _SOLUTION, "entities": [{**_ENTITY, "forms": [
+        {"handlers": [123]}]}]}
+    with pytest.raises(D365Error, match="handler must be a mapping"):
+        apply_mod.apply_spec(backend, spec, stage_only=False)
+
+
+def test_apply_rejects_empty_form_tab_name(backend):
+    # An empty required identifier is malformed — rejected up front, not written.
+    spec = {"solution": _SOLUTION, "entities": [{**_ENTITY, "forms": [
+        {"tabs": [{"name": "  "}]}]}]}
+    with pytest.raises(D365Error, match="must be a non-empty string"):
+        apply_mod.apply_spec(backend, spec, stage_only=False)
+
+
+def test_apply_rejects_bool_form_columns(backend):
+    # bool is an int subclass; `columns: true` must not slip through as 1.
+    spec = {"solution": _SOLUTION, "entities": [{**_ENTITY, "forms": [
+        {"tabs": [{"name": "custom", "columns": True}]}]}]}
+    with pytest.raises(D365Error, match="columns must be an integer"):
+        apply_mod.apply_spec(backend, spec, stage_only=False)
+
+
+def test_apply_rejects_non_string_handler_field(backend):
+    spec = {"solution": _SOLUTION, "entities": [{**_ENTITY, "forms": [
+        {"handlers": [{"event": "onchange", "field": 123,
+                       "function": "F", "library": "l.js"}]}]}]}
+    with pytest.raises(D365Error, match="'field' must be a string"):
+        apply_mod.apply_spec(backend, spec, stage_only=False)
+
+
+def test_apply_rejects_non_bool_handler_enabled(backend):
+    # A quoted `enabled: "false"` would be truthy under bool(); reject up front.
+    spec = {"solution": _SOLUTION, "entities": [{**_ENTITY, "forms": [
+        {"handlers": [{"event": "onload", "function": "F", "library": "l.js",
+                       "enabled": "false"}]}]}]}
+    with pytest.raises(D365Error, match="'enabled' must be true or false"):
+        apply_mod.apply_spec(backend, spec, stage_only=False)

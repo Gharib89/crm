@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from typing import Any, TypeVar, cast
 
 from crm.core.batch import run_batched
+from crm.core import forms as forms_mod
 from crm.core import metadata as meta_mod
 from crm.core import metadata_attrs as attrs_mod
 from crm.core.metadata_attrs import ATTRIBUTE_KINDS
@@ -121,6 +122,82 @@ def _validate_column(col: Any, view_name: str) -> None:
             raise D365Error(f"view {view_name!r}: column width must be an integer.")
         return
     raise D365Error(f"view {view_name!r}: column must be a string or a mapping.")
+
+
+def _require_str(obj: Any, key: str, label: str, *, optional: bool = False) -> None:
+    """Require ``key`` on the mapping ``obj`` to be a string — present-and-typed,
+    or (when ``optional``) absent-or-typed. A non-mapping ``obj`` (e.g. a bare
+    string in a list where a block was expected) fails as a clean usage error,
+    not a ``TypeError`` — the first call per block validates its shape."""
+    if not isinstance(obj, dict):
+        raise D365Error(f"{label} must be a mapping.")
+    cobj = cast("dict[str, Any]", obj)
+    if key not in cobj or cobj[key] is None:
+        if optional:
+            return
+        raise D365Error(f"{label}: missing required field {key!r}.")
+    if not isinstance(cobj[key], str):
+        raise D365Error(f"{label}: {key!r} must be a string.")
+    if not optional and not cast("str", cobj[key]).strip():
+        raise D365Error(f"{label}: {key!r} must be a non-empty string.")
+
+
+def _validate_columns(value: Any, label: str) -> None:
+    """A layout column count must be an integer in the designer's 1–4 range."""
+    if value is None:
+        return
+    # bool is an int subclass, so `columns: true` would otherwise validate as 1.
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 4:
+        raise D365Error(f"{label}: columns must be an integer between 1 and 4.")
+
+
+def _validate_form_block(block: Any, elabel: str) -> None:
+    """Validate one entity-nested ``forms:`` block up front (ADR 0024).
+
+    A malformed declaration fails here — before any HTTP call — with a usage
+    error, mirroring the up-front authority every other spec block has.
+    """
+    if not isinstance(block, dict):
+        raise D365Error(f"{elabel}: each forms entry must be a mapping.")
+    block = cast("dict[str, Any]", block)
+    label = f"{elabel} form {block.get('name') or '(default main form)'!r}"
+    _require_str(block, "name", label, optional=True)
+    for coll in ("tabs", "libraries", "handlers"):
+        _require_list(block, coll, label)
+    for tab in _as_list(block.get("tabs")):
+        _require_str(tab, "name", f"{label} tab")
+        _require_str(tab, "label", f"{label} tab {tab.get('name')!r}", optional=True)
+        _validate_columns(tab.get("columns"), f"{label} tab {tab.get('name')!r}")
+        _require_list(tab, "sections", f"{label} tab {tab.get('name')!r}")
+        for section in _as_list(tab.get("sections")):
+            slabel = f"{label} section"
+            _require_str(section, "name", slabel)
+            _require_str(section, "label", f"{slabel} {section.get('name')!r}", optional=True)
+            _validate_columns(section.get("columns"), f"{slabel} {section.get('name')!r}")
+            _require_list(section, "fields", f"{slabel} {section.get('name')!r}")
+            for field in _as_list(section.get("fields")):
+                flabel = f"{slabel} {section.get('name')!r} field"
+                _require_str(field, "name", flabel)
+                _require_str(field, "label", flabel, optional=True)
+    for lib in cast("list[Any]", block.get("libraries") or []):
+        if not isinstance(lib, str) or not lib:
+            raise D365Error(f"{label}: each library must be a non-empty string.")
+    for handler in _as_list(block.get("handlers")):
+        hlabel = f"{label} handler"
+        _require_str(handler, "function", hlabel)
+        _require_str(handler, "library", hlabel)
+        _require_str(handler, "field", hlabel, optional=True)
+        for flag in ("pass_context", "enabled"):
+            if flag in handler and not isinstance(handler[flag], bool):
+                raise D365Error(f"{hlabel}: {flag!r} must be true or false.")
+        event = handler.get("event")
+        if event not in forms_mod.EVENT_CHOICES:
+            raise D365Error(
+                f"{hlabel}: event must be one of {', '.join(forms_mod.EVENT_CHOICES)}.")
+        if event == "onchange" and not handler.get("field"):
+            raise D365Error(f"{hlabel}: an onchange handler requires a 'field'.")
+        if event != "onchange" and handler.get("field"):
+            raise D365Error(f"{hlabel}: only an onchange handler takes a 'field'.")
 
 
 # ── component-kind adapters ──────────────────────────────────────────────────
@@ -282,7 +359,7 @@ def validate_spec(spec: Any) -> None:
         # lists) stay in this up-front pass.
         REGISTRY["entity"].validate(ent)
         elabel = f"entity {ent['schema_name']!r}"
-        for sub in ("attributes", "relationships", "views"):
+        for sub in ("attributes", "relationships", "views", "forms"):
             _require_list(ent, sub, elabel)
         for attr in _as_list(ent.get("attributes")):
             REGISTRY["attribute"].validate(attr)
@@ -290,6 +367,8 @@ def validate_spec(spec: Any) -> None:
             REGISTRY["relationship"].validate(rel)
         for view in _as_list(ent.get("views")):
             REGISTRY["view"].validate(view)
+        for form in _as_list(ent.get("forms")):
+            _validate_form_block(form, elabel)
     # optionset / web resource / security role each delegate their whole block to
     # the component-kind adapter (required keys, constrained values, option/privilege
     # shape) — the same up-front authority the entity subtree uses. A malformed block
@@ -2082,6 +2161,49 @@ def apply_spec(
                 _reconcile(entry, lambda wr=wr, live_wr=live_wr, ctx=ctx, entry=entry:
                            _reconcile_webresource(backend, wr, live_wr, ctx, entry),
                            failed, routes)
+
+        # Phase: forms (ADR 0024). Runs after attributes and web resources so a
+        # declared field's attribute and a declared library's web resource already
+        # exist. Each block converges the entity's platform-generated main form:
+        # the create path adds the declared tabs/sections/fields/libraries/handlers
+        # that are absent (idempotent). A greenfield entity whose main form is not
+        # yet readable (or a dry-run would-create entity) is `planned`; a real run
+        # with additions is `applied` and defers publish to the end-of-run
+        # PublishAllXml; a form that already satisfies the declaration is `skipped`.
+        for ent in _as_list(spec.get("entities")):
+            forms_blocks = _as_list(ent.get("forms"))
+            if not forms_blocks:
+                continue
+            logical_f: str = (entity_logicals.get(ent["schema_name"])
+                              or str(ent["schema_name"]).lower())
+            for block in forms_blocks:
+                fname = block.get("name")
+                entry = {"kind": "form",
+                         "name": fname if isinstance(fname, str) else f"{logical_f} main form"}
+                if logical_f in planned_names:
+                    planned.append(entry)
+                    continue
+
+                def _converge(b: "dict[str, Any]" = block, lf: str = logical_f) -> "dict[str, Any]":
+                    return forms_mod.apply_form_spec(
+                        backend, lf, b, publish=False, solution=solution_name,
+                        dry_run=backend.dry_run)
+
+                result: dict[str, Any] = _call(entry, _converge, failed)
+                if result.get("unmaterialized"):
+                    planned.append(entry)
+                    continue
+                # Report the resolved main-form identity, not the placeholder label.
+                if isinstance(result.get("form"), str):
+                    entry["name"] = result["form"]
+                if result.get("formid"):
+                    entry["formid"] = result["formid"]
+                added = cast("list[dict[str, Any]]", result.get("components") or [])
+                if not added:
+                    skipped.append(entry)
+                    continue
+                entry["components"] = added
+                (planned if backend.dry_run else applied).append(entry)
 
         # Phase: security roles. Create (if_exists=skip) then reconcile privileges
         # to the declared set. A fresh role gets the declared set applied; an

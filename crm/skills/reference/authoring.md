@@ -14,10 +14,10 @@ the spec (`apply` reconciles matching components — equal → skip, updatable d
 
 Stand up a whole table from one YAML/JSON spec instead of many imperative commands.
 `apply` runs the metadata and plug-in cores in dependency order (publisher → solution →
-entities → option sets → attributes → relationships → views → web resources → security
-roles → plug-ins) and **publishes once at the end** — only when a publishable component
-changed (security roles and plug-in components are not publishable, so an apply that
-touches only those does not publish).
+entities → option sets → attributes → relationships → views → web resources → forms →
+security roles → plug-ins) and **publishes once at the end** — only when a publishable
+component changed (security roles and plug-in components are not publishable, so an apply
+that touches only those does not publish).
 
 `apply` is **convergent** — a component that already exists is reconciled against
 the spec, not blindly skipped. Three outcomes per component:
@@ -65,6 +65,20 @@ expressible in the spec. **Reconciled on re-apply:**
 - **Option set** — spec-declared options the live global set lacks are inserted
   (matched by explicit `value`; an auto-valued option is create-path only, else a
   re-apply would re-insert it). Existing option labels and removals are not reconciled.
+- **Form** (`forms:` nested under an entity) — **converges the entity's
+  platform-generated main form** (ADR 0024); `apply` never forges a form from
+  scratch. A block declares `tabs[]` → `sections[]` → `fields[]` (attribute logical
+  `name` → control resolved from its type), plus `libraries[]` (JS web-resource
+  names, must already exist) and `handlers[]` (`event` onload/onsave/onchange,
+  `function`, `library`; `onchange` also needs `field`). Optional `name` picks
+  among the entity's main forms (default: the primary). The create path is
+  **additive + idempotent**: a declared component absent from the form is added
+  (real → `applied`, dry-run → `planned`); a form already satisfying the
+  declaration is `skipped`. A greenfield entity whose main form is not yet readable
+  is `planned` — re-apply to land it. Forms are **out of scope for `--prune`**. The
+  `applied`/`planned` entry carries `components: [{kind, name, …}]` listing what was
+  added. Converging *drift* in an already-present component is not yet reconciled
+  (create path only).
 
 **Create-only** (re-applying an existing component does not yet reconcile these):
 attribute — `default_value`, `true_label/false_label`, `min_value/max_value`,

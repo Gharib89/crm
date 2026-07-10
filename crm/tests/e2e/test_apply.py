@@ -848,3 +848,79 @@ def test_apply_forwards_new_builder_kwarg_to_live(cli, backend, ephemeral_entity
 
     assert _label_text(optset.get("TrueOption")) == "Enabled", f"true label not set: {raw}"
     assert _label_text(optset.get("FalseOption")) == "Disabled", f"false label not set: {raw}"
+
+
+@pytest.mark.slow
+@covers("apply")
+def test_apply_converges_form_on_ephemeral_entity(cli, backend, ephemeral_solution,
+                                                  ephemeral_entity, tmp_path, request):
+    """Apply a spec whose entity carries a `forms:` block (ADR 0024).
+
+    The block declares a tab + section + a field bound to a new attribute; a real
+    apply converges the entity's platform-generated main form so the declared tab,
+    section, and field land on it. Re-applying is idempotent (the form is
+    `skipped`). Both the attribute and the form layout are cleaned up when the
+    session entity is torn down (the form dies with the entity); the attribute has
+    its own finalizer so a re-run is safe.
+    """
+    from crm.core import forms as forms_mod
+
+    suffix = ephemeral_entity[-8:]
+    attr_schema = f"new_formfld_{suffix}"
+    attr_logical = attr_schema.lower()
+    tab, section = f"new_tab_{suffix}", f"new_sec_{suffix}"
+
+    spec = {
+        "solution": {"unique_name": ephemeral_solution},
+        "entities": [{
+            "schema_name": ephemeral_entity,
+            "display_name": f"E2E {suffix}",
+            "attributes": [{
+                "kind": "string", "schema_name": attr_schema,
+                "display_name": f"Form Field {suffix}", "max_length": 50,
+            }],
+            "forms": [{
+                "tabs": [{
+                    "name": tab, "label": "E2E Tab",
+                    "sections": [{
+                        "name": section, "label": "E2E Section",
+                        "fields": [{"name": attr_logical, "label": "Form Field"}],
+                    }],
+                }],
+            }],
+        }],
+    }
+    spec_path = tmp_path / "forms_spec.json"
+    spec_path.write_text(json.dumps(spec), encoding="utf-8")
+
+    def _cleanup():
+        try:
+            backend.delete(
+                f"EntityDefinitions(LogicalName='{ephemeral_entity}')"
+                f"/Attributes(LogicalName='{attr_logical}')")
+        except Exception:
+            pass
+
+    request.addfinalizer(_cleanup)
+
+    result = cli(["--json", "apply", "-f", str(spec_path)])
+    data = json.loads(result.stdout)["data"]
+    assert not data.get("failed"), f"apply reported failures: {data}"
+    form_applied = [e for e in data["applied"] if e["kind"] == "form"]
+    assert form_applied, f"form not applied: {data}"
+    kinds = {c["kind"] for c in form_applied[0]["components"]}
+    assert {"tab", "section", "field"} <= kinds
+
+    # The declared layout is live on the entity's main form.
+    form_row = forms_mod._select_form(
+        forms_mod.read_entity_forms(backend, ephemeral_entity), None)
+    live_xml = form_row["formxml"]
+    assert f'name="{tab}"' in live_xml
+    assert f'name="{section}"' in live_xml
+    assert f'datafieldname="{attr_logical}"' in live_xml
+
+    # Re-apply is idempotent: the form already satisfies the declaration → skipped.
+    result2 = cli(["--json", "apply", "-f", str(spec_path)])
+    data2 = json.loads(result2.stdout)["data"]
+    assert [e["kind"] for e in data2["skipped"] if e["kind"] == "form"] == ["form"]
+    assert not any(e["kind"] == "form" for e in data2["applied"])
