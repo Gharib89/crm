@@ -9,6 +9,25 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.59.1 (2026-07-10)
+
+### Bug Fixes
+
+- **forms**: Address review — placeholder GUIDs, case-insensitive preserve
+  ([#786](https://github.com/Gharib89/crm/pull/786),
+  [`1bd2a65`](https://github.com/Gharib89/crm/commit/1bd2a65dfaa42bde254e20a0adbb9de3e03d98c2))
+
+- **forms**: Clone forms with a custom-control subgrid descriptor
+  ([#786](https://github.com/Gharib89/crm/pull/786),
+  [`1bd2a65`](https://github.com/Gharib89/crm/commit/1bd2a65dfaa42bde254e20a0adbb9de3e03d98c2))
+
+### Documentation
+
+- **xml_edit**: Note regenerate_guids preserve is value-scoped
+  ([#786](https://github.com/Gharib89/crm/pull/786),
+  [`1bd2a65`](https://github.com/Gharib89/crm/commit/1bd2a65dfaa42bde254e20a0adbb9de3e03d98c2))
+
+
 ## v1.59.0 (2026-07-09)
 
 ### Documentation
