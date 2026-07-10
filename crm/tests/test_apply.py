@@ -5104,6 +5104,7 @@ def test_apply_forms_phase_idempotent_skip(backend):
         '<labels><label description="Custom" languagecode="1033" /></labels>'
         '<columns><column width="100%"><sections>'
         '<section name="extra" id="{eeee5555-0000-0000-0000-000000000005}">'
+        '<labels><label description="Extra" languagecode="1033" /></labels>'
         '<rows></rows></section></sections></column></columns></tab></tabs></form>')
     form_row = {**_FORM_ROW, "formxml": already}
     spec = {"solution": _SOLUTION,
@@ -5117,6 +5118,83 @@ def test_apply_forms_phase_idempotent_skip(backend):
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
     assert "form" in _kinds(res["skipped"])
     assert res["applied"] == [] and res["updated"] == []
+    assert not patched.called
+    assert _publish_hits(m, backend) == []
+
+
+def test_apply_forms_phase_converged_drift_is_updated(backend):
+    # The live main form carries the declared tab/section but the tab label drifted;
+    # reconcile converges it in place and routes the form to `updated` (ADR 0024 #793).
+    drifted = (
+        '<form><tabs>'
+        '<tab name="custom" id="{dddd4444-0000-0000-0000-000000000004}">'
+        '<labels><label description="OLD LABEL" languagecode="1033" /></labels>'
+        '<columns><column width="100%"><sections>'
+        '<section name="extra" id="{eeee5555-0000-0000-0000-000000000005}">'
+        '<labels><label description="Extra" languagecode="1033" /></labels>'
+        '<rows></rows></section></sections></column></columns></tab></tabs></form>')
+    form_row = {**_FORM_ROW, "formxml": drifted}
+    spec = {"solution": _SOLUTION,
+            "entities": [{**_ENTITY, "forms": [_forms_block()]}]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_create(m, backend, exists=True)
+        _mock_entity_create(m, backend, schema="contoso_Project", logical="contoso_project", exists=True)
+        m.get(backend.url_for("systemforms"), json={"value": [form_row]})
+        patched = m.patch(backend.url_for(f"systemforms({_FORM_ROW['formid']})"),
+                          status_code=204)
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert _kinds(res["updated"]) == ["form"]
+    assert res["applied"] == []
+    conv = [c for c in res["updated"][0]["components"] if c.get("change") == "converged"]
+    assert conv and conv[0]["diff"] == {"label": {"old": "OLD LABEL", "new": "Custom"}}
+    assert patched.called
+    assert res["ok"] is True
+    assert len(_publish_hits(m, backend)) == 1
+
+
+def test_apply_forms_phase_dry_run_converge_carries_diff(dry_backend):
+    drifted = (
+        '<form><tabs>'
+        '<tab name="custom" id="{dddd4444-0000-0000-0000-000000000004}">'
+        '<labels><label description="OLD LABEL" languagecode="1033" /></labels>'
+        '<columns><column width="100%"><sections>'
+        '<section name="extra" id="{eeee5555-0000-0000-0000-000000000005}">'
+        '<labels><label description="Extra" languagecode="1033" /></labels>'
+        '<rows></rows></section></sections></column></columns></tab></tabs></form>')
+    form_row = {**_FORM_ROW, "formxml": drifted}
+    spec = {"solution": _SOLUTION,
+            "entities": [{**_ENTITY, "forms": [_forms_block()]}]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_create(m, dry_backend, exists=True)
+        _mock_entity_create(m, dry_backend, schema="contoso_Project", logical="contoso_project", exists=True)
+        m.get(dry_backend.url_for("systemforms"), json={"value": [form_row]})
+        m.get(dry_backend.url_for("solutioncomponents"), json={"value": []})
+        patched = m.patch(dry_backend.url_for(f"systemforms({_FORM_ROW['formid']})"),
+                          status_code=204)
+        res = apply_mod.apply_spec(dry_backend, spec, stage_only=False)
+    assert _kinds(res["updated"]) == ["form"]
+    assert res["updated"][0]["diff"]  # would-converge preview attached under dry-run
+    assert not patched.called
+    assert res["staged"] is False
+
+
+def test_apply_forms_phase_unknown_named_form_is_replace_blocked(backend):
+    # The block names a main form that does not exist → identity/ownership
+    # divergence: refused with no write, exit 1, and siblings still reconcile.
+    spec = {"solution": _SOLUTION, "entities": [{**_ENTITY, "forms": [
+        {"name": "Ghost Form", "tabs": [{"name": "custom", "label": "Custom"}]}]}]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_create(m, backend, exists=True)
+        _mock_entity_create(m, backend, schema="contoso_Project", logical="contoso_project", exists=True)
+        m.get(backend.url_for("systemforms"), json={"value": [_FORM_ROW]})
+        patched = m.patch(backend.url_for(f"systemforms({_FORM_ROW['formid']})"),
+                          status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert _kinds(res["replace_blocked"]) == ["form"]
+    assert res["replace_blocked"][0]["name"] == "Ghost Form"
+    assert "reason" in res["replace_blocked"][0]
+    assert res["ok"] is False
     assert not patched.called
     assert _publish_hits(m, backend) == []
 
