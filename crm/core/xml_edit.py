@@ -78,16 +78,18 @@ def regenerate_guids(
     *internal* ids; everything else (``classid`` and external refs) is left
     untouched and should be policed by :func:`assert_external_guids_intact`.
 
-    ``preserve`` is a set of lowercased GUID values the family knows are external
-    references even though they ride on an attribute the ``pattern`` matches (e.g.
-    a form's ``<customControl id>``, which uses the bare ``id`` attribute but points
-    at a registered control). A matched GUID whose value is in ``preserve`` is left
-    byte-identical and never enters the mapping, so the guard sees it as an
-    untouched external GUID.
+    ``preserve`` is a set of GUID values the family knows are external references
+    even though they ride on an attribute the ``pattern`` matches (e.g. a form's
+    ``<customControl id>``, which uses the bare ``id`` attribute but points at a
+    registered control). It is compared case-insensitively (matched GUIDs are
+    lowercased first), so the caller need not pre-normalize. A matched GUID whose
+    value is in ``preserve`` is left byte-identical and never enters the mapping,
+    so the guard sees it as an untouched external GUID.
 
     Returns the rewritten XML and the ``{old_lower: new}`` mapping — feed that
     mapping straight into the guard.
     """
+    preserve = {g.lower() for g in preserve}
     mapping: dict[str, str] = {}
 
     def _repl(m: "re.Match[str]") -> str:

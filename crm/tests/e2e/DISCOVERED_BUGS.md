@@ -117,19 +117,32 @@ with distinct formids.
 (now runs on both targets — no `@requires_cloud` gate — and clones twice to assert
 the repeat-collision is gone; CI runs the cloud leg, the maintainer the on-prem leg).
 
-**Follow-on (FIXED, #785)** — the internal-id set was too narrow: a
-`<controlDescription forControl="{uniqueid}">` back-references an on-form
-control's `uniqueid` (an **intra-form** reference), but `forControl` was not in
-the regenerated-attribute set. Cloning regenerated the `uniqueid` while leaving
-`forControl` pointing at the old value, so the external-reference guard correctly
-refused to POST with *"form-clone id regeneration altered a non-target GUID
-(external reference)"* — exit 1. This reproduced on `agent-cloud` for the account
-form **"Customer profile cases"** (a subgrid with a custom-control descriptor),
-which is now `forms[0]`, so `test_form_clone_account_to_ephemeral` picked it as
-the source and failed. **Fix** — `forControl` is added to
-`crm.core.forms._REGEN_ATTR_RE`, so it is regenerated in lock-step with the
-`uniqueid` it names; the intra-form link survives and the guard passes. Offline
-coverage: `test_forms.py::TestRegenerateFormCloneIds::test_forcontrol_ref_regenerated_with_its_uniqueid`.
+**Follow-on (FIXED, #785)** — the internal-vs-external partition was wrong **two
+ways**, both on the same form and both fixed together. This reproduced on
+`agent-cloud` for the account form **"Customer profile cases"** (a subgrid with a
+custom-control descriptor), which is now `forms[0]`, so
+`test_form_clone_account_to_ephemeral` picked it as the source and failed.
+
+1. **Too narrow.** A `<controlDescription forControl="{uniqueid}">` back-references
+   an on-form control's `uniqueid` (an **intra-form** reference), but `forControl`
+   was not in the regenerated-attribute set. Cloning regenerated the `uniqueid`
+   while leaving `forControl` pointing at the old value, so the external-reference
+   guard correctly refused to POST with *"form-clone id regeneration altered a
+   non-target GUID (external reference)"* — exit 1.
+2. **Too broad.** A `<customControl id="{GUID}">` references a **registered custom
+   control** (external), but it rides on the bare `id` attribute the layout ids
+   use, so it was regenerated to a fresh value. This second cause was masked by
+   the guard trip above; once (1) was fixed and the POST proceeded, the server
+   rejected it with *"Custom control with Id … does not exist"* (HTTP 400).
+
+**Fix** — in `crm.core.forms`, `forControl` is added to `_REGEN_ATTR_RE` (so it
+moves in lock-step with its `uniqueid`), and `_CUSTOMCONTROL_ID_RE` collects the
+`<customControl id>` GUIDs to pass as a `preserve` set to the extended
+`xml_edit.regenerate_guids` (a preserved GUID is left byte-identical and never
+enters the mapping). Layout / label / uniqueid / handler ids still regenerate per
+clone, so #268's repeat-clone fix is intact. Offline coverage:
+`test_forms.py::TestRegenerateFormCloneIds::test_forcontrol_ref_regenerated_with_its_uniqueid`
+and `::test_customcontrol_id_reference_is_preserved`.
 
 ---
 

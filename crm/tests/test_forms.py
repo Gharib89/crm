@@ -259,7 +259,9 @@ class TestRegenerateFormCloneIds:
         survives and the external-reference guard does not trip (issue #785:
         account "Customer profile cases" subgrid + custom-control descriptor)."""
         from crm.core.forms import regenerate_form_clone_ids
-        uid = "9d3423bd-754d-4a56-bbad-67f21e7ad4d1"
+        # Obvious placeholder GUID (public-repo fixture convention) — the transform
+        # is value-agnostic, so a real captured id would add no coverage.
+        uid = "dddddddd-dddd-dddd-dddd-dddddddddddd"
         xml = (
             '<form><tabs><tab><columns><column><sections><section><rows><row><cell>'
             f'<control id="Recent_Cases" uniqueid="{{{uid}}}"><parameters />'
@@ -288,7 +290,9 @@ class TestRegenerateFormCloneIds:
         does not exist"* (#785). It must survive byte-identical, while the layout
         ``id`` on the same form is still regenerated."""
         from crm.core.forms import regenerate_form_clone_ids
-        cc = "e7a81278-8635-4d9e-8d4d-59480b391c5b"
+        # Obvious placeholders (public-repo fixture convention): `cccc…` for the
+        # external control reference to preserve, `aaaa…` for the layout id to regen.
+        cc = "cccccccc-cccc-cccc-cccc-cccccccccccc"
         cell = "aaaaaaaa-1111-2222-3333-444444444444"
         xml = (
             '<form><tabs><tab><columns><column><sections><section><rows><row>'
