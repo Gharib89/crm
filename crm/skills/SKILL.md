@@ -49,13 +49,15 @@ carries `meta.completed_steps` and `meta.failed_stage`.
 
 **Mind your context budget on fat list verbs.** Some read verbs return hundreds
 to tens of thousands of rows (`solution list`, `metadata entities`, `webresource
-list`, `solution components`) — enough to blow a per-call token budget. Two global
-shaper flags reshape the response *client-side, post-response* (distinct from a
-request's `--select`), preserving the `ok`/`data`/`meta` envelope so you can still
-page: `--fields` projects each row/record down to named top-level keys, and `--jq`
-runs a jq program over the payload (count it, filter it, `group_by` it into a
-summary). Project, count, or summarize a fat verb *before* loading it, rather than
-reading the whole payload into context.
+list`, `solution components`) — enough to blow a per-call token budget. To *orient*
+in an unfamiliar org, don't sweep several of these — run the one-call summarized
+inventory first (see **Orienting in an unfamiliar org** below). When you do need a
+fat verb, two global shaper flags reshape the response *client-side, post-response*
+(distinct from a request's `--select`), preserving the `ok`/`data`/`meta` envelope
+so you can still page: `--fields` projects each row/record down to named top-level
+keys, and `--jq` runs a jq program over the payload (count it, filter it,
+`group_by` it into a summary). Project, count, or summarize a fat verb *before*
+loading it, rather than reading the whole payload into context.
 
 **Exit codes** — check `$?`, then read the envelope:
 
@@ -151,6 +153,33 @@ For exact flags, choices, and defaults, **never guess** — interrogate the CLI:
   `data.url`, and `data.org_name` identify the org without GUID-matching.
 
 The skill states only what those cannot: workflows, gotchas, and the JSON contract.
+
+### Orienting in an unfamiliar org — start here
+
+Before assembling schema, queries, or writes against an org you don't know, run
+the **one-call inventory** instead of stitching together `solution list` +
+`metadata entities` + `publisher`/`app`/`plugin`/`workflow` sweeps:
+
+```bash
+crm --json org brief
+```
+
+Read-only; returns **counts and key names only, never full rows**, so it is cheap
+on context and safe to run first (reads execute even under `--dry-run`). Sections:
+
+- **identity** — org name, version, and the serving `profile`/`url` (self-identifying).
+- **solutions** — managed/unmanaged counts + the unmanaged non-default names, which
+  are your candidate `--solution` targets for any customization write.
+- **publishers** — each publisher's **customization prefix**: what a new component's
+  schema name must start with. Pick the prefix here *before* authoring schema.
+- **schema** — custom entity count + logical names, and the global option-set count.
+- **apps / automation / components** — model-driven app names, plug-in and workflow
+  counts (workflows broken down by category + activated state), SLA / web-resource /
+  custom-role / duplicate-rule counts.
+
+Then drill into one domain with the fat verbs — now knowing *which* solution,
+prefix, or entity — shaping each with `--fields` / `--jq`. (Counts saturate at 5000,
+Dataverse's `$count` ceiling; treat 5000 as "at least 5000", not exact.)
 
 **Verb router:** to **list or query records** use `crm query odata` (the `entity`
 group is single-record CRUD only — no `entity list` / `entity query`); to **browse

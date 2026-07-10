@@ -491,6 +491,7 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
         "fieldsec": "crm.commands.fieldsec:fieldsec_group",
         "form": "crm.commands.form:form_group",
         "metadata": "crm.commands.metadata:metadata_group",
+        "org": "crm.commands.org:org_group",
         "plugin": "crm.commands.plugin:plugin_group",
         "profile": "crm.commands.profile:profile_group",
         "query": "crm.commands.query:query_group",
