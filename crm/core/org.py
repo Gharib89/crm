@@ -8,12 +8,13 @@ per-entity write-readiness brief).
 The number of HTTP round-trips is a fixed constant (`EXPECTED_REQUESTS`),
 independent of org size — that bound is the feature, so `crm org brief` stays cheap
 where the six fat list verbs it replaces (`solution list`, `metadata entities`,
-`webresource list`, …) each return hundreds to tens of thousands of rows. The
-budget holds because inherently-small sets (solutions, publishers, custom entities,
-apps, workflow *definitions*) are read once with a narrow `$select` and summarized
-client-side, while sets that can grow without bound (web resources, plug-in steps,
-SLAs, duplicate rules, security roles) are never fetched — only counted via
-`$count`.
+`webresource list`, …) each return hundreds to tens of thousands of rows. Every
+read is either a single-page GET (`$top` cap + `$count=true`, so the capped rows
+feed the "key names" list and `@odata.count` feeds the true total in one round-trip
+that never follows `@odata.nextLink`), a bare `$count` for a set that is only
+counted, or a metadata query (`EntityDefinitions` / `GlobalOptionSetDefinitions`)
+that returns its whole result in one response. No read scales with the number of
+rows it summarizes.
 """
 
 from __future__ import annotations
@@ -22,11 +23,11 @@ from typing import Any
 
 from crm.core import metadata as metadata_mod
 from crm.core import optionsets as optionsets_mod
-from crm.core import solution as solution_mod
 from crm.utils.d365_backend import D365Backend, as_dict
 
 # Cap for the "key names" lists carried in the brief. The true total is always
-# reported alongside, so a capped list never masks the real size.
+# reported alongside (from `@odata.count`), so a capped list never masks the real
+# size.
 _NAME_CAP = 200
 
 # System solutions that are never valid `--solution` customization targets, so
@@ -51,12 +52,13 @@ _WEBRESOURCE_TYPES: dict[str, int] = {"html": 1, "css": 2, "script": 3}
 
 # Fixed request budget — see module docstring. Counted by the offline suite so a
 # regression that reintroduces a per-row sweep fails loudly.
-#   identity: WhoAmI + organizations + RetrieveVersion            = 3
-#   solutions, publishers, custom entities, optionsets, apps      = 5
-#   plugin assemblies + steps, workflows, slas                    = 4
-#   webresources: total + one per _WEBRESOURCE_TYPES              = 1 + 3
-#   custom security roles, duplicate rules                        = 2
-EXPECTED_REQUESTS = 3 + 5 + 4 + (1 + len(_WEBRESOURCE_TYPES)) + 2
+#   identity: WhoAmI + organizations + RetrieveVersion                = 3
+#   solutions: managed $count + unmanaged single-page                 = 2
+#   publishers, apps single-page; custom entities, optionsets metadata= 4
+#   workflows single-page; plugin assemblies + steps; slas            = 4
+#   webresources: total + one per _WEBRESOURCE_TYPES                  = 1 + 3
+#   custom security roles, duplicate rules                            = 2
+EXPECTED_REQUESTS = 3 + 2 + 4 + 4 + (1 + len(_WEBRESOURCE_TYPES)) + 2
 
 
 def _count(backend: D365Backend, entity_set: str, *, filter_expr: str | None = None) -> int:
@@ -81,6 +83,33 @@ def _count(backend: D365Backend, entity_set: str, *, filter_expr: str | None = N
     return int(body.get("@odata.count", 0))
 
 
+def _page(
+    backend: D365Backend,
+    entity_set: str,
+    *,
+    select: str,
+    top: int = _NAME_CAP,
+    filter_expr: str | None = None,
+    orderby: str | None = None,
+) -> tuple[list[dict[str, Any]], int]:
+    """One single-page GET → (capped rows, true total).
+
+    `$top` bounds the returned rows to one page (a `$top` request never emits
+    `@odata.nextLink`, so this is exactly one round-trip regardless of org size),
+    while `$count=true` returns the full `@odata.count` for the "*_total" fields.
+    The 5000 count ceiling in `_count` applies to the total here too.
+    """
+    params: dict[str, str] = {"$select": select, "$top": str(top), "$count": "true"}
+    if filter_expr is not None:
+        params["$filter"] = filter_expr
+    if orderby is not None:
+        params["$orderby"] = orderby
+    body = as_dict(backend.get(entity_set, params=params))
+    rows: list[dict[str, Any]] = body.get("value") or []
+    total = int(body.get("@odata.count", len(rows)))
+    return rows, total
+
+
 def _identity(backend: D365Backend) -> dict[str, Any]:
     who = as_dict(backend.get("WhoAmI"))
     org_id = who.get("OrganizationId")
@@ -100,25 +129,28 @@ def _identity(backend: D365Backend) -> dict[str, Any]:
 
 
 def _solutions(backend: D365Backend) -> dict[str, Any]:
-    rows = solution_mod.list_solutions(backend)
-    managed = sum(1 for r in rows if r.get("ismanaged"))
-    candidate = [
+    managed = _count(backend, "solutions", filter_expr="ismanaged eq true")
+    rows, unmanaged = _page(
+        backend, "solutions", select="uniquename",
+        filter_expr="ismanaged eq false", orderby="uniquename",
+    )
+    candidates = [
         r["uniquename"] for r in rows
-        if not r.get("ismanaged") and r.get("uniquename") not in _SYSTEM_SOLUTIONS
+        if r.get("uniquename") and r.get("uniquename") not in _SYSTEM_SOLUTIONS
     ]
     return {
         "managed": managed,
-        "unmanaged": len(rows) - managed,
-        "unmanaged_names": candidate[:_NAME_CAP],
-        "unmanaged_names_total": len(candidate),
+        "unmanaged": unmanaged,
+        "unmanaged_names": candidates,
+        "unmanaged_names_total": len(candidates),
     }
 
 
 def _publishers(backend: D365Backend) -> dict[str, Any]:
-    rows = backend.get_collection("publishers", params={
-        "$select": "uniquename,friendlyname,customizationprefix",
-        "$orderby": "uniquename",
-    })
+    rows, total = _page(
+        backend, "publishers",
+        select="uniquename,friendlyname,customizationprefix", orderby="uniquename",
+    )
     items = [
         {
             "unique_name": r.get("uniquename"),
@@ -127,10 +159,13 @@ def _publishers(backend: D365Backend) -> dict[str, Any]:
         }
         for r in rows
     ]
-    return {"count": len(items), "items": items[:_NAME_CAP], "items_total": len(items)}
+    return {"count": total, "items": items, "items_total": len(items)}
 
 
 def _schema(backend: D365Backend) -> dict[str, Any]:
+    # EntityDefinitions / GlobalOptionSetDefinitions are metadata queries: each
+    # returns its whole result in a single response (no `@odata.nextLink`), so a
+    # plain read is one round-trip. Only narrow `$select`s are pulled.
     entities = metadata_mod.list_entities(backend, custom_only=True)
     names = [e["LogicalName"] for e in entities if e.get("LogicalName")]
     optionsets = optionsets_mod.list_optionsets(backend)
@@ -143,19 +178,24 @@ def _schema(backend: D365Backend) -> dict[str, Any]:
 
 
 def _apps(backend: D365Backend) -> dict[str, Any]:
-    rows = backend.get_collection("appmodules", params={
-        "$select": "name,uniquename",
-        "$orderby": "name",
-    })
+    rows, total = _page(backend, "appmodules", select="name,uniquename", orderby="name")
     names = [r["name"] for r in rows if r.get("name")]
-    return {"count": len(names), "names": names[:_NAME_CAP], "names_total": len(names)}
+    return {"count": total, "names": names, "names_total": len(names)}
 
 
 def _automation(backend: D365Backend) -> dict[str, Any]:
-    workflows = backend.get_collection("workflows", params={
-        "$select": "category,statecode",
-        "$filter": f"type eq {_WORKFLOW_TYPE_DEFINITION}",
-    })
+    # One page of workflow *definitions* (a narrow two-column projection). Bounded
+    # by customization, not data volume, and capped at a single page so the request
+    # count stays constant; the by-category breakdown reflects that page (the same
+    # 5000 ceiling the counts carry).
+    workflows = backend.get_collection(
+        "workflows",
+        params={
+            "$select": "category,statecode",
+            "$filter": f"type eq {_WORKFLOW_TYPE_DEFINITION}",
+        },
+        max_pages=1,
+    )
     by_category: dict[str, dict[str, int]] = {}
     for wf in workflows:
         key = _WORKFLOW_CATEGORIES.get(int(wf.get("category", -1)), "other")

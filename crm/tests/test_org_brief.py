@@ -30,13 +30,10 @@ _WHOAMI = {
 _ORG = {"name": "Contoso"}
 _VERSION = {"Version": "9.2.24091.00196"}
 
-_SOLUTIONS = {"value": [
-    {"uniquename": "Default", "friendlyname": "Default Solution", "ismanaged": False},
-    {"uniquename": "Active", "friendlyname": "Active", "ismanaged": False},
-    {"uniquename": "msdynce_Sales", "friendlyname": "Sales", "ismanaged": True},
-    {"uniquename": "AcmeCore", "friendlyname": "Acme Core", "ismanaged": False},
-    {"uniquename": "AcmeExt", "friendlyname": "Acme Ext", "ismanaged": False},
-]}
+# The composer reads solutions in two single-page GETs: a managed `$count`, and an
+# unmanaged page (names + `@odata.count`). Dispatch on the `$filter` querystring.
+_SOLUTIONS_MANAGED = 1
+_SOLUTIONS_UNMANAGED = ["Default", "Active", "AcmeCore", "AcmeExt"]
 _PUBLISHERS = {"value": [
     {"uniquename": "acme", "friendlyname": "Acme", "customizationprefix": "acme"},
     {"uniquename": "new", "friendlyname": "Default Publisher", "customizationprefix": "new"},
@@ -79,7 +76,16 @@ def _register(m: requests_mock.Mocker, backend) -> None:
     m.get(u("WhoAmI"), json=_WHOAMI)
     m.get(u(f"organizations({_WHOAMI['OrganizationId']})"), json=_ORG)
     m.get(u("RetrieveVersion()"), json=_VERSION)
-    m.get(u("solutions"), json=_SOLUTIONS)
+
+    def _solutions(request, context):
+        context.status_code = 200
+        flt = request.qs.get("$filter", [""])[0]
+        if "ismanaged eq true" in flt:
+            return {"@odata.count": _SOLUTIONS_MANAGED, "value": [{"uniquename": "msdynce_Sales"}]}
+        return {"@odata.count": len(_SOLUTIONS_UNMANAGED),
+                "value": [{"uniquename": n} for n in _SOLUTIONS_UNMANAGED]}
+
+    m.get(u("solutions"), json=_solutions)
     m.get(u("publishers"), json={**_PUBLISHERS, "@odata.count": 2})
     m.get(u("EntityDefinitions"), json=_CUSTOM_ENTITIES)
     m.get(u("GlobalOptionSetDefinitions"), json=_OPTIONSETS)

@@ -24,21 +24,21 @@ crm --json org brief
   "ok": true,
   "data": {
     "identity": {
-      "profile": "acme", "url": "https://acme.crm.dynamics.com/api/data/v9.2/",
-      "org_name": "Acme", "version": "9.2.24091.00196", "api_version": "v9.2",
+      "profile": "contoso", "url": "https://internalcrm.contoso.local/api/data/v9.2/",
+      "org_name": "Contoso", "version": "9.2.24091.00196", "api_version": "v9.2",
       "user_id": "…", "organization_id": "…"
     },
     "solutions": {
       "managed": 42, "unmanaged": 3,
-      "unmanaged_names": ["AcmeCore", "AcmeExt"], "unmanaged_names_total": 2
+      "unmanaged_names": ["ContosoCore", "ContosoExt"], "unmanaged_names_total": 2
     },
     "publishers": {
       "count": 2,
-      "items": [{"unique_name": "acme", "prefix": "acme", "friendly_name": "Acme"}],
+      "items": [{"unique_name": "contoso", "prefix": "cts", "friendly_name": "Contoso"}],
       "items_total": 2
     },
     "schema": {
-      "custom_entities": 12, "custom_entity_names": ["acme_widget"],
+      "custom_entities": 12, "custom_entity_names": ["cts_widget"],
       "custom_entity_names_total": 12, "global_optionsets": 30
     },
     "apps": {"count": 2, "names": ["Sales Hub"], "names_total": 2},
@@ -53,7 +53,7 @@ crm --json org brief
     }
   },
   "meta": {"custom_entities": 12, "solutions": 45, "apps": 2, "plugin_steps": 37,
-           "workflows": 9, "profile": "acme", "url": "…"}
+           "workflows": 9, "profile": "contoso", "url": "…"}
 }
 ```
 
