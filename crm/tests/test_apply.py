@@ -19,6 +19,7 @@ from click.testing import CliRunner
 from crm import __version__
 from crm.cli import CLIContext, cli
 from crm.core import apply as apply_mod
+from crm.core import appmodule as app_mod
 from crm.core import views as views_mod
 from crm.utils.d365_backend import D365Error
 
@@ -5385,20 +5386,203 @@ def test_apply_apps_phase_dry_run_planned_writes_nothing(dry_backend):
     assert res["staged"] is False
 
 
-def test_apply_apps_phase_existing_app_skipped(backend):
-    # Create path is create-only: an app that already exists is left untouched
-    # (skipped) — no component/sitemap write, no publish. Reconcile is #796.
+_APP_ID_UNIQUE = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+
+
+def _declared_sitemap_xml(block=None):
+    """The SiteMapXml the reconcile builds from an app block's declared sitemap."""
+    sitemap = (block or _app_block())["sitemap"]
+    return app_mod.build_sitemapxml(*apply_mod._sitemap_tuples(sitemap))
+
+
+def _mock_app_reconcile(m, backend, *, unique_name="cwx_crmworx", name="CRMWorx",
+                        managed=False, live_components=(), live_sitemap_xml=None):
+    """Mock the reads + writes the RECONCILE path issues for an EXISTING app.
+
+    `live_components` is an iterable of `(componenttype, objectid)` the live app
+    already binds; `live_sitemap_xml` is the app's current SiteMapXml (None = the
+    app has no linked sitemap). Registers every read (`appmodules` existence +
+    resolve, `appmodulecomponents`, `sitemaps`) and every converge write
+    (Add/RemoveAppComponents, `sitemaps` POST, sitemap PATCH, publish)."""
+    app_row = {"appmoduleid": _APP_ID, "appmoduleidunique": _APP_ID_UNIQUE,
+               "uniquename": unique_name, "name": name, "ismanaged": managed}
+    m.get(backend.url_for("appmodules"), json={"value": [app_row]})
+    m.get(backend.url_for("appmodulecomponents"),
+          json={"value": [{"componenttype": ct, "objectid": oid}
+                           for ct, oid in live_components]})
+    sm_rows = ([{"sitemapid": _SITEMAP_ID, "sitemapxml": live_sitemap_xml}]
+               if live_sitemap_xml is not None else [])
+    m.get(backend.url_for("sitemaps"), json={"value": sm_rows})
+    m.post(backend.url_for("AddAppComponents"), status_code=204)
+    m.post(backend.url_for("RemoveAppComponents"), status_code=204)
+    sm_url = backend.url_for(f"sitemaps({_SITEMAP_ID})")
+    m.post(backend.url_for("sitemaps"), status_code=204,
+           headers={"OData-EntityId": sm_url})
+    m.patch(sm_url, status_code=204)
+    m.post(backend.url_for("PublishAllXml"), status_code=204)
+
+
+def _add_hits(m, backend):
+    return _app_posts(m, backend, "AddAppComponents")
+
+
+def _remove_hits(m, backend):
+    return _app_posts(m, backend, "RemoveAppComponents")
+
+
+def _sitemap_patches(m, backend):
+    target = backend.url_for(f"sitemaps({_SITEMAP_ID})")
+    return [r for r in m.request_history if r.method == "PATCH" and r.url == target]
+
+
+def test_apply_apps_reconcile_unchanged_skipped(backend):
+    # AC #1: re-applying an unchanged spec against a live app that already binds the
+    # declared component set and carries the declared sitemap is a no-op → `skipped`.
     spec = {"solution": _SOLUTION, "apps": [_app_block()]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
-        _mock_app_create(m, backend, exists=True)
+        # Live app binds the declared view (26) PLUS its sitemap (62) and an implicit
+        # table (1). The excluded types must not count as undeclared extras — else the
+        # reconcile would try to unbind the app's own sitemap/tables and never skip.
+        _mock_app_reconcile(m, backend,
+                            live_components=[(26, _APP_COMPONENT_GUID),
+                                             (62, _SITEMAP_ID),
+                                             (1, "13131313-1313-1313-1313-131313131313")],
+                            live_sitemap_xml=_declared_sitemap_xml())
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
     assert "app" in _kinds(res["skipped"])
-    assert res["applied"] == []
-    assert _app_posts(m, backend, "AddAppComponents") == []
-    assert _app_posts(m, backend, "sitemaps") == []
-    assert _publish_hits(m, backend) == []
+    assert res["applied"] == [] and res["updated"] == []
+    assert _add_hits(m, backend) == [] and _remove_hits(m, backend) == []
+    assert _sitemap_patches(m, backend) == []
+    assert _publish_hits(m, backend) == []  # nothing changed → no publish
     assert res["ok"] is True
+
+
+def test_apply_apps_reconcile_adds_missing_component(backend):
+    # AC #2: a component declared in the spec but absent live is bound (add) and the
+    # app reports `updated` with the change.
+    spec = {"solution": _SOLUTION, "apps": [_app_block()]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_create(m, backend, exists=True)
+        _mock_app_reconcile(m, backend, live_components=[],
+                            live_sitemap_xml=_declared_sitemap_xml())
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert _kinds(res["updated"]) == ["app"]
+    add = _add_hits(m, backend)
+    assert len(add) == 1
+    assert add[0].json()["Components"][0]["savedqueryid"] == _APP_COMPONENT_GUID
+    assert _remove_hits(m, backend) == []
+    change = res["updated"][0]["components"]
+    assert change == [{"kind": "view", "id": _APP_COMPONENT_GUID, "change": "added"}]
+    assert len(_publish_hits(m, backend)) == 1  # updated app publishes
+
+
+def test_apply_apps_reconcile_removes_undeclared_component(backend):
+    # AC #2: a component the live app binds but the spec no longer declares is
+    # unbound (remove) — the spec is the desired state.
+    spec = {"solution": _SOLUTION,
+            "apps": [{"name": "CRMWorx", "unique_name": "cwx_crmworx",
+                      "components": []}]}
+    extra = "12121212-1212-1212-1212-121212121212"
+    with requests_mock.Mocker() as m:
+        _mock_solution_create(m, backend, exists=True)
+        _mock_app_reconcile(m, backend, live_components=[(26, extra)])
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert _kinds(res["updated"]) == ["app"]
+    rem = _remove_hits(m, backend)
+    assert len(rem) == 1
+    assert rem[0].json()["Components"][0]["savedqueryid"] == extra
+    assert _add_hits(m, backend) == []
+    assert res["updated"][0]["components"] == [
+        {"kind": "view", "id": extra, "change": "removed"}]
+
+
+def test_apply_apps_reconcile_converges_sitemap_wholesale(backend):
+    # AC #3: declared sitemap differs from live → whole-document PATCH, `updated`.
+    spec = {"solution": _SOLUTION, "apps": [_app_block()]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_create(m, backend, exists=True)
+        _mock_app_reconcile(m, backend,
+                            live_components=[(26, _APP_COMPONENT_GUID)],
+                            live_sitemap_xml="<SiteMap><Area Id='old' /></SiteMap>")
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert _kinds(res["updated"]) == ["app"]
+    patches = _sitemap_patches(m, backend)
+    assert len(patches) == 1
+    assert 'Entity="contoso_project"' in patches[0].json()["sitemapxml"]
+    assert res["updated"][0]["sitemap"] == "converged"
+    assert len(_publish_hits(m, backend)) == 1
+
+
+def test_apply_apps_reconcile_managed_replace_blocked(backend):
+    # AC #4: a managed app is refused with NO write → `replace_blocked`, ok=false.
+    spec = {"solution": _SOLUTION, "apps": [_app_block()]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_create(m, backend, exists=True)
+        _mock_app_reconcile(m, backend, managed=True,
+                            live_components=[(26, _APP_COMPONENT_GUID)],
+                            live_sitemap_xml=_declared_sitemap_xml())
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert _kinds(res["replace_blocked"]) == ["app"]
+    assert "managed" in res["replace_blocked"][0]["reason"]
+    assert res["updated"] == [] and res["applied"] == []
+    assert _add_hits(m, backend) == [] and _remove_hits(m, backend) == []
+    assert _sitemap_patches(m, backend) == []
+    assert res["ok"] is False
+
+
+def test_apply_apps_reconcile_managed_sibling_still_reconciles(backend):
+    # AC #4: a blocked (managed) app does not abort the run — a sibling app still
+    # reconciles. The managed app blocks; the second, unchanged app is skipped.
+    managed_block = {"name": "OOB", "unique_name": "cwx_oob"}
+    sibling = {"name": "Mine", "unique_name": "cwx_mine", "components": []}
+    spec = {"solution": _SOLUTION, "apps": [managed_block, sibling]}
+    other_id = "0f595b32-35df-4f1c-9c94-31e7e7348e08"
+    with requests_mock.Mocker() as m:
+        _mock_solution_create(m, backend, exists=True)
+        # The managed app resolves managed; the sibling resolves unmanaged with no
+        # components and no sitemap → clean skip. requests_mock returns the LAST
+        # matching registration, so register the sibling reads keyed by filter.
+        m.get(backend.url_for("appmodules"),
+              json={"value": [{"appmoduleid": _APP_ID,
+                               "appmoduleidunique": _APP_ID_UNIQUE,
+                               "uniquename": "cwx_oob", "name": "OOB",
+                               "ismanaged": True}]},
+              additional_matcher=lambda r: "cwx_oob" in (r.query or ""))
+        m.get(backend.url_for("appmodules"),
+              json={"value": [{"appmoduleid": other_id,
+                               "appmoduleidunique": other_id,
+                               "uniquename": "cwx_mine", "name": "Mine",
+                               "ismanaged": False}]},
+              additional_matcher=lambda r: "cwx_mine" in (r.query or ""))
+        m.get(backend.url_for("appmodulecomponents"), json={"value": []})
+        m.get(backend.url_for("sitemaps"), json={"value": []})
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert _kinds(res["replace_blocked"]) == ["app"]
+    assert "app" in _kinds(res["skipped"])  # sibling reconciled despite the block
+    assert res["ok"] is False
+
+
+def test_apply_apps_reconcile_dry_run_reports_drift_no_write(dry_backend):
+    # AC #5: --dry-run against an existing app reads live and reports the drift
+    # (routed to `updated`) with every converge write suppressed.
+    spec = {"solution": _SOLUTION, "apps": [_app_block()]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_create(m, dry_backend, exists=True)
+        m.get(dry_backend.url_for("solutioncomponents"), json={"value": []})
+        _mock_app_reconcile(m, dry_backend, live_components=[],
+                            live_sitemap_xml="<SiteMap><Area Id='old' /></SiteMap>")
+        res = apply_mod.apply_spec(dry_backend, spec, stage_only=False)
+    assert _kinds(res["updated"]) == ["app"]
+    # The would-add component and the sitemap converge both ride the drift report.
+    assert res["updated"][0]["components"][0]["change"] == "added"
+    assert res["updated"][0]["sitemap"] == "converged"
+    # No write of any kind issued.
+    assert _add_hits(m, dry_backend) == [] and _remove_hits(m, dry_backend) == []
+    assert _sitemap_patches(m, dry_backend) == []
+    assert _app_posts(m, dry_backend, "sitemaps") == []
+    assert res["staged"] is False
 
 
 def test_apply_apps_phase_stage_only_defers_publish(backend):

@@ -287,6 +287,39 @@ def _sitemap_tuples(
     return areas, groups, subareas
 
 
+def _reconcile_app(
+    backend: D365Backend, app_spec: dict[str, Any], entry: Entry,
+    components: list[tuple[str, str]], sitemap_xml: str | None,
+    solution: str | None,
+) -> "_Verdict":
+    """Converge an existing app's component set + sitemap; classify the verdict.
+
+    Delegates the read/diff/converge to ``appmodule.reconcile_app`` (ADR 0024, #796)
+    and maps its result onto a reconcile bucket: a managed app is ``replace_blocked``
+    (identity/ownership divergence, no write); any component or sitemap change is
+    ``updated`` (the change list rides the entry as the drift report, in both real
+    and dry-run modes, mirroring the forms slice #793); an app that already matches
+    the declared block is ``skipped``.
+    """
+    res = app_mod.reconcile_app(
+        backend, unique_name=app_spec["unique_name"], components=components,
+        sitemap_xml=sitemap_xml, solution=solution)
+    if res.get("appmoduleid"):
+        entry["appmoduleid"] = res["appmoduleid"]
+    blocked = cast("list[dict[str, Any]]", res.get("blocked") or [])
+    if blocked:
+        return "replace_blocked", {**entry, "reason": blocked[0]["reason"]}
+    changes = cast("list[dict[str, Any]]", res.get("component_changes") or [])
+    sitemap_change = res.get("sitemap_change")
+    if not changes and not sitemap_change:
+        return "skipped", entry
+    if changes:
+        entry["components"] = changes
+    if sitemap_change:
+        entry["sitemap"] = sitemap_change
+    return "updated", entry
+
+
 # ── component-kind adapters ──────────────────────────────────────────────────
 @dataclass(frozen=True)
 class ReconcileCtx:
@@ -2496,15 +2529,19 @@ def apply_spec(
                                        solution=solution_name), failed)
                     _classify(result, img_entry, applied, skipped, planned)
 
-        # Phase: model-driven apps (ADR 0024, #795). Runs last so every record-
+        # Phase: model-driven apps (ADR 0024, #795/#796). Runs last so every record-
         # backed component an app binds (views, forms, charts, …) already exists.
-        # This is the CREATE path: an absent app is created via the app-module +
-        # sitemap builders, its declared components bound, and its sitemap set from
-        # the declared areas/groups/subareas; an app that already exists is left
-        # untouched (`skipped`) — converging a live app's component set or sitemap is
-        # the reconcile slice (#796). Apps and sitemaps are publishable, so a created
-        # app defers to the end-of-run PublishAllXml (and `--stage-only` records
-        # meta.staged). Under --dry-run an absent app reports `planned` with no write.
+        # An ABSENT app takes the CREATE path: created via the app-module + sitemap
+        # builders, its declared components bound, and its sitemap set from the
+        # declared areas/groups/subareas. An EXISTING app is RECONCILED (#796):
+        # `_reconcile_app` converges its component set and sitemap (whole-document
+        # replacement) to the declared block — `skipped` when it already matches,
+        # `updated` with a change list when it drifts, `replace_blocked` (no write,
+        # run exits 1) when the app is managed. Apps and sitemaps are publishable, so
+        # a created/updated app defers to the end-of-run PublishAllXml (and
+        # `--stage-only` records meta.staged). Under --dry-run an absent app reports
+        # `planned` with no write; an existing app reads live and reports its drift
+        # with the converge writes suppressed (reads-execute rule).
         for app_spec in _as_list(spec.get("apps")):
             entry = {"kind": "app", "name": app_spec["unique_name"]}
             result = _call(entry, lambda a=app_spec: app_mod.create_app(
@@ -2516,9 +2553,21 @@ def apply_spec(
                 if_exists="skip",
                 publish=False,
             ), failed)
-            # Create-only: bind components + sitemap only when this run actually
-            # created the app. An existing app (skipped) or a dry-run would-create
-            # (planned) writes nothing further here.
+            if _present(result):
+                # Existing app (real skip, or dry-run would-skip): converge in place.
+                components = [(c["kind"], c["id"])
+                              for c in _as_list(app_spec.get("components"))]
+                sitemap = app_spec.get("sitemap")
+                sitemap_xml = (app_mod.build_sitemapxml(*_sitemap_tuples(sitemap))
+                               if sitemap else None)
+                _reconcile(
+                    entry,
+                    lambda a=app_spec, e=entry, c=components, sx=sitemap_xml:
+                    _reconcile_app(backend, a, e, c, sx, solution_name),
+                    failed, routes)
+                continue
+            # Create path: bind components + sitemap only when this run actually
+            # created the app. A dry-run would-create (planned) writes nothing further.
             if _classify(result, entry, applied, skipped, planned) != "applied":
                 continue
             app_id = result.get("appmoduleid")
