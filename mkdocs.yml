@@ -120,6 +120,7 @@ nav:
       - Use /crm with an agent: getting-started/agent.md
       - Troubleshooting: getting-started/troubleshooting.md
   - Guides:
+      - Customizations as code: guides/customizations-as-code.md
       - CRMWorx walkthrough: guides/crmworx-walkthrough.md
   - How-to:
       - profile: how-to/profile.md
