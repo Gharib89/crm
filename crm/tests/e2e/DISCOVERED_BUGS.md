@@ -232,20 +232,20 @@ crm --profile crmworx ribbon add-button some_entity --solution ContosoCore --lab
 read-back both the app create path (#795) and the app reconcile path (#796) rely
 on. Surfaced while shipping #796; tracked in Gharib89/crm#809.
 
-**Symptom** (on-prem MOCE v9.1; also seen on the cloud CS-trial per #796's block,
-and on agent-cloud)
+**Symptom** (reproduced on an on-prem v9.1 org; also seen on both cloud test orgs —
+placeholders below, no real org identifiers)
 ```
 # by-id retrieve fails even for a pre-existing, collection-visible app
-$ crm --profile <onprem> query odata "appmodules(99a6…)" --select uniquename
-  ✗ appmodule With Id = 99a6… Does Not Exist
-$ crm --profile <onprem> query odata appmodules --select uniquename      # same app IS listed
-  … new_GharibSales …
+$ crm --profile <org> query odata "appmodules(<existing-id>)" --select uniquename
+  ✗ appmodule With Id = <existing-id> Does Not Exist
+$ crm --profile <org> query odata appmodules --select uniquename          # same app IS listed
+  … <existing-app-uniquename> …
 
 # an app created via the Web API never becomes queryable
-$ crm --profile <onprem> app create --name "X" --unique-name new_x --solution S --publish
-  {"created": true, "appmoduleid": "1e43…",
-   "app_lookup_error": "Read-back failed: appmodule With Id = 1e43… Does Not Exist"}
-$ crm --profile <onprem> query odata appmodules --filter "uniquename eq 'new_x'"
+$ crm --profile <org> app create --name "X" --unique-name new_x --solution S --publish
+  {"created": true, "appmoduleid": "<new-id>",
+   "app_lookup_error": "Read-back failed: appmodule With Id = <new-id> Does Not Exist"}
+$ crm --profile <org> query odata appmodules --filter "uniquename eq 'new_x'"
   ● No results.          # absent from the collection too, even after publish
 ```
 

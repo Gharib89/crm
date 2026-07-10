@@ -1082,8 +1082,8 @@ def test_apply_reconciles_app_components_and_sitemap(cli, backend, ephemeral_sol
         created_sitemap_id.append(app0[0]["sitemapid"])
 
     # Reconcile MUST read the app back; on orgs where a Web-API-created appmodule is
-    # not GET-retrievable (the publish/app-access window — observed on both the
-    # Dataverse test org and on-prem v9.1 MOCE), there is nothing to converge and the
+    # not GET-retrievable (the publish/app-access window — observed on both the cloud
+    # test orgs and the on-prem v9.1 test org), there is nothing to converge and the
     # round-trip is unverifiable. Skip rather than assert a converge that cannot run;
     # the reconcile classification is proven by the offline matrix in test_apply.py
     # and, against a pre-existing readable app, by manual live check (see coverage.py).
