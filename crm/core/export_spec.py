@@ -49,16 +49,16 @@ are reconciled on update, while the global option set description is applied on 
 (the optionset reconcile inserts only missing options, so a drifted description is not
 updated on re-apply). Attribute and lookup-column descriptions were already emitted.
 
-Adapter fields intentionally NOT emitted (documented gaps, not oversights):
-- attribute `default_value` and boolean `true_label`/`false_label` live under the
-  `OptionSet`, which does not ride the un-cast attribute read (cf. `_project_options`,
-  which casts for it); projecting them would need an extra per-column cast read.
-- `min_value`/`max_value` for decimal/double/money — their platform default ranges
-  are version-sensitive, so there is no stable sentinel to omit-on-default against.
-- attribute `relationship_schema`, and entity `is_activity` + the virtual-table
-  fields (`data_provider_id`/`data_source_id`/`external_name`/`external_collection_name`)
-  — niche (virtual tables are read-only on v9.1) and not round-trip-relevant for the
-  custom tables this exporter targets.
+Adapter fields intentionally NOT emitted (documented gaps, not oversights) are
+declared as data in `EXPORT_GAPS` below — each key carries its own reason — and
+enforced against the live adapter surface by the export↔apply contract test
+(`test_export_spec.py`, #787), so an undeclared, unemitted adapter key is a test
+failure rather than a silent round-trip fidelity loss. `KINDS_NOT_EXPORTED`
+records the whole registry kinds the exporter cannot project at all (the plug-in
+kinds — ADR 0019). (The decimal/double/money `min_value`/`max_value` nuance lives
+next to `_INT_BOUND_DEFAULTS` below: those keys ARE emitted for integer/bigint,
+but stay omitted for decimal/double/money, whose default ranges are
+version-sensitive — so `min_value`/`max_value` are in `EXPORTED_KEYS`, not gaps.)
 """
 
 from __future__ import annotations
@@ -86,6 +86,117 @@ _DATETIME_DEFAULT_BEHAVIOR = "UserLocal"
 # SourceType ints apply can re-create (add_attribute --type): 1=calculated, 2=rollup.
 # 0/None (simple) and 3/4 (formula/prompt, which apply cannot create) map to None.
 _SOURCE_TYPES = {1: "calculated", 2: "rollup"}
+
+
+# ── Export-gap contract (#787) ───────────────────────────────────────────────
+#
+# The apply adapters (`apply.REGISTRY`) are the source of truth for the spec keys
+# each kind accepts; the projectors in this module emit a subset. An adapter spec
+# key that lands in NEITHER the emit code NOR a declared gap is a silent fidelity
+# loss in the export→apply round-trip (the exported spec re-applies cleanly but
+# quietly drops the facet — the loss ADR 0019 exists to protect against). The data
+# below reifies that boundary so the export↔apply contract test fails on an
+# undeclared, unemitted key instead of losing it silently.
+#
+# The surface this contract models = `REGISTRY[kind].map` keys ∪ the spec keys the
+# kind's transforms consume — i.e. the keys that ride the generic `map` projection.
+# It is deliberately NOT the full set of spec keys a kind accepts: spec keys that
+# reach the builder some other way are outside this contract (the projectors may
+# still emit them). Two such classes exist — driver-`injected` params the runtime
+# computes (web-resource `content`/`webresourcetype`) and keys a kind's
+# `extra_validate`/`reconcile` reads directly off the block (web-resource `file`,
+# security-role `privileges`) — neither goes through the generic `map` projection.
+
+# Spec keys a transform reads off the block. A `transforms` entry produces a
+# builder param, not a spec key, so the consumed spec key is invisible to lambda
+# introspection and must be declared here (issue #787, point 2). Each listed key
+# is deliberately absent from the kind's `map` (that is why it needs declaring).
+TRANSFORM_CONSUMED_KEYS: dict[str, frozenset[str]] = {
+    "attribute": frozenset({"options"}),
+    "optionset": frozenset({"options"}),
+    "entity": frozenset({"primary_attr"}),
+    "view": frozenset({"columns"}),
+}
+
+# Per covered kind, the adapter-surface spec keys this module's projectors emit. An
+# entry means the key CAN be emitted (most are conditional on the source metadata),
+# not that every export carries it.
+EXPORTED_KEYS: dict[str, frozenset[str]] = {
+    "attribute": frozenset({
+        "kind", "schema_name", "display_name", "description", "required",
+        "max_length", "format_name", "auto_number_format", "min_value",
+        "max_value", "behavior_name", "max_size_kb", "precision", "target_entity",
+        "options", "optionset_name", "source_type", "formula_definition",
+    }),
+    "entity": frozenset({
+        "schema_name", "display_name", "display_collection_name", "description",
+        "ownership", "has_notes", "has_activities", "primary_attr",
+        "primary_attr_max_length",
+    }),
+    "relationship": frozenset({
+        "schema_name", "referenced_entity", "referencing_entity", "lookup_schema",
+        "lookup_display", "required", "lookup_description", "cascade_assign",
+        "cascade_delete", "cascade_reparent", "cascade_share", "cascade_unshare",
+        "cascade_merge", "menu_behavior", "menu_label", "menu_order",
+        "is_hierarchical",
+    }),
+    "view": frozenset({
+        "name", "columns", "is_default", "description", "order_by", "order_desc",
+        "filter_active",
+    }),
+    "optionset": frozenset({"name", "display_name", "description", "options"}),
+    "webresource": frozenset({"name", "display_name"}),
+    "security-role": frozenset({"name", "business_unit"}),
+}
+
+# Per covered kind, adapter-surface spec keys deliberately NOT emitted → reason.
+# Migrated from this module's former docstring prose; disjoint from EXPORTED_KEYS
+# and together exhausting each kind's surface (enforced by the contract test).
+EXPORT_GAPS: dict[str, dict[str, str]] = {
+    "attribute": {
+        "default_value": "lives under the OptionSet, which does not ride the "
+                         "un-cast attribute read; projecting it would need an "
+                         "extra per-column cast read.",
+        "true_label": "boolean label under the OptionSet; see default_value.",
+        "false_label": "boolean label under the OptionSet; see default_value.",
+        "relationship_schema": "niche and not round-trip-relevant for the custom "
+                               "tables this exporter targets.",
+        "is_audit_enabled": "audit-enable state is a runtime setting the projectors "
+                            "do not read; not part of the customization round-trip.",
+    },
+    "entity": {
+        "is_activity": "niche and not round-trip-relevant for the custom tables "
+                       "this exporter targets.",
+        "data_provider_id": "virtual-table field; virtual tables are read-only on "
+                            "v9.1 and out of this exporter's scope.",
+        "data_source_id": "virtual-table field; see data_provider_id.",
+        "external_name": "virtual-table field; see data_provider_id.",
+        "external_collection_name": "virtual-table field; see data_provider_id.",
+        "is_audit_enabled": "audit-enable state is a runtime setting the projectors "
+                            "do not read; not part of the customization round-trip.",
+    },
+    "relationship": {
+        "is_audit_enabled": "audit-enable state is a runtime setting the projectors "
+                            "do not read; not part of the customization round-trip.",
+    },
+    "view": {
+        "query_type": "the read filters to public views (querytype eq 0), so "
+                      "query_type is always the apply adapter's public default.",
+    },
+    "optionset": {},
+    "webresource": {},
+    "security-role": {},
+}
+
+# Whole registry kinds the exporter cannot project from a live org → reason. The
+# plug-in kinds hinge on the assembly whose DLL bytes are absent from live metadata
+# (ADR 0019), so no live read can reconstruct them.
+KINDS_NOT_EXPORTED: dict[str, str] = {
+    "plugin-assembly": "assembly DLL bytes do not exist in live org metadata "
+                       "(ADR 0019); not projectable from a live read.",
+    "plugin-step": "hinges on its plug-in assembly, which is not projectable from "
+                   "a live read (ADR 0019).",
+}
 
 
 def _as_dict(value: Any) -> dict[str, Any]:

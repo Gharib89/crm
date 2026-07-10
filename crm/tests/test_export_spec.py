@@ -19,6 +19,10 @@ import requests_mock
 
 from crm.core import apply
 from crm.core.export_spec import (
+    EXPORT_GAPS,
+    EXPORTED_KEYS,
+    KINDS_NOT_EXPORTED,
+    TRANSFORM_CONSUMED_KEYS,
     build_entity_spec,
     build_role_spec,
     build_solution_spec,
@@ -1736,3 +1740,68 @@ class TestRoleProjector:
                 _rp("prvFiltered", "RecordFilter", "10000000-0000-0000-0000-000000000009")))
             with pytest.raises(D365Error, match="no apply-authorable privileges"):
                 build_role_spec(backend, _ROLE_ID)
+
+
+# ── export↔apply gap contract (#787) ─────────────────────────────────────────
+# The adapter surface this models = the spec keys that ride apply's generic `map`
+# projection (`REGISTRY[kind].map` ∪ the keys its transforms consume); the
+# projectors in export_spec emit a subset. EXPORTED_KEYS / EXPORT_GAPS reify that
+# boundary as data so a mapped key that is neither emitted nor a declared gap fails
+# HERE, not as a silent round-trip fidelity loss (ADR 0019). Not modelled here:
+# spec keys reached via `injected`/`extra_validate` (see export_spec.py). Mirrors
+# the apply.REGISTRY↔builder contract test (test_apply.py, #596).
+
+
+def _adapter_surface(kind: str) -> set[str]:
+    """The spec keys apply reconciles through its generic `map` projection for
+    `kind`: mapped keys plus the keys its transforms consume (the latter invisible
+    to lambda introspection). Not the full set of keys the kind accepts — keys
+    reached via `injected`/`extra_validate` are out of this contract's scope."""
+    adapter = apply.REGISTRY[kind]
+    return set(adapter.map) | set(TRANSFORM_CONSUMED_KEYS.get(kind, frozenset()))
+
+
+@pytest.mark.parametrize("kind", sorted(EXPORTED_KEYS))
+def test_exported_keys_and_gaps_partition_adapter_surface(kind):
+    """Every adapter spec key is either emitted (EXPORTED_KEYS) or a declared gap
+    (EXPORT_GAPS), and none is both — add a key to an adapter's `map` without
+    emitting it or declaring the gap and this turns red."""
+    surface = _adapter_surface(kind)
+    covered = EXPORTED_KEYS[kind] | set(EXPORT_GAPS[kind])
+    assert covered == surface, (
+        f"{kind}: EXPORTED_KEYS ∪ EXPORT_GAPS != adapter surface — "
+        f"undeclared {sorted(surface - covered)}, stale {sorted(covered - surface)}"
+    )
+    overlap = EXPORTED_KEYS[kind] & set(EXPORT_GAPS[kind])
+    assert not overlap, f"{kind}: key(s) both emitted and gapped: {sorted(overlap)}"
+
+
+@pytest.mark.parametrize("kind", sorted(EXPORT_GAPS))
+def test_export_gaps_carry_a_recorded_reason(kind):
+    """A gap is deliberate, each with a recorded reason (CONTEXT.md → 'Export gap')."""
+    for key, reason in EXPORT_GAPS[kind].items():
+        assert reason and reason.strip(), f"{kind}.{key}: empty gap reason"
+
+
+def test_every_registry_kind_is_covered_or_declared_unexported():
+    """Every apply.REGISTRY kind is either a covered export kind or explicitly
+    declared unexportable — a 10th registry kind added later turns this red."""
+    covered = set(EXPORTED_KEYS)
+    unexported = set(KINDS_NOT_EXPORTED)
+    assert covered.isdisjoint(unexported), (
+        f"kind(s) both covered and unexported: {sorted(covered & unexported)}")
+    classified = covered | unexported
+    registry = set(apply.REGISTRY)
+    assert classified == registry, (
+        "registry kinds not classified as covered or unexported: "
+        f"{sorted(registry - classified)}; stale classified kinds not in registry: "
+        f"{sorted(classified - registry)}")
+
+
+def test_transform_consumed_keys_are_outside_the_adapter_map():
+    """The declared transform-consumed keys are spec keys the `map` does not carry
+    (that is why they must be declared); one already in `map` would double-count."""
+    for kind, keys in TRANSFORM_CONSUMED_KEYS.items():
+        overlap = keys & set(apply.REGISTRY[kind].map)
+        assert not overlap, (
+            f"{kind}: transform-consumed keys also present in map: {sorted(overlap)}")
