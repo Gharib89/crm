@@ -966,6 +966,21 @@ class TestSetHandlerPropsInFormxml:
             forms.set_handler_props_in_formxml(
                 _MAIN_FORMXML, event="onload", function="App.missing", enabled=False)
 
+    def test_onchange_without_field_rejected(self):
+        from crm.core import forms
+        from crm.utils.d365_backend import D365Error
+        with pytest.raises(D365Error, match="onchange handler requires a 'field'"):
+            forms.set_handler_props_in_formxml(
+                _MAIN_FORMXML, event="onchange", function="App.onChange", enabled=False)
+
+    def test_field_on_non_onchange_rejected(self):
+        from crm.core import forms
+        from crm.utils.d365_backend import D365Error
+        with pytest.raises(D365Error, match="only to onchange"):
+            forms.set_handler_props_in_formxml(
+                _MAIN_FORMXML, event="onload", function="App.onLoad",
+                field="new_name", enabled=False)
+
     def test_preserves_classids(self):
         from crm.core import forms
         out = forms.set_handler_props_in_formxml(

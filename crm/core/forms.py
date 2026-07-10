@@ -618,11 +618,19 @@ def set_handler_props_in_formxml(
     event + function (+ field for onchange). Each flag is tri-state: ``None``
     leaves it untouched, so only the flags the caller passed are rewritten; the
     handler's identity, order, and ``handlerUniqueId`` are preserved (the platform
-    binds live handlers by that id). Raises ``D365Error`` if the handler is absent.
+    binds live handlers by that id). The event/field pairing is validated up front
+    — symmetric with add/remove — so an onchange without a field (or a field on a
+    non-onchange event) fails cleanly rather than matching the wrong ``<event>``
+    (``_find_event`` ignores ``attribute`` for non-onchange). Raises ``D365Error``
+    if the handler is absent.
     """
     if event not in EVENT_CHOICES:
         raise D365Error(
             f"Unsupported event {event!r}. Choose from: {', '.join(EVENT_CHOICES)}.")
+    if event == "onchange" and not field:
+        raise D365Error("onchange handler requires a 'field' to identify it.")
+    if event != "onchange" and field:
+        raise D365Error(f"'field' applies only to onchange, not {event!r}.")
     root = _parse_formxml(formxml)
     ev = _find_event(root, event=event, field=field)
     handlers = ev.find("Handlers") if ev is not None else None
@@ -1579,12 +1587,14 @@ def _reorder_declared(
     after)`` returns the formxml with ``name`` placed after ``after``; ``on_move``
     records the converged change.
     """
-    present = [n for n in declared if n in set(live_order(formxml))]
+    order = live_order(formxml)
+    live_names = set(order)
+    present = [n for n in declared if n in live_names]
     for a, b in zip(present, present[1:]):
-        order = live_order(formxml)
         if order.index(b) < order.index(a):
             formxml = move(formxml, b, a)
             on_move(a, b)
+            order = live_order(formxml)  # re-read only after an actual move
     return formxml
 
 
