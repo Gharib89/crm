@@ -21,9 +21,9 @@ them):
 ## Spine 1 — seed: live org → repo
 
 ```
-connection whoami            → confirm the SOURCE org
-solution export-spec <name> -o spec.yaml   → project the whole solution to an apply-ready spec
-git commit spec.yaml
+crm connection whoami                          → confirm the SOURCE org
+crm solution export-spec <name> -o spec.yaml   → project the whole solution to an apply-ready spec
+git add spec.yaml && git commit
 ```
 
 Data flow: `solution export-spec` walks the solution read-only and merges entities
@@ -39,9 +39,9 @@ land in a `skipped` bucket — review it, don't assume full coverage.
 ## Spine 2 — change loop against dev
 
 ```
-edit spec.yaml
---dry-run apply -f spec.yaml   → drift report: read the verdicts (_exists / would_create / would_update / refused)
-apply -f spec.yaml --yes       → converge the dev org
+$EDITOR spec.yaml
+crm --dry-run apply -f spec.yaml   → drift report: read the verdicts (_exists / would_create / would_update / refused)
+crm apply -f spec.yaml --yes       → converge the dev org
 ```
 
 Data flow: the dry-run verdicts are computed from live reads (reads execute under
@@ -54,10 +54,10 @@ PR is the change.
 ## Spine 3 — plan → approve → execute (promote)
 
 ```
---profile <target> --dry-run apply -f spec.yaml -o plans/<target>/<date>-<slug>.plan.json
-git commit the plan                 → the PR review object; merge = approval
---profile <target> --dry-run --from-plan <plan>   → re-verify it is still exactly true
---profile <target> apply --from-plan <plan> --yes → runs EXACTLY the plan
+crm --profile <target> --dry-run apply -f spec.yaml -o plans/<target>/<date>-<slug>.plan.json
+git add plans/<target>/<...>.plan.json && git commit   → the PR review object; merge = approval
+crm --profile <target> --dry-run --from-plan <plan>   → re-verify it is still exactly true
+crm --profile <target> apply --from-plan <plan> --yes → runs EXACTLY the plan
 ```
 
 Data flow: the plan pins the target **org id**, embeds the **resolved spec**,

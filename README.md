@@ -12,9 +12,9 @@ v4) over HTTPS; the same commands run against both targets.
 ## Why
 
 > **Customizations as code** — your org's schema and UI live in a git repo as a
-> declarative spec; every change ships as a reviewed plan artifact, and `apply
-> --from-plan` runs exactly what was approved. On-prem and online, same loop. See
-> the guide: [docs/guides/customizations-as-code.md](docs/guides/customizations-as-code.md)
+> declarative spec; every change ships as a reviewed plan artifact, and
+> `apply --from-plan` runs exactly what was approved. On-prem and online, same
+> loop. See the guide: [docs/guides/customizations-as-code.md](docs/guides/customizations-as-code.md)
 
 D365 CE on-prem ships with a GUI and a SOAP/.NET SDK. There's no first-party CLI
 optimized for AI agents or shell scripting. This harness gives you:
