@@ -64,7 +64,10 @@ def fresh_guid(*, braced: bool = True) -> str:
 
 
 def regenerate_guids(
-    xml: str, pattern: "re.Pattern[str]"
+    xml: str,
+    pattern: "re.Pattern[str]",
+    *,
+    preserve: "frozenset[str] | set[str]" = frozenset(),
 ) -> "tuple[str, dict[str, str]]":
     """Replace each GUID matched by ``pattern`` with a fresh ``uuid4``, consistently.
 
@@ -75,13 +78,28 @@ def regenerate_guids(
     *internal* ids; everything else (``classid`` and external refs) is left
     untouched and should be policed by :func:`assert_external_guids_intact`.
 
+    ``preserve`` is a set of GUID values the family knows are external references
+    even though they ride on an attribute the ``pattern`` matches (e.g. a form's
+    ``<customControl id>``, which uses the bare ``id`` attribute but points at a
+    registered control). It is compared case-insensitively (matched GUIDs are
+    lowercased first), so the caller need not pre-normalize. A matched GUID whose
+    value is in ``preserve`` is left byte-identical and never enters the mapping,
+    so the guard sees it as an untouched external GUID. The exemption is
+    **value-scoped**, not position-scoped — *every* occurrence of a preserved GUID
+    is left untouched — so a family must only preserve values that never double as
+    an internal id (in real FormXml a registered-control id and a per-instance
+    ``uniqueid``/layout id come from different namespaces and never collide).
+
     Returns the rewritten XML and the ``{old_lower: new}`` mapping — feed that
     mapping straight into the guard.
     """
+    preserve = {g.lower() for g in preserve}
     mapping: dict[str, str] = {}
 
     def _repl(m: "re.Match[str]") -> str:
         old = m.group("guid").lower()
+        if old in preserve:
+            return m.group(0)
         if old not in mapping:
             mapping[old] = str(uuid.uuid4())
         brace = "{" if m.group("brace") else ""
