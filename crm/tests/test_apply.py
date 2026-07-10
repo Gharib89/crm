@@ -5188,3 +5188,186 @@ def test_apply_rejects_non_bool_handler_enabled(backend):
                        "enabled": "false"}]}]}]}
     with pytest.raises(D365Error, match="'enabled' must be true or false"):
         apply_mod.apply_spec(backend, spec, stage_only=False)
+
+
+# ── Slice: apps phase (ADR 0024, #795) — create a model-driven app + sitemap ──
+
+_APP_ID = "77777777-7777-7777-7777-777777777777"
+_SITEMAP_ID = "88888888-8888-8888-8888-888888888888"
+_APP_COMPONENT_GUID = "99999999-9999-9999-9999-999999999999"
+
+
+def _mock_app_create(m, backend, *, unique_name="cwx_crmworx", name="CRMWorx",
+                     exists=False):
+    """Mock appmodules existence GET (uniquename $filter) + 204 create + readback,
+    plus the AddAppComponents / sitemaps / PublishAllXml writes the create path fires."""
+    app_url = backend.url_for(f"appmodules({_APP_ID})")
+    rows = [{"appmoduleid": _APP_ID, "uniquename": unique_name}] if exists else []
+    m.get(backend.url_for("appmodules"), json={"value": rows})
+    m.post(backend.url_for("appmodules"), status_code=204,
+           headers={"OData-EntityId": app_url})
+    m.get(app_url, json={"name": name, "uniquename": unique_name, "appmoduleid": _APP_ID})
+    m.post(backend.url_for("AddAppComponents"), status_code=204)
+    sm_url = backend.url_for(f"sitemaps({_SITEMAP_ID})")
+    m.post(backend.url_for("sitemaps"), status_code=204,
+           headers={"OData-EntityId": sm_url})
+    m.post(backend.url_for("PublishAllXml"), status_code=204)
+
+
+def _app_block():
+    return {
+        "name": "CRMWorx",
+        "unique_name": "cwx_crmworx",
+        "components": [{"kind": "view", "id": _APP_COMPONENT_GUID}],
+        "sitemap": {"areas": [{"id": "main", "title": "Main", "groups": [
+            {"id": "core", "title": "Core", "subareas": [
+                {"entity": "contoso_project", "title": "Projects"}]}]}]},
+    }
+
+
+def _app_posts(m, backend, resource):
+    target = backend.url_for(resource)
+    return [r for r in m.request_history if r.method == "POST" and r.url == target]
+
+
+def test_apply_apps_phase_creates_app_components_and_sitemap(backend):
+    spec = {"solution": _SOLUTION, "apps": [_app_block()]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_create(m, backend, exists=True)
+        _mock_app_create(m, backend)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert _kinds(res["applied"]) == ["app"]
+    assert res["applied"][0]["name"] == "cwx_crmworx"
+    assert res["applied"][0]["appmoduleid"] == _APP_ID
+    # Component binding fired with the declared (kind, guid).
+    add = _app_posts(m, backend, "AddAppComponents")
+    assert len(add) == 1
+    assert add[0].json()["AppId"] == _APP_ID
+    assert add[0].json()["Components"][0]["savedqueryid"] == _APP_COMPONENT_GUID
+    # Sitemap created and auto-linked to the app by uniquename.
+    sm = _app_posts(m, backend, "sitemaps")
+    assert len(sm) == 1
+    assert sm[0].json()["sitemapnameunique"] == "cwx_crmworx"
+    assert 'Entity="contoso_project"' in sm[0].json()["sitemapxml"]
+    assert len(_publish_hits(m, backend)) == 1
+    assert res["ok"] is True
+
+
+def test_apply_apps_phase_dry_run_planned_writes_nothing(dry_backend):
+    # --dry-run classifies an absent app `planned` and issues no write (AC).
+    spec = {"solution": _SOLUTION, "apps": [_app_block()]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_create(m, dry_backend, exists=True)
+        _mock_app_create(m, dry_backend)
+        m.get(dry_backend.url_for("solutioncomponents"), json={"value": []})
+        res = apply_mod.apply_spec(dry_backend, spec, stage_only=False)
+    assert _kinds(res["planned"]) == ["app"]
+    assert res["applied"] == []
+    # No app / component / sitemap write issued.
+    assert _app_posts(m, dry_backend, "appmodules") == []
+    assert _app_posts(m, dry_backend, "AddAppComponents") == []
+    assert _app_posts(m, dry_backend, "sitemaps") == []
+    assert res["staged"] is False
+
+
+def test_apply_apps_phase_existing_app_skipped(backend):
+    # Create path is create-only: an app that already exists is left untouched
+    # (skipped) — no component/sitemap write, no publish. Reconcile is #796.
+    spec = {"solution": _SOLUTION, "apps": [_app_block()]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_create(m, backend, exists=True)
+        _mock_app_create(m, backend, exists=True)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert "app" in _kinds(res["skipped"])
+    assert res["applied"] == []
+    assert _app_posts(m, backend, "AddAppComponents") == []
+    assert _app_posts(m, backend, "sitemaps") == []
+    assert _publish_hits(m, backend) == []
+    assert res["ok"] is True
+
+
+def test_apply_apps_phase_stage_only_defers_publish(backend):
+    # An app is a publishable customization: --stage-only writes it but defers the
+    # end-of-run publish and records meta.staged (issue AC).
+    spec = {"solution": _SOLUTION, "apps": [_app_block()]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_create(m, backend, exists=True)
+        _mock_app_create(m, backend)
+        res = apply_mod.apply_spec(backend, spec, stage_only=True)
+    assert _kinds(res["applied"]) == ["app"]
+    assert res["staged"] is True
+    assert _publish_hits(m, backend) == []
+
+
+def test_apply_apps_phase_creates_app_without_sitemap_or_components(backend):
+    # The minimal app — just identity, no components/sitemap — still creates and
+    # publishes; the optional blocks are genuinely optional.
+    spec = {"solution": _SOLUTION,
+            "apps": [{"name": "CRMWorx", "unique_name": "cwx_crmworx"}]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_create(m, backend, exists=True)
+        _mock_app_create(m, backend)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert _kinds(res["applied"]) == ["app"]
+    assert _app_posts(m, backend, "AddAppComponents") == []
+    assert _app_posts(m, backend, "sitemaps") == []
+    assert len(_publish_hits(m, backend)) == 1
+
+
+def test_apply_rejects_non_list_apps(backend):
+    with pytest.raises(D365Error, match="apps must be a list"):
+        apply_mod.apply_spec(backend, {"solution": _SOLUTION, "apps": {}},
+                             stage_only=False)
+
+
+def test_apply_rejects_non_mapping_app(backend):
+    with pytest.raises(D365Error, match="each apps entry must be a mapping"):
+        apply_mod.apply_spec(backend, {"solution": _SOLUTION, "apps": ["bad"]},
+                             stage_only=False)
+
+
+def test_apply_rejects_app_missing_unique_name(backend):
+    spec = {"solution": _SOLUTION, "apps": [{"name": "CRMWorx"}]}
+    with pytest.raises(D365Error, match="missing required field 'unique_name'"):
+        apply_mod.apply_spec(backend, spec, stage_only=False)
+
+
+def test_apply_rejects_app_malformed_unique_name(backend):
+    # A unique name without a publisher prefix is rejected up front, before create.
+    spec = {"solution": _SOLUTION,
+            "apps": [{"name": "CRMWorx", "unique_name": "no prefix"}]}
+    with pytest.raises(D365Error):
+        apply_mod.apply_spec(backend, spec, stage_only=False)
+
+
+def test_apply_rejects_app_bad_component_kind(backend):
+    spec = {"solution": _SOLUTION, "apps": [{
+        "name": "CRMWorx", "unique_name": "cwx_crmworx",
+        "components": [{"kind": "table", "id": _APP_COMPONENT_GUID}]}]}
+    with pytest.raises(D365Error, match="kind must be one of"):
+        apply_mod.apply_spec(backend, spec, stage_only=False)
+
+
+def test_apply_rejects_app_sitemap_missing_area_id(backend):
+    spec = {"solution": _SOLUTION, "apps": [{
+        "name": "CRMWorx", "unique_name": "cwx_crmworx",
+        "sitemap": {"areas": [{"title": "no id"}]}}]}
+    with pytest.raises(D365Error, match="missing required field 'id'"):
+        apply_mod.apply_spec(backend, spec, stage_only=False)
+
+
+def test_apply_rejects_app_sitemap_no_areas(backend):
+    spec = {"solution": _SOLUTION, "apps": [{
+        "name": "CRMWorx", "unique_name": "cwx_crmworx",
+        "sitemap": {"areas": []}}]}
+    with pytest.raises(D365Error, match="needs at least one area"):
+        apply_mod.apply_spec(backend, spec, stage_only=False)
+
+
+def test_apply_rejects_app_sitemap_subarea_missing_entity(backend):
+    spec = {"solution": _SOLUTION, "apps": [{
+        "name": "CRMWorx", "unique_name": "cwx_crmworx",
+        "sitemap": {"areas": [{"id": "main", "groups": [
+            {"id": "core", "subareas": [{"title": "no entity"}]}]}]}}]}
+    with pytest.raises(D365Error, match="missing required field 'entity'"):
+        apply_mod.apply_spec(backend, spec, stage_only=False)
