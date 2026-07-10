@@ -366,6 +366,9 @@ def metadata_describe(ctx: CLIContext, logical_name):
               help="Include the entity's public views in the spec.")
 @click.option("--with-relationships", is_flag=True, default=False,
               help="Include the entity's custom 1:N relationships in the spec.")
+@click.option("--with-forms", is_flag=True, default=False,
+              help="Include the entity's seedable main form (custom fields, "
+                   "libraries, handlers) as a forms: block.")
 @click.option("--solution", default=None,
               help="Bake a top-level solution: block (unique_name) into the spec so "
                    "it applies directly (crm apply requires one). Omit to emit a "
@@ -373,24 +376,30 @@ def metadata_describe(ctx: CLIContext, logical_name):
 @_output_option(help="Write the bare spec as YAML to FILE (appliable with crm apply -f when --solution is given).")
 @pass_ctx
 def metadata_export_spec(ctx: CLIContext, logical_name, with_views, with_relationships,
-                         solution, output):
+                         with_forms, solution, output):
     """Export a live entity as a desired-state spec for `crm apply -f`.
 
     Reads the entity's metadata over the Web API (pure GETs) and emits a spec.
     Pass --solution to bake in the top-level `solution:` block that `crm apply`
     requires; without it the document is valid but not directly appliable (apply
-    exits 2 until a `solution:` block is added). Without -o, the spec is emitted
-    under the standard JSON envelope (pipeable); with -o, the bare YAML spec is
-    written to FILE.
+    exits 2 until a `solution:` block is added). Pass --with-forms to project the
+    entity's seedable main form (custom fields and their placement, script
+    libraries, event handlers); a form that cannot round-trip a real apply is
+    reported under `meta.skipped` (ADR 0019). Without -o, the spec is emitted under
+    the standard JSON envelope (pipeable); with -o, the bare YAML spec is written
+    to FILE.
     """
     warnings: list[str] = []
+    skipped: list[dict] = []
     with d365_errors(ctx):
         spec = export_spec_mod.build_entity_spec(
             ctx.backend(), logical_name,
             with_views=with_views,
             with_relationships=with_relationships,
+            with_forms=with_forms,
             solution=solution,
             warnings=warnings,
+            skipped=skipped,
         )
 
     if output:
@@ -408,11 +417,16 @@ def metadata_export_spec(ctx: CLIContext, logical_name, with_views, with_relatio
             "attributes": len(entity.get("attributes", [])),
             "relationships": len(entity.get("relationships", [])),
             "views": len(entity.get("views", [])),
+            "forms": len(entity.get("forms", [])),
             "optionsets": len(spec.get("optionsets", [])),
+            "skipped": skipped,
         }, warnings=warnings or None)
         return
 
-    ctx.emit(True, data=spec, warnings=warnings or None)
+    # The bare spec stays the data payload (pipeable to `crm apply`); non-seedable
+    # forms surface on the meta channel so they are visible without polluting it.
+    ctx.emit(True, data=spec, meta={"skipped": skipped} if skipped else None,
+             warnings=warnings or None)
 
 
 @metadata_group.command("dependencies")

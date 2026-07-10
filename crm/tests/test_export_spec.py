@@ -18,6 +18,7 @@ import pytest
 import requests_mock
 
 from crm.core import apply
+from crm.core import forms as forms_mod
 from crm.core.export_spec import (
     EXPORT_GAPS,
     EXPORTED_KEYS,
@@ -1460,6 +1461,9 @@ def _mock_minimal_entity(m, backend, *, logical="new_project"):
     m.get(_attr_url(backend, "new_name", logical), json=_primary_info())
     m.get(_o2m_url(backend, logical), json={"value": []})
     m.get(backend.url_for("savedqueries"), json={"value": []})
+    # build_solution_spec projects forms (with_forms=True); a primary-attr-only
+    # entity has no seedable custom form content.
+    m.get(backend.url_for("systemforms"), json={"value": []})
 
 
 class TestSolutionLevel:
@@ -1597,6 +1601,8 @@ class TestSolutionLevel:
             m.get(_o2m_url(backend, "new_task"), json={"value": []})
             m.get(backend.url_for("GlobalOptionSetDefinitions(Name='new_priorityset')"),
                   json=gos)
+            # with_forms=True projects forms; neither entity has custom form content.
+            m.get(backend.url_for("systemforms"), json={"value": []})
             result = build_solution_spec(backend, "myorgsln")
 
         spec = result["spec"]
@@ -1740,6 +1746,244 @@ class TestRoleProjector:
                 _rp("prvFiltered", "RecordFilter", "10000000-0000-0000-0000-000000000009")))
             with pytest.raises(D365Error, match="no apply-authorable privileges"):
                 build_role_spec(backend, _ROLE_ID)
+
+
+# ── forms projection (#794, ADR 0024 / ADR 0019 seedable invariant) ──────────
+
+
+def _form_string_info():
+    # _string_info() plus AttributeType (the ambiguous kind the form control's
+    # classid is keyed on — the deep read always carries it live).
+    return {**_string_info(), "AttributeType": "String"}
+
+
+def _form_lookup_info():
+    return {**_lookup_info(), "AttributeType": "Lookup"}
+
+
+def _double_info():
+    # A Double column: admitted as an attribute (kind "double") but its control
+    # type has no seedable classid, so its form field must drop with a warning.
+    return {
+        "SchemaName": "new_Ratio", "DisplayName": _label("Ratio"),
+        "AttributeType": "Double",
+        "AttributeTypeName": {"Value": "DoubleType"},
+        "RequiredLevel": {"Value": "None"}, "Precision": 2,
+    }
+
+
+# A main form: general/summary holds the primary name field (platform default,
+# omitted) + a custom string; details/extra holds a custom lookup + a Double whose
+# control is not seedable; plus a script library and two handlers.
+_MAIN_FORMXML = (
+    '<form>'
+    '<formLibraries>'
+    '<Library name="new_lib.js" '
+    'libraryUniqueId="{11110000-0000-0000-0000-000000000001}" />'
+    '</formLibraries>'
+    '<events>'
+    '<event name="onload"><Handlers>'
+    '<Handler functionName="onFormLoad" libraryName="new_lib.js" '
+    'handlerUniqueId="{22220000-0000-0000-0000-000000000002}" '
+    'enabled="true" passExecutionContext="true" /></Handlers></event>'
+    '<event name="onchange" attribute="new_code"><Handlers>'
+    '<Handler functionName="onCodeChange" libraryName="new_lib.js" '
+    'handlerUniqueId="{33330000-0000-0000-0000-000000000003}" '
+    'enabled="true" passExecutionContext="false" /></Handlers></event>'
+    '</events>'
+    '<tabs>'
+    '<tab name="general" id="{aaaa1111-0000-0000-0000-000000000001}">'
+    '<labels><label description="General" languagecode="1033" /></labels>'
+    '<columns><column width="100%"><sections>'
+    '<section name="summary" id="{bbbb2222-0000-0000-0000-000000000002}">'
+    '<labels><label description="Summary" languagecode="1033" /></labels>'
+    '<rows>'
+    '<row><cell id="{c0000000-0000-0000-0000-000000000001}"><control id="new_name" '
+    'classid="{4273EDBD-AC1D-40D3-9FB2-095C621B552D}" datafieldname="new_name" />'
+    '</cell></row>'
+    '<row><cell id="{c0000000-0000-0000-0000-000000000002}"><control id="new_code" '
+    'classid="{4273EDBD-AC1D-40D3-9FB2-095C621B552D}" datafieldname="new_code" />'
+    '</cell></row>'
+    '</rows></section></sections></column></columns></tab>'
+    '<tab name="details" id="{aaaa1111-0000-0000-0000-000000000003}">'
+    '<labels><label description="Details" languagecode="1033" /></labels>'
+    '<columns><column width="100%"><sections>'
+    '<section name="extra" id="{bbbb2222-0000-0000-0000-000000000004}">'
+    '<rows>'
+    '<row><cell id="{c0000000-0000-0000-0000-000000000003}">'
+    '<control id="new_accountid" classid="{270BD3DB-D9AF-4782-9025-509E298DEC0A}" '
+    'datafieldname="new_accountid" /></cell></row>'
+    '<row><cell id="{c0000000-0000-0000-0000-000000000004}">'
+    '<control id="new_ratio" classid="{C3EFE0C3-0EC6-42BE-8349-CBD9079DFD8E}" '
+    'datafieldname="new_ratio" /></cell></row>'
+    '</rows></section></sections></column></columns></tab>'
+    '</tabs></form>'
+)
+_FORM_ROW_EXPORT = {
+    "formid": "ffff0000-0000-0000-0000-00000000000f", "name": "Information",
+    "objecttypecode": "new_project", "type": 2, "formxml": _MAIN_FORMXML,
+    "isdefault": True,
+}
+
+
+def _mock_form_entity(m, backend, *, forms_rows):
+    """Register the entity + four-attribute reads + a systemforms response."""
+    attrs = {"value": [_shallow("new_name"), _shallow("new_code"),
+                       _shallow("new_accountid"), _shallow("new_ratio")]}
+    m.get(_entity_url(backend), json=_ENTITY)
+    m.get(_attrs_url(backend), json=attrs)
+    m.get(_attr_url(backend, "new_name"), json=_primary_info())
+    m.get(_attr_url(backend, "new_code"), json=_form_string_info())
+    m.get(_attr_url(backend, "new_accountid"), json=_form_lookup_info())
+    m.get(_attr_url(backend, "new_ratio"), json=_double_info())
+    m.get(backend.url_for("systemforms"), json={"value": forms_rows})
+
+
+class TestFormProjection:
+    def test_forms_off_by_default(self, backend):
+        # Without with_forms the systemforms endpoint is never hit (no mock for it).
+        attrs = {"value": [_shallow("new_name"), _shallow("new_code")]}
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_code"), json=_form_string_info())
+            spec = build_entity_spec(backend, "new_project")
+        assert "forms" not in spec["entities"][0]
+
+    def test_projects_custom_fields_omitting_platform_defaults(self, backend):
+        warnings: list[str] = []
+        skipped: list[dict] = []
+        with requests_mock.Mocker() as m:
+            _mock_form_entity(m, backend, forms_rows=[_FORM_ROW_EXPORT])
+            spec = build_entity_spec(
+                backend, "new_project", with_forms=True, solution="testsln",
+                warnings=warnings, skipped=skipped)
+            assert {r.method for r in m.request_history} == {"GET"}
+
+        blocks = spec["entities"][0]["forms"]
+        assert len(blocks) == 1
+        block = blocks[0]
+        # No name → a round-trip apply targets the destination org's primary form.
+        assert "name" not in block
+        tabs = {t["name"]: t for t in block["tabs"]}
+        assert set(tabs) == {"general", "details"}
+        # Labels emitted when they differ from the element name.
+        assert tabs["general"]["label"] == "General"
+        gen_sec = tabs["general"]["sections"][0]
+        assert (gen_sec["name"], gen_sec["label"]) == ("summary", "Summary")
+        # Primary-name field omitted (platform default); only the custom string.
+        assert [f["name"] for f in gen_sec["fields"]] == ["new_code"]
+        det_sec = tabs["details"]["sections"][0]
+        assert det_sec["name"] == "extra"
+        assert "label" not in det_sec  # section has no <labels> → no label key
+        # new_accountid kept; new_ratio (Double control) not seedable → dropped.
+        assert [f["name"] for f in det_sec["fields"]] == ["new_accountid"]
+        assert any("new_ratio" in w for w in warnings)
+        assert skipped == []
+        apply.validate_spec(spec)  # the projection round-trips
+
+    def test_projects_libraries_and_handlers(self, backend):
+        with requests_mock.Mocker() as m:
+            _mock_form_entity(m, backend, forms_rows=[_FORM_ROW_EXPORT])
+            spec = build_entity_spec(
+                backend, "new_project", with_forms=True, solution="testsln")
+        block = spec["entities"][0]["forms"][0]
+        assert block["libraries"] == ["new_lib.js"]
+        handlers = {h["function"]: h for h in block["handlers"]}
+        assert set(handlers) == {"onFormLoad", "onCodeChange"}
+        assert "field" not in handlers["onFormLoad"]
+        assert handlers["onFormLoad"]["pass_context"] is True
+        onchange = handlers["onCodeChange"]
+        assert onchange["event"] == "onchange"
+        assert onchange["field"] == "new_code"
+        assert onchange["pass_context"] is False  # defaults differ; emitted faithfully
+
+    def test_additional_main_form_is_skipped(self, backend):
+        # A second, non-default main form cannot be re-seeded (apply converges only
+        # the primary) → it lands in `skipped`, and the primary still projects.
+        second = {**_FORM_ROW_EXPORT,
+                  "formid": "eeee0000-0000-0000-0000-00000000000e",
+                  "name": "Secondary", "isdefault": False}
+        skipped: list[dict] = []
+        with requests_mock.Mocker() as m:
+            _mock_form_entity(m, backend, forms_rows=[_FORM_ROW_EXPORT, second])
+            spec = build_entity_spec(
+                backend, "new_project", with_forms=True, solution="testsln",
+                skipped=skipped)
+        # The primary (isdefault) still projects.
+        assert "forms" in spec["entities"][0]
+        assert len(skipped) == 1
+        assert skipped[0]["type"] == "form"
+        assert skipped[0]["objectid"] == second["formid"]
+        assert "Secondary" in skipped[0]["reason"]
+
+    def test_no_custom_content_emits_no_block(self, backend):
+        # A form carrying only the primary name field (a bare platform form) has no
+        # custom content → no forms block, nothing skipped.
+        bare = (
+            '<form><tabs>'
+            '<tab name="general" id="{aaaa1111-0000-0000-0000-000000000001}">'
+            '<labels><label description="General" languagecode="1033" /></labels>'
+            '<columns><column width="100%"><sections>'
+            '<section name="summary" id="{bbbb2222-0000-0000-0000-000000000002}">'
+            '<rows><row><cell id="{c0000000-0000-0000-0000-000000000001}">'
+            '<control id="new_name" classid="{4273EDBD-AC1D-40D3-9FB2-095C621B552D}" '
+            'datafieldname="new_name" /></cell></row></rows>'
+            '</section></sections></column></columns></tab></tabs></form>')
+        skipped: list[dict] = []
+        with requests_mock.Mocker() as m:
+            _mock_form_entity(
+                m, backend, forms_rows=[{**_FORM_ROW_EXPORT, "formxml": bare}])
+            spec = build_entity_spec(
+                backend, "new_project", with_forms=True, skipped=skipped)
+        assert "forms" not in spec["entities"][0]
+        assert skipped == []
+
+    def test_projected_block_round_trips_onto_a_bare_org(self, backend):
+        # Acceptance (#794): project from org A, then apply the block onto a fresh
+        # org B whose main form is the bare platform default — converge seeds the
+        # custom fields, the new tab/section, the library, and the handlers.
+        with requests_mock.Mocker() as m:
+            _mock_form_entity(m, backend, forms_rows=[_FORM_ROW_EXPORT])
+            spec = build_entity_spec(
+                backend, "new_project", with_forms=True, solution="testsln")
+        block = spec["entities"][0]["forms"][0]
+
+        bare = (
+            '<form><tabs>'
+            '<tab name="general" id="{ded00000-0000-0000-0000-000000000001}">'
+            '<labels><label description="General" languagecode="1033" /></labels>'
+            '<columns><column width="100%"><sections>'
+            '<section name="summary" id="{ded00000-0000-0000-0000-000000000002}">'
+            '<rows><row><cell id="{ded00000-0000-0000-0000-000000000003}">'
+            '<control id="new_name" classid="{4273EDBD-AC1D-40D3-9FB2-095C621B552D}" '
+            'datafieldname="new_name" /></cell></row></rows>'
+            '</section></sections></column></columns></tab></tabs></form>')
+        bare_row = {**_FORM_ROW_EXPORT, "formxml": bare}
+
+        with requests_mock.Mocker() as m:
+            m.get(_attr_url(backend, "new_code"), json=_form_string_info())
+            m.get(_attr_url(backend, "new_accountid"), json=_form_lookup_info())
+            m.get(backend.url_for("webresourceset"),
+                  json={"value": [{"webresourceid": "dddd0000-0000-0000-0000-"
+                                   "00000000000d", "name": "new_lib.js"}]})
+            new_xml, added = forms_mod.converge_declared_form(
+                backend, "new_project", bare_row, block)
+
+        kinds = {(a["kind"], a.get("name")) for a in added}
+        # general/summary already exist on the bare form → not re-added; the custom
+        # field lands there. details/extra + its field are created.
+        assert ("field", "new_code") in kinds
+        assert ("field", "new_accountid") in kinds
+        assert ("tab", "details") in kinds
+        assert ("section", "extra") in kinds
+        assert ("library", "new_lib.js") in kinds
+        assert ("handler", "onFormLoad") in kinds
+        assert ("handler", "onCodeChange") in kinds
+        # The seeded form actually carries the custom fields.
+        assert 'datafieldname="new_code"' in new_xml
+        assert 'datafieldname="new_accountid"' in new_xml
 
 
 # ── export↔apply gap contract (#787) ─────────────────────────────────────────

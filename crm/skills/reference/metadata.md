@@ -120,7 +120,7 @@ Read-only schema only — records and secrets are never cached.
 ## Export a live entity as an apply spec (round-trip)
 
 ```bash
-crm metadata export-spec new_project --with-views --with-relationships \
+crm metadata export-spec new_project --with-views --with-relationships --with-forms \
     --solution ContosoCore -o project.yaml
 crm apply -f project.yaml   # re-create / idempotently re-apply in any environment
 ```
@@ -136,7 +136,21 @@ directly consumable by `apply`; without `-o` the spec is wrapped in the JSON env
 It captures: entity definition, primary-name attribute, all custom apply-creatable
 columns (including calculated and rollup columns with their `source_type` and
 `formula_definition` XAML), referenced global option sets, and (with flags)
-relationships and views.
+relationships, views, and the seedable main form.
+
+`--with-forms` projects the entity's main form as a `forms:` block — the *inverse*
+of `apply`'s forms convergence (ADR 0024), governed by the ADR 0019 seedable
+invariant. It emits only what a real `apply` can layer back onto a fresh org's
+platform main form: the **custom** fields and their tab/section placement,
+registered JS libraries, and seedable event handlers. The block carries no form
+`name`, so a round-trip apply targets the destination org's own primary main form.
+Silently omitted: the primary-name field and every platform/system field (already
+on the destination form), and tabs/sections that carry no custom field. Dropped to
+`meta.warnings`: a field whose control type has no seedable classid (multi-select,
+double, …) and a handler on a non-seedable event. Reported in `meta.skipped`: an
+additional (non-primary) main form — `apply` converges only the destination primary
+main form, never forging a second one. A per-form field *label override* is not
+captured.
 A publisher is never emitted. A top-level `solution:` block is emitted only when
 `--solution <name>` is passed to `export-spec` — `apply` requires one (there is no
 `apply --solution` flag), so a spec exported without it is valid but not appliable
