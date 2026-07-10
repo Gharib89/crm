@@ -1508,7 +1508,7 @@ def converge_declared_form(
         tlabel = str(tab.get("label") or tname)
         if not _tab_present(_parse_formxml(formxml), tname):
             formxml = add_tab_to_formxml(
-                formxml, name=tname, label=tlabel, columns=int(tab.get("columns", 1)))
+                formxml, name=tname, label=tlabel, columns=int(tab.get("columns") or 1))
             added.append({"kind": "tab", "name": tname})
         for section in _blocks(tab.get("sections")):
             sname = str(section["name"])
@@ -1516,7 +1516,7 @@ def converge_declared_form(
             if not _section_present(_parse_formxml(formxml), tname, sname):
                 formxml = add_section_to_formxml(
                     formxml, name=sname, label=slabel, tab=tname,
-                    columns=int(section.get("columns", 1)))
+                    columns=int(section.get("columns") or 1))
                 added.append({"kind": "section", "name": sname, "tab": tname})
             for fld in _blocks(section.get("fields")):
                 fname = str(fld["name"])

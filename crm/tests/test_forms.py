@@ -1236,6 +1236,19 @@ class TestConvergeDeclaredForm:
         assert '<Library name="new_lib.js"' in new_xml
         assert 'functionName="App.onLoad"' in new_xml
 
+    def test_explicit_null_columns_defaults_not_typeerror(self, backend):
+        # `columns: null` in the spec passes validation (None is optional), so
+        # convergence must treat it as absent → default 1, not `int(None)`.
+        from crm.core import forms
+        block = {"tabs": [{"name": "custom", "columns": None,
+                           "sections": [{"name": "info", "columns": None}]}]}
+        with requests_mock.Mocker():
+            new_xml, added = forms.converge_declared_form(
+                backend, "new_project", dict(self._FORM_ROW), block)
+        assert [(a["kind"], a["name"]) for a in added] == [
+            ("tab", "custom"), ("section", "info")]
+        assert 'name="custom"' in new_xml and 'name="info"' in new_xml
+
     def test_reapply_is_idempotent(self, backend):
         from crm.core import forms
         with requests_mock.Mocker() as m:
