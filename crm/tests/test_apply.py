@@ -5429,6 +5429,29 @@ def test_apply_apps_phase_creates_app_without_sitemap_or_components(backend):
     assert len(_publish_hits(m, backend)) == 1
 
 
+def test_apply_apps_phase_unresolved_appmoduleid_fails_not_silent(backend):
+    # An app whose create succeeds but whose appmoduleid can't be resolved (an
+    # unparseable OData-EntityId, or a publish-before-read miss) MUST NOT report
+    # a silently-incomplete app as applied: its declared sitemap/components can't
+    # be bound, so the run fails hard rather than leaving the tables unreachable.
+    spec = {"solution": _SOLUTION, "apps": [_app_block()]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_create(m, backend, exists=True)
+        m.get(backend.url_for("appmodules"), json={"value": []})
+        # 204 create with NO OData-EntityId header → appmoduleid unresolvable.
+        m.post(backend.url_for("appmodules"), status_code=204)
+        m.post(backend.url_for("AddAppComponents"), status_code=204)
+        m.post(backend.url_for("sitemaps"), status_code=204)
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert "app" in _kinds(res["failed"])
+    assert "app" not in _kinds(res["applied"])
+    assert res["ok"] is False
+    # The declared follow-up writes were never issued.
+    assert _app_posts(m, backend, "AddAppComponents") == []
+    assert _app_posts(m, backend, "sitemaps") == []
+
+
 def test_apply_rejects_non_list_apps(backend):
     with pytest.raises(D365Error, match="apps must be a list"):
         apply_mod.apply_spec(backend, {"solution": _SOLUTION, "apps": {}},

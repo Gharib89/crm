@@ -2525,11 +2525,24 @@ def apply_spec(
             entry["appmoduleid"] = app_id
             components = [(c["kind"], c["id"])
                           for c in _as_list(app_spec.get("components"))]
+            sitemap = app_spec.get("sitemap")
+            # The app row was created but its server id could not be resolved
+            # (an unparseable OData-EntityId, or a publish-before-read miss —
+            # create_app records the reason in app_lookup_error). Its declared
+            # components/sitemap can't be bound without that id, so surface a
+            # hard failure rather than report a silently incomplete app as
+            # applied: an app whose sitemap never landed leaves its tables
+            # unreachable, defeating the point of the block.
+            if not app_id and (components or sitemap):
+                applied.remove(entry)
+                failed.append({**entry, "error": result.get("app_lookup_error")
+                               or "app created but its appmoduleid could not be "
+                               "resolved; components/sitemap not bound."})
+                raise _Aborted
             if components and app_id:
                 _call(entry, lambda app_id=app_id, components=components:
                       app_mod.add_app_components(
                           backend, app_id=app_id, components=components), failed)
-            sitemap = app_spec.get("sitemap")
             if sitemap and app_id:
                 areas, groups, subareas = _sitemap_tuples(sitemap)
                 sm_result = _call(entry, lambda a=app_spec, areas=areas, groups=groups,
