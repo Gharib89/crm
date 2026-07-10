@@ -5055,6 +5055,25 @@ def test_apply_forms_phase_converges_existing_main_form(backend):
     assert res["ok"] is True
 
 
+def test_apply_forms_phase_stage_only_defers_publish(backend):
+    # A form is a publishable customization, so --stage-only writes the PATCH but
+    # defers the end-of-run publish and records meta.staged (ADR 0024 / issue AC).
+    spec = {"solution": _SOLUTION,
+            "entities": [{**_ENTITY, "forms": [_forms_block()]}]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_create(m, backend, exists=True)
+        _mock_entity_create(m, backend, schema="contoso_Project", logical="contoso_project", exists=True)
+        m.get(backend.url_for("systemforms"), json={"value": [_FORM_ROW]})
+        patched = m.patch(backend.url_for(f"systemforms({_FORM_ROW['formid']})"),
+                          status_code=204)
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=True)
+    assert _kinds(res["applied"]) == ["form"]
+    assert patched.called
+    assert res["staged"] is True
+    assert _publish_hits(m, backend) == []
+
+
 def test_apply_forms_phase_dry_run_planned_writes_nothing(dry_backend):
     spec = {"solution": _SOLUTION,
             "entities": [{**_ENTITY, "forms": [_forms_block()]}]}

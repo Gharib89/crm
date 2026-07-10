@@ -1556,8 +1556,8 @@ def apply_form_spec(
 ) -> dict[str, Any]:
     """Converge one declared ``forms:`` block onto ``entity``'s main form.
 
-    The single public entry point `apply` drives (ADR 0024). Selects the target
-    main form (``block['name']``, else the entity's primary main form), computes
+    The single public entry point that `apply` drives (ADR 0024). Selects the
+    target main form (``block['name']``, else the entity's primary main form), computes
     the additive convergence, and — on a real run with something to add — PATCHes
     it in one write. Reads are forced-real, so a dry-run still reads live and
     reports the would-add set without writing.
