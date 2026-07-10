@@ -84,7 +84,11 @@ def regenerate_guids(
     registered control). It is compared case-insensitively (matched GUIDs are
     lowercased first), so the caller need not pre-normalize. A matched GUID whose
     value is in ``preserve`` is left byte-identical and never enters the mapping,
-    so the guard sees it as an untouched external GUID.
+    so the guard sees it as an untouched external GUID. The exemption is
+    **value-scoped**, not position-scoped — *every* occurrence of a preserved GUID
+    is left untouched — so a family must only preserve values that never double as
+    an internal id (in real FormXml a registered-control id and a per-instance
+    ``uniqueid``/layout id come from different namespaces and never collide).
 
     Returns the rewritten XML and the ``{old_lower: new}`` mapping — feed that
     mapping straight into the guard.
