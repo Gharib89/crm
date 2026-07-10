@@ -69,7 +69,7 @@ Three nouns carry the whole workflow:
   in place, and one whose divergence would need a destructive drop-and-recreate is
   refused (no write) rather than silently rebuilt. Re-applying an unchanged spec is
   a no-op.
-- **The plan — the unit of approval.** `crm apply --dry-run … -o plan.json`
+- **The plan — the unit of approval.** `crm --dry-run apply -f spec.yaml -o plan.json`
   serializes the drift report to a plan artifact: it pins the target **org id**,
   embeds the **resolved spec**, records a **sha256 for each referenced file
   payload** (web-resource / plug-in files), fixes the **intent** (prune /
@@ -211,7 +211,7 @@ requires `--allow-data-loss`.
   working-copy ribbon flow (`crm ribbon export --solution` → edit → `crm ribbon
   apply`) and the zip promote. See the skill's `webresource-ribbon` reference.
 - **A single targeted change** to an existing component is often faster imperatively
-  (`crm metadata create-*`, `crm form`, `crm app`, `crm view`) than editing the
+  (the `metadata create-*`, `form`, `app`, and `view` verbs) than editing the
   spec — the imperative verbs remain the single-change path. See
   [How-to: metadata](../how-to/metadata.md).
 - **N:N relationships** are outside the apply surface (apply authors 1:N).

@@ -10,7 +10,7 @@ SKILL_MD = SKILLS_DIR / "SKILL.md"
 REFERENCE_DIR = SKILLS_DIR / "reference"
 
 EXPECTED_REFERENCES = {
-    "setup.md", "customization-lifecycle.md",
+    "setup.md", "customization-lifecycle.md", "customizations-as-code.md",
     "records.md", "bulk.md", "metadata.md", "metadata-writes.md", "authoring.md", "solutions.md",
     "apps-sitemap.md", "forms.md", "webresource-ribbon.md",
     "charts-dashboards.md", "themes-reports.md",

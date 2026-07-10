@@ -5,8 +5,7 @@ between orgs as **plan artifacts** — a desired-state loop: edit `spec.yaml`,
 `--dry-run apply` to diff, commit a plan, execute exactly it with `--from-plan`.
 For the classic **zip-based** promote (export managed → import downstream), use
 `customization-lifecycle.md` instead — that file keeps the zip spine as the
-alternate promote model. The two coexist; this one is for the repo-driven,
-plan-gated flow.
+alternate promote model.
 
 **Repo layout** (convention only — `crm` reads/writes these, it does not scaffold
 them):
