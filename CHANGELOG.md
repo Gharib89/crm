@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.65.0 (2026-07-10)
+
+### Features
+
+- **apply**: Converge app component set + sitemap on re-apply
+  ([#810](https://github.com/Gharib89/crm/pull/810),
+  [`5febbd1`](https://github.com/Gharib89/crm/commit/5febbd18d9d6e963d029fa0a2951a936d0e1ae30))
+
+
 ## v1.64.0 (2026-07-10)
 
 ### Bug Fixes
