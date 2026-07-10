@@ -2079,4 +2079,5 @@ class TestBehavioralRoundtrip:
         }
         assert set(EXPORTED_KEYS) == covered_here, (
             "EXPORTED_KEYS kinds without a behavioral roundtrip test: "
-            f"{sorted(set(EXPORTED_KEYS) - covered_here)}")
+            f"{sorted(set(EXPORTED_KEYS) - covered_here)}; stale kinds listed here "
+            f"but no longer in EXPORTED_KEYS: {sorted(covered_here - set(EXPORTED_KEYS))}")
