@@ -15,7 +15,7 @@ the spec (`apply` reconciles matching components — equal → skip, updatable d
 Stand up a whole table from one YAML/JSON spec instead of many imperative commands.
 `apply` runs the metadata and plug-in cores in dependency order (publisher → solution →
 entities → option sets → attributes → relationships → views → web resources → forms →
-security roles → plug-ins) and **publishes once at the end** — only when a publishable
+security roles → plug-ins → apps) and **publishes once at the end** — only when a publishable
 component changed (security roles and plug-in components are not publishable, so an apply
 that touches only those does not publish).
 
@@ -79,6 +79,18 @@ expressible in the spec. **Reconciled on re-apply:**
   `applied`/`planned` entry carries `components: [{kind, name, …}]` listing what was
   added. Converging *drift* in an already-present component is not yet reconciled
   (create path only).
+- **Model-driven app** (`apps:` top-level, ADR 0024) — **create path only**. A
+  declared app that does not exist is created through the app-module + sitemap
+  builders: `components[]` (`{kind, id}`, kind view/chart/form/dashboard/bpf/sitemap)
+  bound via `AddAppComponents`, and a nested `sitemap` (`areas[] → groups[] →
+  subareas[]`, subarea `entity` = logical name) set wholesale and auto-linked to the
+  app by its `unique_name`. **Tables reach the app via a sitemap subarea, not
+  `components[]`.** An app that already exists is `skipped` (reconcile is a later
+  slice); dry-run → `planned`. Apps/sitemaps are publishable (defer to the end-of-run
+  publish; `--stage-only` honoured) and **out of scope for `--prune`**. The `applied`
+  entry carries the live `appmoduleid` / `sitemapid`. Gotcha: a freshly created
+  appmodule is not reliably GET-retrievable until published (the create path treats
+  the read-back miss as non-fatal) — operate on the returned id, don't re-query.
 
 **Create-only** (re-applying an existing component does not yet reconcile these):
 attribute — `default_value`, `true_label/false_label`, `min_value/max_value`,

@@ -176,6 +176,21 @@ plugins:
             image_type: pre             # required (pre|post|both)
             attributes: name,...        # optional; comma-separated logical names
             message_property_name: Target   # optional override
+apps:                                   # top-level: model-driven apps (ADR 0024)
+  - name: Contoso Projects              # required; app display name
+    unique_name: contoso_projects       # required; publisher-prefixed identity
+    description: Project management      # optional
+    components:                         # optional; record-backed components to bind
+      - {kind: view, id: 00000000-0000-0000-0000-000000000000}   # kind: view|chart|form|dashboard|bpf|sitemap
+    sitemap:                            # optional; navigation, replaced wholesale
+      areas:
+        - id: contoso_area
+          title: Projects               # optional (defaults to id)
+          groups:
+            - id: contoso_group
+              title: Delivery
+              subareas:
+                - {entity: contoso_project, title: Projects}     # tables reach the app here
 ```
 
 `attributes[].kind` is any kind `metadata add-attribute` accepts (`string`,
@@ -264,6 +279,33 @@ the form `planned` (a greenfield entity's main form not yet materialised is also
 `planned`). Forms publish with the rest of the customization at the end-of-run
 `PublishAllXml`, and `--stage-only` defers that publish like every other kind.
 Forms are **out of scope for `--prune`**.
+
+## Model-driven apps: create the app and its sitemap
+
+A top-level `apps:` block declares a model-driven app (ADR 0024). This is the
+**create path**: an app that does not yet exist is created through the same
+app-module and sitemap builders the `crm app` verbs use, its declared components
+bound and its sitemap set, so one spec can stand up a table and the app that
+exposes it in a single `apply`:
+
+- `name` and `unique_name` are required; `unique_name` is the publisher-prefixed
+  identity (the convergent key) and `description` is optional.
+- `components[]` — record-backed components to bind via `AddAppComponents`. Each
+  is `{kind, id}` where `kind` is one of `view`, `chart`, `form`, `dashboard`,
+  `bpf`, `sitemap` and `id` is the component's GUID. **Tables are not bound
+  here** — they reach the app through a sitemap subarea (`entity:` below).
+- `sitemap` — navigation as `areas[] → groups[] → subareas[]`. An area/group
+  takes an `id` and optional `title` (defaults to the id); a subarea takes an
+  `entity` (logical name) and optional `title`. The sitemap is auto-linked to the
+  app by its unique name and set from the declared document wholesale.
+
+An app that **already exists** is left untouched (`skipped`) — converging a live
+app's component set or sitemap is a separate reconcile pass. `--dry-run`
+classifies an absent app `planned` and issues no write. Apps and sitemaps are
+publishable, so a created app publishes with the rest of the customization at the
+end-of-run `PublishAllXml`, and `--stage-only` defers that publish. Malformed
+app/sitemap blocks are rejected up front, before any HTTP call. Apps are **out of
+scope for `--prune`**.
 
 ## Plug-ins: assembly, types, steps, and images
 
