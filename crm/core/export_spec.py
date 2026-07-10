@@ -959,8 +959,15 @@ def build_app_spec(
                 "appmodulecomponents",
                 params={"$filter": f"_appmoduleidunique_value eq {idunique}",
                         "$select": "componenttype"})
-        except D365Error:
+        except D365Error as exc:
+            # Best-effort: a failed bindings read must not fail the whole app
+            # projection — but it must not be silent either (ADR 0019), so warn
+            # that record-backed bindings may exist but could not be counted.
             comps = []
+            warn.append(
+                f"{app_label}: could not read component bindings ({exc}); "
+                "any record-backed bindings (views/charts/forms/dashboards/BPFs) "
+                "are not projected and were not counted.")
         bound = sum(1 for c in comps
                     if c.get("componenttype") not in _APP_BINDINGS_ACCOUNTED_FOR)
         if bound:

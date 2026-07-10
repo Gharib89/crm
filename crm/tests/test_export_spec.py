@@ -2459,6 +2459,18 @@ class TestAppProjector:
             build_app_spec(backend, _APP_ID, warnings=warn)
         assert any("2 record-backed component binding" in w for w in warn)
 
+    def test_bindings_read_failure_warns_not_silent(self, backend):
+        # A failed appmodulecomponents read must not fail the projection, but it
+        # must warn (ADR 0019 never-drop-silently) — bindings may exist uncounted.
+        warn: list[str] = []
+        with requests_mock.Mocker() as m:
+            m.get(_appmodule_url(backend), json=_app_row())
+            m.get(_sitemaps_url(backend), json={"value": [{"sitemapxml": _SITEMAP_XML}]})
+            m.get(_appcomponents_url(backend), status_code=500)
+            block = build_app_spec(backend, _APP_ID, warnings=warn)
+        assert block["unique_name"] == "cwx_crmworx"  # projection still succeeds
+        assert any("could not read component bindings" in w for w in warn)
+
     def test_no_name_raises(self, backend):
         with requests_mock.Mocker() as m:
             m.get(_appmodule_url(backend), json=_app_row(name=""))

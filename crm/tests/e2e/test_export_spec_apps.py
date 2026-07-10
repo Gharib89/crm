@@ -25,7 +25,7 @@ import time
 import pytest
 import yaml
 
-from crm.utils.d365_backend import D365Error
+from crm.utils.d365_backend import D365Error, classify_d365_error
 
 # Bounded wait for the freshly-created appmodule to become readable (Dataverse's
 # read-visibility lag; on-prem clears immediately after publish).
@@ -34,13 +34,21 @@ _APP_VISIBLE_POLL_S = 6
 
 
 def _wait_app_readable(backend, app_id: str) -> bool:
-    """Poll GET appmodules(id) until it resolves; False if the window never clears."""
+    """Poll GET appmodules(id) until it resolves; False if the window never clears.
+
+    Only the expected not-found (the Dataverse visibility lag) is retried — any
+    other fault (auth / permission / throttling / 5xx) propagates so the test
+    fails fast on a genuine problem instead of masking it as a long wait + skip.
+    """
     deadline = time.time() + _APP_VISIBLE_TIMEOUT_S
     while time.time() < deadline:
         try:
             backend.get(f"appmodules({app_id})", params={"$select": "appmoduleid"})
             return True
-        except D365Error:
+        except D365Error as exc:
+            category, _ = classify_d365_error(exc.status, exc.code, str(exc))
+            if category != "not_found":
+                raise
             time.sleep(_APP_VISIBLE_POLL_S)
     return False
 
