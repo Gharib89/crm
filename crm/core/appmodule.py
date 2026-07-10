@@ -68,8 +68,9 @@ def publish_app(backend: D365Backend, app_id: str) -> dict[str, Any]:
     updated model-driven app must be published this way to become GET-visible in
     the `appmodules` collection (#809). A write — short-circuits under dry-run.
     """
-    # Lazy: solution pulls the wider write stack; keep it off appmodule's import
-    # path (avoids a core import cycle and preserves cold-start startup latency).
+    # Lazy import: `solution` pulls the wider write stack; keeping it off
+    # appmodule's module-load path preserves cold-start CLI latency (one-shot
+    # `crm` invocations dominate; see the startup-perf note in project memory).
     from crm.core.solution import publish_xml
     return publish_xml(backend, _appmodule_publish_xml(app_id))
 

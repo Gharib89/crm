@@ -5564,6 +5564,33 @@ def test_apply_apps_reconcile_converges_sitemap_wholesale(backend):
     assert len(_publish_hits(m, backend)) == 1
 
 
+def test_apply_apps_reconcile_adds_first_sitemap_binds_and_app_publishes(backend):
+    # An existing app that had no sitemap gains one on re-apply: reconcile creates
+    # the sitemap, binds it as component 62, AND the app is app-published so it
+    # becomes GET-visible — otherwise a previously-bare app stays invisible forever
+    # after gaining its first sitemap (#809 review finding).
+    spec = {"solution": _SOLUTION, "apps": [_app_block()]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_create(m, backend, exists=True)
+        _mock_app_reconcile(m, backend,
+                            live_components=[(26, _APP_COMPONENT_GUID)],
+                            live_sitemap_xml=None)  # app has no sitemap yet
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert _kinds(res["updated"]) == ["app"]
+    assert res["updated"][0]["sitemap"] == "added"
+    # The new sitemap is created and bound to the app as a component (type 62).
+    assert len(_app_posts(m, backend, "sitemaps")) == 1
+    sitemap_binds = [r for r in _add_hits(m, backend)
+                     if "sitemapid" in r.json()["Components"][0]]
+    assert len(sitemap_binds) == 1
+    assert sitemap_binds[0].json()["Components"][0]["sitemapid"] == _SITEMAP_ID
+    # The now-complete app is app-published (app-scoped PublishXml).
+    app_pub = [r for r in m.request_history
+               if r.method == "POST" and r.url.endswith("PublishXml")]
+    assert len(app_pub) == 1
+    assert f"<appmodule>{_APP_ID}</appmodule>" in app_pub[0].json()["ParameterXml"]
+
+
 def test_apply_apps_reconcile_managed_replace_blocked(backend):
     # AC #4: a managed app is refused with NO write → `replace_blocked`, ok=false.
     spec = {"solution": _SOLUTION, "apps": [_app_block()]}

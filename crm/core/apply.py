@@ -2668,16 +2668,29 @@ def apply_spec(
                  and not replace_blocked and not backend.dry_run)
     if published:
         sol_mod.publish_all(backend)
-        # PublishAllXml does NOT flip an appmodule to Published (#809), so a newly
-        # created app stays invisible to the `appmodules` collection until an
-        # app-scoped publish. Publish each created app that has a sitemap bound
-        # (a bare app can't pass ValidateApp, so it is not publishable) after the
-        # blanket publish, under the same gate. dry-run/stage-only never reach here.
-        # An updated (already-existing) app is already published; its component/
-        # sitemap changes land via AddAppComponents + the blanket publish.
-        for e in applied:
-            if e.get("kind") == "app" and e.get("appmoduleid") and e.get("sitemapid"):
+        # PublishAllXml does NOT flip an appmodule to Published (#809), so an app
+        # stays invisible to the `appmodules` collection until an app-scoped publish.
+        # After the blanket publish, app-publish every app that has newly become
+        # publishable: a CREATED app with a sitemap bound, or an UPDATED app whose
+        # reconcile just added its first sitemap. (A bare app — no sitemap — can't
+        # pass ValidateApp, so it is skipped; an updated app whose sitemap merely
+        # changed was already published.) dry-run/stage-only never reach here.
+        newly_publishable = [
+            e for e in applied
+            if e.get("kind") == "app" and e.get("appmoduleid") and e.get("sitemapid")
+        ] + [
+            e for e in updated
+            if e.get("kind") == "app" and e.get("appmoduleid")
+            and e.get("sitemap") == "added"
+        ]
+        for e in newly_publishable:
+            try:
                 app_mod.publish_app(backend, str(e["appmoduleid"]))
+            except D365Error as exc:
+                # Non-fatal: the app was created/updated; only its app-scoped publish
+                # failed (e.g. a validation error). Record it on the entry rather
+                # than throwing out of the clean apply envelope.
+                e["publish_error"] = str(exc)
 
     return {
         "ok": not failed and not replace_blocked,
