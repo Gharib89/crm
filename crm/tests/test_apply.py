@@ -5385,7 +5385,6 @@ def test_apply_apps_phase_creates_app_components_and_sitemap(backend):
                if r.method == "POST" and r.url.endswith("PublishXml")]
     assert len(app_pub) == 1
     assert f"<appmodule>{_APP_ID}</appmodule>" in app_pub[0].json()["ParameterXml"]
-    assert f"<appmodule>{_APP_ID}</appmodule>" in app_pub[0].json()["ParameterXml"]
     assert res["ok"] is True
 
 

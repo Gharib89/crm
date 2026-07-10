@@ -64,9 +64,11 @@ def _appmodule_publish_xml(app_id: str) -> str:
 def publish_app(backend: D365Backend, app_id: str) -> dict[str, Any]:
     """App-scoped publish (PublishXml) that flips a single appmodule to Published.
 
-    The generic `PublishAllXml` does not publish an appmodule, so a created or
-    updated model-driven app must be published this way to become GET-visible in
-    the `appmodules` collection (#809). A write — short-circuits under dry-run.
+    The generic `PublishAllXml` does not publish an appmodule, so an app that is
+    not yet published — a newly created app with a sitemap bound, or a previously
+    bare app that just gained its first sitemap — must be published this way to
+    become GET-visible in the `appmodules` collection (#809). A write —
+    short-circuits under dry-run.
     """
     # Lazy import: `solution` pulls the wider write stack; keeping it off
     # appmodule's module-load path preserves cold-start CLI latency (one-shot
@@ -222,7 +224,8 @@ def create_app(
     # publishable as an app — an app-scoped publish would fail ValidateApp. So
     # `create_app` keeps the generic publish (PublishAllXml, publishes surrounding
     # customizations); an app becomes app-published once it is complete — the apply
-    # apps phase app-publishes each created/updated app after binding its sitemap.
+    # apps phase app-publishes a created app once its sitemap is bound (and an
+    # existing app that just gained its first sitemap on reconcile).
     maybe_publish(backend, out, publish)
     # Read-back through the unpublished view (RetrieveUnpublishedMultiple) so it
     # succeeds whether or not the app is published — the plain collection returns
