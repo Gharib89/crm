@@ -141,7 +141,7 @@ git switch -c feat/add-priority-field
 $EDITOR spec.yaml                                  # declare the change
 crm --dry-run apply -f spec.yaml                   # drift report: would_create / would_update / refused
 crm apply -f spec.yaml --yes                       # converge the dev org
-crm --json apply -f spec.yaml | jq '.data'         # re-apply is a no-op → confirms convergence
+crm --json --dry-run apply -f spec.yaml | jq '.data'   # dry-run drift is all-no-op → confirms convergence
 git add spec.yaml && git commit -m "feat: add priority column"   # open the PR
 ```
 
@@ -164,7 +164,7 @@ git commit -m "plan: priority column → test"      # the plan is the review obj
 # 2. On a VPN-connected machine (on-prem is VPN-locked), re-verify then execute.
 crm --profile test --dry-run --from-plan plans/test/2026-07-11-priority.plan.json   # still exactly true?
 crm --profile test apply --from-plan plans/test/2026-07-11-priority.plan.json --yes # runs EXACTLY the plan
-crm --json --profile test apply -f spec.yaml | jq '.data'                           # verify: all-no-op
+crm --json --profile test --dry-run apply -f spec.yaml | jq '.data'                  # verify: dry-run drift all-no-op
 ```
 
 `crm apply --from-plan` refuses `--prune`, `--allow-data-loss`, `--stage-only`, and

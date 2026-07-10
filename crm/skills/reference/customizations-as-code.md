@@ -47,8 +47,9 @@ apply -f spec.yaml --yes       → converge the dev org
 Data flow: the dry-run verdicts are computed from live reads (reads execute under
 `--dry-run`), so they reflect the real org, not guesses. A "refused" verdict means
 the change would need a destructive drop-and-recreate — apply won't do it silently.
-**Verify:** re-run `apply -f spec.yaml` (or `--json … | jq .data`) — a no-op
-confirms convergence. Then commit; the PR is the change.
+**Verify:** `--dry-run apply -f spec.yaml` reports all-no-op — confirms
+convergence (read-only; reads still execute under `--dry-run`). Then commit; the
+PR is the change.
 
 ## Spine 3 — plan → approve → execute (promote)
 
@@ -65,7 +66,8 @@ allow-data-loss / stage-only) + a per-component verdict. `--from-plan` replays t
 intent and **takes no intent flags** — it refuses `--prune` / `--allow-data-loss` /
 `--stage-only` / `-o`. Cut the plan against the **target** profile (not dev), and
 execute from a machine that can reach the target (on-prem is VPN-locked).
-**Verify:** after apply, `--json apply -f spec.yaml | jq .data` is all-no-op.
+**Verify:** after apply, `--json --dry-run apply -f spec.yaml | jq .data` is
+all-no-op (read-only check).
 
 ## When the plan goes stale
 
