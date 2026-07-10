@@ -1,11 +1,11 @@
 # Product bugs surfaced by the live e2e suite
 
-Four real defects were surfaced while building the live e2e coverage
-(`crm/tests/e2e/`). None are test bugs — each reproduces through the normal CLI
-against a live org. #1, #2, and #3
-turned out to be **client-side** bugs in the CLI and are now fixed; **#4 is now FIXED
-(#269, #678)** — its `xfail` is removed and the test passes live on both targets (see below).
-All four are now fixed.
+Five real defects were surfaced by the live e2e coverage (`crm/tests/e2e/`). None
+are test bugs — each reproduces through the normal CLI against a live org. #1, #2,
+and #3 turned out to be **client-side** bugs in the CLI and are fixed; **#4 is FIXED
+(#269, #678)** — its `xfail` is removed and the test passes live on both targets.
+**#5 is an OPEN platform behavior** (Gharib89/crm#809): a Web-API-created app is not
+GET-retrievable, blocking app read-back / reconcile round-trip (see below).
 
 Repro uses a saved profile directly (`--profile`); no e2e harness needed. Targets
 referenced: an on-prem NTLM org and a cloud OAuth/Dataverse org.
@@ -16,6 +16,7 @@ referenced: an on-prem NTLM org and a cloud OAuth/Dataverse org.
 | 2 | `metadata update-relationship` → HTTP 405 → ✅ fixed (client-side) | Gharib89/crm#267 (FIXED) |
 | 3 | `form clone` reused internal form ids on on-prem → ✅ fixed (client-side) | Gharib89/crm#268 |
 | 4 | `ribbon add-button` / `remove` blocked by validation | Gharib89/crm#269, #678 (FIXED) |
+| 5 | Web-API-created `appmodule` not GET-retrievable → blocks app read-back / reconcile round-trip | Gharib89/crm#809 (OPEN, platform) |
 
 ---
 
@@ -222,6 +223,44 @@ crm --profile crmworx ribbon add-button some_entity --solution ContosoCore --lab
 # → aborted in validate_solution / _check_root_parity:
 # "RootComponent '<formid>' of type 60 is declared in solution.xml but has no definition in customizations.xml"
 ```
+
+---
+
+## 5. Web-API-created `appmodule` not GET-retrievable — OPEN (platform, #809)
+
+**This is a platform/org behavior, not a CLI client bug** — but it blocks the
+read-back both the app create path (#795) and the app reconcile path (#796) rely
+on. Surfaced while shipping #796; tracked in Gharib89/crm#809.
+
+**Symptom** (reproduced on an on-prem v9.1 org; also seen on both cloud test orgs —
+placeholders below, no real org identifiers)
+```
+# by-id retrieve fails even for a pre-existing, collection-visible app
+$ crm --profile <org> query odata "appmodules(<existing-id>)" --select uniquename
+  ✗ appmodule With Id = <existing-id> Does Not Exist
+$ crm --profile <org> query odata appmodules --select uniquename          # same app IS listed
+  … <existing-app-uniquename> …
+
+# an app created via the Web API never becomes queryable
+$ crm --profile <org> app create --name "X" --unique-name new_x --solution S --publish
+  {"created": true, "appmoduleid": "<new-id>",
+   "app_lookup_error": "Read-back failed: appmodule With Id = <new-id> Does Not Exist"}
+$ crm --profile <org> query odata appmodules --filter "uniquename eq 'new_x'"
+  ● No results.          # absent from the collection too, even after publish
+```
+
+**Consequence** — `reconcile_app` (#796) must read the live app to diff it. On
+these orgs `find_live` returns nothing, so the create→reconcile round-trip is
+unverifiable; the e2e (`test_apply_reconciles_app_components_and_sitemap`)
+skip-guards on non-retrievability, and `apply` degrades a hidden-but-present app
+to `skipped` (`unreadable`) instead of erroring. The reconcile classification is
+proven by the offline matrix (`test_apply.py::test_apply_apps_reconcile_*`) and,
+against a pre-existing readable app, by manual live check (dry-run drift + skip).
+
+**Likely cause / next step (see #809)** — app-access/role filtering (the
+connecting user is not granted the new app) or a silent rollback of unmanaged
+appmodule creation. Collection `$filter` reads work; only by-id retrieve and
+newly-created rows are affected. When resolved, un-skip the e2e.
 
 ---
 

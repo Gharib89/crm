@@ -293,13 +293,13 @@ would-converge `diff`. Forms publish with the rest of the customization at the
 end-of-run `PublishAllXml`, and `--stage-only` defers that publish like every other
 kind. Forms are **out of scope for `--prune`**.
 
-## Model-driven apps: create the app and its sitemap
+## Model-driven apps: create the app, then converge it
 
-A top-level `apps:` block declares a model-driven app (ADR 0024). This is the
-**create path**: an app that does not yet exist is created through the same
-app-module and sitemap builders the `crm app` verbs use, its declared components
-bound and its sitemap set, so one spec can stand up a table and the app that
-exposes it in a single `apply`:
+A top-level `apps:` block declares a model-driven app (ADR 0024). An app that does
+not yet exist is **created** through the same app-module and sitemap builders the
+`crm app` verbs use, its declared components bound and its sitemap set, so one
+spec can stand up a table and the app that exposes it in a single `apply`. An app
+that **already exists** is **reconciled** (#796) against the declared block:
 
 - `name` and `unique_name` are required; `unique_name` is the publisher-prefixed
   identity (the convergent key) and `description` is optional.
@@ -312,13 +312,36 @@ exposes it in a single `apply`:
   `entity` (logical name) and optional `title`. The sitemap is auto-linked to the
   app by its unique name and set from the declared document wholesale.
 
-An app that **already exists** is left untouched (`skipped`) — converging a live
-app's component set or sitemap is a separate reconcile pass. `--dry-run`
-classifies an absent app `planned` and issues no write. Apps and sitemaps are
-publishable, so a created app publishes with the rest of the customization at the
-end-of-run `PublishAllXml`, and `--stage-only` defers that publish. Malformed
-app/sitemap blocks are rejected up front, before any HTTP call. Apps are **out of
-scope for `--prune`**.
+**Reconcile, on re-apply:**
+
+- **Component set** — only view/chart/form/dashboard/bpf components are diffed
+  (the app's sitemap component and its implicit table bindings are never touched
+  here). A component declared in `components[]` but not bound on the live app is
+  added (`AddAppComponents`); a component the live app binds but the spec no
+  longer declares is removed (`RemoveAppComponents`).
+- **Sitemap** — converges by **whole-document replacement**: if the declared
+  sitemap XML differs from the live sitemap's, the live `sitemapxml` is PATCHed
+  wholesale. An app with no linked sitemap yet gets one created.
+- **Verdicts** — an app that already matches the declared block is `skipped`
+  (idempotent re-apply); any component or sitemap change is `updated`, and the
+  entry carries a `components: [{kind, id, change: "added"|"removed"}]` list
+  and/or a `sitemap: "converged"|"added"` field. A **managed** app is refused
+  with no write — `replace_blocked`, run exits 1, siblings still reconcile —
+  since its components and sitemap are owned by its parent solution.
+- `--dry-run` reads the live app and reports the full drift as `updated`
+  (component and sitemap changes included), with every converge write suppressed.
+- On an org where a Web-API-created appmodule is not GET-retrievable (the
+  publish/app-access window — see `crm/tests/e2e/DISCOVERED_BUGS.md` #5), reconcile
+  can't read the app back to diff it, so it reports the app `skipped` rather than
+  failing the run.
+
+`--dry-run` on an absent app classifies it `planned` and issues no write. Apps and
+sitemaps are publishable, so a created or updated app publishes with the rest of
+the customization at the end-of-run `PublishAllXml`, and `--stage-only` defers
+that publish. Malformed app/sitemap blocks are rejected up front, before any HTTP
+call. Apps are **out of scope for `--prune`**. App `unique_name` identity is not
+changed in place; app existence (create vs. reconcile) is the only thing this
+block decides between.
 
 ## Plug-ins: assembly, types, steps, and images
 

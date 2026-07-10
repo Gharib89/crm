@@ -63,6 +63,41 @@ _COMPONENT_REFS: dict[str, tuple[str, str]] = {
     "bpf": ("workflowid", "workflow"),
 }
 
+# The three maps below are one relation (friendly-kind ↔ appmodulecomponent
+# componenttype ↔ Web-API ref) read in different directions; keep them in step when
+# adding a kind. `_COMPONENT_REFS` (above) is the fourth face: kind → (pk, otype).
+#
+# appmodulecomponent.componenttype (the `appmodulecomponent_componenttype` global
+# choice — MS Learn) for each friendly kind. `form` and `dashboard` are both a
+# `systemform` (type 60), indistinguishable by component type — which is fine: the
+# reconcile diffs by (type, id) and both unbind through the same systemform ref.
+_KIND_COMPONENT_TYPE: dict[str, int] = {
+    "view": 26, "chart": 59, "form": 60, "dashboard": 60, "bpf": 29, "sitemap": 62,
+}
+# The component types the reconcile converges — those the `components:` list binds
+# via AddAppComponents. The sitemap (62) converges through its own whole-document
+# path; an app's tables (type 1) are bound implicitly by the sitemap's subareas and
+# never listed as components. Both are excluded from the component-set diff so the
+# reconcile never tries to unbind them.
+_RECONCILED_COMPONENT_TYPES = frozenset({26, 29, 59, 60})
+# Reverse map for building a RemoveAppComponents reference from a live component's
+# type, and for labelling a removal in the drift report. A 60 unbinds as `form`
+# whether it was bound as a form or a dashboard — both are systemform, so the ref is
+# correct either way; the report label is a systemform approximation (a removed
+# dashboard is reported `kind: "form"`), since componenttype alone can't tell the two
+# apart and reading each systemform's `type` back purely to relabel is not worth it.
+_COMPONENT_TYPE_KIND: dict[int, str] = {26: "view", 29: "bpf", 59: "chart", 60: "form"}
+
+
+def _norm_guid(guid: str) -> str:
+    """Canonical lowercase GUID for set-membership comparison across sources.
+
+    Live `objectid`s arrive lowercased from OData; declared component ids come from
+    the spec in any case. Normalizing both sides keeps the component-set diff from
+    reporting spurious drift on a mere case difference.
+    """
+    return (normalize_guid(guid) or guid.strip()).lower()
+
 # The component kinds an app's spec `components:` block may declare — the record-
 # backed kinds AddAppComponents can bind (tables reach the app via the sitemap).
 APP_COMPONENT_KINDS = frozenset(_COMPONENT_REFS)
@@ -467,6 +502,161 @@ def set_sitemap(
         out["sitemap_lookup_error"] = (
             f"Could not parse sitemapid from response: {entity_id_url!r}")
     maybe_publish(backend, out, publish)
+    return out
+
+
+def update_sitemap(
+    backend: D365Backend,
+    *,
+    sitemap_id: str,
+    sitemap_xml: str,
+    solution: str | None = None,
+    publish: bool = False,
+) -> dict[str, Any]:
+    """Replace a sitemap's SiteMapXml wholesale (whole-document converge, ADR 0024).
+
+    A sitemap is edited as one XML document — converge replaces the declared XML
+    rather than diffing nodes. ``solution`` scopes the PATCH to the target unmanaged
+    solution (same as ``set_sitemap``), so the converged sitemap lands in that
+    solution's layer rather than the default. Honors ``backend.dry_run`` (the PATCH
+    is suppressed).
+    """
+    if not sitemap_id:
+        raise D365Error("sitemap_id is required.")
+    if not sitemap_xml.strip():
+        raise D365Error("sitemap_xml must not be empty.")
+    result = as_dict(backend.patch(f"sitemaps({sitemap_id})",
+                                   json_body={"sitemapxml": sitemap_xml},
+                                   solution=solution))
+    if result.get("_dry_run"):
+        return result
+    out: dict[str, Any] = {"updated": True, "sitemapid": sitemap_id}
+    maybe_publish(backend, out, publish)
+    return out
+
+
+def _read_app_components(
+    backend: D365Backend, app_id_unique: str,
+) -> set[tuple[int, str]]:
+    """The app's live component set, limited to the reconciled component types.
+
+    Reads ``appmodulecomponents`` by the app's ``appmoduleidunique`` FK and returns
+    ``{(componenttype, objectid)}`` for the types the reconcile owns (views, charts,
+    forms/dashboards, BPFs). The sitemap component and implicit table components are
+    excluded — they are not managed through the ``components:`` list.
+    """
+    rows = backend.get_collection(
+        "appmodulecomponents",
+        params={"$filter": f"_appmoduleidunique_value eq {app_id_unique}",
+                "$select": "componenttype,objectid"},
+    )
+    live: set[tuple[int, str]] = set()
+    for r in rows:
+        ct = r.get("componenttype")
+        oid = r.get("objectid")
+        if ct in _RECONCILED_COMPONENT_TYPES and oid:
+            live.add((int(ct), _norm_guid(str(oid))))
+    return live
+
+
+def _read_app_sitemap(
+    backend: D365Backend, unique_name: str,
+) -> tuple[str | None, str | None]:
+    """The ``(sitemapid, sitemapxml)`` of the app's linked sitemap, or ``(None, None)``.
+
+    Apps link their sitemap by ``sitemapnameunique == <app uniquename>`` (the
+    association ``set_sitemap`` writes). The first match is used.
+    """
+    rows = backend.get_collection(
+        "sitemaps",
+        params={"$filter": f"sitemapnameunique eq {odata_literal(unique_name)}",
+                "$select": "sitemapid,sitemapxml"},
+    )
+    if not rows:
+        return None, None
+    return rows[0].get("sitemapid"), rows[0].get("sitemapxml")
+
+
+def reconcile_app(
+    backend: D365Backend,
+    *,
+    unique_name: str,
+    components: list[tuple[str, str]],
+    sitemap_xml: str | None,
+    solution: str | None = None,
+) -> dict[str, Any]:
+    """Converge an existing app's component set + sitemap to the declared block.
+
+    Reads the live app by ``unique_name``, then converges the two updatable
+    surfaces (ADR 0024): the **component set** (add declared-but-absent, remove
+    present-but-undeclared, over the reconciled component types) and the
+    **sitemap** (whole-document replacement when the declared XML differs). A
+    **managed** app is refused with no write (``blocked``) — its components and
+    sitemap are owned by its parent solution, so `apply` never mutates it.
+
+    Honors ``backend.dry_run``: the reads run (the reads-execute rule) and the diff
+    is computed, but AddAppComponents / RemoveAppComponents / the sitemap write are
+    suppressed — so a dry run yields the full drift classification with no write.
+
+    Returns ``{appmoduleid, blocked?, component_changes?, sitemap_change?}``, or
+    ``{unreadable: True}`` when the app cannot be read back. `apply` enters this
+    path only after ``create_app`` reports the app already exists (real skip, or a
+    swallowed duplicate-create fault), yet on some orgs a Web-API-created appmodule
+    is not GET-retrievable — the publish/app-access window documented on
+    ``create_app`` (verified live on both on-prem v9.x and Dataverse online). With
+    nothing to read, there is nothing to converge, so the caller reports it
+    ``skipped`` rather than failing a run over an app the platform hides.
+    """
+    try:
+        row = _resolve_appmodule(backend, unique_name)
+    except D365Error as exc:
+        if exc.code == "AppNotFound":
+            return {"unreadable": True}
+        raise
+    out: dict[str, Any] = {"appmoduleid": str(row.get("appmoduleid") or "")}
+    if row.get("ismanaged"):
+        out["blocked"] = [{"name": unique_name,
+                           "reason": "app is managed; converge it through its "
+                                     "parent solution, not apply."}]
+        return out
+    app_id = out["appmoduleid"]
+    app_id_unique = str(row.get("appmoduleidunique") or "")
+
+    # ── component set ──
+    declared = [(k, i) for k, i in components
+                if _KIND_COMPONENT_TYPE.get(k) in _RECONCILED_COMPONENT_TYPES]
+    declared_set = {(_KIND_COMPONENT_TYPE[k], _norm_guid(i)) for k, i in declared}
+    live_set: set[tuple[int, str]] = (
+        _read_app_components(backend, app_id_unique) if app_id_unique else set())
+    to_add = [(k, i) for k, i in declared
+              if (_KIND_COMPONENT_TYPE[k], _norm_guid(i)) not in live_set]
+    to_remove = [(_COMPONENT_TYPE_KIND[t], i) for t, i in sorted(live_set)
+                 if (t, i) not in declared_set]
+    changes: list[dict[str, str]] = []
+    if to_add:
+        add_app_components(backend, app_id=app_id, components=to_add)
+        changes += [{"kind": k, "id": i, "change": "added"} for k, i in to_add]
+    if to_remove:
+        remove_app_components(backend, app_id=app_id, components=to_remove)
+        changes += [{"kind": k, "id": i, "change": "removed"} for k, i in to_remove]
+    if changes:
+        out["component_changes"] = changes
+
+    # ── sitemap (whole-document replacement) ──
+    # Exact-string compare: the platform stores SiteMapXml verbatim (verified live
+    # on both targets — an unchanged declared sitemap re-compares equal, so re-apply
+    # is idempotent), and `build_sitemapxml` is deterministic. An org that reformats
+    # the stored XML would make every re-apply report a spurious converge; none seen.
+    if sitemap_xml is not None:
+        smid, live_xml = _read_app_sitemap(backend, unique_name)
+        if live_xml is None:
+            set_sitemap(backend, sitemap_name=unique_name, sitemap_xml=sitemap_xml,
+                        unique_name=unique_name, solution=solution)
+            out["sitemap_change"] = "added"
+        elif live_xml != sitemap_xml:
+            update_sitemap(backend, sitemap_id=str(smid), sitemap_xml=sitemap_xml,
+                           solution=solution)
+            out["sitemap_change"] = "converged"
     return out
 
 

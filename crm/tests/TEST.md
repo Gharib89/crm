@@ -238,7 +238,13 @@ plug-in type's read-after-write lag would flake a single-shot apply, so the week
 gates it out. `workflow update --xaml-file` (on-prem XAML step-editing, #540) adds a
 target-divergent pair: a `@requires_onprem` test replaces a draft clone's genuine designer XAML
 wholesale (never activating it, to avoid undeletable type=2 activation residue), and a
-`@requires_cloud` test asserts the provenance-wall refusal before any write. Tests that document
+`@requires_cloud` test asserts the provenance-wall refusal before any write. The `apply` apps
+reconcile pass (component-set converge + whole-document sitemap converge, #796) is covered by one
+`@requires_onprem` lifecycle test that drives every verdict (unchanged → `skipped`, add/drop a
+component → `updated`, sitemap drift → `updated`) — it is `requires_onprem` because reconcile must
+read the app back to diff it, and a freshly created appmodule's GET-retrievability is org-dependent
+(see `DISCOVERED_BUGS.md` #5, Gharib89/crm#809); the test itself skip-guards on non-retrievability,
+so it currently **skips** rather than passes live on the available orgs. Tests that document
 a live product defect are
 marked `xfail(strict=False)` so they auto-flip to xpass when the command is fixed.
 
@@ -278,7 +284,10 @@ contacts, `jobtitle="E2E-BULK-SEED"`, bulk-deletable), but its gate reads
 `$count` already clamps at 5000+`has_more`, yet the test stays skipped until the cached
 count refreshes past 5000. (`query saved`/`query user` now self-seed a throwaway view, so
 they no longer skip.) `audit detail` stays skipped (org auditing off, deliberately
-un-seeded). Hostnames omitted (Contoso placeholders only).
+un-seeded). `test_apply_reconciles_app_components_and_sitemap` (#796) also stays skipped on
+both available orgs: the appmodule it creates is not GET-retrievable, so the reconcile
+round-trip it drives can't run (`DISCOVERED_BUGS.md` #5, Gharib89/crm#809). Hostnames omitted
+(Contoso placeholders only).
 
 ## Realistic Workflow Scenarios
 
