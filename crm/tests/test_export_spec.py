@@ -19,6 +19,10 @@ import requests_mock
 
 from crm.core import apply
 from crm.core.export_spec import (
+    EXPORT_GAPS,
+    EXPORTED_KEYS,
+    KINDS_NOT_EXPORTED,
+    TRANSFORM_CONSUMED_KEYS,
     build_entity_spec,
     build_role_spec,
     build_solution_spec,
@@ -1739,22 +1743,20 @@ class TestRoleProjector:
 
 
 # ── export↔apply gap contract (#787) ─────────────────────────────────────────
-# apply.REGISTRY defines the spec-key surface each kind accepts; the projectors
-# in export_spec emit a subset. EXPORTED_KEYS / EXPORT_GAPS reify that boundary as
-# data so an adapter key that is neither emitted nor a declared gap fails HERE,
-# not as a silent round-trip fidelity loss (ADR 0019). Mirrors the
-# apply.REGISTRY↔builder contract test (test_apply.py, #596).
-from crm.core.export_spec import (
-    EXPORT_GAPS,
-    EXPORTED_KEYS,
-    KINDS_NOT_EXPORTED,
-    TRANSFORM_CONSUMED_KEYS,
-)
+# The adapter surface this models = the spec keys that ride apply's generic `map`
+# projection (`REGISTRY[kind].map` ∪ the keys its transforms consume); the
+# projectors in export_spec emit a subset. EXPORTED_KEYS / EXPORT_GAPS reify that
+# boundary as data so a mapped key that is neither emitted nor a declared gap fails
+# HERE, not as a silent round-trip fidelity loss (ADR 0019). Not modelled here:
+# spec keys reached via `injected`/`extra_validate` (see export_spec.py). Mirrors
+# the apply.REGISTRY↔builder contract test (test_apply.py, #596).
 
 
 def _adapter_surface(kind: str) -> set[str]:
-    """The spec keys apply's adapter accepts for `kind`: mapped keys plus the keys
-    its transforms consume (the latter invisible to lambda introspection)."""
+    """The spec keys apply reconciles through its generic `map` projection for
+    `kind`: mapped keys plus the keys its transforms consume (the latter invisible
+    to lambda introspection). Not the full set of keys the kind accepts — keys
+    reached via `injected`/`extra_validate` are out of this contract's scope."""
     adapter = apply.REGISTRY[kind]
     return set(adapter.map) | set(TRANSFORM_CONSUMED_KEYS.get(kind, frozenset()))
 

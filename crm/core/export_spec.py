@@ -96,11 +96,14 @@ _SOURCE_TYPES = {1: "calculated", 2: "rollup"}
 # below reifies that boundary so the export↔apply contract test fails on an
 # undeclared, unemitted key instead of losing it silently.
 #
-# An adapter's spec-key surface = `REGISTRY[kind].map` keys ∪ the spec keys its
-# transforms consume. Driver-`injected` params (web-resource `content`/
-# `webresourcetype`, security-role `privileges`, …) are outside that surface and
-# outside this contract — the projectors may still emit them; the runtime supplies
-# them on apply without going through the generic map projection.
+# The surface this contract models = `REGISTRY[kind].map` keys ∪ the spec keys the
+# kind's transforms consume — i.e. the keys that ride the generic `map` projection.
+# It is deliberately NOT the full set of spec keys a kind accepts: spec keys that
+# reach the builder some other way are outside this contract (the projectors may
+# still emit them). Two such classes exist — driver-`injected` params the runtime
+# computes (web-resource `content`/`webresourcetype`) and keys a kind's
+# `extra_validate`/`reconcile` reads directly off the block (web-resource `file`,
+# security-role `privileges`) — neither goes through the generic `map` projection.
 
 # Spec keys a transform reads off the block. A `transforms` entry produces a
 # builder param, not a spec key, so the consumed spec key is invisible to lambda
