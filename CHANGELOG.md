@@ -9,6 +9,25 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.67.0 (2026-07-10)
+
+### Documentation
+
+- **apply**: Document UI kinds in the approval-gated plan loop
+  ([#813](https://github.com/Gharib89/crm/pull/813),
+  [`20f60ef`](https://github.com/Gharib89/crm/commit/20f60efe4595b5e6fe766470e158654b2b4f8457))
+
+### Features
+
+- **apply**: Plan artifact + prune cover UI kinds (closes PRD #791)
+  ([#813](https://github.com/Gharib89/crm/pull/813),
+  [`20f60ef`](https://github.com/Gharib89/crm/commit/20f60efe4595b5e6fe766470e158654b2b4f8457))
+
+- **apply**: Record UI-kind changed-field set in the plan artifact
+  ([#813](https://github.com/Gharib89/crm/pull/813),
+  [`20f60ef`](https://github.com/Gharib89/crm/commit/20f60efe4595b5e6fe766470e158654b2b4f8457))
+
+
 ## v1.66.1 (2026-07-10)
 
 ### Bug Fixes
