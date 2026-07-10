@@ -814,12 +814,6 @@ _APP_COMPONENT_TYPE = 80
 # The app's sitemap rides under its own `apps:` block (projected with the app), so
 # a standalone SiteMap solution member is reported skipped, not projected twice.
 _SITEMAP_COMPONENT_TYPE = 62
-# appmodulecomponent componenttypes the projection already accounts for WITHOUT a
-# warning: an entity (1) reaches the app through the sitemap's Entity subareas, and
-# the sitemap (62) is projected as the app's `sitemap:` block. Every other binding
-# is a record-backed component (view / chart / form / dashboard / BPF) bound by an
-# org-specific id that apply's create path cannot re-seed on a fresh org.
-_APP_BINDINGS_ACCOUNTED_FOR = frozenset({1, 62})
 
 
 def _project_app_sitemap(
@@ -950,32 +944,34 @@ def build_app_spec(
             f"(sitemapnameunique {unique_name!r}); navigation not projected.")
 
     # Record-backed component bindings bind by org-specific id (ADR 0019): count
-    # them so the omission is visible, never silent. Best-effort — a failure to
-    # read the bindings must not fail the whole app projection.
+    # them so the omission is visible, never silent. The count excludes entity
+    # (reached via the sitemap's Entity subareas) and sitemap (projected as the
+    # app's `sitemap:` block) bindings — filtered server-side so a large app's
+    # full component list is never pulled just to count the relevant few.
     idunique = rec.get("appmoduleidunique")
     if isinstance(idunique, str) and idunique:
+        query = (f"_appmoduleidunique_value eq {idunique} "
+                 f"and componenttype ne {_ENTITY_COMPONENT_TYPE} "
+                 f"and componenttype ne {_SITEMAP_COMPONENT_TYPE}")
         try:
-            comps = backend.get_collection(
+            bound = backend.get_collection(
                 "appmodulecomponents",
-                params={"$filter": f"_appmoduleidunique_value eq {idunique}",
-                        "$select": "componenttype"})
+                params={"$filter": query, "$select": "componenttype"})
         except D365Error as exc:
             # Best-effort: a failed bindings read must not fail the whole app
             # projection — but it must not be silent either (ADR 0019), so warn
             # that record-backed bindings may exist but could not be counted.
-            comps = []
             warn.append(
                 f"{app_label}: could not read component bindings ({exc}); "
                 "any record-backed bindings (views/charts/forms/dashboards/BPFs) "
                 "are not projected and were not counted.")
-        bound = sum(1 for c in comps
-                    if c.get("componenttype") not in _APP_BINDINGS_ACCOUNTED_FOR)
-        if bound:
-            warn.append(
-                f"{app_label}: {bound} record-backed component binding(s) "
-                "(views/charts/forms/dashboards/BPFs) not projected — they bind "
-                "by org-specific id and cannot re-seed on a fresh org (ADR 0019); "
-                "tables reach the app through the sitemap's entity subareas.")
+        else:
+            if bound:
+                warn.append(
+                    f"{app_label}: {len(bound)} record-backed component binding(s) "
+                    "(views/charts/forms/dashboards/BPFs) not projected — they bind "
+                    "by org-specific id and cannot re-seed on a fresh org (ADR 0019); "
+                    "tables reach the app through the sitemap's entity subareas.")
 
     return block
 

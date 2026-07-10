@@ -2443,14 +2443,13 @@ class TestAppProjector:
         assert any("dropped subarea" in w for w in warn)
 
     def test_record_backed_component_bindings_counted_in_warnings(self, backend):
-        # appmodulecomponents that are neither entity (1) nor sitemap (62) are
-        # record-backed bindings apply cannot re-seed — surfaced, not silent.
+        # The query filters entity (1) / sitemap (62) out server-side, so the rows
+        # returned ARE the record-backed bindings apply cannot re-seed; their count
+        # is surfaced in warnings, not silent.
         warn: list[str] = []
         comps = {"value": [
-            {"componenttype": 1},    # entity → reached via sitemap, not counted
-            {"componenttype": 62},   # sitemap → projected separately, not counted
-            {"componenttype": 26},   # view → counted
-            {"componenttype": 60},   # systemform → counted
+            {"componenttype": 26},   # view
+            {"componenttype": 60},   # systemform
         ]}
         with requests_mock.Mocker() as m:
             m.get(_appmodule_url(backend), json=_app_row())
