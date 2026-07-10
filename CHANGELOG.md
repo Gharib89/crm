@@ -9,6 +9,45 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.63.0 (2026-07-10)
+
+### Bug Fixes
+
+- **apply**: Qualify forms dry-run diff keys by scope (Copilot round 2)
+  ([#807](https://github.com/Gharib89/crm/pull/807),
+  [`b83e9aa`](https://github.com/Gharib89/crm/commit/b83e9aa3fa505e7c29282abb9925165691ee5f39))
+
+### Features
+
+- **apply**: Converge or refuse drift in spec forms: blocks
+  ([#807](https://github.com/Gharib89/crm/pull/807),
+  [`b83e9aa`](https://github.com/Gharib89/crm/commit/b83e9aa3fa505e7c29282abb9925165691ee5f39))
+
+- **apply**: Converge or refuse drift in spec forms: blocks (#793)
+  ([#807](https://github.com/Gharib89/crm/pull/807),
+  [`b83e9aa`](https://github.com/Gharib89/crm/commit/b83e9aa3fa505e7c29282abb9925165691ee5f39))
+
+### Refactoring
+
+- **apply**: Harden handler-prop validation + reorder perf (Copilot round 1)
+  ([#807](https://github.com/Gharib89/crm/pull/807),
+  [`b83e9aa`](https://github.com/Gharib89/crm/commit/b83e9aa3fa505e7c29282abb9925165691ee5f39))
+
+### Testing
+
+- **apply**: Fix pyright reportOptionalMemberAccess in forms reconcile test
+  ([#807](https://github.com/Gharib89/crm/pull/807),
+  [`b83e9aa`](https://github.com/Gharib89/crm/commit/b83e9aa3fa505e7c29282abb9925165691ee5f39))
+
+- **apply**: Live e2e + section-order coverage; docs-sync for forms reconcile
+  ([#807](https://github.com/Gharib89/crm/pull/807),
+  [`b83e9aa`](https://github.com/Gharib89/crm/commit/b83e9aa3fa505e7c29282abb9925165691ee5f39))
+
+- **apply**: Make forms-refuse e2e spec validation-valid
+  ([#807](https://github.com/Gharib89/crm/pull/807),
+  [`b83e9aa`](https://github.com/Gharib89/crm/commit/b83e9aa3fa505e7c29282abb9925165691ee5f39))
+
+
 ## v1.62.0 (2026-07-10)
 
 ### Documentation
