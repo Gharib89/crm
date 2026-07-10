@@ -56,7 +56,9 @@ enforced against the live adapter surface by the export↔apply contract test
 failure rather than a silent round-trip fidelity loss. `KINDS_NOT_EXPORTED`
 records the whole registry kinds the exporter cannot project at all (the plug-in
 kinds — ADR 0019). (The decimal/double/money `min_value`/`max_value` nuance lives
-next to `_INT_BOUND_DEFAULTS` below: those keys ARE emitted, for integer/bigint.)
+next to `_INT_BOUND_DEFAULTS` below: those keys ARE emitted for integer/bigint,
+but stay omitted for decimal/double/money, whose default ranges are
+version-sensitive — so `min_value`/`max_value` are in `EXPORTED_KEYS`, not gaps.)
 """
 
 from __future__ import annotations
@@ -116,7 +118,7 @@ TRANSFORM_CONSUMED_KEYS: dict[str, frozenset[str]] = {
     "view": frozenset({"columns"}),
 }
 
-# Per covered kind, the adapter-surface spec keys the projectors above emit. An
+# Per covered kind, the adapter-surface spec keys this module's projectors emit. An
 # entry means the key CAN be emitted (most are conditional on the source metadata),
 # not that every export carries it.
 EXPORTED_KEYS: dict[str, frozenset[str]] = {

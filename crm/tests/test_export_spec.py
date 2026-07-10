@@ -1790,9 +1790,12 @@ def test_every_registry_kind_is_covered_or_declared_unexported():
     unexported = set(KINDS_NOT_EXPORTED)
     assert covered.isdisjoint(unexported), (
         f"kind(s) both covered and unexported: {sorted(covered & unexported)}")
-    assert covered | unexported == set(apply.REGISTRY), (
+    classified = covered | unexported
+    registry = set(apply.REGISTRY)
+    assert classified == registry, (
         "registry kinds not classified as covered or unexported: "
-        f"{sorted(set(apply.REGISTRY) ^ (covered | unexported))}")
+        f"{sorted(registry - classified)}; stale classified kinds not in registry: "
+        f"{sorted(classified - registry)}")
 
 
 def test_transform_consumed_keys_are_outside_the_adapter_map():
