@@ -5497,6 +5497,23 @@ def test_apply_apps_reconcile_removes_undeclared_component(backend):
         {"kind": "view", "id": extra, "change": "removed"}]
 
 
+def test_apply_apps_reconcile_removes_type60_reports_as_form(backend):
+    # `form` and `dashboard` share componenttype 60 (both systemform), so a removed
+    # type-60 component the spec no longer declares — even a dashboard — is labelled
+    # `kind: "form"` in the drift report (documented systemform approximation). The
+    # unbind ref is correct either way; this pins the report label.
+    spec = {"solution": _SOLUTION,
+            "apps": [{"name": "CRMWorx", "unique_name": "cwx_crmworx",
+                      "components": []}]}
+    dash = "14141414-1414-1414-1414-141414141414"  # a live dashboard (type 60)
+    with requests_mock.Mocker() as m:
+        _mock_solution_create(m, backend, exists=True)
+        _mock_app_reconcile(m, backend, live_components=[(60, dash)])
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["updated"][0]["components"] == [
+        {"kind": "form", "id": dash, "change": "removed"}]
+
+
 def test_apply_apps_reconcile_converges_sitemap_wholesale(backend):
     # AC #3: declared sitemap differs from live → whole-document PATCH, `updated`.
     spec = {"solution": _SOLUTION, "apps": [_app_block()]}

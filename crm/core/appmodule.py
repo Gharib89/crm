@@ -63,6 +63,10 @@ _COMPONENT_REFS: dict[str, tuple[str, str]] = {
     "bpf": ("workflowid", "workflow"),
 }
 
+# The three maps below are one relation (friendly-kind ↔ appmodulecomponent
+# componenttype ↔ Web-API ref) read in different directions; keep them in step when
+# adding a kind. `_COMPONENT_REFS` (above) is the fourth face: kind → (pk, otype).
+#
 # appmodulecomponent.componenttype (the `appmodulecomponent_componenttype` global
 # choice — MS Learn) for each friendly kind. `form` and `dashboard` are both a
 # `systemform` (type 60), indistinguishable by component type — which is fine: the
@@ -77,8 +81,11 @@ _KIND_COMPONENT_TYPE: dict[str, int] = {
 # reconcile never tries to unbind them.
 _RECONCILED_COMPONENT_TYPES = frozenset({26, 29, 59, 60})
 # Reverse map for building a RemoveAppComponents reference from a live component's
-# type. A 60 unbinds as `form` whether it was bound as a form or a dashboard — both
-# are systemform, so the shared kind is correct for the removal.
+# type, and for labelling a removal in the drift report. A 60 unbinds as `form`
+# whether it was bound as a form or a dashboard — both are systemform, so the ref is
+# correct either way; the report label is a systemform approximation (a removed
+# dashboard is reported `kind: "form"`), since componenttype alone can't tell the two
+# apart and reading each systemform's `type` back purely to relabel is not worth it.
 _COMPONENT_TYPE_KIND: dict[int, str] = {26: "view", 29: "bpf", 59: "chart", 60: "form"}
 
 
@@ -631,6 +638,10 @@ def reconcile_app(
         out["component_changes"] = changes
 
     # ── sitemap (whole-document replacement) ──
+    # Exact-string compare: the platform stores SiteMapXml verbatim (verified live
+    # on both targets — an unchanged declared sitemap re-compares equal, so re-apply
+    # is idempotent), and `build_sitemapxml` is deterministic. An org that reformats
+    # the stored XML would make every re-apply report a spurious converge; none seen.
     if sitemap_xml is not None:
         smid, live_xml = _read_app_sitemap(backend, unique_name)
         if live_xml is None:
