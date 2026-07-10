@@ -5030,11 +5030,9 @@ _FORM_ROW = {"formid": "cccc3333-0000-0000-0000-000000000003", "name": "Informat
              "isdefault": True}
 
 
-def _forms_block(with_field=False):
-    section = {"name": "extra", "label": "Extra"}
-    if with_field:
-        section["fields"] = [{"name": "contoso_note"}]
-    return {"tabs": [{"name": "custom", "label": "Custom", "sections": [section]}]}
+def _forms_block():
+    return {"tabs": [{"name": "custom", "label": "Custom",
+                      "sections": [{"name": "extra", "label": "Extra"}]}]}
 
 
 def test_apply_forms_phase_converges_existing_main_form(backend):
