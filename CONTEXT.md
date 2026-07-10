@@ -260,6 +260,17 @@ Publisher and solution are **not** adapters — they are the target preamble a
 customization write files into, not reconciled components.
 _Avoid_: handler, plugin (means a D365 plug-in here), strategy.
 
+**Export gap**:
+An adapter spec key — or a whole registry kind — that `solution export-spec`
+deliberately does not emit, declared as data in `export_spec.py`
+(`EXPORT_GAPS` / `KINDS_NOT_EXPORTED`) with its reason and enforced by the
+adapter↔export contract test. An undeclared, unemitted adapter key is a
+contract-test failure, never a silent omission. Distinct from the runtime
+`skipped` bucket (ADR 0019), which is per-run output; an export gap is a static
+contract fact.
+_Avoid_: "unsupported field" (gaps are deliberate, each with a recorded reason),
+"skipped" (the runtime bucket).
+
 **Updatable drift**:
 A divergence between spec and live the platform allows editing in place; `apply`
 writes only the divergent fields and reports them in the `updated` bucket. A spec
