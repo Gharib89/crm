@@ -1189,6 +1189,117 @@ def test_apply_reconciles_and_refuses_form_drift(cli, backend, ephemeral_solutio
     assert not data_ref.get("applied") and not data_ref.get("updated")
 
 
+@pytest.mark.slow
+@covers("apply")
+def test_apply_from_plan_covers_form_and_app_change(cli, backend, ephemeral_solution,
+                                                   ephemeral_entity, unique, tmp_path,
+                                                   request):
+    """The plan → verify → execute loop carries the UI kinds (ADR 0024, #798).
+
+    One plan approves BOTH a form change (a declared tab label converging in place)
+    and an app change (a declared sitemap subarea title converging whole-document).
+    The plan artifact records each as an `updated` verdict with its changed-field
+    set; `--dry-run --from-plan` reports it valid; `--from-plan` executes it and both
+    land live; a re-verify is now stale (both `skipped`). Proves a whole
+    customization — schema + UI — rides the approval-gated pipeline. App writes are
+    rejected on some on-prem builds (v9.1); that seeds a skip, not a failure.
+    """
+    suffix = ephemeral_entity[-8:]
+    attr_schema = f"new_planui_{suffix}"
+    attr_logical = attr_schema.lower()
+    tab, section = f"new_planuitab_{suffix}", f"new_planuisec_{suffix}"
+    app_unique = f"new_planapp{unique[:6]}"
+    created_app_id: list[str] = []
+    created_sitemap_id: list[str] = []
+
+    def _cleanup():
+        _swallow(lambda: backend.delete(
+            f"EntityDefinitions(LogicalName='{ephemeral_entity}')"
+            f"/Attributes(LogicalName='{attr_logical}')"))
+        for smid in created_sitemap_id:
+            _swallow(lambda smid=smid: backend.delete(f"sitemaps({smid})"))
+        for aid in created_app_id:
+            _swallow(lambda aid=aid: backend.delete(f"appmodules({aid})"))
+
+    request.addfinalizer(_cleanup)
+
+    def _spec(tab_label, subarea_title):
+        return {
+            "solution": {"unique_name": ephemeral_solution},
+            "entities": [{
+                "schema_name": ephemeral_entity, "display_name": f"E2E {suffix}",
+                "attributes": [{"kind": "string", "schema_name": attr_schema,
+                                "display_name": f"Plan UI {suffix}", "max_length": 50}],
+                "forms": [{"tabs": [{
+                    "name": tab, "label": tab_label,
+                    "sections": [{"name": section, "label": "Plan UI Section",
+                                  "fields": [{"name": attr_logical}]}]}]}],
+            }],
+            "apps": [{"name": f"E2E Plan App {unique[:6]}", "unique_name": app_unique,
+                      "sitemap": {"areas": [{
+                          "id": "pl_area", "title": "Plan Area",
+                          "groups": [{"id": "pl_group", "title": "Plan Group",
+                                      "subareas": [{"entity": ephemeral_entity,
+                                                    "title": subarea_title}]}]}]}}],
+        }
+
+    def _write(spec):
+        p = tmp_path / "plan_ui_spec.json"
+        p.write_text(json.dumps(spec), encoding="utf-8")
+        return str(p)
+
+    # Seed the form (tab/section/field) and the app+sitemap for real.
+    seed = cli(["--json", "apply", "-f", _write(_spec("Plan Tab", "Plan Rows"))],
+               check=False)
+    combined = (seed.stderr or "") + (seed.stdout or "")
+    if seed.returncode != 0 and any(kw in combined.lower() for kw in (
+        "not supported", "privilege", "accessdenied", "403",
+        "businessnotfound", "notimplemented",
+    )):
+        pytest.skip(f"appmodule write rejected by this org (on-prem limitation?): "
+                    f"{combined[:400]}")
+    seed_data = json.loads(seed.stdout)["data"]
+    assert not seed_data.get("failed"), f"seed apply failed: {seed_data}"
+    app_seed = [e for e in seed_data["applied"] if e["kind"] == "app"]
+    assert app_seed and app_seed[0].get("appmoduleid"), f"app not seeded: {seed_data}"
+    created_app_id.append(app_seed[0]["appmoduleid"])
+    if app_seed[0].get("sitemapid"):
+        created_sitemap_id.append(app_seed[0]["sitemapid"])
+
+    # Plan a drift of BOTH UI kinds: the tab label and the sitemap subarea title.
+    drifted = _spec("Plan Tab Renamed", "Plan Rows Renamed")
+    plan_path = tmp_path / "plan.json"
+    preview = json.loads(cli(
+        ["--json", "--dry-run", "apply", "-f", _write(drifted), "-o", str(plan_path)]).stdout)
+    assert preview["ok"] is True, f"plan preview failed: {preview}"
+
+    # The plan records each UI kind as `updated` with a changed-field set.
+    verdicts = json.loads(plan_path.read_text(encoding="utf-8"))["verdicts"]
+    form_v = [v for v in verdicts if v["kind"] == "form" and v["verdict"] == "updated"]
+    app_v = [v for v in verdicts if v["kind"] == "app" and v["verdict"] == "updated"]
+    assert form_v and form_v[0].get("diff"), f"form change not recorded with diff: {verdicts}"
+    assert app_v and "sitemap:converged" in app_v[0].get("diff", {}).get("fields", []), (
+        f"app sitemap change not recorded in changed-field set: {verdicts}")
+
+    # Verify the plan is still exactly true, then execute it for real — both land.
+    verify = json.loads(cli(
+        ["--json", "--dry-run", "apply", "--from-plan", str(plan_path)]).stdout)
+    assert verify["ok"] is True and verify["data"]["plan_valid"] is True, verify
+    run = json.loads(cli(["--json", "apply", "--from-plan", str(plan_path)]).stdout)
+    assert run["ok"] is True, f"from-plan execution failed: {run}"
+    updated_kinds = {e["kind"] for e in run["data"]["updated"]}
+    assert {"form", "app"} <= updated_kinds, f"form+app did not both update: {run['data']}"
+
+    # Re-verify — both converges already applied → skipped now → the plan is stale.
+    stale = cli(["--json", "--dry-run", "apply", "--from-plan", str(plan_path)],
+                check=False)
+    assert stale.returncode == 1, f"expected stale exit 1: {stale.stdout}"
+    stale_env = json.loads(stale.stdout)
+    assert stale_env["data"]["plan_valid"] is False, stale_env
+    diverged = {d["kind"] for d in stale_env["data"]["divergences"]}
+    assert {"form", "app"} <= diverged, f"form+app not both flagged stale: {stale_env}"
+
+
 def _swallow(fn):
     try:
         fn()
