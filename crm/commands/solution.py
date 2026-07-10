@@ -202,11 +202,11 @@ def solution_export_spec(ctx: CLIContext, unique_name, output):
     the org-to-org drift recipe).
 
     Apply-seedable members project in full: entities (+ their attributes, option
-    sets, views, 1:N relationships), security roles (name, business unit,
-    privileges by depth), and web resources (inline base64 content, display name,
-    type). Members that cannot round-trip a real apply (plug-ins, ...) are
-    reported in a `skipped` bucket; the verb never fails on an unsupported
-    component and never drops one silently.
+    sets, views, 1:N relationships, seedable main form), security roles (name,
+    business unit, privileges by depth), and web resources (inline base64 content,
+    display name, type). Members that cannot round-trip a real apply (plug-ins,
+    additional main forms, ...) are reported in a `skipped` bucket; the verb never
+    fails on an unsupported component and never drops one silently.
 
     With -o, the bare YAML spec is written to FILE (apply-ready). Without -o, a
     summary plus the skipped bucket is emitted under the JSON envelope.
@@ -219,6 +219,7 @@ def solution_export_spec(ctx: CLIContext, unique_name, output):
     skipped = result["skipped"]
     entities = spec.get("entities", [])
     attr_count = sum(len(e.get("attributes", [])) for e in entities)
+    form_count = sum(len(e.get("forms", [])) for e in entities)
 
     if output:
         import yaml
@@ -233,6 +234,7 @@ def solution_export_spec(ctx: CLIContext, unique_name, output):
             "solution": unique_name,
             "entities": len(entities),
             "attributes": attr_count,
+            "forms": form_count,
             "optionsets": len(spec.get("optionsets", [])),
             "security_roles": len(spec.get("security_roles", [])),
             "webresources": len(spec.get("webresources", [])),
@@ -244,6 +246,7 @@ def solution_export_spec(ctx: CLIContext, unique_name, output):
         "solution": unique_name,
         "entities": [e.get("schema_name") for e in entities],
         "attributes": attr_count,
+        "forms": form_count,
         "optionsets": [o.get("name") for o in spec.get("optionsets", [])],
         "security_roles": [r.get("name") for r in spec.get("security_roles", [])],
         "webresources": [w.get("name") for w in spec.get("webresources", [])],

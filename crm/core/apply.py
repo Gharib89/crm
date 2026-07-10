@@ -2287,17 +2287,51 @@ def apply_spec(
                 if result.get("unmaterialized"):
                     planned.append(entry)
                     continue
+                # Identity/ownership divergence (an unresolvable named form): refused
+                # with no write. Routed to replace_blocked so the run exits 1 while
+                # sibling forms/kinds still reconcile (no abort). ADR 0024 (#793).
+                blocked = cast("list[dict[str, Any]]", result.get("blocked") or [])
+                if blocked:
+                    for b in blocked:
+                        replace_blocked.append({**entry, "name": b["name"],
+                                                "reason": b["reason"]})
+                    continue
                 # Report the resolved main-form identity, not the placeholder label.
                 if isinstance(result.get("form"), str):
                     entry["name"] = result["form"]
                 if result.get("formid"):
                     entry["formid"] = result["formid"]
-                added = cast("list[dict[str, Any]]", result.get("components") or [])
-                if not added:
+                changes = cast("list[dict[str, Any]]", result.get("components") or [])
+                if not changes:
                     skipped.append(entry)
                     continue
-                entry["components"] = added
-                (planned if backend.dry_run else applied).append(entry)
+                entry["components"] = changes
+                # A form carrying any converged (drifted-in-place) component is an
+                # in-place update → `updated`; a purely additive form keeps the
+                # create-path classification (`applied`, or `planned` under dry-run).
+                # The would-converge diff rides the dry-run entry, turning --dry-run
+                # into the drift report (mirrors _with_diff for the metadata kinds).
+                converged = [c for c in changes if c.get("change") == "converged"]
+                if converged:
+                    if backend.dry_run:
+                        # Key each converged component by its FULLY-QUALIFIED identity
+                        # — a bare kind:name collides when the same name recurs under
+                        # different parents (a section name is unique only within its
+                        # tab; a handler function only within its event), which would
+                        # silently drop entries from the drift report.
+                        diff = {}
+                        for c in converged:
+                            if not c.get("diff"):
+                                continue
+                            scope = c.get("tab") or c.get("event")
+                            key = (f"{c['kind']}:{scope}/{c['name']}" if scope
+                                   else f"{c['kind']}:{c['name']}")
+                            diff[key] = c["diff"]
+                        if diff:
+                            entry["diff"] = diff
+                    updated.append(entry)
+                else:
+                    (planned if backend.dry_run else applied).append(entry)
 
         # Phase: security roles. Create (if_exists=skip) then reconcile privileges
         # to the declared set. A fresh role gets the declared set applied; an

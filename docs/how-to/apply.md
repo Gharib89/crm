@@ -272,13 +272,26 @@ layers its declared structure onto that form and commits one `formxml` PATCH:
   `field` it fires on (and only `onchange` takes a `field`). `pass_context`
   (default true) and `enabled` (default true) are optional.
 
-The create path is **additive and idempotent**: a declared tab / section / field /
-library / handler that is absent is added; one already present is left untouched,
-so re-applying an unchanged spec reports the form `skipped`. `--dry-run` classifies
-the form `planned` (a greenfield entity's main form not yet materialised is also
-`planned`). Forms publish with the rest of the customization at the end-of-run
-`PublishAllXml`, and `--stage-only` defers that publish like every other kind.
-Forms are **out of scope for `--prune`**.
+Convergence is **additive and idempotent**: a declared tab / section / field /
+library / handler that is absent is added; one already present but **drifted** is
+converged in place and counted `updated` with a field-level `diff`; one that already
+matches is left untouched, so re-applying an unchanged spec reports the form
+`skipped`. The drift converged in place: a tab / section **label**, a field's
+**tab + section placement** (the existing control is relocated, not duplicated), the
+**relative order** of the declared tabs / sections, and a handler's `enabled` /
+`pass_context` **flags**. A field's control `classid` is **create-only** — a live
+control type that diverges from the attribute is never retyped in place.
+
+An **identity / ownership divergence** is refused with no write (`replace_blocked`,
+exit 1, siblings still reconcile): a declared `name` that does not resolve to a
+single existing main form. The stance is *converge an existing main form* — `apply`
+never creates a named form from scratch or rewrites the wrong one.
+
+`--dry-run` classifies the form `planned` (a greenfield entity's main form not yet
+materialised is also `planned`) or, when only drift is present, `updated` with the
+would-converge `diff`. Forms publish with the rest of the customization at the
+end-of-run `PublishAllXml`, and `--stage-only` defers that publish like every other
+kind. Forms are **out of scope for `--prune`**.
 
 ## Model-driven apps: create the app and its sitemap
 

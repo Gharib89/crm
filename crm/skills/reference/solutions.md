@@ -306,8 +306,10 @@ crm --dry-run apply -f desired.yaml
 Without `-o`, the JSON envelope carries a summary `data` payload plus the `skipped` bucket.
 
 **JSON contract (without `-o`):** `data.entities` / `data.optionsets` are name lists,
-`data.security_roles` / `data.webresources` are name lists, `data.attributes` is a total
-count; there is no `meta`.
+`data.security_roles` / `data.webresources` are name lists, `data.attributes` /
+`data.forms` are total counts. The `skipped` bucket rides in `data`, not `meta`;
+`meta` carries only the standard envelope keys (`profile`/`url`, and `warnings`
+when any drop-reasons accumulated).
 ```json
 {
   "ok": true,
@@ -315,6 +317,7 @@ count; there is no `meta`.
     "solution": "MyCustomSolution",
     "entities": ["contoso_Ticket", "contoso_Project"],
     "attributes": 12,
+    "forms": 2,
     "optionsets": ["contoso_priority"],
     "security_roles": ["Contoso Project Manager"],
     "webresources": ["contoso_/scripts/project.js"],
@@ -326,7 +329,7 @@ count; there is no `meta`.
 }
 ```
 With `-o FILE`, `data` is instead `{path, solution, entities: <count>, attributes,
-optionsets: <count>, security_roles: <count>, webresources: <count>, skipped}`.
+forms, optionsets: <count>, security_roles: <count>, webresources: <count>, skipped}`.
 
 **Security roles** project as `security_roles[]` — name, optional `business_unit`, and
 privileges grouped by depth into `privilege_names` selector rows. Roles whose privileges
@@ -336,10 +339,17 @@ are all at non-authorable depths (e.g. RecordFilter) are routed to `skipped`.
 (no sidecar file), plus `display_name` and `webresourcetype`. The inline form requires
 `webresourcetype` when applied (apply cannot infer the type without a file extension).
 
+**Forms** ride along inside each touched entity's projection (ADR 0024) — its seedable
+main form is emitted under that entity's `forms:` block (custom-field placement, JS
+libraries, event handlers), governed by the ADR 0019 seedable invariant. Non-seedable
+form content drops to `warnings`; a non-seedable *whole form* (an additional, non-primary
+main form) lands in `skipped`. `data.forms` counts the entities that carried a projected
+form.
+
 **Skipped bucket** — components that cannot be projected from live metadata (plug-in
-assemblies, forms, dashboards, workflows, and other non-seedable types) land here. The
-verb **never fails** on an unsupported component (exit 0, `ok: true`) and never drops one
-silently.
+assemblies, dashboards, workflows, additional main forms, and other non-seedable types)
+land here. The verb **never fails** on an unsupported component (exit 0, `ok: true`) and
+never drops one silently.
 
 **Known limitation:** projection is driven by entity members only — a subcomponent member
 is NOT resolved to its parent entity. So attribute / view / relationship members **always**

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 import xml.etree.ElementTree as ET
-from typing import Any, cast
+from typing import Any, Callable, cast
 
 from crm.core import webresource, xml_edit
 from crm.core.metadata import attribute_info, label_text, maybe_publish
@@ -602,6 +602,50 @@ def remove_handler_from_formxml(
             events.remove(ev)
     if events is not None and not events.findall("event"):
         root.remove(events)
+    new_xml = xml_edit.serialize_xml(root)
+    xml_edit.assert_classids_intact(formxml, new_xml)
+    return new_xml
+
+
+def set_handler_props_in_formxml(
+    formxml: str, *, event: str, function: str, field: str | None = None,
+    enabled: bool | None = None, pass_context: bool | None = None,
+) -> str:
+    """Return ``formxml`` with a wired handler's ``enabled`` /
+    ``passExecutionContext`` flags toggled in place (reconcile — ADR 0024).
+
+    The handler is identified exactly as :func:`add_handler_to_formxml` wires it —
+    event + function (+ field for onchange). Each flag is tri-state: ``None``
+    leaves it untouched, so only the flags the caller passed are rewritten; the
+    handler's identity, order, and ``handlerUniqueId`` are preserved (the platform
+    binds live handlers by that id). The event/field pairing is validated up front
+    — symmetric with add/remove — so an onchange without a field (or a field on a
+    non-onchange event) fails cleanly rather than matching the wrong ``<event>``
+    (``_find_event`` ignores ``attribute`` for non-onchange). Raises ``D365Error``
+    if the handler is absent.
+    """
+    if event not in EVENT_CHOICES:
+        raise D365Error(
+            f"Unsupported event {event!r}. Choose from: {', '.join(EVENT_CHOICES)}.")
+    if event == "onchange" and not field:
+        raise D365Error("onchange handler requires a 'field' to identify it.")
+    if event != "onchange" and field:
+        raise D365Error(f"'field' applies only to onchange, not {event!r}.")
+    root = _parse_formxml(formxml)
+    ev = _find_event(root, event=event, field=field)
+    handlers = ev.find("Handlers") if ev is not None else None
+    target = None
+    if handlers is not None:
+        target = next(
+            (h for h in handlers.findall("Handler")
+             if h.get("functionName") == function), None)
+    if target is None:
+        raise D365Error(
+            f"No handler {_handler_label(event, function, field)} on the form.")
+    if enabled is not None:
+        target.set("enabled", "true" if enabled else "false")
+    if pass_context is not None:
+        target.set("passExecutionContext", "true" if pass_context else "false")
     new_xml = xml_edit.serialize_xml(root)
     xml_edit.assert_classids_intact(formxml, new_xml)
     return new_xml
@@ -1475,79 +1519,221 @@ def _blocks(value: Any) -> "list[dict[str, Any]]":
             if isinstance(b, dict)]
 
 
-def _handler_present(
+def _find_live_handler(
     formxml: str, *, event: str, function: str, field: str | None
-) -> bool:
-    return any(
-        h["event"] == event and h["function"] == function
-        and (h["field"] or None) == (field or None)
-        for h in list_handlers_in_formxml(formxml))
+) -> "dict[str, Any] | None":
+    """The wired handler matching this identity (event + function + onchange
+    field), or None — the same key :func:`add_handler_to_formxml` dedupes on."""
+    for h in list_handlers_in_formxml(formxml):
+        if (h["event"] == event and h["function"] == function
+                and (h["field"] or None) == (field or None)):
+            return h
+    return None
+
+
+def _read_label(element: "ET.Element") -> str:
+    """The base-language (1033) label description of a tab/section, or ``''`` when
+    it carries no label — the live value a declared label reconciles against."""
+    labels = element.find("labels")
+    if labels is None:
+        return ""
+    for lab in labels.findall("label"):
+        if lab.get("languagecode") == _LABEL_LANGUAGECODE:
+            return lab.get("description") or ""
+    first = labels.find("label")
+    return (first.get("description") or "") if first is not None else ""
+
+
+def _field_location(
+    root: "ET.Element", datafieldname: str
+) -> "tuple[str | None, str | None]":
+    """The (tab name, section name) currently holding ``datafieldname``'s control,
+    or ``(None, None)`` if the field is not on the form — the live placement a
+    declared field re-position reconciles against."""
+    control = _find_field_control(root, datafieldname)
+    if control is None:
+        return None, None
+    parents = _parent_map(root)
+    section: "ET.Element | None" = None
+    tab: "ET.Element | None" = None
+    node = parents.get(control)
+    while node is not None:
+        if node.tag == "section" and section is None:
+            section = node
+        elif node.tag == "tab":
+            tab = node
+            break
+        node = parents.get(node)
+    return (tab.get("name") if tab is not None else None,
+            section.get("name") if section is not None else None)
+
+
+def _reorder_declared(
+    formxml: str,
+    declared: "list[str]",
+    *,
+    live_order: "Callable[[str], list[str | None]]",
+    move: "Callable[[str, str, str], str]",
+    on_move: "Callable[[str, str], None]",
+) -> str:
+    """Converge the *relative* order of the declared children to their declared
+    sequence (ADR 0024 reconcile).
+
+    A single forward pass over consecutive declared pairs ``(a, b)``: when ``b``
+    precedes ``a`` in the live order, ``b`` is moved to immediately after ``a``.
+    This fixes only genuine order violations among the declared children and never
+    forces them to be contiguous, so undeclared siblings keep their positions and
+    a re-apply of an already-ordered form is a no-op (idempotent). ``move(fx, name,
+    after)`` returns the formxml with ``name`` placed after ``after``; ``on_move``
+    records the converged change.
+    """
+    order = live_order(formxml)
+    live_names = set(order)
+    present = [n for n in declared if n in live_names]
+    for a, b in zip(present, present[1:]):
+        if order.index(b) < order.index(a):
+            formxml = move(formxml, b, a)
+            on_move(a, b)
+            order = live_order(formxml)  # re-read only after an actual move
+    return formxml
 
 
 def converge_declared_form(
     backend: D365Backend, entity: str, form_row: dict[str, Any],
     block: dict[str, Any],
 ) -> "tuple[str, list[dict[str, Any]]]":
-    """Layer a declared ``forms:`` block onto ``form_row``'s live formxml.
+    """Converge a declared ``forms:`` block onto ``form_row``'s live formxml.
 
-    Returns ``(new_formxml, added)`` where ``added`` lists the components the
-    layering introduced (empty ⇒ the form already satisfies the declaration, so
-    the caller skips the write). Additive and idempotent (ADR 0024): a tab,
-    section, field, library, or handler already present is left untouched.
+    Returns ``(new_formxml, changes)`` where each change is ``{kind, name, …}``
+    (empty ⇒ the form already satisfies the declaration, so the caller skips the
+    write). A *converged* change additionally carries ``"change": "converged"`` and
+    a field-level ``"diff"``; an *added* change carries neither (its presence in the
+    list is the signal), mirroring how the reconcile buckets elsewhere leave a
+    create plain and tag only an in-place update. Two complementary passes, per
+    ADR 0024:
 
-    Field control ``classid`` values resolve from live attribute metadata (a read
-    that runs even under dry-run); a declared library must already exist as a web
-    resource (:func:`_resolve_library_name` asserts it). Fields nest under a
-    section, sections under a tab, so a declared tab/section is added before the
-    fields that target it.
+    * **additive** (#792) — a tab/section/field/library/handler *absent* from the
+      live form is added;
+    * **convergent** (#793) — a component *present but drifted* is converged in
+      place and tagged ``converged`` with a field-level ``diff``: a tab/section
+      label (``rename_*``), a field's tab+section placement (``move_field``), the
+      relative order of the declared tabs/sections (``move_*``), and a handler's
+      ``enabled`` / ``pass_context`` flags. An unchanged component is untouched
+      (idempotent → no change).
+
+    A field's control ``classid`` is **create-only** (ADR 0024) — never retyped in
+    place, so a live control type that diverges from the declared attribute is left
+    alone, not rewritten. Field control ``classid`` values (for *added* fields)
+    resolve from live attribute metadata; a declared library must already exist as
+    a web resource (:func:`_resolve_library_name` asserts it).
     """
     formxml: str = cast("str", form_row.get("formxml", ""))
-    added: list[dict[str, Any]] = []
+    changes: list[dict[str, Any]] = []
     for tab in _blocks(block.get("tabs")):
         tname = str(tab["name"])
         tlabel = str(tab.get("label") or tname)
-        if not _tab_present(_parse_formxml(formxml), tname):
+        root = _parse_formxml(formxml)
+        if not _tab_present(root, tname):
             formxml = add_tab_to_formxml(
                 formxml, name=tname, label=tlabel, columns=int(tab.get("columns") or 1))
-            added.append({"kind": "tab", "name": tname})
+            changes.append({"kind": "tab", "name": tname})
+        elif tab.get("label") is not None:
+            cur = _read_label(_resolve_target_tab(root, tname))
+            if tlabel != cur:
+                formxml = rename_tab_in_formxml(formxml, tab=tname, label=tlabel)
+                changes.append({"kind": "tab", "name": tname, "change": "converged",
+                                "diff": {"label": {"old": cur, "new": tlabel}}})
         for section in _blocks(tab.get("sections")):
             sname = str(section["name"])
             slabel = str(section.get("label") or sname)
-            if not _section_present(_parse_formxml(formxml), tname, sname):
+            root = _parse_formxml(formxml)
+            if not _section_present(root, tname, sname):
                 formxml = add_section_to_formxml(
                     formxml, name=sname, label=slabel, tab=tname,
                     columns=int(section.get("columns") or 1))
-                added.append({"kind": "section", "name": sname, "tab": tname})
+                changes.append({"kind": "section", "name": sname, "tab": tname})
+            elif section.get("label") is not None:
+                cur = _read_label(_resolve_target_section(root, tname, sname))
+                if slabel != cur:
+                    formxml = rename_section_in_formxml(
+                        formxml, section=sname, label=slabel, tab=tname)
+                    changes.append({"kind": "section", "name": sname, "tab": tname,
+                                    "change": "converged",
+                                    "diff": {"label": {"old": cur, "new": slabel}}})
             for fld in _blocks(section.get("fields")):
                 fname = str(fld["name"])
-                if _find_field_control(_parse_formxml(formxml), fname) is not None:
+                root = _parse_formxml(formxml)
+                if _find_field_control(root, fname) is None:
+                    info = attribute_info(backend, entity, fname)
+                    classid = classid_for_attribute_type(str(info.get("AttributeType") or ""))
+                    label = str(fld.get("label") or _attr_label(info, fname))
+                    formxml = add_field_to_formxml(
+                        formxml, datafieldname=fname, classid=classid,
+                        label=label, tab=tname, section=sname)
+                    changes.append({"kind": "field", "name": fname, "tab": tname,
+                                    "section": sname})
                     continue
-                info = attribute_info(backend, entity, fname)
-                classid = classid_for_attribute_type(str(info.get("AttributeType") or ""))
-                label = str(fld.get("label") or _attr_label(info, fname))
-                formxml = add_field_to_formxml(
-                    formxml, datafieldname=fname, classid=classid,
-                    label=label, tab=tname, section=sname)
-                added.append(
-                    {"kind": "field", "name": fname, "tab": tname, "section": sname})
+                cur_tab, cur_section = _field_location(root, fname)
+                if (cur_tab, cur_section) != (tname, sname):
+                    formxml = move_field_in_formxml(
+                        formxml, datafieldname=fname, tab=tname, section=sname)
+                    changes.append({"kind": "field", "name": fname, "change": "converged",
+                                    "diff": {"placement": {
+                                        "old": {"tab": cur_tab, "section": cur_section},
+                                        "new": {"tab": tname, "section": sname}}}})
+        # Converge the relative order of the declared sections within this tab.
+        formxml = _reorder_declared(
+            formxml, [str(s["name"]) for s in _blocks(tab.get("sections"))],
+            live_order=lambda fx, tn=tname: [
+                s.get("name") for s in _resolve_target_tab(
+                    _parse_formxml(fx), tn
+                ).findall("./columns/column/sections/section")],
+            move=lambda fx, name, after, tn=tname: move_section_in_formxml(
+                fx, section=name, tab=tn, after=after),
+            on_move=lambda a, b, tn=tname: changes.append(
+                {"kind": "section-order", "name": b, "tab": tn,
+                 "change": "converged", "diff": {"after": a}}))
+    # Converge the relative order of the declared top-level tabs.
+    formxml = _reorder_declared(
+        formxml, [str(t["name"]) for t in _blocks(block.get("tabs"))],
+        live_order=lambda fx: [
+            t.get("name") for t in _parse_formxml(fx).findall("./tabs/tab")],
+        move=lambda fx, name, after: move_tab_in_formxml(fx, tab=name, after=after),
+        on_move=lambda a, b: changes.append(
+            {"kind": "tab-order", "name": b, "change": "converged",
+             "diff": {"after": a}}))
     for lib in cast("list[Any]", block.get("libraries") or []):
         library_name = _resolve_library_name(backend, str(lib))
         if not _library_present(_parse_formxml(formxml), library_name):
             formxml = add_library_to_formxml(formxml, library_name=library_name)
-            added.append({"kind": "library", "name": library_name})
+            changes.append({"kind": "library", "name": library_name})
     for handler in _blocks(block.get("handlers")):
         event = str(handler["event"])
         function = str(handler["function"])
         field = handler.get("field")
         field_str = str(field) if field is not None else None
-        library_name = _resolve_library_name(backend, str(handler["library"]))
-        if not _handler_present(formxml, event=event, function=function, field=field_str):
+        live_h = _find_live_handler(
+            formxml, event=event, function=function, field=field_str)
+        if live_h is None:
+            library_name = _resolve_library_name(backend, str(handler["library"]))
             formxml = add_handler_to_formxml(
                 formxml, event=event, function=function, library_name=library_name,
                 field=field_str, pass_context=bool(handler.get("pass_context", True)),
                 enabled=bool(handler.get("enabled", True)))
-            added.append({"kind": "handler", "name": function, "event": event})
-    return formxml, added
+            changes.append({"kind": "handler", "name": function, "event": event})
+            continue
+        diff: dict[str, Any] = {}
+        for key in ("enabled", "pass_context"):
+            if key in handler and bool(handler[key]) != live_h[key]:
+                diff[key] = {"old": live_h[key], "new": bool(handler[key])}
+        if diff:
+            formxml = set_handler_props_in_formxml(
+                formxml, event=event, function=function, field=field_str,
+                enabled=diff["enabled"]["new"] if "enabled" in diff else None,
+                pass_context=diff["pass_context"]["new"] if "pass_context" in diff else None)
+            changes.append({"kind": "handler", "name": function, "event": event,
+                            "change": "converged", "diff": diff})
+    return formxml, changes
 
 
 def apply_form_spec(
@@ -1557,25 +1743,236 @@ def apply_form_spec(
     """Converge one declared ``forms:`` block onto ``entity``'s main form.
 
     The single public entry point that `apply` drives (ADR 0024). Selects the
-    target main form (``block['name']``, else the entity's primary main form), computes
-    the additive convergence, and — on a real run with something to add — PATCHes
-    it in one write. Reads are forced-real, so a dry-run still reads live and
-    reports the would-add set without writing.
+    target main form (``block['name']``, else the entity's primary main form),
+    computes the convergence (additive + drift, :func:`converge_declared_form`),
+    and — on a real run with something to change — PATCHes it in one write. Reads
+    are forced-real, so a dry-run still reads live and reports the would-change set
+    without writing.
 
-    Returns ``{form, formid, components, committed}``; ``{unmaterialized: True}``
-    when the entity has no main form yet (a greenfield entity not published this
-    run), which the caller reports as ``planned``.
+    Returns ``{form, formid, components, committed, blocked}``. ``blocked`` is
+    non-empty when the block's ``name`` does not resolve to a single existing main
+    form: the form-ownership stance is *converge an existing main form*, so a name
+    that names no (or an ambiguous) main form is an identity/ownership divergence —
+    refused with no write (``replace_blocked``), never created from scratch or
+    applied to the wrong form. ``{unmaterialized: True}`` when the entity has no
+    main form yet (a greenfield entity not published this run), which the caller
+    reports as ``planned``.
     """
     forms_list = read_entity_forms(backend, entity)
     if not forms_list:
         return {"form": block.get("name"), "components": [], "committed": False,
-                "unmaterialized": True}
-    form_row = _select_form(forms_list, block.get("name"))
-    new_xml, added = converge_declared_form(backend, entity, form_row, block)
-    committed = bool(added) and not dry_run
+                "blocked": [], "unmaterialized": True}
+    try:
+        form_row = _select_form(forms_list, block.get("name"))
+    except D365Error as exc:
+        # Identity/ownership divergence: the spec names a form that is not a single
+        # existing main form. Refuse with no write and let the run continue (the
+        # caller routes this to `replace_blocked`, exit 1, siblings still reconcile).
+        return {"form": block.get("name"), "components": [], "committed": False,
+                "blocked": [{"kind": "form", "name": block.get("name") or entity,
+                             "reason": str(exc)}]}
+    new_xml, changes = converge_declared_form(backend, entity, form_row, block)
+    committed = bool(changes) and not dry_run
     if committed:
         _commit_form_change(
             backend, form_row, new_xml, action="apply-form",
             publish=publish, solution=solution)
     return {"form": form_row.get("name"), "formid": form_row.get("formid"),
-            "components": added, "committed": committed}
+            "components": changes, "committed": committed, "blocked": []}
+
+
+# --- `export-spec` form projection (ADR 0024 / ADR 0019 seedable invariant) ------
+#
+# The inverse of converge_declared_form: read an entity's main form and project a
+# `forms:` block a real `apply` can layer back onto a fresh org's platform-generated
+# main form. Governed by the ADR 0019 seedable invariant — emit only what a real
+# apply can re-seed, never diff-only:
+#   * Only fields bound to apply-creatable CUSTOM columns are projected; the
+#     primary-name field and platform/system fields are omitted (they already ride
+#     the target org's platform main form — "fields equal to platform defaults").
+#   * A field whose control type has no seedable classid (converge would raise) is
+#     dropped to `warnings`, never emitted.
+#   * Only the seedable target main form is projected; an additional main form
+#     cannot be re-seeded (apply converges the target org's primary main form, it
+#     never forges a new one — ADR 0024) and is reported in `skipped`.
+#   * A tab/section is projected only when it carries a projected field, so
+#     platform-default structure adds no bloat.
+#
+# A form-level label OVERRIDE on a field (a cell label differing from the bound
+# attribute's display name) is a documented projection gap: converge re-derives the
+# field label from the seeded attribute, which round-trips the common case; the rare
+# per-form override is not captured (mirrors the datetime-format attribute gap).
+
+
+def _form_label(element: "ET.Element") -> str:
+    """The base-language (1033) ``<label>`` description of a tab/section, or "".
+
+    The read inverse of :func:`_set_label`: lets the projector emit a tab/section
+    label only when it differs from the element ``name`` (converge defaults an added
+    tab/section's label to its name, so a matching label is omitted as a default)."""
+    labels = element.find("labels")
+    if labels is None:
+        return ""
+    label_els = labels.findall("label")
+    target = next(
+        (lab for lab in label_els
+         if lab.get("languagecode") == _LABEL_LANGUAGECODE), None)
+    if target is None:
+        target = label_els[0] if label_els else None
+    return (target.get("description") or "") if target is not None else ""
+
+
+def _project_form_block(
+    form_row: dict[str, Any],
+    custom_attr_types: dict[str, str],
+    warnings: list[str],
+) -> "dict[str, Any] | None":
+    """Project one main form's live formxml into a `forms:` block, or None.
+
+    Emits the tabs/sections that carry a projected custom field, the registered
+    script libraries, and the seedable event handlers — the inverse of
+    :func:`converge_declared_form`. Returns None when the form carries no
+    projectable custom content (nothing to converge, like an entity with no custom
+    attributes emitting no `attributes`). `custom_attr_types` maps an apply-creatable
+    custom attribute's logical name to its `AttributeType`; a field bound to anything
+    outside this map is a platform default and is omitted silently.
+    """
+    formxml: str = cast("str", form_row.get("formxml", ""))
+    form_label = form_row.get("name") or "(default main form)"
+    root = _parse_formxml(formxml)
+
+    tabs_out: list[dict[str, Any]] = []
+    placed: set[str] = set()  # custom fields actually projected onto the form
+    for tab_el in root.findall("./tabs/tab"):
+        tname = tab_el.get("name")
+        if not tname:
+            continue
+        sections_out: list[dict[str, Any]] = []
+        for sec_el in tab_el.findall("./columns/column/sections/section"):
+            sname = sec_el.get("name")
+            if not sname:
+                continue
+            fields_out: list[dict[str, Any]] = []
+            for control in sec_el.iter("control"):
+                datafield = control.get("datafieldname")
+                if not datafield or datafield not in custom_attr_types:
+                    continue  # platform-default / system / primary field
+                attr_type = custom_attr_types[datafield]
+                try:
+                    classid_for_attribute_type(attr_type)
+                except D365Error:
+                    warnings.append(
+                        f"form {form_label!r}: dropped field {datafield!r} — its "
+                        f"control type ({attr_type or 'unknown'}) is not one apply "
+                        f"can seed onto a form.")
+                    continue
+                fields_out.append({"name": datafield})
+                placed.add(datafield)
+            if fields_out:
+                section: dict[str, Any] = {"name": sname}
+                slabel = _form_label(sec_el)
+                if slabel and slabel != sname:
+                    section["label"] = slabel
+                section["fields"] = fields_out
+                sections_out.append(section)
+        if sections_out:
+            tab: dict[str, Any] = {"name": tname}
+            tlabel = _form_label(tab_el)
+            if tlabel and tlabel != tname:
+                tab["label"] = tlabel
+            tab["sections"] = sections_out
+            tabs_out.append(tab)
+
+    libraries: list[str] = []
+    for lib in root.findall("./formLibraries/Library"):
+        name = lib.get("name")
+        if name:
+            libraries.append(name)
+
+    handlers_out: list[dict[str, Any]] = []
+    for handler in list_handlers_in_formxml(formxml):
+        event = handler.get("event") or ""
+        function = handler.get("function")
+        library = handler.get("library")
+        field = handler.get("field") or None
+        if event not in EVENT_CHOICES:
+            warnings.append(
+                f"form {form_label!r}: dropped handler {function!r} on event "
+                f"{event!r} — not a seedable form event "
+                f"({', '.join(EVENT_CHOICES)}).")
+            continue
+        if not function or not library:
+            warnings.append(
+                f"form {form_label!r}: dropped a handler with no function/library.")
+            continue
+        if event == "onchange":
+            if not field:
+                warnings.append(
+                    f"form {form_label!r}: dropped onchange handler {function!r} — "
+                    f"no bound field.")
+                continue
+            if field in custom_attr_types and field not in placed:
+                warnings.append(
+                    f"form {form_label!r}: dropped onchange handler {function!r} — "
+                    f"its field {field!r} is not seedable onto the form.")
+                continue
+        entry: dict[str, Any] = {
+            "event": event, "function": function, "library": library,
+            "pass_context": bool(handler.get("pass_context")),
+            "enabled": bool(handler.get("enabled")),
+        }
+        if event == "onchange":
+            entry["field"] = field
+        handlers_out.append(entry)
+
+    block: dict[str, Any] = {}
+    if tabs_out:
+        block["tabs"] = tabs_out
+    if libraries:
+        block["libraries"] = libraries
+    if handlers_out:
+        block["handlers"] = handlers_out
+    return block or None
+
+
+def project_entity_forms(
+    backend: D365Backend,
+    entity_logical_name: str,
+    *,
+    custom_attr_types: dict[str, str],
+    warnings: list[str],
+    skipped: list[dict[str, Any]],
+) -> "list[dict[str, Any]]":
+    """Project an entity's seedable main form into a one-entry `forms:` list (ADR 0024).
+
+    Reads the entity's main forms (one GET) and projects the *seedable target* — the
+    single main form a real `apply` would converge on a fresh org (its primary main
+    form). Additional main forms cannot be re-seeded (apply never forges a form from
+    scratch) and are recorded in `skipped` with a reason (ADR 0019 seedable
+    invariant). The emitted block carries no `name`, so a round-trip apply targets
+    the destination org's own primary main form. Returns `[]` when the entity has no
+    main form or the target form carries no projectable custom content.
+    """
+    forms_list = read_entity_forms(backend, entity_logical_name)
+    if not forms_list:
+        return []
+    try:
+        target = _select_form(forms_list, None)
+    except D365Error as exc:
+        # No single seedable target (ambiguous primary main form): none re-seedable.
+        for form_row in forms_list:
+            skipped.append({
+                "type": "form", "objectid": form_row.get("formid"),
+                "reason": f"main form {form_row.get('name')!r} not projected: {exc}",
+            })
+        return []
+    for form_row in forms_list:
+        if form_row is not target:
+            skipped.append({
+                "type": "form", "objectid": form_row.get("formid"),
+                "reason": (f"additional main form {form_row.get('name')!r}: apply "
+                           "converges only the destination org's primary main form, "
+                           "so it cannot be re-seeded (ADR 0024)."),
+            })
+    block = _project_form_block(target, custom_attr_types, warnings)
+    return [block] if block is not None else []
