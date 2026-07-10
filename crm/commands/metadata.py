@@ -385,9 +385,10 @@ def metadata_export_spec(ctx: CLIContext, logical_name, with_views, with_relatio
     exits 2 until a `solution:` block is added). Pass --with-forms to project the
     entity's seedable main form (custom fields and their placement, script
     libraries, event handlers); a form that cannot round-trip a real apply is
-    reported under `meta.skipped` (ADR 0019). Without -o, the spec is emitted under
-    the standard JSON envelope (pipeable); with -o, the bare YAML spec is written
-    to FILE.
+    reported in the `skipped` bucket (ADR 0019) — `meta.skipped` under the JSON
+    envelope, `data.skipped` in the -o summary. Without -o, the spec is emitted
+    under the standard JSON envelope (pipeable); with -o, the bare YAML spec is
+    written to FILE.
     """
     warnings: list[str] = []
     skipped: list[dict] = []

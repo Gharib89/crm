@@ -307,7 +307,9 @@ Without `-o`, the JSON envelope carries a summary `data` payload plus the `skipp
 
 **JSON contract (without `-o`):** `data.entities` / `data.optionsets` are name lists,
 `data.security_roles` / `data.webresources` are name lists, `data.attributes` /
-`data.forms` are total counts; there is no `meta`.
+`data.forms` are total counts. The `skipped` bucket rides in `data`, not `meta`;
+`meta` carries only the standard envelope keys (`profile`/`url`, and `warnings`
+when any drop-reasons accumulated).
 ```json
 {
   "ok": true,

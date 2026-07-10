@@ -629,10 +629,11 @@ crm apply -f project.yaml
   field and every system/platform field, and any tab/section that carries no custom
   field. Dropped to `meta.warnings`: a field whose control type has no seedable
   classid (e.g. a multi-select or double column) and a handler on a non-seedable
-  event. Reported in `meta.skipped`: an additional (non-primary) main form, which
-  `apply` cannot re-seed (it converges only the destination org's primary main
-  form). A form-level *label override* on a field is not captured (converge
-  re-derives the label from the seeded attribute).
+  event. Reported in the `skipped` bucket: an additional (non-primary) main form,
+  which `apply` cannot re-seed (it converges only the destination org's primary
+  main form) — surfaced under `meta.skipped` in the JSON envelope, or
+  `data.skipped` in the `-o` summary. A form-level *label override* on a field is
+  not captured (converge re-derives the label from the seeded attribute).
 - A publisher is never emitted — an existing entity does not know its publisher.
   A top-level `solution:` block is emitted only when `--solution <name>` is
   passed to `export-spec`; `crm apply` requires one, so a spec exported without

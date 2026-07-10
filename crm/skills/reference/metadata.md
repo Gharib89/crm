@@ -147,7 +147,8 @@ registered JS libraries, and seedable event handlers. The block carries no form
 Silently omitted: the primary-name field and every platform/system field (already
 on the destination form), and tabs/sections that carry no custom field. Dropped to
 `meta.warnings`: a field whose control type has no seedable classid (multi-select,
-double, …) and a handler on a non-seedable event. Reported in `meta.skipped`: an
+double, …) and a handler on a non-seedable event. Reported in the `skipped` bucket
+(`meta.skipped` under the JSON envelope, `data.skipped` in the `-o` summary): an
 additional (non-primary) main form — `apply` converges only the destination primary
 main form, never forging a second one. A per-form field *label override* is not
 captured.
