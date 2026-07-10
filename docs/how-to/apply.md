@@ -330,18 +330,18 @@ that **already exists** is **reconciled** (#796) against the declared block:
   since its components and sitemap are owned by its parent solution.
 - `--dry-run` reads the live app and reports the full drift as `updated`
   (component and sitemap changes included), with every converge write suppressed.
-- On an org where a Web-API-created appmodule is not GET-retrievable (the
-  publish/app-access window — see `crm/tests/e2e/DISCOVERED_BUGS.md` #5), reconcile
-  can't read the app back to diff it, so it reports the app `skipped` rather than
-  failing the run.
 
 `--dry-run` on an absent app classifies it `planned` and issues no write. Apps and
 sitemaps are publishable, so a created or updated app publishes with the rest of
 the customization at the end-of-run `PublishAllXml`, and `--stage-only` defers
-that publish. Malformed app/sitemap blocks are rejected up front, before any HTTP
-call. Apps are **out of scope for `--prune`**. App `unique_name` identity is not
-changed in place; app existence (create vs. reconcile) is the only thing this
-block decides between.
+that publish. A **created** app that has a sitemap bound is also app-published
+individually (`PublishAllXml` does not publish appmodules) so it is immediately
+GET-visible in the `appmodules` collection rather than an invisible orphan; a bare
+app (no sitemap) can't pass app-scoped publish validation and is left unpublished.
+An **updated** (already-existing) app is not re-app-published. Malformed app/sitemap
+blocks are rejected up front, before any HTTP call. Apps are **out of scope for
+`--prune`**. App `unique_name` identity is not changed in place; app existence
+(create vs. reconcile) is the only thing this block decides between.
 
 ## Plug-ins: assembly, types, steps, and images
 

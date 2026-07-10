@@ -105,11 +105,10 @@ expressible in the spec. **Reconciled on re-apply:**
   the full drift as `updated`, every write suppressed. Apps/sitemaps are publishable
   (defer to the end-of-run publish; `--stage-only` honoured) and **out of scope for
   `--prune`**. The `applied`/`updated` entry carries the live `appmoduleid` /
-  `sitemapid`. Gotcha: a freshly created appmodule is not reliably GET-retrievable
-  until published — the create path treats the read-back miss as non-fatal (operate
-  on the returned id, don't re-query), and on an org where that window persists past
-  publish, a re-apply that would reconcile an existing app instead reports it
-  `skipped` (the app can't be read back to diff, so there is nothing to converge).
+  `sitemapid`. Gotcha: a **created** app with a sitemap bound is also app-published
+  individually after the end-of-run publish, so it's immediately GET-visible in the
+  `appmodules` collection — a bare app (no sitemap) can't pass that app-scoped
+  publish and stays unpublished/invisible until a later run completes it.
 
 **Create-only** (re-applying an existing component does not yet reconcile these):
 attribute — `default_value`, `true_label/false_label`, `min_value/max_value`,

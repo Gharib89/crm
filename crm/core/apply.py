@@ -2608,6 +2608,13 @@ def apply_spec(
                                       publish=False), failed)
                 if sm_result.get("sitemapid"):
                     entry["sitemapid"] = sm_result["sitemapid"]
+                    # Bind the sitemap to the app (component 62) so the app contains
+                    # a sitemap and the end-of-run app-publish passes ValidateApp —
+                    # the sitemapnameunique link alone does not (#809).
+                    _call(entry, lambda app_id=app_id, smid=sm_result["sitemapid"]:
+                          app_mod.add_app_components(
+                              backend, app_id=app_id,
+                              components=[("sitemap", str(smid))]), failed)
     except _Aborted:
         pass
 
@@ -2661,6 +2668,29 @@ def apply_spec(
                  and not replace_blocked and not backend.dry_run)
     if published:
         sol_mod.publish_all(backend)
+        # PublishAllXml does NOT flip an appmodule to Published (#809), so an app
+        # stays invisible to the `appmodules` collection until an app-scoped publish.
+        # After the blanket publish, app-publish every app that has newly become
+        # publishable: a CREATED app with a sitemap bound, or an UPDATED app whose
+        # reconcile just added its first sitemap. (A bare app — no sitemap — can't
+        # pass ValidateApp, so it is skipped; an updated app whose sitemap merely
+        # changed was already published.) dry-run/stage-only never reach here.
+        newly_publishable = [
+            e for e in applied
+            if e.get("kind") == "app" and e.get("appmoduleid") and e.get("sitemapid")
+        ] + [
+            e for e in updated
+            if e.get("kind") == "app" and e.get("appmoduleid")
+            and e.get("sitemap") == "added"
+        ]
+        for e in newly_publishable:
+            try:
+                app_mod.publish_app(backend, str(e["appmoduleid"]))
+            except D365Error as exc:
+                # Non-fatal: the app was created/updated; only its app-scoped publish
+                # failed (e.g. a validation error). Record it on the entry rather
+                # than throwing out of the clean apply envelope.
+                e["publish_error"] = str(exc)
 
     return {
         "ok": not failed and not replace_blocked,

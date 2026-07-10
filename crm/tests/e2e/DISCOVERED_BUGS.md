@@ -4,8 +4,10 @@ Five real defects were surfaced by the live e2e coverage (`crm/tests/e2e/`). Non
 are test bugs — each reproduces through the normal CLI against a live org. #1, #2,
 and #3 turned out to be **client-side** bugs in the CLI and are fixed; **#4 is FIXED
 (#269, #678)** — its `xfail` is removed and the test passes live on both targets.
-**#5 is an OPEN platform behavior** (Gharib89/crm#809): a Web-API-created app is not
-GET-retrievable, blocking app read-back / reconcile round-trip (see below).
+**#5 is FIXED (#809)** — a Web-API-created app is Unpublished and invisible to the
+plain `appmodules` GET/collection until an app-scoped publish; reads now go through
+`RetrieveUnpublishedMultiple`, and `apply` app-publishes each created app that has a
+sitemap bound (see below).
 
 Repro uses a saved profile directly (`--profile`); no e2e harness needed. Targets
 referenced: an on-prem NTLM org and a cloud OAuth/Dataverse org.
@@ -16,7 +18,7 @@ referenced: an on-prem NTLM org and a cloud OAuth/Dataverse org.
 | 2 | `metadata update-relationship` → HTTP 405 → ✅ fixed (client-side) | Gharib89/crm#267 (FIXED) |
 | 3 | `form clone` reused internal form ids on on-prem → ✅ fixed (client-side) | Gharib89/crm#268 |
 | 4 | `ribbon add-button` / `remove` blocked by validation | Gharib89/crm#269, #678 (FIXED) |
-| 5 | Web-API-created `appmodule` not GET-retrievable → blocks app read-back / reconcile round-trip | Gharib89/crm#809 (OPEN, platform) |
+| 5 | Web-API-created `appmodule` not GET-retrievable → blocked app read-back / reconcile round-trip | Gharib89/crm#809 (FIXED) |
 
 ---
 
@@ -226,14 +228,16 @@ crm --profile crmworx ribbon add-button some_entity --solution ContosoCore --lab
 
 ---
 
-## 5. Web-API-created `appmodule` not GET-retrievable — OPEN (platform, #809)
+## 5. Web-API-created `appmodule` not GET-retrievable — ✅ FIXED (#809)
 
-**This is a platform/org behavior, not a CLI client bug** — but it blocks the
-read-back both the app create path (#795) and the app reconcile path (#796) rely
-on. Surfaced while shipping #796; tracked in Gharib89/crm#809.
+**Root cause** — the by-id `appmodules(<id>)` retrieve, and the plain `appmodules`
+collection GET, both return **published apps only**; a Web-API-created appmodule is
+Unpublished until an app-scoped publish, so both reads spuriously report "Does Not
+Exist" / absent, even for the app the caller just created (MS Learn, "Create,
+manage, and publish model-driven apps using code"; live-confirmed on-prem v9.1 +
+Dataverse online).
 
-**Symptom** (reproduced on an on-prem v9.1 org; also seen on both cloud test orgs —
-placeholders below, no real org identifiers)
+**Symptom (pre-fix)**
 ```
 # by-id retrieve fails even for a pre-existing, collection-visible app
 $ crm --profile <org> query odata "appmodules(<existing-id>)" --select uniquename
@@ -249,18 +253,24 @@ $ crm --profile <org> query odata appmodules --filter "uniquename eq 'new_x'"
   ● No results.          # absent from the collection too, even after publish
 ```
 
-**Consequence** — `reconcile_app` (#796) must read the live app to diff it. On
-these orgs `find_live` returns nothing, so the create→reconcile round-trip is
-unverifiable; the e2e (`test_apply_reconciles_app_components_and_sitemap`)
-skip-guards on non-retrievability, and `apply` degrades a hidden-but-present app
-to `skipped` (`unreadable`) instead of erroring. The reconcile classification is
-proven by the offline matrix (`test_apply.py::test_apply_apps_reconcile_*`) and,
-against a pre-existing readable app, by manual live check (dry-run drift + skip).
+**Fix (shipped, #809)** — `crm.core.appmodule` reads go through
+`RetrieveUnpublishedMultiple()` + `$filter` (create read-back, `_resolve_appmodule`,
+and `reconcile_app`'s app find), which returns the current view regardless of
+publish state; the by-id `RetrieveUnpublished` function is not bound to appmodule,
+so it is never used. Separately, a targeted `PublishXml` for an appmodule runs
+`ValidateApp`, which requires the app to *contain* a sitemap — a sitemap linked only
+via `sitemapnameunique` does not satisfy it — so the create path and the reconcile
+add-sitemap path now bind the sitemap to the app via `AddAppComponents` (component
+62). `crm apply` app-publishes each **created** app that has a sitemap bound
+(app-scoped `PublishXml`, after the end-of-run `PublishAllXml`, which does not
+publish appmodules) so it is GET-visible in the `appmodules` collection; a bare app
+(no sitemap) is not publishable and is left unpublished. Updated (already-existing)
+apps are not re-app-published.
 
-**Likely cause / next step (see #809)** — app-access/role filtering (the
-connecting user is not granted the new app) or a silent rollback of unmanaged
-appmodule creation. Collection `$filter` reads work; only by-id retrieve and
-newly-created rows are affected. When resolved, un-skip the e2e.
+**Test** — `crm/tests/e2e/test_apply.py::test_apply_reconciles_app_components_and_sitemap`
+(`requires_onprem` gate removed; runs on both targets; hard-asserts the created app
+is GET-visible instead of skip-guarding). Offline coverage:
+`test_appmodule.py`, `test_apply.py`.
 
 ---
 
@@ -269,6 +279,9 @@ newly-created rows are affected. When resolved, un-skip the e2e.
 - #2 made `update-relationship` non-functional on every target — **FIXED (#267)**; the `xfail` is removed and the e2e passes live on both targets (and asserts an untouched cascade key survives the round-trip).
 - #4 made ribbon **write** verbs non-functional on every target (ribbon read/export worked) — **FIXED (#269, #678)**; the `xfail` is removed and the e2e lifecycle passes live on both targets. #678 fixed a second, narrower false positive (reverse root-parity on entity system forms) that only surfaces once a target entity's form has been edited via a solution-scoped `form` verb against the same solution — offline-only, no live e2e change required.
 - #3 is on-prem-only and intermittent (only collides on a repeat clone of the same source form).
-- All four are in **product code** (`crm/core/*`), out of scope for the test-completeness
+- #5 made a Web-API-created app invisible to any GET on every target — **FIXED (#809)**; the
+  `requires_onprem` gate is removed and the e2e now hard-asserts GET-visibility live on both
+  targets instead of skip-guarding.
+- All five are in **product code** (`crm/core/*`), out of scope for the test-completeness
   branch that found them. The e2e suite encodes them as `xfail`/capability-gates so the
   fixes are detected automatically.
