@@ -5311,22 +5311,31 @@ _APP_ID = "77777777-7777-7777-7777-777777777777"
 _SITEMAP_ID = "88888888-8888-8888-8888-888888888888"
 _APP_COMPONENT_GUID = "99999999-9999-9999-9999-999999999999"
 
+# App resolution reads the unpublished view so a still-unpublished app resolves
+# regardless of publish state (#809): create read-back by-id via RetrieveUnpublished,
+# apply find_live by-name via RetrieveUnpublishedMultiple.
+_UNPUB_BYID = f"appmodules({_APP_ID})/Microsoft.Dynamics.CRM.RetrieveUnpublished()"
+_UNPUB_MULTIPLE = "appmodules/Microsoft.Dynamics.CRM.RetrieveUnpublishedMultiple()"
+
 
 def _mock_app_create(m, backend, *, unique_name="cwx_crmworx", name="CRMWorx",
                      exists=False):
     """Mock appmodules existence GET (uniquename $filter) + 204 create + readback,
-    plus the AddAppComponents / sitemaps / PublishAllXml writes the create path fires."""
+    plus the AddAppComponents / sitemaps / PublishAllXml + app-scoped PublishXml
+    writes the create + end-of-run publish path fires (#809)."""
     app_url = backend.url_for(f"appmodules({_APP_ID})")
     rows = [{"appmoduleid": _APP_ID, "uniquename": unique_name}] if exists else []
     m.get(backend.url_for("appmodules"), json={"value": rows})
     m.post(backend.url_for("appmodules"), status_code=204,
            headers={"OData-EntityId": app_url})
-    m.get(app_url, json={"name": name, "uniquename": unique_name, "appmoduleid": _APP_ID})
+    m.get(backend.url_for(_UNPUB_BYID),
+          json={"name": name, "uniquename": unique_name, "appmoduleid": _APP_ID})
     m.post(backend.url_for("AddAppComponents"), status_code=204)
     sm_url = backend.url_for(f"sitemaps({_SITEMAP_ID})")
     m.post(backend.url_for("sitemaps"), status_code=204,
            headers={"OData-EntityId": sm_url})
     m.post(backend.url_for("PublishAllXml"), status_code=204)
+    m.post(backend.url_for("PublishXml"), status_code=204)
 
 
 def _app_block():
@@ -5366,6 +5375,12 @@ def test_apply_apps_phase_creates_app_components_and_sitemap(backend):
     assert sm[0].json()["sitemapnameunique"] == "cwx_crmworx"
     assert 'Entity="contoso_project"' in sm[0].json()["sitemapxml"]
     assert len(_publish_hits(m, backend)) == 1
+    # The created app is app-published (app-scoped PublishXml) so it becomes
+    # GET-visible — a blanket PublishAllXml does not publish an appmodule (#809).
+    app_pub = [r for r in m.request_history
+               if r.method == "POST" and r.url.endswith("PublishXml")]
+    assert len(app_pub) == 1
+    assert f"<appmodule>{_APP_ID}</appmodule>" in app_pub[0].json()["ParameterXml"]
     assert res["ok"] is True
 
 
@@ -5406,7 +5421,10 @@ def _mock_app_reconcile(m, backend, *, unique_name="cwx_crmworx", name="CRMWorx"
     (Add/RemoveAppComponents, `sitemaps` POST, sitemap PATCH, publish)."""
     app_row = {"appmoduleid": _APP_ID, "appmoduleidunique": _APP_ID_UNIQUE,
                "uniquename": unique_name, "name": name, "ismanaged": managed}
+    # create_app's existence probe hits the plain (published) collection; reconcile's
+    # find_live resolves the app via the unpublished view (#809) — mock both.
     m.get(backend.url_for("appmodules"), json={"value": [app_row]})
+    m.get(backend.url_for(_UNPUB_MULTIPLE), json={"value": [app_row]})
     m.get(backend.url_for("appmodulecomponents"),
           json={"value": [{"componenttype": ct, "objectid": oid}
                            for ct, oid in live_components]})
@@ -5420,6 +5438,7 @@ def _mock_app_reconcile(m, backend, *, unique_name="cwx_crmworx", name="CRMWorx"
            headers={"OData-EntityId": sm_url})
     m.patch(sm_url, status_code=204)
     m.post(backend.url_for("PublishAllXml"), status_code=204)
+    m.post(backend.url_for("PublishXml"), status_code=204)  # app-scoped publish (#809)
 
 
 def _add_hits(m, backend):
@@ -5475,6 +5494,12 @@ def test_apply_apps_reconcile_adds_missing_component(backend):
     change = res["updated"][0]["components"]
     assert change == [{"kind": "view", "id": _APP_COMPONENT_GUID, "change": "added"}]
     assert len(_publish_hits(m, backend)) == 1  # updated app publishes
+    # find_live resolved the app through the unpublished view, so it converges
+    # regardless of publish state (#809), and the updated app is app-published.
+    assert any("RetrieveUnpublishedMultiple()" in r.url for r in m.request_history
+               if r.method == "GET")
+    assert any(r.method == "POST" and r.url.endswith("PublishXml")
+               for r in m.request_history)
 
 
 def test_apply_apps_reconcile_removes_undeclared_component(backend):
@@ -5562,18 +5587,21 @@ def test_apply_apps_reconcile_managed_sibling_still_reconciles(backend):
         # The managed app resolves managed; the sibling resolves unmanaged with no
         # components and no sitemap → clean skip. requests_mock returns the LAST
         # matching registration, so register the sibling reads keyed by filter.
-        m.get(backend.url_for("appmodules"),
-              json={"value": [{"appmoduleid": _APP_ID,
-                               "appmoduleidunique": _APP_ID_UNIQUE,
-                               "uniquename": "cwx_oob", "name": "OOB",
-                               "ismanaged": True}]},
-              additional_matcher=lambda r: "cwx_oob" in (r.query or ""))
-        m.get(backend.url_for("appmodules"),
-              json={"value": [{"appmoduleid": other_id,
+        oob_row = {"value": [{"appmoduleid": _APP_ID,
+                              "appmoduleidunique": _APP_ID_UNIQUE,
+                              "uniquename": "cwx_oob", "name": "OOB",
+                              "ismanaged": True}]}
+        mine_row = {"value": [{"appmoduleid": other_id,
                                "appmoduleidunique": other_id,
                                "uniquename": "cwx_mine", "name": "Mine",
-                               "ismanaged": False}]},
-              additional_matcher=lambda r: "cwx_mine" in (r.query or ""))
+                               "ismanaged": False}]}
+        # create_app's existence probe hits the plain collection; reconcile's
+        # find_live resolves via the unpublished view (#809) — register both paths.
+        for path in ("appmodules", _UNPUB_MULTIPLE):
+            m.get(backend.url_for(path), json=oob_row,
+                  additional_matcher=lambda r: "cwx_oob" in (r.query or ""))
+            m.get(backend.url_for(path), json=mine_row,
+                  additional_matcher=lambda r: "cwx_mine" in (r.query or ""))
         m.get(backend.url_for("appmodulecomponents"), json={"value": []})
         m.get(backend.url_for("sitemaps"), json={"value": []})
         m.post(backend.url_for("PublishAllXml"), status_code=204)
@@ -5584,17 +5612,17 @@ def test_apply_apps_reconcile_managed_sibling_still_reconciles(backend):
 
 
 def test_apply_apps_reconcile_unreadable_app_skipped(backend):
-    # An existing app can be non-GET-retrievable on some orgs (the Dataverse
-    # publish / app-access window): the create existence probe misses, the POST
-    # hits a duplicate-create fault that `if_exists=skip` swallows, and the re-query
-    # is still empty → `create_app` reports the app present with no id. Reconcile
-    # then cannot read it back to converge, so it reports `skipped`, NOT `failed` —
-    # a run must not error over an app the platform hides. (Guards the #795 create
-    # e2e re-apply, and mirrors the verified-live cloud/on-prem behavior for #796.)
+    # Defensive `unreadable → skipped`: the create existence probe misses, the POST
+    # hits a duplicate-create fault that `if_exists=skip` swallows, the re-query is
+    # still empty → `create_app` reports the app present with no id. Reconcile's
+    # find_live now reads the UNPUBLISHED view (#809), so this path is reached only
+    # when the app is absent even there — reconcile reports `skipped`, NOT `failed`,
+    # so a run never errors over an app it cannot read.
     spec = {"solution": _SOLUTION, "apps": [_app_block()]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
         m.get(backend.url_for("appmodules"), json={"value": []})  # never visible
+        m.get(backend.url_for(_UNPUB_MULTIPLE), json={"value": []})  # absent unpublished too
         m.post(backend.url_for("appmodules"), status_code=500,
                json={"error": {"code": "0x80040216", "message": ""}})
         res = apply_mod.apply_spec(backend, spec, stage_only=False)

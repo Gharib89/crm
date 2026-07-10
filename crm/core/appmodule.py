@@ -29,6 +29,41 @@ from crm.utils.d365_types import BatchOperation
 # Default app-icon web resource the platform ships (MS Learn, op-9-1).
 DEFAULT_APP_ICON = "953b9fac-1e5e-e611-80d6-00155ded156f"
 
+# A Web-API-created appmodule is Unpublished until an app-scoped publish, and the
+# plain `appmodules` collection / by-id GET return **published apps only** — so a
+# fresh app reads back `Does Not Exist` (MS Learn, "Create, manage, and publish
+# model-driven apps using code"; live-confirmed on-prem v9.1 + Dataverse online,
+# #809). These RetrieveUnpublished(Multiple) functions return the current
+# unpublished view (and the same data as a plain retrieve once published), so the
+# app resolves regardless of publish state. `RetrieveUnpublished` is bound to a
+# single appmodule; `RetrieveUnpublishedMultiple` reads the collection.
+_RETRIEVE_UNPUBLISHED = "Microsoft.Dynamics.CRM.RetrieveUnpublished()"
+_RETRIEVE_UNPUBLISHED_MULTIPLE = (
+    "appmodules/Microsoft.Dynamics.CRM.RetrieveUnpublishedMultiple()")
+
+
+def _appmodule_publish_xml(app_id: str) -> str:
+    """PublishXml ParameterXml that publishes a single appmodule (MS Learn).
+
+    A blanket `PublishAllXml` does **not** flip an appmodule to Published — only
+    this app-scoped publish makes a Web-API-created app GET-visible (#809).
+    """
+    return (f"<importexportxml><appmodules><appmodule>{app_id}"
+            f"</appmodule></appmodules></importexportxml>")
+
+
+def publish_app(backend: D365Backend, app_id: str) -> dict[str, Any]:
+    """App-scoped publish (PublishXml) that flips a single appmodule to Published.
+
+    The generic `PublishAllXml` does not publish an appmodule, so a created or
+    updated model-driven app must be published this way to become GET-visible in
+    the `appmodules` collection (#809). A write — short-circuits under dry-run.
+    """
+    # Lazy: solution pulls the wider write stack; keep it off appmodule's import
+    # path (avoids a core import cycle and preserves cold-start startup latency).
+    from crm.core.solution import publish_xml
+    return publish_xml(backend, _appmodule_publish_xml(app_id))
+
 # On-prem v9.x surfaces a duplicate uniquename in the publish-before-read window
 # as a SQL uniqueness violation — code 0x80040216 at HTTP 500 — rather than the
 # duplicate-detected code family cloud returns (which classify_d365_error maps).
@@ -173,14 +208,19 @@ def create_app(
         "created": True, "name": name, "uniquename": unique_name,
         "appmoduleid": app_id, "solution": solution,
     }
-    # Publish BEFORE the read-back: on on-prem 9.1 a freshly created appmodule is
-    # not retrievable until published, so reading first yields a spurious
-    # app_lookup_error in the common create+publish flow (walkthrough §11).
-    maybe_publish(backend, out, publish)
+    # Publish the app itself (app-scoped PublishXml, not a blanket PublishAllXml —
+    # which does not flip an appmodule to Published) so `--publish` makes the new
+    # app GET-visible in the `appmodules` collection (#809).
+    if publish and app_id:
+        publish_app(backend, app_id)
+    # Read-back via RetrieveUnpublished so it succeeds whether or not the app was
+    # published — a plain by-id GET returns published apps only, spuriously
+    # failing the common create-without-publish and pre-publish windows (#809).
     if app_id:
         try:
-            rb = as_dict(backend.get(f"appmodules({app_id})",
-                                     params={"$select": "name,uniquename,appmoduleid"}))
+            rb = as_dict(backend.get(
+                f"appmodules({app_id})/{_RETRIEVE_UNPUBLISHED}",
+                params={"$select": "name,uniquename,appmoduleid"}))
             out["name"] = rb.get("name", name)
         except D365Error as exc:
             out["app_lookup_error"] = f"Read-back failed: {exc}"
@@ -215,8 +255,9 @@ def _resolve_appmodule(backend: D365Backend, name_or_id: str) -> dict[str, Any]:
     rid = normalize_guid(target)
     if rid is not None:
         try:
-            return as_dict(backend.get(f"appmodules({rid})",
-                                       params={"$select": _APPMODULE_SELECT}))
+            return as_dict(backend.get(
+                f"appmodules({rid})/{_RETRIEVE_UNPUBLISHED}",
+                params={"$select": _APPMODULE_SELECT}))
         except D365Error as exc:
             category, _ = classify_d365_error(exc.status, exc.code, str(exc))
             if category == "not_found":
@@ -225,7 +266,7 @@ def _resolve_appmodule(backend: D365Backend, name_or_id: str) -> dict[str, Any]:
             raise
     for field in ("uniquename", "name"):
         rows = backend.get_collection(
-            "appmodules",
+            _RETRIEVE_UNPUBLISHED_MULTIPLE,
             params={"$filter": f"{field} eq {odata_literal(target)}",
                     "$select": _APPMODULE_SELECT},
         )
@@ -599,13 +640,12 @@ def reconcile_app(
     suppressed — so a dry run yields the full drift classification with no write.
 
     Returns ``{appmoduleid, blocked?, component_changes?, sitemap_change?}``, or
-    ``{unreadable: True}`` when the app cannot be read back. `apply` enters this
-    path only after ``create_app`` reports the app already exists (real skip, or a
-    swallowed duplicate-create fault), yet on some orgs a Web-API-created appmodule
-    is not GET-retrievable — the publish/app-access window documented on
-    ``create_app`` (verified live on both on-prem v9.x and Dataverse online). With
-    nothing to read, there is nothing to converge, so the caller reports it
-    ``skipped`` rather than failing a run over an app the platform hides.
+    ``{unreadable: True}`` when the app cannot be read back. The read goes through
+    ``_resolve_appmodule``, which reads the **unpublished** view
+    (``RetrieveUnpublished``) so a freshly Web-API-created — and therefore still
+    unpublished — app resolves regardless of publish state (#809); ``unreadable``
+    now means the app genuinely does not exist. With nothing to read, there is
+    nothing to converge, so the caller reports it ``skipped``.
     """
     try:
         row = _resolve_appmodule(backend, unique_name)

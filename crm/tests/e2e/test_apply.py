@@ -1011,12 +1011,11 @@ def test_apply_creates_app_and_sitemap_exposing_entity(cli, backend, ephemeral_s
 
 
 @pytest.mark.slow
-@pytest.mark.requires_onprem
 @covers("apply")
 def test_apply_reconciles_app_components_and_sitemap(cli, backend, ephemeral_solution,
                                                     ephemeral_entity, unique, tmp_path,
                                                     request):
-    """Converge a live app's component set + sitemap on re-apply (ADR 0024, #796).
+    """Converge a live app's component set + sitemap on re-apply (ADR 0024, #796/#809).
 
     The create path lands an app with a sitemap and one view component; then this
     test drives every reconcile verdict:
@@ -1026,12 +1025,11 @@ def test_apply_reconciles_app_components_and_sitemap(cli, backend, ephemeral_sol
       3. drop it again      → `updated`, a component change `removed`;
       4. drift the sitemap  → `updated`, whole-document converge.
 
-    Gated `requires_onprem`: reconcile MUST read the app back to diff it, and a
-    freshly created appmodule is not reliably GET-retrievable on Dataverse online
-    (the publish-before-read window the create path documents). The app round-trips
-    on on-prem v9.x, so the converge/skip verdicts are verifiable only there; the
-    cloud gap is recorded in `coverage.py` (#796). App + sitemap are cleaned up by
-    id; the two views are OOB system views (not created here), so left alone.
+    Runs on BOTH targets (#809): apply now app-publishes the created app (app-scoped
+    PublishXml) so it is GET-visible, and reconcile reads it back through the
+    unpublished view, so the create→reconcile round-trip converges on Dataverse
+    online as well as on-prem v9.x. App + sitemap are cleaned up by id; the two views
+    are OOB system views (not created here), so left alone.
     """
     logical = ephemeral_entity.lower()
     views = backend.get_collection(
@@ -1081,18 +1079,15 @@ def test_apply_reconciles_app_components_and_sitemap(cli, backend, ephemeral_sol
     if app0[0].get("sitemapid"):
         created_sitemap_id.append(app0[0]["sitemapid"])
 
-    # Reconcile MUST read the app back; on orgs where a Web-API-created appmodule is
-    # not GET-retrievable (the publish/app-access window — observed on both the cloud
-    # test orgs and the on-prem v9.1 test org), there is nothing to converge and the
-    # round-trip is unverifiable. Skip rather than assert a converge that cannot run;
-    # the reconcile classification is proven by the offline matrix in test_apply.py
-    # and, against a pre-existing readable app, by manual live check (see coverage.py).
-    if not backend.get_collection(
-            "appmodules",
-            params={"$filter": f"uniquename eq '{app_unique}'",
-                    "$select": "appmoduleid"}):
-        pytest.skip("appmodule not GET-retrievable on this org; create->reconcile "
-                    "round-trip unverifiable (see coverage.py)")
+    # AC #1 (#809): apply app-published the created app, so it is now GET-visible in
+    # the published `appmodules` collection — no orphan. A hard assert, not a skip:
+    # the whole point of the fix is that this read succeeds on every target.
+    assert backend.get_collection(
+        "appmodules",
+        params={"$filter": f"uniquename eq '{app_unique}'",
+                "$select": "appmoduleid"}), (
+        f"created app {app_unique!r} not GET-visible after apply — app-publish "
+        "did not land (#809)")
 
     # 1. Re-apply unchanged → skipped (idempotent; sitemap XML round-trips stably).
     _res1, data1 = _apply(_spec([{"kind": "view", "id": v1}]))

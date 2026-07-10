@@ -2661,6 +2661,14 @@ def apply_spec(
                  and not replace_blocked and not backend.dry_run)
     if published:
         sol_mod.publish_all(backend)
+        # PublishAllXml does NOT flip an appmodule to Published (#809), so a
+        # created/updated model-driven app stays invisible to the `appmodules`
+        # collection until an app-scoped publish. Publish each touched app after
+        # the blanket publish (so its now-published sitemap/components are in
+        # place), under the same gate. dry-run/stage-only never reach here.
+        for e in applied + updated:
+            if e.get("kind") == "app" and e.get("appmoduleid"):
+                app_mod.publish_app(backend, str(e["appmoduleid"]))
 
     return {
         "ok": not failed and not replace_blocked,
