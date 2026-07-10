@@ -984,12 +984,14 @@ def test_apply_reconciles_and_refuses_form_drift(cli, backend, ephemeral_solutio
     assert converged, f"no converged component reported: {form_updated}"
 
     # 2. REFUSE: a block naming a form that is not an existing main form is an
-    # identity/ownership divergence → replace_blocked, exit 1, no write.
+    # identity/ownership divergence → replace_blocked, exit 1, no write. The entity
+    # block is otherwise valid (only the form name is unresolvable), so the refusal
+    # is the form's, not an up-front spec-validation error.
+    ghost_entity = dict(_entity_block("RC Tab"))
+    ghost_entity["forms"] = [{"name": f"No Such Form {suffix}",
+                              "tabs": [{"name": tab, "label": "X"}]}]
     ghost = {"solution": {"unique_name": ephemeral_solution},
-             "entities": [{
-                 "schema_name": ephemeral_entity,
-                 "forms": [{"name": f"No Such Form {suffix}",
-                            "tabs": [{"name": tab, "label": "X"}]}]}]}
+             "entities": [ghost_entity]}
     res_ref = cli(["--json", "apply", "-f", _write(ghost)], check=False)
     assert res_ref.returncode == 1, f"expected refuse exit 1: {res_ref.stdout}"
     data_ref = json.loads(res_ref.stdout)["data"]
