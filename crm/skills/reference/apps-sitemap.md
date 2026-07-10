@@ -51,16 +51,18 @@ that exposes it land in one run. Re-applying an existing app **converges** its
 component set and sitemap to the declared block (see `reference/authoring.md`).
 
 **Create→sitemap seam — carry the `appmoduleid`, don't re-create.** `app create`
-**stages** by default and then reads the new app back; on on-prem especially, an
-unpublished appmodule isn't query-visible yet, so that read-back commonly fails
-with a `meta.warnings` `app_lookup_error` **even though the app was created** —
-pass `--publish` to publish before the read-back and avoid it. The created
-`appmoduleid` is still in `data` either way — capture it and feed it to
-`add-components`, `build-sitemap`, and teardown. Do **not** re-run `app create`: the app
-already exists, a second create with a *new* `--unique-name` orphans a duplicate, and a
-retry with the *same* name can hit `0x80050135` (duplicate) because the existence
-pre-check rides that same not-yet-published read. Treat `app create` as create-once and
-chain off its returned id.
+**stages** by default; its read-back succeeds either way (staged or `--publish`ed).
+The created `appmoduleid` is in `data` — capture it and feed it to
+`add-components`, `build-sitemap`, and teardown. Do **not** re-run `app create`: the
+app already exists, a second create with a *new* `--unique-name` orphans a
+duplicate, and a retry with the *same* name can still hit `0x80050135` (duplicate)
+because the `--if-exists skip` pre-check queries the **published-only** `appmodules`
+collection, which doesn't see a just-created, not-yet-app-published app. Treat
+`app create` as create-once and chain off its returned id. A bare app (no sitemap
+bound) is unpublishable as an app and stays invisible to a plain `appmodules` GET
+until it's completed and app-published — the `apply` `apps:` block does this
+automatically for a created app once its sitemap is bound (see
+`reference/authoring.md`).
 
 **Teardown — use `app delete <name|id>`, not `entity delete appmodules`.** An app
 won't delete while a dependent row holds a record-level FK to it: a bare

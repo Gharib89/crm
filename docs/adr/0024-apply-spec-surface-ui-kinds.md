@@ -73,6 +73,16 @@ not reconciled.
 | app `uniquename` | **replace-blocked** (identity) |
 | app existence (create) | **create-only** via the existing app-module + sitemap builders |
 
+**Read-back & publish mechanics (#809).** A Web-API-created appmodule is
+Unpublished and invisible to a plain `appmodules` GET until an app-scoped publish,
+and an app-scoped `PublishXml` requires the app to *contain* a sitemap
+(`ValidateApp` rejects a `sitemapnameunique`-only link) — so the create/reconcile
+sitemap path binds the sitemap to the app via `AddAppComponents` (component 62),
+and `apply` app-publishes each *created* app that has a sitemap bound (the
+end-of-run `PublishAllXml` does not publish appmodules). Reads (create read-back,
+reconcile's app find) go through `RetrieveUnpublishedMultiple` so they resolve
+regardless of publish state.
+
 ### Sitemap
 
 A sitemap is owned by its app and converges *with* it (whole-document replacement,

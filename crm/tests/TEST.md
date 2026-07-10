@@ -240,11 +240,12 @@ target-divergent pair: a `@requires_onprem` test replaces a draft clone's genuin
 wholesale (never activating it, to avoid undeletable type=2 activation residue), and a
 `@requires_cloud` test asserts the provenance-wall refusal before any write. The `apply` apps
 reconcile pass (component-set converge + whole-document sitemap converge, #796) is covered by one
-`@requires_onprem` lifecycle test that drives every verdict (unchanged → `skipped`, add/drop a
-component → `updated`, sitemap drift → `updated`) — it is `requires_onprem` because reconcile must
-read the app back to diff it, and a freshly created appmodule's GET-retrievability is org-dependent
-(see `DISCOVERED_BUGS.md` #5, Gharib89/crm#809); the test itself skip-guards on non-retrievability,
-so it currently **skips** rather than passes live on the available orgs. Tests that document
+lifecycle test that drives every verdict (unchanged → `skipped`, add/drop a component →
+`updated`, sitemap drift → `updated`) and now runs on **both** targets (the `requires_onprem`
+gate is removed, #809): apply app-publishes the created app (app-scoped `PublishXml`) and
+reconcile reads it back through `RetrieveUnpublishedMultiple`, so the create→reconcile
+round-trip converges on Dataverse online as well as on-prem v9.x — see `DISCOVERED_BUGS.md` #5
+(now FIXED, Gharib89/crm#809). Tests that document
 a live product defect are
 marked `xfail(strict=False)` so they auto-flip to xpass when the command is fixed.
 
