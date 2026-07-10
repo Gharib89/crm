@@ -915,6 +915,79 @@ class TestListHandlersInFormxml:
         assert r["field"] is None
 
 
+class TestSetHandlerPropsInFormxml:
+    """set_handler_props_in_formxml converges a wired handler's enabled /
+    passExecutionContext flags in place (reconcile — ADR 0024, #793)."""
+
+    def _wired(self, **kw):
+        from crm.core import forms
+        return forms.add_handler_to_formxml(
+            _MAIN_FORMXML, event="onload", function="App.onLoad",
+            library_name="new_lib.js", **kw)
+
+    def test_toggles_enabled_leaving_pass_context_untouched(self):
+        from crm.core import forms
+        out = forms.set_handler_props_in_formxml(
+            self._wired(), event="onload", function="App.onLoad", enabled=False)
+        h = _node(out, "events/event/Handlers/Handler")
+        assert h.get("enabled") == "false"
+        assert h.get("passExecutionContext") == "true"  # untouched
+
+    def test_toggles_pass_context_only(self):
+        from crm.core import forms
+        out = forms.set_handler_props_in_formxml(
+            self._wired(), event="onload", function="App.onLoad", pass_context=False)
+        h = _node(out, "events/event/Handlers/Handler")
+        assert h.get("passExecutionContext") == "false"
+        assert h.get("enabled") == "true"  # untouched
+
+    def test_none_flags_leave_the_handler_byte_identical(self):
+        from crm.core import forms
+        wired = self._wired()
+        out = forms.set_handler_props_in_formxml(
+            wired, event="onload", function="App.onLoad")
+        assert out == wired
+
+    def test_matches_onchange_by_field(self):
+        from crm.core import forms
+        wired = forms.add_handler_to_formxml(
+            _MAIN_FORMXML, event="onchange", function="App.onChange",
+            library_name="new_lib.js", field="new_name")
+        out = forms.set_handler_props_in_formxml(
+            wired, event="onchange", function="App.onChange", field="new_name",
+            enabled=False)
+        h = _node(out, "events/event/Handlers/Handler")
+        assert h.get("enabled") == "false"
+
+    def test_absent_handler_raises(self):
+        from crm.core import forms
+        from crm.utils.d365_backend import D365Error
+        with pytest.raises(D365Error, match="No handler"):
+            forms.set_handler_props_in_formxml(
+                _MAIN_FORMXML, event="onload", function="App.missing", enabled=False)
+
+    def test_onchange_without_field_rejected(self):
+        from crm.core import forms
+        from crm.utils.d365_backend import D365Error
+        with pytest.raises(D365Error, match="onchange handler requires a 'field'"):
+            forms.set_handler_props_in_formxml(
+                _MAIN_FORMXML, event="onchange", function="App.onChange", enabled=False)
+
+    def test_field_on_non_onchange_rejected(self):
+        from crm.core import forms
+        from crm.utils.d365_backend import D365Error
+        with pytest.raises(D365Error, match="only to onchange"):
+            forms.set_handler_props_in_formxml(
+                _MAIN_FORMXML, event="onload", function="App.onLoad",
+                field="new_name", enabled=False)
+
+    def test_preserves_classids(self):
+        from crm.core import forms
+        out = forms.set_handler_props_in_formxml(
+            self._wired(), event="onload", function="App.onLoad", enabled=False)
+        assert "{4273EDBD-AC1D-40D3-9FB2-095C621B552D}" in out
+
+
 def _tabs(formxml):
     """Tab logical names in document order."""
     import xml.etree.ElementTree as ET
@@ -1315,3 +1388,225 @@ class TestConvergeDeclaredForm:
                 publish=False, solution="TestSol", dry_run=False)
         assert result["unmaterialized"] is True
         assert result["components"] == []
+
+
+class TestConvergeDeclaredFormReconcile:
+    """converge_declared_form converges drift in components already present
+    (reconcile slice — ADR 0024, #793): tab/section label, field re-placement,
+    tab order, and handler flags each converge in place and report a diff; an
+    unchanged declaration stays a no-op."""
+
+    _FORM_ROW = {"formid": "aaaaaaaa-0000-0000-0000-000000000001",
+                 "name": "Information", "objecttypecode": "new_project",
+                 "type": 2, "formxml": _MAIN_FORMXML, "isdefault": True}
+
+    def _converge(self, backend, block):
+        from crm.core import forms
+        return forms.converge_declared_form(
+            backend, "new_project", dict(self._FORM_ROW), block)
+
+    def _by(self, changes, kind, name):
+        return next(c for c in changes if c["kind"] == kind and c["name"] == name)
+
+    def test_tab_label_renamed_in_place(self, backend):
+        import xml.etree.ElementTree as ET
+        with requests_mock.Mocker():
+            new_xml, changes = self._converge(
+                backend, {"tabs": [{"name": "general", "label": "Overview"}]})
+        c = self._by(changes, "tab", "general")
+        assert c["change"] == "converged"
+        assert c["diff"] == {"label": {"old": "General", "new": "Overview"}}
+        tab = next(t for t in ET.fromstring(new_xml).findall("./tabs/tab")
+                   if t.get("name") == "general")
+        label_el = tab.find("labels/label")
+        assert label_el is not None
+        assert label_el.get("description") == "Overview"
+
+    def test_matching_tab_label_is_a_no_op(self, backend):
+        with requests_mock.Mocker():
+            new_xml, changes = self._converge(
+                backend, {"tabs": [{"name": "general", "label": "General"}]})
+        assert changes == []
+        assert new_xml == _MAIN_FORMXML
+
+    def test_section_label_renamed_in_place(self, backend):
+        with requests_mock.Mocker():
+            _, changes = self._converge(backend, {"tabs": [
+                {"name": "general",
+                 "sections": [{"name": "summary", "label": "Key facts"}]}]})
+        c = self._by(changes, "section", "summary")
+        assert c["change"] == "converged"
+        assert c["diff"] == {"label": {"old": "Summary", "new": "Key facts"}}
+
+    def test_field_re_placed_to_declared_section(self, backend):
+        # new_name lives in general/summary; declaring it under details/extra
+        # relocates the existing cell (no add).
+        with requests_mock.Mocker():
+            new_xml, changes = self._converge(backend, {"tabs": [
+                {"name": "details",
+                 "sections": [{"name": "extra",
+                               "fields": [{"name": "new_name"}]}]}]})
+        c = self._by(changes, "field", "new_name")
+        assert c["change"] == "converged"
+        assert c["diff"] == {"placement": {
+            "old": {"tab": "general", "section": "summary"},
+            "new": {"tab": "details", "section": "extra"}}}
+        assert _sections(new_xml, "general") == ["summary"]
+        # the field now resolves under details/extra
+        assert 'datafieldname="new_name"' in new_xml
+        assert _controls(new_xml)["new_name"] == "{4273EDBD-AC1D-40D3-9FB2-095C621B552D}"
+
+    def test_field_already_in_place_is_a_no_op(self, backend):
+        with requests_mock.Mocker():
+            _, changes = self._converge(backend, {"tabs": [
+                {"name": "general",
+                 "sections": [{"name": "summary",
+                               "fields": [{"name": "new_name"}]}]}]})
+        assert changes == []
+
+    def test_tab_order_converged_to_declared_sequence(self, backend):
+        # live order is [general, details]; declaring [details, general] reorders.
+        with requests_mock.Mocker():
+            new_xml, changes = self._converge(
+                backend, {"tabs": [{"name": "details"}, {"name": "general"}]})
+        assert _tabs(new_xml) == ["details", "general"]
+        assert any(c["change"] == "converged" and c["kind"] == "tab-order"
+                   for c in changes)
+
+    def test_tab_order_already_correct_is_a_no_op(self, backend):
+        with requests_mock.Mocker():
+            new_xml, changes = self._converge(
+                backend, {"tabs": [{"name": "general"}, {"name": "details"}]})
+        assert changes == []
+        assert new_xml == _MAIN_FORMXML
+
+    _TWO_SECTION_FORM = (
+        '<form><tabs>'
+        '<tab name="general" id="{aaaaaaaa-0000-0000-0000-000000000001}">'
+        '<labels><label description="General" languagecode="1033" /></labels>'
+        '<columns><column width="100%"><sections>'
+        '<section name="s1" id="{bbbbbbbb-0000-0000-0000-000000000002}">'
+        '<labels><label description="S1" languagecode="1033" /></labels>'
+        '<rows></rows></section>'
+        '<section name="s2" id="{cccccccc-0000-0000-0000-000000000003}">'
+        '<labels><label description="S2" languagecode="1033" /></labels>'
+        '<rows></rows></section>'
+        '</sections></column></columns></tab></tabs></form>')
+
+    def test_section_order_converged_within_tab(self, backend):
+        # live section order is [s1, s2]; declaring [s2, s1] reorders in place.
+        row = {**self._FORM_ROW, "formxml": self._TWO_SECTION_FORM}
+        from crm.core import forms
+        with requests_mock.Mocker():
+            new_xml, changes = forms.converge_declared_form(
+                backend, "new_project", row,
+                {"tabs": [{"name": "general", "sections": [
+                    {"name": "s2"}, {"name": "s1"}]}]})
+        assert _sections(new_xml, "general") == ["s2", "s1"]
+        assert any(c["change"] == "converged" and c["kind"] == "section-order"
+                   for c in changes)
+
+    def test_handler_flags_converged_in_place(self, backend):
+        from crm.core import forms
+        live = forms.add_handler_to_formxml(
+            _MAIN_FORMXML, event="onload", function="App.onLoad",
+            library_name="new_lib.js")  # enabled=true by default
+        row = {**self._FORM_ROW, "formxml": live}
+        with requests_mock.Mocker():
+            _, changes = forms.converge_declared_form(
+                backend, "new_project", row,
+                {"handlers": [{"event": "onload", "function": "App.onLoad",
+                               "library": "new_lib.js", "enabled": False}]})
+        c = self._by(changes, "handler", "App.onLoad")
+        assert c["change"] == "converged"
+        assert c["diff"] == {"enabled": {"old": True, "new": False}}
+
+    def test_present_handler_matching_flags_is_a_no_op(self, backend):
+        from crm.core import forms
+        live = forms.add_handler_to_formxml(
+            _MAIN_FORMXML, event="onload", function="App.onLoad",
+            library_name="new_lib.js")
+        row = {**self._FORM_ROW, "formxml": live}
+        with requests_mock.Mocker():
+            _, changes = forms.converge_declared_form(
+                backend, "new_project", row,
+                {"handlers": [{"event": "onload", "function": "App.onLoad",
+                               "library": "new_lib.js", "enabled": True,
+                               "pass_context": True}]})
+        assert changes == []
+
+
+class TestApplyFormSpecReconcile:
+    """apply_form_spec drives the reconcile: it commits converged drift, reports a
+    would-converge preview under dry-run, and refuses an identity/ownership
+    divergence (a named form that is not an existing main form) with no write
+    (ADR 0024, #793)."""
+
+    _FORM_ROW = {"formid": "aaaaaaaa-0000-0000-0000-000000000001",
+                 "name": "Information", "objecttypecode": "new_project",
+                 "type": 2, "formxml": _MAIN_FORMXML, "isdefault": True}
+
+    def test_commits_converged_drift(self, backend):
+        from crm.core import forms
+        with requests_mock.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": [self._FORM_ROW]})
+            patched = m.patch(
+                backend.url_for(f"systemforms({self._FORM_ROW['formid']})"),
+                status_code=204)
+            result = forms.apply_form_spec(
+                backend, "new_project",
+                {"tabs": [{"name": "general", "label": "Overview"}]},
+                publish=False, solution="TestSol", dry_run=False)
+        assert result["committed"] is True
+        assert not result.get("blocked")
+        assert [c["change"] for c in result["components"]] == ["converged"]
+        assert patched.called
+
+    def test_dry_run_previews_convergence_without_writing(self, dry_backend):
+        from crm.core import forms
+        with requests_mock.Mocker() as m:
+            m.get(_forms_url(dry_backend), json={"value": [self._FORM_ROW]})
+            patched = m.patch(
+                dry_backend.url_for(f"systemforms({self._FORM_ROW['formid']})"),
+                status_code=204)
+            result = forms.apply_form_spec(
+                dry_backend, "new_project",
+                {"tabs": [{"name": "general", "label": "Overview"}]},
+                publish=False, solution="TestSol", dry_run=True)
+        assert result["committed"] is False
+        assert result["components"][0]["change"] == "converged"
+        assert not patched.called
+
+    def test_unchanged_form_reports_no_components(self, backend):
+        from crm.core import forms
+        with requests_mock.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": [self._FORM_ROW]})
+            patched = m.patch(
+                backend.url_for(f"systemforms({self._FORM_ROW['formid']})"),
+                status_code=204)
+            result = forms.apply_form_spec(
+                backend, "new_project",
+                {"tabs": [{"name": "general", "label": "General"}]},
+                publish=False, solution="TestSol", dry_run=False)
+        assert result["components"] == []
+        assert result["committed"] is False
+        assert not patched.called
+
+    def test_unknown_named_form_is_blocked_not_written(self, backend):
+        from crm.core import forms
+        with requests_mock.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": [self._FORM_ROW]})
+            patched = m.patch(
+                backend.url_for(f"systemforms({self._FORM_ROW['formid']})"),
+                status_code=204)
+            result = forms.apply_form_spec(
+                backend, "new_project",
+                {"name": "Ghost Form", "tabs": [{"name": "general", "label": "X"}]},
+                publish=False, solution="TestSol", dry_run=False)
+        assert result["committed"] is False
+        assert result["components"] == []
+        assert len(result["blocked"]) == 1
+        blk = result["blocked"][0]
+        assert blk["kind"] == "form" and blk["name"] == "Ghost Form"
+        assert "Ghost Form" in blk["reason"]
+        assert not patched.called
