@@ -2220,8 +2220,19 @@ def apply_spec(
                 converged = [c for c in changes if c.get("change") == "converged"]
                 if converged:
                     if backend.dry_run:
-                        diff = {f"{c['kind']}:{c['name']}": c["diff"]
-                                for c in converged if c.get("diff")}
+                        # Key each converged component by its FULLY-QUALIFIED identity
+                        # — a bare kind:name collides when the same name recurs under
+                        # different parents (a section name is unique only within its
+                        # tab; a handler function only within its event), which would
+                        # silently drop entries from the drift report.
+                        diff = {}
+                        for c in converged:
+                            if not c.get("diff"):
+                                continue
+                            scope = c.get("tab") or c.get("event")
+                            key = (f"{c['kind']}:{scope}/{c['name']}" if scope
+                                   else f"{c['kind']}:{c['name']}")
+                            diff[key] = c["diff"]
                         if diff:
                             entry["diff"] = diff
                     updated.append(entry)

@@ -5096,6 +5096,42 @@ def test_apply_forms_phase_dry_run_planned_writes_nothing(dry_backend):
     assert res["staged"] is False
 
 
+def test_apply_forms_phase_dry_run_diff_keys_qualified_by_scope(dry_backend):
+    # Two tabs each carry a section named "info"; both labels drift. The dry-run
+    # diff map must keep BOTH (keyed by tab), not collapse them under one
+    # `section:info` key.
+    two_tab = (
+        '<form><tabs>'
+        '<tab name="t1" id="{aaaa1111-0000-0000-0000-000000000001}">'
+        '<labels><label description="T1" languagecode="1033" /></labels>'
+        '<columns><column width="100%"><sections>'
+        '<section name="info" id="{bbbb2222-0000-0000-0000-000000000002}">'
+        '<labels><label description="OLD-A" languagecode="1033" /></labels>'
+        '<rows></rows></section></sections></column></columns></tab>'
+        '<tab name="t2" id="{cccc3333-0000-0000-0000-000000000003}">'
+        '<labels><label description="T2" languagecode="1033" /></labels>'
+        '<columns><column width="100%"><sections>'
+        '<section name="info" id="{dddd4444-0000-0000-0000-000000000004}">'
+        '<labels><label description="OLD-B" languagecode="1033" /></labels>'
+        '<rows></rows></section></sections></column></columns></tab>'
+        '</tabs></form>')
+    form_row = {**_FORM_ROW, "formxml": two_tab}
+    spec = {"solution": _SOLUTION, "entities": [{**_ENTITY, "forms": [{"tabs": [
+        {"name": "t1", "sections": [{"name": "info", "label": "New A"}]},
+        {"name": "t2", "sections": [{"name": "info", "label": "New B"}]}]}]}]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_create(m, dry_backend, exists=True)
+        _mock_entity_create(m, dry_backend, schema="contoso_Project", logical="contoso_project", exists=True)
+        m.get(dry_backend.url_for("systemforms"), json={"value": [form_row]})
+        m.get(dry_backend.url_for("solutioncomponents"), json={"value": []})
+        res = apply_mod.apply_spec(dry_backend, spec, stage_only=False)
+    assert _kinds(res["updated"]) == ["form"]
+    diff = res["updated"][0]["diff"]
+    assert set(diff) == {"section:t1/info", "section:t2/info"}
+    assert diff["section:t1/info"] == {"label": {"old": "OLD-A", "new": "New A"}}
+    assert diff["section:t2/info"] == {"label": {"old": "OLD-B", "new": "New B"}}
+
+
 def test_apply_forms_phase_idempotent_skip(backend):
     # A form that already carries the declared tab/section is skipped (no PATCH).
     already = (
