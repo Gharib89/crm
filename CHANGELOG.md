@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.66.1 (2026-07-10)
+
+### Bug Fixes
+
+- **apply**: App-publish and read back model-driven apps so apply-created apps are visible
+  ([#812](https://github.com/Gharib89/crm/pull/812),
+  [`fba9953`](https://github.com/Gharib89/crm/commit/fba995347246992efa80a16d8feb89f6e6778c17))
+
+
 ## v1.66.0 (2026-07-10)
 
 ### Bug Fixes
