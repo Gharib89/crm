@@ -416,9 +416,9 @@ picklist on a new option set, a solution on a new publisher) are reported
 ## Save a drift report as a plan artifact
 
 `-o/--plan-out <path>` serializes the `--dry-run` drift report to a **plan** — a
-self-contained JSON artifact you can review, attach to a PR or ticket, and (in a
-later release) execute. It is valid **only** with the global `--dry-run` flag
-(a usage error, exit 2, otherwise).
+self-contained JSON artifact you can review, attach to a PR or ticket, and later
+execute with `--from-plan` (below). It is valid **only** with the global
+`--dry-run` flag (a usage error, exit 2, otherwise).
 
 ```bash
 crm --dry-run --json apply -f project.yaml -o project.plan.json
@@ -438,6 +438,14 @@ and the exit code is unchanged. A plan captures:
 - **verdict records** — one per component: its `kind`, `name`, `verdict`
   (`planned` / `updated` / `skipped` / `replace_blocked` / `pruned` / `failed`),
   and the field-level `diff` where the engine computes one.
+
+Verdict records cover **every** apply kind — schema, automation, and the UI kinds
+(forms, and model-driven apps + their sitemaps, ADR 0024) alike, since `kind` is a
+free string. An `updated` form carries its per-component converge diff; an
+`updated` app carries a changed-field set of its component-add/remove and sitemap
+actions — so a whole customization (schema + UI) rides one approval-gated plan.
+Forms and apps stay **out of `--prune`** (ADR 0024), so a `pruned` record never
+names one.
 
 The command's own JSON envelope also reports the written path in `meta.plan_out`.
 
@@ -482,7 +490,9 @@ zero writes, `ok=false`, exit 1, with each diverged component reported under
 `data.divergences` as "plan said X, live now computes Y". The remedy is always to
 re-plan and re-approve. Without prune intent, a stray new solution component that
 surfaces live is informational and does not invalidate the plan; under prune
-intent the approved deletions participate in the gate.
+intent the approved deletions participate in the gate. A live **UI edit** between
+plan and apply — a form's layout or an app's sitemap changed out of band — shifts
+that component's recomputed action and is caught by the same gate.
 
 `--dry-run --from-plan` stops after the compare (verify mode): it reports
 `data.plan_valid` (`true`/`false`) and writes nothing — use it as a CI gate that a
