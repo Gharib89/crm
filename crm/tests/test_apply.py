@@ -5152,3 +5152,36 @@ def test_apply_rejects_non_mapping_form_handler(backend):
         {"handlers": [123]}]}]}
     with pytest.raises(D365Error, match="handler must be a mapping"):
         apply_mod.apply_spec(backend, spec, stage_only=False)
+
+
+def test_apply_rejects_empty_form_tab_name(backend):
+    # An empty required identifier is malformed — rejected up front, not written.
+    spec = {"solution": _SOLUTION, "entities": [{**_ENTITY, "forms": [
+        {"tabs": [{"name": "  "}]}]}]}
+    with pytest.raises(D365Error, match="must be a non-empty string"):
+        apply_mod.apply_spec(backend, spec, stage_only=False)
+
+
+def test_apply_rejects_bool_form_columns(backend):
+    # bool is an int subclass; `columns: true` must not slip through as 1.
+    spec = {"solution": _SOLUTION, "entities": [{**_ENTITY, "forms": [
+        {"tabs": [{"name": "custom", "columns": True}]}]}]}
+    with pytest.raises(D365Error, match="columns must be an integer"):
+        apply_mod.apply_spec(backend, spec, stage_only=False)
+
+
+def test_apply_rejects_non_string_handler_field(backend):
+    spec = {"solution": _SOLUTION, "entities": [{**_ENTITY, "forms": [
+        {"handlers": [{"event": "onchange", "field": 123,
+                       "function": "F", "library": "l.js"}]}]}]}
+    with pytest.raises(D365Error, match="'field' must be a string"):
+        apply_mod.apply_spec(backend, spec, stage_only=False)
+
+
+def test_apply_rejects_non_bool_handler_enabled(backend):
+    # A quoted `enabled: "false"` would be truthy under bool(); reject up front.
+    spec = {"solution": _SOLUTION, "entities": [{**_ENTITY, "forms": [
+        {"handlers": [{"event": "onload", "function": "F", "library": "l.js",
+                       "enabled": "false"}]}]}]}
+    with pytest.raises(D365Error, match="'enabled' must be true or false"):
+        apply_mod.apply_spec(backend, spec, stage_only=False)

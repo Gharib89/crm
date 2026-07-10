@@ -138,13 +138,16 @@ def _require_str(obj: Any, key: str, label: str, *, optional: bool = False) -> N
         raise D365Error(f"{label}: missing required field {key!r}.")
     if not isinstance(cobj[key], str):
         raise D365Error(f"{label}: {key!r} must be a string.")
+    if not optional and not cast("str", cobj[key]).strip():
+        raise D365Error(f"{label}: {key!r} must be a non-empty string.")
 
 
 def _validate_columns(value: Any, label: str) -> None:
     """A layout column count must be an integer in the designer's 1–4 range."""
     if value is None:
         return
-    if not isinstance(value, int) or not 1 <= value <= 4:
+    # bool is an int subclass, so `columns: true` would otherwise validate as 1.
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 4:
         raise D365Error(f"{label}: columns must be an integer between 1 and 4.")
 
 
@@ -183,6 +186,10 @@ def _validate_form_block(block: Any, elabel: str) -> None:
         hlabel = f"{label} handler"
         _require_str(handler, "function", hlabel)
         _require_str(handler, "library", hlabel)
+        _require_str(handler, "field", hlabel, optional=True)
+        for flag in ("pass_context", "enabled"):
+            if flag in handler and not isinstance(handler[flag], bool):
+                raise D365Error(f"{hlabel}: {flag!r} must be true or false.")
         event = handler.get("event")
         if event not in forms_mod.EVENT_CHOICES:
             raise D365Error(
