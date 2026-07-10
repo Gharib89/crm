@@ -1044,6 +1044,9 @@ _DRY_RUN_FLAG = {
     "remove-section": "would_remove",
     "rename-section": "would_rename",
     "move-section": "would_move",
+    # `apply -f` convergence commits the whole declared layout in one PATCH (ADR
+    # 0024); the caller gates dry-run itself, so this flag is only a placeholder.
+    "apply-form": "would_apply",
 }
 
 
@@ -1424,3 +1427,155 @@ def clone_form_to_entity(
             f"Could not parse formid from response: {entity_id_url!r}")
     maybe_publish(backend, out, publish)
     return out
+
+
+# --- `apply -f` form convergence (ADR 0024) -------------------------------------
+#
+# A spec `forms:` block converges the entity's platform-generated main form: the
+# platform auto-creates a valid, renderable main form on entity create, and this
+# layers the declared tabs / sections / fields / libraries / handlers onto that
+# guaranteed-valid base with the same integrity-checked builders the `crm form`
+# verbs use — the CLI never forges a from-scratch FormXml skeleton. The create
+# path here is *additive and idempotent*: a component already on the form is left
+# untouched (re-apply is a no-op); converging drift in a component that is present
+# but differs is the reconcile slice (#793), out of scope here.
+
+
+def _tab_present(root: "ET.Element", name: str) -> bool:
+    tabs = root.find("./tabs")
+    return tabs is not None and any(t.get("name") == name for t in tabs.findall("tab"))
+
+
+def _section_present(root: "ET.Element", tab_name: str, section_name: str) -> bool:
+    tabs = root.find("./tabs")
+    if tabs is None:
+        return False
+    for tab in tabs.findall("tab"):
+        if tab.get("name") != tab_name:
+            continue
+        return any(s.get("name") == section_name
+                   for s in tab.findall("./columns/column/sections/section"))
+    return False
+
+
+def _library_present(root: "ET.Element", name: str) -> bool:
+    libs = root.find("formLibraries")
+    return libs is not None and any(
+        lib.get("name") == name for lib in libs.findall("Library"))
+
+
+def _blocks(value: Any) -> "list[dict[str, Any]]":
+    """A spec sub-collection coerced to a list of mapping blocks (empty when
+    absent). Validation (:mod:`crm.core.apply`) has already rejected a malformed
+    shape, so this only narrows the ``Any`` from the parsed spec for the type
+    checker."""
+    if not isinstance(value, list):
+        return []
+    return [cast("dict[str, Any]", b) for b in cast("list[Any]", value)
+            if isinstance(b, dict)]
+
+
+def _handler_present(
+    formxml: str, *, event: str, function: str, field: str | None
+) -> bool:
+    return any(
+        h["event"] == event and h["function"] == function
+        and (h["field"] or None) == (field or None)
+        for h in list_handlers_in_formxml(formxml))
+
+
+def converge_declared_form(
+    backend: D365Backend, entity: str, form_row: dict[str, Any],
+    block: dict[str, Any],
+) -> "tuple[str, list[dict[str, Any]]]":
+    """Layer a declared ``forms:`` block onto ``form_row``'s live formxml.
+
+    Returns ``(new_formxml, added)`` where ``added`` lists the components the
+    layering introduced (empty ⇒ the form already satisfies the declaration, so
+    the caller skips the write). Additive and idempotent (ADR 0024): a tab,
+    section, field, library, or handler already present is left untouched.
+
+    Field control ``classid`` values resolve from live attribute metadata (a read
+    that runs even under dry-run); a declared library must already exist as a web
+    resource (:func:`_resolve_library_name` asserts it). Fields nest under a
+    section, sections under a tab, so a declared tab/section is added before the
+    fields that target it.
+    """
+    formxml: str = cast("str", form_row.get("formxml", ""))
+    added: list[dict[str, Any]] = []
+    for tab in _blocks(block.get("tabs")):
+        tname = str(tab["name"])
+        tlabel = str(tab.get("label") or tname)
+        if not _tab_present(_parse_formxml(formxml), tname):
+            formxml = add_tab_to_formxml(
+                formxml, name=tname, label=tlabel, columns=int(tab.get("columns", 1)))
+            added.append({"kind": "tab", "name": tname})
+        for section in _blocks(tab.get("sections")):
+            sname = str(section["name"])
+            slabel = str(section.get("label") or sname)
+            if not _section_present(_parse_formxml(formxml), tname, sname):
+                formxml = add_section_to_formxml(
+                    formxml, name=sname, label=slabel, tab=tname,
+                    columns=int(section.get("columns", 1)))
+                added.append({"kind": "section", "name": sname, "tab": tname})
+            for fld in _blocks(section.get("fields")):
+                fname = str(fld["name"])
+                if _find_field_control(_parse_formxml(formxml), fname) is not None:
+                    continue
+                info = attribute_info(backend, entity, fname)
+                classid = classid_for_attribute_type(str(info.get("AttributeType") or ""))
+                label = str(fld.get("label") or _attr_label(info, fname))
+                formxml = add_field_to_formxml(
+                    formxml, datafieldname=fname, classid=classid,
+                    label=label, tab=tname, section=sname)
+                added.append(
+                    {"kind": "field", "name": fname, "tab": tname, "section": sname})
+    for lib in cast("list[Any]", block.get("libraries") or []):
+        library_name = _resolve_library_name(backend, str(lib))
+        if not _library_present(_parse_formxml(formxml), library_name):
+            formxml = add_library_to_formxml(formxml, library_name=library_name)
+            added.append({"kind": "library", "name": library_name})
+    for handler in _blocks(block.get("handlers")):
+        event = str(handler["event"])
+        function = str(handler["function"])
+        field = handler.get("field")
+        field_str = str(field) if field is not None else None
+        library_name = _resolve_library_name(backend, str(handler["library"]))
+        if not _handler_present(formxml, event=event, function=function, field=field_str):
+            formxml = add_handler_to_formxml(
+                formxml, event=event, function=function, library_name=library_name,
+                field=field_str, pass_context=bool(handler.get("pass_context", True)),
+                enabled=bool(handler.get("enabled", True)))
+            added.append({"kind": "handler", "name": function, "event": event})
+    return formxml, added
+
+
+def apply_form_spec(
+    backend: D365Backend, entity: str, block: dict[str, Any], *,
+    publish: bool, solution: str | None, dry_run: bool,
+) -> dict[str, Any]:
+    """Converge one declared ``forms:`` block onto ``entity``'s main form.
+
+    The single public entry point `apply` drives (ADR 0024). Selects the target
+    main form (``block['name']``, else the entity's primary main form), computes
+    the additive convergence, and — on a real run with something to add — PATCHes
+    it in one write. Reads are forced-real, so a dry-run still reads live and
+    reports the would-add set without writing.
+
+    Returns ``{form, formid, components, committed}``; ``{unmaterialized: True}``
+    when the entity has no main form yet (a greenfield entity not published this
+    run), which the caller reports as ``planned``.
+    """
+    forms_list = read_entity_forms(backend, entity)
+    if not forms_list:
+        return {"form": block.get("name"), "components": [], "committed": False,
+                "unmaterialized": True}
+    form_row = _select_form(forms_list, block.get("name"))
+    new_xml, added = converge_declared_form(backend, entity, form_row, block)
+    committed = bool(added) and not dry_run
+    if committed:
+        _commit_form_change(
+            backend, form_row, new_xml, action="apply-form",
+            publish=publish, solution=solution)
+    return {"form": form_row.get("name"), "formid": form_row.get("formid"),
+            "components": added, "committed": committed}

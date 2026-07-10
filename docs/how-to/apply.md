@@ -120,6 +120,21 @@ entities:
         lookup_display: Project
     views:
       - {name: Active Projects, columns: [contoso_name, contoso_code]}
+    forms:                             # converge the entity's main form (ADR 0024)
+      - # name omitted — targets the entity's primary main form
+        tabs:
+          - name: contoso_details      # required; logical tab name (scripts bind to it)
+            label: Details             # optional (defaults to name)
+            columns: 2                 # optional, 1-4
+            sections:
+              - name: contoso_info
+                label: Info
+                fields:
+                  - {name: contoso_code, label: Code}   # attribute logical name
+        libraries: [contoso_/scripts/project.js]        # web-resource names
+        handlers:
+          - {event: onload, function: Contoso.onLoad, library: contoso_/scripts/project.js}
+          - {event: onchange, field: contoso_code, function: Contoso.onCode, library: contoso_/scripts/project.js}
 webresources:
   - name: contoso_/scripts/project.js   # required, unique name (must include publisher prefix)
     file: scripts/project.js            # required, path relative to the spec file
@@ -219,6 +234,36 @@ privilege also drifts in the same run (triggering a fresh replace). A
 satisfied — is a convergent no-op. To force a remove-only reconciliation, make a
 no-op edit to another privilege in the role (e.g. increment and reset a depth),
 or use `crm security set-role-privileges` directly.
+
+## Forms: converge the entity's main form
+
+A `forms:` block is nested under an entity and **converges that entity's
+platform-generated main form** (ADR 0024) — `apply` never forges a form from
+scratch. The platform auto-creates a valid main form on entity create; the block
+layers its declared structure onto that form and commits one `formxml` PATCH:
+
+- `name` (optional) selects among the entity's main forms; omitted, the primary
+  main form is used. A declared `name` must match an existing main form.
+- `tabs[]` — each needs a `name` (the logical name scripts bind to); `label` and
+  `columns` (1-4) are optional. `sections[]` nest under a tab (same `name` /
+  `label` / `columns` shape). `fields[]` nest under a section; each needs the
+  attribute's logical `name` and takes an optional `label` (the control `classid`
+  is resolved from the attribute's type).
+- `libraries[]` — JS web-resource names to register on the form (each must already
+  exist as a web resource; declare it under `webresources:` in the same spec to
+  seed it first).
+- `handlers[]` — event wiring. Each needs `event` (`onload` / `onsave` /
+  `onchange`), `function`, and `library`; an `onchange` handler also needs the
+  `field` it fires on (and only `onchange` takes a `field`). `pass_context`
+  (default true) and `enabled` (default true) are optional.
+
+The create path is **additive and idempotent**: a declared tab / section / field /
+library / handler that is absent is added; one already present is left untouched,
+so re-applying an unchanged spec reports the form `skipped`. `--dry-run` classifies
+the form `planned` (a greenfield entity's main form not yet materialised is also
+`planned`). Forms publish with the rest of the customization at the end-of-run
+`PublishAllXml`, and `--stage-only` defers that publish like every other kind.
+Forms are **out of scope for `--prune`**.
 
 ## Plug-ins: assembly, types, steps, and images
 

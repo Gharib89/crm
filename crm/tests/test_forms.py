@@ -1184,3 +1184,121 @@ class TestMoveSectionInFormxml:
         with pytest.raises(D365Error, match="no_such_sec"):
             forms.move_section_in_formxml(
                 two, section="new_sec", tab="general", after="no_such_sec")
+
+
+def _attr_url(backend, attr):
+    return backend.url_for(
+        f"EntityDefinitions(LogicalName='new_project')/Attributes(LogicalName='{attr}')")
+
+
+_WR_LIB = {"value": [{"webresourceid": "99990000-0000-0000-0000-000000000001",
+                      "name": "new_lib.js", "webresourcetype": 3}]}
+
+
+class TestConvergeDeclaredForm:
+    """converge_declared_form layers a declared forms: block onto a live form
+    additively and idempotently (ADR 0024)."""
+
+    _FORM_ROW = {"formid": "aaaaaaaa-0000-0000-0000-000000000001",
+                 "name": "Information", "objecttypecode": "new_project",
+                 "type": 2, "formxml": _MAIN_FORMXML, "isdefault": True}
+
+    def _block(self):
+        return {
+            "tabs": [{
+                "name": "custom", "label": "Custom", "columns": 2,
+                "sections": [{
+                    "name": "info", "label": "Info",
+                    "fields": [{"name": "new_owner", "label": "Owner"}],
+                }],
+            }],
+            "libraries": ["new_lib.js"],
+            "handlers": [{"event": "onload", "function": "App.onLoad",
+                          "library": "new_lib.js"}],
+        }
+
+    def test_adds_all_declared_components(self, backend):
+        from crm.core import forms
+        with requests_mock.Mocker() as m:
+            m.get(_attr_url(backend, "new_owner"),
+                  json={"AttributeType": "Lookup", "LogicalName": "new_owner"})
+            m.get(backend.url_for("webresourceset"), json=_WR_LIB)
+            new_xml, added = forms.converge_declared_form(
+                backend, "new_project", dict(self._FORM_ROW), self._block())
+        kinds = [(a["kind"], a["name"]) for a in added]
+        assert kinds == [("tab", "custom"), ("section", "info"),
+                         ("field", "new_owner"), ("library", "new_lib.js"),
+                         ("handler", "App.onLoad")]
+        assert 'name="custom"' in new_xml
+        assert 'name="info"' in new_xml
+        assert 'datafieldname="new_owner"' in new_xml
+        assert _LOOKUP_CLASSID in new_xml
+        assert '<Library name="new_lib.js"' in new_xml
+        assert 'functionName="App.onLoad"' in new_xml
+
+    def test_reapply_is_idempotent(self, backend):
+        from crm.core import forms
+        with requests_mock.Mocker() as m:
+            m.get(_attr_url(backend, "new_owner"),
+                  json={"AttributeType": "Lookup", "LogicalName": "new_owner"})
+            m.get(backend.url_for("webresourceset"), json=_WR_LIB)
+            once, _ = forms.converge_declared_form(
+                backend, "new_project", dict(self._FORM_ROW), self._block())
+            row2 = {**self._FORM_ROW, "formxml": once}
+            twice, added = forms.converge_declared_form(
+                backend, "new_project", row2, self._block())
+        assert added == []
+        assert twice == once
+
+    def test_existing_tab_gets_new_section_not_duplicate(self, backend):
+        from crm.core import forms
+        block = {"tabs": [{"name": "general", "label": "General",
+                           "sections": [{"name": "s2", "label": "S2"}]}]}
+        with requests_mock.Mocker():
+            _, added = forms.converge_declared_form(
+                backend, "new_project", dict(self._FORM_ROW), block)
+        assert [(a["kind"], a["name"]) for a in added] == [("section", "s2")]
+
+    def test_apply_form_spec_commits_and_reports(self, backend):
+        from crm.core import forms
+        with requests_mock.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": [self._FORM_ROW]})
+            m.get(_attr_url(backend, "new_owner"),
+                  json={"AttributeType": "Lookup", "LogicalName": "new_owner"})
+            m.get(backend.url_for("webresourceset"), json=_WR_LIB)
+            patched = m.patch(
+                backend.url_for(f"systemforms({self._FORM_ROW['formid']})"),
+                status_code=204)
+            result = forms.apply_form_spec(
+                backend, "new_project", self._block(),
+                publish=False, solution="TestSol", dry_run=False)
+        assert result["committed"] is True
+        assert len(result["components"]) == 5
+        assert patched.called
+
+    def test_apply_form_spec_dry_run_writes_nothing(self, dry_backend):
+        from crm.core import forms
+        with requests_mock.Mocker() as m:
+            m.get(_forms_url(dry_backend), json={"value": [self._FORM_ROW]})
+            m.get(_attr_url(dry_backend, "new_owner"),
+                  json={"AttributeType": "Lookup", "LogicalName": "new_owner"})
+            m.get(dry_backend.url_for("webresourceset"), json=_WR_LIB)
+            patched = m.patch(
+                dry_backend.url_for(f"systemforms({self._FORM_ROW['formid']})"),
+                status_code=204)
+            result = forms.apply_form_spec(
+                dry_backend, "new_project", self._block(),
+                publish=False, solution="TestSol", dry_run=True)
+        assert result["committed"] is False
+        assert len(result["components"]) == 5
+        assert not patched.called
+
+    def test_apply_form_spec_unmaterialized_when_no_main_form(self, backend):
+        from crm.core import forms
+        with requests_mock.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": []})
+            result = forms.apply_form_spec(
+                backend, "new_project", self._block(),
+                publish=False, solution="TestSol", dry_run=False)
+        assert result["unmaterialized"] is True
+        assert result["components"] == []
