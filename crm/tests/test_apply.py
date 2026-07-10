@@ -5239,6 +5239,7 @@ def test_apply_apps_phase_creates_app_components_and_sitemap(backend):
     assert _kinds(res["applied"]) == ["app"]
     assert res["applied"][0]["name"] == "cwx_crmworx"
     assert res["applied"][0]["appmoduleid"] == _APP_ID
+    assert res["applied"][0]["sitemapid"] == _SITEMAP_ID
     # Component binding fired with the declared (kind, guid).
     add = _app_posts(m, backend, "AddAppComponents")
     assert len(add) == 1

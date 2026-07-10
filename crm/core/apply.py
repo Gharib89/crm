@@ -2499,14 +2499,16 @@ def apply_spec(
             sitemap = app_spec.get("sitemap")
             if sitemap and app_id:
                 areas, groups, subareas = _sitemap_tuples(sitemap)
-                _call(entry, lambda a=app_spec, areas=areas, groups=groups,
-                      subareas=subareas: app_mod.build_sitemap(
-                          backend,
-                          sitemap_name=a["unique_name"],
-                          areas=areas, groups=groups, subareas=subareas,
-                          unique_name=a["unique_name"],
-                          solution=solution_name,
-                          publish=False), failed)
+                sm_result = _call(entry, lambda a=app_spec, areas=areas, groups=groups,
+                                  subareas=subareas: app_mod.build_sitemap(
+                                      backend,
+                                      sitemap_name=a["unique_name"],
+                                      areas=areas, groups=groups, subareas=subareas,
+                                      unique_name=a["unique_name"],
+                                      solution=solution_name,
+                                      publish=False), failed)
+                if sm_result.get("sitemapid"):
+                    entry["sitemapid"] = sm_result["sitemapid"]
     except _Aborted:
         pass
 
