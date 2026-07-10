@@ -2608,6 +2608,13 @@ def apply_spec(
                                       publish=False), failed)
                 if sm_result.get("sitemapid"):
                     entry["sitemapid"] = sm_result["sitemapid"]
+                    # Bind the sitemap to the app (component 62) so the app contains
+                    # a sitemap and the end-of-run app-publish passes ValidateApp —
+                    # the sitemapnameunique link alone does not (#809).
+                    _call(entry, lambda app_id=app_id, smid=sm_result["sitemapid"]:
+                          app_mod.add_app_components(
+                              backend, app_id=app_id,
+                              components=[("sitemap", str(smid))]), failed)
     except _Aborted:
         pass
 
@@ -2661,13 +2668,15 @@ def apply_spec(
                  and not replace_blocked and not backend.dry_run)
     if published:
         sol_mod.publish_all(backend)
-        # PublishAllXml does NOT flip an appmodule to Published (#809), so a
-        # created/updated model-driven app stays invisible to the `appmodules`
-        # collection until an app-scoped publish. Publish each touched app after
-        # the blanket publish (so its now-published sitemap/components are in
-        # place), under the same gate. dry-run/stage-only never reach here.
-        for e in applied + updated:
-            if e.get("kind") == "app" and e.get("appmoduleid"):
+        # PublishAllXml does NOT flip an appmodule to Published (#809), so a newly
+        # created app stays invisible to the `appmodules` collection until an
+        # app-scoped publish. Publish each created app that has a sitemap bound
+        # (a bare app can't pass ValidateApp, so it is not publishable) after the
+        # blanket publish, under the same gate. dry-run/stage-only never reach here.
+        # An updated (already-existing) app is already published; its component/
+        # sitemap changes land via AddAppComponents + the blanket publish.
+        for e in applied:
+            if e.get("kind") == "app" and e.get("appmoduleid") and e.get("sitemapid"):
                 app_mod.publish_app(backend, str(e["appmoduleid"]))
 
     return {

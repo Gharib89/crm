@@ -5312,9 +5312,9 @@ _SITEMAP_ID = "88888888-8888-8888-8888-888888888888"
 _APP_COMPONENT_GUID = "99999999-9999-9999-9999-999999999999"
 
 # App resolution reads the unpublished view so a still-unpublished app resolves
-# regardless of publish state (#809): create read-back by-id via RetrieveUnpublished,
-# apply find_live by-name via RetrieveUnpublishedMultiple.
-_UNPUB_BYID = f"appmodules({_APP_ID})/Microsoft.Dynamics.CRM.RetrieveUnpublished()"
+# regardless of publish state (#809). Every read — create read-back and apply
+# find_live — goes through RetrieveUnpublishedMultiple with a $filter (the by-id
+# RetrieveUnpublished is not bound to appmodule).
 _UNPUB_MULTIPLE = "appmodules/Microsoft.Dynamics.CRM.RetrieveUnpublishedMultiple()"
 
 
@@ -5328,8 +5328,9 @@ def _mock_app_create(m, backend, *, unique_name="cwx_crmworx", name="CRMWorx",
     m.get(backend.url_for("appmodules"), json={"value": rows})
     m.post(backend.url_for("appmodules"), status_code=204,
            headers={"OData-EntityId": app_url})
-    m.get(backend.url_for(_UNPUB_BYID),
-          json={"name": name, "uniquename": unique_name, "appmoduleid": _APP_ID})
+    m.get(backend.url_for(_UNPUB_MULTIPLE),
+          json={"value": [{"name": name, "uniquename": unique_name,
+                           "appmoduleid": _APP_ID}]})
     m.post(backend.url_for("AddAppComponents"), status_code=204)
     sm_url = backend.url_for(f"sitemaps({_SITEMAP_ID})")
     m.post(backend.url_for("sitemaps"), status_code=204,
@@ -5364,22 +5365,26 @@ def test_apply_apps_phase_creates_app_components_and_sitemap(backend):
     assert res["applied"][0]["name"] == "cwx_crmworx"
     assert res["applied"][0]["appmoduleid"] == _APP_ID
     assert res["applied"][0]["sitemapid"] == _SITEMAP_ID
-    # Component binding fired with the declared (kind, guid).
+    # Two AddAppComponents: the declared view component, then the sitemap bound as
+    # component 62 (#809) so the app contains a sitemap and can be published.
     add = _app_posts(m, backend, "AddAppComponents")
-    assert len(add) == 1
-    assert add[0].json()["AppId"] == _APP_ID
+    assert len(add) == 2
+    assert all(r.json()["AppId"] == _APP_ID for r in add)
     assert add[0].json()["Components"][0]["savedqueryid"] == _APP_COMPONENT_GUID
+    assert add[1].json()["Components"][0]["sitemapid"] == _SITEMAP_ID
     # Sitemap created and auto-linked to the app by uniquename.
     sm = _app_posts(m, backend, "sitemaps")
     assert len(sm) == 1
     assert sm[0].json()["sitemapnameunique"] == "cwx_crmworx"
     assert 'Entity="contoso_project"' in sm[0].json()["sitemapxml"]
     assert len(_publish_hits(m, backend)) == 1
-    # The created app is app-published (app-scoped PublishXml) so it becomes
-    # GET-visible — a blanket PublishAllXml does not publish an appmodule (#809).
+    # The created app (with its sitemap bound) is app-published (app-scoped
+    # PublishXml) so it becomes GET-visible — PublishAllXml does not publish an
+    # appmodule (#809).
     app_pub = [r for r in m.request_history
                if r.method == "POST" and r.url.endswith("PublishXml")]
     assert len(app_pub) == 1
+    assert f"<appmodule>{_APP_ID}</appmodule>" in app_pub[0].json()["ParameterXml"]
     assert f"<appmodule>{_APP_ID}</appmodule>" in app_pub[0].json()["ParameterXml"]
     assert res["ok"] is True
 
@@ -5493,13 +5498,14 @@ def test_apply_apps_reconcile_adds_missing_component(backend):
     assert _remove_hits(m, backend) == []
     change = res["updated"][0]["components"]
     assert change == [{"kind": "view", "id": _APP_COMPONENT_GUID, "change": "added"}]
-    assert len(_publish_hits(m, backend)) == 1  # updated app publishes
+    assert len(_publish_hits(m, backend)) == 1  # updated app publishes (PublishAllXml)
     # find_live resolved the app through the unpublished view, so it converges
-    # regardless of publish state (#809), and the updated app is app-published.
+    # regardless of publish state (#809). An updated (existing) app is already
+    # published, so no app-scoped PublishXml is issued — only created apps get one.
     assert any("RetrieveUnpublishedMultiple()" in r.url for r in m.request_history
                if r.method == "GET")
-    assert any(r.method == "POST" and r.url.endswith("PublishXml")
-               for r in m.request_history)
+    assert not any(r.method == "POST" and r.url.endswith("PublishXml")
+                   for r in m.request_history)
 
 
 def test_apply_apps_reconcile_removes_undeclared_component(backend):

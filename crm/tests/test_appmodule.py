@@ -40,9 +40,9 @@ _RELS_TWO = {"value": _RELS["value"] + [
 _APPCONFIG_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc"
 
 # App resolution reads the unpublished view so a still-unpublished app resolves
-# regardless of publish state (#809): by-id via RetrieveUnpublished, by-name via
-# RetrieveUnpublishedMultiple. DELETE/PATCH still target the plain by-id path.
-_UNPUB_BYID = f"appmodules({_APP_ID})/Microsoft.Dynamics.CRM.RetrieveUnpublished()"
+# regardless of publish state (#809). Every read — by id or by name — goes through
+# RetrieveUnpublishedMultiple with a $filter (the by-id RetrieveUnpublished is not
+# bound to appmodule). DELETE/PATCH still target the plain by-id path.
 _UNPUB_MULTIPLE = "appmodules/Microsoft.Dynamics.CRM.RetrieveUnpublishedMultiple()"
 
 
@@ -52,27 +52,26 @@ def _posts(m):
 
 class TestCreateApp:
     def test_create_app_posts_appmodule_and_reads_back(self, backend):
-        # Read-back uses the RetrieveUnpublished function, not a published-only
-        # by-id GET, so a freshly created (still unpublished) app resolves without
-        # a spurious app_lookup_error (#809).
+        # Read-back uses RetrieveUnpublishedMultiple (the by-id RetrieveUnpublished
+        # is not bound to appmodule), so a freshly created (still unpublished) app
+        # resolves without a spurious app_lookup_error (#809).
         from crm.core import appmodule
         with requests_mock.Mocker() as m:
-            m.get(backend.url_for("appmodules"), json={"value": []})  # guard
+            m.get(backend.url_for("appmodules"), json={"value": []})  # existence guard
             app_url = backend.url_for(f"appmodules({_APP_ID})")
-            rb_url = backend.url_for(
-                f"appmodules({_APP_ID})/Microsoft.Dynamics.CRM.RetrieveUnpublished()")
             m.post(backend.url_for("appmodules"), status_code=204,
                    headers={"OData-EntityId": app_url})
-            m.get(rb_url, json={"appmoduleid": _APP_ID, "name": "CRMWorx",
-                                "uniquename": "cwx_crmworx"})
+            m.get(backend.url_for(_UNPUB_MULTIPLE),
+                  json={"value": [{"appmoduleid": _APP_ID, "name": "CRMWorx",
+                                   "uniquename": "cwx_crmworx"}]})
             out = appmodule.create_app(
                 backend, name="CRMWorx", unique_name="cwx_crmworx",
                 description="IT ticketing",
             )
         assert out["created"] is True
         assert out["appmoduleid"] == _APP_ID
-        assert "app_lookup_error" not in out  # read-back via RetrieveUnpublished succeeded
-        assert any("RetrieveUnpublished()" in r.url for r in m.request_history
+        assert "app_lookup_error" not in out  # read-back via unpublished view succeeded
+        assert any("RetrieveUnpublishedMultiple()" in r.url for r in m.request_history
                    if r.method == "GET")
         body = _posts(m)[0].json()
         assert body["uniquename"] == "cwx_crmworx"
@@ -94,30 +93,32 @@ class TestCreateApp:
         assert any(r.method == "GET" for r in m.request_history)
         assert not any(r.method == "POST" for r in m.request_history)
 
-    def test_create_app_publishes_via_targeted_publishxml(self, backend):
-        # --publish publishes the app itself with an app-scoped PublishXml (a
-        # blanket PublishAllXml does not flip an appmodule to Published), so the
-        # new app becomes GET-visible in the appmodules collection (#809).
+    def test_create_app_publishes_all_before_readback(self, backend):
+        # A freshly created app is bare (no bound sitemap) and therefore not yet
+        # publishable as an app, so create_app keeps the generic publish
+        # (PublishAllXml) — the app-scoped publish happens later, once the app is
+        # complete (apply binds the sitemap then app-publishes). PublishAllXml runs
+        # before the read-back (#809).
         from crm.core import appmodule
         with requests_mock.Mocker() as m:
             m.get(backend.url_for("appmodules"), json={"value": []})  # guard
             app_url = backend.url_for(f"appmodules({_APP_ID})")
-            rb_url = backend.url_for(f"appmodules({_APP_ID})/"
-                                     "Microsoft.Dynamics.CRM.RetrieveUnpublished()")
             m.post(backend.url_for("appmodules"), status_code=204,
                    headers={"OData-EntityId": app_url})
-            m.post(backend.url_for("PublishXml"), status_code=204)
-            m.get(rb_url, json={"appmoduleid": _APP_ID, "name": "CRMWorx"})
+            m.post(backend.url_for("PublishAllXml"), status_code=204)
+            m.get(backend.url_for(_UNPUB_MULTIPLE),
+                  json={"value": [{"appmoduleid": _APP_ID, "name": "CRMWorx"}]})
             appmodule.create_app(backend, name="CRMWorx",
                                  unique_name="cwx_crmworx", publish=True)
-        publish_posts = [r for r in m.request_history
-                         if r.method == "POST" and r.url.endswith("PublishXml")]
-        assert len(publish_posts) == 1
-        param_xml = publish_posts[0].json()["ParameterXml"]
-        assert param_xml == (f"<importexportxml><appmodules><appmodule>{_APP_ID}"
-                             f"</appmodule></appmodules></importexportxml>")
-        # No blanket publish-all — the app is published app-scoped.
-        assert not any("PublishAllXml" in r.url for r in m.request_history)
+        kinds = [(r.method, r.url) for r in m.request_history]
+        publish_i = next(i for i, (mth, u) in enumerate(kinds)
+                         if mth == "POST" and "PublishAllXml" in u)
+        readback_i = next(i for i, (mth, u) in enumerate(kinds)
+                          if mth == "GET" and "RetrieveUnpublishedMultiple()" in u)
+        assert publish_i < readback_i
+        # No app-scoped PublishXml from create_app — a bare app is not publishable.
+        assert not any(r.method == "POST" and r.url.endswith("PublishXml")
+                       for r in m.request_history)
 
     def test_create_app_unparseable_id_sets_lookup_error(self, backend):
         from crm.core import appmodule
@@ -489,7 +490,7 @@ class TestDeleteApp:
         from crm.core import appmodule
         self._name_map(monkeypatch)
         with requests_mock.Mocker() as m:
-            m.get(backend.url_for(_UNPUB_BYID), json=_APP_ROW)
+            m.get(backend.url_for(_UNPUB_MULTIPLE), json={"value": [_APP_ROW]})
             m.get(backend.url_for(_REL_URL), json=_RELS)
             m.get(backend.url_for("appsettings"),
                   json={"value": [{"appsettingid": _APPSETTING_ID}]})
@@ -516,7 +517,7 @@ class TestDeleteApp:
         from crm.core import appmodule
         self._name_map(monkeypatch)
         with requests_mock.Mocker() as m:
-            m.get(backend.url_for(_UNPUB_BYID), json=_APP_ROW)
+            m.get(backend.url_for(_UNPUB_MULTIPLE), json={"value": [_APP_ROW]})
             m.get(backend.url_for(_REL_URL), json=_RELS_TWO)
             m.get(backend.url_for("appsettings"),
                   json={"value": [{"appsettingid": _APPSETTING_ID}]})
@@ -539,7 +540,7 @@ class TestDeleteApp:
         from crm.core import appmodule
         self._name_map(monkeypatch)
         with requests_mock.Mocker() as m:
-            m.get(backend.url_for(_UNPUB_BYID), json=_APP_ROW)
+            m.get(backend.url_for(_UNPUB_MULTIPLE), json={"value": [_APP_ROW]})
             m.get(backend.url_for(_REL_URL), json=_RELS)
             m.get(backend.url_for("appsettings"),
                   json={"value": [{"appsettingid": _APPSETTING_ID}]})
@@ -598,7 +599,7 @@ class TestDeleteApp:
         from crm.core import appmodule
         managed = dict(_APP_ROW, ismanaged=True)
         with requests_mock.Mocker() as m:
-            m.get(backend.url_for(_UNPUB_BYID), json=managed)
+            m.get(backend.url_for(_UNPUB_MULTIPLE), json={"value": [managed]})
             with pytest.raises(D365Error, match="managed"):
                 appmodule.delete_app(backend, _APP_ID)
             # No DELETE issued for a managed app.
@@ -609,7 +610,7 @@ class TestDeleteApp:
         dry = D365Backend(profile, password="pw", dry_run=True)
         self._name_map(monkeypatch)
         with requests_mock.Mocker() as m:
-            m.get(dry.url_for(_UNPUB_BYID), json=_APP_ROW)
+            m.get(dry.url_for(_UNPUB_MULTIPLE), json={"value": [_APP_ROW]})
             m.get(dry.url_for(_REL_URL), json=_RELS)
             m.get(dry.url_for("appsettings"),
                   json={"value": [{"appsettingid": _APPSETTING_ID}]})
@@ -625,7 +626,7 @@ class TestDeleteApp:
         from crm.core import appmodule
         self._name_map(monkeypatch)
         with requests_mock.Mocker() as m:
-            m.get(backend.url_for(_UNPUB_BYID), json=_APP_ROW)
+            m.get(backend.url_for(_UNPUB_MULTIPLE), json={"value": [_APP_ROW]})
             m.get(backend.url_for(_REL_URL), json=_RELS)
             m.get(backend.url_for("appsettings"),
                   json={"value": [{"appsettingid": _APPSETTING_ID}]})

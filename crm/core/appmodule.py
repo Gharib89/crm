@@ -33,13 +33,22 @@ DEFAULT_APP_ICON = "953b9fac-1e5e-e611-80d6-00155ded156f"
 # plain `appmodules` collection / by-id GET return **published apps only** — so a
 # fresh app reads back `Does Not Exist` (MS Learn, "Create, manage, and publish
 # model-driven apps using code"; live-confirmed on-prem v9.1 + Dataverse online,
-# #809). These RetrieveUnpublished(Multiple) functions return the current
-# unpublished view (and the same data as a plain retrieve once published), so the
-# app resolves regardless of publish state. `RetrieveUnpublished` is bound to a
-# single appmodule; `RetrieveUnpublishedMultiple` reads the collection.
-_RETRIEVE_UNPUBLISHED = "Microsoft.Dynamics.CRM.RetrieveUnpublished()"
+# #809). `RetrieveUnpublishedMultiple` returns the current unpublished view (the
+# same data as a plain retrieve once published), so an app resolves regardless of
+# publish state. The by-id `RetrieveUnpublished` is **not** bound to appmodule
+# ("does not support entities of type 'appmodule'", live-confirmed on-prem v9.1),
+# so every read — even by id — goes through the collection function with a filter.
 _RETRIEVE_UNPUBLISHED_MULTIPLE = (
     "appmodules/Microsoft.Dynamics.CRM.RetrieveUnpublishedMultiple()")
+
+
+def _retrieve_unpublished(
+    backend: D365Backend, *, filter_expr: str, select: str,
+) -> list[dict[str, Any]]:
+    """Rows from the appmodule **unpublished** view matching *filter_expr* (#809)."""
+    return backend.get_collection(
+        _RETRIEVE_UNPUBLISHED_MULTIPLE,
+        params={"$filter": filter_expr, "$select": select})
 
 
 def _appmodule_publish_xml(app_id: str) -> str:
@@ -208,20 +217,25 @@ def create_app(
         "created": True, "name": name, "uniquename": unique_name,
         "appmoduleid": app_id, "solution": solution,
     }
-    # Publish the app itself (app-scoped PublishXml, not a blanket PublishAllXml —
-    # which does not flip an appmodule to Published) so `--publish` makes the new
-    # app GET-visible in the `appmodules` collection (#809).
-    if publish and app_id:
-        publish_app(backend, app_id)
-    # Read-back via RetrieveUnpublished so it succeeds whether or not the app was
-    # published — a plain by-id GET returns published apps only, spuriously
-    # failing the common create-without-publish and pre-publish windows (#809).
+    # A freshly created appmodule is bare (no bound sitemap) and therefore not yet
+    # publishable as an app — an app-scoped publish would fail ValidateApp. So
+    # `create_app` keeps the generic publish (PublishAllXml, publishes surrounding
+    # customizations); an app becomes app-published once it is complete — the apply
+    # apps phase app-publishes each created/updated app after binding its sitemap.
+    maybe_publish(backend, out, publish)
+    # Read-back through the unpublished view (RetrieveUnpublishedMultiple) so it
+    # succeeds whether or not the app is published — the plain collection returns
+    # published apps only, spuriously failing the create read-back (#809).
     if app_id:
         try:
-            rb = as_dict(backend.get(
-                f"appmodules({app_id})/{_RETRIEVE_UNPUBLISHED}",
-                params={"$select": "name,uniquename,appmoduleid"}))
-            out["name"] = rb.get("name", name)
+            rows = _retrieve_unpublished(
+                backend, filter_expr=f"appmoduleid eq {app_id}",
+                select="name,uniquename,appmoduleid")
+            if rows:
+                out["name"] = rows[0].get("name", name)
+            else:
+                out["app_lookup_error"] = "Read-back failed: app not found in " \
+                    "the unpublished appmodule view."
         except D365Error as exc:
             out["app_lookup_error"] = f"Read-back failed: {exc}"
     else:
@@ -254,22 +268,15 @@ def _resolve_appmodule(backend: D365Backend, name_or_id: str) -> dict[str, Any]:
     target = name_or_id.strip()
     rid = normalize_guid(target)
     if rid is not None:
-        try:
-            return as_dict(backend.get(
-                f"appmodules({rid})/{_RETRIEVE_UNPUBLISHED}",
-                params={"$select": _APPMODULE_SELECT}))
-        except D365Error as exc:
-            category, _ = classify_d365_error(exc.status, exc.code, str(exc))
-            if category == "not_found":
-                raise D365Error(f"App {name_or_id!r} was not found.",
-                                code="AppNotFound")
-            raise
+        rows = _retrieve_unpublished(
+            backend, filter_expr=f"appmoduleid eq {rid}", select=_APPMODULE_SELECT)
+        if rows:
+            return rows[0]
+        raise D365Error(f"App {name_or_id!r} was not found.", code="AppNotFound")
     for field in ("uniquename", "name"):
-        rows = backend.get_collection(
-            _RETRIEVE_UNPUBLISHED_MULTIPLE,
-            params={"$filter": f"{field} eq {odata_literal(target)}",
-                    "$select": _APPMODULE_SELECT},
-        )
+        rows = _retrieve_unpublished(
+            backend, filter_expr=f"{field} eq {odata_literal(target)}",
+            select=_APPMODULE_SELECT)
         if len(rows) > 1:
             raise D365Error(
                 f"App {name_or_id!r} is ambiguous — {len(rows)} apps match "
@@ -642,10 +649,10 @@ def reconcile_app(
     Returns ``{appmoduleid, blocked?, component_changes?, sitemap_change?}``, or
     ``{unreadable: True}`` when the app cannot be read back. The read goes through
     ``_resolve_appmodule``, which reads the **unpublished** view
-    (``RetrieveUnpublished``) so a freshly Web-API-created — and therefore still
-    unpublished — app resolves regardless of publish state (#809); ``unreadable``
-    now means the app genuinely does not exist. With nothing to read, there is
-    nothing to converge, so the caller reports it ``skipped``.
+    (``RetrieveUnpublishedMultiple``) so a freshly Web-API-created — and therefore
+    still unpublished — app resolves regardless of publish state (#809);
+    ``unreadable`` now means the app genuinely does not exist. With nothing to read,
+    there is nothing to converge, so the caller reports it ``skipped``.
     """
     try:
         row = _resolve_appmodule(backend, unique_name)
@@ -690,8 +697,14 @@ def reconcile_app(
     if sitemap_xml is not None:
         smid, live_xml = _read_app_sitemap(backend, unique_name)
         if live_xml is None:
-            set_sitemap(backend, sitemap_name=unique_name, sitemap_xml=sitemap_xml,
-                        unique_name=unique_name, solution=solution)
+            sm = set_sitemap(backend, sitemap_name=unique_name, sitemap_xml=sitemap_xml,
+                             unique_name=unique_name, solution=solution)
+            # Bind the new sitemap to the app (component 62) so the app contains a
+            # sitemap and can be published — the sitemapnameunique link alone does
+            # not satisfy ValidateApp (#809, live-confirmed on-prem v9.1).
+            if sm.get("sitemapid"):
+                add_app_components(backend, app_id=app_id,
+                                   components=[("sitemap", str(sm["sitemapid"]))])
             out["sitemap_change"] = "added"
         elif live_xml != sitemap_xml:
             update_sitemap(backend, sitemap_id=str(smid), sitemap_xml=sitemap_xml,
