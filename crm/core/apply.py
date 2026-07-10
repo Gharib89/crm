@@ -241,7 +241,6 @@ def _validate_app_block(block: Any) -> None:
         raise D365Error("each apps entry must be a mapping.")
     block = cast("dict[str, Any]", block)
     label = f"app {block.get('unique_name') or block.get('name')!r}"
-    _require(block, ("name", "unique_name"), label)
     _require_str(block, "name", label)
     _require_str(block, "unique_name", label)
     _require_str(block, "description", label, optional=True)
