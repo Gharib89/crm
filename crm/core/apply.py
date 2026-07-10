@@ -124,14 +124,19 @@ def _validate_column(col: Any, view_name: str) -> None:
     raise D365Error(f"view {view_name!r}: column must be a string or a mapping.")
 
 
-def _require_str(obj: dict[str, Any], key: str, label: str, *, optional: bool = False) -> None:
-    """Require ``key`` on ``obj`` to be a string — present-and-typed, or (when
-    ``optional``) absent-or-typed."""
-    if key not in obj or obj[key] is None:
+def _require_str(obj: Any, key: str, label: str, *, optional: bool = False) -> None:
+    """Require ``key`` on the mapping ``obj`` to be a string — present-and-typed,
+    or (when ``optional``) absent-or-typed. A non-mapping ``obj`` (e.g. a bare
+    string in a list where a block was expected) fails as a clean usage error,
+    not a ``TypeError`` — the first call per block validates its shape."""
+    if not isinstance(obj, dict):
+        raise D365Error(f"{label} must be a mapping.")
+    cobj = cast("dict[str, Any]", obj)
+    if key not in cobj or cobj[key] is None:
         if optional:
             return
         raise D365Error(f"{label}: missing required field {key!r}.")
-    if not isinstance(obj[key], str):
+    if not isinstance(cobj[key], str):
         raise D365Error(f"{label}: {key!r} must be a string.")
 
 

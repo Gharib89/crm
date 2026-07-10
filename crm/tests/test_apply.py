@@ -5118,3 +5118,18 @@ def test_apply_rejects_form_tab_missing_name(backend):
         {"tabs": [{"label": "no name"}]}]}]}
     with pytest.raises(D365Error, match="missing required field 'name'"):
         apply_mod.apply_spec(backend, spec, stage_only=False)
+
+
+def test_apply_rejects_non_mapping_form_tab(backend):
+    # A non-mapping list item fails as a clean usage error, not a TypeError.
+    spec = {"solution": _SOLUTION, "entities": [{**_ENTITY, "forms": [
+        {"tabs": ["bad"]}]}]}
+    with pytest.raises(D365Error, match="tab must be a mapping"):
+        apply_mod.apply_spec(backend, spec, stage_only=False)
+
+
+def test_apply_rejects_non_mapping_form_handler(backend):
+    spec = {"solution": _SOLUTION, "entities": [{**_ENTITY, "forms": [
+        {"handlers": [123]}]}]}
+    with pytest.raises(D365Error, match="handler must be a mapping"):
+        apply_mod.apply_spec(backend, spec, stage_only=False)
