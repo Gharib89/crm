@@ -9,6 +9,49 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.61.0 (2026-07-10)
+
+### Bug Fixes
+
+- **apply**: Reject non-mapping form sub-blocks with a clean usage error
+  ([#805](https://github.com/Gharib89/crm/pull/805),
+  [`562ce27`](https://github.com/Gharib89/crm/commit/562ce27c2021dea0b9b5b471ac41053190f40709))
+
+- **apply**: Report resolved form name/formid, not the placeholder
+  ([#805](https://github.com/Gharib89/crm/pull/805),
+  [`562ce27`](https://github.com/Gharib89/crm/commit/562ce27c2021dea0b9b5b471ac41053190f40709))
+
+- **apply**: Tighten forms: spec validation up front
+  ([#805](https://github.com/Gharib89/crm/pull/805),
+  [`562ce27`](https://github.com/Gharib89/crm/commit/562ce27c2021dea0b9b5b471ac41053190f40709))
+
+- **apply**: Treat `columns: null` as absent in form convergence
+  ([#805](https://github.com/Gharib89/crm/pull/805),
+  [`562ce27`](https://github.com/Gharib89/crm/commit/562ce27c2021dea0b9b5b471ac41053190f40709))
+
+- **tests**: Type-clean forms-phase test helper for CI pyright
+  ([#805](https://github.com/Gharib89/crm/pull/805),
+  [`562ce27`](https://github.com/Gharib89/crm/commit/562ce27c2021dea0b9b5b471ac41053190f40709))
+
+### Documentation
+
+- **research**: Verify customizations-as-code market claims
+  ([#801](https://github.com/Gharib89/crm/pull/801),
+  [`3fc6299`](https://github.com/Gharib89/crm/commit/3fc6299db406a6efd0c6f960c1a60fb46feea9dd))
+
+### Features
+
+- **apply**: Converge entity forms from a spec forms: block
+  ([#805](https://github.com/Gharib89/crm/pull/805),
+  [`562ce27`](https://github.com/Gharib89/crm/commit/562ce27c2021dea0b9b5b471ac41053190f40709))
+
+### Testing
+
+- **apply**: Cover forms --stage-only + clarify apply_form_spec docstring
+  ([#805](https://github.com/Gharib89/crm/pull/805),
+  [`562ce27`](https://github.com/Gharib89/crm/commit/562ce27c2021dea0b9b5b471ac41053190f40709))
+
+
 ## v1.60.0 (2026-07-10)
 
 ### Bug Fixes
