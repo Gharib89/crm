@@ -1418,7 +1418,9 @@ class TestConvergeDeclaredFormReconcile:
         assert c["diff"] == {"label": {"old": "General", "new": "Overview"}}
         tab = next(t for t in ET.fromstring(new_xml).findall("./tabs/tab")
                    if t.get("name") == "general")
-        assert tab.find("labels/label").get("description") == "Overview"
+        label_el = tab.find("labels/label")
+        assert label_el is not None
+        assert label_el.get("description") == "Overview"
 
     def test_matching_tab_label_is_a_no_op(self, backend):
         with requests_mock.Mocker():
