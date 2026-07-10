@@ -29,6 +29,8 @@ def _canned(skipped=None):
                 ],
             }],
             "optionsets": [{"name": "new_set", "display_name": "Set", "options": []}],
+            "apps": [{"name": "CRMWorx", "unique_name": "cwx_crmworx",
+                      "sitemap": {"areas": []}}],
         },
         "skipped": skipped if skipped is not None else [
             {"type": "pluginassembly", "objectid": "p1",
@@ -66,7 +68,11 @@ class TestSolutionExportSpecCommand:
         assert data["entities"] == 1
         assert data["attributes"] == 1
         assert data["optionsets"] == 1
+        assert data["apps"] == 1
         assert [s["type"] for s in data["skipped"]] == ["pluginassembly"]
+
+        # The bare YAML carries the apps block (apply-ready), not just the count.
+        assert [a["unique_name"] for a in written["apps"]] == ["cwx_crmworx"]
 
     def test_no_output_emits_summary_and_skipped(self, monkeypatch, backend):
         self._stub(monkeypatch, backend)
@@ -76,6 +82,7 @@ class TestSolutionExportSpecCommand:
         assert data["solution"] == "myorgsln"
         assert data["entities"] == ["new_Project"]
         assert data["optionsets"] == ["new_set"]
+        assert data["apps"] == ["cwx_crmworx"]
         assert data["skipped"][0]["type"] == "pluginassembly"
 
     def test_human_mode_surfaces_skipped(self, monkeypatch, backend):

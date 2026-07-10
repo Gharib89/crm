@@ -24,6 +24,7 @@ from crm.core.export_spec import (
     EXPORTED_KEYS,
     KINDS_NOT_EXPORTED,
     TRANSFORM_CONSUMED_KEYS,
+    build_app_spec,
     build_entity_spec,
     build_role_spec,
     build_solution_spec,
@@ -2325,3 +2326,188 @@ class TestBehavioralRoundtrip:
             "EXPORTED_KEYS kinds without a behavioral roundtrip test: "
             f"{sorted(set(EXPORTED_KEYS) - covered_here)}; stale kinds listed here "
             f"but no longer in EXPORTED_KEYS: {sorted(covered_here - set(EXPORTED_KEYS))}")
+
+
+# ── model-driven app projector (#797, ADR 0024) ──────────────────────────────
+_APP_ID = "77777777-7777-7777-7777-777777777777"
+_APP_IDUNIQUE = "88888888-8888-8888-8888-888888888888"
+
+
+def _appmodule_url(backend, aid=_APP_ID) -> str:
+    return backend.url_for(f"appmodules({aid})")
+
+
+def _sitemaps_url(backend) -> str:
+    return backend.url_for("sitemaps")
+
+
+def _appcomponents_url(backend) -> str:
+    return backend.url_for("appmodulecomponents")
+
+
+def _app_row(**over):
+    row = {"name": "CRMWorx", "uniquename": "cwx_crmworx",
+           "description": "Ops app", "appmoduleidunique": _APP_IDUNIQUE}
+    row.update(over)
+    return row
+
+
+# A live app sitemap: one Area/Group with an Entity subarea (seedable) and a Url
+# subarea (non-seedable). Area/Group titles differ from their Ids; the SubArea
+# carries a Title.
+_SITEMAP_XML = (
+    '<SiteMap><Area Id="cwx_area" Title="Operations">'
+    '<Group Id="cwx_grp" Title="Records">'
+    '<SubArea Id="cwx_projects" Entity="cwx_project" Title="Projects" />'
+    '<SubArea Id="cwx_link" Url="https://example.invalid" Title="Docs" />'
+    '</Group></Area></SiteMap>'
+)
+
+
+class TestAppProjector:
+    def test_projects_identity_and_entity_sitemap(self, backend):
+        warn: list[str] = []
+        with requests_mock.Mocker() as m:
+            m.get(_appmodule_url(backend), json=_app_row())
+            m.get(_sitemaps_url(backend), json={"value": [{"sitemapxml": _SITEMAP_XML}]})
+            m.get(_appcomponents_url(backend), json={"value": []})
+            block = build_app_spec(backend, _APP_ID, warnings=warn)
+
+        assert block["name"] == "CRMWorx"
+        assert block["unique_name"] == "cwx_crmworx"
+        assert block["description"] == "Ops app"
+        # Only the Entity subarea survives; the Url subarea is dropped with a reason.
+        areas = block["sitemap"]["areas"]
+        assert areas == [{
+            "id": "cwx_area", "title": "Operations",
+            "groups": [{
+                "id": "cwx_grp", "title": "Records",
+                "subareas": [{"entity": "cwx_project", "title": "Projects"}],
+            }],
+        }]
+        assert any("dropped subarea" in w and "cwx_link" in w for w in warn)
+
+    def test_projected_block_is_apply_valid(self, backend):
+        # Load-bearing round-trip: the app block validates inside a full spec.
+        with requests_mock.Mocker() as m:
+            m.get(_appmodule_url(backend), json=_app_row())
+            m.get(_sitemaps_url(backend), json={"value": [{"sitemapxml": _SITEMAP_XML}]})
+            m.get(_appcomponents_url(backend), json={"value": []})
+            block = build_app_spec(backend, _APP_ID)
+        apply.validate_spec({"solution": {"unique_name": "cwx"}, "apps": [block]})
+
+    def test_title_equal_to_id_is_omitted(self, backend):
+        # An Area/Group Title equal to its Id is the create-path default (blank →
+        # Id), so it is not emitted — no default bloat, still round-trips.
+        xml = ('<SiteMap><Area Id="cwx_area" Title="cwx_area">'
+               '<Group Id="cwx_grp" Title="cwx_grp">'
+               '<SubArea Id="s" Entity="cwx_project" /></Group></Area></SiteMap>')
+        with requests_mock.Mocker() as m:
+            m.get(_appmodule_url(backend), json=_app_row())
+            m.get(_sitemaps_url(backend), json={"value": [{"sitemapxml": xml}]})
+            m.get(_appcomponents_url(backend), json={"value": []})
+            block = build_app_spec(backend, _APP_ID)
+        area = block["sitemap"]["areas"][0]
+        assert "title" not in area
+        assert "title" not in area["groups"][0]
+        # A subarea with no Title emits none either.
+        assert block["sitemap"]["areas"][0]["groups"][0]["subareas"] == [
+            {"entity": "cwx_project"}]
+
+    def test_no_sitemap_projects_identity_and_warns(self, backend):
+        warn: list[str] = []
+        with requests_mock.Mocker() as m:
+            m.get(_appmodule_url(backend), json=_app_row())
+            m.get(_sitemaps_url(backend), json={"value": []})
+            m.get(_appcomponents_url(backend), json={"value": []})
+            block = build_app_spec(backend, _APP_ID, warnings=warn)
+        assert "sitemap" not in block
+        assert block["unique_name"] == "cwx_crmworx"
+        assert any("no app-specific sitemap" in w for w in warn)
+        # Identity alone still validates (an app with no navigation is appliable).
+        apply.validate_spec({"solution": {"unique_name": "cwx"}, "apps": [block]})
+
+    def test_sitemap_with_only_non_entity_subareas_omitted(self, backend):
+        # A sitemap whose every subarea is a Url/dashboard projects no `sitemap`
+        # key (nothing seedable) — each drop warned, and empty parents pruned.
+        warn: list[str] = []
+        xml = ('<SiteMap><Area Id="a" Title="A"><Group Id="g" Title="G">'
+               '<SubArea Id="u" Url="https://example.invalid" />'
+               '</Group></Area></SiteMap>')
+        with requests_mock.Mocker() as m:
+            m.get(_appmodule_url(backend), json=_app_row())
+            m.get(_sitemaps_url(backend), json={"value": [{"sitemapxml": xml}]})
+            m.get(_appcomponents_url(backend), json={"value": []})
+            block = build_app_spec(backend, _APP_ID, warnings=warn)
+        assert "sitemap" not in block
+        assert any("dropped subarea" in w for w in warn)
+
+    def test_record_backed_component_bindings_counted_in_warnings(self, backend):
+        # appmodulecomponents that are neither entity (1) nor sitemap (62) are
+        # record-backed bindings apply cannot re-seed — surfaced, not silent.
+        warn: list[str] = []
+        comps = {"value": [
+            {"componenttype": 1},    # entity → reached via sitemap, not counted
+            {"componenttype": 62},   # sitemap → projected separately, not counted
+            {"componenttype": 26},   # view → counted
+            {"componenttype": 60},   # systemform → counted
+        ]}
+        with requests_mock.Mocker() as m:
+            m.get(_appmodule_url(backend), json=_app_row())
+            m.get(_sitemaps_url(backend), json={"value": [{"sitemapxml": _SITEMAP_XML}]})
+            m.get(_appcomponents_url(backend), json=comps)
+            build_app_spec(backend, _APP_ID, warnings=warn)
+        assert any("2 record-backed component binding" in w for w in warn)
+
+    def test_no_name_raises(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(_appmodule_url(backend), json=_app_row(name=""))
+            with pytest.raises(D365Error, match="no name"):
+                build_app_spec(backend, _APP_ID)
+
+    def test_unprefixed_unique_name_is_not_seedable(self, backend):
+        # A first-party app (unique name without a publisher prefix, e.g.
+        # 'Customerservicehub') cannot round-trip apply's create path, so it is
+        # refused here — routed to `skipped`, never emitted as an invalid block.
+        with requests_mock.Mocker() as m:
+            m.get(_appmodule_url(backend), json=_app_row(uniquename="Customerservicehub"))
+            with pytest.raises(D365Error, match="not apply-seedable"):
+                build_app_spec(backend, _APP_ID)
+
+
+class TestSolutionLevelApps:
+    def test_app_member_projects_under_apps_and_round_trips(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(_solutions_url(backend), json=_solution())
+            m.get(_components_url(backend), json=_members(_member(80, _APP_ID)))
+            m.get(_appmodule_url(backend), json=_app_row())
+            m.get(_sitemaps_url(backend), json={"value": [{"sitemapxml": _SITEMAP_XML}]})
+            m.get(_appcomponents_url(backend), json={"value": []})
+            result = build_solution_spec(backend, "myorgsln")
+        spec = result["spec"]
+        assert [a["unique_name"] for a in spec["apps"]] == ["cwx_crmworx"]
+        assert result["skipped"] == []
+        apply.validate_spec(spec)
+
+    def test_standalone_sitemap_member_is_skipped_riding_under_app(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(_solutions_url(backend), json=_solution())
+            m.get(_components_url(backend),
+                  json=_members(_member(62, "99999999-9999-9999-9999-999999999999")))
+            result = build_solution_spec(backend, "myorgsln")
+        assert result["spec"].get("apps") is None
+        assert len(result["skipped"]) == 1
+        s = result["skipped"][0]
+        assert s["type"] == "sitemap"
+        assert "rides under its app" in s["reason"]
+
+    def test_app_projection_failure_is_skipped_not_fatal(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(_solutions_url(backend), json=_solution())
+            m.get(_components_url(backend), json=_members(_member(80, _APP_ID)))
+            m.get(_appmodule_url(backend), json=_app_row(name="", uniquename=""))
+            result = build_solution_spec(backend, "myorgsln")
+        assert result["spec"].get("apps") is None
+        assert len(result["skipped"]) == 1
+        assert result["skipped"][0]["type"] == "app"
+        assert "no name" in result["skipped"][0]["reason"]

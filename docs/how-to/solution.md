@@ -257,7 +257,7 @@ Resolves the solutionid, then **pre-checks `RetrieveDependenciesForUninstall`** 
 
 ## Project a solution into a desired-state spec (org-to-org drift)
 
-Generate an apply-consumable YAML spec from every component in a solution — entity, attribute, global option set, view, 1:N relationship, main form, security role, and web resource — in one pass. This is the source side of the **org-to-org drift recipe**: run `export-spec` on dev, then `apply --dry-run` on prod to preview schema drift without writing anything.
+Generate an apply-consumable YAML spec from every component in a solution — entity, attribute, global option set, view, 1:N relationship, main form, security role, web resource, and model-driven app — in one pass. This is the source side of the **org-to-org drift recipe**: run `export-spec` on dev, then `apply --dry-run` on prod to preview schema drift without writing anything.
 
 ```bash
 # Dev org: project the solution into a spec file
@@ -278,6 +278,8 @@ crm --json solution export-spec MyCustomSolution
 **Web resources** (component type 61) project under `webresources` — the body is carried inline as base64 `content` (no sidecar file needed), plus `display_name` and `webresourcetype`. The emitted spec round-trips through `apply` directly.
 
 **Forms** ride along inside each touched entity's projection (ADR 0024): the entity's seedable main form is emitted under its `forms:` block — the custom-field placement, script libraries, and event handlers a real `apply` can layer back onto a fresh org's platform main form. Non-seedable form content is dropped to `warnings` (a field whose control type has no seedable classid), and a non-seedable *whole form* (an additional, non-primary main form) is reported in `skipped`.
+
+**Model-driven apps** (component type 80) project under a top-level `apps:` block (ADR 0024) — a separate pass over the solution's `appmodule` members, since an app is not entity-rooted. Each app emits its identity (`name`, `unique_name`, optional `description`) and its **Entity-backed sitemap** (areas → groups → subareas), the seedable slice: a subarea's table logical name is portable, so re-applying the spec on a fresh org reproduces the navigation. Non-seedable content is surfaced, never dropped silently — a Url / dashboard subarea (bound to an org-specific target) is dropped to `warnings`, and record-backed component bindings (views / forms / charts / BPFs, bound by org-specific id) are reported in `warnings` with a count (tables reach the app through the sitemap's entity subareas). An app whose `unique_name` lacks a publisher prefix (a first-party app `apply` cannot re-create) is routed to `skipped`. A standalone `sitemap` member (component type 62) is reported in `skipped` — it is projected under its app, not on its own.
 
 Components that cannot be projected — plug-in assemblies, dashboards, workflows, additional main forms, and other non-seedable types — appear in a `skipped` bucket `{type, objectid, reason}`. The verb **never fails** on an unsupported component (exit 0, `ok: true`) and never drops one silently.
 
