@@ -5564,6 +5564,27 @@ def test_apply_apps_reconcile_managed_sibling_still_reconciles(backend):
     assert res["ok"] is False
 
 
+def test_apply_apps_reconcile_unreadable_app_skipped(backend):
+    # An existing app can be non-GET-retrievable on some orgs (the Dataverse
+    # publish / app-access window): the create existence probe misses, the POST
+    # hits a duplicate-create fault that `if_exists=skip` swallows, and the re-query
+    # is still empty → `create_app` reports the app present with no id. Reconcile
+    # then cannot read it back to converge, so it reports `skipped`, NOT `failed` —
+    # a run must not error over an app the platform hides. (Guards the #795 create
+    # e2e re-apply, and mirrors the verified-live cloud/on-prem behavior for #796.)
+    spec = {"solution": _SOLUTION, "apps": [_app_block()]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_create(m, backend, exists=True)
+        m.get(backend.url_for("appmodules"), json={"value": []})  # never visible
+        m.post(backend.url_for("appmodules"), status_code=500,
+               json={"error": {"code": "0x80040216", "message": ""}})
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert [e["kind"] for e in res["skipped"] if e["kind"] == "app"] == ["app"]
+    assert not any(e["kind"] == "app" for e in res["failed"])
+    assert res["updated"] == [] and _add_hits(m, backend) == []
+    assert res["ok"] is True
+
+
 def test_apply_apps_reconcile_dry_run_reports_drift_no_write(dry_backend):
     # AC #5: --dry-run against an existing app reads live and reports the drift
     # (routed to `updated`) with every converge write suppressed.

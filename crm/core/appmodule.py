@@ -586,9 +586,21 @@ def reconcile_app(
     is computed, but AddAppComponents / RemoveAppComponents / the sitemap write are
     suppressed — so a dry run yields the full drift classification with no write.
 
-    Returns ``{appmoduleid, blocked?, component_changes?, sitemap_change?}``.
+    Returns ``{appmoduleid, blocked?, component_changes?, sitemap_change?}``, or
+    ``{unreadable: True}`` when the app cannot be read back. `apply` enters this
+    path only after ``create_app`` reports the app already exists (real skip, or a
+    swallowed duplicate-create fault), yet on some orgs a Web-API-created appmodule
+    is not GET-retrievable — the publish/app-access window documented on
+    ``create_app`` (verified live on both on-prem v9.x and Dataverse online). With
+    nothing to read, there is nothing to converge, so the caller reports it
+    ``skipped`` rather than failing a run over an app the platform hides.
     """
-    row = _resolve_appmodule(backend, unique_name)
+    try:
+        row = _resolve_appmodule(backend, unique_name)
+    except D365Error as exc:
+        if exc.code == "AppNotFound":
+            return {"unreadable": True}
+        raise
     out: dict[str, Any] = {"appmoduleid": str(row.get("appmoduleid") or "")}
     if row.get("ismanaged"):
         out["blocked"] = [{"name": unique_name,

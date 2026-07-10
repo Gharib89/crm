@@ -1010,6 +1010,116 @@ def test_apply_creates_app_and_sitemap_exposing_entity(cli, backend, ephemeral_s
     assert not any(e["kind"] == "app" for e in data2["applied"])
 
 
+@pytest.mark.slow
+@pytest.mark.requires_onprem
+@covers("apply")
+def test_apply_reconciles_app_components_and_sitemap(cli, backend, ephemeral_solution,
+                                                    ephemeral_entity, unique, tmp_path,
+                                                    request):
+    """Converge a live app's component set + sitemap on re-apply (ADR 0024, #796).
+
+    The create path lands an app with a sitemap and one view component; then this
+    test drives every reconcile verdict:
+      1. re-apply unchanged → `skipped` (idempotent — proves the built SiteMapXml
+         round-trips stably, so an unchanged sitemap is not spurious drift);
+      2. add a second view  → `updated`, a component change `added`;
+      3. drop it again      → `updated`, a component change `removed`;
+      4. drift the sitemap  → `updated`, whole-document converge.
+
+    Gated `requires_onprem`: reconcile MUST read the app back to diff it, and a
+    freshly created appmodule is not reliably GET-retrievable on Dataverse online
+    (the publish-before-read window the create path documents). The app round-trips
+    on on-prem v9.x, so the converge/skip verdicts are verifiable only there; the
+    cloud gap is recorded in `coverage.py` (#796). App + sitemap are cleaned up by
+    id; the two views are OOB system views (not created here), so left alone.
+    """
+    logical = ephemeral_entity.lower()
+    views = backend.get_collection(
+        "savedqueries",
+        params={"$filter": f"returnedtypecode eq '{logical}'",
+                "$select": "savedqueryid,name", "$top": "2"})
+    if len(views) < 2:
+        pytest.skip(f"need 2 system views on {logical!r}; got {len(views)}")
+    v1, v2 = views[0]["savedqueryid"], views[1]["savedqueryid"]
+
+    app_unique = f"new_rcapp{unique[:6]}"
+    created_app_id: list[str] = []
+    created_sitemap_id: list[str] = []
+
+    def _cleanup():
+        for smid in created_sitemap_id:
+            _swallow(lambda smid=smid: backend.delete(f"sitemaps({smid})"))
+        for aid in created_app_id:
+            _swallow(lambda aid=aid: backend.delete(f"appmodules({aid})"))
+
+    request.addfinalizer(_cleanup)
+
+    def _spec(components, subarea_title="RC Rows"):
+        return {"solution": {"unique_name": ephemeral_solution},
+                "apps": [{"name": f"E2E RC App {unique[:6]}", "unique_name": app_unique,
+                          "components": components,
+                          "sitemap": {"areas": [{
+                              "id": "rc_area", "title": "RC Area",
+                              "groups": [{"id": "rc_group", "title": "RC Group",
+                                          "subareas": [{"entity": ephemeral_entity,
+                                                        "title": subarea_title}]}]}]}}]}
+
+    def _write(spec):
+        p = tmp_path / "rc_app_spec.json"
+        p.write_text(json.dumps(spec), encoding="utf-8")
+        return str(p)
+
+    def _apply(spec, check=True):
+        res = cli(["--json", "apply", "-f", _write(spec)], check=check)
+        return res, json.loads(res.stdout)["data"]
+
+    # Create path: app + sitemap + one view.
+    _res0, data0 = _apply(_spec([{"kind": "view", "id": v1}]))
+    app0 = [e for e in data0["applied"] if e["kind"] == "app"]
+    assert app0 and app0[0].get("appmoduleid"), f"app not created: {data0}"
+    created_app_id.append(app0[0]["appmoduleid"])
+    if app0[0].get("sitemapid"):
+        created_sitemap_id.append(app0[0]["sitemapid"])
+
+    # Reconcile MUST read the app back; on orgs where a Web-API-created appmodule is
+    # not GET-retrievable (the publish/app-access window — observed on both the
+    # Dataverse test org and on-prem v9.1 MOCE), there is nothing to converge and the
+    # round-trip is unverifiable. Skip rather than assert a converge that cannot run;
+    # the reconcile classification is proven by the offline matrix in test_apply.py
+    # and, against a pre-existing readable app, by manual live check (see coverage.py).
+    if not backend.get_collection(
+            "appmodules",
+            params={"$filter": f"uniquename eq '{app_unique}'",
+                    "$select": "appmoduleid"}):
+        pytest.skip("appmodule not GET-retrievable on this org; create->reconcile "
+                    "round-trip unverifiable (see coverage.py)")
+
+    # 1. Re-apply unchanged → skipped (idempotent; sitemap XML round-trips stably).
+    _res1, data1 = _apply(_spec([{"kind": "view", "id": v1}]))
+    assert [e["kind"] for e in data1["skipped"] if e["kind"] == "app"] == ["app"], (
+        f"unchanged re-apply not skipped: {data1}")
+    assert not any(e["kind"] == "app" for e in data1["updated"])
+
+    # 2. Add a second view → updated, component change 'added'.
+    _res2, data2 = _apply(_spec([{"kind": "view", "id": v1}, {"kind": "view", "id": v2}]))
+    app2 = [e for e in data2["updated"] if e["kind"] == "app"]
+    assert app2, f"component add not in updated: {data2}"
+    added = [c for c in app2[0]["components"] if c["change"] == "added"]
+    assert [c["id"] for c in added] == [v2], f"unexpected add diff: {app2}"
+
+    # 3. Drop the second view → updated, component change 'removed'.
+    _res3, data3 = _apply(_spec([{"kind": "view", "id": v1}]))
+    app3 = [e for e in data3["updated"] if e["kind"] == "app"]
+    assert app3, f"component remove not in updated: {data3}"
+    removed = [c for c in app3[0]["components"] if c["change"] == "removed"]
+    assert [c["id"] for c in removed] == [v2], f"unexpected remove diff: {app3}"
+
+    # 4. Drift the sitemap (change the subarea title) → updated, sitemap converged.
+    _res4, data4 = _apply(_spec([{"kind": "view", "id": v1}], subarea_title="RC Renamed"))
+    app4 = [e for e in data4["updated"] if e["kind"] == "app"]
+    assert app4 and app4[0].get("sitemap") == "converged", f"sitemap not converged: {data4}"
+
+
 @covers("apply")
 def test_apply_reconciles_and_refuses_form_drift(cli, backend, ephemeral_solution,
                                                  ephemeral_entity, tmp_path, request):

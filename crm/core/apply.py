@@ -304,6 +304,10 @@ def _reconcile_app(
     res = app_mod.reconcile_app(
         backend, unique_name=app_spec["unique_name"], components=components,
         sitemap_xml=sitemap_xml, solution=solution)
+    if res.get("unreadable"):
+        # The app exists (create reported it present) but is not GET-retrievable on
+        # this org — nothing to converge, so skip rather than fail (see reconcile_app).
+        return "skipped", entry
     if res.get("appmoduleid"):
         entry["appmoduleid"] = res["appmoduleid"]
     blocked = cast("list[dict[str, Any]]", res.get("blocked") or [])
