@@ -9,6 +9,43 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.64.0 (2026-07-10)
+
+### Bug Fixes
+
+- **apply**: Fail hard when a created app's id can't be resolved
+  ([#808](https://github.com/Gharib89/crm/pull/808),
+  [`97ec6a1`](https://github.com/Gharib89/crm/commit/97ec6a12c72863850af1091d9633ca8d18cf680c))
+
+### Documentation
+
+- **apply**: Document apps: spec create path (model-driven app + sitemap)
+  ([#808](https://github.com/Gharib89/crm/pull/808),
+  [`97ec6a1`](https://github.com/Gharib89/crm/commit/97ec6a12c72863850af1091d9633ca8d18cf680c))
+
+### Features
+
+- **apply**: Apps: spec create path — model-driven app + sitemap
+  ([#808](https://github.com/Gharib89/crm/pull/808),
+  [`97ec6a1`](https://github.com/Gharib89/crm/commit/97ec6a12c72863850af1091d9633ca8d18cf680c))
+
+- **apply**: Model-driven app + sitemap spec create path
+  ([#808](https://github.com/Gharib89/crm/pull/808),
+  [`97ec6a1`](https://github.com/Gharib89/crm/commit/97ec6a12c72863850af1091d9633ca8d18cf680c))
+
+### Refactoring
+
+- **apply**: Drop redundant _require in app-block validation
+  ([#808](https://github.com/Gharib89/crm/pull/808),
+  [`97ec6a1`](https://github.com/Gharib89/crm/commit/97ec6a12c72863850af1091d9633ca8d18cf680c))
+
+### Testing
+
+- **apply**: Live e2e for apps: create path; surface sitemapid
+  ([#808](https://github.com/Gharib89/crm/pull/808),
+  [`97ec6a1`](https://github.com/Gharib89/crm/commit/97ec6a12c72863850af1091d9633ca8d18cf680c))
+
+
 ## v1.63.0 (2026-07-10)
 
 ### Bug Fixes
