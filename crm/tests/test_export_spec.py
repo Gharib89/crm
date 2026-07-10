@@ -1805,3 +1805,279 @@ def test_transform_consumed_keys_are_outside_the_adapter_map():
         overlap = keys & set(apply.REGISTRY[kind].map)
         assert not overlap, (
             f"{kind}: transform-consumed keys also present in map: {sorted(overlap)}")
+
+
+# ── behavioral roundtrip: EXPORTED_KEYS actually emit (#788) ──────────────────
+# #787's contract proves EXPORTED_KEYS == the declared surface (data vs data).
+# It cannot prove a declared key is ever produced by the projector — a key can
+# sit in EXPORTED_KEYS while the emit branch never fires (or emits a different
+# name) and #787 stays green. These tests close that gap behaviorally: per kind,
+# run the real projector over a MAXIMAL canned payload (every facet non-default,
+# so no omit-on-default rule suppresses a key) and assert the projected block's
+# key set ⊇ EXPORTED_KEYS[kind]. Dropping an emit branch turns THESE red while
+# #787's set test stays green — the two guard different links of the chain.
+
+
+def _string_attr_max():
+    # String carrying description + non-default required + a STRING_FORMATS format
+    # + an auto-number format: exercises format_name AND auto_number_format together.
+    return {
+        "SchemaName": "new_Str", "DisplayName": _label("Str"),
+        "Description": _label("A string column"),
+        "AttributeTypeName": {"Value": "StringType"},
+        "RequiredLevel": {"Value": "Recommended"},
+        "MaxLength": 50, "FormatName": {"Value": "Text"},
+        "AutoNumberFormat": "INV-{SEQNUM:5}",
+    }
+
+
+def _integer_attr_max():
+    return {
+        "SchemaName": "new_Int", "DisplayName": _label("Int"),
+        "AttributeTypeName": {"Value": "IntegerType"},
+        "RequiredLevel": {"Value": "None"},
+        "MinValue": 0, "MaxValue": 100,
+    }
+
+
+def _datetime_attr_max():
+    return {
+        "SchemaName": "new_Dt", "DisplayName": _label("Dt"),
+        "AttributeTypeName": {"Value": "DateTimeType"},
+        "RequiredLevel": {"Value": "None"},
+        "DateTimeBehavior": {"Value": "DateOnly"},
+    }
+
+
+def _file_attr_max():
+    return {
+        "SchemaName": "new_File", "DisplayName": _label("File"),
+        "AttributeTypeName": {"Value": "FileType"},
+        "RequiredLevel": {"Value": "None"},
+        "MaxSizeInKB": 10240,
+    }
+
+
+def _calc_decimal_attr_max():
+    # Calculated decimal: emits precision AND source_type + formula_definition.
+    return {
+        "SchemaName": "new_Calc", "DisplayName": _label("Calc"),
+        "AttributeTypeName": {"Value": "DecimalType"},
+        "RequiredLevel": {"Value": "None"},
+        "Precision": 2, "SourceType": 1,
+        "FormulaDefinition": "<Formula>calc</Formula>",
+    }
+
+
+class TestBehavioralRoundtrip:
+    """Per covered kind, prove every EXPORTED_KEYS[kind] key is actually produced by
+    the projector when the live value is non-default (issue #788)."""
+
+    def test_attribute_keys_are_all_emitted(self, backend):
+        # One maximal column per attribute sub-kind; the UNION of the emitted keys
+        # across them must cover EXPORTED_KEYS["attribute"] (its keys are spread
+        # across kinds — a string has no precision, a lookup no max_length, etc.).
+        attrs = {"value": [
+            _shallow("new_name"),
+            _shallow("new_str"),
+            _shallow("new_int"),
+            _shallow("new_dt"),
+            _shallow("new_file"),
+            _shallow("new_calc", valid_for_create=False, source_type=1),
+            _shallow("new_lookup"),
+            _shallow("new_localpick"),
+            _shallow("new_globalpick"),
+        ]}
+        local_cast = {
+            "LogicalName": "new_localpick",
+            "OptionSet": {"Options": [_opt(1, "New")]},
+            "GlobalOptionSet": None,
+        }
+        global_cast = {
+            "LogicalName": "new_globalpick",
+            "OptionSet": None,
+            "GlobalOptionSet": {"Name": "new_bigset", "IsGlobal": True},
+        }
+        gos = {
+            "Name": "new_bigset",
+            "DisplayName": _label("Big Set"),
+            "Description": _label("Every optionset key populated"),
+            "Options": [_opt(10, "Low"), _opt(20, "High")],
+        }
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_str"), json=_string_attr_max())
+            m.get(_attr_url(backend, "new_int"), json=_integer_attr_max())
+            m.get(_attr_url(backend, "new_dt"), json=_datetime_attr_max())
+            m.get(_attr_url(backend, "new_file"), json=_file_attr_max())
+            m.get(_attr_url(backend, "new_calc"), json=_calc_decimal_attr_max())
+            m.get(_attr_url(backend, "new_lookup"), json=_lookup_info())
+            m.get(_attr_url(backend, "new_localpick"), json=_local_pick_info())
+            m.get(_attr_url(backend, "new_globalpick"),
+                  json=_global_pick_info("new_Globalpick"))
+            m.get(_pick_cast_url(backend, "new_localpick"), json=local_cast)
+            m.get(_pick_cast_url(backend, "new_globalpick"), json=global_cast)
+            m.get(backend.url_for("GlobalOptionSetDefinitions(Name='new_bigset')"),
+                  json=gos)
+            spec = build_entity_spec(backend, "new_project", solution="testsln")
+            assert {r.method for r in m.request_history} == {"GET"}
+
+        emitted: set[str] = set()
+        for col in spec["entities"][0]["attributes"]:
+            emitted |= set(col)
+        missing = EXPORTED_KEYS["attribute"] - emitted
+        assert not missing, f"declared attribute keys never emitted: {sorted(missing)}"
+        apply.validate_spec(spec)  # the projection round-trips
+
+    def test_optionset_keys_are_all_emitted(self, backend):
+        # A global option set with a non-empty description populates every
+        # optionset key; it rides in spec["optionsets"] off a global picklist.
+        attrs = {"value": [_shallow("new_name"), _shallow("new_globalpick")]}
+        global_cast = {
+            "LogicalName": "new_globalpick",
+            "OptionSet": None,
+            "GlobalOptionSet": {"Name": "new_bigset", "IsGlobal": True},
+        }
+        gos = {
+            "Name": "new_bigset",
+            "DisplayName": _label("Big Set"),
+            "Description": _label("Every optionset key populated"),
+            "Options": [_opt(10, "Low")],
+        }
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_globalpick"),
+                  json=_global_pick_info("new_Globalpick"))
+            m.get(_pick_cast_url(backend, "new_globalpick"), json=global_cast)
+            m.get(backend.url_for("GlobalOptionSetDefinitions(Name='new_bigset')"),
+                  json=gos)
+            spec = build_entity_spec(backend, "new_project", solution="testsln")
+
+        emitted = set(spec["optionsets"][0])
+        missing = EXPORTED_KEYS["optionset"] - emitted
+        assert not missing, f"declared optionset keys never emitted: {sorted(missing)}"
+        apply.validate_spec(spec)
+
+    def test_entity_keys_are_all_emitted(self, backend):
+        # Maximal entity: notes + activities on, a non-default primary max length.
+        ent = dict(_ENTITY, HasNotes=True, HasActivities=True)
+        primary = dict(_primary_info(), MaxLength=150)
+        attrs = {"value": [_shallow("new_name")]}
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=ent)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=primary)
+            spec = build_entity_spec(backend, "new_project", solution="testsln")
+
+        emitted = set(spec["entities"][0])
+        missing = EXPORTED_KEYS["entity"] - emitted
+        assert not missing, f"declared entity keys never emitted: {sorted(missing)}"
+        apply.validate_spec(spec)
+
+    def test_relationship_keys_are_all_emitted(self, backend):
+        # Every cascade dimension off-default, a UseLabel menu with a label + order,
+        # hierarchy on, and a required + described lookup column.
+        attrs = {"value": [_shallow("new_name")]}
+        o2m = {"value": [{
+            "SchemaName": "new_project_new_task",
+            "ReferencedEntity": "new_project",
+            "ReferencingEntity": "new_task",
+            "ReferencingAttribute": "new_projectid",
+            "IsCustomRelationship": True,
+            "IsHierarchical": True,
+            "CascadeConfiguration": {
+                "Assign": "Cascade", "Delete": "Cascade", "Reparent": "Cascade",
+                "Share": "Cascade", "Unshare": "Cascade", "Merge": "Cascade",
+            },
+            "AssociatedMenuConfiguration": {
+                "Behavior": "UseLabel", "Label": _label("Tasks"), "Order": 5,
+            },
+        }]}
+        rel_attr = {
+            "LogicalName": "new_projectid",
+            "SchemaName": "new_ProjectId",
+            "DisplayName": _label("Project"),
+            "RequiredLevel": {"Value": "ApplicationRequired"},
+            "Description": _label("Parent project"),
+        }
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_o2m_url(backend), json=o2m)
+            m.get(_attr_url(backend, "new_projectid", entity="new_task"), json=rel_attr)
+            spec = build_entity_spec(
+                backend, "new_project", with_relationships=True, solution="testsln")
+
+        emitted = set(spec["entities"][0]["relationships"][0])
+        missing = EXPORTED_KEYS["relationship"] - emitted
+        assert not missing, f"declared relationship keys never emitted: {sorted(missing)}"
+        apply.validate_spec(spec)
+
+    def test_view_keys_are_all_emitted(self, backend):
+        # A default view with a description, a descending sort, and an active filter.
+        from crm.core.views import build_layoutxml, build_fetchxml
+        attrs = {"value": [_shallow("new_name")]}
+        cols = [("new_name", 200)]
+        savedqueries = {"value": [{
+            "name": "Active Projects",
+            "layoutxml": build_layoutxml("new_project", 10042, cols),
+            "fetchxml": build_fetchxml("new_project", cols, "new_name", True, True),
+            "isdefault": True,
+            "description": "Active projects only",
+        }]}
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(backend.url_for("savedqueries"), json=savedqueries)
+            spec = build_entity_spec(
+                backend, "new_project", with_views=True, solution="testsln")
+
+        emitted = set(spec["entities"][0]["views"][0])
+        missing = EXPORTED_KEYS["view"] - emitted
+        assert not missing, f"declared view keys never emitted: {sorted(missing)}"
+        apply.validate_spec(spec)
+
+    def test_webresource_keys_are_all_emitted(self, backend):
+        b64 = base64.b64encode(b"console.log(1)").decode("ascii")
+        rec = {"webresourceid": _WR_ID, "name": "new_/app.js",
+               "displayname": "App", "webresourcetype": 3, "content": b64}
+        with requests_mock.Mocker() as m:
+            m.get(_wr_by_id_url(backend), json=rec)
+            spec = build_webresource_spec(backend, _WR_ID)
+
+        missing = EXPORTED_KEYS["webresource"] - set(spec)
+        assert not missing, f"declared webresource keys never emitted: {sorted(missing)}"
+        apply.validate_spec({
+            "solution": {"unique_name": "testsln"}, "webresources": [spec]})
+
+    def test_security_role_keys_are_all_emitted(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(_role_url(backend), json={
+                "name": "Sales Manager",
+                "_businessunitid_value": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"})
+            m.get(_role_privs_url(backend), json=_role_privs(
+                _rp("prvReadAccount", "Basic", "10000000-0000-0000-0000-000000000001")))
+            spec = build_role_spec(backend, _ROLE_ID)
+
+        missing = EXPORTED_KEYS["security-role"] - set(spec)
+        assert not missing, f"declared security-role keys never emitted: {sorted(missing)}"
+        apply.validate_spec({
+            "solution": {"unique_name": "testsln"}, "security_roles": [spec]})
+
+    def test_every_covered_kind_has_a_roundtrip_test(self):
+        # Guard: if a 10th kind joins EXPORTED_KEYS, this list must grow a test for
+        # it — otherwise the new kind's declared keys go behaviorally unproven.
+        covered_here = {
+            "attribute", "optionset", "entity", "relationship", "view",
+            "webresource", "security-role",
+        }
+        assert set(EXPORTED_KEYS) == covered_here, (
+            "EXPORTED_KEYS kinds without a behavioral roundtrip test: "
+            f"{sorted(set(EXPORTED_KEYS) - covered_here)}; stale kinds listed here "
+            f"but no longer in EXPORTED_KEYS: {sorted(covered_here - set(EXPORTED_KEYS))}")
