@@ -1463,6 +1463,32 @@ class TestConvergeDeclaredFormReconcile:
         assert changes == []
         assert new_xml == _MAIN_FORMXML
 
+    _TWO_SECTION_FORM = (
+        '<form><tabs>'
+        '<tab name="general" id="{aaaaaaaa-0000-0000-0000-000000000001}">'
+        '<labels><label description="General" languagecode="1033" /></labels>'
+        '<columns><column width="100%"><sections>'
+        '<section name="s1" id="{bbbbbbbb-0000-0000-0000-000000000002}">'
+        '<labels><label description="S1" languagecode="1033" /></labels>'
+        '<rows></rows></section>'
+        '<section name="s2" id="{cccccccc-0000-0000-0000-000000000003}">'
+        '<labels><label description="S2" languagecode="1033" /></labels>'
+        '<rows></rows></section>'
+        '</sections></column></columns></tab></tabs></form>')
+
+    def test_section_order_converged_within_tab(self, backend):
+        # live section order is [s1, s2]; declaring [s2, s1] reorders in place.
+        row = {**self._FORM_ROW, "formxml": self._TWO_SECTION_FORM}
+        from crm.core import forms
+        with requests_mock.Mocker():
+            new_xml, changes = forms.converge_declared_form(
+                backend, "new_project", row,
+                {"tabs": [{"name": "general", "sections": [
+                    {"name": "s2"}, {"name": "s1"}]}]})
+        assert _sections(new_xml, "general") == ["s2", "s1"]
+        assert any(c["change"] == "converged" and c["kind"] == "section-order"
+                   for c in changes)
+
     def test_handler_flags_converged_in_place(self, backend):
         from crm.core import forms
         live = forms.add_handler_to_formxml(

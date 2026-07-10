@@ -924,3 +924,82 @@ def test_apply_converges_form_on_ephemeral_entity(cli, backend, ephemeral_soluti
     data2 = json.loads(result2.stdout)["data"]
     assert [e["kind"] for e in data2["skipped"] if e["kind"] == "form"] == ["form"]
     assert not any(e["kind"] == "form" for e in data2["applied"])
+
+
+@covers("apply")
+def test_apply_reconciles_and_refuses_form_drift(cli, backend, ephemeral_solution,
+                                                 ephemeral_entity, tmp_path, request):
+    """Reconcile a spec `forms:` block against a live main form (ADR 0024, #793).
+
+    Builds on the create path: first lands a tab/section/field, then (1) converges
+    a declared tab-label drift in place — reported `updated` with a field-level
+    diff and no re-creation — and (2) refuses an identity/ownership divergence (a
+    `forms:` block naming a form that is not an existing main form) with no write,
+    exit 1, `replace_blocked`. Target-agnostic FormXml surgery — runs on both.
+    """
+    suffix = ephemeral_entity[-8:]
+    attr_schema = f"new_rcfld_{suffix}"
+    attr_logical = attr_schema.lower()
+    tab, section = f"new_rctab_{suffix}", f"new_rcsec_{suffix}"
+
+    def _entity_block(tab_label):
+        return {
+            "schema_name": ephemeral_entity,
+            "display_name": f"E2E {suffix}",
+            "attributes": [{
+                "kind": "string", "schema_name": attr_schema,
+                "display_name": f"RC Field {suffix}", "max_length": 50,
+            }],
+            "forms": [{"tabs": [{
+                "name": tab, "label": tab_label,
+                "sections": [{"name": section, "label": "RC Section",
+                              "fields": [{"name": attr_logical}]}],
+            }]}],
+        }
+
+    def _write(spec):
+        p = tmp_path / "rc_spec.json"
+        p.write_text(json.dumps(spec), encoding="utf-8")
+        return str(p)
+
+    request.addfinalizer(lambda: _swallow(lambda: backend.delete(
+        f"EntityDefinitions(LogicalName='{ephemeral_entity}')"
+        f"/Attributes(LogicalName='{attr_logical}')")))
+
+    base = {"solution": {"unique_name": ephemeral_solution},
+            "entities": [_entity_block("RC Tab")]}
+    cli(["--json", "apply", "-f", _write(base)])
+
+    # 1. CONVERGE: the tab label drifts in the spec → reconciled in place.
+    drifted = {"solution": {"unique_name": ephemeral_solution},
+               "entities": [_entity_block("RC Tab Renamed")]}
+    res_conv = cli(["--json", "apply", "-f", _write(drifted)])
+    data_conv = json.loads(res_conv.stdout)["data"]
+    assert not data_conv.get("failed"), data_conv
+    form_updated = [e for e in data_conv["updated"] if e["kind"] == "form"]
+    assert form_updated, f"form drift not in updated: {data_conv}"
+    assert not any(e["kind"] == "form" for e in data_conv["applied"])
+    converged = [c for c in form_updated[0]["components"]
+                 if c.get("change") == "converged"]
+    assert converged, f"no converged component reported: {form_updated}"
+
+    # 2. REFUSE: a block naming a form that is not an existing main form is an
+    # identity/ownership divergence → replace_blocked, exit 1, no write.
+    ghost = {"solution": {"unique_name": ephemeral_solution},
+             "entities": [{
+                 "schema_name": ephemeral_entity,
+                 "forms": [{"name": f"No Such Form {suffix}",
+                            "tabs": [{"name": tab, "label": "X"}]}]}]}
+    res_ref = cli(["--json", "apply", "-f", _write(ghost)], check=False)
+    assert res_ref.returncode == 1, f"expected refuse exit 1: {res_ref.stdout}"
+    data_ref = json.loads(res_ref.stdout)["data"]
+    blocked = [e for e in data_ref["replace_blocked"] if e["kind"] == "form"]
+    assert blocked, f"identity divergence not refused: {data_ref}"
+    assert not data_ref.get("applied") and not data_ref.get("updated")
+
+
+def _swallow(fn):
+    try:
+        fn()
+    except Exception:
+        pass

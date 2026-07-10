@@ -71,14 +71,20 @@ expressible in the spec. **Reconciled on re-apply:**
   `name` → control resolved from its type), plus `libraries[]` (JS web-resource
   names, must already exist) and `handlers[]` (`event` onload/onsave/onchange,
   `function`, `library`; `onchange` also needs `field`). Optional `name` picks
-  among the entity's main forms (default: the primary). The create path is
-  **additive + idempotent**: a declared component absent from the form is added
-  (real → `applied`, dry-run → `planned`); a form already satisfying the
-  declaration is `skipped`. A greenfield entity whose main form is not yet readable
-  is `planned` — re-apply to land it. Forms are **out of scope for `--prune`**. The
-  `applied`/`planned` entry carries `components: [{kind, name, …}]` listing what was
-  added. Converging *drift* in an already-present component is not yet reconciled
-  (create path only).
+  among the entity's main forms (default: the primary). Convergence is **additive +
+  idempotent**: a declared component absent from the form is added (a purely additive
+  form → `applied`, dry-run → `planned`); a form already satisfying the declaration
+  is `skipped`. A component **present but drifted** is converged in place and the
+  form routes to `updated`: a tab/section label, a field's tab+section placement
+  (relocated, not duplicated), the relative order of the declared tabs/sections, and
+  a handler's `enabled`/`pass_context` flags. A field control `classid` is
+  **create-only** — never retyped in place. A declared `name` that resolves to no
+  single existing main form is an **identity/ownership divergence** → `replace_blocked`
+  (no write, exit 1, siblings still reconcile): the stance is *converge an existing
+  main form*, never forge or rewrite the wrong one. A greenfield entity whose main
+  form is not yet readable is `planned` — re-apply to land it. Forms are **out of
+  scope for `--prune`**. The entry carries `components: [{kind, name, …}]`; a
+  converged component adds `change: "converged"` and (under `--dry-run`) a `diff`.
 
 **Create-only** (re-applying an existing component does not yet reconcile these):
 attribute — `default_value`, `true_label/false_label`, `min_value/max_value`,

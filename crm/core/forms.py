@@ -1671,18 +1671,18 @@ def converge_declared_form(
                                     "diff": {"placement": {
                                         "old": {"tab": cur_tab, "section": cur_section},
                                         "new": {"tab": tname, "section": sname}}}})
-            # Converge the relative order of the declared sections within this tab.
-            formxml = _reorder_declared(
-                formxml, [str(s["name"]) for s in _blocks(tab.get("sections"))],
-                live_order=lambda fx, tn=tname: [
-                    s.get("name") for s in _resolve_target_tab(
-                        _parse_formxml(fx), tn
-                    ).findall("./columns/column/sections/section")],
-                move=lambda fx, name, after, tn=tname: move_section_in_formxml(
-                    fx, section=name, tab=tn, after=after),
-                on_move=lambda a, b, tn=tname: changes.append(
-                    {"kind": "section-order", "name": b, "tab": tn,
-                     "change": "converged", "diff": {"after": a}}))
+        # Converge the relative order of the declared sections within this tab.
+        formxml = _reorder_declared(
+            formxml, [str(s["name"]) for s in _blocks(tab.get("sections"))],
+            live_order=lambda fx, tn=tname: [
+                s.get("name") for s in _resolve_target_tab(
+                    _parse_formxml(fx), tn
+                ).findall("./columns/column/sections/section")],
+            move=lambda fx, name, after, tn=tname: move_section_in_formxml(
+                fx, section=name, tab=tn, after=after),
+            on_move=lambda a, b, tn=tname: changes.append(
+                {"kind": "section-order", "name": b, "tab": tn,
+                 "change": "converged", "diff": {"after": a}}))
     # Converge the relative order of the declared top-level tabs.
     formxml = _reorder_declared(
         formxml, [str(t["name"]) for t in _blocks(block.get("tabs"))],
