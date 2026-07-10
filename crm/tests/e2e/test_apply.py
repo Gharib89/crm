@@ -926,6 +926,90 @@ def test_apply_converges_form_on_ephemeral_entity(cli, backend, ephemeral_soluti
     assert not any(e["kind"] == "form" for e in data2["applied"])
 
 
+@pytest.mark.slow
+@covers("apply")
+def test_apply_creates_app_and_sitemap_exposing_entity(cli, backend, ephemeral_solution,
+                                                       ephemeral_entity, unique, tmp_path,
+                                                       request):
+    """Apply a spec with a top-level `apps:` block (ADR 0024, #795).
+
+    One spec declares a model-driven app whose sitemap exposes the ephemeral
+    entity through a subarea — the create path builds the app and its sitemap
+    through the app-module + sitemap builders and publishes once. Verification
+    follows the same contract the `app` lifecycle e2e uses: a freshly created
+    appmodule is not reliably GET-retrievable on Dataverse (the create path
+    documents this "publish-before-read" window and treats the read-back miss as
+    non-fatal), so success is read off the apply result envelope — the app lands
+    in `applied` with a live `appmoduleid`/`sitemapid` and nothing `failed` — not
+    off a query of the created rows. Re-applying is create-only: the existing app
+    is `skipped`. App + sitemap are cleaned up by id in a finalizer; an org that
+    rejects appmodule writes (on-prem v9.1) skips rather than fails.
+    """
+    app_unique = f"new_appspec{unique[:6]}"
+    app_name = f"E2E AppSpec {unique[:6]}"
+
+    created_app_id: list[str] = []
+    created_sitemap_id: list[str] = []
+
+    def _cleanup():
+        for smid in created_sitemap_id:
+            try:
+                backend.delete(f"sitemaps({smid})")
+            except Exception:
+                pass
+        for aid in created_app_id:
+            try:
+                backend.delete(f"appmodules({aid})")
+            except Exception:
+                pass
+
+    request.addfinalizer(_cleanup)
+
+    spec = {
+        "solution": {"unique_name": ephemeral_solution},
+        "apps": [{
+            "name": app_name,
+            "unique_name": app_unique,
+            "sitemap": {"areas": [{
+                "id": "e2e_area", "title": "E2E Area",
+                "groups": [{
+                    "id": "e2e_group", "title": "E2E Group",
+                    "subareas": [{"entity": ephemeral_entity, "title": "E2E Rows"}],
+                }],
+            }]},
+        }],
+    }
+    spec_path = tmp_path / "apps_spec.json"
+    spec_path.write_text(json.dumps(spec), encoding="utf-8")
+
+    result = cli(["--json", "apply", "-f", str(spec_path)], check=False)
+    combined = (result.stderr or "") + (result.stdout or "")
+    if result.returncode != 0 and any(kw in combined.lower() for kw in (
+        "not supported", "privilege", "accessdenied", "403",
+        "businessnotfound", "notimplemented",
+    )):
+        pytest.skip(f"appmodule write rejected by this org (on-prem limitation?): "
+                    f"{combined[:400]}")
+    data = json.loads(result.stdout)["data"]
+    assert not data.get("failed"), f"apply reported failures: {data}"
+    app_applied = [e for e in data["applied"] if e["kind"] == "app"]
+    assert app_applied, f"app not applied: {data}"
+    entry = app_applied[0]
+    assert entry["name"] == app_unique
+    # A live appmoduleid + sitemapid prove both POSTs were accepted by the org.
+    assert entry.get("appmoduleid"), f"no live appmoduleid: {entry}"
+    assert entry.get("sitemapid"), f"no live sitemapid: {entry}"
+    created_app_id.append(entry["appmoduleid"])
+    created_sitemap_id.append(entry["sitemapid"])
+
+    # Re-apply is create-only: the existing app is skipped (whether the existence
+    # probe sees it or the duplicate-create fault is swallowed), never re-created.
+    result2 = cli(["--json", "apply", "-f", str(spec_path)])
+    data2 = json.loads(result2.stdout)["data"]
+    assert [e["kind"] for e in data2["skipped"] if e["kind"] == "app"] == ["app"]
+    assert not any(e["kind"] == "app" for e in data2["applied"])
+
+
 @covers("apply")
 def test_apply_reconciles_and_refuses_form_drift(cli, backend, ephemeral_solution,
                                                  ephemeral_entity, tmp_path, request):

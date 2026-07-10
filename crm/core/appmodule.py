@@ -63,6 +63,10 @@ _COMPONENT_REFS: dict[str, tuple[str, str]] = {
     "bpf": ("workflowid", "workflow"),
 }
 
+# The component kinds an app's spec `components:` block may declare — the record-
+# backed kinds AddAppComponents can bind (tables reach the app via the sitemap).
+APP_COMPONENT_KINDS = frozenset(_COMPONENT_REFS)
+
 
 def create_app(
     backend: D365Backend,

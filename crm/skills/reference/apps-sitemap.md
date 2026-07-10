@@ -44,6 +44,11 @@ crm --json app build-sitemap "Contoso Sales Sitemap" \
 through the sitemap's `Entity=` subareas. A newly created entity is invisible in an
 app until a subarea references it.
 
+**Declarative alternative:** the whole app — identity, `components`, and its
+`sitemap` (areas/groups/subareas) — can be declared in a top-level `apps:` block
+of an `apply -f` spec instead of these imperative verbs, so a table and the app
+that exposes it land in one run (create path; see `reference/authoring.md`).
+
 **Create→sitemap seam — carry the `appmoduleid`, don't re-create.** `app create`
 **stages** by default and then reads the new app back; on on-prem especially, an
 unpublished appmodule isn't query-visible yet, so that read-back commonly fails

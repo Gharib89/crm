@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from typing import Any, TypeVar, cast
 
 from crm.core.batch import run_batched
+from crm.core import appmodule as app_mod
 from crm.core import forms as forms_mod
 from crm.core import metadata as meta_mod
 from crm.core import metadata_attrs as attrs_mod
@@ -200,6 +201,92 @@ def _validate_form_block(block: Any, elabel: str) -> None:
             raise D365Error(f"{hlabel}: only an onchange handler takes a 'field'.")
 
 
+def _validate_sitemap_block(sitemap: Any, applabel: str) -> None:
+    """Validate an app's nested ``sitemap:`` block (areas → groups → subareas).
+
+    Only document shape is checked here — the referential integrity and duplicate-Id
+    rules are the builder's authority (``appmodule.build_sitemapxml``), enforced
+    client-side before any POST. Nesting makes an orphan group/subarea impossible by
+    construction, so up-front validation is purely structural."""
+    label = f"{applabel} sitemap"
+    if not isinstance(sitemap, dict):
+        raise D365Error(f"{label} must be a mapping.")
+    sitemap = cast("dict[str, Any]", sitemap)
+    _require_list(sitemap, "areas", label)
+    if not _as_list(sitemap.get("areas")):
+        raise D365Error(f"{label}: needs at least one area.")
+    for area in _as_list(sitemap.get("areas")):
+        alabel = f"{label} area"
+        _require_str(area, "id", alabel)
+        _require_str(area, "title", f"{alabel} {area.get('id')!r}", optional=True)
+        _require_list(area, "groups", f"{alabel} {area.get('id')!r}")
+        for group in _as_list(area.get("groups")):
+            glabel = f"{alabel} {area.get('id')!r} group"
+            _require_str(group, "id", glabel)
+            _require_str(group, "title", f"{glabel} {group.get('id')!r}", optional=True)
+            _require_list(group, "subareas", f"{glabel} {group.get('id')!r}")
+            for sub in _as_list(group.get("subareas")):
+                slabel = f"{glabel} {group.get('id')!r} subarea"
+                _require_str(sub, "entity", slabel)
+                _require_str(sub, "title", slabel, optional=True)
+
+
+def _validate_app_block(block: Any) -> None:
+    """Validate one top-level ``apps:`` block up front (ADR 0024, #795).
+
+    A malformed app/sitemap declaration fails here — before any HTTP call — with a
+    clean usage error, mirroring the up-front authority every other spec block has.
+    """
+    if not isinstance(block, dict):
+        raise D365Error("each apps entry must be a mapping.")
+    block = cast("dict[str, Any]", block)
+    label = f"app {block.get('unique_name') or block.get('name')!r}"
+    _require_str(block, "name", label)
+    _require_str(block, "unique_name", label)
+    _require_str(block, "description", label, optional=True)
+    # Identity is a publisher-prefixed unique name — reject a malformed one up front
+    # rather than deep inside create_app's first backend touch.
+    mc.validate_schema_name(block["unique_name"], subject="unique_name",
+                            example="cwx_crmworx")
+    _require_list(block, "components", label)
+    for comp in _as_list(block.get("components")):
+        clabel = f"{label} component"
+        _require_str(comp, "kind", clabel)
+        _require_str(comp, "id", clabel)
+        if comp["kind"] not in app_mod.APP_COMPONENT_KINDS:
+            raise D365Error(
+                f"{clabel}: kind must be one of "
+                f"{', '.join(sorted(app_mod.APP_COMPONENT_KINDS))}.")
+    if block.get("sitemap") is not None:
+        _validate_sitemap_block(block["sitemap"], label)
+
+
+def _sitemap_tuples(
+    sitemap: dict[str, Any],
+) -> tuple[list[tuple[str, str]], list[tuple[str, str, str]],
+           list[tuple[str, str, str, str | None]]]:
+    """Flatten a nested ``sitemap:`` block into build_sitemapxml's tuple inputs.
+
+    Returns ``(areas, groups, subareas)`` where ``areas=[(id, title)]``,
+    ``groups=[(area_id, id, title)]`` and ``subareas=[(area_id, group_id, entity,
+    title_or_None)]`` — the exact shapes ``appmodule.build_sitemapxml`` consumes.
+    """
+    areas: list[tuple[str, str]] = []
+    groups: list[tuple[str, str, str]] = []
+    subareas: list[tuple[str, str, str, str | None]] = []
+    for area in _as_list(sitemap.get("areas")):
+        aid = str(area["id"])
+        areas.append((aid, str(area.get("title") or "")))
+        for group in _as_list(area.get("groups")):
+            gid = str(group["id"])
+            groups.append((aid, gid, str(group.get("title") or "")))
+            for sub in _as_list(group.get("subareas")):
+                title = sub.get("title")
+                subareas.append((aid, gid, str(sub["entity"]),
+                                 str(title) if title else None))
+    return areas, groups, subareas
+
+
 # ── component-kind adapters ──────────────────────────────────────────────────
 @dataclass(frozen=True)
 class ReconcileCtx:
@@ -348,7 +435,8 @@ def validate_spec(spec: Any) -> None:
             "customization writes must target an explicit unmanaged solution "
             "(re-export with `metadata export-spec --solution`).")
     _require(sp["solution"], ("unique_name",), "solution")
-    for key in ("entities", "optionsets", "webresources", "security_roles", "plugins"):
+    for key in ("entities", "optionsets", "webresources", "security_roles",
+                "plugins", "apps"):
         if key in sp and not isinstance(sp[key], list):
             raise D365Error(f"{key} must be a list.")
     for ent in _as_list(sp.get("entities")):
@@ -403,6 +491,11 @@ def validate_spec(spec: Any) -> None:
                             "message_property_name"):
                     if img.get(key) is not None and not isinstance(img[key], str):
                         raise D365Error(f"{slabel}: image {key!r} must be a string.")
+    # A top-level model-driven app (`apps:`) delegates its whole shape — the app
+    # identity plus its nested sitemap — to _validate_app_block, the same up-front
+    # authority every other spec block has (ADR 0024, #795).
+    for app in _as_list(sp.get("apps")):
+        _validate_app_block(app)
 
 
 def _solution_exists(backend: D365Backend, name: str) -> bool:
@@ -2402,6 +2495,66 @@ def apply_spec(
                                        message_property_name=img.get("message_property_name"),
                                        solution=solution_name), failed)
                     _classify(result, img_entry, applied, skipped, planned)
+
+        # Phase: model-driven apps (ADR 0024, #795). Runs last so every record-
+        # backed component an app binds (views, forms, charts, …) already exists.
+        # This is the CREATE path: an absent app is created via the app-module +
+        # sitemap builders, its declared components bound, and its sitemap set from
+        # the declared areas/groups/subareas; an app that already exists is left
+        # untouched (`skipped`) — converging a live app's component set or sitemap is
+        # the reconcile slice (#796). Apps and sitemaps are publishable, so a created
+        # app defers to the end-of-run PublishAllXml (and `--stage-only` records
+        # meta.staged). Under --dry-run an absent app reports `planned` with no write.
+        for app_spec in _as_list(spec.get("apps")):
+            entry = {"kind": "app", "name": app_spec["unique_name"]}
+            result = _call(entry, lambda a=app_spec: app_mod.create_app(
+                backend,
+                name=a["name"],
+                unique_name=a["unique_name"],
+                description=a.get("description"),
+                solution=solution_name,
+                if_exists="skip",
+                publish=False,
+            ), failed)
+            # Create-only: bind components + sitemap only when this run actually
+            # created the app. An existing app (skipped) or a dry-run would-create
+            # (planned) writes nothing further here.
+            if _classify(result, entry, applied, skipped, planned) != "applied":
+                continue
+            app_id = result.get("appmoduleid")
+            entry["appmoduleid"] = app_id
+            components = [(c["kind"], c["id"])
+                          for c in _as_list(app_spec.get("components"))]
+            sitemap = app_spec.get("sitemap")
+            # The app row was created but its server id could not be resolved
+            # (an unparseable OData-EntityId, or a publish-before-read miss —
+            # create_app records the reason in app_lookup_error). Its declared
+            # components/sitemap can't be bound without that id, so surface a
+            # hard failure rather than report a silently incomplete app as
+            # applied: an app whose sitemap never landed leaves its tables
+            # unreachable, defeating the point of the block.
+            if not app_id and (components or sitemap):
+                applied.remove(entry)
+                failed.append({**entry, "error": result.get("app_lookup_error")
+                               or "app created but its appmoduleid could not be "
+                               "resolved; components/sitemap not bound."})
+                raise _Aborted
+            if components and app_id:
+                _call(entry, lambda app_id=app_id, components=components:
+                      app_mod.add_app_components(
+                          backend, app_id=app_id, components=components), failed)
+            if sitemap and app_id:
+                areas, groups, subareas = _sitemap_tuples(sitemap)
+                sm_result = _call(entry, lambda a=app_spec, areas=areas, groups=groups,
+                                  subareas=subareas: app_mod.build_sitemap(
+                                      backend,
+                                      sitemap_name=a["unique_name"],
+                                      areas=areas, groups=groups, subareas=subareas,
+                                      unique_name=a["unique_name"],
+                                      solution=solution_name,
+                                      publish=False), failed)
+                if sm_result.get("sitemapid"):
+                    entry["sitemapid"] = sm_result["sitemapid"]
     except _Aborted:
         pass
 
