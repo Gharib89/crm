@@ -72,9 +72,10 @@ from crm.core import (
     relationships,
     solution_components,
     views,
+    xml_edit,
 )
 from crm.core import metadata_constraints as mc
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 
 _PICKLIST_KINDS = frozenset({"picklist", "multiselect"})
 _LENGTH_KINDS = frozenset({"string", "memo"})
@@ -801,6 +802,180 @@ def build_role_spec(
     return spec
 
 
+# ── model-driven app projection (#797, ADR 0024) ─────────────────────────────
+#
+# A model-driven app is a top-level, non-entity-rooted solution member the entity
+# walk cannot reach; ADR 0024 fixes a separate pass over `appmodule` members that
+# projects each app under a top-level `apps:` block, under the same ADR 0019
+# seedable invariant. Only the app identity and its Entity-backed sitemap are
+# projected — both re-seed on a fresh org (the app is created by unique name; the
+# sitemap references tables by portable logical name).
+_APP_COMPONENT_TYPE = 80
+# The app's sitemap rides under its own `apps:` block (projected with the app), so
+# a standalone SiteMap solution member is reported skipped, not projected twice.
+_SITEMAP_COMPONENT_TYPE = 62
+
+
+def _project_app_sitemap(
+    sitemap_xml: str, app_label: str, warnings: list[str],
+) -> dict[str, Any] | None:
+    """Project a live SiteMapXml into apply's nested ``sitemap:`` block, or None.
+
+    Keeps only Entity-backed SubAreas — a table's logical name is portable across
+    orgs, so it round-trips through apply's create path (``build_sitemapxml`` emits
+    only ``Entity=`` SubAreas). A Url / DefaultDashboard SubArea binds to an
+    org-specific target apply cannot re-seed, so it is dropped with a ``warnings``
+    reason (never silently — ADR 0019). A Group left with no seedable SubArea, and
+    an Area left with no Group, is pruned; when nothing seedable remains the result
+    is None so the caller omits the ``sitemap:`` key.
+
+    An Area / Group ``title`` is emitted only when it differs from the node Id (the
+    create path defaults a blank title to the Id, so an equal title is not drift);
+    a SubArea ``title`` is emitted whenever present.
+    """
+    root = xml_edit.parse_xml(sitemap_xml, label="SiteMapXml")
+    out_areas: list[dict[str, Any]] = []
+    for area in root.findall("Area"):
+        aid = area.get("Id")
+        if not aid:
+            continue
+        out_groups: list[dict[str, Any]] = []
+        for group in area.findall("Group"):
+            gid = group.get("Id")
+            if not gid:
+                continue
+            out_subs: list[dict[str, Any]] = []
+            for sub in group.findall("SubArea"):
+                entity = sub.get("Entity")
+                if not entity:
+                    ident = (sub.get("Id") or sub.get("Url")
+                             or sub.get("DefaultDashboard") or "?")
+                    warnings.append(
+                        f"{app_label} sitemap: dropped subarea {ident!r} — only "
+                        "entity-backed subareas re-seed; a url/dashboard subarea "
+                        "binds to an org-specific target apply cannot re-create.")
+                    continue
+                sub_out: dict[str, Any] = {"entity": entity}
+                title = sub.get("Title")
+                if title:
+                    sub_out["title"] = title
+                out_subs.append(sub_out)
+            if not out_subs:
+                continue
+            group_out: dict[str, Any] = {"id": gid, "subareas": out_subs}
+            gtitle = group.get("Title")
+            if gtitle and gtitle != gid:
+                group_out["title"] = gtitle
+            out_groups.append(group_out)
+        if not out_groups:
+            continue
+        area_out: dict[str, Any] = {"id": aid, "groups": out_groups}
+        atitle = area.get("Title")
+        if atitle and atitle != aid:
+            area_out["title"] = atitle
+        out_areas.append(area_out)
+    return {"areas": out_areas} if out_areas else None
+
+
+def build_app_spec(
+    backend: D365Backend,
+    app_id: str,
+    *,
+    warnings: list[str] | None = None,
+) -> dict[str, Any]:
+    """Project a model-driven app (a solution member's objectid) into an ``apps`` entry.
+
+    Reads the appmodule and its app-specific sitemap over the Web API (pure GETs)
+    and emits the apply ``apps`` shape — ``{name, unique_name, description?,
+    sitemap?}`` — the create path (ADR 0024, #795) consumes. Only the app identity
+    and its Entity-backed sitemap are projected: both re-seed on a fresh org (the
+    app is created by unique name; the sitemap references tables by portable
+    logical name). The result passes ``apply.validate_spec`` and round-trips
+    through ``apply_spec``.
+
+    Record-backed component bindings (views / charts / forms / dashboards / BPFs)
+    are NOT projected — apply's create ``components:`` block binds them by
+    org-specific id, which cannot re-seed on another org (ADR 0019). Their count is
+    surfaced in ``warnings`` rather than dropped silently; tables still reach the
+    app through the sitemap's Entity subareas. Raises ``D365Error`` (routed to the
+    caller's ``skipped`` bucket) when the app has no readable name / unique name.
+    """
+    warn = warnings if warnings is not None else []
+    rec = as_dict(backend.get(
+        f"appmodules({app_id})",
+        params={"$select": "name,uniquename,description,appmoduleidunique"}))
+    name = rec.get("name")
+    unique_name = rec.get("uniquename")
+    if not isinstance(name, str) or not name:
+        raise D365Error(f"app {app_id!r} has no name; cannot project.")
+    if not isinstance(unique_name, str) or not unique_name:
+        raise D365Error(f"app {app_id!r} has no unique name; cannot project.")
+    # Seedable invariant (ADR 0019): apply's create path (create_app) requires a
+    # publisher-prefixed unique name, so an app whose unique name lacks one (e.g. a
+    # first-party app like `Customerservicehub`) cannot round-trip — skip it with a
+    # reason rather than emit a block validate_spec would reject.
+    try:
+        mc.validate_schema_name(unique_name, subject="unique_name",
+                                example="cwx_crmworx")
+    except D365Error as exc:
+        raise D365Error(
+            f"app {unique_name!r} is not apply-seedable: {exc}") from exc
+
+    app_label = f"app {unique_name!r}"
+    block: dict[str, Any] = {"name": name, "unique_name": unique_name}
+    description = rec.get("description")
+    if isinstance(description, str) and description:
+        block["description"] = description
+
+    # The app's sitemap is linked by sitemapnameunique == the app's uniquename
+    # (the inverse of appmodule.set_sitemap). Project its Entity subareas.
+    sitemaps = backend.get_collection(
+        "sitemaps",
+        params={"$filter": f"sitemapnameunique eq {odata_literal(unique_name)}",
+                "$select": "sitemapxml"})
+    sitemap_xml = str(sitemaps[0].get("sitemapxml") or "") if sitemaps else ""
+    if sitemap_xml.strip():
+        sitemap = _project_app_sitemap(sitemap_xml, app_label, warn)
+        if sitemap is not None:
+            block["sitemap"] = sitemap
+    else:
+        warn.append(
+            f"{app_label}: no app-specific sitemap found "
+            f"(sitemapnameunique {unique_name!r}); navigation not projected.")
+
+    # Record-backed component bindings bind by org-specific id (ADR 0019): count
+    # them so the omission is visible, never silent. The count excludes entity
+    # (reached via the sitemap's Entity subareas) and sitemap (projected as the
+    # app's `sitemap:` block) bindings — filtered server-side so a large app's
+    # full component list is never pulled just to count the relevant few.
+    idunique = rec.get("appmoduleidunique")
+    if isinstance(idunique, str) and idunique:
+        query = (f"_appmoduleidunique_value eq {idunique} "
+                 f"and componenttype ne {_ENTITY_COMPONENT_TYPE} "
+                 f"and componenttype ne {_SITEMAP_COMPONENT_TYPE}")
+        try:
+            bound = backend.get_collection(
+                "appmodulecomponents",
+                params={"$filter": query, "$select": "componenttype"})
+        except D365Error as exc:
+            # Best-effort: a failed bindings read must not fail the whole app
+            # projection — but it must not be silent either (ADR 0019), so warn
+            # that record-backed bindings may exist but could not be counted.
+            warn.append(
+                f"{app_label}: could not read component bindings ({exc}); "
+                "any record-backed bindings (views/charts/forms/dashboards/BPFs) "
+                "are not projected and were not counted.")
+        else:
+            if bound:
+                warn.append(
+                    f"{app_label}: {len(bound)} record-backed component binding(s) "
+                    "(views/charts/forms/dashboards/BPFs) not projected — they bind "
+                    "by org-specific id and cannot re-seed on a fresh org (ADR 0019); "
+                    "tables reach the app through the sitemap's entity subareas.")
+
+    return block
+
+
 def _skip_reason(componenttype: int) -> str:
     """Explain why a non-entity solution member is not directly projected."""
     if componenttype in _PLUGIN_COMPONENT_TYPES:
@@ -840,13 +1015,19 @@ def build_solution_spec(
     Security-role members project under ``security_roles`` (name, optional
     business unit, privileges grouped by depth) and web-resource members under
     ``webresources`` (inline base64 content, display name, type) — both
-    apply-seedable, so they round-trip a real apply. Every member that is not an
-    apply-seedable kind is reported in a `skipped` bucket (``{type, objectid,
-    reason}``) — the verb never fails on an unsupported component and never drops
-    one silently. Plug-ins (assembly DLL bytes absent from live metadata) and
-    other non-seedable kinds remain skipped (see ADR 0019). A touched entity's
-    seedable main form rides along under its `forms:` block (ADR 0024); a
-    non-seedable form (an additional main form) joins the same `skipped` bucket.
+    apply-seedable, so they round-trip a real apply. Model-driven app members
+    (``appmodule``) project under a top-level ``apps`` block — the app identity and
+    its Entity-backed sitemap, the seedable slice (ADR 0024, #797); a standalone
+    ``sitemap`` member is reported skipped because it rides under its app. Every
+    member that is not an apply-seedable kind is reported in a `skipped` bucket
+    (``{type, objectid, reason}``) — the verb never fails on an unsupported
+    component and never drops one silently. Plug-ins (assembly DLL bytes absent
+    from live metadata) and other non-seedable kinds remain skipped (see ADR 0019).
+    A touched entity's seedable main form rides along under its `forms:` block (ADR
+    0024); a non-seedable form (an additional main form) joins the same `skipped`
+    bucket. An app's record-backed component bindings (views / forms / charts /
+    BPFs) are not projected (they bind by org-specific id) and are surfaced in
+    `warnings`.
 
     Returns ``{"spec": <apply-ready spec>, "skipped": [...]}``. `spec` passes
     `apply.validate_spec` and round-trips through `apply_spec`.
@@ -860,6 +1041,7 @@ def build_solution_spec(
     entity_logicals: list[str] = []
     roles: list[dict[str, Any]] = []
     webresources: list[dict[str, Any]] = []
+    apps: list[dict[str, Any]] = []
     seen: set[str] = set()
 
     def _project(kind: str, objectid: Any,
@@ -912,6 +1094,16 @@ def build_solution_spec(
             _project("role", objectid, build_role_spec, roles)
         elif componenttype == _WEBRESOURCE_COMPONENT_TYPE:
             _project("webresource", objectid, build_webresource_spec, webresources)
+        elif componenttype == _APP_COMPONENT_TYPE:
+            _project("app", objectid, build_app_spec, apps)
+        elif componenttype == _SITEMAP_COMPONENT_TYPE:
+            # The sitemap is projected under its app's `apps:` block (ADR 0024), so
+            # a standalone SiteMap member is reported here rather than emitted twice.
+            skipped.append({
+                "type": "sitemap", "objectid": objectid,
+                "reason": ("sitemap rides under its app's apps: block (projected "
+                           "there when its app is a solution member), not as a "
+                           "standalone component (ADR 0024).")})
         else:
             skipped.append({
                 "type": solution_components.component_type_name(componenttype),
@@ -944,4 +1136,6 @@ def build_solution_spec(
         spec["webresources"] = webresources
     if roles:
         spec["security_roles"] = roles
+    if apps:
+        spec["apps"] = apps
     return {"spec": spec, "skipped": skipped}

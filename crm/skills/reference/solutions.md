@@ -291,9 +291,9 @@ X?"; use `metadata dependencies` for a single component.
 ## Project a solution into a desired-state spec — `export-spec`
 
 The **source side of the org-to-org drift recipe**: project every component in a solution
-— entities, security roles, and web resources — into one merged apply-consumable spec,
-then run `apply --dry-run` against the target org to see what drifts — pure reads, no
-writes on either side.
+— entities, security roles, web resources, and model-driven apps — into one merged
+apply-consumable spec, then run `apply --dry-run` against the target org to see what drifts
+— pure reads, no writes on either side.
 
 ```bash
 # Dev org: write the bare YAML spec
@@ -321,6 +321,7 @@ when any drop-reasons accumulated).
     "optionsets": ["contoso_priority"],
     "security_roles": ["Contoso Project Manager"],
     "webresources": ["contoso_/scripts/project.js"],
+    "apps": ["contoso_projecthub"],
     "skipped": [
       {"type": "pluginassembly", "objectid": "<guid>",
        "reason": "plug-in component not projectable from a live org (assembly DLL bytes absent); ..."}
@@ -329,7 +330,8 @@ when any drop-reasons accumulated).
 }
 ```
 With `-o FILE`, `data` is instead `{path, solution, entities: <count>, attributes,
-forms, optionsets: <count>, security_roles: <count>, webresources: <count>, skipped}`.
+forms, optionsets: <count>, security_roles: <count>, webresources: <count>,
+apps: <count>, skipped}`.
 
 **Security roles** project as `security_roles[]` — name, optional `business_unit`, and
 privileges grouped by depth into `privilege_names` selector rows. Roles whose privileges
@@ -345,6 +347,17 @@ libraries, event handlers), governed by the ADR 0019 seedable invariant. Non-see
 form content drops to `warnings`; a non-seedable *whole form* (an additional, non-primary
 main form) lands in `skipped`. `data.forms` counts the entities that carried a projected
 form.
+
+**Model-driven apps** project as `apps[]` — a top-level, non-entity-rooted pass over the
+solution's `appmodule` members (ADR 0024). Each emits `{name, unique_name, description?,
+sitemap?}`; the sitemap projects only its **Entity subareas** (a table logical name is
+portable, so navigation re-seeds on a fresh org). Gotchas, all governed by the ADR 0019
+seedable invariant — never a silent drop:
+
+- A Url / dashboard subarea binds to an org-specific target `apply` cannot re-create → dropped to `warnings`.
+- Record-backed component bindings (views / forms / charts / BPFs) bind by org-specific id and are **not** projected → surfaced in `warnings` with a count. Tables reach the app through the sitemap's entity subareas, not these bindings.
+- An app whose `unique_name` has no publisher prefix (a first-party app `apply` cannot re-create) → routed to `skipped`.
+- A standalone `sitemap` member (type 62) → `skipped`: it is projected under its app, not on its own.
 
 **Skipped bucket** — components that cannot be projected from live metadata (plug-in
 assemblies, dashboards, workflows, additional main forms, and other non-seedable types)

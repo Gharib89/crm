@@ -203,10 +203,12 @@ def solution_export_spec(ctx: CLIContext, unique_name, output):
 
     Apply-seedable members project in full: entities (+ their attributes, option
     sets, views, 1:N relationships, seedable main form), security roles (name,
-    business unit, privileges by depth), and web resources (inline base64 content,
-    display name, type). Members that cannot round-trip a real apply (plug-ins,
-    additional main forms, ...) are reported in a `skipped` bucket; the verb never
-    fails on an unsupported component and never drops one silently.
+    business unit, privileges by depth), web resources (inline base64 content,
+    display name, type), and model-driven apps (identity + Entity-backed sitemap,
+    under a top-level `apps:` block). Members that cannot round-trip a real apply
+    (plug-ins, additional main forms, an app's record-backed component bindings,
+    ...) are reported in a `skipped` bucket or `warnings`; the verb never fails on
+    an unsupported component and never drops one silently.
 
     With -o, the bare YAML spec is written to FILE (apply-ready). Without -o, a
     summary plus the skipped bucket is emitted under the JSON envelope.
@@ -238,6 +240,7 @@ def solution_export_spec(ctx: CLIContext, unique_name, output):
             "optionsets": len(spec.get("optionsets", [])),
             "security_roles": len(spec.get("security_roles", [])),
             "webresources": len(spec.get("webresources", [])),
+            "apps": len(spec.get("apps", [])),
             "skipped": skipped,
         }, warnings=warnings or None)
         return
@@ -250,6 +253,7 @@ def solution_export_spec(ctx: CLIContext, unique_name, output):
         "optionsets": [o.get("name") for o in spec.get("optionsets", [])],
         "security_roles": [r.get("name") for r in spec.get("security_roles", [])],
         "webresources": [w.get("name") for w in spec.get("webresources", [])],
+        "apps": [a.get("unique_name") for a in spec.get("apps", [])],
         "skipped": skipped,
     }, warnings=warnings or None)
 

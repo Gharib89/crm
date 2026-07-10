@@ -37,6 +37,7 @@ SOLUTION_COMPONENT_TYPES: dict[str, int] = {
     "systemform": 60,
     "webresource": 61,
     "sitemap": 62,
+    "appmodule": 80,
     "connectionrole": 63,
     "fieldsecurityprofile": 70,
     "plugintype": 90,
