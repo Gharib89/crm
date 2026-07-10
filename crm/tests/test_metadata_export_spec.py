@@ -315,6 +315,80 @@ class TestWithViewsAndRelationships:
         apply_mod.validate_spec(loaded)
 
 
+def _form_string_info() -> dict:
+    return {**_string_info(), "AttributeType": "String"}
+
+
+_MAIN_FORM = (
+    '<form><tabs>'
+    '<tab name="general" id="{aaaa1111-0000-0000-0000-000000000001}">'
+    '<labels><label description="General" languagecode="1033" /></labels>'
+    '<columns><column width="100%"><sections>'
+    '<section name="summary" id="{bbbb2222-0000-0000-0000-000000000002}">'
+    '<rows>'
+    '<row><cell id="{c0000000-0000-0000-0000-000000000001}"><control id="new_name" '
+    'classid="{4273EDBD-AC1D-40D3-9FB2-095C621B552D}" datafieldname="new_name" />'
+    '</cell></row>'
+    '<row><cell id="{c0000000-0000-0000-0000-000000000002}"><control id="new_code" '
+    'classid="{4273EDBD-AC1D-40D3-9FB2-095C621B552D}" datafieldname="new_code" />'
+    '</cell></row>'
+    '</rows></section></sections></column></columns></tab></tabs></form>'
+)
+_FORM_ROW = {"formid": "ffff0000-0000-0000-0000-00000000000f", "name": "Information",
+             "objecttypecode": "new_project", "type": 2, "formxml": _MAIN_FORM,
+             "isdefault": True}
+
+
+class TestWithForms:
+    """--with-forms projects the entity's seedable main form (#794)."""
+
+    def test_with_forms_projects_custom_field(self, monkeypatch, backend, tmp_path):
+        _stub(monkeypatch, backend)
+        attrs = {"value": [_shallow("new_name"), _shallow("new_code")]}
+        out_file = tmp_path / "spec.yaml"
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_code"), json=_form_string_info())
+            m.get(backend.url_for("systemforms"), json={"value": [_FORM_ROW]})
+            result = CliRunner().invoke(
+                cli, ["--json", "metadata", "export-spec", "new_project",
+                      "--with-forms", "--solution", "testsln", "-o", str(out_file)])
+
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        assert env["data"]["forms"] == 1
+        loaded = yaml.safe_load(out_file.read_text(encoding="utf-8"))
+        block = loaded["entities"][0]["forms"][0]
+        # Custom field placed; the primary-name field is a platform default, omitted.
+        fields = block["tabs"][0]["sections"][0]["fields"]
+        assert [f["name"] for f in fields] == ["new_code"]
+        apply_mod.validate_spec(loaded)
+
+    def test_additional_main_form_surfaces_in_meta_skipped(self, monkeypatch, backend):
+        _stub(monkeypatch, backend)
+        attrs = {"value": [_shallow("new_name"), _shallow("new_code")]}
+        second = {**_FORM_ROW, "formid": "eeee0000-0000-0000-0000-00000000000e",
+                  "name": "Secondary", "isdefault": False}
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_code"), json=_form_string_info())
+            m.get(backend.url_for("systemforms"), json={"value": [_FORM_ROW, second]})
+            result = CliRunner().invoke(
+                cli, ["--json", "metadata", "export-spec", "new_project",
+                      "--with-forms"])
+
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        skipped = env["meta"]["skipped"]
+        assert len(skipped) == 1
+        assert skipped[0]["type"] == "form"
+        assert "Secondary" in skipped[0]["reason"]
+
+
 class TestFileWriteOSError:
     """OSError on file write → clean error envelope, not a traceback."""
 

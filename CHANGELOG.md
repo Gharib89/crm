@@ -9,6 +9,21 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.62.0 (2026-07-10)
+
+### Documentation
+
+- **export-spec**: Clarify skipped-bucket channel and envelope meta
+  ([#806](https://github.com/Gharib89/crm/pull/806),
+  [`65ba217`](https://github.com/Gharib89/crm/commit/65ba2173df4ddbc093ffb3c1d3a6e1ab47b1363a))
+
+### Features
+
+- **export-spec**: Project entity forms (seedable round-trip)
+  ([#806](https://github.com/Gharib89/crm/pull/806),
+  [`65ba217`](https://github.com/Gharib89/crm/commit/65ba2173df4ddbc093ffb3c1d3a6e1ab47b1363a))
+
+
 ## v1.61.0 (2026-07-10)
 
 ### Bug Fixes

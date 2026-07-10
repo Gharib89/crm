@@ -1779,3 +1779,200 @@ def apply_form_spec(
             publish=publish, solution=solution)
     return {"form": form_row.get("name"), "formid": form_row.get("formid"),
             "components": changes, "committed": committed, "blocked": []}
+
+
+# --- `export-spec` form projection (ADR 0024 / ADR 0019 seedable invariant) ------
+#
+# The inverse of converge_declared_form: read an entity's main form and project a
+# `forms:` block a real `apply` can layer back onto a fresh org's platform-generated
+# main form. Governed by the ADR 0019 seedable invariant — emit only what a real
+# apply can re-seed, never diff-only:
+#   * Only fields bound to apply-creatable CUSTOM columns are projected; the
+#     primary-name field and platform/system fields are omitted (they already ride
+#     the target org's platform main form — "fields equal to platform defaults").
+#   * A field whose control type has no seedable classid (converge would raise) is
+#     dropped to `warnings`, never emitted.
+#   * Only the seedable target main form is projected; an additional main form
+#     cannot be re-seeded (apply converges the target org's primary main form, it
+#     never forges a new one — ADR 0024) and is reported in `skipped`.
+#   * A tab/section is projected only when it carries a projected field, so
+#     platform-default structure adds no bloat.
+#
+# A form-level label OVERRIDE on a field (a cell label differing from the bound
+# attribute's display name) is a documented projection gap: converge re-derives the
+# field label from the seeded attribute, which round-trips the common case; the rare
+# per-form override is not captured (mirrors the datetime-format attribute gap).
+
+
+def _form_label(element: "ET.Element") -> str:
+    """The base-language (1033) ``<label>`` description of a tab/section, or "".
+
+    The read inverse of :func:`_set_label`: lets the projector emit a tab/section
+    label only when it differs from the element ``name`` (converge defaults an added
+    tab/section's label to its name, so a matching label is omitted as a default)."""
+    labels = element.find("labels")
+    if labels is None:
+        return ""
+    label_els = labels.findall("label")
+    target = next(
+        (lab for lab in label_els
+         if lab.get("languagecode") == _LABEL_LANGUAGECODE), None)
+    if target is None:
+        target = label_els[0] if label_els else None
+    return (target.get("description") or "") if target is not None else ""
+
+
+def _project_form_block(
+    form_row: dict[str, Any],
+    custom_attr_types: dict[str, str],
+    warnings: list[str],
+) -> "dict[str, Any] | None":
+    """Project one main form's live formxml into a `forms:` block, or None.
+
+    Emits the tabs/sections that carry a projected custom field, the registered
+    script libraries, and the seedable event handlers — the inverse of
+    :func:`converge_declared_form`. Returns None when the form carries no
+    projectable custom content (nothing to converge, like an entity with no custom
+    attributes emitting no `attributes`). `custom_attr_types` maps an apply-creatable
+    custom attribute's logical name to its `AttributeType`; a field bound to anything
+    outside this map is a platform default and is omitted silently.
+    """
+    formxml: str = cast("str", form_row.get("formxml", ""))
+    form_label = form_row.get("name") or "(default main form)"
+    root = _parse_formxml(formxml)
+
+    tabs_out: list[dict[str, Any]] = []
+    placed: set[str] = set()  # custom fields actually projected onto the form
+    for tab_el in root.findall("./tabs/tab"):
+        tname = tab_el.get("name")
+        if not tname:
+            continue
+        sections_out: list[dict[str, Any]] = []
+        for sec_el in tab_el.findall("./columns/column/sections/section"):
+            sname = sec_el.get("name")
+            if not sname:
+                continue
+            fields_out: list[dict[str, Any]] = []
+            for control in sec_el.iter("control"):
+                datafield = control.get("datafieldname")
+                if not datafield or datafield not in custom_attr_types:
+                    continue  # platform-default / system / primary field
+                attr_type = custom_attr_types[datafield]
+                try:
+                    classid_for_attribute_type(attr_type)
+                except D365Error:
+                    warnings.append(
+                        f"form {form_label!r}: dropped field {datafield!r} — its "
+                        f"control type ({attr_type or 'unknown'}) is not one apply "
+                        f"can seed onto a form.")
+                    continue
+                fields_out.append({"name": datafield})
+                placed.add(datafield)
+            if fields_out:
+                section: dict[str, Any] = {"name": sname}
+                slabel = _form_label(sec_el)
+                if slabel and slabel != sname:
+                    section["label"] = slabel
+                section["fields"] = fields_out
+                sections_out.append(section)
+        if sections_out:
+            tab: dict[str, Any] = {"name": tname}
+            tlabel = _form_label(tab_el)
+            if tlabel and tlabel != tname:
+                tab["label"] = tlabel
+            tab["sections"] = sections_out
+            tabs_out.append(tab)
+
+    libraries: list[str] = []
+    for lib in root.findall("./formLibraries/Library"):
+        name = lib.get("name")
+        if name:
+            libraries.append(name)
+
+    handlers_out: list[dict[str, Any]] = []
+    for handler in list_handlers_in_formxml(formxml):
+        event = handler.get("event") or ""
+        function = handler.get("function")
+        library = handler.get("library")
+        field = handler.get("field") or None
+        if event not in EVENT_CHOICES:
+            warnings.append(
+                f"form {form_label!r}: dropped handler {function!r} on event "
+                f"{event!r} — not a seedable form event "
+                f"({', '.join(EVENT_CHOICES)}).")
+            continue
+        if not function or not library:
+            warnings.append(
+                f"form {form_label!r}: dropped a handler with no function/library.")
+            continue
+        if event == "onchange":
+            if not field:
+                warnings.append(
+                    f"form {form_label!r}: dropped onchange handler {function!r} — "
+                    f"no bound field.")
+                continue
+            if field in custom_attr_types and field not in placed:
+                warnings.append(
+                    f"form {form_label!r}: dropped onchange handler {function!r} — "
+                    f"its field {field!r} is not seedable onto the form.")
+                continue
+        entry: dict[str, Any] = {
+            "event": event, "function": function, "library": library,
+            "pass_context": bool(handler.get("pass_context")),
+            "enabled": bool(handler.get("enabled")),
+        }
+        if event == "onchange":
+            entry["field"] = field
+        handlers_out.append(entry)
+
+    block: dict[str, Any] = {}
+    if tabs_out:
+        block["tabs"] = tabs_out
+    if libraries:
+        block["libraries"] = libraries
+    if handlers_out:
+        block["handlers"] = handlers_out
+    return block or None
+
+
+def project_entity_forms(
+    backend: D365Backend,
+    entity_logical_name: str,
+    *,
+    custom_attr_types: dict[str, str],
+    warnings: list[str],
+    skipped: list[dict[str, Any]],
+) -> "list[dict[str, Any]]":
+    """Project an entity's seedable main form into a one-entry `forms:` list (ADR 0024).
+
+    Reads the entity's main forms (one GET) and projects the *seedable target* — the
+    single main form a real `apply` would converge on a fresh org (its primary main
+    form). Additional main forms cannot be re-seeded (apply never forges a form from
+    scratch) and are recorded in `skipped` with a reason (ADR 0019 seedable
+    invariant). The emitted block carries no `name`, so a round-trip apply targets
+    the destination org's own primary main form. Returns `[]` when the entity has no
+    main form or the target form carries no projectable custom content.
+    """
+    forms_list = read_entity_forms(backend, entity_logical_name)
+    if not forms_list:
+        return []
+    try:
+        target = _select_form(forms_list, None)
+    except D365Error as exc:
+        # No single seedable target (ambiguous primary main form): none re-seedable.
+        for form_row in forms_list:
+            skipped.append({
+                "type": "form", "objectid": form_row.get("formid"),
+                "reason": f"main form {form_row.get('name')!r} not projected: {exc}",
+            })
+        return []
+    for form_row in forms_list:
+        if form_row is not target:
+            skipped.append({
+                "type": "form", "objectid": form_row.get("formid"),
+                "reason": (f"additional main form {form_row.get('name')!r}: apply "
+                           "converges only the destination org's primary main form, "
+                           "so it cannot be re-seeded (ADR 0024)."),
+            })
+    block = _project_form_block(target, custom_attr_types, warnings)
+    return [block] if block is not None else []

@@ -65,7 +65,14 @@ from __future__ import annotations
 
 from typing import Any, Callable, cast
 
-from crm.core import metadata, optionsets, relationships, solution_components, views
+from crm.core import (
+    forms,
+    metadata,
+    optionsets,
+    relationships,
+    solution_components,
+    views,
+)
 from crm.core import metadata_constraints as mc
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 
@@ -472,8 +479,10 @@ def build_entity_spec(
     *,
     with_views: bool = False,
     with_relationships: bool = False,
+    with_forms: bool = False,
     solution: str | None = None,
     warnings: list[str] | None = None,
+    skipped: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Project a live entity into an apply-consumable desired-state spec dict.
 
@@ -495,10 +504,19 @@ def build_entity_spec(
         with_relationships: When True, attach the entity's custom 1:N
             relationships (via `relationships.read_entity_relationships`); the
             key is omitted when there are none.
+        with_forms: When True, attach the entity's seedable main form as a
+            `forms:` block (via `forms.project_entity_forms`), subject to the ADR
+            0019 seedable invariant; the key is omitted when nothing custom
+            projects. A non-seedable form (an additional main form) is recorded in
+            `skipped`; a non-seedable component is recorded in `warnings`.
         warnings: Optional list to accumulate structured drop-reason strings.
             Each silently skipped attribute appends one entry. Callers that
             want to surface diagnostics pass an empty list here; callers that
             don't care may omit the argument.
+        skipped: Optional list to accumulate non-seedable whole-form entries
+            (`{type, objectid, reason}`, matching `build_solution_spec`'s bucket)
+            when `with_forms` is set. Callers wanting form-skip diagnostics pass a
+            list; when omitted, form skips are not surfaced.
     """
     warn = warnings if warnings is not None else []
     ent = metadata.entity_info(backend, logical_name)
@@ -541,6 +559,10 @@ def build_entity_spec(
     # Enumerate attributes (shallow), keep only custom ones, deep-read each kept.
     shallow = metadata.list_attributes(backend, logical_name)
     attributes: list[dict[str, Any]] = []
+    # Logical name -> AttributeType for each admitted custom column, so the forms
+    # projector can both recognize a form field as custom (platform defaults are
+    # omitted) and prove its control has a seedable classid.
+    custom_attr_types: dict[str, str] = {}
     primary_attr: dict[str, Any] | None = None
 
     for shallow_attr in shallow:
@@ -606,6 +628,7 @@ def build_entity_spec(
         )
         if projected is not None:
             attributes.append(projected)
+            custom_attr_types[attr_logical] = str(info.get("AttributeType") or "")
 
     if primary_attr is not None:
         entity["primary_attr"] = primary_attr
@@ -624,6 +647,16 @@ def build_entity_spec(
                      if v.get("name") and v.get("columns")]
         if ent_views:
             entity["views"] = ent_views
+
+    if with_forms:
+        form_blocks = forms.project_entity_forms(
+            backend, logical_name,
+            custom_attr_types=custom_attr_types,
+            warnings=warn,
+            skipped=skipped if skipped is not None else [],
+        )
+        if form_blocks:
+            entity["forms"] = form_blocks
 
     spec: dict[str, Any] = {}
     if solution:
@@ -794,9 +827,9 @@ def build_solution_spec(
 
     Walks `unique_name`'s members (pure GETs, read-only) and merges every entity
     the solution touches into a single spec via `build_entity_spec` per entity —
-    each entity is projected in full (attributes, views, 1:N relationships, and
-    referenced global option sets), so an entity-rooted subcomponent member rides
-    along inside its parent entity. Entity members carry ``objectid =
+    each entity is projected in full (attributes, views, 1:N relationships, its
+    seedable main form, and referenced global option sets), so an entity-rooted
+    subcomponent member rides along inside its parent entity. Entity members carry ``objectid =
     MetadataId``; each is resolved to a logical name before projection. Global
     option sets referenced by more than one entity are de-duplicated by name.
 
@@ -811,7 +844,9 @@ def build_solution_spec(
     apply-seedable kind is reported in a `skipped` bucket (``{type, objectid,
     reason}``) — the verb never fails on an unsupported component and never drops
     one silently. Plug-ins (assembly DLL bytes absent from live metadata) and
-    other non-seedable kinds remain skipped (see ADR 0019).
+    other non-seedable kinds remain skipped (see ADR 0019). A touched entity's
+    seedable main form rides along under its `forms:` block (ADR 0024); a
+    non-seedable form (an additional main form) joins the same `skipped` bucket.
 
     Returns ``{"spec": <apply-ready spec>, "skipped": [...]}``. `spec` passes
     `apply.validate_spec` and round-trips through `apply_spec`.
@@ -890,7 +925,8 @@ def build_solution_spec(
     for logical in entity_logicals:
         es = build_entity_spec(
             backend, logical,
-            with_views=True, with_relationships=True, warnings=warn,
+            with_views=True, with_relationships=True, with_forms=True,
+            warnings=warn, skipped=skipped,
         )
         entities.extend(cast("list[dict[str, Any]]", es.get("entities", [])))
         for opt_set in cast("list[dict[str, Any]]", es.get("optionsets", [])):

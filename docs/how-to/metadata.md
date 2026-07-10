@@ -576,6 +576,9 @@ crm apply -f project.yaml
   `apply` requires at least one column per view.
 - `--with-relationships` — include the entity's custom 1:N relationships (including
   `CascadeConfiguration` and `AssociatedMenuConfiguration`) in the spec.
+- `--with-forms` — include the entity's seedable main form as a `forms:` block:
+  the custom-field placement (tabs → sections → fields), registered JS libraries,
+  and event handlers. Only what a real `apply` can re-seed is emitted (ADR 0019).
 - `--solution NAME` — bake a top-level `solution: {unique_name: NAME}` block into
   the spec so it applies directly. `crm apply` requires one; omit `--solution` to
   emit a valid but non-appliable document (add the block by hand, or re-export
@@ -615,6 +618,22 @@ crm apply -f project.yaml
   casing.
 - Views (with `--with-views`): public saved queries with parseable column layouts,
   including `filter_active`, `order_desc`, and `description` where set.
+- Forms (with `--with-forms`): the entity's seedable main form, projected as the
+  inverse of `apply`'s `forms:` convergence (ADR 0024). Emitted as a `forms:` block
+  under the entity carrying the **custom** fields and their tab/section placement,
+  the registered script libraries, and the seedable event handlers. Governed by the
+  ADR 0019 seedable invariant — only what a real `apply` can layer back onto a fresh
+  org's platform-generated main form is emitted; the block carries no form `name`,
+  so a round-trip apply targets the destination org's own primary main form.
+  Omitted (platform defaults, already on the destination form): the primary-name
+  field and every system/platform field, and any tab/section that carries no custom
+  field. Dropped to `meta.warnings`: a field whose control type has no seedable
+  classid (e.g. a multi-select or double column) and a handler on a non-seedable
+  event. Reported in the `skipped` bucket: an additional (non-primary) main form,
+  which `apply` cannot re-seed (it converges only the destination org's primary
+  main form) — surfaced under `meta.skipped` in the JSON envelope, or
+  `data.skipped` in the `-o` summary. A form-level *label override* on a field is
+  not captured (converge re-derives the label from the seeded attribute).
 - A publisher is never emitted — an existing entity does not know its publisher.
   A top-level `solution:` block is emitted only when `--solution <name>` is
   passed to `export-spec`; `crm apply` requires one, so a spec exported without
