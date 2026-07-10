@@ -171,7 +171,9 @@ crm --json --profile test apply -f spec.yaml | jq '.data'                       
 `-o` — the intent is fixed at plan time and replayed (ADR 0022). What was approved
 is what runs.
 
-**A stale plan is loud on purpose.** If the target org drifted between cutting the
+## When the plan goes stale
+
+A stale plan is loud on purpose. If the target org drifted between cutting the
 plan and executing it, `--from-plan` computes the current state, finds it no longer
 matches the plan, **writes nothing, exits 1, and reports every diverged component**
 (`plan said …, live now computes …`). Do not force it — **re-plan** against the
@@ -191,7 +193,9 @@ prevent.
 - the model-driven app and its sitemap
 - web resources
 - security roles
-- plug-ins (assembly + types + steps + images)
+- plug-ins (assembly + types + steps + images) — apply *creates* these from a
+  spec, but `solution export-spec` cannot *project* existing ones (they land in its
+  `skipped` bucket), so author the `plugins:` block by hand when seeding
 
 Re-applying converges the model-driven **app component set and sitemap**: app
 components and sitemap nodes the spec no longer declares are removed on every
