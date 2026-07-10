@@ -5047,6 +5047,9 @@ def test_apply_forms_phase_converges_existing_main_form(backend):
         m.post(backend.url_for("PublishAllXml"), status_code=204)
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
     assert _kinds(res["applied"]) == ["form"]
+    # Reports the resolved main-form identity, not the placeholder label.
+    assert res["applied"][0]["name"] == "Information"
+    assert res["applied"][0]["formid"] == _FORM_ROW["formid"]
     assert res["applied"][0]["components"] == [
         {"kind": "tab", "name": "custom"},
         {"kind": "section", "name": "extra", "tab": "custom"}]

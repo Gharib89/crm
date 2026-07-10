@@ -2193,6 +2193,11 @@ def apply_spec(
                 if result.get("unmaterialized"):
                     planned.append(entry)
                     continue
+                # Report the resolved main-form identity, not the placeholder label.
+                if isinstance(result.get("form"), str):
+                    entry["name"] = result["form"]
+                if result.get("formid"):
+                    entry["formid"] = result["formid"]
                 added = cast("list[dict[str, Any]]", result.get("components") or [])
                 if not added:
                     skipped.append(entry)
