@@ -61,14 +61,19 @@ _WEBRESOURCE_TYPES: dict[str, int] = {"html": 1, "css": 2, "script": 3}
 EXPECTED_REQUESTS = 3 + 2 + 4 + 4 + (1 + len(_WEBRESOURCE_TYPES)) + 2
 
 
-def _count(backend: D365Backend, entity_set: str, *, filter_expr: str | None = None) -> int:
+def _count(
+    backend: D365Backend, entity_set: str, *,
+    select: str, filter_expr: str | None = None,
+) -> int:
     """Return the total row count of *entity_set* via one narrow `$count` read.
 
     Uses `?$count=true&$top=1` (not the `/<set>/$count` path) so a `$filter` can
     ride along: on-prem v9.1 rejects a `$filter` bound to the `/$count` Edm.Int32
     result, whereas `$count=true` returns the full `@odata.count` regardless of
     `$top` on both targets (see crm.core.entity._count_url). `$top=1` caps the
-    returned rows to one; only `@odata.count` is consumed.
+    returned rows to one, and `select` (the set's primary key) narrows that one row
+    to a single column so the count read stays tiny — only `@odata.count` is
+    consumed. Minimizing payload is part of the feature.
 
     Ceiling: Dataverse saturates the `@odata.count` annotation at 5000 — a set
     with more rows reports exactly 5000. An exact count past that needs
@@ -76,7 +81,7 @@ def _count(backend: D365Backend, entity_set: str, *, filter_expr: str | None = N
     (its availability differs by target); a saturated count still tells an agent
     "large" without a fat sweep.
     """
-    params: dict[str, str] = {"$count": "true", "$top": "1"}
+    params: dict[str, str] = {"$count": "true", "$top": "1", "$select": select}
     if filter_expr is not None:
         params["$filter"] = filter_expr
     body = as_dict(backend.get(entity_set, params=params))
@@ -129,7 +134,7 @@ def _identity(backend: D365Backend) -> dict[str, Any]:
 
 
 def _solutions(backend: D365Backend) -> dict[str, Any]:
-    managed = _count(backend, "solutions", filter_expr="ismanaged eq true")
+    managed = _count(backend, "solutions", select="solutionid", filter_expr="ismanaged eq true")
     rows, unmanaged = _page(
         backend, "solutions", select="uniquename",
         filter_expr="ismanaged eq false", orderby="uniquename",
@@ -189,10 +194,12 @@ def _apps(backend: D365Backend) -> dict[str, Any]:
 
 
 def _automation(backend: D365Backend) -> dict[str, Any]:
-    # One page of workflow *definitions* (a narrow two-column projection). Bounded
-    # by customization, not data volume, and capped at a single page so the request
-    # count stays constant; the by-category breakdown reflects that page (the same
-    # 5000 ceiling the counts carry).
+    # One page of workflow *definitions* (a narrow two-column projection), capped at
+    # a single page so the request count stays constant. Dataverse's default page
+    # size is 5000 and no smaller `Prefer: odata.maxpagesize` is sent, so this page
+    # holds up to 5000 rows — the same ceiling the `$count` reads saturate at. The
+    # `total` and `by_category` breakdown therefore carry the same "at least 5000"
+    # semantics as every other count in the brief, never a tighter undercount.
     workflows = backend.get_collection(
         "workflows",
         params={
@@ -209,22 +216,28 @@ def _automation(backend: D365Backend) -> dict[str, Any]:
         if wf.get("statecode") == _WORKFLOW_STATE_ACTIVATED:
             bucket["activated"] += 1
     return {
-        "plugin_assemblies": _count(backend, "pluginassemblies"),
-        "plugin_steps": _count(backend, "sdkmessageprocessingsteps"),
+        "plugin_assemblies": _count(backend, "pluginassemblies", select="pluginassemblyid"),
+        "plugin_steps": _count(backend, "sdkmessageprocessingsteps",
+                               select="sdkmessageprocessingstepid"),
         "workflows": {"total": len(workflows), "by_category": by_category},
-        "slas": _count(backend, "slas"),
+        "slas": _count(backend, "slas", select="slaid"),
     }
 
 
 def _components(backend: D365Backend) -> dict[str, Any]:
     by_type = {
-        label: _count(backend, "webresourceset", filter_expr=f"webresourcetype eq {code}")
+        label: _count(backend, "webresourceset", select="webresourceid",
+                      filter_expr=f"webresourcetype eq {code}")
         for label, code in _WEBRESOURCE_TYPES.items()
     }
     return {
-        "webresources": {"total": _count(backend, "webresourceset"), "by_type": by_type},
-        "security_roles_custom": _count(backend, "roles", filter_expr="ismanaged eq false"),
-        "duplicate_rules": _count(backend, "duplicaterules"),
+        "webresources": {
+            "total": _count(backend, "webresourceset", select="webresourceid"),
+            "by_type": by_type,
+        },
+        "security_roles_custom": _count(backend, "roles", select="roleid",
+                                        filter_expr="ismanaged eq false"),
+        "duplicate_rules": _count(backend, "duplicaterules", select="duplicateruleid"),
     }
 
 
