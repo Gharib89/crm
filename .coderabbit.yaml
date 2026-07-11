@@ -18,7 +18,8 @@ reviews:
     - "!CHANGELOG.md"
   auto_review:
     # Defaults, spelled out because the agent PR lifecycle depends on them:
-    # agents open ready (non-draft) PRs against main; drafts stay unreviewed.
+    # agents open ready (non-draft) PRs against main; drafts skip automatic
+    # reviews (manual @coderabbitai review still works).
     # Agent-authored PRs are deliberately NOT filtered (no ignore_usernames) —
     # reviewing them is the point of the trial.
     enabled: true
