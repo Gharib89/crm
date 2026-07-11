@@ -155,10 +155,14 @@ mapping. Translate each command below to its MCP equivalent:
 
 Poll CI/reviews by re-calling `pull_request_read` (not `gh`) within the bounded
 poll window and round ceiling `ship`'s `reference/copilot-loop.md` already
-defines — a short delay between polls, a capped number of attempts, then proceed
-or stop on the ceiling; never a detached/background monitor. If the
-`mcp__github__*` tools are absent or every call is denied at fire start, the
-connector isn't wired → report and STOP (the fire cannot reach GitHub).
+defines — a short delay between polls, a capped number of attempts; never a
+detached/background monitor. Reaching the bound is **not** a licence to proceed:
+end at step 5 only when the PR is genuinely merge-ready (CI green, reviews
+addressed, `mergeable`). If the bound is hit while CI is red/incomplete or can't
+be made green, that is the **step-4 blocked hand-off** — never continue
+unattended past a red or unfinished gate. If the `mcp__github__*` tools are
+absent or every call is denied at fire start, the connector isn't wired → report
+and STOP (the fire cannot reach GitHub).
 
 ## Working standards
 
