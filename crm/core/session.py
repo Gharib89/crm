@@ -276,7 +276,7 @@ def _atomic_write_json(path: Path, payload: Any, *, mode: int | None = None) -> 
         # short fixed shape independent of path.name, so a very long (but valid,
         # uncapped) profile name can't push the temp past NAME_MAX while the target
         # itself still fits. O_EXCL + retry guards the (astronomically rare) clash.
-        create_mode = 0o644 if mode is None else mode
+        create_mode = 0o600 if mode is None else mode
         while True:
             tmp = path.with_name(f".{os.getpid()}.{os.urandom(6).hex()}.tmp")
             try:
