@@ -43,6 +43,16 @@ jobs:
         run: ruff format --check .
       - name: Type check (pyright)
         run: pyright
+      # House-convention rules (Semgrep CE, LGPL-2.1). The engine needs Python
+      # >=3.10 and is deliberately kept OUT of the dev venv (issue #849) —
+      # install it into its own throwaway venv. Tokenless: `scan` (not `ci`)
+      # needs no SEMGREP_APP_TOKEN / account. Rule scope is pinned in the config.
+      - name: House-convention rules (semgrep)
+        run: |
+          python -m venv "$RUNNER_TEMP/semgrep-venv"
+          "$RUNNER_TEMP/semgrep-venv/bin/pip" install --quiet semgrep==1.169.0
+          "$RUNNER_TEMP/semgrep-venv/bin/semgrep" scan \
+            --config ci/semgrep-rules.yml --error --metrics off
 
   test:
     permissions:
