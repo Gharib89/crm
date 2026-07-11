@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.68.1 (2026-07-11)
+
+### Bug Fixes
+
+- **metadata**: Add --behavior to update-attribute for the one-time datetime behavior change
+  ([#834](https://github.com/Gharib89/crm/pull/834),
+  [`4bd894c`](https://github.com/Gharib89/crm/commit/4bd894c7a7a51f57454ed9fc645ff65fbe08536f))
+
+
 ## v1.68.0 (2026-07-11)
 
 ### Bug Fixes
