@@ -72,6 +72,22 @@ staged files so the format round-trip never reaches CI.
   [#831](https://github.com/Gharib89/crm/issues/831) / adopted in
   [#849](https://github.com/Gharib89/crm/issues/849).
 
+Three more tools landed in the tooling sweep ([#848](https://github.com/Gharib89/crm/issues/848)):
+
+- **actionlint** lints workflow YAML and the inline bash in `run:` blocks (shellcheck-backed). It
+  runs both as a pre-commit hook and as a step in CI's `lint` job. The pre-commit hook fires only on
+  `.github/workflows/**` changes, so a Go toolchain is needed locally only when editing a workflow;
+  CI runs the pinned release binary directly. The rev is pinned in both `.pre-commit-config.yaml`
+  and `ci.yml` — bump together.
+- **codespell** is a typo checker wired as a **pre-commit hook only — deliberately not a CI gate**,
+  because a jargon false positive must never block a merge. Its D365 ignore-words list and skip
+  paths live in `[tool.codespell]` (`pyproject.toml`); the hook's `exclude` mirrors that `skip`
+  (pre-commit passes explicit paths, which bypass codespell's own traversal-level skip).
+- **Coverage is report-only** (map [#819](https://github.com/Gharib89/crm/issues/819)): CI runs
+  `pytest --cov` and uploads an XML + HTML artifact with **no threshold gate and no Codecov**.
+  `--cov` stays out of pytest `addopts` so local `pytest` runs stay fast; `pytest-cov` is in the
+  `[dev]` extra.
+
 ## Click command pattern
 
 Every command follows the same shape: `@pass_ctx` decorator, `ctx: CLIContext` as the first
