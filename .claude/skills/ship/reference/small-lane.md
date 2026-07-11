@@ -36,5 +36,6 @@ The lane is falsifiable: any later contradiction — CI red on behavior, the bot
 flags a real bug, the secret scan hits, or you find the change touches the public
 surface — **downgrades to the full lane** for the remaining phases: run the
 skipped integrated test / self-review, add the missing test or docs-sync, and the
-review budget becomes the full 3. Downgrading once is cheap; shipping a non-small
-change as small is the failure.
+full-lane review applies (round-1 dispositioned, the iterating reviewer driven to
+quiet). Downgrading once is cheap; shipping a non-small change as small is the
+failure.

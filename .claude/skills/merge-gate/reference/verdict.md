@@ -40,7 +40,7 @@ Fixes pushed by the gate
 Review dispositions   (label each finding's source: gate review / Copilot / CodeRabbit)
   - <finding> → <fixed | declined: evidence>
 
-Copilot: <round-1 threads dispositioned | +1 gate re-request spent: significant rewrite | n/a: no push>
+Copilot: round-1 threads <dispositioned m/total | none | review didn't run>  [· +1 gate re-request spent (significant rewrite): its threads <dispositioned k/total>]
 CodeRabbit threads:  <dispositioned <m>/<total> · resolved <yes | pending> | none | skipped: no push, none pending>
 
 Issues surfaced (surface-only — the gate files nothing)

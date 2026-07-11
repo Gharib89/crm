@@ -1,8 +1,9 @@
 # Phase 7 — driving the automated review to convergence
 
 The goal is a clean review without you babysitting it. A review bot re-reads the
-**whole PR** on each round and ignores your replies, so treat every round's output
-as a fresh read of the committed tree, not a conversation.
+**whole PR** on each round, so treat every round's output as a fresh read of the
+committed tree, not a conversation. (The round-1 reviewer below ignores your
+replies entirely; the iterating reviewer *does* read them — reply on its threads.)
 
 Two reviewer roles, assigned by project instructions:
 
@@ -44,9 +45,9 @@ If project instructions name a reviewer that re-reviews on push:
 
 ## Converged — the phase-7 exit
 
-**Converged = the iterating reviewer quiet on the latest push + every round-1
-thread dispositioned.** With only a round-1 reviewer, converged = its threads
-dispositioned + green CI. Each reviewer's dispositions get their **own block** in
+**Converged = the iterating reviewer quiet on the latest push + every one of its
+threads dispositioned and resolved + every round-1 thread dispositioned.** With
+only a round-1 reviewer, converged = its threads dispositioned + green CI. Each reviewer's dispositions get their **own block** in
 the merge summary (per-reviewer, not merged into one list) — the lanes need that
 accountability.
 
@@ -69,7 +70,8 @@ loop, return only when the review lands (or the cap hits), and report review sta
 - A review body that says it "encountered an error and was unable to review" with
   zero comments is an **infra failure**, not feedback. For the iterating reviewer,
   the next push re-triggers it; after a couple consecutive error bodies, proceed
-  on green CI.
+  on green CI — but this is a **degraded** exit, not convergence: note in the merge
+  summary that the reviewer never actually passed, so the maintainer sees it.
 - A re-review that simply never lands (silence, no error) is flakiness, not a
   missed poll. Bounded wait (~one poll window), then proceed — don't loop forever.
 

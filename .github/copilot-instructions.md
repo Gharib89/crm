@@ -4,7 +4,7 @@ Python CLI for Microsoft Dynamics 365 CE — on-prem v9.x (NTLM) and Dataverse o
 
 Canonical standards: `docs/contributing/coding-standards.md` — this file is derived from it. On conflict the doc wins; rule changes land there first.
 
-You review **round 1 only** (no re-requests). Focus where you catch the most: correctness and error contracts. CI already runs pytest, pyright (strict on `crm/core/*` and `crm/utils/d365_backend.py`), ruff, and `mkdocs build --strict` — never flag what those tools catch.
+Your review runs at PR creation (round 1). Focus where you catch the most: correctness and error contracts. CI already runs pytest, pyright (strict on `crm/core/*` and `crm/utils/d365_backend.py`), ruff, and `mkdocs build --strict` — never flag what those tools catch.
 
 ## Environment — modern by design, don't flag as portability bugs
 

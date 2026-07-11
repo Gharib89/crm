@@ -216,7 +216,8 @@ never re-requested in the ship flow**, and a **push-triggered reviewer** (if the
 repo runs one) that **owns iteration** — its rounds are free, so batch fixes one
 push per round, disposition every thread, and drive it to quiet. Auto-triage every
 comment (phase 4's definition, judgment tier). **Converged = the iterating reviewer
-quiet on the latest push + all round-1 threads dispositioned.** Mechanics,
+quiet on the latest push + all round-1 threads dispositioned** (no iterating
+reviewer → round-1 threads dispositioned + green CI). Mechanics,
 disposition rules, and traps: **[reference/copilot-loop.md](reference/copilot-loop.md).**
 
 **8 · CI.** CI usually runs concurrently from PR-open, so phases 7 and 8 overlap.

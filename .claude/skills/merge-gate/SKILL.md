@@ -114,8 +114,11 @@ bulk-resolved via `@coderabbitai resolve` before the verdict):
 2. **Copilot is round-1-only — with one gate exception.** The gate may spend
    **exactly one** Copilot re-request, and only when it **significantly rewrote**
    the PR (a scoped lint/format/typo fix does not qualify). Otherwise Copilot's
-   round-1 threads are dispositioned once, as in the ship flow. To spend the
-   exception, re-request via REST (the `gh pr edit --add-reviewer copilot` path
+   round-1 threads are dispositioned once, as in the ship flow. The exception is
+   **one per PR, not per gate run** — before spending it, confirm no prior gate
+   re-request already exists (`gh pr view <n> --json reviews` / a prior gate
+   verdict): a re-run or sweep must not re-enter this branch. To spend it,
+   re-request via REST (the `gh pr edit --add-reviewer copilot` path
    fails on this repo):
 
    ```bash
