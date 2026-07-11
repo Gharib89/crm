@@ -84,13 +84,17 @@ def test_mode_is_applied_at_creation(tmp_path):
 
 
 @pytest.mark.skipif(os.name != "posix", reason="file-mode creation only enforced on POSIX")
-def test_default_mode_matches_plain_create(tmp_path):
-    # Non-secret writes keep prior (umask-default) permissions — not tightened.
-    ref = tmp_path / "ref"
-    ref.write_text("x", encoding="utf-8")
-    target = tmp_path / "plain.json"
-    session_mod._atomic_write_json(target, {"x": 1})
-    assert (target.stat().st_mode & 0o777) == (ref.stat().st_mode & 0o777)
+def test_default_mode_drops_group_other_write(tmp_path):
+    # Non-secret writes default to 0o644 (was 0o666), so group/other write bits are
+    # never set (#846). Force umask 0 so the assertion pins the created mode exactly
+    # rather than whatever the runner's umask happened to clear.
+    old_umask = os.umask(0)
+    try:
+        target = tmp_path / "plain.json"
+        session_mod._atomic_write_json(target, {"x": 1})
+    finally:
+        os.umask(old_umask)
+    assert (target.stat().st_mode & 0o777) == 0o644
 
 
 def test_stale_temp_file_is_reaped_on_write(tmp_path):
