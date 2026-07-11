@@ -5,7 +5,10 @@ Source of truth is the user-level skills dir (`~/.claude/skills`), itself a
 mirror of an external skills repo (e.g. `npx skills add mattpocock/skills`) that
 gets reinstalled wholesale. So the project copies are fully *derived*: this tool
 replaces each listed skill's directory verbatim, then re-applies the one
-project-owned divergence we allow — the model-invocation flag.
+project-owned divergence we allow — the model-invocation flag. The same flag is
+stripped in the user-dir source copy too, so a `model_invokable` skill is
+invokable in the local interactive session (where personal skills shadow the
+project copies), not just in the cloud sandbox.
 
 Run locally after refreshing `~/.claude/skills`, then commit the resulting
 `.claude/skills/**` changes. NOT run in CI/cloud (it reads your home dir); the
@@ -169,8 +172,11 @@ def main() -> int:
             shutil.rmtree(dst)
         shutil.copytree(src, dst)
         tag = " [dep]" if name in auto else ""
-        if wanted[name] and strip_model_invocation_flag(dst / "SKILL.md"):
-            tag += " (stripped disable-model-invocation)"
+        if wanted[name]:
+            stripped_dst = strip_model_invocation_flag(dst / "SKILL.md")
+            stripped_src = strip_model_invocation_flag(src / "SKILL.md")
+            if stripped_dst or stripped_src:
+                tag += " (stripped disable-model-invocation)"
         print(f"synced {name}{tag}")
 
     if missing:
