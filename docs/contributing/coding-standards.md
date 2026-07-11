@@ -3,7 +3,8 @@
 > The canonical coding-standards doc — assembled from the rules already in force across
 > `.github/copilot-instructions.md`, `CLAUDE.md`, `CONTEXT.md`, the ADRs, and the actual code;
 > previously-open points (docstrings, formatting/linting, the commands-layer type-checking split)
-> were settled in [Decide: coding standards for the repo](https://github.com/Gharib89/crm/issues/826).
+> have their decision record in
+> [Decide: coding standards for the repo](https://github.com/Gharib89/crm/issues/826).
 >
 > This doc is the single source reviewers (the `code-review` skill, CodeRabbit's path
 > instructions, `.github/copilot-instructions.md`) derive from — they should shrink to a pointer
@@ -25,7 +26,7 @@
   debt: the commands layer is thin, decorator-heavy Click glue where strict mode fights the
   framework for near-zero bug yield. Don't flag it and don't tighten files opportunistically —
   when a command file accumulates real logic, the fix is moving that logic into `crm/core/*`
-  (the strict surface, together with `crm/utils/d365_backend.py`), not strictening the wrapper.
+  (the strict surface, together with `crm/utils/d365_backend.py`), not tightening the wrapper.
 - Boundary rule for D365 payloads: `dict[str, Any]` at the raw OData seam (a `TypedDict` cast
   over external JSON is a false contract — the server can add/omit keys the type doesn't know
   about). Reserve `TypedDict` for structures the CLI itself constructs and owns (e.g.
@@ -45,7 +46,7 @@
 
 ## Formatting & linting
 
-Settled in [Decide: coding standards for the repo](https://github.com/Gharib89/crm/issues/826);
+Decision record: [Decide: coding standards for the repo](https://github.com/Gharib89/crm/issues/826);
 gates land via [Task: adopt ruff](https://github.com/Gharib89/crm/issues/828). Until that task
 merges, these are convention-only.
 
@@ -71,8 +72,7 @@ behavior, `ctx.emit(...)` as the single result seam.
 def org_brief(ctx: CLIContext):
     with d365_errors(ctx):
         brief = org_mod.org_brief(ctx.backend())
-    if ctx.json_mode:
-        ctx.emit(True, data=brief, meta=meta)
+    ctx.emit(True, data=brief)
 ```
 
 House rules on top of the shape:
