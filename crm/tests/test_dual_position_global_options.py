@@ -233,6 +233,28 @@ def test_stage_only_not_injected_and_still_hints():
     assert "'--stage-only' is a global option" in r.stderr
 
 
+# ── Passive-guard JSON signal is position-independent (Copilot round 1) ──────
+
+
+@pytest.mark.parametrize("argv", [
+    ["--json", "describe", "entity"],
+    ["describe", "entity", "--json"],
+    ["--jq", ".", "describe", "entity"],
+    ["describe", "entity", "--jq", "."],
+])
+def test_json_guard_signal_set_for_json_either_position(argv):
+    """The whole-argv guard signal (which gates the passive update-check) is True for
+    a --json/--jq in EITHER position, so root and leaf placement behave identically —
+    not just at emit time (the update notice) but for the background-probe kickoff."""
+    _run(argv)
+    assert cli._json_for_guards is True
+
+
+def test_json_guard_signal_clear_for_plain_invocation():
+    _run(["describe", "entity"])
+    assert cli._json_for_guards is False
+
+
 # ── Injection tree-walk sanity ───────────────────────────────────────────────
 
 

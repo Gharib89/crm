@@ -589,6 +589,13 @@ class _JsonAwareGroup(click.Group):
     def main(self, args=None, **kwargs):  # type: ignore[override]
         argv = list(args) if args is not None else sys.argv[1:]
         json_mode = _json_mode_active(argv)
+        # Whole-argv JSON signal for the root callback's passive guards (#818). A
+        # dual-position --json/--jq may trail the subcommand, so the root-position
+        # `json_mode` param the callback receives can't see it; stash the argv-wide
+        # answer here (argv only lives at this seam) for the callback to read. `--jq`
+        # implies --json, so either token means the invocation emits JSON. Recomputed
+        # per invocation — including each REPL line, which re-enters main().
+        self._json_for_guards = json_mode or "--jq" in argv
         # Run non-standalone so Click parse/usage errors reach us instead of being
         # printed-and-exited by Click. We re-render: a misplaced global flag gets a
         # position hint; under --json a usage error becomes the envelope; otherwise
@@ -971,7 +978,15 @@ def cli(ctx: click.Context, json_mode: bool, fields: str | None,
     # guards run inline so machine/CI/--json paths never import the update module
     # (and its requests dependency) — keeping CLI startup lean. The authoritative
     # guard set lives in crm.core.update.is_check_enabled.
-    _maybe_update_check(json_mode)
+    #
+    # A dual-position --json/--jq (#818) trails the subcommand, so the root-position
+    # `json_mode` local does not yet reflect it (the leaf callback runs later). Use
+    # the whole-argv guard signal computed in `_JsonAwareGroup.main`, so a trailing
+    # --json/--jq gates the check exactly as a leading one — root and leaf placement
+    # stay consistent. (The notice itself is gated on the final json_mode in the
+    # result callback; this only governs whether the background probe starts.)
+    json_for_guards = getattr(cli, "_json_for_guards", json_mode)
+    _maybe_update_check(json_for_guards)
 
     if ctx.invoked_subcommand is None:
         if _suppress_bare_repl(json_mode):
