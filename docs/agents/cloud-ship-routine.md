@@ -43,36 +43,31 @@ Configure a dedicated environment (e.g. `crm-ship`) and select it for the routin
   managers" checked, for pip/PyPI):
   - `login.microsoftonline.com`   (OAuth client-credentials token endpoint)
   - `<your-org>.crm.dynamics.com` (Dataverse Web API — your cloud org host)
-  - `api.github.com`   (gh: pr/issue/label/copilot-rerequest REST calls)
-  - `github.com`       (`git push`/fetch over HTTPS + gh git ops)
-  - `release-assets.githubusercontent.com` (gh binary download — setup only)
-  - Note: the GitHub **MCP connector** is brokered through Anthropic and is exempt
-    from this policy, but `gh` and `git push` hit GitHub **directly**, so these
-    three are required — the routine's issue-claim state machine and `/ship`'s
-    PR/CI/merge steps are all `gh`-native (gh auto-auths from `GH_TOKEN`).
+  - `github.com`       (`git push`/fetch over HTTPS)
+  - Note: all GitHub **API** access (issue picker, PR create/read, review
+    re-request, comments) runs through the GitHub **MCP connector**, which is
+    brokered through Anthropic and **exempt** from this policy — so no
+    `api.github.com` entry is needed. `gh`'s repo/PR/issue REST endpoints are in
+    fact **gated** by the sandbox egress proxy (403), which is why the fire uses
+    MCP; see cloud-ship SKILL.md → "GitHub access in a fire". The only direct
+    GitHub egress is `git` push/fetch over `github.com` (brokered credentials).
 - **Environment variables** (nothing org-specific is committed — the bootstrap
   reads every connection value from here, replacing `<…>` with your real values):
   - `D365_URL` = `https://<your-org>.crm.dynamics.com`
   - `D365_CLIENT_ID` = agent-cloud OAuth application (client) id
   - `D365_TENANT_ID` = Azure AD tenant id
   - `D365_CLIENT_SECRET` = agent-cloud OAuth client secret (rotate after wiring)
-  - `GH_TOKEN` = fine-grained PAT, repo `Gharib89/crm`: Contents + Pull requests +
-    Issues + Workflows (write)
+  - `GH_TOKEN` = fine-grained PAT, repo `Gharib89/crm` — now only a fallback
+    credential for `git` push/fetch (Contents: write). The fire's GitHub **API**
+    work (issues, PRs, reviews) goes through the brokered MCP connector, not this
+    token; leave it set only if your environment's `git` isn't otherwise
+    authenticated for `github.com`.
   - `D365_E2E` = `1`
   - `D365_E2E_PROFILE` = `agent-cloud`
   - `D365_E2E_ALLOW_HOST` = `<your-org>.crm.dynamics.com` (must match `D365_URL`'s host)
-- **Setup script:** install `gh` here once (cached into the image — it's a static,
-  secret-free tool, so it belongs in the cached slot, not the per-fire bootstrap).
-  The sandbox image ships without `gh`, and `/ship` + the claim state machine depend
-  on it:
-  ```
-  GH_VERSION=2.94.0
-  curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz" | tar -xz -C /tmp
-  sudo install -m 0755 "/tmp/gh_${GH_VERSION}_linux_amd64/bin/gh" /usr/local/bin/gh
-  gh --version
-  ```
-  (The per-fire bootstrap also installs `gh` if absent, so this slot is an
-  optimization — it keeps the download out of every hourly fire.)
+- **Setup script:** none required for GitHub — the fire drives GitHub through the
+  MCP connector and `git` (both already available), so there is no `gh` to install.
+  The per-fire `scripts/cloud-ship-bootstrap.sh` handles the rest (crm CLI, profile).
 
 ## Permissions
 
@@ -101,14 +96,16 @@ the start. The one relabel the routine owns is the **blocked** hand-off (step 4:
 
 Because a fire never waits at the merge gate (step 5), a merge-ready issue is left
 `agent-working` with its open PR; later fires skip it (it no longer carries
-`ready-for-agent`) until a human merges and `Closes #N` closes it. `GH_TOKEN` needs
-Issues:write (already in the env config) for `/ship`'s relabel + comments.
+`ready-for-agent`) until a human merges and `Closes #N` closes it. The relabel +
+comments run through the MCP connector's issue-write tools, not `GH_TOKEN`.
 
 Stale-claim recovery: if a fire dies after claiming but before opening a PR, the issue
 sits `agent-working` with no PR and is not retried — relabel it `ready-for-agent` by
 hand to requeue.
 
-One-time setup — create the claim label once (idempotent; skip if it exists):
+One-time setup — create the claim label once (idempotent; skip if it exists). This
+is a human step run **outside** the fire (locally where `gh` works, or via the
+GitHub web UI), not part of the routine:
 
 ```
 gh label create agent-working --repo Gharib89/crm --color FBCA04 \

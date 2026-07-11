@@ -41,13 +41,16 @@ It installs the crm CLI, builds the active `agent-cloud` profile from the
 environment's `D365_*` variables, and confirms the cloud org via WhoAmI.
 **Completion:** it exits 0. Non-zero → report the failure and **STOP** the fire.
 
-**2 · Pick the work item.** `gh` reads `GH_TOKEN` from the environment:
+**2 · Pick the work item.** Use the **GitHub MCP connector** (`gh`'s repo/PR/issue
+REST endpoints are gated in the cloud sandbox — see *GitHub access in a fire* below):
 
 ```
-NUM=$(gh issue list --repo Gharib89/crm \
-      --search "label:ready-for-agent state:open sort:created-asc" \
-      --limit 1 --json number --jq '.[0].number // empty')
+mcp__github__list_issues  owner=Gharib89 repo=crm
+    labels=["ready-for-agent"] state=OPEN
+    orderBy=CREATED_AT direction=ASC perPage=1
 ```
+
+Record `NUM` = `issues[0].number` (empty result → nothing ready).
 
 **Completion:** `NUM` holds the oldest open `ready-for-agent` issue. Empty →
 report "nothing ready" and **STOP** — do not open a PR. **Do not claim it here** —
@@ -82,11 +85,18 @@ Then **invoke the `ship` skill on issue $NUM**. While it runs:
 **4 · Blocked hand-off.** If `ship` **cannot** produce a merge-ready PR —
 ambiguous / underspecified, on-prem-only, or CI can't be made green — do not leave
 it `agent-working` and do not return it to `ready-for-agent` (that loops it
-forever). Hand it to a human and **STOP**:
+forever). Hand it to a human and **STOP**. MCP `issue_write` **replaces** the
+whole label set (unlike `gh issue edit`'s surgical `--add`/`--remove-label`), so
+read the current labels first, then write the modified set — never a bare
+`["ready-for-human"]`, which would drop the issue's `area`/`size`/`type` labels:
 
 ```
-gh issue edit "$NUM" --repo Gharib89/crm --remove-label agent-working --add-label ready-for-human
-gh issue comment "$NUM" --repo Gharib89/crm --body "<one-line reason it is blocked>"
+mcp__github__issue_read   method=get_labels owner=Gharib89 repo=crm issue_number=$NUM
+    → LABELS = its label names
+mcp__github__issue_write  method=update owner=Gharib89 repo=crm issue_number=$NUM
+    labels = (LABELS − "agent-working" + "ready-for-human")
+mcp__github__add_issue_comment  owner=Gharib89 repo=crm issue_number=$NUM
+    body="<one-line reason it is blocked>"
 ```
 
 **5 · End at the merge gate — do not merge.** On success `ship` reaches its merge
@@ -107,12 +117,35 @@ carries the open PR, so later fires skip it until the merge closes it.
   gate**.
 - **Subagent tools are absent too.** `ship`'s delegation rule and model-tier
   table are inert in a fire — run everything inline in the main thread (the
-  `code-review` skill's two axes included), and compensate by projecting every `gh` /
-  CLI call harder, since nothing can be offloaded.
-- **`gh` and `git push` hit GitHub directly** (the GitHub MCP connector is
-  brokered separately). The claim state machine and `ship`'s PR/CI steps are all
-  `gh`-native and depend on the env's allowed-domains + `GH_TOKEN` — assume `gh`
-  works; if it 401s, the env's PAT or network policy is wrong → report and STOP.
+  `code-review` skill's two axes included), and compensate by projecting every
+  GitHub / CLI call harder, since nothing can be offloaded.
+
+## GitHub access in a fire
+
+**Do all GitHub reads and writes through the `mcp__github__*` connector; use the
+`git` CLI only for clone/fetch/commit/push.** The cloud sandbox's egress proxy
+gates `gh`'s repo/PR/issue REST endpoints (`api.github.com`) — they return
+`403 "GitHub access is not enabled for this session"` regardless of `GH_TOKEN`,
+so the `gh` commands printed in the composed **`ship`** skill and its
+`reference/*.md` do **not** work here. The GitHub **MCP** connector is brokered
+through Anthropic (exempt from the network policy) and `git` over `github.com`
+uses brokered credentials — both work. **This section outranks every literal
+`gh` command in `ship` for the duration of a fire; translate each to its MCP
+equivalent:**
+
+| `ship` / reference says (`gh …`) | Use instead |
+|---|---|
+| `gh pr create` / "open a ready PR" (ship phase 6) | `mcp__github__create_pull_request` (`draft` omitted) |
+| reflect the PR back on the issue (ship phase 6) | `mcp__github__add_issue_comment` |
+| `gh pr view <n> --json mergeable,mergeStateStatus` (conflict check, ship phase 8) | `mcp__github__pull_request_read method=get` |
+| `gh pr view <n> --json reviews,statusCheckRollup` (poll, copilot-loop) | `pull_request_read` `method=get_reviews` + `get_check_runs` (or `get_status`) |
+| re-request the reviewer (copilot-loop step 4 / CLAUDE.md REST call) | `mcp__github__request_copilot_review`; verify it took via `get_reviews` |
+| `@coderabbitai review` / `@coderabbitai resolve` | `mcp__github__add_issue_comment` on the PR |
+
+Poll CI/reviews by re-calling `pull_request_read` in a bounded loop (no
+`gh`, no `sleep`-on-external-events). If the `mcp__github__*` tools are absent or
+every call is denied at fire start, the connector isn't wired → report and STOP
+(the fire cannot reach GitHub).
 
 ## Working standards
 

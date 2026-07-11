@@ -2,8 +2,10 @@
 # Per-session provisioning for the cloud ship routine. Invoked as the FIRST step
 # of the routine prompt (NOT the environment's cached setup-script slot) so it
 # always reads the current connection values from the environment and never bakes
-# them into a cached image. Never echoes the secret. gh authenticates from
-# $GH_TOKEN in the environment automatically — no `gh auth login` here.
+# them into a cached image. Never echoes the secret. GitHub reads/writes go
+# through the brokered GitHub MCP connector (see cloud-ship SKILL.md → "GitHub
+# access in a fire"); only `git` (push/fetch over github.com) hits GitHub
+# directly, so no `gh` install or `gh auth login` is needed here.
 set -euo pipefail
 
 # All connection values come from the routine's cloud environment — nothing
@@ -13,20 +15,11 @@ set -euo pipefail
 : "${D365_TENANT_ID:?set D365_TENANT_ID in the routine cloud environment}"
 : "${D365_CLIENT_SECRET:?set D365_CLIENT_SECRET in the routine cloud environment}"
 
-# gh CLI is not in the sandbox image, but /ship + the issue-claim state machine are
-# gh-native. Install the static binary if absent (no-op when the environment's cached
-# setup slot already provides it — see docs/agents/cloud-ship-routine.md). gh and git
-# reach GitHub directly, so the Custom network policy must allow api.github.com +
-# github.com (+ release-assets.githubusercontent.com for this download). gh auto-auths
-# from $GH_TOKEN — no `gh auth login`.
-if ! command -v gh >/dev/null 2>&1; then
-  GH_VERSION=2.94.0
-  curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz" \
-    | tar -xz -C /tmp
-  SUDO=""; [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1 && SUDO=sudo
-  $SUDO install -m 0755 "/tmp/gh_${GH_VERSION}_linux_amd64/bin/gh" /usr/local/bin/gh
-fi
-gh --version
+# GitHub API access (issue picker, PR create/read, review re-request) runs through
+# the GitHub MCP connector, brokered through Anthropic and exempt from the sandbox
+# network policy — no `gh` needed. The one direct-egress GitHub dependency is `git`
+# push/fetch over github.com, so the Custom network policy must allow github.com
+# (see docs/agents/cloud-ship-routine.md).
 
 # crm CLI from source (not published to PyPI)
 pip install -e ".[dev,docs]"
