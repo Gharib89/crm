@@ -153,10 +153,12 @@ mapping. Translate each command below to its MCP equivalent:
 | re-request the reviewer (copilot-loop step 4 / CLAUDE.md REST call) | `mcp__github__request_copilot_review`; verify it took via `get_reviews` |
 | `@coderabbitai review` / `@coderabbitai resolve` | `mcp__github__add_issue_comment` on the PR |
 
-Poll CI/reviews by re-calling `pull_request_read` in a bounded loop (no
-`gh`, no `sleep`-on-external-events). If the `mcp__github__*` tools are absent or
-every call is denied at fire start, the connector isn't wired → report and STOP
-(the fire cannot reach GitHub).
+Poll CI/reviews by re-calling `pull_request_read` (not `gh`) within the bounded
+poll window and round ceiling `ship`'s `reference/copilot-loop.md` already
+defines — a short delay between polls, a capped number of attempts, then proceed
+or stop on the ceiling; never a detached/background monitor. If the
+`mcp__github__*` tools are absent or every call is denied at fire start, the
+connector isn't wired → report and STOP (the fire cannot reach GitHub).
 
 ## Working standards
 
