@@ -9,6 +9,52 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.68.3 (2026-07-11)
+
+### Bug Fixes
+
+- Re-anchor type-ignore comments detached by the reformat
+  ([#844](https://github.com/Gharib89/crm/pull/844),
+  [`31a9aa3`](https://github.com/Gharib89/crm/commit/31a9aa3986c58471776768fe83320426ae286713))
+
+- Repair autofix-removed re-exports, apply UP unsafe fixes, scoped ignores
+  ([#844](https://github.com/Gharib89/crm/pull/844),
+  [`31a9aa3`](https://github.com/Gharib89/crm/commit/31a9aa3986c58471776768fe83320426ae286713))
+
+- Resolve remaining ruff findings (E501, B904, B023, F841, D41x, E741, F402)
+  ([#844](https://github.com/Gharib89/crm/pull/844),
+  [`31a9aa3`](https://github.com/Gharib89/crm/commit/31a9aa3986c58471776768fe83320426ae286713))
+
+### Chores
+
+- Add ruff config, dev deps, pre-commit hook, CI lint steps
+  ([#844](https://github.com/Gharib89/crm/pull/844),
+  [`31a9aa3`](https://github.com/Gharib89/crm/commit/31a9aa3986c58471776768fe83320426ae286713))
+
+- Adopt ruff lint + format with pre-commit hook and CI gate
+  ([#844](https://github.com/Gharib89/crm/pull/844),
+  [`31a9aa3`](https://github.com/Gharib89/crm/commit/31a9aa3986c58471776768fe83320426ae286713))
+
+- **review**: Derive all reviewers from the canonical coding-standards doc
+  ([#842](https://github.com/Gharib89/crm/pull/842),
+  [`d45a0e7`](https://github.com/Gharib89/crm/commit/d45a0e7fdf279762db39fb9b07ffce89ff7f0d96))
+
+### Code Style
+
+- One-time whole-tree ruff format + autofixes ([#844](https://github.com/Gharib89/crm/pull/844),
+  [`31a9aa3`](https://github.com/Gharib89/crm/commit/31a9aa3986c58471776768fe83320426ae286713))
+
+### Documentation
+
+- Record D205 adoption debt in the canonical standards doc
+  ([#844](https://github.com/Gharib89/crm/pull/844),
+  [`31a9aa3`](https://github.com/Gharib89/crm/commit/31a9aa3986c58471776768fe83320426ae286713))
+
+- **contributing**: Add canonical coding-standards.md
+  ([#836](https://github.com/Gharib89/crm/pull/836),
+  [`fa821c4`](https://github.com/Gharib89/crm/commit/fa821c462e72dec837275dd120cc89202f84eff4))
+
+
 ## v1.68.2 (2026-07-11)
 
 ### Bug Fixes
