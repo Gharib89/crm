@@ -343,6 +343,14 @@ profile's `publisher_prefix` (**required — a missing prefix is exit 2**).
 **Limitations:** no views, no inline picklist options, single entity only — use
 `apply -f spec.yaml` for those.
 
+**Global vs local (inline) option set — pick deliberately.** Reserve a *global*
+set (`metadata create-optionset`, `apply` top-level `optionsets:`, or
+`--optionset-name`) for a list genuinely shared across columns or mapped across
+relationships. A single-use list belongs *local* — inline on the column
+(`metadata add-attribute --option <value>:<label>`, or `options:` on an `apply`
+attribute). Every global set lands permanently in the org-wide catalogue;
+minting one per column pollutes it for every future customizer.
+
 ## Views — `view create` (savedquery)
 
 ```bash
@@ -394,16 +402,14 @@ row matches, the command errors. Run `crm --json view list <entity>` to get the
 **Non-public views.** Pass `--query-type` (advanced-find, associated, quick-find,
 lookup) to target a non-public view. `view list` shows only public views.
 
-**Publish-then-read-back.** `edit-columns` **stages** by default (no publish).
-Pass `--publish` to also publish and GET the view back to confirm the edit
-landed; without it the read-back is skipped and a subsequent GET returns the
-*published* (pre-edit) snapshot until you publish. `layoutjson` is cleared on
-every column edit so the platform rebuilds it from the new layoutxml (a stale
-layoutjson drives the modern grid with the old columns).
+**Publish-then-read-back.** With `--publish` the verb also GETs the view back to
+confirm the edit landed; without it the read-back is skipped and a subsequent GET
+returns the *published* (pre-edit) snapshot until you publish. `layoutjson` is
+cleared on every column edit so the platform rebuilds it from the new layoutxml (a
+stale layoutjson drives the modern grid with the old columns).
 
-**Managed-layer warning.** Editing an out-of-box or managed view creates an
-unmanaged layer that a solution upgrade may revert. The `--help` text carries this
-warning too; it's repeated here because it is the most common surprise.
+**Managed-layer warning** (see `--help`): editing an out-of-box or managed view
+layers over it unmanaged — a solution upgrade may revert the edit.
 
 ### Set a view's sort order — `view set-order`
 
@@ -476,7 +482,8 @@ crm metadata create-optionset --name new_priority --display Priority \
 crm solution publish-all   # single publish for all staged customizations
 ```
 
-Publish selectively instead of all-at-once:
+Publishing is disruptive on a busy org — an org-wide `publish-all` against
+production belongs in a quiet window. Publish selectively instead of all-at-once:
 
 ```bash
 crm solution publish --xml \

@@ -32,27 +32,21 @@ crm --json plugin register-type --assembly Contoso.Plugins \
 crm --json plugin list-types --assembly Contoso.Plugins
 
 # register-webhook: creates a serviceendpoint (contract=8). The platform POSTs
-# the JSON execution context to --url. --auth choices: webhookkey (appends
-# ?code=<auth-value>), httpheader, httpquerystring. --auth-value is write-only
-# (the platform never returns it).
+# the JSON execution context to --url; the webhookkey auth mode delivers the
+# secret by appending ?code=<auth-value> to that URL.
 crm --json plugin register-webhook \
     --name MyWebhook \
     --url https://func.azurewebsites.net/api/d365hook \
     --auth webhookkey --auth-value 'abc123secret' \
     --solution ContosoCore
 
-# register-step: --message is required; pass exactly ONE of --plugin-type or
-# --service-endpoint (the step's polymorphic event handler). --plugin-type binds
-# via plugintypeid; --service-endpoint (e.g. a webhook from register-webhook)
-# binds via eventhandler_serviceendpoint (uses the endpoint name). async forces
-# postoperation. --entity sets primaryobjecttypecode (omit = all entities);
-# --filtering-attributes (comma-separated) restricts an Update step. The step
-# name is auto-derived as '<handler>: <message> of <entity>'; pass --name when
-# that would exceed the 256-char platform limit. --configuration is the unsecure
-# config string; --secure-configuration is the secure config, stored in a
-# separate related record linked on registration and write-only (platform never
-# returns it, omitted from normal output — but a --dry-run preview echoes the
-# request body incl. the value, so treat dry-run output as sensitive).
+# register-step: the polymorphic event handler binds via plugintypeid
+# (--plugin-type) or eventhandler_serviceendpoint by endpoint NAME
+# (--service-endpoint, e.g. a webhook from register-webhook). The step name is
+# auto-derived as '<handler>: <message> of <entity>' — that derived string is
+# what register-image's --step matches on. --secure-configuration lands in a
+# separate related record; a --dry-run preview echoes the request body INCLUDING
+# the secret, so treat dry-run output as sensitive.
 crm --json plugin register-step \
     --message Update \
     --plugin-type Contoso.Plugins.AccountPostUpdate \
@@ -310,12 +304,10 @@ Run them in that order.
 
 ### Key design fact
 
-The Dataverse `sla` entity has **no FetchXML/condition attribute of its own** —
-per-KPI applicability conditions live on `slaitem`. So `--applicable-when` /
-`--success-criteria` are on `sla add-kpi` (not on `sla create`). `sla create`
-only takes `--applicable-from` (the SLA's date-anchor field, e.g. `createdon`).
-SLA failure/warning action steps are workflow/designer constructs — out of scope
-for the CLI.
+The Dataverse `sla` entity has **no condition attribute of its own** — per-KPI
+applicability lives on `slaitem`, which is why the condition flags sit on
+`sla add-kpi`, not `sla create`. SLA failure/warning *action steps* are
+workflow/designer constructs — out of scope for the CLI.
 
 ### `sla create` — JSON contract
 

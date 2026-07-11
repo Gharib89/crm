@@ -41,6 +41,15 @@ crm --json solution add-component --solution ContosoCore --type webresource --id
 crm --json solution remove-component --solution ContosoCore --type 61 --id <guid> --yes
 ```
 
+**Segment system tables; ship new tables whole.** When the solution extends a
+**system table** (account, contact, …) or a custom table that already exists in the
+target org, add the entity with `--no-subcomponents` and then add only the
+subcomponents you actually changed (the specific attributes/forms/views) — pulling
+the whole entity in creates needless managed layers and cross-solution dependencies
+in every downstream org. The inverse holds for a **brand-new custom table**: it must
+travel complete (default, subcomponents included) — a segmented entity whose base
+doesn't exist in the target fails import with a missing-dependency error.
+
 ## Export a solution
 
 ```bash
@@ -57,11 +66,9 @@ crm solution import /tmp/snap.zip --yes
 # --no-overwrite keeps existing unmanaged customizations; --no-publish suppresses workflow activation
 ```
 
-**Gotcha:** `solution import` **OVERWRITES** unmanaged customizations in the target org by
-default, and **activates imported workflows** (`PublishWorkflows` — not `PublishAllXml`).
-Pass `--no-overwrite` to keep existing customizations, or `--no-publish` to suppress
-workflow activation. Both are the off-halves of boolean pairs (`--overwrite/--no-overwrite`,
-`--publish/--no-publish`). Omitting `--yes` in a non-interactive context aborts.
+**Gotcha:** the defaults are the aggressive halves — overwrite unmanaged customizations,
+activate imported workflows (see `--help` for the boolean pairs). Omitting `--yes` in a
+non-interactive context aborts before any upload.
 
 **Gotcha — product-update dependency block.** If the server rejects the import before
 processing any components due to a product-update dependency check, pass
@@ -138,7 +145,8 @@ verify with `solution import-result <id>`, then promote separately.
 
 Translation is **solution-scoped** (the `ExportTranslation` / `ImportTranslation`
 actions take a solution, not an entity) — to translate one entity, put it in a
-solution. Dual-target: on-prem v9.x and Dataverse online.
+solution. Dual-target: on-prem v9.x and Dataverse online. Group: `translation`.
+Flags/choices: `crm translation --help`.
 
 ```bash
 crm --json translation export --solution ContosoCore -o labels.zip
@@ -225,7 +233,9 @@ Work the timeline in order — gate, monitor, post-mortem, verify:
 2. **During** — `crm --json solution job-status <id>` (alias for
    `crm async get`) polls the import's async operation; the id is the import
    envelope's `async_operation_id`. Didn't capture it? `crm --json async list`
-   finds the operation.
+   finds the operation. The `async` group works on **any** asyncoperation, not
+   just imports — `crm async cancel <id> --yes` (alias: `solution job-cancel`)
+   kills a pending/suspended job.
 3. **After** — `crm --json solution import-result <id>` re-fetches the
    ImportJob of any prior import and parses per-component pass/fail outcomes;
    the id is the import envelope's `import_job_id` — present **once the import job

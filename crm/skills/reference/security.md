@@ -91,7 +91,7 @@ For "let the agent customize", prefer assigning the OOB `System Customizer` role
 skip`, it is reused unchanged — solution membership is not applied retroactively. To
 guarantee placement in a solution, the role must be newly created in the same call.
 
-**`--replace` is destructive.** It wipes every privilege not in the resolved set. Use `--add` when layering; reserve `--replace` for a full reset (e.g. freshly created roles).
+**`--replace` is destructive — but cannot produce exact set-equality.** It wipes every *removable* privilege not in the resolved set; every role also carries an immovable baseline (the SharePoint document-management set: `prvReadSharePointData`/`prvWriteSharePointData`/`prvCreateSharePointData`/`prvReadSharePointDocument`) that `ReplacePrivilegesRole` silently keeps. Consequences: a strict "role has exactly these privileges" reconcile never converges (the baseline always reads back as drift), and a removal-only change that targets a baseline privilege is a no-op — check for *subset* satisfaction (every declared privilege present at its declared depth) instead. Use `--add` when layering; reserve `--replace` for a full reset (e.g. freshly created roles).
 
 **Privilege counts are org-specific and resolved live.** Never hardcode how many privileges an `--all-entities` call will produce — the count varies by org.
 

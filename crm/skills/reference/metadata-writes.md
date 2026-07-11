@@ -24,8 +24,15 @@ value unchanged.
 
 `DateTimeBehavior` controls whether a datetime column stores time-zone-offset data
 (`UserLocal`), is treated as a date with no time component (`DateOnly`), or stores
-absolute UTC with no conversion (`TimeZoneIndependent`). The value is set on create
-and **cannot be changed afterward** — plan before you create.
+absolute UTC with no conversion (`TimeZoneIndependent`). Set it at create time —
+`metadata update-attribute` has no `--behavior`, so this CLI cannot change it later.
+The platform itself permits exactly one change, `UserLocal` → `DateOnly` or
+`TimeZoneIndependent` (`DateOnly`/`TimeZoneIndependent` are terminal), but the
+stored-value backfill (`ConvertDateAndTimeBehavior`) is a SOAP-only message absent
+from the Web API — already-stored values keep their UTC interpretation. So plan the
+behavior before you create; if a `UserLocal` column must become `DateOnly` later,
+that is an admin/designer task — **never drop-and-recreate the column for it**
+(destroys data for a change the platform supports in place).
 
 Two non-obvious coupling rules:
 
@@ -61,6 +68,18 @@ would-be POST body (including `SourceType` + `FormulaDefinition`) before writing
 The base `--kind` still picks the data type; the server enforces which base
 types support rollup vs calculated and rejects an unsupported pairing. The CLI
 only rejects `--type rollup`/`calculated` on `--kind lookup`/`customer` up front.
+
+**Platform limits fail server-side only — know them before authoring.** Neither
+`--dry-run` nor the CLI catches these; the server rejects at write or first
+rollup refresh:
+
+- Rollup count caps: **10 per table / 100 per org on-prem v9.x** (50 / 200 on
+  Dataverse online).
+- A rollup cannot aggregate **across an N:N relationship**, over the
+  Activity/ActivityParty relationship, or reference **another rollup** or a
+  complex calculated column.
+- Calculated columns: max **5 chained** calculated references, formula may span
+  at most **2 tables** (the row's own + its parent via lookup).
 
 ## Status/state option model writes
 

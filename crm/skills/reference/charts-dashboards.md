@@ -147,8 +147,6 @@ the `rowspan == count(<row>)` layout invariant holds. Pass `--section <name|id>`
 place a tile in an existing **empty** section instead — a section already holding a
 component is refused.
 
-**Six-component cap is `--force`-overridable**, never a hard block.
-
 **Control ids are auto-uniqued** — the server rejects duplicate ids at publish time
 and the CLI prevents that on the write.
 

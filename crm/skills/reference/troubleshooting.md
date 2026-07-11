@@ -23,7 +23,7 @@ only the four keys above.
 | `duplicate_detected` | code `0x80040237` | no | a matching record exists; merge/resolve or pass `--suppress-dup-detection` |
 | `validation` | other 4xx (e.g. 400), or a status-less client-side error (bad CLI input, schema/spec validation) | no | fix the request: bad payload / CLI input, alternate key, or OData syntax |
 | `throttled` | 429 | yes | service-protection limit; the backend honors `Retry-After` (idempotent verbs only) |
-| `server_error` | 5xx | yes | transient server fault (idempotent verbs only) |
+| `server_error` | 5xx | yes | transient server fault; only 502/503/504 auto-retry (idempotent verbs) — a bare 500 surfaces immediately (retry yourself only if the operation is safe to re-run) |
 | `transport_error` | request never got a response; message starts `HTTP transport failure` | yes | network / TLS / timeout before any response (idempotent verbs only) |
 
 Note `status is None` is **not** a reliable transport-failure signal — client-side
@@ -38,9 +38,11 @@ evidence hole, fallback verification): see `reference/solutions.md`.
 
 ## Retry semantics
 
-The backend **auto-retries** the `transport_error` / `throttled` (429) / `server_error`
-(5xx) classes for **idempotent verbs** (`GET`/`PUT`/`PATCH`/`DELETE`), so for those
-`retryable: true` is a post-exhaustion hint — act on it only after the error surfaces.
+The backend **auto-retries** `transport_error`, `throttled` (429), and the gateway
+subset of `server_error` — **502/503/504 only**, a bare 500 carries `retryable: true`
+in the envelope but is never auto-retried — for **idempotent verbs**
+(`GET`/`PUT`/`PATCH`/`DELETE`). For the auto-retried classes `retryable: true` is a
+post-exhaustion hint — act on it only after the error surfaces.
 Two cases never auto-retry:
 
 - `concurrency_conflict` (412) — refetch a fresh ETag and retry.
@@ -82,6 +84,13 @@ carries `meta.profile` / `meta.url` (standard for all connected verbs). Use
 `doctor` exercises the full auth + request path; for OAuth profiles a failure may
 surface as a `D365Error` raised **during** the request (token acquisition), not as a
 plain network error — read the `meta.category` to tell auth from transport.
+
+**A green `whoami` is not an all-clear.** `WhoAmI` is a privilege-free system call —
+a principal with **no security role** still gets exit 0 (UserId/OrgId returned) and
+then fails every data operation ("has not been assigned any roles"). Role assignment
+is an admin-side step the principal cannot self-grant. When verifying a fresh
+profile or app-user, follow `whoami` with a real data operation — a read at minimum,
+a throwaway create/delete roundtrip if the task will write.
 
 ## On-prem vs cloud reminders
 
