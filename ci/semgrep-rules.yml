@@ -11,11 +11,14 @@
 # dev virtualenv (see docs/contributing/coding-standards.md "Dry-run contract").
 #
 # LIMITATION (by design): the dry-run rule catches the *direct-return* violation
-# shape only — `if backend.dry_run: ... return {<dict literal>}` that omits the
-# `_dry_run` key. Indirect returns (a preview built into a local variable, then
-# returned) are out of a pattern's reach and stay with LLM / human review. A
-# partial net is acceptable; the hard bar is zero false positives on the
-# conforming `crm/core/*` modules.
+# shape only — `if backend.dry_run: ... return {<dict literal>}` whose `_dry_run`
+# marker is missing or not literally `True`. It does NOT enforce the rest of the
+# preview payload: conforming modules key it variously (`would_*`, but also
+# `method`/`diff`/`deleted`/`sitemapxml`/…), so requiring a fixed `would_*` key
+# would false-positive on legitimate previews. Indirect returns (a preview built
+# into a local variable, then returned) are also out of a pattern's reach and
+# stay with LLM / human review. A partial net is acceptable; the hard bar is
+# zero false positives on the conforming `crm/core/*` modules.
 
 rules:
   - id: dry-run-missing-preview-shape
@@ -25,14 +28,18 @@ rules:
       include:
         - /crm/core/
     message: >-
-      Dry-run contract: a `backend.dry_run` short-circuit must return a
-      `{_dry_run: true, would_*}` preview, never a bare success shape. This rule
-      flags a direct dict return that omits the `_dry_run` marker (the `would_*`
-      key itself is not enforced here — see the rule-file header on scope). See
-      docs/contributing/coding-standards.md "Dry-run contract".
+      Dry-run contract: a `backend.dry_run` short-circuit must return a preview
+      keyed by `_dry_run: True`, never a bare success shape. This rule flags a
+      direct dict return whose `_dry_run` marker is absent or not literally
+      `True`; the rest of the preview payload is not enforced (see the rule-file
+      header on scope). See docs/contributing/coding-standards.md "Dry-run contract".
     patterns:
       - pattern-inside: |
           if $BACKEND.dry_run:
               ...
       - pattern: 'return {...}'
-      - pattern-not: 'return {..., "_dry_run": ...}'
+      # Require the marker to be literally True — a bare success shape (no marker)
+      # or a falsy `"_dry_run": False` both fail the contract. The preview's other
+      # keys vary across modules (`would_*`, but also `method`/`diff`/`deleted`/…),
+      # so only the marker is enforced; the payload shape stays with review.
+      - pattern-not: 'return {..., "_dry_run": True}'
