@@ -9,6 +9,41 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.69.1 (2026-07-11)
+
+### Bug Fixes
+
+- **security**: Resolve initial CodeQL alerts (perms, action pinning, 0o644)
+  ([#853](https://github.com/Gharib89/crm/pull/853),
+  [`c719f28`](https://github.com/Gharib89/crm/commit/c719f28c435c79da5f6609fcc1f28df56f2d06f0))
+
+### Chores
+
+- Address CodeRabbit review on cloud-ship gh->MCP override
+  ([#850](https://github.com/Gharib89/crm/pull/850),
+  [`c110f1b`](https://github.com/Gharib89/crm/commit/c110f1b37d8fae50cd468548fa144033cb545bd6))
+
+- Defer fire polling bound to ship's copilot-loop spec
+  ([#850](https://github.com/Gharib89/crm/pull/850),
+  [`c110f1b`](https://github.com/Gharib89/crm/commit/c110f1b37d8fae50cd468548fa144033cb545bd6))
+
+- Extend cloud-ship gh->MCP override to repo docs (phase-1 claim)
+  ([#850](https://github.com/Gharib89/crm/pull/850),
+  [`c110f1b`](https://github.com/Gharib89/crm/commit/c110f1b37d8fae50cd468548fa144033cb545bd6))
+
+- Make fire poll-ceiling defer to step-4/5, not "proceed"
+  ([#850](https://github.com/Gharib89/crm/pull/850),
+  [`c110f1b`](https://github.com/Gharib89/crm/commit/c110f1b37d8fae50cd468548fa144033cb545bd6))
+
+- Reword blocked-hand-off label transform as plain prose
+  ([#850](https://github.com/Gharib89/crm/pull/850),
+  [`c110f1b`](https://github.com/Gharib89/crm/commit/c110f1b37d8fae50cd468548fa144033cb545bd6))
+
+- Route cloud-ship GitHub ops through MCP connector
+  ([#850](https://github.com/Gharib89/crm/pull/850),
+  [`c110f1b`](https://github.com/Gharib89/crm/commit/c110f1b37d8fae50cd468548fa144033cb545bd6))
+
+
 ## v1.69.0 (2026-07-11)
 
 ### Chores
