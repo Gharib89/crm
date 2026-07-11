@@ -14,7 +14,7 @@ setup(
     author="Ahmed Gharib",
     license="PolyForm-Noncommercial-1.0.0",
     license_files=["LICENSE"],
-    python_requires=">=3.9",
+    python_requires=">=3.13",
     # `evals/` is the behavioral skill-eval harness (ADR 0015) — maintainer tooling
     # run on demand, never shipped to users who install only the wheel.
     packages=find_packages(exclude=["evals", "evals.*"]),
@@ -24,8 +24,11 @@ setup(
     install_requires=[
         # 8.4.0 first ships click.exceptions.NoSuchCommand and its
         # possibilities-based "Did you mean ...?" suggestion, which the root
-        # group's resolve_command override relies on (crm/cli.py).
-        "click>=8.4",
+        # group's resolve_command override relies on (crm/cli.py). 8.4.1 is
+        # required because 8.4.0 broke get_parameter_source() inside eager
+        # callbacks (pallets/click#3458), which silently disabled leaf-position
+        # global options like `crm profile list --json` (ADR 0025).
+        "click>=8.4.1",
         "requests>=2.28",
         "requests_ntlm>=1.2",
         "prompt_toolkit>=3.0",
@@ -41,12 +44,12 @@ setup(
         "keyring>=24",
         # libjq binding behind the global --jq output shaper (#736). Imported
         # lazily (only when --jq is passed) to keep CLI cold-start cheap; wheels
-        # cover the Python 3.9 floor and all three release OSes (verified v1.11.0).
+        # cover the Python 3.13 floor and all three release OSes (verified v1.11.0).
         "jq>=1.8",
         # Entity-safe XML parsing (crm/utils/safe_xml.py, #838). Org-supplied XML
         # — solution/customization archives, Web-API formxml/fetchxml/CSDL, CLI
         # inputs — is parsed through defusedxml so a hostile document cannot carry
-        # an entity-expansion bomb (billion-laughs DoS). Pure-Python, py3.9-safe.
+        # an entity-expansion bomb (billion-laughs DoS). Pure-Python.
         "defusedxml>=0.7",
     ],
     extras_require={

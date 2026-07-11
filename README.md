@@ -54,7 +54,7 @@ Two surfaces feed AI agents:
 
 | Requirement              | Version            | Notes                                  |
 |--------------------------|--------------------|----------------------------------------|
-| Python                   | ≥ 3.9              |                                        |
+| Python                   | ≥ 3.13             |                                        |
 | Dynamics 365 CE on-prem  | 9.0 / 9.1 / 9.2    | Reachable from your machine over HTTPS |
 | Auth                     | NTLM (on-prem) · OAuth (online) | NTLM = Windows Integrated; OAuth = client-credentials for Dataverse cloud. |
 

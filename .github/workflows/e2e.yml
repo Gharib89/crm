@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13"
       # .NET SDK for the plugin-assembly fixture (ADR 0012, #502): the plugin
       # lifecycle e2e builds a signed no-op IPlugin from committed C# source via
       # `dotnet build`. The fixture skips-with-instructions when dotnet is absent,

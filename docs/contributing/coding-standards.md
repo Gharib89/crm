@@ -31,7 +31,7 @@
   over external JSON is a false contract — the server can add/omit keys the type doesn't know
   about). Reserve `TypedDict` for structures the CLI itself constructs and owns (e.g.
   `Reference` in `crm/core/references.py`).
-- Run pyright locally with `--pythonpath .venv/bin/python --pythonversion 3.9` — omitting either
+- Run pyright locally with `--pythonpath .venv/bin/python --pythonversion 3.13` — omitting either
   flag masks import errors or lets 3.10+-only symbols pass that fail at the pinned runtime.
 
 ## Docstrings

@@ -377,7 +377,7 @@ def _extract(archive: str, data: bytes, dest: Path) -> None:
 
     Members are validated against path traversal before extraction. The bundle is
     checksum-verified upstream, but this is defense-in-depth against a compromised
-    distribution endpoint — and the 3.9 floor lacks tarfile's `filter=` guard.
+    distribution endpoint, layered on top of tarfile's `filter=` guard.
     """
     dest.mkdir(parents=True, exist_ok=True)
     if archive.endswith(".zip"):
@@ -391,21 +391,17 @@ def _extract(archive: str, data: bytes, dest: Path) -> None:
                     raise UpdateError(f"Unsafe link member in archive: {info.filename!r}")
             zf.extractall(dest)
     else:
-        # `filter="data"` is the safe extractor, but it only exists on 3.12+
-        # (our floor is 3.9) — pass it conditionally via kwargs so the older
-        # signature is not referenced directly. We additionally reject link/special
-        # members up front so the <3.12 path (no filter) is also safe: a symlink
-        # like `lib -> /etc` followed by `lib/x` escapes dest even with no `..`.
-        extract_kwargs: dict[str, Any] = {}
-        if sys.version_info >= (3, 12):
-            extract_kwargs["filter"] = "data"
+        # `filter="data"` is the safe extractor (always present on the 3.13
+        # floor). We additionally reject link/special members up front as
+        # defense-in-depth: a symlink like `lib -> /etc` followed by `lib/x`
+        # escapes dest even with no `..`.
         with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
             for member in tar.getmembers():
                 if not _is_safe_member(member.name):
                     raise UpdateError(f"Unsafe path in archive (traversal): {member.name!r}")
                 if not (member.isfile() or member.isdir()):
                     raise UpdateError(f"Unsafe non-regular member in archive: {member.name!r}")
-            tar.extractall(dest, **extract_kwargs)
+            tar.extractall(dest, filter="data")
 
 
 def swap_bundle(install_dir: Path, staged: Path, *, windows: bool) -> None:
