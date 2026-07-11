@@ -76,10 +76,10 @@ reviews:
         normalized GUID key. Keep dict[str, Any] at the raw OData response
         seam — don't suggest TypedDict casts over external JSON; TypedDict is
         reserved for structures the CLI constructs and owns. Dry-run mutators
-        must return a {_dry_run, would_*} preview, never the bare success key
-        — backend.request short-circuits ALL methods including pre-flight
-        GETs in dry-run, so existence checks silently no-op; plain reads
-        still execute live under --dry-run (reads-execute rule). Logic
+        must return a {_dry_run, would_*} preview, never the bare success key.
+        Reads-execute rule: backend.request short-circuits only non-GET
+        methods under dry-run — GETs (including pre-flight existence checks)
+        run live, so previews report real facts (_exists, would_skip). Logic
         enforcing header invariants ("never emit both X and Y") must use
         requests' CaseInsensitiveDict, not a plain dict. @odata.bind
         navigation-property names must match $metadata casing — system
