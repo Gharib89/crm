@@ -9,6 +9,21 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.69.2 (2026-07-11)
+
+### Bug Fixes
+
+- Bump ruff target-version to py313 + mechanical UP/B905 sweep
+  ([#857](https://github.com/Gharib89/crm/pull/857),
+  [`112dbb7`](https://github.com/Gharib89/crm/commit/112dbb713d0efc16396c2034518218837d965020))
+
+### Chores
+
+- Exclude D205 permanently instead of as adoption debt
+  ([#855](https://github.com/Gharib89/crm/pull/855),
+  [`e253872`](https://github.com/Gharib89/crm/commit/e25387266fa72c94094adaa1fc0da3dafa09c771))
+
+
 ## v1.69.1 (2026-07-11)
 
 ### Bug Fixes
