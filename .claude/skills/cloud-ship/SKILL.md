@@ -101,9 +101,10 @@ mcp__github__add_issue_comment  owner=Gharib89 repo=crm issue_number=$NUM
 
 **5 · End at the merge gate — do not merge.** On success `ship` reaches its merge
 gate and will try to **wait** for a human "merge." **Override it.** The moment the
-PR is merge-ready — CI green, Copilot review addressed within its round budget,
-every CodeRabbit thread dispositioned (fixed or declined with evidence) and
-then resolved (`@coderabbitai resolve`), `mergeable` — **post the PR link + a
+PR is merge-ready — CI green, Copilot's round-1 threads dispositioned (never
+re-requested), every CodeRabbit thread dispositioned (fixed or declined with
+evidence) and then resolved (`@coderabbitai resolve`), CodeRabbit quiet on the
+latest push, `mergeable` — **post the PR link + a
 per-reviewer disposition summary and END the fire.** Do
 not wait, poll, or merge. A human merges out of band later; the squash
 `Closes #$NUM` closes the issue then. **Leave the issue `agent-working`** — it
@@ -150,12 +151,11 @@ mapping. Translate each command below to its MCP equivalent:
 | `gh pr create` / "open a ready PR" (ship phase 6) | `mcp__github__create_pull_request` (`draft` omitted) |
 | `gh pr view <n> --json mergeable,mergeStateStatus` (conflict check, ship phase 8) | `mcp__github__pull_request_read method=get` |
 | `gh pr view <n> --json reviews,statusCheckRollup` (poll, copilot-loop) | `pull_request_read` `method=get_reviews` + `get_check_runs` (or `get_status`) |
-| re-request the reviewer (copilot-loop step 4 / CLAUDE.md REST call) | `mcp__github__request_copilot_review`; verify it took via `get_reviews` |
-| `@coderabbitai review` / `@coderabbitai resolve` | `mcp__github__add_issue_comment` on the PR |
+| `@coderabbitai review` (lift an auto-pause) / `@coderabbitai resolve` | `mcp__github__add_issue_comment` on the PR |
 
 Poll CI/reviews by re-calling `pull_request_read` (not `gh`) within the bounded
-poll window and round ceiling `ship`'s `reference/copilot-loop.md` already
-defines — a short delay between polls, a capped number of attempts; never a
+poll window `ship`'s `reference/copilot-loop.md` already defines (Copilot is
+round-1-only, never re-requested; CodeRabbit owns iteration via push re-reviews) — a short delay between polls, a capped number of attempts; never a
 detached/background monitor. Reaching the bound is **not** a licence to proceed:
 end at step 5 only when the PR is genuinely merge-ready (CI green, reviews
 addressed, `mergeable`). If the bound is hit while CI is red/incomplete or can't

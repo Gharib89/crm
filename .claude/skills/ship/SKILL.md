@@ -20,8 +20,8 @@ This skill is **generic** — everything repo-specific lives in that repo's
 what the phases below need; if any is missing, surface the gap — don't guess: the
 **test command** (run from a worktree), **integrated/live-test** targets + creds,
 the **full local-gate set CI runs** (not a fixed triad), **docs-sync rules**, the
-**commit-subject convention**, and **whether a review bot exists** + how to
-trigger/re-request it.
+**commit-subject convention**, and **whether a review bot exists** — its round-1
+vs push-triggered role and how each is triggered.
 
 ## The autonomy contract
 
@@ -210,11 +210,14 @@ convention.
 
 **7 · Review-bot loop.** **Only if the repo has an automated reviewer configured**
 (per project instructions — never an assumption). If not, skip: phase-4 self-review
-plus green CI is the review gate. Otherwise drive it to a ceiling — poll,
-auto-triage and fix valid comments (phase 4's auto-triage, on the judgment tier),
-re-request later rounds via the project's mechanism, **3-round hard ceiling**,
-budget scaled by class and lane. Mechanics, the budget table (canonical), and
-traps: **[reference/copilot-loop.md](reference/copilot-loop.md).**
+plus green CI is the review gate. Two reviewer roles, per project instructions: a
+**round-1 reviewer** whose auto-review on PR creation is **dispositioned once and
+never re-requested in the ship flow**, and a **push-triggered reviewer** (if the
+repo runs one) that **owns iteration** — its rounds are free, so batch fixes one
+push per round, disposition every thread, and drive it to quiet. Auto-triage every
+comment (phase 4's definition, judgment tier). **Converged = the iterating reviewer
+quiet on the latest push + all round-1 threads dispositioned.** Mechanics,
+disposition rules, and traps: **[reference/copilot-loop.md](reference/copilot-loop.md).**
 
 **8 · CI.** CI usually runs concurrently from PR-open, so phases 7 and 8 overlap.
 **First confirm the PR isn't conflicted with the base branch** — `gh pr view <n>
@@ -223,9 +226,9 @@ conflicted PR has no merge ref, so merge-commit checks never start and CI sits
 **pending forever** — don't wait on it. Resolve: fetch the latest default branch,
 rebase (or merge) it in, fix conflicts, **re-run the local gate (phase 5)**, and
 push — that recomputes the merge ref and lets CI run. Then land the checks green.
-If CI goes red **after** the review ceiling closed, fix and push, then proceed on
-green — re-request another round only if the fix changed behavior materially (a
-lint/format/flake fix doesn't earn one).
+If CI goes red **after** review converged, fix and push, then proceed on green —
+the push-triggered reviewer re-reviews the fix on its own; the round-1 reviewer is
+not re-requested (a lint/format/flake fix earns no review anyway).
 
 **9 · Merge gate.** **Hard stop.** Post the summary and wait for the user's
 explicit "merge"; on approval, squash-merge, delete the branch, clean up the
@@ -240,7 +243,7 @@ worktree. Summary format and merge mechanics:
   the floor, revocation.
 - `reference/implement.md` — phases 1–3: spec precedence, change classification,
   external-claim verification, run-where-it-failed.
-- `reference/copilot-loop.md` — phase 7: poll mechanics, re-requesting rounds, the
-  3-round ceiling, bot infra flakes and known non-issues.
+- `reference/copilot-loop.md` — phase 7: the round-1 vs iterating reviewer roles,
+  the converged bar, poll mechanics, bot infra flakes and known non-issues.
 - `reference/merge-gate.md` — phase 9: the merge-summary template and the
   squash-merge / cleanup mechanics.

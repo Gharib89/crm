@@ -104,22 +104,33 @@ Only when the gate pushed commits (nothing pushed → nothing new to review; ski
 triaged (step 3), fixed where valid (step 5), replied to on-thread, and
 bulk-resolved via `@coderabbitai resolve` before the verdict):
 
-1. Re-request Copilot review via the project's documented mechanism (CLAUDE.md →
-   *Code review* — the REST path; verify `requested_reviewers` actually
-   populated). **CodeRabbit needs no re-request** — it re-reviews each push
-   automatically (if it auto-paused, `@coderabbitai review` lifts the pause).
-   **Gate rounds are exempt from the shipping run's 3-round ceiling**
-   — that budget belonged to the author agent's pipeline; the gate carries its own.
-2. Poll bounded, auto-triage **both reviewers'** returned comments (same rigor as
-   step 3), fix valid ones, push, then re-request **Copilot only** — CodeRabbit
-   re-reviews the push on its own. Reply on each CodeRabbit thread
-   ("fixed in `<sha>`" / decline + evidence); once every thread is dispositioned,
-   `@coderabbitai resolve` closes them — never earlier (it bulk-resolves).
-3. **Gate budget: 3 rounds** (Copilot re-requests; CodeRabbit's auto-rounds are
-   free and don't count). Converged = a round returns zero substantive comments
-   from **both** reviewers (declined-with-evidence nits count as converged).
-   Still substantive after 3 → stop; the PR has a shape problem more rounds
-   won't fix.
+1. **CodeRabbit owns iteration** — it re-reviews each push automatically, no
+   re-request needed (if it auto-paused, `@coderabbitai review` lifts the pause).
+   Poll bounded, auto-triage its returned comments (same rigor as step 3), fix
+   valid ones, push — the next round re-triggers on its own. Reply on each
+   CodeRabbit thread ("fixed in `<sha>`" / decline + evidence); once every thread
+   is dispositioned, `@coderabbitai resolve` closes them — never earlier (it
+   bulk-resolves).
+2. **Copilot is round-1-only — with one gate exception.** The gate may spend
+   **exactly one** Copilot re-request, and only when it **significantly rewrote**
+   the PR (a scoped lint/format/typo fix does not qualify). Otherwise Copilot's
+   round-1 threads are dispositioned once, as in the ship flow. To spend the
+   exception, re-request via REST (the `gh pr edit --add-reviewer copilot` path
+   fails on this repo):
+
+   ```bash
+   echo '{"reviewers":["copilot-pull-request-reviewer[bot]"]}' | \
+     gh api -X POST repos/Gharib89/crm/pulls/<n>/requested_reviewers --input -
+   ```
+
+   Then verify `requested_reviewers` actually populated — a bare HTTP 201 can
+   silently no-op (passing the display name `"Copilot"` instead of the bot login
+   is the classic trap).
+3. **Converged = CodeRabbit quiet on the latest push + every Copilot thread
+   dispositioned** (declined-with-evidence counts as dispositioned). CodeRabbit's
+   auto-rounds are free — drive them to quiet. If CodeRabbit stays substantive
+   round after round, the PR has a shape problem more rounds won't fix → stop and
+   fail the gate.
 
 ### 7 · Verdict
 

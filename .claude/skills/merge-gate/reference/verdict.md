@@ -7,9 +7,10 @@ Exactly one of:
 - **`gate-passed`** — checklist all pass/n-a, live runs green where required,
   review converged. `gh pr list --label gate-passed` is the maintainer's merge
   queue.
-- **`gate-failed`** — unconverged after the gate budget, a design-level finding,
-  or a checklist failure the gate can't fix in scope. The comment names the
-  decision the maintainer must make (send back to author agent, re-scope, close).
+- **`gate-failed`** — unconverged (CodeRabbit still substantive, or a Copilot
+  thread left undispositioned), a design-level finding, or a checklist failure the
+  gate can't fix in scope. The comment names the decision the maintainer must make
+  (send back to author agent, re-scope, close).
 
 Remove the opposite label if a re-run flips the verdict.
 
@@ -39,7 +40,7 @@ Fixes pushed by the gate
 Review dispositions   (label each finding's source: gate review / Copilot / CodeRabbit)
   - <finding> → <fixed | declined: evidence>
 
-Copilot gate rounds: <n>/3 — <converged | not converged | skipped: no push>
+Copilot: <round-1 threads dispositioned | +1 gate re-request spent: significant rewrite | n/a: no push>
 CodeRabbit threads:  <dispositioned <m>/<total> · resolved <yes | pending> | none | skipped: no push, none pending>
 
 Issues surfaced (surface-only — the gate files nothing)
