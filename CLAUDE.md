@@ -12,6 +12,8 @@ Setup is `crm profile add` (interactive wizard on a TTY; flag-driven for scripti
 - `crm/commands/*` — thin Click wrappers, one per `crm <group>`; `crm/cli.py` wires them; `crm/__main__.py` is the entry.
 - `crm/skills/` — agent skill shipped in the wheel: a thin `SKILL.md` router + `reference/*.md` loaded on demand (kept in sync with the CLI — see below).
 
+Coding standards: `docs/contributing/coding-standards.md` is canonical — every reviewer (the `code-review` skill's Standards axis, `.coderabbit.yaml` path instructions, `.github/copilot-instructions.md`) derives from it. Rule changes land there first, then re-derive the reviewer configs.
+
 ## Branch & worktree discipline
 
 The main checkout (`~/wip/projects/crm`) is shared by concurrent agent sessions — **never develop in it directly**. Any feature or bug fix happens in a **git worktree on a fresh branch**:
