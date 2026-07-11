@@ -6,6 +6,7 @@ v1). Under ``--json`` or off a TTY (agents, CI, pipes) it emits a plain listing 
 the standard JSON envelope (ADR 0008) or a human table — so it never blocks on a
 prompt.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -19,7 +20,8 @@ from crm.core import examples as reg
 
 def _example_label(ex: reg.Example) -> str:
     """Picker label for one example: its description, tagged with the workflow
-    sequence it belongs to (if any) so related steps read as a group."""
+    sequence it belongs to (if any) so related steps read as a group.
+    """
     if ex.workflow:
         return f"[{ex.workflow}] {ex.description}"
     return ex.description
@@ -52,20 +54,27 @@ def examples_cmd(ctx: CLIContext, group: str | None):
 
     pairs = reg.listing(group)
     if ctx.json_mode:
-        ctx.emit(True, data=[
-            {"group": g, "command": ex.command, "description": ex.description}
-            for g, ex in pairs
-        ])
+        ctx.emit(
+            True,
+            data=[
+                {"group": g, "command": ex.command, "description": ex.description}
+                for g, ex in pairs
+            ],
+        )
         return
-    ctx.emit(True, table={
-        "headers": ["group", "command", "description"],
-        "rows": [[g, ex.command, ex.description] for g, ex in pairs],
-    })
+    ctx.emit(
+        True,
+        table={
+            "headers": ["group", "command", "description"],
+            "rows": [[g, ex.command, ex.description] for g, ex in pairs],
+        },
+    )
 
 
 def _run_picker(ctx: CLIContext, group: str | None) -> None:
     """Human TTY flow: pick a group (if not given) then an example, and print the
-    chosen command. Cancelling either picker is a clean no-selection failure."""
+    chosen command. Cancelling either picker is a clean no-selection failure.
+    """
     if group is None:
         chosen = select_one(
             "Pick an example group",

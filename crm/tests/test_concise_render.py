@@ -20,7 +20,6 @@ from crm.cli import CLIContext, cli
 from crm.commands._helpers import _concise_record
 from crm.core import entity as entity_mod
 
-
 _GUID = "11111111-1111-1111-1111-111111111111"
 
 
@@ -100,9 +99,7 @@ class TestEntityGetHumanRender:
         _stub(monkeypatch, backend)
         with requests_mock.Mocker() as m:
             m.get(_get_url(backend), json=_FULL_RECORD)
-            result = CliRunner().invoke(
-                cli, ["entity", "get", "accounts", _GUID, "--full"]
-            )
+            result = CliRunner().invoke(cli, ["entity", "get", "accounts", _GUID, "--full"])
         assert result.exit_code == 0, result.output
         out = result.output
         assert "@odata.context" in out
@@ -121,10 +118,16 @@ class TestEntityGetHumanRender:
         assert rec["_entity_id"] == _GUID
 
 
-_DEFS = {"value": [{
-    "LogicalName": "account", "EntitySetName": "accounts",
-    "PrimaryIdAttribute": "accountid", "PrimaryNameAttribute": "name",
-}]}
+_DEFS = {
+    "value": [
+        {
+            "LogicalName": "account",
+            "EntitySetName": "accounts",
+            "PrimaryIdAttribute": "accountid",
+            "PrimaryNameAttribute": "name",
+        }
+    ]
+}
 
 
 class TestEntityCreateHumanRender:

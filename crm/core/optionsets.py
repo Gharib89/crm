@@ -11,11 +11,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict
-from crm.core.metadata import label, maybe_publish, target_exists
 from crm.core import dependencies as dep_mod
 from crm.core import metadata_cache
 from crm.core import metadata_constraints as mc
+from crm.core.metadata import label, maybe_publish, target_exists
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 
 
 def _option_label(label_obj: dict[str, Any]) -> str | None:
@@ -39,10 +39,12 @@ def list_optionsets(
     top: int | None = None,
 ) -> list[dict[str, Any]]:
     """List global option set definitions. Client-side $top slice."""
-    result = as_dict(backend.get(
-        "GlobalOptionSetDefinitions",
-        params={"$select": "Name,DisplayName,IsCustomOptionSet,IsGlobal,IsManaged"},
-    ))
+    result = as_dict(
+        backend.get(
+            "GlobalOptionSetDefinitions",
+            params={"$select": "Name,DisplayName,IsCustomOptionSet,IsGlobal,IsManaged"},
+        )
+    )
     items = result.get("value", [])
     if custom_only:
         items = [it for it in items if it.get("IsCustomOptionSet") is True]
@@ -119,11 +121,13 @@ def create_optionset(
     if description:
         body["Description"] = label(description)
 
-    result = as_dict(backend.post(
-        "GlobalOptionSetDefinitions",
-        json_body=body,
-        solution=solution,
-    ))
+    result = as_dict(
+        backend.post(
+            "GlobalOptionSetDefinitions",
+            json_body=body,
+            solution=solution,
+        )
+    )
     if result.get("_dry_run"):
         result["_exists"] = exists
         result["would_skip"] = exists and if_exists == "skip"
@@ -134,15 +138,15 @@ def create_optionset(
     lookup_error: str | None = None
     name_readback: str | None = None
     if not os_id:
-        lookup_error = (
-            f"Could not parse MetadataId from response: {entity_id_url!r}"
-        )
+        lookup_error = f"Could not parse MetadataId from response: {entity_id_url!r}"
     else:
         try:
-            rb = as_dict(backend.get(
-                f"GlobalOptionSetDefinitions({os_id})",
-                params={"$select": "Name,IsCustomOptionSet"},
-            ))
+            rb = as_dict(
+                backend.get(
+                    f"GlobalOptionSetDefinitions({os_id})",
+                    params={"$select": "Name,IsCustomOptionSet"},
+                )
+            )
             name_readback = rb.get("Name")
         except D365Error as exc:
             lookup_error = f"Read-back failed: {exc}"
@@ -191,15 +195,11 @@ def _option_diff(
 
     if update:
         diff["updates"] = [
-            {"value": v, "old_label": current_labels.get(v), "new_label": lbl}
-            for v, lbl in update
+            {"value": v, "old_label": current_labels.get(v), "new_label": lbl} for v, lbl in update
         ]
 
     if delete:
-        diff["deletes"] = [
-            {"value": v, "old_label": current_labels.get(v)}
-            for v in delete
-        ]
+        diff["deletes"] = [{"value": v, "old_label": current_labels.get(v)} for v in delete]
 
     if reorder:
         diff["reorder"] = {
@@ -262,12 +262,14 @@ def update_optionset(
                 actions.append(body)
         if update:
             for value, lbl in update:
-                actions.append({
-                    "OptionSetName": name,
-                    "Value": value,
-                    "Label": label(lbl),
-                    "MergeLabels": False,
-                })
+                actions.append(
+                    {
+                        "OptionSetName": name,
+                        "Value": value,
+                        "Label": label(lbl),
+                        "MergeLabels": False,
+                    }
+                )
         if delete:
             for value in delete:
                 actions.append({"OptionSetName": name, "Value": value})
@@ -297,7 +299,7 @@ def update_optionset(
             try:
                 backend.post("InsertOptionValue", json_body=body, solution=solution)
             except D365Error as exc:
-                raise _attach_partial(exc, "insert")
+                raise _attach_partial(exc, "insert") from exc
             completed.append(f"insert:{value if value is not None else 'auto'}")
 
     if update:
@@ -311,7 +313,7 @@ def update_optionset(
             try:
                 backend.post("UpdateOptionValue", json_body=body, solution=solution)
             except D365Error as exc:
-                raise _attach_partial(exc, "update")
+                raise _attach_partial(exc, "update") from exc
             completed.append(f"update:{value}")
 
     if delete:
@@ -320,7 +322,7 @@ def update_optionset(
             try:
                 backend.post("DeleteOptionValue", json_body=body, solution=solution)
             except D365Error as exc:
-                raise _attach_partial(exc, "delete")
+                raise _attach_partial(exc, "delete") from exc
             completed.append(f"delete:{value}")
 
     if reorder:
@@ -328,7 +330,7 @@ def update_optionset(
         try:
             backend.post("OrderOption", json_body=body, solution=solution)
         except D365Error as exc:
-            raise _attach_partial(exc, "reorder")
+            raise _attach_partial(exc, "reorder") from exc
         completed.append("reorder")
 
     out: dict[str, Any] = {
@@ -356,6 +358,10 @@ def delete_optionset(
     rejects with 400 if any picklist still references the option set.
 
     Args:
+        backend: Connected Web API client used for the delete.
+        name: Name of the global option set to delete.
+        solution: Optional `uniquename` to scope the DELETE to, via the
+            `MSCRM.SolutionUniqueName` header.
         check_dependencies: When True, call RetrieveDependenciesForDelete
             before the DELETE and fold ``can_delete`` + ``blockers`` into the
             result. Informational only — does not abort the delete.
@@ -363,9 +369,12 @@ def delete_optionset(
     if not name:
         raise D365Error("name is required.")
     path = f"GlobalOptionSetDefinitions(Name='{name}')"
-    rb = as_dict(backend.get(
-        path, params={"$select": "IsCustomOptionSet,IsManaged,MetadataId"},
-    ))
+    rb = as_dict(
+        backend.get(
+            path,
+            params={"$select": "IsCustomOptionSet,IsManaged,MetadataId"},
+        )
+    )
     if rb.get("IsCustomOptionSet") is False:
         raise D365Error(
             f"{name!r} is not a custom option set; refusing to delete.",

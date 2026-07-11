@@ -1,5 +1,6 @@
 # pyright: basic
 """E2E tests for view verbs: list, create, edit-columns, set-order."""
+
 from __future__ import annotations
 
 import json
@@ -12,12 +13,15 @@ from crm.tests.e2e.coverage import covers
 
 def _resolve_otc(backend, logical: str) -> int:
     """Fetch the ObjectTypeCode for a standard entity; skip if unavailable."""
-    from crm.utils.d365_backend import as_dict, D365Error
+    from crm.utils.d365_backend import D365Error, as_dict
+
     try:
-        rb = as_dict(backend.get(
-            f"EntityDefinitions(LogicalName='{logical}')",
-            params={"$select": "ObjectTypeCode"},
-        ))
+        rb = as_dict(
+            backend.get(
+                f"EntityDefinitions(LogicalName='{logical}')",
+                params={"$select": "ObjectTypeCode"},
+            )
+        )
     except D365Error as exc:
         pytest.skip(f"Could not resolve OTC for {logical!r}: {exc}")
     otc = rb.get("ObjectTypeCode")
@@ -33,9 +37,7 @@ def _resolve_otc(backend, logical: str) -> int:
 def test_view_list_contact(cli):
     """Every D365 org ships public views for 'contact'; assert non-empty + shape."""
     result = cli(["--json", "view", "list", "contact"])
-    assert result.returncode == 0, (
-        f"view list failed:\n{result.stderr}\nstdout: {result.stdout}"
-    )
+    assert result.returncode == 0, f"view list failed:\n{result.stderr}\nstdout: {result.stdout}"
     env = json.loads(result.stdout)
     assert env["ok"], env
     items = env["data"]
@@ -69,19 +71,28 @@ def test_view_create_on_contact(backend, cli, request, unique, ephemeral_solutio
 
     request.addfinalizer(_cleanup)
 
-    result = cli([
-        "--json", "view", "create", "contact",
-        "--name", view_name,
-        "--otc", str(otc),
-        "--column", "contactid",
-        "--column", "firstname",
-        "--column", "lastname",
-        "--no-publish",
-        "--solution", ephemeral_solution,
-    ])
-    assert result.returncode == 0, (
-        f"view create failed:\n{result.stderr}\nstdout: {result.stdout}"
+    result = cli(
+        [
+            "--json",
+            "view",
+            "create",
+            "contact",
+            "--name",
+            view_name,
+            "--otc",
+            str(otc),
+            "--column",
+            "contactid",
+            "--column",
+            "firstname",
+            "--column",
+            "lastname",
+            "--no-publish",
+            "--solution",
+            ephemeral_solution,
+        ]
     )
+    assert result.returncode == 0, f"view create failed:\n{result.stderr}\nstdout: {result.stdout}"
     env = json.loads(result.stdout)
     assert env["ok"], env
     data = env["data"]
@@ -92,10 +103,13 @@ def test_view_create_on_contact(backend, cli, request, unique, ephemeral_solutio
 
     # Verify the record exists via direct GET.
     from crm.utils.d365_backend import as_dict
-    rb = as_dict(backend.get(
-        f"savedqueries({sqid})",
-        params={"$select": "name,savedqueryid"},
-    ))
+
+    rb = as_dict(
+        backend.get(
+            f"savedqueries({sqid})",
+            params={"$select": "name,savedqueryid"},
+        )
+    )
     assert rb.get("name") == view_name, (
         f"view name mismatch: expected {view_name!r}, got {rb.get('name')!r}"
     )
@@ -120,20 +134,30 @@ def test_view_create_query_type_and_description(backend, cli, request, unique, e
 
     request.addfinalizer(_cleanup)
 
-    result = cli([
-        "--json", "view", "create", "contact",
-        "--name", view_name,
-        "--otc", str(otc),
-        "--column", "contactid",
-        "--column", "fullname",
-        "--query-type", "quick-find",
-        "--description", description,
-        "--no-publish",
-        "--solution", ephemeral_solution,
-    ])
-    assert result.returncode == 0, (
-        f"view create failed:\n{result.stderr}\nstdout: {result.stdout}"
+    result = cli(
+        [
+            "--json",
+            "view",
+            "create",
+            "contact",
+            "--name",
+            view_name,
+            "--otc",
+            str(otc),
+            "--column",
+            "contactid",
+            "--column",
+            "fullname",
+            "--query-type",
+            "quick-find",
+            "--description",
+            description,
+            "--no-publish",
+            "--solution",
+            ephemeral_solution,
+        ]
     )
+    assert result.returncode == 0, f"view create failed:\n{result.stderr}\nstdout: {result.stdout}"
     env = json.loads(result.stdout)
     assert env["ok"], env
     sqid = env["data"].get("savedqueryid")
@@ -142,25 +166,27 @@ def test_view_create_query_type_and_description(backend, cli, request, unique, e
 
     # Verify querytype + description persisted via direct GET.
     from crm.utils.d365_backend import as_dict
-    rb = as_dict(backend.get(
-        f"savedqueries({sqid})",
-        params={"$select": "querytype,description,isquickfindquery"},
-    ))
+
+    rb = as_dict(
+        backend.get(
+            f"savedqueries({sqid})",
+            params={"$select": "querytype,description,isquickfindquery"},
+        )
+    )
     assert rb.get("querytype") == 4, f"expected quick-find querytype 4: {rb}"
-    assert rb.get("isquickfindquery") is True, (
-        f"expected isquickfindquery True: {rb}"
-    )
-    assert rb.get("description") == description, (
-        f"description mismatch: {rb.get('description')!r}"
-    )
+    assert rb.get("isquickfindquery") is True, f"expected isquickfindquery True: {rb}"
+    assert rb.get("description") == description, f"description mismatch: {rb.get('description')!r}"
 
 
 @covers("view create")
 @pytest.mark.slow
-def test_view_filter_active_and_order_desc_round_trip(backend, cli, request, unique, ephemeral_solution):
+def test_view_filter_active_and_order_desc_round_trip(
+    backend, cli, request, unique, ephemeral_solution
+):
     """Create a public view with --filter-active and a descending sort, then
     confirm export-spec emits filter_active/order_desc (#597) — the export half
-    of a lossless round-trip. Cleans up."""
+    of a lossless round-trip. Cleans up.
+    """
     view_name = f"E2E Active {unique}"
     otc = _resolve_otc(backend, "contact")
 
@@ -175,20 +201,29 @@ def test_view_filter_active_and_order_desc_round_trip(backend, cli, request, uni
 
     request.addfinalizer(_cleanup)
 
-    result = cli([
-        "--json", "view", "create", "contact",
-        "--name", view_name,
-        "--otc", str(otc),
-        "--column", "contactid",
-        "--column", "createdon",
-        "--order", "createdon desc",
-        "--filter-active",
-        "--no-publish",
-        "--solution", ephemeral_solution,
-    ])
-    assert result.returncode == 0, (
-        f"view create failed:\n{result.stderr}\nstdout: {result.stdout}"
+    result = cli(
+        [
+            "--json",
+            "view",
+            "create",
+            "contact",
+            "--name",
+            view_name,
+            "--otc",
+            str(otc),
+            "--column",
+            "contactid",
+            "--column",
+            "createdon",
+            "--order",
+            "createdon desc",
+            "--filter-active",
+            "--no-publish",
+            "--solution",
+            ephemeral_solution,
+        ]
     )
+    assert result.returncode == 0, f"view create failed:\n{result.stderr}\nstdout: {result.stdout}"
     sqid = json.loads(result.stdout)["data"].get("savedqueryid")
     assert sqid, f"savedqueryid missing from response: {result.stdout}"
     created_id.append(sqid)
@@ -225,15 +260,26 @@ def _create_view(cli, backend, request, unique, ephemeral_solution, *, name_pref
                 pass
 
     request.addfinalizer(_cleanup)
-    result = cli([
-        "--json", "view", "create", "contact",
-        "--name", view_name, "--otc", str(otc),
-        "--column", "contactid", "--column", "firstname",
-        "--no-publish",
-        "--solution", ephemeral_solution,
-    ])
-    assert result.returncode == 0, (
-        f"view create failed:\n{result.stderr}\nstdout: {result.stdout}")
+    result = cli(
+        [
+            "--json",
+            "view",
+            "create",
+            "contact",
+            "--name",
+            view_name,
+            "--otc",
+            str(otc),
+            "--column",
+            "contactid",
+            "--column",
+            "firstname",
+            "--no-publish",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
+    assert result.returncode == 0, f"view create failed:\n{result.stderr}\nstdout: {result.stdout}"
     sqid = json.loads(result.stdout)["data"]["savedqueryid"]
     assert sqid, "savedqueryid missing from create response"
     created_id.append(sqid)
@@ -252,24 +298,36 @@ def test_view_edit_columns_live(backend, cli, request, unique, ephemeral_solutio
     """Add + resize a column, publish, and verify the published layer landed."""
     from crm.utils.d365_backend import as_dict
 
-    sqid = _create_view(cli, backend, request, unique, ephemeral_solution,
-                         name_prefix="E2E EditCols")
+    sqid = _create_view(
+        cli, backend, request, unique, ephemeral_solution, name_prefix="E2E EditCols"
+    )
 
     # --publish drives the T3 read-back (a GET returns the published layer).
-    result = cli([
-        "--json", "view", "edit-columns", "contact", sqid,
-        "--add", "lastname:140", "--width", "firstname:160", "--publish",
-        "--solution", ephemeral_solution,
-    ])
+    result = cli(
+        [
+            "--json",
+            "view",
+            "edit-columns",
+            "contact",
+            sqid,
+            "--add",
+            "lastname:140",
+            "--width",
+            "firstname:160",
+            "--publish",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert result.returncode == 0, (
-        f"view edit-columns failed:\n{result.stderr}\nstdout: {result.stdout}")
+        f"view edit-columns failed:\n{result.stderr}\nstdout: {result.stdout}"
+    )
     env = json.loads(result.stdout)
     assert env["ok"], env
     assert env["data"]["updated"] is True, env
     assert "lastname" in env["data"]["columns"], env
 
-    rb = as_dict(backend.get(
-        f"savedqueries({sqid})", params={"$select": "layoutxml,fetchxml"}))
+    rb = as_dict(backend.get(f"savedqueries({sqid})", params={"$select": "layoutxml,fetchxml"}))
     cells = _cells(rb["layoutxml"])
     assert "lastname" in cells, f"lastname cell missing: {cells}"
     assert cells.get("firstname") == "160", f"firstname width not 160: {cells}"
@@ -280,9 +338,10 @@ def test_view_edit_columns_live(backend, cli, request, unique, ephemeral_solutio
 def _conditions(fetchxml: str) -> list[tuple[str, str, str]]:
     """[(attribute, operator, value)] for every <condition> in a view's fetchxml."""
     root = ElementTree.fromstring(fetchxml)
-    return [(c.get("attribute") or "", c.get("operator") or "",
-             c.get("value") or "")
-            for c in root.iter("condition")]
+    return [
+        (c.get("attribute") or "", c.get("operator") or "", c.get("value") or "")
+        for c in root.iter("condition")
+    ]
 
 
 @covers("view add-filter", "view remove-filter")
@@ -291,38 +350,55 @@ def test_view_add_and_remove_filter_live(backend, cli, request, unique, ephemera
     """Add a filter condition, publish, verify it landed; then remove it."""
     from crm.utils.d365_backend import as_dict
 
-    sqid = _create_view(cli, backend, request, unique, ephemeral_solution,
-                         name_prefix="E2E Filter")
+    sqid = _create_view(cli, backend, request, unique, ephemeral_solution, name_prefix="E2E Filter")
 
     # Add a condition (--publish drives the T3 read-back).
-    result = cli([
-        "--json", "view", "add-filter", "contact", sqid,
-        "--condition", "lastname eq Contoso", "--publish",
-        "--solution", ephemeral_solution,
-    ])
+    result = cli(
+        [
+            "--json",
+            "view",
+            "add-filter",
+            "contact",
+            sqid,
+            "--condition",
+            "lastname eq Contoso",
+            "--publish",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert result.returncode == 0, (
-        f"view add-filter failed:\n{result.stderr}\nstdout: {result.stdout}")
+        f"view add-filter failed:\n{result.stderr}\nstdout: {result.stdout}"
+    )
     env = json.loads(result.stdout)
     assert env["ok"], env
     assert env["data"]["updated"] is True, env
 
-    rb = as_dict(backend.get(
-        f"savedqueries({sqid})", params={"$select": "fetchxml"}))
+    rb = as_dict(backend.get(f"savedqueries({sqid})", params={"$select": "fetchxml"}))
     assert ("lastname", "eq", "Contoso") in _conditions(rb["fetchxml"]), rb["fetchxml"]
 
     # Remove it again and verify it is gone from the published layer.
-    result = cli([
-        "--json", "view", "remove-filter", "contact", sqid,
-        "--condition", "lastname eq", "--publish",
-        "--solution", ephemeral_solution,
-    ])
+    result = cli(
+        [
+            "--json",
+            "view",
+            "remove-filter",
+            "contact",
+            sqid,
+            "--condition",
+            "lastname eq",
+            "--publish",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert result.returncode == 0, (
-        f"view remove-filter failed:\n{result.stderr}\nstdout: {result.stdout}")
+        f"view remove-filter failed:\n{result.stderr}\nstdout: {result.stdout}"
+    )
     env = json.loads(result.stdout)
     assert env["ok"], env
 
-    rb = as_dict(backend.get(
-        f"savedqueries({sqid})", params={"$select": "fetchxml"}))
+    rb = as_dict(backend.get(f"savedqueries({sqid})", params={"$select": "fetchxml"}))
     assert ("lastname", "eq", "Contoso") not in _conditions(rb["fetchxml"]), rb["fetchxml"]
 
 
@@ -332,24 +408,32 @@ def test_view_set_order_live(backend, cli, request, unique, ephemeral_solution):
     """Set a descending sort, publish, and verify the fetch <order> landed."""
     from crm.utils.d365_backend import as_dict
 
-    sqid = _create_view(cli, backend, request, unique, ephemeral_solution,
-                         name_prefix="E2E SetOrder")
+    sqid = _create_view(
+        cli, backend, request, unique, ephemeral_solution, name_prefix="E2E SetOrder"
+    )
 
-    result = cli([
-        "--json", "view", "set-order", "contact", sqid,
-        "--order", "createdon desc", "--publish",
-        "--solution", ephemeral_solution,
-    ])
+    result = cli(
+        [
+            "--json",
+            "view",
+            "set-order",
+            "contact",
+            sqid,
+            "--order",
+            "createdon desc",
+            "--publish",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert result.returncode == 0, (
-        f"view set-order failed:\n{result.stderr}\nstdout: {result.stdout}")
+        f"view set-order failed:\n{result.stderr}\nstdout: {result.stdout}"
+    )
     env = json.loads(result.stdout)
     assert env["ok"], env
-    assert env["data"]["order"] == [
-        {"attribute": "createdon", "descending": True}], env
+    assert env["data"]["order"] == [{"attribute": "createdon", "descending": True}], env
 
-    rb = as_dict(backend.get(
-        f"savedqueries({sqid})", params={"$select": "fetchxml"}))
+    rb = as_dict(backend.get(f"savedqueries({sqid})", params={"$select": "fetchxml"}))
     root = ElementTree.fromstring(rb["fetchxml"])
-    orders = [(o.get("attribute"), o.get("descending"))
-              for o in root.iter("order")]
+    orders = [(o.get("attribute"), o.get("descending")) for o in root.iter("order")]
     assert ("createdon", "true") in orders, f"order did not land: {orders}"

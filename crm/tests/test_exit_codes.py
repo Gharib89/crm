@@ -3,6 +3,7 @@
 These tests pin the signal coding agents loop on. See CONTEXT.md for the terms
 (operational failure, usage error, emit envelope).
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -20,7 +21,8 @@ def test_in_command_bad_argument_exits_2():
     """Usage error: a validate-before-backend bad-argument check (--bind-set without
     --bind-id) is a caller mistake → exit 2, not the exit-1 transport-failure shape
     (#713). Data-dependent in-command validation stays exit 1 — see
-    test_solution_layer_conflicts.py::test_solution_not_managed_exit1_names_flag."""
+    test_solution_layer_conflicts.py::test_solution_not_managed_exit1_names_flag.
+    """
     result = CliRunner().invoke(
         cli, ["--json", "action", "invoke", "foo", "--bind-set", "workflows"]
     )
@@ -30,7 +32,11 @@ def test_in_command_bad_argument_exits_2():
 
 def test_d365_server_error_exits_1(make_fake_backend, inject_backend, isolated_home):
     """Operational failure: a D365Error from the backend → exit 1, status in meta."""
-    inject_backend(make_fake_backend(errors={"get": D365Error("Record Not Found", status=404, code="0x80040217")}))
+    inject_backend(
+        make_fake_backend(
+            errors={"get": D365Error("Record Not Found", status=404, code="0x80040217")}
+        )
+    )
     result = CliRunner().invoke(cli, ["--json", "query", "count", "account"])
     assert result.exit_code == 1, result.output
     env = json.loads(result.output)
@@ -49,7 +55,11 @@ def test_declined_confirmation_exits_1():
 
 def test_success_exits_0(make_fake_backend, inject_backend, isolated_home):
     """Success: a command that achieves its effect → exit 0, ok=true."""
-    inject_backend(make_fake_backend(responses={"get": {"EntityRecordCountCollection": {"Keys": ["account"], "Values": [3]}}}))
+    inject_backend(
+        make_fake_backend(
+            responses={"get": {"EntityRecordCountCollection": {"Keys": ["account"], "Values": [3]}}}
+        )
+    )
     result = CliRunner().invoke(cli, ["--json", "query", "count", "account"])
     assert result.exit_code == 0, result.output
     assert json.loads(result.output)["ok"] is True
@@ -100,9 +110,7 @@ def test_malformed_data_json_envelope():
 
 def test_malformed_data_json_human_mode():
     """Malformed --data without --json → clean Click usage error, exit 2, no traceback."""
-    result = CliRunner().invoke(
-        cli, ["entity", "create", "accounts", "--data", '{"bad json']
-    )
+    result = CliRunner().invoke(cli, ["entity", "create", "accounts", "--data", '{"bad json'])
     assert result.exit_code == 2, result.output
     assert "invalid JSON in --data" in result.stderr
     assert "Traceback" not in result.stderr
@@ -121,6 +129,7 @@ def test_root_level_bad_parameter_json_envelope():
 
 def test_non_usage_click_exception_json_envelope(monkeypatch):
     """Non-Usage ClickException under --json stays in the standard envelope."""
+
     def boom(*args, **kwargs):
         raise click.ClickException("forced click failure")
 
@@ -154,7 +163,8 @@ def test_usage_error_human_path_not_json():
 def test_repl_path_emits_json_envelope(capsys):
     """REPL --json line: a usage error emits the envelope to stdout, not skin.error.
     The signal is the '--json' token in argv, not a pre-set ctx flag — so we leave
-    ctx.json_mode at its default to prove argv alone drives the envelope."""
+    ctx.json_mode at its default to prove argv alone drives the envelope.
+    """
     import click
 
     ctx = CLIContext()
@@ -162,8 +172,10 @@ def test_repl_path_emits_json_envelope(capsys):
     ctx.skin.error = lambda msg: errors.append(msg)  # type: ignore[assignment]
     try:
         cli.main(
-            args=["--json", "query", "count", "--nope"], obj=ctx,
-            standalone_mode=False, prog_name="crm",
+            args=["--json", "query", "count", "--nope"],
+            obj=ctx,
+            standalone_mode=False,
+            prog_name="crm",
         )
     except (SystemExit, click.exceptions.Exit, click.ClickException):
         pass
@@ -175,7 +187,8 @@ def test_repl_path_emits_json_envelope(capsys):
 
 def _repl_run(ctx, argv, errors):
     """Mirror repl.py's invocation + catch: run one line through the real wrapper,
-    routing any leftover ClickException to skin.error like the loop does."""
+    routing any leftover ClickException to skin.error like the loop does.
+    """
     import click
 
     try:
@@ -198,7 +211,8 @@ def test_repl_path_human_uses_skin_error():
 def test_repl_human_line_survives_prior_json_line(capsys):
     """Regression guard for the stale-json_mode bug: a --json line followed by a
     no-'--json' usage-error line on the SAME CLIContext must keep the human path —
-    skin.error is called and NO JSON envelope is written to stdout for line 2."""
+    skin.error is called and NO JSON envelope is written to stdout for line 2.
+    """
     ctx = CLIContext()
     errors: list[str] = []
     ctx.skin.error = lambda msg: errors.append(msg)  # type: ignore[assignment]

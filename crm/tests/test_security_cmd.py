@@ -1,4 +1,5 @@
 """CLI tests for `crm security` command group."""
+
 # pyright: basic
 from __future__ import annotations
 
@@ -73,9 +74,7 @@ class TestListRoles:
             calls.append((business_unit, name_contains))
             return _ROLES
 
-        monkeypatch.setattr(
-            "crm.commands.security.security_mod.list_roles", _fake_list_roles
-        )
+        monkeypatch.setattr("crm.commands.security.security_mod.list_roles", _fake_list_roles)
         CliRunner().invoke(cli, ["security", "list-roles"])
         assert calls == [(None, None)]
 
@@ -87,9 +86,7 @@ class TestListRoles:
             calls.append((business_unit, name_contains))
             return []
 
-        monkeypatch.setattr(
-            "crm.commands.security.security_mod.list_roles", _fake_list_roles
-        )
+        monkeypatch.setattr("crm.commands.security.security_mod.list_roles", _fake_list_roles)
         CliRunner().invoke(cli, ["security", "list-roles", "--business-unit", "bu-aaaa"])
         assert calls == [("bu-aaaa", None)]
 
@@ -101,9 +98,7 @@ class TestListRoles:
             calls.append((business_unit, name_contains))
             return []
 
-        monkeypatch.setattr(
-            "crm.commands.security.security_mod.list_roles", _fake_list_roles
-        )
+        monkeypatch.setattr("crm.commands.security.security_mod.list_roles", _fake_list_roles)
         CliRunner().invoke(cli, ["security", "list-roles", "--name-contains", "Sales"])
         assert calls == [(None, "Sales")]
 
@@ -142,9 +137,7 @@ class TestListUserRoles:
             "crm.commands.security.security_mod.list_user_roles",
             lambda b, user_id: _USER_ROLES,
         )
-        result = CliRunner().invoke(
-            cli, ["--json", "security", "list-user-roles", "user-guid-1"]
-        )
+        result = CliRunner().invoke(cli, ["--json", "security", "list-user-roles", "user-guid-1"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.stdout)
         assert env["ok"] is True
@@ -171,9 +164,7 @@ class TestListTeamRoles:
             "crm.commands.security.security_mod.list_team_roles",
             lambda b, team_id: _TEAM_ROLES,
         )
-        result = CliRunner().invoke(
-            cli, ["--json", "security", "list-team-roles", "team-guid-1"]
-        )
+        result = CliRunner().invoke(cli, ["--json", "security", "list-team-roles", "team-guid-1"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.stdout)
         assert env["ok"] is True
@@ -206,9 +197,7 @@ class TestUserPrivileges:
             "crm.commands.security.security_mod.list_user_privileges",
             lambda b, user_id: _USER_PRIVILEGES,
         )
-        result = CliRunner().invoke(
-            cli, ["--json", "security", "user-privileges", "user-guid-1"]
-        )
+        result = CliRunner().invoke(cli, ["--json", "security", "user-privileges", "user-guid-1"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.stdout)
         assert env["ok"] is True
@@ -227,10 +216,18 @@ class TestAssignRole:
 
     def test_both_flags_is_usage_error(self, monkeypatch, backend):
         _stub_backend(monkeypatch, backend)
-        result = CliRunner().invoke(cli, [
-            "security", "assign-role", "role-1111",
-            "--to-user", "user-guid-1", "--to-team", "team-guid-1",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "security",
+                "assign-role",
+                "role-1111",
+                "--to-user",
+                "user-guid-1",
+                "--to-team",
+                "team-guid-1",
+            ],
+        )
         assert result.exit_code == 2
 
     def test_assign_to_user_with_yes_succeeds(self, monkeypatch, backend):
@@ -245,10 +242,18 @@ class TestAssignRole:
             "crm.commands.security.security_mod.assign_role_to_user",
             _fake_assign_user,
         )
-        result = CliRunner().invoke(cli, [
-            "--json", "security", "assign-role", "role-1111",
-            "--to-user", "user-guid-1", "--yes",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "security",
+                "assign-role",
+                "role-1111",
+                "--to-user",
+                "user-guid-1",
+                "--yes",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert calls == [("user-guid-1", "role-1111")]
         env = json.loads(result.stdout)
@@ -267,10 +272,18 @@ class TestAssignRole:
             "crm.commands.security.security_mod.assign_role_to_team",
             _fake_assign_team,
         )
-        result = CliRunner().invoke(cli, [
-            "--json", "security", "assign-role", "role-2222",
-            "--to-team", "team-guid-1", "--yes",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "security",
+                "assign-role",
+                "role-2222",
+                "--to-team",
+                "team-guid-1",
+                "--yes",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert calls == [("team-guid-1", "role-2222")]
         env = json.loads(result.stdout)
@@ -282,10 +295,18 @@ class TestAssignRole:
             "crm.commands.security.security_mod.assign_role_to_user",
             lambda b, user_id, role_id, **kw: _ASSIGN_OK,
         )
-        result = CliRunner().invoke(cli, [
-            "--json", "security", "assign-role", "role-1111",
-            "--to-user", "user-guid-1",
-        ], input="")  # EOF on stdin -> Abort
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "security",
+                "assign-role",
+                "role-1111",
+                "--to-user",
+                "user-guid-1",
+            ],
+            input="",
+        )  # EOF on stdin -> Abort
         assert result.exit_code == 1, result.output
         assert "user-guid-1" in result.output
         env = json.loads(result.stdout)
@@ -300,10 +321,18 @@ class TestAssignRole:
                 D365Error("Forbidden", status=403, code="0x80040220")
             ),
         )
-        result = CliRunner().invoke(cli, [
-            "--json", "security", "assign-role", "role-1111",
-            "--to-user", "user-guid-1", "--yes",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "security",
+                "assign-role",
+                "role-1111",
+                "--to-user",
+                "user-guid-1",
+                "--yes",
+            ],
+        )
         assert result.exit_code == 1, result.output
         env = json.loads(result.stdout)
         assert env["ok"] is False
@@ -323,13 +352,22 @@ class TestGrant:
             calls.append((entity_set, record_id, principal_type, principal_id, rights))
             return {"granted": True}
 
-        monkeypatch.setattr(
-            "crm.commands.security.security_mod.grant_access", _fake_grant
+        monkeypatch.setattr("crm.commands.security.security_mod.grant_access", _fake_grant)
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "security",
+                "grant",
+                "accounts",
+                "rec-1",
+                "--to",
+                "user:user-1",
+                "--rights",
+                "Read,Write",
+                "--yes",
+            ],
         )
-        result = CliRunner().invoke(cli, [
-            "--json", "security", "grant", "accounts", "rec-1",
-            "--to", "user:user-1", "--rights", "Read,Write", "--yes",
-        ])
         assert result.exit_code == 0, result.output
         assert calls == [("accounts", "rec-1", "user", "user-1", "Read,Write")]
         env = json.loads(result.stdout)
@@ -338,17 +376,36 @@ class TestGrant:
 
     def test_malformed_principal_is_usage_error(self, monkeypatch, backend):
         _stub_backend(monkeypatch, backend)
-        result = CliRunner().invoke(cli, [
-            "security", "grant", "accounts", "rec-1",
-            "--to", "user-1", "--rights", "Read", "--yes",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "security",
+                "grant",
+                "accounts",
+                "rec-1",
+                "--to",
+                "user-1",
+                "--rights",
+                "Read",
+                "--yes",
+            ],
+        )
         assert result.exit_code == 2
 
     def test_missing_rights_is_usage_error(self, monkeypatch, backend):
         _stub_backend(monkeypatch, backend)
-        result = CliRunner().invoke(cli, [
-            "security", "grant", "accounts", "rec-1", "--to", "user:user-1", "--yes",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "security",
+                "grant",
+                "accounts",
+                "rec-1",
+                "--to",
+                "user:user-1",
+                "--yes",
+            ],
+        )
         assert result.exit_code == 2
 
     def test_without_yes_non_interactive_aborts(self, monkeypatch, backend):
@@ -357,10 +414,21 @@ class TestGrant:
             "crm.commands.security.security_mod.grant_access",
             lambda *a, **k: {"granted": True},
         )
-        result = CliRunner().invoke(cli, [
-            "--json", "security", "grant", "accounts", "rec-1",
-            "--to", "user:user-1", "--rights", "Read",
-        ], input="")
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "security",
+                "grant",
+                "accounts",
+                "rec-1",
+                "--to",
+                "user:user-1",
+                "--rights",
+                "Read",
+            ],
+            input="",
+        )
         assert result.exit_code == 1, result.output
         env = json.loads(result.stdout)
         assert env["ok"] is False
@@ -379,13 +447,20 @@ class TestRevoke:
             calls.append((entity_set, record_id, principal_type, principal_id))
             return {"revoked": True}
 
-        monkeypatch.setattr(
-            "crm.commands.security.security_mod.revoke_access", _fake_revoke
+        monkeypatch.setattr("crm.commands.security.security_mod.revoke_access", _fake_revoke)
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "security",
+                "revoke",
+                "accounts",
+                "rec-1",
+                "--from",
+                "team:team-1",
+                "--yes",
+            ],
         )
-        result = CliRunner().invoke(cli, [
-            "--json", "security", "revoke", "accounts", "rec-1",
-            "--from", "team:team-1", "--yes",
-        ])
         assert result.exit_code == 0, result.output
         assert calls == [("accounts", "rec-1", "team", "team-1")]
         env = json.loads(result.stdout)
@@ -420,9 +495,7 @@ class TestListAccess:
             "crm.commands.security.security_mod.list_access",
             lambda b, entity_set, record_id: _SHARES,
         )
-        result = CliRunner().invoke(
-            cli, ["--json", "security", "list-access", "accounts", "rec-1"]
-        )
+        result = CliRunner().invoke(cli, ["--json", "security", "list-access", "accounts", "rec-1"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.stdout)
         assert env["ok"] is True
@@ -443,11 +516,22 @@ class TestCreateRole:
             return {"roleid": "role-9", "name": name, "businessunitid": "bu-1"}
 
         monkeypatch.setattr("crm.commands.security.security_mod.create_role", _fake)
-        result = CliRunner().invoke(cli, [
-            "--json", "security", "create-role", "Agent Read-Only",
-            "--business-unit", "bu-1", "--if-exists", "skip", "--yes",
-            "--solution", "mysol",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "security",
+                "create-role",
+                "Agent Read-Only",
+                "--business-unit",
+                "bu-1",
+                "--if-exists",
+                "skip",
+                "--yes",
+                "--solution",
+                "mysol",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert calls == [("Agent Read-Only", "bu-1", "skip")]
         env = json.loads(result.stdout)
@@ -463,10 +547,18 @@ class TestCreateRole:
             return {"roleid": "role-9", "name": name, "businessunitid": "bu-1"}
 
         monkeypatch.setattr("crm.commands.security.security_mod.create_role", _fake)
-        result = CliRunner().invoke(cli, [
-            "--json", "security", "create-role", "R",
-            "--solution", "mysol", "--yes",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "security",
+                "create-role",
+                "R",
+                "--solution",
+                "mysol",
+                "--yes",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert seen["solution"] == "mysol"
 
@@ -478,9 +570,16 @@ class TestCreateRole:
             "crm.commands.security.security_mod.create_role",
             lambda *a, **k: calls.append((a, k)) or {"roleid": "role-9", "name": "R"},
         )
-        result = CliRunner().invoke(cli, [
-            "--json", "security", "create-role", "R", "--yes",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "security",
+                "create-role",
+                "R",
+                "--yes",
+            ],
+        )
         assert result.exit_code == 2, result.output
         env = json.loads(result.stdout)
         assert env["ok"] is False
@@ -493,9 +592,16 @@ class TestCreateRole:
             "crm.commands.security.security_mod.create_role",
             lambda *a, **k: {"roleid": "x"},
         )
-        result = CliRunner().invoke(cli, [
-            "--json", "security", "create-role", "R",
-        ], input="")
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "security",
+                "create-role",
+                "R",
+            ],
+            input="",
+        )
         assert result.exit_code == 1, result.output
         env = json.loads(result.stdout)
         assert "--yes" in env["error"]
@@ -507,10 +613,19 @@ class TestCreateRole:
             lambda *a, **k: {"_dry_run": True, "method": "POST"},
         )
         # no --yes, non-interactive: dry-run must NOT abort
-        result = CliRunner().invoke(cli, [
-            "--json", "--dry-run", "security", "create-role", "R",
-            "--solution", "mysol",
-        ], input="")
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "--dry-run",
+                "security",
+                "create-role",
+                "R",
+                "--solution",
+                "mysol",
+            ],
+            input="",
+        )
         assert result.exit_code == 0, result.output
         env = json.loads(result.stdout)
         assert env["meta"]["dry_run"] is True
@@ -524,20 +639,37 @@ class TestSetRolePrivileges:
         _stub_backend(monkeypatch, backend)
         calls = {}
 
-        def _fake(b, role, *, access, entities, all_entities, privilege_names,
-                  depth, replace):
-            calls.update(dict(role=role, access=access, entities=entities,
-                              all_entities=all_entities, privilege_names=privilege_names,
-                              depth=depth, replace=replace))
+        def _fake(b, role, *, access, entities, all_entities, privilege_names, depth, replace):
+            calls.update(
+                dict(
+                    role=role,
+                    access=access,
+                    entities=entities,
+                    all_entities=all_entities,
+                    privilege_names=privilege_names,
+                    depth=depth,
+                    replace=replace,
+                )
+            )
             return {"roleid": role, "mode": "add", "count": 2, "warnings": []}
 
-        monkeypatch.setattr(
-            "crm.commands.security.security_mod.set_role_privileges", _fake)
-        result = CliRunner().invoke(cli, [
-            "--json", "security", "set-role-privileges", "role-1",
-            "--access", "read, write", "--entities", "account,contact",
-            "--depth", "global", "--yes",
-        ])
+        monkeypatch.setattr("crm.commands.security.security_mod.set_role_privileges", _fake)
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "security",
+                "set-role-privileges",
+                "role-1",
+                "--access",
+                "read, write",
+                "--entities",
+                "account,contact",
+                "--depth",
+                "global",
+                "--yes",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert calls["access"] == ["read", "write"]
         assert calls["entities"] == ["account", "contact"]
@@ -552,22 +684,45 @@ class TestSetRolePrivileges:
             "crm.commands.security.security_mod.set_role_privileges",
             lambda b, role, **kw: calls.update(kw) or {"roleid": role, "warnings": []},
         )
-        result = CliRunner().invoke(cli, [
-            "--json", "security", "set-role-privileges", "role-1",
-            "--access", "read", "--all-entities", "--depth", "global",
-            "--replace", "--yes",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "security",
+                "set-role-privileges",
+                "role-1",
+                "--access",
+                "read",
+                "--all-entities",
+                "--depth",
+                "global",
+                "--replace",
+                "--yes",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert calls["replace"] is True
         assert calls["all_entities"] is True
 
     def test_add_and_replace_mutually_exclusive(self, monkeypatch, backend):
         _stub_backend(monkeypatch, backend)
-        result = CliRunner().invoke(cli, [
-            "--json", "security", "set-role-privileges", "role-1",
-            "--access", "read", "--all-entities", "--depth", "global",
-            "--add", "--replace", "--yes",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "security",
+                "set-role-privileges",
+                "role-1",
+                "--access",
+                "read",
+                "--all-entities",
+                "--depth",
+                "global",
+                "--add",
+                "--replace",
+                "--yes",
+            ],
+        )
         assert result.exit_code == 2, result.output  # click.UsageError
         assert "mutually exclusive" in result.output
 
@@ -576,14 +731,25 @@ class TestSetRolePrivileges:
         monkeypatch.setattr(
             "crm.commands.security.security_mod.set_role_privileges",
             lambda b, role, **kw: {
-                "roleid": role, "count": 1,
+                "roleid": role,
+                "count": 1,
                 "warnings": ["prvCreateEntity: depth clamped Basic → Global"],
             },
         )
-        result = CliRunner().invoke(cli, [
-            "--json", "security", "set-role-privileges", "role-1",
-            "--privilege", "prvCreateEntity", "--depth", "basic", "--yes",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "security",
+                "set-role-privileges",
+                "role-1",
+                "--privilege",
+                "prvCreateEntity",
+                "--depth",
+                "basic",
+                "--yes",
+            ],
+        )
         assert result.exit_code == 0, result.output
         env = json.loads(result.stdout)
         assert any("clamped" in w for w in env["meta"]["warnings"])
@@ -596,10 +762,21 @@ class TestSetRolePrivileges:
             "crm.commands.security.security_mod.set_role_privileges",
             lambda b, role, **kw: {"roleid": role, "warnings": []},
         )
-        result = CliRunner().invoke(cli, [
-            "--json", "security", "set-role-privileges", "role-1",
-            "--access", "read", "--all-entities", "--depth", "global",
-        ], input="")
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "security",
+                "set-role-privileges",
+                "role-1",
+                "--access",
+                "read",
+                "--all-entities",
+                "--depth",
+                "global",
+            ],
+            input="",
+        )
         assert result.exit_code == 1, result.output
         env = json.loads(result.stdout)
         assert "--yes" in env["error"]
@@ -612,10 +789,20 @@ class TestSetRolePrivileges:
                 D365Error("--access requires an entity scope")
             ),
         )
-        result = CliRunner().invoke(cli, [
-            "--json", "security", "set-role-privileges", "role-1",
-            "--access", "read", "--depth", "global", "--yes",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "security",
+                "set-role-privileges",
+                "role-1",
+                "--access",
+                "read",
+                "--depth",
+                "global",
+                "--yes",
+            ],
+        )
         assert result.exit_code == 1, result.output
         env = json.loads(result.stdout)
         assert env["ok"] is False

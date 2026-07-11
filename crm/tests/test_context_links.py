@@ -6,6 +6,7 @@ edits and break only on a file move/rename -- this test turns that break into a
 CI failure instead of a silent lie. Repo-relative is enforced too: an absolute
 or parent-escaping target is rejected even if it happens to exist on the runner.
 """
+
 import re
 from pathlib import Path
 
@@ -26,9 +27,7 @@ def test_context_md_links_resolve():
     targets = LINK_RE.findall(CONTEXT_MD.read_text(encoding="utf-8"))
     # Only repo-relative links; skip external (http) and in-page (#anchor) ones.
     repo_links = [
-        t.split("#", 1)[0]
-        for t in targets
-        if t and not t.startswith(("http://", "https://", "#"))
+        t.split("#", 1)[0] for t in targets if t and not t.startswith(("http://", "https://", "#"))
     ]
     assert repo_links, "expected CONTEXT.md to carry repo-relative cross-links"
     bad = sorted(t for t in repo_links if not _is_valid_repo_link(t))

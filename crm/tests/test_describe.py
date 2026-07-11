@@ -4,6 +4,7 @@ Walks the live Click tree; needs no D365 connection. Tests assert the envelope
 shape, that known Choice enums surface verbatim, and that the enumerated
 top-level commands track the lazy-command registry.
 """
+
 # pyright: basic
 import json
 import subprocess
@@ -56,8 +57,14 @@ def test_each_command_carries_args_and_params():
     assert dest["is_flag"] is False
     # Every option dict exposes the full field set.
     assert set(force) >= {
-        "name", "type", "required", "is_flag", "multiple", "choices",
-        "default", "envvar",
+        "name",
+        "type",
+        "required",
+        "is_flag",
+        "multiple",
+        "choices",
+        "default",
+        "envvar",
     }
 
 
@@ -76,16 +83,33 @@ def test_choice_enums_surface_verbatim():
     choice_lists = _all_choice_lists(data)
     # The 15 attribute kinds — exact order preserved.
     assert [
-        "string", "memo", "integer", "bigint", "decimal", "double", "money",
-        "boolean", "datetime", "picklist", "multiselect", "lookup", "customer",
-        "image", "file",
+        "string",
+        "memo",
+        "integer",
+        "bigint",
+        "decimal",
+        "double",
+        "money",
+        "boolean",
+        "datetime",
+        "picklist",
+        "multiselect",
+        "lookup",
+        "customer",
+        "image",
+        "file",
     ] in choice_lists
     # --behavior DateTimeBehavior choices — exact order preserved.
     assert ["UserLocal", "DateOnly", "TimeZoneIndependent"] in choice_lists
     assert ["UserOwned", "OrganizationOwned"] in choice_lists  # ownership
     assert ["error", "skip"] in choice_lists  # --if-exists
     assert [  # cascade behaviors
-        "NoCascade", "Cascade", "Active", "UserOwned", "RemoveLink", "Restrict",
+        "NoCascade",
+        "Cascade",
+        "Active",
+        "UserOwned",
+        "RemoveLink",
+        "Restrict",
     ] in choice_lists
 
 
@@ -93,14 +117,20 @@ def test_root_global_options_included():
     data = _describe()
     flags = {f for opt in data["root_options"] for f in opt["opts"]}
     for expected in [
-        "--json", "--dry-run", "--profile", "--auth-scheme",
-        "--log-level", "--stage-only", "--session",
+        "--json",
+        "--dry-run",
+        "--profile",
+        "--auth-scheme",
+        "--log-level",
+        "--stage-only",
+        "--session",
     ]:
         assert expected in flags, f"missing sticky global {expected}"
 
 
 def test_top_level_commands_track_lazy_registry_minus_repl():
     from crm.cli import _LazyJsonAwareGroup
+
     data = _describe()
     top = {c["name"] for c in data["commands"] if " " not in c["path"]}
     expected = set(_LazyJsonAwareGroup._lazy_commands) - {"repl"}
@@ -126,18 +156,18 @@ def test_describe_unknown_group_errors():
 
 def test_flag_pair_secondary_opts_are_captured():
     """Boolean flag-pairs (e.g. --publish/--no-publish) must expose both forms,
-    or the catalogue silently drops every --no-* flag the CLI accepts."""
+    or the catalogue silently drops every --no-* flag the CLI accepts.
+    """
     data = _describe()
-    secondaries = {
-        s for c in data["commands"] for p in c["params"] for s in p["secondary_opts"]
-    }
+    secondaries = {s for c in data["commands"] for p in c["params"] for s in p["secondary_opts"]}
     assert "--no-publish" in secondaries
     assert "--no-annotations" in secondaries
 
 
 def test_describe_repl_excluded_even_when_named_explicitly():
     """The repl leaf is excluded from the catalogue everywhere — naming it
-    explicitly must not bypass the exclusion."""
+    explicitly must not bypass the exclusion.
+    """
     result = CliRunner().invoke(cli, ["--json", "describe", "repl"])
     assert result.exit_code != 0
     assert json.loads(result.output)["ok"] is False
@@ -146,7 +176,8 @@ def test_describe_repl_excluded_even_when_named_explicitly():
 def test_no_unset_sentinel_leaks_into_defaults():
     """A param with no declared default must serialize as a real default or null —
     never Click's internal UNSET sentinel stringified to 'Sentinel.UNSET', which
-    would mislead an agent generating invocations from the catalogue."""
+    would mislead an agent generating invocations from the catalogue.
+    """
     result = CliRunner().invoke(cli, ["--json", "describe"])
     assert result.exit_code == 0, result.output
     assert "Sentinel.UNSET" not in result.output
@@ -160,7 +191,8 @@ def test_hidden_options_are_omitted():
     """Options marked hidden=True are excluded from the catalogue everywhere —
     the catalogue advertises only the documented public surface. `solution pack`
     carries a hidden `--solutionpackager-path` (deprecated alias) and
-    `workflow export` a hidden `--out`; neither may appear."""
+    `workflow export` a hidden `--out`; neither may appear.
+    """
     data = _describe()
     pack = _by_path(data, "solution pack")
     assert "solutionpackager_path" not in {p["name"] for p in pack["params"]}
@@ -178,7 +210,8 @@ def test_describe_human_mode_lists_command_paths():
 
 def test_describe_single_group_is_a_lazy_win():
     """`describe <group>` imports only that group's module, not its siblings —
-    run in a subprocess so sys.modules starts clean."""
+    run in a subprocess so sys.modules starts clean.
+    """
     probe = (
         "import sys, json\n"
         "from click.testing import CliRunner\n"

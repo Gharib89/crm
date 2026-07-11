@@ -33,6 +33,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
+      # Lint + format ride the existing required `lint` job — a new job would
+      # need a ruleset (required-checks) update to be enforced.
+      - name: Lint (ruff)
+        run: ruff check .
+      - name: Format check (ruff)
+        run: ruff format --check .
       - name: Type check (pyright)
         run: pyright
 

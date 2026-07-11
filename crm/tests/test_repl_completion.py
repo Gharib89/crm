@@ -5,6 +5,7 @@ covered by `TestCompleteEntityToken` in test_metadata_cache.py; these tests
 cover the newly added command-name, flag-name, Choice-value, and profile-name
 completion that `complete_repl_line` composes on top of it.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -56,12 +57,18 @@ class TestChoiceValues:
     def test_subcommand_choice_param(self):
         # completion install --shell <TAB> -> the shell choices, declared order.
         assert complete_repl_line("completion install --shell ", [], [], []) == [
-            "zsh", "bash", "fish", "powershell",
+            "zsh",
+            "bash",
+            "fish",
+            "powershell",
         ]
 
     def test_root_level_choice_param(self):
         assert complete_repl_line("--log-level ", [], [], []) == [
-            "debug", "info", "warning", "error",
+            "debug",
+            "info",
+            "warning",
+            "error",
         ]
 
     def test_non_choice_option_value_yields_nothing(self):
@@ -82,9 +89,10 @@ class TestProfileNames:
     def test_position_blind_after_a_subcommand(self):
         # The REPL never validates the full Click option graph (unlike OS-shell
         # completion, which is scoped to wherever --profile is actually declared).
-        assert complete_repl_line(
-            "entity get --profile ", [], [], ["dev", "prod"]
-        ) == ["dev", "prod"]
+        assert complete_repl_line("entity get --profile ", [], [], ["dev", "prod"]) == [
+            "dev",
+            "prod",
+        ]
 
 
 class TestAttributeValues:
@@ -113,30 +121,35 @@ class TestAttributeValues:
 
     def test_no_entity_on_line_is_noop(self):
         # `--select` before any entity token → nothing to complete against.
-        assert complete_repl_line(
-            "entity get --select ", ["account"], ["accounts"], [], self._getter()
-        ) is None
+        assert (
+            complete_repl_line(
+                "entity get --select ", ["account"], ["accounts"], [], self._getter()
+            )
+            is None
+        )
 
     def test_without_getter_is_noop(self):
         # No attribute_getter (the default) leaves `--select` as a bare TEXT
         # option with no values — unchanged pre-#659 behavior.
-        assert complete_repl_line(
-            "entity get accounts --select ", ["account"], ["accounts"], []
-        ) is None
+        assert (
+            complete_repl_line("entity get accounts --select ", ["account"], ["accounts"], [])
+            is None
+        )
 
     def test_expand_is_not_an_attribute_option(self):
         # --expand takes navigation properties, not columns, so it is not wired
         # to attribute completion.
-        assert complete_repl_line(
-            "entity get accounts --expand ", ["account"], ["accounts"], [], self._getter()
-        ) is None
+        assert (
+            complete_repl_line(
+                "entity get accounts --expand ", ["account"], ["accounts"], [], self._getter()
+            )
+            is None
+        )
 
 
 class TestEntitySlotUnchanged:
     def test_entity_slot_completion_still_applies(self):
-        assert complete_repl_line(
-            "entity get acc", ["account"], ["accounts"], []
-        ) == ["accounts"]
+        assert complete_repl_line("entity get acc", ["account"], ["accounts"], []) == ["accounts"]
 
 
 def _completions(completer: _ReplCompleter, text: str) -> list[str]:
@@ -179,6 +192,7 @@ class TestReplCompleter:
 
     def test_entity_slot_completion_uses_backend_names(self):
         import types
+
         calls = {"n": 0}
 
         def backend():
@@ -222,7 +236,10 @@ class TestReplCompleter:
         cache._loaded_profile = "orga"
         completer = _ReplCompleter(
             lambda: __import__("types").SimpleNamespace(
-                profile=__import__("types").SimpleNamespace(name="orga")), cache)
+                profile=__import__("types").SimpleNamespace(name="orga")
+            ),
+            cache,
+        )
         assert _completions(completer, "entity get accounts --select ") == []
 
 

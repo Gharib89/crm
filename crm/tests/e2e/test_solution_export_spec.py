@@ -7,6 +7,7 @@ apply-consumable spec and asserts all three kinds round-trip into the spec
 (entities, security_roles, webresources). Pure-GET projection plus the setup
 writes — runs on both the on-prem (NTLM) and Dataverse-online targets.
 """
+
 from __future__ import annotations
 
 import json
@@ -29,8 +30,10 @@ def test_export_spec_projects_entity_role_and_webresource(
     # Entity (componenttype 1) → add the session entity to this solution.
     info = meta_mod.entity_info(backend, ephemeral_entity)
     sol_mod.add_solution_component(
-        backend, solution=ephemeral_solution,
-        component_id=info["MetadataId"], component_type=1,
+        backend,
+        solution=ephemeral_solution,
+        component_id=info["MetadataId"],
+        component_type=1,
     )
 
     role_name = f"new_e2e_role_{unique}"
@@ -43,11 +46,16 @@ def test_export_spec_projects_entity_role_and_webresource(
         role = sec_mod.create_role(backend, role_name, solution=ephemeral_solution)
         role_id = role["roleid"]
         sec_mod.set_role_privileges(
-            backend, role_id, access=["read"], entities=["account"], depth="Basic")
+            backend, role_id, access=["read"], entities=["account"], depth="Basic"
+        )
         # Web resource (61) → created into the solution with real JS content.
         wr_mod.create_webresource(
-            backend, name=wr_name, content=b"// e2e export-spec\n",
-            webresourcetype=3, solution=ephemeral_solution)
+            backend,
+            name=wr_name,
+            content=b"// e2e export-spec\n",
+            webresourcetype=3,
+            solution=ephemeral_solution,
+        )
 
         # 1) Summary envelope (no -o): all three kinds project; skipped is a list.
         result = cli(["--json", "solution", "export-spec", ephemeral_solution])
@@ -57,7 +65,8 @@ def test_export_spec_projects_entity_role_and_webresource(
         data = env["data"]
         assert isinstance(data["skipped"], list)
         assert any(ephemeral_entity.lower() == str(s).lower() for s in data["entities"]), (
-            f"expected {ephemeral_entity!r} among entities, got {data['entities']}")
+            f"expected {ephemeral_entity!r} among entities, got {data['entities']}"
+        )
         assert role_name in data["security_roles"], data["security_roles"]
         assert wr_name in data["webresources"], data["webresources"]
 

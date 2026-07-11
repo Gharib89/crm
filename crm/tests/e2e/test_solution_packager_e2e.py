@@ -10,6 +10,7 @@ CI with `D365_E2E` unset — the one e2e pair that needs no live target (#529).
 They still need the real `pac` binary; when it is absent the tests skip with an
 install hint, so a local run without pac stays green.
 """
+
 from __future__ import annotations
 
 import json
@@ -42,7 +43,8 @@ def _skip_without_pac() -> None:
     would mask a real error and go green while `crm solution pack/extract` would
     fail for the same environment. So when an override is set we do NOT skip — the
     test runs and the CLI surfaces the same D365Error that
-    crm.core.solutionpackager._resolve_pac raises for a non-file override."""
+    crm.core.solutionpackager._resolve_pac raises for a non-file override.
+    """
     if os.environ.get("CRM_PAC") or os.environ.get("CRM_SOLUTIONPACKAGER"):
         return
     if shutil.which("pac") is None:
@@ -51,22 +53,25 @@ def _skip_without_pac() -> None:
 
 @covers("solution pack", "solution extract")
 def test_solution_pack_extract_roundtrip(cli, tmp_path):
-    """pack the committed source tree into a zip, then extract it back and confirm
-    the solution's UniqueName survived the roundtrip (real pac, both verbs)."""
+    """Pack the committed source tree into a zip, then extract it back and confirm
+    the solution's UniqueName survived the roundtrip (real pac, both verbs).
+    """
     _skip_without_pac()
     built = tmp_path / "built.zip"
     restored = tmp_path / "restored"
 
-    pack = cli(["--json", "solution", "pack",
-                "--zipfile", str(built), "--folder", str(FIXTURE_SRC)])
+    pack = cli(
+        ["--json", "solution", "pack", "--zipfile", str(built), "--folder", str(FIXTURE_SRC)]
+    )
     env = json.loads(pack.stdout)
     assert env["ok"], env
     assert env["data"]["action"] == "Pack"
     assert env["data"]["exit_code"] == 0
     assert built.is_file() and built.stat().st_size > 0
 
-    extract = cli(["--json", "solution", "extract",
-                   "--zipfile", str(built), "--folder", str(restored)])
+    extract = cli(
+        ["--json", "solution", "extract", "--zipfile", str(built), "--folder", str(restored)]
+    )
     env = json.loads(extract.stdout)
     assert env["ok"], env
     assert env["data"]["action"] == "Extract"
@@ -78,14 +83,24 @@ def test_solution_pack_extract_roundtrip(cli, tmp_path):
 
 def test_solution_extract_bad_zip_fails(cli, tmp_path):
     """A non-solution zip makes pac exit non-zero; the command must fail (ADR 0001)
-    with an error naming the real `pac solution unpack` subcommand, not succeed."""
+    with an error naming the real `pac solution unpack` subcommand, not succeed.
+    """
     _skip_without_pac()
     bogus = tmp_path / "bogus.zip"
     bogus.write_bytes(b"PK\x03\x04 not a real solution zip")
 
-    result = cli(["--json", "solution", "extract",
-                  "--zipfile", str(bogus), "--folder", str(tmp_path / "out")],
-                 check=False)
+    result = cli(
+        [
+            "--json",
+            "solution",
+            "extract",
+            "--zipfile",
+            str(bogus),
+            "--folder",
+            str(tmp_path / "out"),
+        ],
+        check=False,
+    )
     assert result.returncode != 0
     env = json.loads(result.stdout)
     assert env["ok"] is False

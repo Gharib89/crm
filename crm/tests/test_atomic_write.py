@@ -8,6 +8,7 @@ These cover the two secret-at-rest-hardening findings on the shared writer:
 * Finding `session.py:130` — the `mode` seam lets secret-bearing files be *created*
   0600 (no create-then-chmod widen window).
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -31,7 +32,9 @@ def test_write_succeeds_when_old_deterministic_tmp_name_is_occupied(tmp_path):
     assert json.loads(target.read_text(encoding="utf-8")) == {"a": 1}
 
 
-@pytest.mark.skipif(os.name != "posix", reason="exercises the POSIX flock write-replace serialization")
+@pytest.mark.skipif(
+    os.name != "posix", reason="exercises the POSIX flock write-replace serialization"
+)
 def test_concurrent_writers_never_corrupt_state(tmp_path):
     # Many writers hammering the same target must never leave a torn/partial file:
     # every read is complete, valid JSON written by exactly one writer.

@@ -2,6 +2,7 @@
 """E2E tests for security verbs: list-roles / list-user-roles /
 list-team-roles / user-privileges / assign-role.
 """
+
 from __future__ import annotations
 
 import json
@@ -9,7 +10,6 @@ import json
 import pytest
 
 from crm.tests.e2e.coverage import covers
-
 
 # ── list-roles ────────────────────────────────────────────────────────────────
 
@@ -151,7 +151,11 @@ def test_assign_role_to_throwaway_team(cli, backend, unique, request):
     # Find the default business unit (required for team creation).
     bu_resp = backend.get(
         "businessunits",
-        params={"$filter": "parentbusinessunitid eq null", "$select": "businessunitid", "$top": "1"},
+        params={
+            "$filter": "parentbusinessunitid eq null",
+            "$select": "businessunitid",
+            "$top": "1",
+        },
     )
     bu_rows = bu_resp.get("value", [])
     if not bu_rows:
@@ -195,11 +199,17 @@ def test_assign_role_to_throwaway_team(cli, backend, unique, request):
     request.addfinalizer(_cleanup)
 
     # ── ASSIGN via CLI ────────────────────────────────────────────────────────
-    result = cli([
-        "--json", "security", "assign-role", role_id,
-        "--to-team", team_id,
-        "--yes",
-    ])
+    result = cli(
+        [
+            "--json",
+            "security",
+            "assign-role",
+            role_id,
+            "--to-team",
+            team_id,
+            "--yes",
+        ]
+    )
     assert result.returncode == 0, (
         f"security assign-role (to-team) failed:\n{result.stderr}"
         f"\nstdout: {result.stdout}"
@@ -215,8 +225,7 @@ def test_assign_role_to_throwaway_team(cli, backend, unique, request):
     )
     assigned_ids = {r.get("roleid", "").lower() for r in assigned.get("value", [])}
     assert role_id.lower() in assigned_ids, (
-        f"role {role_id} ({role_name!r}) not found in team roles after assign: "
-        f"{assigned_ids}"
+        f"role {role_id} ({role_name!r}) not found in team roles after assign: {assigned_ids}"
     )
 
     # ── UNASSIGN via backend (no CLI unassign verb exists yet) ────────────────
@@ -246,7 +255,8 @@ def test_assign_role_to_throwaway_team(cli, backend, unique, request):
 def _role_privilege_ids(backend, role_id):
     """Set of lower-case privilegeids currently granted to a role."""
     resp = backend.get(
-        f"roles({role_id})/roleprivileges_association", params={"$select": "privilegeid"},
+        f"roles({role_id})/roleprivileges_association",
+        params={"$select": "privilegeid"},
     )
     return {r.get("privilegeid", "").lower() for r in resp.get("value", [])}
 
@@ -262,10 +272,12 @@ def test_create_role_and_set_privileges_roundtrip(
     Asserts presence of the targeted privilege after each call (the server may
     cascade dependent privileges, so absence-of-others is not asserted).
     """
+
     # Resolve the privilege ids we will grant (org-specific guids).
     def _priv_id(name):
         resp = backend.get(
-            "privileges", params={"$select": "privilegeid", "$filter": f"name eq '{name}'"},
+            "privileges",
+            params={"$select": "privilegeid", "$filter": f"name eq '{name}'"},
         )
         rows = resp.get("value", [])
         assert rows, f"privilege {name!r} not found on org"
@@ -276,10 +288,17 @@ def test_create_role_and_set_privileges_roundtrip(
 
     # ── CREATE via CLI (defaults BU to caller) ──────────────────────────────
     role_name = f"e2e_role_{unique}"
-    created = cli([
-        "--json", "security", "create-role", role_name,
-        "--solution", ephemeral_solution, "--yes",
-    ])
+    created = cli(
+        [
+            "--json",
+            "security",
+            "create-role",
+            role_name,
+            "--solution",
+            ephemeral_solution,
+            "--yes",
+        ]
+    )
     assert created.returncode == 0, (
         f"security create-role failed:\n{created.stderr}\nstdout: {created.stdout}"
     )
@@ -289,10 +308,22 @@ def test_create_role_and_set_privileges_roundtrip(
     request.addfinalizer(lambda: _safe_delete(backend, f"roles({role_id})"))
 
     # ── ADD read on account at global depth ─────────────────────────────────
-    added = cli([
-        "--json", "security", "set-role-privileges", role_id,
-        "--access", "read", "--entities", "account", "--depth", "global", "--add", "--yes",
-    ])
+    added = cli(
+        [
+            "--json",
+            "security",
+            "set-role-privileges",
+            role_id,
+            "--access",
+            "read",
+            "--entities",
+            "account",
+            "--depth",
+            "global",
+            "--add",
+            "--yes",
+        ]
+    )
     assert added.returncode == 0, (
         f"set-role-privileges --add failed:\n{added.stderr}\nstdout: {added.stdout}"
     )
@@ -305,23 +336,44 @@ def test_create_role_and_set_privileges_roundtrip(
 
     # ── DRY-RUN preview must not write ──────────────────────────────────────
     before = _role_privilege_ids(backend, role_id)
-    dry = cli([
-        "--json", "--dry-run", "security", "set-role-privileges", role_id,
-        "--access", "write", "--entities", "account", "--depth", "global", "--add",
-    ])
+    dry = cli(
+        [
+            "--json",
+            "--dry-run",
+            "security",
+            "set-role-privileges",
+            role_id,
+            "--access",
+            "write",
+            "--entities",
+            "account",
+            "--depth",
+            "global",
+            "--add",
+        ]
+    )
     assert dry.returncode == 0, f"dry-run failed:\n{dry.stderr}\nstdout: {dry.stdout}"
     dry_env = json.loads(dry.stdout)
     assert dry_env["meta"].get("dry_run") is True, dry_env
-    assert _role_privilege_ids(backend, role_id) == before, (
-        "dry-run mutated the role's privileges"
-    )
+    assert _role_privilege_ids(backend, role_id) == before, "dry-run mutated the role's privileges"
 
     # ── REPLACE with write on account ───────────────────────────────────────
-    replaced = cli([
-        "--json", "security", "set-role-privileges", role_id,
-        "--access", "write", "--entities", "account", "--depth", "global",
-        "--replace", "--yes",
-    ])
+    replaced = cli(
+        [
+            "--json",
+            "security",
+            "set-role-privileges",
+            role_id,
+            "--access",
+            "write",
+            "--entities",
+            "account",
+            "--depth",
+            "global",
+            "--replace",
+            "--yes",
+        ]
+    )
     assert replaced.returncode == 0, (
         f"set-role-privileges --replace failed:\n{replaced.stderr}\nstdout: {replaced.stdout}"
     )
@@ -345,18 +397,28 @@ def test_create_role_into_solution(cli, backend, unique, ephemeral_solution, req
     # Resolve the throwaway solution's id to scope the component lookup.
     sol_resp = backend.get(
         "solutions",
-        params={"$select": "solutionid",
-                "$filter": f"uniquename eq '{ephemeral_solution}'", "$top": "1"},
+        params={
+            "$select": "solutionid",
+            "$filter": f"uniquename eq '{ephemeral_solution}'",
+            "$top": "1",
+        },
     )
     sol_rows = sol_resp.get("value", [])
     assert sol_rows, f"could not resolve solutionid for {ephemeral_solution!r}"
     solution_id = sol_rows[0]["solutionid"].lower()
 
     role_name = f"e2e_solrole_{unique}"
-    created = cli([
-        "--json", "security", "create-role", role_name,
-        "--solution", ephemeral_solution, "--yes",
-    ])
+    created = cli(
+        [
+            "--json",
+            "security",
+            "create-role",
+            role_name,
+            "--solution",
+            ephemeral_solution,
+            "--yes",
+        ]
+    )
     assert created.returncode == 0, (
         f"create-role --solution failed:\n{created.stderr}\nstdout: {created.stdout}"
     )
@@ -368,8 +430,10 @@ def test_create_role_into_solution(cli, backend, unique, ephemeral_solution, req
     # The role must be registered as a component (type 20) of the solution.
     comps = backend.get(
         "solutioncomponents",
-        params={"$select": "objectid,_solutionid_value,componenttype",
-                "$filter": f"objectid eq {role_id} and componenttype eq 20"},
+        params={
+            "$select": "objectid,_solutionid_value,componenttype",
+            "$filter": f"objectid eq {role_id} and componenttype eq 20",
+        },
     )
     owning = {r.get("_solutionid_value", "").lower() for r in comps.get("value", [])}
     assert solution_id in owning, (
@@ -400,8 +464,11 @@ def test_share_record_with_team_roundtrip(cli, backend, unique, request):
     # Root business unit (required to create an owner team).
     bu_resp = backend.get(
         "businessunits",
-        params={"$filter": "parentbusinessunitid eq null",
-                "$select": "businessunitid", "$top": "1"},
+        params={
+            "$filter": "parentbusinessunitid eq null",
+            "$select": "businessunitid",
+            "$top": "1",
+        },
     )
     bu_rows = bu_resp.get("value", [])
     if not bu_rows:
@@ -438,10 +505,20 @@ def test_share_record_with_team_roundtrip(cli, backend, unique, request):
     request.addfinalizer(_cleanup)
 
     # ── GRANT ──────────────────────────────────────────────────────────────
-    granted = cli([
-        "--json", "security", "grant", "accounts", account_id,
-        "--to", f"team:{team_id}", "--rights", "Read,Write", "--yes",
-    ])
+    granted = cli(
+        [
+            "--json",
+            "security",
+            "grant",
+            "accounts",
+            account_id,
+            "--to",
+            f"team:{team_id}",
+            "--rights",
+            "Read,Write",
+            "--yes",
+        ]
+    )
     assert granted.returncode == 0, (
         f"security grant failed:\n{granted.stderr}\nstdout: {granted.stdout}"
     )
@@ -462,10 +539,18 @@ def test_share_record_with_team_roundtrip(cli, backend, unique, request):
     assert "WriteAccess" in team_share["accessMask"], team_share
 
     # ── REVOKE ──────────────────────────────────────────────────────────────
-    revoked = cli([
-        "--json", "security", "revoke", "accounts", account_id,
-        "--from", f"team:{team_id}", "--yes",
-    ])
+    revoked = cli(
+        [
+            "--json",
+            "security",
+            "revoke",
+            "accounts",
+            account_id,
+            "--from",
+            f"team:{team_id}",
+            "--yes",
+        ]
+    )
     assert revoked.returncode == 0, (
         f"security revoke failed:\n{revoked.stderr}\nstdout: {revoked.stdout}"
     )

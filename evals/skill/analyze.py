@@ -16,6 +16,7 @@ Code) that reads the composed prompt on **stdin**. Routing through a command —
 an in-process SDK — keeps the harness free of an API-client dependency and lets a
 maintainer point the pass at any Claude entry point they already have wired.
 """
+
 from __future__ import annotations
 
 import json
@@ -107,9 +108,7 @@ def run_analysis(prompt: str, analyze_cmd: list[str]) -> str:
     reach Claude — so no ``env``/``cwd`` override is passed here, by design.
     """
     try:
-        proc = subprocess.run(
-            analyze_cmd, input=prompt, capture_output=True, text=True
-        )
+        proc = subprocess.run(analyze_cmd, input=prompt, capture_output=True, text=True)
     except FileNotFoundError as exc:
         raise AnalyzeError(
             f"analyzer command not found: {analyze_cmd!r} — set CRM_EVAL_ANALYZE_CMD "

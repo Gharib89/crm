@@ -10,7 +10,6 @@ import requests_mock
 
 from crm.utils.d365_backend import D365Backend, D365Error
 
-
 _ATTR_ID = "33333333-3333-3333-3333-333333333333"
 
 
@@ -22,21 +21,17 @@ def _post_body(m):
     raise AssertionError("no POST request recorded")
 
 
-def _mock_post_and_readback(m, backend, entity: str, attr_logical: str,
-                            attr_type: str = "String"):
+def _mock_post_and_readback(m, backend, entity: str, attr_logical: str, attr_type: str = "String"):
     # The --if-exists existence probe issues a GET against the attribute path
     # before POSTing; mock it as 404 (not present) so the create proceeds.
     m.get(
         backend.url_for(
-            f"EntityDefinitions(LogicalName='{entity}')"
-            f"/Attributes(LogicalName='{attr_logical}')"
+            f"EntityDefinitions(LogicalName='{entity}')/Attributes(LogicalName='{attr_logical}')"
         ),
         status_code=404,
         json={"error": {"code": "0x", "message": "not found"}},
     )
-    attr_url = backend.url_for(
-        f"EntityDefinitions(LogicalName='{entity}')/Attributes({_ATTR_ID})"
-    )
+    attr_url = backend.url_for(f"EntityDefinitions(LogicalName='{entity}')/Attributes({_ATTR_ID})")
     m.post(
         backend.url_for(f"EntityDefinitions(LogicalName='{entity}')/Attributes"),
         status_code=204,
@@ -56,6 +51,7 @@ def _mock_post_and_readback(m, backend, entity: str, attr_logical: str,
 class TestAddAttributeString:
     def test_string_posts_correct_payload(self, backend):
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             _mock_post_and_readback(m, backend, "new_widget", "new_label", "String")
             info = ma.add_attribute(
@@ -75,6 +71,7 @@ class TestAddAttributeString:
 
     def test_string_defaults_max_length(self, backend):
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             _mock_post_and_readback(m, backend, "new_widget", "new_label", "String")
             ma.add_attribute(
@@ -89,6 +86,7 @@ class TestAddAttributeString:
 
     def test_explicit_max_length_is_honored(self, backend):
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             _mock_post_and_readback(m, backend, "new_widget", "new_label", "String")
             ma.add_attribute(
@@ -104,6 +102,7 @@ class TestAddAttributeString:
 
     def test_string_rejects_precision_flag(self, backend):
         from crm.core import metadata_attrs as ma
+
         with pytest.raises(D365Error, match="precision"):
             ma.add_attribute(
                 backend,
@@ -119,9 +118,10 @@ class TestAddAttributeString:
 class TestAddAttributeMemo:
     def test_memo_posts_correct_payload(self, backend):
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             _mock_post_and_readback(m, backend, "new_widget", "new_notes", "Memo")
-            info = ma.add_attribute(
+            ma.add_attribute(
                 backend,
                 entity="new_widget",
                 kind="memo",
@@ -135,6 +135,7 @@ class TestAddAttributeMemo:
 
     def test_memo_defaults_max_length(self, backend):
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             _mock_post_and_readback(m, backend, "new_widget", "new_notes", "Memo")
             ma.add_attribute(
@@ -151,6 +152,7 @@ class TestAddAttributeMemo:
 class TestAddAttributeNonAsciiLabel:
     def test_unicode_label_passes_through(self, backend):
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             _mock_post_and_readback(m, backend, "new_widget", "new_label", "String")
             ma.add_attribute(
@@ -168,12 +170,17 @@ class TestAddAttributeNonAsciiLabel:
 class TestAddAttributeNumeric:
     def test_integer_with_min_max(self, backend):
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             _mock_post_and_readback(m, backend, "new_widget", "new_qty", "Integer")
             ma.add_attribute(
-                backend, entity="new_widget", kind="integer",
-                schema_name="new_Qty", display_name="Qty",
-                min_value=0, max_value=1000,
+                backend,
+                entity="new_widget",
+                kind="integer",
+                schema_name="new_Qty",
+                display_name="Qty",
+                min_value=0,
+                max_value=1000,
             )
         body = _post_body(m)
         assert body["@odata.type"] == "Microsoft.Dynamics.CRM.IntegerAttributeMetadata"
@@ -184,10 +191,14 @@ class TestAddAttributeNumeric:
         # Defaulting max_length is scoped to string/memo; a non-length kind still
         # rejects an explicit max_length (#321).
         from crm.core import metadata_attrs as ma
+
         with pytest.raises(D365Error, match="max-length is not valid"):
             ma.add_attribute(
-                backend, entity="new_widget", kind="integer",
-                schema_name="new_Qty", display_name="Qty",
+                backend,
+                entity="new_widget",
+                kind="integer",
+                schema_name="new_Qty",
+                display_name="Qty",
                 max_length=100,
             )
 
@@ -196,12 +207,17 @@ class TestAddAttributeNumeric:
         # would serialize to Edm.Decimal "0.0", which the server rejects for an
         # Edm.Int32 column. Bounds must serialize as plain integers.
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             _mock_post_and_readback(m, backend, "new_widget", "new_qty", "Integer")
             ma.add_attribute(
-                backend, entity="new_widget", kind="integer",
-                schema_name="new_Qty", display_name="Qty",
-                min_value=0.0, max_value=720.0,
+                backend,
+                entity="new_widget",
+                kind="integer",
+                schema_name="new_Qty",
+                display_name="Qty",
+                min_value=0.0,
+                max_value=720.0,
             )
         body = _post_body(m)
         assert isinstance(body["MinValue"], int)
@@ -213,60 +229,87 @@ class TestAddAttributeNumeric:
         # A genuinely fractional bound (e.g. 0.9) is a user error: rejecting it is
         # correct, whereas truncating to 0 would silently change the requested range.
         from crm.core import metadata_attrs as ma
+
         with pytest.raises(D365Error, match="whole number"):
             ma.add_attribute(
-                backend, entity="new_widget", kind="integer",
-                schema_name="new_Qty", display_name="Qty",
-                min_value=0.0, max_value=720.9,
+                backend,
+                entity="new_widget",
+                kind="integer",
+                schema_name="new_Qty",
+                display_name="Qty",
+                min_value=0.0,
+                max_value=720.9,
             )
 
     def test_bigint(self, backend):
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             _mock_post_and_readback(m, backend, "new_widget", "new_bignum", "BigInt")
             ma.add_attribute(
-                backend, entity="new_widget", kind="bigint",
-                schema_name="new_Bignum", display_name="Bignum",
+                backend,
+                entity="new_widget",
+                kind="bigint",
+                schema_name="new_Bignum",
+                display_name="Bignum",
             )
         body = _post_body(m)
         assert body["@odata.type"] == "Microsoft.Dynamics.CRM.BigIntAttributeMetadata"
 
     def test_decimal_requires_precision(self, backend):
         from crm.core import metadata_attrs as ma
+
         with pytest.raises(D365Error, match="precision"):
             ma.add_attribute(
-                backend, entity="new_widget", kind="decimal",
-                schema_name="new_Amount", display_name="Amount",
+                backend,
+                entity="new_widget",
+                kind="decimal",
+                schema_name="new_Amount",
+                display_name="Amount",
             )
 
     def test_decimal_precision_in_range(self, backend):
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             _mock_post_and_readback(m, backend, "new_widget", "new_amount", "Decimal")
             ma.add_attribute(
-                backend, entity="new_widget", kind="decimal",
-                schema_name="new_Amount", display_name="Amount",
-                precision=4, min_value=-1000, max_value=1000,
+                backend,
+                entity="new_widget",
+                kind="decimal",
+                schema_name="new_Amount",
+                display_name="Amount",
+                precision=4,
+                min_value=-1000,
+                max_value=1000,
             )
         body = _post_body(m)
         assert body["Precision"] == 4
 
     def test_decimal_precision_out_of_range(self, backend):
         from crm.core import metadata_attrs as ma
+
         with pytest.raises(D365Error, match="precision"):
             ma.add_attribute(
-                backend, entity="new_widget", kind="decimal",
-                schema_name="new_Amount", display_name="Amount",
+                backend,
+                entity="new_widget",
+                kind="decimal",
+                schema_name="new_Amount",
+                display_name="Amount",
                 precision=11,
             )
 
     def test_double(self, backend):
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             _mock_post_and_readback(m, backend, "new_widget", "new_rate", "Double")
             ma.add_attribute(
-                backend, entity="new_widget", kind="double",
-                schema_name="new_Rate", display_name="Rate",
+                backend,
+                entity="new_widget",
+                kind="double",
+                schema_name="new_Rate",
+                display_name="Rate",
                 precision=3,
             )
         body = _post_body(m)
@@ -275,11 +318,15 @@ class TestAddAttributeNumeric:
 
     def test_money(self, backend):
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             _mock_post_and_readback(m, backend, "new_widget", "new_price", "Money")
             ma.add_attribute(
-                backend, entity="new_widget", kind="money",
-                schema_name="new_Price", display_name="Price",
+                backend,
+                entity="new_widget",
+                kind="money",
+                schema_name="new_Price",
+                display_name="Price",
                 precision=2,
             )
         body = _post_body(m)
@@ -290,11 +337,15 @@ class TestAddAttributeNumeric:
 class TestAddAttributeBoolean:
     def test_boolean_default_labels(self, backend):
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             _mock_post_and_readback(m, backend, "new_widget", "new_active", "Boolean")
             ma.add_attribute(
-                backend, entity="new_widget", kind="boolean",
-                schema_name="new_Active", display_name="Active",
+                backend,
+                entity="new_widget",
+                kind="boolean",
+                schema_name="new_Active",
+                display_name="Active",
             )
         body = _post_body(m)
         assert body["@odata.type"] == "Microsoft.Dynamics.CRM.BooleanAttributeMetadata"
@@ -306,12 +357,17 @@ class TestAddAttributeBoolean:
 
     def test_boolean_custom_labels_and_default(self, backend):
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             _mock_post_and_readback(m, backend, "new_widget", "new_active", "Boolean")
             ma.add_attribute(
-                backend, entity="new_widget", kind="boolean",
-                schema_name="new_Active", display_name="Active",
-                true_label="On", false_label="Off",
+                backend,
+                entity="new_widget",
+                kind="boolean",
+                schema_name="new_Active",
+                display_name="Active",
+                true_label="On",
+                false_label="Off",
                 default_value=True,
             )
         body = _post_body(m)
@@ -324,10 +380,14 @@ class TestAddAttributeKindMismatchFlags:
 
     def test_auto_number_format_rejected_off_string(self, backend):
         from crm.core import metadata_attrs as ma
+
         with pytest.raises(D365Error, match="auto-number-format"):
             ma.add_attribute(
-                backend, entity="new_widget", kind="integer",
-                schema_name="new_Count", display_name="Count",
+                backend,
+                entity="new_widget",
+                kind="integer",
+                schema_name="new_Count",
+                display_name="Count",
                 auto_number_format="INV-{SEQNUM:5}",
             )
 
@@ -335,31 +395,45 @@ class TestAddAttributeKindMismatchFlags:
         # --default-value is documented for boolean/picklist only; on any other
         # kind the builder drops it, so reject rather than silently ignore.
         from crm.core import metadata_attrs as ma
+
         with pytest.raises(D365Error, match="default-value"):
             ma.add_attribute(
-                backend, entity="new_widget", kind="datetime",
-                schema_name="new_When", display_name="When",
+                backend,
+                entity="new_widget",
+                kind="datetime",
+                schema_name="new_When",
+                display_name="When",
                 default_value=5,
             )
 
     def test_true_false_label_rejected_off_boolean(self, backend):
         from crm.core import metadata_attrs as ma
+
         with pytest.raises(D365Error, match="true-label and --false-label"):
             ma.add_attribute(
-                backend, entity="new_widget", kind="string",
-                schema_name="new_Label", display_name="Label",
-                max_length=100, true_label="On",
+                backend,
+                entity="new_widget",
+                kind="string",
+                schema_name="new_Label",
+                display_name="Label",
+                max_length=100,
+                true_label="On",
             )
 
     def test_default_labels_on_non_boolean_are_accepted(self, backend):
         # The default "Yes"/"No" labels are never "supplied" — a non-boolean kind
         # that leaves them untouched must not be rejected.
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             _mock_post_and_readback(m, backend, "new_widget", "new_label", "String")
             info = ma.add_attribute(
-                backend, entity="new_widget", kind="string",
-                schema_name="new_Label", display_name="Label", max_length=100,
+                backend,
+                entity="new_widget",
+                kind="string",
+                schema_name="new_Label",
+                display_name="Label",
+                max_length=100,
             )
         assert info["created"] is True
 
@@ -367,11 +441,15 @@ class TestAddAttributeKindMismatchFlags:
 class TestAddAttributeDateTime:
     def test_datetime_default_format(self, backend):
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             _mock_post_and_readback(m, backend, "new_widget", "new_when", "DateTime")
             ma.add_attribute(
-                backend, entity="new_widget", kind="datetime",
-                schema_name="new_When", display_name="When",
+                backend,
+                entity="new_widget",
+                kind="datetime",
+                schema_name="new_When",
+                display_name="When",
             )
         body = _post_body(m)
         assert body["@odata.type"] == "Microsoft.Dynamics.CRM.DateTimeAttributeMetadata"
@@ -379,11 +457,15 @@ class TestAddAttributeDateTime:
 
     def test_datetime_date_only(self, backend):
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             _mock_post_and_readback(m, backend, "new_widget", "new_day", "DateTime")
             ma.add_attribute(
-                backend, entity="new_widget", kind="datetime",
-                schema_name="new_Day", display_name="Day",
+                backend,
+                entity="new_widget",
+                kind="datetime",
+                schema_name="new_Day",
+                display_name="Day",
                 format_name="DateOnly",
             )
         body = _post_body(m)
@@ -391,20 +473,28 @@ class TestAddAttributeDateTime:
 
     def test_datetime_bad_format_rejected(self, backend):
         from crm.core import metadata_attrs as ma
+
         with pytest.raises(D365Error, match="format_name"):
             ma.add_attribute(
-                backend, entity="new_widget", kind="datetime",
-                schema_name="new_When", display_name="When",
+                backend,
+                entity="new_widget",
+                kind="datetime",
+                schema_name="new_When",
+                display_name="When",
                 format_name="Garbage",
             )
 
     def test_datetime_behavior_set(self, backend):
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             _mock_post_and_readback(m, backend, "new_widget", "new_when", "DateTime")
             ma.add_attribute(
-                backend, entity="new_widget", kind="datetime",
-                schema_name="new_When", display_name="When",
+                backend,
+                entity="new_widget",
+                kind="datetime",
+                schema_name="new_When",
+                display_name="When",
                 behavior_name="TimeZoneIndependent",
             )
         body = _post_body(m)
@@ -416,11 +506,15 @@ class TestAddAttributeDateTime:
         # Omitting --behavior leaves DateTimeBehavior off the payload so the
         # server default (UserLocal) applies — today's behavior, unchanged.
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             _mock_post_and_readback(m, backend, "new_widget", "new_when", "DateTime")
             ma.add_attribute(
-                backend, entity="new_widget", kind="datetime",
-                schema_name="new_When", display_name="When",
+                backend,
+                entity="new_widget",
+                kind="datetime",
+                schema_name="new_When",
+                display_name="When",
             )
         assert "DateTimeBehavior" not in _post_body(m)
 
@@ -428,11 +522,15 @@ class TestAddAttributeDateTime:
         # DateOnly behavior is incompatible with the DateAndTime format, so the
         # format defaults to DateOnly when behavior is DateOnly and none is given.
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             _mock_post_and_readback(m, backend, "new_widget", "new_day", "DateTime")
             ma.add_attribute(
-                backend, entity="new_widget", kind="datetime",
-                schema_name="new_Day", display_name="Day",
+                backend,
+                entity="new_widget",
+                kind="datetime",
+                schema_name="new_Day",
+                display_name="Day",
                 behavior_name="DateOnly",
             )
         body = _post_body(m)
@@ -441,19 +539,27 @@ class TestAddAttributeDateTime:
 
     def test_datetime_bad_behavior_rejected(self, backend):
         from crm.core import metadata_attrs as ma
+
         with pytest.raises(D365Error, match="behavior"):
             ma.add_attribute(
-                backend, entity="new_widget", kind="datetime",
-                schema_name="new_When", display_name="When",
+                backend,
+                entity="new_widget",
+                kind="datetime",
+                schema_name="new_When",
+                display_name="When",
                 behavior_name="Garbage",
             )
 
     def test_behavior_rejected_for_non_datetime_kind(self, backend):
         from crm.core import metadata_attrs as ma
+
         with pytest.raises(D365Error, match="behavior"):
             ma.add_attribute(
-                backend, entity="new_widget", kind="string",
-                schema_name="new_Name", display_name="Name",
+                backend,
+                entity="new_widget",
+                kind="string",
+                schema_name="new_Name",
+                display_name="Name",
                 behavior_name="UserLocal",
             )
 
@@ -461,11 +567,15 @@ class TestAddAttributeDateTime:
 class TestAddAttributePicklist:
     def test_picklist_inline_options(self, backend):
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             _mock_post_and_readback(m, backend, "new_widget", "new_priority", "Picklist")
             ma.add_attribute(
-                backend, entity="new_widget", kind="picklist",
-                schema_name="new_Priority", display_name="Priority",
+                backend,
+                entity="new_widget",
+                kind="picklist",
+                schema_name="new_Priority",
+                display_name="Priority",
                 options=[(1, "Low"), (2, "Medium"), (3, "High")],
             )
         body = _post_body(m)
@@ -477,6 +587,7 @@ class TestAddAttributePicklist:
 
     def test_picklist_global_optionset_ref(self, backend):
         from crm.core import metadata_attrs as ma
+
         os_id = "44444444-4444-4444-4444-444444444444"
         with requests_mock.Mocker() as m:
             # Name -> MetadataId resolution (the bind needs the GUID, not the Name).
@@ -486,45 +597,59 @@ class TestAddAttributePicklist:
             )
             _mock_post_and_readback(m, backend, "new_widget", "new_priority", "Picklist")
             ma.add_attribute(
-                backend, entity="new_widget", kind="picklist",
-                schema_name="new_Priority", display_name="Priority",
+                backend,
+                entity="new_widget",
+                kind="picklist",
+                schema_name="new_Priority",
+                display_name="Priority",
                 optionset_name="new_global_priority",
             )
         body = _post_body(m)
         # A global option set must bind via the GlobalOptionSet navigation property
         # using the resolved MetadataId GUID; an inline OptionSet with IsGlobal=true
         # is rejected on attribute create.
-        assert body["GlobalOptionSet@odata.bind"] == (
-            f"GlobalOptionSetDefinitions({os_id})"
-        )
+        assert body["GlobalOptionSet@odata.bind"] == (f"GlobalOptionSetDefinitions({os_id})")
         assert "OptionSet" not in body
 
     def test_picklist_rejects_both_options_and_global(self, backend):
         from crm.core import metadata_attrs as ma
+
         with pytest.raises(D365Error, match="mutually exclusive"):
             ma.add_attribute(
-                backend, entity="new_widget", kind="picklist",
-                schema_name="new_Priority", display_name="Priority",
-                options=[(1, "Low")], optionset_name="new_other",
+                backend,
+                entity="new_widget",
+                kind="picklist",
+                schema_name="new_Priority",
+                display_name="Priority",
+                options=[(1, "Low")],
+                optionset_name="new_other",
             )
 
     def test_picklist_requires_one_of(self, backend):
         from crm.core import metadata_attrs as ma
+
         with pytest.raises(D365Error, match="optionset_name or options"):
             ma.add_attribute(
-                backend, entity="new_widget", kind="picklist",
-                schema_name="new_Priority", display_name="Priority",
+                backend,
+                entity="new_widget",
+                kind="picklist",
+                schema_name="new_Priority",
+                display_name="Priority",
             )
 
 
 class TestAddAttributeMultiselect:
     def test_multiselect_inline(self, backend):
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             _mock_post_and_readback(m, backend, "new_widget", "new_tags", "Virtual")
             ma.add_attribute(
-                backend, entity="new_widget", kind="multiselect",
-                schema_name="new_Tags", display_name="Tags",
+                backend,
+                entity="new_widget",
+                kind="multiselect",
+                schema_name="new_Tags",
+                display_name="Tags",
                 options=[(1, "A"), (2, "B")],
             )
         body = _post_body(m)
@@ -535,12 +660,14 @@ class TestAddAttributeLookup:
     def test_lookup_dispatches_to_one_to_many(self, backend, monkeypatch):
         from crm.core import metadata_attrs as ma
         from crm.core import relationships as rel
+
         calls: dict[str, Any] = {}
 
         def fake_one_to_many(b, **kw):
             calls.update(kw)
             return {
-                "created": True, "kind": "OneToMany",
+                "created": True,
+                "kind": "OneToMany",
                 "schema_name": kw["schema_name"],
                 "referencing_attribute": "new_accountid",
                 "relationship_id": "rel-id",
@@ -550,8 +677,11 @@ class TestAddAttributeLookup:
 
         monkeypatch.setattr(rel, "create_one_to_many", fake_one_to_many)
         info = ma.add_attribute(
-            backend, entity="new_widget", kind="lookup",
-            schema_name="new_AccountId", display_name="Account",
+            backend,
+            entity="new_widget",
+            kind="lookup",
+            schema_name="new_AccountId",
+            display_name="Account",
             target_entity="account",
         )
         assert info["kind"] == "OneToMany"
@@ -562,10 +692,14 @@ class TestAddAttributeLookup:
 
     def test_lookup_requires_target_entity(self, backend):
         from crm.core import metadata_attrs as ma
+
         with pytest.raises(D365Error, match="target-entity"):
             ma.add_attribute(
-                backend, entity="new_widget", kind="lookup",
-                schema_name="new_AccountId", display_name="Account",
+                backend,
+                entity="new_widget",
+                kind="lookup",
+                schema_name="new_AccountId",
+                display_name="Account",
             )
 
 
@@ -573,20 +707,25 @@ class TestAddAttributeCustomer:
     def test_customer_dispatches_to_create_customer_relationships(self, backend, monkeypatch):
         from crm.core import metadata_attrs as ma
         from crm.core import relationships as rel
+
         calls: dict[str, Any] = {}
 
         def fake_create_customer(b, **kw):
             calls.update(kw)
             return {
-                "created": True, "kind": "Customer",
+                "created": True,
+                "kind": "Customer",
                 "schema_name": kw["lookup_schema"],
                 "targets": ["account", "contact"],
             }
 
         monkeypatch.setattr(rel, "create_customer_relationships", fake_create_customer)
         info = ma.add_attribute(
-            backend, entity="new_widget", kind="customer",
-            schema_name="new_CustomerId", display_name="Customer",
+            backend,
+            entity="new_widget",
+            kind="customer",
+            schema_name="new_CustomerId",
+            display_name="Customer",
             description="Owner",
         )
         assert info["kind"] == "Customer"
@@ -598,10 +737,14 @@ class TestAddAttributeCustomer:
 
     def test_customer_rejects_target_entity(self, backend):
         from crm.core import metadata_attrs as ma
+
         with pytest.raises(D365Error, match="target-entity"):
             ma.add_attribute(
-                backend, entity="new_widget", kind="customer",
-                schema_name="new_CustomerId", display_name="Customer",
+                backend,
+                entity="new_widget",
+                kind="customer",
+                schema_name="new_CustomerId",
+                display_name="Customer",
                 target_entity="account",
             )
 
@@ -609,22 +752,30 @@ class TestAddAttributeCustomer:
 class TestAddAttributeImageFile:
     def test_image(self, backend):
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             _mock_post_and_readback(m, backend, "new_widget", "new_photo", "Image")
             ma.add_attribute(
-                backend, entity="new_widget", kind="image",
-                schema_name="new_Photo", display_name="Photo",
+                backend,
+                entity="new_widget",
+                kind="image",
+                schema_name="new_Photo",
+                display_name="Photo",
             )
         body = _post_body(m)
         assert body["@odata.type"] == "Microsoft.Dynamics.CRM.ImageAttributeMetadata"
 
     def test_file_default_size(self, backend):
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             _mock_post_and_readback(m, backend, "new_widget", "new_doc", "File")
             ma.add_attribute(
-                backend, entity="new_widget", kind="file",
-                schema_name="new_Doc", display_name="Doc",
+                backend,
+                entity="new_widget",
+                kind="file",
+                schema_name="new_Doc",
+                display_name="Doc",
             )
         body = _post_body(m)
         assert body["@odata.type"] == "Microsoft.Dynamics.CRM.FileAttributeMetadata"
@@ -632,11 +783,15 @@ class TestAddAttributeImageFile:
 
     def test_file_custom_size(self, backend):
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             _mock_post_and_readback(m, backend, "new_widget", "new_doc", "File")
             ma.add_attribute(
-                backend, entity="new_widget", kind="file",
-                schema_name="new_Doc", display_name="Doc",
+                backend,
+                entity="new_widget",
+                kind="file",
+                schema_name="new_Doc",
+                display_name="Doc",
                 max_size_kb=131072,
             )
         body = _post_body(m)
@@ -646,6 +801,7 @@ class TestAddAttributeImageFile:
 class TestAddAttributeReadbackFail:
     def test_readback_fail_marks_lookup_error(self, backend):
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             attr_url = backend.url_for(
                 f"EntityDefinitions(LogicalName='new_widget')/Attributes({_ATTR_ID})"
@@ -665,8 +821,11 @@ class TestAddAttributeReadbackFail:
             )
             m.get(attr_url, status_code=500, json={"error": {"message": "boom"}})
             info = ma.add_attribute(
-                backend, entity="new_widget", kind="string",
-                schema_name="new_Label", display_name="Label",
+                backend,
+                entity="new_widget",
+                kind="string",
+                schema_name="new_Label",
+                display_name="Label",
                 max_length=10,
             )
         assert info["created"] is True
@@ -678,6 +837,7 @@ class TestAddAttributeDryRun:
         monkeypatch.setenv("CRM_DRY_RUN", "1")
         backend = D365Backend(profile, password="pw", dry_run=True)
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             # The existence probe is a real GET even under dry-run.
             m.get(
@@ -689,8 +849,11 @@ class TestAddAttributeDryRun:
                 json={"error": {"code": "0x", "message": "not found"}},
             )
             info = ma.add_attribute(
-                backend, entity="new_widget", kind="string",
-                schema_name="new_Label", display_name="Label",
+                backend,
+                entity="new_widget",
+                kind="string",
+                schema_name="new_Label",
+                display_name="Label",
                 max_length=10,
             )
         assert info.get("_dry_run") is True
@@ -699,71 +862,103 @@ class TestAddAttributeDryRun:
 class TestDeleteAttribute:
     def _attr_url(self, backend, entity, attribute):
         return backend.url_for(
-            f"EntityDefinitions(LogicalName='{entity}')"
-            f"/Attributes(LogicalName='{attribute}')"
+            f"EntityDefinitions(LogicalName='{entity}')/Attributes(LogicalName='{attribute}')"
         )
 
     def test_refuses_non_custom(self, backend):
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             m.get(
                 self._attr_url(backend, "account", "telephone1"),
-                json={"LogicalName": "telephone1", "IsCustomAttribute": False,
-                      "IsManaged": True, "IsPrimaryId": False,
-                      "IsPrimaryName": False, "AttributeOf": None},
+                json={
+                    "LogicalName": "telephone1",
+                    "IsCustomAttribute": False,
+                    "IsManaged": True,
+                    "IsPrimaryId": False,
+                    "IsPrimaryName": False,
+                    "AttributeOf": None,
+                },
             )
             with pytest.raises(D365Error, match="not a custom"):
                 ma.delete_attribute(backend, "account", "telephone1")
 
     def test_refuses_managed(self, backend):
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             m.get(
                 self._attr_url(backend, "new_widget", "vendor_code"),
-                json={"LogicalName": "vendor_code", "IsCustomAttribute": True,
-                      "IsManaged": True, "IsPrimaryId": False,
-                      "IsPrimaryName": False, "AttributeOf": None},
+                json={
+                    "LogicalName": "vendor_code",
+                    "IsCustomAttribute": True,
+                    "IsManaged": True,
+                    "IsPrimaryId": False,
+                    "IsPrimaryName": False,
+                    "AttributeOf": None,
+                },
             )
             with pytest.raises(D365Error, match="managed"):
                 ma.delete_attribute(backend, "new_widget", "vendor_code")
 
     def test_refuses_primary(self, backend):
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             m.get(
                 self._attr_url(backend, "new_widget", "new_widgetid"),
-                json={"LogicalName": "new_widgetid", "IsCustomAttribute": True,
-                      "IsManaged": False, "IsPrimaryId": True,
-                      "IsPrimaryName": False, "AttributeOf": None},
+                json={
+                    "LogicalName": "new_widgetid",
+                    "IsCustomAttribute": True,
+                    "IsManaged": False,
+                    "IsPrimaryId": True,
+                    "IsPrimaryName": False,
+                    "AttributeOf": None,
+                },
             )
             with pytest.raises(D365Error, match="primary"):
                 ma.delete_attribute(backend, "new_widget", "new_widgetid")
 
     def test_refuses_sub_attribute(self, backend):
         from crm.core import metadata_attrs as ma
+
         with requests_mock.Mocker() as m:
             m.get(
                 self._attr_url(backend, "new_widget", "new_price_base"),
-                json={"LogicalName": "new_price_base", "IsCustomAttribute": True,
-                      "IsManaged": False, "IsPrimaryId": False,
-                      "IsPrimaryName": False, "AttributeOf": "new_price"},
+                json={
+                    "LogicalName": "new_price_base",
+                    "IsCustomAttribute": True,
+                    "IsManaged": False,
+                    "IsPrimaryId": False,
+                    "IsPrimaryName": False,
+                    "AttributeOf": "new_price",
+                },
             )
             with pytest.raises(D365Error, match="sub-attribute"):
                 ma.delete_attribute(backend, "new_widget", "new_price_base")
 
     def test_happy_path_deletes_with_solution_header(self, backend):
         from crm.core import metadata_attrs as ma
+
         url = self._attr_url(backend, "new_widget", "new_label")
         with requests_mock.Mocker() as m:
             m.get(
                 url,
-                json={"LogicalName": "new_label", "IsCustomAttribute": True,
-                      "IsManaged": False, "IsPrimaryId": False,
-                      "IsPrimaryName": False, "AttributeOf": None},
+                json={
+                    "LogicalName": "new_label",
+                    "IsCustomAttribute": True,
+                    "IsManaged": False,
+                    "IsPrimaryId": False,
+                    "IsPrimaryName": False,
+                    "AttributeOf": None,
+                },
             )
             m.delete(url, status_code=204)
             info = ma.delete_attribute(
-                backend, "new_widget", "new_label", solution="DevSolution",
+                backend,
+                "new_widget",
+                "new_label",
+                solution="DevSolution",
             )
         assert info["deleted"] is True
         assert info["entity"] == "new_widget"
@@ -776,11 +971,20 @@ class TestDeleteAttribute:
     def test_check_dependencies_off_by_default_no_extra_get(self, backend):
         """Without check_dependencies, no dependency GETs fire."""
         from crm.core import metadata_attrs as ma
+
         url = self._attr_url(backend, "new_widget", "new_label")
         with requests_mock.Mocker() as m:
-            m.get(url, json={"LogicalName": "new_label", "IsCustomAttribute": True,
-                             "IsManaged": False, "IsPrimaryId": False,
-                             "IsPrimaryName": False, "AttributeOf": None})
+            m.get(
+                url,
+                json={
+                    "LogicalName": "new_label",
+                    "IsCustomAttribute": True,
+                    "IsManaged": False,
+                    "IsPrimaryId": False,
+                    "IsPrimaryName": False,
+                    "AttributeOf": None,
+                },
+            )
             m.delete(url, status_code=204)
             info = ma.delete_attribute(backend, "new_widget", "new_label")
         assert "can_delete" not in info
@@ -791,27 +995,39 @@ class TestDeleteAttribute:
     def test_check_dependencies_with_blockers(self, backend):
         """check_dependencies=True fires resolve GET + function GET; blockers in result."""
         from crm.core import metadata_attrs as ma
+
         _attr_meta_id = "ffff0001-0000-0000-0000-000000000000"
         url = self._attr_url(backend, "new_widget", "new_label")
         dep_url = backend.url_for(
             f"RetrieveDependenciesForDelete(ObjectId={_attr_meta_id},ComponentType=2)"
         )
         with requests_mock.Mocker() as m:
-            m.get(url, json={
-                "LogicalName": "new_label", "IsCustomAttribute": True,
-                "IsManaged": False, "IsPrimaryId": False,
-                "IsPrimaryName": False, "AttributeOf": None,
-                "MetadataId": _attr_meta_id,
-            })
-            m.get(dep_url, json={"value": [
-                {
-                    "dependentcomponenttype": 6,
-                    "dependentcomponentobjectid": "1111ffff-0000-0000-0000-000000000000",
-                    "dependentcomponentparentid": None,
-                    "requiredcomponenttype": 2,
-                    "dependencytype": 1,
+            m.get(
+                url,
+                json={
+                    "LogicalName": "new_label",
+                    "IsCustomAttribute": True,
+                    "IsManaged": False,
+                    "IsPrimaryId": False,
+                    "IsPrimaryName": False,
+                    "AttributeOf": None,
+                    "MetadataId": _attr_meta_id,
                 },
-            ]})
+            )
+            m.get(
+                dep_url,
+                json={
+                    "value": [
+                        {
+                            "dependentcomponenttype": 6,
+                            "dependentcomponentobjectid": "1111ffff-0000-0000-0000-000000000000",
+                            "dependentcomponentparentid": None,
+                            "requiredcomponenttype": 2,
+                            "dependencytype": 1,
+                        },
+                    ]
+                },
+            )
             m.delete(url, status_code=204)
             info = ma.delete_attribute(backend, "new_widget", "new_label", check_dependencies=True)
         assert info["deleted"] is True
@@ -824,18 +1040,25 @@ class TestDeleteAttribute:
     def test_check_dependencies_no_blockers(self, backend):
         """Empty dependency list → can_delete True."""
         from crm.core import metadata_attrs as ma
+
         _attr_meta_id = "ffff0001-0000-0000-0000-000000000000"
         url = self._attr_url(backend, "new_widget", "new_label")
         dep_url = backend.url_for(
             f"RetrieveDependenciesForDelete(ObjectId={_attr_meta_id},ComponentType=2)"
         )
         with requests_mock.Mocker() as m:
-            m.get(url, json={
-                "LogicalName": "new_label", "IsCustomAttribute": True,
-                "IsManaged": False, "IsPrimaryId": False,
-                "IsPrimaryName": False, "AttributeOf": None,
-                "MetadataId": _attr_meta_id,
-            })
+            m.get(
+                url,
+                json={
+                    "LogicalName": "new_label",
+                    "IsCustomAttribute": True,
+                    "IsManaged": False,
+                    "IsPrimaryId": False,
+                    "IsPrimaryName": False,
+                    "AttributeOf": None,
+                    "MetadataId": _attr_meta_id,
+                },
+            )
             m.get(dep_url, json={"value": []})
             m.delete(url, status_code=204)
             info = ma.delete_attribute(backend, "new_widget", "new_label", check_dependencies=True)
@@ -848,20 +1071,26 @@ class TestDeleteAttributeDryRun:
 
     def _attr_url(self, backend, entity, attribute):
         return backend.url_for(
-            f"EntityDefinitions(LogicalName='{entity}')"
-            f"/Attributes(LogicalName='{attribute}')"
+            f"EntityDefinitions(LogicalName='{entity}')/Attributes(LogicalName='{attribute}')"
         )
 
     def test_dryrun_returns_preview_not_deleted(self, profile):
         from crm.core import metadata_attrs as ma
+
         dry_backend = D365Backend(profile, password="pw", dry_run=True)
         url = self._attr_url(dry_backend, "new_widget", "new_label")
         with requests_mock.Mocker() as m:
-            m.get(url, json={
-                "LogicalName": "new_label", "IsCustomAttribute": True,
-                "IsManaged": False, "IsPrimaryId": False,
-                "IsPrimaryName": False, "AttributeOf": None,
-            })
+            m.get(
+                url,
+                json={
+                    "LogicalName": "new_label",
+                    "IsCustomAttribute": True,
+                    "IsManaged": False,
+                    "IsPrimaryId": False,
+                    "IsPrimaryName": False,
+                    "AttributeOf": None,
+                },
+            )
             info = ma.delete_attribute(dry_backend, "new_widget", "new_label")
         assert info.get("_dry_run") is True
         assert info.get("would_delete") is True
@@ -874,20 +1103,29 @@ class TestDeleteAttributeDryRun:
     def test_dryrun_with_check_dependencies_merges_blockers(self, profile):
         _attr_meta_id = "ffff0001-0000-0000-0000-000000000000"
         from crm.core import metadata_attrs as ma
+
         dry_backend = D365Backend(profile, password="pw", dry_run=True)
         url = self._attr_url(dry_backend, "new_widget", "new_label")
         dep_url = dry_backend.url_for(
             f"RetrieveDependenciesForDelete(ObjectId={_attr_meta_id},ComponentType=2)"
         )
         with requests_mock.Mocker() as m:
-            m.get(url, json={
-                "LogicalName": "new_label", "IsCustomAttribute": True,
-                "IsManaged": False, "IsPrimaryId": False,
-                "IsPrimaryName": False, "AttributeOf": None,
-                "MetadataId": _attr_meta_id,
-            })
+            m.get(
+                url,
+                json={
+                    "LogicalName": "new_label",
+                    "IsCustomAttribute": True,
+                    "IsManaged": False,
+                    "IsPrimaryId": False,
+                    "IsPrimaryName": False,
+                    "AttributeOf": None,
+                    "MetadataId": _attr_meta_id,
+                },
+            )
             m.get(dep_url, json={"value": []})
-            info = ma.delete_attribute(dry_backend, "new_widget", "new_label", check_dependencies=True)
+            info = ma.delete_attribute(
+                dry_backend, "new_widget", "new_label", check_dependencies=True
+            )
         assert info.get("_dry_run") is True
         assert info.get("would_delete") is True
         assert "deleted" not in info
@@ -903,70 +1141,85 @@ class TestDeleteAttributeDryRun:
 # directly through the core interface — no CliRunner.
 # --------------------------------------------------------------------------- #
 
+
 class TestCheckFormulaCompat:
     def test_simple_with_formula_rejected(self):
         from crm.core import metadata_attrs as ma
+
         with pytest.raises(D365Error, match="only valid with --type"):
             ma.check_formula_compat("string", "simple", "<x/>")
 
     def test_simple_without_formula_ok(self):
         from crm.core import metadata_attrs as ma
+
         assert ma.check_formula_compat("string", "simple", None) is None
 
     def test_rollup_without_formula_rejected(self):
         from crm.core import metadata_attrs as ma
+
         with pytest.raises(D365Error, match="formula-file is required"):
             ma.check_formula_compat("integer", "rollup", None)
 
     def test_rollup_on_lookup_kind_rejected(self):
         from crm.core import metadata_attrs as ma
+
         with pytest.raises(D365Error, match="not valid for kind"):
             ma.check_formula_compat("lookup", "rollup", "<x/>")
 
     def test_calculated_on_customer_kind_rejected(self):
         from crm.core import metadata_attrs as ma
+
         with pytest.raises(D365Error, match="not valid for kind"):
             ma.check_formula_compat("customer", "calculated", "<x/>")
 
     def test_rollup_with_formula_ok(self):
         from crm.core import metadata_attrs as ma
+
         assert ma.check_formula_compat("integer", "rollup", "<x/>") is None
 
 
 class TestParseDefault:
     def test_none_passes_through(self):
         from crm.core import metadata_attrs as ma
+
         assert ma.parse_default("boolean", None) is None
 
     @pytest.mark.parametrize("raw", ["true", "1", "yes", "on", "t", "y", "TRUE"])
     def test_boolean_true_strings(self, raw):
         from crm.core import metadata_attrs as ma
+
         assert ma.parse_default("boolean", raw) is True
 
     @pytest.mark.parametrize("raw", ["false", "0", "no", "off", "f", "n", "FALSE"])
     def test_boolean_false_strings(self, raw):
         from crm.core import metadata_attrs as ma
+
         assert ma.parse_default("boolean", raw) is False
 
     def test_boolean_native_bool_passthrough(self):
         from crm.core import metadata_attrs as ma
+
         assert ma.parse_default("boolean", True) is True
         assert ma.parse_default("boolean", False) is False
 
     def test_boolean_garbage_rejected(self):
         from crm.core import metadata_attrs as ma
+
         with pytest.raises(D365Error, match="true/false"):
             ma.parse_default("boolean", "maybe")
 
     def test_numeric_string_coerced(self):
         from crm.core import metadata_attrs as ma
+
         assert ma.parse_default("picklist", "7") == 7
 
     def test_numeric_native_int_passthrough(self):
         from crm.core import metadata_attrs as ma
+
         assert ma.parse_default("integer", 5) == 5
 
     def test_numeric_garbage_rejected(self):
         from crm.core import metadata_attrs as ma
+
         with pytest.raises(D365Error, match="must be int for kind"):
             ma.parse_default("picklist", "abc")

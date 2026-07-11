@@ -1,4 +1,5 @@
 """Command-level tests for the trimmed `crm connection` diagnostics group."""
+
 # pyright: basic
 from __future__ import annotations
 
@@ -26,7 +27,9 @@ class TestMissingProfileEnvelope:
 
     def test_json_mode_envelope(self):
         # AC: exit 1, parseable JSON envelope with ok=false and category=validation.
-        result = CliRunner().invoke(cli, ["--json", "--profile", "does_not_exist", "connection", "whoami"])
+        result = CliRunner().invoke(
+            cli, ["--json", "--profile", "does_not_exist", "connection", "whoami"]
+        )
         assert result.exit_code == 1
         payload = json.loads(result.stdout)
         assert payload["ok"] is False

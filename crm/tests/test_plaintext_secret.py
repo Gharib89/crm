@@ -1,4 +1,5 @@
 """Plaintext profile-secret helpers (issue #130, Approach B)."""
+
 # pyright: basic
 from __future__ import annotations
 
@@ -14,9 +15,14 @@ pytestmark = pytest.mark.usefixtures("isolated_home")
 
 
 def _save_base_profile(name="prod"):
-    session_mod.save_profile(ConnectionProfile(
-        name=name, url="https://crm.contoso.local/c", domain="C", username="alice",
-    ))
+    session_mod.save_profile(
+        ConnectionProfile(
+            name=name,
+            url="https://crm.contoso.local/c",
+            domain="C",
+            username="alice",
+        )
+    )
 
 
 def test_load_secret_none_when_absent():

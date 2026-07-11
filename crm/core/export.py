@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import csv
 import json
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 from crm.core import query as query_mod
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 
 
 def export_records(
@@ -31,11 +32,16 @@ def export_records(
     if fmt not in ("csv", "json"):
         raise D365Error(f"Unsupported export format: {fmt!r} (use csv or json)")
 
-    records = list(_iter_records(
-        backend, entity_set,
-        select=select, filter_=filter_,
-        page_size=page_size, max_records=max_records,
-    ))
+    records = list(
+        _iter_records(
+            backend,
+            entity_set,
+            select=select,
+            filter_=filter_,
+            page_size=page_size,
+            max_records=max_records,
+        )
+    )
 
     try:
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -70,8 +76,10 @@ def _iter_records(
             page = as_dict(backend.get(next_link))
         else:
             page = query_mod.odata_query(
-                backend, entity_set,
-                select=select, filter_=filter_,
+                backend,
+                entity_set,
+                select=select,
+                filter_=filter_,
                 page_size=page_size,
             )
         for rec in page.get("value", []):

@@ -8,6 +8,7 @@ drives the wiring with no agent, no live org, and no real profile store.
 
     pytest evals/skill
 """
+
 from __future__ import annotations
 
 import json
@@ -20,23 +21,28 @@ from evals.skill.set_runner import PASS, SetResult, TaskOutcome
 
 
 def _set_result() -> SetResult:
-    return SetResult(outcomes=[TaskOutcome("t", PASS, "cloud")], active_target="cloud", dry_run=False)
+    return SetResult(
+        outcomes=[TaskOutcome("t", PASS, "cloud")], active_target="cloud", dry_run=False
+    )
 
 
 # --- agent-cmd defaulting / override (AC2) -------------------------------------------
+
 
 def test_default_agent_cmd_is_skip_permissions_streamjson_sonnet():
     # #588: the default emits stream-json (+ --verbose) so the run record captures the
     # crm command sequence + metrics the skill-efficacy review reads.
     assert build_agent_cmd(None, None) == (
-        "claude -p --dangerously-skip-permissions --output-format stream-json --verbose --model sonnet"
+        "claude -p --dangerously-skip-permissions --output-format stream-json --verbose "
+        "--model sonnet"
     )
     assert DEFAULT_MODEL == "sonnet"
 
 
 def test_model_swaps_the_default_model():
     assert build_agent_cmd(None, "opus") == (
-        "claude -p --dangerously-skip-permissions --output-format stream-json --verbose --model opus"
+        "claude -p --dangerously-skip-permissions --output-format stream-json --verbose "
+        "--model opus"
     )
 
 
@@ -53,8 +59,12 @@ def test_invalid_target_rejected_cleanly(tmp_path):
     # run() is importable/tested directly; a bad target is a readable FrontDoorError,
     # not a KeyError from the internal profile lookup.
     with pytest.raises(FrontDoorError, match="target"):
-        run(target="foo", out_dir=tmp_path,
-            run_set_fn=lambda **k: _set_result(), run_both_fn=lambda *a, **k: None)
+        run(
+            target="foo",
+            out_dir=tmp_path,
+            run_set_fn=lambda **k: _set_result(),
+            run_both_fn=lambda *a, **k: None,
+        )
 
 
 def test_update_baseline_rejected_for_single_target(tmp_path, monkeypatch):
@@ -62,11 +72,17 @@ def test_update_baseline_rejected_for_single_target(tmp_path, monkeypatch):
     # target is rejected rather than silently doing nothing (issue #585 anti-footgun).
     monkeypatch.setenv("D365_E2E_ALLOW_HOST", "x")
     with pytest.raises(FrontDoorError, match="both"):
-        run(target="cloud", update_baseline=True, out_dir=tmp_path,
-            run_set_fn=lambda **k: _set_result(), run_both_fn=lambda *a, **k: None)
+        run(
+            target="cloud",
+            update_baseline=True,
+            out_dir=tmp_path,
+            run_set_fn=lambda **k: _set_result(),
+            run_both_fn=lambda *a, **k: None,
+        )
 
 
 # --- target → runner routing (AC1) ---------------------------------------------------
+
 
 def test_target_both_routes_to_both_runner(tmp_path, monkeypatch):
     monkeypatch.setenv("D365_E2E_ALLOW_HOST", "x")  # skip host derivation
@@ -81,6 +97,7 @@ def test_target_both_routes_to_both_runner(tmp_path, monkeypatch):
 
             def exit_code(self):
                 return 0
+
         return _R()
 
     def fake_set(**kw):  # must not be called
@@ -113,6 +130,7 @@ def test_single_target_routes_to_set_runner(target, profile, tmp_path, monkeypat
 
 # --- allow-host derivation (AC3) -----------------------------------------------------
 
+
 def test_cloud_allow_host_derived_from_profile(tmp_path, monkeypatch):
     monkeypatch.delenv("D365_E2E_ALLOW_HOST", raising=False)
     seen = {}
@@ -125,8 +143,13 @@ def test_cloud_allow_host_derived_from_profile(tmp_path, monkeypatch):
         seen["allow_host"] = __import__("os").environ.get("D365_E2E_ALLOW_HOST")
         return _set_result()
 
-    run(target="cloud", out_dir=tmp_path, host_fn=fake_host,
-        run_set_fn=fake_set, run_both_fn=lambda *a, **k: None)
+    run(
+        target="cloud",
+        out_dir=tmp_path,
+        host_fn=fake_host,
+        run_set_fn=fake_set,
+        run_both_fn=lambda *a, **k: None,
+    )
     # derived host is visible to the runner during the run...
     assert seen["allow_host"] == "org.crm.dynamics.com"
     # ...and restored (here: cleared) afterwards so an in-process caller isn't leaked into.
@@ -155,8 +178,13 @@ def test_existing_allow_host_is_not_overwritten(tmp_path, monkeypatch):
     def fake_host(profile_name):
         raise AssertionError("host derivation must be skipped when allow-host is preset")
 
-    run(target="cloud", out_dir=tmp_path, host_fn=fake_host,
-        run_set_fn=lambda **k: _set_result(), run_both_fn=lambda *a, **k: None)
+    run(
+        target="cloud",
+        out_dir=tmp_path,
+        host_fn=fake_host,
+        run_set_fn=lambda **k: _set_result(),
+        run_both_fn=lambda *a, **k: None,
+    )
     assert frontdoor.os.environ["D365_E2E_ALLOW_HOST"] == "preset.example.com"
 
 
@@ -166,11 +194,17 @@ def test_onprem_target_skips_host_derivation(tmp_path, monkeypatch):
     def fake_host(profile_name):
         raise AssertionError("on-prem target needs no cloud allow-host")
 
-    run(target="onprem", out_dir=tmp_path, host_fn=fake_host,
-        run_set_fn=lambda **k: _set_result(), run_both_fn=lambda *a, **k: None)
+    run(
+        target="onprem",
+        out_dir=tmp_path,
+        host_fn=fake_host,
+        run_set_fn=lambda **k: _set_result(),
+        run_both_fn=lambda *a, **k: None,
+    )
 
 
 # --- artifacts written (AC4) ---------------------------------------------------------
+
 
 def test_writes_result_json_and_run_log(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("D365_E2E_ALLOW_HOST", "x")
@@ -178,12 +212,14 @@ def test_writes_result_json_and_run_log(tmp_path, monkeypatch, capsys):
     def fake_set(*, active_target, repeat, agent_cmd, progress, **_kw):
         progress(  # one line to run.log
             __import__("evals.skill.set_runner", fromlist=["ProgressEvent"]).ProgressEvent(
-                done=1, total=1, task_id="t", target="cloud", status=PASS, runnable=1)
+                done=1, total=1, task_id="t", target="cloud", status=PASS, runnable=1
+            )
         )
         return _set_result()
 
-    rc = run(target="cloud", out_dir=tmp_path, run_set_fn=fake_set,
-             run_both_fn=lambda *a, **k: None)
+    rc = run(
+        target="cloud", out_dir=tmp_path, run_set_fn=fake_set, run_both_fn=lambda *a, **k: None
+    )
     assert rc == 0
     assert (tmp_path / "result.json").exists()
     log = (tmp_path / "run.log").read_text()
@@ -196,8 +232,13 @@ def test_result_and_log_default_into_run_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("D365_E2E_ALLOW_HOST", "x")
     runs_root = tmp_path / "runs"
 
-    run(target="cloud", out_dir=None, runs_root=runs_root,
-        run_set_fn=lambda **k: _set_result(), run_both_fn=lambda *a, **k: None)
+    run(
+        target="cloud",
+        out_dir=None,
+        runs_root=runs_root,
+        run_set_fn=lambda **k: _set_result(),
+        run_both_fn=lambda *a, **k: None,
+    )
 
     # No --out → result.json + run.log land inside the timestamped run dir, not cwd.
     run_dir = next(runs_root.iterdir())
@@ -207,18 +248,34 @@ def test_result_and_log_default_into_run_dir(tmp_path, monkeypatch):
 
 # --- run-dir / counterfactual / task threading + the review subcommand (#588) --------
 
+
 def test_run_threads_run_dir_counterfactual_and_task(tmp_path, monkeypatch):
     monkeypatch.setenv("D365_E2E_ALLOW_HOST", "x")
     seen = {}
 
-    def fake_set(*, active_target, repeat, agent_cmd, progress,
-                 run_dir=None, counterfactual=False, task_filter=None):
+    def fake_set(
+        *,
+        active_target,
+        repeat,
+        agent_cmd,
+        progress,
+        run_dir=None,
+        counterfactual=False,
+        task_filter=None,
+    ):
         seen.update(run_dir=run_dir, counterfactual=counterfactual, task_filter=task_filter)
         return _set_result()
 
     runs_root = tmp_path / "runs"
-    run(target="cloud", out_dir=tmp_path, runs_root=runs_root, counterfactual=True,
-        only_task="records-create-verify", run_set_fn=fake_set, run_both_fn=lambda *a, **k: None)
+    run(
+        target="cloud",
+        out_dir=tmp_path,
+        runs_root=runs_root,
+        counterfactual=True,
+        only_task="records-create-verify",
+        run_set_fn=fake_set,
+        run_both_fn=lambda *a, **k: None,
+    )
     assert seen["counterfactual"] is True
     assert seen["task_filter"] == "records-create-verify"
     # the run dir is a timestamped sub-dir of runs_root (not a record written here)
@@ -233,7 +290,9 @@ def test_review_subcommand_routes_to_review(monkeypatch):
         return 0
 
     monkeypatch.setattr(frontdoor.review, "run_review_cmd", fake_review)
-    rc = frontdoor.main(["review", "--run", "/some/dir", "--task", "t", "--failed-only", "--record"])
+    rc = frontdoor.main(
+        ["review", "--run", "/some/dir", "--task", "t", "--failed-only", "--record"]
+    )
     assert rc == 0
     assert captured["run_dir"] == "/some/dir"
     assert captured["task"] == "t"

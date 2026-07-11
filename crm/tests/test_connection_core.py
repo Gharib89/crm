@@ -1,4 +1,5 @@
 """Core credential resolution + storage after the env/.env removal."""
+
 # pyright: basic
 from __future__ import annotations
 
@@ -17,8 +18,11 @@ def crm_home(tmp_path, monkeypatch):
 
 def _save(name="contoso", **kw):
     p = ConnectionProfile(
-        name=name, url="https://crm.contoso.local/contoso",
-        domain="CONTOSO", username="alice", **kw,
+        name=name,
+        url="https://crm.contoso.local/contoso",
+        domain="CONTOSO",
+        username="alice",
+        **kw,
     )
     session_mod.save_profile(p)
     return p
@@ -56,9 +60,11 @@ class TestResolveCredentials:
         # via the masked questionary prompt (echoes '*'), not fully-hidden
         # getpass (#655).
         _save()
+
         class _FakePw:
             def ask(self):
                 return "prompted-secret"
+
         monkeypatch.setattr("questionary.password", lambda *a, **kw: _FakePw())
         r = conn_mod.resolve_credentials("contoso", allow_prompt=True)
         assert r.password == "prompted-secret"
@@ -66,19 +72,23 @@ class TestResolveCredentials:
 
 class TestBackendConstructionValidation:
     """The backend's constructor validation names the offending profile, so a
-    multi-profile debugging session doesn't have to hunt for which one is broken."""
+    multi-profile debugging session doesn't have to hunt for which one is broken.
+    """
 
     def test_missing_url_names_the_profile(self):
-        profile = ConnectionProfile(
-            name="brokenprod", url="", domain="CONTOSO", username="alice")
+        profile = ConnectionProfile(name="brokenprod", url="", domain="CONTOSO", username="alice")
         with pytest.raises(D365Error, match="brokenprod") as exc:
             D365Backend(profile, "pw")
         assert "server URL" in str(exc.value)
 
     def test_missing_username_names_the_profile(self):
         profile = ConnectionProfile(
-            name="brokenntlm", url="https://crm.contoso.local/c",
-            domain="CONTOSO", username="", auth_scheme="ntlm")
+            name="brokenntlm",
+            url="https://crm.contoso.local/c",
+            domain="CONTOSO",
+            username="",
+            auth_scheme="ntlm",
+        )
         with pytest.raises(D365Error, match="brokenntlm") as exc:
             D365Backend(profile, "pw")
         assert "username" in str(exc.value)
@@ -96,8 +106,9 @@ class TestSaveSecret:
         _save()
         stored = {}
         monkeypatch.setattr(conn_mod.keyring_store, "is_available", lambda: True)
-        monkeypatch.setattr(conn_mod.keyring_store, "set_secret",
-                            lambda n, s: stored.__setitem__(n, s))
+        monkeypatch.setattr(
+            conn_mod.keyring_store, "set_secret", lambda n, s: stored.__setitem__(n, s)
+        )
         monkeypatch.setattr(conn_mod.keyring_store, "delete_secret", lambda n: False)
         where = conn_mod.save_secret("contoso", "sekret")
         assert where == "keyring"

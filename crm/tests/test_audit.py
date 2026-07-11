@@ -6,6 +6,7 @@ PagingInfo parameter aliases) and RetrieveAuditDetails (bound to an audit row),
 which `action function`'s inline parameter encoding cannot express. Distinct
 from the local `session audit` journal of this CLI's own mutations.
 """
+
 from __future__ import annotations
 
 import json
@@ -26,7 +27,8 @@ def _run(inject_backend, make_fake_backend, args, *, responses=None):
 
 def test_history_builds_unbound_function_with_target_and_paging(inject_backend, make_fake_backend):
     """`audit history <set> <id>` issues the unbound RetrieveRecordChangeHistory
-    GET with the Target EntityReference and PagingInfo passed as parameter aliases."""
+    GET with the Target EntityReference and PagingInfo passed as parameter aliases.
+    """
     result, backend = _run(inject_backend, make_fake_backend, ["history", "accounts", RID])
     assert result.exit_code == 0, result.output
     verb, path, kwargs = backend.calls[-1]
@@ -42,7 +44,8 @@ def test_history_builds_unbound_function_with_target_and_paging(inject_backend, 
 def test_history_paging_options_flow_into_paginginfo(inject_backend, make_fake_backend):
     """--page/--count/--paging-cookie populate the PagingInfo parameter."""
     result, backend = _run(
-        inject_backend, make_fake_backend,
+        inject_backend,
+        make_fake_backend,
         ["history", "accounts", RID, "--page", "2", "--count", "10", "--paging-cookie", "ck"],
     )
     assert result.exit_code == 0, result.output
@@ -71,7 +74,8 @@ def test_detail_builds_bound_function_path(inject_backend, make_fake_backend):
 
 def test_detail_decodes_audit_detail_type(inject_backend, make_fake_backend):
     """The AuditDetail's @odata.type discriminator is surfaced as AuditDetailType,
-    which survives emit's @odata.* strip (the type would otherwise be erased)."""
+    which survives emit's @odata.* strip (the type would otherwise be erased).
+    """
     resp = {
         "@odata.context": "…/$metadata#…RetrieveAuditDetailsResponse",
         "AuditDetail": {

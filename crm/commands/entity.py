@@ -1,30 +1,34 @@
 """Entity CRUD commands."""
+
 # pyright: basic
 from __future__ import annotations
+
 import json
 import re
 from typing import Any
+
 import click
+
+from crm.cli import CLIContext, _complete_entity_set_names, pass_ctx
+from crm.commands._helpers import (
+    _admin_header_options,
+    _admin_kwargs,
+    _check_expectations,
+    _concise_record,
+    _confirm_destructive,
+    _destructive_option,
+    _emit_expectation_failure,
+    _handle_d365_error,
+    _journal,
+    _load_payload,
+    _parse_expect,
+    _prune_annotations,
+    _touch_session,
+    d365_errors,
+)
 from crm.core import entity as entity_mod
 from crm.core import lookup_bind
 from crm.utils.d365_backend import D365Error
-from crm.cli import CLIContext, pass_ctx, _complete_entity_set_names
-from crm.commands._helpers import (
-    _concise_record,
-    _destructive_option,
-    _handle_d365_error,
-    d365_errors,
-    _admin_header_options,
-    _admin_kwargs,
-    _confirm_destructive,
-    _journal,
-    _load_payload,
-    _prune_annotations,
-    _touch_session,
-    _parse_expect,
-    _check_expectations,
-    _emit_expectation_failure,
-)
 
 # Metadata entity-sets that reject record-style PATCH; point the user at the
 # metadata command group instead (#146d). Matched case-insensitively on the
@@ -33,16 +37,20 @@ _METADATA_SETS = frozenset(("entitydefinitions", "attributemetadata"))
 _OPTIONSET_SETS = frozenset(("globaloptionsetdefinitions",))
 
 
-def _concise_human_record(ctx: CLIContext, entity_set: str, record: dict[str, Any]) -> dict[str, Any]:
+def _concise_human_record(
+    ctx: CLIContext, entity_set: str, record: dict[str, Any]
+) -> dict[str, Any]:
     """Project a single record for the concise human render (#302).
 
     Hoists the entity's primary-name column only when its metadata is already
     cached — `cached_primary_name` reads the warm cache directly, never adding a
     round-trip to a plain get/create (ADR 0008); a cold cache leaves the name in
-    place."""
+    place.
+    """
     # Local import keeps the commands package import-cycle-free (mirrors the
     # name-map lookup in _helpers.rendering._emit_query_result).
     from crm.core.entity_names import cached_primary_name
+
     return _concise_record(record, primary_name=cached_primary_name(ctx.backend(), entity_set))
 
 
@@ -92,11 +100,15 @@ def _metadata_set_hint(entity_set: str) -> str | None:
     """Return a hint for EntityMetadata PATCH operations, None for regular entities."""
     head = entity_set.split("(", 1)[0].strip().lower()
     if head in _OPTIONSET_SETS:
-        return ("global option sets are not editable via 'entity update'; use "
-                "'crm metadata update-optionset'.")
+        return (
+            "global option sets are not editable via 'entity update'; use "
+            "'crm metadata update-optionset'."
+        )
     if head in _METADATA_SETS or head.endswith("metadata"):
-        return ("metadata is not editable via 'entity update'; use "
-                "'crm metadata update-entity' / 'crm metadata update-attribute'.")
+        return (
+            "metadata is not editable via 'entity update'; use "
+            "'crm metadata update-entity' / 'crm metadata update-attribute'."
+        )
     return None
 
 
@@ -104,14 +116,19 @@ def _dupe_key_enrich(ctx: CLIContext, entity_set: str, payload):
     """`enrich(exc)` for entity create/update: on an alternate-key duplicate
     error, attach the alternate-key schema to `meta`. Self-gates on json mode so
     the extra metadata GETs are skipped for human output (the when-to-pay
-    invariant), exactly as the hand-written `except` did."""
+    invariant), exactly as the hand-written `except` did.
+    """
+
     def _enrich(exc):
         extra_meta = (
-            entity_mod.enrich_dupe_key(ctx.backend(), entity_set, payload,
-                                       code=entity_mod.ALT_KEY_ERROR_CODE)
-            if entity_mod.is_alternate_key_error(exc) and ctx.json_mode else None
+            entity_mod.enrich_dupe_key(
+                ctx.backend(), entity_set, payload, code=entity_mod.ALT_KEY_ERROR_CODE
+            )
+            if entity_mod.is_alternate_key_error(exc) and ctx.json_mode
+            else None
         )
         return None, extra_meta
+
     return _enrich
 
 
@@ -152,29 +169,44 @@ def _validate_or_emit(
 @click.option("--select", multiple=True, help="Repeatable; column names.")
 @click.option("--expand", multiple=True, help="Repeatable; navigation properties.")
 @click.option("--annotations/--no-annotations", default=True, help="Include formatted values.")
-@click.option("--minimal", is_flag=True, default=False,
-              help="JSON mode: drop every key containing '@' (OData annotations like "
-                   "@odata.etag, *@FormattedValue, *@lookuplogicalname); keeps business "
-                   "fields, _*_value lookup GUIDs, and the primary id.")
-@click.option("--expect", multiple=True, metavar="ATTR=VALUE",
-              help="Repeatable; assert str(record[ATTR]) == VALUE (an absent key "
-                   "never matches). Any mismatch exits 1 (the --json envelope "
-                   "carries meta {attr, expected, actual}; human mode prints the "
-                   "error line); all match exits 0.")
-@click.option("--full", is_flag=True, default=False,
-              help="Human mode: show every field including nulls and @odata.* "
-                   "plumbing. Default human output is concise (populated fields "
-                   "only, id first). No effect in --json mode.")
+@click.option(
+    "--minimal",
+    is_flag=True,
+    default=False,
+    help="JSON mode: drop every key containing '@' (OData annotations like "
+    "@odata.etag, *@FormattedValue, *@lookuplogicalname); keeps business "
+    "fields, _*_value lookup GUIDs, and the primary id.",
+)
+@click.option(
+    "--expect",
+    multiple=True,
+    metavar="ATTR=VALUE",
+    help="Repeatable; assert str(record[ATTR]) == VALUE (an absent key "
+    "never matches). Any mismatch exits 1 (the --json envelope "
+    "carries meta {attr, expected, actual}; human mode prints the "
+    "error line); all match exits 0.",
+)
+@click.option(
+    "--full",
+    is_flag=True,
+    default=False,
+    help="Human mode: show every field including nulls and @odata.* "
+    "plumbing. Default human output is concise (populated fields "
+    "only, id first). No effect in --json mode.",
+)
 @pass_ctx
-def entity_get(ctx: CLIContext, entity_set, record_id, select, expand, annotations,
-               minimal, expect, full):
+def entity_get(
+    ctx: CLIContext, entity_set, record_id, select, expand, annotations, minimal, expect, full
+):
     """GET <entity-set> <guid>."""
     # Validate untrusted --expect input before any backend call (house rule):
     # a malformed pair raises UsageError (exit 2) without a round-trip.
     expectations = _parse_expect(expect)
     with d365_errors(ctx):
         result = entity_mod.retrieve(
-            ctx.backend(), entity_set, record_id,
+            ctx.backend(),
+            entity_set,
+            record_id,
             select=list(select) or None,
             expand=list(expand) or None,
             include_annotations=annotations,
@@ -200,11 +232,18 @@ def entity_get(ctx: CLIContext, entity_set, record_id, select, expand, annotatio
 @entity_group.command("children")
 @click.argument("entity_set", shell_complete=_complete_entity_set_names)
 @click.argument("record_id")
-@click.option("--non-empty", is_flag=True, default=False,
-              help="Drop relationships whose related-record count is 0.")
-@click.option("--filter-entities", metavar="REGEX",
-              help="Only count child entities whose logical name matches REGEX. "
-                   "Applied before querying — fewer requests, not a post-filter.")
+@click.option(
+    "--non-empty",
+    is_flag=True,
+    default=False,
+    help="Drop relationships whose related-record count is 0.",
+)
+@click.option(
+    "--filter-entities",
+    metavar="REGEX",
+    help="Only count child entities whose logical name matches REGEX. "
+    "Applied before querying — fewer requests, not a post-filter.",
+)
 @pass_ctx
 def entity_children(ctx: CLIContext, entity_set, record_id, non_empty, filter_entities):
     """Per-relationship related-record counts for the 1:N relationships where
@@ -212,7 +251,8 @@ def entity_children(ctx: CLIContext, entity_set, record_id, non_empty, filter_en
     POSTs), not one count query per relationship.
 
     Each row: child entity logical name, referencing attribute, child entity
-    set, and count. Read-only (composes with --dry-run)."""
+    set, and count. Read-only (composes with --dry-run).
+    """
     # Validate the untrusted regex before constructing a backend (house rule —
     # mirrors --expect parsing): a bad pattern is a usage error (exit 2), no round-trip.
     if filter_entities is not None:
@@ -221,10 +261,12 @@ def entity_children(ctx: CLIContext, entity_set, record_id, non_empty, filter_en
         except re.error as exc:
             raise click.BadParameter(
                 f"not a valid regular expression: {exc}", param_hint="--filter-entities"
-            )
+            ) from exc
     with d365_errors(ctx):
         rows = entity_mod.count_children(
-            ctx.backend(), entity_set, record_id,
+            ctx.backend(),
+            entity_set,
+            record_id,
             non_empty=non_empty,
             filter_entities=filter_entities,
         )
@@ -252,22 +294,47 @@ def _rebind_payload_lookups(
 @entity_group.command("create")
 @click.argument("entity_set", shell_complete=_complete_entity_set_names)
 @click.option("--data", "data_json", help="JSON object as string.")
-@click.option("--data-file", type=click.Path(exists=True, dir_okay=False),
-              help="Path to a JSON file with the record body.")
+@click.option(
+    "--data-file",
+    type=click.Path(exists=True, dir_okay=False),
+    help="Path to a JSON file with the record body.",
+)
 @click.option("--no-return", is_flag=True, help="Don't request the record back; just GUID.")
-@click.option("--return-record", is_flag=True,
-              help="Ask server to return the created row (the default for create).")
-@click.option("--validate", is_flag=True,
-              help="Pre-write field-name check (1-3 metadata GETs); blocks unknown "
-                   "fields with did-you-mean. Composable with --dry-run.")
-@click.option("--full", is_flag=True, default=False,
-              help="Human mode: show every field including nulls and @odata.* "
-                   "plumbing. Default human output is concise (populated fields "
-                   "only, new id first). No effect in --json mode.")
+@click.option(
+    "--return-record",
+    is_flag=True,
+    help="Ask server to return the created row (the default for create).",
+)
+@click.option(
+    "--validate",
+    is_flag=True,
+    help="Pre-write field-name check (1-3 metadata GETs); blocks unknown "
+    "fields with did-you-mean. Composable with --dry-run.",
+)
+@click.option(
+    "--full",
+    is_flag=True,
+    default=False,
+    help="Human mode: show every field including nulls and @odata.* "
+    "plumbing. Default human output is concise (populated fields "
+    "only, new id first). No effect in --json mode.",
+)
 @_admin_header_options
 @pass_ctx
-def entity_create(ctx: CLIContext, entity_set, data_json, data_file, no_return, return_record,
-                  validate, full, as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
+def entity_create(
+    ctx: CLIContext,
+    entity_set,
+    data_json,
+    data_file,
+    no_return,
+    return_record,
+    validate,
+    full,
+    as_user,
+    as_user_object_id,
+    suppress_dup_detection,
+    bypass_plugins,
+):
     """POST a new record."""
     return_record = _resolve_return_record(no_return, return_record, default=True)
     payload = _load_payload(data_json, data_file)
@@ -282,10 +349,13 @@ def entity_create(ctx: CLIContext, entity_set, data_json, data_file, no_return, 
         if result_warnings is None:
             return
         validate_warnings = result_warnings
-    with d365_errors(ctx, warnings=validate_warnings or None,
-                     enrich=_dupe_key_enrich(ctx, entity_set, payload)):
+    with d365_errors(
+        ctx, warnings=validate_warnings or None, enrich=_dupe_key_enrich(ctx, entity_set, payload)
+    ):
         result = entity_mod.create(
-            ctx.backend(), entity_set, payload,
+            ctx.backend(),
+            entity_set,
+            payload,
             return_record=return_record,
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
@@ -304,25 +374,52 @@ def entity_create(ctx: CLIContext, entity_set, data_json, data_file, no_return, 
 @entity_group.command("clone")
 @click.argument("entity_set", shell_complete=_complete_entity_set_names)
 @click.argument("record_id")
-@click.option("--override", "overrides", multiple=True, metavar="FIELD=VALUE",
-              help="Repeatable. Set/replace a field on the clone. VALUE is parsed as "
-                   "JSON, else taken as a string. The key passes raw, so "
-                   "'ownerid@odata.bind=/systemusers(<id>)' re-adds a never-copy field.")
-@click.option("--unset", "unset_fields", multiple=True, metavar="FIELD",
-              help="Repeatable. Drop a field (logical name) from the clone; a lookup's "
-                   "logical name drops the bind it produced.")
-@click.option("--no-return", is_flag=True,
-              help="Don't request the record back; return just the new GUID.")
-@click.option("--with-children", is_flag=True,
-              help="Also clone the direct child rows of every custom 1:N relationship "
-                   "where this record is the parent (one level deep). --override/--unset "
-                   "apply to the parent only.")
-@click.option("--skip-child-entity", "skip_child_entity", multiple=True, metavar="LOGICAL",
-              help="Repeatable. With --with-children, exclude this child entity (logical "
-                   "name) from cloning — e.g. an org-specific plugin-derived table.")
+@click.option(
+    "--override",
+    "overrides",
+    multiple=True,
+    metavar="FIELD=VALUE",
+    help="Repeatable. Set/replace a field on the clone. VALUE is parsed as "
+    "JSON, else taken as a string. The key passes raw, so "
+    "'ownerid@odata.bind=/systemusers(<id>)' re-adds a never-copy field.",
+)
+@click.option(
+    "--unset",
+    "unset_fields",
+    multiple=True,
+    metavar="FIELD",
+    help="Repeatable. Drop a field (logical name) from the clone; a lookup's "
+    "logical name drops the bind it produced.",
+)
+@click.option(
+    "--no-return", is_flag=True, help="Don't request the record back; return just the new GUID."
+)
+@click.option(
+    "--with-children",
+    is_flag=True,
+    help="Also clone the direct child rows of every custom 1:N relationship "
+    "where this record is the parent (one level deep). --override/--unset "
+    "apply to the parent only.",
+)
+@click.option(
+    "--skip-child-entity",
+    "skip_child_entity",
+    multiple=True,
+    metavar="LOGICAL",
+    help="Repeatable. With --with-children, exclude this child entity (logical "
+    "name) from cloning — e.g. an org-specific plugin-derived table.",
+)
 @pass_ctx
-def entity_clone(ctx: CLIContext, entity_set, record_id, overrides, unset_fields, no_return,
-                 with_children, skip_child_entity):
+def entity_clone(
+    ctx: CLIContext,
+    entity_set,
+    record_id,
+    overrides,
+    unset_fields,
+    no_return,
+    with_children,
+    skip_child_entity,
+):
     """Clone a single record, optionally its children.
 
     Copies <entity-set> <guid>'s values minus the never-copy set (ids,
@@ -336,7 +433,8 @@ def entity_clone(ctx: CLIContext, entity_set, record_id, overrides, unset_fields
     child create that fails does not roll back or abort: the rest continue and
     the envelope reports ok=false with meta.created (parent + per-entity child
     ids) and data.failures (entity, source id, reason). Recover by cloning the
-    failed rows individually — never re-run the whole verb."""
+    failed rows individually — never re-run the whole verb.
+    """
     parsed_overrides = _parse_overrides(overrides)
     # --skip-child-entity is meaningless without --with-children; a silent no-op
     # would hide the mistake, so reject the combination as a usage error (exit 2)
@@ -350,7 +448,9 @@ def entity_clone(ctx: CLIContext, entity_set, record_id, overrides, unset_fields
         record_id = entity_mod._normalize_id(record_id)
     with d365_errors(ctx):
         result = entity_mod.clone_record(
-            ctx.backend(), entity_set, record_id,
+            ctx.backend(),
+            entity_set,
+            record_id,
             overrides=parsed_overrides,
             unset=list(unset_fields),
             return_record=not no_return,
@@ -377,10 +477,14 @@ def entity_clone(ctx: CLIContext, entity_set, record_id, overrides, unset_fields
             data = {"created": created, "failures": failures}
         if failures:
             n_children = sum(len(ids) for ids in created["children"].values())
-            ctx.emit(False, data=data, meta=meta,
-                     error=f"{len(failures)} child row(s) failed to clone; parent and "
-                           f"{n_children} child row(s) created (no rollback — clone the "
-                           "failed rows individually).")
+            ctx.emit(
+                False,
+                data=data,
+                meta=meta,
+                error=f"{len(failures)} child row(s) failed to clone; parent and "
+                f"{n_children} child row(s) created (no rollback — clone the "
+                "failed rows individually).",
+            )
             return
         ctx.emit(True, data=data, meta=meta)
         return
@@ -396,30 +500,58 @@ def entity_clone(ctx: CLIContext, entity_set, record_id, overrides, unset_fields
 @click.argument("entity_set", shell_complete=_complete_entity_set_names)
 @click.argument("record_id")
 @click.option("--data", "data_json", help="JSON object as string.")
-@click.option("--data-file", type=click.Path(exists=True, dir_okay=False),
-              help="Path to a JSON file with the record body.")
+@click.option(
+    "--data-file",
+    type=click.Path(exists=True, dir_okay=False),
+    help="Path to a JSON file with the record body.",
+)
 @click.option("--allow-create", is_flag=True, help="Permit upsert (skip If-Match header).")
-@click.option("--return-record", is_flag=True,
-              help="Ask server to return the updated row (update is silent by default).")
-@click.option("--no-return", is_flag=True,
-              help="Don't request the record back (the default for update).")
-@click.option("--if-match", "if_match", metavar="ETAG", default=None,
-              help='Optimistic concurrency etag. Example (POSIX): --if-match \'W/"123"\'. '
-                   'Use --if-match "*" to require any current version.')
-@click.option("--validate", is_flag=True,
-              help="Pre-write field-name check (1-3 metadata GETs); blocks unknown "
-                   "fields with did-you-mean. Composable with --dry-run.")
+@click.option(
+    "--return-record",
+    is_flag=True,
+    help="Ask server to return the updated row (update is silent by default).",
+)
+@click.option(
+    "--no-return", is_flag=True, help="Don't request the record back (the default for update)."
+)
+@click.option(
+    "--if-match",
+    "if_match",
+    metavar="ETAG",
+    default=None,
+    help="Optimistic concurrency etag. Example (POSIX): --if-match 'W/\"123\"'. "
+    'Use --if-match "*" to require any current version.',
+)
+@click.option(
+    "--validate",
+    is_flag=True,
+    help="Pre-write field-name check (1-3 metadata GETs); blocks unknown "
+    "fields with did-you-mean. Composable with --dry-run.",
+)
 @_admin_header_options
 @pass_ctx
-def entity_update(ctx: CLIContext, entity_set, record_id, data_json, data_file, allow_create,
-                  return_record, no_return, if_match, validate, as_user, as_user_object_id,
-                  suppress_dup_detection, bypass_plugins):
+def entity_update(
+    ctx: CLIContext,
+    entity_set,
+    record_id,
+    data_json,
+    data_file,
+    allow_create,
+    return_record,
+    no_return,
+    if_match,
+    validate,
+    as_user,
+    as_user_object_id,
+    suppress_dup_detection,
+    bypass_plugins,
+):
     """PATCH an existing record."""
     if allow_create and if_match:
         raise click.UsageError(
             "--allow-create and --if-match are mutually exclusive: --allow-create permits "
             "upsert (no If-Match), while --if-match enforces optimistic concurrency."
-    )
+        )
     return_record = _resolve_return_record(no_return, return_record, default=False)
     payload = _load_payload(data_json, data_file)
     try:
@@ -429,10 +561,14 @@ def entity_update(ctx: CLIContext, entity_set, record_id, data_json, data_file, 
         return
     if validate and _validate_or_emit(ctx, entity_set, payload) is None:
         return
-    with d365_errors(ctx, hint=_metadata_set_hint(entity_set),
-                     enrich=_dupe_key_enrich(ctx, entity_set, payload)):
+    with d365_errors(
+        ctx, hint=_metadata_set_hint(entity_set), enrich=_dupe_key_enrich(ctx, entity_set, payload)
+    ):
         result = entity_mod.update(
-            ctx.backend(), entity_set, record_id, payload,
+            ctx.backend(),
+            entity_set,
+            record_id,
+            payload,
             prevent_create=not allow_create,
             return_record=return_record,
             if_match=if_match,
@@ -441,8 +577,10 @@ def entity_update(ctx: CLIContext, entity_set, record_id, data_json, data_file, 
     # Normal path: `result` carries `_entity_id` from the OData-EntityId header.
     # Fallback (empty 204, no header) uses the same normalized id keys, not a bare
     # `id`, so every write verb agrees on the id shape (ADR 0008 / #303).
-    data = result or {"updated": True,
-                      **entity_mod.entity_id_fields(ctx.backend(), entity_set, record_id)}
+    data = result or {
+        "updated": True,
+        **entity_mod.entity_id_fields(ctx.backend(), entity_set, record_id),
+    }
     ctx.emit(True, data=data)
     _journal(ctx, entity_set, data)
 
@@ -450,22 +588,45 @@ def entity_update(ctx: CLIContext, entity_set, record_id, data_json, data_file, 
 @entity_group.command("upsert")
 @click.argument("entity_set", shell_complete=_complete_entity_set_names)
 @click.argument("record_id", required=False)
-@click.option("--key", "alt_key", metavar="ATTR[,ATTR...]", default=None,
-              help="Upsert by an alternate key instead of the primary GUID: one "
-                   "attribute, or a comma-separated composite key. Values are read "
-                   "from --data, so omit the RECORD_ID. Mutually exclusive with it.")
+@click.option(
+    "--key",
+    "alt_key",
+    metavar="ATTR[,ATTR...]",
+    default=None,
+    help="Upsert by an alternate key instead of the primary GUID: one "
+    "attribute, or a comma-separated composite key. Values are read "
+    "from --data, so omit the RECORD_ID. Mutually exclusive with it.",
+)
 @click.option("--data", "data_json", help="JSON object as string.")
-@click.option("--data-file", type=click.Path(exists=True, dir_okay=False),
-              help="Path to a JSON file with the record body.")
-@click.option("--if-none-match", "if_none_match", is_flag=True, default=False,
-              help="Create-only: send If-None-Match: * so the write succeeds only "
-                   "if the record does not already exist (412 precondition error "
-                   "when it does). The complement to update's --if-match.")
+@click.option(
+    "--data-file",
+    type=click.Path(exists=True, dir_okay=False),
+    help="Path to a JSON file with the record body.",
+)
+@click.option(
+    "--if-none-match",
+    "if_none_match",
+    is_flag=True,
+    default=False,
+    help="Create-only: send If-None-Match: * so the write succeeds only "
+    "if the record does not already exist (412 precondition error "
+    "when it does). The complement to update's --if-match.",
+)
 @_admin_header_options
 @pass_ctx
-def entity_upsert(ctx: CLIContext, entity_set, record_id, alt_key, data_json, data_file,
-                  if_none_match, as_user, as_user_object_id, suppress_dup_detection,
-                  bypass_plugins):
+def entity_upsert(
+    ctx: CLIContext,
+    entity_set,
+    record_id,
+    alt_key,
+    data_json,
+    data_file,
+    if_none_match,
+    as_user,
+    as_user_object_id,
+    suppress_dup_detection,
+    bypass_plugins,
+):
     """PATCH with create-if-missing semantics (by GUID, or --key alternate key)."""
     if alt_key and record_id:
         raise click.UsageError(
@@ -474,8 +635,7 @@ def entity_upsert(ctx: CLIContext, entity_set, record_id, alt_key, data_json, da
         )
     if not alt_key and not record_id:
         raise click.UsageError(
-            "Provide a RECORD_ID (the primary GUID) or --key <attr> to upsert by "
-            "an alternate key."
+            "Provide a RECORD_ID (the primary GUID) or --key <attr> to upsert by an alternate key."
         )
     requested_key = [a.strip() for a in alt_key.split(",") if a.strip()] if alt_key else []
     if alt_key and not requested_key:
@@ -485,24 +645,23 @@ def entity_upsert(ctx: CLIContext, entity_set, record_id, alt_key, data_json, da
     with d365_errors(ctx):
         payload = _rebind_payload_lookups(ctx, entity_set, payload)
         if requested_key:
-            key_attrs = entity_mod.resolve_alternate_key(
-                ctx.backend(), entity_set, requested_key)
+            key_attrs = entity_mod.resolve_alternate_key(ctx.backend(), entity_set, requested_key)
             key_values = {}
             for attr in key_attrs:
                 if attr not in payload:
-                    raise D365Error(
-                        f"Alternate-key attribute {attr!r} is not present in --data."
-                    )
+                    raise D365Error(f"Alternate-key attribute {attr!r} is not present in --data.")
                 key_values[attr] = payload[attr]
             result = entity_mod.upsert_by_key(
-                ctx.backend(), entity_set, key_values, payload,
-                if_none_match=if_none_match, **admin)
-            fallback = {"upserted": True,
-                        "key": entity_mod.format_alternate_key_segment(key_values)}
+                ctx.backend(), entity_set, key_values, payload, if_none_match=if_none_match, **admin
+            )
+            fallback = {
+                "upserted": True,
+                "key": entity_mod.format_alternate_key_segment(key_values),
+            }
         else:
             result = entity_mod.upsert(
-                ctx.backend(), entity_set, record_id, payload,
-                if_none_match=if_none_match, **admin)
+                ctx.backend(), entity_set, record_id, payload, if_none_match=if_none_match, **admin
+            )
             fallback = {"upserted": True, "id": record_id}
     data = result or fallback
     ctx.emit(True, data=data)
@@ -512,13 +671,23 @@ def entity_upsert(ctx: CLIContext, entity_set, record_id, alt_key, data_json, da
 @entity_group.command("delete")
 @click.argument("entity_set", shell_complete=_complete_entity_set_names)
 @click.argument("record_id")
-@click.option("--if-match", "if_match", metavar="ETAG", default=None,
-              help='Optimistic concurrency etag.')
+@click.option(
+    "--if-match", "if_match", metavar="ETAG", default=None, help="Optimistic concurrency etag."
+)
 @_destructive_option
 @_admin_header_options
 @pass_ctx
-def entity_delete(ctx: CLIContext, entity_set, record_id, if_match, yes,
-                  as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
+def entity_delete(
+    ctx: CLIContext,
+    entity_set,
+    record_id,
+    if_match,
+    yes,
+    as_user,
+    as_user_object_id,
+    suppress_dup_detection,
+    bypass_plugins,
+):
     """DELETE a record."""
     _confirm_destructive(ctx, "record", f"{entity_set}({record_id})", yes)
 
@@ -530,12 +699,15 @@ def entity_delete(ctx: CLIContext, entity_set, record_id, if_match, yes,
         # workflow.ACTIVATION_DELETE_ERROR_CODE (a fixed D365 server code).
         if exc.code == "0x80045004":
             from crm.core import workflow as workflow_mod
+
             return workflow_mod.activation_delete_hint(ctx.backend(), record_id, exc), None
         return None, None
 
     with d365_errors(ctx, enrich=_enrich):
         result = entity_mod.delete(
-            ctx.backend(), entity_set, record_id,
+            ctx.backend(),
+            entity_set,
+            record_id,
             if_match=if_match,
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
@@ -551,12 +723,27 @@ def entity_delete(ctx: CLIContext, entity_set, record_id, if_match, yes,
 @click.argument("related_id")
 @_admin_header_options
 @pass_ctx
-def entity_associate(ctx: CLIContext, target_set, target_id, nav, related_set, related_id,
-                     as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
+def entity_associate(
+    ctx: CLIContext,
+    target_set,
+    target_id,
+    nav,
+    related_set,
+    related_id,
+    as_user,
+    as_user_object_id,
+    suppress_dup_detection,
+    bypass_plugins,
+):
     """Associate two records via a collection-valued nav property (1:N from one-side or N:N)."""
     with d365_errors(ctx):
         result = entity_mod.associate(
-            ctx.backend(), target_set, target_id, nav, related_set, related_id,
+            ctx.backend(),
+            target_set,
+            target_id,
+            nav,
+            related_set,
+            related_id,
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
     ctx.emit(True, data=result)
@@ -572,8 +759,19 @@ def entity_associate(ctx: CLIContext, target_set, target_id, nav, related_set, r
 @_destructive_option
 @_admin_header_options
 @pass_ctx
-def entity_disassociate(ctx: CLIContext, target_set, target_id, nav, related_set, related_id, yes,
-                        as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
+def entity_disassociate(
+    ctx: CLIContext,
+    target_set,
+    target_id,
+    nav,
+    related_set,
+    related_id,
+    yes,
+    as_user,
+    as_user_object_id,
+    suppress_dup_detection,
+    bypass_plugins,
+):
     """Disassociate two records. Omit --related-* for single-valued lookups."""
     # A half-supplied flag pair is a caller mistake caught before any backend
     # call — a usage error (exit 2), like `--bind-id` without `--bind-set`. The
@@ -586,13 +784,21 @@ def entity_disassociate(ctx: CLIContext, target_set, target_id, nav, related_set
             "lookup); got only one."
         )
     _confirm_destructive(
-        ctx, "relationship", f"{target_set}({target_id}).{nav}", yes,
+        ctx,
+        "relationship",
+        f"{target_set}({target_id}).{nav}",
+        yes,
         message=f"This will remove the {nav!r} relationship on "
-                f"{target_set}({target_id}). Continue?")
+        f"{target_set}({target_id}). Continue?",
+    )
     with d365_errors(ctx):
         result = entity_mod.disassociate(
-            ctx.backend(), target_set, target_id, nav,
-            related_set=related_set, related_id=related_id,
+            ctx.backend(),
+            target_set,
+            target_id,
+            nav,
+            related_set=related_set,
+            related_id=related_id,
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
     ctx.emit(True, data=result)
@@ -607,12 +813,27 @@ def entity_disassociate(ctx: CLIContext, target_set, target_id, nav, related_set
 @click.argument("related_id")
 @_admin_header_options
 @pass_ctx
-def entity_set_lookup(ctx: CLIContext, entity_set, record_id, nav, related_set, related_id,
-                      as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
+def entity_set_lookup(
+    ctx: CLIContext,
+    entity_set,
+    record_id,
+    nav,
+    related_set,
+    related_id,
+    as_user,
+    as_user_object_id,
+    suppress_dup_detection,
+    bypass_plugins,
+):
     """Set a single-valued lookup via @odata.bind PATCH."""
     with d365_errors(ctx):
         result = entity_mod.set_lookup(
-            ctx.backend(), entity_set, record_id, nav, related_set, related_id,
+            ctx.backend(),
+            entity_set,
+            record_id,
+            nav,
+            related_set,
+            related_id,
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
     data = result or {"set": True, "id": record_id, "nav": nav}
@@ -627,16 +848,31 @@ def entity_set_lookup(ctx: CLIContext, entity_set, record_id, nav, related_set, 
 @_destructive_option
 @_admin_header_options
 @pass_ctx
-def entity_clear_lookup(ctx: CLIContext, entity_set, record_id, nav, yes,
-                        as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
+def entity_clear_lookup(
+    ctx: CLIContext,
+    entity_set,
+    record_id,
+    nav,
+    yes,
+    as_user,
+    as_user_object_id,
+    suppress_dup_detection,
+    bypass_plugins,
+):
     """Clear a single-valued lookup via DELETE /$ref."""
     _confirm_destructive(
-        ctx, "lookup", f"{entity_set}({record_id}).{nav}", yes,
-        message=f"This will clear the {nav!r} lookup on "
-                f"{entity_set}({record_id}). Continue?")
+        ctx,
+        "lookup",
+        f"{entity_set}({record_id}).{nav}",
+        yes,
+        message=f"This will clear the {nav!r} lookup on {entity_set}({record_id}). Continue?",
+    )
     with d365_errors(ctx):
         result = entity_mod.clear_lookup(
-            ctx.backend(), entity_set, record_id, nav,
+            ctx.backend(),
+            entity_set,
+            record_id,
+            nav,
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
     ctx.emit(True, data=result)

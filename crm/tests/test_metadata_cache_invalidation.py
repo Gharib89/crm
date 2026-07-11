@@ -40,12 +40,14 @@ def dry_backend(profile) -> D365Backend:
 def _seed_cache(profile: ConnectionProfile) -> None:
     """Write a cache file and assert it exists."""
     from crm.core import metadata_cache as mc
+
     mc.write_definitions(profile, [{"logical": "account", "set_name": "accounts"}], now=0.0)
     assert mc.cache_file(profile).exists()
 
 
 def _cache_gone(profile: ConnectionProfile) -> bool:
     from crm.core import metadata_cache as mc
+
     return not mc.cache_file(profile).exists()
 
 
@@ -53,9 +55,11 @@ def _cache_gone(profile: ConnectionProfile) -> bool:
 # metadata.py: create_entity
 # ---------------------------------------------------------------------------
 
+
 class TestCreateEntityInvalidatesCache:
     def test_cache_busted_on_real_create(self, profile, backend):
         from crm.core import metadata as meta_mod
+
         _seed_cache(profile)
         entity_url = backend.url_for(f"EntityDefinitions({_ENTITY_ID})")
         with requests_mock_module.Mocker() as m:
@@ -75,12 +79,12 @@ class TestCreateEntityInvalidatesCache:
                 entity_url,
                 json={"EntitySetName": "new_widgets", "LogicalName": "new_widget"},
             )
-            meta_mod.create_entity(backend, schema_name="new_Widget",
-                                   display_name="Widget")
+            meta_mod.create_entity(backend, schema_name="new_Widget", display_name="Widget")
         assert _cache_gone(profile)
 
     def test_no_cache_bust_on_dry_run(self, profile, dry_backend):
         from crm.core import metadata as meta_mod
+
         _seed_cache(profile)
         with requests_mock_module.Mocker() as m:
             # existence probe even in dry-run (target_exists bypasses dry_run)
@@ -95,9 +99,9 @@ class TestCreateEntityInvalidatesCache:
                 json={"_dry_run": True},
                 status_code=200,
             )
-            meta_mod.create_entity(dry_backend, schema_name="new_Widget",
-                                   display_name="Widget")
+            meta_mod.create_entity(dry_backend, schema_name="new_Widget", display_name="Widget")
         from crm.core import metadata_cache as mc
+
         assert mc.cache_file(profile).exists(), "cache must survive a dry-run"
 
 
@@ -105,9 +109,11 @@ class TestCreateEntityInvalidatesCache:
 # metadata.py: delete_entity
 # ---------------------------------------------------------------------------
 
+
 class TestDeleteEntityInvalidatesCache:
     def test_cache_busted_on_real_delete(self, profile, backend):
         from crm.core import metadata as meta_mod
+
         _seed_cache(profile)
         with requests_mock_module.Mocker() as m:
             m.get(
@@ -123,6 +129,7 @@ class TestDeleteEntityInvalidatesCache:
 
     def test_no_cache_bust_on_dry_run_delete(self, profile, dry_backend):
         from crm.core import metadata as meta_mod
+
         _seed_cache(profile)
         with requests_mock_module.Mocker() as m:
             m.get(
@@ -137,6 +144,7 @@ class TestDeleteEntityInvalidatesCache:
             )
             meta_mod.delete_entity(dry_backend, "new_widget")
         from crm.core import metadata_cache as mc
+
         assert mc.cache_file(profile).exists(), "cache must survive a dry-run delete"
 
 
@@ -144,9 +152,11 @@ class TestDeleteEntityInvalidatesCache:
 # metadata_attrs.py: add_attribute
 # ---------------------------------------------------------------------------
 
+
 class TestAddAttributeInvalidatesCache:
     def test_cache_busted_on_real_add(self, profile, backend):
         from crm.core import metadata_attrs as ma
+
         _seed_cache(profile)
         attr_url = backend.url_for(
             f"EntityDefinitions(LogicalName='new_widget')/Attributes({_ATTR_ID})"
@@ -168,8 +178,11 @@ class TestAddAttributeInvalidatesCache:
             )
             m.get(
                 attr_url,
-                json={"LogicalName": "new_color", "SchemaName": "new_Color",
-                      "AttributeType": "String"},
+                json={
+                    "LogicalName": "new_color",
+                    "SchemaName": "new_Color",
+                    "AttributeType": "String",
+                },
             )
             ma.add_attribute(
                 backend,
@@ -186,42 +199,56 @@ class TestAddAttributeInvalidatesCache:
 # metadata_update.py: update_entity
 # ---------------------------------------------------------------------------
 
+
 class TestUpdateEntityInvalidatesCache:
     def test_cache_busted_on_real_update(self, profile, backend):
         from crm.core import metadata_update as mu
+
         _seed_cache(profile)
         path = backend.url_for("EntityDefinitions(LogicalName='new_widget')")
         with requests_mock_module.Mocker() as m:
-            m.get(path, json={
-                "@odata.type": "#Microsoft.Dynamics.CRM.EntityMetadata",
-                "MetadataId": _ENTITY_ID,
-                "SchemaName": "new_Widget",
-                "LogicalName": "new_widget",
-                "DisplayName": {"LocalizedLabels": [{"Label": "Widget", "LanguageCode": 1033}]},
-                "DisplayCollectionName": {"LocalizedLabels": [{"Label": "Widgets", "LanguageCode": 1033}]},
-                "OwnershipType": "UserOwned",
-            })
+            m.get(
+                path,
+                json={
+                    "@odata.type": "#Microsoft.Dynamics.CRM.EntityMetadata",
+                    "MetadataId": _ENTITY_ID,
+                    "SchemaName": "new_Widget",
+                    "LogicalName": "new_widget",
+                    "DisplayName": {"LocalizedLabels": [{"Label": "Widget", "LanguageCode": 1033}]},
+                    "DisplayCollectionName": {
+                        "LocalizedLabels": [{"Label": "Widgets", "LanguageCode": 1033}]
+                    },
+                    "OwnershipType": "UserOwned",
+                },
+            )
             m.put(path, status_code=204)
             mu.update_entity(backend, "new_widget", display_name="Widget v2")
         assert _cache_gone(profile)
 
     def test_no_cache_bust_on_dry_run_update(self, profile, dry_backend):
         from crm.core import metadata_update as mu
+
         _seed_cache(profile)
         path = dry_backend.url_for("EntityDefinitions(LogicalName='new_widget')")
         with requests_mock_module.Mocker() as m:
             # _read bypasses dry_run for GET
-            m.get(path, json={
-                "@odata.type": "#Microsoft.Dynamics.CRM.EntityMetadata",
-                "MetadataId": _ENTITY_ID,
-                "SchemaName": "new_Widget",
-                "LogicalName": "new_widget",
-                "DisplayName": {"LocalizedLabels": [{"Label": "Widget", "LanguageCode": 1033}]},
-                "DisplayCollectionName": {"LocalizedLabels": [{"Label": "Widgets", "LanguageCode": 1033}]},
-                "OwnershipType": "UserOwned",
-            })
+            m.get(
+                path,
+                json={
+                    "@odata.type": "#Microsoft.Dynamics.CRM.EntityMetadata",
+                    "MetadataId": _ENTITY_ID,
+                    "SchemaName": "new_Widget",
+                    "LogicalName": "new_widget",
+                    "DisplayName": {"LocalizedLabels": [{"Label": "Widget", "LanguageCode": 1033}]},
+                    "DisplayCollectionName": {
+                        "LocalizedLabels": [{"Label": "Widgets", "LanguageCode": 1033}]
+                    },
+                    "OwnershipType": "UserOwned",
+                },
+            )
             mu.update_entity(dry_backend, "new_widget", display_name="Widget v2")
         from crm.core import metadata_cache as mc
+
         assert mc.cache_file(profile).exists(), "cache must survive a dry-run update"
 
 
@@ -229,9 +256,11 @@ class TestUpdateEntityInvalidatesCache:
 # optionsets.py: create_optionset
 # ---------------------------------------------------------------------------
 
+
 class TestCreateOptionsetInvalidatesCache:
     def test_cache_busted_on_real_create(self, profile, backend):
         from crm.core import optionsets as os_mod
+
         _seed_cache(profile)
         os_url = backend.url_for(f"GlobalOptionSetDefinitions({_OS_ID})")
         with requests_mock_module.Mocker() as m:
@@ -250,8 +279,7 @@ class TestCreateOptionsetInvalidatesCache:
                 os_url,
                 json={"Name": "new_priority", "IsCustomOptionSet": True},
             )
-            os_mod.create_optionset(backend, name="new_priority",
-                                    display_name="Priority")
+            os_mod.create_optionset(backend, name="new_priority", display_name="Priority")
         assert _cache_gone(profile)
 
 
@@ -259,17 +287,17 @@ class TestCreateOptionsetInvalidatesCache:
 # relationships.py: create_one_to_many
 # ---------------------------------------------------------------------------
 
+
 class TestCreateOneToManyInvalidatesCache:
     def test_cache_busted_on_real_create(self, profile, backend):
         from crm.core import relationships as rel
+
         _seed_cache(profile)
         rel_url = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
         with requests_mock_module.Mocker() as m:
             # existence probe: 404
             m.get(
-                backend.url_for(
-                    "RelationshipDefinitions(SchemaName='new_account_new_widget')"
-                ),
+                backend.url_for("RelationshipDefinitions(SchemaName='new_account_new_widget')"),
                 status_code=404,
                 json={"error": {"code": "0x", "message": "not found"}},
             )
@@ -280,8 +308,10 @@ class TestCreateOneToManyInvalidatesCache:
             )
             m.get(
                 rel_url + "/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
-                json={"SchemaName": "new_account_new_widget",
-                      "ReferencingAttribute": "new_accountid"},
+                json={
+                    "SchemaName": "new_account_new_widget",
+                    "ReferencingAttribute": "new_accountid",
+                },
             )
             rel.create_one_to_many(
                 backend,
@@ -298,9 +328,11 @@ class TestCreateOneToManyInvalidatesCache:
 # optionsets.py: update_optionset
 # ---------------------------------------------------------------------------
 
+
 class TestUpdateOptionsetInvalidatesCache:
     def test_cache_busted_on_real_update(self, profile, backend):
         from crm.core import optionsets as os_mod
+
         _seed_cache(profile)
         with requests_mock_module.Mocker() as m:
             m.post(backend.url_for("InsertOptionValue"), status_code=204, json={})
@@ -309,6 +341,7 @@ class TestUpdateOptionsetInvalidatesCache:
 
     def test_cache_survives_dry_run_update(self, profile, dry_backend):
         from crm.core import optionsets as os_mod
+
         _seed_cache(profile)
         with requests_mock_module.Mocker() as m:
             # dry-run still fetches the current options via a live GET (reads execute)
@@ -318,6 +351,7 @@ class TestUpdateOptionsetInvalidatesCache:
             )
             os_mod.update_optionset(dry_backend, "new_priority", insert=[(7, "Critical")])
         from crm.core import metadata_cache as mc
+
         assert mc.cache_file(profile).exists(), "cache must survive a dry-run update_optionset"
 
 
@@ -325,9 +359,11 @@ class TestUpdateOptionsetInvalidatesCache:
 # solution.py: publish_all
 # ---------------------------------------------------------------------------
 
+
 class TestPublishAllInvalidatesCache:
     def test_cache_busted_on_real_publish(self, profile, backend):
         from crm.core import solution as sol_mod
+
         _seed_cache(profile)
         with requests_mock_module.Mocker() as m:
             m.post(backend.url_for("PublishAllXml"), status_code=204)
@@ -336,6 +372,7 @@ class TestPublishAllInvalidatesCache:
 
     def test_no_cache_bust_on_dry_run_publish(self, profile, dry_backend):
         from crm.core import solution as sol_mod
+
         _seed_cache(profile)
         with requests_mock_module.Mocker() as m:
             # dry-run POST returns preview dict (truthy)
@@ -346,12 +383,14 @@ class TestPublishAllInvalidatesCache:
             )
             sol_mod.publish_all(dry_backend)
         from crm.core import metadata_cache as mc
+
         assert mc.cache_file(profile).exists(), "cache must survive dry-run publish"
 
     def test_cache_busted_when_publish_returns_body(self, profile, backend):
         # A real (non-dry-run) publish that returns a non-empty body must STILL
         # bust the cache — invalidation must not be coupled to an empty 204.
         from crm.core import solution as sol_mod
+
         _seed_cache(profile)
         with requests_mock_module.Mocker() as m:
             m.post(

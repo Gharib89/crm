@@ -25,7 +25,7 @@ _DIM = "\033[2m"
 _UNDERLINE = "\033[4m"
 
 # Brand colors
-_CYAN = "\033[38;5;80m"       # crm brand cyan
+_CYAN = "\033[38;5;80m"  # crm brand cyan
 _WHITE = "\033[97m"
 _GRAY = "\033[38;5;245m"
 _DARK_GRAY = "\033[38;5;240m"
@@ -33,7 +33,7 @@ _LIGHT_GRAY = "\033[38;5;250m"
 
 # Accent color — the CLI always runs as the single "d365" skin, which keyed
 # no software-specific accent, so the accent is always the default sky blue.
-_DEFAULT_ACCENT = "\033[38;5;75m"      # default sky blue
+_DEFAULT_ACCENT = "\033[38;5;75m"  # default sky blue
 
 # Status colors
 _GREEN = "\033[38;5;78m"
@@ -63,6 +63,7 @@ _BR = "╯"
 def _strip_ansi(text: str) -> str:
     """Remove ANSI escape codes for length calculation."""
     import re
+
     return re.sub(r"\033\[[^m]*m", "", text)
 
 
@@ -89,8 +90,13 @@ class ReplSkin:
     interactive REPL and human-readable command output.
     """
 
-    def __init__(self, software: str, version: str = "1.0.0",
-                 history_file: str | None = None, skill_path: str | None = None):
+    def __init__(
+        self,
+        software: str,
+        version: str = "1.0.0",
+        history_file: str | None = None,
+        skill_path: str | None = None,
+    ):
         """Initialize the REPL skin.
 
         Args:
@@ -222,8 +228,7 @@ class ReplSkin:
 
     # ── Prompt ────────────────────────────────────────────────────────
 
-    def prompt(self, project_name: str = "", modified: bool = False,
-               context: str = "") -> str:
+    def prompt(self, project_name: str = "", modified: bool = False, context: str = "") -> str:
         """Build a styled prompt string for prompt_toolkit or input().
 
         Args:
@@ -251,14 +256,13 @@ class ReplSkin:
             mod = "*" if modified else ""
             parts.append(f" {self._c(_DARK_GRAY, '[')}")
             parts.append(self._c(_LIGHT_GRAY, f"{ctx}{mod}"))
-            parts.append(self._c(_DARK_GRAY, ']'))
+            parts.append(self._c(_DARK_GRAY, "]"))
 
         parts.append(self._c(_GRAY, " ❯ "))
 
         return "".join(parts)
 
-    def prompt_tokens(self, project_name: str = "", modified: bool = False,
-                      context: str = ""):
+    def prompt_tokens(self, project_name: str = "", modified: bool = False, context: str = ""):
         """Build prompt_toolkit formatted text tokens for the prompt.
 
         Use with prompt_toolkit's FormattedText for proper ANSI handling.
@@ -295,23 +299,25 @@ class ReplSkin:
 
         accent_hex = "#5fafff"
 
-        return Style.from_dict({
-            "icon": "#5fdfdf bold",     # cyan brand color
-            "software": f"{accent_hex} bold",
-            "bracket": "#585858",
-            "context": "#bcbcbc",
-            "arrow": "#808080",
-            # Completion menu
-            "completion-menu.completion": "bg:#303030 #bcbcbc",
-            "completion-menu.completion.current": f"bg:{accent_hex} #000000",
-            "completion-menu.meta.completion": "bg:#303030 #808080",
-            "completion-menu.meta.completion.current": f"bg:{accent_hex} #000000",
-            # Auto-suggest
-            "auto-suggest": "#585858",
-            # Bottom toolbar
-            "bottom-toolbar": "bg:#1c1c1c #808080",
-            "bottom-toolbar.text": "#808080",
-        })
+        return Style.from_dict(
+            {
+                "icon": "#5fdfdf bold",  # cyan brand color
+                "software": f"{accent_hex} bold",
+                "bracket": "#585858",
+                "context": "#bcbcbc",
+                "arrow": "#808080",
+                # Completion menu
+                "completion-menu.completion": "bg:#303030 #bcbcbc",
+                "completion-menu.completion.current": f"bg:{accent_hex} #000000",
+                "completion-menu.meta.completion": "bg:#303030 #808080",
+                "completion-menu.meta.completion.current": f"bg:{accent_hex} #000000",
+                # Auto-suggest
+                "auto-suggest": "#585858",
+                # Bottom toolbar
+                "bottom-toolbar": "bg:#1c1c1c #808080",
+                "bottom-toolbar.text": "#808080",
+            }
+        )
 
     # ── Messages ──────────────────────────────────────────────────────
 
@@ -366,8 +372,7 @@ class ReplSkin:
 
     # ── Table display ─────────────────────────────────────────────────
 
-    def table(self, headers: list[str], rows: list[list[str]],
-              max_col_width: int = 40):
+    def table(self, headers: list[str], rows: list[list[str]], max_col_width: int = 40):
         """Print a formatted table with box-drawing characters.
 
         Args:
@@ -383,9 +388,7 @@ class ReplSkin:
         for row in rows:
             for i, cell in enumerate(row):
                 if i < len(col_widths):
-                    col_widths[i] = min(
-                        max(col_widths[i], len(str(cell))), max_col_width
-                    )
+                    col_widths[i] = min(max(col_widths[i], len(str(cell))), max_col_width)
 
         def pad(text: str, width: int) -> str:
             t = str(text)[:width]
@@ -393,15 +396,13 @@ class ReplSkin:
 
         # Header
         header_cells = [
-            self._c(_CYAN + _BOLD, pad(h, col_widths[i]))
-            for i, h in enumerate(headers)
+            self._c(_CYAN + _BOLD, pad(h, col_widths[i])) for i, h in enumerate(headers)
         ]
         sep = self._c(_DARK_GRAY, f" {_V_LINE} ")
         header_line = f"  {sep.join(header_cells)}"
         print(header_line)
 
         # Separator
-        sep_parts = [self._c(_DARK_GRAY, _H_LINE * w) for w in col_widths]
         sep_line = self._c(_DARK_GRAY, f"  {'───'.join([_H_LINE * w for w in col_widths])}")
         print(sep_line)
 
@@ -449,9 +450,8 @@ class ReplSkin:
         """
         try:
             from prompt_toolkit import PromptSession
-            from prompt_toolkit.history import FileHistory
             from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
-            from prompt_toolkit.formatted_text import FormattedText
+            from prompt_toolkit.history import FileHistory
 
             style = self.get_prompt_style()
 
@@ -466,8 +466,9 @@ class ReplSkin:
         except ImportError:
             return None
 
-    def get_input(self, pt_session, project_name: str = "",
-                  modified: bool = False, context: str = "") -> str:
+    def get_input(
+        self, pt_session, project_name: str = "", modified: bool = False, context: str = ""
+    ) -> str:
         """Get input from user using prompt_toolkit or fallback.
 
         Args:
@@ -481,6 +482,7 @@ class ReplSkin:
         """
         if pt_session is not None:
             from prompt_toolkit.formatted_text import FormattedText
+
             tokens = self.prompt_tokens(project_name, modified, context)
             return pt_session.prompt(FormattedText(tokens)).strip()
         else:

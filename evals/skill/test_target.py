@@ -8,9 +8,10 @@ reachable target whose failures should surface). Mirrors the e2e conftest's
 
     pytest evals/skill
 """
+
 from __future__ import annotations
 
-from crm.utils.d365_backend import D365Error, _TRANSPORT_FAILURE_PREFIX
+from crm.utils.d365_backend import _TRANSPORT_FAILURE_PREFIX, D365Error
 from evals.skill.target import _is_unreachable, host_of
 
 

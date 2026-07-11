@@ -1,10 +1,15 @@
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
 
 setup(
     name="crm",
     version="1.68.2",
-    description="Stateful CLI harness for Microsoft Dynamics 365 Customer Engagement — on-prem v9.x (NTLM) or Dataverse online (OAuth), over the Web API",
-    long_description=open("README.md", encoding="utf-8").read() if __import__("os").path.exists("README.md") else "",
+    description=(
+        "Stateful CLI harness for Microsoft Dynamics 365 Customer Engagement — on-prem "
+        "v9.x (NTLM) or Dataverse online (OAuth), over the Web API"
+    ),
+    long_description=open("README.md", encoding="utf-8").read()
+    if __import__("os").path.exists("README.md")
+    else "",
     long_description_content_type="text/markdown",
     author="Ahmed Gharib",
     license="PolyForm-Noncommercial-1.0.0",
@@ -50,7 +55,17 @@ setup(
         # machines install different binaries — a regressed 1.1.409 flagged
         # phantom `reportUnknownMemberType` errors CI's 1.1.411 did not (#632).
         # Keep this in lockstep with the version CI resolves; bump both together.
-        "dev": ["pytest>=7.0", "requests_mock>=1.10", "pyinstaller>=6.0", "pyright==1.1.411"],
+        # ruff is pinned EXACT for the same reason: formatter output drifts
+        # across versions, so a floor would let local and CI formatting diverge.
+        # Keep in lockstep with .pre-commit-config.yaml (ruff-pre-commit rev).
+        "dev": [
+            "pytest>=7.0",
+            "requests_mock>=1.10",
+            "pyinstaller>=6.0",
+            "pyright==1.1.411",
+            "ruff==0.15.21",
+            "pre-commit>=4.0",
+        ],
         "kerberos": ["requests_negotiate_sspi"],
         # Back-compat no-op: keyring is now a core dependency (above). Kept so
         # any existing `crm[keyring]` install command still resolves.

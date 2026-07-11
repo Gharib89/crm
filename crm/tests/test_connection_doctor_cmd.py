@@ -1,4 +1,5 @@
 """Command-level tests for `crm connection doctor` + the `crm doctor` alias (#74)."""
+
 # pyright: basic
 from __future__ import annotations
 
@@ -24,9 +25,12 @@ def _seed_profile(isolated_home):
     # deterministic — the tests register mocks against _API_BASE.
     from crm.core import session as session_mod
     from crm.utils.d365_backend import ConnectionProfile
-    session_mod.save_profile(ConnectionProfile(
-        name="doc", url=_BASE, domain="CONTOSO", username="alice",
-        api_version="v9.2"))
+
+    session_mod.save_profile(
+        ConnectionProfile(
+            name="doc", url=_BASE, domain="CONTOSO", username="alice", api_version="v9.2"
+        )
+    )
     session_mod.save_profile_secret_plaintext("doc", "pw")
     state = session_mod.load_session("default")
     state["active_profile"] = "doc"
@@ -54,8 +58,11 @@ def _register(m, *, whoami_status=200):
     if whoami_status == 200:
         m.get(f"{_API_BASE}WhoAmI", json=_WHOAMI)
     else:
-        m.get(f"{_API_BASE}WhoAmI", status_code=whoami_status,
-              json={"error": {"code": "0x0", "message": "Unauthorized"}})
+        m.get(
+            f"{_API_BASE}WhoAmI",
+            status_code=whoami_status,
+            json={"error": {"code": "0x0", "message": "Unauthorized"}},
+        )
 
 
 def test_doctor_json_happy_path():
@@ -69,7 +76,11 @@ def test_doctor_json_happy_path():
     checks = payload["data"]["checks"]
     assert len(checks) == 5
     assert [c["check"] for c in checks] == [
-        "dns_tcp", "tls", "version", "auth", "rate_limit",
+        "dns_tcp",
+        "tls",
+        "version",
+        "auth",
+        "rate_limit",
     ]
 
 
@@ -114,7 +125,9 @@ def test_doctor_human_failure_renders_checklist():
     # and the hint immediately follows its own ✗ line.
     auth_line = "✗ auth: authentication failed (HTTP 401)"
     # The 401 hint interpolates the active profile name (the fixture seeds 'doc').
-    hint_line = "check the stored secret — re-store it with `crm profile set-password --profile doc`"
+    hint_line = (
+        "check the stored secret — re-store it with `crm profile set-password --profile doc`"
+    )
     assert auth_line in out
     assert hint_line in out
     auth_idx = out.index(auth_line)
@@ -123,7 +136,7 @@ def test_doctor_human_failure_renders_checklist():
     # No intervening checklist line between the ✗ auth line and its hint.
     between = out[auth_idx:hint_idx]
     assert "✓" not in between
-    assert "✗" not in between[len("✗ auth: authentication failed (HTTP 401)"):]
+    assert "✗" not in between[len("✗ auth: authentication failed (HTTP 401)") :]
     # The per-check failure line must NOT be the only thing on stderr-routed
     # output: the ✗ auth line is on stdout, not stderr.
     assert auth_line not in result.stderr

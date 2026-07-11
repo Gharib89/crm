@@ -26,7 +26,8 @@ from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 
 class Reference(TypedDict):
     """One ``data.references[]`` entry: a named server object a write would
-    dereference, and whether it currently exists."""
+    dereference, and whether it currently exists.
+    """
 
     kind: str
     value: str
@@ -40,8 +41,7 @@ def make_reference(kind: str, value: str, exists: bool) -> Reference:
 
 def entity_exists(backend: D365Backend, logical_name: str) -> bool:
     """Whether an entity (table) with this logical name exists."""
-    return target_exists(
-        backend, f"EntityDefinitions(LogicalName='{logical_name}')")
+    return target_exists(backend, f"EntityDefinitions(LogicalName='{logical_name}')")
 
 
 def resolve_global_optionset_id(backend: D365Backend, name: str) -> str | None:
@@ -53,10 +53,12 @@ def resolve_global_optionset_id(backend: D365Backend, name: str) -> str | None:
     bind, while `scaffold`/spec callers need only the boolean.
     """
     try:
-        rb = as_dict(backend.get(
-            f"GlobalOptionSetDefinitions(Name='{name}')",
-            params={"$select": "MetadataId"},
-        ))
+        rb = as_dict(
+            backend.get(
+                f"GlobalOptionSetDefinitions(Name='{name}')",
+                params={"$select": "MetadataId"},
+            )
+        )
     except D365Error as exc:
         if exc.status == 404:
             return None
@@ -71,7 +73,8 @@ def global_optionset_exists(backend: D365Backend, name: str) -> bool:
 
 
 def resolve_spec_references(
-    backend: D365Backend, spec: dict[str, Any],
+    backend: D365Backend,
+    spec: dict[str, Any],
 ) -> list[Reference]:
     """Resolve the cross-references an apply/scaffold spec's columns name (#281).
 

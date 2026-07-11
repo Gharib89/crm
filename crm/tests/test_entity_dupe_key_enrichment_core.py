@@ -9,13 +9,11 @@ end-to-end wiring is asserted unchanged in test_entity_duplicate_key_enrichment.
 
 from __future__ import annotations
 
-import pytest
 import requests_mock
 
 from crm.core import entity as entity_mod
 from crm.core import entity_names
 from crm.utils.d365_backend import D365Error
-
 
 # ── is_alternate_key_error detection ─────────────────────────────────────────
 
@@ -31,8 +29,12 @@ def test_is_alternate_key_error_false_for_precondition_failed():
 
 
 def test_is_alternate_key_error_fallback_via_response_body():
-    exc = D365Error("Entity Key violated.", status=412, code="PreconditionFailed",
-                    response_body={"error": {"code": "0x80060892", "message": "..."}})
+    exc = D365Error(
+        "Entity Key violated.",
+        status=412,
+        code="PreconditionFailed",
+        response_body={"error": {"code": "0x80060892", "message": "..."}},
+    )
     assert entity_mod.is_alternate_key_error(exc) is True
 
 
@@ -43,11 +45,11 @@ def _keys_url(backend, logical_name: str):
     return backend.url_for(f"EntityDefinitions(LogicalName='{logical_name}')/Keys")
 
 
-def _stub_names(monkeypatch, *, logical="account", entity_set="accounts",
-                primary_id="accountid"):
+def _stub_names(monkeypatch, *, logical="account", entity_set="accounts", primary_id="accountid"):
     """Stub the cached name-map seam (#261) so the set→logical + primary-id
     resolution is served without a live GET — mirrors ba4ca21's approach for the
-    sibling data_import path."""
+    sibling data_import path.
+    """
     nm = entity_names.NameMap(
         logical_to_set={logical: entity_set},
         set_to_logical={entity_set: logical},
@@ -61,12 +63,14 @@ def _mock_account_key(m, backend, key_rows):
     m.get(_keys_url(backend, "account"), json={"value": key_rows})
 
 
-_COMPOSITE_KEY = [{
-    "LogicalName": "account_code_ak",
-    "SchemaName": "Account_Code_AK",
-    "KeyAttributes": ["accountnumber", "name"],
-    "EntityKeyIndexStatus": "Active",
-}]
+_COMPOSITE_KEY = [
+    {
+        "LogicalName": "account_code_ak",
+        "SchemaName": "Account_Code_AK",
+        "KeyAttributes": ["accountnumber", "name"],
+        "EntityKeyIndexStatus": "Active",
+    }
+]
 
 
 def test_enrich_returns_alternate_keys_with_payload_values(backend, monkeypatch):
@@ -74,7 +78,8 @@ def test_enrich_returns_alternate_keys_with_payload_values(backend, monkeypatch)
     with requests_mock.Mocker() as m:
         _mock_account_key(m, backend, _COMPOSITE_KEY)
         result = entity_mod.enrich_dupe_key(
-            backend, "accounts",
+            backend,
+            "accounts",
             {"name": "Contoso", "accountnumber": "ACC-001"},
             code="0x80060892",
         )
@@ -90,7 +95,10 @@ def test_enrich_empty_payload_values_when_no_intersection(backend, monkeypatch):
     with requests_mock.Mocker() as m:
         _mock_account_key(m, backend, _COMPOSITE_KEY)
         result = entity_mod.enrich_dupe_key(
-            backend, "accounts", {"telephone1": "555"}, code="0x80060892",
+            backend,
+            "accounts",
+            {"telephone1": "555"},
+            code="0x80060892",
         )
     assert result["alternate_keys"][0]["payload_values"] == {}
 
@@ -100,7 +108,8 @@ def test_enrich_primary_id_collision_hint(backend, monkeypatch):
     with requests_mock.Mocker() as m:
         _mock_account_key(m, backend, [])  # no alt keys, but payload has the PK
         result = entity_mod.enrich_dupe_key(
-            backend, "accounts",
+            backend,
+            "accounts",
             {"accountid": "11111111-1111-1111-1111-111111111111"},
             code="0x80060892",
         )
@@ -114,7 +123,10 @@ def test_enrich_no_primary_id_hint_when_not_in_payload(backend, monkeypatch):
     with requests_mock.Mocker() as m:
         _mock_account_key(m, backend, [])
         result = entity_mod.enrich_dupe_key(
-            backend, "accounts", {"name": "Contoso"}, code="0x80060892",
+            backend,
+            "accounts",
+            {"name": "Contoso"},
+            code="0x80060892",
         )
     assert "primary_id_hint" not in result
 
@@ -124,7 +136,10 @@ def test_enrich_non_alt_key_code_returns_empty_without_lookup(backend):
     with requests_mock.Mocker() as m:
         # No mocks registered: any backend GET would raise NoMockAddress.
         result = entity_mod.enrich_dupe_key(
-            backend, "accounts", {"name": "x"}, code="PreconditionFailed",
+            backend,
+            "accounts",
+            {"name": "x"},
+            code="PreconditionFailed",
         )
     assert result == {}
     assert m.call_count == 0
@@ -134,10 +149,16 @@ def test_enrich_lookup_failure_returns_empty(backend, monkeypatch):
     """A backend failure during lookup is swallowed (original error unmasked)."""
     _stub_names(monkeypatch)
     with requests_mock.Mocker() as m:
-        m.get(_keys_url(backend, "account"), status_code=500,
-              json={"error": {"message": "Server error"}})
+        m.get(
+            _keys_url(backend, "account"),
+            status_code=500,
+            json={"error": {"message": "Server error"}},
+        )
         result = entity_mod.enrich_dupe_key(
-            backend, "accounts", {"name": "x"}, code="0x80060892",
+            backend,
+            "accounts",
+            {"name": "x"},
+            code="0x80060892",
         )
     assert result == {}
 
@@ -147,14 +168,18 @@ def test_enrich_unknown_entity_set_returns_empty(backend, monkeypatch):
     # resolve() → swallowed to None → {} (no Keys GET reached).
     _stub_names(monkeypatch)
     result = entity_mod.enrich_dupe_key(
-        backend, "unknownsets", {"name": "x"}, code="0x80060892",
+        backend,
+        "unknownsets",
+        {"name": "x"},
+        code="0x80060892",
     )
     assert result == {}
 
 
 def test_lookup_alternate_key_schema_reused_across_payloads(backend, monkeypatch):
     """The schema is fetched once and `dupe_key_hint` applied per payload — the
-    bulk-import path's single-lookup-N-rows shape."""
+    bulk-import path's single-lookup-N-rows shape.
+    """
     _stub_names(monkeypatch)
     with requests_mock.Mocker() as m:
         _mock_account_key(m, backend, _COMPOSITE_KEY)

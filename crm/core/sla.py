@@ -23,7 +23,6 @@ from crm.utils.d365_backend import (
     normalize_guid,
 )
 
-
 # `ErrorMap Details: {Step1: ErrA, ErrB; Step2: ErrC}` — the platform's
 # compile-error detail buried inside the activation failure message.
 _ERROR_MAP_RE = re.compile(r"ErrorMap Details:\s*\{([^}]*)\}")
@@ -44,10 +43,12 @@ def parse_error_map(message: str) -> list[dict[str, Any]] | None:
         step, sep, errors = chunk.partition(":")
         if not sep or not step.strip():
             continue
-        entries.append({
-            "step": step.strip(),
-            "errors": [e.strip() for e in errors.split(",") if e.strip()],
-        })
+        entries.append(
+            {
+                "step": step.strip(),
+                "errors": [e.strip() for e in errors.split(",") if e.strip()],
+            }
+        )
     return entries or None
 
 
@@ -64,14 +65,18 @@ def _sla_enabled_value(raw: Any) -> bool:
     """Read the effective IsSLAEnabled flag.
 
     EntityMetadata.IsSLAEnabled is a BooleanManagedProperty — returned as a
-    ``{"Value": bool, ...}`` object — but tolerate a bare bool too."""
+    ``{"Value": bool, ...}`` object — but tolerate a bare bool too.
+    """
     if isinstance(raw, dict):
         return bool(cast("dict[str, Any]", raw).get("Value"))
     return bool(raw)
 
 
 def _ensure_sla_enabled(
-    backend: D365Backend, entity: str, *, solution: str | None = None,
+    backend: D365Backend,
+    entity: str,
+    *,
+    solution: str | None = None,
 ) -> str:
     """Verify the target entity is SLA-enabled; enable + publish it if not.
 
@@ -82,10 +87,12 @@ def _ensure_sla_enabled(
     Returns one of ``"already"`` (already enabled), ``"set"`` (flipped on now),
     or ``"would_set"`` (dry-run preview of the flip).
     """
-    md = as_dict(backend.get(
-        f"EntityDefinitions(LogicalName='{entity}')",
-        params={"$select": "LogicalName,IsSLAEnabled"},
-    ))
+    md = as_dict(
+        backend.get(
+            f"EntityDefinitions(LogicalName='{entity}')",
+            params={"$select": "LogicalName,IsSLAEnabled"},
+        )
+    )
     if _sla_enabled_value(md.get("IsSLAEnabled")):
         return "already"
     if backend.dry_run:
@@ -93,8 +100,13 @@ def _ensure_sla_enabled(
     # Flip via the safe retrieve-merge-write PUT; a metadata change needs a
     # publish to take effect before the SLA can be applied.
     from crm.core import metadata_update
+
     metadata_update.update_entity(
-        backend, entity, is_sla_enabled=True, solution=solution, publish=True,
+        backend,
+        entity,
+        is_sla_enabled=True,
+        solution=solution,
+        publish=True,
     )
     return "set"
 
@@ -107,11 +119,14 @@ def _object_type_code(backend: D365Backend, entity: str) -> int:
     bare logical name with 0x80048d19. Read separately from the IsSLAEnabled
     check because this value is needed *before* the POST (to build the body),
     while the enable-check runs *after* it (so a created SLA is recoverable if
-    the metadata flip later fails)."""
-    md = as_dict(backend.get(
-        f"EntityDefinitions(LogicalName='{entity}')",
-        params={"$select": "LogicalName,ObjectTypeCode"},
-    ))
+    the metadata flip later fails).
+    """
+    md = as_dict(
+        backend.get(
+            f"EntityDefinitions(LogicalName='{entity}')",
+            params={"$select": "LogicalName,ObjectTypeCode"},
+        )
+    )
     otc = md.get("ObjectTypeCode")
     if not isinstance(otc, int):
         raise D365Error(
@@ -164,8 +179,7 @@ def create_sla(
     if business_hours_id:
         bid = normalize_guid(business_hours_id)
         if bid is None:
-            raise D365Error(
-                f"Invalid GUID for business_hours_id: {business_hours_id!r}")
+            raise D365Error(f"Invalid GUID for business_hours_id: {business_hours_id!r}")
         body["businesshoursid@odata.bind"] = f"/calendars({bid})"
 
     admin = {
@@ -174,10 +188,14 @@ def create_sla(
         "suppress_duplicate_detection": suppress_duplicate_detection,
         "bypass_custom_plugin_execution": bypass_custom_plugin_execution,
     }
-    result = as_dict(backend.post(
-        SLAS_SET, json_body=body,
-        solution=solution, **admin,
-    ))
+    result = as_dict(
+        backend.post(
+            SLAS_SET,
+            json_body=body,
+            solution=solution,
+            **admin,
+        )
+    )
     if result.get("_dry_run"):
         return {
             "_dry_run": True,
@@ -206,8 +224,7 @@ def create_sla(
     }
     if not sla_id:
         out["sla_lookup_error"] = (
-            "Could not parse slaid from response: "
-            f"{result.get('_entity_id_url')!r}"
+            f"Could not parse slaid from response: {result.get('_entity_id_url')!r}"
         )
     return out
 
@@ -256,10 +273,14 @@ def add_kpi(
         "suppress_duplicate_detection": suppress_duplicate_detection,
         "bypass_custom_plugin_execution": bypass_custom_plugin_execution,
     }
-    result = as_dict(backend.post(
-        SLA_ITEMS_SET, json_body=body,
-        solution=solution, **admin,
-    ))
+    result = as_dict(
+        backend.post(
+            SLA_ITEMS_SET,
+            json_body=body,
+            solution=solution,
+            **admin,
+        )
+    )
     if result.get("_dry_run"):
         return {
             "_dry_run": True,
@@ -276,8 +297,7 @@ def add_kpi(
     }
     if not item_id:
         out["slaitem_lookup_error"] = (
-            "Could not parse slaitemid from response: "
-            f"{result.get('_entity_id_url')!r}"
+            f"Could not parse slaitemid from response: {result.get('_entity_id_url')!r}"
         )
     return out
 
@@ -286,7 +306,8 @@ def validate_sla_id(sla_id: str) -> str:
     """Return the canonical (lowercase, brace-free) form of sla_id, raising
     D365Error if it is not a GUID. Client-side only — the command layer calls
     this before building a backend; the canonical form keeps OData paths and
-    $filter expressions stable."""
+    $filter expressions stable.
+    """
     rid = normalize_guid(sla_id)
     if rid is None:
         raise D365Error(f"Invalid GUID for sla_id: {sla_id!r}")
@@ -301,18 +322,24 @@ def _fetch_plan(
     caller_object_id: str | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Fetch the SLA row and the distinct backing-workflow rows its items
-    reference (order preserved)."""
-    sla = as_dict(backend.get(
-        f"slas({sla_id})", params={"$select": "slaid,name,statecode"},
-        caller_id=caller_id, caller_object_id=caller_object_id,
-    ))
+    reference (order preserved).
+    """
+    sla = as_dict(
+        backend.get(
+            f"slas({sla_id})",
+            params={"$select": "slaid,name,statecode"},
+            caller_id=caller_id,
+            caller_object_id=caller_object_id,
+        )
+    )
     items = backend.get_collection(
         "slaitems",
         params={
             "$select": "slaitemid,name,_workflowid_value",
             "$filter": f"_slaid_value eq {sla_id}",
         },
-        caller_id=caller_id, caller_object_id=caller_object_id,
+        caller_id=caller_id,
+        caller_object_id=caller_object_id,
     )
     workflow_ids: list[str] = []
     for item in items:
@@ -320,11 +347,14 @@ def _fetch_plan(
         if wid and wid not in workflow_ids:
             workflow_ids.append(wid)
     workflows = [
-        as_dict(backend.get(
-            f"workflows({wid})",
-            params={"$select": "workflowid,name,statecode,type"},
-            caller_id=caller_id, caller_object_id=caller_object_id,
-        ))
+        as_dict(
+            backend.get(
+                f"workflows({wid})",
+                params={"$select": "workflowid,name,statecode,type"},
+                caller_id=caller_id,
+                caller_object_id=caller_object_id,
+            )
+        )
         for wid in workflow_ids
     ]
     return sla, workflows
@@ -353,16 +383,16 @@ def activate_sla(
     sla_id = validate_sla_id(sla_id)
 
     sla, workflow_rows = _fetch_plan(
-        backend, sla_id, caller_id=caller_id, caller_object_id=caller_object_id)
+        backend, sla_id, caller_id=caller_id, caller_object_id=caller_object_id
+    )
 
     if backend.dry_run:
+
         def _brief(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-            return [{"workflow_id": r["workflowid"], "name": r.get("name")}
-                    for r in rows]
-        active = [r for r in workflow_rows
-                  if r.get("statecode") == STATE_ACTIVATED[0]]
-        draft = [r for r in workflow_rows
-                 if r.get("statecode") != STATE_ACTIVATED[0]]
+            return [{"workflow_id": r["workflowid"], "name": r.get("name")} for r in rows]
+
+        active = [r for r in workflow_rows if r.get("statecode") == STATE_ACTIVATED[0]]
+        draft = [r for r in workflow_rows if r.get("statecode") != STATE_ACTIVATED[0]]
         return {
             "_dry_run": True,
             "sla_id": sla_id,
@@ -377,13 +407,15 @@ def activate_sla(
     for row in workflow_rows:
         wid = row["workflowid"]
         if row.get("statecode") == STATE_ACTIVATED[0]:
-            report.append({"workflow_id": wid, "name": row.get("name"),
-                           "status": "already_active"})
+            report.append({"workflow_id": wid, "name": row.get("name"), "status": "already_active"})
             continue
         try:
             set_workflow_state(
-                backend, wid, activate=True,
-                caller_id=caller_id, caller_object_id=caller_object_id,
+                backend,
+                wid,
+                activate=True,
+                caller_id=caller_id,
+                caller_object_id=caller_object_id,
                 suppress_duplicate_detection=suppress_duplicate_detection,
                 bypass_custom_plugin_execution=bypass_custom_plugin_execution,
             )
@@ -392,15 +424,18 @@ def activate_sla(
             # every backing workflow; already-activated ones stay active
             # (matches platform/UI behavior — no rollback).
             any_failed = True
-            entry: dict[str, Any] = {"workflow_id": wid, "name": row.get("name"),
-                                     "status": "failed", "error": str(exc)}
+            entry: dict[str, Any] = {
+                "workflow_id": wid,
+                "name": row.get("name"),
+                "status": "failed",
+                "error": str(exc),
+            }
             parsed = parse_error_map(str(exc))
             if parsed:
                 entry["errors"] = parsed
             report.append(entry)
             continue
-        report.append({"workflow_id": wid, "name": row.get("name"),
-                       "status": "activated"})
+        report.append({"workflow_id": wid, "name": row.get("name"), "status": "activated"})
 
     if any_failed:
         return {
@@ -417,7 +452,8 @@ def activate_sla(
             f"slas({sla_id})",
             json_body={"statecode": _SLA_ACTIVE[0], "statuscode": _SLA_ACTIVE[1]},
             etag="*",
-            caller_id=caller_id, caller_object_id=caller_object_id,
+            caller_id=caller_id,
+            caller_object_id=caller_object_id,
             suppress_duplicate_detection=suppress_duplicate_detection,
             bypass_custom_plugin_execution=bypass_custom_plugin_execution,
         )

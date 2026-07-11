@@ -1,4 +1,5 @@
 """Unit tests for query count (RetrieveTotalRecordCount)."""
+
 # pyright: basic
 from __future__ import annotations
 
@@ -22,15 +23,14 @@ class TestCoreHelper:
             m.get(
                 "https://crm.contoso.local/contoso/api/data/v9.2/"
                 "RetrieveTotalRecordCount(EntityNames=%5B'account'%5D)",
-                json={"EntityRecordCountCollection": {
-                    "Keys": ["account"], "Values": [42]
-                }},
+                json={"EntityRecordCountCollection": {"Keys": ["account"], "Values": [42]}},
             )
             n = total_record_count(backend, "account")
         assert n == 42
 
     def test_total_record_count_raises_for_empty_entity(self, backend):
         from crm.utils.d365_backend import D365Error
+
         with pytest.raises(D365Error):
             total_record_count(backend, "")
 
@@ -39,13 +39,15 @@ class TestCoreHelper:
 def _isolate_crm_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """`query count` now resolves the name through the read-through metadata cache
     (#305); isolate CRM_HOME so a real ~/.crm is never touched and each test
-    starts with a cold cache."""
+    starts with a cold cache.
+    """
     monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
 
 
 def _count_backend(monkeypatch: pytest.MonkeyPatch, count: int = 7) -> MagicMock:
     """Backend stub: resolves names via the EntityDefinitions collection and
-    returns `count` from RetrieveTotalRecordCount."""
+    returns `count` from RetrieveTotalRecordCount.
+    """
     mock = MagicMock()
     mock.profile = ConnectionProfile(
         name="testp",

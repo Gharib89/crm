@@ -1,14 +1,19 @@
 """Record-to-record connection role commands — `crm connectionrole`."""
+
 # pyright: basic
 from __future__ import annotations
 
 import click
 
-from crm.core import connectionrole as cr_mod
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
-    d365_errors, _journal, _solution_option, _resolve_solution, _emit_with_warning,
+    _emit_with_warning,
+    _journal,
+    _resolve_solution,
+    _solution_option,
+    d365_errors,
 )
+from crm.core import connectionrole as cr_mod
 
 
 @click.group("connectionrole")
@@ -18,19 +23,25 @@ def connectionrole_group():
 
 @connectionrole_group.command("create")
 @click.option("--name", required=True, help="Connection role name.")
-@click.option("--category", type=click.Choice(sorted(cr_mod.CATEGORIES)),
-              default=None, help="Connection role category.")
+@click.option(
+    "--category",
+    type=click.Choice(sorted(cr_mod.CATEGORIES)),
+    default=None,
+    help="Connection role category.",
+)
 @click.option("--description", default=None, help="Role description.")
 @_solution_option
 @pass_ctx
-def connectionrole_create(ctx: CLIContext, name, category, description,
-                          solution) -> None:
+def connectionrole_create(ctx: CLIContext, name, category, description, solution) -> None:
     """Create a connection role named NAME."""
     solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = cr_mod.create_role(
-            ctx.backend(), name=name, category=category,
-            description=description, solution=solution,
+            ctx.backend(),
+            name=name,
+            category=category,
+            description=description,
+            solution=solution,
         )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, name, info, solution=solution)
@@ -38,12 +49,10 @@ def connectionrole_create(ctx: CLIContext, name, category, description,
 
 @connectionrole_group.command("scope")
 @click.argument("role")
-@click.option("--entity", required=True,
-              help="Entity logical name the role applies to.")
+@click.option("--entity", required=True, help="Entity logical name the role applies to.")
 @_solution_option
 @pass_ctx
-def connectionrole_scope(ctx: CLIContext, role, entity,
-                         solution) -> None:
+def connectionrole_scope(ctx: CLIContext, role, entity, solution) -> None:
     """Restrict ROLE (name or id) to records of ENTITY.
 
     Call repeatedly to scope a role to several entity types.
@@ -51,7 +60,10 @@ def connectionrole_scope(ctx: CLIContext, role, entity,
     solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = cr_mod.scope(
-            ctx.backend(), role=role, entity=entity, solution=solution,
+            ctx.backend(),
+            role=role,
+            entity=entity,
+            solution=solution,
         )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, f"{role}:{entity}", info, solution=solution)

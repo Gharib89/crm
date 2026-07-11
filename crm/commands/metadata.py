@@ -1,46 +1,50 @@
 """Metadata commands (entities, attributes, relationships, option sets)."""
+
 # pyright: basic
 from __future__ import annotations
+
 import time
 from pathlib import Path
 from typing import cast
+
 import click
+
+from crm.cli import CLIContext, pass_ctx
+from crm.commands._helpers import (
+    _CASCADE,
+    _MENU,
+    _REQUIRED,
+    _check_expectations,
+    _confirm_destructive,
+    _destructive_option,
+    _emit_expectation_failure,
+    _emit_with_warning,
+    _handle_d365_error,
+    _journal,
+    _optional_solution_option,
+    _output_option,
+    _parse_expect,
+    _parse_value_labels,
+    _publish_option,
+    _resolve_publish,
+    _resolve_schema_name,
+    _resolve_solution,
+    _solution_option,
+    d365_errors,
+    usage_guard,
+)
+from crm.core import clone as clone_mod
+from crm.core import dependencies as dep_mod
+from crm.core import export_spec as export_spec_mod
+from crm.core import mappings as mp_mod
 from crm.core import metadata as meta_mod
 from crm.core import metadata_attrs as ma_mod
 from crm.core import metadata_cache as mc_mod
 from crm.core import metadata_update as mu_mod
 from crm.core import optionsets as os_mod
-from crm.core import status_meta as sm_mod
-from crm.core import mappings as mp_mod
 from crm.core import relationships as rel_mod
-from crm.core import dependencies as dep_mod
-from crm.core import export_spec as export_spec_mod
-from crm.core import clone as clone_mod
+from crm.core import status_meta as sm_mod
 from crm.utils.d365_backend import D365Error
-from crm.cli import CLIContext, pass_ctx
-from crm.commands._helpers import (
-    _publish_option,
-    _destructive_option,
-    _parse_value_labels,
-    _handle_d365_error,
-    d365_errors,
-    usage_guard,
-    _confirm_destructive,
-    _journal,
-    _output_option,
-    _resolve_publish,
-    _solution_option,
-    _optional_solution_option,
-    _resolve_solution,
-    _resolve_schema_name,
-    _emit_with_warning,
-    _parse_expect,
-    _check_expectations,
-    _emit_expectation_failure,
-    _CASCADE,
-    _MENU,
-    _REQUIRED,
-)
 
 
 def _audit_option(f):
@@ -52,10 +56,12 @@ def _audit_option(f):
     `IsAuditEnabled` managed property.
     """
     return click.option(
-        "--audit/--no-audit", "audit", default=None,
+        "--audit/--no-audit",
+        "audit",
+        default=None,
         help="Enable/disable auditing (IsAuditEnabled). Requires org-level "
-             "auditing to be turned on for audit records to be written; omit "
-             "to leave unchanged.",
+        "auditing to be turned on for audit records to be written; omit "
+        "to leave unchanged.",
     )(f)
 
 
@@ -65,6 +71,7 @@ class _CommaIntListType(click.ParamType):
     Bad input fails at parse time (exit 2), so the command body never sees a
     malformed value. Empty / whitespace-only input yields ``None`` (no reorder).
     """
+
     name = "int-list"
 
     def convert(self, value, param, ctx):
@@ -73,9 +80,7 @@ class _CommaIntListType(click.ParamType):
         try:
             parsed = [int(x.strip()) for x in value.split(",") if x.strip()]
         except ValueError:
-            self.fail(
-                f"'{value}' must be a comma-separated list of integers.", param, ctx
-            )
+            self.fail(f"'{value}' must be a comma-separated list of integers.", param, ctx)
         return parsed or None
 
 
@@ -118,9 +123,14 @@ def metadata_entities(ctx: CLIContext, custom_only, managed_only, filter_expr, t
         if ctx.json_mode:
             ctx.emit(True, data=rows, meta=meta)
             return
-        ctx.emit(True, table={"headers": ["LogicalName", "EntitySetName"],
-                              "rows": [[r["logical"], r["set_name"]] for r in rows]},
-                 meta=meta)
+        ctx.emit(
+            True,
+            table={
+                "headers": ["LogicalName", "EntitySetName"],
+                "rows": [[r["logical"], r["set_name"]] for r in rows],
+            },
+            meta=meta,
+        )
         return
     with d365_errors(ctx):
         items = meta_mod.list_entities(
@@ -128,15 +138,20 @@ def metadata_entities(ctx: CLIContext, custom_only, managed_only, filter_expr, t
             custom_only=custom_only,
             managed_only=managed_only,
             filter_expr=filter_expr,
-            top=top
+            top=top,
         )
     if ctx.json_mode:
         ctx.emit(True, data=items, meta={"count": len(items)})
         return
     headers = ["LogicalName", "EntitySetName", "SchemaName", "IsCustom", "IsManaged"]
     rows = [
-        [it.get("LogicalName", ""), it.get("EntitySetName", ""),
-         it.get("SchemaName", ""), str(it.get("IsCustomEntity", False)), str(it.get("IsManaged", False))]
+        [
+            it.get("LogicalName", ""),
+            it.get("EntitySetName", ""),
+            it.get("SchemaName", ""),
+            str(it.get("IsCustomEntity", False)),
+            str(it.get("IsManaged", False)),
+        ]
         for it in items
     ]
     ctx.emit(True, table={"headers": headers, "rows": rows}, meta={"count": len(items)})
@@ -235,16 +250,27 @@ def metadata_attributes(ctx: CLIContext, logical_name):
     if ctx.json_mode:
         ctx.emit(True, data=items, meta={"count": len(items)})
         return
-    headers = ["LogicalName", "SchemaName", "AttributeType", "Create", "Update",
-               "Read", "Required", "IsCustom"]
+    headers = [
+        "LogicalName",
+        "SchemaName",
+        "AttributeType",
+        "Create",
+        "Update",
+        "Read",
+        "Required",
+        "IsCustom",
+    ]
     rows = [
-        [it.get("LogicalName", ""), it.get("SchemaName", ""),
-         it.get("AttributeType", ""),
-         str(it.get("IsValidForCreate", False)),
-         str(it.get("IsValidForUpdate", False)),
-         str(it.get("IsValidForRead", False)),
-         it.get("RequiredLevel") or "",
-         str(it.get("IsCustomAttribute", False))]
+        [
+            it.get("LogicalName", ""),
+            it.get("SchemaName", ""),
+            it.get("AttributeType", ""),
+            str(it.get("IsValidForCreate", False)),
+            str(it.get("IsValidForUpdate", False)),
+            str(it.get("IsValidForRead", False)),
+            it.get("RequiredLevel") or "",
+            str(it.get("IsCustomAttribute", False)),
+        ]
         for it in items
     ]
     ctx.emit(True, table={"headers": headers, "rows": rows}, meta={"count": len(items)})
@@ -265,8 +291,7 @@ def metadata_keys(ctx: CLIContext, logical_name):
         return
     headers = ["LogicalName", "SchemaName", "KeyAttributes", "Status"]
     rows = [
-        [k["logical_name"], k["schema_name"],
-         ", ".join(k["key_attributes"]), k["index_status"]]
+        [k["logical_name"], k["schema_name"], ", ".join(k["key_attributes"]), k["index_status"]]
         for k in keys
     ]
     ctx.emit(True, table={"headers": headers, "rows": rows}, meta={"count": len(keys)})
@@ -275,11 +300,15 @@ def metadata_keys(ctx: CLIContext, logical_name):
 @metadata_group.command("attribute")
 @click.argument("logical_name")
 @click.argument("attribute_name")
-@click.option("--expect", multiple=True, metavar="ATTR=VALUE",
-              help="Repeatable; assert str(record[ATTR]) == VALUE (an absent key "
-                   "never matches). Any mismatch exits 1 (the --json envelope "
-                   "carries meta {attr, expected, actual}; human mode prints the "
-                   "error line); all match exits 0.")
+@click.option(
+    "--expect",
+    multiple=True,
+    metavar="ATTR=VALUE",
+    help="Repeatable; assert str(record[ATTR]) == VALUE (an absent key "
+    "never matches). Any mismatch exits 1 (the --json envelope "
+    "carries meta {attr, expected, actual}; human mode prints the "
+    "error line); all match exits 0.",
+)
 @pass_ctx
 def metadata_attribute(ctx: CLIContext, logical_name, attribute_name, expect):
     """Show a single attribute definition."""
@@ -304,7 +333,9 @@ def metadata_picklist(ctx: CLIContext, logical_name, attribute, no_global):
     """Retrieve option set values for a picklist / state / status attribute."""
     with d365_errors(ctx):
         info = meta_mod.picklist_options(
-            ctx.backend(), logical_name, attribute,
+            ctx.backend(),
+            logical_name,
+            attribute,
             global_optionset=not no_global,
         )
     # Flatten once for both modes; local OptionSet wins, GlobalOptionSet is the
@@ -319,8 +350,11 @@ def metadata_picklist(ctx: CLIContext, logical_name, attribute, no_global):
         return
     headers = ["Value", "Label"]
     rows = [[str(o["value"]), o["label"]] for o in flat]
-    ctx.emit(True, table={"headers": headers, "rows": rows},
-             meta={"entity": logical_name, "attribute": attribute, "count": len(flat)})
+    ctx.emit(
+        True,
+        table={"headers": headers, "rows": rows},
+        meta={"entity": logical_name, "attribute": attribute, "count": len(flat)},
+    )
 
 
 @metadata_group.command("describe")
@@ -336,6 +370,7 @@ def metadata_describe(ctx: CLIContext, logical_name):
     status attributes carry inline `{value, label}` options, and a picklist bound
     to a global option set also carries its `global_optionset_id` GUID. Read-only.
     """
+
     def _enrich(exc):
         # On a 404, suggest the closest logical name (a passed entity-set name is
         # the common miss). Derived together so the hint and the did_you_mean meta
@@ -355,28 +390,51 @@ def metadata_describe(ctx: CLIContext, logical_name):
 
     with d365_errors(ctx, enrich=_enrich):
         brief = meta_mod.describe_entity(ctx.backend(), logical_name)
-    ctx.emit(True, data=brief, meta={
-        "writable_attributes": len(brief["writable_attributes"]),
-    })
+    ctx.emit(
+        True,
+        data=brief,
+        meta={
+            "writable_attributes": len(brief["writable_attributes"]),
+        },
+    )
 
 
 @metadata_group.command("export-spec")
 @click.argument("logical_name")
-@click.option("--with-views", is_flag=True, default=False,
-              help="Include the entity's public views in the spec.")
-@click.option("--with-relationships", is_flag=True, default=False,
-              help="Include the entity's custom 1:N relationships in the spec.")
-@click.option("--with-forms", is_flag=True, default=False,
-              help="Include the entity's seedable main form (custom fields, "
-                   "libraries, handlers) as a forms: block.")
-@click.option("--solution", default=None,
-              help="Bake a top-level solution: block (unique_name) into the spec so "
-                   "it applies directly (crm apply requires one). Omit to emit a "
-                   "valid but non-appliable document.")
-@_output_option(help="Write the bare spec as YAML to FILE (appliable with crm apply -f when --solution is given).")
+@click.option(
+    "--with-views",
+    is_flag=True,
+    default=False,
+    help="Include the entity's public views in the spec.",
+)
+@click.option(
+    "--with-relationships",
+    is_flag=True,
+    default=False,
+    help="Include the entity's custom 1:N relationships in the spec.",
+)
+@click.option(
+    "--with-forms",
+    is_flag=True,
+    default=False,
+    help="Include the entity's seedable main form (custom fields, "
+    "libraries, handlers) as a forms: block.",
+)
+@click.option(
+    "--solution",
+    default=None,
+    help="Bake a top-level solution: block (unique_name) into the spec so "
+    "it applies directly (crm apply requires one). Omit to emit a "
+    "valid but non-appliable document.",
+)
+@_output_option(
+    help="Write the bare spec as YAML to FILE (appliable with crm apply -f when "
+    "--solution is given)."
+)
 @pass_ctx
-def metadata_export_spec(ctx: CLIContext, logical_name, with_views, with_relationships,
-                         with_forms, solution, output):
+def metadata_export_spec(
+    ctx: CLIContext, logical_name, with_views, with_relationships, with_forms, solution, output
+):
     """Export a live entity as a desired-state spec for `crm apply -f`.
 
     Reads the entity's metadata over the Web API (pure GETs) and emits a spec.
@@ -394,7 +452,8 @@ def metadata_export_spec(ctx: CLIContext, logical_name, with_views, with_relatio
     skipped: list[dict] = []
     with d365_errors(ctx):
         spec = export_spec_mod.build_entity_spec(
-            ctx.backend(), logical_name,
+            ctx.backend(),
+            logical_name,
             with_views=with_views,
             with_relationships=with_relationships,
             with_forms=with_forms,
@@ -405,6 +464,7 @@ def metadata_export_spec(ctx: CLIContext, logical_name, with_views, with_relatio
 
     if output:
         import yaml
+
         try:
             with open(output, "w", encoding="utf-8") as fh:
                 yaml.safe_dump(spec, fh, sort_keys=False, allow_unicode=True)
@@ -412,22 +472,27 @@ def metadata_export_spec(ctx: CLIContext, logical_name, with_views, with_relatio
             ctx.emit(False, error=f"Could not write {output!r}: {exc}")
             return
         entity = spec["entities"][0]
-        ctx.emit(True, data={
-            "path": output,
-            "entities": 1,
-            "attributes": len(entity.get("attributes", [])),
-            "relationships": len(entity.get("relationships", [])),
-            "views": len(entity.get("views", [])),
-            "forms": len(entity.get("forms", [])),
-            "optionsets": len(spec.get("optionsets", [])),
-            "skipped": skipped,
-        }, warnings=warnings or None)
+        ctx.emit(
+            True,
+            data={
+                "path": output,
+                "entities": 1,
+                "attributes": len(entity.get("attributes", [])),
+                "relationships": len(entity.get("relationships", [])),
+                "views": len(entity.get("views", [])),
+                "forms": len(entity.get("forms", [])),
+                "optionsets": len(spec.get("optionsets", [])),
+                "skipped": skipped,
+            },
+            warnings=warnings or None,
+        )
         return
 
     # The bare spec stays the data payload (pipeable to `crm apply`); non-seedable
     # forms surface on the meta channel so they are visible without polluting it.
-    ctx.emit(True, data=spec, meta={"skipped": skipped} if skipped else None,
-             warnings=warnings or None)
+    ctx.emit(
+        True, data=spec, meta={"skipped": skipped} if skipped else None, warnings=warnings or None
+    )
 
 
 @metadata_group.command("dependencies")
@@ -440,7 +505,8 @@ def metadata_export_spec(ctx: CLIContext, logical_name, with_views, with_relatio
     help="Component kind of <target>. attribute uses dotted 'entity.attribute'.",
 )
 @click.option(
-    "--for", "for_",
+    "--for",
+    "for_",
     type=click.Choice(["delete", "dependents", "required"]),
     default="delete",
     show_default=True,
@@ -476,49 +542,100 @@ def metadata_dependencies(ctx: CLIContext, target, kind, for_):
 
 
 @metadata_group.command("create-entity")
-@click.option("--schema-name", default=None,
-              help="PascalCase with publisher prefix, e.g. 'new_Project'. "
-                   "Defaults to <publisher_prefix>_<Display> from the profile.")
-@click.option("--display", "display_name", required=True,
-              help="Singular UI label, e.g. 'Project'.")
-@click.option("--display-collection", default=None,
-              help="Plural UI label. Defaults to <display>+'s'.")
-@click.option("--primary-attr", "primary_attr_schema", default=None,
-              help="Schema name of the primary name attribute (default '<prefix>_Name').")
-@click.option("--primary-label", "primary_attr_label", default=None,
-              help="UI label for primary attribute. Default 'Name'.")
-@click.option("--primary-max-length", type=int, default=200,
-              help="Max length for primary name string column. Default 200.")
+@click.option(
+    "--schema-name",
+    default=None,
+    help="PascalCase with publisher prefix, e.g. 'new_Project'. "
+    "Defaults to <publisher_prefix>_<Display> from the profile.",
+)
+@click.option("--display", "display_name", required=True, help="Singular UI label, e.g. 'Project'.")
+@click.option(
+    "--display-collection", default=None, help="Plural UI label. Defaults to <display>+'s'."
+)
+@click.option(
+    "--primary-attr",
+    "primary_attr_schema",
+    default=None,
+    help="Schema name of the primary name attribute (default '<prefix>_Name').",
+)
+@click.option(
+    "--primary-label",
+    "primary_attr_label",
+    default=None,
+    help="UI label for primary attribute. Default 'Name'.",
+)
+@click.option(
+    "--primary-max-length",
+    type=int,
+    default=200,
+    help="Max length for primary name string column. Default 200.",
+)
 @click.option("--description", default=None)
-@click.option("--ownership", type=click.Choice(["UserOwned", "OrganizationOwned"]),
-              default="UserOwned")
+@click.option(
+    "--ownership", type=click.Choice(["UserOwned", "OrganizationOwned"]), default="UserOwned"
+)
 @click.option("--has-activities", is_flag=True)
 @click.option("--has-notes", is_flag=True)
-@click.option("--is-activity", is_flag=True,
-              help="Create as an activity entity.")
+@click.option("--is-activity", is_flag=True, help="Create as an activity entity.")
 @_audit_option
-@click.option("--data-provider", "data_provider", default=None,
-              help="Virtual-table data-provider record GUID. Setting any --external-* "
-                   "/ --data-* option creates a VIRTUAL table (rows live in an external "
-                   "store). Virtual tables are READ-ONLY on v9.1 and require the "
-                   "data-provider (and optional data-source) records to exist FIRST — "
-                   "configure those prerequisites before running this.")
-@click.option("--data-source", "data_source", default=None,
-              help="Virtual-table data-source record GUID (optional).")
-@click.option("--external-name", "external_name", default=None,
-              help="External table name a virtual table maps to (required for virtual).")
-@click.option("--external-collection-name", "external_collection_name", default=None,
-              help="External collection/plural name (required for virtual).")
+@click.option(
+    "--data-provider",
+    "data_provider",
+    default=None,
+    help="Virtual-table data-provider record GUID. Setting any --external-* "
+    "/ --data-* option creates a VIRTUAL table (rows live in an external "
+    "store). Virtual tables are READ-ONLY on v9.1 and require the "
+    "data-provider (and optional data-source) records to exist FIRST — "
+    "configure those prerequisites before running this.",
+)
+@click.option(
+    "--data-source",
+    "data_source",
+    default=None,
+    help="Virtual-table data-source record GUID (optional).",
+)
+@click.option(
+    "--external-name",
+    "external_name",
+    default=None,
+    help="External table name a virtual table maps to (required for virtual).",
+)
+@click.option(
+    "--external-collection-name",
+    "external_collection_name",
+    default=None,
+    help="External collection/plural name (required for virtual).",
+)
 @_solution_option
-@click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error",
-              help="If the entity already exists: error (default) or skip (no-op success).")
+@click.option(
+    "--if-exists",
+    type=click.Choice(["error", "skip"]),
+    default="error",
+    help="If the entity already exists: error (default) or skip (no-op success).",
+)
 @_publish_option
 @pass_ctx
 def metadata_create_entity(
-    ctx: CLIContext, schema_name, display_name, display_collection, primary_attr_schema,
-    primary_attr_label, primary_max_length, description, ownership,
-    has_activities, has_notes, is_activity, audit, data_provider, data_source,
-    external_name, external_collection_name, solution, if_exists, publish,
+    ctx: CLIContext,
+    schema_name,
+    display_name,
+    display_collection,
+    primary_attr_schema,
+    primary_attr_label,
+    primary_max_length,
+    description,
+    ownership,
+    has_activities,
+    has_notes,
+    is_activity,
+    audit,
+    data_provider,
+    data_source,
+    external_name,
+    external_collection_name,
+    solution,
+    if_exists,
+    publish,
 ):
     """Create a new custom entity (table).
 
@@ -560,25 +677,57 @@ def metadata_create_entity(
 @metadata_group.command("clone-entity")
 @click.argument("source")
 @click.argument("new_schema_name")
-@click.option("--display", "display", default=None,
-              help="Display name for the clone. Default: '<source display> (Clone)'.")
-@click.option("--with-forms", is_flag=True, default=False,
-              help="Clone the source's main forms onto the clone.")
-@click.option("--with-views", is_flag=True, default=False,
-              help="Clone the source's public views onto the clone.")
-@click.option("--with-workflows", is_flag=True, default=False,
-              help="Clone the source's classic workflows / business rules onto the clone.")
-@click.option("--with-charts", is_flag=True, default=False,
-              help="Clone the source's public system charts onto the clone.")
-@click.option("--with-all", is_flag=True, default=False,
-              help="Enable --with-forms, --with-views, --with-workflows, and --with-charts.")
+@click.option(
+    "--display",
+    "display",
+    default=None,
+    help="Display name for the clone. Default: '<source display> (Clone)'.",
+)
+@click.option(
+    "--with-forms",
+    is_flag=True,
+    default=False,
+    help="Clone the source's main forms onto the clone.",
+)
+@click.option(
+    "--with-views",
+    is_flag=True,
+    default=False,
+    help="Clone the source's public views onto the clone.",
+)
+@click.option(
+    "--with-workflows",
+    is_flag=True,
+    default=False,
+    help="Clone the source's classic workflows / business rules onto the clone.",
+)
+@click.option(
+    "--with-charts",
+    is_flag=True,
+    default=False,
+    help="Clone the source's public system charts onto the clone.",
+)
+@click.option(
+    "--with-all",
+    is_flag=True,
+    default=False,
+    help="Enable --with-forms, --with-views, --with-workflows, and --with-charts.",
+)
 @_solution_option
 @_publish_option
 @pass_ctx
 def metadata_clone_entity(
-    ctx: CLIContext, source, new_schema_name, display,
-    with_forms, with_views, with_workflows, with_charts, with_all,
-    solution, publish,
+    ctx: CLIContext,
+    source,
+    new_schema_name,
+    display,
+    with_forms,
+    with_views,
+    with_workflows,
+    with_charts,
+    with_all,
+    solution,
+    publish,
 ):
     """Duplicate a custom entity (skeleton + opt-in forms/views/workflows/charts).
 
@@ -592,11 +741,16 @@ def metadata_clone_entity(
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = clone_mod.clone_entity(
-            ctx.backend(), source, new_schema_name,
+            ctx.backend(),
+            source,
+            new_schema_name,
             display=display,
-            with_forms=with_forms, with_views=with_views,
-            with_workflows=with_workflows, with_charts=with_charts,
-            solution=solution, publish=publish,
+            with_forms=with_forms,
+            with_views=with_views,
+            with_workflows=with_workflows,
+            with_charts=with_charts,
+            solution=solution,
+            publish=publish,
         )
     notes: list[str] = []
     if info.get("views_note"):
@@ -612,23 +766,39 @@ def metadata_clone_entity(
 @metadata_group.command("update-entity")
 @click.argument("logical_name")
 @click.option("--display", "display_name", default=None, help="New singular UI label.")
-@click.option("--display-collection", "display_collection_name", default=None,
-              help="New plural UI label.")
+@click.option(
+    "--display-collection", "display_collection_name", default=None, help="New plural UI label."
+)
 @click.option("--description", default=None, help="New entity description.")
-@click.option("--ownership", type=click.Choice(["UserOwned", "OrganizationOwned"]),
-              default=None,
-              help="Note: Dataverse rejects ownership changes post-create.")
-@click.option("--has-activities/--no-has-activities", "has_activities", default=None,
-              help="Enable/disable activities.")
-@click.option("--has-notes/--no-has-notes", "has_notes", default=None,
-              help="Enable/disable notes.")
+@click.option(
+    "--ownership",
+    type=click.Choice(["UserOwned", "OrganizationOwned"]),
+    default=None,
+    help="Note: Dataverse rejects ownership changes post-create.",
+)
+@click.option(
+    "--has-activities/--no-has-activities",
+    "has_activities",
+    default=None,
+    help="Enable/disable activities.",
+)
+@click.option("--has-notes/--no-has-notes", "has_notes", default=None, help="Enable/disable notes.")
 @_audit_option
 @_solution_option
 @_publish_option
 @pass_ctx
 def metadata_update_entity(
-    ctx: CLIContext, logical_name, display_name, display_collection_name,
-    description, ownership, has_activities, has_notes, audit, solution, publish,
+    ctx: CLIContext,
+    logical_name,
+    display_name,
+    display_collection_name,
+    description,
+    ownership,
+    has_activities,
+    has_notes,
+    audit,
+    solution,
+    publish,
 ):
     """Update an entity (table) definition (retrieve-merge-write)."""
     solution = _resolve_solution(ctx, solution)
@@ -656,31 +826,54 @@ def metadata_update_entity(
 @click.argument("attribute")
 @click.option("--display", "display_name", default=None, help="New UI label.")
 @click.option("--description", default=None)
-@click.option("--required", "required",
-              type=click.Choice(["None", "Recommended", "ApplicationRequired"]),
-              default=None)
+@click.option(
+    "--required",
+    "required",
+    type=click.Choice(["None", "Recommended", "ApplicationRequired"]),
+    default=None,
+)
 @click.option("--max-length", type=int, default=None, help="String/memo: max characters.")
-@click.option("--precision", type=int, default=None,
-              help="Decimal/double/money: precision (decimals).")
+@click.option(
+    "--precision", type=int, default=None, help="Decimal/double/money: precision (decimals)."
+)
 @click.option("--min", "min_value", type=float, default=None, help="Numeric: minimum value.")
 @click.option("--max", "max_value", type=float, default=None, help="Numeric: maximum value.")
-@click.option("--format", "format_name", default=None,
-              help="String: Text|Email|Url|Phone|TextArea. Datetime: DateOnly|DateAndTime.")
-@click.option("--behavior", "behavior_name",
-              type=click.Choice(["UserLocal", "DateOnly", "TimeZoneIndependent"]),
-              default=None,
-              help="Datetime: change DateTimeBehavior. Only a UserLocal column may "
-                   "change, once, to DateOnly or TimeZoneIndependent (both terminal). "
-                   "DateOnly auto-sets --format DateOnly. Existing stored values are "
-                   "not migrated (no Web API backfill).")
+@click.option(
+    "--format",
+    "format_name",
+    default=None,
+    help="String: Text|Email|Url|Phone|TextArea. Datetime: DateOnly|DateAndTime.",
+)
+@click.option(
+    "--behavior",
+    "behavior_name",
+    type=click.Choice(["UserLocal", "DateOnly", "TimeZoneIndependent"]),
+    default=None,
+    help="Datetime: change DateTimeBehavior. Only a UserLocal column may "
+    "change, once, to DateOnly or TimeZoneIndependent (both terminal). "
+    "DateOnly auto-sets --format DateOnly. Existing stored values are "
+    "not migrated (no Web API backfill).",
+)
 @_audit_option
 @_solution_option
 @_publish_option
 @pass_ctx
 def metadata_update_attribute(
-    ctx: CLIContext, entity, attribute, display_name, description, required,
-    max_length, precision, min_value, max_value, format_name, behavior_name,
-    audit, solution, publish,
+    ctx: CLIContext,
+    entity,
+    attribute,
+    display_name,
+    description,
+    required,
+    max_length,
+    precision,
+    min_value,
+    max_value,
+    format_name,
+    behavior_name,
+    audit,
+    solution,
+    publish,
 ):
     """Update an attribute (column) definition (retrieve-merge-write).
 
@@ -724,24 +917,42 @@ def metadata_update_attribute(
 @click.option("--menu-behavior", type=_MENU, default=None)
 @click.option("--menu-label", default=None)
 @click.option("--menu-order", type=int, default=None)
-@click.option("--hierarchical/--no-hierarchical", "hierarchical", default=None,
-              help="Set IsHierarchical on a 1:N relationship (rejected for N:N).")
+@click.option(
+    "--hierarchical/--no-hierarchical",
+    "hierarchical",
+    default=None,
+    help="Set IsHierarchical on a 1:N relationship (rejected for N:N).",
+)
 @_solution_option
 @_publish_option
 @pass_ctx
 def metadata_update_relationship(
-    ctx: CLIContext, schema_name, cascade_assign, cascade_delete, cascade_reparent,
-    cascade_share, cascade_unshare, cascade_merge, menu_behavior, menu_label,
-    menu_order, hierarchical, solution, publish,
+    ctx: CLIContext,
+    schema_name,
+    cascade_assign,
+    cascade_delete,
+    cascade_reparent,
+    cascade_share,
+    cascade_unshare,
+    cascade_merge,
+    menu_behavior,
+    menu_label,
+    menu_order,
+    hierarchical,
+    solution,
+    publish,
 ):
     """Update a relationship definition (retrieve-merge-write)."""
     solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     cascade: dict[str, str] = {}
     for member, value in (
-        ("Assign", cascade_assign), ("Delete", cascade_delete),
-        ("Reparent", cascade_reparent), ("Share", cascade_share),
-        ("Unshare", cascade_unshare), ("Merge", cascade_merge),
+        ("Assign", cascade_assign),
+        ("Delete", cascade_delete),
+        ("Reparent", cascade_reparent),
+        ("Share", cascade_share),
+        ("Unshare", cascade_unshare),
+        ("Merge", cascade_merge),
     ):
         if value is not None:
             cascade[member] = value
@@ -769,21 +980,26 @@ def metadata_relationships(ctx: CLIContext, logical_name):
     with d365_errors(ctx):
         info = rel_mod.list_relationships(ctx.backend(), logical_name)
     if ctx.json_mode:
-        ctx.emit(True, data=info, meta={
-            "one_to_many": len(info.get("OneToMany", [])),
-            "many_to_one": len(info.get("ManyToOne", [])),
-            "many_to_many": len(info.get("ManyToMany", [])),
-        })
+        ctx.emit(
+            True,
+            data=info,
+            meta={
+                "one_to_many": len(info.get("OneToMany", [])),
+                "many_to_one": len(info.get("ManyToOne", [])),
+                "many_to_many": len(info.get("ManyToMany", [])),
+            },
+        )
         return
     # Human mode: one labeled table per category (emit renders only a single
     # table, so drive the skin directly for the three groups).
-    rel_cols = ["SchemaName", "ReferencedEntity", "ReferencingEntity",
-                "ReferencingAttribute"]
+    rel_cols = ["SchemaName", "ReferencedEntity", "ReferencingEntity", "ReferencingAttribute"]
     groups = [
         ("OneToMany", rel_cols),
         ("ManyToOne", rel_cols),
-        ("ManyToMany", ["SchemaName", "Entity1LogicalName", "Entity2LogicalName",
-                        "IntersectEntityName"]),
+        (
+            "ManyToMany",
+            ["SchemaName", "Entity1LogicalName", "Entity2LogicalName", "IntersectEntityName"],
+        ),
     ]
     for title, headers in groups:
         ctx.skin.section(title)
@@ -796,15 +1012,22 @@ def metadata_relationships(ctx: CLIContext, logical_name):
 
 @metadata_group.command("can-relate")
 @click.argument("entity")
-@click.option("--as", "role", required=True,
-              type=click.Choice(["referenced", "referencing", "many-to-many"]),
-              help="Role to test: referenced (1 side), referencing (N side), "
-                   "or many-to-many.")
-@click.option("--valid-partners", is_flag=True, default=False,
-              help="List the tables ENTITY may legally pair with (GetValid* "
-                   "functions) instead of the yes/no eligibility check. Note: "
-                   "many-to-many lists ALL N:N-capable tables org-wide, not "
-                   "partners specific to ENTITY.")
+@click.option(
+    "--as",
+    "role",
+    required=True,
+    type=click.Choice(["referenced", "referencing", "many-to-many"]),
+    help="Role to test: referenced (1 side), referencing (N side), or many-to-many.",
+)
+@click.option(
+    "--valid-partners",
+    is_flag=True,
+    default=False,
+    help="List the tables ENTITY may legally pair with (GetValid* "
+    "functions) instead of the yes/no eligibility check. Note: "
+    "many-to-many lists ALL N:N-capable tables org-wide, not "
+    "partners specific to ENTITY.",
+)
 @pass_ctx
 def metadata_can_relate(ctx: CLIContext, entity, role, valid_partners):
     """Check whether ENTITY can take part in a relationship (read-only).
@@ -815,34 +1038,52 @@ def metadata_can_relate(ctx: CLIContext, entity, role, valid_partners):
     """
     with d365_errors(ctx):
         info = rel_mod.can_relate(
-            ctx.backend(), entity, role=role, valid_partners=valid_partners,
+            ctx.backend(),
+            entity,
+            role=role,
+            valid_partners=valid_partners,
         )
     if ctx.json_mode:
         ctx.emit(True, data=info)
         return
     if valid_partners:
         partners = info.get("valid_partners", [])
-        ctx.emit(True, table={"headers": ["ValidPartner"],
-                              "rows": [[p] for p in partners]},
-                 meta={"count": info.get("count", 0), "entity": entity, "as": role})
+        ctx.emit(
+            True,
+            table={"headers": ["ValidPartner"], "rows": [[p] for p in partners]},
+            meta={"count": info.get("count", 0), "entity": entity, "as": role},
+        )
         return
-    ctx.emit(True, table={"headers": ["Entity", "As", "Eligible"],
-                          "rows": [[entity, role, str(info.get("eligible"))]]})
+    ctx.emit(
+        True,
+        table={
+            "headers": ["Entity", "As", "Eligible"],
+            "rows": [[entity, role, str(info.get("eligible"))]],
+        },
+    )
 
 
 @metadata_group.command("delete-entity")
 @click.argument("logical_name")
 @_destructive_option
 @_optional_solution_option
-@click.option("--check-dependencies", "check_dependencies", is_flag=True, default=False,
-              help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; pairs with --dry-run.")
+@click.option(
+    "--check-dependencies",
+    "check_dependencies",
+    is_flag=True,
+    default=False,
+    help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; "
+    "pairs with --dry-run.",
+)
 @pass_ctx
 def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution, check_dependencies):
     """Permanently delete a custom entity (table) and ALL its rows."""
     _confirm_destructive(ctx, "entity", logical_name, yes)
     with d365_errors(ctx):
         info = meta_mod.delete_entity(
-            ctx.backend(), logical_name, solution=solution,
+            ctx.backend(),
+            logical_name,
+            solution=solution,
             check_dependencies=check_dependencies,
         )
     _emit_with_warning(ctx, info, None)
@@ -851,76 +1092,151 @@ def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution, check_d
 
 @metadata_group.command("add-attribute")
 @click.argument("entity")
-@click.option("--kind", required=True,
-              type=click.Choice([
-                  "string", "memo", "integer", "bigint", "decimal", "double",
-                  "money", "boolean", "datetime", "picklist", "multiselect",
-                  "lookup", "customer", "image", "file",
-              ]),
-              help="Attribute kind.")
-@click.option("--schema-name", default=None,
-              help="PascalCase with publisher prefix, e.g. 'new_Amount'. "
-                   "Defaults to <publisher_prefix>_<Display> from the profile.")
-@click.option("--display", "display_name", required=True,
-              help="UI label.")
+@click.option(
+    "--kind",
+    required=True,
+    type=click.Choice(
+        [
+            "string",
+            "memo",
+            "integer",
+            "bigint",
+            "decimal",
+            "double",
+            "money",
+            "boolean",
+            "datetime",
+            "picklist",
+            "multiselect",
+            "lookup",
+            "customer",
+            "image",
+            "file",
+        ]
+    ),
+    help="Attribute kind.",
+)
+@click.option(
+    "--schema-name",
+    default=None,
+    help="PascalCase with publisher prefix, e.g. 'new_Amount'. "
+    "Defaults to <publisher_prefix>_<Display> from the profile.",
+)
+@click.option("--display", "display_name", required=True, help="UI label.")
 @click.option("--description", default=None)
-@click.option("--required", "required",
-              type=click.Choice(["None", "Recommended", "ApplicationRequired"]),
-              default="None")
-@click.option("--max-length", type=int, default=None,
-              help="String/memo: max characters (default 100/2000).")
-@click.option("--format", "format_name", default=None,
-              help="String: Text|Email|Url|Phone|TextArea. Datetime: DateOnly|DateAndTime.")
-@click.option("--auto-number-format", default=None,
-              help="String: Auto-number format pattern (e.g. 'INV-{SEQNUM:5}').")
-@click.option("--behavior", "behavior_name",
-              type=click.Choice(["UserLocal", "DateOnly", "TimeZoneIndependent"]),
-              default=None,
-              help="Datetime: DateTimeBehavior. Omit for the server default (UserLocal).")
-@click.option("--min", "min_value", type=float, default=None,
-              help="Numeric kinds: minimum value.")
-@click.option("--max", "max_value", type=float, default=None,
-              help="Numeric kinds: maximum value.")
-@click.option("--precision", type=int, default=None,
-              help="Decimal/double/money: precision (decimals).")
+@click.option(
+    "--required",
+    "required",
+    type=click.Choice(["None", "Recommended", "ApplicationRequired"]),
+    default="None",
+)
+@click.option(
+    "--max-length", type=int, default=None, help="String/memo: max characters (default 100/2000)."
+)
+@click.option(
+    "--format",
+    "format_name",
+    default=None,
+    help="String: Text|Email|Url|Phone|TextArea. Datetime: DateOnly|DateAndTime.",
+)
+@click.option(
+    "--auto-number-format",
+    default=None,
+    help="String: Auto-number format pattern (e.g. 'INV-{SEQNUM:5}').",
+)
+@click.option(
+    "--behavior",
+    "behavior_name",
+    type=click.Choice(["UserLocal", "DateOnly", "TimeZoneIndependent"]),
+    default=None,
+    help="Datetime: DateTimeBehavior. Omit for the server default (UserLocal).",
+)
+@click.option("--min", "min_value", type=float, default=None, help="Numeric kinds: minimum value.")
+@click.option("--max", "max_value", type=float, default=None, help="Numeric kinds: maximum value.")
+@click.option(
+    "--precision", type=int, default=None, help="Decimal/double/money: precision (decimals)."
+)
 @click.option("--true-label", default="Yes", help="Boolean: label for true.")
 @click.option("--false-label", default="No", help="Boolean: label for false.")
-@click.option("--default-value", default=None,
-              help="Boolean: 'true'/'false'. Picklist: int option value.")
-@click.option("--optionset-name", default=None,
-              help="Picklist/multiselect: reference an existing global option set.")
-@click.option("--option", "options", multiple=True,
-              help="Picklist/multiselect: inline option as 'value:label' or ':label' (auto value). Repeatable.")
-@click.option("--target-entity", default=None,
-              help="Lookup: referenced entity logical name.")
-@click.option("--relationship-schema", default=None,
-              help="Lookup: override auto-generated relationship name.")
-@click.option("--max-size-kb", type=int, default=None,
-              help="File: max attachment size in KB. Default 32768.")
-@click.option("--type", "source_type",
-              type=click.Choice(["simple", "rollup", "calculated"]),
-              default="simple",
-              help="Column source: simple (default), or rollup/calculated — the "
-                   "latter two turn the --kind column into a rollup/calculated "
-                   "field and require --formula-file.")
-@click.option("--formula-file", "formula_file",
-              type=click.Path(exists=True, dir_okay=False),
-              default=None,
-              help="Rollup/calculated: path to the formula XAML file. Sent "
-                   "verbatim — the formula body is officially editor-authored, "
-                   "so hand-written XAML is unsupported (not validated here).")
+@click.option(
+    "--default-value", default=None, help="Boolean: 'true'/'false'. Picklist: int option value."
+)
+@click.option(
+    "--optionset-name",
+    default=None,
+    help="Picklist/multiselect: reference an existing global option set.",
+)
+@click.option(
+    "--option",
+    "options",
+    multiple=True,
+    help="Picklist/multiselect: inline option as 'value:label' or ':label' (auto value). "
+    "Repeatable.",
+)
+@click.option("--target-entity", default=None, help="Lookup: referenced entity logical name.")
+@click.option(
+    "--relationship-schema", default=None, help="Lookup: override auto-generated relationship name."
+)
+@click.option(
+    "--max-size-kb", type=int, default=None, help="File: max attachment size in KB. Default 32768."
+)
+@click.option(
+    "--type",
+    "source_type",
+    type=click.Choice(["simple", "rollup", "calculated"]),
+    default="simple",
+    help="Column source: simple (default), or rollup/calculated — the "
+    "latter two turn the --kind column into a rollup/calculated "
+    "field and require --formula-file.",
+)
+@click.option(
+    "--formula-file",
+    "formula_file",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help="Rollup/calculated: path to the formula XAML file. Sent "
+    "verbatim — the formula body is officially editor-authored, "
+    "so hand-written XAML is unsupported (not validated here).",
+)
 @_audit_option
 @_solution_option
-@click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error",
-              help="If the attribute already exists: error (default) or skip (no-op success).")
+@click.option(
+    "--if-exists",
+    type=click.Choice(["error", "skip"]),
+    default="error",
+    help="If the attribute already exists: error (default) or skip (no-op success).",
+)
 @_publish_option
 @pass_ctx
 def metadata_add_attribute(
-    ctx: CLIContext, entity, kind, schema_name, display_name, description, required,
-    max_length, format_name, auto_number_format, behavior_name, min_value, max_value, precision,
-    true_label, false_label, default_value,
-    optionset_name, options, target_entity, relationship_schema,
-    max_size_kb, source_type, formula_file, audit, solution, if_exists, publish,
+    ctx: CLIContext,
+    entity,
+    kind,
+    schema_name,
+    display_name,
+    description,
+    required,
+    max_length,
+    format_name,
+    auto_number_format,
+    behavior_name,
+    min_value,
+    max_value,
+    precision,
+    true_label,
+    false_label,
+    default_value,
+    optionset_name,
+    options,
+    target_entity,
+    relationship_schema,
+    max_size_kb,
+    source_type,
+    formula_file,
+    audit,
+    solution,
+    if_exists,
+    publish,
 ):
     """Add an attribute (column) to an existing entity."""
     schema_name = _resolve_schema_name(ctx, schema_name, display_name, "--schema-name")
@@ -986,15 +1302,26 @@ def metadata_add_attribute(
 @click.argument("attribute")
 @_destructive_option
 @_optional_solution_option
-@click.option("--check-dependencies", "check_dependencies", is_flag=True, default=False,
-              help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; pairs with --dry-run.")
+@click.option(
+    "--check-dependencies",
+    "check_dependencies",
+    is_flag=True,
+    default=False,
+    help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; "
+    "pairs with --dry-run.",
+)
 @pass_ctx
-def metadata_delete_attribute(ctx: CLIContext, entity, attribute, yes, solution, check_dependencies):
+def metadata_delete_attribute(
+    ctx: CLIContext, entity, attribute, yes, solution, check_dependencies
+):
     """Delete a custom attribute (column) from an entity."""
     _confirm_destructive(ctx, "attribute", f"{entity}.{attribute}", yes)
     with d365_errors(ctx):
         info = ma_mod.delete_attribute(
-            ctx.backend(), entity, attribute, solution=solution,
+            ctx.backend(),
+            entity,
+            attribute,
+            solution=solution,
             check_dependencies=check_dependencies,
         )
     _emit_with_warning(ctx, info, None)
@@ -1003,21 +1330,34 @@ def metadata_delete_attribute(ctx: CLIContext, entity, attribute, yes, solution,
 
 @metadata_group.command("create-key")
 @click.argument("entity")
-@click.option("--name", "schema_name", default=None,
-              help="Alternate key schema name, PascalCase with publisher prefix, "
-                   "e.g. 'new_Code'. Defaults to <prefix>_<display> from the profile.")
-@click.option("--key-attributes", required=True,
-              help="Comma-separated attribute logical names forming the key, "
-                   "e.g. 'accountnumber' or 'firstname,emailaddress1'.")
-@click.option("--display", "display_name", default=None,
-              help="UI label. Defaults to the schema name.")
+@click.option(
+    "--name",
+    "schema_name",
+    default=None,
+    help="Alternate key schema name, PascalCase with publisher prefix, "
+    "e.g. 'new_Code'. Defaults to <prefix>_<display> from the profile.",
+)
+@click.option(
+    "--key-attributes",
+    required=True,
+    help="Comma-separated attribute logical names forming the key, "
+    "e.g. 'accountnumber' or 'firstname,emailaddress1'.",
+)
+@click.option(
+    "--display", "display_name", default=None, help="UI label. Defaults to the schema name."
+)
 @_solution_option
-@click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error",
-              help="If the key already exists: error (default) or skip (no-op success).")
+@click.option(
+    "--if-exists",
+    type=click.Choice(["error", "skip"]),
+    default="error",
+    help="If the key already exists: error (default) or skip (no-op success).",
+)
 @_publish_option
 @pass_ctx
-def metadata_create_key(ctx: CLIContext, entity, schema_name, key_attributes,
-                        display_name, solution, if_exists, publish):
+def metadata_create_key(
+    ctx: CLIContext, entity, schema_name, key_attributes, display_name, solution, if_exists, publish
+):
     """Create an alternate key on an entity."""
     schema_name = _resolve_schema_name(ctx, schema_name, display_name, "--name")
     solution = _resolve_solution(ctx, solution)
@@ -1027,9 +1367,13 @@ def metadata_create_key(ctx: CLIContext, entity, schema_name, key_attributes,
         raise click.UsageError("--key-attributes must list at least one attribute.")
     with d365_errors(ctx):
         info = meta_mod.create_entity_key(
-            ctx.backend(), entity=entity, schema_name=schema_name,
-            key_attributes=attrs, display_name=display_name,
-            solution=solution, if_exists=if_exists,
+            ctx.backend(),
+            entity=entity,
+            schema_name=schema_name,
+            key_attributes=attrs,
+            display_name=display_name,
+            solution=solution,
+            if_exists=if_exists,
         )
         meta_mod.maybe_publish(ctx.backend(), info, publish and not info.get("skipped"))
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
@@ -1045,7 +1389,10 @@ def metadata_create_key(ctx: CLIContext, entity, schema_name, key_attributes,
 def metadata_delete_key(ctx: CLIContext, entity, key, yes, solution):
     """Delete an alternate key from an entity."""
     _confirm_destructive(
-        ctx, "alternate key", f"{entity}.{key}", yes,
+        ctx,
+        "alternate key",
+        f"{entity}.{key}",
+        yes,
         message=f"This will delete alternate key {entity}.{key!r}. Continue?",
     )
     with d365_errors(ctx):
@@ -1059,10 +1406,16 @@ def metadata_delete_key(ctx: CLIContext, entity, key, yes, solution):
 # defaulting: a relationship name spans two entities and cannot be derived from
 # a single display token, unlike create-entity/add-attribute/create-optionset.
 @metadata_group.command("create-one-to-many")
-@click.option("--schema-name", required=True, help="Relationship schema name with publisher prefix.")
+@click.option(
+    "--schema-name", required=True, help="Relationship schema name with publisher prefix."
+)
 @click.option("--referenced-entity", required=True, help='"1" side logical name (e.g. account).')
-@click.option("--referencing-entity", required=True, help='"N" side logical name (e.g. new_project).')
-@click.option("--lookup-schema", required=True, help="Lookup attribute schema name on referencing entity.")
+@click.option(
+    "--referencing-entity", required=True, help='"N" side logical name (e.g. new_project).'
+)
+@click.option(
+    "--lookup-schema", required=True, help="Lookup attribute schema name on referencing entity."
+)
 @click.option("--lookup-display", required=True, help="UI label for the lookup attribute.")
 @click.option("--lookup-required", type=_REQUIRED, default="None")
 @click.option("--lookup-description", default=None)
@@ -1075,21 +1428,45 @@ def metadata_delete_key(ctx: CLIContext, entity, key, yes, solution):
 @click.option("--menu-label", default=None)
 @click.option("--menu-behavior", type=_MENU, default="UseCollectionName")
 @click.option("--menu-order", type=int, default=10000)
-@click.option("--hierarchical", is_flag=True, default=False,
-              help="Mark the 1:N as hierarchical (IsHierarchical). Use with a "
-                   "self-referencing relationship (referenced == referencing entity) "
-                   "to enable the parent/child hierarchy and Above/Under operators.")
+@click.option(
+    "--hierarchical",
+    is_flag=True,
+    default=False,
+    help="Mark the 1:N as hierarchical (IsHierarchical). Use with a "
+    "self-referencing relationship (referenced == referencing entity) "
+    "to enable the parent/child hierarchy and Above/Under operators.",
+)
 @_solution_option
-@click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error",
-              help="If the relationship already exists: error (default) or skip (no-op success).")
+@click.option(
+    "--if-exists",
+    type=click.Choice(["error", "skip"]),
+    default="error",
+    help="If the relationship already exists: error (default) or skip (no-op success).",
+)
 @_publish_option
 @pass_ctx
 def metadata_create_one_to_many(
-    ctx: CLIContext, schema_name, referenced_entity, referencing_entity, lookup_schema,
-    lookup_display, lookup_required, lookup_description,
-    cascade_assign, cascade_delete, cascade_reparent, cascade_share,
-    cascade_unshare, cascade_merge, menu_label, menu_behavior, menu_order,
-    hierarchical, solution, if_exists, publish,
+    ctx: CLIContext,
+    schema_name,
+    referenced_entity,
+    referencing_entity,
+    lookup_schema,
+    lookup_display,
+    lookup_required,
+    lookup_description,
+    cascade_assign,
+    cascade_delete,
+    cascade_reparent,
+    cascade_share,
+    cascade_unshare,
+    cascade_merge,
+    menu_label,
+    menu_behavior,
+    menu_order,
+    hierarchical,
+    solution,
+    if_exists,
+    publish,
 ):
     """Create a 1:N relationship and its lookup attribute atomically."""
     solution = _resolve_solution(ctx, solution)
@@ -1134,15 +1511,29 @@ def metadata_create_one_to_many(
 @click.option("--entity2-menu-behavior", type=_MENU, default="UseCollectionName")
 @click.option("--entity2-menu-order", type=int, default=10000)
 @_solution_option
-@click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error",
-              help="If the relationship already exists: error (default) or skip (no-op success).")
+@click.option(
+    "--if-exists",
+    type=click.Choice(["error", "skip"]),
+    default="error",
+    help="If the relationship already exists: error (default) or skip (no-op success).",
+)
 @_publish_option
 @pass_ctx
 def metadata_create_many_to_many(
-    ctx: CLIContext, schema_name, entity1_logical, entity2_logical, intersect_entity,
-    entity1_menu_label, entity1_menu_behavior, entity1_menu_order,
-    entity2_menu_label, entity2_menu_behavior, entity2_menu_order,
-    solution, if_exists, publish,
+    ctx: CLIContext,
+    schema_name,
+    entity1_logical,
+    entity2_logical,
+    intersect_entity,
+    entity1_menu_label,
+    entity1_menu_behavior,
+    entity1_menu_order,
+    entity2_menu_label,
+    entity2_menu_behavior,
+    entity2_menu_order,
+    solution,
+    if_exists,
+    publish,
 ):
     """Create an N:N relationship via the dedicated action."""
     solution = _resolve_solution(ctx, solution)
@@ -1172,15 +1563,23 @@ def metadata_create_many_to_many(
 @click.argument("schema_name")
 @_destructive_option
 @_optional_solution_option
-@click.option("--check-dependencies", "check_dependencies", is_flag=True, default=False,
-              help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; pairs with --dry-run.")
+@click.option(
+    "--check-dependencies",
+    "check_dependencies",
+    is_flag=True,
+    default=False,
+    help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; "
+    "pairs with --dry-run.",
+)
 @pass_ctx
 def metadata_delete_relationship(ctx: CLIContext, schema_name, yes, solution, check_dependencies):
     """Delete a custom relationship (1:N or N:N) by schema name."""
     _confirm_destructive(ctx, "relationship", schema_name, yes)
     with d365_errors(ctx):
         info = rel_mod.delete_relationship(
-            ctx.backend(), schema_name, solution=solution,
+            ctx.backend(),
+            schema_name,
+            solution=solution,
             check_dependencies=check_dependencies,
         )
     _emit_with_warning(ctx, info, None)
@@ -1197,12 +1596,12 @@ def metadata_list_optionsets(ctx: CLIContext, custom_only, top):
         rows = os_mod.list_optionsets(ctx.backend(), custom_only=custom_only, top=top)
     headers = ["Name", "IsCustomOptionSet", "IsManaged"]
     table_rows = [
-        [r.get("Name", ""), str(r.get("IsCustomOptionSet", "")),
-         str(r.get("IsManaged", ""))]
+        [r.get("Name", ""), str(r.get("IsCustomOptionSet", "")), str(r.get("IsManaged", ""))]
         for r in rows
     ]
-    ctx.emit(True, data=rows, table={"headers": headers, "rows": table_rows},
-             meta={"count": len(rows)})
+    ctx.emit(
+        True, data=rows, table={"headers": headers, "rows": table_rows}, meta={"count": len(rows)}
+    )
 
 
 @metadata_group.command("get-optionset")
@@ -1220,20 +1619,32 @@ def metadata_get_optionset(ctx: CLIContext, name):
 
 
 @metadata_group.command("create-optionset")
-@click.option("--name", default=None,
-              help="Fully prefixed option set name, e.g. 'new_priority'. "
-                   "Defaults to <publisher_prefix>_<display> from the profile.")
+@click.option(
+    "--name",
+    default=None,
+    help="Fully prefixed option set name, e.g. 'new_priority'. "
+    "Defaults to <publisher_prefix>_<display> from the profile.",
+)
 @click.option("--display", "display_name", required=True)
 @click.option("--description", default=None)
-@click.option("--option", "options", multiple=True,
-              help="Option as 'value:label' or ':label' (auto value). Repeatable.")
+@click.option(
+    "--option",
+    "options",
+    multiple=True,
+    help="Option as 'value:label' or ':label' (auto value). Repeatable.",
+)
 @_solution_option
-@click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error",
-              help="If the option set already exists: error (default) or skip (no-op success).")
+@click.option(
+    "--if-exists",
+    type=click.Choice(["error", "skip"]),
+    default="error",
+    help="If the option set already exists: error (default) or skip (no-op success).",
+)
 @_publish_option
 @pass_ctx
-def metadata_create_optionset(ctx: CLIContext, name, display_name, description, options,
-                              solution, if_exists, publish):
+def metadata_create_optionset(
+    ctx: CLIContext, name, display_name, description, options, solution, if_exists, publish
+):
     """Create a global option set."""
     name = _resolve_schema_name(ctx, name, display_name, "--name")
     solution = _resolve_solution(ctx, solution)
@@ -1242,9 +1653,13 @@ def metadata_create_optionset(ctx: CLIContext, name, display_name, description, 
     with d365_errors(ctx):
         info = os_mod.create_optionset(
             ctx.backend(),
-            name=name, display_name=display_name,
-            description=description, options=parsed or None,
-            publish=publish, solution=solution, if_exists=if_exists,
+            name=name,
+            display_name=display_name,
+            description=description,
+            options=parsed or None,
+            publish=publish,
+            solution=solution,
+            if_exists=if_exists,
         )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, name, info, solution=solution)
@@ -1252,19 +1667,44 @@ def metadata_create_optionset(ctx: CLIContext, name, display_name, description, 
 
 @metadata_group.command("update-optionset")
 @click.argument("name")
-@click.option("--insert-option", "insert_options", multiple=True,
-              help="Insert option 'value:label' or ':label'. Repeatable.")
-@click.option("--update-option", "update_options", multiple=True,
-              help="Update an existing option's label, 'value:label'. Repeatable.")
-@click.option("--delete-option", "delete_options", multiple=True, type=int,
-              help="Delete option by value. Repeatable.")
-@click.option("--reorder", type=_CommaIntListType(), default=None,
-              help="Comma-separated full ordered list of values, e.g. '1,2,7,4'.")
+@click.option(
+    "--insert-option",
+    "insert_options",
+    multiple=True,
+    help="Insert option 'value:label' or ':label'. Repeatable.",
+)
+@click.option(
+    "--update-option",
+    "update_options",
+    multiple=True,
+    help="Update an existing option's label, 'value:label'. Repeatable.",
+)
+@click.option(
+    "--delete-option",
+    "delete_options",
+    multiple=True,
+    type=int,
+    help="Delete option by value. Repeatable.",
+)
+@click.option(
+    "--reorder",
+    type=_CommaIntListType(),
+    default=None,
+    help="Comma-separated full ordered list of values, e.g. '1,2,7,4'.",
+)
 @_solution_option
 @_publish_option
 @pass_ctx
-def metadata_update_optionset(ctx: CLIContext, name, insert_options, update_options,
-                              delete_options, reorder, solution, publish):
+def metadata_update_optionset(
+    ctx: CLIContext,
+    name,
+    insert_options,
+    update_options,
+    delete_options,
+    reorder,
+    solution,
+    publish,
+):
     """Granular update: insert/update/delete/reorder options."""
     solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
@@ -1295,39 +1735,62 @@ def metadata_update_optionset(ctx: CLIContext, name, insert_options, update_opti
 @click.argument("name")
 @_destructive_option
 @_optional_solution_option
-@click.option("--check-dependencies", "check_dependencies", is_flag=True, default=False,
-              help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; pairs with --dry-run.")
+@click.option(
+    "--check-dependencies",
+    "check_dependencies",
+    is_flag=True,
+    default=False,
+    help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; "
+    "pairs with --dry-run.",
+)
 @pass_ctx
 def metadata_delete_optionset(ctx: CLIContext, name, yes, solution, check_dependencies):
     """Delete a custom global option set."""
     _confirm_destructive(ctx, "option set", name, yes)
     with d365_errors(ctx):
-        info = os_mod.delete_optionset(ctx.backend(), name, solution=solution,
-                                       check_dependencies=check_dependencies)
+        info = os_mod.delete_optionset(
+            ctx.backend(), name, solution=solution, check_dependencies=check_dependencies
+        )
     _emit_with_warning(ctx, info, None)
     _journal(ctx, name, info, solution=solution)
 
 
 @metadata_group.command("status-add")
 @click.argument("entity")
-@click.option("--state", "state_code", type=int, required=True,
-              help="statecode value the new status belongs to (e.g. 0 = Active).")
+@click.option(
+    "--state",
+    "state_code",
+    type=int,
+    required=True,
+    help="statecode value the new status belongs to (e.g. 0 = Active).",
+)
 @click.option("--label", "label_text", required=True, help="Status option label.")
-@click.option("--value", type=int, default=None,
-              help="Explicit statuscode value. Omit to let the server assign one.")
+@click.option(
+    "--value",
+    type=int,
+    default=None,
+    help="Explicit statuscode value. Omit to let the server assign one.",
+)
 @click.option("--description", default=None)
 @_solution_option
 @_publish_option
 @pass_ctx
-def metadata_status_add(ctx: CLIContext, entity, state_code, label_text, value,
-                        description, solution, publish):
+def metadata_status_add(
+    ctx: CLIContext, entity, state_code, label_text, value, description, solution, publish
+):
     """Add a statuscode option tied to a state (InsertStatusValue)."""
     solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = sm_mod.add_status_value(
-            ctx.backend(), entity, state_code=state_code, label_text=label_text,
-            value=value, description=description, publish=publish, solution=solution,
+            ctx.backend(),
+            entity,
+            state_code=state_code,
+            label_text=label_text,
+            value=value,
+            description=description,
+            publish=publish,
+            solution=solution,
         )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, entity, info, solution=solution)
@@ -1335,25 +1798,35 @@ def metadata_status_add(ctx: CLIContext, entity, state_code, label_text, value,
 
 @metadata_group.command("state-relabel")
 @click.argument("entity")
-@click.option("--value", type=int, required=True,
-              help="statecode value to relabel (e.g. 1 = Inactive).")
+@click.option(
+    "--value", type=int, required=True, help="statecode value to relabel (e.g. 1 = Inactive)."
+)
 @click.option("--label", "label_text", required=True, help="New state label.")
 @click.option("--description", default=None)
-@click.option("--merge-labels/--no-merge-labels", default=False,
-              help="Preserve labels in untouched languages (MergeLabels).")
+@click.option(
+    "--merge-labels/--no-merge-labels",
+    default=False,
+    help="Preserve labels in untouched languages (MergeLabels).",
+)
 @_solution_option
 @_publish_option
 @pass_ctx
-def metadata_state_relabel(ctx: CLIContext, entity, value, label_text, description,
-                           merge_labels, solution, publish):
+def metadata_state_relabel(
+    ctx: CLIContext, entity, value, label_text, description, merge_labels, solution, publish
+):
     """Relabel a statecode state option (UpdateStateValue)."""
     solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = sm_mod.relabel_state_value(
-            ctx.backend(), entity, value=value, label_text=label_text,
-            description=description, merge_labels=merge_labels,
-            publish=publish, solution=solution,
+            ctx.backend(),
+            entity,
+            value=value,
+            label_text=label_text,
+            description=description,
+            merge_labels=merge_labels,
+            publish=publish,
+            solution=solution,
         )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, entity, info, solution=solution)
@@ -1361,17 +1834,20 @@ def metadata_state_relabel(ctx: CLIContext, entity, value, label_text, descripti
 
 @metadata_group.command("create-mapping")
 @click.argument("relationship")
-@click.option("--from", "source_attr", default=None,
-              help="Source (parent) attribute logical name.")
-@click.option("--to", "target_attr", default=None,
-              help="Target (child) attribute logical name.")
-@click.option("--auto", is_flag=True, default=False,
-              help="Bulk-generate likely mappings via AutoMapEntity (replaces "
-                   "any existing maps for the pair).")
+@click.option("--from", "source_attr", default=None, help="Source (parent) attribute logical name.")
+@click.option("--to", "target_attr", default=None, help="Target (child) attribute logical name.")
+@click.option(
+    "--auto",
+    is_flag=True,
+    default=False,
+    help="Bulk-generate likely mappings via AutoMapEntity (replaces "
+    "any existing maps for the pair).",
+)
 @_solution_option
 @pass_ctx
-def metadata_create_mapping(ctx: CLIContext, relationship, source_attr, target_attr,
-                            auto, solution):
+def metadata_create_mapping(
+    ctx: CLIContext, relationship, source_attr, target_attr, auto, solution
+):
     """Create a field mapping on a 1:N relationship, or --auto generate them."""
     solution = _resolve_solution(ctx, solution)
     if auto:
@@ -1384,8 +1860,11 @@ def metadata_create_mapping(ctx: CLIContext, relationship, source_attr, target_a
             raise click.UsageError("pass both --from and --to, or use --auto.")
         with d365_errors(ctx):
             info = mp_mod.create_mapping(
-                ctx.backend(), relationship, source_attr=source_attr,
-                target_attr=target_attr, solution=solution,
+                ctx.backend(),
+                relationship,
+                source_attr=source_attr,
+                target_attr=target_attr,
+                solution=solution,
             )
     _emit_with_warning(ctx, info, None)
     _journal(ctx, relationship, info, solution=solution)
@@ -1402,12 +1881,15 @@ def metadata_list_actions(ctx: CLIContext):
         return
     headers = ["Name", "Bound", "Returns", "Parameters"]
     rows = [
-        [a["name"], a["is_bound"], a["return_type"] or "",
-         ", ".join(f"{p['name']}:{p['type']}" for p in a["parameters"])]
+        [
+            a["name"],
+            a["is_bound"],
+            a["return_type"] or "",
+            ", ".join(f"{p['name']}:{p['type']}" for p in a["parameters"]),
+        ]
         for a in items
     ]
-    ctx.emit(True, table={"headers": headers, "rows": rows},
-             meta={"count": len(items)})
+    ctx.emit(True, table={"headers": headers, "rows": rows}, meta={"count": len(items)})
 
 
 @metadata_group.command("list-functions")
@@ -1421,9 +1903,13 @@ def metadata_list_functions(ctx: CLIContext):
         return
     headers = ["Name", "Bound", "Composable", "Returns", "Parameters"]
     rows = [
-        [f["name"], f["is_bound"], f["is_composable"], f["return_type"] or "",
-         ", ".join(f"{p['name']}:{p['type']}" for p in f["parameters"])]
+        [
+            f["name"],
+            f["is_bound"],
+            f["is_composable"],
+            f["return_type"] or "",
+            ", ".join(f"{p['name']}:{p['type']}" for p in f["parameters"]),
+        ]
         for f in items
     ]
-    ctx.emit(True, table={"headers": headers, "rows": rows},
-             meta={"count": len(items)})
+    ctx.emit(True, table={"headers": headers, "rows": rows}, meta={"count": len(items)})

@@ -10,7 +10,7 @@ Reference: https://learn.microsoft.com/power-apps/developer/data-platform/webapi
 
 from __future__ import annotations
 
-from typing import Any, TypedDict, Union
+from typing import Any, TypedDict
 
 
 class BatchOperation(TypedDict, total=False):
@@ -26,7 +26,7 @@ class BatchOperation(TypedDict, total=False):
     url: str
     body: dict[str, Any]
     headers: dict[str, str]
-    content_id: Union[str, int]
+    content_id: str | int
 
 
 class BatchResult(TypedDict):
@@ -36,8 +36,8 @@ class BatchResult(TypedDict):
     url: str
     status: int
     headers: dict[str, str]
-    body: Union[dict[str, Any], str, None]
-    error: Union[str, None]
+    body: dict[str, Any] | str | None
+    error: str | None
 
 
 class AsyncOperationRow(TypedDict, total=False):

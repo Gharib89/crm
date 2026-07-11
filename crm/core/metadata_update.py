@@ -18,11 +18,11 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict
-from crm.core.metadata import label, maybe_publish
-from crm.core.metadata_attrs import coerce_int_bounds
 from crm.core import metadata_cache
 from crm.core import metadata_constraints as mc
+from crm.core.metadata import label, maybe_publish
+from crm.core.metadata_attrs import coerce_int_bounds
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 
 # Attribute @odata.type cast names (without leading '#') by capability, derived
 # from the single KINDS table so the create and update paths cannot diverge.
@@ -52,17 +52,13 @@ def _deep_merge(base: dict[str, Any], changes: dict[str, Any]) -> dict[str, Any]
     for key, value in changes.items():
         existing = out.get(key)
         if isinstance(existing, dict) and isinstance(value, dict):
-            out[key] = _deep_merge(
-                cast("dict[str, Any]", existing), cast("dict[str, Any]", value)
-            )
+            out[key] = _deep_merge(cast("dict[str, Any]", existing), cast("dict[str, Any]", value))
         else:
             out[key] = value
     return out
 
 
-def _shallow_diff(
-    current: dict[str, Any], changes: dict[str, Any]
-) -> dict[str, dict[str, Any]]:
+def _shallow_diff(current: dict[str, Any], changes: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """Targeted diff of the top-level keys in `changes` vs `current`.
 
     Returns `{key: {"old": <current>, "new": <merged>}}` for each top-level key
@@ -72,9 +68,7 @@ def _shallow_diff(
     for key, value in changes.items():
         old = current.get(key)
         if isinstance(old, dict) and isinstance(value, dict):
-            new: Any = _deep_merge(
-                cast("dict[str, Any]", old), cast("dict[str, Any]", value)
-            )
+            new: Any = _deep_merge(cast("dict[str, Any]", old), cast("dict[str, Any]", value))
         else:
             new = value
         diff[key] = {"old": old, "new": new}
@@ -233,7 +227,11 @@ def update_entity(
         )
     path = f"EntityDefinitions(LogicalName='{logical_name}')"
     out = _retrieve_merge_write(
-        backend, path=path, changes=changes, solution=solution, publish=publish,
+        backend,
+        path=path,
+        changes=changes,
+        solution=solution,
+        publish=publish,
     )
     out.setdefault("logical_name", logical_name)
     return out
@@ -276,9 +274,7 @@ def _build_attribute_changes(
         changes["MaxLength"] = max_length
     if precision is not None:
         if odata_type not in _PRECISION_TYPES:
-            raise D365Error(
-                "--precision is only valid for decimal/double/money attributes."
-            )
+            raise D365Error("--precision is only valid for decimal/double/money attributes.")
         kind = mc.kind_for_cast(odata_type)
         if kind is None:  # unreachable: _PRECISION_TYPES is derived from mc.KINDS
             raise D365Error(f"no attribute kind for @odata.type {odata_type!r}.")
@@ -302,9 +298,7 @@ def _build_attribute_changes(
             mc.validate_format("string", format_name, subject="--format")
             changes["FormatName"] = {"Value": format_name}
         else:
-            raise D365Error(
-                "--format is only valid for string or datetime attributes."
-            )
+            raise D365Error("--format is only valid for string or datetime attributes.")
     if behavior_name is not None:
         if odata_type != _DATETIME_TYPE:
             raise D365Error("--behavior is only valid for datetime attributes.")
@@ -379,8 +373,16 @@ def update_attribute(
     if all(
         v is None
         for v in (
-            display_name, description, required, max_length, precision,
-            min_value, max_value, format_name, is_audit_enabled, behavior_name,
+            display_name,
+            description,
+            required,
+            max_length,
+            precision,
+            min_value,
+            max_value,
+            format_name,
+            is_audit_enabled,
+            behavior_name,
         )
     ):
         raise D365Error(
@@ -389,10 +391,7 @@ def update_attribute(
             "--min/--max/--format/--behavior/--audit."
         )
 
-    base_path = (
-        f"EntityDefinitions(LogicalName='{entity}')"
-        f"/Attributes(LogicalName='{attribute}')"
-    )
+    base_path = f"EntityDefinitions(LogicalName='{entity}')/Attributes(LogicalName='{attribute}')"
     base = _read(backend, base_path)
     odata_type = base.get("@odata.type")
     if not isinstance(odata_type, str) or not odata_type:
@@ -428,8 +427,12 @@ def update_attribute(
         _check_behavior_transition(current, entity, attribute)
 
     out = _retrieve_merge_write(
-        backend, path=cast_path, changes=changes, solution=solution,
-        publish=publish, current=current,
+        backend,
+        path=cast_path,
+        changes=changes,
+        solution=solution,
+        publish=publish,
+        current=current,
     )
     out.setdefault("entity", entity)
     out.setdefault("attribute", attribute)
@@ -454,9 +457,7 @@ def _managed_value(prop: Any) -> Any:
     return prop
 
 
-def _check_behavior_transition(
-    current: dict[str, Any], entity: str, attribute: str
-) -> None:
+def _check_behavior_transition(current: dict[str, Any], entity: str, attribute: str) -> None:
     """Reject a DateTimeBehavior change the platform would fault on.
 
     The platform permits exactly one behavior change, and only from a
@@ -495,8 +496,7 @@ def _build_relationship_changes(
         for name, value in cascade.items():
             if name not in mc.CASCADE_KEYS:
                 raise D365Error(
-                    f"cascade key {name!r} is not valid; must be one of "
-                    f"{sorted(mc.CASCADE_KEYS)}."
+                    f"cascade key {name!r} is not valid; must be one of {sorted(mc.CASCADE_KEYS)}."
                 )
             mc.validate_cascade(value, subject=f"cascade {name}")
         changes["CascadeConfiguration"] = dict(cascade)
@@ -559,9 +559,7 @@ def update_relationship(
     )
     metadata_id = resolve.get("MetadataId")
     if not isinstance(metadata_id, str) or not metadata_id:
-        raise D365Error(
-            f"Could not resolve MetadataId for relationship {schema_name!r}."
-        )
+        raise D365Error(f"Could not resolve MetadataId for relationship {schema_name!r}.")
     odata_type = resolve.get("@odata.type")
     rel_type = resolve.get("RelationshipType")
     if isinstance(odata_type, str) and odata_type:
@@ -576,8 +574,10 @@ def update_relationship(
     # uses Entity1/Entity2-side menus, which are out of scope here), so emitting
     # them would produce an invalid PUT. Reject client-side instead.
     if odata_cast == _MANY_TO_MANY_CAST and (
-        cascade or menu_behavior is not None
-        or menu_label is not None or menu_order is not None
+        cascade
+        or menu_behavior is not None
+        or menu_label is not None
+        or menu_order is not None
         or is_hierarchical is not None
     ):
         raise D365Error(
@@ -595,8 +595,12 @@ def update_relationship(
     write_path = f"RelationshipDefinitions({metadata_id})"
 
     out = _retrieve_merge_write(
-        backend, path=cast_path, changes=changes, solution=solution,
-        publish=publish, write_path=write_path,
+        backend,
+        path=cast_path,
+        changes=changes,
+        solution=solution,
+        publish=publish,
+        write_path=write_path,
         ensure={"@odata.type": f"#{odata_cast}"},
     )
     out.setdefault("schema_name", schema_name)

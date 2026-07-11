@@ -1,4 +1,5 @@
 """CLI-layer tests for `crm connectionrole`."""
+
 # pyright: basic
 from __future__ import annotations
 
@@ -26,12 +27,25 @@ class TestCreate:
     def test_create_role(self, backend, monkeypatch):
         _use_backend(monkeypatch, backend)
         with rm_module.Mocker() as m:
-            m.post(backend.url_for("connectionroles"), status_code=204,
-                   headers=_entity_id_headers(backend, "connectionroles", _ROLE_A))
-            result = CliRunner().invoke(cli, [
-                "--json", "connectionrole", "create",
-                "--name", "Stakeholder", "--category", "stakeholder",
-                "--solution", "TestSol"])
+            m.post(
+                backend.url_for("connectionroles"),
+                status_code=204,
+                headers=_entity_id_headers(backend, "connectionroles", _ROLE_A),
+            )
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "connectionrole",
+                    "create",
+                    "--name",
+                    "Stakeholder",
+                    "--category",
+                    "stakeholder",
+                    "--solution",
+                    "TestSol",
+                ],
+            )
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)["data"]
         assert data["created"] is True
@@ -40,17 +54,28 @@ class TestCreate:
 
     def test_invalid_category_is_usage_error(self, backend, monkeypatch):
         _use_backend(monkeypatch, backend)
-        result = CliRunner().invoke(cli, [
-            "--json", "connectionrole", "create", "--name", "X", "--category", "bogus"])
+        result = CliRunner().invoke(
+            cli, ["--json", "connectionrole", "create", "--name", "X", "--category", "bogus"]
+        )
         # click.Choice rejects an invalid value at parse time (exit 2).
         assert result.exit_code == 2, result.output
 
     def test_dry_run(self, dry_backend, monkeypatch):
         _use_backend(monkeypatch, dry_backend)
         with rm_module.Mocker():
-            result = CliRunner().invoke(cli, [
-                "--json", "--dry-run", "connectionrole", "create", "--name", "X",
-                "--solution", "TestSol"])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "--dry-run",
+                    "connectionrole",
+                    "create",
+                    "--name",
+                    "X",
+                    "--solution",
+                    "TestSol",
+                ],
+            )
         assert result.exit_code == 0, result.output
         assert json.loads(result.output)["data"]["_dry_run"] is True
 
@@ -59,12 +84,24 @@ class TestScope:
     def test_scope_role_to_entity(self, backend, monkeypatch):
         _use_backend(monkeypatch, backend)
         with rm_module.Mocker() as m:
-            m.post(backend.url_for("connectionroleobjecttypecodes"), status_code=204,
-                   headers=_entity_id_headers(
-                       backend, "connectionroleobjecttypecodes", _OTC_ID))
-            result = CliRunner().invoke(cli, [
-                "--json", "connectionrole", "scope", _ROLE_A, "--entity", "account",
-                "--solution", "TestSol"])
+            m.post(
+                backend.url_for("connectionroleobjecttypecodes"),
+                status_code=204,
+                headers=_entity_id_headers(backend, "connectionroleobjecttypecodes", _OTC_ID),
+            )
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "connectionrole",
+                    "scope",
+                    _ROLE_A,
+                    "--entity",
+                    "account",
+                    "--solution",
+                    "TestSol",
+                ],
+            )
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)["data"]
         assert data["created"] is True
@@ -73,9 +110,20 @@ class TestScope:
     def test_dry_run(self, dry_backend, monkeypatch):
         _use_backend(monkeypatch, dry_backend)
         with rm_module.Mocker():
-            result = CliRunner().invoke(cli, [
-                "--json", "--dry-run", "connectionrole", "scope", _ROLE_A,
-                "--entity", "account", "--solution", "TestSol"])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "--dry-run",
+                    "connectionrole",
+                    "scope",
+                    _ROLE_A,
+                    "--entity",
+                    "account",
+                    "--solution",
+                    "TestSol",
+                ],
+            )
         assert result.exit_code == 0, result.output
         assert json.loads(result.output)["data"]["_dry_run"] is True
 
@@ -84,11 +132,13 @@ class TestMatch:
     def test_match_roles(self, backend, monkeypatch):
         _use_backend(monkeypatch, backend)
         ref_url = backend.url_for(
-            f"connectionroles({_ROLE_A})/connectionroleassociation_association/$ref")
+            f"connectionroles({_ROLE_A})/connectionroleassociation_association/$ref"
+        )
         with rm_module.Mocker() as m:
             m.post(ref_url, status_code=204)
-            result = CliRunner().invoke(cli, [
-                "--json", "connectionrole", "match", _ROLE_A, _ROLE_B])
+            result = CliRunner().invoke(
+                cli, ["--json", "connectionrole", "match", _ROLE_A, _ROLE_B]
+            )
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)["data"]
         assert data["matched"] is True
@@ -97,7 +147,8 @@ class TestMatch:
     def test_dry_run(self, dry_backend, monkeypatch):
         _use_backend(monkeypatch, dry_backend)
         with rm_module.Mocker():
-            result = CliRunner().invoke(cli, [
-                "--json", "--dry-run", "connectionrole", "match", _ROLE_A, _ROLE_B])
+            result = CliRunner().invoke(
+                cli, ["--json", "--dry-run", "connectionrole", "match", _ROLE_A, _ROLE_B]
+            )
         assert result.exit_code == 0, result.output
         assert json.loads(result.output)["data"]["_dry_run"] is True

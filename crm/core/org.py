@@ -62,8 +62,11 @@ EXPECTED_REQUESTS = 3 + 2 + 4 + 4 + (1 + len(_WEBRESOURCE_TYPES)) + 2
 
 
 def _count(
-    backend: D365Backend, entity_set: str, *,
-    select: str, filter_expr: str | None = None,
+    backend: D365Backend,
+    entity_set: str,
+    *,
+    select: str,
+    filter_expr: str | None = None,
 ) -> int:
     """Return the total row count of *entity_set* via one narrow `$count` read.
 
@@ -136,11 +139,15 @@ def _identity(backend: D365Backend) -> dict[str, Any]:
 def _solutions(backend: D365Backend) -> dict[str, Any]:
     managed = _count(backend, "solutions", select="solutionid", filter_expr="ismanaged eq true")
     rows, unmanaged = _page(
-        backend, "solutions", select="uniquename",
-        filter_expr="ismanaged eq false", orderby="uniquename",
+        backend,
+        "solutions",
+        select="uniquename",
+        filter_expr="ismanaged eq false",
+        orderby="uniquename",
     )
     candidates = [
-        r["uniquename"] for r in rows
+        r["uniquename"]
+        for r in rows
         if r.get("uniquename") and r.get("uniquename") not in _SYSTEM_SOLUTIONS
     ]
     # `unmanaged` (from @odata.count) is the true total; `unmanaged_names` is the
@@ -155,8 +162,10 @@ def _solutions(backend: D365Backend) -> dict[str, Any]:
 
 def _publishers(backend: D365Backend) -> dict[str, Any]:
     rows, total = _page(
-        backend, "publishers",
-        select="uniquename,friendlyname,customizationprefix", orderby="uniquename",
+        backend,
+        "publishers",
+        select="uniquename,friendlyname,customizationprefix",
+        orderby="uniquename",
     )
     items = [
         {
@@ -217,8 +226,9 @@ def _automation(backend: D365Backend) -> dict[str, Any]:
             bucket["activated"] += 1
     return {
         "plugin_assemblies": _count(backend, "pluginassemblies", select="pluginassemblyid"),
-        "plugin_steps": _count(backend, "sdkmessageprocessingsteps",
-                               select="sdkmessageprocessingstepid"),
+        "plugin_steps": _count(
+            backend, "sdkmessageprocessingsteps", select="sdkmessageprocessingstepid"
+        ),
         "workflows": {"total": len(workflows), "by_category": by_category},
         "slas": _count(backend, "slas", select="slaid"),
     }
@@ -226,8 +236,12 @@ def _automation(backend: D365Backend) -> dict[str, Any]:
 
 def _components(backend: D365Backend) -> dict[str, Any]:
     by_type = {
-        label: _count(backend, "webresourceset", select="webresourceid",
-                      filter_expr=f"webresourcetype eq {code}")
+        label: _count(
+            backend,
+            "webresourceset",
+            select="webresourceid",
+            filter_expr=f"webresourcetype eq {code}",
+        )
         for label, code in _WEBRESOURCE_TYPES.items()
     }
     return {
@@ -235,8 +249,9 @@ def _components(backend: D365Backend) -> dict[str, Any]:
             "total": _count(backend, "webresourceset", select="webresourceid"),
             "by_type": by_type,
         },
-        "security_roles_custom": _count(backend, "roles", select="roleid",
-                                        filter_expr="ismanaged eq false"),
+        "security_roles_custom": _count(
+            backend, "roles", select="roleid", filter_expr="ismanaged eq false"
+        ),
         "duplicate_rules": _count(backend, "duplicaterules", select="duplicateruleid"),
     }
 

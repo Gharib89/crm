@@ -97,8 +97,7 @@ def needs_binding(record: dict[str, Any]) -> bool:
     annotation — is left untouched, so the common path pays for no metadata fetch.
     """
     return any(
-        _VALUE_RE.match(key) or ("@" in key and not key.endswith("@odata.bind"))
-        for key in record
+        _VALUE_RE.match(key) or ("@" in key and not key.endswith("@odata.bind")) for key in record
     )
 
 
@@ -161,9 +160,7 @@ def _first_nav(attr: str, resolver: LookupResolver) -> str:
     """The navigation property of *attr*'s first relationship (used to clear it)."""
     candidates = resolver.by_attr.get(attr) or []
     if not candidates or not candidates[0][1]:
-        raise D365Error(
-            f"{attr}: cannot resolve the lookup's navigation property from metadata."
-        )
+        raise D365Error(f"{attr}: cannot resolve the lookup's navigation property from metadata.")
     return candidates[0][1]
 
 
@@ -182,15 +179,11 @@ def _resolve_target(
     candidates = resolver.by_attr.get(attr) or []
     if attr not in resolver.polymorphic:
         if not candidates or not candidates[0][1]:
-            raise D365Error(
-                f"{attr}: cannot resolve the navigation property from metadata."
-            )
+            raise D365Error(f"{attr}: cannot resolve the navigation property from metadata.")
         ref_logical, nav = candidates[0]
         target_set = resolver.logical_to_set.get(ref_logical, "")
         if not target_set:
-            raise D365Error(
-                f"{attr}: cannot resolve the target entity set from metadata."
-            )
+            raise D365Error(f"{attr}: cannot resolve the target entity set from metadata.")
         return nav, target_set
 
     target_logical = record.get(f"_{attr}_value@{LOOKUP_LOGICAL_ANNOTATION}")
@@ -198,9 +191,7 @@ def _resolve_target(
         return None
     target_set = resolver.logical_to_set.get(target_logical)
     if not target_set:
-        raise D365Error(
-            f"{attr}: lookuplogicalname {target_logical!r} is not a known entity."
-        )
+        raise D365Error(f"{attr}: lookuplogicalname {target_logical!r} is not a known entity.")
     # The nav property is the concrete relationship's, or — when the column's
     # only relationship is to the abstract base table (Owner → owner) — that
     # single relationship's nav, with the concrete set from the annotation.
@@ -215,7 +206,5 @@ def _resolve_target(
             f"{target_logical!r} from metadata."
         )
     if not nav:
-        raise D365Error(
-            f"{attr}: cannot resolve the navigation property from metadata."
-        )
+        raise D365Error(f"{attr}: cannot resolve the navigation property from metadata.")
     return nav, target_set

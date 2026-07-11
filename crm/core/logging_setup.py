@@ -4,6 +4,7 @@ Two output formats:
 - text: `[LEVEL] <event/message> [k=v ...]`
 - json-line: one JSON object per record on a single line
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -33,8 +34,7 @@ class CrmLogHandler(logging.StreamHandler):
         self.fmt: LogFormat = fmt
 
     def format(self, record: logging.LogRecord) -> str:
-        struct = {k: getattr(record, k) for k in _STRUCT_KEYS
-                  if hasattr(record, k)}
+        struct = {k: getattr(record, k) for k in _STRUCT_KEYS if hasattr(record, k)}
         if self.fmt == "json-line":
             payload = {"level": record.levelname.lower(), **struct}
             if not struct:

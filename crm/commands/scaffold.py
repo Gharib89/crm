@@ -1,4 +1,5 @@
 """Scaffold commands — generate metadata from shorthand (e.g. `scaffold table`)."""
+
 # pyright: basic
 from __future__ import annotations
 
@@ -7,10 +8,10 @@ import click
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
     _active_profile,
-    d365_errors,
     _journal,
     _resolve_solution,
     _solution_option,
+    d365_errors,
 )
 from crm.core import apply as apply_mod
 from crm.core import references as references_mod
@@ -25,7 +26,8 @@ def scaffold_group():
 @scaffold_group.command("table")
 @click.argument("display")
 @click.option(
-    "--column", "columns",
+    "--column",
+    "columns",
     multiple=True,
     required=True,
     metavar="DISPLAY:KIND[:opts]",
@@ -41,11 +43,17 @@ def scaffold_group():
         "Repeatable — pass one --column per column."
     ),
 )
-@click.option("--schema-name", default=None,
-              help="Entity schema name override (PascalCase with prefix, e.g. new_Project). "
-                   "Derived from DISPLAY and publisher prefix when omitted.")
-@click.option("--display-collection", default=None,
-              help="Plural UI label for the entity set. Derived by apply when omitted.")
+@click.option(
+    "--schema-name",
+    default=None,
+    help="Entity schema name override (PascalCase with prefix, e.g. new_Project). "
+    "Derived from DISPLAY and publisher prefix when omitted.",
+)
+@click.option(
+    "--display-collection",
+    default=None,
+    help="Plural UI label for the entity set. Derived by apply when omitted.",
+)
 @click.option(
     "--ownership",
     type=click.Choice(["UserOwned", "OrganizationOwned"]),
@@ -110,9 +118,7 @@ def table(
     # --- 4. Apply via apply_spec ---
     with d365_errors(ctx):
         backend = ctx.backend()
-        res = apply_mod.apply_spec(
-            backend, spec, stage_only=ctx.stage_only
-        )
+        res = apply_mod.apply_spec(backend, spec, stage_only=ctx.stage_only)
 
     # --- 5. Emit result ---
     data = {k: res[k] for k in ("applied", "skipped", "planned", "failed")}

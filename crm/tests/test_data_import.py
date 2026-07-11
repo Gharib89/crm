@@ -15,7 +15,6 @@ import requests_mock as requests_mock_lib
 from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
 from crm.utils.d365_types import BatchOperation, BatchResult
 
-
 # ── helpers ─────────────────────────────────────────────────────────────────
 
 
@@ -51,6 +50,7 @@ def _make_stub_backend(results_per_chunk: list[list[BatchResult]]) -> Any:
 
 def _import_records(*args: Any, **kwargs: Any) -> dict[str, Any]:
     from crm.core.data_import import import_records
+
     return import_records(*args, **kwargs)
 
 
@@ -334,8 +334,11 @@ class TestGuards:
         backend = _make_stub_backend([])
         with pytest.raises(D365Error, match="continue_on_error"):
             _import_records(
-                backend, "accounts", p,
-                continue_on_error=True, transactional=True,
+                backend,
+                "accounts",
+                p,
+                continue_on_error=True,
+                transactional=True,
             )
 
 
@@ -349,17 +352,23 @@ class TestUpsertMode:
         p = tmp_path / "data.jsonl"
         p.write_text(json.dumps(record) + "\n", encoding="utf-8")
 
-        patch_results: list[BatchResult] = [{
-            "method": "PATCH",
-            "url": f"accounts({guid})",
-            "status": 204,
-            "headers": {},
-            "body": None,
-            "error": None,
-        }]
+        patch_results: list[BatchResult] = [
+            {
+                "method": "PATCH",
+                "url": f"accounts({guid})",
+                "status": 204,
+                "headers": {},
+                "body": None,
+                "error": None,
+            }
+        ]
         backend = _make_stub_backend([patch_results])
         result = _import_records(
-            backend, "accounts", p, mode="upsert", id_column="accountid",
+            backend,
+            "accounts",
+            p,
+            mode="upsert",
+            id_column="accountid",
         )
 
         ops = backend.batch.call_args[0][0]
@@ -384,7 +393,11 @@ class TestUpsertMode:
         backend = _make_stub_backend([])
         with pytest.raises(D365Error, match="row"):
             _import_records(
-                backend, "accounts", p, mode="upsert", id_column="accountid",
+                backend,
+                "accounts",
+                p,
+                mode="upsert",
+                id_column="accountid",
             )
 
     def test_upsert_by_alternate_key_builds_patch_op(self, tmp_path: Path) -> None:
@@ -392,13 +405,23 @@ class TestUpsertMode:
         p = tmp_path / "data.jsonl"
         p.write_text(json.dumps(record) + "\n", encoding="utf-8")
 
-        patch_results: list[BatchResult] = [{
-            "method": "PATCH", "url": "contacts(emailaddress1='joe%40x.com')",
-            "status": 204, "headers": {}, "body": None, "error": None,
-        }]
+        patch_results: list[BatchResult] = [
+            {
+                "method": "PATCH",
+                "url": "contacts(emailaddress1='joe%40x.com')",
+                "status": 204,
+                "headers": {},
+                "body": None,
+                "error": None,
+            }
+        ]
         backend = _make_stub_backend([patch_results])
         result = _import_records(
-            backend, "contacts", p, mode="upsert", alt_key=["emailaddress1"],
+            backend,
+            "contacts",
+            p,
+            mode="upsert",
+            alt_key=["emailaddress1"],
         )
 
         ops = backend.batch.call_args[0][0]
@@ -415,7 +438,10 @@ class TestUpsertMode:
         p.write_text(json.dumps(record) + "\n", encoding="utf-8")
         backend = _make_stub_backend([_make_2xx_results(1)])
         _import_records(
-            backend, "samples", p, mode="upsert",
+            backend,
+            "samples",
+            p,
+            mode="upsert",
             alt_key=["sample_key1", "sample_key2"],
         )
         ops = backend.batch.call_args[0][0]
@@ -429,7 +455,11 @@ class TestUpsertMode:
         backend = _make_stub_backend([])
         with pytest.raises(D365Error, match="row 1"):
             _import_records(
-                backend, "contacts", p, mode="upsert", alt_key=["emailaddress1"],
+                backend,
+                "contacts",
+                p,
+                mode="upsert",
+                alt_key=["emailaddress1"],
             )
 
     def test_upsert_id_column_and_alt_key_mutually_exclusive(self, tmp_path: Path) -> None:
@@ -438,8 +468,12 @@ class TestUpsertMode:
         backend = _make_stub_backend([])
         with pytest.raises(D365Error, match="mutually exclusive"):
             _import_records(
-                backend, "contacts", p, mode="upsert",
-                id_column="contactid", alt_key=["emailaddress1"],
+                backend,
+                "contacts",
+                p,
+                mode="upsert",
+                id_column="contactid",
+                alt_key=["emailaddress1"],
             )
 
     def test_alt_key_requires_upsert_mode(self, tmp_path: Path) -> None:
@@ -448,20 +482,34 @@ class TestUpsertMode:
         backend = _make_stub_backend([])
         with pytest.raises(D365Error, match="alt_key is only valid"):
             _import_records(
-                backend, "contacts", p, mode="create", alt_key=["emailaddress1"],
+                backend,
+                "contacts",
+                p,
+                mode="create",
+                alt_key=["emailaddress1"],
             )
 
     def test_upsert_failure_includes_alt_key_segment(self, tmp_path: Path) -> None:
         record = {"emailaddress1": "joe@x.com", "firstname": "Joe"}
         p = tmp_path / "data.jsonl"
         p.write_text(json.dumps(record) + "\n", encoding="utf-8")
-        fail_results: list[BatchResult] = [{
-            "method": "PATCH", "url": "contacts(emailaddress1='joe%40x.com')",
-            "status": 400, "headers": {}, "body": None, "error": "Bad request",
-        }]
+        fail_results: list[BatchResult] = [
+            {
+                "method": "PATCH",
+                "url": "contacts(emailaddress1='joe%40x.com')",
+                "status": 400,
+                "headers": {},
+                "body": None,
+                "error": "Bad request",
+            }
+        ]
         backend = _make_stub_backend([fail_results])
         result = _import_records(
-            backend, "contacts", p, mode="upsert", alt_key=["emailaddress1"],
+            backend,
+            "contacts",
+            p,
+            mode="upsert",
+            alt_key=["emailaddress1"],
         )
         assert result["failed"] == 1
         assert result["failures"][0]["id"] == "emailaddress1='joe%40x.com'"
@@ -488,12 +536,30 @@ class TestOutputCounts:
         p.write_text(records + "\n", encoding="utf-8")
 
         mixed_results: list[BatchResult] = [
-            {"method": "POST", "url": "accounts", "status": 204, "headers": {},
-             "body": None, "error": None},
-            {"method": "POST", "url": "accounts", "status": 400, "headers": {},
-             "body": None, "error": "Bad request"},
-            {"method": "POST", "url": "accounts", "status": 204, "headers": {},
-             "body": None, "error": None},
+            {
+                "method": "POST",
+                "url": "accounts",
+                "status": 204,
+                "headers": {},
+                "body": None,
+                "error": None,
+            },
+            {
+                "method": "POST",
+                "url": "accounts",
+                "status": 400,
+                "headers": {},
+                "body": None,
+                "error": "Bad request",
+            },
+            {
+                "method": "POST",
+                "url": "accounts",
+                "status": 204,
+                "headers": {},
+                "body": None,
+                "error": None,
+            },
         ]
         backend = _make_stub_backend([mixed_results])
         result = _import_records(backend, "accounts", p, chunk_size=10)
@@ -520,12 +586,30 @@ class TestFailuresDetail:
         p.write_text(records + "\n", encoding="utf-8")
 
         mixed: list[BatchResult] = [
-            {"method": "POST", "url": "accounts", "status": 204, "headers": {},
-             "body": None, "error": None},
-            {"method": "POST", "url": "accounts", "status": 400, "headers": {},
-             "body": None, "error": "Bad request"},
-            {"method": "POST", "url": "accounts", "status": 403, "headers": {},
-             "body": None, "error": "Forbidden"},
+            {
+                "method": "POST",
+                "url": "accounts",
+                "status": 204,
+                "headers": {},
+                "body": None,
+                "error": None,
+            },
+            {
+                "method": "POST",
+                "url": "accounts",
+                "status": 400,
+                "headers": {},
+                "body": None,
+                "error": "Bad request",
+            },
+            {
+                "method": "POST",
+                "url": "accounts",
+                "status": 403,
+                "headers": {},
+                "body": None,
+                "error": "Forbidden",
+            },
         ]
         backend = _make_stub_backend([mixed])
         result = _import_records(backend, "accounts", p, chunk_size=10)
@@ -549,10 +633,22 @@ class TestFailuresDetail:
         p = tmp_path / "data.jsonl"
         p.write_text(records + "\n", encoding="utf-8")
 
-        ok: BatchResult = {"method": "POST", "url": "accounts", "status": 204,
-                           "headers": {}, "body": None, "error": None}
-        bad: BatchResult = {"method": "POST", "url": "accounts", "status": 400,
-                            "headers": {}, "body": None, "error": "Bad request"}
+        ok: BatchResult = {
+            "method": "POST",
+            "url": "accounts",
+            "status": 204,
+            "headers": {},
+            "body": None,
+            "error": None,
+        }
+        bad: BatchResult = {
+            "method": "POST",
+            "url": "accounts",
+            "status": 400,
+            "headers": {},
+            "body": None,
+            "error": "Bad request",
+        }
         # chunk_size=2 → rows 1,2 then rows 3,4; row 4 fails.
         backend = _make_stub_backend([[ok, ok], [ok, bad]])
         result = _import_records(backend, "accounts", p, chunk_size=2)
@@ -565,13 +661,23 @@ class TestFailuresDetail:
         p = tmp_path / "data.jsonl"
         p.write_text(json.dumps(record) + "\n", encoding="utf-8")
 
-        fail: list[BatchResult] = [{
-            "method": "PATCH", "url": f"accounts({guid})", "status": 400,
-            "headers": {}, "body": None, "error": "Bad request",
-        }]
+        fail: list[BatchResult] = [
+            {
+                "method": "PATCH",
+                "url": f"accounts({guid})",
+                "status": 400,
+                "headers": {},
+                "body": None,
+                "error": "Bad request",
+            }
+        ]
         backend = _make_stub_backend([fail])
         result = _import_records(
-            backend, "accounts", p, mode="upsert", id_column="accountid",
+            backend,
+            "accounts",
+            p,
+            mode="upsert",
+            id_column="accountid",
         )
         assert result["failures"] == [
             {"index": 1, "id": guid, "status": 400, "error": "Bad request"},
@@ -581,10 +687,20 @@ class TestFailuresDetail:
         """A non-2xx result with no error string still reports a non-empty message."""
         p = tmp_path / "data.jsonl"
         p.write_text('{"name": "x"}\n', encoding="utf-8")
-        backend = _make_stub_backend([[{
-            "method": "POST", "url": "accounts", "status": 500,
-            "headers": {}, "body": None, "error": None,
-        }]])
+        backend = _make_stub_backend(
+            [
+                [
+                    {
+                        "method": "POST",
+                        "url": "accounts",
+                        "status": 500,
+                        "headers": {},
+                        "body": None,
+                        "error": None,
+                    }
+                ]
+            ]
+        )
         result = _import_records(backend, "accounts", p)
         assert result["failures"] == [{"index": 1, "status": 500, "error": "HTTP 500"}]
 
@@ -601,8 +717,11 @@ class TestBatchFlagForwarding:
         backend.dry_run = False
         backend.batch.return_value = _make_2xx_results(1)
         _import_records(
-            backend, "accounts", p,
-            transactional=False, continue_on_error=True,
+            backend,
+            "accounts",
+            p,
+            transactional=False,
+            continue_on_error=True,
         )
         backend.batch.assert_called_once()
         _args, kwargs = backend.batch.call_args
@@ -613,19 +732,23 @@ class TestBatchFlagForwarding:
 # ── alternate-key collision enrichment on failures (#347) ──────────────────────
 
 
-_ACCOUNT_NUMBER_KEY = [{
-    "LogicalName": "account_code_ak",
-    "SchemaName": "Account_Code_AK",
-    "KeyAttributes": ["accountnumber"],
-    "EntityKeyIndexStatus": "Active",
-}]
+_ACCOUNT_NUMBER_KEY = [
+    {
+        "LogicalName": "account_code_ak",
+        "SchemaName": "Account_Code_AK",
+        "KeyAttributes": ["accountnumber"],
+        "EntityKeyIndexStatus": "Active",
+    }
+]
 
 
 def _alt_key_failure(code: str = "0x80060892", status: int = 412) -> BatchResult:
     return {
-        "method": "POST", "url": "accounts", "status": status, "headers": {},
-        "body": {"error": {"code": code,
-                           "message": "A record with these values already exists."}},
+        "method": "POST",
+        "url": "accounts",
+        "status": status,
+        "headers": {},
+        "body": {"error": {"code": code, "message": "A record with these values already exists."}},
         "error": "A record with these values already exists.",
     }
 
@@ -639,7 +762,8 @@ def _stub_backend_with_keys(
     """Stub backend whose .batch() returns successive chunks and whose .get()
     serves the Keys metadata the enrichment reads. The set→logical + primary-id
     resolution now comes from the cached name-map seam — stub it with the
-    ``stub_name_map`` fixture (#261)."""
+    ``stub_name_map`` fixture (#261).
+    """
     backend = _make_stub_backend(results_per_chunk)
 
     def _get(path: str, params: Any = None, **_kw: Any) -> dict[str, Any]:
@@ -658,8 +782,7 @@ class TestAltKeyEnrichment:
         """A row failing with 0x80060892 gains alternate_keys + the colliding values."""
         p = tmp_path / "data.jsonl"
         p.write_text(
-            '{"name": "Alpha", "accountnumber": "A-1"}\n'
-            '{"name": "Beta", "accountnumber": "B-2"}\n',
+            '{"name": "Alpha", "accountnumber": "A-1"}\n{"name": "Beta", "accountnumber": "B-2"}\n',
             encoding="utf-8",
         )
         results = [[_make_2xx_results(1)[0], _alt_key_failure()]]
@@ -679,8 +802,7 @@ class TestAltKeyEnrichment:
         """The per-entity key schema is fetched ONCE, with per-row colliding values."""
         p = tmp_path / "data.jsonl"
         p.write_text(
-            '{"name": "Alpha", "accountnumber": "A-1"}\n'
-            '{"name": "Beta", "accountnumber": "B-2"}\n',
+            '{"name": "Alpha", "accountnumber": "A-1"}\n{"name": "Beta", "accountnumber": "B-2"}\n',
             encoding="utf-8",
         )
         results = [[_alt_key_failure(), _alt_key_failure()]]
@@ -690,12 +812,14 @@ class TestAltKeyEnrichment:
         # One Keys GET for the whole import — the set→logical + primary-id
         # resolution is served by the cached name-map seam (stubbed), not a GET.
         assert backend.get.call_count == 1
-        assert result["failures"][0]["alternate_keys"][0]["payload_values"] == {"accountnumber": "A-1"}
-        assert result["failures"][1]["alternate_keys"][0]["payload_values"] == {"accountnumber": "B-2"}
+        assert result["failures"][0]["alternate_keys"][0]["payload_values"] == {
+            "accountnumber": "A-1"
+        }
+        assert result["failures"][1]["alternate_keys"][0]["payload_values"] == {
+            "accountnumber": "B-2"
+        }
 
-    def test_primary_id_collision_hint_per_row(
-        self, tmp_path: Path, stub_name_map: None
-    ) -> None:
+    def test_primary_id_collision_hint_per_row(self, tmp_path: Path, stub_name_map: None) -> None:
         """A row whose payload carries the primary id gets the PK-collision hint."""
         guid = "11111111-1111-1111-1111-111111111111"
         p = tmp_path / "data.jsonl"
@@ -710,7 +834,8 @@ class TestAltKeyEnrichment:
 
     def test_enrich_alt_key_false_skips_lookup(self, tmp_path: Path) -> None:
         """The when-to-pay gate: enrich_alt_key=False (human mode) does no metadata
-        reads and attaches no hint, even on a real alternate-key collision."""
+        reads and attaches no hint, even on a real alternate-key collision.
+        """
         p = tmp_path / "data.jsonl"
         p.write_text('{"name": "Alpha", "accountnumber": "A-1"}\n', encoding="utf-8")
         results = [[_alt_key_failure()]]
@@ -735,7 +860,8 @@ class TestAltKeyEnrichment:
         self, tmp_path: Path, stub_name_map: None
     ) -> None:
         """If the schema lookup fails (Keys read unreachable), the original failure
-        entry is unchanged."""
+        entry is unchanged.
+        """
         p = tmp_path / "data.jsonl"
         p.write_text('{"name": "Alpha", "accountnumber": "A-1"}\n', encoding="utf-8")
         results = [[_alt_key_failure()]]
@@ -759,7 +885,8 @@ def _stub_backend_with_attrs(
     logical: str = "account",
 ) -> Any:
     """Stub backend whose .batch() returns successive chunks and whose .get()
-    serves the Attributes metadata the alternate-key column-type check reads."""
+    serves the Attributes metadata the alternate-key column-type check reads.
+    """
     backend = _make_stub_backend(results_per_chunk)
 
     def _get(path: str, params: Any = None, **_kw: Any) -> dict[str, Any]:
@@ -774,7 +901,8 @@ def _stub_backend_with_attrs(
 @pytest.fixture()
 def stub_name_map(monkeypatch: pytest.MonkeyPatch) -> None:
     """Serve the set→logical resolution from a hand-built NameMap so the
-    column-type check exercises the shared seam without a live GET."""
+    column-type check exercises the shared seam without a live GET.
+    """
     from crm.core import entity_names
 
     nm = entity_names.NameMap(
@@ -788,7 +916,8 @@ def stub_name_map(monkeypatch: pytest.MonkeyPatch) -> None:
 class TestCsvBomTolerance:
     def test_bom_prefixed_csv_first_column_not_corrupted(self, tmp_path: Path) -> None:
         """An Excel-saved CSV carries a UTF-8 BOM; the reader must strip it so the
-        first column name is `name`, not `\ufeffname`."""
+        first column name is `name`, not `\ufeffname`.
+        """
         p = tmp_path / "data.csv"
         p.write_bytes("\ufeffname,age\r\nJoe,3\r\n".encode("utf-8"))
         backend = _make_stub_backend([_make_2xx_results(1)])
@@ -798,7 +927,8 @@ class TestCsvBomTolerance:
 
     def test_bom_prefixed_jsonl_first_key_not_corrupted(self, tmp_path: Path) -> None:
         """The sibling JSONL reader is BOM-tolerant too — a BOM must not corrupt
-        the first key of the first object."""
+        the first key of the first object.
+        """
         p = tmp_path / "data.jsonl"
         p.write_bytes(("\ufeff" + json.dumps({"name": "Joe"}) + "\n").encode("utf-8"))
         backend = _make_stub_backend([_make_2xx_results(1)])
@@ -811,7 +941,8 @@ class TestCsvBomTolerance:
 class TestCsvStringAlternateKey:
     def test_numeric_looking_string_key_keeps_string_identity(self, tmp_path: Path) -> None:
         """A numeric-looking CSV alternate-key value on a String column builds the
-        quoted key URL `(accountnumber='10023')`, not a bare `=10023` (#683)."""
+        quoted key URL `(accountnumber='10023')`, not a bare `=10023` (#683).
+        """
         p = tmp_path / "data.csv"
         p.write_text("accountnumber,name\r\n10023,Acme\r\n", encoding="utf-8")
         backend = _stub_backend_with_attrs(
@@ -824,7 +955,8 @@ class TestCsvStringAlternateKey:
 
     def test_leading_zero_string_key_preserved(self, tmp_path: Path) -> None:
         """Verbatim string identity preserves a leading zero a coerce-then-restring
-        approach would drop (`00042` must not become `42`)."""
+        approach would drop (`00042` must not become `42`).
+        """
         p = tmp_path / "data.csv"
         p.write_text("accountnumber,name\r\n00042,Acme\r\n", encoding="utf-8")
         backend = _stub_backend_with_attrs(
@@ -837,7 +969,8 @@ class TestCsvStringAlternateKey:
 
     def test_integer_typed_key_stays_bare(self, tmp_path: Path) -> None:
         """A non-string alternate-key column still coerces by shape — an integer
-        key renders bare `(code=42)`, so the fix doesn't over-quote numeric keys."""
+        key renders bare `(code=42)`, so the fix doesn't over-quote numeric keys.
+        """
         p = tmp_path / "data.csv"
         p.write_text("code,name\r\n42,Beta\r\n", encoding="utf-8")
         backend = _stub_backend_with_attrs(
@@ -853,7 +986,8 @@ class TestCsvStringAlternateKey:
     ) -> None:
         """If the column-type lookup fails, the CSV import degrades to shape-based
         coercion (prior behavior) rather than aborting — the type check adds a new
-        metadata dependency that must not hard-fail a previously-working import."""
+        metadata dependency that must not hard-fail a previously-working import.
+        """
         from crm.core import entity_names
 
         p = tmp_path / "data.csv"
@@ -872,7 +1006,8 @@ class TestCsvStringAlternateKey:
 
     def test_string_key_body_columns_still_coerced(self, tmp_path: Path) -> None:
         """Only the alternate-key column keeps string identity; ordinary numeric
-        body columns are still coerced to their native type."""
+        body columns are still coerced to their native type.
+        """
         p = tmp_path / "data.csv"
         p.write_text("accountnumber,revenue\r\n10023,500\r\n", encoding="utf-8")
         backend = _stub_backend_with_attrs(

@@ -18,6 +18,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from crm.core import dependencies as dep_mod
+from crm.core.metadata import maybe_publish
 from crm.utils.d365_backend import (
     D365Backend,
     D365Error,
@@ -25,8 +27,6 @@ from crm.utils.d365_backend import (
     normalize_guid,
     odata_literal,
 )
-from crm.core import dependencies as dep_mod
-from crm.core.metadata import maybe_publish
 
 # Dataverse solution-component type for a web resource (the system `componenttype`
 # option set). Used to query RetrieveDependenciesForDelete before a delete.
@@ -34,18 +34,21 @@ _WEBRESOURCE_COMPONENT_TYPE = 61
 
 # Extension -> D365 webresourcetype (webresource_webresourcetype option set).
 _EXT_TO_TYPE: dict[str, int] = {
-    ".htm": 1, ".html": 1,   # Webpage (HTML)
-    ".css": 2,               # Style Sheet (CSS)
-    ".js": 3,                # Script (JScript)
-    ".xml": 4,               # Data (XML)
-    ".png": 5,               # PNG
-    ".jpg": 6, ".jpeg": 6,   # JPG
-    ".gif": 7,               # GIF
-    ".xap": 8,               # Silverlight (XAP)
-    ".xsl": 9, ".xslt": 9,   # Style Sheet (XSL)
-    ".ico": 10,              # ICO
-    ".svg": 11,              # Vector format (SVG)
-    ".resx": 12,             # String (RESX)
+    ".htm": 1,
+    ".html": 1,  # Webpage (HTML)
+    ".css": 2,  # Style Sheet (CSS)
+    ".js": 3,  # Script (JScript)
+    ".xml": 4,  # Data (XML)
+    ".png": 5,  # PNG
+    ".jpg": 6,
+    ".jpeg": 6,  # JPG
+    ".gif": 7,  # GIF
+    ".xap": 8,  # Silverlight (XAP)
+    ".xsl": 9,
+    ".xslt": 9,  # Style Sheet (XSL)
+    ".ico": 10,  # ICO
+    ".svg": 11,  # Vector format (SVG)
+    ".resx": 12,  # String (RESX)
 }
 
 
@@ -138,8 +141,7 @@ def update_webresource(
     if display_name is not None:
         body["displayname"] = display_name
 
-    result = as_dict(backend.patch(
-        f"webresourceset({wid})", json_body=body, solution=solution))
+    result = as_dict(backend.patch(f"webresourceset({wid})", json_body=body, solution=solution))
     if result.get("_dry_run"):
         return result
 
@@ -166,11 +168,7 @@ def _walk_files(directory: str) -> list[tuple[str, Path]]:
     base = Path(directory)
     if not base.is_dir():
         raise D365Error(f"push directory not found or not a directory: {directory}")
-    out = [
-        (p.relative_to(base).as_posix(), p)
-        for p in base.rglob("*")
-        if p.is_file()
-    ]
+    out = [(p.relative_to(base).as_posix(), p) for p in base.rglob("*") if p.is_file()]
     out.sort()
     return out
 
@@ -216,21 +214,26 @@ def push_webresources(
             wtype = resolve_webresourcetype(relpath)
             content = abspath.read_bytes()
             live = find_webresource(backend, name)
-            if live is not None and live.get("content") == base64.b64encode(
-                    content).decode("ascii"):
+            if live is not None and live.get("content") == base64.b64encode(content).decode(
+                "ascii"
+            ):
                 entry["action"] = "skipped"
             elif backend.dry_run:
                 entry["action"] = "would_create" if live is None else "would_update"
             elif live is None:
                 res = create_webresource(
-                    backend, name=name, content=content, webresourcetype=wtype,
-                    solution=solution, publish=False)
+                    backend,
+                    name=name,
+                    content=content,
+                    webresourcetype=wtype,
+                    solution=solution,
+                    publish=False,
+                )
                 entry["action"] = "created"
                 entry["webresourceid"] = res.get("webresourceid")
                 changed += 1
             else:
-                update_webresource(
-                    backend, name, content=content, solution=solution, publish=False)
+                update_webresource(backend, name, content=content, solution=solution, publish=False)
                 entry["action"] = "updated"
                 changed += 1
         except (D365Error, OSError) as exc:
@@ -351,8 +354,11 @@ def delete_webresource(
     deps = None
     if check_dependencies:
         deps = dep_mod.dependencies_by_id(
-            backend, wid, _WEBRESOURCE_COMPONENT_TYPE,
-            for_="delete", kind="webresource",
+            backend,
+            wid,
+            _WEBRESOURCE_COMPONENT_TYPE,
+            for_="delete",
+            kind="webresource",
         )
 
     preview = backend.delete(f"webresourceset({wid})")

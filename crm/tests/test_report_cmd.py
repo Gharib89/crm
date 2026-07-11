@@ -1,12 +1,13 @@
 """Command-layer tests for `crm report` (list / get / create / set-category / delete)."""
+
 # pyright: basic
 from __future__ import annotations
 
 import json
 
 import requests_mock as rm_module
-
 from click.testing import CliRunner
+
 from crm.cli import cli
 from crm.utils.d365_backend import D365Backend
 
@@ -60,8 +61,11 @@ class TestReportGet:
 
 class TestReportCreate:
     def _post_mock(self, m, backend):
-        m.post(_reports_url(backend), status_code=204,
-               headers={"OData-EntityId": backend.url_for(f"reports({_NEW_ID})")})
+        m.post(
+            _reports_url(backend),
+            status_code=204,
+            headers={"OData-EntityId": backend.url_for(f"reports({_NEW_ID})")},
+        )
 
     def _rdl_file(self, tmp_path):
         f = tmp_path / "sales.rdl"
@@ -72,10 +76,20 @@ class TestReportCreate:
         _use_backend(monkeypatch, backend)
         with rm_module.Mocker() as m:
             self._post_mock(m, backend)
-            result = CliRunner().invoke(cli, [
-                "--json", "report", "create",
-                "--name", "Sales", "--body-file", self._rdl_file(tmp_path),
-                "--solution", "TestSol"])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "report",
+                    "create",
+                    "--name",
+                    "Sales",
+                    "--body-file",
+                    self._rdl_file(tmp_path),
+                    "--solution",
+                    "TestSol",
+                ],
+            )
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["created"] is True
@@ -87,10 +101,21 @@ class TestReportCreate:
         _use_backend(monkeypatch, backend)
         with rm_module.Mocker() as m:
             self._post_mock(m, backend)
-            result = CliRunner().invoke(cli, [
-                "--json", "report", "create",
-                "--name", "Link", "--url", "https://example.com/r", "--org",
-                "--solution", "TestSol"])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "report",
+                    "create",
+                    "--name",
+                    "Link",
+                    "--url",
+                    "https://example.com/r",
+                    "--org",
+                    "--solution",
+                    "TestSol",
+                ],
+            )
         assert result.exit_code == 0, result.output
         body = m.last_request.json()
         assert body["bodyurl"] == "https://example.com/r"
@@ -98,23 +123,43 @@ class TestReportCreate:
 
     def test_create_rejects_both_sources(self, backend, monkeypatch, tmp_path):
         _use_backend(monkeypatch, backend)
-        result = CliRunner().invoke(cli, [
-            "--json", "report", "create", "--name", "X",
-            "--body-file", self._rdl_file(tmp_path), "--url", "https://e.com/r"])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "report",
+                "create",
+                "--name",
+                "X",
+                "--body-file",
+                self._rdl_file(tmp_path),
+                "--url",
+                "https://e.com/r",
+            ],
+        )
         assert result.exit_code != 0
 
     def test_create_requires_a_source(self, backend, monkeypatch):
         _use_backend(monkeypatch, backend)
-        result = CliRunner().invoke(cli, [
-            "--json", "report", "create", "--name", "X"])
+        result = CliRunner().invoke(cli, ["--json", "report", "create", "--name", "X"])
         assert result.exit_code != 0
 
     def test_create_dry_run_previews(self, dry_backend, monkeypatch):
         _use_backend(monkeypatch, dry_backend)
-        result = CliRunner().invoke(cli, [
-            "--json", "report", "create",
-            "--name", "Link", "--url", "https://example.com/r",
-            "--solution", "TestSol"])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "report",
+                "create",
+                "--name",
+                "Link",
+                "--url",
+                "https://example.com/r",
+                "--solution",
+                "TestSol",
+            ],
+        )
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["_dry_run"] is True
@@ -126,12 +171,24 @@ class TestReportSetCategory:
         _use_backend(monkeypatch, backend)
         rid = _REPORT["reportid"]
         with rm_module.Mocker() as m:
-            m.post(backend.url_for("reportcategories"), status_code=204,
-                   headers={"OData-EntityId":
-                            backend.url_for(f"reportcategories({_RC_ID})")})
-            result = CliRunner().invoke(cli, [
-                "--json", "report", "set-category", rid, "--category", "sales",
-                "--solution", "TestSol"])
+            m.post(
+                backend.url_for("reportcategories"),
+                status_code=204,
+                headers={"OData-EntityId": backend.url_for(f"reportcategories({_RC_ID})")},
+            )
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "report",
+                    "set-category",
+                    rid,
+                    "--category",
+                    "sales",
+                    "--solution",
+                    "TestSol",
+                ],
+            )
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["categorycode"] == 1
@@ -140,8 +197,9 @@ class TestReportSetCategory:
     def test_rejects_bad_category(self, backend, monkeypatch):
         _use_backend(monkeypatch, backend)
         rid = _REPORT["reportid"]
-        result = CliRunner().invoke(cli, [
-            "--json", "report", "set-category", rid, "--category", "finance"])
+        result = CliRunner().invoke(
+            cli, ["--json", "report", "set-category", rid, "--category", "finance"]
+        )
         # click.Choice rejects an unlisted area at parse time
         assert result.exit_code != 0
 

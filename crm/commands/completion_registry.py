@@ -15,6 +15,7 @@ Read tolerantly (missing/corrupt → ``None``) and written atomically (unique te
 file + os.replace) so a reader never sees a torn file — identical discipline to
 ``skill_registry``.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -49,7 +50,7 @@ _SCRIPT_EXT = {"powershell": "ps1"}
 # as COMP_WORDS and the partial as COMP_CWORD. ``%(...)s`` are filled by
 # ShellComplete.source_vars (prog_name, complete_var). ``if/else`` (not the ``?:``
 # ternary) keeps the script valid on both Windows PowerShell 5.1 and PowerShell 7+.
-_SOURCE_POWERSHELL = '''\
+_SOURCE_POWERSHELL = """\
 Register-ArgumentCompleter -Native -CommandName %(prog_name)s -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
     $env:%(complete_var)s = "powershell_complete"
@@ -68,7 +69,7 @@ Register-ArgumentCompleter -Native -CommandName %(prog_name)s -ScriptBlock {
     }
     Remove-Item Env:%(complete_var)s, Env:COMP_WORDS, Env:COMP_CWORD
 }
-'''
+"""
 
 
 class PowerShellComplete(ShellComplete):
@@ -158,8 +159,7 @@ def write_marker(shell: str, script_path: str, installed_version: str) -> None:
     import tempfile
 
     path = marker_path()
-    payload = {"shell": shell, "script_path": script_path,
-               "installed_version": installed_version}
+    payload = {"shell": shell, "script_path": script_path, "installed_version": installed_version}
     fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
     tmp = Path(tmp_name)
     try:
@@ -221,23 +221,44 @@ def refresh_completion(target_version: str, generate_fn: Any) -> dict[str, Any] 
     script_path = marker.get("script_path")
     from_v = marker.get("installed_version")
     if not (isinstance(shell, str) and shell in SUPPORTED_SHELLS and isinstance(script_path, str)):
-        return {"shell": shell, "script_path": script_path, "from_version": from_v,
-                "to_version": None, "status": "error", "error": "malformed completion marker"}
+        return {
+            "shell": shell,
+            "script_path": script_path,
+            "from_version": from_v,
+            "to_version": None,
+            "status": "error",
+            "error": "malformed completion marker",
+        }
     if from_v == target_version:
-        return {"shell": shell, "script_path": script_path, "from_version": from_v,
-                "to_version": from_v, "status": "skipped"}
+        return {
+            "shell": shell,
+            "script_path": script_path,
+            "from_version": from_v,
+            "to_version": from_v,
+            "status": "skipped",
+        }
     dest = Path(script_path)
     if not dest.exists():
         # The user removed the cached script — respect the opt-out, drop the marker.
         remove_marker()
-        return {"shell": shell, "script_path": script_path, "from_version": from_v,
-                "to_version": None, "status": "pruned"}
+        return {
+            "shell": shell,
+            "script_path": script_path,
+            "from_version": from_v,
+            "to_version": None,
+            "status": "pruned",
+        }
     src = generate_fn(shell)
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(src, encoding="utf-8")
     write_marker(shell, script_path, target_version)
-    return {"shell": shell, "script_path": script_path, "from_version": from_v,
-            "to_version": target_version, "status": "refreshed"}
+    return {
+        "shell": shell,
+        "script_path": script_path,
+        "from_version": from_v,
+        "to_version": target_version,
+        "status": "refreshed",
+    }
 
 
 def generate_via_binary(shell: str, binary: str) -> str:
@@ -257,7 +278,12 @@ def generate_via_binary(shell: str, binary: str) -> str:
     # hang `self-update` forever. A timeout raises TimeoutExpired, which the
     # never-raising refresh wrapper turns into an error status.
     out = subprocess.run(
-        [binary], env=env, capture_output=True, text=True, check=True, timeout=30,
+        [binary],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=30,
     )
     # A non-completion invocation (e.g. argv[0] not named `crm`, so Click derives a
     # different complete-var and never enters completion mode) exits 0 with empty

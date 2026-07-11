@@ -18,6 +18,7 @@ reimplement set/loop/baseline logic — and the existing entry points keep worki
     python -m evals.skill run --target both            # default both
     python -m evals.skill run --target cloud --repeat 3
 """
+
 from __future__ import annotations
 
 import argparse
@@ -73,7 +74,8 @@ def build_agent_cmd(agent_cmd: str | None, model: str | None) -> str:
 
 class _Tee:
     """Write to several streams at once — used to capture progress to ``run.log`` while
-    still showing it live on a terminal."""
+    still showing it live on a terminal.
+    """
 
     def __init__(self, *streams: Any) -> None:
         self._streams = [s for s in streams if s is not None]
@@ -153,9 +155,15 @@ def run(
             tee = _Tee(logf, sys.stderr if live else None)
             reporter = set_runner.StderrProgress(stream=tee)
             if target == "both":
-                res = run_both_fn(both_runner.DEFAULT_PROFILES, repeat=repeat,
-                                  agent_cmd=resolved_cmd, progress=reporter, run_dir=run_dir,
-                                  counterfactual=counterfactual, task_filter=only_task)
+                res = run_both_fn(
+                    both_runner.DEFAULT_PROFILES,
+                    repeat=repeat,
+                    agent_cmd=resolved_cmd,
+                    progress=reporter,
+                    run_dir=run_dir,
+                    counterfactual=counterfactual,
+                    task_filter=only_task,
+                )
                 if update_baseline:
                     both_runner.append_baseline(
                         both_runner.BASELINE, res.baseline_rows(today=_date.today().isoformat())
@@ -165,12 +173,20 @@ def run(
             else:
                 # set_runner's per-task seeding reads D365_E2E_PROFILE; point it at the profile.
                 os.environ[target_mod.E2E_PROFILE_ENV] = PROFILE_BY_TARGET[target]
-                res = run_set_fn(active_target=target, repeat=repeat,
-                                 agent_cmd=resolved_cmd, progress=reporter, run_dir=run_dir,
-                                 counterfactual=counterfactual, task_filter=only_task)
+                res = run_set_fn(
+                    active_target=target,
+                    repeat=repeat,
+                    agent_cmd=resolved_cmd,
+                    progress=reporter,
+                    run_dir=run_dir,
+                    counterfactual=counterfactual,
+                    task_filter=only_task,
+                )
                 payload = res.to_dict()
                 exit_code = (
-                    1 if any(o.status in (set_runner.FAIL, set_runner.ERROR) for o in res.outcomes) else 0
+                    1
+                    if any(o.status in (set_runner.FAIL, set_runner.ERROR) for o in res.outcomes)
+                    else 0
                 )
     finally:
         for k, v in saved.items():
@@ -194,44 +210,91 @@ def main(argv: list[str] | None = None) -> int:
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
     run_p = sub.add_parser("run", help="run the skill-eval set with sane defaults")
-    run_p.add_argument("--target", choices=["cloud", "onprem", "both"], default="both",
-                       help="which target(s) to run (default: both)")
-    run_p.add_argument("--model", default=None,
-                       help=f"Claude model for the default agent command (default: {DEFAULT_MODEL}); "
-                            "not allowed together with --agent-cmd")
-    run_p.add_argument("--agent-cmd", default=None,
-                       help="full agent command override (for a non-Claude agent); --model is rejected with it")
-    run_p.add_argument("--repeat", type=int, default=1, metavar="N",
-                       help="run each scored task N times per target (variance smoothing; default 1)")
-    run_p.add_argument("--update-baseline", action="store_true",
-                       help="(--target both) append a dated per-target row to baseline.md")
-    run_p.add_argument("--out", default=None, metavar="DIR",
-                       help="directory for result.json + run.log (default: the run dir under evals/skill/runs/)")
-    run_p.add_argument("--counterfactual", action="store_true",
-                       help="also run each task with the skill ABSENT so `review` can measure lift "
-                            "(2x live cost per task)")
-    run_p.add_argument("--task", default=None, metavar="ID",
-                       help="run only the task with this id (default: the whole set)")
+    run_p.add_argument(
+        "--target",
+        choices=["cloud", "onprem", "both"],
+        default="both",
+        help="which target(s) to run (default: both)",
+    )
+    run_p.add_argument(
+        "--model",
+        default=None,
+        help=f"Claude model for the default agent command (default: {DEFAULT_MODEL}); "
+        "not allowed together with --agent-cmd",
+    )
+    run_p.add_argument(
+        "--agent-cmd",
+        default=None,
+        help="full agent command override (for a non-Claude agent); --model is rejected with it",
+    )
+    run_p.add_argument(
+        "--repeat",
+        type=int,
+        default=1,
+        metavar="N",
+        help="run each scored task N times per target (variance smoothing; default 1)",
+    )
+    run_p.add_argument(
+        "--update-baseline",
+        action="store_true",
+        help="(--target both) append a dated per-target row to baseline.md",
+    )
+    run_p.add_argument(
+        "--out",
+        default=None,
+        metavar="DIR",
+        help="directory for result.json + run.log (default: the run dir under evals/skill/runs/)",
+    )
+    run_p.add_argument(
+        "--counterfactual",
+        action="store_true",
+        help="also run each task with the skill ABSENT so `review` can measure lift "
+        "(2x live cost per task)",
+    )
+    run_p.add_argument(
+        "--task",
+        default=None,
+        metavar="ID",
+        help="run only the task with this id (default: the whole set)",
+    )
     set_runner.add_progress_flags(run_p)
 
     review_p = sub.add_parser(
-        "review", help="judge a saved run's skill efficacy post-hoc (no agent, no live org)")
-    review_p.add_argument("--run", default=None, metavar="DIR",
-                          help="run dir to review (default: the latest under evals/skill/runs/)")
-    review_p.add_argument("--task", default=None, metavar="ID",
-                          help="review only this task id (default: all)")
-    review_p.add_argument("--failed-only", action="store_true",
-                          help="review only tasks whose correctness verdict was not a pass")
-    review_p.add_argument("--record", action="store_true",
-                          help="append the org-agnostic trend to the tracked efficacy.md (human gate)")
-    review_p.add_argument("--review-cmd", default=None,
-                          help="reviewer command (default: $CRM_EVAL_REVIEW_CMD, else 'claude -p --model opus')")
+        "review", help="judge a saved run's skill efficacy post-hoc (no agent, no live org)"
+    )
+    review_p.add_argument(
+        "--run",
+        default=None,
+        metavar="DIR",
+        help="run dir to review (default: the latest under evals/skill/runs/)",
+    )
+    review_p.add_argument(
+        "--task", default=None, metavar="ID", help="review only this task id (default: all)"
+    )
+    review_p.add_argument(
+        "--failed-only",
+        action="store_true",
+        help="review only tasks whose correctness verdict was not a pass",
+    )
+    review_p.add_argument(
+        "--record",
+        action="store_true",
+        help="append the org-agnostic trend to the tracked efficacy.md (human gate)",
+    )
+    review_p.add_argument(
+        "--review-cmd",
+        default=None,
+        help="reviewer command (default: $CRM_EVAL_REVIEW_CMD, else 'claude -p --model opus')",
+    )
     args = parser.parse_args(argv)
 
     if args.cmd == "review":
         return review.run_review_cmd(
-            run_dir=args.run, task=args.task, failed_only=args.failed_only,
-            record_efficacy=args.record, review_cmd=args.review_cmd,
+            run_dir=args.run,
+            task=args.task,
+            failed_only=args.failed_only,
+            record_efficacy=args.record,
+            review_cmd=args.review_cmd,
         )
 
     live = set_runner.want_progress(
@@ -239,10 +302,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     try:
         return run(
-            target=args.target, model=args.model, agent_cmd=args.agent_cmd,
-            repeat=args.repeat, update_baseline=args.update_baseline,
-            counterfactual=args.counterfactual, only_task=args.task,
-            out_dir=args.out, live=live,
+            target=args.target,
+            model=args.model,
+            agent_cmd=args.agent_cmd,
+            repeat=args.repeat,
+            update_baseline=args.update_baseline,
+            counterfactual=args.counterfactual,
+            only_task=args.task,
+            out_dir=args.out,
+            live=live,
         )
     except FrontDoorError as exc:
         parser.error(str(exc))  # prints usage + message, exits 2

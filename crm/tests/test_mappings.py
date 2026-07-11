@@ -6,9 +6,8 @@ from __future__ import annotations
 import pytest
 import requests_mock
 
-from crm.utils.d365_backend import D365Backend, D365Error
 from crm.core import mappings as mp
-
+from crm.utils.d365_backend import D365Error
 
 _REL = "new_account_new_widget"
 _REL_PATH = (
@@ -30,7 +29,10 @@ class TestCreateMapping:
                 headers={"OData-EntityId": f"https://x/api/data/v9.2/attributemaps({_MAP_ID})"},
             )
             out = mp.create_mapping(
-                backend, _REL, source_attr="name", target_attr="new_name",
+                backend,
+                _REL,
+                source_attr="name",
+                target_attr="new_name",
             )
         assert out["created"] is True
         assert out["source_entity"] == "account"
@@ -46,7 +48,10 @@ class TestCreateMapping:
             m.get(backend.url_for("entitymaps"), json={"value": [{"entitymapid": _MAP_ID}]})
             m.post(backend.url_for("attributemaps"), status_code=204)
             mp.create_mapping(
-                backend, _REL, source_attr="name", target_attr="new_name",
+                backend,
+                _REL,
+                source_attr="name",
+                target_attr="new_name",
                 solution="mysol",
             )
         post = [r for r in m.request_history if r.method == "POST"][0]
@@ -58,7 +63,10 @@ class TestCreateMapping:
             m.get(backend.url_for("entitymaps"), json={"value": []})
             with pytest.raises(D365Error, match="No entity map"):
                 mp.create_mapping(
-                    backend, _REL, source_attr="name", target_attr="new_name",
+                    backend,
+                    _REL,
+                    source_attr="name",
+                    target_attr="new_name",
                 )
 
     def test_unknown_relationship_raises(self, backend):
@@ -66,7 +74,10 @@ class TestCreateMapping:
             m.get(backend.url_for(_REL_PATH), json={})
             with pytest.raises(D365Error, match="one-to-many relationship"):
                 mp.create_mapping(
-                    backend, _REL, source_attr="name", target_attr="new_name",
+                    backend,
+                    _REL,
+                    source_attr="name",
+                    target_attr="new_name",
                 )
 
     def test_dry_run_resolves_but_does_not_post(self, dry_backend):
@@ -75,7 +86,10 @@ class TestCreateMapping:
             m.get(dry_backend.url_for("entitymaps"), json={"value": [{"entitymapid": _MAP_ID}]})
             m.post(dry_backend.url_for("attributemaps"), status_code=204)
             out = mp.create_mapping(
-                dry_backend, _REL, source_attr="name", target_attr="new_name",
+                dry_backend,
+                _REL,
+                source_attr="name",
+                target_attr="new_name",
             )
         assert out["_dry_run"] is True
         assert out["would_create_mapping"] is True

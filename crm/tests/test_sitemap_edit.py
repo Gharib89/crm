@@ -5,6 +5,7 @@ seed ``sitemapxml``, the PATCH body is captured and parsed to assert the spliced
 tree, and (for the publish path) a second GET returns the "published" layer so
 the T3 read-back can be driven both green and red.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -26,9 +27,9 @@ _SEED = (
     '<Area Id="SFA" ResourceId="Area_Sales" IntroducedVersion="7.0.0.0">'
     '<Group Id="SFA_Grp" ResourceId="Group_Sales">'
     '<SubArea Id="nav_accts" Entity="account" />'
-    '</Group></Area>'
+    "</Group></Area>"
     '<Area Id="HLP" ResourceId="Area_Help"><Group Id="HLP_Grp" /></Area>'
-    '</SiteMap>'
+    "</SiteMap>"
 )
 
 
@@ -69,8 +70,14 @@ class TestAddArea:
     def test_splices_area_with_plain_title_no_protected_attrs(self, backend):
         with requests_mock.Mocker() as m:
             _with_seed(m, backend)
-            sm.add_area(backend, _SID, area_id="cwx_ops", title="Operations",
-                        show_groups=True, icon="$webresource:cwx_icon")
+            sm.add_area(
+                backend,
+                _SID,
+                area_id="cwx_ops",
+                title="Operations",
+                show_groups=True,
+                icon="$webresource:cwx_icon",
+            )
             area = sm._find(_patched_root(m), "Area", "cwx_ops")
         assert area is not None
         assert area.get("Title") == "Operations"
@@ -94,30 +101,30 @@ class TestAddArea:
 
     def test_publish_runs_t3_read_back_in_order(self, backend):
         published = _SEED.replace(
-            "</SiteMap>", '<Area Id="cwx_ops" Title="Operations" /></SiteMap>')
+            "</SiteMap>", '<Area Id="cwx_ops" Title="Operations" /></SiteMap>'
+        )
         with requests_mock.Mocker() as m:
-            m.get(_url(backend), [
-                {"json": {"sitemapxml": _SEED}},        # initial load
-                {"json": {"sitemapxml": published}}])   # post-publish read-back
+            m.get(
+                _url(backend),
+                [
+                    {"json": {"sitemapxml": _SEED}},  # initial load
+                    {"json": {"sitemapxml": published}},
+                ],
+            )  # post-publish read-back
             m.patch(_url(backend), status_code=204)
             m.post(backend.url_for("PublishAllXml"), status_code=204)
-            out = sm.add_area(backend, _SID, area_id="cwx_ops", title="Operations",
-                              publish=True)
-            assert [r.method for r in m.request_history] == [
-                "GET", "PATCH", "POST", "GET"]
+            out = sm.add_area(backend, _SID, area_id="cwx_ops", title="Operations", publish=True)
+            assert [r.method for r in m.request_history] == ["GET", "PATCH", "POST", "GET"]
         assert out["updated"] is True and out["published"] is True
 
     def test_t3_read_back_fails_when_node_absent(self, backend):
         # Published layer still missing the new Area → T3 must raise.
         with requests_mock.Mocker() as m:
-            m.get(_url(backend), [
-                {"json": {"sitemapxml": _SEED}},
-                {"json": {"sitemapxml": _SEED}}])
+            m.get(_url(backend), [{"json": {"sitemapxml": _SEED}}, {"json": {"sitemapxml": _SEED}}])
             m.patch(_url(backend), status_code=204)
             m.post(backend.url_for("PublishAllXml"), status_code=204)
             with pytest.raises(D365Error, match="read-back"):
-                sm.add_area(backend, _SID, area_id="cwx_ops", title="Operations",
-                            publish=True)
+                sm.add_area(backend, _SID, area_id="cwx_ops", title="Operations", publish=True)
 
 
 # ── add-group ───────────────────────────────────────────────────────────────
@@ -127,8 +134,7 @@ class TestAddGroup:
     def test_splices_group_under_parent_area(self, backend):
         with requests_mock.Mocker() as m:
             _with_seed(m, backend)
-            sm.add_group(backend, _SID, area_id="SFA", group_id="cwx_grp",
-                         title="My Group")
+            sm.add_group(backend, _SID, area_id="SFA", group_id="cwx_grp", title="My Group")
             area = sm._find(_patched_root(m), "Area", "SFA")
         assert area is not None
         grp = sm._find(area, "Group", "cwx_grp")
@@ -138,15 +144,13 @@ class TestAddGroup:
         with requests_mock.Mocker() as m:
             m.get(_url(backend), json={"sitemapxml": _SEED})
             with pytest.raises(D365Error, match="parent Area 'NOPE' not found"):
-                sm.add_group(backend, _SID, area_id="NOPE", group_id="g",
-                             title="t")
+                sm.add_group(backend, _SID, area_id="NOPE", group_id="g", title="t")
 
     def test_duplicate_group_in_same_area_is_rejected(self, backend):
         with requests_mock.Mocker() as m:
             m.get(_url(backend), json={"sitemapxml": _SEED})
             with pytest.raises(D365Error, match="node id 'SFA_Grp' already exists"):
-                sm.add_group(backend, _SID, area_id="SFA", group_id="SFA_Grp",
-                             title="dup")
+                sm.add_group(backend, _SID, area_id="SFA", group_id="SFA_Grp", title="dup")
 
     def test_duplicate_group_across_areas_is_rejected(self, backend):
         # node ids are unique across the whole document — a group id already used
@@ -154,8 +158,7 @@ class TestAddGroup:
         with requests_mock.Mocker() as m:
             m.get(_url(backend), json={"sitemapxml": _SEED})
             with pytest.raises(D365Error, match="node id 'SFA_Grp' already exists"):
-                sm.add_group(backend, _SID, area_id="HLP", group_id="SFA_Grp",
-                             title="dup")
+                sm.add_group(backend, _SID, area_id="HLP", group_id="SFA_Grp", title="dup")
 
 
 # ── add-subarea ─────────────────────────────────────────────────────────────
@@ -168,8 +171,14 @@ class TestAddSubarea:
     def test_url_mode_emits_url_attr(self, backend):
         with requests_mock.Mocker() as m:
             self._seeded(backend, m)
-            sm.add_subarea(backend, _SID, area_id="SFA", group_id="SFA_Grp",
-                           sub_id="cwx_link", url="https://example.com")
+            sm.add_subarea(
+                backend,
+                _SID,
+                area_id="SFA",
+                group_id="SFA_Grp",
+                sub_id="cwx_link",
+                url="https://example.com",
+            )
             sub = sm._find(_patched_root(m), "SubArea", "cwx_link")
         assert sub is not None and sub.get("Url") == "https://example.com"
         # there is no SubArea WebResource attribute — a web resource is a Url
@@ -180,17 +189,26 @@ class TestAddSubarea:
     def test_url_pass_params_emits_pass_params_attr(self, backend):
         with requests_mock.Mocker() as m:
             self._seeded(backend, m)
-            sm.add_subarea(backend, _SID, area_id="SFA", group_id="SFA_Grp",
-                           sub_id="cwx_link", url="https://example.com",
-                           pass_params=True)
+            sm.add_subarea(
+                backend,
+                _SID,
+                area_id="SFA",
+                group_id="SFA_Grp",
+                sub_id="cwx_link",
+                url="https://example.com",
+                pass_params=True,
+            )
             sub = sm._find(_patched_root(m), "SubArea", "cwx_link")
         assert sub is not None and sub.get("Url") == "https://example.com"
         assert sub.get("PassParams") == "true"
 
-    @pytest.mark.parametrize("kwargs", [
-        {"entity": "account"},
-        {"dashboard": "12345678-1234-1234-1234-1234567890ab"},
-    ])
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"entity": "account"},
+            {"dashboard": "12345678-1234-1234-1234-1234567890ab"},
+        ],
+    )
     def test_pass_params_rejected_without_url(self, backend, monkeypatch, kwargs):
         # rejected up front — neither --entity resolution nor the --dashboard
         # existence GET fires, and nothing is written.
@@ -198,17 +216,30 @@ class TestAddSubarea:
         with requests_mock.Mocker() as m:
             m.get(_url(backend), json={"sitemapxml": _SEED})
             with pytest.raises(D365Error, match="pass-params"):
-                sm.add_subarea(backend, _SID, area_id="SFA", group_id="SFA_Grp",
-                               sub_id="cwx_x", pass_params=True, **kwargs)
+                sm.add_subarea(
+                    backend,
+                    _SID,
+                    area_id="SFA",
+                    group_id="SFA_Grp",
+                    sub_id="cwx_x",
+                    pass_params=True,
+                    **kwargs,
+                )
             assert not any(r.method == "PATCH" for r in m.request_history)
 
     def test_entity_mode_validated_and_emits_entity_attr(self, backend, monkeypatch):
-        monkeypatch.setattr(sm, "resolve_logical_name",
-                            lambda _b, name: name.lower())
+        monkeypatch.setattr(sm, "resolve_logical_name", lambda _b, name: name.lower())
         with requests_mock.Mocker() as m:
             self._seeded(backend, m)
-            sm.add_subarea(backend, _SID, area_id="SFA", group_id="SFA_Grp",
-                           sub_id="cwx_contacts", entity="Contact", title="People")
+            sm.add_subarea(
+                backend,
+                _SID,
+                area_id="SFA",
+                group_id="SFA_Grp",
+                sub_id="cwx_contacts",
+                entity="Contact",
+                title="People",
+            )
             sub = sm._find(_patched_root(m), "SubArea", "cwx_contacts")
         assert sub is not None
         assert sub.get("Entity") == "contact" and sub.get("Title") == "People"
@@ -216,12 +247,14 @@ class TestAddSubarea:
     def test_entity_validation_failure_propagates(self, backend, monkeypatch):
         def _boom(_b, _name):
             raise D365Error("no such entity 'bogus'")
+
         monkeypatch.setattr(sm, "resolve_logical_name", _boom)
         with requests_mock.Mocker() as m:
             m.get(_url(backend), json={"sitemapxml": _SEED})
             with pytest.raises(D365Error, match="no such entity"):
-                sm.add_subarea(backend, _SID, area_id="SFA", group_id="SFA_Grp",
-                               sub_id="cwx_x", entity="bogus")
+                sm.add_subarea(
+                    backend, _SID, area_id="SFA", group_id="SFA_Grp", sub_id="cwx_x", entity="bogus"
+                )
             assert not any(r.method == "PATCH" for r in m.request_history)
 
     def _mock_form(self, m, backend, guid, *, status=200, form_type=0):
@@ -230,16 +263,25 @@ class TestAddSubarea:
         if status == 200:
             m.get(url, json={"formid": guid, "type": form_type})
         else:
-            m.get(url, status_code=status,
-                  json={"error": {"code": "0x80060888", "message": "Does Not Exist"}})
+            m.get(
+                url,
+                status_code=status,
+                json={"error": {"code": "0x80060888", "message": "Does Not Exist"}},
+            )
 
     def test_dashboard_mode_validated_and_emits_normalized_guid(self, backend):
         norm = "12345678-1234-1234-1234-1234567890ab"
         with requests_mock.Mocker() as m:
             self._seeded(backend, m)
             self._mock_form(m, backend, norm, form_type=0)  # a real dashboard
-            sm.add_subarea(backend, _SID, area_id="SFA", group_id="SFA_Grp",
-                           sub_id="cwx_dash", dashboard="{" + norm + "}")
+            sm.add_subarea(
+                backend,
+                _SID,
+                area_id="SFA",
+                group_id="SFA_Grp",
+                sub_id="cwx_dash",
+                dashboard="{" + norm + "}",
+            )
             sub = sm._find(_patched_root(m), "SubArea", "cwx_dash")
         assert sub is not None
         assert sub.get("DefaultDashboard") == norm
@@ -250,8 +292,14 @@ class TestAddSubarea:
             m.get(_url(backend), json={"sitemapxml": _SEED})
             self._mock_form(m, backend, norm, status=404)
             with pytest.raises(D365Error, match="no dashboard"):
-                sm.add_subarea(backend, _SID, area_id="SFA", group_id="SFA_Grp",
-                               sub_id="cwx_dash", dashboard=norm)
+                sm.add_subarea(
+                    backend,
+                    _SID,
+                    area_id="SFA",
+                    group_id="SFA_Grp",
+                    sub_id="cwx_dash",
+                    dashboard=norm,
+                )
             assert not any(r.method == "PATCH" for r in m.request_history)
 
     def test_dashboard_non_dashboard_systemform_is_rejected(self, backend):
@@ -260,40 +308,63 @@ class TestAddSubarea:
             m.get(_url(backend), json={"sitemapxml": _SEED})
             self._mock_form(m, backend, norm, form_type=2)  # a Main form, not a dashboard
             with pytest.raises(D365Error, match="not a dashboard"):
-                sm.add_subarea(backend, _SID, area_id="SFA", group_id="SFA_Grp",
-                               sub_id="cwx_dash", dashboard=norm)
+                sm.add_subarea(
+                    backend,
+                    _SID,
+                    area_id="SFA",
+                    group_id="SFA_Grp",
+                    sub_id="cwx_dash",
+                    dashboard=norm,
+                )
             assert not any(r.method == "PATCH" for r in m.request_history)
 
     def test_bad_dashboard_guid_is_rejected(self, backend):
         with requests_mock.Mocker() as m:
             m.get(_url(backend), json={"sitemapxml": _SEED})
             with pytest.raises(D365Error, match="must be a dashboard GUID"):
-                sm.add_subarea(backend, _SID, area_id="SFA", group_id="SFA_Grp",
-                               sub_id="cwx_dash", dashboard="not-a-guid")
+                sm.add_subarea(
+                    backend,
+                    _SID,
+                    area_id="SFA",
+                    group_id="SFA_Grp",
+                    sub_id="cwx_dash",
+                    dashboard="not-a-guid",
+                )
 
-    @pytest.mark.parametrize("kwargs", [
-        {},                                              # zero modes
-        {"entity": "account", "url": "https://x"},       # two modes
-    ])
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {},  # zero modes
+            {"entity": "account", "url": "https://x"},  # two modes
+        ],
+    )
     def test_exactly_one_content_mode_enforced(self, backend, monkeypatch, kwargs):
         monkeypatch.setattr(sm, "resolve_logical_name", lambda _b, n: n)
         with pytest.raises(D365Error, match="exactly one of"):
-            sm.add_subarea(backend, _SID, area_id="SFA", group_id="SFA_Grp",
-                           sub_id="cwx_x", **kwargs)
+            sm.add_subarea(
+                backend, _SID, area_id="SFA", group_id="SFA_Grp", sub_id="cwx_x", **kwargs
+            )
 
     def test_missing_parent_group_is_rejected(self, backend):
         with requests_mock.Mocker() as m:
             m.get(_url(backend), json={"sitemapxml": _SEED})
             with pytest.raises(D365Error, match="parent Group 'NOPE' not found"):
-                sm.add_subarea(backend, _SID, area_id="SFA", group_id="NOPE",
-                               sub_id="cwx_x", url="https://x")
+                sm.add_subarea(
+                    backend, _SID, area_id="SFA", group_id="NOPE", sub_id="cwx_x", url="https://x"
+                )
 
     def test_duplicate_subarea_id_is_rejected(self, backend):
         with requests_mock.Mocker() as m:
             m.get(_url(backend), json={"sitemapxml": _SEED})
             with pytest.raises(D365Error, match="node id 'nav_accts' already exists"):
-                sm.add_subarea(backend, _SID, area_id="SFA", group_id="SFA_Grp",
-                               sub_id="nav_accts", url="https://x")
+                sm.add_subarea(
+                    backend,
+                    _SID,
+                    area_id="SFA",
+                    group_id="SFA_Grp",
+                    sub_id="nav_accts",
+                    url="https://x",
+                )
 
 
 # ── remove-node ─────────────────────────────────────────────────────────────
@@ -330,7 +401,8 @@ class TestRemoveNode:
     def test_comment_out_sanitizes_double_dash(self, backend):
         seed = (
             '<SiteMap><Area Id="A"><Group Id="G">'
-            '<SubArea Id="s1" Url="https://x/a--b--c" /></Group></Area></SiteMap>')
+            '<SubArea Id="s1" Url="https://x/a--b--c" /></Group></Area></SiteMap>'
+        )
         with requests_mock.Mocker() as m:
             m.get(_url(backend), json={"sitemapxml": seed})
             m.patch(_url(backend), status_code=204)
@@ -358,9 +430,9 @@ _MOVE_SEED = (
     '<SubArea Id="s1" Entity="account" Title="Accounts" />'
     '<SubArea Id="s2" Entity="contact" />'
     '<SubArea Id="s3" Entity="lead" />'
-    '</Group></Area>'
+    "</Group></Area>"
     '<Area Id="A2"><Group Id="G2"><SubArea Id="s4" Url="https://x" /></Group></Area>'
-    '</SiteMap>'
+    "</SiteMap>"
 )
 
 
@@ -459,10 +531,13 @@ class TestMoveNode:
             with pytest.raises(D365Error, match="anchor node 'ghost' not found"):
                 sm.move_node(backend, _SID, node_id="s1", before="ghost")
 
-    @pytest.mark.parametrize("kwargs", [
-        {},                               # zero modes
-        {"before": "s2", "index": 0},     # two modes
-    ])
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {},  # zero modes
+            {"before": "s2", "index": 0},  # two modes
+        ],
+    )
     def test_exactly_one_destination_enforced(self, backend, kwargs):
         with pytest.raises(D365Error, match="exactly one of"):
             sm.move_node(backend, _SID, node_id="s1", **kwargs)
@@ -484,24 +559,26 @@ class TestMoveNode:
             '<SubArea Id="s3" Entity="lead" />',
             '<SubArea Id="s2" Entity="contact" />'
             '<SubArea Id="s3" Entity="lead" />'
-            '<SubArea Id="s1" Entity="account" Title="Accounts" />')
+            '<SubArea Id="s1" Entity="account" Title="Accounts" />',
+        )
         with requests_mock.Mocker() as m:
-            m.get(_url(backend), [
-                {"json": {"sitemapxml": _MOVE_SEED}},
-                {"json": {"sitemapxml": published}}])
+            m.get(
+                _url(backend),
+                [{"json": {"sitemapxml": _MOVE_SEED}}, {"json": {"sitemapxml": published}}],
+            )
             m.patch(_url(backend), status_code=204)
             m.post(backend.url_for("PublishAllXml"), status_code=204)
             out = sm.move_node(backend, _SID, node_id="s1", index=2, publish=True)
-            assert [r.method for r in m.request_history] == [
-                "GET", "PATCH", "POST", "GET"]
+            assert [r.method for r in m.request_history] == ["GET", "PATCH", "POST", "GET"]
         assert out["updated"] is True and out["published"] is True
 
     def test_t3_read_back_fails_when_order_unchanged(self, backend):
         # Published layer still in the original order → T3 must raise.
         with requests_mock.Mocker() as m:
-            m.get(_url(backend), [
-                {"json": {"sitemapxml": _MOVE_SEED}},
-                {"json": {"sitemapxml": _MOVE_SEED}}])
+            m.get(
+                _url(backend),
+                [{"json": {"sitemapxml": _MOVE_SEED}}, {"json": {"sitemapxml": _MOVE_SEED}}],
+            )
             m.patch(_url(backend), status_code=204)
             m.post(backend.url_for("PublishAllXml"), status_code=204)
             with pytest.raises(D365Error, match="requested position"):
@@ -513,11 +590,11 @@ class TestMoveNode:
 # A node that already carries a localized <Titles> and a child Group, so the
 # in-place update and the Descriptions-ordering paths can be exercised.
 _TITLED_SEED = (
-    '<SiteMap>'
+    "<SiteMap>"
     '<Area Id="SFA" ResourceId="Area_Sales">'
     '<Titles><Title LCID="1033" Title="Sales" /></Titles>'
     '<Group Id="SFA_Grp"><SubArea Id="nav_accts" Entity="account" /></Group>'
-    '</Area></SiteMap>'
+    "</Area></SiteMap>"
 )
 
 
@@ -527,15 +604,17 @@ def _langs_url(backend) -> str:
 
 def _with_langs(m: requests_mock.Mocker, backend, *lcids: int) -> None:
     """Stub the live installed-languages probe (defaults to en-US + de-DE)."""
-    m.get(_langs_url(backend),
-          json={"RetrieveProvisionedLanguages": list(lcids or (1033, 1031))})
+    m.get(_langs_url(backend), json={"RetrieveProvisionedLanguages": list(lcids or (1033, 1031))})
 
 
 def _titles(node: ET.Element) -> list[tuple[str, str]]:
     """(LCID, Title) pairs of a node's <Titles>/<Title> children."""
     container = node.find("Titles")
-    return [] if container is None else [
-        (t.get("LCID") or "", t.get("Title") or "") for t in container]
+    return (
+        []
+        if container is None
+        else [(t.get("LCID") or "", t.get("Title") or "") for t in container]
+    )
 
 
 class TestSetTitle:
@@ -560,8 +639,7 @@ class TestSetTitle:
             _with_langs(m, backend)
             m.get(_url(backend), json={"sitemapxml": _TITLED_SEED})
             m.patch(_url(backend), status_code=204)
-            sm.set_title(backend, _SID, node_id="nav_accts",
-                         titles=[(1033, "Accounts")])
+            sm.set_title(backend, _SID, node_id="nav_accts", titles=[(1033, "Accounts")])
             sub = sm._find(_patched_root(m), "SubArea", "nav_accts")
         assert sub is not None and sub[0].tag == "Titles"
         assert _titles(sub) == [("1033", "Accounts")]
@@ -584,7 +662,8 @@ class TestSetTitle:
             '<SiteMap><Area Id="D">'
             '<Titles><Title LCID="1033" Title="One" />'
             '<Title LCID="1033" Title="Two" /></Titles>'
-            '</Area></SiteMap>')
+            "</Area></SiteMap>"
+        )
         with requests_mock.Mocker() as m:
             _with_langs(m, backend)
             m.get(_url(backend), json={"sitemapxml": seed})
@@ -599,8 +678,7 @@ class TestSetTitle:
             _with_langs(m, backend, 1033, 1031)
             m.get(_url(backend), json={"sitemapxml": _SEED})
             m.patch(_url(backend), status_code=204)
-            sm.set_title(backend, _SID, node_id="HLP",
-                         titles=[(1033, "Help"), (1031, "Hilfe")])
+            sm.set_title(backend, _SID, node_id="HLP", titles=[(1033, "Help"), (1031, "Hilfe")])
             area = sm._find(_patched_root(m), "Area", "HLP")
         assert area is not None
         assert set(_titles(area)) == {("1033", "Help"), ("1031", "Hilfe")}
@@ -619,8 +697,7 @@ class TestSetTitle:
             _with_langs(m, backend)
             m.get(_url(backend), json={"sitemapxml": _SEED})
             with pytest.raises(D365Error, match="duplicate --lcid 1033"):
-                sm.set_title(backend, _SID, node_id="HLP",
-                             titles=[(1033, "Help"), (1033, "Again")])
+                sm.set_title(backend, _SID, node_id="HLP", titles=[(1033, "Help"), (1033, "Again")])
             assert not any(r.method == "PATCH" for r in m.request_history)
 
     def test_uninstalled_lcid_rejected(self, backend):
@@ -649,7 +726,8 @@ class TestSetTitle:
         # must still land first and the order check must ignore the comment.
         seed = (
             '<SiteMap><Area Id="X"><Group Id="G">'
-            '<!--<SubArea Id="old" Entity="account" />--></Group></Area></SiteMap>')
+            '<!--<SubArea Id="old" Entity="account" />--></Group></Area></SiteMap>'
+        )
         with requests_mock.Mocker() as m:
             _with_langs(m, backend)
             m.get(_url(backend), json={"sitemapxml": seed})
@@ -676,8 +754,7 @@ class TestSetTitle:
         with requests_mock.Mocker() as m:
             _with_langs(m, dry_backend)
             m.get(_url(dry_backend), json={"sitemapxml": _SEED})
-            out = sm.set_title(dry_backend, _SID, node_id="HLP",
-                               titles=[(1033, "Help")])
+            out = sm.set_title(dry_backend, _SID, node_id="HLP", titles=[(1033, "Help")])
             assert not any(r.method == "PATCH" for r in m.request_history)
         assert out["_dry_run"] is True and out["would_edit"] is True
         area = sm._find(ET.fromstring(out["sitemapxml"]), "Area", "HLP")
@@ -687,29 +764,29 @@ class TestSetTitle:
         published = _SEED.replace(
             '<Area Id="HLP" ResourceId="Area_Help">',
             '<Area Id="HLP" ResourceId="Area_Help">'
-            '<Titles><Title LCID="1033" Title="Help" /></Titles>')
+            '<Titles><Title LCID="1033" Title="Help" /></Titles>',
+        )
         with requests_mock.Mocker() as m:
             _with_langs(m, backend)
-            m.get(_url(backend), [
-                {"json": {"sitemapxml": _SEED}},
-                {"json": {"sitemapxml": published}}])
+            m.get(
+                _url(backend),
+                [{"json": {"sitemapxml": _SEED}}, {"json": {"sitemapxml": published}}],
+            )
             m.patch(_url(backend), status_code=204)
             m.post(backend.url_for("PublishAllXml"), status_code=204)
-            out = sm.set_title(backend, _SID, node_id="HLP",
-                               titles=[(1033, "Help")], publish=True)
+            out = sm.set_title(backend, _SID, node_id="HLP", titles=[(1033, "Help")], publish=True)
         assert out["updated"] is True and out["published"] is True
 
     def test_t3_read_back_fails_when_title_absent(self, backend):
         with requests_mock.Mocker() as m:
             _with_langs(m, backend)
-            m.get(_url(backend), [
-                {"json": {"sitemapxml": _SEED}},
-                {"json": {"sitemapxml": _SEED}}])  # published layer still untitled
+            m.get(
+                _url(backend), [{"json": {"sitemapxml": _SEED}}, {"json": {"sitemapxml": _SEED}}]
+            )  # published layer still untitled
             m.patch(_url(backend), status_code=204)
             m.post(backend.url_for("PublishAllXml"), status_code=204)
             with pytest.raises(D365Error, match="read-back"):
-                sm.set_title(backend, _SID, node_id="HLP",
-                             titles=[(1033, "Help")], publish=True)
+                sm.set_title(backend, _SID, node_id="HLP", titles=[(1033, "Help")], publish=True)
 
 
 class TestSetDescription:
@@ -720,16 +797,14 @@ class TestSetDescription:
             _with_langs(m, backend)
             m.get(_url(backend), json={"sitemapxml": _TITLED_SEED})
             m.patch(_url(backend), status_code=204)
-            sm.set_description(backend, _SID, node_id="SFA",
-                               descriptions=[(1033, "Sales area")])
+            sm.set_description(backend, _SID, node_id="SFA", descriptions=[(1033, "Sales area")])
             area = sm._find(_patched_root(m), "Area", "SFA")
         assert area is not None
         tags = [c.tag for c in area]
         assert tags == ["Titles", "Descriptions", "Group"]
         desc = area.find("Descriptions")
         assert desc is not None
-        assert [(d.get("LCID"), d.get("Description")) for d in desc] == [
-            ("1033", "Sales area")]
+        assert [(d.get("LCID"), d.get("Description")) for d in desc] == [("1033", "Sales area")]
 
     def test_creates_descriptions_when_no_titles(self, backend):
         # HLP has neither <Titles> nor <Descriptions> but has a <Group>; the new
@@ -738,8 +813,7 @@ class TestSetDescription:
             _with_langs(m, backend)
             m.get(_url(backend), json={"sitemapxml": _SEED})
             m.patch(_url(backend), status_code=204)
-            sm.set_description(backend, _SID, node_id="HLP",
-                               descriptions=[(1033, "Help area")])
+            sm.set_description(backend, _SID, node_id="HLP", descriptions=[(1033, "Help area")])
             area = sm._find(_patched_root(m), "Area", "HLP")
         assert area is not None
         assert [c.tag for c in area] == ["Descriptions", "Group"]

@@ -1,4 +1,5 @@
 """Unit tests for --auth-scheme + Kerberos support."""
+
 # pyright: basic
 from __future__ import annotations
 
@@ -15,16 +16,22 @@ _BAD_CHOICE = "Invalid value for '--auth-scheme'"
 
 def _profile(scheme: str = "ntlm") -> ConnectionProfile:
     return ConnectionProfile(
-        name="t", url="https://crm.contoso.local/contoso",
-        domain="CONTOSO", username="alice",
-        verify_ssl=False, auth_scheme=scheme,
+        name="t",
+        url="https://crm.contoso.local/contoso",
+        domain="CONTOSO",
+        username="alice",
+        verify_ssl=False,
+        auth_scheme=scheme,
     )
 
 
 class TestProfileField:
     def test_default_auth_scheme_is_ntlm(self):
         p = ConnectionProfile(
-            name="t", url="https://crm/test", domain="D", username="u",
+            name="t",
+            url="https://crm/test",
+            domain="D",
+            username="u",
         )
         assert p.auth_scheme == "ntlm"
 
@@ -34,16 +41,21 @@ class TestProfileField:
         assert d["auth_scheme"] == "kerberos"
 
     def test_profile_from_dict_defaults_to_ntlm_when_missing(self):
-        p = ConnectionProfile.from_dict({
-            "name": "t", "url": "https://crm/test",
-            "domain": "D", "username": "u",
-        })
+        p = ConnectionProfile.from_dict(
+            {
+                "name": "t",
+                "url": "https://crm/test",
+                "domain": "D",
+                "username": "u",
+            }
+        )
         assert p.auth_scheme == "ntlm"
 
 
 class TestAuthSelection:
     def test_ntlm_scheme_uses_ntlm_auth(self):
         from requests_ntlm import HttpNtlmAuth
+
         b = D365Backend(_profile("ntlm"), password="pw")
         assert isinstance(b._session.auth, HttpNtlmAuth)
 

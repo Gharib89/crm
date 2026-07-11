@@ -25,9 +25,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict
-from crm.core.metadata import label, maybe_publish
 from crm.core import metadata_cache
+from crm.core.metadata import label, maybe_publish
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 
 # Status attributes are conventionally named on every entity; callers never vary
 # them, so they are not exposed as parameters.

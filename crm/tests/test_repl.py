@@ -6,6 +6,7 @@ When the per-line argv omits --session, Click passes the literal default
 "default" into the root callback.  Before the fix, this clobbered the session
 name that was set at REPL-launch time.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -19,6 +20,7 @@ pytestmark = pytest.mark.usefixtures("isolated_home")
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _repl_invoke(argv: list[str], ctx: CLIContext) -> None:
     """Simulate one REPL line: invoke cli.main the same way repl.py does.
@@ -41,6 +43,7 @@ def _repl_invoke(argv: list[str], ctx: CLIContext) -> None:
 # ---------------------------------------------------------------------------
 # Test cases
 # ---------------------------------------------------------------------------
+
 
 def test_session_sticky_across_bare_repl_lines():
     """REPL lines with no --session must NOT reset the launched session name."""
@@ -85,6 +88,7 @@ def test_non_repl_bare_invocation_defaults():
 # Leading `crm` prefix strip (issue #300)
 # ---------------------------------------------------------------------------
 
+
 def test_strip_leading_crm_prefix():
     """A single leading `crm` token is dropped so the shell reflex works."""
     assert _strip_repl_prefix(["crm", "connection", "whoami"]) == ["connection", "whoami"]
@@ -92,7 +96,8 @@ def test_strip_leading_crm_prefix():
 
 def test_bare_crm_is_noop():
     """A bare `crm` line strips to empty and signals a no-op (None), not [] —
-    dispatching [] would relaunch the REPL via invoke_without_command."""
+    dispatching [] would relaunch the REPL via invoke_without_command.
+    """
     assert _strip_repl_prefix(["crm"]) is None
 
 

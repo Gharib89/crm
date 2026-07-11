@@ -1,4 +1,5 @@
 """Unit tests for crm.core.clone."""
+
 # pyright: basic
 from __future__ import annotations
 
@@ -12,21 +13,32 @@ from crm.utils.d365_backend import D365Backend
 
 def _spec():
     return {
-        "entities": [{
-            "schema_name": "new_Project",
-            "display_name": "Project",
-            "display_collection_name": "Projects",
-            "ownership": "UserOwned",
-            "primary_attr": {"schema_name": "new_Name", "label": "Name"},
-            "attributes": [
-                {"kind": "string", "schema_name": "new_Code", "display_name": "Code",
-                 "max_length": 100},
-                {"kind": "lookup", "schema_name": "new_AccountId", "display_name": "Account",
-                 "target_entity": "account"},
-            ],
-            "views": [{"name": "Active Projects",
-                       "columns": [{"name": "new_name", "width": 200}]}],
-        }],
+        "entities": [
+            {
+                "schema_name": "new_Project",
+                "display_name": "Project",
+                "display_collection_name": "Projects",
+                "ownership": "UserOwned",
+                "primary_attr": {"schema_name": "new_Name", "label": "Name"},
+                "attributes": [
+                    {
+                        "kind": "string",
+                        "schema_name": "new_Code",
+                        "display_name": "Code",
+                        "max_length": 100,
+                    },
+                    {
+                        "kind": "lookup",
+                        "schema_name": "new_AccountId",
+                        "display_name": "Account",
+                        "target_entity": "account",
+                    },
+                ],
+                "views": [
+                    {"name": "Active Projects", "columns": [{"name": "new_name", "width": 200}]}
+                ],
+            }
+        ],
         "optionsets": [{"name": "new_status", "display_name": "Status", "options": []}],
     }
 
@@ -69,19 +81,29 @@ from crm.core import clone as clone_mod
 def _applied(*kinds):
     """Build an apply_spec-shaped result whose `applied` has one entry per kind."""
     applied = [{"kind": k, "name": f"{k}1"} for k in kinds]
-    return {"ok": True, "applied": applied, "skipped": [], "planned": [],
-            "failed": [], "staged": False}
+    return {
+        "ok": True,
+        "applied": applied,
+        "skipped": [],
+        "planned": [],
+        "failed": [],
+        "staged": False,
+    }
 
 
 class TestCloneEntitySkeleton:
     def _patch_common(self, monkeypatch, *, apply_result, captured):
-        def fake_build(backend, logical, *, with_views=False, with_relationships=False,
-                       solution=None):
+        def fake_build(
+            backend, logical, *, with_views=False, with_relationships=False, solution=None
+        ):
             captured["with_views"] = with_views
             captured["with_relationships"] = with_relationships
             captured["solution"] = solution
-            return {"entities": [{"schema_name": "new_Project", "display_name": "Project",
-                                  "attributes": []}]}
+            return {
+                "entities": [
+                    {"schema_name": "new_Project", "display_name": "Project", "attributes": []}
+                ]
+            }
 
         def fake_apply(backend, spec, *, stage_only=False):
             captured["spec"] = spec
@@ -96,9 +118,11 @@ class TestCloneEntitySkeleton:
         self._patch_common(
             monkeypatch,
             apply_result=_applied("entity", "attribute", "attribute", "view"),
-            captured=captured)
+            captured=captured,
+        )
         out = clone_mod.clone_entity(
-            cast(D365Backend, None), "new_project", "cwx_TicketClone", with_views=True)
+            cast(D365Backend, None), "new_project", "cwx_TicketClone", with_views=True
+        )
         assert out["logical_name"] == "cwx_ticketclone"
         assert out["schema_name"] == "cwx_TicketClone"
         assert out["source"] == "new_project"
@@ -113,21 +137,27 @@ class TestCloneEntitySkeleton:
     def test_relationships_are_never_read(self, monkeypatch):
         captured: dict = {}
         self._patch_common(monkeypatch, apply_result=_applied("entity"), captured=captured)
-        clone_mod.clone_entity(cast(D365Backend, None), "new_project", "cwx_TicketClone", with_views=False)
+        clone_mod.clone_entity(
+            cast(D365Backend, None), "new_project", "cwx_TicketClone", with_views=False
+        )
         assert captured["with_views"] is False
         assert captured["with_relationships"] is False
 
     def test_no_publish_maps_to_stage_only(self, monkeypatch):
         captured: dict = {}
         self._patch_common(monkeypatch, apply_result=_applied("entity"), captured=captured)
-        clone_mod.clone_entity(cast(D365Backend, None), "new_project", "cwx_TicketClone", publish=False)
+        clone_mod.clone_entity(
+            cast(D365Backend, None), "new_project", "cwx_TicketClone", publish=False
+        )
         assert captured["stage_only"] is True
 
     def test_invalid_prefix_raises_before_any_call(self, monkeypatch):
         from crm.utils.d365_backend import D365Error
+
         called = {"build": False}
-        monkeypatch.setattr(clone_mod, "build_entity_spec",
-                            lambda *a, **k: called.__setitem__("build", True))
+        monkeypatch.setattr(
+            clone_mod, "build_entity_spec", lambda *a, **k: called.__setitem__("build", True)
+        )
         with pytest.raises(D365Error, match="customizationprefix"):
             clone_mod.clone_entity(cast(D365Backend, None), "new_project", "mscrm_Bad")
         assert called["build"] is False
@@ -135,18 +165,24 @@ class TestCloneEntitySkeleton:
     def test_solution_threaded_to_apply(self, monkeypatch):
         captured: dict = {}
         self._patch_common(monkeypatch, apply_result=_applied("entity"), captured=captured)
-        clone_mod.clone_entity(cast(D365Backend, None), "new_project", "cwx_TicketClone", solution="MySol")
+        clone_mod.clone_entity(
+            cast(D365Backend, None), "new_project", "cwx_TicketClone", solution="MySol"
+        )
         assert captured["solution"] == "MySol"
 
 
 class TestCloneEntityForms:
     def _patch(self, monkeypatch, *, forms_list, captured):
-        monkeypatch.setattr(clone_mod, "build_entity_spec",
-                            lambda b, s, **k: {"entities": [{"schema_name": "new_Project",
-                                                             "display_name": "Project",
-                                                             "relationships": []}]})
-        monkeypatch.setattr(clone_mod, "apply_spec",
-                            lambda b, spec, **k: _applied("entity"))
+        monkeypatch.setattr(
+            clone_mod,
+            "build_entity_spec",
+            lambda b, s, **k: {
+                "entities": [
+                    {"schema_name": "new_Project", "display_name": "Project", "relationships": []}
+                ]
+            },
+        )
+        monkeypatch.setattr(clone_mod, "apply_spec", lambda b, spec, **k: _applied("entity"))
         monkeypatch.setattr(clone_mod, "read_entity_forms", lambda b, s: forms_list)
 
         def fake_clone_form(backend, form, new_entity, *, solution=None):
@@ -154,47 +190,81 @@ class TestCloneEntityForms:
             return {"created": True, "formid": "f", "name": form["name"]}
 
         monkeypatch.setattr(clone_mod, "clone_form_to_entity", fake_clone_form)
-        monkeypatch.setattr(clone_mod, "publish_all",
-                            lambda b: captured.__setitem__("published", True))
+        monkeypatch.setattr(
+            clone_mod, "publish_all", lambda b: captured.__setitem__("published", True)
+        )
 
     def test_with_forms_clones_each_form_and_counts(self, monkeypatch):
         captured: dict = {}
-        self._patch(monkeypatch, forms_list=[{"name": "A", "objecttypecode": "new_project"},
-                                             {"name": "B", "objecttypecode": "new_project"}],
-                    captured=captured)
-        out = clone_mod.clone_entity(cast(D365Backend, None), "new_project", "cwx_TicketClone",
-                                     with_forms=True, solution="MySol")
+        self._patch(
+            monkeypatch,
+            forms_list=[
+                {"name": "A", "objecttypecode": "new_project"},
+                {"name": "B", "objecttypecode": "new_project"},
+            ],
+            captured=captured,
+        )
+        out = clone_mod.clone_entity(
+            cast(D365Backend, None),
+            "new_project",
+            "cwx_TicketClone",
+            with_forms=True,
+            solution="MySol",
+        )
         assert out["counts"]["forms"] == 2
-        assert captured["targets"] == [("A", "cwx_ticketclone", "MySol"),
-                                       ("B", "cwx_ticketclone", "MySol")]
+        assert captured["targets"] == [
+            ("A", "cwx_ticketclone", "MySol"),
+            ("B", "cwx_ticketclone", "MySol"),
+        ]
         assert captured.get("published") is True
 
     def test_without_forms_does_not_read_forms(self, monkeypatch):
-        captured: dict = {}
         called = {"read": False}
-        monkeypatch.setattr(clone_mod, "build_entity_spec",
-                            lambda b, s, **k: {"entities": [{"schema_name": "new_Project",
-                                                             "display_name": "Project",
-                                                             "relationships": []}]})
+        monkeypatch.setattr(
+            clone_mod,
+            "build_entity_spec",
+            lambda b, s, **k: {
+                "entities": [
+                    {"schema_name": "new_Project", "display_name": "Project", "relationships": []}
+                ]
+            },
+        )
         monkeypatch.setattr(clone_mod, "apply_spec", lambda b, spec, **k: _applied("entity"))
-        monkeypatch.setattr(clone_mod, "read_entity_forms",
-                            lambda b, s: called.__setitem__("read", True) or [])
-        out = clone_mod.clone_entity(cast(D365Backend, None), "new_project", "cwx_TicketClone", with_forms=False)
+        monkeypatch.setattr(
+            clone_mod, "read_entity_forms", lambda b, s: called.__setitem__("read", True) or []
+        )
+        out = clone_mod.clone_entity(
+            cast(D365Backend, None), "new_project", "cwx_TicketClone", with_forms=False
+        )
         assert called["read"] is False
         assert out["counts"]["forms"] == 0
 
     def test_failed_skeleton_skips_forms(self, monkeypatch):
         captured: dict = {}
         called = {"read": False}
-        self._patch(monkeypatch, forms_list=[{"name": "A", "objecttypecode": "new_project"}],
-                    captured=captured)
-        monkeypatch.setattr(clone_mod, "apply_spec", lambda b, spec, **k: {
-            "ok": False, "applied": [{"kind": "entity", "name": "e"}],
-            "skipped": [], "planned": [], "failed": [{"kind": "attribute", "name": "x"}],
-            "staged": False})
-        monkeypatch.setattr(clone_mod, "read_entity_forms",
-                            lambda b, s: called.__setitem__("read", True) or [])
-        out = clone_mod.clone_entity(cast(D365Backend, None), "new_project", "cwx_TicketClone", with_forms=True)
+        self._patch(
+            monkeypatch,
+            forms_list=[{"name": "A", "objecttypecode": "new_project"}],
+            captured=captured,
+        )
+        monkeypatch.setattr(
+            clone_mod,
+            "apply_spec",
+            lambda b, spec, **k: {
+                "ok": False,
+                "applied": [{"kind": "entity", "name": "e"}],
+                "skipped": [],
+                "planned": [],
+                "failed": [{"kind": "attribute", "name": "x"}],
+                "staged": False,
+            },
+        )
+        monkeypatch.setattr(
+            clone_mod, "read_entity_forms", lambda b, s: called.__setitem__("read", True) or []
+        )
+        out = clone_mod.clone_entity(
+            cast(D365Backend, None), "new_project", "cwx_TicketClone", with_forms=True
+        )
         assert out["created"] is False
         assert called["read"] is False
         assert out["counts"]["forms"] == 0
@@ -202,31 +272,52 @@ class TestCloneEntityForms:
 
 class TestCloneEntityWorkflows:
     def _base_patch(self, monkeypatch):
-        monkeypatch.setattr(clone_mod, "build_entity_spec",
-                            lambda b, s, **k: {"entities": [{"schema_name": "new_Project",
-                                                             "display_name": "Project",
-                                                             "relationships": []}]})
+        monkeypatch.setattr(
+            clone_mod,
+            "build_entity_spec",
+            lambda b, s, **k: {
+                "entities": [
+                    {"schema_name": "new_Project", "display_name": "Project", "relationships": []}
+                ]
+            },
+        )
         monkeypatch.setattr(clone_mod, "apply_spec", lambda b, spec, **k: _applied("entity"))
 
     def test_clones_supported_workflows(self, monkeypatch):
         self._base_patch(monkeypatch)
-        monkeypatch.setattr(clone_mod, "list_workflows",
-                            lambda b, **k: [{"workflowid": "w1", "name": "WF1"}])
+        monkeypatch.setattr(
+            clone_mod, "list_workflows", lambda b, **k: [{"workflowid": "w1", "name": "WF1"}]
+        )
         seen = {}
-        monkeypatch.setattr(clone_mod, "clone_workflow_to_entity",
-                            lambda b, wid, ent, **k: seen.update(wid=wid, ent=ent, sol=k.get("solution"))
-                            or {"workflow_id": "new"})
-        out = clone_mod.clone_entity(cast(D365Backend, None), "new_project", "cwx_TicketClone",
-                                     with_workflows=True, solution="MySol")
+        monkeypatch.setattr(
+            clone_mod,
+            "clone_workflow_to_entity",
+            lambda b, wid, ent, **k: (
+                seen.update(wid=wid, ent=ent, sol=k.get("solution")) or {"workflow_id": "new"}
+            ),
+        )
+        out = clone_mod.clone_entity(
+            cast(D365Backend, None),
+            "new_project",
+            "cwx_TicketClone",
+            with_workflows=True,
+            solution="MySol",
+        )
         assert out["counts"]["workflows"] == 1
         assert seen == {"wid": "w1", "ent": "cwx_ticketclone", "sol": "MySol"}
 
     def test_unsupported_workflow_is_skipped_not_fatal(self, monkeypatch):
         from crm.utils.d365_backend import D365Error
+
         self._base_patch(monkeypatch)
-        monkeypatch.setattr(clone_mod, "list_workflows",
-                            lambda b, **k: [{"workflowid": "w1", "name": "Good"},
-                                            {"workflowid": "w2", "name": "BadAction"}])
+        monkeypatch.setattr(
+            clone_mod,
+            "list_workflows",
+            lambda b, **k: [
+                {"workflowid": "w1", "name": "Good"},
+                {"workflowid": "w2", "name": "BadAction"},
+            ],
+        )
 
         def fake_clone(b, wid, ent, **k):
             if wid == "w2":
@@ -234,7 +325,9 @@ class TestCloneEntityWorkflows:
             return {"workflow_id": "new"}
 
         monkeypatch.setattr(clone_mod, "clone_workflow_to_entity", fake_clone)
-        out = clone_mod.clone_entity(cast(D365Backend, None), "new_project", "cwx_TicketClone", with_workflows=True)
+        out = clone_mod.clone_entity(
+            cast(D365Backend, None), "new_project", "cwx_TicketClone", with_workflows=True
+        )
         assert out["counts"]["workflows"] == 1
         assert len(out["skipped_workflows"]) == 1
         assert out["skipped_workflows"][0]["name"] == "BadAction"
@@ -243,12 +336,16 @@ class TestCloneEntityWorkflows:
 
 class TestCloneEntityCharts:
     def _patch(self, monkeypatch, *, charts_list, captured):
-        monkeypatch.setattr(clone_mod, "build_entity_spec",
-                            lambda b, s, **k: {"entities": [{"schema_name": "new_Project",
-                                                             "display_name": "Project",
-                                                             "relationships": []}]})
-        monkeypatch.setattr(clone_mod, "apply_spec",
-                            lambda b, spec, **k: _applied("entity"))
+        monkeypatch.setattr(
+            clone_mod,
+            "build_entity_spec",
+            lambda b, s, **k: {
+                "entities": [
+                    {"schema_name": "new_Project", "display_name": "Project", "relationships": []}
+                ]
+            },
+        )
+        monkeypatch.setattr(clone_mod, "apply_spec", lambda b, spec, **k: _applied("entity"))
         monkeypatch.setattr(clone_mod, "read_entity_charts", lambda b, s: charts_list)
 
         def fake_clone_chart(backend, chart, new_entity, *, solution=None):
@@ -256,48 +353,78 @@ class TestCloneEntityCharts:
             return {"created": True, "savedqueryvisualizationid": "c", "name": chart["name"]}
 
         monkeypatch.setattr(clone_mod, "clone_chart_to_entity", fake_clone_chart)
-        monkeypatch.setattr(clone_mod, "publish_all",
-                            lambda b: captured.__setitem__("published", True))
+        monkeypatch.setattr(
+            clone_mod, "publish_all", lambda b: captured.__setitem__("published", True)
+        )
 
     def test_with_charts_clones_each_chart_and_counts(self, monkeypatch):
         captured: dict = {}
-        self._patch(monkeypatch,
-                    charts_list=[{"name": "By Priority", "primaryentitytypecode": "new_project"},
-                                  {"name": "By Status", "primaryentitytypecode": "new_project"}],
-                    captured=captured)
-        out = clone_mod.clone_entity(cast(D365Backend, None), "new_project", "cwx_TicketClone",
-                                     with_charts=True, solution="MySol")
+        self._patch(
+            monkeypatch,
+            charts_list=[
+                {"name": "By Priority", "primaryentitytypecode": "new_project"},
+                {"name": "By Status", "primaryentitytypecode": "new_project"},
+            ],
+            captured=captured,
+        )
+        out = clone_mod.clone_entity(
+            cast(D365Backend, None),
+            "new_project",
+            "cwx_TicketClone",
+            with_charts=True,
+            solution="MySol",
+        )
         assert out["counts"]["charts"] == 2
-        assert captured["targets"] == [("By Priority", "cwx_ticketclone", "MySol"),
-                                       ("By Status", "cwx_ticketclone", "MySol")]
+        assert captured["targets"] == [
+            ("By Priority", "cwx_ticketclone", "MySol"),
+            ("By Status", "cwx_ticketclone", "MySol"),
+        ]
         assert captured.get("published") is True
 
     def test_without_charts_does_not_read_charts(self, monkeypatch):
         called = {"read": False}
-        monkeypatch.setattr(clone_mod, "build_entity_spec",
-                            lambda b, s, **k: {"entities": [{"schema_name": "new_Project",
-                                                             "display_name": "Project"}]})
+        monkeypatch.setattr(
+            clone_mod,
+            "build_entity_spec",
+            lambda b, s, **k: {
+                "entities": [{"schema_name": "new_Project", "display_name": "Project"}]
+            },
+        )
         monkeypatch.setattr(clone_mod, "apply_spec", lambda b, spec, **k: _applied("entity"))
-        monkeypatch.setattr(clone_mod, "read_entity_charts",
-                            lambda b, s: called.__setitem__("read", True) or [])
-        out = clone_mod.clone_entity(cast(D365Backend, None), "new_project", "cwx_TicketClone",
-                                     with_charts=False)
+        monkeypatch.setattr(
+            clone_mod, "read_entity_charts", lambda b, s: called.__setitem__("read", True) or []
+        )
+        out = clone_mod.clone_entity(
+            cast(D365Backend, None), "new_project", "cwx_TicketClone", with_charts=False
+        )
         assert called["read"] is False
         assert out["counts"]["charts"] == 0
 
     def test_failed_skeleton_skips_charts(self, monkeypatch):
         called = {"read": False}
-        self._patch(monkeypatch,
-                    charts_list=[{"name": "By Priority", "primaryentitytypecode": "new_project"}],
-                    captured={})
-        monkeypatch.setattr(clone_mod, "apply_spec", lambda b, spec, **k: {
-            "ok": False, "applied": [{"kind": "entity", "name": "e"}],
-            "skipped": [], "planned": [], "failed": [{"kind": "attribute", "name": "x"}],
-            "staged": False})
-        monkeypatch.setattr(clone_mod, "read_entity_charts",
-                            lambda b, s: called.__setitem__("read", True) or [])
-        out = clone_mod.clone_entity(cast(D365Backend, None), "new_project", "cwx_TicketClone",
-                                     with_charts=True)
+        self._patch(
+            monkeypatch,
+            charts_list=[{"name": "By Priority", "primaryentitytypecode": "new_project"}],
+            captured={},
+        )
+        monkeypatch.setattr(
+            clone_mod,
+            "apply_spec",
+            lambda b, spec, **k: {
+                "ok": False,
+                "applied": [{"kind": "entity", "name": "e"}],
+                "skipped": [],
+                "planned": [],
+                "failed": [{"kind": "attribute", "name": "x"}],
+                "staged": False,
+            },
+        )
+        monkeypatch.setattr(
+            clone_mod, "read_entity_charts", lambda b, s: called.__setitem__("read", True) or []
+        )
+        out = clone_mod.clone_entity(
+            cast(D365Backend, None), "new_project", "cwx_TicketClone", with_charts=True
+        )
         assert out["created"] is False
         assert called["read"] is False
         assert out["counts"]["charts"] == 0
@@ -305,22 +432,44 @@ class TestCloneEntityCharts:
     def test_forms_and_charts_publish_once(self, monkeypatch):
         """publish_all called exactly once when both with_forms and with_charts are enabled."""
         publish_calls: list[int] = []
-        monkeypatch.setattr(clone_mod, "build_entity_spec",
-                            lambda b, s, **k: {"entities": [{"schema_name": "new_Project",
-                                                             "display_name": "Project",
-                                                             "relationships": []}]})
+        monkeypatch.setattr(
+            clone_mod,
+            "build_entity_spec",
+            lambda b, s, **k: {
+                "entities": [
+                    {"schema_name": "new_Project", "display_name": "Project", "relationships": []}
+                ]
+            },
+        )
         monkeypatch.setattr(clone_mod, "apply_spec", lambda b, spec, **k: _applied("entity"))
-        monkeypatch.setattr(clone_mod, "read_entity_forms",
-                            lambda b, s: [{"name": "F", "objecttypecode": "new_project"}])
-        monkeypatch.setattr(clone_mod, "clone_form_to_entity",
-                            lambda b, form, ne, *, solution=None: {"created": True, "name": form["name"]})
-        monkeypatch.setattr(clone_mod, "read_entity_charts",
-                            lambda b, s: [{"name": "C", "primaryentitytypecode": "new_project"}])
-        monkeypatch.setattr(clone_mod, "clone_chart_to_entity",
-                            lambda b, chart, ne, *, solution=None: {"created": True, "name": chart["name"]})
+        monkeypatch.setattr(
+            clone_mod,
+            "read_entity_forms",
+            lambda b, s: [{"name": "F", "objecttypecode": "new_project"}],
+        )
+        monkeypatch.setattr(
+            clone_mod,
+            "clone_form_to_entity",
+            lambda b, form, ne, *, solution=None: {"created": True, "name": form["name"]},
+        )
+        monkeypatch.setattr(
+            clone_mod,
+            "read_entity_charts",
+            lambda b, s: [{"name": "C", "primaryentitytypecode": "new_project"}],
+        )
+        monkeypatch.setattr(
+            clone_mod,
+            "clone_chart_to_entity",
+            lambda b, chart, ne, *, solution=None: {"created": True, "name": chart["name"]},
+        )
         monkeypatch.setattr(clone_mod, "publish_all", lambda b: publish_calls.append(1))
-        clone_mod.clone_entity(cast(D365Backend, None), "new_project", "cwx_TicketClone",
-                               with_forms=True, with_charts=True)
+        clone_mod.clone_entity(
+            cast(D365Backend, None),
+            "new_project",
+            "cwx_TicketClone",
+            with_forms=True,
+            with_charts=True,
+        )
         assert len(publish_calls) == 1
 
 
@@ -333,9 +482,12 @@ def _seed_profile(tmp_path, monkeypatch):
     monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
     from crm.core import session as session_mod
     from crm.utils.d365_backend import ConnectionProfile
-    session_mod.save_profile(ConnectionProfile(
-        name="t", url="https://crm.contoso.local/contoso",
-        domain="CONTOSO", username="alice"))
+
+    session_mod.save_profile(
+        ConnectionProfile(
+            name="t", url="https://crm.contoso.local/contoso", domain="CONTOSO", username="alice"
+        )
+    )
     session_mod.save_profile_secret_plaintext("t", "pw")
 
 
@@ -348,19 +500,35 @@ class TestCloneCommand:
 
         def fake_clone(backend, source, new_schema, **kw):
             called.update(dict(source=source, new_schema=new_schema, **kw))
-            return {"created": True, "logical_name": new_schema.lower(),
-                    "counts": {"attributes": 1, "views": 0, "forms": 0, "workflows": 0,
-                               "charts": 0},
-                    "skipped_workflows": [], "ribbon_note": "n/a"}
+            return {
+                "created": True,
+                "logical_name": new_schema.lower(),
+                "counts": {"attributes": 1, "views": 0, "forms": 0, "workflows": 0, "charts": 0},
+                "skipped_workflows": [],
+                "ribbon_note": "n/a",
+            }
 
         monkeypatch.setattr(md_cmd.clone_mod, "clone_entity", fake_clone)
 
         from crm.cli import cli
+
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "--profile", "t", "metadata", "clone-entity", "new_project", "cwx_TicketClone",
-            "--display", "Ticket Clone", "--with-all", "--solution", "cwx_sol",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "--profile",
+                "t",
+                "metadata",
+                "clone-entity",
+                "new_project",
+                "cwx_TicketClone",
+                "--display",
+                "Ticket Clone",
+                "--with-all",
+                "--solution",
+                "cwx_sol",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert called["source"] == "new_project"
         assert called["new_schema"] == "cwx_TicketClone"
@@ -372,17 +540,44 @@ class TestCloneCommand:
     def test_with_charts_flag_threads_to_core(self, monkeypatch, tmp_path):
         _seed_profile(tmp_path, monkeypatch)
         from crm.commands import metadata as md_cmd
+
         called = {}
-        monkeypatch.setattr(md_cmd.clone_mod, "clone_entity",
-                            lambda b, s, n, **kw: called.update(kw) or {
-                                "created": True, "logical_name": n.lower(),
-                                "counts": {"attributes": 0, "views": 0,
-                                           "forms": 0, "workflows": 0, "charts": 0},
-                                "skipped_workflows": [], "ribbon_note": "n/a"})
+        monkeypatch.setattr(
+            md_cmd.clone_mod,
+            "clone_entity",
+            lambda b, s, n, **kw: (
+                called.update(kw)
+                or {
+                    "created": True,
+                    "logical_name": n.lower(),
+                    "counts": {
+                        "attributes": 0,
+                        "views": 0,
+                        "forms": 0,
+                        "workflows": 0,
+                        "charts": 0,
+                    },
+                    "skipped_workflows": [],
+                    "ribbon_note": "n/a",
+                }
+            ),
+        )
         from crm.cli import cli
-        result = CliRunner().invoke(cli, [
-            "--profile", "t", "metadata", "clone-entity", "new_project", "cwx_TicketClone",
-            "--with-charts", "--solution", "cwx_sol"])
+
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--profile",
+                "t",
+                "metadata",
+                "clone-entity",
+                "new_project",
+                "cwx_TicketClone",
+                "--with-charts",
+                "--solution",
+                "cwx_sol",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert called["with_charts"] is True
         assert called["with_forms"] is False
@@ -391,17 +586,44 @@ class TestCloneCommand:
     def test_with_all_enables_charts(self, monkeypatch, tmp_path):
         _seed_profile(tmp_path, monkeypatch)
         from crm.commands import metadata as md_cmd
+
         called = {}
-        monkeypatch.setattr(md_cmd.clone_mod, "clone_entity",
-                            lambda b, s, n, **kw: called.update(kw) or {
-                                "created": True, "logical_name": n.lower(),
-                                "counts": {"attributes": 0, "views": 0,
-                                           "forms": 0, "workflows": 0, "charts": 0},
-                                "skipped_workflows": [], "ribbon_note": "n/a"})
+        monkeypatch.setattr(
+            md_cmd.clone_mod,
+            "clone_entity",
+            lambda b, s, n, **kw: (
+                called.update(kw)
+                or {
+                    "created": True,
+                    "logical_name": n.lower(),
+                    "counts": {
+                        "attributes": 0,
+                        "views": 0,
+                        "forms": 0,
+                        "workflows": 0,
+                        "charts": 0,
+                    },
+                    "skipped_workflows": [],
+                    "ribbon_note": "n/a",
+                }
+            ),
+        )
         from crm.cli import cli
-        result = CliRunner().invoke(cli, [
-            "--profile", "t", "metadata", "clone-entity", "new_project", "cwx_TicketClone",
-            "--with-all", "--solution", "cwx_sol"])
+
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--profile",
+                "t",
+                "metadata",
+                "clone-entity",
+                "new_project",
+                "cwx_TicketClone",
+                "--with-all",
+                "--solution",
+                "cwx_sol",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert called["with_charts"] is True
         assert called["with_forms"] is True
@@ -411,17 +633,33 @@ class TestCloneCommand:
     def test_skipped_workflows_surface_in_output(self, monkeypatch, tmp_path):
         _seed_profile(tmp_path, monkeypatch)
         from crm.commands import metadata as md_cmd
-        monkeypatch.setattr(md_cmd.clone_mod, "clone_entity",
-                            lambda b, s, n, **kw: {
-                                "created": True, "logical_name": n.lower(),
-                                "counts": {"attributes": 0, "views": 0,
-                                           "forms": 0, "workflows": 1, "charts": 0},
-                                "skipped_workflows": [{"name": "BadAction",
-                                                       "reason": "not yet supported"}],
-                                "ribbon_note": "n/a"})
+
+        monkeypatch.setattr(
+            md_cmd.clone_mod,
+            "clone_entity",
+            lambda b, s, n, **kw: {
+                "created": True,
+                "logical_name": n.lower(),
+                "counts": {"attributes": 0, "views": 0, "forms": 0, "workflows": 1, "charts": 0},
+                "skipped_workflows": [{"name": "BadAction", "reason": "not yet supported"}],
+                "ribbon_note": "n/a",
+            },
+        )
         from crm.cli import cli
-        result = CliRunner().invoke(cli, [
-            "--profile", "t", "metadata", "clone-entity", "new_project", "cwx_TicketClone",
-            "--with-workflows", "--solution", "cwx_sol"])
+
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--profile",
+                "t",
+                "metadata",
+                "clone-entity",
+                "new_project",
+                "cwx_TicketClone",
+                "--with-workflows",
+                "--solution",
+                "cwx_sol",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "BadAction" in result.output

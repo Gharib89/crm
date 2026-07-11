@@ -1,4 +1,5 @@
 """Unit tests for crm.core.fieldsec (field-level / column security)."""
+
 # pyright: basic
 from __future__ import annotations
 
@@ -76,7 +77,9 @@ class TestGetProfile:
             "fieldpermissionid": _NEW_PERM_ID,
             "entityname": "account",
             "attributelogicalname": "creditlimit",
-            "canread": 4, "cancreate": 0, "canupdate": 4,
+            "canread": 4,
+            "cancreate": 0,
+            "canupdate": 4,
         }
         with requests_mock.Mocker() as m:
             m.get(backend.url_for(f"fieldsecurityprofiles({_PROFILE_ID})"), json=_PROFILE_ROW)
@@ -94,8 +97,11 @@ class TestGetProfile:
 class TestCreateProfile:
     def test_posts_name_and_returns_id(self, backend):
         with requests_mock.Mocker() as m:
-            m.post(_profiles_url(backend), status_code=204,
-                   headers=_entity_id_headers(backend, "fieldsecurityprofiles", _PROFILE_ID))
+            m.post(
+                _profiles_url(backend),
+                status_code=204,
+                headers=_entity_id_headers(backend, "fieldsecurityprofiles", _PROFILE_ID),
+            )
             out = fieldsec.create_profile(backend, name="Comp Profile", description="x")
         body = m.last_request.json()
         assert body["name"] == "Comp Profile"
@@ -105,15 +111,21 @@ class TestCreateProfile:
 
     def test_omits_description_when_not_given(self, backend):
         with requests_mock.Mocker() as m:
-            m.post(_profiles_url(backend), status_code=204,
-                   headers=_entity_id_headers(backend, "fieldsecurityprofiles", _PROFILE_ID))
+            m.post(
+                _profiles_url(backend),
+                status_code=204,
+                headers=_entity_id_headers(backend, "fieldsecurityprofiles", _PROFILE_ID),
+            )
             fieldsec.create_profile(backend, name="P")
         assert "description" not in m.last_request.json()
 
     def test_adds_solution_header(self, backend):
         with requests_mock.Mocker() as m:
-            m.post(_profiles_url(backend), status_code=204,
-                   headers=_entity_id_headers(backend, "fieldsecurityprofiles", _PROFILE_ID))
+            m.post(
+                _profiles_url(backend),
+                status_code=204,
+                headers=_entity_id_headers(backend, "fieldsecurityprofiles", _PROFILE_ID),
+            )
             fieldsec.create_profile(backend, name="P", solution="MySol")
         assert m.last_request.headers.get("MSCRM.SolutionUniqueName") == "MySol"
 
@@ -144,11 +156,18 @@ class TestCreateProfile:
 class TestAddPermission:
     def test_maps_grants_to_levels_and_binds_profile(self, backend):
         with requests_mock.Mocker() as m:
-            m.post(_perms_url(backend), status_code=204,
-                   headers=_entity_id_headers(backend, "fieldpermissions", _NEW_PERM_ID))
+            m.post(
+                _perms_url(backend),
+                status_code=204,
+                headers=_entity_id_headers(backend, "fieldpermissions", _NEW_PERM_ID),
+            )
             out = fieldsec.add_permission(
-                backend, profile=_PROFILE_ID, entity="account",
-                attribute="creditlimit", read=True, update=True,
+                backend,
+                profile=_PROFILE_ID,
+                entity="account",
+                attribute="creditlimit",
+                read=True,
+                update=True,
             )
         body = m.last_request.json()
         assert body["entityname"] == "account"
@@ -163,15 +182,21 @@ class TestAddPermission:
     def test_requires_at_least_one_grant(self, backend):
         with pytest.raises(D365Error):
             fieldsec.add_permission(
-                backend, profile=_PROFILE_ID, entity="account", attribute="creditlimit",
+                backend,
+                profile=_PROFILE_ID,
+                entity="account",
+                attribute="creditlimit",
             )
 
     def test_unparsable_id_surfaces_lookup_error(self, backend):
         with requests_mock.Mocker() as m:
             m.post(_perms_url(backend), status_code=204)  # no OData-EntityId header
             out = fieldsec.add_permission(
-                backend, profile=_PROFILE_ID, entity="account",
-                attribute="creditlimit", read=True,
+                backend,
+                profile=_PROFILE_ID,
+                entity="account",
+                attribute="creditlimit",
+                read=True,
             )
         assert out["created"] is True
         assert out["fieldpermissionid"] is None
@@ -180,29 +205,45 @@ class TestAddPermission:
     def test_resolves_profile_by_name(self, backend):
         with requests_mock.Mocker() as m:
             m.get(_profiles_url(backend), json={"value": [{"fieldsecurityprofileid": _PROFILE_ID}]})
-            m.post(_perms_url(backend), status_code=204,
-                   headers=_entity_id_headers(backend, "fieldpermissions", _NEW_PERM_ID))
+            m.post(
+                _perms_url(backend),
+                status_code=204,
+                headers=_entity_id_headers(backend, "fieldpermissions", _NEW_PERM_ID),
+            )
             out = fieldsec.add_permission(
-                backend, profile="Comp Profile", entity="account",
-                attribute="creditlimit", read=True,
+                backend,
+                profile="Comp Profile",
+                entity="account",
+                attribute="creditlimit",
+                read=True,
             )
         assert out["profile"] == _PROFILE_ID
 
     def test_adds_solution_header(self, backend):
         with requests_mock.Mocker() as m:
-            m.post(_perms_url(backend), status_code=204,
-                   headers=_entity_id_headers(backend, "fieldpermissions", _NEW_PERM_ID))
+            m.post(
+                _perms_url(backend),
+                status_code=204,
+                headers=_entity_id_headers(backend, "fieldpermissions", _NEW_PERM_ID),
+            )
             fieldsec.add_permission(
-                backend, profile=_PROFILE_ID, entity="account",
-                attribute="creditlimit", read=True, solution="MySol",
+                backend,
+                profile=_PROFILE_ID,
+                entity="account",
+                attribute="creditlimit",
+                read=True,
+                solution="MySol",
             )
         assert m.last_request.headers.get("MSCRM.SolutionUniqueName") == "MySol"
 
     def test_dry_run_previews_without_posting(self, dry_backend):
         with requests_mock.Mocker():
             out = fieldsec.add_permission(
-                dry_backend, profile=_PROFILE_ID, entity="account",
-                attribute="creditlimit", read=True,
+                dry_backend,
+                profile=_PROFILE_ID,
+                entity="account",
+                attribute="creditlimit",
+                read=True,
             )
         assert out["_dry_run"] is True
         assert out["would_create"] is True
@@ -214,7 +255,8 @@ class TestAddPermission:
 class TestAssign:
     def test_assigns_to_user_via_user_nav(self, backend):
         ref_url = backend.url_for(
-            f"fieldsecurityprofiles({_PROFILE_ID})/systemuserprofiles_association/$ref")
+            f"fieldsecurityprofiles({_PROFILE_ID})/systemuserprofiles_association/$ref"
+        )
         with requests_mock.Mocker() as m:
             m.post(ref_url, status_code=204)
             out = fieldsec.assign(backend, profile=_PROFILE_ID, user_id=_USER_ID)
@@ -226,7 +268,8 @@ class TestAssign:
 
     def test_assigns_to_team_via_team_nav(self, backend):
         ref_url = backend.url_for(
-            f"fieldsecurityprofiles({_PROFILE_ID})/teamprofiles_association/$ref")
+            f"fieldsecurityprofiles({_PROFILE_ID})/teamprofiles_association/$ref"
+        )
         with requests_mock.Mocker() as m:
             m.post(ref_url, status_code=204)
             out = fieldsec.assign(backend, profile=_PROFILE_ID, team_id=_TEAM_ID)

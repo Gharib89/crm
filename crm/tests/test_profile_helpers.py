@@ -1,11 +1,12 @@
 """Unit tests for profile-UX pure helpers."""
+
 # pyright: basic
 from __future__ import annotations
 
 from crm.commands._helpers import (
-    infer_auth_scheme,
-    default_profile_name,
     _auth_error_hint,
+    default_profile_name,
+    infer_auth_scheme,
 )
 
 
@@ -42,7 +43,8 @@ class TestAuthErrorHint:
 
 
 import pytest
-from crm.commands._helpers import select_one, prompt_secret
+
+from crm.commands._helpers import prompt_secret, select_one
 
 
 class TestPromptSecret:
@@ -50,9 +52,11 @@ class TestPromptSecret:
 
     def _stub(self, monkeypatch, value):
         monkeypatch.setattr("crm.commands._helpers.confirm._stdin_is_tty", lambda: True)
+
         class _FakePw:
             def ask(self):
                 return value
+
         monkeypatch.setattr("questionary.password", lambda *a, **kw: _FakePw())
 
     def test_non_tty_raises_runtime_error(self, monkeypatch):
@@ -92,10 +96,12 @@ class TestSelectOne:
 
     def test_returns_selected_value(self, monkeypatch):
         monkeypatch.setattr("crm.commands._helpers.confirm._stdin_is_tty", lambda: True)
+
         # Stub questionary.select so the test never opens a real TUI.
         class _FakeSelect:
             def ask(self):
                 return "b"
+
         # select_one imports questionary lazily (kept off the fast-startup
         # path), so patch select at the source module.
         monkeypatch.setattr("questionary.select", lambda *a, **kw: _FakeSelect())
@@ -104,9 +110,11 @@ class TestSelectOne:
     def test_cancel_returns_none(self, monkeypatch):
         # questionary.select.ask() returns None on Esc / Ctrl-C.
         monkeypatch.setattr("crm.commands._helpers.confirm._stdin_is_tty", lambda: True)
+
         class _FakeSelect:
             def ask(self):
                 return None
+
         monkeypatch.setattr("questionary.select", lambda *a, **kw: _FakeSelect())
         assert select_one("Pick one", [("a", "label a")]) is None
 
@@ -122,16 +130,18 @@ class TestSelectOne:
         # can preselect the URL-inferred scheme; choices keep (value, label).
         monkeypatch.setattr("crm.commands._helpers.confirm._stdin_is_tty", lambda: True)
         captured = {}
+
         class _FakeSelect:
             def ask(self):
                 return "oauth"
+
         def _fake_select(message, choices=None, default=None, **kw):
             captured["default"] = default
             captured["values"] = [c.value for c in (choices or [])]
             return _FakeSelect()
+
         monkeypatch.setattr("questionary.select", _fake_select)
-        out = select_one("Auth scheme", [("ntlm", "ntlm"), ("oauth", "oauth")],
-                         default="oauth")
+        out = select_one("Auth scheme", [("ntlm", "ntlm"), ("oauth", "oauth")], default="oauth")
         assert out == "oauth"
         assert captured["default"] == "oauth"
         assert captured["values"] == ["ntlm", "oauth"]

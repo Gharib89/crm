@@ -8,6 +8,7 @@ Not collected by the default suite (testpaths = crm/tests); run on demand:
 
     pytest evals/skill
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -87,10 +88,12 @@ def test_evaluate_expect_row_suffix_rejects_unrelated_row():
 def test_evaluate_expect_row_suffix_matches_any_publisher_prefix():
     # A correctly-created option set passes regardless of the org's publisher prefix
     # (`ag_`, `new_`, …) — the fix for the hardcoded-`new_` false fail.
-    assert evaluate_expect([{"Name": "ag_maintenancepriority"}],
-                           {"row_suffix": {"Name": "maintenancepriority"}})[0]
-    assert evaluate_expect([{"Name": "new_maintenancepriority"}],
-                           {"row_suffix": {"Name": "maintenancepriority"}})[0]
+    assert evaluate_expect(
+        [{"Name": "ag_maintenancepriority"}], {"row_suffix": {"Name": "maintenancepriority"}}
+    )[0]
+    assert evaluate_expect(
+        [{"Name": "new_maintenancepriority"}], {"row_suffix": {"Name": "maintenancepriority"}}
+    )[0]
 
 
 def test_evaluate_expect_row_suffix_requires_all_fields_on_one_row():
@@ -165,7 +168,7 @@ def test_parse_rejects_bad_expect_shape(tmp_path):
     bad = tmp_path / "bad.md"
     bad.write_text(
         "---\nid: x\ndomain: d\ntarget: either\n"
-        "end_state:\n  query: [query, odata, contacts]\n  expect: {count: \"1\"}\n"
+        'end_state:\n  query: [query, odata, contacts]\n  expect: {count: "1"}\n'
         "cleanup: []\n---\nprompt\n",
         encoding="utf-8",
     )
@@ -376,9 +379,11 @@ def test_parse_allows_omitted_end_state(tmp_path):
 
 
 def test_counterfactual_frontmatter_defaults_false_and_parses_true(tmp_path):
-    head = ("---\nid: x\ndomain: d\ntarget: either\n"
-            "end_state:\n  query: [query, odata, contacts]\n  expect: {count: 0}\n"
-            "cleanup: []\n")
+    head = (
+        "---\nid: x\ndomain: d\ntarget: either\n"
+        "end_state:\n  query: [query, odata, contacts]\n  expect: {count: 0}\n"
+        "cleanup: []\n"
+    )
     plain = tmp_path / "plain.md"
     plain.write_text(head + "---\nprompt\n", encoding="utf-8")
     assert parse_task_file(plain).counterfactual is False
@@ -448,7 +453,9 @@ def test_build_analysis_prompt_bundles_inputs():
 
 def test_build_analysis_prompt_handles_no_org_state():
     prompt = analyze.build_analysis_prompt(
-        task_prompt="diagnose", transcript="t", org_state=None,
+        task_prompt="diagnose",
+        transcript="t",
+        org_state=None,
         verdict={"passed": None, "reason": "diagnostic"},
     )
     assert "none captured" in prompt
@@ -485,6 +492,9 @@ def test_parse_verdict():
 
 def test_build_analysis_prompt_requests_verdict_line():
     prompt = analyze.build_analysis_prompt(
-        task_prompt="t", transcript="x", org_state=None, verdict={"passed": None, "reason": "d"},
+        task_prompt="t",
+        transcript="x",
+        org_state=None,
+        verdict={"passed": None, "reason": "d"},
     )
     assert "VERDICT: PASS" in prompt and "VERDICT: FAIL" in prompt

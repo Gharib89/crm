@@ -63,9 +63,7 @@ class TestSubmit:
             with pytest.raises(D365Error, match="must match the swept table"):
                 dup.bulk_detect(backend, "contact", fetch_xml=_FETCH)
             # The mismatch is caught client-side — no BulkDetectDuplicates POST.
-            assert not any(
-                r.url.endswith("BulkDetectDuplicates") for r in m.request_history
-            )
+            assert not any(r.url.endswith("BulkDetectDuplicates") for r in m.request_history)
 
     def test_wait_polls_and_reports_duplicates(self, backend, profile):
         base = profile.api_base
@@ -77,8 +75,10 @@ class TestSubmit:
         ]
         with requests_mock.Mocker() as m:
             _mock_submit(m, base)
-            m.get(f"{base}asyncoperations({_JOB_ID})",
-                  json={"asyncoperationid": _JOB_ID, "statecode": 3, "statuscode": 30})
+            m.get(
+                f"{base}asyncoperations({_JOB_ID})",
+                json={"asyncoperationid": _JOB_ID, "statecode": 3, "statuscode": 30},
+            )
             m.get(f"{base}duplicaterecords", json={"value": dupes})
             result = dup.bulk_detect(backend, "account", wait=True)
         assert result["status"] == "completed"
@@ -86,7 +86,7 @@ class TestSubmit:
         assert result["duplicates"] == dupes
 
     def test_dry_run_previews_without_submitting(self, dry_backend, profile):
-        with requests_mock.Mocker() as m:
+        with requests_mock.Mocker():
             # No BulkDetectDuplicates POST is mocked: under dry-run the POST is
             # previewed, never submitted (GET reads would still execute, but a
             # bare-entity sweep issues none).

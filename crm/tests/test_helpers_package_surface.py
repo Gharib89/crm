@@ -12,6 +12,7 @@ hard-coded on purpose: this test is the canary, so adding a name here should be
 a deliberate act, not an automatic mirror of whatever the package happens to
 expose.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -27,29 +28,55 @@ import pytest
 # NOT re-exported — nothing imports them — so they are not pinned here.
 _PUBLIC_SURFACE = [
     # rendering / output envelope
-    "_sanitize", "_short_repr", "_emit_with_warning", "_emit_query_result",
-    "_infer_columns", "_prune_annotations", "_emit_expectation_failure",
+    "_sanitize",
+    "_short_repr",
+    "_emit_with_warning",
+    "_emit_query_result",
+    "_infer_columns",
+    "_prune_annotations",
+    "_emit_expectation_failure",
     # d365 errors
-    "_handle_d365_error", "d365_errors", "usage_guard", "_auth_error_hint",
+    "_handle_d365_error",
+    "d365_errors",
+    "usage_guard",
+    "_auth_error_hint",
     # solution resolution
-    "_resolve_solution", "_solution_option",
-    "_publish_option", "_resolve_publish", "_active_profile",
-    "_resolve_schema_name", "_EXPORT_SETTING_KEYS",
+    "_resolve_solution",
+    "_solution_option",
+    "_publish_option",
+    "_resolve_publish",
+    "_active_profile",
+    "_resolve_schema_name",
+    "_EXPORT_SETTING_KEYS",
     # confirm / secret UX
-    "_confirm_destructive", "_destructive_option", "_plaintext_secret_warning",
-    "select_one", "prompt_secret",
+    "_confirm_destructive",
+    "_destructive_option",
+    "_plaintext_secret_warning",
+    "select_one",
+    "prompt_secret",
     # admin headers
-    "_admin_header_options", "_admin_kwargs",
+    "_admin_header_options",
+    "_admin_kwargs",
     # input parsing / expectations
-    "_load_payload", "_parse_expect", "_parse_value_labels",
-    "_check_expectations", "_odata_literal",
-    "_resolve_async_state", "_CASCADE", "_MENU", "_REQUIRED",
+    "_load_payload",
+    "_parse_expect",
+    "_parse_value_labels",
+    "_check_expectations",
+    "_odata_literal",
+    "_resolve_async_state",
+    "_CASCADE",
+    "_MENU",
+    "_REQUIRED",
     # profile inference
-    "infer_auth_scheme", "default_profile_name",
+    "infer_auth_scheme",
+    "default_profile_name",
     # session / journal
-    "_journal", "_touch_session", "_no_retry_scope",
+    "_journal",
+    "_touch_session",
+    "_no_retry_scope",
     # module references preserved at the package top level (monkeypatch targets)
-    "session_mod", "_stdin_is_tty",
+    "session_mod",
+    "_stdin_is_tty",
 ]
 
 
@@ -67,8 +94,9 @@ def test_d365_errors_seam_is_a_context_manager():
     from crm.commands._helpers import d365_errors
 
     cm = d365_errors(object())  # type: ignore[arg-type]
-    assert hasattr(cm, "__enter__") and hasattr(cm, "__exit__"), \
+    assert hasattr(cm, "__enter__") and hasattr(cm, "__exit__"), (
         "d365_errors(...) must return a context manager"
+    )
 
 
 def test_session_mod_attribute_is_core_session():

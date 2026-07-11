@@ -1,5 +1,6 @@
 # pyright: basic
 """Tests for _journal helper and `crm session audit` command (issue #89)."""
+
 from __future__ import annotations
 
 import json
@@ -20,9 +21,11 @@ pytestmark = pytest.mark.usefixtures("isolated_home")
 # Minimal stub for CLIContext (only the attrs _journal touches)
 # ---------------------------------------------------------------------------
 
+
 class _StubCtx:
-    def __init__(self, *, session_name="test-session", profile_name=None,
-                 dry_run=False, stage_only=False):
+    def __init__(
+        self, *, session_name="test-session", profile_name=None, dry_run=False, stage_only=False
+    ):
         self.session_name = session_name
         self.profile_name = profile_name
         self.dry_run = dry_run
@@ -33,7 +36,8 @@ class _StubCtx:
 def _journal_in_ctx(stub_ctx, command, target, result, **kwargs):
     """Call `_journal` inside a synthetic Click context whose `command_path`
     is ``crm <command>`` — so `_journal`'s Click-derived name records as
-    `command` (it no longer takes a hand-typed command argument; #264)."""
+    `command` (it no longer takes a hand-typed command argument; #264).
+    """
     names = ["crm", *command.split(" ")]
     cctx = click.Context(click.Command(names[0]), info_name=names[0])
     for name in names[1:]:
@@ -46,10 +50,13 @@ def _journal_in_ctx(stub_ctx, command, target, result, **kwargs):
 # _journal helper tests
 # ---------------------------------------------------------------------------
 
+
 class TestJournalHelper:
     def test_writes_a_readable_entry(self):
         ctx = _StubCtx(session_name="sess1")
-        _journal_in_ctx(ctx, "entity create", "account", {"id": "aabbccdd-0000-0000-0000-000000000001"})
+        _journal_in_ctx(
+            ctx, "entity create", "account", {"id": "aabbccdd-0000-0000-0000-000000000001"}
+        )
         rows = audit.read("sess1")
         assert len(rows) == 1
         r = rows[0]
@@ -103,7 +110,9 @@ class TestJournalHelper:
         assert rows[0]["profile"] == "resolvedprof"
 
     def test_never_raises_when_audit_record_blows_up(self, monkeypatch):
-        monkeypatch.setattr("crm.core.audit.record", lambda **_: (_ for _ in ()).throw(RuntimeError("boom")))
+        monkeypatch.setattr(
+            "crm.core.audit.record", lambda **_: (_ for _ in ()).throw(RuntimeError("boom"))
+        )
         ctx = _StubCtx()
         # Must not raise
         _journal_in_ctx(ctx, "cmd", "t", {})
@@ -112,6 +121,7 @@ class TestJournalHelper:
 # ---------------------------------------------------------------------------
 # `crm session audit` command tests
 # ---------------------------------------------------------------------------
+
 
 class TestSessionAuditCommand:
     def _run(self, *args):
@@ -153,8 +163,7 @@ class TestSessionAuditCommand:
         audit.record(session="beta", profile=None, command="beta-cmd", target="t", result={})
         # Global --session sets the active session to "alpha"; subcommand --session
         # overrides to read "beta" instead.
-        result = self._run("--json", "--session", "alpha", "session", "audit",
-                           "--session", "beta")
+        result = self._run("--json", "--session", "alpha", "session", "audit", "--session", "beta")
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)
         # The --session override on the subcommand selects "beta"
@@ -162,16 +171,28 @@ class TestSessionAuditCommand:
         assert data["data"][0]["command"] == "beta-cmd"
 
     def test_human_mode_shows_entries(self):
-        audit.record(session="default", profile=None, command="entity create",
-                     target="account", result={"id": "aabbccdd-1111-0000-0000-000000000001"})
+        audit.record(
+            session="default",
+            profile=None,
+            command="entity create",
+            target="account",
+            result={"id": "aabbccdd-1111-0000-0000-000000000001"},
+        )
         result = self._run("session", "audit")
         assert result.exit_code == 0
         assert "entity create" in result.output
         assert "account" in result.output
 
     def test_human_mode_shows_flags(self):
-        audit.record(session="default", profile=None, command="entity create",
-                     target="account", result={}, dry_run=True, staged=True)
+        audit.record(
+            session="default",
+            profile=None,
+            command="entity create",
+            target="account",
+            result={},
+            dry_run=True,
+            staged=True,
+        )
         result = self._run("session", "audit")
         assert result.exit_code == 0
         assert "dry-run" in result.output

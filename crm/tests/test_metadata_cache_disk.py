@@ -8,11 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from crm.utils.d365_backend import ConnectionProfile
 from crm.core.metadata_cache import (
     SCHEMA_VERSION,
     TTL_SECONDS,
-    CacheLookup,
     cache_file,
     clear,
     invalidate,
@@ -20,7 +18,7 @@ from crm.core.metadata_cache import (
     read_definitions,
     write_definitions,
 )
-
+from crm.utils.d365_backend import ConnectionProfile
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -61,6 +59,7 @@ T0 = 1_000_000.0  # arbitrary base epoch time
 # cache_file
 # ---------------------------------------------------------------------------
 
+
 def test_cache_file_path(crm_home: Path) -> None:
     profile = make_profile()
     expected = crm_home / "cache" / "testp" / "entitydefs.json"
@@ -76,6 +75,7 @@ def test_cache_file_different_profiles(crm_home: Path) -> None:
 # ---------------------------------------------------------------------------
 # write_definitions / read_definitions — roundtrip
 # ---------------------------------------------------------------------------
+
 
 def test_write_read_roundtrip(crm_home: Path) -> None:
     profile = make_profile()
@@ -95,6 +95,7 @@ def test_write_creates_parent_dirs(crm_home: Path) -> None:
 # ---------------------------------------------------------------------------
 # read_definitions — miss conditions
 # ---------------------------------------------------------------------------
+
 
 def test_read_absent_file_returns_none(crm_home: Path) -> None:
     profile = make_profile()
@@ -119,6 +120,7 @@ def test_read_api_version_mismatch_returns_none(crm_home: Path) -> None:
 # TTL matrix
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize("delta", [0, 899, 900])
 def test_read_within_ttl_returns_data(crm_home: Path, delta: int) -> None:
     profile = make_profile()
@@ -135,6 +137,7 @@ def test_read_past_ttl_returns_none(crm_home: Path) -> None:
 # ---------------------------------------------------------------------------
 # read_definitions — corrupt / malformed payload
 # ---------------------------------------------------------------------------
+
 
 def test_read_corrupt_json_returns_none(crm_home: Path) -> None:
     profile = make_profile()
@@ -177,7 +180,7 @@ def test_read_definitions_not_list_returns_none(crm_home: Path) -> None:
 
 
 def test_read_definitions_type_violation_returns_none(crm_home: Path) -> None:
-    """definitions with correct keys but non-str value are rejected."""
+    """Definitions with correct keys but non-str value are rejected."""
     profile = make_profile()
     cf = cache_file(profile)
     cf.parent.mkdir(parents=True, exist_ok=True)
@@ -193,7 +196,7 @@ def test_read_definitions_type_violation_returns_none(crm_home: Path) -> None:
 
 
 def test_read_definitions_wrong_keys_returns_none(crm_home: Path) -> None:
-    """definitions using legacy LogicalName/EntitySetName keys are a MISS (C2 regression guard)."""
+    """Definitions using legacy LogicalName/EntitySetName keys are a MISS (C2 regression guard)."""
     profile = make_profile()
     cf = cache_file(profile)
     cf.parent.mkdir(parents=True, exist_ok=True)
@@ -211,6 +214,7 @@ def test_read_definitions_wrong_keys_returns_none(crm_home: Path) -> None:
 # ---------------------------------------------------------------------------
 # clear / invalidate
 # ---------------------------------------------------------------------------
+
 
 def test_clear_existing_file_returns_true(crm_home: Path) -> None:
     profile = make_profile()
@@ -240,6 +244,7 @@ def test_invalidate_removes_file(crm_home: Path) -> None:
 # ---------------------------------------------------------------------------
 # load_definitions — orchestration
 # ---------------------------------------------------------------------------
+
 
 def test_load_definitions_refresh_true_calls_fetch_once(crm_home: Path) -> None:
     call_count = 0
@@ -313,6 +318,7 @@ def test_load_definitions_refresh_overwrites_existing(crm_home: Path) -> None:
 # atomic write — no leftover .tmp
 # ---------------------------------------------------------------------------
 
+
 def test_write_no_tmp_sibling_remains(crm_home: Path) -> None:
     """After write_definitions, no *.tmp sibling should exist in the cache dir."""
     profile = make_profile()
@@ -325,6 +331,7 @@ def test_write_no_tmp_sibling_remains(crm_home: Path) -> None:
 # ---------------------------------------------------------------------------
 # load_definitions — TTL-expired miss
 # ---------------------------------------------------------------------------
+
 
 def test_load_definitions_ttl_expired_miss_calls_fetch(crm_home: Path) -> None:
     """A TTL-expired cache entry is a miss; the fetcher must be called."""
@@ -346,6 +353,7 @@ def test_load_definitions_ttl_expired_miss_calls_fetch(crm_home: Path) -> None:
 # ---------------------------------------------------------------------------
 # Per-profile isolation
 # ---------------------------------------------------------------------------
+
 
 def test_per_profile_isolation(crm_home: Path) -> None:
     p1 = make_profile(name="alpha")

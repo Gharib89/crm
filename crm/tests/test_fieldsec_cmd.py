@@ -1,4 +1,5 @@
 """CLI tests for the `crm fieldsec` command group."""
+
 # pyright: basic
 from __future__ import annotations
 
@@ -47,13 +48,25 @@ class TestGet:
     def test_includes_permissions(self, backend, monkeypatch):
         _use_backend(backend, monkeypatch)
         with rm_module.Mocker() as m:
-            m.get(backend.url_for(f"fieldsecurityprofiles({_PROFILE_ID})"),
-                  json={"fieldsecurityprofileid": _PROFILE_ID, "name": "Comp"})
-            m.get(_perms_url(backend), json={"value": [
-                {"fieldpermissionid": _NEW_PERM_ID, "entityname": "account",
-                 "attributelogicalname": "creditlimit",
-                 "canread": 4, "cancreate": 0, "canupdate": 0},
-            ]})
+            m.get(
+                backend.url_for(f"fieldsecurityprofiles({_PROFILE_ID})"),
+                json={"fieldsecurityprofileid": _PROFILE_ID, "name": "Comp"},
+            )
+            m.get(
+                _perms_url(backend),
+                json={
+                    "value": [
+                        {
+                            "fieldpermissionid": _NEW_PERM_ID,
+                            "entityname": "account",
+                            "attributelogicalname": "creditlimit",
+                            "canread": 4,
+                            "cancreate": 0,
+                            "canupdate": 0,
+                        },
+                    ]
+                },
+            )
             result = CliRunner().invoke(cli, ["--json", "fieldsec", "get", _PROFILE_ID])
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)["data"]
@@ -64,11 +77,24 @@ class TestCreateProfile:
     def test_creates_and_returns_id(self, backend, monkeypatch):
         _use_backend(backend, monkeypatch)
         with rm_module.Mocker() as m:
-            m.post(_profiles_url(backend), status_code=204,
-                   headers=_entity_id_headers(backend, "fieldsecurityprofiles", _PROFILE_ID))
+            m.post(
+                _profiles_url(backend),
+                status_code=204,
+                headers=_entity_id_headers(backend, "fieldsecurityprofiles", _PROFILE_ID),
+            )
             result = CliRunner().invoke(
-                cli, ["--json", "fieldsec", "create-profile", "Comp", "--description", "x",
-                      "--solution", "MySol"])
+                cli,
+                [
+                    "--json",
+                    "fieldsec",
+                    "create-profile",
+                    "Comp",
+                    "--description",
+                    "x",
+                    "--solution",
+                    "MySol",
+                ],
+            )
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)["data"]
         assert data["created"] is True
@@ -77,10 +103,14 @@ class TestCreateProfile:
     def test_solution_flag_sets_header(self, backend, monkeypatch):
         _use_backend(backend, monkeypatch)
         with rm_module.Mocker() as m:
-            m.post(_profiles_url(backend), status_code=204,
-                   headers=_entity_id_headers(backend, "fieldsecurityprofiles", _PROFILE_ID))
+            m.post(
+                _profiles_url(backend),
+                status_code=204,
+                headers=_entity_id_headers(backend, "fieldsecurityprofiles", _PROFILE_ID),
+            )
             result = CliRunner().invoke(
-                cli, ["--json", "fieldsec", "create-profile", "Comp", "--solution", "MySol"])
+                cli, ["--json", "fieldsec", "create-profile", "Comp", "--solution", "MySol"]
+            )
         assert result.exit_code == 0, result.output
         assert m.last_request.headers.get("MSCRM.SolutionUniqueName") == "MySol"
 
@@ -88,8 +118,17 @@ class TestCreateProfile:
         _use_backend(dry_backend, monkeypatch)
         with rm_module.Mocker():  # no POST registered → a real call would 404
             result = CliRunner().invoke(
-                cli, ["--json", "--dry-run", "fieldsec", "create-profile", "Comp",
-                      "--solution", "MySol"])
+                cli,
+                [
+                    "--json",
+                    "--dry-run",
+                    "fieldsec",
+                    "create-profile",
+                    "Comp",
+                    "--solution",
+                    "MySol",
+                ],
+            )
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["_dry_run"] is True
@@ -100,11 +139,26 @@ class TestAddPermission:
     def test_maps_grants(self, backend, monkeypatch):
         _use_backend(backend, monkeypatch)
         with rm_module.Mocker() as m:
-            m.post(_perms_url(backend), status_code=204,
-                   headers=_entity_id_headers(backend, "fieldpermissions", _NEW_PERM_ID))
-            result = CliRunner().invoke(cli, [
-                "--json", "fieldsec", "add-permission", _PROFILE_ID,
-                "account", "creditlimit", "--read", "--update", "--solution", "MySol"])
+            m.post(
+                _perms_url(backend),
+                status_code=204,
+                headers=_entity_id_headers(backend, "fieldpermissions", _NEW_PERM_ID),
+            )
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "fieldsec",
+                    "add-permission",
+                    _PROFILE_ID,
+                    "account",
+                    "creditlimit",
+                    "--read",
+                    "--update",
+                    "--solution",
+                    "MySol",
+                ],
+            )
         assert result.exit_code == 0, result.output
         body = m.last_request.json()
         assert body["canread"] == 4 and body["canupdate"] == 4 and body["cancreate"] == 0
@@ -116,9 +170,9 @@ class TestAddPermission:
         # backend D365Error — matching the CLI's flag-combination convention.
         _use_backend(backend, monkeypatch)
         with rm_module.Mocker():
-            result = CliRunner().invoke(cli, [
-                "--json", "fieldsec", "add-permission", _PROFILE_ID,
-                "account", "creditlimit"])
+            result = CliRunner().invoke(
+                cli, ["--json", "fieldsec", "add-permission", _PROFILE_ID, "account", "creditlimit"]
+            )
         assert result.exit_code == 2
         assert json.loads(result.output)["ok"] is False
 
@@ -127,19 +181,21 @@ class TestAssign:
     def test_assign_user(self, backend, monkeypatch):
         _use_backend(backend, monkeypatch)
         ref_url = backend.url_for(
-            f"fieldsecurityprofiles({_PROFILE_ID})/systemuserprofiles_association/$ref")
+            f"fieldsecurityprofiles({_PROFILE_ID})/systemuserprofiles_association/$ref"
+        )
         with rm_module.Mocker() as m:
             m.post(ref_url, status_code=204)
-            result = CliRunner().invoke(cli, [
-                "--json", "fieldsec", "assign", _PROFILE_ID, "--user", _USER_ID])
+            result = CliRunner().invoke(
+                cli, ["--json", "fieldsec", "assign", _PROFILE_ID, "--user", _USER_ID]
+            )
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)["data"]
         assert data["assigned"] is True and data["principal_type"] == "user"
 
     def test_both_user_and_team_is_usage_error(self, backend, monkeypatch):
         _use_backend(backend, monkeypatch)
-        result = CliRunner().invoke(cli, [
-            "--json", "fieldsec", "assign", _PROFILE_ID,
-            "--user", _USER_ID, "--team", "x"])
+        result = CliRunner().invoke(
+            cli, ["--json", "fieldsec", "assign", _PROFILE_ID, "--user", _USER_ID, "--team", "x"]
+        )
         assert result.exit_code == 2
         assert json.loads(result.output)["ok"] is False

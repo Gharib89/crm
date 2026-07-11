@@ -3,7 +3,8 @@
 then report — and rerun — by skip/fail with full reasons.
 
     onprem    agent-on-prem    -m 'e2e'                    whole suite; requires_cloud self-skip
-    cloud     agent-cloud      -m 'e2e and requires_cloud' cloud-gated; CS-only skip-with-instructions
+    cloud     agent-cloud      -m 'e2e and requires_cloud' cloud-gated; CS-only
+                                                           skip-with-instructions
     cs-trial  agent-cs-trial   -m 'e2e and requires_cloud' same selection, CS-only subset now RUNS
 
 CS-only tests carry no marker — they are requires_cloud tests that runtime-skip unless the
@@ -24,6 +25,7 @@ Usage:
 Goal-oriented: run -> read SKIPPED reasons -> fix env/seed the org -> `rerun <dir>` -> watch
 skips shrink toward zero (every test actually executed).
 """
+
 from __future__ import annotations
 
 import glob
@@ -36,7 +38,6 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
 
 REPO = Path(__file__).resolve().parent.parent
 CRM_HOME = Path(os.environ.get("CRM_HOME") or (Path.home() / ".crm"))
@@ -48,15 +49,22 @@ GREEN, RED = "\033[32m", "\033[31m"
 _COLOR = sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
 # A pytest -v result line's outcome (from _VLINE) or a -ra short-summary line's leading
 # keyword maps to a color: green ok, red broken, yellow skipped, dim expected-fail.
-_OUTCOME_COLOR = {"PASSED": GREEN, "XPASS": GREEN, "FAILED": RED, "ERROR": RED,
-                  "SKIPPED": YEL, "XFAIL": DIM}
+_OUTCOME_COLOR = {
+    "PASSED": GREEN,
+    "XPASS": GREEN,
+    "FAILED": RED,
+    "ERROR": RED,
+    "SKIPPED": YEL,
+    "XFAIL": DIM,
+}
 # A -ra short-summary line: "SKIPPED [1] crm/...: reason", "FAILED crm/...::test", etc.
 _RALINE = re.compile(r"^(PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASS)\b")
 
 
 def _colorize(line: str) -> str:
     """Wrap a pytest result/summary line in its outcome color, preserving the newline.
-    Non-result lines pass through untouched."""
+    Non-result lines pass through untouched.
+    """
     vm = _VLINE.match(line)
     outcome = vm.group(2) if vm else (m.group(1) if (m := _RALINE.match(line)) else None)
     if outcome is None:
@@ -72,33 +80,40 @@ class Leg:
     marker: str
 
 
-LEGS: List[Leg] = [
+LEGS: list[Leg] = [
     Leg("onprem", "agent-on-prem", "e2e"),
     Leg("cloud", "agent-cloud", "e2e and requires_cloud"),
     Leg("cs-trial", "agent-cs-trial", "e2e and requires_cloud"),
 ]
 
-Row = Tuple[str, str, str, str]  # (leg, nodeid, outcome, reason)
+Row = tuple[str, str, str, str]  # (leg, nodeid, outcome, reason)
 
 # A pytest -v result line: "crm/tests/e2e/test_x.py::test_y[p] SKIPPED [ 3%]".
 _VLINE = re.compile(r"^(crm/\S+::\S+)\s+(PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASS)\b")
-_VMAP = {"PASSED": "passed", "FAILED": "failed", "ERROR": "error",
-         "SKIPPED": "skipped", "XFAIL": "xfail", "XPASS": "passed"}
+_VMAP = {
+    "PASSED": "passed",
+    "FAILED": "failed",
+    "ERROR": "error",
+    "SKIPPED": "skipped",
+    "XFAIL": "xfail",
+    "XPASS": "passed",
+}
 
 
 # ── environment ──────────────────────────────────────────────────────────────
-def _pytest_cmd() -> List[str]:
+def _pytest_cmd() -> list[str]:
     for p in (REPO / ".venv/bin/pytest", REPO / ".venv/Scripts/pytest.exe"):
         if p.exists():
             return [str(p)]
     return [sys.executable, "-m", "pytest"]
 
 
-def _profile_host(profile: str) -> Optional[str]:
+def _profile_host(profile: str) -> str | None:
     """Target host from the profile JSON, or None if the profile file is absent.
 
     The host opens the *.dynamics.com prod-host guard for the exact org (the cs-trial
-    host changes each provisioning); harmless no-op for an on-prem host. Read-only."""
+    host changes each provisioning); harmless no-op for an on-prem host. Read-only.
+    """
     pf = CRM_HOME / "profiles" / f"{profile}.json"
     if not pf.is_file():
         return None
@@ -107,7 +122,7 @@ def _profile_host(profile: str) -> Optional[str]:
     return url.split("//", 1)[-1].split("/", 1)[0].lower()
 
 
-def _leg_env(profile: str, host: str) -> Dict[str, str]:
+def _leg_env(profile: str, host: str) -> dict[str, str]:
     env = dict(os.environ)
     # dotnet + its global tools (pac) install under ~/.dotnet, on PATH only via the
     # interactive shell rc. A non-reloaded/non-interactive shell won't have it, so the
@@ -117,19 +132,28 @@ def _leg_env(profile: str, host: str) -> Dict[str, str]:
     if dotnet.is_dir():
         env["DOTNET_ROOT"] = str(dotnet)
         env["PATH"] = os.pathsep.join([str(dotnet), str(dotnet / "tools"), env.get("PATH", "")])
-    env.update(D365_E2E="1", D365_E2E_PROFILE=profile,
-               D365_E2E_ALLOW_HOST=host, PYTHONUNBUFFERED="1")
+    env.update(
+        D365_E2E="1", D365_E2E_PROFILE=profile, D365_E2E_ALLOW_HOST=host, PYTHONUNBUFFERED="1"
+    )
     return env
 
 
 # ── running ──────────────────────────────────────────────────────────────────
-def _stream(cmd: List[str], env: Dict[str, str], log: Path) -> int:
+def _stream(cmd: list[str], env: dict[str, str], log: Path) -> int:
     """Run cmd from the repo root, streaming combined output to console AND log file.
     Popen avoids the shell pipe/tee SIGPIPE/MULTIOS exit-code corruption documented for
-    this repo's zsh; the child's PYTHONUNBUFFERED + bufsize=1 keep progress live."""
+    this repo's zsh; the child's PYTHONUNBUFFERED + bufsize=1 keep progress live.
+    """
     with open(log, "w", encoding="utf-8") as lf:
-        proc = subprocess.Popen(cmd, cwd=str(REPO), env=env, text=True, bufsize=1,
-                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(REPO),
+            env=env,
+            text=True,
+            bufsize=1,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
         assert proc.stdout is not None
         for line in proc.stdout:
             sys.stdout.write(_colorize(line) if _COLOR else line)
@@ -137,10 +161,16 @@ def _stream(cmd: List[str], env: Dict[str, str], log: Path) -> int:
         return proc.wait()
 
 
-def _run_leg(leg: Leg, logdir: Path, extra: List[str],
-             marker: Optional[str] = None, nodes: Optional[List[str]] = None) -> int:
+def _run_leg(
+    leg: Leg,
+    logdir: Path,
+    extra: list[str],
+    marker: str | None = None,
+    nodes: list[str] | None = None,
+) -> int:
     """Run one leg: pass marker= for a full run or nodes= for a rerun (exactly one).
-    Returns the pytest exit code (0=ok, 5=nothing collected — both tolerated by callers)."""
+    Returns the pytest exit code (0=ok, 5=nothing collected — both tolerated by callers).
+    """
     log, xml = logdir / f"{leg.name}.log", logdir / f"{leg.name}.xml"
     print(f"\n{CYAN}═══ {leg.name}  (profile: {leg.profile}) ═══{RST}")
 
@@ -169,10 +199,11 @@ def _run_leg(leg: Leg, logdir: Path, extra: List[str],
 
 
 # ── parsing ────────────────────────────────────────────────────────────────--
-def _rows(logdir: Path) -> List[Row]:
+def _rows(logdir: Path) -> list[Row]:
     """(leg, nodeid, outcome, reason) per testcase. Prefer junit XML (exact reasons);
-    fall back to the .log -v lines (nodeid+outcome only) for pre-XML runs."""
-    rows: List[Row] = []
+    fall back to the .log -v lines (nodeid+outcome only) for pre-XML runs.
+    """
+    rows: list[Row] = []
     xmls = sorted(glob.glob(str(logdir / "*.xml")))
     if xmls:
         for xml in xmls:
@@ -207,16 +238,16 @@ def _rows(logdir: Path) -> List[Row]:
     return rows
 
 
-def _coverage(rows: List[Row]) -> Tuple[Dict[str, List[Row]], List[str], List[str]]:
+def _coverage(rows: list[Row]) -> tuple[dict[str, list[Row]], list[str], list[str]]:
     """Group rows by nodeid for union coverage. A test is a GAP iff every leg that
     collected it skipped it (it ran nowhere); otherwise it is COVERED — executed
     (passed/failed/error/xfail) on at least one leg. Returns (by_node, covered, gaps)
-    with the node lists sorted for deterministic, diffable output."""
-    by_node: Dict[str, List[Row]] = {}
+    with the node lists sorted for deterministic, diffable output.
+    """
+    by_node: dict[str, list[Row]] = {}
     for row in rows:
         by_node.setdefault(row[1], []).append(row)
-    gaps = sorted(n for n, inst in by_node.items()
-                  if all(o == "skipped" for _l, _n, o, _r in inst))
+    gaps = sorted(n for n, inst in by_node.items() if all(o == "skipped" for _l, _n, o, _r in inst))
     gapset = set(gaps)
     covered = sorted(n for n in by_node if n not in gapset)
     return by_node, covered, gaps
@@ -227,8 +258,8 @@ def _summary_text(logdir: Path) -> str:
     if not rows:
         return f"no leg results found in {logdir} — nothing to summarize.\n"
 
-    legs: List[str] = []
-    by_leg: Dict[str, Dict[str, int]] = {}
+    legs: list[str] = []
+    by_leg: dict[str, dict[str, int]] = {}
     tot = {k: 0 for k in ("passed", "skipped", "failed", "error", "xfail")}
     for leg, _node, outcome, _r in rows:
         if leg not in by_leg:
@@ -243,16 +274,23 @@ def _summary_text(logdir: Path) -> str:
     covered_skips = sum(1 for _l, n, o, _r in rows if o == "skipped" and n not in gapset)
 
     out = [f"e2e-all summary: {logdir.name}", ""]
-    out.append(f"Instances:  total {len(rows)}, PASSED {tot['passed']}, SKIPPED {tot['skipped']}, "
-               f"FAILED {tot['failed'] + tot['error']}    (xfailed {tot['xfail']})")
-    out.append(f"Coverage:   {len(by_node)} tests — COVERED {len(covered)}, "
-               f"GAP {len(gaps)}, FAILING {len(failing)}")
+    out.append(
+        f"Instances:  total {len(rows)}, PASSED {tot['passed']}, SKIPPED {tot['skipped']}, "
+        f"FAILED {tot['failed'] + tot['error']}    (xfailed {tot['xfail']})"
+    )
+    out.append(
+        f"Coverage:   {len(by_node)} tests — COVERED {len(covered)}, "
+        f"GAP {len(gaps)}, FAILING {len(failing)}"
+    )
 
     out += ["", "Per leg:"]
     for leg in legs:
         c = by_leg[leg]
-        parts = [f"{c['passed']} passed", f"{c['skipped']} skipped",
-                 f"{c['failed'] + c['error']} failed"]
+        parts = [
+            f"{c['passed']} passed",
+            f"{c['skipped']} skipped",
+            f"{c['failed'] + c['error']} failed",
+        ]
         if c["xfail"]:
             parts.append(f"{c['xfail']} xfailed")
         out.append(f"  {leg:<10} {', '.join(parts)}")
@@ -264,7 +302,7 @@ def _summary_text(logdir: Path) -> str:
         out.append("  (none)")
     for node in gaps:
         out.append(f"  {node}")
-        seen: Set[Tuple[str, str]] = set()
+        seen: set[tuple[str, str]] = set()
         for leg, _n, o, r in sorted(by_node[node]):
             if o == "skipped" and (leg, r) not in seen:
                 seen.add((leg, r))
@@ -280,8 +318,11 @@ def _summary_text(logdir: Path) -> str:
             if o in ("failed", "error"):
                 out += [f"  [{leg}] {node}  ({o})", f"      {r or '(see leg log for traceback)'}"]
 
-    out += ["", f"skipped-but-covered-elsewhere: {covered_skips}  "
-               f"(not listed — covered on another leg, no action)"]
+    out += [
+        "",
+        f"skipped-but-covered-elsewhere: {covered_skips}  "
+        f"(not listed — covered on another leg, no action)",
+    ]
     return "\n".join(out) + "\n"
 
 
@@ -291,14 +332,18 @@ def _summarize(logdir: Path) -> None:
     sys.stdout.write(text)
 
 
-def _rerun_nodes(logdir: Path, leg_name: str) -> List[str]:
+def _rerun_nodes(logdir: Path, leg_name: str) -> list[str]:
     """Per leg: failures/errors + skipped-here-AND-a-gap. Excludes skips that are
-    covered on another leg (rerunning those on this profile would just re-skip)."""
+    covered on another leg (rerunning those on this profile would just re-skip).
+    """
     rows = _rows(logdir)
     _by, _cov, gaps = _coverage(rows)
     gapset = set(gaps)
-    nodes = {n for leg, n, o, _r in rows if leg == leg_name
-             and (o in ("failed", "error") or (o == "skipped" and n in gapset))}
+    nodes = {
+        n
+        for leg, n, o, _r in rows
+        if leg == leg_name and (o in ("failed", "error") or (o == "skipped" and n in gapset))
+    }
     return sorted(nodes)
 
 
@@ -309,7 +354,7 @@ def _new_logdir(suffix: str = "") -> Path:
     return d
 
 
-def cmd_run(extra: List[str]) -> int:
+def cmd_run(extra: list[str]) -> int:
     logdir = _new_logdir()
     overall = 0
     for leg in LEGS:
@@ -322,9 +367,9 @@ def cmd_run(extra: List[str]) -> int:
     return overall
 
 
-def cmd_rerun(src: Path, extra: List[str]) -> int:
+def cmd_rerun(src: Path, extra: list[str]) -> int:
     if not src.is_dir():
-        print(f"usage: python scripts/e2e_all.py rerun <prior-run-logdir>", file=sys.stderr)
+        print("usage: python scripts/e2e_all.py rerun <prior-run-logdir>", file=sys.stderr)
         return 2
     logdir = _new_logdir("-rerun")
     print(f"Rerunning failures + genuine gaps from {src} (covered-elsewhere skips excluded)")
@@ -349,8 +394,10 @@ def cmd_rerun(src: Path, extra: List[str]) -> int:
 def cmd_selftest() -> int:
     """Offline check of the fragile bits: nodeid reconstruction, xfail-vs-skip, union
     coverage (gap = skipped everywhere; covered-elsewhere skip is NOT a gap), and the
-    gap-aware rerun set. Two legs so the cross-leg coverage logic is actually exercised."""
+    gap-aware rerun set. Two legs so the cross-leg coverage logic is actually exercised.
+    """
     import tempfile
+
     onprem = """<testsuites><testsuite>
       <testcase classname="crm.tests.e2e.test_x" name="test_ok"/>
       <testcase classname="crm.tests.e2e.test_x" name="test_gap">
@@ -380,19 +427,22 @@ def cmd_selftest() -> int:
         assert "crm/tests/e2e/test_x.py::test_routing" in covered
 
         # rerun(onprem) = failures + skipped-gaps; excludes the covered routing skip and xfail.
-        assert _rerun_nodes(dd, "onprem") == ["crm/tests/e2e/test_x.py::test_bad",
-                                              "crm/tests/e2e/test_x.py::test_gap"], \
-            _rerun_nodes(dd, "onprem")
+        assert _rerun_nodes(dd, "onprem") == [
+            "crm/tests/e2e/test_x.py::test_bad",
+            "crm/tests/e2e/test_x.py::test_gap",
+        ], _rerun_nodes(dd, "onprem")
         # rerun(cs-trial) = nothing (test_routing passed there).
         assert _rerun_nodes(dd, "cs-trial") == [], _rerun_nodes(dd, "cs-trial")
 
         text = _summary_text(dd)
-        assert "GAP 1" in text and "FAILING 1" in text and "skipped-but-covered-elsewhere: 1" in text, text
+        assert (
+            "GAP 1" in text and "FAILING 1" in text and "skipped-but-covered-elsewhere: 1" in text
+        ), text
     print("selftest OK")
     return 0
 
 
-def main(argv: List[str]) -> int:
+def main(argv: list[str]) -> int:
     # Hand-rolled parse: argparse's REMAINDER drops leading-dash passthrough args
     # (e.g. `run -k foo`), so we split the command off the front and forward the rest
     # to pytest verbatim. First token that isn't a known command => an implicit `run`.
@@ -413,7 +463,9 @@ def main(argv: List[str]) -> int:
         return 0
     if cmd == "rerun":
         if not rest:
-            print("usage: python scripts/e2e_all.py rerun <logdir> [pytest args...]", file=sys.stderr)
+            print(
+                "usage: python scripts/e2e_all.py rerun <logdir> [pytest args...]", file=sys.stderr
+            )
             return 2
         return cmd_rerun(Path(rest[0]), rest[1:])
     return cmd_run(rest)

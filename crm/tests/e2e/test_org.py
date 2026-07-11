@@ -5,6 +5,7 @@ Read-only: asserts the brief runs green against a live org and carries every
 section with its documented shape. Values are org-dependent, so the test asserts
 structure and self-identification, not specific counts.
 """
+
 from __future__ import annotations
 
 import json
@@ -21,8 +22,15 @@ def test_org_brief(cli):
     data = env["data"]
 
     # Every section present.
-    for section in ("identity", "solutions", "publishers", "schema", "apps",
-                    "automation", "components"):
+    for section in (
+        "identity",
+        "solutions",
+        "publishers",
+        "schema",
+        "apps",
+        "automation",
+        "components",
+    ):
         assert section in data, f"missing section {section!r}: {data}"
 
     # Identity is self-describing: a real org name/version and the WhoAmI ids.

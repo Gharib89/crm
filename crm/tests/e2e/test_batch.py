@@ -1,5 +1,6 @@
 # pyright: basic
 """E2E tests for the batch command."""
+
 from __future__ import annotations
 
 import json

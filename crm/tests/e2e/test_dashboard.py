@@ -5,6 +5,7 @@ A dashboard's FormXml is posted verbatim. The lifecycle test uses a minimal but
 server-accepted dashboard layout — one empty tab/section, standard structure
 only, placeholder GUIDs (no org identifiers) — verified live on the cloud org.
 """
+
 from __future__ import annotations
 
 import json
@@ -16,7 +17,7 @@ from crm.tests.e2e.coverage import covers
 # Minimal valid dashboard FormXml: one tab, one empty section. Placeholder GUIDs
 # only — safe as a public fixture.
 _FORMXML = (
-    '<form><tabs>'
+    "<form><tabs>"
     '<tab showlabel="true" verticallayout="true" '
     'id="{11111111-1111-1111-1111-111111111111}" name="Tab1" '
     'locklevel="0" expanded="true">'
@@ -25,8 +26,8 @@ _FORMXML = (
     '<section showlabel="true" showbar="false" columns="11" '
     'id="{22222222-2222-2222-2222-222222222222}" name="Section1">'
     '<labels><label description="Section1" languagecode="1033" /></labels>'
-    '<rows><row /></rows></section></sections></column></columns>'
-    '</tab></tabs></form>'
+    "<rows><row /></rows></section></sections></column></columns>"
+    "</tab></tabs></form>"
 )
 
 
@@ -44,7 +45,8 @@ def test_dashboard_list(cli):
     """Stock orgs ship system dashboards; assert non-empty + shape."""
     result = cli(["--json", "dashboard", "list"])
     assert result.returncode == 0, (
-        f"dashboard list failed:\n{result.stderr}\nstdout: {result.stdout}")
+        f"dashboard list failed:\n{result.stderr}\nstdout: {result.stdout}"
+    )
     env = json.loads(result.stdout)
     assert env["ok"], env
     items = env["data"]
@@ -66,12 +68,23 @@ def test_dashboard_lifecycle(cli, tmp_path, unique, ephemeral_solution):
     name = f"E2E Dashboard {unique}"
     formxml = _write_formxml(tmp_path)
 
-    result = cli([
-        "--json", "dashboard", "create",
-        "--name", name, "--formxml", formxml, "--no-publish",
-        "--solution", ephemeral_solution])
+    result = cli(
+        [
+            "--json",
+            "dashboard",
+            "create",
+            "--name",
+            name,
+            "--formxml",
+            formxml,
+            "--no-publish",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert result.returncode == 0, (
-        f"dashboard create failed:\n{result.stderr}\nstdout: {result.stdout}")
+        f"dashboard create failed:\n{result.stderr}\nstdout: {result.stdout}"
+    )
     created = json.loads(result.stdout)
     assert created["ok"], created
     dashboard_id = created["data"]["formid"]
@@ -108,6 +121,7 @@ def _first_id(cli, args, id_field):
 
 def _component_cells(formxml):
     import xml.etree.ElementTree as ET
+
     root = ET.fromstring(formxml)
     return root, [c for c in root.iter("cell") if c.find("control") is not None]
 
@@ -130,30 +144,65 @@ def test_dashboard_add_chart_and_view(cli, tmp_path, unique, ephemeral_solution)
     control ids are unique (a duplicate is rejected at publish).
     """
     view_id = _first_id(cli, ["view", "list", "account"], "savedqueryid")
-    chart_id = _first_id(
-        cli, ["chart", "list", "account"], "savedqueryvisualizationid")
+    chart_id = _first_id(cli, ["chart", "list", "account"], "savedqueryvisualizationid")
 
     name = f"E2E ChartGrid {unique}"
-    created = cli(["--json", "dashboard", "create", "--name", name,
-                   "--formxml", _write_formxml(tmp_path), "--no-publish",
-                   "--solution", ephemeral_solution])
+    created = cli(
+        [
+            "--json",
+            "dashboard",
+            "create",
+            "--name",
+            name,
+            "--formxml",
+            _write_formxml(tmp_path),
+            "--no-publish",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert created.returncode == 0, created.stderr
     dashboard_id = json.loads(created.stdout)["data"]["formid"]
 
     try:
-        added = cli(["--json", "dashboard", "add-chart", dashboard_id,
-                     "--view", view_id, "--chart", chart_id,
-                     "--rowspan", "4", "--colspan", "2", "--publish",
-                     "--solution", ephemeral_solution])
-        assert added.returncode == 0, (
-            f"add-chart failed:\n{added.stderr}\nstdout: {added.stdout}")
+        added = cli(
+            [
+                "--json",
+                "dashboard",
+                "add-chart",
+                dashboard_id,
+                "--view",
+                view_id,
+                "--chart",
+                chart_id,
+                "--rowspan",
+                "4",
+                "--colspan",
+                "2",
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
+        assert added.returncode == 0, f"add-chart failed:\n{added.stderr}\nstdout: {added.stdout}"
         assert json.loads(added.stdout)["data"]["updated"] is True
 
-        added2 = cli(["--json", "dashboard", "add-view", dashboard_id,
-                      "--view", view_id, "--mode", "all", "--publish",
-                      "--solution", ephemeral_solution])
-        assert added2.returncode == 0, (
-            f"add-view failed:\n{added2.stderr}\nstdout: {added2.stdout}")
+        added2 = cli(
+            [
+                "--json",
+                "dashboard",
+                "add-view",
+                dashboard_id,
+                "--view",
+                view_id,
+                "--mode",
+                "all",
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
+        assert added2.returncode == 0, f"add-view failed:\n{added2.stderr}\nstdout: {added2.stdout}"
 
         got = cli(["--json", "dashboard", "get", dashboard_id])
         assert got.returncode == 0, got.stderr
@@ -162,8 +211,7 @@ def test_dashboard_add_chart_and_view(cli, tmp_path, unique, ephemeral_solution)
         assert len(cells) == 2, formxml
         # protected classid intact on every tile
         for cell in cells:
-            assert _control(cell).get("classid", "").lower() == \
-                _CHARTGRID_CLASSID, formxml
+            assert _control(cell).get("classid", "").lower() == _CHARTGRID_CLASSID, formxml
         # control ids unique (else publish would have rejected the second tile)
         ctrl_ids = [_control(c).get("id") for c in cells]
         assert len(set(ctrl_ids)) == 2, ctrl_ids
@@ -175,8 +223,7 @@ def test_dashboard_add_chart_and_view(cli, tmp_path, unique, ephemeral_solution)
             for cell in section.iter("cell"):
                 rowspan = cell.get("rowspan")
                 if cell.find("control") is not None and rowspan:
-                    assert int(rowspan) == \
-                        len(section.findall("rows/row")), formxml
+                    assert int(rowspan) == len(section.findall("rows/row")), formxml
     finally:
         cli(["--json", "dashboard", "delete", dashboard_id, "--yes"])
 
@@ -199,8 +246,7 @@ def _form_enabled_webresource(cli):
     pytest.skip("no form-enabled web resource on the org to embed")
 
 
-@covers("dashboard add-iframe", "dashboard add-webresource",
-        "dashboard remove-component")
+@covers("dashboard add-iframe", "dashboard add-webresource", "dashboard remove-component")
 @pytest.mark.slow
 def test_dashboard_iframe_webresource_remove(cli, tmp_path, unique, ephemeral_solution):
     """Add an IFRAME and a web-resource tile, then remove one, reading back.
@@ -214,25 +260,58 @@ def test_dashboard_iframe_webresource_remove(cli, tmp_path, unique, ephemeral_so
     iframe_url = "https://example.com/embedded"
 
     name = f"E2E IFRAME {unique}"
-    created = cli(["--json", "dashboard", "create", "--name", name,
-                   "--formxml", _write_formxml(tmp_path), "--no-publish",
-                   "--solution", ephemeral_solution])
+    created = cli(
+        [
+            "--json",
+            "dashboard",
+            "create",
+            "--name",
+            name,
+            "--formxml",
+            _write_formxml(tmp_path),
+            "--no-publish",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert created.returncode == 0, created.stderr
     dashboard_id = json.loads(created.stdout)["data"]["formid"]
 
     try:
-        added = cli(["--json", "dashboard", "add-iframe", dashboard_id,
-                     "--url", iframe_url, "--security", "--border", "--publish",
-                     "--solution", ephemeral_solution])
-        assert added.returncode == 0, (
-            f"add-iframe failed:\n{added.stderr}\nstdout: {added.stdout}")
+        added = cli(
+            [
+                "--json",
+                "dashboard",
+                "add-iframe",
+                dashboard_id,
+                "--url",
+                iframe_url,
+                "--security",
+                "--border",
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
+        assert added.returncode == 0, f"add-iframe failed:\n{added.stderr}\nstdout: {added.stdout}"
         assert json.loads(added.stdout)["data"]["updated"] is True
 
-        added2 = cli(["--json", "dashboard", "add-webresource", dashboard_id,
-                      "--webresource", wr_name, "--publish",
-                      "--solution", ephemeral_solution])
+        added2 = cli(
+            [
+                "--json",
+                "dashboard",
+                "add-webresource",
+                dashboard_id,
+                "--webresource",
+                wr_name,
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
         assert added2.returncode == 0, (
-            f"add-webresource failed:\n{added2.stderr}\nstdout: {added2.stdout}")
+            f"add-webresource failed:\n{added2.stderr}\nstdout: {added2.stdout}"
+        )
 
         got = cli(["--json", "dashboard", "get", dashboard_id])
         assert got.returncode == 0, got.stderr
@@ -241,17 +320,27 @@ def test_dashboard_iframe_webresource_remove(cli, tmp_path, unique, ephemeral_so
         assert len(cells) == 2, formxml
         # protected IFRAME classid intact on both tiles
         for cell in cells:
-            assert _control(cell).get("classid", "").lower() == \
-                _IFRAME_CLASSID, formxml
+            assert _control(cell).get("classid", "").lower() == _IFRAME_CLASSID, formxml
         # the URL and the $webresource: directive landed verbatim
         assert iframe_url in formxml, formxml
         assert f"$webresource:{wr_name}" in formxml, formxml
 
-        removed = cli(["--json", "dashboard", "remove-component", dashboard_id,
-                       "--url", iframe_url, "--publish",
-                       "--solution", ephemeral_solution])
+        removed = cli(
+            [
+                "--json",
+                "dashboard",
+                "remove-component",
+                dashboard_id,
+                "--url",
+                iframe_url,
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
         assert removed.returncode == 0, (
-            f"remove-component failed:\n{removed.stderr}\nstdout: {removed.stdout}")
+            f"remove-component failed:\n{removed.stderr}\nstdout: {removed.stdout}"
+        )
 
         got2 = cli(["--json", "dashboard", "get", dashboard_id])
         formxml2 = json.loads(got2.stdout)["data"]["formxml"]

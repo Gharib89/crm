@@ -4,6 +4,7 @@ Real ``D365Backend`` + ``requests_mock`` at the transport seam: assert the
 request shape (URL, body, headers) the core functions issue and the dicts they
 return — never private helpers.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -25,8 +26,11 @@ def _entity_id_headers(backend, entity_set, rec_id):
 class TestCreateRole:
     def test_posts_role_and_returns_id(self, backend):
         with rm_module.Mocker() as m:
-            m.post(backend.url_for("connectionroles"), status_code=204,
-                   headers=_entity_id_headers(backend, "connectionroles", _ROLE_A))
+            m.post(
+                backend.url_for("connectionroles"),
+                status_code=204,
+                headers=_entity_id_headers(backend, "connectionroles", _ROLE_A),
+            )
             out = cr.create_role(backend, name="Stakeholder")
         assert out["created"] is True
         assert out["connectionroleid"] == _ROLE_A
@@ -36,11 +40,17 @@ class TestCreateRole:
 
     def test_category_maps_to_option_value_and_solution_header(self, backend):
         with rm_module.Mocker() as m:
-            m.post(backend.url_for("connectionroles"), status_code=204,
-                   headers=_entity_id_headers(backend, "connectionroles", _ROLE_A))
+            m.post(
+                backend.url_for("connectionroles"),
+                status_code=204,
+                headers=_entity_id_headers(backend, "connectionroles", _ROLE_A),
+            )
             out = cr.create_role(
-                backend, name="Sales Team", category="sales-team",
-                description="d", solution="MySol",
+                backend,
+                name="Sales Team",
+                category="sales-team",
+                description="d",
+                solution="MySol",
             )
         assert out["category"] == 1001
         assert out["category_name"] == "sales-team"
@@ -63,9 +73,11 @@ class TestCreateRole:
 class TestScope:
     def test_creates_objecttypecode_bound_to_role(self, backend):
         with rm_module.Mocker() as m:
-            m.post(backend.url_for("connectionroleobjecttypecodes"), status_code=204,
-                   headers=_entity_id_headers(
-                       backend, "connectionroleobjecttypecodes", _OTC_ID))
+            m.post(
+                backend.url_for("connectionroleobjecttypecodes"),
+                status_code=204,
+                headers=_entity_id_headers(backend, "connectionroleobjecttypecodes", _OTC_ID),
+            )
             out = cr.scope(backend, role=_ROLE_A, entity="account", solution="MySol")
         assert out["created"] is True
         assert out["connectionroleobjecttypecodeid"] == _OTC_ID
@@ -81,9 +93,11 @@ class TestScope:
                 backend.url_for("connectionroles"),
                 json={"value": [{"connectionroleid": _ROLE_A}]},
             )
-            m.post(backend.url_for("connectionroleobjecttypecodes"), status_code=204,
-                   headers=_entity_id_headers(
-                       backend, "connectionroleobjecttypecodes", _OTC_ID))
+            m.post(
+                backend.url_for("connectionroleobjecttypecodes"),
+                status_code=204,
+                headers=_entity_id_headers(backend, "connectionroleobjecttypecodes", _OTC_ID),
+            )
             out = cr.scope(backend, role="Stakeholder", entity="contact")
         assert out["role"] == _ROLE_A
         body = m.last_request.json()
@@ -99,15 +113,15 @@ class TestScope:
 class TestMatch:
     def test_associates_roles_via_nav_property(self, backend):
         ref_url = backend.url_for(
-            f"connectionroles({_ROLE_A})/connectionroleassociation_association/$ref")
+            f"connectionroles({_ROLE_A})/connectionroleassociation_association/$ref"
+        )
         with rm_module.Mocker() as m:
             m.post(ref_url, status_code=204)
             out = cr.match(backend, role_a=_ROLE_A, role_b=_ROLE_B)
         assert out["matched"] is True
         assert out["role_a"] == _ROLE_A
         assert out["role_b"] == _ROLE_B
-        assert m.last_request.json()["@odata.id"] == backend.url_for(
-            f"connectionroles({_ROLE_B})")
+        assert m.last_request.json()["@odata.id"] == backend.url_for(f"connectionroles({_ROLE_B})")
 
     def test_dry_run_short_circuits(self, dry_backend):
         with rm_module.Mocker():

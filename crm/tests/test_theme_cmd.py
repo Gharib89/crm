@@ -1,15 +1,15 @@
 """Command-layer tests for `crm theme` (list / get / create / update / publish)."""
+
 # pyright: basic
 from __future__ import annotations
 
 import json
 
 import requests_mock as rm_module
-
 from click.testing import CliRunner
+
 from crm.cli import cli
 from crm.utils.d365_backend import D365Backend
-
 
 _THEME = {
     "themeid": "11112222-3333-4444-5555-666677778888",
@@ -60,14 +60,25 @@ class TestThemeCreate:
     def test_create_with_set_pairs(self, backend, monkeypatch):
         _use_backend(monkeypatch, backend)
         with rm_module.Mocker() as m:
-            m.post(_themes_url(backend), status_code=204,
-                   headers={"OData-EntityId": backend.url_for(f"themes({_NEW_ID})")})
-            result = CliRunner().invoke(cli, [
-                "--json", "theme", "create",
-                "--name", "Corporate Blue",
-                "--set", "maincolor=#0066cc",
-                "--set", "navbarbackgroundcolor=#002050",
-            ])
+            m.post(
+                _themes_url(backend),
+                status_code=204,
+                headers={"OData-EntityId": backend.url_for(f"themes({_NEW_ID})")},
+            )
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "theme",
+                    "create",
+                    "--name",
+                    "Corporate Blue",
+                    "--set",
+                    "maincolor=#0066cc",
+                    "--set",
+                    "navbarbackgroundcolor=#002050",
+                ],
+            )
         assert result.exit_code == 0, result.output
         body = m.last_request.json()
         assert body["name"] == "Corporate Blue"
@@ -79,18 +90,36 @@ class TestThemeCreate:
 
     def test_create_rejects_malformed_set(self, backend, monkeypatch):
         _use_backend(monkeypatch, backend)
-        result = CliRunner().invoke(cli, [
-            "--json", "theme", "create", "--name", "T", "--set", "novalue",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "theme",
+                "create",
+                "--name",
+                "T",
+                "--set",
+                "novalue",
+            ],
+        )
         # usage error, no round-trip
         assert result.exit_code == 2, result.output
 
     def test_create_dry_run_previews(self, dry_backend, monkeypatch):
         _use_backend(monkeypatch, dry_backend)
-        result = CliRunner().invoke(cli, [
-            "--json", "--dry-run", "theme", "create",
-            "--name", "T", "--set", "maincolor=#fff",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "--dry-run",
+                "theme",
+                "create",
+                "--name",
+                "T",
+                "--set",
+                "maincolor=#fff",
+            ],
+        )
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["meta"]["dry_run"] is True
@@ -103,9 +132,17 @@ class TestThemeUpdate:
         tid = _THEME["themeid"]
         with rm_module.Mocker() as m:
             m.patch(backend.url_for(f"themes({tid})"), status_code=204)
-            result = CliRunner().invoke(cli, [
-                "--json", "theme", "update", tid, "--set", "maincolor=#ff0000",
-            ])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "theme",
+                    "update",
+                    tid,
+                    "--set",
+                    "maincolor=#ff0000",
+                ],
+            )
         assert result.exit_code == 0, result.output
         assert m.last_request.json()["maincolor"] == "#ff0000"
         assert json.loads(result.output)["data"]["updated"] is True
@@ -122,8 +159,7 @@ class TestThemePublish:
     def test_publish_calls_action(self, backend, monkeypatch):
         _use_backend(monkeypatch, backend)
         tid = _THEME["themeid"]
-        action_url = backend.url_for(
-            f"themes({tid})/Microsoft.Dynamics.CRM.PublishTheme")
+        action_url = backend.url_for(f"themes({tid})/Microsoft.Dynamics.CRM.PublishTheme")
         with rm_module.Mocker() as m:
             m.post(action_url, status_code=204)
             result = CliRunner().invoke(cli, ["--json", "theme", "publish", tid])

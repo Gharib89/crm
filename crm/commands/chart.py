@@ -1,4 +1,5 @@
 """Chart (savedqueryvisualization / userqueryvisualization) command group."""
+
 # pyright: basic
 from __future__ import annotations
 
@@ -11,11 +12,13 @@ from crm.commands._helpers import (
     _emit_with_warning,
     _journal,
     _publish_option,
-    _read_file as _read_required,
     _resolve_publish,
     _resolve_solution,
     _solution_option,
     d365_errors,
+)
+from crm.commands._helpers import (
+    _read_file as _read_required,
 )
 from crm.core import charts as charts_mod
 
@@ -23,7 +26,8 @@ from crm.core import charts as charts_mod
 @click.group("chart")
 def chart_group() -> None:
     """Author system and user charts (savedqueryvisualization /
-    userqueryvisualization) headlessly, without the chart designer."""
+    userqueryvisualization) headlessly, without the chart designer.
+    """
 
 
 # `--user-owned` is the canonical boolean; `--user` stays a hidden back-compat
@@ -32,8 +36,8 @@ def chart_group() -> None:
 # — a single shared dest would let one flag's default clobber the other. The
 # explicit spelling also disambiguates it from fieldsec's GUID-valued `--user`.
 _user_owned_alias = click.option(
-    "--user", "user_owned_alias", is_flag=True, hidden=True,
-    help="Alias for --user-owned.")
+    "--user", "user_owned_alias", is_flag=True, hidden=True, help="Alias for --user-owned."
+)
 
 
 def _resolve_user_owned(user_owned: bool, user_owned_alias: bool) -> bool:
@@ -43,12 +47,12 @@ def _resolve_user_owned(user_owned: bool, user_owned_alias: bool) -> bool:
 
 @chart_group.command("list")
 @click.argument("entity")
-@click.option("--user-owned", "user_owned", is_flag=True,
-              help="List user charts instead of system charts.")
+@click.option(
+    "--user-owned", "user_owned", is_flag=True, help="List user charts instead of system charts."
+)
 @_user_owned_alias
 @pass_ctx
-def chart_list(ctx: CLIContext, entity: str, user_owned: bool,
-               user_owned_alias: bool) -> None:
+def chart_list(ctx: CLIContext, entity: str, user_owned: bool, user_owned_alias: bool) -> None:
     """List charts for ENTITY (system charts by default; --user-owned for user charts)."""
     user_owned = _resolve_user_owned(user_owned, user_owned_alias)
     # list_entity_charts returns list-column summaries only (no datadescription/
@@ -58,8 +62,7 @@ def chart_list(ctx: CLIContext, entity: str, user_owned: bool,
     id_field = "userqueryvisualizationid" if user_owned else "savedqueryvisualizationid"
     headers = ["name", id_field] + ([] if user_owned else ["isdefault"])
     rows = [
-        [c["name"], c.get(id_field) or ""]
-        + ([] if user_owned else [str(c["isdefault"])])
+        [c["name"], c.get(id_field) or ""] + ([] if user_owned else [str(c["isdefault"])])
         for c in charts
     ]
     ctx.emit(True, data=charts, table={"headers": headers, "rows": rows})
@@ -67,12 +70,15 @@ def chart_list(ctx: CLIContext, entity: str, user_owned: bool,
 
 @chart_group.command("get")
 @click.argument("chart_id")
-@click.option("--user-owned", "user_owned", is_flag=True,
-              help="Look up a user chart instead of a system chart.")
+@click.option(
+    "--user-owned",
+    "user_owned",
+    is_flag=True,
+    help="Look up a user chart instead of a system chart.",
+)
 @_user_owned_alias
 @pass_ctx
-def chart_get(ctx: CLIContext, chart_id: str, user_owned: bool,
-              user_owned_alias: bool) -> None:
+def chart_get(ctx: CLIContext, chart_id: str, user_owned: bool, user_owned_alias: bool) -> None:
     """Get a single chart by CHART_ID (its XML included for --json export)."""
     user_owned = _resolve_user_owned(user_owned, user_owned_alias)
     with d365_errors(ctx):
@@ -82,13 +88,18 @@ def chart_get(ctx: CLIContext, chart_id: str, user_owned: bool,
 
 @chart_group.command("delete")
 @click.argument("chart_id")
-@click.option("--user-owned", "user_owned", is_flag=True,
-              help="Delete a user chart instead of a system chart.")
+@click.option(
+    "--user-owned",
+    "user_owned",
+    is_flag=True,
+    help="Delete a user chart instead of a system chart.",
+)
 @_user_owned_alias
 @_destructive_option
 @pass_ctx
-def chart_delete(ctx: CLIContext, chart_id: str, user_owned: bool,
-                 user_owned_alias: bool, yes: bool) -> None:
+def chart_delete(
+    ctx: CLIContext, chart_id: str, user_owned: bool, user_owned_alias: bool, yes: bool
+) -> None:
     """Delete a chart by CHART_ID."""
     user_owned = _resolve_user_owned(user_owned, user_owned_alias)
     _confirm_destructive(ctx, "chart", chart_id, yes)
@@ -105,19 +116,33 @@ def _read_file(path: str | None) -> str | None:
 @chart_group.command("create")
 @click.argument("entity")
 @click.option("--name", required=True, help="Chart display name.")
-@click.option("--data-description", "data_description_file",
-              type=click.Path(exists=True, dir_okay=False, readable=True),
-              help="Path to the datadescription XML file "
-                   "(use with --presentation-description; not with --web-resource).")
-@click.option("--presentation-description", "presentation_description_file",
-              type=click.Path(exists=True, dir_okay=False, readable=True),
-              help="Path to the presentationdescription XML file "
-                   "(use with --data-description; not with --web-resource).")
-@click.option("--web-resource", "web_resource", default=None,
-              help="Web resource name or GUID for a script-based visualization "
-                   "(not with --data-description / --presentation-description).")
-@click.option("--user-owned", "user_owned", is_flag=True,
-              help="Create a user chart (userqueryvisualization) instead of a system chart.")
+@click.option(
+    "--data-description",
+    "data_description_file",
+    type=click.Path(exists=True, dir_okay=False, readable=True),
+    help="Path to the datadescription XML file "
+    "(use with --presentation-description; not with --web-resource).",
+)
+@click.option(
+    "--presentation-description",
+    "presentation_description_file",
+    type=click.Path(exists=True, dir_okay=False, readable=True),
+    help="Path to the presentationdescription XML file "
+    "(use with --data-description; not with --web-resource).",
+)
+@click.option(
+    "--web-resource",
+    "web_resource",
+    default=None,
+    help="Web resource name or GUID for a script-based visualization "
+    "(not with --data-description / --presentation-description).",
+)
+@click.option(
+    "--user-owned",
+    "user_owned",
+    is_flag=True,
+    help="Create a user chart (userqueryvisualization) instead of a system chart.",
+)
 @_user_owned_alias
 @click.option("--description", default=None, help="Chart description.")
 @_solution_option
@@ -151,15 +176,17 @@ def chart_create(
     if has_xml and has_wr:
         raise click.UsageError(
             "--web-resource and --data-description / --presentation-description "
-            "are mutually exclusive.")
+            "are mutually exclusive."
+        )
     if not has_xml and not has_wr:
         raise click.UsageError(
             "Provide either --data-description + --presentation-description "
-            "(XML mode) or --web-resource (web resource mode).")
+            "(XML mode) or --web-resource (web resource mode)."
+        )
     if has_xml and (data_description_file is None or presentation_description_file is None):
         raise click.UsageError(
-            "Both --data-description and --presentation-description are required "
-            "in XML mode.")
+            "Both --data-description and --presentation-description are required in XML mode."
+        )
 
     data_xml = _read_file(data_description_file)
     pres_xml = _read_file(presentation_description_file)
@@ -185,23 +212,36 @@ def chart_create(
 
 
 _user_option = click.option(
-    "--user-owned", "user_owned", is_flag=True,
+    "--user-owned",
+    "user_owned",
+    is_flag=True,
     help="Edit a user chart (userqueryvisualization) instead of a system chart. "
-         "User charts are never published.")
+    "User charts are never published.",
+)
 
 
 @chart_group.command("update")
 @click.argument("chart_id")
-@click.option("--data-description", "data_description_file",
-              type=click.Path(exists=True, dir_okay=False, readable=True),
-              help="Replace the datadescription XML from this file.")
-@click.option("--presentation-description", "presentation_description_file",
-              type=click.Path(exists=True, dir_okay=False, readable=True),
-              help="Replace the presentationdescription XML from this file.")
+@click.option(
+    "--data-description",
+    "data_description_file",
+    type=click.Path(exists=True, dir_okay=False, readable=True),
+    help="Replace the datadescription XML from this file.",
+)
+@click.option(
+    "--presentation-description",
+    "presentation_description_file",
+    type=click.Path(exists=True, dir_okay=False, readable=True),
+    help="Replace the presentationdescription XML from this file.",
+)
 @click.option("--name", default=None, help="New chart display name.")
 @click.option("--description", default=None, help="New chart description.")
-@click.option("--type", "chart_type", default=None,
-              help="Set the chart type (ChartType) on every series, e.g. Column, Bar, Line, Pie.")
+@click.option(
+    "--type",
+    "chart_type",
+    default=None,
+    help="Set the chart type (ChartType) on every series, e.g. Column, Bar, Line, Pie.",
+)
 @_user_option
 @_user_owned_alias
 @_solution_option
@@ -234,19 +274,30 @@ def chart_update(
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = charts_mod.update_chart(
-            ctx.backend(), chart_id,
-            data_description=data_xml, presentation_description=pres_xml,
-            name=name, description=description, chart_type=chart_type,
-            user=user_owned, publish=publish, solution=solution)
+            ctx.backend(),
+            chart_id,
+            data_description=data_xml,
+            presentation_description=pres_xml,
+            name=name,
+            description=description,
+            chart_type=chart_type,
+            user=user_owned,
+            publish=publish,
+            solution=solution,
+        )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, chart_id, info, solution=solution)
 
 
 @chart_group.command("set-fetch")
 @click.argument("chart_id")
-@click.option("--fetch", "fetch_file", required=True,
-              type=click.Path(exists=True, dir_okay=False, readable=True),
-              help="Path to a file with the replacement <fetch> element.")
+@click.option(
+    "--fetch",
+    "fetch_file",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False, readable=True),
+    help="Path to a file with the replacement <fetch> element.",
+)
 @_user_option
 @_user_owned_alias
 @_solution_option
@@ -268,8 +319,13 @@ def chart_set_fetch(
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = charts_mod.set_chart_fetch(
-            ctx.backend(), chart_id, fetch=fetch_xml,
-            user=user_owned, publish=publish, solution=solution)
+            ctx.backend(),
+            chart_id,
+            fetch=fetch_xml,
+            user=user_owned,
+            publish=publish,
+            solution=solution,
+        )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, chart_id, info, solution=solution)
 
@@ -277,9 +333,12 @@ def chart_set_fetch(
 @chart_group.command("add-series")
 @click.argument("chart_id")
 @click.option("--column", required=True, help="Logical name of the column to aggregate.")
-@click.option("--aggregate", required=True,
-              type=click.Choice(["count", "countcolumn", "sum", "avg", "min", "max"]),
-              help="Aggregate function applied to --column.")
+@click.option(
+    "--aggregate",
+    required=True,
+    type=click.Choice(["count", "countcolumn", "sum", "avg", "min", "max"]),
+    help="Aggregate function applied to --column.",
+)
 @click.option("--alias", required=True, help="Unique alias for the new series.")
 @_user_option
 @_user_owned_alias
@@ -303,8 +362,15 @@ def chart_add_series(
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = charts_mod.add_chart_series(
-            ctx.backend(), chart_id, column=column, aggregate=aggregate, alias=alias,
-            user=user_owned, publish=publish, solution=solution)
+            ctx.backend(),
+            chart_id,
+            column=column,
+            aggregate=aggregate,
+            alias=alias,
+            user=user_owned,
+            publish=publish,
+            solution=solution,
+        )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, chart_id, info, solution=solution)
 
@@ -332,8 +398,13 @@ def chart_remove_series(
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = charts_mod.remove_chart_series(
-            ctx.backend(), chart_id, alias=alias,
-            user=user_owned, publish=publish, solution=solution)
+            ctx.backend(),
+            chart_id,
+            alias=alias,
+            user=user_owned,
+            publish=publish,
+            solution=solution,
+        )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, chart_id, info, solution=solution)
 
@@ -341,11 +412,12 @@ def chart_remove_series(
 @chart_group.command("set-groupby")
 @click.argument("chart_id")
 @click.option("--column", required=True, help="Logical name of the grouping (category) column.")
-@click.option("--dategrouping", default=None,
-              type=click.Choice(
-                  ["day", "week", "month", "quarter", "year",
-                   "fiscal-period", "fiscal-year"]),
-              help="Date grouping interval (only for date columns).")
+@click.option(
+    "--dategrouping",
+    default=None,
+    type=click.Choice(["day", "week", "month", "quarter", "year", "fiscal-period", "fiscal-year"]),
+    help="Date grouping interval (only for date columns).",
+)
 @_user_option
 @_user_owned_alias
 @_solution_option
@@ -367,7 +439,13 @@ def chart_set_groupby(
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = charts_mod.set_chart_groupby(
-            ctx.backend(), chart_id, column=column, dategrouping=dategrouping,
-            user=user_owned, publish=publish, solution=solution)
+            ctx.backend(),
+            chart_id,
+            column=column,
+            dategrouping=dategrouping,
+            user=user_owned,
+            publish=publish,
+            solution=solution,
+        )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, chart_id, info, solution=solution)

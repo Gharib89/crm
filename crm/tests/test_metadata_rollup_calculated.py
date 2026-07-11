@@ -4,6 +4,7 @@ Covers the core wiring (SourceType + FormulaDefinition on the typed body),
 the validation matrix, the dry-run preview echo, and the CLI plumbing.
 All HTTP mocked via requests_mock; no live D365 server.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -14,8 +15,8 @@ import requests_mock
 from click.testing import CliRunner
 
 from crm.cli import CLIContext, cli
-from crm.utils.d365_backend import D365Error
 from crm.core import metadata_attrs as ma_mod
+from crm.utils.d365_backend import D365Error
 
 FORMULA = "<formula><xaml/></formula>"
 
@@ -27,16 +28,20 @@ def _posts(m) -> list:
 def _mock_create(m, backend, *, entity="account", logical="new_amount", schema="new_Amount"):
     """Mock the absent-probe → POST → read-back trio for a successful create."""
     attr_id = "33333333-3333-3333-3333-333333333333"
-    attr_url = backend.url_for(
-        f"EntityDefinitions(LogicalName='{entity}')/Attributes({attr_id})"
+    attr_url = backend.url_for(f"EntityDefinitions(LogicalName='{entity}')/Attributes({attr_id})")
+    m.get(
+        backend.url_for(
+            f"EntityDefinitions(LogicalName='{entity}')/Attributes(LogicalName='{logical}')"
+        ),
+        status_code=404,
+        json={"error": {"code": "0x", "message": "nf"}},
     )
-    m.get(backend.url_for(
-        f"EntityDefinitions(LogicalName='{entity}')/Attributes(LogicalName='{logical}')"),
-        status_code=404, json={"error": {"code": "0x", "message": "nf"}})
-    m.post(backend.url_for(f"EntityDefinitions(LogicalName='{entity}')/Attributes"),
-           status_code=204, headers={"OData-EntityId": attr_url})
-    m.get(attr_url, json={"LogicalName": logical, "SchemaName": schema,
-                          "AttributeType": "Integer"})
+    m.post(
+        backend.url_for(f"EntityDefinitions(LogicalName='{entity}')/Attributes"),
+        status_code=204,
+        headers={"OData-EntityId": attr_url},
+    )
+    m.get(attr_url, json={"LogicalName": logical, "SchemaName": schema, "AttributeType": "Integer"})
 
 
 class TestRollupCalculatedCore:
@@ -44,9 +49,13 @@ class TestRollupCalculatedCore:
         with requests_mock.Mocker() as m:
             _mock_create(m, backend)
             info = ma_mod.add_attribute(
-                backend, entity="account", kind="integer",
-                schema_name="new_Amount", display_name="Amount",
-                source_type="calculated", formula_definition=FORMULA,
+                backend,
+                entity="account",
+                kind="integer",
+                schema_name="new_Amount",
+                display_name="Amount",
+                source_type="calculated",
+                formula_definition=FORMULA,
             )
         body = _posts(m)[0].json()
         assert body["SourceType"] == 1
@@ -59,9 +68,13 @@ class TestRollupCalculatedCore:
         with requests_mock.Mocker() as m:
             _mock_create(m, backend)
             info = ma_mod.add_attribute(
-                backend, entity="account", kind="integer",
-                schema_name="new_Amount", display_name="Amount",
-                source_type="rollup", formula_definition=FORMULA,
+                backend,
+                entity="account",
+                kind="integer",
+                schema_name="new_Amount",
+                display_name="Amount",
+                source_type="rollup",
+                formula_definition=FORMULA,
             )
         body = _posts(m)[0].json()
         assert body["SourceType"] == 2
@@ -72,9 +85,13 @@ class TestRollupCalculatedCore:
         with requests_mock.Mocker() as m:
             _mock_create(m, backend)
             ma_mod.add_attribute(
-                backend, entity="account", kind="integer",
-                schema_name="new_Amount", display_name="Amount",
-                source_type="rollup", formula_definition=FORMULA,
+                backend,
+                entity="account",
+                kind="integer",
+                schema_name="new_Amount",
+                display_name="Amount",
+                source_type="rollup",
+                formula_definition=FORMULA,
                 solution="contoso_test",
             )
         post = _posts(m)[0]
@@ -85,8 +102,11 @@ class TestRollupCalculatedCore:
         with requests_mock.Mocker() as m:
             _mock_create(m, backend)
             info = ma_mod.add_attribute(
-                backend, entity="account", kind="integer",
-                schema_name="new_Amount", display_name="Amount",
+                backend,
+                entity="account",
+                kind="integer",
+                schema_name="new_Amount",
+                display_name="Amount",
             )
         body = _posts(m)[0].json()
         assert "SourceType" not in body
@@ -96,16 +116,22 @@ class TestRollupCalculatedCore:
     def test_rollup_without_formula_raises(self, backend):
         with pytest.raises(D365Error, match="formula-file is required"):
             ma_mod.add_attribute(
-                backend, entity="account", kind="integer",
-                schema_name="new_Amount", display_name="Amount",
+                backend,
+                entity="account",
+                kind="integer",
+                schema_name="new_Amount",
+                display_name="Amount",
                 source_type="rollup",
             )
 
     def test_formula_with_simple_raises(self, backend):
         with pytest.raises(D365Error, match="only valid with --type"):
             ma_mod.add_attribute(
-                backend, entity="account", kind="integer",
-                schema_name="new_Amount", display_name="Amount",
+                backend,
+                entity="account",
+                kind="integer",
+                schema_name="new_Amount",
+                display_name="Amount",
                 formula_definition=FORMULA,
             )
 
@@ -113,22 +139,33 @@ class TestRollupCalculatedCore:
     def test_calculated_on_relationship_kind_raises(self, backend, kind):
         with pytest.raises(D365Error, match="not valid for kind"):
             ma_mod.add_attribute(
-                backend, entity="account", kind=kind,
-                schema_name="new_Ref", display_name="Ref",
+                backend,
+                entity="account",
+                kind=kind,
+                schema_name="new_Ref",
+                display_name="Ref",
                 target_entity="contact",
-                source_type="calculated", formula_definition=FORMULA,
+                source_type="calculated",
+                formula_definition=FORMULA,
             )
 
     def test_dry_run_previews_source_type_and_formula(self, dry_backend):
         with requests_mock.Mocker() as m:
-            m.get(dry_backend.url_for(
-                "EntityDefinitions(LogicalName='account')"
-                "/Attributes(LogicalName='new_amount')"),
-                status_code=404, json={"error": {"code": "0x", "message": "no"}})
+            m.get(
+                dry_backend.url_for(
+                    "EntityDefinitions(LogicalName='account')/Attributes(LogicalName='new_amount')"
+                ),
+                status_code=404,
+                json={"error": {"code": "0x", "message": "no"}},
+            )
             out = ma_mod.add_attribute(
-                dry_backend, entity="account", kind="integer",
-                schema_name="new_Amount", display_name="Amount",
-                source_type="rollup", formula_definition=FORMULA,
+                dry_backend,
+                entity="account",
+                kind="integer",
+                schema_name="new_Amount",
+                display_name="Amount",
+                source_type="rollup",
+                formula_definition=FORMULA,
             )
         assert out["_dry_run"] is True
         assert out["body"]["SourceType"] == 2
@@ -146,12 +183,28 @@ class TestRollupCalculatedCli:
         f.write_text(FORMULA, encoding="utf-8")
         with requests_mock.Mocker() as m:
             _mock_create(m, backend)
-            result = CliRunner().invoke(cli, [
-                "--json", "metadata", "add-attribute", "account",
-                "--kind", "integer", "--schema-name", "new_Amount",
-                "--display", "Amount", "--type", "rollup",
-                "--formula-file", str(f), "--solution", "TestSol", "--no-publish",
-            ])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "metadata",
+                    "add-attribute",
+                    "account",
+                    "--kind",
+                    "integer",
+                    "--schema-name",
+                    "new_Amount",
+                    "--display",
+                    "Amount",
+                    "--type",
+                    "rollup",
+                    "--formula-file",
+                    str(f),
+                    "--solution",
+                    "TestSol",
+                    "--no-publish",
+                ],
+            )
             body = _posts(m)[0].json()
         assert result.exit_code == 0, result.output
         assert body["SourceType"] == 2
@@ -161,12 +214,26 @@ class TestRollupCalculatedCli:
 
     def test_rollup_without_formula_file_errors(self, monkeypatch, backend):
         self._stub(monkeypatch, backend)
-        result = CliRunner().invoke(cli, [
-            "--json", "metadata", "add-attribute", "account",
-            "--kind", "integer", "--schema-name", "new_Amount",
-            "--display", "Amount", "--type", "rollup",
-            "--solution", "TestSol", "--no-publish",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "metadata",
+                "add-attribute",
+                "account",
+                "--kind",
+                "integer",
+                "--schema-name",
+                "new_Amount",
+                "--display",
+                "Amount",
+                "--type",
+                "rollup",
+                "--solution",
+                "TestSol",
+                "--no-publish",
+            ],
+        )
         assert result.exit_code == 2
         assert "formula-file is required" in result.output
 
@@ -176,13 +243,30 @@ class TestRollupCalculatedCli:
         self._stub(monkeypatch, backend)
         f = tmp_path / "formula.xaml"
         f.write_text(FORMULA, encoding="utf-8")
-        result = CliRunner().invoke(cli, [
-            "--json", "metadata", "add-attribute", "account",
-            "--kind", "lookup", "--schema-name", "new_Ref",
-            "--display", "Ref", "--target-entity", "contact",
-            "--type", "rollup", "--formula-file", str(f),
-            "--solution", "TestSol", "--no-publish",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "metadata",
+                "add-attribute",
+                "account",
+                "--kind",
+                "lookup",
+                "--schema-name",
+                "new_Ref",
+                "--display",
+                "Ref",
+                "--target-entity",
+                "contact",
+                "--type",
+                "rollup",
+                "--formula-file",
+                str(f),
+                "--solution",
+                "TestSol",
+                "--no-publish",
+            ],
+        )
         assert result.exit_code == 2
         assert "not valid for kind 'lookup'" in result.output
 
@@ -190,11 +274,25 @@ class TestRollupCalculatedCli:
         self._stub(monkeypatch, backend)
         f = tmp_path / "formula.xaml"
         f.write_text(FORMULA, encoding="utf-8")
-        result = CliRunner().invoke(cli, [
-            "--json", "metadata", "add-attribute", "account",
-            "--kind", "integer", "--schema-name", "new_Amount",
-            "--display", "Amount", "--formula-file", str(f),
-            "--solution", "TestSol", "--no-publish",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "metadata",
+                "add-attribute",
+                "account",
+                "--kind",
+                "integer",
+                "--schema-name",
+                "new_Amount",
+                "--display",
+                "Amount",
+                "--formula-file",
+                str(f),
+                "--solution",
+                "TestSol",
+                "--no-publish",
+            ],
+        )
         assert result.exit_code == 2
         assert "only valid with --type" in result.output

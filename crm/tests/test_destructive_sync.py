@@ -8,6 +8,7 @@ own inline copies of the maps.  This test loads the hook by file path (not as a
 package) and compares both maps against the canonical ones so a one-sided edit is
 caught immediately by CI.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -61,10 +62,13 @@ class TestIsDestructive:
     def test_designer_asset_delete_is_destructive(self, group):
         assert core.is_destructive(group, "delete") is True
 
-    @pytest.mark.parametrize("group,verb", [
-        ("other-group", "assign-role"),  # ROLE_VERBS gate by verb name, any group
-        ("security", "delete-role"),
-    ])
+    @pytest.mark.parametrize(
+        "group,verb",
+        [
+            ("other-group", "assign-role"),  # ROLE_VERBS gate by verb name, any group
+            ("security", "delete-role"),
+        ],
+    )
     def test_role_verb_regardless_of_group(self, group, verb):
         assert core.is_destructive(group, verb) is True
 
@@ -74,9 +78,15 @@ class TestIsDestructive:
     def test_unknown_group_unknown_verb(self):
         assert core.is_destructive("query", "accounts") is False
 
-    @pytest.mark.parametrize("verb", [
-        "import", "uninstall", "stage-and-upgrade", "apply-upgrade",
-    ])
+    @pytest.mark.parametrize(
+        "verb",
+        [
+            "import",
+            "uninstall",
+            "stage-and-upgrade",
+            "apply-upgrade",
+        ],
+    )
     def test_solution_destructive_verbs(self, verb):
         assert core.is_destructive("solution", verb) is True
 

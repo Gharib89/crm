@@ -1,4 +1,5 @@
 """Unit tests for crm.core.dup (duplicate-detection rules)."""
+
 # pyright: basic
 from __future__ import annotations
 
@@ -102,8 +103,11 @@ class TestGetRule:
 class TestCreateRule:
     def test_posts_rule_and_returns_id(self, backend):
         with requests_mock.Mocker() as m:
-            m.post(_rules_url(backend), status_code=204,
-                   headers=_entity_id_headers(backend, "duplicaterules", _RULE_ID))
+            m.post(
+                _rules_url(backend),
+                status_code=204,
+                headers=_entity_id_headers(backend, "duplicaterules", _RULE_ID),
+            )
             out = dup.create_rule(backend, name="Accounts by name", entity="account")
         body = m.last_request.json()
         assert body["name"] == "Accounts by name"
@@ -115,10 +119,15 @@ class TestCreateRule:
 
     def test_matching_entity_override(self, backend):
         with requests_mock.Mocker() as m:
-            m.post(_rules_url(backend), status_code=204,
-                   headers=_entity_id_headers(backend, "duplicaterules", _RULE_ID))
+            m.post(
+                _rules_url(backend),
+                status_code=204,
+                headers=_entity_id_headers(backend, "duplicaterules", _RULE_ID),
+            )
             dup.create_rule(
-                backend, name="Lead↔Contact", entity="lead",
+                backend,
+                name="Lead↔Contact",
+                entity="lead",
                 matching_entity="contact",
             )
         body = m.last_request.json()
@@ -127,8 +136,11 @@ class TestCreateRule:
 
     def test_adds_solution_header(self, backend):
         with requests_mock.Mocker() as m:
-            m.post(_rules_url(backend), status_code=204,
-                   headers=_entity_id_headers(backend, "duplicaterules", _RULE_ID))
+            m.post(
+                _rules_url(backend),
+                status_code=204,
+                headers=_entity_id_headers(backend, "duplicaterules", _RULE_ID),
+            )
             dup.create_rule(backend, name="R", entity="account", solution="MySol")
         assert m.last_request.headers.get("MSCRM.SolutionUniqueName") == "MySol"
 
@@ -161,10 +173,16 @@ class TestCreateRule:
 class TestAddCondition:
     def test_posts_condition_and_binds_rule(self, backend):
         with requests_mock.Mocker() as m:
-            m.post(_conditions_url(backend), status_code=204,
-                   headers=_entity_id_headers(backend, "duplicateruleconditions", _COND_ID))
+            m.post(
+                _conditions_url(backend),
+                status_code=204,
+                headers=_entity_id_headers(backend, "duplicateruleconditions", _COND_ID),
+            )
             out = dup.add_condition(
-                backend, rule=_RULE_ID, attribute="name", operator="exact",
+                backend,
+                rule=_RULE_ID,
+                attribute="name",
+                operator="exact",
             )
         body = m.last_request.json()
         assert body["baseattributename"] == "name"
@@ -178,11 +196,17 @@ class TestAddCondition:
 
     def test_matching_attribute_override(self, backend):
         with requests_mock.Mocker() as m:
-            m.post(_conditions_url(backend), status_code=204,
-                   headers=_entity_id_headers(backend, "duplicateruleconditions", _COND_ID))
+            m.post(
+                _conditions_url(backend),
+                status_code=204,
+                headers=_entity_id_headers(backend, "duplicateruleconditions", _COND_ID),
+            )
             dup.add_condition(
-                backend, rule=_RULE_ID, attribute="emailaddress1",
-                matching_attribute="emailaddress2", operator="exact",
+                backend,
+                rule=_RULE_ID,
+                attribute="emailaddress1",
+                matching_attribute="emailaddress2",
+                operator="exact",
             )
         body = m.last_request.json()
         assert body["baseattributename"] == "emailaddress1"
@@ -191,15 +215,24 @@ class TestAddCondition:
     def test_same_first_requires_operator_param(self, backend):
         with pytest.raises(D365Error):
             dup.add_condition(
-                backend, rule=_RULE_ID, attribute="name", operator="same-first",
+                backend,
+                rule=_RULE_ID,
+                attribute="name",
+                operator="same-first",
             )
 
     def test_same_first_sends_operator_param(self, backend):
         with requests_mock.Mocker() as m:
-            m.post(_conditions_url(backend), status_code=204,
-                   headers=_entity_id_headers(backend, "duplicateruleconditions", _COND_ID))
+            m.post(
+                _conditions_url(backend),
+                status_code=204,
+                headers=_entity_id_headers(backend, "duplicateruleconditions", _COND_ID),
+            )
             dup.add_condition(
-                backend, rule=_RULE_ID, attribute="name", operator="same-first",
+                backend,
+                rule=_RULE_ID,
+                attribute="name",
+                operator="same-first",
                 operator_param=5,
             )
         body = m.last_request.json()
@@ -209,32 +242,50 @@ class TestAddCondition:
     def test_exact_rejects_operator_param(self, backend):
         with pytest.raises(D365Error):
             dup.add_condition(
-                backend, rule=_RULE_ID, attribute="name", operator="exact",
+                backend,
+                rule=_RULE_ID,
+                attribute="name",
+                operator="exact",
                 operator_param=5,
             )
 
     def test_unknown_operator_raises(self, backend):
         with pytest.raises(D365Error):
             dup.add_condition(
-                backend, rule=_RULE_ID, attribute="name", operator="bogus",
+                backend,
+                rule=_RULE_ID,
+                attribute="name",
+                operator="bogus",
             )
 
     def test_resolves_rule_by_name(self, backend):
         with requests_mock.Mocker() as m:
             m.get(_rules_url(backend), json={"value": [{"duplicateruleid": _RULE_ID}]})
-            m.post(_conditions_url(backend), status_code=204,
-                   headers=_entity_id_headers(backend, "duplicateruleconditions", _COND_ID))
+            m.post(
+                _conditions_url(backend),
+                status_code=204,
+                headers=_entity_id_headers(backend, "duplicateruleconditions", _COND_ID),
+            )
             out = dup.add_condition(
-                backend, rule="Accounts by name", attribute="name", operator="exact",
+                backend,
+                rule="Accounts by name",
+                attribute="name",
+                operator="exact",
             )
         assert out["rule"] == _RULE_ID
 
     def test_adds_solution_header(self, backend):
         with requests_mock.Mocker() as m:
-            m.post(_conditions_url(backend), status_code=204,
-                   headers=_entity_id_headers(backend, "duplicateruleconditions", _COND_ID))
+            m.post(
+                _conditions_url(backend),
+                status_code=204,
+                headers=_entity_id_headers(backend, "duplicateruleconditions", _COND_ID),
+            )
             dup.add_condition(
-                backend, rule=_RULE_ID, attribute="name", operator="exact",
+                backend,
+                rule=_RULE_ID,
+                attribute="name",
+                operator="exact",
                 solution="MySol",
             )
         assert m.last_request.headers.get("MSCRM.SolutionUniqueName") == "MySol"
@@ -242,7 +293,10 @@ class TestAddCondition:
     def test_dry_run_previews_without_posting(self, dry_backend):
         with requests_mock.Mocker():
             out = dup.add_condition(
-                dry_backend, rule=_RULE_ID, attribute="name", operator="exact",
+                dry_backend,
+                rule=_RULE_ID,
+                attribute="name",
+                operator="exact",
             )
         assert out["_dry_run"] is True
         assert out["would_create"] is True
@@ -256,7 +310,8 @@ _JOB_ID = "dddd1111-2222-3333-4444-555566667777"
 
 def _publish_url(backend) -> str:
     return backend.url_for(
-        f"duplicaterules({_RULE_ID})/Microsoft.Dynamics.CRM.PublishDuplicateRule")
+        f"duplicaterules({_RULE_ID})/Microsoft.Dynamics.CRM.PublishDuplicateRule"
+    )
 
 
 class TestPublishRule:
@@ -264,8 +319,11 @@ class TestPublishRule:
         # PublishDuplicateRule returns the asyncoperation record inline; the job
         # id is its asyncoperationid.
         with requests_mock.Mocker() as m:
-            m.post(_publish_url(backend), status_code=200,
-                   json={"asyncoperationid": _JOB_ID, "statecode": 0, "statuscode": 0})
+            m.post(
+                _publish_url(backend),
+                status_code=200,
+                json={"asyncoperationid": _JOB_ID, "statecode": 0, "statuscode": 0},
+            )
             out = dup.publish_rule(backend, _RULE_ID)
         # submitted only — the async build job has not completed, so not yet active
         assert out["published"] is False
@@ -274,10 +332,11 @@ class TestPublishRule:
 
     def test_wait_polls_async_operation(self, backend):
         with requests_mock.Mocker() as m:
-            m.post(_publish_url(backend), status_code=200,
-                   json={"asyncoperationid": _JOB_ID})
-            m.get(backend.url_for(f"asyncoperations({_JOB_ID})"),
-                  json={"statecode": 3, "statuscode": 30})
+            m.post(_publish_url(backend), status_code=200, json={"asyncoperationid": _JOB_ID})
+            m.get(
+                backend.url_for(f"asyncoperations({_JOB_ID})"),
+                json={"statecode": 3, "statuscode": 30},
+            )
             out = dup.publish_rule(backend, _RULE_ID, wait=True)
         assert out["status"] == "completed"
         assert out["published"] is True
@@ -285,8 +344,7 @@ class TestPublishRule:
     def test_resolves_rule_by_name(self, backend):
         with requests_mock.Mocker() as m:
             m.get(_rules_url(backend), json={"value": [{"duplicateruleid": _RULE_ID}]})
-            m.post(_publish_url(backend), status_code=200,
-                   json={"asyncoperationid": _JOB_ID})
+            m.post(_publish_url(backend), status_code=200, json={"asyncoperationid": _JOB_ID})
             out = dup.publish_rule(backend, "Accounts by name")
         assert out["duplicateruleid"] == _RULE_ID
 
@@ -324,7 +382,8 @@ class TestUnpublishRule:
 
 def _retrieve_dupes_url(backend) -> str:
     return backend.url_for(
-        "RetrieveDuplicates(BusinessEntity=@p1,MatchingEntityName=@p2,PagingInfo=@p3)")
+        "RetrieveDuplicates(BusinessEntity=@p1,MatchingEntityName=@p2,PagingInfo=@p3)"
+    )
 
 
 class TestCheck:
@@ -354,7 +413,9 @@ class TestCheck:
         with requests_mock.Mocker() as m:
             m.get(_retrieve_dupes_url(backend), json={"value": []})
             dup.check(
-                backend, entity="lead", record={"lastname": "Orton"},
+                backend,
+                entity="lead",
+                record={"lastname": "Orton"},
                 matching_entity="contact",
             )
         url = unquote_plus(m.last_request.url)

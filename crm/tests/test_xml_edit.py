@@ -1,4 +1,5 @@
 """Unit tests for crm.core.xml_edit (shared XML-edit safety primitives)."""
+
 # pyright: basic
 from __future__ import annotations
 
@@ -86,7 +87,8 @@ class TestExternalGuidGuard:
             xml_edit.assert_external_guids_intact(
                 '<x a="11111111-1111-1111-1111-111111111111" />',
                 '<x a="22222222-2222-2222-2222-222222222222" />',
-                message="custom boom")
+                message="custom boom",
+            )
 
 
 class TestClassidsIntact:
@@ -107,8 +109,7 @@ class TestGuidSetAndNodePresent:
         assert xml_edit.guid_set(xml) == {"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}
 
     def test_node_present_matches_attrs(self):
-        root = xml_edit.parse_xml(
-            '<form><tabs><tab name="general" /></tabs></form>')
+        root = xml_edit.parse_xml('<form><tabs><tab name="general" /></tabs></form>')
         assert xml_edit.node_present(root, "tab", name="general")
         assert not xml_edit.node_present(root, "tab", name="details")
         assert not xml_edit.node_present(root, "section")
@@ -127,9 +128,15 @@ class TestCommitXmlPatch:
     def test_dry_run_issues_zero_http(self, dry_backend):
         with requests_mock.Mocker() as m:
             out = xml_edit.commit_xml_patch(
-                dry_backend, entity_set="systemforms", record_id=self._FORMID,
-                column="formxml", new_xml="<form/>", result=self._base_result(),
-                dry_run_flag="would_add", publish=True)
+                dry_backend,
+                entity_set="systemforms",
+                record_id=self._FORMID,
+                column="formxml",
+                new_xml="<form/>",
+                result=self._base_result(),
+                dry_run_flag="would_add",
+                publish=True,
+            )
             assert m.call_count == 0
         assert out["_dry_run"] is True
         assert out["would_add"] is True
@@ -139,18 +146,32 @@ class TestCommitXmlPatch:
         seen: list[str] = []
         read_xml: list[str] = []
         with requests_mock.Mocker() as m:
-            m.patch(_systemforms_id(backend, self._FORMID), status_code=204,
-                    additional_matcher=lambda r: seen.append("patch") is None or True)
-            m.post(backend.url_for("PublishAllXml"), status_code=204,
-                   additional_matcher=lambda r: seen.append("publish") is None or True)
-            m.get(_systemforms_id(backend, self._FORMID),
-                  json={"formxml": "<form published='1'/>"},
-                  additional_matcher=lambda r: seen.append("get") is None or True)
+            m.patch(
+                _systemforms_id(backend, self._FORMID),
+                status_code=204,
+                additional_matcher=lambda r: seen.append("patch") is None or True,
+            )
+            m.post(
+                backend.url_for("PublishAllXml"),
+                status_code=204,
+                additional_matcher=lambda r: seen.append("publish") is None or True,
+            )
+            m.get(
+                _systemforms_id(backend, self._FORMID),
+                json={"formxml": "<form published='1'/>"},
+                additional_matcher=lambda r: seen.append("get") is None or True,
+            )
             out = xml_edit.commit_xml_patch(
-                backend, entity_set="systemforms", record_id=self._FORMID,
-                column="formxml", new_xml="<form/>", result=self._base_result(),
-                dry_run_flag="would_add", publish=True,
-                read_back=lambda xml: read_xml.append(xml))
+                backend,
+                entity_set="systemforms",
+                record_id=self._FORMID,
+                column="formxml",
+                new_xml="<form/>",
+                result=self._base_result(),
+                dry_run_flag="would_add",
+                publish=True,
+                read_back=lambda xml: read_xml.append(xml),
+            )
         assert out["updated"] is True
         assert out["published"] is True
         # publish-before-read-back ordering is load-bearing.
@@ -161,9 +182,15 @@ class TestCommitXmlPatch:
         with requests_mock.Mocker() as m:
             m.patch(_systemforms_id(backend, self._FORMID), status_code=204)
             out = xml_edit.commit_xml_patch(
-                backend, entity_set="systemforms", record_id=self._FORMID,
-                column="formxml", new_xml="<form/>", result=self._base_result(),
-                dry_run_flag="would_add", publish=False)
+                backend,
+                entity_set="systemforms",
+                record_id=self._FORMID,
+                column="formxml",
+                new_xml="<form/>",
+                result=self._base_result(),
+                dry_run_flag="would_add",
+                publish=False,
+            )
             # PATCH only — no publish, no read-back GET.
             assert m.call_count == 1
             assert m.last_request.method == "PATCH"
@@ -173,14 +200,22 @@ class TestCommitXmlPatch:
         with requests_mock.Mocker() as m:
             m.patch(_systemforms_id(backend, self._FORMID), status_code=204)
             xml_edit.commit_xml_patch(
-                backend, entity_set="systemforms", record_id=self._FORMID,
-                column="formxml", new_xml="<form/>", result=self._base_result(),
-                dry_run_flag="would_add", publish=False, solution="mysol")
+                backend,
+                entity_set="systemforms",
+                record_id=self._FORMID,
+                column="formxml",
+                new_xml="<form/>",
+                result=self._base_result(),
+                dry_run_flag="would_add",
+                publish=False,
+                solution="mysol",
+            )
             assert m.last_request.headers.get("MSCRM.SolutionUniqueName") == "mysol"
 
 
 class TestCommitXmlPatches:
     """The multi-column commit used by the chart editors (two coupled columns)."""
+
     _ID = "11112222-3333-4444-5555-666677778888"
 
     def _url(self, backend):
@@ -190,10 +225,14 @@ class TestCommitXmlPatches:
         with requests_mock.Mocker() as m:
             m.patch(self._url(backend), status_code=204)
             out = xml_edit.commit_xml_patches(
-                backend, entity_set="savedqueryvisualizations", record_id=self._ID,
+                backend,
+                entity_set="savedqueryvisualizations",
+                record_id=self._ID,
                 columns={"datadescription": "<d/>", "presentationdescription": "<p/>"},
-                result={"action": "add-series"}, dry_run_flag="would_update",
-                publish=False)
+                result={"action": "add-series"},
+                dry_run_flag="would_update",
+                publish=False,
+            )
         body = m.last_request.json()
         assert body == {"datadescription": "<d/>", "presentationdescription": "<p/>"}
         assert out["updated"] is True
@@ -202,23 +241,40 @@ class TestCommitXmlPatches:
         seen: list[str] = []
         got: dict[str, str] = {}
         with requests_mock.Mocker() as m:
-            m.patch(self._url(backend), status_code=204,
-                    additional_matcher=lambda r: seen.append("patch") is None or True)
-            m.post(backend.url_for("PublishAllXml"), status_code=204,
-                   additional_matcher=lambda r: seen.append("publish") is None or True)
-            m.get(self._url(backend),
-                  json={"datadescription": "<d published='1'/>",
-                        "presentationdescription": "<p published='1'/>"},
-                  additional_matcher=lambda r: seen.append("get") is None or True)
+            m.patch(
+                self._url(backend),
+                status_code=204,
+                additional_matcher=lambda r: seen.append("patch") is None or True,
+            )
+            m.post(
+                backend.url_for("PublishAllXml"),
+                status_code=204,
+                additional_matcher=lambda r: seen.append("publish") is None or True,
+            )
+            m.get(
+                self._url(backend),
+                json={
+                    "datadescription": "<d published='1'/>",
+                    "presentationdescription": "<p published='1'/>",
+                },
+                additional_matcher=lambda r: seen.append("get") is None or True,
+            )
             xml_edit.commit_xml_patches(
-                backend, entity_set="savedqueryvisualizations", record_id=self._ID,
+                backend,
+                entity_set="savedqueryvisualizations",
+                record_id=self._ID,
                 columns={"datadescription": "<d/>", "presentationdescription": "<p/>"},
-                result={"action": "add-series"}, dry_run_flag="would_update",
-                publish=True, read_back=lambda cols: got.update(cols))
+                result={"action": "add-series"},
+                dry_run_flag="would_update",
+                publish=True,
+                read_back=lambda cols: got.update(cols),
+            )
         assert seen == ["patch", "publish", "get"]
         # read-back receives every patched column, post-publish
-        assert got == {"datadescription": "<d published='1'/>",
-                       "presentationdescription": "<p published='1'/>"}
+        assert got == {
+            "datadescription": "<d published='1'/>",
+            "presentationdescription": "<p published='1'/>",
+        }
         # the read-back GET selects exactly the patched columns
         assert "datadescription" in m.request_history[-1].qs["$select"][0]
         assert "presentationdescription" in m.request_history[-1].qs["$select"][0]
@@ -226,6 +282,12 @@ class TestCommitXmlPatches:
     def test_read_back_without_publish_is_rejected(self, backend):
         with pytest.raises(ValueError, match="read_back requires publish=True"):
             xml_edit.commit_xml_patches(
-                backend, entity_set="savedqueryvisualizations", record_id=self._ID,
-                columns={"datadescription": "<d/>"}, result={},
-                dry_run_flag="would_update", publish=False, read_back=lambda _c: None)
+                backend,
+                entity_set="savedqueryvisualizations",
+                record_id=self._ID,
+                columns={"datadescription": "<d/>"},
+                result={},
+                dry_run_flag="would_update",
+                publish=False,
+                read_back=lambda _c: None,
+            )

@@ -1,22 +1,28 @@
 """Unit tests for REPL metadata cache + completion logic."""
+
 # pyright: basic
 from __future__ import annotations
 
 from crm.commands.repl import MetadataCache, complete_entity_token
 
-_ENTITY_LIST = {"value": [
-    {"LogicalName": "account", "EntitySetName": "accounts"},
-    {"LogicalName": "contact", "EntitySetName": "contacts"},
-    {"LogicalName": "new_project", "EntitySetName": "new_projects"},
-]}
+_ENTITY_LIST = {
+    "value": [
+        {"LogicalName": "account", "EntitySetName": "accounts"},
+        {"LogicalName": "contact", "EntitySetName": "contacts"},
+        {"LogicalName": "new_project", "EntitySetName": "new_projects"},
+    ]
+}
 
-_OTHER_ORG_LIST = {"value": [
-    {"LogicalName": "widget", "EntitySetName": "widgets"},
-]}
+_OTHER_ORG_LIST = {
+    "value": [
+        {"LogicalName": "widget", "EntitySetName": "widgets"},
+    ]
+}
 
 
 def _profile(name: str):
     from crm.utils.d365_backend import ConnectionProfile
+
     return ConnectionProfile(
         name=name,
         url=f"https://{name}.contoso.local/{name}",
@@ -46,8 +52,8 @@ class TestMetadataCache:
     def test_set_names_uses_same_fetch(self, make_fake_backend):
         b = make_fake_backend(responses={"get": _ENTITY_LIST})
         cache = MetadataCache()
-        cache.logical_names(b)          # first fetch
-        sets = cache.set_names(b)       # should reuse cache
+        cache.logical_names(b)  # first fetch
+        sets = cache.set_names(b)  # should reuse cache
         assert sets == ["accounts", "contacts", "new_projects"]
         assert b.count() == 1
 
@@ -59,7 +65,8 @@ class TestMetadataCache:
     def test_profile_switch_reloads_entity_names(self, make_fake_backend):
         """Switching the active profile mid-REPL must re-fetch: completion
         candidates are org-specific, so a cached list from the previous profile
-        is wrong."""
+        is wrong.
+        """
         a = make_fake_backend(profile=_profile("orga"), responses={"get": _ENTITY_LIST})
         b = make_fake_backend(profile=_profile("orgb"), responses={"get": _OTHER_ORG_LIST})
         cache = MetadataCache()
@@ -70,7 +77,8 @@ class TestMetadataCache:
 
     def test_same_profile_still_cached_after_reload_support(self, make_fake_backend):
         """Repeat calls on the SAME profile must not refetch (regression guard
-        that the profile-keying didn't defeat the session cache)."""
+        that the profile-keying didn't defeat the session cache).
+        """
         b = make_fake_backend(profile=_profile("orga"), responses={"get": _ENTITY_LIST})
         cache = MetadataCache()
         cache.logical_names(b)
@@ -79,20 +87,25 @@ class TestMetadataCache:
         assert b.count() == 1
 
 
-_ATTRS_ACCOUNT = {"value": [
-    {"LogicalName": "name"},
-    {"LogicalName": "accountnumber"},
-    {"LogicalName": "telephone1"},
-]}
+_ATTRS_ACCOUNT = {
+    "value": [
+        {"LogicalName": "name"},
+        {"LogicalName": "accountnumber"},
+        {"LogicalName": "telephone1"},
+    ]
+}
 
 
 def _defs_or_attrs(attrs):
     """Fake-backend GET responder: entity defs for the ``EntityDefinitions``
-    collection, ``attrs`` for the ``.../Attributes`` sub-path."""
+    collection, ``attrs`` for the ``.../Attributes`` sub-path.
+    """
+
     def _respond(path):
         if "/Attributes" in str(path):
             return attrs
         return _ENTITY_LIST
+
     return _respond
 
 
@@ -121,10 +134,10 @@ class TestAttributeNames:
 
     def test_profile_switch_clears_attribute_memo(self, make_fake_backend):
         other = {"value": [{"LogicalName": "widgetname"}]}
-        a = make_fake_backend(profile=_profile("orga"),
-                              responses={"get": _defs_or_attrs(_ATTRS_ACCOUNT)})
-        b = make_fake_backend(profile=_profile("orgb"),
-                              responses={"get": _defs_or_attrs(other)})
+        a = make_fake_backend(
+            profile=_profile("orga"), responses={"get": _defs_or_attrs(_ATTRS_ACCOUNT)}
+        )
+        b = make_fake_backend(profile=_profile("orgb"), responses={"get": _defs_or_attrs(other)})
         cache = MetadataCache()
         assert cache.attribute_names(a, "account") == ["name", "accountnumber", "telephone1"]
         # Profile switched: the def lists reload and the attribute memo is cleared,

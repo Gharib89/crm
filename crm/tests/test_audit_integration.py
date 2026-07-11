@@ -3,6 +3,7 @@
 Verifies that mutating verbs append exactly one journal line, read verbs
 append nothing, and result_id is derived correctly.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -40,8 +41,9 @@ def _save_profile(monkeypatch, tmp_path, **kwargs):
 
 # ── Test 1: dry-run mutation → exactly one journal line ───────────────────
 
+
 def test_entity_create_dry_run_journals_one_line(monkeypatch, tmp_path):
-    """entity create --dry-run → one journal entry with correct fields."""
+    """Entity create --dry-run → one journal entry with correct fields."""
     _save_profile(monkeypatch, tmp_path)
 
     from crm.core import entity as entity_mod
@@ -53,8 +55,17 @@ def test_entity_create_dry_run_journals_one_line(monkeypatch, tmp_path):
 
     result = CliRunner().invoke(
         cli,
-        ["--json", "--profile", "p", "--dry-run",
-         "entity", "create", "accounts", "--data", '{"name": "Contoso"}'],
+        [
+            "--json",
+            "--profile",
+            "p",
+            "--dry-run",
+            "entity",
+            "create",
+            "accounts",
+            "--data",
+            '{"name": "Contoso"}',
+        ],
     )
     assert result.exit_code == 0, result.output
 
@@ -69,8 +80,9 @@ def test_entity_create_dry_run_journals_one_line(monkeypatch, tmp_path):
 
 # ── Test 2: non-dry-run mutation with id → result_id populated ────────────
 
+
 def test_entity_create_result_id_captured(monkeypatch, tmp_path):
-    """entity create (non-dry-run, faked) → result_id equals the returned id."""
+    """Entity create (non-dry-run, faked) → result_id equals the returned id."""
     _save_profile(monkeypatch, tmp_path)
 
     from crm.core import entity as entity_mod
@@ -84,8 +96,16 @@ def test_entity_create_result_id_captured(monkeypatch, tmp_path):
 
     result = CliRunner().invoke(
         cli,
-        ["--json", "--profile", "p",
-         "entity", "create", "contacts", "--data", '{"firstname": "Alice"}'],
+        [
+            "--json",
+            "--profile",
+            "p",
+            "entity",
+            "create",
+            "contacts",
+            "--data",
+            '{"firstname": "Alice"}',
+        ],
     )
     assert result.exit_code == 0, result.output
 
@@ -99,8 +119,9 @@ def test_entity_create_result_id_captured(monkeypatch, tmp_path):
 
 # ── Test 3: read verb → no journal line ───────────────────────────────────
 
+
 def test_entity_get_does_not_journal(monkeypatch, tmp_path):
-    """entity get is a read verb → audit journal stays empty."""
+    """Entity get is a read verb → audit journal stays empty."""
     _save_profile(monkeypatch, tmp_path)
 
     from crm.core import entity as entity_mod
@@ -112,9 +133,15 @@ def test_entity_get_does_not_journal(monkeypatch, tmp_path):
 
     result = CliRunner().invoke(
         cli,
-        ["--json", "--profile", "p",
-         "entity", "get", "accounts",
-         "aaaabbbb-0000-0000-0000-000000000001"],
+        [
+            "--json",
+            "--profile",
+            "p",
+            "entity",
+            "get",
+            "accounts",
+            "aaaabbbb-0000-0000-0000-000000000001",
+        ],
     )
     assert result.exit_code == 0, result.output
 
@@ -124,8 +151,9 @@ def test_entity_get_does_not_journal(monkeypatch, tmp_path):
 
 # ── Test 4: breadth — metadata create-entity dry-run ────────────────────
 
+
 def test_metadata_create_entity_dry_run_journals(monkeypatch, tmp_path):
-    """metadata create-entity --dry-run → one journal line with correct command."""
+    """Metadata create-entity --dry-run → one journal line with correct command."""
     _save_profile(monkeypatch, tmp_path, publisher_prefix="new")
 
     from crm.core import metadata as meta_mod
@@ -137,9 +165,19 @@ def test_metadata_create_entity_dry_run_journals(monkeypatch, tmp_path):
 
     result = CliRunner().invoke(
         cli,
-        ["--json", "--profile", "p", "--dry-run",
-         "metadata", "create-entity",
-         "--display", "Project", "--solution", "MySol", "--no-publish"],
+        [
+            "--json",
+            "--profile",
+            "p",
+            "--dry-run",
+            "metadata",
+            "create-entity",
+            "--display",
+            "Project",
+            "--solution",
+            "MySol",
+            "--no-publish",
+        ],
     )
     assert result.exit_code == 0, result.output
 

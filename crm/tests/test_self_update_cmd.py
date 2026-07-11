@@ -1,5 +1,6 @@
 # pyright: basic
 """Command-level tests for `crm self-update`."""
+
 from __future__ import annotations
 
 import json
@@ -9,6 +10,7 @@ from click.testing import CliRunner
 
 import crm.core.update as update_mod
 from crm.cli import cli
+
 
 @pytest.fixture(autouse=True)
 def _no_update_check(isolated_home, monkeypatch):
@@ -22,7 +24,8 @@ class TestCheck:
 
     def test_human(self, monkeypatch):
         monkeypatch.setattr(
-            update_mod, "check_for_update",
+            update_mod,
+            "check_for_update",
             lambda *a, **k: {"current": "2.9.0", "latest": "v3.0.0", "update_available": True},
         )
         result = CliRunner().invoke(cli, ["self-update", "--check"])
@@ -31,7 +34,8 @@ class TestCheck:
 
     def test_json_envelope(self, monkeypatch):
         monkeypatch.setattr(
-            update_mod, "check_for_update",
+            update_mod,
+            "check_for_update",
             lambda *a, **k: {"current": "2.9.0", "latest": "v3.0.0", "update_available": True},
         )
         result = CliRunner().invoke(cli, ["--json", "self-update", "--check"])
@@ -57,7 +61,8 @@ class TestPipInstall:
         monkeypatch.setattr(update_mod, "is_frozen", lambda: False)
         called = {"perform": 0}
         monkeypatch.setattr(
-            update_mod, "perform_update",
+            update_mod,
+            "perform_update",
             lambda *a, **k: called.__setitem__("perform", called["perform"] + 1),
         )
         result = CliRunner().invoke(cli, ["self-update"])
@@ -71,6 +76,7 @@ class TestEligibilityIsFailSilent:
 
     def test_isatty_raising_is_treated_as_not_tty(self, monkeypatch):
         import sys
+
         from crm.cli import _update_check_eligible
 
         class _BadStderr:
@@ -85,11 +91,13 @@ class TestEligibilityIsFailSilent:
 class TestNoticeSuppressedForSelfUpdate:
     """The passive upgrade notice must not fire after `self-update` runs — the running
     process still reports the pre-update version, so the notice would tell the user to
-    upgrade to the version they just installed."""
+    upgrade to the version they just installed.
+    """
 
     @pytest.fixture
     def _force_eligible(self, monkeypatch):
         import crm.cli as cli_mod
+
         monkeypatch.setattr(cli_mod, "_update_check_eligible", lambda *a, **k: True)
         calls = []
         monkeypatch.setattr(update_mod, "emit_pending_notice", lambda *a, **k: calls.append(k))
@@ -144,10 +152,15 @@ class TestSkillRefresh:
 
     def test_check_does_not_touch_skills(self, monkeypatch):
         spy = {"calls": 0}
-        monkeypatch.setattr(update_mod, "check_for_update",
-                            lambda *a, **k: {"current": "2.9.0", "latest": "v3.0.0", "update_available": True})
-        monkeypatch.setattr("crm.commands.skill_registry.refresh_skills",
-                            lambda *a, **k: spy.__setitem__("calls", spy["calls"] + 1))
+        monkeypatch.setattr(
+            update_mod,
+            "check_for_update",
+            lambda *a, **k: {"current": "2.9.0", "latest": "v3.0.0", "update_available": True},
+        )
+        monkeypatch.setattr(
+            "crm.commands.skill_registry.refresh_skills",
+            lambda *a, **k: spy.__setitem__("calls", spy["calls"] + 1),
+        )
         result = CliRunner().invoke(cli, ["--json", "self-update", "--check"])
         assert result.exit_code == 0
         assert spy["calls"] == 0
@@ -161,14 +174,21 @@ class TestSkillRefresh:
         monkeypatch.setattr(update_mod, "is_frozen", lambda: True)
         monkeypatch.setattr(update_mod, "install_dir", lambda: install)
         monkeypatch.setattr(update_mod, "cleanup_stale_updates", lambda *a, **k: None)
-        monkeypatch.setattr(update_mod, "perform_update",
-                            lambda *a, **k: {"updated": True, "from_version": "2.9.0", "to_version": "3.0.0"})
+        monkeypatch.setattr(
+            update_mod,
+            "perform_update",
+            lambda *a, **k: {"updated": True, "from_version": "2.9.0", "to_version": "3.0.0"},
+        )
         seen = {}
-        monkeypatch.setattr("crm.commands.skill_registry.refresh_skills",
-                            lambda version, src: seen.update(version=version) or [])
+        monkeypatch.setattr(
+            "crm.commands.skill_registry.refresh_skills",
+            lambda version, src: seen.update(version=version) or [],
+        )
         result = CliRunner().invoke(cli, ["--json", "self-update"])
         assert result.exit_code == 0
-        assert seen["version"] == "3.0.0"  # to_version, already v-stripped — not the old running version
+        assert (
+            seen["version"] == "3.0.0"
+        )  # to_version, already v-stripped — not the old running version
 
     def test_frozen_up_to_date_uses_current_version(self, monkeypatch, tmp_path):
         install = tmp_path / "crm"
@@ -178,12 +198,21 @@ class TestSkillRefresh:
         monkeypatch.setattr(update_mod, "is_frozen", lambda: True)
         monkeypatch.setattr(update_mod, "install_dir", lambda: install)
         monkeypatch.setattr(update_mod, "cleanup_stale_updates", lambda *a, **k: None)
-        monkeypatch.setattr(update_mod, "perform_update",
-                            lambda *a, **k: {"updated": False, "current": "3.0.0", "latest": "v3.0.0",
-                                             "reason": "up-to-date"})
+        monkeypatch.setattr(
+            update_mod,
+            "perform_update",
+            lambda *a, **k: {
+                "updated": False,
+                "current": "3.0.0",
+                "latest": "v3.0.0",
+                "reason": "up-to-date",
+            },
+        )
         seen = {}
-        monkeypatch.setattr("crm.commands.skill_registry.refresh_skills",
-                            lambda version, src: seen.update(version=version) or [])
+        monkeypatch.setattr(
+            "crm.commands.skill_registry.refresh_skills",
+            lambda version, src: seen.update(version=version) or [],
+        )
         result = CliRunner().invoke(cli, ["--json", "self-update"])
         assert result.exit_code == 0
         assert seen.get("version") == update_mod.current_version()  # never ""
@@ -191,7 +220,8 @@ class TestSkillRefresh:
 
 class TestCompletionRefresh:
     """Non-`--check` self-update re-syncs a CLI-installed completion script; absent a
-    marker it leaves completion untouched, and a refresh failure never fails the update."""
+    marker it leaves completion untouched, and a refresh failure never fails the update.
+    """
 
     def _seed_marker(self, shell="zsh", version="0.0.1"):
         from crm.commands import completion_registry as creg
@@ -245,8 +275,11 @@ class TestCompletionRefresh:
         monkeypatch.setattr(update_mod, "is_frozen", lambda: True)
         monkeypatch.setattr(update_mod, "install_dir", lambda: install)
         monkeypatch.setattr(update_mod, "cleanup_stale_updates", lambda *a, **k: None)
-        monkeypatch.setattr(update_mod, "perform_update",
-                            lambda *a, **k: {"updated": True, "from_version": "2.9.0", "to_version": "3.0.0"})
+        monkeypatch.setattr(
+            update_mod,
+            "perform_update",
+            lambda *a, **k: {"updated": True, "from_version": "2.9.0", "to_version": "3.0.0"},
+        )
         path = self._seed_marker(version="2.9.0")
         seen = {}
 
@@ -256,8 +289,10 @@ class TestCompletionRefresh:
 
         # The frozen branch must use the new binary, NOT the in-process (old code) renderer.
         monkeypatch.setattr("crm.commands.completion_registry.generate_via_binary", fake_via_binary)
-        monkeypatch.setattr("crm.commands.completion_registry.generate_source",
-                            lambda *a, **k: pytest.fail("frozen refresh must not use in-process renderer"))
+        monkeypatch.setattr(
+            "crm.commands.completion_registry.generate_source",
+            lambda *a, **k: pytest.fail("frozen refresh must not use in-process renderer"),
+        )
         result = CliRunner().invoke(cli, ["--json", "self-update"])
         assert result.exit_code == 0
         assert json.loads(result.output)["data"]["completion"]["status"] == "refreshed"
@@ -279,11 +314,16 @@ class TestCompletionRefresh:
 
     def test_check_does_not_touch_completion(self, monkeypatch):
         spy = {"calls": 0}
-        monkeypatch.setattr(update_mod, "check_for_update",
-                            lambda *a, **k: {"current": "2.9.0", "latest": "v3.0.0", "update_available": True})
+        monkeypatch.setattr(
+            update_mod,
+            "check_for_update",
+            lambda *a, **k: {"current": "2.9.0", "latest": "v3.0.0", "update_available": True},
+        )
         self._seed_marker(version="0.0.1")
-        monkeypatch.setattr("crm.commands.completion_registry.generate_source",
-                            lambda *a, **k: spy.__setitem__("calls", spy["calls"] + 1))
+        monkeypatch.setattr(
+            "crm.commands.completion_registry.generate_source",
+            lambda *a, **k: spy.__setitem__("calls", spy["calls"] + 1),
+        )
         result = CliRunner().invoke(cli, ["--json", "self-update", "--check"])
         assert result.exit_code == 0
         assert spy["calls"] == 0
@@ -294,10 +334,13 @@ class TestFrozenUpdate:
 
     def test_happy_path(self, monkeypatch):
         monkeypatch.setattr(update_mod, "is_frozen", lambda: True)
-        monkeypatch.setattr(update_mod, "install_dir", lambda: __import__("pathlib").Path("/tmp/crm"))
+        monkeypatch.setattr(
+            update_mod, "install_dir", lambda: __import__("pathlib").Path("/tmp/crm")
+        )
         monkeypatch.setattr(update_mod, "cleanup_stale_updates", lambda *a, **k: None)
         monkeypatch.setattr(
-            update_mod, "perform_update",
+            update_mod,
+            "perform_update",
             lambda *a, **k: {"updated": True, "from_version": "2.9.0", "to_version": "3.0.0"},
         )
         result = CliRunner().invoke(cli, ["self-update"])
@@ -306,9 +349,10 @@ class TestFrozenUpdate:
 
     def test_progress_shown_in_human_mode(self, monkeypatch):
         monkeypatch.setattr(update_mod, "is_frozen", lambda: True)
-        monkeypatch.setattr(update_mod, "install_dir", lambda: __import__("pathlib").Path("/tmp/crm"))
+        monkeypatch.setattr(
+            update_mod, "install_dir", lambda: __import__("pathlib").Path("/tmp/crm")
+        )
         monkeypatch.setattr(update_mod, "cleanup_stale_updates", lambda *a, **k: None)
-        captured: list[str] = []
 
         def fake_update(*a, progress=None, **k):
             if progress:
@@ -326,7 +370,9 @@ class TestFrozenUpdate:
 
     def test_progress_absent_in_json_mode(self, monkeypatch):
         monkeypatch.setattr(update_mod, "is_frozen", lambda: True)
-        monkeypatch.setattr(update_mod, "install_dir", lambda: __import__("pathlib").Path("/tmp/crm"))
+        monkeypatch.setattr(
+            update_mod, "install_dir", lambda: __import__("pathlib").Path("/tmp/crm")
+        )
         monkeypatch.setattr(update_mod, "cleanup_stale_updates", lambda *a, **k: None)
 
         def fake_update(*a, progress=None, **k):
@@ -339,7 +385,9 @@ class TestFrozenUpdate:
 
     def test_checksum_failure_exits_nonzero(self, monkeypatch):
         monkeypatch.setattr(update_mod, "is_frozen", lambda: True)
-        monkeypatch.setattr(update_mod, "install_dir", lambda: __import__("pathlib").Path("/tmp/crm"))
+        monkeypatch.setattr(
+            update_mod, "install_dir", lambda: __import__("pathlib").Path("/tmp/crm")
+        )
         monkeypatch.setattr(update_mod, "cleanup_stale_updates", lambda *a, **k: None)
 
         def boom(*a, **k):

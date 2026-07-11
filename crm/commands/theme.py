@@ -4,6 +4,7 @@ Themes are an ordinary ``themes`` entity plus the ``PublishTheme`` action. They
 are **not solution-aware** — a theme does not travel with a solution export — so
 this group has no ``--solution`` flag; the group help states that explicitly.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -40,8 +41,7 @@ def _parse_set(pairs: tuple[str, ...]) -> dict[str, Any]:
     for raw in pairs:
         key, sep, value = raw.partition("=")
         if not sep or not key.strip():
-            raise click.UsageError(
-                f"--set must be FIELD=VALUE with a non-empty field, got {raw!r}")
+            raise click.UsageError(f"--set must be FIELD=VALUE with a non-empty field, got {raw!r}")
         try:
             out[key.strip()] = json.loads(value)
         except json.JSONDecodeError:
@@ -57,8 +57,7 @@ def theme_list(ctx: CLIContext) -> None:
         themes = themes_mod.list_themes(ctx.backend())
     headers = ["name", "themeid", "type", "isdefaulttheme"]
     rows = [
-        [t["name"], t.get("themeid") or "", str(t.get("type")),
-         str(t["isdefaulttheme"])]
+        [t["name"], t.get("themeid") or "", str(t.get("type")), str(t["isdefaulttheme"])]
         for t in themes
     ]
     ctx.emit(True, data=themes, table={"headers": headers, "rows": rows})
@@ -75,12 +74,16 @@ def theme_get(ctx: CLIContext, theme_id: str) -> None:
 
 
 _SET_OPTION = click.option(
-    "--set", "set_pairs", multiple=True, metavar="FIELD=VALUE",
+    "--set",
+    "set_pairs",
+    multiple=True,
+    metavar="FIELD=VALUE",
     help="Repeatable; a theme branding column, e.g. --set maincolor=#0066cc. "
-         "VALUE is parsed as JSON with a raw-string fallback.")
+    "VALUE is parsed as JSON with a raw-string fallback.",
+)
 _LOGO_OPTION = click.option(
-    "--logo", default=None,
-    help="Web resource name or GUID to bind as the theme logo.")
+    "--logo", default=None, help="Web resource name or GUID to bind as the theme logo."
+)
 
 
 @theme_group.command("create")
@@ -89,13 +92,15 @@ _LOGO_OPTION = click.option(
 @_LOGO_OPTION
 @pass_ctx
 def theme_create(
-    ctx: CLIContext, name: str, set_pairs: tuple[str, ...], logo: str | None,
+    ctx: CLIContext,
+    name: str,
+    set_pairs: tuple[str, ...],
+    logo: str | None,
 ) -> None:
     """Create a theme. Set branding columns with repeatable --set FIELD=VALUE."""
     attributes = _parse_set(set_pairs)
     with d365_errors(ctx):
-        info = themes_mod.create_theme(
-            ctx.backend(), name=name, attributes=attributes, logo=logo)
+        info = themes_mod.create_theme(ctx.backend(), name=name, attributes=attributes, logo=logo)
     ctx.emit(True, data=info)
     _journal(ctx, name, info)
 
@@ -107,14 +112,18 @@ def theme_create(
 @_LOGO_OPTION
 @pass_ctx
 def theme_update(
-    ctx: CLIContext, theme_id: str, name: str | None,
-    set_pairs: tuple[str, ...], logo: str | None,
+    ctx: CLIContext,
+    theme_id: str,
+    name: str | None,
+    set_pairs: tuple[str, ...],
+    logo: str | None,
 ) -> None:
     """Update THEME_ID's name, branding columns (--set), and/or --logo."""
     attributes = _parse_set(set_pairs)
     with d365_errors(ctx):
         info = themes_mod.update_theme(
-            ctx.backend(), theme_id, name=name, attributes=attributes, logo=logo)
+            ctx.backend(), theme_id, name=name, attributes=attributes, logo=logo
+        )
     ctx.emit(True, data=info)
     _journal(ctx, theme_id, info)
 

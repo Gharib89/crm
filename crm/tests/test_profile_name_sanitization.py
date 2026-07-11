@@ -7,12 +7,13 @@ single safe basename). The validator is called at two boundaries:
   - ConnectionProfile.__post_init__ (covers construction + from_dict/load)
   - profile_path() and session_path() in crm/core/session.py
 """
+
 from __future__ import annotations
 
 import pytest
 
+from crm.core.session import load_profile, profile_path, save_profile, session_path
 from crm.utils.d365_backend import ConnectionProfile, D365Error, validate_profile_name
-from crm.core.session import profile_path, session_path, save_profile, load_profile
 
 pytestmark = pytest.mark.usefixtures("isolated_home")
 
@@ -20,6 +21,7 @@ pytestmark = pytest.mark.usefixtures("isolated_home")
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_profile(name: str) -> ConnectionProfile:
     """Minimal valid ConnectionProfile using Contoso placeholder values."""
@@ -35,32 +37,39 @@ def _make_profile(name: str) -> ConnectionProfile:
 # validate_profile_name — direct unit tests
 # ---------------------------------------------------------------------------
 
+
 class TestValidateProfileNameRejects:
-    @pytest.mark.parametrize("bad_name", [
-        "",
-        ".",
-        "..",
-        "../evil",
-        "foo/bar",
-        "foo\\bar",
-        "/etc/passwd",
-        "a/../b",
-        "a\x00b",
-        "C:foo",   # Windows drive-relative — colon check
-        "C:",      # bare drive letter — colon check
-    ])
+    @pytest.mark.parametrize(
+        "bad_name",
+        [
+            "",
+            ".",
+            "..",
+            "../evil",
+            "foo/bar",
+            "foo\\bar",
+            "/etc/passwd",
+            "a/../b",
+            "a\x00b",
+            "C:foo",  # Windows drive-relative — colon check
+            "C:",  # bare drive letter — colon check
+        ],
+    )
     def test_raises_d365error(self, bad_name: str) -> None:
         with pytest.raises(D365Error):
             validate_profile_name(bad_name)
 
 
 class TestValidateProfileNameAccepts:
-    @pytest.mark.parametrize("good_name", [
-        "prod",
-        "crmworx",
-        "my-profile",
-        "profile.1",
-    ])
+    @pytest.mark.parametrize(
+        "good_name",
+        [
+            "prod",
+            "crmworx",
+            "my-profile",
+            "profile.1",
+        ],
+    )
     def test_returns_name_unchanged(self, good_name: str) -> None:
         result = validate_profile_name(good_name)
         assert result == good_name
@@ -69,6 +78,7 @@ class TestValidateProfileNameAccepts:
 # ---------------------------------------------------------------------------
 # ConnectionProfile construction boundary
 # ---------------------------------------------------------------------------
+
 
 class TestConnectionProfileConstructionBoundary:
     def test_bad_name_raises_on_construction(self) -> None:
@@ -87,6 +97,7 @@ class TestConnectionProfileConstructionBoundary:
 # profile_path / session_path — path-builder boundary
 # ---------------------------------------------------------------------------
 
+
 class TestPathBuilderBoundary:
     # Both builders route the name through validate_profile_name before raising;
     # one representative bad input per builder proves the wiring.
@@ -103,6 +114,7 @@ class TestPathBuilderBoundary:
 # load_profile routes through profile_path — traversal rejected
 # ---------------------------------------------------------------------------
 
+
 class TestLoadProfileBoundary:
     def test_load_profile_raises_for_traversal_name(self) -> None:
         with pytest.raises(D365Error):
@@ -112,6 +124,7 @@ class TestLoadProfileBoundary:
 # ---------------------------------------------------------------------------
 # Happy path — normal names still round-trip
 # ---------------------------------------------------------------------------
+
 
 class TestHappyPath:
     def test_save_and_load_roundtrip(self) -> None:
@@ -126,4 +139,3 @@ class TestHappyPath:
         path = session_path("default")
         # The path's name component should be "default.json"
         assert path.name == "default.json"
-

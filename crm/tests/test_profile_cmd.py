@@ -1,4 +1,5 @@
 """Tests for the `crm profile` command group."""
+
 # pyright: basic
 from __future__ import annotations
 
@@ -12,22 +13,25 @@ from click.testing import CliRunner
 from crm.cli import cli
 from crm.core import session as session_mod
 
-_WHOAMI = {"UserId": "00000000-0000-0000-0000-000000000001",
-           "BusinessUnitId": "00000000-0000-0000-0000-0000000000bb",
-           "OrganizationId": "00000000-0000-0000-0000-0000000000cc"}
+_WHOAMI = {
+    "UserId": "00000000-0000-0000-0000-000000000001",
+    "BusinessUnitId": "00000000-0000-0000-0000-0000000000bb",
+    "OrganizationId": "00000000-0000-0000-0000-0000000000cc",
+}
 
 
 @pytest.fixture
 def crm_home(tmp_path, monkeypatch):
     monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
     import crm.core.keyring_store as ks
+
     monkeypatch.setattr(ks, "is_available", lambda: False)
     monkeypatch.setattr(ks, "delete_secret", lambda n: False)
     # Stub OAuth auth so an oauth-profile backend never reaches msal/AAD at
     # construction (msal uses its own HTTP client, bypassing requests_mock).
     from crm.utils.d365_backend import D365Backend
-    monkeypatch.setattr(D365Backend, "_make_oauth_auth",
-                        lambda self, secret: (lambda r: r))
+
+    monkeypatch.setattr(D365Backend, "_make_oauth_auth", lambda self, secret: lambda r: r)
     return tmp_path
 
 
@@ -36,12 +40,25 @@ class TestAddScriptable:
         runner = CliRunner()
         with requests_mock.Mocker() as m:
             m.get(requests_mock.ANY, json=_WHOAMI)
-            result = runner.invoke(cli, [
-                "--json", "profile", "add",
-                "--url", "https://crm.contoso.local/contoso",
-                "--username", "alice", "--domain", "CONTOSO",
-                "--password", "pw", "--name", "contoso", "--yes",
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "--json",
+                    "profile",
+                    "add",
+                    "--url",
+                    "https://crm.contoso.local/contoso",
+                    "--username",
+                    "alice",
+                    "--domain",
+                    "CONTOSO",
+                    "--password",
+                    "pw",
+                    "--name",
+                    "contoso",
+                    "--yes",
+                ],
+            )
         assert result.exit_code == 0, result.output
         payload = json.loads(result.output)
         assert payload["ok"] is True
@@ -56,12 +73,25 @@ class TestAddScriptable:
         runner = CliRunner()
         with requests_mock.Mocker() as m:
             m.get(requests_mock.ANY, json=_WHOAMI)
-            result = runner.invoke(cli, [
-                "--json", "profile", "add",
-                "--url", "https://org.crm.dynamics.com",
-                "--tenant-id", "t1", "--client-id", "c1",
-                "--password", "secret", "--name", "cloud", "--yes",
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "--json",
+                    "profile",
+                    "add",
+                    "--url",
+                    "https://org.crm.dynamics.com",
+                    "--tenant-id",
+                    "t1",
+                    "--client-id",
+                    "c1",
+                    "--password",
+                    "secret",
+                    "--name",
+                    "cloud",
+                    "--yes",
+                ],
+            )
         assert result.exit_code == 0, result.output
         p = session_mod.load_profile("cloud")
         assert p.auth_scheme == "oauth"
@@ -71,15 +101,31 @@ class TestAddScriptable:
         runner = CliRunner()
         with requests_mock.Mocker() as m:
             # v9.2 probe 501 (on-prem cap); v9.1 retry succeeds.
-            m.get(re.compile(r"/api/data/v9\.2/"), status_code=501,
-                  json={"error": {"message": "Not Implemented"}})
+            m.get(
+                re.compile(r"/api/data/v9\.2/"),
+                status_code=501,
+                json={"error": {"message": "Not Implemented"}},
+            )
             m.get(re.compile(r"/api/data/v9\.1/"), json=_WHOAMI)
-            result = runner.invoke(cli, [
-                "--json", "profile", "add",
-                "--url", "https://crm.contoso.local/contoso",
-                "--username", "alice", "--domain", "CONTOSO",
-                "--password", "pw", "--name", "negc", "--yes",
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "--json",
+                    "profile",
+                    "add",
+                    "--url",
+                    "https://crm.contoso.local/contoso",
+                    "--username",
+                    "alice",
+                    "--domain",
+                    "CONTOSO",
+                    "--password",
+                    "pw",
+                    "--name",
+                    "negc",
+                    "--yes",
+                ],
+            )
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile("negc").api_version == "v9.1"
 
@@ -94,12 +140,25 @@ class TestAddScriptable:
         runner = CliRunner()
         with requests_mock.Mocker() as m:
             m.get(requests_mock.ANY, json=_WHOAMI)
-            result = runner.invoke(cli, [
-                "--json", "profile", "add",
-                "--url", "https://org.crm.dynamics.com",
-                "--tenant-id", "t1", "--client-id", "c1",
-                "--client-secret", "sekret", "--name", "cloud", "--yes",
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "--json",
+                    "profile",
+                    "add",
+                    "--url",
+                    "https://org.crm.dynamics.com",
+                    "--tenant-id",
+                    "t1",
+                    "--client-id",
+                    "c1",
+                    "--client-secret",
+                    "sekret",
+                    "--name",
+                    "cloud",
+                    "--yes",
+                ],
+            )
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile_secret("cloud") == "sekret"
 
@@ -107,12 +166,27 @@ class TestAddScriptable:
         # Both forms of the same secret is a usage error (exit 2), not a silent
         # last-wins — house rule for mutually-exclusive flags.
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "--json", "profile", "add",
-            "--url", "https://org.crm.dynamics.com",
-            "--tenant-id", "t1", "--client-id", "c1",
-            "--password", "pw", "--client-secret", "cs", "--name", "cloud", "--yes",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "--json",
+                "profile",
+                "add",
+                "--url",
+                "https://org.crm.dynamics.com",
+                "--tenant-id",
+                "t1",
+                "--client-id",
+                "c1",
+                "--password",
+                "pw",
+                "--client-secret",
+                "cs",
+                "--name",
+                "cloud",
+                "--yes",
+            ],
+        )
         assert result.exit_code == 2, result.output
         assert "exclusive" in result.output.lower()
 
@@ -127,12 +201,25 @@ class TestAddTestBeforeSave:
         runner = CliRunner()
         with requests_mock.Mocker() as m:
             m.get(requests_mock.ANY, status_code=500, json={"error": {"message": "boom"}})
-            result = runner.invoke(cli, [
-                "--json", "profile", "add",
-                "--url", "https://crm.contoso.local/contoso",
-                "--username", "alice", "--domain", "CONTOSO",
-                "--password", "pw", "--name", "failc", "--yes",
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "--json",
+                    "profile",
+                    "add",
+                    "--url",
+                    "https://crm.contoso.local/contoso",
+                    "--username",
+                    "alice",
+                    "--domain",
+                    "CONTOSO",
+                    "--password",
+                    "pw",
+                    "--name",
+                    "failc",
+                    "--yes",
+                ],
+            )
         assert result.exit_code == 1, result.output
         assert "failc" not in session_mod.list_profiles()
 
@@ -142,13 +229,26 @@ class TestAddTestBeforeSave:
         runner = CliRunner()
         with requests_mock.Mocker() as m:
             m.get(requests_mock.ANY, status_code=500, json={"error": {"message": "boom"}})
-            result = runner.invoke(cli, [
-                "--json", "profile", "add",
-                "--url", "https://crm.contoso.local/contoso",
-                "--username", "alice", "--domain", "CONTOSO",
-                "--password", "pw", "--name", "forcec", "--yes",
-                "--save-on-test-failure",
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "--json",
+                    "profile",
+                    "add",
+                    "--url",
+                    "https://crm.contoso.local/contoso",
+                    "--username",
+                    "alice",
+                    "--domain",
+                    "CONTOSO",
+                    "--password",
+                    "pw",
+                    "--name",
+                    "forcec",
+                    "--yes",
+                    "--save-on-test-failure",
+                ],
+            )
         assert result.exit_code == 0, result.output
         assert "forcec" in session_mod.list_profiles()
         assert session_mod.load_profile_secret("forcec") == "pw"
@@ -161,13 +261,28 @@ class TestAddTestBeforeSave:
         runner = CliRunner()
         with requests_mock.Mocker() as m:
             m.get(requests_mock.ANY, status_code=500, json={"error": {"message": "boom"}})
-            result = runner.invoke(cli, [
-                "--json", "profile", "add", "--auth-scheme", "ntlm",
-                "--url", "http:///contoso",
-                "--username", "alice", "--domain", "CONTOSO",
-                "--password", "pw", "--name", "badc", "--yes",
-                "--save-on-test-failure",
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "--json",
+                    "profile",
+                    "add",
+                    "--auth-scheme",
+                    "ntlm",
+                    "--url",
+                    "http:///contoso",
+                    "--username",
+                    "alice",
+                    "--domain",
+                    "CONTOSO",
+                    "--password",
+                    "pw",
+                    "--name",
+                    "badc",
+                    "--yes",
+                    "--save-on-test-failure",
+                ],
+            )
         assert result.exit_code == 1, result.output
         assert "badc" not in session_mod.list_profiles()
 
@@ -180,12 +295,29 @@ class TestAddTestBeforeSave:
         runner = CliRunner()
         with requests_mock.Mocker() as m:
             m.get(requests_mock.ANY, status_code=500, json={"error": {"message": "boom"}})
-            result = runner.invoke(cli, [
-                "profile", "add", "--auth-scheme", "ntlm",
-                "--url", "https://crm.contoso.local/contoso",
-                "--username", "alice", "--domain", "CONTOSO",
-                "--password", "pw", "--name", "declc", "--publisher-prefix", "", "--yes",
-            ], input="n\nn\n")
+            result = runner.invoke(
+                cli,
+                [
+                    "profile",
+                    "add",
+                    "--auth-scheme",
+                    "ntlm",
+                    "--url",
+                    "https://crm.contoso.local/contoso",
+                    "--username",
+                    "alice",
+                    "--domain",
+                    "CONTOSO",
+                    "--password",
+                    "pw",
+                    "--name",
+                    "declc",
+                    "--publisher-prefix",
+                    "",
+                    "--yes",
+                ],
+                input="n\nn\n",
+            )
         assert result.exit_code == 1, result.output
         assert "declc" not in session_mod.list_profiles()
 
@@ -194,12 +326,29 @@ class TestAddTestBeforeSave:
         runner = CliRunner()
         with requests_mock.Mocker() as m:
             m.get(requests_mock.ANY, status_code=500, json={"error": {"message": "boom"}})
-            result = runner.invoke(cli, [
-                "profile", "add", "--auth-scheme", "ntlm",
-                "--url", "https://crm.contoso.local/contoso",
-                "--username", "alice", "--domain", "CONTOSO",
-                "--password", "pw", "--name", "acptc", "--publisher-prefix", "", "--yes",
-            ], input="n\ny\n")
+            result = runner.invoke(
+                cli,
+                [
+                    "profile",
+                    "add",
+                    "--auth-scheme",
+                    "ntlm",
+                    "--url",
+                    "https://crm.contoso.local/contoso",
+                    "--username",
+                    "alice",
+                    "--domain",
+                    "CONTOSO",
+                    "--password",
+                    "pw",
+                    "--name",
+                    "acptc",
+                    "--publisher-prefix",
+                    "",
+                    "--yes",
+                ],
+                input="n\ny\n",
+            )
         assert result.exit_code == 0, result.output
         assert "acptc" in session_mod.list_profiles()
 
@@ -212,20 +361,35 @@ class TestAddWizard:
         # URL-inferred scheme preselected; the user's pick wins.
         monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
         captured = {}
+
         def _fake_select(title, items, default=None):
             captured["default"] = default
             captured["values"] = [v for v, _ in items]
             return "oauth"  # user arrow-keys to oauth
+
         monkeypatch.setattr("crm.commands.profile.select_one", _fake_select)
         runner = CliRunner()
         with requests_mock.Mocker() as m:
             m.get(requests_mock.ANY, json=_WHOAMI)
-            result = runner.invoke(cli, [
-                "profile", "add",
-                "--url", "https://crm.contoso.local/contoso",
-                "--tenant-id", "t1", "--client-id", "c1",
-                "--password", "pw", "--name", "wiz", "--yes",
-            ], input="\n\n")  # blank publisher-prefix, read-only N (both prompted)
+            result = runner.invoke(
+                cli,
+                [
+                    "profile",
+                    "add",
+                    "--url",
+                    "https://crm.contoso.local/contoso",
+                    "--tenant-id",
+                    "t1",
+                    "--client-id",
+                    "c1",
+                    "--password",
+                    "pw",
+                    "--name",
+                    "wiz",
+                    "--yes",
+                ],
+                input="\n\n",
+            )  # blank publisher-prefix, read-only N (both prompted)
         assert result.exit_code == 0, result.output
         assert captured["default"] == "ntlm"  # on-prem host -> inferred ntlm
         assert captured["values"] == ["ntlm", "kerberos", "negotiate", "oauth"]
@@ -237,10 +401,24 @@ class TestAddWizard:
         monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
         monkeypatch.setattr("crm.commands.profile.select_one", lambda *a, **k: None)
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "profile", "add", "--url", "https://crm.contoso.local/c",
-            "--username", "u", "--domain", "D", "--password", "pw",
-            "--name", "wiz2", "--yes"])
+        result = runner.invoke(
+            cli,
+            [
+                "profile",
+                "add",
+                "--url",
+                "https://crm.contoso.local/c",
+                "--username",
+                "u",
+                "--domain",
+                "D",
+                "--password",
+                "pw",
+                "--name",
+                "wiz2",
+                "--yes",
+            ],
+        )
         assert result.exit_code == 1, result.output  # operational failure (ADR 0001)
         assert "aborted by user" in result.output.lower()
         assert "wiz2" not in session_mod.list_profiles()
@@ -248,18 +426,35 @@ class TestAddWizard:
     def test_explicit_auth_scheme_skips_picker(self, crm_home, monkeypatch):
         # --auth-scheme given -> no picker, even on a TTY.
         monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
+
         def _boom(*a, **k):
             raise AssertionError("picker must not run when --auth-scheme is given")
+
         monkeypatch.setattr("crm.commands.profile.select_one", _boom)
         runner = CliRunner()
         with requests_mock.Mocker() as m:
             m.get(requests_mock.ANY, json=_WHOAMI)
-            result = runner.invoke(cli, [
-                "profile", "add", "--auth-scheme", "ntlm",
-                "--url", "https://crm.contoso.local/c",
-                "--username", "u", "--domain", "D", "--password", "pw",
-                "--name", "wiz3", "--yes"],
-                input="\n\n")  # blank publisher-prefix, read-only N
+            result = runner.invoke(
+                cli,
+                [
+                    "profile",
+                    "add",
+                    "--auth-scheme",
+                    "ntlm",
+                    "--url",
+                    "https://crm.contoso.local/c",
+                    "--username",
+                    "u",
+                    "--domain",
+                    "D",
+                    "--password",
+                    "pw",
+                    "--name",
+                    "wiz3",
+                    "--yes",
+                ],
+                input="\n\n",
+            )  # blank publisher-prefix, read-only N
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile("wiz3").auth_scheme == "ntlm"
 
@@ -267,12 +462,16 @@ class TestAddWizard:
 class TestUse:
     def _seed(self, name):
         from crm.utils.d365_backend import ConnectionProfile
-        session_mod.save_profile(ConnectionProfile(
-            name=name, url=f"https://{name}.contoso.local/o",
-            domain="C", username="u"))
+
+        session_mod.save_profile(
+            ConnectionProfile(
+                name=name, url=f"https://{name}.contoso.local/o", domain="C", username="u"
+            )
+        )
 
     def test_use_by_name_switches_active(self, crm_home):
-        self._seed("a"); self._seed("b")
+        self._seed("a")
+        self._seed("b")
         runner = CliRunner()
         result = runner.invoke(cli, ["--json", "profile", "use", "b"])
         assert result.exit_code == 0, result.output
@@ -301,12 +500,16 @@ class TestUse:
 class TestListEditRm:
     def _seed(self, name):
         from crm.utils.d365_backend import ConnectionProfile
-        session_mod.save_profile(ConnectionProfile(
-            name=name, url=f"https://{name}.contoso.local/o",
-            domain="C", username="u"))
+
+        session_mod.save_profile(
+            ConnectionProfile(
+                name=name, url=f"https://{name}.contoso.local/o", domain="C", username="u"
+            )
+        )
 
     def test_list_marks_active(self, crm_home):
-        self._seed("a"); self._seed("b")
+        self._seed("a")
+        self._seed("b")
         runner = CliRunner()
         runner.invoke(cli, ["--json", "profile", "use", "a"])
         result = runner.invoke(cli, ["--json", "profile", "list"])
@@ -344,9 +547,9 @@ class TestListEditRm:
     def test_edit_changes_url(self, crm_home):
         self._seed("a")
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "--json", "profile", "edit", "a",
-            "--url", "https://new.contoso.local/o2"])
+        result = runner.invoke(
+            cli, ["--json", "profile", "edit", "a", "--url", "https://new.contoso.local/o2"]
+        )
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile("a").url == "https://new.contoso.local/o2"
 
@@ -374,9 +577,16 @@ class TestListEditRm:
     def test_edit_verify_ssl_reenables(self, crm_home):
         # The toggle works both ways: --verify-ssl turns verification back on.
         from crm.utils.d365_backend import ConnectionProfile
-        session_mod.save_profile(ConnectionProfile(
-            name="a", url="https://a.contoso.local/o",
-            domain="C", username="u", verify_ssl=False))
+
+        session_mod.save_profile(
+            ConnectionProfile(
+                name="a",
+                url="https://a.contoso.local/o",
+                domain="C",
+                username="u",
+                verify_ssl=False,
+            )
+        )
         runner = CliRunner()
         result = runner.invoke(cli, ["--json", "profile", "edit", "a", "--verify-ssl"])
         assert result.exit_code == 0, result.output
@@ -385,12 +595,20 @@ class TestListEditRm:
     def test_edit_verify_ssl_untouched_when_flag_absent(self, crm_home):
         # Omitting the flag leaves verify_ssl as-is (default-None means unchanged).
         from crm.utils.d365_backend import ConnectionProfile
-        session_mod.save_profile(ConnectionProfile(
-            name="a", url="https://a.contoso.local/o",
-            domain="C", username="u", verify_ssl=False))
+
+        session_mod.save_profile(
+            ConnectionProfile(
+                name="a",
+                url="https://a.contoso.local/o",
+                domain="C",
+                username="u",
+                verify_ssl=False,
+            )
+        )
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "--json", "profile", "edit", "a", "--url", "https://a.contoso.local/o2"])
+        result = runner.invoke(
+            cli, ["--json", "profile", "edit", "a", "--url", "https://a.contoso.local/o2"]
+        )
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile("a").verify_ssl is False  # unchanged
 
@@ -410,7 +628,8 @@ class TestListEditRm:
         assert session_mod.load_session("default")["active_profile"] is None
 
     def test_rm_no_arg_picks_from_picker(self, crm_home, monkeypatch):
-        self._seed("a"); self._seed("b")
+        self._seed("a")
+        self._seed("b")
         monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
         monkeypatch.setattr("crm.commands.profile.select_one", lambda *a, **k: "a")
         runner = CliRunner()
@@ -433,8 +652,7 @@ class TestListEditRm:
         monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
         monkeypatch.setattr("crm.commands.profile.select_one", lambda *a, **k: "a")
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "profile", "edit", "--url", "https://picked.contoso.local/o2"])
+        result = runner.invoke(cli, ["profile", "edit", "--url", "https://picked.contoso.local/o2"])
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile("a").url == "https://picked.contoso.local/o2"
 
@@ -450,19 +668,41 @@ class TestReadOnlyFlag:
 
     def _seed(self, name, read_only=False):
         from crm.utils.d365_backend import ConnectionProfile
-        session_mod.save_profile(ConnectionProfile(
-            name=name, url=f"https://{name}.contoso.local/o",
-            domain="C", username="u", read_only=read_only))
+
+        session_mod.save_profile(
+            ConnectionProfile(
+                name=name,
+                url=f"https://{name}.contoso.local/o",
+                domain="C",
+                username="u",
+                read_only=read_only,
+            )
+        )
 
     def test_add_read_only_flag_sets_it(self, crm_home):
         runner = CliRunner()
         with requests_mock.Mocker() as m:
             m.get(requests_mock.ANY, json=_WHOAMI)
-            result = runner.invoke(cli, [
-                "--json", "profile", "add",
-                "--url", "https://crm.contoso.local/c",
-                "--username", "u", "--domain", "D", "--password", "pw",
-                "--name", "ro", "--read-only", "--yes"])
+            result = runner.invoke(
+                cli,
+                [
+                    "--json",
+                    "profile",
+                    "add",
+                    "--url",
+                    "https://crm.contoso.local/c",
+                    "--username",
+                    "u",
+                    "--domain",
+                    "D",
+                    "--password",
+                    "pw",
+                    "--name",
+                    "ro",
+                    "--read-only",
+                    "--yes",
+                ],
+            )
         assert result.exit_code == 0, result.output
         assert json.loads(result.output)["data"]["read_only"] is True
         assert session_mod.load_profile("ro").read_only is True
@@ -471,11 +711,25 @@ class TestReadOnlyFlag:
         runner = CliRunner()
         with requests_mock.Mocker() as m:
             m.get(requests_mock.ANY, json=_WHOAMI)
-            result = runner.invoke(cli, [
-                "--json", "profile", "add",
-                "--url", "https://crm.contoso.local/c",
-                "--username", "u", "--domain", "D", "--password", "pw",
-                "--name", "rw", "--yes"])
+            result = runner.invoke(
+                cli,
+                [
+                    "--json",
+                    "profile",
+                    "add",
+                    "--url",
+                    "https://crm.contoso.local/c",
+                    "--username",
+                    "u",
+                    "--domain",
+                    "D",
+                    "--password",
+                    "pw",
+                    "--name",
+                    "rw",
+                    "--yes",
+                ],
+            )
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile("rw").read_only is False
 
@@ -527,25 +781,28 @@ class TestReadOnlyFlag:
 class TestSetDeletePassword:
     def _seed(self, name="a"):
         from crm.utils.d365_backend import ConnectionProfile
-        session_mod.save_profile(ConnectionProfile(
-            name=name, url=f"https://{name}.contoso.local/o",
-            domain="C", username="u"))
+
+        session_mod.save_profile(
+            ConnectionProfile(
+                name=name, url=f"https://{name}.contoso.local/o", domain="C", username="u"
+            )
+        )
 
     def test_set_password_stores_plaintext_when_no_keyring(self, crm_home):
         self._seed()
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "--json", "profile", "set-password", "--profile", "a",
-            "--password", "pw"])
+        result = runner.invoke(
+            cli, ["--json", "profile", "set-password", "--profile", "a", "--password", "pw"]
+        )
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile_secret("a") == "pw"
 
     def test_set_password_client_secret_alias(self, crm_home):
         self._seed()
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "--json", "profile", "set-password", "--profile", "a",
-            "--client-secret", "cs"])
+        result = runner.invoke(
+            cli, ["--json", "profile", "set-password", "--profile", "a", "--client-secret", "cs"]
+        )
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile_secret("a") == "cs"
 
@@ -553,21 +810,40 @@ class TestSetDeletePassword:
         # On an OAuth profile the missing-secret error must point at the alias,
         # not only --password, so the oauth flag is discoverable when scripting.
         from crm.utils.d365_backend import ConnectionProfile
-        session_mod.save_profile(ConnectionProfile(
-            name="cloud", url="https://org.crm.dynamics.com", domain="",
-            username="", auth_scheme="oauth", tenant_id="t", client_id="c"))
+
+        session_mod.save_profile(
+            ConnectionProfile(
+                name="cloud",
+                url="https://org.crm.dynamics.com",
+                domain="",
+                username="",
+                auth_scheme="oauth",
+                tenant_id="t",
+                client_id="c",
+            )
+        )
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "--json", "profile", "set-password", "--profile", "cloud"])
+        result = runner.invoke(cli, ["--json", "profile", "set-password", "--profile", "cloud"])
         assert result.exit_code == 1, result.output
         assert "--client-secret" in json.loads(result.output)["error"]
 
     def test_set_password_both_secret_flags_mutually_exclusive(self, crm_home):
         self._seed()
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "--json", "profile", "set-password", "--profile", "a",
-            "--password", "pw", "--client-secret", "cs"])
+        result = runner.invoke(
+            cli,
+            [
+                "--json",
+                "profile",
+                "set-password",
+                "--profile",
+                "a",
+                "--password",
+                "pw",
+                "--client-secret",
+                "cs",
+            ],
+        )
         assert result.exit_code == 2, result.output
         assert "exclusive" in result.output.lower()
 
@@ -575,8 +851,7 @@ class TestSetDeletePassword:
         self._seed()
         session_mod.save_profile_secret_plaintext("a", "pw")
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "--json", "profile", "delete-password", "--profile", "a"])
+        result = runner.invoke(cli, ["--json", "profile", "delete-password", "--profile", "a"])
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile_secret("a") is None
 
@@ -585,8 +860,7 @@ class TestSetDeletePassword:
         # (questionary.password, echoes '*'), not the old fully-hidden getpass.
         self._seed()
         monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
-        monkeypatch.setattr("crm.commands.profile.prompt_secret",
-                            lambda prompt: "typed-pw")
+        monkeypatch.setattr("crm.commands.profile.prompt_secret", lambda prompt: "typed-pw")
         runner = CliRunner()
         result = runner.invoke(cli, ["profile", "set-password", "--profile", "a"])
         assert result.exit_code == 0, result.output
@@ -598,11 +872,11 @@ class TestSetDeletePassword:
         self._seed()
         monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: False)
         called = []
-        monkeypatch.setattr("crm.commands.profile.prompt_secret",
-                            lambda prompt: called.append(prompt) or "x")
+        monkeypatch.setattr(
+            "crm.commands.profile.prompt_secret", lambda prompt: called.append(prompt) or "x"
+        )
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "--json", "profile", "set-password", "--profile", "a"])
+        result = runner.invoke(cli, ["--json", "profile", "set-password", "--profile", "a"])
         assert result.exit_code == 1, result.output
         assert not called  # masked prompt never reached off a TTY
 
@@ -612,17 +886,36 @@ class TestPublisherPrefix:
 
     def _seed(self, name="a"):
         from crm.utils.d365_backend import ConnectionProfile
-        session_mod.save_profile(ConnectionProfile(
-            name=name, url=f"https://{name}.contoso.local/o",
-            domain="C", username="u"))
+
+        session_mod.save_profile(
+            ConnectionProfile(
+                name=name, url=f"https://{name}.contoso.local/o", domain="C", username="u"
+            )
+        )
 
     def test_add_invalid_prefix_flag_errors_exit_2(self, crm_home):
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "--json", "profile", "add",
-            "--url", "https://crm.contoso.local/o",
-            "--username", "u", "--domain", "D", "--password", "pw",
-            "--name", "p", "--publisher-prefix", "bad!", "--yes"])
+        result = runner.invoke(
+            cli,
+            [
+                "--json",
+                "profile",
+                "add",
+                "--url",
+                "https://crm.contoso.local/o",
+                "--username",
+                "u",
+                "--domain",
+                "D",
+                "--password",
+                "pw",
+                "--name",
+                "p",
+                "--publisher-prefix",
+                "bad!",
+                "--yes",
+            ],
+        )
         assert result.exit_code == 2, result.output
         assert "prefix" in result.output.lower()
         assert "p" not in session_mod.list_profiles()
@@ -631,19 +924,36 @@ class TestPublisherPrefix:
         runner = CliRunner()
         with requests_mock.Mocker() as m:
             m.get(requests_mock.ANY, json=_WHOAMI)
-            result = runner.invoke(cli, [
-                "--json", "profile", "add",
-                "--url", "https://crm.contoso.local/o",
-                "--username", "u", "--domain", "D", "--password", "pw",
-                "--name", "p", "--publisher-prefix", "new", "--yes"])
+            result = runner.invoke(
+                cli,
+                [
+                    "--json",
+                    "profile",
+                    "add",
+                    "--url",
+                    "https://crm.contoso.local/o",
+                    "--username",
+                    "u",
+                    "--domain",
+                    "D",
+                    "--password",
+                    "pw",
+                    "--name",
+                    "p",
+                    "--publisher-prefix",
+                    "new",
+                    "--yes",
+                ],
+            )
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile("p").publisher_prefix == "new"
 
     def test_edit_invalid_prefix_flag_errors_exit_2(self, crm_home):
         self._seed("a")
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "--json", "profile", "edit", "a", "--publisher-prefix", "bad!"])
+        result = runner.invoke(
+            cli, ["--json", "profile", "edit", "a", "--publisher-prefix", "bad!"]
+        )
         assert result.exit_code == 2, result.output
         assert session_mod.load_profile("a").publisher_prefix is None  # unchanged
 
@@ -654,11 +964,27 @@ class TestPublisherPrefix:
         runner = CliRunner()
         with requests_mock.Mocker() as m:
             m.get(requests_mock.ANY, json=_WHOAMI)
-            result = runner.invoke(cli, [
-                "profile", "add", "--auth-scheme", "ntlm",
-                "--url", "https://crm.contoso.local/o",
-                "--username", "u", "--domain", "D", "--password", "pw",
-                "--name", "wiz", "--yes"], input="bad!\ngood\n\n")  # +read-only N
+            result = runner.invoke(
+                cli,
+                [
+                    "profile",
+                    "add",
+                    "--auth-scheme",
+                    "ntlm",
+                    "--url",
+                    "https://crm.contoso.local/o",
+                    "--username",
+                    "u",
+                    "--domain",
+                    "D",
+                    "--password",
+                    "pw",
+                    "--name",
+                    "wiz",
+                    "--yes",
+                ],
+                input="bad!\ngood\n\n",
+            )  # +read-only N
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile("wiz").publisher_prefix == "good"
 
@@ -667,11 +993,27 @@ class TestPublisherPrefix:
         runner = CliRunner()
         with requests_mock.Mocker() as m:
             m.get(requests_mock.ANY, json=_WHOAMI)
-            result = runner.invoke(cli, [
-                "profile", "add", "--auth-scheme", "ntlm",
-                "--url", "https://crm.contoso.local/o",
-                "--username", "u", "--domain", "D", "--password", "pw",
-                "--name", "wiz", "--yes"], input="\n\n")  # blank prefix, read-only N
+            result = runner.invoke(
+                cli,
+                [
+                    "profile",
+                    "add",
+                    "--auth-scheme",
+                    "ntlm",
+                    "--url",
+                    "https://crm.contoso.local/o",
+                    "--username",
+                    "u",
+                    "--domain",
+                    "D",
+                    "--password",
+                    "pw",
+                    "--name",
+                    "wiz",
+                    "--yes",
+                ],
+                input="\n\n",
+            )  # blank prefix, read-only N
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile("wiz").publisher_prefix is None
 
@@ -679,17 +1021,29 @@ class TestPublisherPrefix:
         # No --password on a TTY: the wizard reads the secret via the masked
         # prompt (questionary.password) and stores it.
         monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
-        monkeypatch.setattr("crm.commands.profile.prompt_secret",
-                            lambda prompt: "wiz-secret")
+        monkeypatch.setattr("crm.commands.profile.prompt_secret", lambda prompt: "wiz-secret")
         runner = CliRunner()
         with requests_mock.Mocker() as m:
             m.get(requests_mock.ANY, json=_WHOAMI)
-            result = runner.invoke(cli, [
-                "profile", "add", "--auth-scheme", "ntlm",
-                "--url", "https://crm.contoso.local/o",
-                "--username", "u", "--domain", "D",
-                "--name", "wiz", "--yes"],
-                input="\n\n")  # blank publisher-prefix, read-only N
+            result = runner.invoke(
+                cli,
+                [
+                    "profile",
+                    "add",
+                    "--auth-scheme",
+                    "ntlm",
+                    "--url",
+                    "https://crm.contoso.local/o",
+                    "--username",
+                    "u",
+                    "--domain",
+                    "D",
+                    "--name",
+                    "wiz",
+                    "--yes",
+                ],
+                input="\n\n",
+            )  # blank publisher-prefix, read-only N
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile_secret("wiz") == "wiz-secret"
 
@@ -697,9 +1051,16 @@ class TestPublisherPrefix:
 class TestRename:
     def _seed(self, name, secret=None):
         from crm.utils.d365_backend import ConnectionProfile
-        session_mod.save_profile(ConnectionProfile(
-            name=name, url=f"https://{name}.contoso.local/o",
-            domain="C", username="u", publisher_prefix="pfx"))
+
+        session_mod.save_profile(
+            ConnectionProfile(
+                name=name,
+                url=f"https://{name}.contoso.local/o",
+                domain="C",
+                username="u",
+                publisher_prefix="pfx",
+            )
+        )
         if secret is not None:
             session_mod.save_profile_secret_plaintext(name, secret)
 
@@ -792,10 +1153,13 @@ class TestRename:
         # recovery hint) rather than roll back the rename.
         from crm.core import keyring_store as ks
         from crm.utils.d365_backend import D365Error
+
         self._seed("old")
         monkeypatch.setattr(ks, "get_secret", lambda n: "krsec")
+
         def _boom(name, secret):
             raise D365Error("keyring locked")
+
         monkeypatch.setattr(ks, "set_secret", _boom)
         runner = CliRunner()
         result = runner.invoke(cli, ["--json", "profile", "rename", "old", "new"])
@@ -819,9 +1183,12 @@ class TestRename:
         # A failed cache move must not fail the rename — it warns instead (the
         # cache is regenerable), mirroring the keyring best-effort path.
         from crm.core import metadata_cache
+
         self._seed("old")
+
         def _boom(old, new):
             raise OSError("cache locked")
+
         monkeypatch.setattr(metadata_cache, "move_cache", _boom)
         runner = CliRunner()
         result = runner.invoke(cli, ["--json", "profile", "rename", "old", "new"])
@@ -845,10 +1212,18 @@ class TestAutoLaunch:
 class TestAuthHints:
     def test_401_whoami_prints_set_password_hint(self, crm_home):
         from crm.utils.d365_backend import ConnectionProfile
-        session_mod.save_profile(ConnectionProfile(
-            name="cloud", url="https://org.crm.dynamics.com",
-            domain="", username="", auth_scheme="oauth",
-            tenant_id="t", client_id="c"))
+
+        session_mod.save_profile(
+            ConnectionProfile(
+                name="cloud",
+                url="https://org.crm.dynamics.com",
+                domain="",
+                username="",
+                auth_scheme="oauth",
+                tenant_id="t",
+                client_id="c",
+            )
+        )
         session_mod.save_profile_secret_plaintext("cloud", "badsecret")
         runner = CliRunner()
         with requests_mock.Mocker() as m:
@@ -856,5 +1231,6 @@ class TestAuthHints:
             result = runner.invoke(cli, ["--json", "--profile", "cloud", "connection", "whoami"])
         assert result.exit_code == 1, result.output
         payload = json.loads(result.output)
-        assert "set-password" in (payload.get("meta", {}).get("hint", "")
-                                  or payload.get("error", ""))
+        assert "set-password" in (
+            payload.get("meta", {}).get("hint", "") or payload.get("error", "")
+        )

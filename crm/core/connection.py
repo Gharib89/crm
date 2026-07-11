@@ -14,21 +14,21 @@ import urllib.parse
 from dataclasses import dataclass
 from typing import Any
 
+from crm.core import keyring_store
+from crm.core import session as session_mod
+
 # requests is imported lazily inside the doctor probes (the only functions here
 # that touch the wire) so importing this module never imports the transport
 # stack — `crm profile`/`connection` command modules import it for D365Error,
 # DEFAULT_HEADERS and credential resolution, none of which need requests (#247).
 from crm.utils.d365_backend import (
-    ConnectionProfile,
-    D365Backend,
-    D365Error,
     # Reuse the client's canonical OData headers so the raw doctor probes stay
     # faithful to a real request.
     DEFAULT_HEADERS,
+    ConnectionProfile,
+    D365Backend,
+    D365Error,
 )
-from crm.core import session as session_mod
-from crm.core import keyring_store
-
 
 # ── Profile + credential resolution ─────────────────────────────────────
 
@@ -56,8 +56,7 @@ def resolve_credentials(
     """
     if not profile_name:
         raise D365Error(
-            "No profile configured. Run `crm profile add` to create one, "
-            "or pass --profile <name>."
+            "No profile configured. Run `crm profile add` to create one, or pass --profile <name>."
         )
     try:
         profile = session_mod.load_profile(profile_name)
@@ -76,11 +75,10 @@ def resolve_credentials(
         # lazily to stay off the import-light credential path. `answer: object`
         # keeps this pyright-strict module clean over the untyped questionary API.
         import questionary
+
         is_oauth = profile.auth_scheme == "oauth"
         label = "client secret" if is_oauth else "password"
-        answer: object = questionary.password(
-            f"D365 {label} for profile {profile.name!r}: "
-        ).ask()
+        answer: object = questionary.password(f"D365 {label} for profile {profile.name!r}: ").ask()
         secret = str(answer) if answer else None
     if not secret:
         is_oauth = profile.auth_scheme == "oauth"
@@ -93,13 +91,17 @@ def resolve_credentials(
 
 
 def save_secret(
-    profile_name: str, secret: str, *, force_plaintext: bool = False,
+    profile_name: str,
+    secret: str,
+    *,
+    force_plaintext: bool = False,
 ) -> str:
     """Persist *secret* for an existing profile and return the store used
     ('keyring' | 'plaintext'). Always saves: tries the OS keyring first, then
     falls back to a 0600 plaintext ``_secret`` in the profile file when the
     keyring is unavailable (typical WSL/headless) or ``force_plaintext`` is set.
-    Maintains the single-store invariant by clearing the other store."""
+    Maintains the single-store invariant by clearing the other store.
+    """
     if not force_plaintext and keyring_store.is_available():
         keyring_store.set_secret(profile_name, secret)
         session_mod.clear_profile_secret(profile_name)
@@ -122,6 +124,7 @@ _VERSION_UNSUPPORTED_STATUS = 501
 def whoami(backend: D365Backend) -> dict[str, Any]:
     """Call WhoAmI() — the canonical D365 identity probe."""
     from crm.utils.d365_backend import as_dict
+
     return as_dict(backend.get("WhoAmI"))
 
 
@@ -136,6 +139,7 @@ def _org_friendly_name(backend: D365Backend, org_id: str | None) -> str | None:
     if not org_id:
         return None
     from crm.utils.d365_backend import as_dict
+
     try:
         rec = as_dict(backend.get(f"organizations({org_id})?$select=name"))
     except D365Error:
@@ -334,14 +338,14 @@ def connection_doctor(backend: D365Backend) -> dict[str, Any]:
     try:
         sock = socket.create_connection((host, port), timeout=profile.timeout)
         sock.close()
-        dns_tcp = _check(
-            "dns_tcp", True, f"TCP connection to {host}:{port} succeeded"
-        )
+        dns_tcp = _check("dns_tcp", True, f"TCP connection to {host}:{port} succeeded")
     except socket.gaierror:
         return _abort(
             [
                 _check(
-                    "dns_tcp", False, f"DNS resolution failed for {host}",
+                    "dns_tcp",
+                    False,
+                    f"DNS resolution failed for {host}",
                     "check the hostname spelling, your VPN connection, and DNS resolution",
                 )
             ],
@@ -351,7 +355,9 @@ def connection_doctor(backend: D365Backend) -> dict[str, Any]:
         return _abort(
             [
                 _check(
-                    "dns_tcp", False, f"cannot reach {host}:{port}: {exc}",
+                    "dns_tcp",
+                    False,
+                    f"cannot reach {host}:{port}: {exc}",
                     "check the port, firewall rules, and that the server is up",
                 )
             ],
@@ -367,7 +373,9 @@ def connection_doctor(backend: D365Backend) -> dict[str, Any]:
         # the SSLError cert path; ConnectionError/Timeout still fire).
         try:
             # share the client's standard OData headers — see _doctor_version.
-            resp = backend.session.get(profile.api_base, headers=DEFAULT_HEADERS, timeout=profile.timeout)  # pyright: ignore[reportUnknownMemberType]
+            resp = backend.session.get(
+                profile.api_base, headers=DEFAULT_HEADERS, timeout=profile.timeout
+            )  # pyright: ignore[reportUnknownMemberType]
             seen_headers.append(resp.headers)
             detail = (
                 "TLS handshake OK"
@@ -380,7 +388,9 @@ def connection_doctor(backend: D365Backend) -> dict[str, Any]:
                 [
                     dns_tcp,
                     _check(
-                        "tls", False, f"TLS certificate not trusted: {exc}",
+                        "tls",
+                        False,
+                        f"TLS certificate not trusted: {exc}",
                         "certificate not trusted — pass --no-verify-ssl to skip "
                         "verification, or install the server's CA certificate",
                     ),
@@ -392,7 +402,9 @@ def connection_doctor(backend: D365Backend) -> dict[str, Any]:
                 [
                     dns_tcp,
                     _check(
-                        "tls", False, f"timed out establishing HTTPS connection: {exc}",
+                        "tls",
+                        False,
+                        f"timed out establishing HTTPS connection: {exc}",
                         "the server accepted the TCP connection but did not complete "
                         "the HTTPS handshake in time — check server load, a proxy, or "
                         "raise the timeout",
@@ -405,7 +417,9 @@ def connection_doctor(backend: D365Backend) -> dict[str, Any]:
                 [
                     dns_tcp,
                     _check(
-                        "tls", False, f"cannot establish HTTPS connection: {exc}",
+                        "tls",
+                        False,
+                        f"cannot establish HTTPS connection: {exc}",
                         "check that the server is reachable over HTTPS on this port",
                     ),
                 ],
@@ -416,7 +430,9 @@ def connection_doctor(backend: D365Backend) -> dict[str, Any]:
                 [
                     dns_tcp,
                     _check(
-                        "tls", False, f"HTTPS request to api_base failed: {exc}",
+                        "tls",
+                        False,
+                        f"HTTPS request to api_base failed: {exc}",
                         "check that the server is reachable over HTTPS on this port",
                     ),
                 ],
@@ -431,7 +447,9 @@ def connection_doctor(backend: D365Backend) -> dict[str, Any]:
                 [
                     dns_tcp,
                     _check(
-                        "tls", False, f"could not authenticate the request: {exc}",
+                        "tls",
+                        False,
+                        f"could not authenticate the request: {exc}",
                         "for an OAuth profile, check tenant_id/client_id "
                         "(crm profile edit) and re-store the client secret "
                         "(crm profile set-password)",
@@ -475,7 +493,9 @@ def _doctor_version(backend: D365Backend, seen_headers: list[Any]) -> dict[str, 
         # D365Error from the auth handler (e.g. OAuth token expiry) AFTER TLS
         # passed — degrade to a failed check, do not crash the non-fatal probe.
         return _check(
-            "version", False, f"RetrieveVersion request failed: {exc}",
+            "version",
+            False,
+            f"RetrieveVersion request failed: {exc}",
             "the request failed after TLS — the server may have reset/restarted "
             "or the credentials/token expired; retry and check server stability",
         )
@@ -489,7 +509,8 @@ def _doctor_version(backend: D365Backend, seen_headers: list[Any]) -> dict[str, 
         return _check("version", True, f"server version {version}")
     if status in (404, _VERSION_UNSUPPORTED_STATUS):
         return _check(
-            "version", False,
+            "version",
+            False,
             f"api_version '{backend.profile.api_version}' not served (HTTP {status})",
             _RENEGOTIATE_HINT,
         )
@@ -511,7 +532,9 @@ def _doctor_auth(backend: D365Backend, seen_headers: list[Any]) -> dict[str, Any
         # D365Error from the auth handler (e.g. OAuth token expiry) AFTER TLS
         # passed — degrade to a failed check, do not crash the probe.
         return _check(
-            "auth", False, f"WhoAmI request failed: {exc}",
+            "auth",
+            False,
+            f"WhoAmI request failed: {exc}",
             "the request failed after TLS — the server may have reset/restarted "
             "or the credentials/token expired; retry and check server stability",
         )
@@ -525,13 +548,17 @@ def _doctor_auth(backend: D365Backend, seen_headers: list[Any]) -> dict[str, Any
         return _check("auth", True, f"authenticated as {user_id}")
     if status == 401:
         return _check(
-            "auth", False, "authentication failed (HTTP 401)",
+            "auth",
+            False,
+            "authentication failed (HTTP 401)",
             "check the stored secret — re-store it with "
             f"`crm profile set-password --profile {backend.profile.name}`",
         )
     if status == 403:
         return _check(
-            "auth", False, "forbidden (HTTP 403)",
+            "auth",
+            False,
+            "forbidden (HTTP 403)",
             "authenticated but the user lacks privileges / has no security role",
         )
     return _check("auth", False, f"unexpected HTTP {status} from WhoAmI")

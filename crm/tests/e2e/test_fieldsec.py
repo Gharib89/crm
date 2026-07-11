@@ -7,6 +7,7 @@ rejects creating a `fieldpermission` on an unsecured column. Teardown deletes
 the custom entity, whose cascade drops the secured attribute and the permission
 in one shot (far cleaner than un-securing a standard attribute).
 """
+
 from __future__ import annotations
 
 import json
@@ -15,7 +16,6 @@ import pytest
 
 from crm.core.fieldsec import PERM_ALLOWED, PERM_NOT_ALLOWED
 from crm.tests.e2e.coverage import covers
-
 
 # ── fieldsec list ─────────────────────────────────────────────────────────────
 
@@ -62,10 +62,18 @@ def test_fieldsec_lifecycle(backend, cli, request, unique, ephemeral_solution):
     request.addfinalizer(_cleanup)
 
     # create-profile
-    result = cli([
-        "--json", "fieldsec", "create-profile", name, "--description", "e2e",
-        "--solution", ephemeral_solution,
-    ])
+    result = cli(
+        [
+            "--json",
+            "fieldsec",
+            "create-profile",
+            name,
+            "--description",
+            "e2e",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert result.returncode == 0, (
         f"create-profile failed:\n{result.stderr}\nstdout: {result.stdout}"
     )
@@ -77,18 +85,14 @@ def test_fieldsec_lifecycle(backend, cli, request, unique, ephemeral_solution):
 
     # assign to the calling user
     result = cli(["--json", "fieldsec", "assign", pid, "--user", user_id])
-    assert result.returncode == 0, (
-        f"assign failed:\n{result.stderr}\nstdout: {result.stdout}"
-    )
+    assert result.returncode == 0, f"assign failed:\n{result.stderr}\nstdout: {result.stdout}"
     assigned = json.loads(result.stdout)["data"]
     assert assigned.get("assigned") is True, assigned
     assert assigned.get("principal_type") == "user", assigned
 
     # get — profile fields + a permissions list (empty here)
     result = cli(["--json", "fieldsec", "get", pid])
-    assert result.returncode == 0, (
-        f"get failed:\n{result.stderr}\nstdout: {result.stdout}"
-    )
+    assert result.returncode == 0, f"get failed:\n{result.stderr}\nstdout: {result.stdout}"
     got = json.loads(result.stdout)["data"]
     assert got.get("name") == name, got
     assert isinstance(got.get("permissions"), list), got
@@ -139,9 +143,7 @@ def test_fieldsec_add_permission_on_secured_custom_attribute(
     request.addfinalizer(_cleanup)
 
     # 1. Throwaway custom entity.
-    ent = meta_mod.create_entity(
-        backend, schema_name=schema, display_name=f"E2E FS {unique}"
-    )
+    ent = meta_mod.create_entity(backend, schema_name=schema, display_name=f"E2E FS {unique}")
     created_entity.append(ent["logical_name"])
 
     # 2. A field-secured custom column + publish. `add_attribute` does not expose
@@ -163,10 +165,16 @@ def test_fieldsec_add_permission_on_secured_custom_attribute(
     sol_mod.publish_all(backend)
 
     # 3. Field-security profile (its own cleanup is registered above).
-    result = cli([
-        "--json", "fieldsec", "create-profile", f"E2E FS {unique}",
-        "--solution", ephemeral_solution,
-    ])
+    result = cli(
+        [
+            "--json",
+            "fieldsec",
+            "create-profile",
+            f"E2E FS {unique}",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert result.returncode == 0, (
         f"create-profile failed:\n{result.stderr}\nstdout: {result.stdout}"
     )
@@ -175,10 +183,20 @@ def test_fieldsec_add_permission_on_secured_custom_attribute(
     created_profile.append(pid)
 
     # 4. add-permission — the verb under test. Grant read + update.
-    result = cli([
-        "--json", "fieldsec", "add-permission", pid, entity_logical, attr_logical,
-        "--read", "--update", "--solution", ephemeral_solution,
-    ])
+    result = cli(
+        [
+            "--json",
+            "fieldsec",
+            "add-permission",
+            pid,
+            entity_logical,
+            attr_logical,
+            "--read",
+            "--update",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert result.returncode == 0, (
         f"add-permission failed:\n{result.stderr}\nstdout: {result.stdout}"
     )

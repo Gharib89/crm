@@ -17,6 +17,7 @@ are handled by the resolver logic and a small, explicit ``ALLOWLIST``. The gate
 **fails closed**: a new unrecognized broken example is a failure, never a silent
 skip. See ``crm/tests/TEST.md``.
 """
+
 from __future__ import annotations
 
 import json
@@ -308,9 +309,7 @@ def audit_example(model: CliModel, example: Example) -> list[str]:
 
     # Misplaced-global check: a global flag appearing after the first command
     # token, not redefined by the resolved command.
-    first_cmd_idx: int | None = next(
-        (k for k, t in enumerate(body) if not t.startswith("-")), None
-    )
+    first_cmd_idx: int | None = next((k for k, t in enumerate(body) if not t.startswith("-")), None)
     if first_cmd_idx is not None:
         for idx, tok in enumerate(body):
             key = tok.split("=", 1)[0]
@@ -411,9 +410,7 @@ def test_doc_example_resolves(example: Example) -> None:
     if _normalized(example) in ALLOWLIST or _is_placeholder_command(example):
         pytest.skip("allowlisted non-runnable reference")
     problems = audit_example(MODEL, example)
-    assert not problems, "\n".join(
-        [f"{example.file}:{example.line}: {example.command}", *problems]
-    )
+    assert not problems, "\n".join([f"{example.file}:{example.line}: {example.command}", *problems])
 
 
 def test_allowlist_has_no_stale_entries() -> None:
@@ -463,7 +460,7 @@ def test_known_bugs_are_caught(command: str) -> None:
         # Dual-position globals (#818): valid AFTER the subcommand — injected onto
         # every leaf, so `describe` reports them as own flags and the gate accepts them.
         "crm connection whoami --json",
-        "Agent:  Running: crm entity create account --data '{\"name\":\"x\"}' --json",
+        'Agent:  Running: crm entity create account --data \'{"name":"x"}\' --json',
         "crm entity get accounts --fields name,accountid",
     ],
 )

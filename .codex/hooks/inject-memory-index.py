@@ -7,7 +7,6 @@ import json
 import os
 from pathlib import Path
 
-
 MEMORY_INDEX = Path(
     os.environ.get(
         "CRM_CODEX_MEMORY_INDEX",
@@ -20,10 +19,7 @@ def main() -> int:
     try:
         memory = MEMORY_INDEX.read_text(encoding="utf-8")
     except OSError as exc:
-        memory = (
-            f"CRM project memory index was not loaded: failed to read "
-            f"{MEMORY_INDEX}: {exc}"
-        )
+        memory = f"CRM project memory index was not loaded: failed to read {MEMORY_INDEX}: {exc}"
 
     context = (
         "<CRM_PROJECT_MEMORY_INDEX>\n"
@@ -37,12 +33,16 @@ def main() -> int:
         "</CRM_PROJECT_MEMORY_INDEX>"
     )
 
-    print(json.dumps({
-        "hookSpecificOutput": {
-            "hookEventName": "SessionStart",
-            "additionalContext": context,
-        }
-    }))
+    print(
+        json.dumps(
+            {
+                "hookSpecificOutput": {
+                    "hookEventName": "SessionStart",
+                    "additionalContext": context,
+                }
+            }
+        )
+    )
     return 0
 
 

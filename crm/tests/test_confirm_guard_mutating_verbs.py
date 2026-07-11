@@ -7,6 +7,7 @@ guarded deletes: expose `--yes`, prompt on a TTY, proceed with `--yes`, and
 fail fast on a non-TTY without `--yes` with a clean error naming that flag —
 never touching the backend.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -15,7 +16,6 @@ import json
 from click.testing import CliRunner
 
 from crm.utils.d365_backend import ConnectionProfile
-
 
 _REC = "11111111-1111-1111-1111-111111111111"
 
@@ -30,9 +30,12 @@ def _seed_profile(tmp_path, monkeypatch):
     monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
     monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
     from crm.core import session as session_mod
-    session_mod.save_profile(ConnectionProfile(
-        name="t", url="https://crm.contoso.local/contoso",
-        domain="CONTOSO", username="alice"))
+
+    session_mod.save_profile(
+        ConnectionProfile(
+            name="t", url="https://crm.contoso.local/contoso", domain="CONTOSO", username="alice"
+        )
+    )
     session_mod.save_profile_secret_plaintext("t", "pw")
 
 
@@ -40,6 +43,7 @@ class TestEntityDisassociateGuard:
     def test_yes_skips_prompt_and_proceeds(self, monkeypatch, tmp_path):
         _seed_profile(tmp_path, monkeypatch)
         from crm.commands import entity as ent_cmd
+
         called = {"hit": False}
 
         def _spy(backend, *a, **kw):
@@ -48,9 +52,21 @@ class TestEntityDisassociateGuard:
 
         monkeypatch.setattr(ent_cmd.entity_mod, "disassociate", _spy)
         from crm.cli import cli
+
         result = CliRunner().invoke(
-            cli, ["--json", "--profile", "t", "entity", "disassociate",
-                  "accounts", _REC, "primarycontactid", "--yes"])
+            cli,
+            [
+                "--json",
+                "--profile",
+                "t",
+                "entity",
+                "disassociate",
+                "accounts",
+                _REC,
+                "primarycontactid",
+                "--yes",
+            ],
+        )
         assert result.exit_code == 0
         assert called["hit"] is True
         assert json.loads(result.output)["ok"] is True
@@ -58,6 +74,7 @@ class TestEntityDisassociateGuard:
     def test_no_tty_without_yes_aborts(self, monkeypatch, tmp_path):
         _seed_profile(tmp_path, monkeypatch)
         from crm.commands import entity as ent_cmd
+
         called = {"hit": False}
 
         def _spy(backend, *a, **kw):
@@ -66,9 +83,20 @@ class TestEntityDisassociateGuard:
 
         monkeypatch.setattr(ent_cmd.entity_mod, "disassociate", _spy)
         from crm.cli import cli
+
         result = CliRunner().invoke(
-            cli, ["--json", "--profile", "t", "entity", "disassociate",
-                  "accounts", _REC, "primarycontactid"])
+            cli,
+            [
+                "--json",
+                "--profile",
+                "t",
+                "entity",
+                "disassociate",
+                "accounts",
+                _REC,
+                "primarycontactid",
+            ],
+        )
         assert result.exit_code != 0
         env = _envelope(result.output)
         assert env["ok"] is False
@@ -78,6 +106,7 @@ class TestEntityDisassociateGuard:
     def test_prompt_decline_aborts(self, monkeypatch, tmp_path):
         _seed_profile(tmp_path, monkeypatch)
         from crm.commands import entity as ent_cmd
+
         called = {"hit": False}
 
         def _spy(backend, *a, **kw):
@@ -87,9 +116,12 @@ class TestEntityDisassociateGuard:
         monkeypatch.setattr(ent_cmd.entity_mod, "disassociate", _spy)
         monkeypatch.setattr("crm.commands._helpers.confirm._stdin_is_tty", lambda: True)
         from crm.cli import cli
+
         result = CliRunner().invoke(
-            cli, ["--profile", "t", "entity", "disassociate",
-                  "accounts", _REC, "primarycontactid"], input="n\n")
+            cli,
+            ["--profile", "t", "entity", "disassociate", "accounts", _REC, "primarycontactid"],
+            input="n\n",
+        )
         assert result.exit_code != 0
         assert "aborted by user" in result.output
         assert called["hit"] is False
@@ -99,6 +131,7 @@ class TestEntityClearLookupGuard:
     def test_yes_skips_prompt_and_proceeds(self, monkeypatch, tmp_path):
         _seed_profile(tmp_path, monkeypatch)
         from crm.commands import entity as ent_cmd
+
         called = {"hit": False}
 
         def _spy(backend, *a, **kw):
@@ -107,9 +140,21 @@ class TestEntityClearLookupGuard:
 
         monkeypatch.setattr(ent_cmd.entity_mod, "clear_lookup", _spy)
         from crm.cli import cli
+
         result = CliRunner().invoke(
-            cli, ["--json", "--profile", "t", "entity", "clear-lookup",
-                  "accounts", _REC, "primarycontactid", "--yes"])
+            cli,
+            [
+                "--json",
+                "--profile",
+                "t",
+                "entity",
+                "clear-lookup",
+                "accounts",
+                _REC,
+                "primarycontactid",
+                "--yes",
+            ],
+        )
         assert result.exit_code == 0
         assert called["hit"] is True
         assert json.loads(result.output)["ok"] is True
@@ -117,6 +162,7 @@ class TestEntityClearLookupGuard:
     def test_no_tty_without_yes_aborts(self, monkeypatch, tmp_path):
         _seed_profile(tmp_path, monkeypatch)
         from crm.commands import entity as ent_cmd
+
         called = {"hit": False}
 
         def _spy(backend, *a, **kw):
@@ -125,9 +171,20 @@ class TestEntityClearLookupGuard:
 
         monkeypatch.setattr(ent_cmd.entity_mod, "clear_lookup", _spy)
         from crm.cli import cli
+
         result = CliRunner().invoke(
-            cli, ["--json", "--profile", "t", "entity", "clear-lookup",
-                  "accounts", _REC, "primarycontactid"])
+            cli,
+            [
+                "--json",
+                "--profile",
+                "t",
+                "entity",
+                "clear-lookup",
+                "accounts",
+                _REC,
+                "primarycontactid",
+            ],
+        )
         assert result.exit_code != 0
         env = _envelope(result.output)
         assert env["ok"] is False
@@ -137,6 +194,7 @@ class TestEntityClearLookupGuard:
     def test_prompt_decline_aborts(self, monkeypatch, tmp_path):
         _seed_profile(tmp_path, monkeypatch)
         from crm.commands import entity as ent_cmd
+
         called = {"hit": False}
 
         def _spy(backend, *a, **kw):
@@ -146,9 +204,12 @@ class TestEntityClearLookupGuard:
         monkeypatch.setattr(ent_cmd.entity_mod, "clear_lookup", _spy)
         monkeypatch.setattr("crm.commands._helpers.confirm._stdin_is_tty", lambda: True)
         from crm.cli import cli
+
         result = CliRunner().invoke(
-            cli, ["--profile", "t", "entity", "clear-lookup",
-                  "accounts", _REC, "primarycontactid"], input="n\n")
+            cli,
+            ["--profile", "t", "entity", "clear-lookup", "accounts", _REC, "primarycontactid"],
+            input="n\n",
+        )
         assert result.exit_code != 0
         assert "aborted by user" in result.output
         assert called["hit"] is False
@@ -158,6 +219,7 @@ class TestWorkflowDeactivateGuard:
     def test_yes_skips_prompt_and_proceeds(self, monkeypatch, tmp_path):
         _seed_profile(tmp_path, monkeypatch)
         from crm.commands import workflow as wf_cmd
+
         called = {"hit": False}
 
         def _spy(backend, wid, **kw):
@@ -166,8 +228,10 @@ class TestWorkflowDeactivateGuard:
 
         monkeypatch.setattr(wf_cmd.workflow_mod, "set_workflow_state", _spy)
         from crm.cli import cli
+
         result = CliRunner().invoke(
-            cli, ["--json", "--profile", "t", "workflow", "deactivate", _REC, "--yes"])
+            cli, ["--json", "--profile", "t", "workflow", "deactivate", _REC, "--yes"]
+        )
         assert result.exit_code == 0
         assert called["hit"] is True
         assert json.loads(result.output)["ok"] is True
@@ -175,6 +239,7 @@ class TestWorkflowDeactivateGuard:
     def test_no_tty_without_yes_aborts(self, monkeypatch, tmp_path):
         _seed_profile(tmp_path, monkeypatch)
         from crm.commands import workflow as wf_cmd
+
         called = {"hit": False}
 
         def _spy(backend, wid, **kw):
@@ -183,8 +248,10 @@ class TestWorkflowDeactivateGuard:
 
         monkeypatch.setattr(wf_cmd.workflow_mod, "set_workflow_state", _spy)
         from crm.cli import cli
+
         result = CliRunner().invoke(
-            cli, ["--json", "--profile", "t", "workflow", "deactivate", _REC])
+            cli, ["--json", "--profile", "t", "workflow", "deactivate", _REC]
+        )
         assert result.exit_code != 0
         env = _envelope(result.output)
         assert env["ok"] is False
@@ -194,6 +261,7 @@ class TestWorkflowDeactivateGuard:
     def test_prompt_decline_aborts(self, monkeypatch, tmp_path):
         _seed_profile(tmp_path, monkeypatch)
         from crm.commands import workflow as wf_cmd
+
         called = {"hit": False}
 
         def _spy(backend, wid, **kw):
@@ -203,8 +271,10 @@ class TestWorkflowDeactivateGuard:
         monkeypatch.setattr(wf_cmd.workflow_mod, "set_workflow_state", _spy)
         monkeypatch.setattr("crm.commands._helpers.confirm._stdin_is_tty", lambda: True)
         from crm.cli import cli
+
         result = CliRunner().invoke(
-            cli, ["--profile", "t", "workflow", "deactivate", _REC], input="n\n")
+            cli, ["--profile", "t", "workflow", "deactivate", _REC], input="n\n"
+        )
         assert result.exit_code != 0
         assert "aborted by user" in result.output
         assert called["hit"] is False

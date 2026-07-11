@@ -1,5 +1,6 @@
 # pyright: basic
 """E2E tests for read-only metadata commands."""
+
 from __future__ import annotations
 
 import json
@@ -130,8 +131,8 @@ def test_metadata_picklist(cli):
     assert env["ok"]
     options = env.get("meta", {}).get("options", [])
     assert isinstance(options, list)
-    assert len(options) > 0, (
-        "statuscode on account returned no options; raw data: " + json.dumps(env["data"])
+    assert len(options) > 0, "statuscode on account returned no options; raw data: " + json.dumps(
+        env["data"]
     )
 
 
@@ -152,8 +153,9 @@ def test_metadata_dependencies(cli):
 def test_metadata_dependencies_for_required(cli):
     # --for required lists what the target depends on (RetrieveRequiredComponents),
     # the reverse direction of the default delete/dependents paths.
-    r = cli(["--json", "metadata", "dependencies", "account",
-             "--kind", "entity", "--for", "required"])
+    r = cli(
+        ["--json", "metadata", "dependencies", "account", "--kind", "entity", "--for", "required"]
+    )
     assert r.returncode == 0, r.stderr
     env = json.loads(r.stdout)
     assert env["ok"]
@@ -217,9 +219,9 @@ def test_export_spec_emits_customer_column(cli, backend, ephemeral_entity):
     assert col["kind"] == "customer"
     assert "target_entity" not in col
     # The server-managed …idtype companion is not user-declared → must not appear.
-    assert not any(
-        a["schema_name"].lower() == f"{schema.lower()}type" for a in attrs
-    ), f"…idtype companion leaked into export: {attrs}"
+    assert not any(a["schema_name"].lower() == f"{schema.lower()}type" for a in attrs), (
+        f"…idtype companion leaked into export: {attrs}"
+    )
 
 
 @covers("metadata export-spec")
@@ -231,7 +233,8 @@ def test_export_spec_roundtrips_lookup_casing_and_descriptions(
     descriptions must round-trip. Build a scratch entity carrying all four, export
     it, assert the casing + descriptions, then re-apply (dry-run) and assert zero
     description drift and that the lookup is NOT re-planned (a casing mismatch on
-    re-apply would create a divergent column)."""
+    re-apply would create a divergent column).
+    """
     import yaml
 
     from crm.core import apply as apply_mod
@@ -242,7 +245,7 @@ def test_export_spec_roundtrips_lookup_casing_and_descriptions(
     from crm.core import views as view_mod
 
     ent_schema = f"new_E2eRt{unique}"
-    lookup_schema = f"new_E2eRt{unique}Acct"   # PascalCase → the casing under test
+    lookup_schema = f"new_E2eRt{unique}Acct"  # PascalCase → the casing under test
     rel_schema = f"new_e2ert{unique}_account"
     os_name = f"new_e2ert{unique}os"
     pick_schema = f"new_E2eRt{unique}Pick"
@@ -251,7 +254,9 @@ def test_export_spec_roundtrips_lookup_casing_and_descriptions(
     view_desc = "E2E round-trip view description"
 
     created = meta_mod.create_entity(
-        backend, schema_name=ent_schema, display_name=f"E2eRt {unique}",
+        backend,
+        schema_name=ent_schema,
+        display_name=f"E2eRt {unique}",
         description=ent_desc,
     )
     logical = created["logical_name"]
@@ -262,35 +267,57 @@ def test_export_spec_roundtrips_lookup_casing_and_descriptions(
 
         # Global option set with a description + a picklist bound to it.
         os_mod.create_optionset(
-            backend, name=os_name, display_name="E2eRt OS",
-            description=os_desc, options=[(None, "One"), (None, "Two")],
+            backend,
+            name=os_name,
+            display_name="E2eRt OS",
+            description=os_desc,
+            options=[(None, "One"), (None, "Two")],
         )
         ma.add_attribute(
-            backend, entity=logical, kind="picklist", schema_name=pick_schema,
-            display_name="E2eRt Pick", optionset_name=os_name,
+            backend,
+            entity=logical,
+            kind="picklist",
+            schema_name=pick_schema,
+            display_name="E2eRt Pick",
+            optionset_name=os_name,
         )
         # Self-referential 1:N so the scratch entity is the referenced ("1") side
         # `read_entity_relationships` enumerates; the lookup column (PascalCase
         # schema) lands on the same entity, keeping the fixture self-contained.
         rel_mod.create_one_to_many(
-            backend, schema_name=rel_schema, referenced_entity=logical,
-            referencing_entity=logical, lookup_schema=lookup_schema,
+            backend,
+            schema_name=rel_schema,
+            referenced_entity=logical,
+            referencing_entity=logical,
+            lookup_schema=lookup_schema,
             lookup_display="E2eRt Parent",
         )
         # A view with a description.
         view_mod.create_view(
-            backend, entity=logical, object_type_code=otc,
-            name=f"E2eRt View {unique}", columns=[(primary, 200)],
+            backend,
+            entity=logical,
+            object_type_code=otc,
+            name=f"E2eRt View {unique}",
+            columns=[(primary, 200)],
             description=view_desc,
         )
 
         # Export the whole entity, baking in the solution block for re-apply.
         out = tmp_path / "spec.yaml"
-        r = cli([
-            "--json", "metadata", "export-spec", logical,
-            "--with-relationships", "--with-views",
-            "--solution", ephemeral_solution, "-o", str(out),
-        ])
+        r = cli(
+            [
+                "--json",
+                "metadata",
+                "export-spec",
+                logical,
+                "--with-relationships",
+                "--with-views",
+                "--solution",
+                ephemeral_solution,
+                "-o",
+                str(out),
+            ]
+        )
         assert r.returncode == 0, r.stderr
         spec = yaml.safe_load(out.read_text(encoding="utf-8"))
         entity = spec["entities"][0]
@@ -304,15 +331,11 @@ def test_export_spec_roundtrips_lookup_casing_and_descriptions(
         assert rel["lookup_schema"] == lookup_schema
 
         # 3) Global option set description round-trips.
-        os_entry = next(
-            o for o in spec["optionsets"] if o["name"].lower() == os_name.lower()
-        )
+        os_entry = next(o for o in spec["optionsets"] if o["name"].lower() == os_name.lower())
         assert os_entry["description"] == os_desc
 
         # 4) View description round-trips.
-        view = next(
-            v for v in entity["views"] if v["name"] == f"E2eRt View {unique}"
-        )
+        view = next(v for v in entity["views"] if v["name"] == f"E2eRt View {unique}")
         assert view["description"] == view_desc
 
         # Round-trip: re-apply the exported spec read-only (dry-run). The lookup
@@ -321,19 +344,20 @@ def test_export_spec_roundtrips_lookup_casing_and_descriptions(
         # construction-only, so build a throwaway read-only backend.
         from crm.core.connection import resolve_credentials
         from crm.utils.d365_backend import D365Backend
+
         dry = resolve_credentials("e2e")
         dry_backend = D365Backend(dry.profile, dry.password, dry_run=True)
         report = apply_mod.apply_spec(dry_backend, spec)
         planned_rels = [
-            e for e in report.get("planned", [])
+            e
+            for e in report.get("planned", [])
             if str(e.get("name", "")).lower() == rel_schema.lower()
         ]
         assert not planned_rels, f"lookup re-planned (casing mismatch?): {planned_rels}"
         # Reconcile diff shapes vary by kind ({"description": …} vs
         # {"fields": [… "description" …]}), so scan the serialized diff.
         desc_drift = [
-            e for e in report.get("updated", [])
-            if "description" in json.dumps(e.get("diff") or {})
+            e for e in report.get("updated", []) if "description" in json.dumps(e.get("diff") or {})
         ]
         assert not desc_drift, f"description drift on re-apply: {desc_drift}"
     finally:
@@ -362,7 +386,8 @@ def test_metadata_cache_clear(cli):
 def test_metadata_changes(cli):
     """RetrieveMetadataChanges: a baseline call returns a fresh ServerVersionStamp;
     feeding it back as --since returns a (smaller) delta + a new stamp. Scoped to
-    `account` so the baseline payload stays light on a real org."""
+    `account` so the baseline payload stays light on a real org.
+    """
     # Baseline (no --since): returns a fresh stamp + the scoped entity.
     r = cli(["--json", "metadata", "changes", "--entity", "account"])
     assert r.returncode == 0, r.stderr

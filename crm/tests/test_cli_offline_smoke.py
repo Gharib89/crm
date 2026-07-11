@@ -1,11 +1,14 @@
 # pyright: basic
 """Offline CLI smoke tests — no live D365 backend required."""
+
 from __future__ import annotations
 
 
 def test_help():
     from click.testing import CliRunner
+
     from crm.cli import cli
+
     result = CliRunner().invoke(cli, ["--help"])
     assert result.exit_code == 0
     assert "Usage" in result.output
@@ -14,12 +17,14 @@ def test_help():
 class TestDeleteEntityCli:
     def test_delete_entity_requires_confirmation(self):
         from click.testing import CliRunner
+
         from crm.cli import cli
 
         runner = CliRunner()
         # Under --json/non-TTY the helper now fail-fasts instead of prompting.
         result = runner.invoke(
-            cli, ["--json", "metadata", "delete-entity", "new_widget"],
+            cli,
+            ["--json", "metadata", "delete-entity", "new_widget"],
             input="\n",
         )
         # Missing --yes is an operational failure → exit 1 (ADR 0001)
@@ -30,16 +35,29 @@ class TestDeleteEntityCli:
 class TestAddAttributeBooleanDefaultParsing:
     def test_rejects_unknown_boolean_default(self):
         from click.testing import CliRunner
+
         from crm.cli import cli
 
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "--json", "metadata", "add-attribute", "new_widget",
-            "--kind", "boolean",
-            "--schema-name", "new_isactive", "--display", "Active",
-            "--default-value", "maybe",
-            "--solution", "TestSol",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "--json",
+                "metadata",
+                "add-attribute",
+                "new_widget",
+                "--kind",
+                "boolean",
+                "--schema-name",
+                "new_isactive",
+                "--display",
+                "Active",
+                "--default-value",
+                "maybe",
+                "--solution",
+                "TestSol",
+            ],
+        )
         # Click UsageError → non-zero exit + message routed to stderr
         assert result.exit_code != 0
         assert "must be one of" in (result.output + str(result.exception))

@@ -28,7 +28,7 @@ from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 # --- T0: parse / re-serialize ---------------------------------------------------
 
 
-def parse_xml(xml: str, *, label: str = "XML") -> "ET.Element":
+def parse_xml(xml: str, *, label: str = "XML") -> ET.Element:
     """Parse customization XML, turning a malformed payload into a ``D365Error``.
 
     A ``ParseError`` becomes a typed error naming ``label`` so the CLI emits its
@@ -40,7 +40,7 @@ def parse_xml(xml: str, *, label: str = "XML") -> "ET.Element":
         raise D365Error(f"Could not parse the {label}: {exc}") from exc
 
 
-def serialize_xml(root: "ET.Element") -> str:
+def serialize_xml(root: ET.Element) -> str:
     """Re-serialize a parsed element tree back to an XML string."""
     return ET.tostring(root, encoding="unicode")
 
@@ -66,10 +66,10 @@ def fresh_guid(*, braced: bool = True) -> str:
 
 def regenerate_guids(
     xml: str,
-    pattern: "re.Pattern[str]",
+    pattern: re.Pattern[str],
     *,
-    preserve: "frozenset[str] | set[str]" = frozenset(),
-) -> "tuple[str, dict[str, str]]":
+    preserve: frozenset[str] | set[str] = frozenset(),
+) -> tuple[str, dict[str, str]]:
     """Replace each GUID matched by ``pattern`` with a fresh ``uuid4``, consistently.
 
     One new value per *distinct* source GUID, so any intra-document reference
@@ -97,7 +97,7 @@ def regenerate_guids(
     preserve = {g.lower() for g in preserve}
     mapping: dict[str, str] = {}
 
-    def _repl(m: "re.Match[str]") -> str:
+    def _repl(m: re.Match[str]) -> str:
         old = m.group("guid").lower()
         if old in preserve:
             return m.group(0)
@@ -105,8 +105,10 @@ def regenerate_guids(
             mapping[old] = str(uuid.uuid4())
         brace = "{" if m.group("brace") else ""
         close = "}" if m.group("brace") else ""
-        return (f"{m.group('attr')}{m.group('eq')}{m.group('q')}"
-                f"{brace}{mapping[old]}{close}{m.group('q')}")
+        return (
+            f"{m.group('attr')}{m.group('eq')}{m.group('q')}"
+            f"{brace}{mapping[old]}{close}{m.group('q')}"
+        )
 
     return pattern.sub(_repl, xml), mapping
 
@@ -115,7 +117,7 @@ def assert_external_guids_intact(
     before: str,
     after: str,
     *,
-    regenerated: "dict[str, str] | None" = None,
+    regenerated: dict[str, str] | None = None,
     message: str = (
         "XML edit altered a non-target external GUID; refusing to write a "
         "possibly corrupt artifact."
@@ -137,9 +139,11 @@ def assert_external_guids_intact(
     old_ids = set(regenerated)
     new_ids = set(regenerated.values())
     untouched_before = sorted(
-        g.lower() for g in ANY_GUID_RE.findall(before) if g.lower() not in old_ids)
+        g.lower() for g in ANY_GUID_RE.findall(before) if g.lower() not in old_ids
+    )
     untouched_after = sorted(
-        g.lower() for g in ANY_GUID_RE.findall(after) if g.lower() not in new_ids)
+        g.lower() for g in ANY_GUID_RE.findall(after) if g.lower() not in new_ids
+    )
     if untouched_before != untouched_after:
         raise D365Error(message)
 
@@ -147,7 +151,7 @@ def assert_external_guids_intact(
 # --- T3: structural read-back diff helpers --------------------------------------
 
 
-def guid_set(xml: str) -> "set[str]":
+def guid_set(xml: str) -> set[str]:
     """Every GUID in ``xml``, lowercased — for an id-set delta assertion."""
     return {g.lower() for g in ANY_GUID_RE.findall(xml)}
 
@@ -162,12 +166,10 @@ def assert_classids_intact(before: str, after: str) -> None:
     before_ids = sorted(m.group("v").lower() for m in _CLASSID_RE.finditer(before))
     after_ids = sorted(m.group("v").lower() for m in _CLASSID_RE.finditer(after))
     if before_ids != after_ids:
-        raise D365Error(
-            "XML edit changed a control classid; refusing to write a corrupt "
-            "artifact.")
+        raise D365Error("XML edit changed a control classid; refusing to write a corrupt artifact.")
 
 
-def node_present(root: "ET.Element", tag: str, **attrs: str) -> bool:
+def node_present(root: ET.Element, tag: str, **attrs: str) -> bool:
     """Whether any descendant ``<tag>`` matches every given attribute value."""
     for el in root.iter(tag):
         if all(el.get(k) == v for k, v in attrs.items()):
@@ -183,13 +185,13 @@ def commit_xml_patches(
     *,
     entity_set: str,
     record_id: str,
-    columns: "dict[str, str]",
-    result: "dict[str, Any]",
+    columns: dict[str, str],
+    result: dict[str, Any],
     dry_run_flag: str,
     publish: bool,
-    solution: "str | None" = None,
-    read_back: "Callable[[dict[str, str]], None] | None" = None,
-) -> "dict[str, Any]":
+    solution: str | None = None,
+    read_back: Callable[[dict[str, str]], None] | None = None,
+) -> dict[str, Any]:
     """PATCH one or more writable columns in a single request, then maybe publish.
 
     The multi-column form of :func:`commit_xml_patch`, for an editor that must
@@ -217,18 +219,19 @@ def commit_xml_patches(
         raise ValueError(
             "commit_xml_patches: read_back requires publish=True — a Web API GET "
             "returns the published layer, so a read-back before publish "
-            "false-negatives the T3 verification.")
+            "false-negatives the T3 verification."
+        )
     if backend.dry_run:
         result["_dry_run"] = True
         result[dry_run_flag] = True
         return result
-    backend.patch(f"{entity_set}({record_id})",
-                  json_body=dict(columns), solution=solution)
+    backend.patch(f"{entity_set}({record_id})", json_body=dict(columns), solution=solution)
     result["updated"] = True
     maybe_publish(backend, result, publish)
     if read_back is not None:
-        row = as_dict(backend.get(f"{entity_set}({record_id})",
-                                  params={"$select": ",".join(columns)}))
+        row = as_dict(
+            backend.get(f"{entity_set}({record_id})", params={"$select": ",".join(columns)})
+        )
         read_back({c: str(row.get(c) or "") for c in columns})
     return result
 
@@ -240,12 +243,12 @@ def commit_xml_patch(
     record_id: str,
     column: str,
     new_xml: str,
-    result: "dict[str, Any]",
+    result: dict[str, Any],
     dry_run_flag: str,
     publish: bool,
-    solution: "str | None" = None,
-    read_back: "Callable[[str], None] | None" = None,
-) -> "dict[str, Any]":
+    solution: str | None = None,
+    read_back: Callable[[str], None] | None = None,
+) -> dict[str, Any]:
     """PATCH one writable XML column (or preview under dry-run), then maybe publish.
 
     The shared commit for every direct-PATCH editor family (forms, dashboards,
@@ -265,12 +268,20 @@ def commit_xml_patch(
     ``read_back`` without ``publish`` is therefore a programming error and is
     rejected up front rather than allowed to silently false-negative.
     """
-    def _read_back_one(cols: "dict[str, str]") -> None:
+
+    def _read_back_one(cols: dict[str, str]) -> None:
         assert read_back is not None  # rb is only wired when read_back is set
         read_back(cols[column])
 
     rb = _read_back_one if read_back is not None else None
     return commit_xml_patches(
-        backend, entity_set=entity_set, record_id=record_id,
-        columns={column: new_xml}, result=result, dry_run_flag=dry_run_flag,
-        publish=publish, solution=solution, read_back=rb)
+        backend,
+        entity_set=entity_set,
+        record_id=record_id,
+        columns={column: new_xml},
+        result=result,
+        dry_run_flag=dry_run_flag,
+        publish=publish,
+        solution=solution,
+        read_back=rb,
+    )

@@ -1,5 +1,6 @@
 # pyright: basic
 """Command + registry tests for `crm completion`."""
+
 from __future__ import annotations
 
 import json
@@ -48,7 +49,8 @@ class TestGenerate:
         import subprocess
 
         monkeypatch.setattr(
-            subprocess, "run",
+            subprocess,
+            "run",
             lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout="  \n", stderr="boom"),
         )
         with pytest.raises(RuntimeError, match="no completion output"):
@@ -141,7 +143,9 @@ class TestInstall:
         assert f"source {script_path}" not in result.output
 
     def test_powershell_json_shape(self):
-        result = CliRunner().invoke(cli, ["--json", "completion", "install", "--shell", "powershell"])
+        result = CliRunner().invoke(
+            cli, ["--json", "completion", "install", "--shell", "powershell"]
+        )
         data = json.loads(result.output)["data"]
         assert data["shell"] == "powershell"
         assert data["installed"] is True
@@ -174,6 +178,7 @@ class TestPowerShellCompletion:
     def _comp(self):
         from crm.cli import cli  # import triggers eager add_completion_class
         from crm.commands.completion_registry import PowerShellComplete
+
         return PowerShellComplete(cli, {}, "crm", reg._COMPLETE_VAR)
 
     def test_args_split_pops_trailing_partial(self, monkeypatch):
@@ -236,6 +241,7 @@ class TestEntryWiring:
         # sets `_CRM_COMPLETE` -> mismatch -> no completion. main() pins
         # prog_name="crm" so the var is `_CRM_COMPLETE` regardless of argv[0].
         from crm.cli import main
+
         monkeypatch.setattr(sys, "argv", ["crm.exe"])
         monkeypatch.setenv(reg._COMPLETE_VAR, "powershell_source")  # _CRM_COMPLETE
         with pytest.raises(SystemExit) as exc:
@@ -247,20 +253,28 @@ class TestEntryWiring:
 
 class TestProfileShellComplete:
     """Dynamic `--profile` value completion (issue #654): local file read only,
-    no network call — shell completion spawns a fresh `crm` process per Tab."""
+    no network call — shell completion spawns a fresh `crm` process per Tab.
+    """
 
     def _complete(self, args, incomplete):
         from click.shell_completion import ShellComplete
+
         sc = ShellComplete(cli, {}, "crm", reg._COMPLETE_VAR)
         return [item.value for item in sc.get_completions(args, incomplete)]
 
     def _save_profile(self, name: str) -> None:
         from crm.core.session import save_profile
         from crm.utils.d365_backend import ConnectionProfile
-        save_profile(ConnectionProfile(
-            name=name, url=f"https://{name}.example.com",
-            domain="example", username="agent", auth_scheme="oauth",
-        ))
+
+        save_profile(
+            ConnectionProfile(
+                name=name,
+                url=f"https://{name}.example.com",
+                domain="example",
+                username="agent",
+                auth_scheme="oauth",
+            )
+        )
 
     def test_completes_saved_profile_names(self):
         self._save_profile("dev")
@@ -274,8 +288,8 @@ class TestProfileShellComplete:
     def test_unreadable_profile_state_yields_empty_not_a_crash(self, monkeypatch):
         # Shell completion is best-effort (PR #660 review): a broken/unwritable
         # CRM_HOME must not crash the completion subprocess.
-        from crm import cli as cli_mod
         import crm.core.session as session_mod
+        from crm import cli as cli_mod
 
         def boom():
             raise OSError("CRM_HOME is not writable")
@@ -292,6 +306,7 @@ class TestProfileShellComplete:
         # param-level shell_complete callback (e.g. --profile) already works —
         # verified here rather than "fixed", since no override was needed.
         from crm.commands.completion_registry import PowerShellComplete
+
         self._save_profile("agent-cloud")
         monkeypatch.setenv("COMP_WORDS", "crm --profile ")
         monkeypatch.setenv("COMP_CWORD", "")
@@ -303,7 +318,8 @@ class TestProfileShellComplete:
 class TestEntitySetShellComplete:
     """Disk-cache-only entity-set-name completion for OS-shell positional args
     (issue #659): reads the on-disk metadata cache for the resolved profile,
-    never a network call — completion runs a fresh `crm` process per Tab."""
+    never a network call — completion runs a fresh `crm` process per Tab.
+    """
 
     _DEFS = [
         {"logical": "account", "set_name": "accounts"},
@@ -313,20 +329,27 @@ class TestEntitySetShellComplete:
 
     def _complete(self, args, incomplete):
         from click.shell_completion import ShellComplete
+
         sc = ShellComplete(cli, {}, "crm", reg._COMPLETE_VAR)
         return [item.value for item in sc.get_completions(args, incomplete)]
 
     def _profile(self, name="dev"):
         from crm.utils.d365_backend import ConnectionProfile
+
         return ConnectionProfile(
-            name=name, url=f"https://{name}.example.com",
-            domain="example", username="agent", auth_scheme="oauth",
+            name=name,
+            url=f"https://{name}.example.com",
+            domain="example",
+            username="agent",
+            auth_scheme="oauth",
         )
 
     def _seed(self, name="dev", defs=None):
         import time
+
         from crm.core import metadata_cache
         from crm.core.session import save_profile
+
         profile = self._profile(name)
         save_profile(profile)
         metadata_cache.write_definitions(profile, defs or self._DEFS, now=time.time())
@@ -335,7 +358,9 @@ class TestEntitySetShellComplete:
     def test_completes_set_names_from_disk_cache(self):
         self._seed()
         assert self._complete(["--profile", "dev", "entity", "get"], "") == [
-            "accounts", "contacts", "tasks",
+            "accounts",
+            "contacts",
+            "tasks",
         ]
 
     def test_prefix_filters_set_names(self):
@@ -351,6 +376,7 @@ class TestEntitySetShellComplete:
         # No --profile on the line → resolve the session's active profile.
         self._seed("prod")
         from crm.core import session as session_mod
+
         session_mod.save_session({"active_profile": "prod"})
         assert self._complete(["entity", "get"], "") == ["accounts", "contacts", "tasks"]
 
@@ -360,14 +386,18 @@ class TestEntitySetShellComplete:
         # per-session). Seed only a non-default session's pointer.
         self._seed("scoped")
         from crm.core import session as session_mod
+
         session_mod.save_session({"active_profile": "scoped"}, "work")
         assert self._complete(["--session", "work", "entity", "get"], "") == [
-            "accounts", "contacts", "tasks",
+            "accounts",
+            "contacts",
+            "tasks",
         ]
 
     def test_cache_miss_yields_empty(self):
         # Profile exists but its metadata cache was never populated.
         from crm.core.session import save_profile
+
         save_profile(self._profile())
         assert self._complete(["--profile", "dev", "entity", "get"], "") == []
 
@@ -385,7 +415,9 @@ class TestEntitySetShellComplete:
         monkeypatch.setattr(requests.sessions.Session, "request", _boom)
         self._seed()
         assert self._complete(["--profile", "dev", "entity", "get"], "") == [
-            "accounts", "contacts", "tasks",
+            "accounts",
+            "contacts",
+            "tasks",
         ]
 
 

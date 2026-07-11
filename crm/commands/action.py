@@ -1,13 +1,17 @@
 """OData function and action commands."""
+
 # pyright: basic
 from __future__ import annotations
+
 import json
+
 import click
+
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
-    d365_errors,
     _journal,
     _load_payload,
+    d365_errors,
     encode_function_params,
 )
 
@@ -19,7 +23,7 @@ def action_group():
 
 @action_group.command("function")
 @click.argument("name")
-@click.option("--params", "params_json", help='JSON dict of function parameters.')
+@click.option("--params", "params_json", help="JSON dict of function parameters.")
 @click.option(
     "--bind-set",
     help="Entity set to bind the function to (e.g. 'systemusers'). "

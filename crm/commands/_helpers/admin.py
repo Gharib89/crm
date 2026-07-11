@@ -1,36 +1,53 @@
 """Admin-header CLI option stacking + kwargs resolution."""
+
 # pyright: basic
 from __future__ import annotations
+
 from typing import Any
+
 import click
 
 
 def _admin_header_options(f):
     """Stack `--as-user`, `--as-user-object-id`, `--suppress-dup-detection`, `--bypass-plugins`."""
     f = click.option(
-        "--bypass-plugins", is_flag=True, default=False,
-        help="Send MSCRM.BypassCustomPluginExecution: true (requires prvBypassCustomPluginExecution).",
+        "--bypass-plugins",
+        is_flag=True,
+        default=False,
+        help="Send MSCRM.BypassCustomPluginExecution: true (requires "
+        "prvBypassCustomPluginExecution).",
     )(f)
     f = click.option(
-        "--suppress-dup-detection", is_flag=True, default=False,
+        "--suppress-dup-detection",
+        is_flag=True,
+        default=False,
         help="Send MSCRM.SuppressDuplicateDetection: true.",
     )(f)
     f = click.option(
-        "--as-user-object-id", "as_user_object_id", metavar="GUID", default=None,
+        "--as-user-object-id",
+        "as_user_object_id",
+        metavar="GUID",
+        default=None,
         help="Impersonate by Entra ID object id (cloud) via CallerObjectId header. "
-             "Mutually exclusive with --as-user.",
+        "Mutually exclusive with --as-user.",
     )(f)
     f = click.option(
-        "--as-user", "as_user", metavar="GUID", default=None,
+        "--as-user",
+        "as_user",
+        metavar="GUID",
+        default=None,
         help="Impersonate systemuser by GUID via MSCRMCallerID header. "
-             "Mutually exclusive with --as-user-object-id.",
+        "Mutually exclusive with --as-user-object-id.",
     )(f)
     return f
 
 
-def _admin_kwargs(as_user: str | None, as_user_object_id: str | None,
-                  suppress_dup_detection: bool,
-                  bypass_plugins: bool) -> dict[str, Any]:
+def _admin_kwargs(
+    as_user: str | None,
+    as_user_object_id: str | None,
+    suppress_dup_detection: bool,
+    bypass_plugins: bool,
+) -> dict[str, Any]:
     """Resolve admin-header CLI flags into backend kwargs.
 
     `is_flag` defaults to False (flag absent). To preserve the backend's

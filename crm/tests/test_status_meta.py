@@ -1,5 +1,6 @@
 """Unit tests for crm.core.status_meta (InsertStatusValue / UpdateStateValue /
-custom state-model transitions)."""
+custom state-model transitions).
+"""
 # pyright: basic
 
 from __future__ import annotations
@@ -7,8 +8,8 @@ from __future__ import annotations
 import pytest
 import requests_mock
 
-from crm.utils.d365_backend import D365Backend, D365Error
 from crm.core import status_meta as sm
+from crm.utils.d365_backend import D365Error
 
 
 class TestAddStatusValue:
@@ -16,7 +17,10 @@ class TestAddStatusValue:
         with requests_mock.Mocker() as m:
             m.post(backend.url_for("InsertStatusValue"), json={"NewOptionValue": 727000003})
             out = sm.add_status_value(
-                backend, "new_widget", state_code=0, label_text="Pending",
+                backend,
+                "new_widget",
+                state_code=0,
+                label_text="Pending",
             )
         assert out["added"] is True
         assert out["value"] == 727000003
@@ -31,8 +35,12 @@ class TestAddStatusValue:
         with requests_mock.Mocker() as m:
             m.post(backend.url_for("InsertStatusValue"), json={"NewOptionValue": 5})
             sm.add_status_value(
-                backend, "new_widget", state_code=1, label_text="Archived",
-                value=5, solution="mysol",
+                backend,
+                "new_widget",
+                state_code=1,
+                label_text="Archived",
+                value=5,
+                solution="mysol",
             )
         req = m.request_history[0]
         assert req.json()["Value"] == 5
@@ -42,7 +50,10 @@ class TestAddStatusValue:
         with requests_mock.Mocker() as m:
             m.post(dry_backend.url_for("InsertStatusValue"), json={})
             out = sm.add_status_value(
-                dry_backend, "new_widget", state_code=0, label_text="Pending",
+                dry_backend,
+                "new_widget",
+                state_code=0,
+                label_text="Pending",
             )
         assert out["_dry_run"] is True
         assert out["would_add_status"] is True
@@ -58,7 +69,10 @@ class TestRelabelStateValue:
         with requests_mock.Mocker() as m:
             m.post(backend.url_for("UpdateStateValue"), status_code=204, json={})
             out = sm.relabel_state_value(
-                backend, "new_widget", value=1, label_text="Dormant",
+                backend,
+                "new_widget",
+                value=1,
+                label_text="Dormant",
                 merge_labels=True,
             )
         assert out["updated"] is True
@@ -72,7 +86,10 @@ class TestRelabelStateValue:
         with requests_mock.Mocker() as m:
             m.post(dry_backend.url_for("UpdateStateValue"), status_code=204, json={})
             out = sm.relabel_state_value(
-                dry_backend, "new_widget", value=1, label_text="Dormant",
+                dry_backend,
+                "new_widget",
+                value=1,
+                label_text="Dormant",
             )
         assert out["_dry_run"] is True
         assert out["would_relabel_state"] is True

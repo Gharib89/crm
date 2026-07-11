@@ -1,11 +1,14 @@
 """Connection management commands."""
+
 # pyright: basic
 from __future__ import annotations
+
 import click
+
+from crm.cli import FAILURE_EXIT_CODE, CLIContext, pass_ctx
+from crm.commands._helpers import d365_errors
 from crm.core import connection as conn_mod
 from crm.core import session as session_mod
-from crm.cli import CLIContext, FAILURE_EXIT_CODE, pass_ctx
-from crm.commands._helpers import d365_errors
 
 
 @click.group("connection")

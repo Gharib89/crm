@@ -1,4 +1,5 @@
 """backend() restores session active_profile across invocations (issue #130)."""
+
 # pyright: basic
 from __future__ import annotations
 
@@ -24,18 +25,22 @@ def fake_keyring(monkeypatch):
     store: dict[str, str] = {}
     monkeypatch.setattr(keyring_store, "is_available", lambda: True)
     monkeypatch.setattr(keyring_store, "get_secret", lambda n: store.get(n))
-    monkeypatch.setattr(keyring_store, "set_secret",
-                        lambda n, s: store.__setitem__(n, s))
+    monkeypatch.setattr(keyring_store, "set_secret", lambda n, s: store.__setitem__(n, s))
     monkeypatch.setattr(keyring_store, "has_secret", lambda n: n in store)
     return store
 
 
 def _seed_active_profile(name="prod"):
     """Save a profile + activate it in the session, mimicking `crm profile add`."""
-    session_mod.save_profile(ConnectionProfile(
-        name=name, url=_BASE, domain="CONTOSO", username="alice",
-        api_version="v9.2",
-    ))
+    session_mod.save_profile(
+        ConnectionProfile(
+            name=name,
+            url=_BASE,
+            domain="CONTOSO",
+            username="alice",
+            api_version="v9.2",
+        )
+    )
     state = session_mod.load_session("default")
     state["active_profile"] = name
     session_mod.save_session(state, "default")

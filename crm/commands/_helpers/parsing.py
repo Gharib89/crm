@@ -1,19 +1,20 @@
 """Input parsing + expectation-checking helpers and CLI choice constants."""
+
 # pyright: basic
 from __future__ import annotations
+
 import json
 from typing import Any
+
 import click
 
 
 def _load_payload(data_json: str | None, data_file: str | None) -> dict[str, Any]:
     if data_json and data_file:
-        raise click.UsageError(
-            "--data and --data-file are mutually exclusive; pass only one."
-        )
+        raise click.UsageError("--data and --data-file are mutually exclusive; pass only one.")
     if data_file:
         try:
-            with open(data_file, "r", encoding="utf-8") as f:
+            with open(data_file, encoding="utf-8") as f:
                 parsed = json.load(f)
         except OSError as exc:
             raise click.UsageError(f"cannot read --data-file: {exc}") from exc
@@ -25,7 +26,8 @@ def _load_payload(data_json: str | None, data_file: str | None) -> dict[str, Any
         # letting json.loads fail with an opaque "Expecting value" error.
         if data_json.lstrip().startswith("@"):
             raise click.UsageError(
-                "--data does not read files; use --data-file <path> to load a JSON payload from a file."
+                "--data does not read files; use --data-file <path> to load a JSON payload "
+                "from a file."
             )
         try:
             parsed = json.loads(data_json)
@@ -34,9 +36,7 @@ def _load_payload(data_json: str | None, data_file: str | None) -> dict[str, Any
     else:
         raise click.UsageError("Either --data or --data-file is required.")
     if not isinstance(parsed, dict):
-        raise click.UsageError(
-            f"Payload must be a JSON object, got {type(parsed).__name__}."
-        )
+        raise click.UsageError(f"Payload must be a JSON object, got {type(parsed).__name__}.")
     return parsed
 
 
@@ -58,7 +58,8 @@ def _parse_expect(pairs: tuple[str, ...]) -> list[tuple[str, str]]:
     '=' or with an empty attr is a usage error (exit 2); validate before any
     backend call so a typo never costs a round-trip. The attr is trimmed; the
     value is taken verbatim, so any leading/trailing whitespace in a value is
-    significant."""
+    significant.
+    """
     parsed: list[tuple[str, str]] = []
     for raw in pairs:
         attr, sep, value = raw.partition("=")
@@ -101,13 +102,9 @@ def _parse_value_labels(
             try:
                 value: int | None = int(v)
             except ValueError as exc:
-                raise click.UsageError(
-                    f"{flag} value must be an integer, got: {raw!r}"
-                ) from exc
+                raise click.UsageError(f"{flag} value must be an integer, got: {raw!r}") from exc
         elif require_value:
-            raise click.UsageError(
-                f"{flag} requires an integer value before ':', got: {raw!r}"
-            )
+            raise click.UsageError(f"{flag} requires an integer value before ':', got: {raw!r}")
         else:
             value = None
         parsed.append((value, lab))
@@ -124,7 +121,8 @@ def _check_expectations(
     name fails instead of accidentally matching `--expect attr=None`. A key
     that is present with a null value compares as the string 'None'. Returns
     None when every pair matches, else {attr, expected, actual} for the FIRST
-    mismatch in CLI order (actual is the raw value, for JSON consumers)."""
+    mismatch in CLI order (actual is the raw value, for JSON consumers).
+    """
     for attr, expected in pairs:
         if attr not in record:
             return {"attr": attr, "expected": expected, "actual": None}
@@ -139,6 +137,7 @@ def _odata_literal(v: Any) -> str:
     # d365_backend off the `crm --version` fast path (this only runs once a
     # query/action is being built, by which point the backend is loaded).
     from crm.utils.d365_backend import odata_literal
+
     return odata_literal(v)
 
 
@@ -153,7 +152,8 @@ _ODATA_RESERVED = set("/<>*%&:\\?+#")
 def _needs_alias(value: Any) -> bool:
     """A function-param value must be passed as a parameter alias (not inline)
     when it is a record reference (a dict) or a string carrying URL-reserved or
-    whitespace characters that would break an inline path-segment literal."""
+    whitespace characters that would break an inline path-segment literal.
+    """
     if isinstance(value, dict):
         return True
     if isinstance(value, str):
@@ -165,7 +165,8 @@ def _record_reference_value(name: str, value: dict[str, Any]) -> str:
     """Validate a record-reference param (``{"@odata.id": "set(guid)"}``) and
     render its alias value as an ``@odata.id`` JSON object. Raises ValueError on
     a malformed reference so the command can report it as an operational
-    failure."""
+    failure.
+    """
     ref = value.get("@odata.id")
     if set(value) != {"@odata.id"} or not isinstance(ref, str) or not ref:
         raise ValueError(
@@ -185,7 +186,8 @@ def encode_function_params(params: dict[str, Any]) -> tuple[str, dict[str, str]]
     to its query-string value. The caller passes ``aliases`` as the request
     ``params=`` kwarg so the values land in the query string — the only place the
     server accepts a record reference or a reserved character. Raises ValueError
-    on a malformed record reference."""
+    on a malformed record reference.
+    """
     parts: list[str] = []
     aliases: dict[str, str] = {}
     for name, value in params.items():
@@ -223,8 +225,6 @@ def _resolve_async_state(value: str | None) -> int | None:
     )
 
 
-_CASCADE = click.Choice(
-    ["NoCascade", "Cascade", "Active", "UserOwned", "RemoveLink", "Restrict"]
-)
+_CASCADE = click.Choice(["NoCascade", "Cascade", "Active", "UserOwned", "RemoveLink", "Restrict"])
 _MENU = click.Choice(["UseLabel", "UseCollectionName", "DoNotDisplay"])
 _REQUIRED = click.Choice(["None", "Recommended", "ApplicationRequired"])

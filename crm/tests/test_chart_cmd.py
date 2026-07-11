@@ -1,4 +1,5 @@
 """Command-layer tests for `crm chart` (list / get / create / delete)."""
+
 # pyright: basic
 from __future__ import annotations
 
@@ -6,17 +7,18 @@ import json
 import re
 
 import requests_mock as rm_module
-
 from click.testing import CliRunner
+
 from crm.cli import cli
 from crm.utils.d365_backend import D365Backend
-
 
 _CHART = {
     "savedqueryvisualizationid": "11112222-3333-4444-5555-666677778888",
     "name": "Tickets by Priority",
     "primaryentitytypecode": "new_project",
-    "datadescription": '<datadefinition><fetch><entity name="new_project"/></fetch></datadefinition>',
+    "datadescription": (
+        '<datadefinition><fetch><entity name="new_project"/></fetch></datadefinition>'
+    ),
     "presentationdescription": "<Chart/>",
     "description": "By priority",
     "isdefault": False,
@@ -51,8 +53,7 @@ class TestChartList:
         _use_backend(monkeypatch, backend)
         with rm_module.Mocker() as m:
             m.get(backend.url_for("userqueryvisualizations"), json={"value": []})
-            result = CliRunner().invoke(
-                cli, ["--json", "chart", "list", "new_project", "--user"])
+            result = CliRunner().invoke(cli, ["--json", "chart", "list", "new_project", "--user"])
         assert result.exit_code == 0, result.output
         assert "userqueryvisualizations" in m.last_request.url
 
@@ -85,7 +86,9 @@ class TestReadFile:
     def test_unreadable_path_raises_usage_error(self, tmp_path):
         import click
         import pytest
+
         from crm.commands.chart import _read_file
+
         # A directory can't be read as a file → OSError → clean UsageError.
         with pytest.raises(click.UsageError):
             _read_file(str(tmp_path))
@@ -93,9 +96,11 @@ class TestReadFile:
 
 class TestChartCreate:
     def _post_mock(self, m, backend):
-        m.post(_sys_url(backend), status_code=204,
-               headers={"OData-EntityId": backend.url_for(
-                   f"savedqueryvisualizations({_NEW_ID})")})
+        m.post(
+            _sys_url(backend),
+            status_code=204,
+            headers={"OData-EntityId": backend.url_for(f"savedqueryvisualizations({_NEW_ID})")},
+        )
 
     def test_create_xml_mode(self, backend, monkeypatch, tmp_path):
         _use_backend(monkeypatch, backend)
@@ -105,13 +110,24 @@ class TestChartCreate:
         pd.write_text("<Chart/>", encoding="utf-8")
         with rm_module.Mocker() as m:
             self._post_mock(m, backend)
-            result = CliRunner().invoke(cli, [
-                "--json", "chart", "create", "new_project",
-                "--name", "By Priority",
-                "--data-description", str(dd),
-                "--presentation-description", str(pd),
-                "--solution", "TestSol", "--no-publish",
-            ])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "chart",
+                    "create",
+                    "new_project",
+                    "--name",
+                    "By Priority",
+                    "--data-description",
+                    str(dd),
+                    "--presentation-description",
+                    str(pd),
+                    "--solution",
+                    "TestSol",
+                    "--no-publish",
+                ],
+            )
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["created"] is True
@@ -119,8 +135,9 @@ class TestChartCreate:
 
     def test_create_requires_a_mode(self, backend, monkeypatch):
         _use_backend(monkeypatch, backend)
-        result = CliRunner().invoke(cli, [
-            "--json", "chart", "create", "new_project", "--name", "X", "--no-publish"])
+        result = CliRunner().invoke(
+            cli, ["--json", "chart", "create", "new_project", "--name", "X", "--no-publish"]
+        )
         assert result.exit_code != 0
         assert "either" in result.output.lower()
 
@@ -130,10 +147,24 @@ class TestChartCreate:
         dd.write_text("<datadefinition/>", encoding="utf-8")
         pd = tmp_path / "pres.xml"
         pd.write_text("<Chart/>", encoding="utf-8")
-        result = CliRunner().invoke(cli, [
-            "--json", "chart", "create", "new_project", "--name", "X",
-            "--data-description", str(dd), "--presentation-description", str(pd),
-            "--web-resource", "new_chartscript", "--no-publish"])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "chart",
+                "create",
+                "new_project",
+                "--name",
+                "X",
+                "--data-description",
+                str(dd),
+                "--presentation-description",
+                str(pd),
+                "--web-resource",
+                "new_chartscript",
+                "--no-publish",
+            ],
+        )
         assert result.exit_code != 0
         assert "mutually exclusive" in result.output.lower()
 
@@ -141,9 +172,20 @@ class TestChartCreate:
         _use_backend(monkeypatch, backend)
         dd = tmp_path / "data.xml"
         dd.write_text("<datadefinition/>", encoding="utf-8")
-        result = CliRunner().invoke(cli, [
-            "--json", "chart", "create", "new_project", "--name", "X",
-            "--data-description", str(dd), "--no-publish"])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "chart",
+                "create",
+                "new_project",
+                "--name",
+                "X",
+                "--data-description",
+                str(dd),
+                "--no-publish",
+            ],
+        )
         assert result.exit_code != 0
         assert "both" in result.output.lower()
 
@@ -151,13 +193,27 @@ class TestChartCreate:
         _use_backend(monkeypatch, backend)
         wr_id = "dddddddd-0000-0000-0000-000000000001"
         with rm_module.Mocker() as m:
-            m.get(backend.url_for("webresourceset"),
-                  json={"value": [{"webresourceid": wr_id, "name": "new_chartscript"}]})
+            m.get(
+                backend.url_for("webresourceset"),
+                json={"value": [{"webresourceid": wr_id, "name": "new_chartscript"}]},
+            )
             self._post_mock(m, backend)
-            result = CliRunner().invoke(cli, [
-                "--json", "chart", "create", "new_project", "--name", "Script",
-                "--web-resource", "new_chartscript",
-                "--solution", "TestSol", "--no-publish"])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "chart",
+                    "create",
+                    "new_project",
+                    "--name",
+                    "Script",
+                    "--web-resource",
+                    "new_chartscript",
+                    "--solution",
+                    "TestSol",
+                    "--no-publish",
+                ],
+            )
         assert result.exit_code == 0, result.output
         assert json.loads(result.output)["data"]["created"] is True
 
@@ -169,11 +225,24 @@ class TestChartCreate:
         dd.write_text("<datadefinition/>", encoding="utf-8")
         pd = tmp_path / "pres.xml"
         pd.write_text("<Chart/>", encoding="utf-8")
-        result = CliRunner().invoke(cli, [
-            "--json", "chart", "create", "new_project",
-            "--name", "By Priority",
-            "--data-description", str(dd), "--presentation-description", str(pd),
-            "--solution", "TestSol", "--no-publish"])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "chart",
+                "create",
+                "new_project",
+                "--name",
+                "By Priority",
+                "--data-description",
+                str(dd),
+                "--presentation-description",
+                str(pd),
+                "--solution",
+                "TestSol",
+                "--no-publish",
+            ],
+        )
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["_dry_run"] is True
@@ -181,17 +250,19 @@ class TestChartCreate:
 
 
 _EDIT_DATA = (
-    '<datadefinition><fetchcollection>'
+    "<datadefinition><fetchcollection>"
     '<fetch mapping="logical" aggregate="true"><entity name="new_project">'
     '<attribute name="new_priority" groupby="true" alias="groupby_column" />'
     '<attribute name="new_projectid" aggregate="count" alias="aggregate_column" />'
-    '</entity></fetch></fetchcollection>'
+    "</entity></fetch></fetchcollection>"
     '<categorycollection><category alias="groupby_column">'
     '<measurecollection><measure alias="aggregate_column" /></measurecollection>'
-    '</category></categorycollection></datadefinition>'
+    "</category></categorycollection></datadefinition>"
 )
-_EDIT_PRES = ('<Chart><Series><Series ChartType="Column" /></Series>'
-              '<ChartAreas><ChartArea /></ChartAreas></Chart>')
+_EDIT_PRES = (
+    '<Chart><Series><Series ChartType="Column" /></Series>'
+    "<ChartAreas><ChartArea /></ChartAreas></Chart>"
+)
 _EDIT_CHART = {
     "savedqueryvisualizationid": _CHART["savedqueryvisualizationid"],
     "name": "Projects by Priority",
@@ -217,10 +288,22 @@ class TestChartUpdateCmd:
         _use_backend(monkeypatch, backend)
         with rm_module.Mocker() as m:
             _edit_mocks(m, backend)
-            result = CliRunner().invoke(cli, [
-                "--json", "chart", "update", _EDIT_ID,
-                "--name", "Renamed", "--type", "Bar",
-                "--solution", "TestSol", "--no-publish"])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "chart",
+                    "update",
+                    _EDIT_ID,
+                    "--name",
+                    "Renamed",
+                    "--type",
+                    "Bar",
+                    "--solution",
+                    "TestSol",
+                    "--no-publish",
+                ],
+            )
         assert result.exit_code == 0, result.output
         body = m.last_request.json()
         assert body["name"] == "Renamed"
@@ -232,9 +315,20 @@ class TestChartUpdateCmd:
         dd.write_text(_EDIT_DATA, encoding="utf-8")
         with rm_module.Mocker() as m:
             _edit_mocks(m, backend)
-            result = CliRunner().invoke(cli, [
-                "--json", "chart", "update", _EDIT_ID,
-                "--data-description", str(dd), "--solution", "TestSol", "--no-publish"])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "chart",
+                    "update",
+                    _EDIT_ID,
+                    "--data-description",
+                    str(dd),
+                    "--solution",
+                    "TestSol",
+                    "--no-publish",
+                ],
+            )
         assert result.exit_code == 0, result.output
         assert m.last_request.json()["datadescription"] == _EDIT_DATA
 
@@ -247,12 +341,25 @@ class TestChartSetFetchCmd:
             '<fetch mapping="logical" aggregate="true"><entity name="new_project">'
             '<attribute name="new_stage" groupby="true" alias="groupby_column" />'
             '<attribute name="new_projectid" aggregate="count" alias="aggregate_column" />'
-            '</entity></fetch>', encoding="utf-8")
+            "</entity></fetch>",
+            encoding="utf-8",
+        )
         with rm_module.Mocker() as m:
             _edit_mocks(m, backend)
-            result = CliRunner().invoke(cli, [
-                "--json", "chart", "set-fetch", _EDIT_ID,
-                "--fetch", str(fetch), "--solution", "TestSol", "--no-publish"])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "chart",
+                    "set-fetch",
+                    _EDIT_ID,
+                    "--fetch",
+                    str(fetch),
+                    "--solution",
+                    "TestSol",
+                    "--no-publish",
+                ],
+            )
         assert result.exit_code == 0, result.output
         assert 'name="new_stage"' in m.last_request.json()["datadescription"]
 
@@ -262,10 +369,24 @@ class TestChartSeriesCmd:
         _use_backend(monkeypatch, backend)
         with rm_module.Mocker() as m:
             _edit_mocks(m, backend)
-            result = CliRunner().invoke(cli, [
-                "--json", "chart", "add-series", _EDIT_ID,
-                "--column", "new_budget", "--aggregate", "sum",
-                "--alias", "series2", "--solution", "TestSol", "--no-publish"])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "chart",
+                    "add-series",
+                    _EDIT_ID,
+                    "--column",
+                    "new_budget",
+                    "--aggregate",
+                    "sum",
+                    "--alias",
+                    "series2",
+                    "--solution",
+                    "TestSol",
+                    "--no-publish",
+                ],
+            )
         assert result.exit_code == 0, result.output
         assert 'alias="series2"' in m.last_request.json()["datadescription"]
 
@@ -273,9 +394,20 @@ class TestChartSeriesCmd:
         _use_backend(monkeypatch, backend)
         with rm_module.Mocker() as m:
             _edit_mocks(m, backend)
-            result = CliRunner().invoke(cli, [
-                "--json", "chart", "remove-series", _EDIT_ID,
-                "--alias", "ghost", "--solution", "TestSol", "--no-publish"])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "chart",
+                    "remove-series",
+                    _EDIT_ID,
+                    "--alias",
+                    "ghost",
+                    "--solution",
+                    "TestSol",
+                    "--no-publish",
+                ],
+            )
         assert result.exit_code != 0
         assert "ghost" in result.output.lower()
 
@@ -289,10 +421,22 @@ class TestChartSetGroupbyCmd:
             m.patch(url, status_code=204)
             # --dategrouping requires a date column
             m.get(re.compile("EntityDefinitions"), json={"AttributeType": "DateTime"})
-            result = CliRunner().invoke(cli, [
-                "--json", "chart", "set-groupby", _EDIT_ID,
-                "--column", "createdon", "--dategrouping", "month",
-                "--solution", "TestSol", "--no-publish"])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "chart",
+                    "set-groupby",
+                    _EDIT_ID,
+                    "--column",
+                    "createdon",
+                    "--dategrouping",
+                    "month",
+                    "--solution",
+                    "TestSol",
+                    "--no-publish",
+                ],
+            )
         assert result.exit_code == 0, result.output
         body = m.last_request.json()
         assert 'name="createdon"' in body["datadescription"]
@@ -304,10 +448,22 @@ class TestChartSetGroupbyCmd:
         with rm_module.Mocker() as m:
             m.get(url, json=_EDIT_CHART)
             m.get(re.compile("EntityDefinitions"), json={"AttributeType": "Picklist"})
-            result = CliRunner().invoke(cli, [
-                "--json", "chart", "set-groupby", _EDIT_ID,
-                "--column", "new_priority", "--dategrouping", "month",
-                "--solution", "TestSol", "--no-publish"])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "chart",
+                    "set-groupby",
+                    _EDIT_ID,
+                    "--column",
+                    "new_priority",
+                    "--dategrouping",
+                    "month",
+                    "--solution",
+                    "TestSol",
+                    "--no-publish",
+                ],
+            )
         assert result.exit_code != 0
         assert "date column" in result.output.lower()
 
@@ -315,12 +471,22 @@ class TestChartSetGroupbyCmd:
         _use_backend(monkeypatch, dry_backend)
         with rm_module.Mocker() as m:
             # get_chart still reads live under dry-run (reads-execute); metadata too
-            m.get(dry_backend.url_for(f"savedqueryvisualizations({_EDIT_ID})"),
-                  json=_EDIT_CHART)
+            m.get(dry_backend.url_for(f"savedqueryvisualizations({_EDIT_ID})"), json=_EDIT_CHART)
             m.get(re.compile("EntityDefinitions"), json={"AttributeType": "Picklist"})
-            result = CliRunner().invoke(cli, [
-                "--json", "chart", "set-groupby", _EDIT_ID,
-                "--column", "new_priority", "--solution", "TestSol", "--no-publish"])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "chart",
+                    "set-groupby",
+                    _EDIT_ID,
+                    "--column",
+                    "new_priority",
+                    "--solution",
+                    "TestSol",
+                    "--no-publish",
+                ],
+            )
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["_dry_run"] is True

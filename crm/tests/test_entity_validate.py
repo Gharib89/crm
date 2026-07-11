@@ -23,7 +23,8 @@ from crm.utils.d365_backend import D365Error
 def _isolate_crm_home(tmp_path, monkeypatch):
     """Isolate CRM_HOME per test. validate_payload now resolves the entity set
     through the read-through metadata cache (#261), so a shared real ~/.crm would
-    let one test's warm cache suppress the next test's mocked EntityDefinitions GET."""
+    let one test's warm cache suppress the next test's mocked EntityDefinitions GET.
+    """
     monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
 
 
@@ -40,20 +41,22 @@ def _attrs_url(backend) -> str:
 
 
 def _m2o_url(backend) -> str:
-    return backend.url_for(
-        "EntityDefinitions(LogicalName='account')/ManyToOneRelationships"
-    )
+    return backend.url_for("EntityDefinitions(LogicalName='account')/ManyToOneRelationships")
 
 
 _SETS = {"value": [{"LogicalName": "account", "EntitySetName": "accounts"}]}
-_ATTRS = {"value": [
-    {"LogicalName": "name"},
-    {"LogicalName": "telephone1"},
-    {"LogicalName": "accountid"},
-]}
-_M2O = {"value": [
-    {"ReferencingEntityNavigationPropertyName": "primarycontactid_account"},
-]}
+_ATTRS = {
+    "value": [
+        {"LogicalName": "name"},
+        {"LogicalName": "telephone1"},
+        {"LogicalName": "accountid"},
+    ]
+}
+_M2O = {
+    "value": [
+        {"ReferencingEntityNavigationPropertyName": "primarycontactid_account"},
+    ]
+}
 
 
 def _mock_three(m, backend) -> None:
@@ -68,6 +71,7 @@ def _mock_three(m, backend) -> None:
 class TestTracer:
     def test_unknown_field_flagged_with_did_you_mean(self, backend):
         from crm.core import entity as ent
+
         with requests_mock.Mocker() as m:
             _mock_three(m, backend)
             result = ent.validate_payload(backend, "accounts", {"naem": "Contoso"})
@@ -81,6 +85,7 @@ class TestTracer:
 class TestNavBindUnion:
     def test_valid_odata_bind_nav_not_flagged(self, backend):
         from crm.core import entity as ent
+
         payload = {
             "name": "Contoso",
             "primarycontactid_account@odata.bind": "/contacts(<guid>)",
@@ -96,6 +101,7 @@ class TestNavBindUnion:
 class TestGetCost:
     def test_no_bind_keys_skips_relationships_get(self, backend):
         from crm.core import entity as ent
+
         # Payload has no @odata.bind keys, so nav-property names cannot matter:
         # only the set→logical and attributes GETs should fire (2, not 3).
         with requests_mock.Mocker() as m:
@@ -112,25 +118,26 @@ class TestGetCost:
 class TestDidYouMean:
     def test_no_suggestion_when_nothing_close(self, backend):
         from crm.core import entity as ent
+
         with requests_mock.Mocker() as m:
             _mock_three(m, backend)
-            result = ent.validate_payload(
-                backend, "accounts", {"zzzqqq": "x"}
-            )
+            result = ent.validate_payload(backend, "accounts", {"zzzqqq": "x"})
         # Flagged unknown, but no valid key is close enough to suggest.
         assert result["ok"] is False
         assert result["meta"]["unknown_fields"] == ["zzzqqq"]
         assert result["meta"]["did_you_mean"] == {}
 
 
-_ATTRS_PHONE = {"value": [
-    {"LogicalName": "name"},
-    {"LogicalName": "telephone1"},
-    {"LogicalName": "telephone2"},
-    {"LogicalName": "telephone3"},
-    {"LogicalName": "accountnumber"},
-    {"LogicalName": "accountid"},
-]}
+_ATTRS_PHONE = {
+    "value": [
+        {"LogicalName": "name"},
+        {"LogicalName": "telephone1"},
+        {"LogicalName": "telephone2"},
+        {"LogicalName": "telephone3"},
+        {"LogicalName": "accountnumber"},
+        {"LogicalName": "accountid"},
+    ]
+}
 
 
 def _mock_phone(m, backend) -> None:
@@ -143,6 +150,7 @@ class TestNumberedFamilyRanking:
         # `telephoneone` must suggest `telephone1`, not the lexicographically
         # largest fuzzy tie `telephone3` (#198).
         from crm.core import entity as ent
+
         with requests_mock.Mocker() as m:
             _mock_phone(m, backend)
             result = ent.validate_payload(backend, "accounts", {"telephoneone": "555"})
@@ -152,6 +160,7 @@ class TestNumberedFamilyRanking:
     def test_equal_ratio_tie_picks_lowest_member(self, backend):
         # A typo equidistant from a numbered family resolves to the lowest member.
         from crm.core import entity as ent
+
         attrs = {"value": [{"LogicalName": f"field{n}"} for n in (1, 2, 3)]}
         with requests_mock.Mocker() as m:
             m.get(_sets_url(backend), json=_SETS)
@@ -161,6 +170,7 @@ class TestNumberedFamilyRanking:
 
     def test_unique_typo_not_regressed(self, backend):
         from crm.core import entity as ent
+
         with requests_mock.Mocker() as m:
             _mock_phone(m, backend)
             result = ent.validate_payload(backend, "accounts", {"accountnumbr": "x"})
@@ -170,6 +180,7 @@ class TestNumberedFamilyRanking:
 class TestControlAnnotations:
     def test_control_annotation_key_ignored_and_skips_relationships(self, backend):
         from crm.core import entity as ent
+
         payload = {"@odata.etag": 'W/"123"', "name": "Contoso"}
         with requests_mock.Mocker() as m:
             # A bare control annotation is not an @odata.bind, so the nav probe
@@ -187,8 +198,10 @@ class TestApostropheSetName:
     def test_apostrophe_set_name_resolves_via_map(self, backend):
         """The seam resolves set→logical with a dict lookup over the full
         EntityDefinitions collection (#261) — there is no $filter to escape, so an
-        apostrophe in the set name is just a plain key and resolution still works."""
+        apostrophe in the set name is just a plain key and resolution still works.
+        """
         from crm.core import entity as ent
+
         defs = {"value": [{"LogicalName": "obrien", "EntitySetName": "o'briens"}]}
         with requests_mock.Mocker() as m:
             m.get(_sets_url(backend), json=defs)
@@ -203,6 +216,7 @@ class TestApostropheSetName:
 class TestDuplicateUnknown:
     def test_base_and_annotated_unknown_dedup_to_one_entry(self, backend):
         from crm.core import entity as ent
+
         # `foo` and `foo@odata.bind` both strip to the same unknown field name.
         payload = {"foo": 1, "foo@odata.bind": "/x(1)"}
         with requests_mock.Mocker() as m:
@@ -215,6 +229,7 @@ class TestDuplicateUnknown:
 class TestUnknownEntitySet:
     def test_unresolvable_set_raises(self, backend):
         from crm.core import entity as ent
+
         with requests_mock.Mocker() as m:
             m.get(_sets_url(backend), json={"value": []})
             with pytest.raises(D365Error, match="Unknown entity set"):
@@ -229,10 +244,18 @@ class TestCommandGate:
         self._stub(monkeypatch, backend)
         with requests_mock.Mocker() as m:
             _mock_three(m, backend)
-            result = CliRunner().invoke(cli, [
-                "--json", "entity", "create", "accounts",
-                "--data", json.dumps({"naem": "Contoso"}), "--validate",
-            ])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "entity",
+                    "create",
+                    "accounts",
+                    "--data",
+                    json.dumps({"naem": "Contoso"}),
+                    "--validate",
+                ],
+            )
             # Validation read-only GETs ran; the POST never fired.
             assert {r.method for r in m.request_history} == {"GET"}
         assert result.exit_code != 0
@@ -245,10 +268,19 @@ class TestCommandGate:
         self._stub(monkeypatch, dry_backend)
         with requests_mock.Mocker() as m:
             _mock_three(m, dry_backend)
-            result = CliRunner().invoke(cli, [
-                "--json", "--dry-run", "entity", "create", "accounts",
-                "--data", json.dumps({"name": "Contoso"}), "--validate",
-            ])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "--dry-run",
+                    "entity",
+                    "create",
+                    "accounts",
+                    "--data",
+                    json.dumps({"name": "Contoso"}),
+                    "--validate",
+                ],
+            )
             # Validation forces real GETs even under dry-run; the write itself is
             # previewed, never issued.
             assert {r.method for r in m.request_history} == {"GET"}
@@ -263,10 +295,19 @@ class TestCommandGate:
         guid = "11111111-1111-1111-1111-111111111111"
         with requests_mock.Mocker() as m:
             _mock_three(m, backend)
-            result = CliRunner().invoke(cli, [
-                "--json", "entity", "update", "accounts", guid,
-                "--data", json.dumps({"naem": "x"}), "--validate",
-            ])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "entity",
+                    "update",
+                    "accounts",
+                    guid,
+                    "--data",
+                    json.dumps({"naem": "x"}),
+                    "--validate",
+                ],
+            )
             assert {r.method for r in m.request_history} == {"GET"}
         assert result.exit_code != 0
         env = json.loads(result.output)
@@ -276,15 +317,18 @@ class TestCommandGate:
 
 # ── Primary-id warning (#233) ─────────────────────────────────────────────────
 
-_SETS_PID = {"value": [
-    {"LogicalName": "account", "EntitySetName": "accounts", "PrimaryIdAttribute": "accountid"},
-]}
+_SETS_PID = {
+    "value": [
+        {"LogicalName": "account", "EntitySetName": "accounts", "PrimaryIdAttribute": "accountid"},
+    ]
+}
 
 
 def _mock_two_pid(m, backend) -> None:
     """Mocks the create-path reads: the name-map collection GET, the attributes
     GET, and the targeted PrimaryIdAttribute describe GET (#261). The last is hit
-    only on the create path; registering it on the update path is harmless."""
+    only on the create path; registering it on the update path is harmless.
+    """
     m.get(_sets_url(backend), json=_SETS_PID)
     m.get(_attrs_url(backend), json=_ATTRS)
     m.get(_primary_id_url(backend), json={"PrimaryIdAttribute": "accountid"})
@@ -295,10 +339,12 @@ class TestPrimaryIdWarning:
 
     def test_primary_id_in_create_payload_warns(self, backend):
         from crm.core import entity as ent
+
         with requests_mock.Mocker() as m:
             _mock_two_pid(m, backend)
             result = ent.validate_payload(
-                backend, "accounts",
+                backend,
+                "accounts",
                 {"accountid": "11111111-1111-1111-1111-111111111111", "name": "Contoso"},
                 is_create=True,
             )
@@ -310,20 +356,25 @@ class TestPrimaryIdWarning:
 
     def test_primary_id_absent_from_payload_no_warn(self, backend):
         from crm.core import entity as ent
+
         with requests_mock.Mocker() as m:
             _mock_two_pid(m, backend)
             result = ent.validate_payload(
-                backend, "accounts", {"name": "Contoso"},
+                backend,
+                "accounts",
+                {"name": "Contoso"},
                 is_create=True,
             )
         assert result == {"ok": True}
 
     def test_is_create_false_primary_id_no_warn(self, backend):
         from crm.core import entity as ent
+
         with requests_mock.Mocker() as m:
             _mock_two_pid(m, backend)
             result = ent.validate_payload(
-                backend, "accounts",
+                backend,
+                "accounts",
                 {"accountid": "11111111-1111-1111-1111-111111111111", "name": "Contoso"},
                 is_create=False,
             )
@@ -334,12 +385,16 @@ class TestPrimaryIdWarning:
         name-map collection GET already selects it — so the create path issues no
         separate primary-id GET (#704). Cold cache → 2 GETs (collection,
         attributes); no ManyToOne for a bind-free payload, and no targeted
-        EntityDefinitions describe GET."""
+        EntityDefinitions describe GET.
+        """
         from crm.core import entity as ent
+
         with requests_mock.Mocker() as m:
             _mock_two_pid(m, backend)
             result = ent.validate_payload(
-                backend, "accounts", {"name": "Contoso"},
+                backend,
+                "accounts",
+                {"name": "Contoso"},
                 is_create=True,
             )
             # Lower-case both sides so the negative assertions can't silently
@@ -354,9 +409,11 @@ class TestPrimaryIdWarning:
         """With the entity definitions warm in cache, a create-path validation
         issues exactly ONE metadata GET — the attributes fetch — because both the
         logical name and PrimaryIdAttribute are served from the cached definition,
-        not a live GET (#704)."""
+        not a live GET (#704).
+        """
         from crm.core import entity as ent
         from crm.core import entity_names
+
         with requests_mock.Mocker() as m:
             m.get(_sets_url(backend), json=_SETS_PID)
             m.get(_attrs_url(backend), json=_ATTRS)
@@ -364,7 +421,10 @@ class TestPrimaryIdWarning:
             entity_names.load_name_map(backend, refresh=True)
             start = len(m.request_history)
             ent.validate_payload(
-                backend, "accounts", {"name": "Contoso"}, is_create=True,
+                backend,
+                "accounts",
+                {"name": "Contoso"},
+                is_create=True,
             )
             after = m.request_history[start:]
         assert len(after) == 1
@@ -384,11 +444,18 @@ class TestPrimaryIdWarnCommand:
             _mock_two_pid(m, backend)
             post_url = backend.url_for("accounts")
             m.post(post_url, json={"accountid": guid, "name": "Contoso"})
-            result = CliRunner().invoke(cli, [
-                "--json", "entity", "create", "accounts",
-                "--data", json.dumps({"accountid": guid, "name": "Contoso"}),
-                "--validate",
-            ])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "entity",
+                    "create",
+                    "accounts",
+                    "--data",
+                    json.dumps({"accountid": guid, "name": "Contoso"}),
+                    "--validate",
+                ],
+            )
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["ok"] is True
@@ -402,11 +469,17 @@ class TestPrimaryIdWarnCommand:
             _mock_two_pid(m, backend)
             post_url = backend.url_for("accounts")
             m.post(post_url, json={"accountid": guid, "name": "Contoso"})
-            result = CliRunner().invoke(cli, [
-                "entity", "create", "accounts",
-                "--data", json.dumps({"accountid": guid, "name": "Contoso"}),
-                "--validate",
-            ])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "entity",
+                    "create",
+                    "accounts",
+                    "--data",
+                    json.dumps({"accountid": guid, "name": "Contoso"}),
+                    "--validate",
+                ],
+            )
         assert result.exit_code == 0, result.output
         # skin.warning writes via print(file=sys.stderr); CliRunner captures it in
         # result.stderr (Click 8.2+ separates streams) and also in result.output.
@@ -427,11 +500,18 @@ class TestPrimaryIdWarnCommand:
             _mock_two_pid(m, backend)
             post_url = backend.url_for("accounts")
             m.post(post_url, status_code=412, json=error_body)
-            result = CliRunner().invoke(cli, [
-                "--json", "entity", "create", "accounts",
-                "--data", json.dumps({"accountid": guid, "name": "Contoso"}),
-                "--validate",
-            ])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "entity",
+                    "create",
+                    "accounts",
+                    "--data",
+                    json.dumps({"accountid": guid, "name": "Contoso"}),
+                    "--validate",
+                ],
+            )
         assert result.exit_code != 0
         env = json.loads(result.output)
         assert env["ok"] is False
@@ -442,30 +522,50 @@ class TestPrimaryIdWarnCommand:
         """Warning appears on stderr even when the POST fails in human mode."""
         self._stub(monkeypatch, backend)
         guid = "11111111-1111-1111-1111-111111111111"
-        error_body = {"error": {"code": "0x80040237", "message": "A record with matching key values already exists."}}
+        error_body = {
+            "error": {
+                "code": "0x80040237",
+                "message": "A record with matching key values already exists.",
+            }
+        }
         with requests_mock.Mocker() as m:
             _mock_two_pid(m, backend)
             m.post(backend.url_for("accounts"), status_code=412, json=error_body)
-            result = CliRunner().invoke(cli, [
-                "entity", "create", "accounts",
-                "--data", json.dumps({"accountid": guid, "name": "Contoso"}),
-                "--validate",
-            ])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "entity",
+                    "create",
+                    "accounts",
+                    "--data",
+                    json.dumps({"accountid": guid, "name": "Contoso"}),
+                    "--validate",
+                ],
+            )
         assert result.exit_code != 0
         assert "payload contains primary id 'accountid'" in result.stderr
 
     def test_update_with_primary_id_no_warn(self, monkeypatch, backend):
-        """entity update --validate never warns about primary id (update path unchanged)."""
+        """Entity update --validate never warns about primary id (update path unchanged)."""
         self._stub(monkeypatch, backend)
         guid = "11111111-1111-1111-1111-111111111111"
         with requests_mock.Mocker() as m:
             _mock_two_pid(m, backend)
             patch_url = backend.url_for(f"accounts({guid})")
             m.patch(patch_url, status_code=204)
-            result = CliRunner().invoke(cli, [
-                "--json", "entity", "update", "accounts", guid,
-                "--data", json.dumps({"accountid": guid, "name": "x"}), "--validate",
-            ])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "entity",
+                    "update",
+                    "accounts",
+                    guid,
+                    "--data",
+                    json.dumps({"accountid": guid, "name": "x"}),
+                    "--validate",
+                ],
+            )
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["ok"] is True

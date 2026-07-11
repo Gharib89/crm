@@ -7,6 +7,7 @@ per-command code. Tests exercise external behavior only: invoke through the CLI
 runner with a mocked backend (or drive the public `emit` seam directly) and assert
 on the emitted envelope — never on shaper internals.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -159,10 +160,13 @@ class TestNonObjectPassthrough:
 
 class TestEnvelopePreserved:
     def test_meta_paging_survives_projection(self, make_fake_backend, inject_backend):
-        resp = _collection(_row(), **{
-            "@odata.count": 42,
-            "@odata.nextLink": "https://crm.contoso.local/contoso/api/data/v9.2/accounts?$skiptoken=x",
-        })
+        resp = _collection(
+            _row(),
+            **{
+                "@odata.count": 42,
+                "@odata.nextLink": "https://crm.contoso.local/contoso/api/data/v9.2/accounts?$skiptoken=x",
+            },
+        )
         inject_backend(make_fake_backend(responses={"get": resp}))
         result = CliRunner().invoke(
             cli, ["--json", "--fields", "name", "query", "odata", "accounts"]
@@ -174,8 +178,7 @@ class TestEnvelopePreserved:
         assert env["meta"]["next_link"].endswith("$skiptoken=x")
 
     def test_preexisting_warnings_not_clobbered(self):
-        env = _emit_json(fields=["typo"], data=[{"name": "A"}],
-                         warnings=["pre-existing"])
+        env = _emit_json(fields=["typo"], data=[{"name": "A"}], warnings=["pre-existing"])
         ws = env["meta"]["warnings"]
         assert "pre-existing" in ws
         assert any("typo" in w for w in ws)
@@ -211,8 +214,7 @@ class TestDryRunShaped:
         env = _emit_json(
             fields=["would_create"],
             dry_run=True,
-            data={"_dry_run": True, "would_create": {"body": {"name": "x"}},
-                  "would_skip": False},
+            data={"_dry_run": True, "would_create": {"body": {"name": "x"}}, "would_skip": False},
         )
         assert env["data"] == {"would_create": {"body": {"name": "x"}}}
         assert env["meta"]["dry_run"] is True
@@ -221,9 +223,7 @@ class TestDryRunShaped:
 class TestHumanColumnSelection:
     def test_human_table_columns_narrowed_and_ordered(self, make_fake_backend, inject_backend):
         inject_backend(make_fake_backend(responses={"get": _collection(_row())}))
-        result = CliRunner().invoke(
-            cli, ["--fields", "name", "query", "odata", "accounts"]
-        )
+        result = CliRunner().invoke(cli, ["--fields", "name", "query", "odata", "accounts"])
         assert result.exit_code == 0, result.output
         assert "Contoso Ltd" in result.output
         # The projected-away accountid GUID is not rendered.
@@ -233,19 +233,16 @@ class TestHumanColumnSelection:
 class TestUsageErrors:
     def test_empty_fields_is_usage_error(self, make_fake_backend, inject_backend):
         inject_backend(make_fake_backend(responses={"get": _collection(_row())}))
-        result = CliRunner().invoke(
-            cli, ["--json", "--fields", "  ", "query", "odata", "accounts"]
-        )
+        result = CliRunner().invoke(cli, ["--json", "--fields", "  ", "query", "odata", "accounts"])
         assert result.exit_code == 2, result.output
 
 
 class TestJqProjection:
     def test_length_collapses_list_to_scalar(self, make_fake_backend, inject_backend):
-        inject_backend(make_fake_backend(
-            responses={"get": _collection(_row("A"), _row("B"), _row("C"))}))
-        result = CliRunner().invoke(
-            cli, ["--json", "--jq", "length", "query", "odata", "accounts"]
+        inject_backend(
+            make_fake_backend(responses={"get": _collection(_row("A"), _row("B"), _row("C"))})
         )
+        result = CliRunner().invoke(cli, ["--json", "--jq", "length", "query", "odata", "accounts"])
         assert result.exit_code == 0, result.output
         assert json.loads(result.output)["data"] == 3
 
@@ -276,9 +273,7 @@ class TestJqImpliesJson:
     def test_jq_forces_json_even_without_json_flag(self, make_fake_backend, inject_backend):
         # No --json, but --jq implies it: output must be a JSON envelope.
         inject_backend(make_fake_backend(responses={"get": _collection(_row(), _row())}))
-        result = CliRunner().invoke(
-            cli, ["--jq", "length", "query", "odata", "accounts"]
-        )
+        result = CliRunner().invoke(cli, ["--jq", "length", "query", "odata", "accounts"])
         assert result.exit_code == 0, result.output
         assert json.loads(result.output)["data"] == 2
 
@@ -317,8 +312,7 @@ class TestJqDryRunShaped:
         env = _emit_jq(
             ".would_create.body",
             dry_run=True,
-            data={"_dry_run": True, "would_create": {"body": {"name": "x"}},
-                  "would_skip": False},
+            data={"_dry_run": True, "would_create": {"body": {"name": "x"}}, "would_skip": False},
         )
         assert env["data"] == {"name": "x"}
         assert env["meta"]["dry_run"] is True

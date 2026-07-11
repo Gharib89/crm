@@ -2,6 +2,7 @@
 """E2E tests for solution READ verbs:
 list / info / components / dependencies / validate / layer-conflicts.
 """
+
 from __future__ import annotations
 
 import json
@@ -24,7 +25,7 @@ def test_solution_list_returns_non_empty(cli):
 
 @covers("solution info")
 def test_solution_info_ephemeral(cli, ephemeral_solution):
-    """solution info <name> returns the throwaway solution's own uniquename."""
+    """Solution info <name> returns the throwaway solution's own uniquename."""
     result = cli(["--json", "solution", "info", ephemeral_solution])
     assert result.returncode == 0, result.stderr
     env = json.loads(result.stdout)
@@ -35,7 +36,7 @@ def test_solution_info_ephemeral(cli, ephemeral_solution):
 
 @covers("solution components")
 def test_solution_components_ephemeral(cli, ephemeral_solution):
-    """components of an empty throwaway solution — assert structure, not content."""
+    """Components of an empty throwaway solution — assert structure, not content."""
     result = cli(["--json", "solution", "components", ephemeral_solution])
     assert result.returncode == 0, result.stderr
     env = json.loads(result.stdout)
@@ -46,7 +47,7 @@ def test_solution_components_ephemeral(cli, ephemeral_solution):
 
 @covers("solution dependencies")
 def test_solution_dependencies_ephemeral(cli, ephemeral_solution):
-    """dependencies for the throwaway solution — assert ok + list structure."""
+    """Dependencies for the throwaway solution — assert ok + list structure."""
     result = cli(["--json", "solution", "dependencies", ephemeral_solution])
     assert result.returncode == 0, result.stderr
     env = json.loads(result.stdout)
@@ -78,7 +79,7 @@ def test_solution_validate_exported_zip(cli, backend, ephemeral_solution, tmp_pa
 
 @covers("solution validate")
 def test_solution_validate_against_org_version_ok(cli, backend, ephemeral_solution, tmp_path):
-    """validate --against-org runs the #325 package-version compatibility check.
+    """Validate --against-org runs the #325 package-version compatibility check.
 
     A solution exported FROM this org necessarily carries a package version <= the
     org's own version, so the check is a no-op pass here (the on-prem leg is where
@@ -100,8 +101,11 @@ def test_solution_validate_against_org_version_ok(cli, backend, ephemeral_soluti
     assert "package-version" in env["data"].get("checks_run", [])
     assert env["data"].get("valid") is True
     # the self-exported package is not newer than its own org → no error finding
-    assert not [f for f in env["data"].get("findings", [])
-                if f["check"] == "package-version" and f["severity"] == "error"]
+    assert not [
+        f
+        for f in env["data"].get("findings", [])
+        if f["check"] == "package-version" and f["severity"] == "error"
+    ]
 
 
 @covers("solution missing-components")
@@ -131,9 +135,7 @@ def test_solution_missing_components_self_exported(cli, backend, ephemeral_solut
     assert env["data"] == [], (
         f"expected no missing components for a self-exported solution, got: {env['data']}"
     )
-    assert env.get("meta", {}).get("count") == 0, (
-        f"expected meta.count=0, got: {env.get('meta')}"
-    )
+    assert env.get("meta", {}).get("count") == 0, f"expected meta.count=0, got: {env.get('meta')}"
 
 
 @covers("solution layer-conflicts")
@@ -144,8 +146,8 @@ def test_solution_layer_conflicts_no_overlap(cli, backend, ephemeral_solution):
     list (or ok + no-conflicts message). Requires a cloud target because on-prem 9.1
     may not carry the managed system solutions needed for the --solution arg.
     """
-    from crm.utils.d365_backend import D365Error
     from crm.core import solution as sol_mod
+    from crm.utils.d365_backend import D365Error
 
     # Find any managed solution to use as the --solution argument.
     try:
@@ -158,11 +160,17 @@ def test_solution_layer_conflicts_no_overlap(cli, backend, ephemeral_solution):
         pytest.skip("no managed solutions found on this org")
 
     managed_name = managed_names[0]
-    result = cli([
-        "--json", "solution", "layer-conflicts",
-        "--solution", managed_name,
-        "--unmanaged-solution", ephemeral_solution,
-    ])
+    result = cli(
+        [
+            "--json",
+            "solution",
+            "layer-conflicts",
+            "--solution",
+            managed_name,
+            "--unmanaged-solution",
+            ephemeral_solution,
+        ]
+    )
     assert result.returncode == 0, result.stderr
     env = json.loads(result.stdout)
     assert env["ok"], env

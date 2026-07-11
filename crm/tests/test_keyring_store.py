@@ -1,4 +1,5 @@
 """Unit tests for the optional keyring wrapper (issue #130)."""
+
 # pyright: basic
 from __future__ import annotations
 
@@ -10,6 +11,7 @@ from crm.utils.d365_backend import D365Error
 
 class _FakeKeyring:
     """In-memory stand-in for the `keyring` module's password API."""
+
     def __init__(self):
         self.store: dict[tuple[str, str], str] = {}
 
@@ -65,19 +67,21 @@ def test_is_available_true_when_backend_usable(fake):
 def test_unavailable_when_keyring_missing(monkeypatch):
     def _raise():
         raise D365Error("not installed")
+
     monkeypatch.setattr(keyring_store, "_import_keyring", _raise)
     assert keyring_store.is_available() is False
     assert keyring_store.has_secret("prod") is False
-    assert keyring_store.get_secret("prod") is None      # soft: resolver source
+    assert keyring_store.get_secret("prod") is None  # soft: resolver source
     assert keyring_store.delete_secret("prod") is False  # soft: nothing to delete
     with pytest.raises(D365Error):
-        keyring_store.set_secret("prod", "x")            # hard: explicit intent
+        keyring_store.set_secret("prod", "x")  # hard: explicit intent
 
 
 def test_is_available_false_when_get_keyring_raises(monkeypatch):
     class _Raises:
         def get_keyring(self):
             raise RuntimeError("no backend")
+
     monkeypatch.setattr(keyring_store, "_import_keyring", lambda: _Raises())
     assert keyring_store.is_available() is False
 
@@ -91,6 +95,7 @@ def test_is_available_false_when_get_keyring_panics(monkeypatch):
     class _Panics:
         def get_keyring(self):
             raise _Panic("Python API call failed")
+
     monkeypatch.setattr(keyring_store, "_import_keyring", lambda: _Panics())
     assert keyring_store.is_available() is False
 
@@ -101,6 +106,7 @@ def test_is_available_propagates_interrupts(monkeypatch, exc):
     class _Interrupt:
         def get_keyring(self):
             raise exc()
+
     monkeypatch.setattr(keyring_store, "_import_keyring", lambda: _Interrupt())
     with pytest.raises(exc):
         keyring_store.is_available()
@@ -108,6 +114,7 @@ def test_is_available_propagates_interrupts(monkeypatch, exc):
 
 class _ErroringKeyring:
     """Usable backend whose password ops raise (locked Keychain, DBus error)."""
+
     def get_password(self, service, name):
         raise RuntimeError("backend locked")
 
@@ -143,22 +150,26 @@ def test_set_secret_converts_backend_error_to_d365error(erroring):
 
 def _no_backend_keyring(monkeypatch):
     """A keyring whose backend reports unusable (null backend) — set_secret's
-    no-backend branch."""
+    no-backend branch.
+    """
     null_mod = keyring_store._NULL_BACKEND_MODULE
 
     class _NullBackend:
         pass
+
     _NullBackend.__module__ = null_mod
 
     class _Kr:
         def get_keyring(self):
             return _NullBackend()
+
     monkeypatch.setattr(keyring_store, "_import_keyring", lambda: _Kr())
 
 
 def test_set_secret_no_backend_points_at_current_remediation(monkeypatch):
     """The no-backend error must name credential sources that exist today
-    (`set-password` / `--password`) and never the removed env-var path."""
+    (`set-password` / `--password`) and never the removed env-var path.
+    """
     _no_backend_keyring(monkeypatch)
     with pytest.raises(D365Error) as exc:
         keyring_store.set_secret("prod", "x")
@@ -183,10 +194,12 @@ def test_is_available_false_for_null_backend(monkeypatch):
 
     class _NullBackend:
         pass
+
     _NullBackend.__module__ = null_mod
 
     class _Kr:
         def get_keyring(self):
             return _NullBackend()
+
     monkeypatch.setattr(keyring_store, "_import_keyring", lambda: _Kr())
     assert keyring_store.is_available() is False

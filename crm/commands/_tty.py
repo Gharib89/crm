@@ -5,6 +5,7 @@ Lives apart from `cli` and `_helpers` so both — plus the profile/skill command
 can import `_stdin_is_tty` without the `cli ↔ _helpers` import cycle that the old
 function-body re-import worked around. Imports nothing from `crm.cli`.
 """
+
 from __future__ import annotations
 
 import sys
@@ -13,14 +14,16 @@ import sys
 def _stdin_is_tty() -> bool:
     """True only if stdin is an interactive terminal. A missing, closed, or
     isatty-less stdin (frozen build, piped/redirected input) counts as
-    non-interactive — agents and CI never attach a TTY."""
+    non-interactive — agents and CI never attach a TTY.
+    """
     return _is_tty(sys.stdin)
 
 
 def _stdout_is_tty() -> bool:
     """True only if stdout is an interactive terminal — the gate for human-only
     output (e.g. next-step hints) that must never land in piped/redirected output
-    an agent or script is capturing."""
+    an agent or script is capturing.
+    """
     return _is_tty(sys.stdout)
 
 

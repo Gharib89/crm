@@ -8,6 +8,7 @@ get a bare `No such command 'entit'.` with no suggestion. The root group now
 widens the candidate set to its full `list_commands`, restoring parity.
 Parse-time only — no backend involved.
 """
+
 # pyright: basic
 from __future__ import annotations
 

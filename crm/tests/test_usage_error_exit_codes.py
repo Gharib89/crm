@@ -13,13 +13,13 @@ Transport/platform failures on the same commands are unchanged: they still exit
 1 with the ``{ok:false, ..., meta}`` envelope — proven by the regression test at
 the bottom and by ``test_exit_codes.py::test_d365_server_error_exits_1``.
 """
+
 # pyright: basic
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-import pytest
 from click.testing import CliRunner
 
 from crm.cli import cli
@@ -32,7 +32,8 @@ def _run(args, **kwargs):
 
 def _assert_usage_error(result, needle: str = ""):
     """A usage error: exit 2, parseable ``{ok:false}`` envelope, no ``meta`` key
-    (ADR 0001 renders usage errors without meta), and ``needle`` in the message."""
+    (ADR 0001 renders usage errors without meta), and ``needle`` in the message.
+    """
     assert result.exit_code == 2, result.output
     env = json.loads(result.output)
     assert env["ok"] is False
@@ -89,7 +90,8 @@ def test_query_fetchxml_neither_xml_nor_file_exits_2():
 def test_query_fetchxml_empty_file_is_operational_failure(tmp_path: Path):
     """An empty --file is a file-content problem, not a bad argument: it keeps the
     exit-1 clean envelope, not the exit-2 usage error — the flag *was* provided, so
-    'required' would misclassify it."""
+    'required' would misclassify it.
+    """
     f = tmp_path / "empty.xml"
     f.write_text("", encoding="utf-8")
     result = _run(["--json", "query", "fetchxml", "--file", str(f)])
@@ -102,8 +104,19 @@ def test_query_fetchxml_empty_file_is_operational_failure(tmp_path: Path):
 # --- solution --------------------------------------------------------------- #
 def test_solution_create_both_publisher_forms_exits_2():
     _assert_usage_error(
-        _run(["--json", "solution", "create", "--name", "sol", "--publisher", "p",
-              "--publisher-id", "00000000-0000-0000-0000-000000000000"]),
+        _run(
+            [
+                "--json",
+                "solution",
+                "create",
+                "--name",
+                "sol",
+                "--publisher",
+                "p",
+                "--publisher-id",
+                "00000000-0000-0000-0000-000000000000",
+            ]
+        ),
         "Provide exactly one of --publisher or --publisher-id",
     )
 
@@ -133,7 +146,8 @@ def test_solution_publish_neither_xml_nor_file_exits_2():
 
 def test_solution_publish_empty_file_is_operational_failure(tmp_path: Path):
     """An empty --xml-file is a file-content problem → exit-1 clean envelope, not
-    the exit-2 usage error (the flag was provided)."""
+    the exit-2 usage error (the flag was provided).
+    """
     f = tmp_path / "empty.xml"
     f.write_text("", encoding="utf-8")
     result = _run(["--json", "solution", "publish", "--xml-file", str(f)])
@@ -157,9 +171,11 @@ def test_converted_command_transport_failure_still_exits_1(
 ):
     """A backend (transport) failure on a converted command keeps the exit-1
     ``ok:false``/``meta`` envelope — the conversion only reclassifies the
-    validate-before-backend path, never the operational-failure path."""
-    inject_backend(make_fake_backend(
-        errors={"get": D365Error("Boom", status=500, code="0x80040216")}))
+    validate-before-backend path, never the operational-failure path.
+    """
+    inject_backend(
+        make_fake_backend(errors={"get": D365Error("Boom", status=500, code="0x80040216")})
+    )
     result = _run(["--json", "action", "function", "WhoAmI"])
     assert result.exit_code == 1, result.output
     env = json.loads(result.output)

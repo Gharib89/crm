@@ -3,14 +3,23 @@
 The command passes the file `path` straight to the core, which reads the bytes
 and derives identity — so the base64/identity/dry-run logic lives in one place.
 """
+
 # pyright: basic
 from __future__ import annotations
+
 import click
-from crm.core import plugin as plugin_mod
+
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
-    _destructive_option, _solution_option, _resolve_solution,
-    d365_errors, _emit_with_warning, _confirm_destructive, _journal)
+    _confirm_destructive,
+    _destructive_option,
+    _emit_with_warning,
+    _journal,
+    _resolve_solution,
+    _solution_option,
+    d365_errors,
+)
+from crm.core import plugin as plugin_mod
 
 
 @click.group("plugin")
@@ -20,53 +29,85 @@ def plugin_group():
 
 @plugin_group.command("register-assembly")
 @click.argument("path", type=click.Path(exists=True, dir_okay=False))
-@click.option("--name", default=None,
-              help="Assembly name; defaults to the file name stem.")
-@click.option("--version", default=None,
-              help="Assembly version; defaults to 1.0.0.0.")
-@click.option("--culture", default=None,
-              help="Culture code; defaults to 'neutral'.")
-@click.option("--public-key-token", "public_key_token", default=None,
-              help="Public key token; defaults to 'null' (unsigned).")
-@click.option("--isolation-mode", "isolation_mode",
-              type=click.Choice(["sandbox", "none"]), default="sandbox",
-              help="Isolation mode (sandbox=2, none=1). Default: sandbox.")
+@click.option("--name", default=None, help="Assembly name; defaults to the file name stem.")
+@click.option("--version", default=None, help="Assembly version; defaults to 1.0.0.0.")
+@click.option("--culture", default=None, help="Culture code; defaults to 'neutral'.")
+@click.option(
+    "--public-key-token",
+    "public_key_token",
+    default=None,
+    help="Public key token; defaults to 'null' (unsigned).",
+)
+@click.option(
+    "--isolation-mode",
+    "isolation_mode",
+    type=click.Choice(["sandbox", "none"]),
+    default="sandbox",
+    help="Isolation mode (sandbox=2, none=1). Default: sandbox.",
+)
 @click.option("--description", default=None, help="Assembly description.")
 @_solution_option
-@click.option("--update", is_flag=True, default=False,
-              help="PATCH the content of an existing assembly (resolved by name).")
+@click.option(
+    "--update",
+    is_flag=True,
+    default=False,
+    help="PATCH the content of an existing assembly (resolved by name).",
+)
 @pass_ctx
-def register_assembly_cmd(ctx: CLIContext, path, name, version, culture,
-                          public_key_token, isolation_mode, description,
-                          solution, update):
+def register_assembly_cmd(
+    ctx: CLIContext,
+    path,
+    name,
+    version,
+    culture,
+    public_key_token,
+    isolation_mode,
+    description,
+    solution,
+    update,
+):
     """Register a plug-in assembly from a .dll file (uploads its bytes)."""
-    update_warning = _ignored_update_flags_warning(update, version, culture,
-                                                    public_key_token, description)
+    update_warning = _ignored_update_flags_warning(
+        update, version, culture, public_key_token, description
+    )
     solution = _resolve_solution(ctx, solution)
     warning = update_warning
     with d365_errors(ctx):
         info = plugin_mod.register_assembly(
-            ctx.backend(), path=path, name=name, version=version,
-            culture=culture, public_key_token=public_key_token,
-            isolation_mode=isolation_mode, description=description,
-            solution=solution, update=update)
-    _emit_with_warning(ctx, info, warning,
-                       meta=ctx.staged_meta())
+            ctx.backend(),
+            path=path,
+            name=name,
+            version=version,
+            culture=culture,
+            public_key_token=public_key_token,
+            isolation_mode=isolation_mode,
+            description=description,
+            solution=solution,
+            update=update,
+        )
+    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
     _journal(ctx, path, info, solution=solution)
 
 
 @plugin_group.command("register-type")
-@click.option("--assembly", required=True,
-              help="Existing assembly NAME the plug-in type belongs to.")
-@click.option("--type", "type_name", required=True,
-              help="Fully qualified plug-in type name "
-                   "(e.g. Contoso.Plugins.PreCreateAccount).")
-@click.option("--friendly-name", "friendly_name", default=None,
-              help="Display name (friendlyname); defaults to the type name.")
+@click.option(
+    "--assembly", required=True, help="Existing assembly NAME the plug-in type belongs to."
+)
+@click.option(
+    "--type",
+    "type_name",
+    required=True,
+    help="Fully qualified plug-in type name (e.g. Contoso.Plugins.PreCreateAccount).",
+)
+@click.option(
+    "--friendly-name",
+    "friendly_name",
+    default=None,
+    help="Display name (friendlyname); defaults to the type name.",
+)
 @_solution_option
 @pass_ctx
-def register_type_cmd(ctx: CLIContext, assembly, type_name, friendly_name,
-                      solution):
+def register_type_cmd(ctx: CLIContext, assembly, type_name, friendly_name, solution):
     """Register a plug-in type (plugintypes) under an existing assembly.
 
     A content-only register-assembly does not create plugintype rows, so name
@@ -75,16 +116,20 @@ def register_type_cmd(ctx: CLIContext, assembly, type_name, friendly_name,
     solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = plugin_mod.register_type(
-            ctx.backend(), assembly=assembly, type_name=type_name,
-            friendly_name=friendly_name, solution=solution)
-    _emit_with_warning(ctx, info, None,
-                       meta=ctx.staged_meta())
+            ctx.backend(),
+            assembly=assembly,
+            type_name=type_name,
+            friendly_name=friendly_name,
+            solution=solution,
+        )
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, type_name, info, solution=solution)
 
 
 @plugin_group.command("list-types")
-@click.option("--assembly", default=None,
-              help="Filter to plug-in types of this assembly (by name).")
+@click.option(
+    "--assembly", default=None, help="Filter to plug-in types of this assembly (by name)."
+)
 @pass_ctx
 def list_types_cmd(ctx: CLIContext, assembly):
     """List registered plug-in types (optionally for one assembly)."""
@@ -96,57 +141,97 @@ def list_types_cmd(ctx: CLIContext, assembly):
         return
     headers = ["typename", "friendlyname", "plugintypeid"]
     rows = [[it.get(h, "") for h in headers] for it in items]
-    ctx.emit(True, table={"headers": headers, "rows": rows},
-             meta={"count": len(items)})
+    ctx.emit(True, table={"headers": headers, "rows": rows}, meta={"count": len(items)})
 
 
 @plugin_group.command("register-step")
-@click.option("--message", required=True,
-              help="SDK message name (e.g. Create, Update, Delete).")
-@click.option("--plugin-type", "plugin_type", default=None,
-              help="Plug-in type name (the fully qualified typename). Provide "
-                   "this or --service-endpoint (exactly one event handler).")
-@click.option("--service-endpoint", "service_endpoint", default=None,
-              help="Bind the step to a service endpoint (e.g. a webhook from "
-                   "register-webhook) by name instead of a plug-in type. "
-                   "Provide this or --plugin-type (exactly one event handler).")
-@click.option("--entity", default=None,
-              help="Primary entity logical name (primaryobjecttypecode). "
-                   "Omit for a message-level step (all entities).")
-@click.option("--stage",
-              type=click.Choice(["prevalidation", "preoperation",
-                                  "postoperation"]),
-              default="postoperation",
-              help="Pipeline stage (prevalidation=10, preoperation=20, "
-                   "postoperation=40). Default: postoperation.")
-@click.option("--mode", type=click.Choice(["sync", "async"]), default="sync",
-              help="Execution mode (sync=0, async=1). Default: sync. "
-                   "async requires --stage postoperation.")
-@click.option("--rank", type=int, default=1,
-              help="Execution order within the stage. Default: 1.")
-@click.option("--filtering-attributes", "filtering_attributes", default=None,
-              help="Comma-separated attributes that trigger the step (Update).")
-@click.option("--name", default=None,
-              help="Step name; defaults to a derived label. Pass explicitly if "
-                   "the derived name would exceed the platform's 256-char limit.")
-@click.option("--configuration", default=None,
-              help="Unsecure configuration string.")
-@click.option("--secure-configuration", "secure_configuration", default=None,
-              help="Secure configuration string, stored as a separate related "
-                   "record linked from the step. Write-only: the platform never "
-                   "returns it and it is omitted from normal command output. A "
-                   "--dry-run preview echoes the request body, so it includes "
-                   "this value — treat dry-run output as sensitive.")
-@click.option("--async-auto-delete", "asyncautodelete", is_flag=True,
-              help="Auto-delete the system job on success (async steps only).")
-@click.option("--assembly", default=None,
-              help="Scope the plug-in type lookup to this assembly (by name).")
+@click.option("--message", required=True, help="SDK message name (e.g. Create, Update, Delete).")
+@click.option(
+    "--plugin-type",
+    "plugin_type",
+    default=None,
+    help="Plug-in type name (the fully qualified typename). Provide "
+    "this or --service-endpoint (exactly one event handler).",
+)
+@click.option(
+    "--service-endpoint",
+    "service_endpoint",
+    default=None,
+    help="Bind the step to a service endpoint (e.g. a webhook from "
+    "register-webhook) by name instead of a plug-in type. "
+    "Provide this or --plugin-type (exactly one event handler).",
+)
+@click.option(
+    "--entity",
+    default=None,
+    help="Primary entity logical name (primaryobjecttypecode). "
+    "Omit for a message-level step (all entities).",
+)
+@click.option(
+    "--stage",
+    type=click.Choice(["prevalidation", "preoperation", "postoperation"]),
+    default="postoperation",
+    help="Pipeline stage (prevalidation=10, preoperation=20, "
+    "postoperation=40). Default: postoperation.",
+)
+@click.option(
+    "--mode",
+    type=click.Choice(["sync", "async"]),
+    default="sync",
+    help="Execution mode (sync=0, async=1). Default: sync. async requires --stage postoperation.",
+)
+@click.option("--rank", type=int, default=1, help="Execution order within the stage. Default: 1.")
+@click.option(
+    "--filtering-attributes",
+    "filtering_attributes",
+    default=None,
+    help="Comma-separated attributes that trigger the step (Update).",
+)
+@click.option(
+    "--name",
+    default=None,
+    help="Step name; defaults to a derived label. Pass explicitly if "
+    "the derived name would exceed the platform's 256-char limit.",
+)
+@click.option("--configuration", default=None, help="Unsecure configuration string.")
+@click.option(
+    "--secure-configuration",
+    "secure_configuration",
+    default=None,
+    help="Secure configuration string, stored as a separate related "
+    "record linked from the step. Write-only: the platform never "
+    "returns it and it is omitted from normal command output. A "
+    "--dry-run preview echoes the request body, so it includes "
+    "this value — treat dry-run output as sensitive.",
+)
+@click.option(
+    "--async-auto-delete",
+    "asyncautodelete",
+    is_flag=True,
+    help="Auto-delete the system job on success (async steps only).",
+)
+@click.option(
+    "--assembly", default=None, help="Scope the plug-in type lookup to this assembly (by name)."
+)
 @_solution_option
 @pass_ctx
-def register_step_cmd(ctx: CLIContext, message, plugin_type, service_endpoint,
-                      entity, stage, mode, rank, filtering_attributes, name,
-                      configuration, secure_configuration, asyncautodelete,
-                      assembly, solution):
+def register_step_cmd(
+    ctx: CLIContext,
+    message,
+    plugin_type,
+    service_endpoint,
+    entity,
+    stage,
+    mode,
+    rank,
+    filtering_attributes,
+    name,
+    configuration,
+    secure_configuration,
+    asyncautodelete,
+    assembly,
+    solution,
+):
     """Register a plug-in step (sdkmessageprocessingstep).
 
     The step's event handler is a plug-in type (--plugin-type) or a service
@@ -155,79 +240,112 @@ def register_step_cmd(ctx: CLIContext, message, plugin_type, service_endpoint,
     solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = plugin_mod.register_step(
-            ctx.backend(), message=message, plugin_type=plugin_type,
-            service_endpoint=service_endpoint, entity=entity, stage=stage,
-            mode=mode, rank=rank, filtering_attributes=filtering_attributes,
-            name=name, configuration=configuration,
+            ctx.backend(),
+            message=message,
+            plugin_type=plugin_type,
+            service_endpoint=service_endpoint,
+            entity=entity,
+            stage=stage,
+            mode=mode,
+            rank=rank,
+            filtering_attributes=filtering_attributes,
+            name=name,
+            configuration=configuration,
             secure_configuration=secure_configuration,
             asyncautodelete=asyncautodelete,
-            assembly=assembly, solution=solution)
-    _emit_with_warning(ctx, info, None,
-                       meta=ctx.staged_meta())
+            assembly=assembly,
+            solution=solution,
+        )
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, plugin_type or service_endpoint, info, solution=solution)
 
 
 @plugin_group.command("register-webhook")
-@click.option("--name", required=True,
-              help="Unique webhook name (serviceendpoint.name).")
-@click.option("--url", required=True,
-              help="Endpoint URL the platform POSTs the execution context to "
-                   "(http on port 80 or https on port 443).")
-@click.option("--auth",
-              type=click.Choice(["webhookkey", "httpheader", "httpquerystring"]),
-              required=True,
-              help="Authentication scheme the endpoint expects (authtype: "
-                   "webhookkey=4, httpheader=5, httpquerystring=6).")
-@click.option("--auth-value", "auth_value", required=True,
-              help="Authentication value the endpoint expects (the ?code= key "
-                   "for webhookkey, or the header/query-string key-value "
-                   "pairs). Write-only; the platform never returns it.")
+@click.option("--name", required=True, help="Unique webhook name (serviceendpoint.name).")
+@click.option(
+    "--url",
+    required=True,
+    help="Endpoint URL the platform POSTs the execution context to "
+    "(http on port 80 or https on port 443).",
+)
+@click.option(
+    "--auth",
+    type=click.Choice(["webhookkey", "httpheader", "httpquerystring"]),
+    required=True,
+    help="Authentication scheme the endpoint expects (authtype: "
+    "webhookkey=4, httpheader=5, httpquerystring=6).",
+)
+@click.option(
+    "--auth-value",
+    "auth_value",
+    required=True,
+    help="Authentication value the endpoint expects (the ?code= key "
+    "for webhookkey, or the header/query-string key-value "
+    "pairs). Write-only; the platform never returns it.",
+)
 @_solution_option
 @pass_ctx
-def register_webhook_cmd(ctx: CLIContext, name, url, auth, auth_value,
-                         solution):
+def register_webhook_cmd(ctx: CLIContext, name, url, auth, auth_value, solution):
     """Register a webhook service endpoint (serviceendpoint, contract=8)."""
     solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = plugin_mod.register_webhook(
-            ctx.backend(), name=name, url=url, auth=auth,
-            auth_value=auth_value, solution=solution)
-    _emit_with_warning(ctx, info, None,
-                       meta=ctx.staged_meta())
+            ctx.backend(), name=name, url=url, auth=auth, auth_value=auth_value, solution=solution
+        )
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, name, info, solution=solution)
 
 
 @plugin_group.command("register-image")
-@click.option("--step", required=True,
-              help="Step GUID or exact step name (sdkmessageprocessingstep).")
-@click.option("--type", "image_type", type=click.Choice(["pre", "post", "both"]),
-              required=True,
-              help="Image type (pre=0, post=1, both=2). Post-images require a "
-                   "PostOperation-stage step.")
-@click.option("--alias", required=True,
-              help="Entity alias — the key used to access the image from "
-                   "PreEntityImages/PostEntityImages in plug-in code.")
-@click.option("--attributes", default=None,
-              help="Comma-separated columns to include in the image. "
-                   "Omit for all columns (hurts performance; pass a list).")
-@click.option("--name", default=None,
-              help="Image name; defaults to the alias.")
-@click.option("--message-property-name", "message_property_name", default=None,
-              help="Override the derived request property (required for "
-                   "Send-message steps: FaxId, EmailId or TemplateId).")
+@click.option(
+    "--step", required=True, help="Step GUID or exact step name (sdkmessageprocessingstep)."
+)
+@click.option(
+    "--type",
+    "image_type",
+    type=click.Choice(["pre", "post", "both"]),
+    required=True,
+    help="Image type (pre=0, post=1, both=2). Post-images require a PostOperation-stage step.",
+)
+@click.option(
+    "--alias",
+    required=True,
+    help="Entity alias — the key used to access the image from "
+    "PreEntityImages/PostEntityImages in plug-in code.",
+)
+@click.option(
+    "--attributes",
+    default=None,
+    help="Comma-separated columns to include in the image. "
+    "Omit for all columns (hurts performance; pass a list).",
+)
+@click.option("--name", default=None, help="Image name; defaults to the alias.")
+@click.option(
+    "--message-property-name",
+    "message_property_name",
+    default=None,
+    help="Override the derived request property (required for "
+    "Send-message steps: FaxId, EmailId or TemplateId).",
+)
 @_solution_option
 @pass_ctx
-def register_image_cmd(ctx: CLIContext, step, image_type, alias, attributes,
-                       name, message_property_name, solution):
+def register_image_cmd(
+    ctx: CLIContext, step, image_type, alias, attributes, name, message_property_name, solution
+):
     """Register a step entity image (sdkmessageprocessingstepimage)."""
     solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = plugin_mod.register_image(
-            ctx.backend(), step=step, image_type=image_type, alias=alias,
-            attributes=attributes, name=name,
-            message_property_name=message_property_name, solution=solution)
-    _emit_with_warning(ctx, info, None,
-                       meta=ctx.staged_meta())
+            ctx.backend(),
+            step=step,
+            image_type=image_type,
+            alias=alias,
+            attributes=attributes,
+            name=name,
+            message_property_name=message_property_name,
+            solution=solution,
+        )
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, step, info, solution=solution)
 
 
@@ -272,10 +390,8 @@ def unregister_step_cmd(ctx: CLIContext, step, yes):
 
 @plugin_group.command("set-step-state")
 @click.argument("step")
-@click.option("--enable", "enable", flag_value=True, required=True,
-              help="Enable the step.")
-@click.option("--disable", "enable", flag_value=False, required=True,
-              help="Disable the step.")
+@click.option("--enable", "enable", flag_value=True, required=True, help="Enable the step.")
+@click.option("--disable", "enable", flag_value=False, required=True, help="Disable the step.")
 @pass_ctx
 def set_step_state_cmd(ctx: CLIContext, step, enable):
     """Enable or disable a plug-in step (sdkmessageprocessingstep)."""
@@ -286,7 +402,11 @@ def set_step_state_cmd(ctx: CLIContext, step, enable):
 
 
 def _ignored_update_flags_warning(
-    update, version, culture, public_key_token, description,
+    update,
+    version,
+    culture,
+    public_key_token,
+    description,
 ) -> str | None:
     """Build a warning naming identity flags --update silently ignores.
 

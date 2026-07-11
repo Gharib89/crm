@@ -1,5 +1,6 @@
 # pyright: basic
 """E2E tests for query, async, connection diagnostics, describe, doctor, and service-document."""
+
 from __future__ import annotations
 
 import json
@@ -7,15 +8,13 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from crm.core.views import build_fetchxml, build_layoutxml
-from crm.tests.e2e.conftest import _safe_delete
-from crm.tests.e2e.coverage import covers
-
 # Reused from the production BulkDelete path so the seed goes through the exact
 # FetchXmlToQueryExpression conversion the CLI uses — the BulkDelete action's
 # QuerySet accepts only QueryExpression, not raw FetchXml.
 from crm.core.bulk_delete import fetchxml_to_query_expression
-
+from crm.core.views import build_fetchxml, build_layoutxml
+from crm.tests.e2e.conftest import _safe_delete
+from crm.tests.e2e.coverage import covers
 
 # ── query count ──────────────────────────────────────────────────────────────
 
@@ -35,7 +34,8 @@ def test_query_count_contacts(cli):
 @covers("query count")
 def test_query_count_accepts_entity_set_name_and_case(cli):
     """`count contacts` (entity-set name) and a mixed-case form both resolve to the
-    logical name and return the same cached count as `count contact` (#305)."""
+    logical name and return the same cached count as `count contact` (#305).
+    """
     logical = json.loads(cli(["--json", "query", "count", "contact"]).stdout)
     assert logical["ok"] is True
     n = logical["data"]["count"]
@@ -77,7 +77,8 @@ def test_query_odata_contacts(cli):
 def _seed_contacts(backend, request, unique, n: int = 2) -> None:
     """Create ``n`` throwaway contacts and register a finalizer to delete each, so a
     cursor-dependent read never relies on ambient data that another test may delete
-    mid-run (#768). No return value — callers need the rows to exist, not their ids."""
+    mid-run (#768). No return value — callers need the rows to exist, not their ids.
+    """
     for i in range(n):
         created = backend.post(
             "contacts",
@@ -95,11 +96,11 @@ def test_query_odata_default_page_with_more_rows_is_self_describing(backend, cli
     #625). Self-seeds at least 2 throwaway contacts so the assertion runs
     deterministically on a bare org regardless of ambient data (#768); `--page-size
     1` then forces a cursor cheaply — no huge table needed — and the finalizer
-    deletes the seeds, matching the suite's create→assert→delete discipline."""
+    deletes the seeds, matching the suite's create→assert→delete discipline.
+    """
     _seed_contacts(backend, request, unique, n=2)
 
-    r = cli(["--json", "query", "odata", "contacts", "--select", "fullname",
-             "--page-size", "1"])
+    r = cli(["--json", "query", "odata", "contacts", "--select", "fullname", "--page-size", "1"])
     assert r.returncode == 0, r.stderr
     env = json.loads(r.stdout)
     assert env["ok"] is True
@@ -112,7 +113,8 @@ def test_query_odata_count_clamped_at_server_ceiling_warns(cli):
     """A `--count` that lands exactly on the server's 5000-row standard-table
     ceiling alongside a live cursor is flagged as a clamped lower bound, not an
     exact total (#626). Needs a table with >5000 rows reachable on this org;
-    skips with instructions when none is known to qualify."""
+    skips with instructions when none is known to qualify.
+    """
     for entity_set, logical in (("contacts", "contact"), ("accounts", "account")):
         cr = cli(["--json", "query", "count", logical])
         assert cr.returncode == 0, cr.stderr  # a count failure must not masquerade as a skip
@@ -120,8 +122,7 @@ def test_query_odata_count_clamped_at_server_ceiling_warns(cli):
             # No `--top`: `$top` is a hard limit that suppresses `@odata.nextLink`,
             # which the clamp signal keys on. `--page-size 1` keeps the page cheap
             # while still leaving a live cursor.
-            r = cli(["--json", "query", "odata", entity_set, "--count",
-                      "--page-size", "1"])
+            r = cli(["--json", "query", "odata", entity_set, "--count", "--page-size", "1"])
             assert r.returncode == 0, r.stderr
             env = json.loads(r.stdout)
             assert env["ok"] is True
@@ -159,7 +160,8 @@ def _seed_savedquery(backend, suffix: str) -> str:
         "layoutxml": build_layoutxml("contact", _CONTACT_OTC, _SEED_COLUMNS),
     }
     created = backend.post(
-        "savedqueries", json_body=body,
+        "savedqueries",
+        json_body=body,
         extra_headers={"Prefer": "return=representation"},
     )
     return str(created["savedqueryid"])
@@ -175,7 +177,8 @@ def _seed_userquery(backend, suffix: str) -> str:
         "layoutxml": build_layoutxml("contact", _CONTACT_OTC, _SEED_COLUMNS),
     }
     created = backend.post(
-        "userqueries", json_body=body,
+        "userqueries",
+        json_body=body,
         extra_headers={"Prefer": "return=representation"},
     )
     return str(created["userqueryid"])
@@ -184,7 +187,8 @@ def _seed_userquery(backend, suffix: str) -> str:
 @covers("query saved")
 def test_query_saved_seeds_and_executes(backend, cli, unique, request):
     """Self-seed a contact public view (savedquery), execute it via the CLI, then
-    remove it. Runs on any org — no pre-existing view required."""
+    remove it. Runs on any org — no pre-existing view required.
+    """
     sqid = _seed_savedquery(backend, unique)
     request.addfinalizer(lambda: _safe_delete(backend, f"savedqueries({sqid})"))
 
@@ -199,7 +203,8 @@ def test_query_saved_seeds_and_executes(backend, cli, unique, request):
 @covers("query user")
 def test_query_user_seeds_and_executes(backend, cli, unique, request):
     """Self-seed a contact userquery owned by the caller, execute it via the CLI,
-    then remove it. Runs on any org — no pre-existing view required."""
+    then remove it. Runs on any org — no pre-existing view required.
+    """
     uqid = _seed_userquery(backend, unique)
     request.addfinalizer(lambda: _safe_delete(backend, f"userqueries({uqid})"))
 
@@ -216,7 +221,7 @@ def test_query_user_seeds_and_executes(backend, cli, unique, request):
 
 @covers("async list")
 def test_async_list_returns_list(cli):
-    """async list returns an ok envelope whose data is a list."""
+    """Async list returns an ok envelope whose data is a list."""
     r = cli(["--json", "async", "list", "--top", "5"])
     assert r.returncode == 0, r.stderr
     env = json.loads(r.stdout)
@@ -226,7 +231,7 @@ def test_async_list_returns_list(cli):
 
 @covers("async list")
 def test_async_list_order_by(cli):
-    """async list --order-by works."""
+    """Async list --order-by works."""
     r = cli(["--json", "async", "list", "--top", "2", "--order-by", "completedon desc"])
     assert r.returncode == 0, r.stderr
     env = json.loads(r.stdout)
@@ -236,7 +241,7 @@ def test_async_list_order_by(cli):
 
 @covers("async list")
 def test_async_list_filter(cli):
-    """async list --filter works."""
+    """Async list --filter works."""
     r = cli(["--json", "async", "list", "--top", "2", "--filter", "statuscode eq 30"])
     assert r.returncode == 0, r.stderr
     env = json.loads(r.stdout)
@@ -249,7 +254,7 @@ def test_async_list_filter(cli):
 
 @covers("async get")
 def test_async_get_first_operation(cli):
-    """async get fetches a single asyncoperation row by GUID, or skips if none exist."""
+    """Async get fetches a single asyncoperation row by GUID, or skips if none exist."""
     r = cli(["--json", "async", "list", "--top", "1"])
     assert r.returncode == 0, r.stderr
     env = json.loads(r.stdout)
@@ -296,15 +301,18 @@ def _seed_future_bulkdelete(backend, unique):
     query = fetchxml_to_query_expression(backend, fetch)
     # Start a decade out so the async service never picks the job up mid-test.
     start = (datetime.now(timezone.utc) + timedelta(days=3650)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    resp = backend.post("BulkDelete", json_body={
-        "QuerySet": [query],
-        "JobName": f"E2E async-cancel probe {unique}",
-        "SendEmailNotification": False,
-        "ToRecipients": [],
-        "CCRecipients": [],
-        "RecurrencePattern": "",
-        "StartDateTime": start,
-    })
+    resp = backend.post(
+        "BulkDelete",
+        json_body={
+            "QuerySet": [query],
+            "JobName": f"E2E async-cancel probe {unique}",
+            "SendEmailNotification": False,
+            "ToRecipients": [],
+            "CCRecipients": [],
+            "RecurrencePattern": "",
+            "StartDateTime": start,
+        },
+    )
     job_id = resp.get("JobId") if isinstance(resp, dict) else None
     assert job_id, f"BulkDelete returned no JobId: {resp}"
     return str(job_id)
@@ -314,28 +322,23 @@ def _seed_future_bulkdelete(backend, unique):
 @pytest.mark.parametrize("verb", [["async", "cancel"], ["solution", "job-cancel"]])
 def test_cancel_future_bulkdelete(backend, cli, unique, verb):
     """`async cancel` and its `solution job-cancel` alias cancel a seeded, never-run
-    BulkDelete; the op flips to Completed/Cancelled and deleted nothing."""
+    BulkDelete; the op flips to Completed/Cancelled and deleted nothing.
+    """
     job_id = _seed_future_bulkdelete(backend, unique)
     try:
         # Pre-state: queued in a cancellable state (0=Ready / 1=Suspended), proving
         # the job has not run, so nothing was deleted.
-        pre = backend.get(
-            f"asyncoperations({job_id})", params={"$select": "statecode,statuscode"}
-        )
+        pre = backend.get(f"asyncoperations({job_id})", params={"$select": "statecode,statuscode"})
         assert pre.get("statecode") in (0, 1), f"seeded op not in a cancellable state: {pre}"
 
         r = cli(["--json", *verb, job_id, "--yes"])
-        assert r.returncode == 0, (
-            f"{' '.join(verb)} failed:\n{r.stderr}\nstdout: {r.stdout}"
-        )
+        assert r.returncode == 0, f"{' '.join(verb)} failed:\n{r.stderr}\nstdout: {r.stdout}"
         env = json.loads(r.stdout)
         assert env["ok"], env
         assert env["data"] == {"cancelled": True, "id": job_id}, env
 
         # statecode=3 (Completed) + statuscode=32 (Cancelled) is the cancelled envelope.
-        post = backend.get(
-            f"asyncoperations({job_id})", params={"$select": "statecode,statuscode"}
-        )
+        post = backend.get(f"asyncoperations({job_id})", params={"$select": "statecode,statuscode"})
         assert post.get("statecode") == 3 and post.get("statuscode") == 32, (
             f"operation did not move to cancelled: {post}"
         )
@@ -351,7 +354,7 @@ def test_cancel_future_bulkdelete(backend, cli, unique, verb):
 
 @covers("connection doctor")
 def test_connection_doctor_ok(cli):
-    """connection doctor passes all checks and returns a valid JSON envelope."""
+    """Connection doctor passes all checks and returns a valid JSON envelope."""
     r = cli(["--json", "connection", "doctor"])
     assert r.returncode == 0, r.stderr
     env = json.loads(r.stdout)
@@ -365,7 +368,7 @@ def test_connection_doctor_ok(cli):
 
 @covers("connection test")
 def test_connection_test_returns_api_info(cli):
-    """connection test returns an ok envelope with api_base."""
+    """Connection test returns an ok envelope with api_base."""
     r = cli(["--json", "connection", "test"])
     assert r.returncode == 0, r.stderr
     env = json.loads(r.stdout)
@@ -378,7 +381,7 @@ def test_connection_test_returns_api_info(cli):
 
 @covers("describe")
 def test_describe_whole_tree(cli):
-    """describe emits an ok envelope with a non-empty commands list."""
+    """Describe emits an ok envelope with a non-empty commands list."""
     r = cli(["--json", "describe"])
     assert r.returncode == 0, r.stderr
     env = json.loads(r.stdout)

@@ -1,5 +1,6 @@
 # pyright: basic
 """Command-level tests for `crm data delete` (issue 372)."""
+
 from __future__ import annotations
 
 import json
@@ -21,10 +22,21 @@ def spy_core(monkeypatch):
     calls: list[dict] = []
 
     def _fake(backend, entity_set, fetch_xml, *, job_name=None, wait=False, timeout=None):
-        calls.append({"entity_set": entity_set, "fetch_xml": fetch_xml,
-                      "job_name": job_name, "wait": wait, "timeout": timeout})
-        return {"job_id": "job-1", "job_name": job_name or "x", "status": "submitted",
-                "match_count": 2}
+        calls.append(
+            {
+                "entity_set": entity_set,
+                "fetch_xml": fetch_xml,
+                "job_name": job_name,
+                "wait": wait,
+                "timeout": timeout,
+            }
+        )
+        return {
+            "job_id": "job-1",
+            "job_name": job_name or "x",
+            "status": "submitted",
+            "match_count": 2,
+        }
 
     monkeypatch.setattr(data_cmd.bulk_delete_mod, "bulk_delete", _fake)
     monkeypatch.setattr(CLIContext, "backend", lambda self: object())
@@ -41,16 +53,26 @@ class TestGuards:
     def test_both_query_sources_rejected(self, spy_core, tmp_path):
         f = tmp_path / "q.xml"
         f.write_text(_FETCH, encoding="utf-8")
-        result = CliRunner().invoke(cli, [
-            "data", "delete", "contacts", "--yes",
-            "--fetchxml", _FETCH, "--fetchxml-file", str(f),
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "data",
+                "delete",
+                "contacts",
+                "--yes",
+                "--fetchxml",
+                _FETCH,
+                "--fetchxml-file",
+                str(f),
+            ],
+        )
         assert result.exit_code == 2
         assert spy_core == []
 
     def test_decline_aborts_without_submitting(self, spy_core):
         result = CliRunner().invoke(
-            cli, ["--json", "data", "delete", "contacts", "--fetchxml", _FETCH],
+            cli,
+            ["--json", "data", "delete", "contacts", "--fetchxml", _FETCH],
             input="n\n",
         )
         assert spy_core == []
@@ -61,9 +83,18 @@ class TestGuards:
 
 class TestSubmit:
     def test_yes_submits_and_emits_job(self, spy_core):
-        result = CliRunner().invoke(cli, [
-            "--json", "data", "delete", "contacts", "--yes", "--fetchxml", _FETCH,
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "data",
+                "delete",
+                "contacts",
+                "--yes",
+                "--fetchxml",
+                _FETCH,
+            ],
+        )
         assert result.exit_code == 0
         env = json.loads(result.output)
         assert env["ok"] is True
@@ -72,20 +103,40 @@ class TestSubmit:
         assert spy_core[0]["wait"] is False
 
     def test_wait_and_job_name_forwarded(self, spy_core):
-        CliRunner().invoke(cli, [
-            "--json", "data", "delete", "contacts", "--yes", "--wait",
-            "--job-name", "nightly", "--fetchxml", _FETCH,
-        ])
+        CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "data",
+                "delete",
+                "contacts",
+                "--yes",
+                "--wait",
+                "--job-name",
+                "nightly",
+                "--fetchxml",
+                _FETCH,
+            ],
+        )
         assert spy_core[0]["wait"] is True
         assert spy_core[0]["job_name"] == "nightly"
 
     def test_fetchxml_file_bom_stripped(self, spy_core, tmp_path):
         """A FetchXML file saved with a UTF-8 BOM is read without the BOM leaking
-        into the query string (#683)."""
+        into the query string (#683).
+        """
         f = tmp_path / "q.xml"
         f.write_bytes(("\ufeff" + _FETCH).encode("utf-8"))
-        result = CliRunner().invoke(cli, [
-            "data", "delete", "contacts", "--yes", "--fetchxml-file", str(f),
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "data",
+                "delete",
+                "contacts",
+                "--yes",
+                "--fetchxml-file",
+                str(f),
+            ],
+        )
         assert result.exit_code == 0
         assert spy_core[0]["fetch_xml"] == _FETCH

@@ -8,6 +8,7 @@ clamped `--count` (the value equals the 5000 server ceiling *and* a cursor is
 present) is flagged as a lower bound. A read that fits one page, and any
 `--all`/`--max-records` run, get none of these.
 """
+
 from __future__ import annotations
 
 import json
@@ -28,26 +29,37 @@ def _run(make_fake_backend, inject_backend, envelope, *args):
 
 
 def test_single_page_with_more_sets_has_more_and_warns(make_fake_backend, inject_backend):
-    env = _run(make_fake_backend, inject_backend,
-               {"@odata.context": CTX, "value": [{"accountid": "1"}], "@odata.nextLink": NEXT})
+    env = _run(
+        make_fake_backend,
+        inject_backend,
+        {"@odata.context": CTX, "value": [{"accountid": "1"}], "@odata.nextLink": NEXT},
+    )
     assert env["meta"]["has_more"] is True
     assert any("more rows exist" in w for w in env["meta"]["warnings"])
 
 
 def test_complete_single_page_has_no_signals(make_fake_backend, inject_backend):
     # No @odata.nextLink → the page is the whole result set; stays silent.
-    env = _run(make_fake_backend, inject_backend,
-               {"@odata.context": CTX, "value": [{"accountid": "1"}]})
+    env = _run(
+        make_fake_backend, inject_backend, {"@odata.context": CTX, "value": [{"accountid": "1"}]}
+    )
     assert "has_more" not in env["meta"]
     assert "warnings" not in env["meta"]
 
 
 def test_clamped_count_is_flagged_as_lower_bound(make_fake_backend, inject_backend):
     # Count == 5000 ceiling *and* a cursor present → the count is clamped.
-    env = _run(make_fake_backend, inject_backend,
-               {"@odata.context": CTX, "@odata.count": 5000,
-                "value": [{"accountid": "1"}], "@odata.nextLink": NEXT},
-               "--count")
+    env = _run(
+        make_fake_backend,
+        inject_backend,
+        {
+            "@odata.context": CTX,
+            "@odata.count": 5000,
+            "value": [{"accountid": "1"}],
+            "@odata.nextLink": NEXT,
+        },
+        "--count",
+    )
     assert env["meta"]["count"] == 5000
     assert env["meta"]["has_more"] is True
     assert any("lower bound" in w for w in env["meta"]["warnings"])
@@ -55,22 +67,33 @@ def test_clamped_count_is_flagged_as_lower_bound(make_fake_backend, inject_backe
 
 def test_honest_small_count_is_not_flagged(make_fake_backend, inject_backend):
     # Genuine count on a set that fits one page → count unchanged, no warnings.
-    env = _run(make_fake_backend, inject_backend,
-               {"@odata.context": CTX, "@odata.count": 42, "value": [{"accountid": "1"}]},
-               "--count")
+    env = _run(
+        make_fake_backend,
+        inject_backend,
+        {"@odata.context": CTX, "@odata.count": 42, "value": [{"accountid": "1"}]},
+        "--count",
+    )
     assert env["meta"]["count"] == 42
     assert "has_more" not in env["meta"]
     assert "warnings" not in env["meta"]
 
 
 def test_count_below_ceiling_with_more_pages_warns_truncation_only(
-        make_fake_backend, inject_backend):
+    make_fake_backend, inject_backend
+):
     # A small page size can leave a cursor while the count is honest (< ceiling):
     # signal truncation, but never a false clamp warning.
-    env = _run(make_fake_backend, inject_backend,
-               {"@odata.context": CTX, "@odata.count": 42,
-                "value": [{"accountid": "1"}], "@odata.nextLink": NEXT},
-               "--count")
+    env = _run(
+        make_fake_backend,
+        inject_backend,
+        {
+            "@odata.context": CTX,
+            "@odata.count": 42,
+            "value": [{"accountid": "1"}],
+            "@odata.nextLink": NEXT,
+        },
+        "--count",
+    )
     assert env["meta"]["count"] == 42
     assert env["meta"]["has_more"] is True
     assert any("more rows exist" in w for w in env["meta"]["warnings"])
@@ -80,10 +103,17 @@ def test_count_below_ceiling_with_more_pages_warns_truncation_only(
 def test_all_run_has_no_has_more_or_warnings(make_fake_backend, inject_backend):
     # --all follows and drops the cursor (sets its own meta.truncated) → silent here.
     from crm.tests.test_query_paging import _paged
-    inject_backend(make_fake_backend(responses={"get": _paged(
-        {"@odata.context": CTX, "value": [{"accountid": "1"}], "@odata.nextLink": NEXT},
-        {"@odata.context": CTX, "value": [{"accountid": "2"}]},
-    )}))
+
+    inject_backend(
+        make_fake_backend(
+            responses={
+                "get": _paged(
+                    {"@odata.context": CTX, "value": [{"accountid": "1"}], "@odata.nextLink": NEXT},
+                    {"@odata.context": CTX, "value": [{"accountid": "2"}]},
+                )
+            }
+        )
+    )
     result = CliRunner().invoke(cli, ["--json", "query", "odata", "accounts", "--all"])
     assert result.exit_code == 0, result.output
     env = json.loads(result.output)
@@ -95,13 +125,22 @@ def test_max_records_run_has_no_has_more_or_warnings(make_fake_backend, inject_b
     # --max-records follows + drops the cursor and sets its own meta.truncated —
     # so the capped-page signals stay silent (acceptance criterion names both flags).
     from crm.tests.test_query_paging import _paged
-    inject_backend(make_fake_backend(responses={"get": _paged(
-        {"@odata.context": CTX, "value": [{"accountid": "1"}, {"accountid": "2"}],
-         "@odata.nextLink": NEXT},
-        {"@odata.context": CTX, "value": [{"accountid": "3"}]},
-    )}))
-    result = CliRunner().invoke(
-        cli, ["--json", "query", "odata", "accounts", "--max-records", "1"])
+
+    inject_backend(
+        make_fake_backend(
+            responses={
+                "get": _paged(
+                    {
+                        "@odata.context": CTX,
+                        "value": [{"accountid": "1"}, {"accountid": "2"}],
+                        "@odata.nextLink": NEXT,
+                    },
+                    {"@odata.context": CTX, "value": [{"accountid": "3"}]},
+                )
+            }
+        )
+    )
+    result = CliRunner().invoke(cli, ["--json", "query", "odata", "accounts", "--max-records", "1"])
     assert result.exit_code == 0, result.output
     env = json.loads(result.output)
     assert env["meta"]["truncated"] is True
@@ -115,11 +154,28 @@ def test_shared_helper_signals_fire_on_any_cursor_page(make_fake_backend, inject
     # Uses the fetchxml verb as the vehicle with a synthetic cursor; live fetchxml
     # pages via a FetchXML cookie (never @odata.nextLink), so in practice the
     # signals surface on query odata/saved/user, not fetchxml.
-    inject_backend(make_fake_backend(responses={"get":
-        {"@odata.context": CTX, "value": [{"accountid": "1"}], "@odata.nextLink": NEXT}}))
-    result = CliRunner().invoke(cli, [
-        "--json", "query", "fetchxml", "accounts",
-        "--xml", '<fetch><entity name="account"><attribute name="name"/></entity></fetch>'])
+    inject_backend(
+        make_fake_backend(
+            responses={
+                "get": {
+                    "@odata.context": CTX,
+                    "value": [{"accountid": "1"}],
+                    "@odata.nextLink": NEXT,
+                }
+            }
+        )
+    )
+    result = CliRunner().invoke(
+        cli,
+        [
+            "--json",
+            "query",
+            "fetchxml",
+            "accounts",
+            "--xml",
+            '<fetch><entity name="account"><attribute name="name"/></entity></fetch>',
+        ],
+    )
     assert result.exit_code == 0, result.output
     env = json.loads(result.output)
     assert env["meta"]["has_more"] is True
@@ -128,8 +184,17 @@ def test_shared_helper_signals_fire_on_any_cursor_page(make_fake_backend, inject
 
 def test_human_mode_surfaces_warning_via_skin(make_fake_backend, inject_backend):
     # skin.warning writes to stderr (Click 8.2+ separates streams).
-    inject_backend(make_fake_backend(responses={"get":
-        {"@odata.context": CTX, "value": [{"accountid": "1"}], "@odata.nextLink": NEXT}}))
+    inject_backend(
+        make_fake_backend(
+            responses={
+                "get": {
+                    "@odata.context": CTX,
+                    "value": [{"accountid": "1"}],
+                    "@odata.nextLink": NEXT,
+                }
+            }
+        )
+    )
     result = CliRunner().invoke(cli, ["query", "odata", "accounts"])
     assert result.exit_code == 0, result.output
     assert "more rows exist" in result.stderr

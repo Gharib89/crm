@@ -15,7 +15,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from click.testing import CliRunner
 
 from crm.cli import cli
@@ -54,12 +53,14 @@ def exe(tmp_path):
 
 def test_extract_builds_argv_and_returns_envelope(fake_run, exe):
     info = sp.extract_solution(
-        zipfile="sol.zip", folder="src/sol", pac_path=exe,
+        zipfile="sol.zip",
+        folder="src/sol",
+        pac_path=exe,
     )
     argv = fake_run[-1][0]
     assert argv[0] == exe
     assert argv[1] == "solution"
-    assert argv[2] == "unpack"          # Extract maps to `pac solution unpack`
+    assert argv[2] == "unpack"  # Extract maps to `pac solution unpack`
     # pac uses GNU-style space-separated flags, not /flag:value.
     assert argv[argv.index("--zipfile") + 1] == "sol.zip"
     assert argv[argv.index("--folder") + 1] == "src/sol"
@@ -72,11 +73,13 @@ def test_extract_builds_argv_and_returns_envelope(fake_run, exe):
 
 def test_pack_builds_reverse_argv(fake_run, exe):
     info = sp.pack_solution(
-        zipfile="out.zip", folder="src/sol", pac_path=exe,
+        zipfile="out.zip",
+        folder="src/sol",
+        pac_path=exe,
     )
     argv = fake_run[-1][0]
     assert argv[1] == "solution"
-    assert argv[2] == "pack"            # Pack maps to `pac solution pack`
+    assert argv[2] == "pack"  # Pack maps to `pac solution pack`
     assert argv[argv.index("--zipfile") + 1] == "out.zip"
     assert argv[argv.index("--folder") + 1] == "src/sol"
     assert info["action"] == "Pack"
@@ -84,9 +87,10 @@ def test_pack_builds_reverse_argv(fake_run, exe):
 
 
 def test_subprocess_capture_pins_utf8_decode(fake_run, exe):
-    """pac output is captured with an explicit UTF-8 / error-tolerant decode,
+    """Pac output is captured with an explicit UTF-8 / error-tolerant decode,
     not the OS locale default — so a Windows cp1252 console can't mojibake it
-    (#683)."""
+    (#683).
+    """
     sp.extract_solution(zipfile="sol.zip", folder="src/sol", pac_path=exe)
     _argv, kwargs = fake_run[-1]
     assert kwargs.get("encoding") == "utf-8"
@@ -104,8 +108,8 @@ def test_exit_code_propagated_and_stdout_tailed(monkeypatch, exe):
 
     assert info["exit_code"] == 7
     tail_lines = info["stdout_tail"].splitlines()
-    assert len(tail_lines) <= 20            # only the tail, not all 30 lines
-    assert tail_lines[-1] == "line29"       # ...ending at the real last line
+    assert len(tail_lines) <= 20  # only the tail, not all 30 lines
+    assert tail_lines[-1] == "line29"  # ...ending at the real last line
     assert "line0" not in info["stdout_tail"]  # the head is dropped
 
 
@@ -116,7 +120,10 @@ def test_timeout_raises_d365error(monkeypatch, exe):
     monkeypatch.setattr(sp.subprocess, "run", _run)
     with pytest.raises(D365Error, match="timed out"):
         sp.pack_solution(
-            zipfile="s.zip", folder="f", pac_path=exe, timeout=5,
+            zipfile="s.zip",
+            folder="f",
+            pac_path=exe,
+            timeout=5,
         )
 
 
@@ -132,7 +139,9 @@ def test_resolves_exe_from_env_when_no_flag(fake_run, monkeypatch, exe):
 def test_resolves_exe_from_which_when_no_flag_or_env(fake_run, monkeypatch, exe):
     monkeypatch.delenv("CRM_PAC", raising=False)
     monkeypatch.setattr(
-        sp.shutil, "which", lambda name: exe if name == "pac" else None,
+        sp.shutil,
+        "which",
+        lambda name: exe if name == "pac" else None,
     )
     sp.extract_solution(zipfile="s.zip", folder="f")
     assert fake_run[-1][0][0] == exe
@@ -185,7 +194,10 @@ def test_crm_pac_takes_precedence_over_deprecated_env(fake_run, monkeypatch, tmp
 )
 def test_package_type_normalized_and_passed(fake_run, exe, given, expected):
     sp.extract_solution(
-        zipfile="s.zip", folder="f", package_type=given, pac_path=exe,
+        zipfile="s.zip",
+        folder="f",
+        package_type=given,
+        pac_path=exe,
     )
     argv = fake_run[-1][0]
     assert argv[argv.index("--packagetype") + 1] == expected
@@ -198,7 +210,10 @@ def test_invalid_package_type_rejected_before_shelling_out(monkeypatch, exe):
     monkeypatch.setattr(sp.subprocess, "run", _boom)
     with pytest.raises(D365Error, match="package.?type|Unmanaged"):
         sp.pack_solution(
-            zipfile="s.zip", folder="f", package_type="Bogus", pac_path=exe,
+            zipfile="s.zip",
+            folder="f",
+            package_type="Bogus",
+            pac_path=exe,
         )
 
 
@@ -213,7 +228,10 @@ def test_timeout_must_be_positive(monkeypatch, exe, bad):
     monkeypatch.setattr(sp.subprocess, "run", _boom)
     with pytest.raises(D365Error, match="timeout must be a positive"):
         sp.extract_solution(
-            zipfile="s.zip", folder="f", pac_path=exe, timeout=bad,
+            zipfile="s.zip",
+            folder="f",
+            pac_path=exe,
+            timeout=bad,
         )
 
 
@@ -231,7 +249,8 @@ def test_resolves_exe_expanding_env_vars_and_user(fake_run, monkeypatch, tmp_pat
     real.touch()
     monkeypatch.setenv("CRM_PAC_DIR", str(tmp_path))
     sp.extract_solution(
-        zipfile="s.zip", folder="f",
+        zipfile="s.zip",
+        folder="f",
         pac_path="$CRM_PAC_DIR/pac",
     )
     # Path compare: on Windows the literal "/" and the env value's "\" are
@@ -271,13 +290,24 @@ class TestPackagerCommands:
         )
         # Any backend/connection bootstrap would explode the test → proves offline.
         monkeypatch.setattr("crm.cli.CLIContext.backend", _backend_forbidden)
-        result = CliRunner().invoke(cli, [
-            "--json", "solution", "extract",
-            "--zipfile", real_zip, "--folder", "src/sol",
-            "--package-type", "Both",
-            "--pac-path", real_zip,
-            "--timeout", "30",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "solution",
+                "extract",
+                "--zipfile",
+                real_zip,
+                "--folder",
+                "src/sol",
+                "--package-type",
+                "Both",
+                "--pac-path",
+                real_zip,
+                "--timeout",
+                "30",
+            ],
+        )
         assert result.exit_code == 0, result.output
         envelope = json.loads(result.output)
         assert envelope["ok"] is True
@@ -297,11 +327,20 @@ class TestPackagerCommands:
             lambda **kw: captured.update(kw) or {"action": "Extract", "exit_code": 0},
         )
         monkeypatch.setattr("crm.cli.CLIContext.backend", _backend_forbidden)
-        result = CliRunner().invoke(cli, [
-            "--json", "solution", "extract",
-            "--zipfile", real_zip, "--folder", "src/sol",
-            "--solutionpackager-path", real_zip,
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "solution",
+                "extract",
+                "--zipfile",
+                real_zip,
+                "--folder",
+                "src/sol",
+                "--solutionpackager-path",
+                real_zip,
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert captured["pac_path"] == real_zip
 
@@ -312,14 +351,24 @@ class TestPackagerCommands:
             lambda **kw: captured.update(kw) or {"action": "Extract", "exit_code": 0},
         )
         monkeypatch.setattr("crm.cli.CLIContext.backend", _backend_forbidden)
-        result = CliRunner().invoke(cli, [
-            "--json", "solution", "extract",
-            "--zipfile", real_zip, "--folder", "src/sol",
-            "--package-type", "both",   # lower case must be accepted
-            "--pac-path", real_zip,
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "solution",
+                "extract",
+                "--zipfile",
+                real_zip,
+                "--folder",
+                "src/sol",
+                "--package-type",
+                "both",  # lower case must be accepted
+                "--pac-path",
+                real_zip,
+            ],
+        )
         assert result.exit_code == 0, result.output
-        assert captured["package_type"] == "Both"   # normalised to canonical casing
+        assert captured["package_type"] == "Both"  # normalised to canonical casing
 
     def test_extract_missing_zipfile_is_usage_error(self, monkeypatch, tmp_path):
         def _no_call(**kw):
@@ -327,11 +376,19 @@ class TestPackagerCommands:
 
         monkeypatch.setattr("crm.core.solutionpackager.extract_solution", _no_call)
         monkeypatch.setattr("crm.cli.CLIContext.backend", _backend_forbidden)
-        result = CliRunner().invoke(cli, [
-            "--json", "solution", "extract",
-            "--zipfile", str(tmp_path / "missing.zip"), "--folder", "src/sol",
-        ])
-        assert result.exit_code == 2, result.output   # Click usage error
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "solution",
+                "extract",
+                "--zipfile",
+                str(tmp_path / "missing.zip"),
+                "--folder",
+                "src/sol",
+            ],
+        )
+        assert result.exit_code == 2, result.output  # Click usage error
 
     def test_pack_command_runs_offline_and_wires_core(self, monkeypatch, real_folder):
         captured = {}
@@ -340,17 +397,25 @@ class TestPackagerCommands:
             lambda **kw: captured.update(kw) or {"action": "Pack", "exit_code": 0},
         )
         monkeypatch.setattr("crm.cli.CLIContext.backend", _backend_forbidden)
-        result = CliRunner().invoke(cli, [
-            "--json", "solution", "pack",
-            "--zipfile", "out.zip", "--folder", real_folder,
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "solution",
+                "pack",
+                "--zipfile",
+                "out.zip",
+                "--folder",
+                real_folder,
+            ],
+        )
         assert result.exit_code == 0, result.output
         envelope = json.loads(result.output)
         assert envelope["ok"] is True
         assert envelope["data"]["action"] == "Pack"
         assert captured["zipfile"] == "out.zip"
         assert captured["folder"] == real_folder
-        assert captured["package_type"] == "Unmanaged"   # default
+        assert captured["package_type"] == "Unmanaged"  # default
 
     def test_pack_missing_folder_is_usage_error(self, monkeypatch, tmp_path):
         def _no_call(**kw):
@@ -358,24 +423,46 @@ class TestPackagerCommands:
 
         monkeypatch.setattr("crm.core.solutionpackager.pack_solution", _no_call)
         monkeypatch.setattr("crm.cli.CLIContext.backend", _backend_forbidden)
-        result = CliRunner().invoke(cli, [
-            "--json", "solution", "pack",
-            "--zipfile", "out.zip", "--folder", str(tmp_path / "nope"),
-        ])
-        assert result.exit_code == 2, result.output   # Click usage error
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "solution",
+                "pack",
+                "--zipfile",
+                "out.zip",
+                "--folder",
+                str(tmp_path / "nope"),
+            ],
+        )
+        assert result.exit_code == 2, result.output  # Click usage error
 
     def test_command_propagates_nonzero_pac_exit(self, monkeypatch, real_folder):
         # A pac failure must surface as a CLI failure (ADR 0001), while still
         # showing the exit code + stdout_tail for diagnosis.
         monkeypatch.setattr(
             "crm.core.solutionpackager.pack_solution",
-            lambda **kw: {"action": "Pack", "exit_code": 2,
-                          "folder": "f", "zipfile": "z", "stdout_tail": "boom"},
+            lambda **kw: {
+                "action": "Pack",
+                "exit_code": 2,
+                "folder": "f",
+                "zipfile": "z",
+                "stdout_tail": "boom",
+            },
         )
         monkeypatch.setattr("crm.cli.CLIContext.backend", _backend_forbidden)
-        result = CliRunner().invoke(cli, [
-            "--json", "solution", "pack", "--zipfile", "z", "--folder", real_folder,
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "solution",
+                "pack",
+                "--zipfile",
+                "z",
+                "--folder",
+                real_folder,
+            ],
+        )
         assert result.exit_code == 1, result.output
         envelope = json.loads(result.output)
         assert envelope["ok"] is False
@@ -386,13 +473,26 @@ class TestPackagerCommands:
         # No --json → human mode drops `data`; the tail must ride in the error text.
         monkeypatch.setattr(
             "crm.core.solutionpackager.pack_solution",
-            lambda **kw: {"action": "Pack", "exit_code": 9,
-                          "folder": "f", "zipfile": "z", "stdout_tail": "ERR boom detail"},
+            lambda **kw: {
+                "action": "Pack",
+                "exit_code": 9,
+                "folder": "f",
+                "zipfile": "z",
+                "stdout_tail": "ERR boom detail",
+            },
         )
         monkeypatch.setattr("crm.cli.CLIContext.backend", _backend_forbidden)
-        result = CliRunner().invoke(cli, [
-            "solution", "pack", "--zipfile", "z", "--folder", real_folder,
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "solution",
+                "pack",
+                "--zipfile",
+                "z",
+                "--folder",
+                real_folder,
+            ],
+        )
         assert result.exit_code == 1, result.output
         assert "ERR boom detail" in result.output
 
@@ -401,28 +501,50 @@ class TestPackagerCommands:
         # stable envelope action (`Extract`), so a user can re-run it (Copilot #527).
         monkeypatch.setattr(
             "crm.core.solutionpackager.extract_solution",
-            lambda **kw: {"action": "Extract", "exit_code": 3,
-                          "folder": "f", "zipfile": "z", "stdout_tail": "nope"},
+            lambda **kw: {
+                "action": "Extract",
+                "exit_code": 3,
+                "folder": "f",
+                "zipfile": "z",
+                "stdout_tail": "nope",
+            },
         )
         monkeypatch.setattr("crm.cli.CLIContext.backend", _backend_forbidden)
-        result = CliRunner().invoke(cli, [
-            "solution", "extract", "--zipfile", real_zip, "--folder", "src/sol",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "solution",
+                "extract",
+                "--zipfile",
+                real_zip,
+                "--folder",
+                "src/sol",
+            ],
+        )
         assert result.exit_code == 1, result.output
         assert "pac solution unpack failed" in result.output
         assert "pac solution Extract" not in result.output
 
     def test_extract_command_absent_binary_exits_1(self, monkeypatch, real_zip):
         def _raise(**kw):
-            raise D365Error("pac executable not found on PATH. Install the "
-                            "Power Platform CLI (pac).")
+            raise D365Error(
+                "pac executable not found on PATH. Install the Power Platform CLI (pac)."
+            )
 
         monkeypatch.setattr("crm.core.solutionpackager.extract_solution", _raise)
         monkeypatch.setattr("crm.cli.CLIContext.backend", _backend_forbidden)
-        result = CliRunner().invoke(cli, [
-            "--json", "solution", "extract",
-            "--zipfile", real_zip, "--folder", "src/sol",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "solution",
+                "extract",
+                "--zipfile",
+                real_zip,
+                "--folder",
+                "src/sol",
+            ],
+        )
         assert result.exit_code == 1, result.output
         envelope = json.loads(result.output)
         assert envelope["ok"] is False

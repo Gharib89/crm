@@ -21,10 +21,11 @@ Inputs come from the environment (set by the workflow):
   PR_BODY    - the pull request body (scanned for a BREAKING CHANGE footer)
   PR_LABELS  - the PR's labels, comma / whitespace / newline separated
 """
+
 import os
 import re
 import sys
-from typing import List, Optional, Tuple
+from typing import Optional
 
 # A Conventional-Commit subject: type, optional (scope), optional !, ": ", text.
 _TITLE_RE = re.compile(r"^([a-z]+)(\([^)]+\))?(!)?:\s+\S")
@@ -35,7 +36,8 @@ _BREAKING_RE = re.compile(r"^BREAKING[ -]CHANGE:", re.MULTILINE)
 def required_label(title: str, body: str = "") -> Optional[str]:
     """The label this PR must carry: ``"major"`` for a breaking change, or
     ``None`` otherwise (``feat:`` minor and patch-level bumps are not gated).
-    Raises ``ValueError`` if the title is not a valid Conventional Commit."""
+    Raises ``ValueError`` if the title is not a valid Conventional Commit.
+    """
     m = _TITLE_RE.match(title.strip())
     if not m:
         raise ValueError(f"title {title!r} is not a valid Conventional Commit")
@@ -45,7 +47,7 @@ def required_label(title: str, body: str = "") -> Optional[str]:
     return None
 
 
-def check(title: str, body: str, labels: List[str]) -> Tuple[int, str]:
+def check(title: str, body: str, labels: list[str]) -> tuple[int, str]:
     """Return ``(exit_code, message)``: 0 if the PR is allowed, 1 otherwise."""
     try:
         needed = required_label(title, body)
@@ -68,7 +70,7 @@ def check(title: str, body: str, labels: List[str]) -> Tuple[int, str]:
     )
 
 
-def _split_labels(raw: str) -> List[str]:
+def _split_labels(raw: str) -> list[str]:
     return [part for part in re.split(r"[,\n]+", raw) if part.strip()]
 
 

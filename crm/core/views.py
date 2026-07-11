@@ -12,12 +12,16 @@ from typing import Any, cast
 from xml.etree import ElementTree
 from xml.sax.saxutils import quoteattr
 
-from crm.utils import safe_xml
-from crm.utils.d365_backend import (
-    D365Backend, D365Error, as_dict, normalize_guid, odata_literal,
-)
 from crm.core.metadata import attribute_info_or_raise, maybe_publish
 from crm.core.xml_edit import commit_xml_patches, parse_xml, serialize_xml
+from crm.utils import safe_xml
+from crm.utils.d365_backend import (
+    D365Backend,
+    D365Error,
+    as_dict,
+    normalize_guid,
+    odata_literal,
+)
 
 # savedquery.querytype optionset values (friendly name → code). See
 # https://learn.microsoft.com/power-apps/developer/model-driven-apps/customize-entity-views#types-of-views
@@ -30,13 +34,9 @@ QUERY_TYPES: dict[str, int] = {
 }
 
 
-def build_layoutxml(entity: str, object_type_code: int,
-                     columns: list[tuple[str, int]]) -> str:
+def build_layoutxml(entity: str, object_type_code: int, columns: list[tuple[str, int]]) -> str:
     id_attr = f"{entity}id"
-    cells = "".join(
-        f'<cell name={quoteattr(name)} width="{width}" />'
-        for name, width in columns
-    )
+    cells = "".join(f'<cell name={quoteattr(name)} width="{width}" />' for name, width in columns)
     jump = columns[0][0]
     return (
         f'<grid name="resultset" object="{object_type_code}" '
@@ -45,26 +45,29 @@ def build_layoutxml(entity: str, object_type_code: int,
     )
 
 
-def build_fetchxml(entity: str, columns: list[tuple[str, int]],
-                    order_by: str | None, filter_active: bool,
-                    order_desc: bool = False) -> str:
+def build_fetchxml(
+    entity: str,
+    columns: list[tuple[str, int]],
+    order_by: str | None,
+    filter_active: bool,
+    order_desc: bool = False,
+) -> str:
     id_attr = f"{entity}id"
-    attrs = f'<attribute name={quoteattr(id_attr)} />' + "".join(
-        f'<attribute name={quoteattr(name)} />' for name, _ in columns
+    attrs = f"<attribute name={quoteattr(id_attr)} />" + "".join(
+        f"<attribute name={quoteattr(name)} />" for name, _ in columns
     )
     descending = "true" if order_desc else "false"
     order = (
-        f'<order attribute={quoteattr(order_by)} descending="{descending}" />'
-        if order_by else ""
+        f'<order attribute={quoteattr(order_by)} descending="{descending}" />' if order_by else ""
     )
     filt = (
-        '<filter type="and"><condition attribute="statecode" '
-        'operator="eq" value="0" /></filter>'
-        if filter_active else ""
+        '<filter type="and"><condition attribute="statecode" operator="eq" value="0" /></filter>'
+        if filter_active
+        else ""
     )
     return (
         '<fetch version="1.0" output-format="xml-platform" mapping="logical">'
-        f'<entity name={quoteattr(entity)}>{attrs}{order}{filt}</entity></fetch>'
+        f"<entity name={quoteattr(entity)}>{attrs}{order}{filt}</entity></fetch>"
     )
 
 
@@ -126,9 +129,11 @@ def parse_fetch_order_filter(fetchxml: str) -> tuple[str | None, bool, bool]:
             # `.//` (not Element.iter) so the namespace wildcard applies; covers
             # conditions nested in and/or sub-filter groups too.
             for cond in filt.findall(".//{*}condition"):
-                if (cond.get("attribute") == "statecode"
-                        and cond.get("operator") == "eq"
-                        and cond.get("value") == "0"):
+                if (
+                    cond.get("attribute") == "statecode"
+                    and cond.get("operator") == "eq"
+                    and cond.get("value") == "0"
+                ):
                     filter_active = True
                     break
             if filter_active:
@@ -172,26 +177,31 @@ def create_view(
         raise D365Error("if_exists must be 'error' or 'skip'.")
     if query_type not in QUERY_TYPES:
         raise D365Error(
-            f"unknown query_type {query_type!r}; "
-            f"expected one of {', '.join(QUERY_TYPES)}.")
+            f"unknown query_type {query_type!r}; expected one of {', '.join(QUERY_TYPES)}."
+        )
     querytype = QUERY_TYPES[query_type]
 
     # Existence guard — savedqueries has no alternate key, so query by name+type.
     existing = backend.get_collection(
         "savedqueries",
         params={
-            "$filter": (f"name eq {odata_literal(name)} "
-                        f"and returnedtypecode eq {odata_literal(entity)} "
-                        f"and querytype eq {querytype}"),
+            "$filter": (
+                f"name eq {odata_literal(name)} "
+                f"and returnedtypecode eq {odata_literal(entity)} "
+                f"and querytype eq {querytype}"
+            ),
             "$select": "savedqueryid,name",
         },
     )
     if existing and not backend.dry_run:
         if if_exists == "error":
-            raise D365Error(f"View {name!r} on {entity} already exists.",
-                            code="AlreadyExists")
-        return {"skipped": True, "exists": True, "name": name,
-                "savedqueryid": existing[0].get("savedqueryid")}
+            raise D365Error(f"View {name!r} on {entity} already exists.", code="AlreadyExists")
+        return {
+            "skipped": True,
+            "exists": True,
+            "name": name,
+            "savedqueryid": existing[0].get("savedqueryid"),
+        }
 
     body: dict[str, Any] = {
         "name": name,
@@ -199,15 +209,13 @@ def create_view(
         "querytype": querytype,
         "isdefault": is_default,
         "layoutxml": build_layoutxml(entity, object_type_code, columns),
-        "fetchxml": build_fetchxml(entity, columns, order_by, filter_active,
-                                    order_desc),
+        "fetchxml": build_fetchxml(entity, columns, order_by, filter_active, order_desc),
     }
     if query_type == "quick-find":
         body["isquickfindquery"] = True
     if description is not None:
         body["description"] = description
-    result = as_dict(backend.post("savedqueries", json_body=body,
-                                  solution=solution))
+    result = as_dict(backend.post("savedqueries", json_body=body, solution=solution))
     if result.get("_dry_run"):
         result["_exists"] = bool(existing)
         result["would_skip"] = bool(existing) and if_exists == "skip"
@@ -216,19 +224,22 @@ def create_view(
     entity_id_url = result.get("_entity_id_url") or ""
     sqid = result.get("_entity_id")
     out: dict[str, Any] = {
-        "created": True, "name": name, "entity": entity,
-        "savedqueryid": sqid, "solution": solution,
+        "created": True,
+        "name": name,
+        "entity": entity,
+        "savedqueryid": sqid,
+        "solution": solution,
     }
     if sqid:
         try:
-            rb = as_dict(backend.get(f"savedqueries({sqid})",
-                                     params={"$select": "name,savedqueryid"}))
+            rb = as_dict(
+                backend.get(f"savedqueries({sqid})", params={"$select": "name,savedqueryid"})
+            )
             out["name"] = rb.get("name", name)
         except D365Error as exc:
             out["view_lookup_error"] = f"Read-back failed: {exc}"
     else:
-        out["view_lookup_error"] = (
-            f"Could not parse savedqueryid from response: {entity_id_url!r}")
+        out["view_lookup_error"] = f"Could not parse savedqueryid from response: {entity_id_url!r}"
     maybe_publish(backend, out, publish)
     return out
 
@@ -252,8 +263,7 @@ def update_view(
         raise D365Error("nothing to update on the view.")
     if backend.dry_run:
         return {"_dry_run": True, "would_update": True, "savedqueryid": savedqueryid}
-    backend.patch(f"savedqueries({savedqueryid})", json_body=changes,
-                  solution=solution)
+    backend.patch(f"savedqueries({savedqueryid})", json_body=changes, solution=solution)
     return {"updated": True, "savedqueryid": savedqueryid}
 
 
@@ -289,8 +299,7 @@ def read_entity_views(
         "savedqueries",
         params={
             "$filter": (
-                f"returnedtypecode eq {odata_literal(entity_logical_name)} "
-                "and querytype eq 0"
+                f"returnedtypecode eq {odata_literal(entity_logical_name)} and querytype eq 0"
             ),
             "$select": "name,savedqueryid,querytype,layoutxml,fetchxml,isdefault,description",
         },
@@ -299,8 +308,7 @@ def read_entity_views(
     result: list[dict[str, Any]] = []
     for row in rows:
         columns = parse_layout_columns(row.get("layoutxml") or "")
-        order_by, order_desc, filter_active = parse_fetch_order_filter(
-            row.get("fetchxml") or "")
+        order_by, order_desc, filter_active = parse_fetch_order_filter(row.get("fetchxml") or "")
 
         view: dict[str, Any] = {
             "name": row.get("name", ""),
@@ -342,8 +350,7 @@ def read_entity_views(
 _EDITABLE_QUERYTYPES = frozenset(QUERY_TYPES.values())
 
 _VIEW_EDIT_SELECT = (
-    "savedqueryid,name,returnedtypecode,querytype,"
-    "layoutxml,fetchxml,layoutjson,iscustomizable"
+    "savedqueryid,name,returnedtypecode,querytype,layoutxml,fetchxml,layoutjson,iscustomizable"
 )
 
 
@@ -355,13 +362,13 @@ def _require_customizable(row: dict[str, Any]) -> None:
     judged, and the server is the final authority.
     """
     ic = row.get("iscustomizable")
-    value: Any = (
-        cast("dict[str, Any]", ic).get("Value") if isinstance(ic, dict) else ic)
+    value: Any = cast("dict[str, Any]", ic).get("Value") if isinstance(ic, dict) else ic
     if value is False:
         raise D365Error(
             f"View {row.get('name')!r} is not customizable "
             "(IsCustomizable.Value is false); refusing to PATCH.",
-            code="NotCustomizable")
+            code="NotCustomizable",
+        )
 
 
 def _resolve_editable_view(
@@ -377,38 +384,39 @@ def _resolve_editable_view(
     """
     if query_type not in QUERY_TYPES:
         raise D365Error(
-            f"unknown query_type {query_type!r}; "
-            f"expected one of {', '.join(QUERY_TYPES)}.")
+            f"unknown query_type {query_type!r}; expected one of {', '.join(QUERY_TYPES)}."
+        )
     querytype = QUERY_TYPES[query_type]
     vid = normalize_guid(view)
     if vid is not None:
-        row = as_dict(backend.get(
-            f"savedqueries({vid})", params={"$select": _VIEW_EDIT_SELECT}))
+        row = as_dict(backend.get(f"savedqueries({vid})", params={"$select": _VIEW_EDIT_SELECT}))
         if not row.get("savedqueryid"):
             raise D365Error(f"No savedquery with id {view!r}.", code="NotFound")
         rtc = row.get("returnedtypecode")
         if rtc and rtc != entity:
             raise D365Error(
-                f"savedquery {view!r} is on {rtc!r}, not {entity!r}.",
-                code="EntityMismatch")
+                f"savedquery {view!r} is on {rtc!r}, not {entity!r}.", code="EntityMismatch"
+            )
     else:
         rows = backend.get_collection(
             "savedqueries",
             params={
-                "$filter": (f"name eq {odata_literal(view)} "
-                            f"and returnedtypecode eq {odata_literal(entity)} "
-                            f"and querytype eq {querytype}"),
+                "$filter": (
+                    f"name eq {odata_literal(view)} "
+                    f"and returnedtypecode eq {odata_literal(entity)} "
+                    f"and querytype eq {querytype}"
+                ),
                 "$select": _VIEW_EDIT_SELECT,
-            })
+            },
+        )
         if not rows:
-            raise D365Error(
-                f"No {query_type} view named {view!r} on {entity}.",
-                code="NotFound")
+            raise D365Error(f"No {query_type} view named {view!r} on {entity}.", code="NotFound")
         if len(rows) > 1:
             raise D365Error(
                 f"{len(rows)} views named {view!r} on {entity} "
                 f"(querytype {querytype}); resolve by savedqueryid instead.",
-                code="Ambiguous")
+                code="Ambiguous",
+            )
         row = rows[0]
     qt = row.get("querytype")
     if qt not in _EDITABLE_QUERYTYPES:
@@ -416,7 +424,8 @@ def _resolve_editable_view(
             f"savedquery querytype {qt} has no editable grid layout; "
             f"edit-columns / set-order support querytypes "
             f"{sorted(_EDITABLE_QUERYTYPES)}.",
-            code="NotEditable")
+            code="NotEditable",
+        )
     _require_customizable(row)
     return row
 
@@ -424,45 +433,43 @@ def _resolve_editable_view(
 # --- pure XML helpers (no backend; unit-tested independently) -------------------
 
 
-def _layout_row(root: "ElementTree.Element") -> "ElementTree.Element":
+def _layout_row(root: ElementTree.Element) -> ElementTree.Element:
     row = root.find(".//row")
     if row is None:
         raise D365Error("layoutxml has no <row>; cannot edit columns.")
     return row
 
 
-def _fetch_entity(root: "ElementTree.Element") -> "ElementTree.Element":
+def _fetch_entity(root: ElementTree.Element) -> ElementTree.Element:
     ent = root.find("entity")
     if ent is None:
         raise D365Error("fetchxml has no <entity>; cannot edit.")
     return ent
 
 
-def _cell_names(row: "ElementTree.Element") -> list[str]:
+def _cell_names(row: ElementTree.Element) -> list[str]:
     return [c.get("name") or "" for c in row.findall("cell")]
 
 
-def _attr_names(entity: "ElementTree.Element") -> list[str]:
+def _attr_names(entity: ElementTree.Element) -> list[str]:
     return [a.get("name") or "" for a in entity.findall("attribute")]
 
 
-def _find_cell(row: "ElementTree.Element",
-               name: str) -> "ElementTree.Element | None":
+def _find_cell(row: ElementTree.Element, name: str) -> ElementTree.Element | None:
     for c in row.findall("cell"):
         if c.get("name") == name:
             return c
     return None
 
 
-def _find_attr(entity: "ElementTree.Element",
-               name: str) -> "ElementTree.Element | None":
+def _find_attr(entity: ElementTree.Element, name: str) -> ElementTree.Element | None:
     for a in entity.findall("attribute"):
         if a.get("name") == name:
             return a
     return None
 
 
-def _last_attribute_index(entity: "ElementTree.Element") -> int:
+def _last_attribute_index(entity: ElementTree.Element) -> int:
     last = -1
     for i, child in enumerate(list(entity)):
         if child.tag == "attribute":
@@ -471,9 +478,10 @@ def _last_attribute_index(entity: "ElementTree.Element") -> int:
 
 
 def _assert_mismatch_invariant(
-    layout_row: "ElementTree.Element",
-    fetch_entity: "ElementTree.Element",
-    *, pk: str,
+    layout_row: ElementTree.Element,
+    fetch_entity: ElementTree.Element,
+    *,
+    pk: str,
 ) -> None:
     """Every non-PK layout ``<cell name>`` must have a fetch ``<attribute name>``.
 
@@ -484,13 +492,13 @@ def _assert_mismatch_invariant(
     """
     attrs = set(_attr_names(fetch_entity))
     if pk not in attrs:
-        raise D365Error(
-            f"fetchxml is missing the primary-key attribute {pk!r}.")
+        raise D365Error(f"fetchxml is missing the primary-key attribute {pk!r}.")
     for name in _cell_names(layout_row):
         if name and name != pk and "." not in name and name not in attrs:
             raise D365Error(
                 f"column {name!r} has no matching fetch <attribute>; "
-                "the layout and fetch would be out of sync.")
+                "the layout and fetch would be out of sync."
+            )
 
 
 def edit_view_columns(
@@ -499,10 +507,10 @@ def edit_view_columns(
     entity: str,
     view: str,
     query_type: str = "public",
-    add: "list[tuple[str, int]] | None" = None,
-    remove: "list[str] | None" = None,
-    width: "list[tuple[str, int]] | None" = None,
-    reorder: "list[str] | None" = None,
+    add: list[tuple[str, int]] | None = None,
+    remove: list[str] | None = None,
+    width: list[tuple[str, int]] | None = None,
+    reorder: list[str] | None = None,
     publish: bool = False,
     solution: str | None = None,
 ) -> dict[str, Any]:
@@ -519,20 +527,16 @@ def edit_view_columns(
     width = width or []
     has_other = bool(add or remove or width)
     if reorder is not None and has_other:
-        raise D365Error(
-            "--reorder cannot be combined with --add / --remove / --width.")
+        raise D365Error("--reorder cannot be combined with --add / --remove / --width.")
     if reorder is None and not has_other:
-        raise D365Error(
-            "nothing to do: pass --add, --remove, --width, or --reorder.")
+        raise D365Error("nothing to do: pass --add, --remove, --width, or --reorder.")
 
-    row = _resolve_editable_view(backend, entity=entity, view=view,
-                                 query_type=query_type)
+    row = _resolve_editable_view(backend, entity=entity, view=view, query_type=query_type)
     sqid = row.get("savedqueryid")
     layoutxml = row.get("layoutxml") or ""
     fetchxml = row.get("fetchxml") or ""
     if not layoutxml:
-        raise D365Error(
-            f"view {view!r} has no layoutxml; it is not column-editable.")
+        raise D365Error(f"view {view!r} has no layoutxml; it is not column-editable.")
     if not fetchxml:
         raise D365Error(f"view {view!r} has no fetchxml; cannot edit columns.")
 
@@ -590,7 +594,8 @@ def edit_view_columns(
         if sorted(reorder) != sorted(current):
             raise D365Error(
                 "--reorder must list exactly the current columns "
-                f"({', '.join(current)}); got {', '.join(reorder)}.")
+                f"({', '.join(current)}); got {', '.join(reorder)}."
+            )
         by_name = {c.get("name"): c for c in lrow.findall("cell")}
         for c in lrow.findall("cell"):
             lrow.remove(c)
@@ -607,8 +612,10 @@ def edit_view_columns(
         columns["fetchxml"] = serialize_xml(fetch_root)
 
     result: dict[str, Any] = {
-        "savedqueryid": sqid, "name": row.get("name", ""),
-        "entity": entity, "action": "edit-columns",
+        "savedqueryid": sqid,
+        "name": row.get("name", ""),
+        "entity": entity,
+        "action": "edit-columns",
         "columns": _cell_names(lrow),
     }
 
@@ -619,15 +626,24 @@ def edit_view_columns(
         # the read-back and the local (unchanged) fetch entity is identical to
         # the server's — checking the invariant against it is checking the
         # server doc.
-        fe = (_fetch_entity(parse_xml(cols["fetchxml"], label="fetchxml"))
-              if cols.get("fetchxml") else fent)
+        fe = (
+            _fetch_entity(parse_xml(cols["fetchxml"], label="fetchxml"))
+            if cols.get("fetchxml")
+            else fent
+        )
         _assert_mismatch_invariant(lr, fe, pk=pk)
 
     return commit_xml_patches(
-        backend, entity_set="savedqueries", record_id=str(sqid),
-        columns=columns, result=result, dry_run_flag="would_update",
-        publish=publish, solution=solution,
-        read_back=_verify if publish else None)
+        backend,
+        entity_set="savedqueries",
+        record_id=str(sqid),
+        columns=columns,
+        result=result,
+        dry_run_flag="would_update",
+        publish=publish,
+        solution=solution,
+        read_back=_verify if publish else None,
+    )
 
 
 # --- View FetchXML filter editors (add-filter / remove-filter) ------------------
@@ -646,65 +662,127 @@ def edit_view_columns(
 # Operators that take no value (neither a value attribute nor child elements):
 # null/not-null, the relative-date operators, and the current-user/business
 # context operators.
-_NO_VALUE_OPS = frozenset({
-    "null", "not-null",
-    "today", "tomorrow", "yesterday",
-    "last-seven-days", "next-seven-days",
-    "last-week", "this-week", "next-week",
-    "last-month", "this-month", "next-month",
-    "last-year", "this-year", "next-year",
-    "last-fiscal-period", "this-fiscal-period", "next-fiscal-period",
-    "last-fiscal-year", "this-fiscal-year", "next-fiscal-year",
-    "eq-userid", "ne-userid", "eq-businessid", "ne-businessid",
-    "eq-userlanguage",
-    "eq-useroruserhierarchy", "eq-useroruserhierarchyandteams",
-    "eq-useroruserteams", "eq-userteams",
-})
+_NO_VALUE_OPS = frozenset(
+    {
+        "null",
+        "not-null",
+        "today",
+        "tomorrow",
+        "yesterday",
+        "last-seven-days",
+        "next-seven-days",
+        "last-week",
+        "this-week",
+        "next-week",
+        "last-month",
+        "this-month",
+        "next-month",
+        "last-year",
+        "this-year",
+        "next-year",
+        "last-fiscal-period",
+        "this-fiscal-period",
+        "next-fiscal-period",
+        "last-fiscal-year",
+        "this-fiscal-year",
+        "next-fiscal-year",
+        "eq-userid",
+        "ne-userid",
+        "eq-businessid",
+        "ne-businessid",
+        "eq-userlanguage",
+        "eq-useroruserhierarchy",
+        "eq-useroruserhierarchyandteams",
+        "eq-useroruserteams",
+        "eq-userteams",
+    }
+)
 
 # Operators requiring exactly two values (emitted as child <value> elements).
-_TWO_VALUE_OPS = frozenset({
-    "between", "not-between",
-    "in-fiscal-period-and-year",
-    "in-or-after-fiscal-period-and-year", "in-or-before-fiscal-period-and-year",
-})
+_TWO_VALUE_OPS = frozenset(
+    {
+        "between",
+        "not-between",
+        "in-fiscal-period-and-year",
+        "in-or-after-fiscal-period-and-year",
+        "in-or-before-fiscal-period-and-year",
+    }
+)
 
 # Operators taking a list of values (one or more child <value> elements).
-_MULTI_VALUE_OPS = frozenset({
-    "in", "not-in", "contain-values", "not-contain-values",
-})
+_MULTI_VALUE_OPS = frozenset(
+    {
+        "in",
+        "not-in",
+        "contain-values",
+        "not-contain-values",
+    }
+)
 
 # Single-value operators (value carried in the `value` attribute) — everything
 # below plus any operator not in the three sets above.
 # `neq` is the deprecated alias of `ne`; the fetch.xsd enum still lists it
 # ("remains for backward compatability only"), so it is accepted here.
-_SINGLE_VALUE_OPS = frozenset({
-    "eq", "ne", "neq", "lt", "le", "gt", "ge",
-    "like", "not-like", "begins-with", "not-begin-with",
-    "ends-with", "not-end-with",
-    "on", "on-or-after", "on-or-before",
-    "above", "eq-or-above", "under", "eq-or-under", "not-under",
-    "in-fiscal-period", "in-fiscal-year",
-    "last-x-days", "last-x-weeks", "last-x-months", "last-x-years",
-    "last-x-hours", "last-x-fiscal-periods", "last-x-fiscal-years",
-    "next-x-days", "next-x-weeks", "next-x-months", "next-x-years",
-    "next-x-hours", "next-x-fiscal-periods", "next-x-fiscal-years",
-    "olderthan-x-days", "olderthan-x-weeks", "olderthan-x-months",
-    "olderthan-x-years", "olderthan-x-hours", "olderthan-x-minutes",
-})
+_SINGLE_VALUE_OPS = frozenset(
+    {
+        "eq",
+        "ne",
+        "neq",
+        "lt",
+        "le",
+        "gt",
+        "ge",
+        "like",
+        "not-like",
+        "begins-with",
+        "not-begin-with",
+        "ends-with",
+        "not-end-with",
+        "on",
+        "on-or-after",
+        "on-or-before",
+        "above",
+        "eq-or-above",
+        "under",
+        "eq-or-under",
+        "not-under",
+        "in-fiscal-period",
+        "in-fiscal-year",
+        "last-x-days",
+        "last-x-weeks",
+        "last-x-months",
+        "last-x-years",
+        "last-x-hours",
+        "last-x-fiscal-periods",
+        "last-x-fiscal-years",
+        "next-x-days",
+        "next-x-weeks",
+        "next-x-months",
+        "next-x-years",
+        "next-x-hours",
+        "next-x-fiscal-periods",
+        "next-x-fiscal-years",
+        "olderthan-x-days",
+        "olderthan-x-weeks",
+        "olderthan-x-months",
+        "olderthan-x-years",
+        "olderthan-x-hours",
+        "olderthan-x-minutes",
+    }
+)
 
 # The full fetch.xsd ConditionOperator enum — membership validation catches typos.
-_FETCH_OPERATORS = (
-    _NO_VALUE_OPS | _TWO_VALUE_OPS | _MULTI_VALUE_OPS | _SINGLE_VALUE_OPS)
+_FETCH_OPERATORS = _NO_VALUE_OPS | _TWO_VALUE_OPS | _MULTI_VALUE_OPS | _SINGLE_VALUE_OPS
 
 
 def _validate_operator(op: str) -> None:
     if op not in _FETCH_OPERATORS:
         raise D365Error(
-            f"unknown FetchXML operator {op!r}; "
-            "see the fetch.xsd condition-operator enum.")
+            f"unknown FetchXML operator {op!r}; see the fetch.xsd condition-operator enum."
+        )
 
 
-def _coerce_values(op: str, tokens: "list[str]") -> "list[str]":
+def _coerce_values(op: str, tokens: list[str]) -> list[str]:
     """Interpret the raw value tokens for an operator, enforcing its cardinality.
 
     A single-value operator joins its tokens into one value (so a value may
@@ -717,8 +795,7 @@ def _coerce_values(op: str, tokens: "list[str]") -> "list[str]":
         return []
     if op in _TWO_VALUE_OPS:
         if len(tokens) != 2:
-            raise D365Error(
-                f"operator {op!r} requires exactly two values; got {len(tokens)}.")
+            raise D365Error(f"operator {op!r} requires exactly two values; got {len(tokens)}.")
         return list(tokens)
     if op in _MULTI_VALUE_OPS:
         if not tokens:
@@ -730,9 +807,7 @@ def _coerce_values(op: str, tokens: "list[str]") -> "list[str]":
     return [" ".join(tokens)]
 
 
-def _build_condition(
-    attr: str, op: str, values: "list[str]"
-) -> "ElementTree.Element":
+def _build_condition(attr: str, op: str, values: list[str]) -> ElementTree.Element:
     """Build a `<condition>` element from a validated (attr, op, values) spec."""
     cond = ElementTree.Element("condition")
     cond.set("attribute", attr)
@@ -748,7 +823,7 @@ def _build_condition(
     return cond
 
 
-def _condition_values(cond: "ElementTree.Element") -> "list[str]":
+def _condition_values(cond: ElementTree.Element) -> list[str]:
     """The values on a `<condition>` — its `value` attribute or child elements."""
     v = cond.get("value")
     if v is not None:
@@ -757,8 +832,8 @@ def _condition_values(cond: "ElementTree.Element") -> "list[str]":
 
 
 def _entity_filter_of_type(
-    entity: "ElementTree.Element", filter_type: str
-) -> "ElementTree.Element | None":
+    entity: ElementTree.Element, filter_type: str
+) -> ElementTree.Element | None:
     """The entity's direct-child `<filter>` of the given type (default 'and')."""
     for f in entity.findall("filter"):
         if (f.get("type") or "and") == filter_type:
@@ -766,9 +841,10 @@ def _entity_filter_of_type(
     return None
 
 
-def _filter_insert_index(entity: "ElementTree.Element") -> int:
+def _filter_insert_index(entity: ElementTree.Element) -> int:
     """Index to insert a new `<filter>`: after the last attribute/order/filter,
-    which keeps it before any `<link-entity>` (link-entities follow filters)."""
+    which keeps it before any `<link-entity>` (link-entities follow filters).
+    """
     idx = 0
     for i, child in enumerate(list(entity)):
         if child.tag in ("attribute", "all-attributes", "order", "filter"):
@@ -777,17 +853,17 @@ def _filter_insert_index(entity: "ElementTree.Element") -> int:
 
 
 def _iter_entity_conditions(
-    entity: "ElementTree.Element",
-) -> "list[tuple[ElementTree.Element, ElementTree.Element, ElementTree.Element]]":
+    entity: ElementTree.Element,
+) -> list[tuple[ElementTree.Element, ElementTree.Element, ElementTree.Element]]:
     """All `(parent, filter, condition)` reachable from the entity without
     descending into `<link-entity>` — so link-entity filters stay untouched.
 
     Recurses through nested `<filter>` elements. ``parent`` is the filter's own
     parent element (needed to prune a filter left empty by a removal).
     """
-    found: "list[tuple[ElementTree.Element, ElementTree.Element, ElementTree.Element]]" = []
+    found: list[tuple[ElementTree.Element, ElementTree.Element, ElementTree.Element]] = []
 
-    def walk(el: "ElementTree.Element") -> None:
+    def walk(el: ElementTree.Element) -> None:
         for child in list(el):
             if child.tag == "link-entity":
                 continue
@@ -800,9 +876,7 @@ def _iter_entity_conditions(
     return found
 
 
-def _prune_empty_filters(
-    entity: "ElementTree.Element", emptied: "list[ElementTree.Element]"
-) -> None:
+def _prune_empty_filters(entity: ElementTree.Element, emptied: list[ElementTree.Element]) -> None:
     """Remove each filter in ``emptied`` that has no conditions and no child
     filters, cascading to any ancestor filter the prune leaves empty.
 
@@ -810,10 +884,10 @@ def _prune_empty_filters(
     ancestors they empty are pruned — a pre-existing empty filter elsewhere is
     left alone. Dedupe by identity so a filter listed twice isn't removed twice.
     """
-    parent_of: "dict[int, ElementTree.Element]" = {}
-    by_id: "dict[int, ElementTree.Element]" = {}
+    parent_of: dict[int, ElementTree.Element] = {}
+    by_id: dict[int, ElementTree.Element] = {}
 
-    def walk(el: "ElementTree.Element") -> None:
+    def walk(el: ElementTree.Element) -> None:
         for child in list(el):
             if child.tag == "link-entity":
                 continue
@@ -847,10 +921,10 @@ def add_view_filter(
     entity: str,
     view: str,
     query_type: str = "public",
-    conditions: "list[tuple[str, str, list[str]]]",
+    conditions: list[tuple[str, str, list[str]]],
     filter_type: str = "and",
     publish: bool = False,
-    solution: "str | None" = None,
+    solution: str | None = None,
 ) -> dict[str, Any]:
     """Add FetchXML `<condition>` filters to an existing view, in place.
 
@@ -866,8 +940,7 @@ def add_view_filter(
     if filter_type not in ("and", "or"):
         raise D365Error(f"filter type must be 'and' or 'or'; got {filter_type!r}.")
 
-    row = _resolve_editable_view(backend, entity=entity, view=view,
-                                 query_type=query_type)
+    row = _resolve_editable_view(backend, entity=entity, view=view, query_type=query_type)
     sqid = row.get("savedqueryid")
     fetchxml = row.get("fetchxml") or ""
     if not fetchxml:
@@ -891,9 +964,12 @@ def add_view_filter(
         added.append({"attribute": attr, "operator": op, "values": values})
 
     result: dict[str, Any] = {
-        "savedqueryid": sqid, "name": row.get("name", ""),
-        "entity": entity, "action": "add-filter",
-        "filter_type": filter_type, "conditions": added,
+        "savedqueryid": sqid,
+        "name": row.get("name", ""),
+        "entity": entity,
+        "action": "add-filter",
+        "filter_type": filter_type,
+        "conditions": added,
     }
 
     def _verify(cols: dict[str, str]) -> None:
@@ -907,15 +983,20 @@ def add_view_filter(
                 for _p, _f, c in present
             ):
                 raise D365Error(
-                    "read-back: condition "
-                    f"{spec['attribute']} {spec['operator']} did not land.")
+                    f"read-back: condition {spec['attribute']} {spec['operator']} did not land."
+                )
 
     return commit_xml_patches(
-        backend, entity_set="savedqueries", record_id=str(sqid),
+        backend,
+        entity_set="savedqueries",
+        record_id=str(sqid),
         columns={"fetchxml": serialize_xml(fetch_root)},
-        result=result, dry_run_flag="would_update",
-        publish=publish, solution=solution,
-        read_back=_verify if publish else None)
+        result=result,
+        dry_run_flag="would_update",
+        publish=publish,
+        solution=solution,
+        read_back=_verify if publish else None,
+    )
 
 
 def remove_view_filter(
@@ -924,9 +1005,9 @@ def remove_view_filter(
     entity: str,
     view: str,
     query_type: str = "public",
-    conditions: "list[tuple[str, str, list[str]]]",
+    conditions: list[tuple[str, str, list[str]]],
     publish: bool = False,
-    solution: "str | None" = None,
+    solution: str | None = None,
 ) -> dict[str, Any]:
     """Remove FetchXML `<condition>` filters from an existing view, in place.
 
@@ -941,8 +1022,7 @@ def remove_view_filter(
     if not conditions:
         raise D365Error("nothing to do: pass at least one --condition.")
 
-    row = _resolve_editable_view(backend, entity=entity, view=view,
-                                 query_type=query_type)
+    row = _resolve_editable_view(backend, entity=entity, view=view, query_type=query_type)
     sqid = row.get("savedqueryid")
     fetchxml = row.get("fetchxml") or ""
     if not fetchxml:
@@ -951,7 +1031,7 @@ def remove_view_filter(
     fent = _fetch_entity(fetch_root)
 
     removed: list[dict[str, Any]] = []
-    touched_filters: "list[tuple[ElementTree.Element, ElementTree.Element]]" = []
+    touched_filters: list[tuple[ElementTree.Element, ElementTree.Element]] = []
     for attr, op, tokens in conditions:
         _validate_operator(op)
         want_values = _coerce_values(op, tokens) if tokens else None
@@ -961,29 +1041,35 @@ def remove_view_filter(
         matches = [
             (parent, filt, cond)
             for parent, filt, cond in _iter_entity_conditions(fent)
-            if cond.get("attribute") == attr and cond.get("operator") == op
+            if cond.get("attribute") == attr
+            and cond.get("operator") == op
             and (want_values is None or _condition_values(cond) == want_values)
         ]
         if not matches:
             raise D365Error(
                 f"no condition matches {attr} {op}"
-                + (f" {' '.join(tokens)}" if tokens else "") + ".",
-                code="NotFound")
+                + (f" {' '.join(tokens)}" if tokens else "")
+                + ".",
+                code="NotFound",
+            )
         if len(matches) > 1:
             raise D365Error(
-                f"{len(matches)} conditions match {attr} {op}; "
-                "specify the value to disambiguate.", code="Ambiguous")
+                f"{len(matches)} conditions match {attr} {op}; specify the value to disambiguate.",
+                code="Ambiguous",
+            )
         parent, filt, cond = matches[0]
         filt.remove(cond)
         touched_filters.append((parent, filt))
-        removed.append({"attribute": attr, "operator": op,
-                        "values": want_values or []})
+        removed.append({"attribute": attr, "operator": op, "values": want_values or []})
 
     _prune_empty_filters(fent, [f for _p, f in touched_filters])
 
     result: dict[str, Any] = {
-        "savedqueryid": sqid, "name": row.get("name", ""),
-        "entity": entity, "action": "remove-filter", "conditions": removed,
+        "savedqueryid": sqid,
+        "name": row.get("name", ""),
+        "entity": entity,
+        "action": "remove-filter",
+        "conditions": removed,
     }
 
     def _verify(cols: dict[str, str]) -> None:
@@ -997,15 +1083,20 @@ def remove_view_filter(
                 for _p, _f, c in present
             ):
                 raise D365Error(
-                    "read-back: condition "
-                    f"{spec['attribute']} {spec['operator']} is still present.")
+                    f"read-back: condition {spec['attribute']} {spec['operator']} is still present."
+                )
 
     return commit_xml_patches(
-        backend, entity_set="savedqueries", record_id=str(sqid),
+        backend,
+        entity_set="savedqueries",
+        record_id=str(sqid),
         columns={"fetchxml": serialize_xml(fetch_root)},
-        result=result, dry_run_flag="would_update",
-        publish=publish, solution=solution,
-        read_back=_verify if publish else None)
+        result=result,
+        dry_run_flag="would_update",
+        publish=publish,
+        solution=solution,
+        read_back=_verify if publish else None,
+    )
 
 
 def set_view_order(
@@ -1014,8 +1105,8 @@ def set_view_order(
     entity: str,
     view: str,
     query_type: str = "public",
-    order: "list[tuple[str, bool]] | None" = None,
-    add_order: "list[tuple[str, bool]] | None" = None,
+    order: list[tuple[str, bool]] | None = None,
+    add_order: list[tuple[str, bool]] | None = None,
     clear_order: bool = False,
     publish: bool = False,
     solution: str | None = None,
@@ -1031,11 +1122,9 @@ def set_view_order(
     order = order or []
     add_order = add_order or []
     if not (order or add_order or clear_order):
-        raise D365Error(
-            "nothing to do: pass --order, --add-order, or --clear-order.")
+        raise D365Error("nothing to do: pass --order, --add-order, or --clear-order.")
 
-    row = _resolve_editable_view(backend, entity=entity, view=view,
-                                 query_type=query_type)
+    row = _resolve_editable_view(backend, entity=entity, view=view, query_type=query_type)
     sqid = row.get("savedqueryid")
     fetchxml = row.get("fetchxml") or ""
     if not fetchxml:
@@ -1047,8 +1136,7 @@ def set_view_order(
         new_orders: list[tuple[str, bool]] = list(order)
     else:
         new_orders = [
-            (o.get("attribute") or "",
-             (o.get("descending") or "").lower() == "true")
+            (o.get("attribute") or "", (o.get("descending") or "").lower() == "true")
             for o in fent.findall("order")
         ]
     new_orders += list(add_order)
@@ -1066,25 +1154,30 @@ def set_view_order(
         fent.insert(insert_at + i, el)
 
     result: dict[str, Any] = {
-        "savedqueryid": sqid, "name": row.get("name", ""),
-        "entity": entity, "action": "set-order",
+        "savedqueryid": sqid,
+        "name": row.get("name", ""),
+        "entity": entity,
+        "action": "set-order",
         "order": [{"attribute": a, "descending": d} for a, d in new_orders],
     }
 
     def _verify(cols: dict[str, str]) -> None:
         fe = _fetch_entity(parse_xml(cols["fetchxml"], label="fetchxml"))
         got = [
-            (o.get("attribute") or "",
-             (o.get("descending") or "").lower() == "true")
+            (o.get("attribute") or "", (o.get("descending") or "").lower() == "true")
             for o in fe.findall("order")
         ]
         if got != new_orders:
-            raise D365Error(
-                "read-back: the view sort order did not land as expected.")
+            raise D365Error("read-back: the view sort order did not land as expected.")
 
     return commit_xml_patches(
-        backend, entity_set="savedqueries", record_id=str(sqid),
+        backend,
+        entity_set="savedqueries",
+        record_id=str(sqid),
         columns={"fetchxml": serialize_xml(fetch_root)},
-        result=result, dry_run_flag="would_update",
-        publish=publish, solution=solution,
-        read_back=_verify if publish else None)
+        result=result,
+        dry_run_flag="would_update",
+        publish=publish,
+        solution=solution,
+        read_back=_verify if publish else None,
+    )

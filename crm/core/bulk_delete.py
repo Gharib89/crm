@@ -34,7 +34,7 @@ def _with_total_record_count(fetch_xml: str) -> str:
     except ET.ParseError as exc:
         raise D365Error(f"--fetchxml is not well-formed XML: {exc}") from exc
     if root.tag != "fetch":
-        raise D365Error('FetchXML must have a <fetch> root element.')
+        raise D365Error("FetchXML must have a <fetch> root element.")
     root.set("returntotalrecordcount", "true")
     return ET.tostring(root, encoding="unicode")
 
@@ -56,15 +56,15 @@ def fetchxml_to_query_expression(backend: D365Backend, fetch_xml: str) -> dict[s
         raise D365Error(f"FetchXML is not well-formed XML: {exc}") from exc
     if root.tag != "fetch":
         raise D365Error("FetchXML must have a <fetch> root element.")
-    resp = as_dict(backend.get(
-        "FetchXmlToQueryExpression(FetchXml=@p1)",
-        params={"@p1": odata_literal(fetch_xml)},
-    ))
+    resp = as_dict(
+        backend.get(
+            "FetchXmlToQueryExpression(FetchXml=@p1)",
+            params={"@p1": odata_literal(fetch_xml)},
+        )
+    )
     raw_query = resp.get("Query")
     if not isinstance(raw_query, dict):
-        raise D365Error(
-            "FetchXmlToQueryExpression returned no Query object.", response_body=resp
-        )
+        raise D365Error("FetchXmlToQueryExpression returned no Query object.", response_body=resp)
     query: dict[str, Any] = dict(cast("dict[str, Any]", raw_query))
     query["@odata.type"] = QE_ODATA_TYPE
     return query
@@ -87,11 +87,16 @@ def _preview_count(backend: D365Backend, entity_set: str, counting_fetch: str) -
 
 def _read_counts(backend: D365Backend, job_id: str) -> dict[str, Any]:
     """Read succeeded/failed counts from the bulkdeleteoperation linked to *job_id*."""
-    raw = as_dict(backend.get("bulkdeleteoperations", params={
-        "$select": "successcount,failurecount",
-        "$filter": f"_asyncoperationid_value eq {job_id}",
-        "$top": "1",
-    }))
+    raw = as_dict(
+        backend.get(
+            "bulkdeleteoperations",
+            params={
+                "$select": "successcount,failurecount",
+                "$filter": f"_asyncoperationid_value eq {job_id}",
+                "$top": "1",
+            },
+        )
+    )
     rows = cast("list[dict[str, Any]]", raw.get("value") or [])
     row: dict[str, Any] = rows[0] if rows else {}
     return {"succeeded": row.get("successcount"), "failed": row.get("failurecount")}

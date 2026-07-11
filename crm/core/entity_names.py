@@ -35,7 +35,8 @@ if TYPE_CHECKING:
 
 def _empty_str_map() -> dict[str, str]:
     """Typed default factory for the NameMap primary-attribute maps (keeps
-    pyright strict from widening the field to ``dict[Unknown, Unknown]``)."""
+    pyright strict from widening the field to ``dict[Unknown, Unknown]``).
+    """
     return {}
 
 
@@ -100,9 +101,7 @@ class NameMap:
             if set_name.lower() == lowered:
                 return logical_name
         # Genuine miss: suggest a close logical name only when one is found.
-        match = difflib.get_close_matches(
-            lowered, list(self.logical_to_set), n=1, cutoff=0.6
-        )
+        match = difflib.get_close_matches(lowered, list(self.logical_to_set), n=1, cutoff=0.6)
         hint = f" — did you mean {match[0]!r}?" if match else ""
         raise D365Error(
             f"Entity {name!r} was not found in the CRM system{hint}",
@@ -147,13 +146,15 @@ def specs_from_rows(rows: list[dict[str, Any]]) -> list[AttrSpec]:
             continue
         required: dict[str, Any] = a.get("RequiredLevel") or {}
         level = required.get("Value")
-        specs.append(AttrSpec(
-            logical_name=name,
-            attribute_type=a.get("AttributeType") or "",
-            required_level=level if isinstance(level, str) else None,
-            valid_for_create=bool(a.get("IsValidForCreate")),
-            valid_for_update=bool(a.get("IsValidForUpdate")),
-        ))
+        specs.append(
+            AttrSpec(
+                logical_name=name,
+                attribute_type=a.get("AttributeType") or "",
+                required_level=level if isinstance(level, str) else None,
+                valid_for_create=bool(a.get("IsValidForCreate")),
+                valid_for_update=bool(a.get("IsValidForUpdate")),
+            )
+        )
     return specs
 
 
@@ -185,20 +186,21 @@ def _fetch_definitions(backend: D365Backend) -> list[dict[str, str]]:
     """
     rows = backend.get_collection(
         "EntityDefinitions",
-        params={"$select":
-                "LogicalName,EntitySetName,PrimaryIdAttribute,PrimaryNameAttribute"},
+        params={"$select": "LogicalName,EntitySetName,PrimaryIdAttribute,PrimaryNameAttribute"},
     )
     items: list[dict[str, str]] = []
     for e in rows:
         logical = e.get("LogicalName") or ""
         set_name = e.get("EntitySetName") or ""
         if logical:
-            items.append({
-                "logical": logical,
-                "set_name": set_name,
-                "primary_id": e.get("PrimaryIdAttribute") or "",
-                "primary_name": e.get("PrimaryNameAttribute") or "",
-            })
+            items.append(
+                {
+                    "logical": logical,
+                    "set_name": set_name,
+                    "primary_id": e.get("PrimaryIdAttribute") or "",
+                    "primary_name": e.get("PrimaryNameAttribute") or "",
+                }
+            )
     return items
 
 
@@ -247,14 +249,14 @@ def cached_primary_name(backend: D365Backend, entity_set: str) -> str | None:
     Returns ``None`` on a cold/missing cache (or unknown entity). The human
     primary-name table column is best-effort and must never add a round-trip to a
     plain query (ADR 0008), so this reads the cache directly rather than going
-    through the read-through :func:`load_name_map`."""
+    through the read-through :func:`load_name_map`.
+    """
     cached = metadata_cache.read_definitions(backend.profile, now=time.time())
     if not cached:
         return None
     lowered = entity_set.lower()
     for d in cached:
-        if (d.get("set_name", "").lower() == lowered
-                or d.get("logical", "").lower() == lowered):
+        if d.get("set_name", "").lower() == lowered or d.get("logical", "").lower() == lowered:
             return d.get("primary_name") or None
     return None
 

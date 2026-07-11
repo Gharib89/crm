@@ -4,6 +4,7 @@
 Mirrors test_cmd_metadata_dependencies.py — uninstall-blocker read via
 RetrieveDependenciesForUninstall(SolutionUniqueName='<name>').
 """
+
 from __future__ import annotations
 
 import json
@@ -12,7 +13,6 @@ from click.testing import CliRunner
 
 from crm.cli import CLIContext, cli
 from crm.utils.d365_backend import D365Error
-
 
 # ── fixtures ─────────────────────────────────────────────────────────────────
 
@@ -125,9 +125,7 @@ class TestErrorPath:
                 D365Error("not found", status=404, code="0x80040217")
             ),
         )
-        result = CliRunner().invoke(
-            cli, ["--json", "solution", "dependencies", "no_such"]
-        )
+        result = CliRunner().invoke(cli, ["--json", "solution", "dependencies", "no_such"])
         assert result.exit_code != 0
         env = json.loads(result.output)
         assert env["ok"] is False

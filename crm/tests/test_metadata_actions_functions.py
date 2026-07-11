@@ -1,4 +1,5 @@
 """Unit tests for metadata list-actions / list-functions."""
+
 # pyright: basic
 from __future__ import annotations
 
@@ -7,7 +8,6 @@ from click.testing import CliRunner
 
 from crm.cli import CLIContext, cli
 from crm.core.metadata import list_actions, list_functions
-
 
 _SAMPLE_METADATA_XML = """<?xml version="1.0" encoding="utf-8"?>
 <edmx:Edmx xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx" Version="4.0">
@@ -89,7 +89,9 @@ class TestListFunctions:
             functions = list_functions(backend)
         names = [f["name"] for f in functions]
         assert names == [
-            "RetrieveTotalRecordCount", "WhoAmI", "RetrieveAllChildUsersSystemUser",
+            "RetrieveTotalRecordCount",
+            "WhoAmI",
+            "RetrieveAllChildUsersSystemUser",
         ]
 
     def test_is_composable_defaults_false_and_reflects_attribute(self, backend):
@@ -123,7 +125,8 @@ class TestListFunctions:
 
 class TestAcceptHeader:
     """$metadata is served as XML (CSDL); requesting it with the default
-    JSON Accept header returns HTTP 415 (issue #266)."""
+    JSON Accept header returns HTTP 415 (issue #266).
+    """
 
     def test_metadata_fetch_requests_xml(self, backend):
         with requests_mock.Mocker() as m:
@@ -133,7 +136,8 @@ class TestAcceptHeader:
 
     def test_other_get_keeps_json_accept(self, backend):
         """Regression: only the $metadata path flips to XML; ordinary
-        Web API GETs still advertise JSON."""
+        Web API GETs still advertise JSON.
+        """
         with requests_mock.Mocker() as m:
             m.get(
                 "https://crm.contoso.local/contoso/api/data/v9.2/contacts",
@@ -144,26 +148,36 @@ class TestAcceptHeader:
 
 
 _CANNED_ACTIONS = [
-    {"name": "PublishAllXml", "is_bound": False, "return_type": None,
-     "parameters": []},
-    {"name": "AddMembersTeam", "is_bound": True,
-     "return_type": "mscrm.AddMembersTeamResponse",
-     "parameters": [{"name": "entity", "type": "mscrm.team"}]},
+    {"name": "PublishAllXml", "is_bound": False, "return_type": None, "parameters": []},
+    {
+        "name": "AddMembersTeam",
+        "is_bound": True,
+        "return_type": "mscrm.AddMembersTeamResponse",
+        "parameters": [{"name": "entity", "type": "mscrm.team"}],
+    },
 ]
 
 _CANNED_FUNCTIONS = [
-    {"name": "WhoAmI", "is_bound": False, "is_composable": False,
-     "return_type": "mscrm.WhoAmIResponse", "parameters": []},
-    {"name": "RetrieveAllChildUsersSystemUser", "is_bound": True,
-     "is_composable": True, "return_type": "Collection(mscrm.systemuser)",
-     "parameters": [{"name": "entity", "type": "mscrm.systemuser"}]},
+    {
+        "name": "WhoAmI",
+        "is_bound": False,
+        "is_composable": False,
+        "return_type": "mscrm.WhoAmIResponse",
+        "parameters": [],
+    },
+    {
+        "name": "RetrieveAllChildUsersSystemUser",
+        "is_bound": True,
+        "is_composable": True,
+        "return_type": "Collection(mscrm.systemuser)",
+        "parameters": [{"name": "entity", "type": "mscrm.systemuser"}],
+    },
 ]
 
 
 class TestListActionsHumanTable:
     def test_columns_show_bound_and_return_type(self, monkeypatch):
-        monkeypatch.setattr(
-            "crm.core.metadata.list_actions", lambda backend: _CANNED_ACTIONS)
+        monkeypatch.setattr("crm.core.metadata.list_actions", lambda backend: _CANNED_ACTIONS)
         monkeypatch.setattr(CLIContext, "backend", lambda self: object())
         result = CliRunner().invoke(cli, ["metadata", "list-actions"])
         assert result.exit_code == 0, result.output
@@ -174,8 +188,7 @@ class TestListActionsHumanTable:
 
 class TestListFunctionsHumanTable:
     def test_columns_show_bound_composable_and_return_type(self, monkeypatch):
-        monkeypatch.setattr(
-            "crm.core.metadata.list_functions", lambda backend: _CANNED_FUNCTIONS)
+        monkeypatch.setattr("crm.core.metadata.list_functions", lambda backend: _CANNED_FUNCTIONS)
         monkeypatch.setattr(CLIContext, "backend", lambda self: object())
         result = CliRunner().invoke(cli, ["metadata", "list-functions"])
         assert result.exit_code == 0, result.output

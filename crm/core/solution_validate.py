@@ -12,6 +12,7 @@ version — a newer package fails import with 0x80048068. Mirrors the zip/XML
 handling proven in
 solution.py::_sniff_solution_managed.
 """
+
 from __future__ import annotations
 
 import re
@@ -49,13 +50,11 @@ _WEBRESOURCE_REF = re.compile(r"\$webresource:([^\"'\s)<>]+)")
 #     query against an unconfirmed set without risking a spurious HTTP error.
 #   * LabelId="{guid}" on mcwo:StepLabel elements: localized-label rows, not a
 #     clean queryable collision set. Neither is implemented here.
-_XAML_STAGE_GUID = re.compile(
-    r'x:Key="(?:Stage|NextStage)Id"[^>]*>\s*([^<]+?)\s*</', re.IGNORECASE)
+_XAML_STAGE_GUID = re.compile(r'x:Key="(?:Stage|NextStage)Id"[^>]*>\s*([^<]+?)\s*</', re.IGNORECASE)
 _WORKFLOWS_MEMBER = re.compile(r"(?:^|/)Workflows/[^/]+\.xaml$", re.IGNORECASE)
 # A captured value is probed only if it is a bare GUID (post-_norm, brace-stripped
 # and lowercased) — keeps malformed/unexpected text out of the OData $filter.
-_GUID_RE = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+_GUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 # (customizations element tag, id-field candidates, org entity set, org id attr)
 # Candidate fields a <systemform> element carries its form GUID in (child element
@@ -94,7 +93,9 @@ _SCANNED_TYPES: frozenset[int] = frozenset(NODE_COMPONENT_TYPE.values())
 @dataclass(frozen=True)
 class Finding:
     severity: str  # "error" | "warning"
-    check: str     # "package" | "root-parity" | "webresource-ref" | "optionset-binding" | "package-version" | "guid-collision"
+    # "package" | "root-parity" | "webresource-ref" | "optionset-binding" |
+    # "package-version" | "guid-collision"
+    check: str
     message: str
     component: str | None = None
     location: str | None = None
@@ -173,19 +174,29 @@ def _check_root_parity(sol_root: ET.Element, cust_root: ET.Element) -> list[Find
     form_ids = _systemform_definition_ids(cust_root)
     findings: list[Finding] = []
     for ctype, name in sorted(cust - root):
-        findings.append(Finding(
-            "error", "root-parity",
-            f"component {name!r} of type {ctype} is present in customizations.xml "
-            f"but not declared in <RootComponents>",
-            component=name, location="customizations.xml"))
+        findings.append(
+            Finding(
+                "error",
+                "root-parity",
+                f"component {name!r} of type {ctype} is present in customizations.xml "
+                f"but not declared in <RootComponents>",
+                component=name,
+                location="customizations.xml",
+            )
+        )
     for ctype, name in sorted(root - cust):
         if ctype == _CT["systemform"] and name in form_ids:
             continue  # entity-owned form defined inside Entity FormXml (#678)
-        findings.append(Finding(
-            "error", "root-parity",
-            f"RootComponent {name!r} of type {ctype} is declared in solution.xml "
-            f"but has no definition in customizations.xml",
-            component=name, location="solution.xml/<RootComponents>"))
+        findings.append(
+            Finding(
+                "error",
+                "root-parity",
+                f"RootComponent {name!r} of type {ctype} is declared in solution.xml "
+                f"but has no definition in customizations.xml",
+                component=name,
+                location="solution.xml/<RootComponents>",
+            )
+        )
     return findings
 
 
@@ -201,15 +212,14 @@ def _force_get(backend: D365Backend, path: str, params: dict[str, str]) -> dict[
 
 def _webresource_exists_in_org(backend: D365Backend, name: str) -> bool:
     resp = _force_get(
-        backend, "webresourceset",
-        {"$select": "webresourceid", "$filter": f"name eq {odata_literal(name)}",
-         "$top": "1"})
+        backend,
+        "webresourceset",
+        {"$select": "webresourceid", "$filter": f"name eq {odata_literal(name)}", "$top": "1"},
+    )
     return bool(resp.get("value"))
 
 
-def _check_webresource_refs(
-    cust_root: ET.Element, backend: D365Backend | None
-) -> list[Finding]:
+def _check_webresource_refs(cust_root: ET.Element, backend: D365Backend | None) -> list[Finding]:
     refs: set[str] = set()
     for ribbon in cust_root.iter("RibbonDiffXml"):
         refs.update(_WEBRESOURCE_REF.findall(ET.tostring(ribbon, encoding="unicode")))
@@ -228,23 +238,28 @@ def _check_webresource_refs(
         if backend is not None and _webresource_exists_in_org(backend, ref):
             continue
         where = "package or org" if backend is not None else "package"
-        findings.append(Finding(
-            "error", "webresource-ref",
-            f"ribbon references web resource {ref!r} which is not present in the {where}",
-            component=ref, location="customizations.xml/RibbonDiffXml"))
+        findings.append(
+            Finding(
+                "error",
+                "webresource-ref",
+                f"ribbon references web resource {ref!r} which is not present in the {where}",
+                component=ref,
+                location="customizations.xml/RibbonDiffXml",
+            )
+        )
     return findings
 
 
 def _optionset_exists_in_org(backend: D365Backend, name: str) -> bool:
     resp = _force_get(
-        backend, "GlobalOptionSetDefinitions",
-        {"$select": "Name", "$filter": f"Name eq {odata_literal(name)}", "$top": "1"})
+        backend,
+        "GlobalOptionSetDefinitions",
+        {"$select": "Name", "$filter": f"Name eq {odata_literal(name)}", "$top": "1"},
+    )
     return bool(resp.get("value"))
 
 
-def _check_optionset_bindings(
-    cust_root: ET.Element, backend: D365Backend | None
-) -> list[Finding]:
+def _check_optionset_bindings(cust_root: ET.Element, backend: D365Backend | None) -> list[Finding]:
     declared: set[str] = set()
     for container in cust_root.iter("optionsets"):
         for entry in list(container):
@@ -266,10 +281,15 @@ def _check_optionset_bindings(
         if backend is not None and _optionset_exists_in_org(backend, name):
             continue
         where = "package or org" if backend is not None else "package"
-        findings.append(Finding(
-            "error", "optionset-binding",
-            f"attribute binds global option set {name!r} which is not declared in the {where}",
-            component=name, location="customizations.xml"))
+        findings.append(
+            Finding(
+                "error",
+                "optionset-binding",
+                f"attribute binds global option set {name!r} which is not declared in the {where}",
+                component=name,
+                location="customizations.xml",
+            )
+        )
     return findings
 
 
@@ -297,14 +317,21 @@ def _check_org_collisions(cust_root: ET.Element, backend: D365Backend) -> list[F
                 guids.add(_norm(gid))
         for gid in sorted(guids):
             resp = _force_get(
-                backend, entity_set,
-                {"$select": id_attr, "$filter": f"{id_attr} eq {gid}", "$top": "1"})
+                backend,
+                entity_set,
+                {"$select": id_attr, "$filter": f"{id_attr} eq {gid}", "$top": "1"},
+            )
             if resp.get("value"):
-                findings.append(Finding(
-                    "error", "guid-collision",
-                    f"{elem_tag} id {gid} already exists in the target org "
-                    f"(import will fail with a duplicate-id/label error)",
-                    component=gid, location="customizations.xml"))
+                findings.append(
+                    Finding(
+                        "error",
+                        "guid-collision",
+                        f"{elem_tag} id {gid} already exists in the target org "
+                        f"(import will fail with a duplicate-id/label error)",
+                        component=gid,
+                        location="customizations.xml",
+                    )
+                )
     return findings
 
 
@@ -346,39 +373,54 @@ def _read_workflow_xaml(zip_path: str | Path) -> tuple[list[str], list[Finding]]
             for name in members:
                 try:
                     if zf.getinfo(name).file_size > _MAX_XML_BYTES:
-                        findings.append(Finding(
-                            "error", "package",
-                            f"{name} is too large to scan "
-                            f"({zf.getinfo(name).file_size} bytes)", location=name))
+                        findings.append(
+                            Finding(
+                                "error",
+                                "package",
+                                f"{name} is too large to scan ({zf.getinfo(name).file_size} bytes)",
+                                location=name,
+                            )
+                        )
                         continue
                     raw = zf.read(name)
-                except (zipfile.BadZipFile, zipfile.LargeZipFile, OSError,
-                        RuntimeError, NotImplementedError) as exc:
+                except (
+                    zipfile.BadZipFile,
+                    zipfile.LargeZipFile,
+                    OSError,
+                    RuntimeError,
+                    NotImplementedError,
+                ) as exc:
                     # A single corrupt member (bad CRC -> BadZipFile, oversized ->
                     # LargeZipFile, encrypted -> RuntimeError, unsupported
                     # compression -> NotImplementedError, OS read error -> OSError)
                     # degrades to a finding; the loop continues to the next member.
-                    findings.append(Finding(
-                        "error", "package",
-                        f"{name} could not be read from the solution package: {exc}",
-                        location=name))
+                    findings.append(
+                        Finding(
+                            "error",
+                            "package",
+                            f"{name} could not be read from the solution package: {exc}",
+                            location=name,
+                        )
+                    )
                     continue
                 texts.append(_decode_xaml(raw))
     except (zipfile.BadZipFile, OSError) as exc:
         # _load already opened the zip; a failure re-opening it here is rare, but
         # emit a finding rather than silently skipping the scan — and never raise
         # a non-D365Error to the CLI.
-        findings.append(Finding(
-            "error", "package",
-            f"could not re-open the solution package to scan Workflows/*.xaml: {exc}",
-            location=str(Path(zip_path))))
+        findings.append(
+            Finding(
+                "error",
+                "package",
+                f"could not re-open the solution package to scan Workflows/*.xaml: {exc}",
+                location=str(Path(zip_path)),
+            )
+        )
         return texts, findings
     return texts, findings
 
 
-def _check_xaml_stage_collisions(
-    zip_path: str | Path, backend: D365Backend
-) -> list[Finding]:
+def _check_xaml_stage_collisions(zip_path: str | Path, backend: D365Backend) -> list[Finding]:
     """Report BPF process-stage GUIDs (StageId/NextStageId) already in the org.
 
     A cloned BPF whose Workflows/*.xaml kept its source stage GUIDs collides on
@@ -398,15 +440,21 @@ def _check_xaml_stage_collisions(
                 guids.add(gid)
     for gid in sorted(guids):
         resp = _force_get(
-            backend, "processstages",
-            {"$select": "processstageid", "$filter": f"processstageid eq {gid}",
-             "$top": "1"})
+            backend,
+            "processstages",
+            {"$select": "processstageid", "$filter": f"processstageid eq {gid}", "$top": "1"},
+        )
         if resp.get("value"):
-            findings.append(Finding(
-                "error", "guid-collision",
-                f"process-stage id {gid} already exists in the target org "
-                f"(import will fail with a duplicate-key error on CreateProcessStage)",
-                component=gid, location="Workflows/*.xaml"))
+            findings.append(
+                Finding(
+                    "error",
+                    "guid-collision",
+                    f"process-stage id {gid} already exists in the target org "
+                    f"(import will fail with a duplicate-key error on CreateProcessStage)",
+                    component=gid,
+                    location="Workflows/*.xaml",
+                )
+            )
     return findings
 
 
@@ -444,27 +492,38 @@ def _check_package_version(sol_root: ET.Element, backend: D365Backend) -> list[F
     try:
         resp = _force_get(backend, "RetrieveVersion()", {})
     except D365Error as exc:
-        return [Finding(
-            "warning", "package-version",
-            f"could not read the target org version to check package "
-            f"compatibility: {exc}",
-            location="RetrieveVersion()")]
+        return [
+            Finding(
+                "warning",
+                "package-version",
+                f"could not read the target org version to check package compatibility: {exc}",
+                location="RetrieveVersion()",
+            )
+        ]
     org_str = resp.get("Version")
     org = _version_tuple(org_str if isinstance(org_str, str) else None)
     if org is None:
-        return [Finding(
-            "warning", "package-version",
-            "RetrieveVersion() returned no usable org version; skipped the "
-            "package-version compatibility check",
-            location="RetrieveVersion()")]
-    if pkg > org[:len(pkg)]:
-        return [Finding(
-            "error", "package-version",
-            f"solution package version {pkg_str} is newer than the target org "
-            f"version {org_str}; import would fail with 0x80048068 (you can only "
-            f"import solutions with a package version of {org_str} or earlier)",
-            component=pkg_str,
-            location="solution.xml/<ImportExportXml SolutionPackageVersion>")]
+        return [
+            Finding(
+                "warning",
+                "package-version",
+                "RetrieveVersion() returned no usable org version; skipped the "
+                "package-version compatibility check",
+                location="RetrieveVersion()",
+            )
+        ]
+    if pkg > org[: len(pkg)]:
+        return [
+            Finding(
+                "error",
+                "package-version",
+                f"solution package version {pkg_str} is newer than the target org "
+                f"version {org_str}; import would fail with 0x80048068 (you can only "
+                f"import solutions with a package version of {org_str} or earlier)",
+                component=pkg_str,
+                location="solution.xml/<ImportExportXml SolutionPackageVersion>",
+            )
+        ]
     return []
 
 
@@ -485,25 +544,39 @@ def _load(
             names = set(zf.namelist())
             missing = [m for m in _REQUIRED_MEMBERS if m not in names]
             if missing:
-                return None, None, [
-                    Finding("error", "package",
+                return (
+                    None,
+                    None,
+                    [
+                        Finding(
+                            "error",
+                            "package",
                             f"required member {m!r} missing from the solution zip",
-                            component=m)
-                    for m in missing
-                ]
+                            component=m,
+                        )
+                        for m in missing
+                    ],
+                )
             for m in ("solution.xml", "customizations.xml"):
                 if zf.getinfo(m).file_size > _MAX_XML_BYTES:
-                    findings.append(Finding(
-                        "error", "package",
-                        f"{m} is too large to parse "
-                        f"({zf.getinfo(m).file_size} bytes)", location=m))
+                    findings.append(
+                        Finding(
+                            "error",
+                            "package",
+                            f"{m} is too large to parse ({zf.getinfo(m).file_size} bytes)",
+                            location=m,
+                        )
+                    )
             if findings:
                 return None, None, findings
             sol_raw = zf.read("solution.xml")
             cust_raw = zf.read("customizations.xml")
     except zipfile.BadZipFile:
-        return None, None, [Finding("error", "package",
-                                    f"{p} is not a valid zip file", location=str(p))]
+        return (
+            None,
+            None,
+            [Finding("error", "package", f"{p} is not a valid zip file", location=str(p))],
+        )
     except (zipfile.LargeZipFile, RuntimeError, NotImplementedError) as exc:
         # A member that can't be read as a manifest (encrypted member ->
         # RuntimeError, unsupported compression -> NotImplementedError, a >4GiB
@@ -511,9 +584,18 @@ def _load(
         # operational failure — report it instead of crashing the CLI (which
         # only catches D365Error). Mirrors solution._sniff_solution_managed,
         # which degrades on any such read failure.
-        return None, None, [Finding("error", "package",
-                                    f"{p} could not be read as a solution package: {exc}",
-                                    location=str(p))]
+        return (
+            None,
+            None,
+            [
+                Finding(
+                    "error",
+                    "package",
+                    f"{p} could not be read as a solution package: {exc}",
+                    location=str(p),
+                )
+            ],
+        )
     except OSError as exc:
         raise D365Error(f"Could not read solution file {p}: {exc}") from exc
 
@@ -522,15 +604,25 @@ def _load(
     try:
         sol_root = safe_xml.fromstring(sol_raw)
     except ET.ParseError as exc:
-        findings.append(Finding("error", "package",
-                                f"solution.xml is not well-formed: {exc}",
-                                location="solution.xml"))
+        findings.append(
+            Finding(
+                "error",
+                "package",
+                f"solution.xml is not well-formed: {exc}",
+                location="solution.xml",
+            )
+        )
     try:
         cust_root = safe_xml.fromstring(cust_raw)
     except ET.ParseError as exc:
-        findings.append(Finding("error", "package",
-                                f"customizations.xml is not well-formed: {exc}",
-                                location="customizations.xml"))
+        findings.append(
+            Finding(
+                "error",
+                "package",
+                f"customizations.xml is not well-formed: {exc}",
+                location="customizations.xml",
+            )
+        )
     return sol_root, cust_root, findings
 
 

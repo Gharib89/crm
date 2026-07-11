@@ -67,10 +67,15 @@ def get_async_operation(
 ) -> AsyncOperationRow:
     """GET asyncoperations(<id>) and return the row."""
     params = {"$select": _SELECT}
-    return cast(AsyncOperationRow, as_dict(backend.get(
-        f"asyncoperations({async_operation_id})",
-        params=params,
-    )))
+    return cast(
+        AsyncOperationRow,
+        as_dict(
+            backend.get(
+                f"asyncoperations({async_operation_id})",
+                params=params,
+            )
+        ),
+    )
 
 
 def cancel_async_operation(

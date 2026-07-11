@@ -14,8 +14,10 @@ from crm.core import async_ops
 class TestList:
     def test_list_no_filter(self, backend, profile):
         with requests_mock.Mocker() as m:
-            m.get(f"{profile.api_base}asyncoperations",
-                  json={"value": [{"asyncoperationid": "a", "messagename": "ImportSolution"}]})
+            m.get(
+                f"{profile.api_base}asyncoperations",
+                json={"value": [{"asyncoperationid": "a", "messagename": "ImportSolution"}]},
+            )
             rows = async_ops.list_async_operations(backend)
             assert len(rows) == 1
             qs = m.last_request.qs
@@ -42,16 +44,14 @@ class TestList:
 
     def test_list_with_state_filter(self, backend, profile):
         with requests_mock.Mocker() as m:
-            m.get(f"{profile.api_base}asyncoperations",
-                  json={"value": []})
+            m.get(f"{profile.api_base}asyncoperations", json={"value": []})
             async_ops.list_async_operations(backend, state=3)
             qs = m.last_request.qs
             assert qs.get("$filter") == ["statecode eq 3"]
 
     def test_list_with_combined_filters(self, backend, profile):
         with requests_mock.Mocker() as m:
-            m.get(f"{profile.api_base}asyncoperations",
-                  json={"value": []})
+            m.get(f"{profile.api_base}asyncoperations", json={"value": []})
             async_ops.list_async_operations(
                 backend,
                 state=0,
@@ -71,8 +71,10 @@ class TestGet:
     def test_get_returns_row(self, backend, profile):
         gid = "11111111-1111-1111-1111-111111111111"
         with requests_mock.Mocker() as m:
-            m.get(f"{profile.api_base}asyncoperations({gid})",
-                  json={"asyncoperationid": gid, "statecode": 3, "statuscode": 30})
+            m.get(
+                f"{profile.api_base}asyncoperations({gid})",
+                json={"asyncoperationid": gid, "statecode": 3, "statuscode": 30},
+            )
             row = async_ops.get_async_operation(backend, gid)
             assert row["asyncoperationid"] == gid  # pyright: ignore[reportTypedDictNotRequiredAccess]
             assert row["statecode"] == 3  # pyright: ignore[reportTypedDictNotRequiredAccess]
@@ -93,11 +95,13 @@ class TestCancel:
 class TestOwnerValidation:
     def test_list_rejects_invalid_owner_id(self, backend):
         from crm.utils.d365_backend import D365Error
+
         with pytest.raises(D365Error, match="owner_id"):
             async_ops.list_async_operations(backend, owner_id="not-a-guid")
 
     def test_list_all_rejects_invalid_owner_id(self, backend):
         from crm.utils.d365_backend import D365Error
+
         with pytest.raises(D365Error, match="owner_id"):
             async_ops.list_all_async_operations(backend, owner_id="not-a-guid")
 
@@ -172,7 +176,9 @@ class TestListAll:
 class TestAsyncCLI:
     def test_async_list_help(self):
         from click.testing import CliRunner
+
         from crm import cli as crm_cli
+
         runner = CliRunner()
         result = runner.invoke(crm_cli.cli, ["async", "list", "--help"])
         assert result.exit_code == 0
@@ -183,6 +189,7 @@ class TestAsyncCLI:
 
     def test_async_list_order_by_and_filter(self, monkeypatch, profile):
         from click.testing import CliRunner
+
         from crm import cli as crm_cli
 
         captured: dict[str, Any] = {}
@@ -194,15 +201,17 @@ class TestAsyncCLI:
         monkeypatch.setattr("crm.core.async_ops.list_async_operations", fake_list)
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         runner = CliRunner()
-        result = runner.invoke(crm_cli.cli, [
-            "async", "list", "--order-by", "completedon desc", "--filter", "statuscode eq 30"
-        ])
+        result = runner.invoke(
+            crm_cli.cli,
+            ["async", "list", "--order-by", "completedon desc", "--filter", "statuscode eq 30"],
+        )
         assert result.exit_code == 0, result.output
         assert captured.get("order_by") == "completedon desc"
         assert captured.get("filter") == "statuscode eq 30"
 
     def test_async_list_state_resolves_named_value(self, monkeypatch, profile):
         from click.testing import CliRunner
+
         from crm import cli as crm_cli
 
         captured: dict[str, Any] = {}
@@ -212,8 +221,9 @@ class TestAsyncCLI:
             return []
 
         monkeypatch.setattr("crm.core.async_ops.list_async_operations", fake_list)
-        monkeypatch.setattr("crm.cli.CLIContext.backend",
-                            lambda self: object())  # dummy backend; fake_list ignores it
+        monkeypatch.setattr(
+            "crm.cli.CLIContext.backend", lambda self: object()
+        )  # dummy backend; fake_list ignores it
         runner = CliRunner()
         result = runner.invoke(crm_cli.cli, ["async", "list", "--state", "ready"])
         assert result.exit_code == 0, result.output
@@ -221,6 +231,7 @@ class TestAsyncCLI:
 
     def test_solution_job_status_alias(self, monkeypatch):
         from click.testing import CliRunner
+
         from crm import cli as crm_cli
 
         called: dict[str, Any] = {}
@@ -232,8 +243,13 @@ class TestAsyncCLI:
         monkeypatch.setattr("crm.core.async_ops.get_async_operation", fake_get)
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         runner = CliRunner()
-        result = runner.invoke(crm_cli.cli, [
-            "solution", "job-status", "11111111-1111-1111-1111-111111111111",
-        ])
+        result = runner.invoke(
+            crm_cli.cli,
+            [
+                "solution",
+                "job-status",
+                "11111111-1111-1111-1111-111111111111",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert called["async_id"] == "11111111-1111-1111-1111-111111111111"

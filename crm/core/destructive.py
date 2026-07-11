@@ -12,6 +12,7 @@ It therefore carries its own inline copies of ``DESTRUCTIVE`` and ``ROLE_VERBS``
 The test ``crm/tests/test_destructive_sync.py`` asserts that the two copies stay
 aligned; any addition here must be mirrored in the hook and vice-versa.
 """
+
 from __future__ import annotations
 
 # Destructive verbs keyed by command group, matched purely by token name so a
@@ -22,8 +23,8 @@ DESTRUCTIVE: dict[str, set[str]] = {
     "metadata": {
         "delete-entity",
         "delete-optionset",
-        "delete-attribute",      # not yet implemented; gated pre-emptively
-        "delete-relationship",   # not yet implemented; gated pre-emptively
+        "delete-attribute",  # not yet implemented; gated pre-emptively
+        "delete-relationship",  # not yet implemented; gated pre-emptively
     },
     "entity": {"delete"},
     "data": {"delete"},
@@ -31,8 +32,14 @@ DESTRUCTIVE: dict[str, set[str]] = {
     "dashboard": {"delete"},
     "chart": {"delete"},
     "report": {"delete"},
-    "solution": {"job-cancel", "import", "remove-component", "uninstall",
-                 "stage-and-upgrade", "apply-upgrade"},
+    "solution": {
+        "job-cancel",
+        "import",
+        "remove-component",
+        "uninstall",
+        "stage-and-upgrade",
+        "apply-upgrade",
+    },
     "translation": {"import"},
     "async": {"cancel"},
     "plugin": {"unregister-assembly", "unregister-step", "unregister-image"},
@@ -59,6 +66,6 @@ def is_destructive(group: str, verb: str | None) -> bool:
     """
     if verb is None:
         return False
-    if verb in ROLE_VERBS:        # role verbs gated regardless of group
+    if verb in ROLE_VERBS:  # role verbs gated regardless of group
         return True
     return verb in DESTRUCTIVE.get(group, set())

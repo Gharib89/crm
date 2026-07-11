@@ -39,6 +39,7 @@ def _state_root() -> Path:
 
 def profile_path(name: str) -> Path:
     from crm.utils.d365_backend import validate_profile_name
+
     validate_profile_name(name)
     return _state_root() / "profiles" / f"{name}.json"
 
@@ -61,6 +62,7 @@ def save_profile(profile: ConnectionProfile) -> Path:
 
 def load_profile(name: str) -> ConnectionProfile:
     from crm.utils.d365_backend import ConnectionProfile
+
     p = profile_path(name)
     if not p.is_file():
         raise FileNotFoundError(f"Profile not found: {name} (looked at {p})")
@@ -71,7 +73,8 @@ def load_profile(name: str) -> ConnectionProfile:
 def list_profiles() -> list[str]:
     """Saved profile names, read-only — no directory is created as a side
     effect (unlike `_state_root()`). On the shell-completion hot path (a fresh
-    `crm` process per Tab keystroke), a read must never mutate the filesystem."""
+    `crm` process per Tab keystroke), a read must never mutate the filesystem.
+    """
     root = Path(os.environ.get("CRM_HOME", str(DEFAULT_HOME))).expanduser() / "profiles"
     return sorted(p.stem for p in root.glob("*.json"))
 
@@ -155,6 +158,7 @@ def clear_profile_secret(name: str) -> bool:
 
 def session_path(name: str = "default") -> Path:
     from crm.utils.d365_backend import validate_profile_name
+
     validate_profile_name(name)
     return _state_root() / "sessions" / f"{name}.json"
 
@@ -214,7 +218,8 @@ def _reap_stale_temps(parent: Path) -> None:
     lock, but that lock is best-effort (absent on platforms without ``fcntl``,
     and its acquisition failures are swallowed), so the threshold — not the lock —
     is the guarantee. Best-effort throughout: any failure is swallowed, matching
-    the module's stance."""
+    the module's stance.
+    """
     cutoff = time.time() - _TEMP_REAP_AGE_SECONDS
     try:
         entries = list(parent.glob(".*.tmp"))

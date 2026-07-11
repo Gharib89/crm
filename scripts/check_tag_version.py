@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Assert that the git tag passed as argv[1] (e.g. 'v1.0.1') matches the
-version declared in setup.py. Fails with exit code 1 on mismatch."""
+version declared in setup.py. Fails with exit code 1 on mismatch.
+"""
+
 import re
 import sys
 from pathlib import Path
@@ -25,9 +27,7 @@ def main() -> int:
     tag_version = tag[1:]
     pkg_version = setup_version()
     if tag_version != pkg_version:
-        sys.exit(
-            f"tag version {tag_version!r} != setup.py version {pkg_version!r}"
-        )
+        sys.exit(f"tag version {tag_version!r} != setup.py version {pkg_version!r}")
     print(f"OK: tag {tag} matches setup.py version {pkg_version}")
     return 0
 

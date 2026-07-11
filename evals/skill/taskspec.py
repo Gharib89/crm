@@ -8,6 +8,7 @@ Predicate evaluation is kept pure here — `evaluate_expect` scores an already-f
 `data` payload against the declared `expect` — so it is unit-testable without a live
 org. The runner owns actually running the `crm` query that produces `data`.
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -195,9 +196,7 @@ def evaluate_expect(data: Any, expect: dict[str, Any]) -> tuple[bool, str]:
 
     if "row" in expect:
         want_row: dict[str, Any] = expect["row"]
-        if not any(
-            all(str(row.get(k)) == str(v) for k, v in want_row.items()) for row in data
-        ):
+        if not any(all(str(row.get(k)) == str(v) for k, v in want_row.items()) for row in data):
             return False, f"row: no row matched {want_row!r}"
 
     if "row_suffix" in expect:

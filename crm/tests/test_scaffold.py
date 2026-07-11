@@ -3,6 +3,7 @@
 `build_table_spec` converts `scaffold table` CLI shorthand into an entity-spec
 dict that `apply_spec` can consume directly. No backend, no IO, no network.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -116,7 +117,8 @@ def test_memo_explicit_max_length_overrides_default():
 @pytest.mark.parametrize("level", ["ApplicationRequired", "Recommended", "None"])
 def test_required_opt_parsed_correctly(level):
     spec = build_table_spec(
-        display_name="T", prefix="x",
+        display_name="T",
+        prefix="x",
         columns=[f"Name:string:required={level}"],
     )
     assert _attr(spec, 0)["required"] == level
@@ -124,7 +126,8 @@ def test_required_opt_parsed_correctly(level):
 
 def test_description_opt_parsed():
     spec = build_table_spec(
-        display_name="T", prefix="x",
+        display_name="T",
+        prefix="x",
         columns=["Name:string:description=A short text field"],
     )
     assert _attr(spec, 0)["description"] == "A short text field"
@@ -132,7 +135,8 @@ def test_description_opt_parsed():
 
 def test_target_entity_opt_parsed():
     spec = build_table_spec(
-        display_name="T", prefix="x",
+        display_name="T",
+        prefix="x",
         columns=["Owner:lookup:target_entity=systemuser"],
     )
     assert _attr(spec, 0)["target_entity"] == "systemuser"
@@ -140,7 +144,8 @@ def test_target_entity_opt_parsed():
 
 def test_optionset_name_opt_parsed():
     spec = build_table_spec(
-        display_name="T", prefix="x",
+        display_name="T",
+        prefix="x",
         columns=["Stage:picklist:optionset_name=my_stage"],
     )
     assert _attr(spec, 0)["optionset_name"] == "my_stage"
@@ -148,7 +153,8 @@ def test_optionset_name_opt_parsed():
 
 def test_multiselect_optionset_name_parsed():
     spec = build_table_spec(
-        display_name="T", prefix="x",
+        display_name="T",
+        prefix="x",
         columns=["Tags:multiselect:optionset_name=my_tags"],
     )
     assert _attr(spec, 0)["optionset_name"] == "my_tags"
@@ -170,7 +176,8 @@ def test_multiword_entity_pascal_schema():
 
 def test_multiword_column_pascal_schema():
     spec = build_table_spec(
-        display_name="T", prefix="new",
+        display_name="T",
+        prefix="new",
         columns=["Project Task:string"],
     )
     assert _attr(spec, 0)["schema_name"] == "new_ProjectTask"
@@ -180,7 +187,8 @@ def test_multiword_column_pascal_schema():
 def test_hyphenated_display_pascal():
     """Hyphens are word separators — each word is Pascal-cased."""
     spec = build_table_spec(
-        display_name="T", prefix="new",
+        display_name="T",
+        prefix="new",
         columns=["Due-Date:datetime"],
     )
     assert _attr(spec, 0)["schema_name"] == "new_DueDate"
@@ -216,7 +224,8 @@ def test_display_collection_absent_when_not_given():
 
 def test_ownership_passed_through():
     spec = build_table_spec(
-        display_name="T", prefix="x",
+        display_name="T",
+        prefix="x",
         ownership="OrganizationOwned",
         columns=[],
     )
@@ -230,14 +239,16 @@ def test_invalid_ownership_raises():
 
 def test_target_entity_on_non_lookup_raises():
     with pytest.raises(D365Error, match="target_entity is only valid for lookup"):
-        build_table_spec(display_name="T", prefix="x",
-                         columns=["Name:string:target_entity=account"])
+        build_table_spec(
+            display_name="T", prefix="x", columns=["Name:string:target_entity=account"]
+        )
 
 
 def test_optionset_name_on_non_picklist_raises():
     with pytest.raises(D365Error, match="optionset_name is only valid"):
-        build_table_spec(display_name="T", prefix="x",
-                         columns=["Amount:money:optionset_name=new_set"])
+        build_table_spec(
+            display_name="T", prefix="x", columns=["Amount:money:optionset_name=new_set"]
+        )
 
 
 # ── Empty columns list ────────────────────────────────────────────────────────
@@ -385,8 +396,9 @@ def dry_backend() -> D365Backend:
     return D365Backend(_CONTOSO_PROFILE, password="pw", dry_run=True)
 
 
-def _mock_entity_create(m, backend, *, schema="contoso_Project",
-                        logical="contoso_project", exists=False, otc=10112):
+def _mock_entity_create(
+    m, backend, *, schema="contoso_Project", logical="contoso_project", exists=False, otc=10112
+):
     """Mock entity LogicalName existence GET + 204 create + readback.
 
     The LogicalName GET serves a sequence: first call is the create-time
@@ -395,32 +407,36 @@ def _mock_entity_create(m, backend, *, schema="contoso_Project",
     so the mock stays correct if scaffold ever grows a views phase.
     """
     ent_url = backend.url_for(f"EntityDefinitions({_ENT_ID})")
-    record = {"LogicalName": logical, "SchemaName": schema,
-              "EntitySetName": logical + "s"}
+    record = {"LogicalName": logical, "SchemaName": schema, "EntitySetName": logical + "s"}
     probe = {"json": record} if exists else {"status_code": 404}
     otc_resp = {"json": {"ObjectTypeCode": otc} if otc is not None else {}}
     m.get(backend.url_for(f"EntityDefinitions(LogicalName='{logical}')"), [probe, otc_resp])
-    m.post(backend.url_for("EntityDefinitions"), status_code=204,
-           headers={"OData-EntityId": ent_url})
+    m.post(
+        backend.url_for("EntityDefinitions"), status_code=204, headers={"OData-EntityId": ent_url}
+    )
     m.get(ent_url, json=record)
 
 
-def _mock_attribute_create(m, backend, *, entity="contoso_project",
-                           logical, schema, attr_type="String", exists=False):
+def _mock_attribute_create(
+    m, backend, *, entity="contoso_project", logical, schema, attr_type="String", exists=False
+):
     """Mock a non-lookup attribute existence GET + 204 create + readback."""
-    attr_url = backend.url_for(
-        f"EntityDefinitions(LogicalName='{entity}')/Attributes({_ATTR_ID})")
+    attr_url = backend.url_for(f"EntityDefinitions(LogicalName='{entity}')/Attributes({_ATTR_ID})")
     probe = backend.url_for(
-        f"EntityDefinitions(LogicalName='{entity}')/Attributes(LogicalName='{logical}')")
+        f"EntityDefinitions(LogicalName='{entity}')/Attributes(LogicalName='{logical}')"
+    )
     if exists:
-        m.get(probe, json={"LogicalName": logical, "SchemaName": schema,
-                           "AttributeType": attr_type})
+        m.get(
+            probe, json={"LogicalName": logical, "SchemaName": schema, "AttributeType": attr_type}
+        )
     else:
         m.get(probe, status_code=404)
-    m.post(backend.url_for(f"EntityDefinitions(LogicalName='{entity}')/Attributes"),
-           status_code=204, headers={"OData-EntityId": attr_url})
-    m.get(attr_url, json={"LogicalName": logical, "SchemaName": schema,
-                          "AttributeType": attr_type})
+    m.post(
+        backend.url_for(f"EntityDefinitions(LogicalName='{entity}')/Attributes"),
+        status_code=204,
+        headers={"OData-EntityId": attr_url},
+    )
+    m.get(attr_url, json={"LogicalName": logical, "SchemaName": schema, "AttributeType": attr_type})
 
 
 def _mock_one_to_many(m, backend, *, schema, exists=False):
@@ -431,24 +447,34 @@ def _mock_one_to_many(m, backend, *, schema, exists=False):
         m.get(probe, json={"SchemaName": schema})
     else:
         m.get(probe, status_code=404)
-    m.post(backend.url_for("RelationshipDefinitions"), status_code=204,
-           headers={"OData-EntityId": rel_url})
-    m.get(rel_url + "/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
-          json={"SchemaName": schema, "ReferencingAttribute": "contoso_projectid"})
+    m.post(
+        backend.url_for("RelationshipDefinitions"),
+        status_code=204,
+        headers={"OData-EntityId": rel_url},
+    )
+    m.get(
+        rel_url + "/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
+        json={"SchemaName": schema, "ReferencingAttribute": "contoso_projectid"},
+    )
 
 
 def _mock_solution_exists(m, backend, *, exists=True):
     """Mock the solution existence GET (collection $filter) apply_spec's solution
-    phase issues for a spec with no publisher block (scaffold never sets one)."""
-    rows = [{"solutionid": "88888888-8888-8888-8888-888888888888",
-             "uniquename": "contoso_sol"}] if exists else []
+    phase issues for a spec with no publisher block (scaffold never sets one).
+    """
+    rows = (
+        [{"solutionid": "88888888-8888-8888-8888-888888888888", "uniquename": "contoso_sol"}]
+        if exists
+        else []
+    )
     m.get(backend.url_for("solutions"), json={"value": rows})
 
 
 def _mock_no_prune_candidates(m, backend):
     """Mock the solutioncomponents GET that apply's prune-detection phase always
     reads under --dry-run (or --prune) once a target solution is known (#636 made
-    scaffold's spec always carry one). Empty membership: nothing to prune."""
+    scaffold's spec always carry one). Empty membership: nothing to prune.
+    """
     m.get(backend.url_for("solutioncomponents"), json={"value": []})
 
 
@@ -477,18 +503,28 @@ def test_e2e_scaffold_table_creates_entity_and_columns(backend, monkeypatch):
     with requests_mock.Mocker() as m:
         _mock_solution_exists(m, backend)
         _mock_entity_create(m, backend)
-        _mock_attribute_create(m, backend, logical="contoso_code",
-                               schema="contoso_Code", attr_type="String")
+        _mock_attribute_create(
+            m, backend, logical="contoso_code", schema="contoso_Code", attr_type="String"
+        )
         # lookup column creates a one-to-many relationship
         _mock_one_to_many(m, backend, schema="contoso_project_contoso_owner")
         m.post(backend.url_for("PublishAllXml"), status_code=204)
 
-        result = CliRunner().invoke(cli, [
-            "--json", "scaffold", "table", "Project",
-            "--column", "Code:string:max_length=100",
-            "--column", "Owner:lookup:target_entity=systemuser",
-            "--solution", "contoso_sol",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "scaffold",
+                "table",
+                "Project",
+                "--column",
+                "Code:string:max_length=100",
+                "--column",
+                "Owner:lookup:target_entity=systemuser",
+                "--solution",
+                "contoso_sol",
+            ],
+        )
 
     assert result.exit_code == 0, result.output
     env = json.loads(result.output)
@@ -525,12 +561,22 @@ def test_e2e_scaffold_table_dry_run_greenfield(dry_backend, monkeypatch):
             json={"MetadataId": "77777777-7777-7777-7777-777777777777"},
         )
 
-        result = CliRunner().invoke(cli, [
-            "--dry-run", "--json", "scaffold", "table", "Project",
-            "--column", "Code:string:max_length=100",
-            "--column", "Owner:lookup:target_entity=systemuser",
-            "--solution", "contoso_sol",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--dry-run",
+                "--json",
+                "scaffold",
+                "table",
+                "Project",
+                "--column",
+                "Code:string:max_length=100",
+                "--column",
+                "Owner:lookup:target_entity=systemuser",
+                "--solution",
+                "contoso_sol",
+            ],
+        )
 
     assert result.exit_code == 0, result.output
     env = json.loads(result.output)
@@ -542,8 +588,7 @@ def test_e2e_scaffold_table_dry_run_greenfield(dry_backend, monkeypatch):
     refs = env["data"]["references"]
     assert refs == [{"kind": "target_entity", "value": "systemuser", "_exists": True}]
     # A resolvable reference adds no reference-not-found warning.
-    assert not any(
-        "reference not found" in w for w in env["meta"].get("warnings", []))
+    assert not any("reference not found" in w for w in env["meta"].get("warnings", []))
 
 
 # Test 2b: dry-run with a dangling reference — reported + warned, never written
@@ -564,18 +609,28 @@ def test_e2e_scaffold_table_dry_run_dangling_optionset(dry_backend, monkeypatch)
             status_code=404,
         )
 
-        result = CliRunner().invoke(cli, [
-            "--dry-run", "--json", "scaffold", "table", "Project",
-            "--column", "Status:picklist:optionset_name=ghost_set",
-            "--solution", "contoso_sol",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--dry-run",
+                "--json",
+                "scaffold",
+                "table",
+                "Project",
+                "--column",
+                "Status:picklist:optionset_name=ghost_set",
+                "--solution",
+                "contoso_sol",
+            ],
+        )
 
     assert result.exit_code == 0, result.output
     env = json.loads(result.output)
     assert env["ok"] is True
     assert env["meta"]["dry_run"] is True
     assert env["data"]["references"] == [
-        {"kind": "optionset", "value": "ghost_set", "_exists": False}]
+        {"kind": "optionset", "value": "ghost_set", "_exists": False}
+    ]
     # The dangling option set is named in the warnings channel (alongside any
     # unrelated solution-resolution advisory).
     assert "reference not found: optionset='ghost_set'" in env["meta"]["warnings"]
@@ -592,17 +647,28 @@ def test_e2e_scaffold_table_stage_only(backend, monkeypatch):
     with requests_mock.Mocker() as m:
         _mock_solution_exists(m, backend)
         _mock_entity_create(m, backend)
-        _mock_attribute_create(m, backend, logical="contoso_code",
-                               schema="contoso_Code", attr_type="String")
+        _mock_attribute_create(
+            m, backend, logical="contoso_code", schema="contoso_Code", attr_type="String"
+        )
         _mock_one_to_many(m, backend, schema="contoso_project_contoso_owner")
         m.post(backend.url_for("PublishAllXml"), status_code=204)
 
-        result = CliRunner().invoke(cli, [
-            "--stage-only", "--json", "scaffold", "table", "Project",
-            "--column", "Code:string:max_length=100",
-            "--column", "Owner:lookup:target_entity=systemuser",
-            "--solution", "contoso_sol",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--stage-only",
+                "--json",
+                "scaffold",
+                "table",
+                "Project",
+                "--column",
+                "Code:string:max_length=100",
+                "--column",
+                "Owner:lookup:target_entity=systemuser",
+                "--solution",
+                "contoso_sol",
+            ],
+        )
 
     assert result.exit_code == 0, result.output
     env = json.loads(result.output)
@@ -619,11 +685,19 @@ def test_e2e_scaffold_table_malformed_column_fails_clean(backend, monkeypatch):
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
 
     with requests_mock.Mocker() as m:
-        result = CliRunner().invoke(cli, [
-            "--json", "scaffold", "table", "Project",
-            "--column", "Bad:notakind",
-            "--solution", "contoso_sol",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "scaffold",
+                "table",
+                "Project",
+                "--column",
+                "Bad:notakind",
+                "--solution",
+                "contoso_sol",
+            ],
+        )
 
     assert result.exit_code != 0
     env = json.loads(result.output)
@@ -650,10 +724,17 @@ def test_e2e_scaffold_table_missing_prefix_is_usage_error(backend, monkeypatch):
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
 
     with requests_mock.Mocker() as m:
-        result = CliRunner().invoke(cli, [
-            "--json", "scaffold", "table", "Project",
-            "--column", "Code:string",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "scaffold",
+                "table",
+                "Project",
+                "--column",
+                "Code:string",
+            ],
+        )
 
     assert result.exit_code == 2
     assert m.request_history == []

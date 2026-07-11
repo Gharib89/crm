@@ -4,6 +4,7 @@ non-interactive — under --json, an explicit CRM_NO_REPL opt-out, or a non-TTY
 stdin. It exits 2 (usage) with a message pointing at `crm --help`, and never
 hangs or exits 0. Explicit `crm repl` and an interactive human are unaffected.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -22,7 +23,8 @@ def _stub_repl(recorder: list[bool]) -> click.Command:
     tests assert the guard hands off to the REPL without entering the interactive
     prompt_toolkit loop (which raises NoConsoleScreenBufferError on Windows CI).
     A Command — not a bare callable — mirrors the production `ctx.invoke(repl)`
-    path, where Click resolves params from the invoking context."""
+    path, where Click resolves params from the invoking context.
+    """
 
     @click.command("repl")
     def _repl() -> None:
@@ -33,7 +35,8 @@ def _stub_repl(recorder: list[bool]) -> click.Command:
 
 def test_bare_json_exits_2_with_usage_envelope(monkeypatch):
     """Bare `crm --json` → exit 2 with a parseable {ok: false} usage envelope
-    pointing at `crm --help`, not a REPL drop."""
+    pointing at `crm --help`, not a REPL drop.
+    """
     monkeypatch.delenv("CRM_NO_REPL", raising=False)
     result = CliRunner().invoke(cli, ["--json"])
     assert result.exit_code == 2, result.output
@@ -46,7 +49,8 @@ def test_bare_json_exits_2_with_usage_envelope(monkeypatch):
 def test_bare_crm_no_repl_env_exits_2_human(monkeypatch):
     """Bare `crm` with CRM_NO_REPL truthy → exit 2, plain-text error on stderr,
     nothing on stdout (no JSON envelope), pointing at `crm --help`. Click 8.2+
-    keeps stdout/stderr separate, so we assert each stream explicitly."""
+    keeps stdout/stderr separate, so we assert each stream explicitly.
+    """
     monkeypatch.setenv("CRM_NO_REPL", "1")
     result = CliRunner().invoke(cli, [])
     assert result.exit_code == 2
@@ -57,7 +61,8 @@ def test_bare_crm_no_repl_env_exits_2_human(monkeypatch):
 def test_bare_crm_non_tty_exits_2(monkeypatch):
     """Bare `crm` with a non-TTY stdin (no --json, no CRM_NO_REPL) → exit 2.
     CliRunner already supplies a non-interactive stdin, so the isatty probe alone
-    must suppress the REPL — error on stderr, stdout clean, never hang/exit 0."""
+    must suppress the REPL — error on stderr, stdout clean, never hang/exit 0.
+    """
     monkeypatch.delenv("CRM_NO_REPL", raising=False)
     result = CliRunner().invoke(cli, [])
     assert result.exit_code == 2
@@ -68,7 +73,8 @@ def test_bare_crm_non_tty_exits_2(monkeypatch):
 def test_explicit_repl_still_launches(monkeypatch):
     """Explicit `crm repl` is unaffected by the guard: the REPL command is invoked
     even with CRM_NO_REPL set (which would suppress a *bare* crm) and a non-TTY
-    stdin. The REPL is stubbed so the test asserts the hand-off, not the loop."""
+    stdin. The REPL is stubbed so the test asserts the hand-off, not the loop.
+    """
     monkeypatch.setenv("CRM_NO_REPL", "1")  # would suppress a *bare* crm; not `crm repl`
     launched: list[bool] = []
     monkeypatch.setattr("crm.commands.repl.repl", _stub_repl(launched))
@@ -81,7 +87,8 @@ def test_bare_crm_interactive_tty_launches_repl(monkeypatch):
     """Interactive human: bare `crm` with a TTY stdin still drops into the REPL.
     The isatty probe is monkeypatched to True (CliRunner's stdin is never a TTY),
     and the REPL command is replaced with a recorder so the test does not enter
-    the real interactive loop."""
+    the real interactive loop.
+    """
     monkeypatch.delenv("CRM_NO_REPL", raising=False)
     monkeypatch.setattr("crm.cli._stdin_is_tty", lambda: True)
     launched: list[bool] = []

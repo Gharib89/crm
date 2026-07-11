@@ -1,15 +1,18 @@
 """Skill install/uninstall commands."""
+
 # pyright: basic
 from __future__ import annotations
+
 import shutil
 from pathlib import Path
+
 import click
+
 from crm import __version__
 from crm.cli import CLIContext, pass_ctx
-from crm.commands._tty import _stdin_is_tty
 from crm.commands import skill_registry
+from crm.commands._tty import _stdin_is_tty
 from crm.commands.skill_registry import bundled_skill_dir as _bundled_skill_dir
-
 
 SKILL_TARGETS: dict[str, Path] = {
     "copilot": Path.home() / ".copilot" / "skills" / "crm",
@@ -89,7 +92,9 @@ def skill_install(ctx: CLIContext, target: str, dest: str | None, force: bool):
     except (OSError, shutil.Error) as exc:
         ctx.emit(False, error=f"Failed to install skill to {dest_dir}: {exc}")
         return
-    refs = sorted((dest_dir / "reference").glob("*.md")) if (dest_dir / "reference").is_dir() else []
+    refs = (
+        sorted((dest_dir / "reference").glob("*.md")) if (dest_dir / "reference").is_dir() else []
+    )
     ctx.emit(
         True,
         data={
@@ -119,7 +124,9 @@ def skill_uninstall(ctx: CLIContext, target: str, dest: str | None):
         if not dest_file.exists():
             # Already gone — prune any stale registry entry and report it.
             skill_registry.remove_install(str(dest_dir))
-            ctx.emit(True, data={"removed": False, "reason": "not installed", "dest": str(dest_dir)})
+            ctx.emit(
+                True, data={"removed": False, "reason": "not installed", "dest": str(dest_dir)}
+            )
             return
         ref_dir = dest_dir / "reference"
         if ref_dir.is_dir():

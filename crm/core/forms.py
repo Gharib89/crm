@@ -121,7 +121,9 @@ _REGEN_ATTR_RE = re.compile(
     r"""(?P<attr>(?<![\w])id|labelid|uniqueid|handlerUniqueId|libraryUniqueId
         |forControl)
         (?P<eq>\s*=\s*)(?P<q>["'])
-        (?P<brace>\{)?(?P<guid>""" + xml_edit.GUID + r""")(?(brace)\})(?P=q)""",
+        (?P<brace>\{)?(?P<guid>"""
+    + xml_edit.GUID
+    + r""")(?(brace)\})(?P=q)""",
     re.VERBOSE,
 )
 
@@ -129,8 +131,8 @@ _REGEN_ATTR_RE = re.compile(
 # control (external), matched here so regenerate_form_clone_ids can exempt it from
 # the bare-`id` regeneration above.
 _CUSTOMCONTROL_ID_RE = re.compile(
-    r"""<customControl\b[^>]*?\bid\s*=\s*["']\{?(?P<guid>"""
-    + xml_edit.GUID + r""")\}?["']""")
+    r"""<customControl\b[^>]*?\bid\s*=\s*["']\{?(?P<guid>""" + xml_edit.GUID + r""")\}?["']"""
+)
 
 
 def regenerate_form_clone_ids(formxml: str) -> str:
@@ -158,14 +160,15 @@ def regenerate_form_clone_ids(formxml: str) -> str:
     """
     if not formxml:
         return formxml
-    preserve = {m.group("guid").lower()
-                for m in _CUSTOMCONTROL_ID_RE.finditer(formxml)}
-    new_xml, mapping = xml_edit.regenerate_guids(
-        formxml, _REGEN_ATTR_RE, preserve=preserve)
+    preserve = {m.group("guid").lower() for m in _CUSTOMCONTROL_ID_RE.finditer(formxml)}
+    new_xml, mapping = xml_edit.regenerate_guids(formxml, _REGEN_ATTR_RE, preserve=preserve)
     xml_edit.assert_external_guids_intact(
-        formxml, new_xml, regenerated=mapping,
+        formxml,
+        new_xml,
+        regenerated=mapping,
         message="form-clone id regeneration altered a non-target GUID (external "
-                "reference); refusing to POST a possibly corrupt form.")
+        "reference); refusing to POST a possibly corrupt form.",
+    )
     return new_xml
 
 
@@ -194,21 +197,23 @@ def _fresh_cell_id() -> str:
     return xml_edit.fresh_guid()
 
 
-def _parse_formxml(formxml: str) -> "ET.Element":
+def _parse_formxml(formxml: str) -> ET.Element:
     """Parse FormXml, turning a malformed payload into a ``D365Error`` so the CLI
-    emits its standard error envelope rather than a raw ``ParseError`` traceback."""
+    emits its standard error envelope rather than a raw ``ParseError`` traceback.
+    """
     return xml_edit.parse_xml(formxml, label="form's FormXml")
 
 
 def _id_matches(value: str | None, given: str) -> bool:
     """Whether a FormXml ``id`` attribute matches a user-supplied id, tolerating
-    braces and case (FormXml ids are brace-wrapped, case-insensitive GUIDs)."""
+    braces and case (FormXml ids are brace-wrapped, case-insensitive GUIDs).
+    """
     if not value:
         return False
     return value.strip("{}").lower() == given.strip("{}").lower()
 
 
-def _find_field_control(root: "ET.Element", datafieldname: str) -> "ET.Element | None":
+def _find_field_control(root: ET.Element, datafieldname: str) -> ET.Element | None:
     """The bound ``<control>`` for ``datafieldname`` anywhere on the form, or None."""
     for control in root.iter("control"):
         if control.get("datafieldname") == datafieldname:
@@ -216,27 +221,26 @@ def _find_field_control(root: "ET.Element", datafieldname: str) -> "ET.Element |
     return None
 
 
-def _resolve_target_tab(root: "ET.Element", tab: str | None) -> "ET.Element":
+def _resolve_target_tab(root: ET.Element, tab: str | None) -> ET.Element:
     """Pick the ``<tab>`` to operate on: the first tab by default, or the one
     matched by ``tab`` (name or id). Raises ``D365Error`` naming the available
-    tabs when a requested tab is absent."""
+    tabs when a requested tab is absent.
+    """
     tabs = root.findall("./tabs/tab")
     if not tabs:
         raise D365Error("Form has no <tab> layout.")
     if tab is None:
         return tabs[0]
     target_tab = next(
-        (t for t in tabs
-         if t.get("name") == tab or _id_matches(t.get("id"), tab)), None)
+        (t for t in tabs if t.get("name") == tab or _id_matches(t.get("id"), tab)), None
+    )
     if target_tab is None:
         names = ", ".join(t.get("name") or "?" for t in tabs)
         raise D365Error(f"No tab {tab!r} on the form. Tabs: {names}.")
     return target_tab
 
 
-def _resolve_target_section(
-    root: "ET.Element", tab: str | None, section: str | None
-) -> "ET.Element":
+def _resolve_target_section(root: ET.Element, tab: str | None, section: str | None) -> ET.Element:
     """Pick the ``<section>`` to place a field in.
 
     Defaults to the first section of the first tab; ``tab`` / ``section`` narrow
@@ -250,17 +254,17 @@ def _resolve_target_section(
     if section is None:
         return sections[0]
     target = next(
-        (s for s in sections
-         if s.get("name") == section or _id_matches(s.get("id"), section)), None)
+        (s for s in sections if s.get("name") == section or _id_matches(s.get("id"), section)), None
+    )
     if target is None:
         names = ", ".join(s.get("name") or "?" for s in sections)
         raise D365Error(
-            f"No section {section!r} in tab {target_tab.get('name')!r}. "
-            f"Sections: {names}.")
+            f"No section {section!r} in tab {target_tab.get('name')!r}. Sections: {names}."
+        )
     return target
 
 
-def _append_cell(section: "ET.Element", cell: "ET.Element") -> None:
+def _append_cell(section: ET.Element, cell: ET.Element) -> None:
     """Append ``cell`` as a new single-cell ``<row>`` in the section's ``<rows>``."""
     rows = section.find("rows")
     if rows is None:
@@ -269,7 +273,7 @@ def _append_cell(section: "ET.Element", cell: "ET.Element") -> None:
     row.append(cell)
 
 
-def _build_field_cell(datafieldname: str, classid: str, label: str) -> "ET.Element":
+def _build_field_cell(datafieldname: str, classid: str, label: str) -> ET.Element:
     """A fresh bound-field ``<cell>`` (fresh id, label, control) for the field."""
     cell = ET.Element("cell")
     cell.set("id", _fresh_cell_id())
@@ -285,8 +289,13 @@ def _build_field_cell(datafieldname: str, classid: str, label: str) -> "ET.Eleme
 
 
 def add_field_to_formxml(
-    formxml: str, *, datafieldname: str, classid: str, label: str,
-    tab: str | None = None, section: str | None = None,
+    formxml: str,
+    *,
+    datafieldname: str,
+    classid: str,
+    label: str,
+    tab: str | None = None,
+    section: str | None = None,
 ) -> str:
     """Return ``formxml`` with a new bound-field ``<cell>`` for ``datafieldname``.
 
@@ -300,30 +309,31 @@ def add_field_to_formxml(
     if _find_field_control(root, datafieldname) is not None:
         raise D365Error(
             f"Field {datafieldname!r} is already on the form; refusing to "
-            f"duplicate it. Use set-field to move it.")
+            f"duplicate it. Use set-field to move it."
+        )
     target = _resolve_target_section(root, tab, section)
     _append_cell(target, _build_field_cell(datafieldname, classid, label))
     return xml_edit.serialize_xml(root)
 
 
-def _parent_map(root: "ET.Element") -> "dict[ET.Element, ET.Element]":
+def _parent_map(root: ET.Element) -> dict[ET.Element, ET.Element]:
     """Map each element to its parent (etree elements carry no parent pointer)."""
     return {child: parent for parent in root.iter() for child in parent}
 
 
 def _detach_field_cell(
-    root: "ET.Element", parents: "dict[ET.Element, ET.Element]", datafieldname: str
-) -> "ET.Element":
+    root: ET.Element, parents: dict[ET.Element, ET.Element], datafieldname: str
+) -> ET.Element:
     """Remove and return the ``<cell>`` holding ``datafieldname``'s control,
-    tidying an emptied ``<row>``. Raises ``D365Error`` if the field is absent."""
+    tidying an emptied ``<row>``. Raises ``D365Error`` if the field is absent.
+    """
     control = _find_field_control(root, datafieldname)
     if control is None:
         raise D365Error(f"Field {datafieldname!r} is not on the form.")
     cell = parents.get(control)
     row = parents.get(cell) if cell is not None else None
     if cell is None or row is None:
-        raise D365Error(
-            f"Field {datafieldname!r} is not in a removable cell/row layout.")
+        raise D365Error(f"Field {datafieldname!r} is not in a removable cell/row layout.")
     row.remove(cell)
     if not row.findall("cell"):  # tidy the now-empty row
         rows = parents.get(row)
@@ -344,8 +354,11 @@ def remove_field_from_formxml(formxml: str, *, datafieldname: str) -> str:
 
 
 def move_field_in_formxml(
-    formxml: str, *, datafieldname: str,
-    tab: str | None = None, section: str | None = None,
+    formxml: str,
+    *,
+    datafieldname: str,
+    tab: str | None = None,
+    section: str | None = None,
 ) -> str:
     """Return ``formxml`` with ``datafieldname``'s existing ``<cell>`` relocated
     to the target tab/section, preserving the cell (its id and control).
@@ -361,9 +374,13 @@ def move_field_in_formxml(
 
 
 def set_field_props_in_formxml(
-    formxml: str, *, datafieldname: str,
-    locked: bool | None = None, disabled: bool | None = None,
-    show_label: bool | None = None, visible: bool | None = None,
+    formxml: str,
+    *,
+    datafieldname: str,
+    locked: bool | None = None,
+    disabled: bool | None = None,
+    show_label: bool | None = None,
+    visible: bool | None = None,
 ) -> str:
     """Return ``formxml`` with presentation properties toggled in place on
     ``datafieldname``'s existing field.
@@ -381,13 +398,11 @@ def set_field_props_in_formxml(
     control = _find_field_control(root, datafieldname)
     if control is None:
         raise D365Error(
-            f"Field {datafieldname!r} is not on the form; use add-field to add "
-            f"it first.")
+            f"Field {datafieldname!r} is not on the form; use add-field to add it first."
+        )
     cell = _parent_map(root).get(control)
     if cell is None:
-        raise D365Error(
-            f"Field {datafieldname!r} is not in a cell layout; cannot set "
-            f"properties.")
+        raise D365Error(f"Field {datafieldname!r} is not in a cell layout; cannot set properties.")
     if locked is not None:
         cell.set("locklevel", "1" if locked else "0")
     if show_label is not None:
@@ -427,7 +442,7 @@ def _xml_bool(value: str | None, *, default: bool) -> bool:
     return value.strip().lower() == "true"
 
 
-def _ensure_library_registered(root: "ET.Element", library_name: str) -> None:
+def _ensure_library_registered(root: ET.Element, library_name: str) -> None:
     """Register ``library_name`` in ``<formLibraries>`` if absent (deduped no-op).
 
     A handler resolves its function through a registered library, so wiring a
@@ -436,8 +451,7 @@ def _ensure_library_registered(root: "ET.Element", library_name: str) -> None:
     so it is only created alongside the entry it holds.
     """
     libs = root.find("formLibraries")
-    if libs is not None and any(
-            lib.get("name") == library_name for lib in libs.findall("Library")):
+    if libs is not None and any(lib.get("name") == library_name for lib in libs.findall("Library")):
         return
     if libs is None:
         libs = ET.SubElement(root, "formLibraries")
@@ -459,9 +473,7 @@ def add_library_to_formxml(formxml: str, *, library_name: str) -> str:
     return new_xml
 
 
-def _find_event(
-    root: "ET.Element", *, event: str, field: str | None
-) -> "ET.Element | None":
+def _find_event(root: ET.Element, *, event: str, field: str | None) -> ET.Element | None:
     """The ``<event>`` for this event name (matching ``attribute`` for onchange)."""
     events = root.find("events")
     if events is None:
@@ -477,7 +489,7 @@ def _find_event(
     return None
 
 
-def _ensure_event(root: "ET.Element", *, event: str, field: str | None) -> "ET.Element":
+def _ensure_event(root: ET.Element, *, event: str, field: str | None) -> ET.Element:
     """The existing ``<event>`` for this event, or a freshly appended one.
 
     Merging into the existing element (never a duplicate ``<event>``) keeps a
@@ -496,9 +508,7 @@ def _ensure_event(root: "ET.Element", *, event: str, field: str | None) -> "ET.E
     return ev
 
 
-def _validate_event_field(
-    root: "ET.Element", event: str, field: str | None
-) -> None:
+def _validate_event_field(root: ET.Element, event: str, field: str | None) -> None:
     """Enforce the onchange/``--field`` pairing (T2).
 
     onchange targets a specific attribute, so it needs a ``--field`` that is
@@ -510,7 +520,8 @@ def _validate_event_field(
         if _find_field_control(root, field) is None:
             raise D365Error(
                 f"Field {field!r} is not on the form; add it before wiring an "
-                f"onchange handler to it.")
+                f"onchange handler to it."
+            )
     elif field:
         raise D365Error(f"--field applies only to onchange, not {event!r}.")
 
@@ -522,9 +533,15 @@ def _handler_label(event: str, function: str, field: str | None) -> str:
 
 
 def add_handler_to_formxml(
-    formxml: str, *, event: str, function: str, library_name: str,
-    field: str | None = None, params: "tuple[str, ...]" = (),
-    pass_context: bool = True, enabled: bool = True,
+    formxml: str,
+    *,
+    event: str,
+    function: str,
+    library_name: str,
+    field: str | None = None,
+    params: tuple[str, ...] = (),
+    pass_context: bool = True,
+    enabled: bool = True,
 ) -> str:
     """Return ``formxml`` with a ``<Handler>`` wiring ``function`` to ``event``.
 
@@ -536,8 +553,7 @@ def add_handler_to_formxml(
     duplicate).
     """
     if event not in EVENT_CHOICES:
-        raise D365Error(
-            f"Unsupported event {event!r}. Choose from: {', '.join(EVENT_CHOICES)}.")
+        raise D365Error(f"Unsupported event {event!r}. Choose from: {', '.join(EVENT_CHOICES)}.")
     root = _parse_formxml(formxml)
     _validate_event_field(root, event, field)
     _ensure_library_registered(root, library_name)
@@ -548,7 +564,8 @@ def add_handler_to_formxml(
     if any(h.get("functionName") == function for h in handlers.findall("Handler")):
         raise D365Error(
             f"Handler {_handler_label(event, function, field)} is already wired; "
-            f"refusing to duplicate it.")
+            f"refusing to duplicate it."
+        )
     handler = ET.SubElement(handlers, "Handler")
     handler.set("functionName", function)
     handler.set("libraryName", library_name)
@@ -563,7 +580,11 @@ def add_handler_to_formxml(
 
 
 def remove_handler_from_formxml(
-    formxml: str, *, event: str, function: str, field: str | None = None,
+    formxml: str,
+    *,
+    event: str,
+    function: str,
+    field: str | None = None,
 ) -> str:
     """Return ``formxml`` with the ``function`` handler removed from ``event``.
 
@@ -572,8 +593,7 @@ def remove_handler_from_formxml(
     container is left behind. Raises ``D365Error`` if the handler is absent.
     """
     if event not in EVENT_CHOICES:
-        raise D365Error(
-            f"Unsupported event {event!r}. Choose from: {', '.join(EVENT_CHOICES)}.")
+        raise D365Error(f"Unsupported event {event!r}. Choose from: {', '.join(EVENT_CHOICES)}.")
     # onchange handlers are keyed by event + field, so removal needs the field to
     # name one unambiguously (symmetry with add-handler); the others take none.
     if event == "onchange" and not field:
@@ -586,11 +606,10 @@ def remove_handler_from_formxml(
     target = None
     if handlers is not None:
         target = next(
-            (h for h in handlers.findall("Handler")
-             if h.get("functionName") == function), None)
+            (h for h in handlers.findall("Handler") if h.get("functionName") == function), None
+        )
     if ev is None or handlers is None or target is None:
-        raise D365Error(
-            f"No handler {_handler_label(event, function, field)} on the form.")
+        raise D365Error(f"No handler {_handler_label(event, function, field)} on the form.")
     handlers.remove(target)
     if not handlers.findall("Handler"):
         ev.remove(handlers)
@@ -608,8 +627,13 @@ def remove_handler_from_formxml(
 
 
 def set_handler_props_in_formxml(
-    formxml: str, *, event: str, function: str, field: str | None = None,
-    enabled: bool | None = None, pass_context: bool | None = None,
+    formxml: str,
+    *,
+    event: str,
+    function: str,
+    field: str | None = None,
+    enabled: bool | None = None,
+    pass_context: bool | None = None,
 ) -> str:
     """Return ``formxml`` with a wired handler's ``enabled`` /
     ``passExecutionContext`` flags toggled in place (reconcile — ADR 0024).
@@ -625,8 +649,7 @@ def set_handler_props_in_formxml(
     if the handler is absent.
     """
     if event not in EVENT_CHOICES:
-        raise D365Error(
-            f"Unsupported event {event!r}. Choose from: {', '.join(EVENT_CHOICES)}.")
+        raise D365Error(f"Unsupported event {event!r}. Choose from: {', '.join(EVENT_CHOICES)}.")
     if event == "onchange" and not field:
         raise D365Error("onchange handler requires a 'field' to identify it.")
     if event != "onchange" and field:
@@ -637,11 +660,10 @@ def set_handler_props_in_formxml(
     target = None
     if handlers is not None:
         target = next(
-            (h for h in handlers.findall("Handler")
-             if h.get("functionName") == function), None)
+            (h for h in handlers.findall("Handler") if h.get("functionName") == function), None
+        )
     if target is None:
-        raise D365Error(
-            f"No handler {_handler_label(event, function, field)} on the form.")
+        raise D365Error(f"No handler {_handler_label(event, function, field)} on the form.")
     if enabled is not None:
         target.set("enabled", "true" if enabled else "false")
     if pass_context is not None:
@@ -651,7 +673,7 @@ def set_handler_props_in_formxml(
     return new_xml
 
 
-def list_handlers_in_formxml(formxml: str) -> "list[dict[str, Any]]":
+def list_handlers_in_formxml(formxml: str) -> list[dict[str, Any]]:
     """List the customizer-wired ``<Handler>`` entries, in form order.
 
     Reports only the editable ``<Handlers>`` (not the platform-owned
@@ -673,16 +695,17 @@ def list_handlers_in_formxml(formxml: str) -> "list[dict[str, Any]]":
             # does not receive it. (CLI-written handlers always set both explicitly,
             # so they round-trip exactly; the defaults only cover externally-authored
             # handlers that omit an attribute.)
-            out.append({
-                "event": ev.get("name") or "",
-                "field": ev.get("attribute"),
-                "function": h.get("functionName"),
-                "library": h.get("libraryName"),
-                "enabled": _xml_bool(h.get("enabled"), default=True),
-                "pass_context": _xml_bool(
-                    h.get("passExecutionContext"), default=False),
-                "handler_unique_id": h.get("handlerUniqueId"),
-            })
+            out.append(
+                {
+                    "event": ev.get("name") or "",
+                    "field": ev.get("attribute"),
+                    "function": h.get("functionName"),
+                    "library": h.get("libraryName"),
+                    "enabled": _xml_bool(h.get("enabled"), default=True),
+                    "pass_context": _xml_bool(h.get("passExecutionContext"), default=False),
+                    "handler_unique_id": h.get("handlerUniqueId"),
+                }
+            )
     return out
 
 
@@ -697,17 +720,17 @@ def list_handlers_in_formxml(formxml: str) -> "list[dict[str, Any]]":
 
 _SIBLING_GUARD_MSG = (
     "tab/section edit altered a sibling GUID (an external reference or another "
-    "element's id); refusing to write a possibly corrupt form.")
+    "element's id); refusing to write a possibly corrupt form."
+)
 
 
 def _validate_columns(columns: int) -> None:
     """Reject a layout-column count outside the designer's 1–4 range."""
     if not 1 <= columns <= _MAX_LAYOUT_COLUMNS:
-        raise D365Error(
-            f"--columns must be between 1 and {_MAX_LAYOUT_COLUMNS}; got {columns}.")
+        raise D365Error(f"--columns must be between 1 and {_MAX_LAYOUT_COLUMNS}; got {columns}.")
 
 
-def _build_labels(description: str) -> "ET.Element":
+def _build_labels(description: str) -> ET.Element:
     """A ``<labels>`` element carrying one 1033 ``<label>`` with ``description``."""
     labels = ET.Element("labels")
     lab = ET.SubElement(labels, "label")
@@ -716,7 +739,7 @@ def _build_labels(description: str) -> "ET.Element":
     return labels
 
 
-def _build_section(name: str, label: str, columns: int) -> "ET.Element":
+def _build_section(name: str, label: str, columns: int) -> ET.Element:
     """A fresh ``<section>`` (fresh id, ``IsUserDefined=1``, empty ``<rows>``)."""
     section = ET.Element("section")
     section.set("name", name)
@@ -729,10 +752,11 @@ def _build_section(name: str, label: str, columns: int) -> "ET.Element":
     return section
 
 
-def _build_tab(name: str, label: str, columns: int) -> "ET.Element":
+def _build_tab(name: str, label: str, columns: int) -> ET.Element:
     """A fresh ``<tab>`` (fresh id, ``IsUserDefined=1``) with ``columns`` layout
     columns; the first column carries a non-empty starter ``<section>`` so the tab
-    renders (an empty tab is XSD-valid but renders broken)."""
+    renders (an empty tab is XSD-valid but renders broken).
+    """
     tab = ET.Element("tab")
     tab.set("name", name)
     tab.set("id", xml_edit.fresh_guid())
@@ -749,31 +773,33 @@ def _build_tab(name: str, label: str, columns: int) -> "ET.Element":
     return tab
 
 
-def _set_label(element: "ET.Element", label: str) -> None:
+def _set_label(element: ET.Element, label: str) -> None:
     """Set the 1033 ``<label>`` description of a tab/section, creating the
-    ``<labels>``/``<label>`` if absent (only the base-language label is touched)."""
+    ``<labels>``/``<label>`` if absent (only the base-language label is touched).
+    """
     labels = element.find("labels")
     if labels is None:
         element.insert(0, _build_labels(label))
         return
     label_els = labels.findall("label")
     target = next(
-        (lab for lab in label_els
-         if lab.get("languagecode") == _LABEL_LANGUAGECODE), None)
+        (lab for lab in label_els if lab.get("languagecode") == _LABEL_LANGUAGECODE), None
+    )
     if target is None:
         target = label_els[0] if label_els else ET.SubElement(labels, "label")
         target.set("languagecode", _LABEL_LANGUAGECODE)
     target.set("description", label)
 
 
-def _element_guids(element: "ET.Element") -> "set[str]":
+def _element_guids(element: ET.Element) -> set[str]:
     """Every GUID under ``element`` (lowercased) — the ids an add/remove changes."""
     return xml_edit.guid_set(xml_edit.serialize_xml(element))
 
 
-def _bound_fields_under(element: "ET.Element") -> "list[str]":
+def _bound_fields_under(element: ET.Element) -> list[str]:
     """Datafieldnames of bound ``<control>``s anywhere under ``element`` — the
-    fields a tab/section remove would orphan."""
+    fields a tab/section remove would orphan.
+    """
     out: list[str] = []
     for control in element.iter("control"):
         datafieldname = control.get("datafieldname")
@@ -782,11 +808,10 @@ def _bound_fields_under(element: "ET.Element") -> "list[str]":
     return out
 
 
-def _sections_parent(
-    target_tab: "ET.Element", section: "ET.Element"
-) -> "ET.Element | None":
+def _sections_parent(target_tab: ET.Element, section: ET.Element) -> ET.Element | None:
     """The ``<sections>`` element (within one of ``target_tab``'s columns) that
-    directly contains ``section``."""
+    directly contains ``section``.
+    """
     for sections in target_tab.findall("./columns/column/sections"):
         if section in list(sections):
             return sections
@@ -794,7 +819,7 @@ def _sections_parent(
 
 
 def _assert_siblings_intact(
-    before: str, after: str, *, changed: "set[str] | frozenset[str]" = frozenset()
+    before: str, after: str, *, changed: set[str] | frozenset[str] = frozenset()
 ) -> None:
     """Assert the edit changed only the ids it intentionally added/removed.
 
@@ -804,16 +829,22 @@ def _assert_siblings_intact(
     """
     delta = {g.lower(): g.lower() for g in changed}
     xml_edit.assert_external_guids_intact(
-        before, after, regenerated=delta, message=_SIBLING_GUARD_MSG)
+        before, after, regenerated=delta, message=_SIBLING_GUARD_MSG
+    )
 
 
 def add_tab_to_formxml(
-    formxml: str, *, name: str, label: str, columns: int = 1,
+    formxml: str,
+    *,
+    name: str,
+    label: str,
+    columns: int = 1,
     after: str | None = None,
 ) -> str:
     """Return ``formxml`` with a new tab (carrying a starter section) appended, or
     inserted after the ``after`` sibling tab. Raises ``D365Error`` if a tab of
-    that name already exists or ``columns`` is out of range."""
+    that name already exists or ``columns`` is out of range.
+    """
     _validate_columns(columns)
     root = _parse_formxml(formxml)
     tabs_el = root.find("./tabs")
@@ -833,22 +864,21 @@ def add_tab_to_formxml(
     return out
 
 
-def remove_tab_from_formxml(
-    formxml: str, *, tab: str, force: bool = False
-) -> str:
+def remove_tab_from_formxml(formxml: str, *, tab: str, force: bool = False) -> str:
     """Return ``formxml`` with the ``tab`` (name or id) removed. Refuses to remove
-    the only tab, or a tab still holding bound fields unless ``force``."""
+    the only tab, or a tab still holding bound fields unless ``force``.
+    """
     root = _parse_formxml(formxml)
     tabs_el = root.find("./tabs")
     target = _resolve_target_tab(root, tab)
     if tabs_el is None or len(tabs_el.findall("tab")) <= 1:
-        raise D365Error(
-            "Refusing to remove the only tab; a form must keep at least one tab.")
+        raise D365Error("Refusing to remove the only tab; a form must keep at least one tab.")
     orphans = _bound_fields_under(target)
     if orphans and not force:
         raise D365Error(
             f"Tab {tab!r} still holds bound fields: {', '.join(orphans)}. "
-            f"Pass --force to remove it and orphan them.")
+            f"Pass --force to remove it and orphan them."
+        )
     changed = _element_guids(target)
     tabs_el.remove(target)
     out = xml_edit.serialize_xml(root)
@@ -858,7 +888,8 @@ def remove_tab_from_formxml(
 
 def rename_tab_in_formxml(formxml: str, *, tab: str, label: str) -> str:
     """Return ``formxml`` with the ``tab``'s display label set to ``label`` (the
-    logical ``name`` is left intact, since form scripts bind to it)."""
+    logical ``name`` is left intact, since form scripts bind to it).
+    """
     root = _parse_formxml(formxml)
     _set_label(_resolve_target_tab(root, tab), label)
     out = xml_edit.serialize_xml(root)
@@ -866,11 +897,10 @@ def rename_tab_in_formxml(formxml: str, *, tab: str, label: str) -> str:
     return out
 
 
-def move_tab_in_formxml(
-    formxml: str, *, tab: str, after: str | None = None
-) -> str:
+def move_tab_in_formxml(formxml: str, *, tab: str, after: str | None = None) -> str:
     """Return ``formxml`` with the ``tab`` reordered: to the front by default, or
-    immediately after the ``after`` sibling tab."""
+    immediately after the ``after`` sibling tab.
+    """
     root = _parse_formxml(formxml)
     tabs_el = root.find("./tabs")
     target = _resolve_target_tab(root, tab)
@@ -888,36 +918,41 @@ def move_tab_in_formxml(
 
 
 def add_section_to_formxml(
-    formxml: str, *, name: str, label: str, tab: str | None = None,
-    columns: int = 1, after: str | None = None,
+    formxml: str,
+    *,
+    name: str,
+    label: str,
+    tab: str | None = None,
+    columns: int = 1,
+    after: str | None = None,
 ) -> str:
     """Return ``formxml`` with a new section added to the target tab (default: the
     first tab), appended to its first column or inserted after the ``after``
-    sibling section. Raises ``D365Error`` on a duplicate name or bad ``columns``."""
+    sibling section. Raises ``D365Error`` on a duplicate name or bad ``columns``.
+    """
     _validate_columns(columns)
     root = _parse_formxml(formxml)
     target_tab = _resolve_target_tab(root, tab)
     existing = target_tab.findall("./columns/column/sections/section")
     if any(s.get("name") == name for s in existing):
-        raise D365Error(
-            f"Section {name!r} already exists in tab {target_tab.get('name')!r}.")
+        raise D365Error(f"Section {name!r} already exists in tab {target_tab.get('name')!r}.")
     new_section = _build_section(name, label, columns)
     changed = _element_guids(new_section)
     if after is None:
         sections_el = target_tab.find("./columns/column/sections")
         if sections_el is None:
-            raise D365Error(
-                f"Tab {target_tab.get('name')!r} has no <sections> container.")
+            raise D365Error(f"Tab {target_tab.get('name')!r} has no <sections> container.")
         sections_el.append(new_section)
     else:
         anchor = next(
-            (s for s in existing
-             if s.get("name") == after or _id_matches(s.get("id"), after)), None)
+            (s for s in existing if s.get("name") == after or _id_matches(s.get("id"), after)), None
+        )
         if anchor is None:
             names = ", ".join(s.get("name") or "?" for s in existing)
             raise D365Error(
                 f"No section {after!r} in tab {target_tab.get('name')!r} to place "
-                f"after. Sections: {names}.")
+                f"after. Sections: {names}."
+            )
         parent = _sections_parent(target_tab, anchor)
         assert parent is not None  # anchor came from this tab's sections
         parent.insert(list(parent).index(anchor) + 1, new_section)
@@ -927,10 +962,15 @@ def add_section_to_formxml(
 
 
 def remove_section_from_formxml(
-    formxml: str, *, section: str, tab: str | None = None, force: bool = False,
+    formxml: str,
+    *,
+    section: str,
+    tab: str | None = None,
+    force: bool = False,
 ) -> str:
     """Return ``formxml`` with the ``section`` (in the target tab) removed. Refuses
-    a section still holding bound fields unless ``force``."""
+    a section still holding bound fields unless ``force``.
+    """
     root = _parse_formxml(formxml)
     target_tab = _resolve_target_tab(root, tab)
     target = _resolve_target_section(root, tab, section)
@@ -938,7 +978,8 @@ def remove_section_from_formxml(
     if orphans and not force:
         raise D365Error(
             f"Section {section!r} still holds bound fields: {', '.join(orphans)}. "
-            f"Pass --force to remove it and orphan them.")
+            f"Pass --force to remove it and orphan them."
+        )
     parent = _sections_parent(target_tab, target)
     assert parent is not None  # target came from this tab's sections
     changed = _element_guids(target)
@@ -949,7 +990,11 @@ def remove_section_from_formxml(
 
 
 def rename_section_in_formxml(
-    formxml: str, *, section: str, label: str, tab: str | None = None,
+    formxml: str,
+    *,
+    section: str,
+    label: str,
+    tab: str | None = None,
 ) -> str:
     """Return ``formxml`` with the ``section``'s display label set to ``label``."""
     root = _parse_formxml(formxml)
@@ -960,11 +1005,15 @@ def rename_section_in_formxml(
 
 
 def move_section_in_formxml(
-    formxml: str, *, section: str, tab: str | None = None,
+    formxml: str,
+    *,
+    section: str,
+    tab: str | None = None,
     after: str | None = None,
 ) -> str:
     """Return ``formxml`` with the ``section`` reordered within its tab: to the
-    front of its column by default, or after the ``after`` sibling section."""
+    front of its column by default, or after the ``after`` sibling section.
+    """
     root = _parse_formxml(formxml)
     target_tab = _resolve_target_tab(root, tab)
     target = _resolve_target_section(root, tab, section)
@@ -976,13 +1025,15 @@ def move_section_in_formxml(
     else:
         remaining = target_tab.findall("./columns/column/sections/section")
         anchor = next(
-            (s for s in remaining
-             if s.get("name") == after or _id_matches(s.get("id"), after)), None)
+            (s for s in remaining if s.get("name") == after or _id_matches(s.get("id"), after)),
+            None,
+        )
         if anchor is None:
             names = ", ".join(s.get("name") or "?" for s in remaining)
             raise D365Error(
                 f"No section {after!r} in tab {target_tab.get('name')!r} to place "
-                f"after. Sections: {names}.")
+                f"after. Sections: {names}."
+            )
         anchor_parent = _sections_parent(target_tab, anchor)
         assert anchor_parent is not None
         anchor_parent.insert(list(anchor_parent).index(anchor) + 1, target)
@@ -1016,15 +1067,17 @@ def read_entity_forms(
     )
     result: list[dict[str, Any]] = []
     for row in rows:
-        result.append({
-            "formid": row.get("formid"),
-            "name": row.get("name", ""),
-            "objecttypecode": row.get("objecttypecode"),
-            "type": row.get("type"),
-            "formxml": row.get("formxml") or "",
-            "description": row.get("description"),
-            "isdefault": bool(row.get("isdefault", False)),
-        })
+        result.append(
+            {
+                "formid": row.get("formid"),
+                "name": row.get("name", ""),
+                "objecttypecode": row.get("objecttypecode"),
+                "type": row.get("type"),
+                "formxml": row.get("formxml") or "",
+                "description": row.get("description"),
+                "isdefault": bool(row.get("isdefault", False)),
+            }
+        )
     return result
 
 
@@ -1037,15 +1090,18 @@ def _select_form(forms_list: list[dict[str, Any]], form: str | None) -> dict[str
     raise ``D365Error`` asking for ``--form``.
     """
     if form is not None:
-        matches = [f for f in forms_list
-                   if f.get("name") == form or _id_matches(str(f.get("formid")), form)]
+        matches = [
+            f
+            for f in forms_list
+            if f.get("name") == form or _id_matches(str(f.get("formid")), form)
+        ]
         if not matches:
             raise D365Error(f"No form matching {form!r} found.")
         if len(matches) > 1:
             names = ", ".join(f"{m.get('name')!r} ({m.get('formid')})" for m in matches)
             raise D365Error(
-                f"Multiple forms matching {form!r}: {names}. "
-                f"Pass --form <name|id> to choose one.")
+                f"Multiple forms matching {form!r}: {names}. Pass --form <name|id> to choose one."
+            )
         return matches[0]
     if not forms_list:
         raise D365Error("No form for this entity found.")
@@ -1056,8 +1112,8 @@ def _select_form(forms_list: list[dict[str, Any]], form: str | None) -> dict[str
         return defaults[0]
     names = ", ".join(f"{m.get('name')!r} ({m.get('formid')})" for m in forms_list)
     raise D365Error(
-        f"Multiple main forms for this entity: {names}. "
-        f"Pass --form <name|id> to choose one.")
+        f"Multiple main forms for this entity: {names}. Pass --form <name|id> to choose one."
+    )
 
 
 def _attr_label(info: dict[str, Any], fallback: str) -> str:
@@ -1095,8 +1151,13 @@ _DRY_RUN_FLAG = {
 
 
 def _commit_form_change(
-    backend: D365Backend, form_row: dict[str, Any], new_formxml: str,
-    *, action: str, publish: bool, solution: str | None,
+    backend: D365Backend,
+    form_row: dict[str, Any],
+    new_formxml: str,
+    *,
+    action: str,
+    publish: bool,
+    solution: str | None,
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """PATCH a form's ``formxml`` (or preview under dry-run), then maybe publish.
@@ -1108,99 +1169,167 @@ def _commit_form_change(
     behavior.
     """
     out: dict[str, Any] = {
-        "formid": form_row.get("formid"), "form": form_row.get("name"),
+        "formid": form_row.get("formid"),
+        "form": form_row.get("name"),
         "action": action,
     }
     if extra:
         out.update({k: v for k, v in extra.items() if v is not None})
     return xml_edit.commit_xml_patch(
-        backend, entity_set="systemforms", record_id=str(form_row.get("formid")),
-        column="formxml", new_xml=new_formxml, result=out,
-        dry_run_flag=_DRY_RUN_FLAG[action], publish=publish, solution=solution)
+        backend,
+        entity_set="systemforms",
+        record_id=str(form_row.get("formid")),
+        column="formxml",
+        new_xml=new_formxml,
+        result=out,
+        dry_run_flag=_DRY_RUN_FLAG[action],
+        publish=publish,
+        solution=solution,
+    )
 
 
 def add_form_field(
-    backend: D365Backend, entity: str, attribute: str, *,
-    form: str | None = None, tab: str | None = None, section: str | None = None,
-    publish: bool = False, solution: str | None = None,
+    backend: D365Backend,
+    entity: str,
+    attribute: str,
+    *,
+    form: str | None = None,
+    tab: str | None = None,
+    section: str | None = None,
+    publish: bool = False,
+    solution: str | None = None,
 ) -> dict[str, Any]:
     """Add ``attribute`` to an entity form, resolving its control ``classid`` from
     live metadata. Errors if the attribute is absent, its type is unmapped, or
-    the field is already on the form."""
+    the field is already on the form.
+    """
     info = attribute_info(backend, entity, attribute)
     attr_type = info.get("AttributeType") or ""
     classid = classid_for_attribute_type(attr_type)
     label = _attr_label(info, attribute)
     form_row = _select_form(read_entity_forms(backend, entity), form)
     new_xml = add_field_to_formxml(
-        form_row.get("formxml", ""), datafieldname=attribute, classid=classid,
-        label=label, tab=tab, section=section)
+        form_row.get("formxml", ""),
+        datafieldname=attribute,
+        classid=classid,
+        label=label,
+        tab=tab,
+        section=section,
+    )
     return _commit_form_change(
-        backend, form_row, new_xml, action="add-field",
-        publish=publish, solution=solution,
-        extra={"attribute": attribute, "classid": classid,
-               "attribute_type": attr_type, "tab": tab, "section": section})
+        backend,
+        form_row,
+        new_xml,
+        action="add-field",
+        publish=publish,
+        solution=solution,
+        extra={
+            "attribute": attribute,
+            "classid": classid,
+            "attribute_type": attr_type,
+            "tab": tab,
+            "section": section,
+        },
+    )
 
 
 def remove_form_field(
-    backend: D365Backend, entity: str, attribute: str, *,
-    form: str | None = None, publish: bool = False, solution: str | None = None,
+    backend: D365Backend,
+    entity: str,
+    attribute: str,
+    *,
+    form: str | None = None,
+    publish: bool = False,
+    solution: str | None = None,
 ) -> dict[str, Any]:
     """Remove ``attribute``'s field from an entity form. Errors if absent."""
     form_row = _select_form(read_entity_forms(backend, entity), form)
-    new_xml = remove_field_from_formxml(
-        form_row.get("formxml", ""), datafieldname=attribute)
+    new_xml = remove_field_from_formxml(form_row.get("formxml", ""), datafieldname=attribute)
     return _commit_form_change(
-        backend, form_row, new_xml, action="remove-field",
-        publish=publish, solution=solution, extra={"attribute": attribute})
+        backend,
+        form_row,
+        new_xml,
+        action="remove-field",
+        publish=publish,
+        solution=solution,
+        extra={"attribute": attribute},
+    )
 
 
 def set_form_field(
-    backend: D365Backend, entity: str, attribute: str, *,
-    form: str | None = None, tab: str | None = None, section: str | None = None,
-    publish: bool = False, solution: str | None = None,
+    backend: D365Backend,
+    entity: str,
+    attribute: str,
+    *,
+    form: str | None = None,
+    tab: str | None = None,
+    section: str | None = None,
+    publish: bool = False,
+    solution: str | None = None,
 ) -> dict[str, Any]:
     """Relocate ``attribute``'s existing field to a different tab/section. Errors
-    (suggesting add-field) if the field is not already on the form."""
+    (suggesting add-field) if the field is not already on the form.
+    """
     form_row = _select_form(read_entity_forms(backend, entity), form)
     formxml = form_row.get("formxml", "")
     # Explicit presence pre-check: distinguish "field absent" (a user error worth a
     # hint) from any other transform failure (bad --tab/--section), which should
     # propagate unchanged — rather than fragile error-message matching.
     if _find_field_control(_parse_formxml(formxml), attribute) is None:
-        raise D365Error(
-            f"Field {attribute!r} is not on the form; use add-field to add it first.")
-    new_xml = move_field_in_formxml(
-        formxml, datafieldname=attribute, tab=tab, section=section)
+        raise D365Error(f"Field {attribute!r} is not on the form; use add-field to add it first.")
+    new_xml = move_field_in_formxml(formxml, datafieldname=attribute, tab=tab, section=section)
     return _commit_form_change(
-        backend, form_row, new_xml, action="set-field",
-        publish=publish, solution=solution,
-        extra={"attribute": attribute, "tab": tab, "section": section})
+        backend,
+        form_row,
+        new_xml,
+        action="set-field",
+        publish=publish,
+        solution=solution,
+        extra={"attribute": attribute, "tab": tab, "section": section},
+    )
 
 
 def add_form_tab(
-    backend: D365Backend, entity: str, name: str, *, label: str | None = None,
-    columns: int = 1, after: str | None = None, form: str | None = None,
-    publish: bool = False, solution: str | None = None,
+    backend: D365Backend,
+    entity: str,
+    name: str,
+    *,
+    label: str | None = None,
+    columns: int = 1,
+    after: str | None = None,
+    form: str | None = None,
+    publish: bool = False,
+    solution: str | None = None,
 ) -> dict[str, Any]:
     """Add a tab (with a starter section) to an entity form."""
     form_row = _select_form(read_entity_forms(backend, entity), form)
     new_xml = add_tab_to_formxml(
-        form_row.get("formxml", ""), name=name, label=label or name,
-        columns=columns, after=after)
+        form_row.get("formxml", ""), name=name, label=label or name, columns=columns, after=after
+    )
     return _commit_form_change(
-        backend, form_row, new_xml, action="add-tab", publish=publish,
+        backend,
+        form_row,
+        new_xml,
+        action="add-tab",
+        publish=publish,
         solution=solution,
-        extra={"tab": name, "label": label or name, "columns": columns,
-               "after": after})
+        extra={"tab": name, "label": label or name, "columns": columns, "after": after},
+    )
 
 
 def remove_form_tab(
-    backend: D365Backend, entity: str, tab: str, *, force: bool = False,
-    form: str | None = None, publish: bool = False, solution: str | None = None,
+    backend: D365Backend,
+    entity: str,
+    tab: str,
+    *,
+    force: bool = False,
+    form: str | None = None,
+    publish: bool = False,
+    solution: str | None = None,
 ) -> dict[str, Any]:
     """Remove a tab from an entity form (refuses the only tab, or a tab holding
-    bound fields unless ``force`` — which surfaces the orphaned fields)."""
+    bound fields unless ``force`` — which surfaces the orphaned fields).
+    """
     form_row = _select_form(read_entity_forms(backend, entity), form)
     formxml = form_row.get("formxml", "")
     orphans = _bound_fields_under(_resolve_target_tab(_parse_formxml(formxml), tab))
@@ -1209,108 +1338,205 @@ def remove_form_tab(
     if orphans:  # only reached when force=True (else remove_tab_from_formxml raised)
         extra["orphaned"] = orphans
     return _commit_form_change(
-        backend, form_row, new_xml, action="remove-tab", publish=publish,
-        solution=solution, extra=extra)
+        backend,
+        form_row,
+        new_xml,
+        action="remove-tab",
+        publish=publish,
+        solution=solution,
+        extra=extra,
+    )
 
 
 def rename_form_tab(
-    backend: D365Backend, entity: str, tab: str, *, label: str,
-    form: str | None = None, publish: bool = False, solution: str | None = None,
+    backend: D365Backend,
+    entity: str,
+    tab: str,
+    *,
+    label: str,
+    form: str | None = None,
+    publish: bool = False,
+    solution: str | None = None,
 ) -> dict[str, Any]:
     """Set a tab's display label on an entity form."""
     form_row = _select_form(read_entity_forms(backend, entity), form)
     new_xml = rename_tab_in_formxml(form_row.get("formxml", ""), tab=tab, label=label)
     return _commit_form_change(
-        backend, form_row, new_xml, action="rename-tab", publish=publish,
-        solution=solution, extra={"tab": tab, "label": label})
+        backend,
+        form_row,
+        new_xml,
+        action="rename-tab",
+        publish=publish,
+        solution=solution,
+        extra={"tab": tab, "label": label},
+    )
 
 
 def move_form_tab(
-    backend: D365Backend, entity: str, tab: str, *, after: str | None = None,
-    form: str | None = None, publish: bool = False, solution: str | None = None,
+    backend: D365Backend,
+    entity: str,
+    tab: str,
+    *,
+    after: str | None = None,
+    form: str | None = None,
+    publish: bool = False,
+    solution: str | None = None,
 ) -> dict[str, Any]:
     """Reorder a tab on an entity form (to the front, or after ``after``)."""
     form_row = _select_form(read_entity_forms(backend, entity), form)
     new_xml = move_tab_in_formxml(form_row.get("formxml", ""), tab=tab, after=after)
     return _commit_form_change(
-        backend, form_row, new_xml, action="move-tab", publish=publish,
-        solution=solution, extra={"tab": tab, "after": after})
+        backend,
+        form_row,
+        new_xml,
+        action="move-tab",
+        publish=publish,
+        solution=solution,
+        extra={"tab": tab, "after": after},
+    )
 
 
 def add_form_section(
-    backend: D365Backend, entity: str, name: str, *, tab: str | None = None,
-    label: str | None = None, columns: int = 1, after: str | None = None,
-    form: str | None = None, publish: bool = False, solution: str | None = None,
+    backend: D365Backend,
+    entity: str,
+    name: str,
+    *,
+    tab: str | None = None,
+    label: str | None = None,
+    columns: int = 1,
+    after: str | None = None,
+    form: str | None = None,
+    publish: bool = False,
+    solution: str | None = None,
 ) -> dict[str, Any]:
     """Add a section to a tab of an entity form (closes the 'no section to target'
-    gap for ``form add-field`` on a sectionless tab)."""
+    gap for ``form add-field`` on a sectionless tab).
+    """
     form_row = _select_form(read_entity_forms(backend, entity), form)
     new_xml = add_section_to_formxml(
-        form_row.get("formxml", ""), name=name, label=label or name, tab=tab,
-        columns=columns, after=after)
+        form_row.get("formxml", ""),
+        name=name,
+        label=label or name,
+        tab=tab,
+        columns=columns,
+        after=after,
+    )
     return _commit_form_change(
-        backend, form_row, new_xml, action="add-section", publish=publish,
+        backend,
+        form_row,
+        new_xml,
+        action="add-section",
+        publish=publish,
         solution=solution,
-        extra={"section": name, "tab": tab, "label": label or name,
-               "columns": columns, "after": after})
+        extra={
+            "section": name,
+            "tab": tab,
+            "label": label or name,
+            "columns": columns,
+            "after": after,
+        },
+    )
 
 
 def remove_form_section(
-    backend: D365Backend, entity: str, section: str, *, tab: str | None = None,
-    force: bool = False, form: str | None = None, publish: bool = False,
+    backend: D365Backend,
+    entity: str,
+    section: str,
+    *,
+    tab: str | None = None,
+    force: bool = False,
+    form: str | None = None,
+    publish: bool = False,
     solution: str | None = None,
 ) -> dict[str, Any]:
     """Remove a section from a tab of an entity form (refuses a section holding
-    bound fields unless ``force`` — which surfaces the orphaned fields)."""
+    bound fields unless ``force`` — which surfaces the orphaned fields).
+    """
     form_row = _select_form(read_entity_forms(backend, entity), form)
     formxml = form_row.get("formxml", "")
-    orphans = _bound_fields_under(
-        _resolve_target_section(_parse_formxml(formxml), tab, section))
-    new_xml = remove_section_from_formxml(
-        formxml, section=section, tab=tab, force=force)
+    orphans = _bound_fields_under(_resolve_target_section(_parse_formxml(formxml), tab, section))
+    new_xml = remove_section_from_formxml(formxml, section=section, tab=tab, force=force)
     extra: dict[str, Any] = {"section": section, "tab": tab}
     if orphans:  # only reached when force=True
         extra["orphaned"] = orphans
     return _commit_form_change(
-        backend, form_row, new_xml, action="remove-section", publish=publish,
-        solution=solution, extra=extra)
+        backend,
+        form_row,
+        new_xml,
+        action="remove-section",
+        publish=publish,
+        solution=solution,
+        extra=extra,
+    )
 
 
 def rename_form_section(
-    backend: D365Backend, entity: str, section: str, *, label: str,
-    tab: str | None = None, form: str | None = None, publish: bool = False,
+    backend: D365Backend,
+    entity: str,
+    section: str,
+    *,
+    label: str,
+    tab: str | None = None,
+    form: str | None = None,
+    publish: bool = False,
     solution: str | None = None,
 ) -> dict[str, Any]:
     """Set a section's display label on an entity form."""
     form_row = _select_form(read_entity_forms(backend, entity), form)
     new_xml = rename_section_in_formxml(
-        form_row.get("formxml", ""), section=section, label=label, tab=tab)
+        form_row.get("formxml", ""), section=section, label=label, tab=tab
+    )
     return _commit_form_change(
-        backend, form_row, new_xml, action="rename-section", publish=publish,
-        solution=solution, extra={"section": section, "tab": tab, "label": label})
+        backend,
+        form_row,
+        new_xml,
+        action="rename-section",
+        publish=publish,
+        solution=solution,
+        extra={"section": section, "tab": tab, "label": label},
+    )
 
 
 def move_form_section(
-    backend: D365Backend, entity: str, section: str, *, tab: str | None = None,
-    after: str | None = None, form: str | None = None, publish: bool = False,
+    backend: D365Backend,
+    entity: str,
+    section: str,
+    *,
+    tab: str | None = None,
+    after: str | None = None,
+    form: str | None = None,
+    publish: bool = False,
     solution: str | None = None,
 ) -> dict[str, Any]:
     """Reorder a section within its tab on an entity form."""
     form_row = _select_form(read_entity_forms(backend, entity), form)
     new_xml = move_section_in_formxml(
-        form_row.get("formxml", ""), section=section, tab=tab, after=after)
+        form_row.get("formxml", ""), section=section, tab=tab, after=after
+    )
     return _commit_form_change(
-        backend, form_row, new_xml, action="move-section", publish=publish,
-        solution=solution, extra={"section": section, "tab": tab, "after": after})
+        backend,
+        form_row,
+        new_xml,
+        action="move-section",
+        publish=publish,
+        solution=solution,
+        extra={"section": section, "tab": tab, "after": after},
+    )
 
 
 def set_form_field_props(
-    backend: D365Backend, entity: str, attribute: str, *,
+    backend: D365Backend,
+    entity: str,
+    attribute: str,
+    *,
     form: str | None = None,
-    locked: bool | None = None, disabled: bool | None = None,
-    show_label: bool | None = None, visible: bool | None = None,
+    locked: bool | None = None,
+    disabled: bool | None = None,
+    show_label: bool | None = None,
+    visible: bool | None = None,
     required: str | None = None,
-    publish: bool = False, solution: str | None = None,
+    publish: bool = False,
+    solution: str | None = None,
 ) -> dict[str, Any]:
     """Toggle presentation properties on ``attribute``'s existing form field.
 
@@ -1328,22 +1554,39 @@ def set_form_field_props(
         raise D365Error(
             f"Required-level is attribute metadata, not a form property; setting "
             f"it on a form has no effect. Use: crm metadata update-attribute "
-            f"{entity} {attribute} --required {required}")
+            f"{entity} {attribute} --required {required}"
+        )
     if locked is None and disabled is None and show_label is None and visible is None:
         raise D365Error(
             "Set at least one property: --locked/--unlocked, --disabled/--enabled, "
-            "--show-label/--no-show-label, or --visible/--hidden.")
+            "--show-label/--no-show-label, or --visible/--hidden."
+        )
     form_row = _select_form(read_entity_forms(backend, entity), form)
     # The transform raises a D365Error with the add-field hint if the field is
     # absent, so no separate presence pre-check is needed here.
     new_xml = set_field_props_in_formxml(
-        form_row.get("formxml", ""), datafieldname=attribute,
-        locked=locked, disabled=disabled, show_label=show_label, visible=visible)
+        form_row.get("formxml", ""),
+        datafieldname=attribute,
+        locked=locked,
+        disabled=disabled,
+        show_label=show_label,
+        visible=visible,
+    )
     return _commit_form_change(
-        backend, form_row, new_xml, action="set-field-props",
-        publish=publish, solution=solution,
-        extra={"attribute": attribute, "locked": locked, "disabled": disabled,
-               "show_label": show_label, "visible": visible})
+        backend,
+        form_row,
+        new_xml,
+        action="set-field-props",
+        publish=publish,
+        solution=solution,
+        extra={
+            "attribute": attribute,
+            "locked": locked,
+            "disabled": disabled,
+            "show_label": show_label,
+            "visible": visible,
+        },
+    )
 
 
 def _resolve_library_name(backend: D365Backend, library: str) -> str:
@@ -1359,26 +1602,45 @@ def _resolve_library_name(backend: D365Backend, library: str) -> str:
 
 
 def add_form_library(
-    backend: D365Backend, entity: str, library: str, *,
-    form: str | None = None, publish: bool = False, solution: str | None = None,
+    backend: D365Backend,
+    entity: str,
+    library: str,
+    *,
+    form: str | None = None,
+    publish: bool = False,
+    solution: str | None = None,
 ) -> dict[str, Any]:
     """Register a JS library on an entity form (idempotent). Errors if the web
-    resource does not exist."""
+    resource does not exist.
+    """
     library_name = _resolve_library_name(backend, library)
     form_row = _select_form(read_entity_forms(backend, entity), form)
-    new_xml = add_library_to_formxml(
-        form_row.get("formxml", ""), library_name=library_name)
+    new_xml = add_library_to_formxml(form_row.get("formxml", ""), library_name=library_name)
     return _commit_form_change(
-        backend, form_row, new_xml, action="add-library",
-        publish=publish, solution=solution,
-        extra={"attribute": library_name, "library": library_name})
+        backend,
+        form_row,
+        new_xml,
+        action="add-library",
+        publish=publish,
+        solution=solution,
+        extra={"attribute": library_name, "library": library_name},
+    )
 
 
 def add_form_handler(
-    backend: D365Backend, entity: str, *, event: str, function: str, library: str,
-    field: str | None = None, params: "tuple[str, ...]" = (),
-    pass_context: bool = True, enabled: bool = True,
-    form: str | None = None, publish: bool = False, solution: str | None = None,
+    backend: D365Backend,
+    entity: str,
+    *,
+    event: str,
+    function: str,
+    library: str,
+    field: str | None = None,
+    params: tuple[str, ...] = (),
+    pass_context: bool = True,
+    enabled: bool = True,
+    form: str | None = None,
+    publish: bool = False,
+    solution: str | None = None,
 ) -> dict[str, Any]:
     """Wire a JS event handler on an entity form, registering its library.
 
@@ -1388,33 +1650,58 @@ def add_form_handler(
     library_name = _resolve_library_name(backend, library)
     form_row = _select_form(read_entity_forms(backend, entity), form)
     new_xml = add_handler_to_formxml(
-        form_row.get("formxml", ""), event=event, function=function,
-        library_name=library_name, field=field, params=params,
-        pass_context=pass_context, enabled=enabled)
+        form_row.get("formxml", ""),
+        event=event,
+        function=function,
+        library_name=library_name,
+        field=field,
+        params=params,
+        pass_context=pass_context,
+        enabled=enabled,
+    )
     return _commit_form_change(
-        backend, form_row, new_xml, action="add-handler",
-        publish=publish, solution=solution,
-        extra={"attribute": function, "event": event, "library": library_name,
-               "field": field})
+        backend,
+        form_row,
+        new_xml,
+        action="add-handler",
+        publish=publish,
+        solution=solution,
+        extra={"attribute": function, "event": event, "library": library_name, "field": field},
+    )
 
 
 def remove_form_handler(
-    backend: D365Backend, entity: str, *, event: str, function: str,
+    backend: D365Backend,
+    entity: str,
+    *,
+    event: str,
+    function: str,
     field: str | None = None,
-    form: str | None = None, publish: bool = False, solution: str | None = None,
+    form: str | None = None,
+    publish: bool = False,
+    solution: str | None = None,
 ) -> dict[str, Any]:
     """Remove a JS event handler from an entity form. Errors if it is absent."""
     form_row = _select_form(read_entity_forms(backend, entity), form)
     new_xml = remove_handler_from_formxml(
-        form_row.get("formxml", ""), event=event, function=function, field=field)
+        form_row.get("formxml", ""), event=event, function=function, field=field
+    )
     return _commit_form_change(
-        backend, form_row, new_xml, action="remove-handler",
-        publish=publish, solution=solution,
-        extra={"attribute": function, "event": event, "field": field})
+        backend,
+        form_row,
+        new_xml,
+        action="remove-handler",
+        publish=publish,
+        solution=solution,
+        extra={"attribute": function, "event": event, "field": field},
+    )
 
 
 def list_form_handlers(
-    backend: D365Backend, entity: str, *, form: str | None = None,
+    backend: D365Backend,
+    entity: str,
+    *,
+    form: str | None = None,
 ) -> dict[str, Any]:
     """Report the JS event handlers wired on an entity form (read-only)."""
     form_row = _select_form(read_entity_forms(backend, entity), form)
@@ -1448,8 +1735,9 @@ def clone_form_to_entity(
         "name": form.get("name"),
         "objecttypecode": new_entity,
         "type": form.get("type"),
-        "formxml": regenerate_form_clone_ids(retarget_formxml(
-            form.get("formxml", ""), src_entity=src_entity, dst_entity=new_entity)),
+        "formxml": regenerate_form_clone_ids(
+            retarget_formxml(form.get("formxml", ""), src_entity=src_entity, dst_entity=new_entity)
+        ),
     }
     if form.get("description") is not None:
         body["description"] = form["description"]
@@ -1467,8 +1755,7 @@ def clone_form_to_entity(
         "objecttypecode": new_entity,
     }
     if formid is None:
-        out["form_lookup_error"] = (
-            f"Could not parse formid from response: {entity_id_url!r}")
+        out["form_lookup_error"] = f"Could not parse formid from response: {entity_id_url!r}"
     maybe_publish(backend, out, publish)
     return out
 
@@ -1485,55 +1772,60 @@ def clone_form_to_entity(
 # but differs is the reconcile slice (#793), out of scope here.
 
 
-def _tab_present(root: "ET.Element", name: str) -> bool:
+def _tab_present(root: ET.Element, name: str) -> bool:
     tabs = root.find("./tabs")
     return tabs is not None and any(t.get("name") == name for t in tabs.findall("tab"))
 
 
-def _section_present(root: "ET.Element", tab_name: str, section_name: str) -> bool:
+def _section_present(root: ET.Element, tab_name: str, section_name: str) -> bool:
     tabs = root.find("./tabs")
     if tabs is None:
         return False
     for tab in tabs.findall("tab"):
         if tab.get("name") != tab_name:
             continue
-        return any(s.get("name") == section_name
-                   for s in tab.findall("./columns/column/sections/section"))
+        return any(
+            s.get("name") == section_name for s in tab.findall("./columns/column/sections/section")
+        )
     return False
 
 
-def _library_present(root: "ET.Element", name: str) -> bool:
+def _library_present(root: ET.Element, name: str) -> bool:
     libs = root.find("formLibraries")
-    return libs is not None and any(
-        lib.get("name") == name for lib in libs.findall("Library"))
+    return libs is not None and any(lib.get("name") == name for lib in libs.findall("Library"))
 
 
-def _blocks(value: Any) -> "list[dict[str, Any]]":
+def _blocks(value: Any) -> list[dict[str, Any]]:
     """A spec sub-collection coerced to a list of mapping blocks (empty when
     absent). Validation (:mod:`crm.core.apply`) has already rejected a malformed
     shape, so this only narrows the ``Any`` from the parsed spec for the type
-    checker."""
+    checker.
+    """
     if not isinstance(value, list):
         return []
-    return [cast("dict[str, Any]", b) for b in cast("list[Any]", value)
-            if isinstance(b, dict)]
+    return [cast("dict[str, Any]", b) for b in cast("list[Any]", value) if isinstance(b, dict)]
 
 
 def _find_live_handler(
     formxml: str, *, event: str, function: str, field: str | None
-) -> "dict[str, Any] | None":
+) -> dict[str, Any] | None:
     """The wired handler matching this identity (event + function + onchange
-    field), or None — the same key :func:`add_handler_to_formxml` dedupes on."""
+    field), or None — the same key :func:`add_handler_to_formxml` dedupes on.
+    """
     for h in list_handlers_in_formxml(formxml):
-        if (h["event"] == event and h["function"] == function
-                and (h["field"] or None) == (field or None)):
+        if (
+            h["event"] == event
+            and h["function"] == function
+            and (h["field"] or None) == (field or None)
+        ):
             return h
     return None
 
 
-def _read_label(element: "ET.Element") -> str:
+def _read_label(element: ET.Element) -> str:
     """The base-language (1033) label description of a tab/section, or ``''`` when
-    it carries no label — the live value a declared label reconciles against."""
+    it carries no label — the live value a declared label reconciles against.
+    """
     labels = element.find("labels")
     if labels is None:
         return ""
@@ -1544,18 +1836,17 @@ def _read_label(element: "ET.Element") -> str:
     return (first.get("description") or "") if first is not None else ""
 
 
-def _field_location(
-    root: "ET.Element", datafieldname: str
-) -> "tuple[str | None, str | None]":
+def _field_location(root: ET.Element, datafieldname: str) -> tuple[str | None, str | None]:
     """The (tab name, section name) currently holding ``datafieldname``'s control,
     or ``(None, None)`` if the field is not on the form — the live placement a
-    declared field re-position reconciles against."""
+    declared field re-position reconciles against.
+    """
     control = _find_field_control(root, datafieldname)
     if control is None:
         return None, None
     parents = _parent_map(root)
-    section: "ET.Element | None" = None
-    tab: "ET.Element | None" = None
+    section: ET.Element | None = None
+    tab: ET.Element | None = None
     node = parents.get(control)
     while node is not None:
         if node.tag == "section" and section is None:
@@ -1564,17 +1855,19 @@ def _field_location(
             tab = node
             break
         node = parents.get(node)
-    return (tab.get("name") if tab is not None else None,
-            section.get("name") if section is not None else None)
+    return (
+        tab.get("name") if tab is not None else None,
+        section.get("name") if section is not None else None,
+    )
 
 
 def _reorder_declared(
     formxml: str,
-    declared: "list[str]",
+    declared: list[str],
     *,
-    live_order: "Callable[[str], list[str | None]]",
-    move: "Callable[[str, str, str], str]",
-    on_move: "Callable[[str, str], None]",
+    live_order: Callable[[str], list[str | None]],
+    move: Callable[[str, str, str], str],
+    on_move: Callable[[str, str], None],
 ) -> str:
     """Converge the *relative* order of the declared children to their declared
     sequence (ADR 0024 reconcile).
@@ -1599,9 +1892,11 @@ def _reorder_declared(
 
 
 def converge_declared_form(
-    backend: D365Backend, entity: str, form_row: dict[str, Any],
+    backend: D365Backend,
+    entity: str,
+    form_row: dict[str, Any],
     block: dict[str, Any],
-) -> "tuple[str, list[dict[str, Any]]]":
+) -> tuple[str, list[dict[str, Any]]]:
     """Converge a declared ``forms:`` block onto ``form_row``'s live formxml.
 
     Returns ``(new_formxml, changes)`` where each change is ``{kind, name, …}``
@@ -1635,31 +1930,49 @@ def converge_declared_form(
         root = _parse_formxml(formxml)
         if not _tab_present(root, tname):
             formxml = add_tab_to_formxml(
-                formxml, name=tname, label=tlabel, columns=int(tab.get("columns") or 1))
+                formxml, name=tname, label=tlabel, columns=int(tab.get("columns") or 1)
+            )
             changes.append({"kind": "tab", "name": tname})
         elif tab.get("label") is not None:
             cur = _read_label(_resolve_target_tab(root, tname))
             if tlabel != cur:
                 formxml = rename_tab_in_formxml(formxml, tab=tname, label=tlabel)
-                changes.append({"kind": "tab", "name": tname, "change": "converged",
-                                "diff": {"label": {"old": cur, "new": tlabel}}})
+                changes.append(
+                    {
+                        "kind": "tab",
+                        "name": tname,
+                        "change": "converged",
+                        "diff": {"label": {"old": cur, "new": tlabel}},
+                    }
+                )
         for section in _blocks(tab.get("sections")):
             sname = str(section["name"])
             slabel = str(section.get("label") or sname)
             root = _parse_formxml(formxml)
             if not _section_present(root, tname, sname):
                 formxml = add_section_to_formxml(
-                    formxml, name=sname, label=slabel, tab=tname,
-                    columns=int(section.get("columns") or 1))
+                    formxml,
+                    name=sname,
+                    label=slabel,
+                    tab=tname,
+                    columns=int(section.get("columns") or 1),
+                )
                 changes.append({"kind": "section", "name": sname, "tab": tname})
             elif section.get("label") is not None:
                 cur = _read_label(_resolve_target_section(root, tname, sname))
                 if slabel != cur:
                     formxml = rename_section_in_formxml(
-                        formxml, section=sname, label=slabel, tab=tname)
-                    changes.append({"kind": "section", "name": sname, "tab": tname,
-                                    "change": "converged",
-                                    "diff": {"label": {"old": cur, "new": slabel}}})
+                        formxml, section=sname, label=slabel, tab=tname
+                    )
+                    changes.append(
+                        {
+                            "kind": "section",
+                            "name": sname,
+                            "tab": tname,
+                            "change": "converged",
+                            "diff": {"label": {"old": cur, "new": slabel}},
+                        }
+                    )
             for fld in _blocks(section.get("fields")):
                 fname = str(fld["name"])
                 root = _parse_formxml(formxml)
@@ -1668,40 +1981,66 @@ def converge_declared_form(
                     classid = classid_for_attribute_type(str(info.get("AttributeType") or ""))
                     label = str(fld.get("label") or _attr_label(info, fname))
                     formxml = add_field_to_formxml(
-                        formxml, datafieldname=fname, classid=classid,
-                        label=label, tab=tname, section=sname)
-                    changes.append({"kind": "field", "name": fname, "tab": tname,
-                                    "section": sname})
+                        formxml,
+                        datafieldname=fname,
+                        classid=classid,
+                        label=label,
+                        tab=tname,
+                        section=sname,
+                    )
+                    changes.append({"kind": "field", "name": fname, "tab": tname, "section": sname})
                     continue
                 cur_tab, cur_section = _field_location(root, fname)
                 if (cur_tab, cur_section) != (tname, sname):
                     formxml = move_field_in_formxml(
-                        formxml, datafieldname=fname, tab=tname, section=sname)
-                    changes.append({"kind": "field", "name": fname, "change": "converged",
-                                    "diff": {"placement": {
-                                        "old": {"tab": cur_tab, "section": cur_section},
-                                        "new": {"tab": tname, "section": sname}}}})
+                        formxml, datafieldname=fname, tab=tname, section=sname
+                    )
+                    changes.append(
+                        {
+                            "kind": "field",
+                            "name": fname,
+                            "change": "converged",
+                            "diff": {
+                                "placement": {
+                                    "old": {"tab": cur_tab, "section": cur_section},
+                                    "new": {"tab": tname, "section": sname},
+                                }
+                            },
+                        }
+                    )
         # Converge the relative order of the declared sections within this tab.
         formxml = _reorder_declared(
-            formxml, [str(s["name"]) for s in _blocks(tab.get("sections"))],
+            formxml,
+            [str(s["name"]) for s in _blocks(tab.get("sections"))],
             live_order=lambda fx, tn=tname: [
-                s.get("name") for s in _resolve_target_tab(
-                    _parse_formxml(fx), tn
-                ).findall("./columns/column/sections/section")],
+                s.get("name")
+                for s in _resolve_target_tab(_parse_formxml(fx), tn).findall(
+                    "./columns/column/sections/section"
+                )
+            ],
             move=lambda fx, name, after, tn=tname: move_section_in_formxml(
-                fx, section=name, tab=tn, after=after),
+                fx, section=name, tab=tn, after=after
+            ),
             on_move=lambda a, b, tn=tname: changes.append(
-                {"kind": "section-order", "name": b, "tab": tn,
-                 "change": "converged", "diff": {"after": a}}))
+                {
+                    "kind": "section-order",
+                    "name": b,
+                    "tab": tn,
+                    "change": "converged",
+                    "diff": {"after": a},
+                }
+            ),
+        )
     # Converge the relative order of the declared top-level tabs.
     formxml = _reorder_declared(
-        formxml, [str(t["name"]) for t in _blocks(block.get("tabs"))],
-        live_order=lambda fx: [
-            t.get("name") for t in _parse_formxml(fx).findall("./tabs/tab")],
+        formxml,
+        [str(t["name"]) for t in _blocks(block.get("tabs"))],
+        live_order=lambda fx: [t.get("name") for t in _parse_formxml(fx).findall("./tabs/tab")],
         move=lambda fx, name, after: move_tab_in_formxml(fx, tab=name, after=after),
         on_move=lambda a, b: changes.append(
-            {"kind": "tab-order", "name": b, "change": "converged",
-             "diff": {"after": a}}))
+            {"kind": "tab-order", "name": b, "change": "converged", "diff": {"after": a}}
+        ),
+    )
     for lib in cast("list[Any]", block.get("libraries") or []):
         library_name = _resolve_library_name(backend, str(lib))
         if not _library_present(_parse_formxml(formxml), library_name):
@@ -1712,14 +2051,18 @@ def converge_declared_form(
         function = str(handler["function"])
         field = handler.get("field")
         field_str = str(field) if field is not None else None
-        live_h = _find_live_handler(
-            formxml, event=event, function=function, field=field_str)
+        live_h = _find_live_handler(formxml, event=event, function=function, field=field_str)
         if live_h is None:
             library_name = _resolve_library_name(backend, str(handler["library"]))
             formxml = add_handler_to_formxml(
-                formxml, event=event, function=function, library_name=library_name,
-                field=field_str, pass_context=bool(handler.get("pass_context", True)),
-                enabled=bool(handler.get("enabled", True)))
+                formxml,
+                event=event,
+                function=function,
+                library_name=library_name,
+                field=field_str,
+                pass_context=bool(handler.get("pass_context", True)),
+                enabled=bool(handler.get("enabled", True)),
+            )
             changes.append({"kind": "handler", "name": function, "event": event})
             continue
         diff: dict[str, Any] = {}
@@ -1728,17 +2071,33 @@ def converge_declared_form(
                 diff[key] = {"old": live_h[key], "new": bool(handler[key])}
         if diff:
             formxml = set_handler_props_in_formxml(
-                formxml, event=event, function=function, field=field_str,
+                formxml,
+                event=event,
+                function=function,
+                field=field_str,
                 enabled=diff["enabled"]["new"] if "enabled" in diff else None,
-                pass_context=diff["pass_context"]["new"] if "pass_context" in diff else None)
-            changes.append({"kind": "handler", "name": function, "event": event,
-                            "change": "converged", "diff": diff})
+                pass_context=diff["pass_context"]["new"] if "pass_context" in diff else None,
+            )
+            changes.append(
+                {
+                    "kind": "handler",
+                    "name": function,
+                    "event": event,
+                    "change": "converged",
+                    "diff": diff,
+                }
+            )
     return formxml, changes
 
 
 def apply_form_spec(
-    backend: D365Backend, entity: str, block: dict[str, Any], *,
-    publish: bool, solution: str | None, dry_run: bool,
+    backend: D365Backend,
+    entity: str,
+    block: dict[str, Any],
+    *,
+    publish: bool,
+    solution: str | None,
+    dry_run: bool,
 ) -> dict[str, Any]:
     """Converge one declared ``forms:`` block onto ``entity``'s main form.
 
@@ -1760,25 +2119,38 @@ def apply_form_spec(
     """
     forms_list = read_entity_forms(backend, entity)
     if not forms_list:
-        return {"form": block.get("name"), "components": [], "committed": False,
-                "blocked": [], "unmaterialized": True}
+        return {
+            "form": block.get("name"),
+            "components": [],
+            "committed": False,
+            "blocked": [],
+            "unmaterialized": True,
+        }
     try:
         form_row = _select_form(forms_list, block.get("name"))
     except D365Error as exc:
         # Identity/ownership divergence: the spec names a form that is not a single
         # existing main form. Refuse with no write and let the run continue (the
         # caller routes this to `replace_blocked`, exit 1, siblings still reconcile).
-        return {"form": block.get("name"), "components": [], "committed": False,
-                "blocked": [{"kind": "form", "name": block.get("name") or entity,
-                             "reason": str(exc)}]}
+        return {
+            "form": block.get("name"),
+            "components": [],
+            "committed": False,
+            "blocked": [{"kind": "form", "name": block.get("name") or entity, "reason": str(exc)}],
+        }
     new_xml, changes = converge_declared_form(backend, entity, form_row, block)
     committed = bool(changes) and not dry_run
     if committed:
         _commit_form_change(
-            backend, form_row, new_xml, action="apply-form",
-            publish=publish, solution=solution)
-    return {"form": form_row.get("name"), "formid": form_row.get("formid"),
-            "components": changes, "committed": committed, "blocked": []}
+            backend, form_row, new_xml, action="apply-form", publish=publish, solution=solution
+        )
+    return {
+        "form": form_row.get("name"),
+        "formid": form_row.get("formid"),
+        "components": changes,
+        "committed": committed,
+        "blocked": [],
+    }
 
 
 # --- `export-spec` form projection (ADR 0024 / ADR 0019 seedable invariant) ------
@@ -1804,19 +2176,20 @@ def apply_form_spec(
 # per-form override is not captured (mirrors the datetime-format attribute gap).
 
 
-def _form_label(element: "ET.Element") -> str:
+def _form_label(element: ET.Element) -> str:
     """The base-language (1033) ``<label>`` description of a tab/section, or "".
 
     The read inverse of :func:`_set_label`: lets the projector emit a tab/section
     label only when it differs from the element ``name`` (converge defaults an added
-    tab/section's label to its name, so a matching label is omitted as a default)."""
+    tab/section's label to its name, so a matching label is omitted as a default).
+    """
     labels = element.find("labels")
     if labels is None:
         return ""
     label_els = labels.findall("label")
     target = next(
-        (lab for lab in label_els
-         if lab.get("languagecode") == _LABEL_LANGUAGECODE), None)
+        (lab for lab in label_els if lab.get("languagecode") == _LABEL_LANGUAGECODE), None
+    )
     if target is None:
         target = label_els[0] if label_els else None
     return (target.get("description") or "") if target is not None else ""
@@ -1826,7 +2199,7 @@ def _project_form_block(
     form_row: dict[str, Any],
     custom_attr_types: dict[str, str],
     warnings: list[str],
-) -> "dict[str, Any] | None":
+) -> dict[str, Any] | None:
     """Project one main form's live formxml into a `forms:` block, or None.
 
     Emits the tabs/sections that carry a projected custom field, the registered
@@ -1864,7 +2237,8 @@ def _project_form_block(
                     warnings.append(
                         f"form {form_label!r}: dropped field {datafield!r} — its "
                         f"control type ({attr_type or 'unknown'}) is not one apply "
-                        f"can seed onto a form.")
+                        f"can seed onto a form."
+                    )
                     continue
                 fields_out.append({"name": datafield})
                 placed.add(datafield)
@@ -1899,25 +2273,28 @@ def _project_form_block(
             warnings.append(
                 f"form {form_label!r}: dropped handler {function!r} on event "
                 f"{event!r} — not a seedable form event "
-                f"({', '.join(EVENT_CHOICES)}).")
+                f"({', '.join(EVENT_CHOICES)})."
+            )
             continue
         if not function or not library:
-            warnings.append(
-                f"form {form_label!r}: dropped a handler with no function/library.")
+            warnings.append(f"form {form_label!r}: dropped a handler with no function/library.")
             continue
         if event == "onchange":
             if not field:
                 warnings.append(
-                    f"form {form_label!r}: dropped onchange handler {function!r} — "
-                    f"no bound field.")
+                    f"form {form_label!r}: dropped onchange handler {function!r} — no bound field."
+                )
                 continue
             if field in custom_attr_types and field not in placed:
                 warnings.append(
                     f"form {form_label!r}: dropped onchange handler {function!r} — "
-                    f"its field {field!r} is not seedable onto the form.")
+                    f"its field {field!r} is not seedable onto the form."
+                )
                 continue
         entry: dict[str, Any] = {
-            "event": event, "function": function, "library": library,
+            "event": event,
+            "function": function,
+            "library": library,
             "pass_context": bool(handler.get("pass_context")),
             "enabled": bool(handler.get("enabled")),
         }
@@ -1942,7 +2319,7 @@ def project_entity_forms(
     custom_attr_types: dict[str, str],
     warnings: list[str],
     skipped: list[dict[str, Any]],
-) -> "list[dict[str, Any]]":
+) -> list[dict[str, Any]]:
     """Project an entity's seedable main form into a one-entry `forms:` list (ADR 0024).
 
     Reads the entity's main forms (one GET) and projects the *seedable target* — the
@@ -1961,18 +2338,26 @@ def project_entity_forms(
     except D365Error as exc:
         # No single seedable target (ambiguous primary main form): none re-seedable.
         for form_row in forms_list:
-            skipped.append({
-                "type": "form", "objectid": form_row.get("formid"),
-                "reason": f"main form {form_row.get('name')!r} not projected: {exc}",
-            })
+            skipped.append(
+                {
+                    "type": "form",
+                    "objectid": form_row.get("formid"),
+                    "reason": f"main form {form_row.get('name')!r} not projected: {exc}",
+                }
+            )
         return []
     for form_row in forms_list:
         if form_row is not target:
-            skipped.append({
-                "type": "form", "objectid": form_row.get("formid"),
-                "reason": (f"additional main form {form_row.get('name')!r}: apply "
-                           "converges only the destination org's primary main form, "
-                           "so it cannot be re-seeded (ADR 0024)."),
-            })
+            skipped.append(
+                {
+                    "type": "form",
+                    "objectid": form_row.get("formid"),
+                    "reason": (
+                        f"additional main form {form_row.get('name')!r}: apply "
+                        "converges only the destination org's primary main form, "
+                        "so it cannot be re-seeded (ADR 0024)."
+                    ),
+                }
+            )
     block = _project_form_block(target, custom_attr_types, warnings)
     return [block] if block is not None else []

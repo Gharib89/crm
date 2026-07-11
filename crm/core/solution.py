@@ -17,10 +17,7 @@ import urllib.parse
 from pathlib import Path
 from typing import Any
 
-from crm.core import dependencies
-from crm.core import entity
-from crm.core import metadata_cache
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
+from crm.core import dependencies, entity, metadata_cache
 
 # ── Backward-compat re-exports ───────────────────────────────────────────────
 #
@@ -31,18 +28,32 @@ from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_litera
 # module — direct-internal tests for `solution_transfer` privates patch there.
 from crm.core.solution_components import (
     SOLUTION_COMPONENT_TYPES as SOLUTION_COMPONENT_TYPES,
+)
+from crm.core.solution_components import (
     component_type_name as component_type_name,
+)
+from crm.core.solution_components import (
     diff_components as diff_components,
+)
+from crm.core.solution_components import (
     layer_conflicts as layer_conflicts,
+)
+from crm.core.solution_components import (
     normalize_components as normalize_components,
 )
 from crm.core.solution_transfer import (
     export_solution as export_solution,
+)
+from crm.core.solution_transfer import (
     import_result as import_result,
+)
+from crm.core.solution_transfer import (
     import_solution as import_solution,
+)
+from crm.core.solution_transfer import (
     parse_import_job_data as parse_import_job_data,
 )
-
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 
 # ── Create publisher / solution ─────────────────────────────────────────────
 #
@@ -106,14 +117,20 @@ def create_publisher(
 
     existing = backend.get_collection(
         "publishers",
-        params={"$filter": f"uniquename eq {odata_literal(name)}",
-                "$select": "publisherid,uniquename"},
+        params={
+            "$filter": f"uniquename eq {odata_literal(name)}",
+            "$select": "publisherid,uniquename",
+        },
     )
     if existing and not backend.dry_run:
         if if_exists == "error":
             raise D365Error(f"Publisher {name!r} already exists.", code="AlreadyExists")
-        return {"skipped": True, "exists": True, "uniquename": name,
-                "publisherid": existing[0].get("publisherid")}
+        return {
+            "skipped": True,
+            "exists": True,
+            "uniquename": name,
+            "publisherid": existing[0].get("publisherid"),
+        }
 
     body: dict[str, Any] = {
         "uniquename": name,
@@ -128,13 +145,17 @@ def create_publisher(
         return result
     pub_id = result.get("_entity_id")
     out: dict[str, Any] = {
-        "created": True, "uniquename": name,
-        "friendlyname": friendly_name or name, "customizationprefix": prefix,
-        "customizationoptionvalueprefix": option_value_prefix, "publisherid": pub_id,
+        "created": True,
+        "uniquename": name,
+        "friendlyname": friendly_name or name,
+        "customizationprefix": prefix,
+        "customizationoptionvalueprefix": option_value_prefix,
+        "publisherid": pub_id,
     }
     if not pub_id:
         out["publisher_lookup_error"] = (
-            f"Could not parse publisherid from response: {result.get('entity_id_url')!r}")
+            f"Could not parse publisherid from response: {result.get('entity_id_url')!r}"
+        )
     return out
 
 
@@ -162,8 +183,10 @@ def create_solution(
 
     existing = backend.get_collection(
         "solutions",
-        params={"$filter": f"uniquename eq {odata_literal(name)}",
-                "$select": "solutionid,uniquename"},
+        params={
+            "$filter": f"uniquename eq {odata_literal(name)}",
+            "$select": "solutionid,uniquename",
+        },
     )
     # The skip/error short-circuit below only fires on a real (non-dry) run. Every
     # path that reaches the POST — including the dry-run preview — needs the
@@ -173,14 +196,17 @@ def create_solution(
     pub_id = publisher_id
     if not will_short_circuit and not pub_id:
         if not publisher_unique_name:
-            raise D365Error(
-                "a publisher is required: pass publisher_unique_name or publisher_id.")
+            raise D365Error("a publisher is required: pass publisher_unique_name or publisher_id.")
         pub_id = _resolve_publisher_id(backend, publisher_unique_name)
     if existing and not backend.dry_run:
         if if_exists == "error":
             raise D365Error(f"Solution {name!r} already exists.", code="AlreadyExists")
-        return {"skipped": True, "exists": True, "uniquename": name,
-                "solutionid": existing[0].get("solutionid")}
+        return {
+            "skipped": True,
+            "exists": True,
+            "uniquename": name,
+            "solutionid": existing[0].get("solutionid"),
+        }
 
     body: dict[str, Any] = {
         "uniquename": name,
@@ -195,12 +221,17 @@ def create_solution(
         return result
     sol_id = result.get("_entity_id")
     out: dict[str, Any] = {
-        "created": True, "uniquename": name, "friendlyname": friendly_name or name,
-        "version": version, "publisherid": pub_id, "solutionid": sol_id,
+        "created": True,
+        "uniquename": name,
+        "friendlyname": friendly_name or name,
+        "version": version,
+        "publisherid": pub_id,
+        "solutionid": sol_id,
     }
     if not sol_id:
         out["solution_lookup_error"] = (
-            f"Could not parse solutionid from response: {result.get('entity_id_url')!r}")
+            f"Could not parse solutionid from response: {result.get('entity_id_url')!r}"
+        )
     return out
 
 
@@ -302,8 +333,7 @@ def _bump_revision(version: str) -> str:
     """
     if not re.fullmatch(r"\d+\.\d+\.\d+\.\d+", version):
         raise D365Error(
-            f"cannot auto-bump a non 4-part dotted version {version!r}; "
-            "pass an explicit version."
+            f"cannot auto-bump a non 4-part dotted version {version!r}; pass an explicit version."
         )
     parts = version.split(".")
     parts[3] = str(int(parts[3]) + 1)
@@ -329,9 +359,7 @@ def update_solution(
     if version is None and friendly_name is None and description is None:
         raise D365Error("nothing to update: pass version, friendly_name, or description.")
     if version is not None and not re.fullmatch(r"\d+\.\d+\.\d+\.\d+", version):
-        raise D365Error(
-            f"version must be a 4-part dotted numeric (e.g. 1.0.0.0); got {version!r}."
-        )
+        raise D365Error(f"version must be a 4-part dotted numeric (e.g. 1.0.0.0); got {version!r}.")
 
     info = solution_info(backend, unique_name)
     sol_id = info["solutionid"]
@@ -374,7 +402,8 @@ def resolve_component_type(value: str | int) -> int:
     """Resolve a component-type `value` (int, numeric string, or friendly name)
     to its `componenttype` integer. Names are matched case- and separator-
     insensitively against SOLUTION_COMPONENT_TYPES. Raises D365Error on an
-    unknown name."""
+    unknown name.
+    """
     if isinstance(value, int):
         return value
     text = value.strip()
@@ -390,11 +419,10 @@ def resolve_component_type(value: str | int) -> int:
         ) from None
 
 
-def _require_unmanaged_solution(
-    backend: D365Backend, solution: str, *, verb: str
-) -> None:
+def _require_unmanaged_solution(backend: D365Backend, solution: str, *, verb: str) -> None:
     """Forced-real solution_info pre-flight (works under dry-run too); raise if the
-    target is managed. `verb` is the action phrase, e.g. 'added to'."""
+    target is managed. `verb` is the action phrase, e.g. 'added to'.
+    """
     info = solution_info(backend, solution)
     if info.get("ismanaged"):
         raise D365Error(
@@ -434,8 +462,12 @@ def add_solution_component(
         result["component_id"] = component_id
         result["component_type"] = component_type
         return result
-    return {"added": True, "solution": solution, "component_id": component_id,
-            "component_type": component_type}
+    return {
+        "added": True,
+        "solution": solution,
+        "component_id": component_id,
+        "component_type": component_type,
+    }
 
 
 def remove_solution_component(
@@ -471,8 +503,12 @@ def remove_solution_component(
         result["component_id"] = component_id
         result["component_type"] = component_type
         return result
-    return {"removed": True, "solution": solution, "component_id": component_id,
-            "component_type": component_type}
+    return {
+        "removed": True,
+        "solution": solution,
+        "component_id": component_id,
+        "component_type": component_type,
+    }
 
 
 def list_solutions(backend: D365Backend, *, managed: bool | None = None) -> list[dict[str, Any]]:
@@ -509,9 +545,7 @@ def solution_components(backend: D365Backend, unique_name: str) -> list[dict[str
     return backend.get_collection("solutioncomponents", params=params)
 
 
-def retrieve_missing_components(
-    backend: D365Backend, solution_file: "str | Path"
-) -> dict[str, Any]:
+def retrieve_missing_components(backend: D365Backend, solution_file: str | Path) -> dict[str, Any]:
     """List components an exported solution needs that the connected org lacks.
 
     ``solution_file`` is a path to an exported solution ``.zip``. Its bytes are
@@ -568,10 +602,12 @@ def publish_xml(backend: D365Backend, parameter_xml: str) -> dict[str, Any]:
     """
     if not parameter_xml or "<" not in parameter_xml:
         raise D365Error("parameter_xml must be a Publish Request XML document.")
-    result = as_dict(backend.post(
-        "PublishXml",
-        json_body={"ParameterXml": parameter_xml},
-    ))
+    result = as_dict(
+        backend.post(
+            "PublishXml",
+            json_body={"ParameterXml": parameter_xml},
+        )
+    )
     # Bust the cache on any successful non-dry-run publish, regardless of body
     # (see publish_all — the dry-run preview is truthy and must not invalidate).
     if not backend.dry_run:

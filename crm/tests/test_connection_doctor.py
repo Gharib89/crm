@@ -7,6 +7,7 @@ monkeypatch `socket.create_connection` (looked up as
 `crm.core.connection.socket.create_connection`) in every test that needs to
 reach steps 2-5.
 """
+
 from __future__ import annotations
 
 import socket
@@ -21,7 +22,9 @@ from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
 _BASE = "https://internalcrm.contoso.local/Contoso"
 
 
-def _backend(url: str = _BASE, *, api_version: str = "v9.2", verify_ssl: bool = True) -> D365Backend:
+def _backend(
+    url: str = _BASE, *, api_version: str = "v9.2", verify_ssl: bool = True
+) -> D365Backend:
     profile = ConnectionProfile(
         name="t",
         url=url,
@@ -43,9 +46,7 @@ class _DummySock:
 @pytest.fixture
 def socket_ok(monkeypatch):
     """Make the raw socket step succeed so tests can reach the HTTP layers."""
-    monkeypatch.setattr(
-        conn.socket, "create_connection", lambda *a, **k: _DummySock()
-    )
+    monkeypatch.setattr(conn.socket, "create_connection", lambda *a, **k: _DummySock())
 
 
 def _by_name(result):
@@ -216,7 +217,9 @@ def test_tls_probes_even_when_verify_disabled(socket_ok):
         api_base_hits = [
             # match the path case-insensitively — don't depend on requests_mock's
             # path-casing (it lowercases r.path); URLs are registered cased.
-            r for r in m.request_history if r.path.lower().endswith("/api/data/v9.2/")
+            r
+            for r in m.request_history
+            if r.path.lower().endswith("/api/data/v9.2/")
         ]
         assert len(api_base_hits) == 1
     checks = _by_name(result)
@@ -521,10 +524,16 @@ class TestProfileStructuralProblem:
     def _ntlm(self, url="https://host.contoso.local/org", username="u"):
         return ConnectionProfile(name="t", url=url, domain="D", username=username)
 
-    def _oauth(self, tenant_id="tid", client_id: "str | None" = "cid"):
-        return ConnectionProfile(name="t", url="https://org.crm.dynamics.com",
-                                 domain="", username="", auth_scheme="oauth",
-                                 tenant_id=tenant_id, client_id=client_id)
+    def _oauth(self, tenant_id="tid", client_id: str | None = "cid"):
+        return ConnectionProfile(
+            name="t",
+            url="https://org.crm.dynamics.com",
+            domain="",
+            username="",
+            auth_scheme="oauth",
+            tenant_id=tenant_id,
+            client_id=client_id,
+        )
 
     def test_plausible_ntlm_is_none(self):
         assert conn.profile_structural_problem(self._ntlm(), has_secret=True) is None

@@ -12,6 +12,7 @@ contracts are verified against the op-9-1 / Dataverse references:
 
 All HTTP is mocked via requests_mock; no live D365 server.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -24,7 +25,6 @@ from click.testing import CliRunner
 from crm.cli import cli
 from crm.core import solution as sol_mod
 from crm.utils.d365_backend import D365Error
-
 
 _PATCH_ID = "33333333-3333-3333-3333-333333333333"
 _SOL_ID = "22222222-2222-2222-2222-222222222222"
@@ -40,13 +40,22 @@ def _posts(m):
 class TestCloneAsPatch:
     def test_posts_expected_body_and_parses_id(self, backend):
         with requests_mock.Mocker() as m:
-            m.get(backend.url_for("solutions"),
-                  json={"value": [{"solutionid": _SOL_ID, "uniquename": "CRMWorx",
-                                   "friendlyname": "CRM Worx", "version": "1.0.0.0",
-                                   "ismanaged": False}]})
+            m.get(
+                backend.url_for("solutions"),
+                json={
+                    "value": [
+                        {
+                            "solutionid": _SOL_ID,
+                            "uniquename": "CRMWorx",
+                            "friendlyname": "CRM Worx",
+                            "version": "1.0.0.0",
+                            "ismanaged": False,
+                        }
+                    ]
+                },
+            )
             m.post(backend.url_for("CloneAsPatch"), json={"SolutionId": _PATCH_ID})
-            out = sol_mod.clone_as_patch(
-                backend, parent_solution="CRMWorx", version="1.0.0.1")
+            out = sol_mod.clone_as_patch(backend, parent_solution="CRMWorx", version="1.0.0.1")
         assert out["cloned"] is True
         assert out["patch_solutionid"] == _PATCH_ID
         body = _posts(m)[-1].json()
@@ -55,10 +64,20 @@ class TestCloneAsPatch:
 
     def test_auto_bumps_revision_when_version_omitted(self, backend):
         with requests_mock.Mocker() as m:
-            m.get(backend.url_for("solutions"),
-                  json={"value": [{"solutionid": _SOL_ID, "uniquename": "CRMWorx",
-                                   "friendlyname": "CRM Worx", "version": "2.3.4.5",
-                                   "ismanaged": False}]})
+            m.get(
+                backend.url_for("solutions"),
+                json={
+                    "value": [
+                        {
+                            "solutionid": _SOL_ID,
+                            "uniquename": "CRMWorx",
+                            "friendlyname": "CRM Worx",
+                            "version": "2.3.4.5",
+                            "ismanaged": False,
+                        }
+                    ]
+                },
+            )
             m.post(backend.url_for("CloneAsPatch"), json={"SolutionId": _PATCH_ID})
             out = sol_mod.clone_as_patch(backend, parent_solution="CRMWorx")
         # revision (4th part) bumped; major.minor preserved
@@ -67,20 +86,40 @@ class TestCloneAsPatch:
 
     def test_display_name_defaults_to_parent_friendlyname(self, backend):
         with requests_mock.Mocker() as m:
-            m.get(backend.url_for("solutions"),
-                  json={"value": [{"solutionid": _SOL_ID, "uniquename": "CRMWorx",
-                                   "friendlyname": "CRM Worx", "version": "1.0.0.0",
-                                   "ismanaged": False}]})
+            m.get(
+                backend.url_for("solutions"),
+                json={
+                    "value": [
+                        {
+                            "solutionid": _SOL_ID,
+                            "uniquename": "CRMWorx",
+                            "friendlyname": "CRM Worx",
+                            "version": "1.0.0.0",
+                            "ismanaged": False,
+                        }
+                    ]
+                },
+            )
             m.post(backend.url_for("CloneAsPatch"), json={"SolutionId": _PATCH_ID})
             sol_mod.clone_as_patch(backend, parent_solution="CRMWorx", version="1.0.0.1")
         assert _posts(m)[-1].json()["DisplayName"] == "CRM Worx"
 
     def test_dry_run_previews_no_post(self, dry_backend):
         with requests_mock.Mocker() as m:
-            m.get(dry_backend.url_for("solutions"),
-                  json={"value": [{"solutionid": _SOL_ID, "uniquename": "CRMWorx",
-                                   "friendlyname": "CRM Worx", "version": "1.0.0.0",
-                                   "ismanaged": False}]})
+            m.get(
+                dry_backend.url_for("solutions"),
+                json={
+                    "value": [
+                        {
+                            "solutionid": _SOL_ID,
+                            "uniquename": "CRMWorx",
+                            "friendlyname": "CRM Worx",
+                            "version": "1.0.0.0",
+                            "ismanaged": False,
+                        }
+                    ]
+                },
+            )
             out = sol_mod.clone_as_patch(dry_backend, parent_solution="CRMWorx")
         assert out["_dry_run"] is True
         assert "cloned" not in out
@@ -142,9 +181,12 @@ def _dels(m):
 
 class TestUninstall:
     def _mock_info(self, m, backend, managed=True):
-        m.get(backend.url_for("solutions"),
-              json={"value": [{"solutionid": _SOL_ID, "uniquename": "ManagedApp",
-                               "ismanaged": managed}]})
+        m.get(
+            backend.url_for("solutions"),
+            json={
+                "value": [{"solutionid": _SOL_ID, "uniquename": "ManagedApp", "ismanaged": managed}]
+            },
+        )
 
     def test_no_blockers_deletes(self, backend):
         with requests_mock.Mocker() as m:
@@ -161,9 +203,14 @@ class TestUninstall:
 
     def test_blockers_refuse_no_delete(self, backend):
         with requests_mock.Mocker() as m:
-            m.get(requests_mock.ANY,
-                  json={"value": [{"dependentcomponenttype": 1,
-                                   "dependentcomponentobjectid": _PATCH_ID}]})
+            m.get(
+                requests_mock.ANY,
+                json={
+                    "value": [
+                        {"dependentcomponenttype": 1, "dependentcomponentobjectid": _PATCH_ID}
+                    ]
+                },
+            )
             self._mock_info(m, backend)
             m.delete(backend.url_for(f"solutions({_SOL_ID})"), status_code=204)
             with pytest.raises(D365Error, match="blocker"):
@@ -172,9 +219,14 @@ class TestUninstall:
 
     def test_force_deletes_despite_blockers(self, backend):
         with requests_mock.Mocker() as m:
-            m.get(requests_mock.ANY,
-                  json={"value": [{"dependentcomponenttype": 1,
-                                   "dependentcomponentobjectid": _PATCH_ID}]})
+            m.get(
+                requests_mock.ANY,
+                json={
+                    "value": [
+                        {"dependentcomponenttype": 1, "dependentcomponentobjectid": _PATCH_ID}
+                    ]
+                },
+            )
             self._mock_info(m, backend)
             m.delete(backend.url_for(f"solutions({_SOL_ID})"), status_code=204)
             out = sol_mod.uninstall_solution(backend, "ManagedApp", force=True)
@@ -211,9 +263,16 @@ class TestCloneAsPatchCommand:
 
         monkeypatch.setattr("crm.core.solution.clone_as_patch", fake)
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-        result = CliRunner().invoke(cli, [
-            "--json", "solution", "clone-as-patch", "--solution", "CRMWorx",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "solution",
+                "clone-as-patch",
+                "--solution",
+                "CRMWorx",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert captured["parent_solution"] == "CRMWorx"
         assert json.loads(result.output)["data"]["patch_solutionid"] == _PATCH_ID
@@ -224,9 +283,16 @@ class TestCloneAsPatchCommand:
 
         monkeypatch.setattr("crm.core.solution.clone_as_patch", boom)
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-        result = CliRunner().invoke(cli, [
-            "--json", "solution", "clone-as-patch", "--solution", "CRMWorx",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "solution",
+                "clone-as-patch",
+                "--solution",
+                "CRMWorx",
+            ],
+        )
         assert result.exit_code == 1, result.output
         assert json.loads(result.output)["ok"] is False
 
@@ -241,10 +307,18 @@ class TestUninstallCommand:
 
         monkeypatch.setattr("crm.core.solution.uninstall_solution", fake)
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-        result = CliRunner().invoke(cli, [
-            "--json", "solution", "uninstall", "--solution", "ManagedApp",
-            "--force", "--yes",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "solution",
+                "uninstall",
+                "--solution",
+                "ManagedApp",
+                "--force",
+                "--yes",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert captured == {"unique_name": "ManagedApp", "force": True}
 
@@ -252,12 +326,20 @@ class TestUninstallCommand:
         # Under --json there is no interactive prompt: the helper must fail fast
         # with a clean envelope naming --yes.
         called = {"core": False}
-        monkeypatch.setattr("crm.core.solution.uninstall_solution",
-                            lambda *a, **k: called.update(core=True))
+        monkeypatch.setattr(
+            "crm.core.solution.uninstall_solution", lambda *a, **k: called.update(core=True)
+        )
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-        result = CliRunner().invoke(cli, [
-            "--json", "solution", "uninstall", "--solution", "ManagedApp",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "solution",
+                "uninstall",
+                "--solution",
+                "ManagedApp",
+            ],
+        )
         assert result.exit_code == 1, result.output
         assert called["core"] is False
         assert '"ok": false' in result.output
@@ -276,12 +358,20 @@ class TestStageAndUpgradeCommand:
 
         promoted = {"called": False}
         monkeypatch.setattr("crm.core.solution.import_solution", fake_import)
-        monkeypatch.setattr("crm.core.solution.delete_and_promote",
-                            lambda *a, **k: promoted.update(called=True))
+        monkeypatch.setattr(
+            "crm.core.solution.delete_and_promote", lambda *a, **k: promoted.update(called=True)
+        )
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-        result = CliRunner().invoke(cli, [
-            "--json", "solution", "stage-and-upgrade", str(zip_path), "--yes",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "solution",
+                "stage-and-upgrade",
+                str(zip_path),
+                "--yes",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert captured["holding_solution"] is True
         assert promoted["called"] is False  # no --promote → stage only
@@ -291,35 +381,53 @@ class TestStageAndUpgradeCommand:
 
     def test_skip_dependency_check_threads_to_import(self, monkeypatch, tmp_path):
         """`stage-and-upgrade --skip-dependency-check` wires through to
-        import_solution(skip_dependency_check=True), like `solution import` (#706)."""
+        import_solution(skip_dependency_check=True), like `solution import` (#706).
+        """
         zip_path = tmp_path / "up.zip"
         zip_path.write_bytes(b"PK\x03\x04stub")
         captured = {}
         monkeypatch.setattr(
             "crm.core.solution.import_solution",
-            lambda backend, path, **kw: captured.update(kw) or {"status": "succeeded"})
+            lambda backend, path, **kw: captured.update(kw) or {"status": "succeeded"},
+        )
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-        result = CliRunner().invoke(cli, [
-            "--json", "solution", "stage-and-upgrade", str(zip_path),
-            "--skip-dependency-check", "--yes",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "solution",
+                "stage-and-upgrade",
+                str(zip_path),
+                "--skip-dependency-check",
+                "--yes",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert captured["skip_dependency_check"] is True
 
     def test_formatted_threads_to_import(self, monkeypatch, tmp_path):
         """`stage-and-upgrade --formatted` wires through to
-        import_solution(formatted=True), like `solution import` (#706)."""
+        import_solution(formatted=True), like `solution import` (#706).
+        """
         zip_path = tmp_path / "up.zip"
         zip_path.write_bytes(b"PK\x03\x04stub")
         captured = {}
         monkeypatch.setattr(
             "crm.core.solution.import_solution",
-            lambda backend, path, **kw: captured.update(kw) or {"status": "succeeded"})
+            lambda backend, path, **kw: captured.update(kw) or {"status": "succeeded"},
+        )
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-        result = CliRunner().invoke(cli, [
-            "--json", "solution", "stage-and-upgrade", str(zip_path),
-            "--formatted", "--yes",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "solution",
+                "stage-and-upgrade",
+                str(zip_path),
+                "--formatted",
+                "--yes",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert captured["formatted"] is True
 
@@ -327,24 +435,43 @@ class TestStageAndUpgradeCommand:
         zip_path = tmp_path / "up.zip"
         zip_path.write_bytes(b"PK\x03\x04stub")
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-        result = CliRunner().invoke(cli, [
-            "--json", "solution", "stage-and-upgrade", str(zip_path),
-            "--promote", "--yes",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "solution",
+                "stage-and-upgrade",
+                str(zip_path),
+                "--promote",
+                "--yes",
+            ],
+        )
         assert result.exit_code == 2, result.output
 
     def test_promote_orchestrates_delete_and_promote(self, monkeypatch, tmp_path):
         zip_path = tmp_path / "up.zip"
         zip_path.write_bytes(b"PK\x03\x04stub")
-        monkeypatch.setattr("crm.core.solution.import_solution",
-                            lambda backend, path, **kw: {"status": "succeeded"})
-        monkeypatch.setattr("crm.core.solution.delete_and_promote",
-                            lambda backend, name: {"promoted": True, "solution": name})
+        monkeypatch.setattr(
+            "crm.core.solution.import_solution", lambda backend, path, **kw: {"status": "succeeded"}
+        )
+        monkeypatch.setattr(
+            "crm.core.solution.delete_and_promote",
+            lambda backend, name: {"promoted": True, "solution": name},
+        )
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-        result = CliRunner().invoke(cli, [
-            "--json", "solution", "stage-and-upgrade", str(zip_path),
-            "--promote", "--solution", "ManagedApp", "--yes",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "solution",
+                "stage-and-upgrade",
+                str(zip_path),
+                "--promote",
+                "--solution",
+                "ManagedApp",
+                "--yes",
+            ],
+        )
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["promote"]["promoted"] is True
@@ -360,9 +487,16 @@ class TestApplyUpgradeCommand:
 
         monkeypatch.setattr("crm.core.solution.delete_and_promote", fake)
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-        result = CliRunner().invoke(cli, [
-            "--json", "solution", "apply-upgrade", "ManagedApp", "--yes",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "solution",
+                "apply-upgrade",
+                "ManagedApp",
+                "--yes",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert captured == {"name": "ManagedApp"}
         assert json.loads(result.output)["data"]["promoted"] is True
@@ -371,12 +505,19 @@ class TestApplyUpgradeCommand:
         # Under --json there is no interactive prompt: the helper must fail fast
         # with a clean envelope naming --yes.
         called = {"core": False}
-        monkeypatch.setattr("crm.core.solution.delete_and_promote",
-                            lambda *a, **k: called.update(core=True))
+        monkeypatch.setattr(
+            "crm.core.solution.delete_and_promote", lambda *a, **k: called.update(core=True)
+        )
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-        result = CliRunner().invoke(cli, [
-            "--json", "solution", "apply-upgrade", "ManagedApp",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "solution",
+                "apply-upgrade",
+                "ManagedApp",
+            ],
+        )
         assert result.exit_code == 1, result.output
         assert called["core"] is False
         assert '"ok": false' in result.output
@@ -388,9 +529,16 @@ class TestApplyUpgradeCommand:
 
         monkeypatch.setattr("crm.core.solution.delete_and_promote", boom)
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-        result = CliRunner().invoke(cli, [
-            "--json", "solution", "apply-upgrade", "ManagedApp", "--yes",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "solution",
+                "apply-upgrade",
+                "ManagedApp",
+                "--yes",
+            ],
+        )
         assert result.exit_code == 1, result.output
         assert json.loads(result.output)["ok"] is False
 
@@ -400,9 +548,17 @@ class TestApplyUpgradeCommand:
         # no real promote happens.
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: dry_backend)
         with requests_mock.Mocker() as m:
-            result = CliRunner().invoke(cli, [
-                "--json", "--dry-run", "solution", "apply-upgrade", "ManagedApp", "--yes",
-            ])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "--dry-run",
+                    "solution",
+                    "apply-upgrade",
+                    "ManagedApp",
+                    "--yes",
+                ],
+            )
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["_dry_run"] is True

@@ -1,4 +1,5 @@
 """Entity form commands — issue #151."""
+
 # pyright: basic
 from __future__ import annotations
 
@@ -6,36 +7,50 @@ from pathlib import Path
 
 import click
 
-from crm.core import forms as forms_mod
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
-    _publish_option,
-    d365_errors, _journal, _emit_with_warning,
-    _solution_option, _resolve_solution, _resolve_publish,
+    _emit_with_warning,
+    _journal,
     _output_option,
+    _publish_option,
+    _resolve_publish,
+    _resolve_solution,
+    _solution_option,
+    d365_errors,
 )
+from crm.core import forms as forms_mod
 
 _form_option = click.option(
-    "--form", "form",
+    "--form",
+    "form",
     help="Target form by name or id (default: the sole main form, or the "
-         "primary form if the entity has several).")
-_tab_option = click.option(
-    "--tab", help="Target tab by name or id (default: the first tab).")
+    "primary form if the entity has several).",
+)
+_tab_option = click.option("--tab", help="Target tab by name or id (default: the first tab).")
 _section_option = click.option(
-    "--section", help="Target section by name or id (default: the first section).")
+    "--section", help="Target section by name or id (default: the first section)."
+)
 _label_option = click.option(
-    "--label", help="Display label for the new tab/section (default: its name).")
+    "--label", help="Display label for the new tab/section (default: its name)."
+)
 _columns_option = click.option(
-    "--columns", type=int, default=1, show_default=True,
-    help="Layout columns (1-4): a new tab's layout columns, or a new section's "
-         "cell columns.")
+    "--columns",
+    type=int,
+    default=1,
+    show_default=True,
+    help="Layout columns (1-4): a new tab's layout columns, or a new section's cell columns.",
+)
 _after_option = click.option(
-    "--after", help="Place/move after this sibling tab or section (by name or "
-                    "id). Add appends to the end by default; move goes first.")
+    "--after",
+    help="Place/move after this sibling tab or section (by name or "
+    "id). Add appends to the end by default; move goes first.",
+)
 _force_option = click.option(
-    "--force", is_flag=True,
+    "--force",
+    is_flag=True,
     help="Remove even if it still holds bound fields (orphaning them; the "
-         "orphaned fields are surfaced in the output).")
+    "orphaned fields are surfaced in the output).",
+)
 
 
 @click.group("form")
@@ -43,9 +58,7 @@ def form_group():
     """Read and clone entity forms."""
 
 
-def _resolve_single_form(
-    ctx: CLIContext, forms: list[dict], form_name: str
-) -> dict | None:
+def _resolve_single_form(ctx: CLIContext, forms: list[dict], form_name: str) -> dict | None:
     """Filter forms to exactly one match by name.
 
     On 0 or >1 matches, emits the error envelope via ``ctx.emit(False, ...)``,
@@ -58,13 +71,14 @@ def _resolve_single_form(
         ctx.emit(False, error=f"No form named {form_name!r} found.")
         return None  # unreachable: emit(False) raises Exit
     if len(matches) > 1:
-        details = ", ".join(
-            f"formid={m['formid']!r} type={m['type']}" for m in matches
+        details = ", ".join(f"formid={m['formid']!r} type={m['type']}" for m in matches)
+        ctx.emit(
+            False,
+            error=(
+                f"Ambiguous: {len(matches)} forms named {form_name!r} — "
+                f"cannot pick one automatically. Matches: {details}"
+            ),
         )
-        ctx.emit(False, error=(
-            f"Ambiguous: {len(matches)} forms named {form_name!r} — "
-            f"cannot pick one automatically. Matches: {details}"
-        ))
         return None  # unreachable: emit(False) raises Exit
     return matches[0]
 
@@ -72,14 +86,24 @@ def _resolve_single_form(
 @form_group.command("list")
 @click.argument("entity")
 @click.option(
-    "--type", "form_types", multiple=True,
+    "--type",
+    "form_types",
+    multiple=True,
     type=click.Choice(list(forms_mod.FORM_TYPE_BY_NAME), case_sensitive=False),
-    help="Form type to list (repeatable). Default: main.")
-@click.option("--all", "all_types", is_flag=True,
-              help="List every form type (cannot be combined with --type).")
+    help="Form type to list (repeatable). Default: main.",
+)
+@click.option(
+    "--all",
+    "all_types",
+    is_flag=True,
+    help="List every form type (cannot be combined with --type).",
+)
 @pass_ctx
 def form_list(
-    ctx: CLIContext, entity: str, form_types: tuple[str, ...], all_types: bool,
+    ctx: CLIContext,
+    entity: str,
+    form_types: tuple[str, ...],
+    all_types: bool,
 ) -> None:
     """List an entity's forms (main forms by default)."""
     if all_types and form_types:
@@ -96,32 +120,42 @@ def form_list(
     # formxml (potentially large) + description/objecttypecode, which would
     # bloat --json output and surprise consumers expecting list columns.
     listed = [
-        {"name": f.get("name", ""), "type": f.get("type"),
-         "formid": f.get("formid"), "isdefault": bool(f.get("isdefault", False))}
+        {
+            "name": f.get("name", ""),
+            "type": f.get("type"),
+            "formid": f.get("formid"),
+            "isdefault": bool(f.get("isdefault", False)),
+        }
         for f in forms
     ]
     rows = [
-        [r["name"], "" if r["type"] is None else r["type"],
-         r["formid"] or "", str(r["isdefault"])]
+        [r["name"], "" if r["type"] is None else r["type"], r["formid"] or "", str(r["isdefault"])]
         for r in listed
     ]
-    ctx.emit(True, data=listed, table={
-        "headers": ["name", "type", "formid", "isdefault"],
-        "rows": rows,
-    })
+    ctx.emit(
+        True,
+        data=listed,
+        table={
+            "headers": ["name", "type", "formid", "isdefault"],
+            "rows": rows,
+        },
+    )
 
 
 @form_group.command("clone")
 @click.argument("entity")
 @click.argument("form_name")
-@click.option("--to", "target_entity", required=True,
-              help="Target entity logical name.")
+@click.option("--to", "target_entity", required=True, help="Target entity logical name.")
 @_publish_option
 @_solution_option
 @pass_ctx
 def form_clone(
-    ctx: CLIContext, entity: str, form_name: str, target_entity: str,
-    publish: bool, solution: str | None,
+    ctx: CLIContext,
+    entity: str,
+    form_name: str,
+    target_entity: str,
+    publish: bool,
+    solution: str | None,
 ) -> None:
     """Clone a named form to another entity."""
     solution = _resolve_solution(ctx, solution)
@@ -133,11 +167,13 @@ def form_clone(
         return
     with d365_errors(ctx):
         info = forms_mod.clone_form_to_entity(
-            ctx.backend(), form, target_entity,
-            publish=publish, solution=solution,
+            ctx.backend(),
+            form,
+            target_entity,
+            publish=publish,
+            solution=solution,
         )
-    _emit_with_warning(ctx, info, None,
-                       meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, form_name, info, solution=solution)
 
 
@@ -151,8 +187,13 @@ def form_clone(
 @_solution_option
 @pass_ctx
 def form_add_field(
-    ctx: CLIContext, entity: str, attribute: str, form: str | None,
-    tab: str | None, section: str | None, publish: bool,
+    ctx: CLIContext,
+    entity: str,
+    attribute: str,
+    form: str | None,
+    tab: str | None,
+    section: str | None,
+    publish: bool,
     solution: str | None,
 ) -> None:
     """Add a field to an entity form (resolves the control type from metadata)."""
@@ -160,8 +201,14 @@ def form_add_field(
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.add_form_field(
-            ctx.backend(), entity, attribute, form=form, tab=tab, section=section,
-            publish=publish, solution=solution,
+            ctx.backend(),
+            entity,
+            attribute,
+            form=form,
+            tab=tab,
+            section=section,
+            publish=publish,
+            solution=solution,
         )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, attribute, info, solution=solution)
@@ -175,16 +222,24 @@ def form_add_field(
 @_solution_option
 @pass_ctx
 def form_remove_field(
-    ctx: CLIContext, entity: str, attribute: str, form: str | None,
-    publish: bool, solution: str | None,
+    ctx: CLIContext,
+    entity: str,
+    attribute: str,
+    form: str | None,
+    publish: bool,
+    solution: str | None,
 ) -> None:
     """Remove a field from an entity form."""
     solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.remove_form_field(
-            ctx.backend(), entity, attribute, form=form,
-            publish=publish, solution=solution,
+            ctx.backend(),
+            entity,
+            attribute,
+            form=form,
+            publish=publish,
+            solution=solution,
         )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, attribute, info, solution=solution)
@@ -200,8 +255,13 @@ def form_remove_field(
 @_solution_option
 @pass_ctx
 def form_set_field(
-    ctx: CLIContext, entity: str, attribute: str, form: str | None,
-    tab: str | None, section: str | None, publish: bool,
+    ctx: CLIContext,
+    entity: str,
+    attribute: str,
+    form: str | None,
+    tab: str | None,
+    section: str | None,
+    publish: bool,
     solution: str | None,
 ) -> None:
     """Move an existing field to a different tab/section of an entity form."""
@@ -209,8 +269,14 @@ def form_set_field(
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.set_form_field(
-            ctx.backend(), entity, attribute, form=form, tab=tab, section=section,
-            publish=publish, solution=solution,
+            ctx.backend(),
+            entity,
+            attribute,
+            form=form,
+            tab=tab,
+            section=section,
+            publish=publish,
+            solution=solution,
         )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, attribute, info, solution=solution)
@@ -219,73 +285,117 @@ def form_set_field(
 @form_group.command("set-field-props")
 @click.argument("entity")
 @click.argument("attribute")
-@click.option("--locked/--unlocked", "locked", default=None,
-              help="Lock the field against being moved/removed on the form "
-                   "(cell locklevel).")
-@click.option("--disabled/--enabled", "disabled", default=None,
-              help="Make the field read-only (control disabled).")
-@click.option("--show-label/--no-show-label", "show_label", default=None,
-              help="Show the field's label (cell showlabel).")
-@click.option("--visible/--hidden", "visible", default=None,
-              help="Show the field on the form (cell visible).")
-@click.option("--required", "required", metavar="LEVEL",
-              help="Required-level is attribute metadata, not a form property; "
-                   "passing it here routes you to `crm metadata update-attribute "
-                   "--required` instead of silently no-op'ing.")
+@click.option(
+    "--locked/--unlocked",
+    "locked",
+    default=None,
+    help="Lock the field against being moved/removed on the form (cell locklevel).",
+)
+@click.option(
+    "--disabled/--enabled",
+    "disabled",
+    default=None,
+    help="Make the field read-only (control disabled).",
+)
+@click.option(
+    "--show-label/--no-show-label",
+    "show_label",
+    default=None,
+    help="Show the field's label (cell showlabel).",
+)
+@click.option(
+    "--visible/--hidden", "visible", default=None, help="Show the field on the form (cell visible)."
+)
+@click.option(
+    "--required",
+    "required",
+    metavar="LEVEL",
+    help="Required-level is attribute metadata, not a form property; "
+    "passing it here routes you to `crm metadata update-attribute "
+    "--required` instead of silently no-op'ing.",
+)
 @_form_option
 @_publish_option
 @_solution_option
 @pass_ctx
 def form_set_field_props(
-    ctx: CLIContext, entity: str, attribute: str,
-    locked: bool | None, disabled: bool | None, show_label: bool | None,
-    visible: bool | None, required: str | None, form: str | None,
-    publish: bool, solution: str | None,
+    ctx: CLIContext,
+    entity: str,
+    attribute: str,
+    locked: bool | None,
+    disabled: bool | None,
+    show_label: bool | None,
+    visible: bool | None,
+    required: str | None,
+    form: str | None,
+    publish: bool,
+    solution: str | None,
 ) -> None:
     """Toggle presentation properties of an existing field on an entity form."""
     solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.set_form_field_props(
-            ctx.backend(), entity, attribute, form=form,
-            locked=locked, disabled=disabled, show_label=show_label,
-            visible=visible, required=required,
-            publish=publish, solution=solution,
+            ctx.backend(),
+            entity,
+            attribute,
+            form=form,
+            locked=locked,
+            disabled=disabled,
+            show_label=show_label,
+            visible=visible,
+            required=required,
+            publish=publish,
+            solution=solution,
         )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, attribute, info, solution=solution)
 
 
 _event_option = click.option(
-    "--event", required=True,
+    "--event",
+    required=True,
     type=click.Choice(list(forms_mod.EVENT_CHOICES), case_sensitive=False),
-    help="Form event to wire the handler to.")
+    help="Form event to wire the handler to.",
+)
 _field_option = click.option(
     "--field",
     help="Attribute whose onchange fires the handler (required for "
-         "--event onchange; invalid otherwise).")
+    "--event onchange; invalid otherwise).",
+)
 
 
 @form_group.command("add-library")
 @click.argument("entity")
-@click.option("--library", required=True,
-              help="Unique name of the JS web resource to register (it must "
-                   "already exist — the editor never creates it).")
+@click.option(
+    "--library",
+    required=True,
+    help="Unique name of the JS web resource to register (it must "
+    "already exist — the editor never creates it).",
+)
 @_form_option
 @_publish_option
 @_solution_option
 @pass_ctx
 def form_add_library(
-    ctx: CLIContext, entity: str, library: str, form: str | None,
-    publish: bool, solution: str | None,
+    ctx: CLIContext,
+    entity: str,
+    library: str,
+    form: str | None,
+    publish: bool,
+    solution: str | None,
 ) -> None:
     """Register a JS script library on an entity form (idempotent)."""
     solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.add_form_library(
-            ctx.backend(), entity, library, form=form,
-            publish=publish, solution=solution,
+            ctx.backend(),
+            entity,
+            library,
+            form=form,
+            publish=publish,
+            solution=solution,
         )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, library, info, solution=solution)
@@ -294,37 +404,64 @@ def form_add_library(
 @form_group.command("add-handler")
 @click.argument("entity")
 @_event_option
-@click.option("--library", required=True,
-              help="Unique name of the JS web resource holding the function "
-                   "(it must already exist).")
-@click.option("--function", required=True,
-              help="JS function to call when the event fires (e.g. App.onLoad).")
+@click.option(
+    "--library",
+    required=True,
+    help="Unique name of the JS web resource holding the function (it must already exist).",
+)
+@click.option(
+    "--function", required=True, help="JS function to call when the event fires (e.g. App.onLoad)."
+)
 @_field_option
-@click.option("--param", "params", multiple=True,
-              help="Parameter passed to the function (repeatable; emitted as a "
-                   "comma-separated list).")
-@click.option("--pass-context/--no-pass-context", default=True,
-              help="Pass the execution context as the function's first "
-                   "parameter. Default: pass.")
-@click.option("--enabled/--no-enabled", default=True,
-              help="Whether the handler is enabled. Default: enabled.")
+@click.option(
+    "--param",
+    "params",
+    multiple=True,
+    help="Parameter passed to the function (repeatable; emitted as a comma-separated list).",
+)
+@click.option(
+    "--pass-context/--no-pass-context",
+    default=True,
+    help="Pass the execution context as the function's first parameter. Default: pass.",
+)
+@click.option(
+    "--enabled/--no-enabled", default=True, help="Whether the handler is enabled. Default: enabled."
+)
 @_form_option
 @_publish_option
 @_solution_option
 @pass_ctx
 def form_add_handler(
-    ctx: CLIContext, entity: str, event: str, library: str, function: str,
-    field: str | None, params: tuple[str, ...], pass_context: bool,
-    enabled: bool, form: str | None, publish: bool, solution: str | None,
+    ctx: CLIContext,
+    entity: str,
+    event: str,
+    library: str,
+    function: str,
+    field: str | None,
+    params: tuple[str, ...],
+    pass_context: bool,
+    enabled: bool,
+    form: str | None,
+    publish: bool,
+    solution: str | None,
 ) -> None:
     """Wire a JS event handler on an entity form (registering its library)."""
     solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.add_form_handler(
-            ctx.backend(), entity, event=event, function=function, library=library,
-            field=field, params=params, pass_context=pass_context, enabled=enabled,
-            form=form, publish=publish, solution=solution,
+            ctx.backend(),
+            entity,
+            event=event,
+            function=function,
+            library=library,
+            field=field,
+            params=params,
+            pass_context=pass_context,
+            enabled=enabled,
+            form=form,
+            publish=publish,
+            solution=solution,
         )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, function, info, solution=solution)
@@ -333,24 +470,35 @@ def form_add_handler(
 @form_group.command("remove-handler")
 @click.argument("entity")
 @_event_option
-@click.option("--function", required=True,
-              help="JS function name of the handler to remove.")
+@click.option("--function", required=True, help="JS function name of the handler to remove.")
 @_field_option
 @_form_option
 @_publish_option
 @_solution_option
 @pass_ctx
 def form_remove_handler(
-    ctx: CLIContext, entity: str, event: str, function: str, field: str | None,
-    form: str | None, publish: bool, solution: str | None,
+    ctx: CLIContext,
+    entity: str,
+    event: str,
+    function: str,
+    field: str | None,
+    form: str | None,
+    publish: bool,
+    solution: str | None,
 ) -> None:
     """Remove a JS event handler from an entity form."""
     solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.remove_form_handler(
-            ctx.backend(), entity, event=event, function=function, field=field,
-            form=form, publish=publish, solution=solution,
+            ctx.backend(),
+            entity,
+            event=event,
+            function=function,
+            field=field,
+            form=form,
+            publish=publish,
+            solution=solution,
         )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, function, info, solution=solution)
@@ -366,19 +514,30 @@ def form_list_handlers(ctx: CLIContext, entity: str, form: str | None) -> None:
         info = forms_mod.list_form_handlers(ctx.backend(), entity, form=form)
     handlers = info["handlers"]
     rows = [
-        [h["event"], h.get("field") or "", h["function"], h["library"],
-         str(h["enabled"]), str(h["pass_context"])]
+        [
+            h["event"],
+            h.get("field") or "",
+            h["function"],
+            h["library"],
+            str(h["enabled"]),
+            str(h["pass_context"]),
+        ]
         for h in handlers
     ]
     # ADR 0008: a list verb puts a bare array in `data`; the resolved-form context
     # (which form was picked) goes to `meta`, mirroring `form list`.
-    ctx.emit(True, data=handlers, meta={
-        "formid": info["formid"], "form": info["form"],
-    }, table={
-        "headers": ["event", "field", "function", "library", "enabled",
-                    "pass_context"],
-        "rows": rows,
-    })
+    ctx.emit(
+        True,
+        data=handlers,
+        meta={
+            "formid": info["formid"],
+            "form": info["form"],
+        },
+        table={
+            "headers": ["event", "field", "function", "library", "enabled", "pass_context"],
+            "rows": rows,
+        },
+    )
 
 
 @form_group.command("add-tab")
@@ -392,8 +551,14 @@ def form_list_handlers(ctx: CLIContext, entity: str, form: str | None) -> None:
 @_solution_option
 @pass_ctx
 def form_add_tab(
-    ctx: CLIContext, entity: str, name: str, label: str | None, columns: int,
-    after: str | None, form: str | None, publish: bool,
+    ctx: CLIContext,
+    entity: str,
+    name: str,
+    label: str | None,
+    columns: int,
+    after: str | None,
+    form: str | None,
+    publish: bool,
     solution: str | None,
 ) -> None:
     """Add a tab (with a starter section) to an entity form."""
@@ -401,8 +566,15 @@ def form_add_tab(
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.add_form_tab(
-            ctx.backend(), entity, name, label=label, columns=columns, after=after,
-            form=form, publish=publish, solution=solution,
+            ctx.backend(),
+            entity,
+            name,
+            label=label,
+            columns=columns,
+            after=after,
+            form=form,
+            publish=publish,
+            solution=solution,
         )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, name, info, solution=solution)
@@ -417,17 +589,28 @@ def form_add_tab(
 @_solution_option
 @pass_ctx
 def form_remove_tab(
-    ctx: CLIContext, entity: str, tab: str, force: bool, form: str | None,
-    publish: bool, solution: str | None,
+    ctx: CLIContext,
+    entity: str,
+    tab: str,
+    force: bool,
+    form: str | None,
+    publish: bool,
+    solution: str | None,
 ) -> None:
     """Remove a tab from an entity form (refuses the only tab, or a tab holding
-    bound fields without --force)."""
+    bound fields without --force).
+    """
     solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.remove_form_tab(
-            ctx.backend(), entity, tab, force=force, form=form,
-            publish=publish, solution=solution,
+            ctx.backend(),
+            entity,
+            tab,
+            force=force,
+            form=form,
+            publish=publish,
+            solution=solution,
         )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, tab, info, solution=solution)
@@ -442,16 +625,26 @@ def form_remove_tab(
 @_solution_option
 @pass_ctx
 def form_rename_tab(
-    ctx: CLIContext, entity: str, tab: str, label: str, form: str | None,
-    publish: bool, solution: str | None,
+    ctx: CLIContext,
+    entity: str,
+    tab: str,
+    label: str,
+    form: str | None,
+    publish: bool,
+    solution: str | None,
 ) -> None:
     """Set a tab's display label (its logical name is left intact)."""
     solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.rename_form_tab(
-            ctx.backend(), entity, tab, label=label, form=form,
-            publish=publish, solution=solution,
+            ctx.backend(),
+            entity,
+            tab,
+            label=label,
+            form=form,
+            publish=publish,
+            solution=solution,
         )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, tab, info, solution=solution)
@@ -466,16 +659,26 @@ def form_rename_tab(
 @_solution_option
 @pass_ctx
 def form_move_tab(
-    ctx: CLIContext, entity: str, tab: str, after: str | None, form: str | None,
-    publish: bool, solution: str | None,
+    ctx: CLIContext,
+    entity: str,
+    tab: str,
+    after: str | None,
+    form: str | None,
+    publish: bool,
+    solution: str | None,
 ) -> None:
     """Reorder a tab on an entity form (to the front, or after --after)."""
     solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.move_form_tab(
-            ctx.backend(), entity, tab, after=after, form=form,
-            publish=publish, solution=solution,
+            ctx.backend(),
+            entity,
+            tab,
+            after=after,
+            form=form,
+            publish=publish,
+            solution=solution,
         )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, tab, info, solution=solution)
@@ -493,8 +696,15 @@ def form_move_tab(
 @_solution_option
 @pass_ctx
 def form_add_section(
-    ctx: CLIContext, entity: str, name: str, tab: str | None, label: str | None,
-    columns: int, after: str | None, form: str | None, publish: bool,
+    ctx: CLIContext,
+    entity: str,
+    name: str,
+    tab: str | None,
+    label: str | None,
+    columns: int,
+    after: str | None,
+    form: str | None,
+    publish: bool,
     solution: str | None,
 ) -> None:
     """Add a section to a tab of an entity form."""
@@ -502,8 +712,16 @@ def form_add_section(
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.add_form_section(
-            ctx.backend(), entity, name, tab=tab, label=label, columns=columns,
-            after=after, form=form, publish=publish, solution=solution,
+            ctx.backend(),
+            entity,
+            name,
+            tab=tab,
+            label=label,
+            columns=columns,
+            after=after,
+            form=form,
+            publish=publish,
+            solution=solution,
         )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, name, info, solution=solution)
@@ -519,17 +737,30 @@ def form_add_section(
 @_solution_option
 @pass_ctx
 def form_remove_section(
-    ctx: CLIContext, entity: str, section: str, tab: str | None, force: bool,
-    form: str | None, publish: bool, solution: str | None,
+    ctx: CLIContext,
+    entity: str,
+    section: str,
+    tab: str | None,
+    force: bool,
+    form: str | None,
+    publish: bool,
+    solution: str | None,
 ) -> None:
     """Remove a section from a tab of an entity form (refuses a section holding
-    bound fields without --force)."""
+    bound fields without --force).
+    """
     solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.remove_form_section(
-            ctx.backend(), entity, section, tab=tab, force=force, form=form,
-            publish=publish, solution=solution,
+            ctx.backend(),
+            entity,
+            section,
+            tab=tab,
+            force=force,
+            form=form,
+            publish=publish,
+            solution=solution,
         )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, section, info, solution=solution)
@@ -545,16 +776,28 @@ def form_remove_section(
 @_solution_option
 @pass_ctx
 def form_rename_section(
-    ctx: CLIContext, entity: str, section: str, tab: str | None, label: str,
-    form: str | None, publish: bool, solution: str | None,
+    ctx: CLIContext,
+    entity: str,
+    section: str,
+    tab: str | None,
+    label: str,
+    form: str | None,
+    publish: bool,
+    solution: str | None,
 ) -> None:
     """Set a section's display label on an entity form."""
     solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.rename_form_section(
-            ctx.backend(), entity, section, label=label, tab=tab, form=form,
-            publish=publish, solution=solution,
+            ctx.backend(),
+            entity,
+            section,
+            label=label,
+            tab=tab,
+            form=form,
+            publish=publish,
+            solution=solution,
         )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, section, info, solution=solution)
@@ -570,16 +813,28 @@ def form_rename_section(
 @_solution_option
 @pass_ctx
 def form_move_section(
-    ctx: CLIContext, entity: str, section: str, tab: str | None, after: str | None,
-    form: str | None, publish: bool, solution: str | None,
+    ctx: CLIContext,
+    entity: str,
+    section: str,
+    tab: str | None,
+    after: str | None,
+    form: str | None,
+    publish: bool,
+    solution: str | None,
 ) -> None:
     """Reorder a section within its tab on an entity form."""
     solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.move_form_section(
-            ctx.backend(), entity, section, tab=tab, after=after, form=form,
-            publish=publish, solution=solution,
+            ctx.backend(),
+            entity,
+            section,
+            tab=tab,
+            after=after,
+            form=form,
+            publish=publish,
+            solution=solution,
         )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, section, info, solution=solution)

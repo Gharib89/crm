@@ -1,5 +1,6 @@
 # pyright: basic
 """E2E tests for the field-mapping command (attributemap + AutoMapEntity)."""
+
 from __future__ import annotations
 
 from crm.tests.e2e.coverage import covers
@@ -8,10 +9,11 @@ from crm.tests.e2e.coverage import covers
 @covers("metadata create-mapping")
 def test_create_mapping_lifecycle(backend, ephemeral_entity, unique):
     """Create a 1:N account→<entity> relationship (which seeds an entity map),
-    then exercise both the --auto and manual --from/--to paths."""
-    from crm.core import relationships as rel
+    then exercise both the --auto and manual --from/--to paths.
+    """
     from crm.core import mappings as mp
     from crm.core import metadata as meta_mod
+    from crm.core import relationships as rel
 
     rel_schema = f"new_map{unique}_account_{ephemeral_entity}"
     rel.create_one_to_many(
@@ -34,6 +36,9 @@ def test_create_mapping_lifecycle(backend, ephemeral_entity, unique):
     primary = meta_mod.entity_info(backend, ephemeral_entity).get("PrimaryNameAttribute")
     assert isinstance(primary, str) and primary
     created = mp.create_mapping(
-        backend, rel_schema, source_attr="accountnumber", target_attr=primary,
+        backend,
+        rel_schema,
+        source_attr="accountnumber",
+        target_attr=primary,
     )
     assert created["created"] is True

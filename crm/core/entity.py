@@ -11,6 +11,7 @@ import re
 from typing import Any, NamedTuple, cast
 from urllib.parse import quote
 
+from crm.core import entity_names, lookup_bind
 from crm.utils.d365_backend import (
     D365Backend,
     D365Error,
@@ -18,7 +19,6 @@ from crm.utils.d365_backend import (
     normalize_guid,
     odata_literal,
 )
-from crm.core import entity_names, lookup_bind
 from crm.utils.d365_types import BatchOperation
 
 
@@ -62,8 +62,7 @@ def format_alternate_key_segment(key_values: dict[str, Any]) -> str:
     if not key_values:
         raise D365Error("Alternate-key upsert requires at least one key attribute.")
     return ",".join(
-        f"{attr}={_format_alternate_key_value(value)}"
-        for attr, value in key_values.items()
+        f"{attr}={_format_alternate_key_value(value)}" for attr, value in key_values.items()
     )
 
 
@@ -78,9 +77,7 @@ def build_alternate_key_path(entity_set: str, key_values: dict[str, Any]) -> str
     return f"{entity_set}({format_alternate_key_segment(key_values)})"
 
 
-def resolve_alternate_key(
-    backend: D365Backend, entity_set: str, key_attrs: list[str]
-) -> list[str]:
+def resolve_alternate_key(backend: D365Backend, entity_set: str, key_attrs: list[str]) -> list[str]:
     """Validate *key_attrs* name a defined alternate key on *entity_set*.
 
     Returns the matched key's attribute list in the metadata's canonical order
@@ -102,15 +99,12 @@ def resolve_alternate_key(
         if set(key["key_attributes"]) == requested:
             return list(key["key_attributes"])
     if keys:
-        defined = "; ".join(
-            f"{k['schema_name']} ({', '.join(k['key_attributes'])})" for k in keys
-        )
+        defined = "; ".join(f"{k['schema_name']} ({', '.join(k['key_attributes'])})" for k in keys)
         detail = f"Defined alternate keys: {defined}."
     else:
         detail = f"{entity_set!r} has no alternate keys defined."
     raise D365Error(
-        f"No alternate key on {entity_set!r} matches attribute(s) "
-        f"{', '.join(key_attrs)}. {detail}"
+        f"No alternate key on {entity_set!r} matches attribute(s) {', '.join(key_attrs)}. {detail}"
     )
 
 
@@ -128,7 +122,8 @@ class AltKeySchema(NamedTuple):
 
     ``primary_id`` is the entity's ``PrimaryIdAttribute``; ``keys`` are the rows
     from :func:`crm.core.metadata.list_entity_keys` (each
-    ``{logical_name, schema_name, key_attributes, index_status}``)."""
+    ``{logical_name, schema_name, key_attributes, index_status}``).
+    """
 
     primary_id: str
     keys: list[dict[str, Any]]
@@ -139,7 +134,8 @@ def is_alternate_key_error(exc: D365Error) -> bool:
 
     Checks ``exc.code`` first; falls back to the parsed ``response_body`` in case
     the code was overwritten by an older backend or a test that builds the
-    exception directly."""
+    exception directly.
+    """
     if exc.code == ALT_KEY_ERROR_CODE:
         return True
     body = exc.response_body
@@ -150,9 +146,7 @@ def is_alternate_key_error(exc: D365Error) -> bool:
     return False
 
 
-def lookup_alternate_key_schema(
-    backend: D365Backend, entity_set: str
-) -> "AltKeySchema | None":
+def lookup_alternate_key_schema(backend: D365Backend, entity_set: str) -> AltKeySchema | None:
     """Fetch *entity_set*'s alternate-key schema, or ``None`` if unavailable.
 
     Resolves the set→logical name + primary id through the shared cached name-map
@@ -162,12 +156,14 @@ def lookup_alternate_key_schema(
     Returns ``None`` for an unknown entity set or any backend failure — callers
     treat that as "no hint available" and never surface the error. Bulk callers
     fetch this **once** and reuse it across rows, since the alternate-key schema
-    is identical for every row of one import."""
+    is identical for every row of one import.
+    """
     try:
         # Local imports keep the core package import-cycle-free (mirrors
         # resolve_alternate_key above).
         from crm.core import entity_names
         from crm.core import metadata as meta_mod
+
         nm = entity_names.load_name_map(backend)
         logical_name = nm.resolve(entity_set)  # case-insensitive; raises on miss
         primary_id = nm.primary_id_for(logical_name) or ""
@@ -177,7 +173,7 @@ def lookup_alternate_key_schema(
         return None
 
 
-def dupe_key_hint(schema: "AltKeySchema", payload: dict[str, Any]) -> dict[str, Any]:
+def dupe_key_hint(schema: AltKeySchema, payload: dict[str, Any]) -> dict[str, Any]:
     """Build the presentation-agnostic alternate-key hint for one *payload*.
 
     Pure (no I/O): given a pre-fetched *schema*, return
@@ -186,17 +182,20 @@ def dupe_key_hint(schema: "AltKeySchema", payload: dict[str, Any]) -> dict[str, 
     is the plain-name intersection of the key's attributes with *payload* (lookup
     columns surfaced as ``field@odata.bind`` are NOT matched — v1 limitation,
     plain names only). ``primary_id_hint`` is added when *payload* carries the
-    primary-id attribute (the server returns the same code for a PK collision)."""
+    primary-id attribute (the server returns the same code for a PK collision).
+    """
     enriched: list[dict[str, Any]] = []
     for k in schema.keys:
         key_attrs: list[str] = k["key_attributes"]
         payload_values = {a: payload[a] for a in key_attrs if a in payload}
-        enriched.append({
-            "name": k["logical_name"],
-            "schema_name": k["schema_name"],
-            "attributes": key_attrs,
-            "payload_values": payload_values,
-        })
+        enriched.append(
+            {
+                "name": k["logical_name"],
+                "schema_name": k["schema_name"],
+                "attributes": key_attrs,
+                "payload_values": payload_values,
+            }
+        )
     out: dict[str, Any] = {"alternate_keys": enriched}
     if schema.primary_id and schema.primary_id in payload:
         out["primary_id_hint"] = (
@@ -220,7 +219,8 @@ def enrich_dupe_key(
     other code or if the lookup fails — the original failure is never masked.
     Takes the already-detected *code* (not the exception) so non-exception
     callers like the bulk-import batch path can reuse it. The *when-to-pay* cost
-    gate (the extra metadata reads) stays at the caller, not here."""
+    gate (the extra metadata reads) stays at the caller, not here.
+    """
     if code != ALT_KEY_ERROR_CODE:
         return {}
     schema = lookup_alternate_key_schema(backend, entity_set)
@@ -229,16 +229,15 @@ def enrich_dupe_key(
     return dupe_key_hint(schema, payload)
 
 
-def entity_id_fields(
-    backend: D365Backend, entity_set: str, record_id: str
-) -> dict[str, str]:
+def entity_id_fields(backend: D365Backend, entity_set: str, record_id: str) -> dict[str, str]:
     """The normalized-id pair for *record_id* (ADR 0008 / #303).
 
     ``_entity_id`` is the record GUID and ``_entity_id_url`` its full Web API URL,
     matching the shape the backend already surfaces from the ``OData-EntityId``
     header on update/delete-by-header. Used by the write verbs and single-record
     get so chaining needs no per-entity primary-key knowledge. *record_id* is
-    normalized + GUID-validated (raises ``D365Error`` otherwise)."""
+    normalized + GUID-validated (raises ``D365Error`` otherwise).
+    """
     rid = _normalize_id(record_id)
     return {
         "_entity_id": rid,
@@ -246,9 +245,7 @@ def entity_id_fields(
     }
 
 
-def inject_create_entity_id(
-    backend: D365Backend, entity_set: str, record: dict[str, Any]
-) -> None:
+def inject_create_entity_id(backend: D365Backend, entity_set: str, record: dict[str, Any]) -> None:
     """Inject `_entity_id`/`_entity_id_url` into a create's returned record (#303).
 
     With `Prefer: return=representation` (the create default) Dataverse returns
@@ -259,7 +256,8 @@ def inject_create_entity_id(
     GET, cold = one EntityDefinitions GET that also warms the cache). Best-effort:
     the record was already created, so a metadata miss must not fail the create —
     we simply skip the synthetic key. Mutates *record*. Called from the command
-    layer, not `create`, so internal `create` callers are unaffected."""
+    layer, not `create`, so internal `create` callers are unaffected.
+    """
     if "_dry_run" in record:
         return
     try:
@@ -304,8 +302,16 @@ def retrieve(
 
 
 _NUMBER_WORDS = {
-    "zero": "0", "one": "1", "two": "2", "three": "3", "four": "4",
-    "five": "5", "six": "6", "seven": "7", "eight": "8", "nine": "9",
+    "zero": "0",
+    "one": "1",
+    "two": "2",
+    "three": "3",
+    "four": "4",
+    "five": "5",
+    "six": "6",
+    "seven": "7",
+    "eight": "8",
+    "nine": "9",
 }
 
 
@@ -390,25 +396,25 @@ def validate_payload(
     # PrimaryIdAttribute is only consumed by the create-path warning below. The
     # name-map collection already selects it (#704), so read it from that cached
     # entity definition rather than issuing a separate targeted describe GET.
-    primary_id_attr: str | None = (
-        name_map.primary_id_for(logical_name) if is_create else None
-    )
+    primary_id_attr: str | None = name_map.primary_id_for(logical_name) if is_create else None
 
-    attrs = as_dict(backend.get(
-        f"EntityDefinitions(LogicalName={odata_literal(logical_name)})/Attributes",
-        params={"$select": "LogicalName"},
-    ))
+    attrs = as_dict(
+        backend.get(
+            f"EntityDefinitions(LogicalName={odata_literal(logical_name)})/Attributes",
+            params={"$select": "LogicalName"},
+        )
+    )
     nav_rows: list[dict[str, Any]] = []
     if needs_nav:
-        m2o = as_dict(backend.get(
-            f"EntityDefinitions(LogicalName={odata_literal(logical_name)})/ManyToOneRelationships",
-            params={"$select": "ReferencingEntityNavigationPropertyName"},
-        ))
+        m2o = as_dict(
+            backend.get(
+                f"EntityDefinitions(LogicalName={odata_literal(logical_name)})/ManyToOneRelationships",
+                params={"$select": "ReferencingEntityNavigationPropertyName"},
+            )
+        )
         nav_rows = m2o.get("value", [])
 
-    valid: set[str] = {
-        a["LogicalName"] for a in attrs.get("value", []) if a.get("LogicalName")
-    }
+    valid: set[str] = {a["LogicalName"] for a in attrs.get("value", []) if a.get("LogicalName")}
     valid |= {
         r["ReferencingEntityNavigationPropertyName"]
         for r in nav_rows
@@ -677,14 +683,16 @@ def associate(
     target_path = build_record_path(target_set, target_id)
     related_url = backend.url_for(build_record_path(related_set, related_id))
     path = f"{target_path}/{navigation_property}/$ref"
-    result = as_dict(backend.post(
-        path,
-        json_body={"@odata.id": related_url},
-        caller_id=caller_id,
-        caller_object_id=caller_object_id,
-        suppress_duplicate_detection=suppress_duplicate_detection,
-        bypass_custom_plugin_execution=bypass_custom_plugin_execution,
-    ))
+    result = as_dict(
+        backend.post(
+            path,
+            json_body={"@odata.id": related_url},
+            caller_id=caller_id,
+            caller_object_id=caller_object_id,
+            suppress_duplicate_detection=suppress_duplicate_detection,
+            bypass_custom_plugin_execution=bypass_custom_plugin_execution,
+        )
+    )
     return result if result else {"associated": True, "target": target_id, "related": related_id}
 
 
@@ -718,6 +726,7 @@ def disassociate(
     if related_set and related_id:
         related_url = backend.url_for(build_record_path(related_set, related_id))
         from urllib.parse import quote
+
         path = f"{target_path}/{navigation_property}/$ref?$id={quote(related_url, safe='')}"
     else:
         path = f"{target_path}/{navigation_property}/$ref"
@@ -751,7 +760,10 @@ def set_lookup(
     bind_value = f"/{related_set}({_normalize_id(related_id)})"
     payload = {f"{navigation_property}@odata.bind": bind_value}
     return update(
-        backend, entity_set, record_id, payload,
+        backend,
+        entity_set,
+        record_id,
+        payload,
         prevent_create=True,
         caller_id=caller_id,
         caller_object_id=caller_object_id,
@@ -819,7 +831,7 @@ def count_children(
     try:
         pattern = re.compile(filter_entities) if filter_entities else None
     except re.error as exc:
-        raise D365Error(f"--filter-entities is not a valid regular expression: {exc}")
+        raise D365Error(f"--filter-entities is not a valid regular expression: {exc}") from exc
 
     # Logical↔set map via the shared seam (#261): resolves the parent set→logical
     # and each child logical→set, served read-through from the metadata cache.
@@ -861,7 +873,7 @@ def count_children(
         return rows
 
     for start in range(0, len(rels), batch_chunk_size):
-        chunk = rels[start:start + batch_chunk_size]
+        chunk = rels[start : start + batch_chunk_size]
         ops: list[BatchOperation] = [
             {"method": "GET", "url": _count_url(rel["set"], rel["attribute"], guid)}
             for rel in chunk
@@ -920,7 +932,7 @@ def _count_via_get(backend: D365Backend, rel: dict[str, str], guid: str) -> dict
         return {**rel, "count": None, "error": str(exc)}
 
 
-def _odata_count(body: "dict[str, Any] | str | None") -> int:
+def _odata_count(body: dict[str, Any] | str | None) -> int:
     """Read `@odata.count` from a successful `$count=true` response body."""
     if isinstance(body, dict):
         n = body.get("@odata.count")
@@ -935,9 +947,7 @@ def _odata_count(body: "dict[str, Any] | str | None") -> int:
 # Uniqueidentifier-typed columns are dropped generically by type (covers the
 # primary id AND address1_addressid-class child ids — no per-entity lists); the
 # rest are dropped by name. All are re-addable via `overrides`.
-_NEVER_COPY_NAMES = frozenset(
-    {"statecode", "statuscode", "ownerid", "overriddencreatedon"}
-)
+_NEVER_COPY_NAMES = frozenset({"statecode", "statuscode", "ownerid", "overriddencreatedon"})
 # Attribute types whose value is carried as a `_<name>_value` lookup property
 # and must be rebound with `<nav>@odata.bind`, not copied verbatim (`ownerid` is
 # in the never-copy set, but `Owner` stays so any other owner-typed column is
@@ -1044,8 +1054,7 @@ def _build_clone_body(
     for field in unset:
         if field not in all_attr_names:
             errors.append(
-                f"{field}: --unset names a field that is not an attribute of "
-                f"{entity_logical}"
+                f"{field}: --unset names a field that is not an attribute of {entity_logical}"
             )
             continue
         body.pop(field, None)
@@ -1116,13 +1125,17 @@ def clone_record(
 
     source = retrieve(backend, entity_set, record_id, include_annotations=True)
     body, errors = _build_clone_body(
-        source, create_attrs, all_attr_names, logical_to_set, logical_name,
-        overrides=overrides, unset=unset,
+        source,
+        create_attrs,
+        all_attr_names,
+        logical_to_set,
+        logical_name,
+        overrides=overrides,
+        unset=unset,
     )
     if errors:
         raise D365Error(
-            f"Clone pre-flight failed for {entity_set}({record_id}):\n  - "
-            + "\n  - ".join(errors)
+            f"Clone pre-flight failed for {entity_set}({record_id}):\n  - " + "\n  - ".join(errors)
         )
 
     if backend.dry_run:
@@ -1157,8 +1170,12 @@ def clone_record(
             "the new parent and clone its children separately."
         )
     children, failures = _clone_children(
-        backend, logical_name, logical_to_set,
-        source_parent_guid=record_id, new_parent_id=new_parent_id, skip=skip,
+        backend,
+        logical_name,
+        logical_to_set,
+        source_parent_guid=record_id,
+        new_parent_id=new_parent_id,
+        skip=skip,
     )
     return {
         "created": {"parent": new_parent_id, "children": children},
@@ -1233,18 +1250,22 @@ def _clone_children(
     for rel in rels:
         child_logical, child_set, attr = rel["entity"], rel["set"], rel["attribute"]
         if child_logical not in plan_cache:
-            entdef = as_dict(backend.get(
-                f"EntityDefinitions(LogicalName='{child_logical}')",
-                params={
-                    "$select": "PrimaryIdAttribute",
-                    "$expand": "Attributes($select=LogicalName,AttributeType,IsValidForCreate)",
-                },
-            ))
+            entdef = as_dict(
+                backend.get(
+                    f"EntityDefinitions(LogicalName='{child_logical}')",
+                    params={
+                        "$select": "PrimaryIdAttribute",
+                        "$expand": "Attributes($select=LogicalName,AttributeType,IsValidForCreate)",
+                    },
+                )
+            )
             child_create, child_all = _plan_from_specs(
                 entity_names.specs_from_rows(entdef.get("Attributes") or [])
             )
             plan_cache[child_logical] = (
-                str(entdef.get("PrimaryIdAttribute") or ""), child_create, child_all,
+                str(entdef.get("PrimaryIdAttribute") or ""),
+                child_create,
+                child_all,
             )
         primary_id, child_create, child_all = plan_cache[child_logical]
 
@@ -1262,27 +1283,43 @@ def _clone_children(
                     continue
                 seen.add(key)
             child_body, child_errors = _build_clone_body(
-                row, child_create, child_all, logical_to_set, child_logical,
-                overrides={}, unset=[],
+                row,
+                child_create,
+                child_all,
+                logical_to_set,
+                child_logical,
+                overrides={},
+                unset=[],
                 repoint=(source_parent_guid, new_parent_id),
             )
             if child_errors:
-                failures.append({"entity": child_logical, "source_id": src_child_id,
-                                 "reason": "; ".join(child_errors)})
+                failures.append(
+                    {
+                        "entity": child_logical,
+                        "source_id": src_child_id,
+                        "reason": "; ".join(child_errors),
+                    }
+                )
                 continue
             try:
                 created = create(backend, child_set, child_body, return_record=False)
             except D365Error as exc:
-                failures.append({"entity": child_logical, "source_id": src_child_id,
-                                 "reason": str(exc)})
+                failures.append(
+                    {"entity": child_logical, "source_id": src_child_id, "reason": str(exc)}
+                )
                 continue
             new_child_id = str(created.get("_entity_id") or "")
             if not new_child_id:
                 # Created but no parsable id (no OData-EntityId) — record a
                 # failure rather than poison meta.created with an empty id.
-                failures.append({"entity": child_logical, "source_id": src_child_id,
-                                 "reason": "child created but its new id was not in "
-                                           "the create response (no OData-EntityId)"})
+                failures.append(
+                    {
+                        "entity": child_logical,
+                        "source_id": src_child_id,
+                        "reason": "child created but its new id was not in "
+                        "the create response (no OData-EntityId)",
+                    }
+                )
                 continue
             children.setdefault(child_logical, []).append(new_child_id)
     return children, failures
@@ -1303,9 +1340,7 @@ def _preview_children(
     ``{entity, skipped: True}`` for one pruned by `skip`, so the preview shows
     what won't happen too.
     """
-    rels, skipped = _custom_child_relationships(
-        backend, parent_logical, logical_to_set, skip
-    )
+    rels, skipped = _custom_child_relationships(backend, parent_logical, logical_to_set, skip)
     preview: list[dict[str, Any]] = []
     for rel in rels:
         row = _count_via_get(backend, rel, source_parent_guid)

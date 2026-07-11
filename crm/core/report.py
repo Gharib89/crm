@@ -66,7 +66,8 @@ _GET_SELECT = _LIST_SELECT + ",bodyurl,bodytext,languagecode"
 
 def _normalize_report_id(report_id: str) -> str:
     """Strip braces and validate *report_id* as a GUID (raises on a bad id),
-    matching the id discipline of the other by-id core verbs."""
+    matching the id discipline of the other by-id core verbs.
+    """
     rid = normalize_guid(report_id)
     if rid is None:
         raise D365Error(f"Invalid report id (expected GUID): {report_id!r}")
@@ -92,16 +93,14 @@ def _project(row: dict[str, Any], *, full: bool = False) -> dict[str, Any]:
 
 def list_reports(backend: D365Backend) -> list[dict[str, Any]]:
     """List all reports as summary rows (no RDL body — use :func:`get_report`)."""
-    rows = backend.get_collection(
-        _REPORT_SET, params={"$select": _LIST_SELECT})
+    rows = backend.get_collection(_REPORT_SET, params={"$select": _LIST_SELECT})
     return [_project(row) for row in rows]
 
 
 def get_report(backend: D365Backend, report_id: str) -> dict[str, Any]:
     """Fetch a single report by id, including its body (RDL text or link URL)."""
     report_id = _normalize_report_id(report_id)
-    row = as_dict(backend.get(
-        f"{_REPORT_SET}({report_id})", params={"$select": _GET_SELECT}))
+    row = as_dict(backend.get(f"{_REPORT_SET}({report_id})", params={"$select": _GET_SELECT}))
     return _project(row, full=True)
 
 
@@ -126,8 +125,8 @@ def create_report(
     """
     if (body is None) == (url is None):
         raise D365Error(
-            "create requires exactly one of an RDL body (--body-file) or a "
-            "link (--url).")
+            "create requires exactly one of an RDL body (--body-file) or a link (--url)."
+        )
 
     payload: dict[str, Any] = {"name": name}
     if body is not None:
@@ -146,17 +145,15 @@ def create_report(
         payload["ispersonal"] = False
 
     if backend.dry_run:
-        return {"_dry_run": True,
-                "would_create": {"entity_set": _REPORT_SET, "body": payload}}
+        return {"_dry_run": True, "would_create": {"entity_set": _REPORT_SET, "body": payload}}
 
-    result = as_dict(backend.post(
-        _REPORT_SET, json_body=payload, solution=solution))
+    result = as_dict(backend.post(_REPORT_SET, json_body=payload, solution=solution))
     report_id = result.get("_entity_id")
     out: dict[str, Any] = {"created": True, "name": name, _ID_FIELD: report_id}
     if report_id is None:
         out["report_lookup_error"] = (
-            "Could not parse reportid from response: "
-            f"{result.get('_entity_id_url')!r}")
+            f"Could not parse reportid from response: {result.get('_entity_id_url')!r}"
+        )
     return out
 
 
@@ -176,20 +173,16 @@ def set_category(
     report_id = _normalize_report_id(report_id)
     code = CATEGORY_CODES.get(category)
     if code is None:
-        raise D365Error(
-            f"Unknown category {category!r}; choose from "
-            f"{', '.join(CATEGORY_CODES)}.")
+        raise D365Error(f"Unknown category {category!r}; choose from {', '.join(CATEGORY_CODES)}.")
 
     payload: dict[str, Any] = {
         "categorycode": code,
         f"{_REPORT_NAV}@odata.bind": f"/{_REPORT_SET}({report_id})",
     }
     if backend.dry_run:
-        return {"_dry_run": True,
-                "would_create": {"entity_set": _CATEGORY_SET, "body": payload}}
+        return {"_dry_run": True, "would_create": {"entity_set": _CATEGORY_SET, "body": payload}}
 
-    result = as_dict(backend.post(
-        _CATEGORY_SET, json_body=payload, solution=solution))
+    result = as_dict(backend.post(_CATEGORY_SET, json_body=payload, solution=solution))
     out: dict[str, Any] = {
         _ID_FIELD: report_id,
         "category": category,

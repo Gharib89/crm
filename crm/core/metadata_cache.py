@@ -61,7 +61,8 @@ def cache_file(profile: ConnectionProfile) -> Path:
 def move_cache(old: str, new: str) -> bool:
     """Move the per-profile cache dir ``cache/old`` → ``cache/new``. Returns True
     iff a move happened. Best-effort: a no-op when the source is absent or the
-    destination already exists, so a rename never clobbers an unrelated cache."""
+    destination already exists, so a rename never clobbers an unrelated cache.
+    """
     src = _cache_home() / "cache" / old
     dst = _cache_home() / "cache" / new
     if not src.is_dir() or dst.exists():
@@ -98,9 +99,7 @@ def write_definitions(
         "cached_at": now,
         "definitions": definitions,
     }
-    fd, tmp_str = tempfile.mkstemp(
-        dir=str(path.parent), prefix=path.name + ".", suffix=".tmp"
-    )
+    fd, tmp_str = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
     tmp = Path(tmp_str)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:

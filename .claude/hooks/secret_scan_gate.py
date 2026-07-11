@@ -165,7 +165,8 @@ def _message_values(rest: list[str]) -> list[str]:
 def _load_local_tokens() -> list[tuple[str, re.Pattern[str]]]:
     """Org-identifier regexes from the machine-local file plus the
     `CRM_SECRET_SCAN_TOKENS` env var (cloud/CI sandboxes have no home dir
-    token file — a routine/CI environment variable is their channel)."""
+    token file — a routine/CI environment variable is their channel).
+    """
     raw: list[str] = []
     try:
         with open(TOKEN_FILE, encoding="utf-8") as fh:
@@ -233,7 +234,8 @@ def _scan(
 
 def _resolve_dir(base: str, candidate: str) -> str | None:
     """Resolve `candidate` against `base`; None when it cannot be resolved
-    statically (unexpanded shell variables)."""
+    statically (unexpanded shell variables).
+    """
     if "$" in candidate:
         return None
     candidate = os.path.expanduser(candidate)
@@ -278,9 +280,7 @@ def main() -> int:
             continue
 
         # Commit-message values are published regardless of repo resolution.
-        findings.extend(
-            _scan([("commit message", v) for v in _message_values(rest)], checks)
-        )
+        findings.extend(_scan([("commit message", v) for v in _message_values(rest)], checks))
 
         repo_dir = effective
         if repo_override is not None and effective is not None:

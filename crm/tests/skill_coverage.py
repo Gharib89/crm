@@ -13,6 +13,7 @@ Granularity is deliberately group-level: per ADR 0009 the skill states only what
 group need no new citation. The catalogue is obtained by reusing the e2e
 ``walk_commands`` walker — no new walker, no subprocess, no live org.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -136,9 +137,7 @@ def parse_citations(
     return cited_groups, cited_pairs
 
 
-def dead_references(
-    cited_pairs: set[tuple[str, str]], leaves: frozenset[str]
-) -> set[str]:
+def dead_references(cited_pairs: set[tuple[str, str]], leaves: frozenset[str]) -> set[str]:
     """Cited ``group verb`` commands that are absent from the catalogue."""
     return {f"{g} {v}" for g, v in cited_pairs if f"{g} {v}" not in leaves}
 

@@ -5,12 +5,13 @@
   - metadata delete-attribute
   - metadata create-many-to-many  (+ metadata delete-relationship)
   - metadata update-relationship  (uses a 1:N created in the same lifecycle test)
-  - metadata clone-entity
+  - metadata clone-entity.
 
 All tests use `ephemeral_entity` as the base so they never pay the
 create+publish cost themselves. Each test cleans up exactly what it creates;
 shared session state is left to the conftest session-scope fixture.
 """
+
 from __future__ import annotations
 
 import json
@@ -19,23 +20,31 @@ import pytest
 
 from crm.tests.e2e.coverage import covers
 
-
 # ---------------------------------------------------------------------------
 # metadata update-entity
 # ---------------------------------------------------------------------------
+
 
 @covers("metadata update-entity")
 @pytest.mark.slow
 def test_update_entity_display_name(cli, ephemeral_entity, ephemeral_solution):
     """Update the ephemeral entity's display name and assert the change is
-    read back from the server."""
+    read back from the server.
+    """
     new_display = f"E2E Updated {ephemeral_entity}"
-    r = cli([
-        "--json", "metadata", "update-entity", ephemeral_entity,
-        "--display", new_display,
-        "--no-publish",
-        "--solution", ephemeral_solution,
-    ])
+    r = cli(
+        [
+            "--json",
+            "metadata",
+            "update-entity",
+            ephemeral_entity,
+            "--display",
+            new_display,
+            "--no-publish",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert r.returncode == 0, r.stderr
     env = json.loads(r.stdout)
     assert env["ok"], env
@@ -51,22 +60,28 @@ def test_update_entity_display_name(cli, ephemeral_entity, ephemeral_solution):
     # DisplayName is a LocalizedLabels object; check the UserLocalizedLabel text.
     dn = env2["data"].get("DisplayName") or {}
     ull = dn.get("UserLocalizedLabel") or {}
-    assert ull.get("Label") == new_display, (
-        f"Expected '{new_display}', got: {json.dumps(dn)}"
-    )
+    assert ull.get("Label") == new_display, f"Expected '{new_display}', got: {json.dumps(dn)}"
 
 
 @covers("metadata update-entity")
 @pytest.mark.slow
 def test_update_entity_description(cli, ephemeral_entity, ephemeral_solution):
     """Update description; confirm updated=True (no redundant readback needed since
-    test_update_entity_display_name already exercises the GET path)."""
-    r = cli([
-        "--json", "metadata", "update-entity", ephemeral_entity,
-        "--description", "E2E description set by test_update_entity_description",
-        "--no-publish",
-        "--solution", ephemeral_solution,
-    ])
+    test_update_entity_display_name already exercises the GET path).
+    """
+    r = cli(
+        [
+            "--json",
+            "metadata",
+            "update-entity",
+            ephemeral_entity,
+            "--description",
+            "E2E description set by test_update_entity_description",
+            "--no-publish",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert r.returncode == 0, r.stderr
     env = json.loads(r.stdout)
     assert env["ok"], env
@@ -76,6 +91,7 @@ def test_update_entity_description(cli, ephemeral_entity, ephemeral_solution):
 # ---------------------------------------------------------------------------
 # metadata update-attribute  +  metadata delete-attribute  (shared lifecycle)
 # ---------------------------------------------------------------------------
+
 
 @covers("metadata update-attribute", "metadata delete-attribute")
 @pytest.mark.slow
@@ -90,28 +106,47 @@ def test_update_and_delete_string_attribute(cli, ephemeral_entity, unique, ephem
     attr_logical = attr_schema.lower()
 
     # Step 1: add the attribute so we have something to update/delete.
-    r_add = cli([
-        "--json", "metadata", "add-attribute", ephemeral_entity,
-        "--kind", "string",
-        "--schema-name", attr_schema,
-        "--display", f"E2E Test {unique}",
-        "--max-length", "150",
-        "--no-publish",
-        "--solution", ephemeral_solution,
-    ])
+    r_add = cli(
+        [
+            "--json",
+            "metadata",
+            "add-attribute",
+            ephemeral_entity,
+            "--kind",
+            "string",
+            "--schema-name",
+            attr_schema,
+            "--display",
+            f"E2E Test {unique}",
+            "--max-length",
+            "150",
+            "--no-publish",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert r_add.returncode == 0, r_add.stderr
     env_add = json.loads(r_add.stdout)
     assert env_add["ok"], env_add
 
     try:
         # Step 2: update-attribute — change display label and max-length.
-        r_upd = cli([
-            "--json", "metadata", "update-attribute", ephemeral_entity, attr_logical,
-            "--display", f"E2E Updated {unique}",
-            "--max-length", "200",
-            "--no-publish",
-            "--solution", ephemeral_solution,
-        ])
+        r_upd = cli(
+            [
+                "--json",
+                "metadata",
+                "update-attribute",
+                ephemeral_entity,
+                attr_logical,
+                "--display",
+                f"E2E Updated {unique}",
+                "--max-length",
+                "200",
+                "--no-publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
         assert r_upd.returncode == 0, r_upd.stderr
         env_upd = json.loads(r_upd.stdout)
         assert env_upd["ok"], env_upd
@@ -126,11 +161,18 @@ def test_update_and_delete_string_attribute(cli, ephemeral_entity, unique, ephem
         )
 
         # Step 3: delete-attribute.
-        r_del = cli([
-            "--json", "metadata", "delete-attribute", ephemeral_entity, attr_logical,
-            "--yes",
-            "--solution", ephemeral_solution,
-        ])
+        r_del = cli(
+            [
+                "--json",
+                "metadata",
+                "delete-attribute",
+                ephemeral_entity,
+                attr_logical,
+                "--yes",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
         assert r_del.returncode == 0, r_del.stderr
         env_del = json.loads(r_del.stdout)
         assert env_del["ok"], env_del
@@ -138,11 +180,19 @@ def test_update_and_delete_string_attribute(cli, ephemeral_entity, unique, ephem
 
     except Exception:
         # Best-effort: delete the attribute if something went wrong before step 3.
-        cli([
-            "--json", "metadata", "delete-attribute", ephemeral_entity, attr_logical,
-            "--yes",
-            "--solution", ephemeral_solution,
-        ], check=False)
+        cli(
+            [
+                "--json",
+                "metadata",
+                "delete-attribute",
+                ephemeral_entity,
+                attr_logical,
+                "--yes",
+                "--solution",
+                ephemeral_solution,
+            ],
+            check=False,
+        )
         raise
 
 
@@ -153,26 +203,44 @@ def test_update_integer_attribute_bounds(cli, ephemeral_entity, unique, ephemera
     attr_schema = f"new_e2eint{unique}"
     attr_logical = attr_schema.lower()
 
-    r_add = cli([
-        "--json", "metadata", "add-attribute", ephemeral_entity,
-        "--kind", "integer",
-        "--schema-name", attr_schema,
-        "--display", f"E2E Int {unique}",
-        "--no-publish",
-        "--solution", ephemeral_solution,
-    ])
+    r_add = cli(
+        [
+            "--json",
+            "metadata",
+            "add-attribute",
+            ephemeral_entity,
+            "--kind",
+            "integer",
+            "--schema-name",
+            attr_schema,
+            "--display",
+            f"E2E Int {unique}",
+            "--no-publish",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert r_add.returncode == 0, r_add.stderr
     env_add = json.loads(r_add.stdout)
     assert env_add["ok"], env_add
 
     try:
-        r_upd = cli([
-            "--json", "metadata", "update-attribute", ephemeral_entity, attr_logical,
-            "--min", "0",
-            "--max", "100",
-            "--no-publish",
-            "--solution", ephemeral_solution,
-        ])
+        r_upd = cli(
+            [
+                "--json",
+                "metadata",
+                "update-attribute",
+                ephemeral_entity,
+                attr_logical,
+                "--min",
+                "0",
+                "--max",
+                "100",
+                "--no-publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
         assert r_upd.returncode == 0, r_upd.stderr
         env_upd = json.loads(r_upd.stdout)
         assert env_upd["ok"], env_upd
@@ -183,11 +251,19 @@ def test_update_integer_attribute_bounds(cli, ephemeral_entity, unique, ephemera
         assert attr_data.get("MinValue") == 0
         assert attr_data.get("MaxValue") == 100
     finally:
-        cli([
-            "--json", "metadata", "delete-attribute", ephemeral_entity, attr_logical,
-            "--yes",
-            "--solution", ephemeral_solution,
-        ], check=False)
+        cli(
+            [
+                "--json",
+                "metadata",
+                "delete-attribute",
+                ephemeral_entity,
+                attr_logical,
+                "--yes",
+                "--solution",
+                ephemeral_solution,
+            ],
+            check=False,
+        )
 
 
 @covers("metadata update-attribute")
@@ -196,23 +272,32 @@ def test_update_datetime_behavior_userlocal_to_dateonly(
     cli, ephemeral_entity, unique, ephemeral_solution
 ):
     """The one-time DateTimeBehavior flip on a datetime column (#817):
-      1. add-attribute datetime (defaults to UserLocal / DateAndTime)
-      2. update-attribute --behavior DateOnly; assert updated=True and the
-         no-backfill advisory rides meta.warnings
-      3. read back: server reports DateTimeBehavior=DateOnly and the coupled
-         Format=DateOnly (auto-set)
+    1. add-attribute datetime (defaults to UserLocal / DateAndTime)
+    2. update-attribute --behavior DateOnly; assert updated=True and the
+       no-backfill advisory rides meta.warnings
+    3. read back: server reports DateTimeBehavior=DateOnly and the coupled
+       Format=DateOnly (auto-set).
     """
     attr_schema = f"new_e2edt{unique}"
     attr_logical = attr_schema.lower()
 
-    r_add = cli([
-        "--json", "metadata", "add-attribute", ephemeral_entity,
-        "--kind", "datetime",
-        "--schema-name", attr_schema,
-        "--display", f"E2E DT {unique}",
-        "--no-publish",
-        "--solution", ephemeral_solution,
-    ])
+    r_add = cli(
+        [
+            "--json",
+            "metadata",
+            "add-attribute",
+            ephemeral_entity,
+            "--kind",
+            "datetime",
+            "--schema-name",
+            attr_schema,
+            "--display",
+            f"E2E DT {unique}",
+            "--no-publish",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert r_add.returncode == 0, r_add.stderr
     assert json.loads(r_add.stdout)["ok"], r_add.stdout
 
@@ -227,12 +312,20 @@ def test_update_datetime_behavior_userlocal_to_dateonly(
         assert r0.returncode == 0, r0.stderr
         assert _behavior(json.loads(r0.stdout)["data"]) == "UserLocal"
 
-        r_upd = cli([
-            "--json", "metadata", "update-attribute", ephemeral_entity, attr_logical,
-            "--behavior", "DateOnly",
-            "--no-publish",
-            "--solution", ephemeral_solution,
-        ])
+        r_upd = cli(
+            [
+                "--json",
+                "metadata",
+                "update-attribute",
+                ephemeral_entity,
+                attr_logical,
+                "--behavior",
+                "DateOnly",
+                "--no-publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
         assert r_upd.returncode == 0, r_upd.stderr
         env_upd = json.loads(r_upd.stdout)
         assert env_upd["ok"], env_upd
@@ -248,11 +341,19 @@ def test_update_datetime_behavior_userlocal_to_dateonly(
         assert attr_data.get("Format") == "DateOnly", attr_data.get("Format")
 
     finally:
-        cli([
-            "--json", "metadata", "delete-attribute", ephemeral_entity, attr_logical,
-            "--yes",
-            "--solution", ephemeral_solution,
-        ], check=False)
+        cli(
+            [
+                "--json",
+                "metadata",
+                "delete-attribute",
+                ephemeral_entity,
+                attr_logical,
+                "--yes",
+                "--solution",
+                ephemeral_solution,
+            ],
+            check=False,
+        )
 
 
 @covers("metadata add-attribute", "metadata update-attribute", "metadata update-entity")
@@ -271,15 +372,24 @@ def test_audit_enablement_on_attribute_and_entity(
     attr_logical = attr_schema.lower()
 
     # Create the column with auditing ON; confirm the server stored Value=True.
-    r_add = cli([
-        "--json", "metadata", "add-attribute", ephemeral_entity,
-        "--kind", "string",
-        "--schema-name", attr_schema,
-        "--display", f"E2E Audit {unique}",
-        "--audit",
-        "--no-publish",
-        "--solution", ephemeral_solution,
-    ])
+    r_add = cli(
+        [
+            "--json",
+            "metadata",
+            "add-attribute",
+            ephemeral_entity,
+            "--kind",
+            "string",
+            "--schema-name",
+            attr_schema,
+            "--display",
+            f"E2E Audit {unique}",
+            "--audit",
+            "--no-publish",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert r_add.returncode == 0, r_add.stderr
     assert json.loads(r_add.stdout)["ok"], r_add.stdout
 
@@ -293,12 +403,19 @@ def test_audit_enablement_on_attribute_and_entity(
 
         # Toggle the column OFF via update-attribute; confirm Value=False and that
         # the retrieve-merge-write kept the type-specific MaxLength intact.
-        r_upd = cli([
-            "--json", "metadata", "update-attribute", ephemeral_entity, attr_logical,
-            "--no-audit",
-            "--no-publish",
-            "--solution", ephemeral_solution,
-        ])
+        r_upd = cli(
+            [
+                "--json",
+                "metadata",
+                "update-attribute",
+                ephemeral_entity,
+                attr_logical,
+                "--no-audit",
+                "--no-publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
         assert r_upd.returncode == 0, r_upd.stderr
         assert json.loads(r_upd.stdout)["data"].get("updated") is True
 
@@ -310,12 +427,18 @@ def test_audit_enablement_on_attribute_and_entity(
         assert col2.get("MaxLength") == 100, col2.get("MaxLength")
 
         # Entity-level: enable auditing on the table and read it back.
-        r_ent = cli([
-            "--json", "metadata", "update-entity", ephemeral_entity,
-            "--audit",
-            "--no-publish",
-            "--solution", ephemeral_solution,
-        ])
+        r_ent = cli(
+            [
+                "--json",
+                "metadata",
+                "update-entity",
+                ephemeral_entity,
+                "--audit",
+                "--no-publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
         assert r_ent.returncode == 0, r_ent.stderr
         assert json.loads(r_ent.stdout)["data"].get("updated") is True
 
@@ -325,16 +448,25 @@ def test_audit_enablement_on_attribute_and_entity(
             f"Expected entity IsAuditEnabled.Value=True, got: {ent.get('IsAuditEnabled')}"
         )
     finally:
-        cli([
-            "--json", "metadata", "delete-attribute", ephemeral_entity, attr_logical,
-            "--yes",
-            "--solution", ephemeral_solution,
-        ], check=False)
+        cli(
+            [
+                "--json",
+                "metadata",
+                "delete-attribute",
+                ephemeral_entity,
+                attr_logical,
+                "--yes",
+                "--solution",
+                ephemeral_solution,
+            ],
+            check=False,
+        )
 
 
 # ---------------------------------------------------------------------------
 # metadata create-many-to-many  +  metadata delete-relationship (lifecycle)
 # ---------------------------------------------------------------------------
+
 
 @covers("metadata create-many-to-many", "metadata delete-relationship")
 @pytest.mark.slow
@@ -349,15 +481,24 @@ def test_create_and_delete_many_to_many(cli, ephemeral_entity, unique, ephemeral
     rel_schema = f"new_e2enn{unique}"
     intersect = f"new_e2exi{unique}"
 
-    r_create = cli([
-        "--json", "metadata", "create-many-to-many",
-        "--schema-name", rel_schema,
-        "--entity1", ephemeral_entity,
-        "--entity2", "account",
-        "--intersect-entity", intersect,
-        "--no-publish",
-        "--solution", ephemeral_solution,
-    ])
+    r_create = cli(
+        [
+            "--json",
+            "metadata",
+            "create-many-to-many",
+            "--schema-name",
+            rel_schema,
+            "--entity1",
+            ephemeral_entity,
+            "--entity2",
+            "account",
+            "--intersect-entity",
+            intersect,
+            "--no-publish",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert r_create.returncode == 0, r_create.stderr
     env_create = json.loads(r_create.stdout)
     assert env_create["ok"], env_create
@@ -376,11 +517,17 @@ def test_create_and_delete_many_to_many(cli, ephemeral_entity, unique, ephemeral
         )
 
         # delete-relationship.
-        r_del = cli([
-            "--json", "metadata", "delete-relationship", rel_schema,
-            "--yes",
-            "--solution", ephemeral_solution,
-        ])
+        r_del = cli(
+            [
+                "--json",
+                "metadata",
+                "delete-relationship",
+                rel_schema,
+                "--yes",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
         assert r_del.returncode == 0, r_del.stderr
         env_del = json.loads(r_del.stdout)
         assert env_del["ok"], env_del
@@ -388,15 +535,25 @@ def test_create_and_delete_many_to_many(cli, ephemeral_entity, unique, ephemeral
 
     except Exception:
         # Best-effort cleanup so we don't litter the org.
-        cli(["--json", "metadata", "delete-relationship", rel_schema, "--yes",
-             "--solution", ephemeral_solution],
-            check=False)
+        cli(
+            [
+                "--json",
+                "metadata",
+                "delete-relationship",
+                rel_schema,
+                "--yes",
+                "--solution",
+                ephemeral_solution,
+            ],
+            check=False,
+        )
         raise
 
 
 # ---------------------------------------------------------------------------
 # metadata update-relationship  (1:N lifecycle)
 # ---------------------------------------------------------------------------
+
 
 @covers("metadata update-relationship")
 @pytest.mark.slow
@@ -420,18 +577,31 @@ def test_update_relationship_cascade(cli, ephemeral_entity, unique, ephemeral_so
     # Seed two cascade keys: Assign=NoCascade (the one we will change) and
     # Delete=Restrict (a non-default key we will NOT touch — it must survive the
     # update, proving the round-trip doesn't silently reset omitted keys).
-    r_create = cli([
-        "--json", "metadata", "create-one-to-many",
-        "--schema-name", rel_schema,
-        "--referenced-entity", "account",
-        "--referencing-entity", ephemeral_entity,
-        "--lookup-schema", lookup_schema,
-        "--lookup-display", f"E2E Account {unique}",
-        "--cascade-assign", "NoCascade",
-        "--cascade-delete", "Restrict",
-        "--no-publish",
-        "--solution", ephemeral_solution,
-    ], check=False)
+    r_create = cli(
+        [
+            "--json",
+            "metadata",
+            "create-one-to-many",
+            "--schema-name",
+            rel_schema,
+            "--referenced-entity",
+            "account",
+            "--referencing-entity",
+            ephemeral_entity,
+            "--lookup-schema",
+            lookup_schema,
+            "--lookup-display",
+            f"E2E Account {unique}",
+            "--cascade-assign",
+            "NoCascade",
+            "--cascade-delete",
+            "Restrict",
+            "--no-publish",
+            "--solution",
+            ephemeral_solution,
+        ],
+        check=False,
+    )
     created = r_create.returncode == 0
 
     try:
@@ -441,12 +611,19 @@ def test_update_relationship_cascade(cli, ephemeral_entity, unique, ephemeral_so
         assert env_create["data"].get("created") is True
 
         # update-relationship: flip ONLY cascade-assign to Cascade.
-        r_upd = cli([
-            "--json", "metadata", "update-relationship", rel_schema,
-            "--cascade-assign", "Cascade",
-            "--no-publish",
-            "--solution", ephemeral_solution,
-        ])
+        r_upd = cli(
+            [
+                "--json",
+                "metadata",
+                "update-relationship",
+                rel_schema,
+                "--cascade-assign",
+                "Cascade",
+                "--no-publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
         assert r_upd.returncode == 0, r_upd.stderr
         env_upd = json.loads(r_upd.stdout)
         assert env_upd["ok"], env_upd
@@ -455,10 +632,15 @@ def test_update_relationship_cascade(cli, ephemeral_entity, unique, ephemeral_so
         # Read the cascade config back from the server. export-spec surfaces it
         # via the referenced (1-side) entity's OneToManyRelationships. The
         # changed key must be applied; the untouched key must still be Restrict.
-        r_read = cli([
-            "--json", "metadata", "export-spec", "account",
-            "--with-relationships",
-        ])
+        r_read = cli(
+            [
+                "--json",
+                "metadata",
+                "export-spec",
+                "account",
+                "--with-relationships",
+            ]
+        )
         assert r_read.returncode == 0, r_read.stderr
         env_read = json.loads(r_read.stdout)
         assert env_read["ok"], env_read
@@ -471,20 +653,30 @@ def test_update_relationship_cascade(cli, ephemeral_entity, unique, ephemeral_so
         )
         # export-spec emits the FLAT cascade_* keys the apply adapter consumes
         # (#597); a non-default dimension survives the round-trip without reset.
-        assert rel.get("cascade_assign") == "Cascade", rel   # changed key applied
+        assert rel.get("cascade_assign") == "Cascade", rel  # changed key applied
         assert rel.get("cascade_delete") == "Restrict", rel  # untouched key survives
 
     finally:
         if created:
             # Clean up the relationship (Dataverse deletes its lookup attribute too).
-            cli(["--json", "metadata", "delete-relationship", rel_schema, "--yes",
-                 "--solution", ephemeral_solution],
-                check=False)
+            cli(
+                [
+                    "--json",
+                    "metadata",
+                    "delete-relationship",
+                    rel_schema,
+                    "--yes",
+                    "--solution",
+                    ephemeral_solution,
+                ],
+                check=False,
+            )
 
 
 # ---------------------------------------------------------------------------
 # metadata create-key  +  metadata delete-key  (alternate-key lifecycle)
 # ---------------------------------------------------------------------------
+
 
 @covers("metadata create-key", "metadata delete-key")
 @pytest.mark.slow
@@ -501,27 +693,45 @@ def test_create_and_delete_alternate_key(cli, ephemeral_entity, unique, ephemera
     key_schema = f"new_e2eak{unique}"
     key_logical = key_schema.lower()
 
-    r_add = cli([
-        "--json", "metadata", "add-attribute", ephemeral_entity,
-        "--kind", "string",
-        "--schema-name", attr_schema,
-        "--display", f"E2E Key Col {unique}",
-        "--no-publish",
-        "--solution", ephemeral_solution,
-    ])
+    r_add = cli(
+        [
+            "--json",
+            "metadata",
+            "add-attribute",
+            ephemeral_entity,
+            "--kind",
+            "string",
+            "--schema-name",
+            attr_schema,
+            "--display",
+            f"E2E Key Col {unique}",
+            "--no-publish",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert r_add.returncode == 0, r_add.stderr
     assert json.loads(r_add.stdout)["ok"]
 
     try:
         # Step 2: create the alternate key on the seeded column.
-        r_create = cli([
-            "--json", "metadata", "create-key", ephemeral_entity,
-            "--name", key_schema,
-            "--key-attributes", attr_logical,
-            "--display", f"E2E AK {unique}",
-            "--no-publish",
-            "--solution", ephemeral_solution,
-        ])
+        r_create = cli(
+            [
+                "--json",
+                "metadata",
+                "create-key",
+                ephemeral_entity,
+                "--name",
+                key_schema,
+                "--key-attributes",
+                attr_logical,
+                "--display",
+                f"E2E AK {unique}",
+                "--no-publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
         assert r_create.returncode == 0, r_create.stderr
         env_create = json.loads(r_create.stdout)
         assert env_create["ok"], env_create
@@ -537,43 +747,81 @@ def test_create_and_delete_alternate_key(cli, ephemeral_entity, unique, ephemera
             )
 
             # Step 4: delete the key.
-            r_del = cli([
-                "--json", "metadata", "delete-key", ephemeral_entity, key_logical,
-                "--yes",
-                "--solution", ephemeral_solution,
-            ])
+            r_del = cli(
+                [
+                    "--json",
+                    "metadata",
+                    "delete-key",
+                    ephemeral_entity,
+                    key_logical,
+                    "--yes",
+                    "--solution",
+                    ephemeral_solution,
+                ]
+            )
             assert r_del.returncode == 0, r_del.stderr
             env_del = json.loads(r_del.stdout)
             assert env_del["ok"], env_del
             assert env_del["data"].get("deleted") is True
         except Exception:
-            cli(["--json", "metadata", "delete-key", ephemeral_entity, key_logical,
-                 "--yes", "--solution", ephemeral_solution], check=False)
+            cli(
+                [
+                    "--json",
+                    "metadata",
+                    "delete-key",
+                    ephemeral_entity,
+                    key_logical,
+                    "--yes",
+                    "--solution",
+                    ephemeral_solution,
+                ],
+                check=False,
+            )
             raise
     finally:
-        cli(["--json", "metadata", "delete-attribute", ephemeral_entity,
-             attr_logical, "--yes", "--solution", ephemeral_solution], check=False)
+        cli(
+            [
+                "--json",
+                "metadata",
+                "delete-attribute",
+                ephemeral_entity,
+                attr_logical,
+                "--yes",
+                "--solution",
+                ephemeral_solution,
+            ],
+            check=False,
+        )
 
 
 # ---------------------------------------------------------------------------
 # metadata clone-entity
 # ---------------------------------------------------------------------------
 
+
 @covers("metadata clone-entity")
 @pytest.mark.slow
 def test_clone_entity(cli, ephemeral_entity, unique, ephemeral_solution):
     """Clone ephemeral_entity into a uniquely-named entity; assert created;
-    delete the clone in finally."""
+    delete the clone in finally.
+    """
     clone_schema = f"new_E2EClone{unique}"
     clone_logical = clone_schema.lower()
 
-    r = cli([
-        "--json", "metadata", "clone-entity",
-        ephemeral_entity, clone_schema,
-        "--display", f"E2E Clone {unique}",
-        "--no-publish",
-        "--solution", ephemeral_solution,
-    ])
+    r = cli(
+        [
+            "--json",
+            "metadata",
+            "clone-entity",
+            ephemeral_entity,
+            clone_schema,
+            "--display",
+            f"E2E Clone {unique}",
+            "--no-publish",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert r.returncode == 0, r.stderr
     env = json.loads(r.stdout)
     assert env["ok"], env
@@ -586,12 +834,18 @@ def test_clone_entity(cli, ephemeral_entity, unique, ephemeral_solution):
         assert r2.returncode == 0, r2.stderr
         items = json.loads(r2.stdout)["data"]
         logical_names = [it.get("LogicalName") for it in items]
-        assert clone_logical in logical_names, (
-            f"Clone {clone_logical!r} not found in entity list"
-        )
+        assert clone_logical in logical_names, f"Clone {clone_logical!r} not found in entity list"
     finally:
         # Delete the clone; use --yes to skip the interactive confirmation.
-        cli([
-            "--json", "metadata", "delete-entity", clone_logical, "--yes",
-            "--solution", ephemeral_solution,
-        ], check=False)
+        cli(
+            [
+                "--json",
+                "metadata",
+                "delete-entity",
+                clone_logical,
+                "--yes",
+                "--solution",
+                ephemeral_solution,
+            ],
+            check=False,
+        )

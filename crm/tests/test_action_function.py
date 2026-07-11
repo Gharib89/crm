@@ -4,6 +4,7 @@
 Mirrors the bind semantics `action invoke` already has, but issued as a GET:
 --bind-set alone → collection-bound, --bind-set + --bind-id → record-bound.
 """
+
 from __future__ import annotations
 
 import json
@@ -34,7 +35,13 @@ def test_record_bound_builds_set_id_namespace_path(inject_backend, make_fake_bac
     result, backend = _run(
         inject_backend,
         make_fake_backend,
-        ["RetrieveUserPrivileges", "--bind-set", "systemusers", "--bind-id", "11111111-1111-1111-1111-111111111111"],
+        [
+            "RetrieveUserPrivileges",
+            "--bind-set",
+            "systemusers",
+            "--bind-id",
+            "11111111-1111-1111-1111-111111111111",
+        ],
     )
     assert result.exit_code == 0, result.output
     assert backend.last_path == (
@@ -87,14 +94,17 @@ def _last_params(backend):
 
 def test_record_reference_param_emitted_as_alias(inject_backend, make_fake_backend):
     """A {"@odata.id": ...} param value becomes a parameter alias carrying the
-    @odata.id reference in the query string, not an inline literal (issue 365)."""
+    @odata.id reference in the query string, not an inline literal (issue 365).
+    """
     result, backend = _run(
         inject_backend,
         make_fake_backend,
         [
             "RetrievePrincipalAccess",
-            "--bind-set", "systemusers",
-            "--bind-id", "11111111-1111-1111-1111-111111111111",
+            "--bind-set",
+            "systemusers",
+            "--bind-id",
+            "11111111-1111-1111-1111-111111111111",
             "--params",
             '{"Target": {"@odata.id": "accounts(22222222-2222-2222-2222-222222222222)"}}',
         ],
@@ -165,7 +175,8 @@ def test_mixed_inline_and_alias_params(inject_backend, make_fake_backend):
 @pytest.mark.parametrize("bad", [{"id": "x"}, {"@odata.id": "accounts(1111)", "x": 1}])
 def test_malformed_reference_missing_odata_id_fails(inject_backend, make_fake_backend, bad):
     """A dict param that isn't exactly {'@odata.id': ...} is a malformed --params
-    value — a caller mistake caught before any GET → usage error, exit 2 (#713)."""
+    value — a caller mistake caught before any GET → usage error, exit 2 (#713).
+    """
     result, backend = _run(
         inject_backend, make_fake_backend, ["CalcRollup", "--params", json.dumps({"Target": bad})]
     )
@@ -176,7 +187,8 @@ def test_malformed_reference_missing_odata_id_fails(inject_backend, make_fake_ba
 
 def test_bind_id_without_bind_set_is_usage_error(inject_backend, make_fake_backend):
     """--bind-id alone is a bad flag combination caught before any GET → usage
-    error, exit 2 (#713); a record binding needs its collection via --bind-set."""
+    error, exit 2 (#713); a record binding needs its collection via --bind-set.
+    """
     result, backend = _run(
         inject_backend, make_fake_backend, ["RetrieveUserPrivileges", "--bind-id", "x"]
     )

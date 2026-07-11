@@ -1,4 +1,5 @@
 """Command-layer tests for the workflow activation-record hint (issue #160)."""
+
 # pyright: basic
 from __future__ import annotations
 
@@ -7,7 +8,6 @@ import json
 from click.testing import CliRunner
 
 from crm.utils.d365_backend import ConnectionProfile, D365Error
-
 
 _WF_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 _PARENT_GUID = "11111111-2222-3333-4444-555555555555"
@@ -18,9 +18,12 @@ def _seed_profile(tmp_path, monkeypatch):
     monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
     monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
     from crm.core import session as session_mod
-    session_mod.save_profile(ConnectionProfile(
-        name="t", url="https://crm.contoso.local/contoso",
-        domain="CONTOSO", username="alice"))
+
+    session_mod.save_profile(
+        ConnectionProfile(
+            name="t", url="https://crm.contoso.local/contoso", domain="CONTOSO", username="alice"
+        )
+    )
     session_mod.save_profile_secret_plaintext("t", "pw")
 
 
@@ -43,7 +46,10 @@ class TestWorkflowActivationHintWiring:
         )
 
         from crm.cli import cli
-        result = CliRunner().invoke(cli, ["--json", "--profile", "t", "workflow", "deactivate", _WF_ID, "--yes"])
+
+        result = CliRunner().invoke(
+            cli, ["--json", "--profile", "t", "workflow", "deactivate", _WF_ID, "--yes"]
+        )
         assert result.exit_code != 0
         envelope = json.loads(result.output)
         assert envelope["ok"] is False
@@ -68,7 +74,10 @@ class TestWorkflowActivationHintWiring:
         )
 
         from crm.cli import cli
-        result = CliRunner().invoke(cli, ["--json", "--profile", "t", "workflow", "activate", _WF_ID])
+
+        result = CliRunner().invoke(
+            cli, ["--json", "--profile", "t", "workflow", "activate", _WF_ID]
+        )
         assert result.exit_code != 0
         envelope = json.loads(result.output)
         assert envelope["ok"] is False
@@ -77,7 +86,8 @@ class TestWorkflowActivationHintWiring:
 
     def test_non_activation_error_skips_hint_lookup(self, monkeypatch, tmp_path):
         """A non-0x80045003 error must NOT trigger the hint lookup — the gate
-        keeps the second ctx.backend() off the credential-failure path."""
+        keeps the second ctx.backend() off the credential-failure path.
+        """
         _seed_profile(tmp_path, monkeypatch)
         from crm.commands import workflow as wf_cmd
 
@@ -97,7 +107,10 @@ class TestWorkflowActivationHintWiring:
         monkeypatch.setattr(wf_cmd.workflow_mod, "activation_record_hint", _spy)
 
         from crm.cli import cli
-        result = CliRunner().invoke(cli, ["--json", "--profile", "t", "workflow", "deactivate", _WF_ID, "--yes"])
+
+        result = CliRunner().invoke(
+            cli, ["--json", "--profile", "t", "workflow", "deactivate", _WF_ID, "--yes"]
+        )
         assert result.exit_code != 0
         envelope = json.loads(result.output)
         assert envelope["ok"] is False
@@ -108,7 +121,8 @@ class TestWorkflowActivationHintWiring:
 
 class TestWorkflowAutoResolveNoteWiring:
     """The redirect note emitted when set_workflow_state resolved an
-    activation-record GUID to its parent definition (issue #170)."""
+    activation-record GUID to its parent definition (issue #170).
+    """
 
     @staticmethod
     def _info(resolved: bool, *, activated: bool) -> dict:
@@ -125,12 +139,15 @@ class TestWorkflowAutoResolveNoteWiring:
         from crm.commands import workflow as wf_cmd
 
         monkeypatch.setattr(
-            wf_cmd.workflow_mod, "set_workflow_state",
+            wf_cmd.workflow_mod,
+            "set_workflow_state",
             lambda backend, wid, **kw: self._info(True, activated=False),
         )
         from crm.cli import cli
+
         result = CliRunner().invoke(
-            cli, ["--json", "--profile", "t", "workflow", "deactivate", _WF_ID, "--yes"])
+            cli, ["--json", "--profile", "t", "workflow", "deactivate", _WF_ID, "--yes"]
+        )
         assert result.exit_code == 0
         envelope = json.loads(result.output)
         assert envelope["ok"] is True
@@ -144,12 +161,15 @@ class TestWorkflowAutoResolveNoteWiring:
         from crm.commands import workflow as wf_cmd
 
         monkeypatch.setattr(
-            wf_cmd.workflow_mod, "set_workflow_state",
+            wf_cmd.workflow_mod,
+            "set_workflow_state",
             lambda backend, wid, **kw: self._info(True, activated=True),
         )
         from crm.cli import cli
+
         result = CliRunner().invoke(
-            cli, ["--json", "--profile", "t", "workflow", "activate", _WF_ID])
+            cli, ["--json", "--profile", "t", "workflow", "activate", _WF_ID]
+        )
         assert result.exit_code == 0
         envelope = json.loads(result.output)
         assert envelope["ok"] is True
@@ -161,12 +181,15 @@ class TestWorkflowAutoResolveNoteWiring:
         from crm.commands import workflow as wf_cmd
 
         monkeypatch.setattr(
-            wf_cmd.workflow_mod, "set_workflow_state",
+            wf_cmd.workflow_mod,
+            "set_workflow_state",
             lambda backend, wid, **kw: self._info(True, activated=False),
         )
         from crm.cli import cli
+
         result = CliRunner().invoke(
-            cli, ["--profile", "t", "workflow", "deactivate", _WF_ID, "--yes"])
+            cli, ["--profile", "t", "workflow", "deactivate", _WF_ID, "--yes"]
+        )
         assert result.exit_code == 0
         assert "Operated on parent definition" in result.output
         assert _PARENT_GUID in result.output
@@ -176,12 +199,15 @@ class TestWorkflowAutoResolveNoteWiring:
         from crm.commands import workflow as wf_cmd
 
         monkeypatch.setattr(
-            wf_cmd.workflow_mod, "set_workflow_state",
+            wf_cmd.workflow_mod,
+            "set_workflow_state",
             lambda backend, wid, **kw: self._info(False, activated=False),
         )
         from crm.cli import cli
+
         result = CliRunner().invoke(
-            cli, ["--json", "--profile", "t", "workflow", "deactivate", _WF_ID, "--yes"])
+            cli, ["--json", "--profile", "t", "workflow", "deactivate", _WF_ID, "--yes"]
+        )
         assert result.exit_code == 0
         envelope = json.loads(result.output)
         assert envelope["ok"] is True
@@ -212,8 +238,10 @@ class TestEntityDeleteActivationHintWiring:
         )
 
         from crm.cli import cli
+
         result = CliRunner().invoke(
-            cli, ["--json", "--profile", "t", "entity", "delete", "workflows", _WF_ID, "--yes"])
+            cli, ["--json", "--profile", "t", "entity", "delete", "workflows", _WF_ID, "--yes"]
+        )
         assert result.exit_code != 0
         envelope = json.loads(result.output)
         assert envelope["ok"] is False
@@ -222,7 +250,8 @@ class TestEntityDeleteActivationHintWiring:
 
     def test_non_activation_delete_skips_hint_lookup(self, monkeypatch, tmp_path):
         """A non-0x80045004 delete failure must NOT trigger the hint lookup —
-        the gate keeps the resolver's extra GET off every other delete."""
+        the gate keeps the resolver's extra GET off every other delete.
+        """
         _seed_profile(tmp_path, monkeypatch)
         from crm.commands import entity as entity_cmd
         from crm.core import workflow as workflow_mod
@@ -243,8 +272,10 @@ class TestEntityDeleteActivationHintWiring:
         monkeypatch.setattr(workflow_mod, "activation_delete_hint", _spy)
 
         from crm.cli import cli
+
         result = CliRunner().invoke(
-            cli, ["--json", "--profile", "t", "entity", "delete", "contacts", _WF_ID, "--yes"])
+            cli, ["--json", "--profile", "t", "entity", "delete", "contacts", _WF_ID, "--yes"]
+        )
         assert result.exit_code != 0
         envelope = json.loads(result.output)
         assert envelope["ok"] is False

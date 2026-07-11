@@ -42,6 +42,7 @@ def test_existing_skill_json_mode_errors_without_prompt(tmp_path: Path, monkeypa
     result = runner.invoke(cli, ["--json", "skill", "install", "--dest", str(dest)])
     assert result.exit_code == 1, result.output
     import json
+
     assert "already exists" in json.loads(result.output)["error"]
 
 
@@ -50,6 +51,7 @@ def test_existing_skill_tty_confirm_accept_overwrites(tmp_path: Path, monkeypatc
     runner = _runner(tmp_path, monkeypatch)
     runner.invoke(cli, ["skill", "install", "--dest", str(dest), "--force"])
     import crm.commands.skill as skill_mod
+
     monkeypatch.setattr(skill_mod, "_stdin_is_tty", lambda: True)
     result = runner.invoke(cli, ["skill", "install", "--dest", str(dest)], input="y\n")
     assert result.exit_code == 0, result.output
@@ -61,6 +63,7 @@ def test_existing_skill_tty_confirm_decline_aborts(tmp_path: Path, monkeypatch):
     runner = _runner(tmp_path, monkeypatch)
     runner.invoke(cli, ["skill", "install", "--dest", str(dest), "--force"])
     import crm.commands.skill as skill_mod
+
     monkeypatch.setattr(skill_mod, "_stdin_is_tty", lambda: True)
     result = runner.invoke(cli, ["skill", "install", "--dest", str(dest)], input="n\n")
     assert result.exit_code == 1, result.output
@@ -127,8 +130,8 @@ def test_uninstall_io_error_is_clean_envelope(tmp_path: Path, monkeypatch):
 def test_uninstall_keeps_registry_when_file_delete_fails(tmp_path: Path, monkeypatch):
     # If the filesystem removal fails, the registry entry must NOT be pruned —
     # else self-update would stop refreshing a skill that is still on disk.
-    from crm.commands import skill_registry as reg
     import crm.commands.skill as skill_mod
+    from crm.commands import skill_registry as reg
 
     dest = tmp_path / "crm"
     runner = _runner(tmp_path, monkeypatch)

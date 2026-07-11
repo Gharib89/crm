@@ -5,6 +5,7 @@ default (create echoes, update is silent). Passing both is a usage error (exit 2
 The wire effect is the `Prefer: return=representation` header, which we capture
 off a stub backend.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -29,8 +30,11 @@ class RecordingBackend:
     def __init__(self):
         self.headers: dict[str, str] | None = None
         self.profile = ConnectionProfile(
-            name="testp", url="https://crm.contoso.local/contoso",
-            domain="CONTOSO", username="alice", api_version="v9.2",
+            name="testp",
+            url="https://crm.contoso.local/contoso",
+            domain="CONTOSO",
+            username="alice",
+            api_version="v9.2",
         )
 
     def post(self, _entity_set, *, extra_headers=None, **_kw):
@@ -48,6 +52,7 @@ class RecordingBackend:
 
     def url_for(self, path):
         import urllib.parse
+
         return urllib.parse.urljoin(self.profile.api_base, path.lstrip("/"))
 
 
@@ -67,7 +72,9 @@ def test_create_merges_extra_headers_with_prefer(monkeypatch):
 
     backend = RecordingBackend()
     entity_mod.create(
-        cast(D365Backend, backend), "roles", {"name": "x"},
+        cast(D365Backend, backend),
+        "roles",
+        {"name": "x"},
         extra_headers={"MSCRM.SolutionUniqueName": "mysol"},
     )
     assert _prefers_representation(backend)
@@ -83,10 +90,10 @@ def test_create_merges_extra_headers_with_prefer(monkeypatch):
     [
         # default echoes; explicit flags short-circuit before `default` is read,
         # so each short-circuit needs only one row (default value irrelevant there).
-        (False, False, True, True),    # neither flag → default (echo on)
+        (False, False, True, True),  # neither flag → default (echo on)
         (False, False, False, False),  # neither flag → default (silent)
-        (True, False, True, False),    # no_return wins → False
-        (False, True, True, True),     # return_record wins → True
+        (True, False, True, False),  # no_return wins → False
+        (False, True, True, True),  # return_record wins → True
     ],
 )
 def test_resolver_table(no_return, return_record, default, expected):
@@ -106,7 +113,16 @@ def _invoke(monkeypatch, args):
 def test_update_no_return_succeeds_no_echo(monkeypatch):
     result, backend = _invoke(
         monkeypatch,
-        ["--json", "entity", "update", "accounts", "00000000-0000-0000-0000-000000000009", "--data", '{"statuscode":1}', "--no-return"],
+        [
+            "--json",
+            "entity",
+            "update",
+            "accounts",
+            "00000000-0000-0000-0000-000000000009",
+            "--data",
+            '{"statuscode":1}',
+            "--no-return",
+        ],
     )
     assert result.exit_code == 0, result.output
     assert json.loads(result.output)["ok"] is True
@@ -143,14 +159,32 @@ def test_create_default_echoes(monkeypatch):
 def test_update_return_record_unchanged(monkeypatch):
     _, backend = _invoke(
         monkeypatch,
-        ["--json", "entity", "update", "accounts", "00000000-0000-0000-0000-000000000009", "--data", '{"x":1}', "--return-record"],
+        [
+            "--json",
+            "entity",
+            "update",
+            "accounts",
+            "00000000-0000-0000-0000-000000000009",
+            "--data",
+            '{"x":1}',
+            "--return-record",
+        ],
     )
     assert _prefers_representation(backend)
 
 
 def test_update_default_silent(monkeypatch):
     _, backend = _invoke(
-        monkeypatch, ["--json", "entity", "update", "accounts", "00000000-0000-0000-0000-000000000009", "--data", '{"x":1}']
+        monkeypatch,
+        [
+            "--json",
+            "entity",
+            "update",
+            "accounts",
+            "00000000-0000-0000-0000-000000000009",
+            "--data",
+            '{"x":1}',
+        ],
     )
     assert not _prefers_representation(backend)
 
@@ -161,7 +195,16 @@ def test_update_default_silent(monkeypatch):
 def test_create_both_flags_exit_2():
     result = CliRunner().invoke(
         cli,
-        ["--json", "entity", "create", "accounts", "--data", "{}", "--no-return", "--return-record"],
+        [
+            "--json",
+            "entity",
+            "create",
+            "accounts",
+            "--data",
+            "{}",
+            "--no-return",
+            "--return-record",
+        ],
     )
     assert result.exit_code == 2, result.output
     assert json.loads(result.output)["ok"] is False
@@ -170,7 +213,17 @@ def test_create_both_flags_exit_2():
 def test_update_both_flags_exit_2():
     result = CliRunner().invoke(
         cli,
-        ["--json", "entity", "update", "accounts", "00000000-0000-0000-0000-000000000009", "--data", "{}", "--no-return", "--return-record"],
+        [
+            "--json",
+            "entity",
+            "update",
+            "accounts",
+            "00000000-0000-0000-0000-000000000009",
+            "--data",
+            "{}",
+            "--no-return",
+            "--return-record",
+        ],
     )
     assert result.exit_code == 2, result.output
     assert json.loads(result.output)["ok"] is False

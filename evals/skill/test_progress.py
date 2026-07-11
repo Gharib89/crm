@@ -8,12 +8,12 @@ gating, all with a list-appending fake or a ``StringIO`` stream — no agent, no
 
     pytest evals/skill
 """
+
 from __future__ import annotations
 
 import io
 from pathlib import Path
 
-from evals.skill import set_runner
 from evals.skill.runner import RunResult
 from evals.skill.set_runner import (
     FAIL,
@@ -32,8 +32,11 @@ def _stub(verdicts: dict[str, bool]):
     def run_one(path, *, dry_run, agent_cmd, crm_bin):
         spec = parse_task_file(path)
         return RunResult(
-            task_id=spec.id, dry_run=False, isolation_checks={},
-            passed=verdicts.get(spec.id, True), reason="stubbed",
+            task_id=spec.id,
+            dry_run=False,
+            isolation_checks={},
+            passed=verdicts.get(spec.id, True),
+            reason="stubbed",
         )
 
     return run_one
@@ -93,7 +96,9 @@ def test_stderr_progress_leg_header():
     buf = io.StringIO()
     rep = StderrProgress(stream=buf)
     rep.leg(target="cloud", profile="agent-cloud", reachable=True, runnable=10)
-    rep.leg(target="onprem", profile="agent-on-prem", reachable=False, reason="unreachable (VPN down)")
+    rep.leg(
+        target="onprem", profile="agent-on-prem", reachable=False, reason="unreachable (VPN down)"
+    )
     out = buf.getvalue()
     assert "── cloud (agent-cloud) ──  reachable, 10 runnable" in out
     assert "── onprem (agent-on-prem) ──  SKIPPED — unreachable (VPN down)" in out
@@ -128,8 +133,13 @@ def test_either_task_is_displayed_and_tallied_under_active_leg(tmp_path):
     # would otherwise split into a stray "either" bucket.
     _write_either_task(tmp_path)
     events: list[ProgressEvent] = []
-    run_set(tmp_path, active_target="cloud", run_one=_stub({"either-task": True}),
-            repeat=2, progress=events.append)
+    run_set(
+        tmp_path,
+        active_target="cloud",
+        run_one=_stub({"either-task": True}),
+        repeat=2,
+        progress=events.append,
+    )
     resolved = [e for e in events if e.status is not None]
     assert [e.target for e in resolved] == ["cloud"]  # not "either"
     trial_ticks = [e for e in events if e.status is None]
@@ -147,8 +157,12 @@ def test_skip_line_keeps_its_gate_target(tmp_path):
         encoding="utf-8",
     )
     events: list[ProgressEvent] = []
-    run_set(tmp_path, active_target="cloud", run_one=_stub({"either-task": True}),
-            progress=events.append)
+    run_set(
+        tmp_path,
+        active_target="cloud",
+        run_one=_stub({"either-task": True}),
+        progress=events.append,
+    )
     by_id = {e.task_id: e for e in events if e.status is not None}
     assert by_id["onprem-only"].status == "skip"
     assert by_id["onprem-only"].target == "onprem"  # gate target, not the active leg

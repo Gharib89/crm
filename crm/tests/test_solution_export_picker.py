@@ -6,6 +6,7 @@ Under --json / non-TTY the pre-#656 required-argument behavior (usage error,
 exit 2) is preserved. The org fetch and the export core call are stubbed so these
 tests pin the command seam (gating, ordering, envelopes), not the transport.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -19,7 +20,12 @@ pytestmark = pytest.mark.usefixtures("isolated_home")
 
 
 _SOLUTIONS = [
-    {"uniquename": "zmanaged", "friendlyname": "Z Managed", "version": "1.0.0.0", "ismanaged": True},
+    {
+        "uniquename": "zmanaged",
+        "friendlyname": "Z Managed",
+        "version": "1.0.0.0",
+        "ismanaged": True,
+    },
     {"uniquename": "myorgsln", "friendlyname": "My Org", "version": "2.3.0.0", "ismanaged": False},
     {"uniquename": "another", "friendlyname": "Another", "version": "1.1.0.0", "ismanaged": False},
 ]
@@ -39,8 +45,7 @@ def _stub(monkeypatch, backend, *, solutions=None):
         calls["output"] = str(output)
         return {"action": "ExportSolution", "bytes": 42, "path": str(output)}
 
-    monkeypatch.setattr(
-        "crm.commands.solution.sol_mod.export_solution", _fake_export)
+    monkeypatch.setattr("crm.commands.solution.sol_mod.export_solution", _fake_export)
     return calls
 
 

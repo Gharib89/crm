@@ -1,4 +1,5 @@
 """Tests for --category friendly-name support on `crm workflow list` (issue #204)."""
+
 # pyright: basic
 from __future__ import annotations
 
@@ -12,9 +13,12 @@ def _seed_profile(tmp_path, monkeypatch):
     monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
     monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
     from crm.core import session as session_mod
+
     prof = ConnectionProfile(
-        name="t", url="https://crm.contoso.local/contoso",
-        domain="CONTOSO", username="alice",
+        name="t",
+        url="https://crm.contoso.local/contoso",
+        domain="CONTOSO",
+        username="alice",
     )
     session_mod.save_profile(prof)
     session_mod.save_profile_secret_plaintext("t", "pw")
@@ -22,8 +26,8 @@ def _seed_profile(tmp_path, monkeypatch):
 
 def _invoke(monkeypatch, tmp_path, args, captured):
     _seed_profile(tmp_path, monkeypatch)
-    from crm.commands import workflow as wf_cmd
     from crm.cli import cli
+    from crm.commands import workflow as wf_cmd
 
     def fake_list(backend, *, category=None, **kw):
         captured["category"] = category

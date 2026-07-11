@@ -8,13 +8,13 @@ import requests_mock
 
 from crm.utils.d365_backend import D365Backend, D365Error
 
-
 _REL_ID = "22222222-2222-2222-2222-222222222222"
 
 
 class TestCreateOneToMany:
     def test_happy_path_posts_action_and_reads_back(self, backend):
         from crm.core import relationships as rel
+
         rel_url = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
         with requests_mock.Mocker() as m:
             m.get(
@@ -29,8 +29,10 @@ class TestCreateOneToMany:
             )
             m.get(
                 rel_url + "/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
-                json={"SchemaName": "new_account_new_project",
-                      "ReferencingAttribute": "new_accountid"},
+                json={
+                    "SchemaName": "new_account_new_project",
+                    "ReferencingAttribute": "new_accountid",
+                },
             )
             info = rel.create_one_to_many(
                 backend,
@@ -59,6 +61,7 @@ class TestCreateOneToMany:
 
     def test_use_label_without_label_rejected(self, backend):
         from crm.core import relationships as rel
+
         with pytest.raises(D365Error, match="UseLabel"):
             rel.create_one_to_many(
                 backend,
@@ -72,6 +75,7 @@ class TestCreateOneToMany:
 
     def test_rejects_schema_without_prefix(self, backend):
         from crm.core import relationships as rel
+
         with pytest.raises(D365Error, match="publisher prefix"):
             rel.create_one_to_many(
                 backend,
@@ -84,6 +88,7 @@ class TestCreateOneToMany:
 
     def test_rejects_bad_cascade_value(self, backend):
         from crm.core import relationships as rel
+
         with pytest.raises(D365Error, match="cascade_delete"):
             rel.create_one_to_many(
                 backend,
@@ -97,6 +102,7 @@ class TestCreateOneToMany:
 
     def test_readback_failure_non_fatal(self, backend):
         from crm.core import relationships as rel
+
         rel_url = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
         with requests_mock.Mocker() as m:
             m.get(
@@ -111,7 +117,8 @@ class TestCreateOneToMany:
             )
             m.get(
                 rel_url + "/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
-                status_code=500, json={"error": {"message": "boom"}},
+                status_code=500,
+                json={"error": {"message": "boom"}},
             )
             info = rel.create_one_to_many(
                 backend,
@@ -126,6 +133,7 @@ class TestCreateOneToMany:
 
     def test_hierarchical_sets_flag_in_body(self, backend):
         from crm.core import relationships as rel
+
         rel_url = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
         with requests_mock.Mocker() as m:
             m.get(
@@ -140,8 +148,10 @@ class TestCreateOneToMany:
             )
             m.get(
                 rel_url + "/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
-                json={"SchemaName": "new_account_new_account",
-                      "ReferencingAttribute": "new_parentaccountid"},
+                json={
+                    "SchemaName": "new_account_new_account",
+                    "ReferencingAttribute": "new_parentaccountid",
+                },
             )
             rel.create_one_to_many(
                 backend,
@@ -157,6 +167,7 @@ class TestCreateOneToMany:
 
     def test_non_hierarchical_omits_flag(self, backend):
         from crm.core import relationships as rel
+
         rel_url = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
         with requests_mock.Mocker() as m:
             m.get(
@@ -198,6 +209,7 @@ class TestCreateCustomerRelationships:
 
     def test_posts_action_with_composite_lookup_and_two_relationships(self, backend):
         from crm.core import relationships as rel
+
         with requests_mock.Mocker() as m:
             self._mock_not_exists(m, backend, "new_widget", "new_customerid")
             m.post(
@@ -235,6 +247,7 @@ class TestCreateCustomerRelationships:
 
     def test_rejects_schema_without_prefix(self, backend):
         from crm.core import relationships as rel
+
         with pytest.raises(D365Error, match="publisher prefix"):
             rel.create_customer_relationships(
                 backend,
@@ -245,6 +258,7 @@ class TestCreateCustomerRelationships:
 
     def test_existing_attribute_skip_is_noop(self, backend):
         from crm.core import relationships as rel
+
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for(
@@ -267,6 +281,7 @@ class TestCreateCustomerRelationships:
 class TestListRelationshipsMoved:
     def test_list_relationships_works_from_new_module(self, backend):
         from crm.core import relationships as rel
+
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("EntityDefinitions(LogicalName='account')/OneToManyRelationships"),
@@ -292,6 +307,7 @@ class TestListRelationshipsMoved:
         # (requests_mock echoes the full json regardless of $select) — assert the
         # request query, the same trap class that let the describe bug ship.
         from crm.core import relationships as rel
+
         with requests_mock.Mocker() as m:
             o2m = m.get(
                 backend.url_for("EntityDefinitions(LogicalName='account')/OneToManyRelationships"),
@@ -310,6 +326,7 @@ class TestListRelationshipsMoved:
         # (requests_mock lower-cases the parsed query). Nav names are
         # case-SENSITIVE on the server — the #228 bug — so lock the exact casing.
         from urllib.parse import unquote
+
         o2m_url = unquote(o2m.last_request.url)
         m2o_url = unquote(m2o.last_request.url)
         assert "ReferencingEntityNavigationPropertyName" in o2m_url
@@ -319,6 +336,7 @@ class TestListRelationshipsMoved:
 class TestCreateManyToMany:
     def test_happy_path(self, backend):
         from crm.core import relationships as rel
+
         rel_url = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
         with requests_mock.Mocker() as m:
             m.get(
@@ -333,8 +351,10 @@ class TestCreateManyToMany:
             )
             m.get(
                 rel_url + "/Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata",
-                json={"SchemaName": "new_account_project",
-                      "IntersectEntityName": "new_account_project"},
+                json={
+                    "SchemaName": "new_account_project",
+                    "IntersectEntityName": "new_account_project",
+                },
             )
             info = rel.create_many_to_many(
                 backend,
@@ -353,6 +373,7 @@ class TestCreateManyToMany:
 
     def test_rejects_self_relationship(self, backend):
         from crm.core import relationships as rel
+
         with pytest.raises(D365Error, match="self N:N"):
             rel.create_many_to_many(
                 backend,
@@ -364,6 +385,7 @@ class TestCreateManyToMany:
 
     def test_rejects_schema_without_prefix(self, backend):
         from crm.core import relationships as rel
+
         with pytest.raises(D365Error, match="publisher prefix"):
             rel.create_many_to_many(
                 backend,
@@ -377,6 +399,7 @@ class TestCreateManyToMany:
         # Mirror the 1:N guard: a UseLabel associated menu with no label is
         # rejected client-side rather than sent to the server (which rejects it).
         from crm.core import relationships as rel
+
         with pytest.raises(D365Error, match="UseLabel"):
             rel.create_many_to_many(
                 backend,
@@ -389,6 +412,7 @@ class TestCreateManyToMany:
 
     def test_rejects_bad_if_exists(self, backend):
         from crm.core import relationships as rel
+
         with pytest.raises(D365Error, match="if_exists"):
             rel.create_many_to_many(
                 backend,
@@ -401,6 +425,7 @@ class TestCreateManyToMany:
 
     def test_if_exists_skip_returns_skipped(self, backend):
         from crm.core import relationships as rel
+
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("RelationshipDefinitions(SchemaName='new_account_project')"),
@@ -420,6 +445,7 @@ class TestCreateManyToMany:
 
     def test_entity_labels_included_in_post_body(self, backend):
         from crm.core import relationships as rel
+
         rel_url = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
         with requests_mock.Mocker() as m:
             m.get(
@@ -434,8 +460,10 @@ class TestCreateManyToMany:
             )
             m.get(
                 rel_url + "/Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata",
-                json={"SchemaName": "new_account_project",
-                      "IntersectEntityName": "new_account_project"},
+                json={
+                    "SchemaName": "new_account_project",
+                    "IntersectEntityName": "new_account_project",
+                },
             )
             rel.create_many_to_many(
                 backend,
@@ -452,6 +480,7 @@ class TestCreateManyToMany:
 
     def test_readback_failure_non_fatal(self, backend):
         from crm.core import relationships as rel
+
         rel_url = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
         with requests_mock.Mocker() as m:
             m.get(
@@ -466,7 +495,8 @@ class TestCreateManyToMany:
             )
             m.get(
                 rel_url + "/Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata",
-                status_code=500, json={"error": {"message": "boom"}},
+                status_code=500,
+                json={"error": {"message": "boom"}},
             )
             info = rel.create_many_to_many(
                 backend,
@@ -480,6 +510,7 @@ class TestCreateManyToMany:
 
     def test_no_relationship_id_in_response_sets_lookup_error(self, backend):
         from crm.core import relationships as rel
+
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("RelationshipDefinitions(SchemaName='new_account_project')"),
@@ -503,6 +534,7 @@ class TestCreateManyToMany:
 
     def test_dryrun_returns_dry_run_envelope(self, profile):
         from crm.core import relationships as rel
+
         dry_backend = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
             m.get(
@@ -524,6 +556,7 @@ class TestCreateManyToMany:
 
     def test_if_exists_error_raises_when_already_exists(self, backend):
         from crm.core import relationships as rel
+
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("RelationshipDefinitions(SchemaName='new_account_project')"),
@@ -541,6 +574,7 @@ class TestCreateManyToMany:
 
     def test_solution_header_set_when_provided(self, backend):
         from crm.core import relationships as rel
+
         rel_url = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
         with requests_mock.Mocker() as m:
             m.get(
@@ -555,8 +589,10 @@ class TestCreateManyToMany:
             )
             m.get(
                 rel_url + "/Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata",
-                json={"SchemaName": "new_account_project",
-                      "IntersectEntityName": "new_account_project"},
+                json={
+                    "SchemaName": "new_account_project",
+                    "IntersectEntityName": "new_account_project",
+                },
             )
             rel.create_many_to_many(
                 backend,
@@ -573,38 +609,52 @@ class TestCreateManyToMany:
 class TestDeleteRelationship:
     def test_refuses_non_custom(self, backend):
         from crm.core import relationships as rel
+
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("RelationshipDefinitions(SchemaName='account_contacts')"),
-                json={"SchemaName": "account_contacts",
-                      "IsCustomRelationship": False, "IsManaged": True},
+                json={
+                    "SchemaName": "account_contacts",
+                    "IsCustomRelationship": False,
+                    "IsManaged": True,
+                },
             )
             with pytest.raises(D365Error, match="not a custom"):
                 rel.delete_relationship(backend, "account_contacts")
 
     def test_refuses_managed(self, backend):
         from crm.core import relationships as rel
+
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("RelationshipDefinitions(SchemaName='vendor_account_vendor')"),
-                json={"SchemaName": "vendor_account_vendor",
-                      "IsCustomRelationship": True, "IsManaged": True},
+                json={
+                    "SchemaName": "vendor_account_vendor",
+                    "IsCustomRelationship": True,
+                    "IsManaged": True,
+                },
             )
             with pytest.raises(D365Error, match="managed"):
                 rel.delete_relationship(backend, "vendor_account_vendor")
 
     def test_happy_path_deletes_with_solution_header(self, backend):
         from crm.core import relationships as rel
+
         path = "RelationshipDefinitions(SchemaName='new_account_new_project')"
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for(path),
-                json={"SchemaName": "new_account_new_project",
-                      "IsCustomRelationship": True, "IsManaged": False},
+                json={
+                    "SchemaName": "new_account_new_project",
+                    "IsCustomRelationship": True,
+                    "IsManaged": False,
+                },
             )
             m.delete(backend.url_for(path), status_code=204)
             info = rel.delete_relationship(
-                backend, "new_account_new_project", solution="DevSolution",
+                backend,
+                "new_account_new_project",
+                solution="DevSolution",
             )
         assert info["deleted"] is True
         assert info["schema_name"] == "new_account_new_project"
@@ -616,11 +666,17 @@ class TestDeleteRelationship:
     def test_check_dependencies_off_by_default_no_extra_get(self, backend):
         """Without check_dependencies, no dependency GETs fire."""
         from crm.core import relationships as rel
+
         path = "RelationshipDefinitions(SchemaName='new_account_new_project')"
         with requests_mock.Mocker() as m:
-            m.get(backend.url_for(path),
-                  json={"SchemaName": "new_account_new_project",
-                        "IsCustomRelationship": True, "IsManaged": False})
+            m.get(
+                backend.url_for(path),
+                json={
+                    "SchemaName": "new_account_new_project",
+                    "IsCustomRelationship": True,
+                    "IsManaged": False,
+                },
+            )
             m.delete(backend.url_for(path), status_code=204)
             info = rel.delete_relationship(backend, "new_account_new_project")
         assert "can_delete" not in info
@@ -631,26 +687,36 @@ class TestDeleteRelationship:
     def test_check_dependencies_with_blockers(self, backend):
         """check_dependencies=True fires resolve GET + function GET; blockers in result."""
         from crm.core import relationships as rel
+
         _rel_meta_id = "2222ffff-0000-0000-0000-000000000000"
         path = "RelationshipDefinitions(SchemaName='new_account_new_project')"
         dep_url = backend.url_for(
             f"RetrieveDependenciesForDelete(ObjectId={_rel_meta_id},ComponentType=10)"
         )
         with requests_mock.Mocker() as m:
-            m.get(backend.url_for(path), json={
-                "SchemaName": "new_account_new_project",
-                "IsCustomRelationship": True, "IsManaged": False,
-                "MetadataId": _rel_meta_id,
-            })
-            m.get(dep_url, json={"value": [
-                {
-                    "dependentcomponenttype": 24,
-                    "dependentcomponentobjectid": "3333ffff-0000-0000-0000-000000000000",
-                    "dependentcomponentparentid": None,
-                    "requiredcomponenttype": 10,
-                    "dependencytype": 1,
+            m.get(
+                backend.url_for(path),
+                json={
+                    "SchemaName": "new_account_new_project",
+                    "IsCustomRelationship": True,
+                    "IsManaged": False,
+                    "MetadataId": _rel_meta_id,
                 },
-            ]})
+            )
+            m.get(
+                dep_url,
+                json={
+                    "value": [
+                        {
+                            "dependentcomponenttype": 24,
+                            "dependentcomponentobjectid": "3333ffff-0000-0000-0000-000000000000",
+                            "dependentcomponentparentid": None,
+                            "requiredcomponenttype": 10,
+                            "dependencytype": 1,
+                        },
+                    ]
+                },
+            )
             m.delete(backend.url_for(path), status_code=204)
             info = rel.delete_relationship(
                 backend, "new_account_new_project", check_dependencies=True
@@ -665,17 +731,22 @@ class TestDeleteRelationship:
     def test_check_dependencies_no_blockers(self, backend):
         """Empty dependency list → can_delete True."""
         from crm.core import relationships as rel
+
         _rel_meta_id = "2222ffff-0000-0000-0000-000000000000"
         path = "RelationshipDefinitions(SchemaName='new_account_new_project')"
         dep_url = backend.url_for(
             f"RetrieveDependenciesForDelete(ObjectId={_rel_meta_id},ComponentType=10)"
         )
         with requests_mock.Mocker() as m:
-            m.get(backend.url_for(path), json={
-                "SchemaName": "new_account_new_project",
-                "IsCustomRelationship": True, "IsManaged": False,
-                "MetadataId": _rel_meta_id,
-            })
+            m.get(
+                backend.url_for(path),
+                json={
+                    "SchemaName": "new_account_new_project",
+                    "IsCustomRelationship": True,
+                    "IsManaged": False,
+                    "MetadataId": _rel_meta_id,
+                },
+            )
             m.get(dep_url, json={"value": []})
             m.delete(backend.url_for(path), status_code=204)
             info = rel.delete_relationship(
@@ -690,13 +761,18 @@ class TestDeleteRelationshipDryRun:
 
     def test_dryrun_returns_preview_not_deleted(self, profile):
         from crm.core import relationships as rel
+
         dry_backend = D365Backend(profile, password="pw", dry_run=True)
         path = "RelationshipDefinitions(SchemaName='new_account_new_project')"
         with requests_mock.Mocker() as m:
-            m.get(dry_backend.url_for(path), json={
-                "SchemaName": "new_account_new_project",
-                "IsCustomRelationship": True, "IsManaged": False,
-            })
+            m.get(
+                dry_backend.url_for(path),
+                json={
+                    "SchemaName": "new_account_new_project",
+                    "IsCustomRelationship": True,
+                    "IsManaged": False,
+                },
+            )
             info = rel.delete_relationship(dry_backend, "new_account_new_project")
         assert info.get("_dry_run") is True
         assert info.get("would_delete") is True
@@ -707,6 +783,7 @@ class TestDeleteRelationshipDryRun:
 
     def test_dryrun_with_check_dependencies_merges_blockers(self, profile):
         from crm.core import relationships as rel
+
         _rel_meta_id = "2222ffff-0000-0000-0000-000000000000"
         dry_backend = D365Backend(profile, password="pw", dry_run=True)
         path = "RelationshipDefinitions(SchemaName='new_account_new_project')"
@@ -714,11 +791,15 @@ class TestDeleteRelationshipDryRun:
             f"RetrieveDependenciesForDelete(ObjectId={_rel_meta_id},ComponentType=10)"
         )
         with requests_mock.Mocker() as m:
-            m.get(dry_backend.url_for(path), json={
-                "SchemaName": "new_account_new_project",
-                "IsCustomRelationship": True, "IsManaged": False,
-                "MetadataId": _rel_meta_id,
-            })
+            m.get(
+                dry_backend.url_for(path),
+                json={
+                    "SchemaName": "new_account_new_project",
+                    "IsCustomRelationship": True,
+                    "IsManaged": False,
+                    "MetadataId": _rel_meta_id,
+                },
+            )
             m.get(dep_url, json={"value": []})
             info = rel.delete_relationship(
                 dry_backend, "new_account_new_project", check_dependencies=True
@@ -735,9 +816,9 @@ class TestDeleteRelationshipDryRun:
 class TestCanRelate:
     def test_eligibility_referenced_posts_action(self, backend):
         from crm.core import relationships as rel
+
         with requests_mock.Mocker() as m:
-            m.post(backend.url_for("CanBeReferenced"),
-                   json={"CanBeReferenced": True})
+            m.post(backend.url_for("CanBeReferenced"), json={"CanBeReferenced": True})
             info = rel.can_relate(backend, "account", role="referenced")
         assert info == {"entity": "account", "as": "referenced", "eligible": True}
         post = next(r for r in m.request_history if r.method == "POST")
@@ -746,28 +827,28 @@ class TestCanRelate:
 
     def test_eligibility_referencing_posts_action(self, backend):
         from crm.core import relationships as rel
+
         with requests_mock.Mocker() as m:
-            m.post(backend.url_for("CanBeReferencing"),
-                   json={"CanBeReferencing": False})
+            m.post(backend.url_for("CanBeReferencing"), json={"CanBeReferencing": False})
             info = rel.can_relate(backend, "new_widget", role="referencing")
         assert info["eligible"] is False
         assert info["as"] == "referencing"
 
     def test_eligibility_many_to_many_posts_action(self, backend):
         from crm.core import relationships as rel
+
         with requests_mock.Mocker() as m:
-            m.post(backend.url_for("CanManyToMany"),
-                   json={"CanManyToMany": True})
+            m.post(backend.url_for("CanManyToMany"), json={"CanManyToMany": True})
             info = rel.can_relate(backend, "contact", role="many-to-many")
         assert info["eligible"] is True
 
     def test_valid_partners_referenced_gets_referencing_entities(self, backend):
         from crm.core import relationships as rel
+
         url = backend.url_for("GetValidReferencingEntities(ReferencedEntityName='account')")
         with requests_mock.Mocker() as m:
             m.get(url, json={"EntityNames": ["contact", "new_project"]})
-            info = rel.can_relate(backend, "account", role="referenced",
-                                  valid_partners=True)
+            info = rel.can_relate(backend, "account", role="referenced", valid_partners=True)
         assert info["entity"] == "account"
         assert info["as"] == "referenced"
         assert info["valid_partners"] == ["contact", "new_project"]
@@ -775,20 +856,21 @@ class TestCanRelate:
 
     def test_valid_partners_referencing_gets_referenced_entities(self, backend):
         from crm.core import relationships as rel
+
         url = backend.url_for("GetValidReferencedEntities(ReferencingEntityName='new_widget')")
         with requests_mock.Mocker() as m:
             m.get(url, json={"EntityNames": ["account"]})
-            info = rel.can_relate(backend, "new_widget", role="referencing",
-                                  valid_partners=True)
+            info = rel.can_relate(backend, "new_widget", role="referencing", valid_partners=True)
         assert info["valid_partners"] == ["account"]
 
     def test_valid_partners_many_to_many_gets_global_list(self, backend):
         from crm.core import relationships as rel
+
         with requests_mock.Mocker() as m:
-            m.get(backend.url_for("GetValidManyToMany"),
-                  json={"EntityNames": ["contact", "account"]})
-            info = rel.can_relate(backend, "contact", role="many-to-many",
-                                  valid_partners=True)
+            m.get(
+                backend.url_for("GetValidManyToMany"), json={"EntityNames": ["contact", "account"]}
+            )
+            info = rel.can_relate(backend, "contact", role="many-to-many", valid_partners=True)
         assert info["valid_partners"] == ["contact", "account"]
         # GetValidManyToMany is global — it takes no entity parameter.
         get = next(r for r in m.request_history if r.method == "GET")
@@ -796,5 +878,6 @@ class TestCanRelate:
 
     def test_rejects_bad_role(self, backend):
         from crm.core import relationships as rel
+
         with pytest.raises(D365Error, match="role"):
             rel.can_relate(backend, "account", role="bogus")

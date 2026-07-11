@@ -1,5 +1,6 @@
 # pyright: basic
 """CLI tests for `metadata dependencies <target>` command (#81)."""
+
 from __future__ import annotations
 
 import json
@@ -8,7 +9,6 @@ from click.testing import CliRunner
 
 from crm.cli import CLIContext, cli
 from crm.utils.d365_backend import D365Error
-
 
 # ── fixtures ─────────────────────────────────────────────────────────────────
 
@@ -131,8 +131,16 @@ class TestOptionsForwarded:
         )
         result = CliRunner().invoke(
             cli,
-            ["--json", "metadata", "dependencies", "new_widget.new_amount",
-             "--kind", "attribute", "--for", "dependents"],
+            [
+                "--json",
+                "metadata",
+                "dependencies",
+                "new_widget.new_amount",
+                "--kind",
+                "attribute",
+                "--for",
+                "dependents",
+            ],
         )
         assert result.exit_code == 0, result.output
         assert captured["kind"] == "attribute"
@@ -152,7 +160,8 @@ class TestOptionsForwarded:
             _fake_retrieve,
         )
         result = CliRunner().invoke(
-            cli, ["--json", "metadata", "dependencies", "new_widget", "--for", "required"],
+            cli,
+            ["--json", "metadata", "dependencies", "new_widget", "--for", "required"],
         )
         assert result.exit_code == 0, result.output
         assert captured["for_"] == "required"
@@ -167,9 +176,7 @@ class TestErrorPath:
                 D365Error("not found", status=404, code="0x80040217")
             ),
         )
-        result = CliRunner().invoke(
-            cli, ["--json", "metadata", "dependencies", "no_such"]
-        )
+        result = CliRunner().invoke(cli, ["--json", "metadata", "dependencies", "no_such"])
         assert result.exit_code != 0
         env = json.loads(result.output)
         assert env["ok"] is False

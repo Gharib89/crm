@@ -7,6 +7,7 @@ flip (#633) the atomic write commands already stage when no flag is given, so
 --stage-only is redundant for them; it still matters as the one switch that also
 forces the batch verbs (apply/scaffold) to stage.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -44,9 +45,7 @@ def use_backend(backend, monkeypatch):
 
 
 def _mock_add_attribute(m, backend):
-    attr_url = backend.url_for(
-        f"EntityDefinitions(LogicalName='{_ENTITY}')/Attributes({_ATTR_ID})"
-    )
+    attr_url = backend.url_for(f"EntityDefinitions(LogicalName='{_ENTITY}')/Attributes({_ATTR_ID})")
     m.get(
         backend.url_for(
             f"EntityDefinitions(LogicalName='{_ENTITY}')/Attributes(LogicalName='new_label')"
@@ -60,16 +59,27 @@ def _mock_add_attribute(m, backend):
     )
     m.get(
         attr_url,
-        json={"LogicalName": "new_label", "SchemaName": "new_Label",
-              "AttributeType": "String"},
+        json={"LogicalName": "new_label", "SchemaName": "new_Label", "AttributeType": "String"},
     )
 
 
 def _add_attribute_args(extra=()):
     return [
-        "--json", "metadata", "add-attribute", _ENTITY,
-        "--kind", "string", "--schema-name", "new_Label",
-        "--display", "Label", "--max-length", "10", "--solution", "TestSol", *extra,
+        "--json",
+        "metadata",
+        "add-attribute",
+        _ENTITY,
+        "--kind",
+        "string",
+        "--schema-name",
+        "new_Label",
+        "--display",
+        "Label",
+        "--max-length",
+        "10",
+        "--solution",
+        "TestSol",
+        *extra,
     ]
 
 
@@ -95,7 +105,8 @@ def test_without_flag_stages_by_default(use_backend):
     no PublishAllXml fires and the envelope carries no `published: true`.
 
     (`published` is only emitted when a publish actually runs; its absence is
-    the staged signal. meta.staged remains tied to the --stage-only flag.)"""
+    the staged signal. meta.staged remains tied to the --stage-only flag.)
+    """
     backend = use_backend
     with requests_mock.Mocker() as m:
         _mock_add_attribute(m, backend)
@@ -152,7 +163,8 @@ def test_stage_only_persists_across_repl_lines(use_backend):
     """`crm --stage-only` then a bare per-line mutation must still suppress
     PublishAllXml. The REPL re-invokes cli.main(args=..., obj=ctx) with the SAME
     CLIContext per line; a per-line command carries no --stage-only token, so the
-    sticky flag must not be cleared back to False (regression for #19 round 2)."""
+    sticky flag must not be cleared back to False (regression for #19 round 2).
+    """
     backend = use_backend
     ctx = CLIContext()
     with requests_mock.Mocker() as m:
@@ -162,7 +174,9 @@ def test_stage_only_persists_across_repl_lines(use_backend):
         try:
             cli.main(
                 args=["--stage-only", *_add_attribute_args()],
-                obj=ctx, standalone_mode=False, prog_name="crm",
+                obj=ctx,
+                standalone_mode=False,
+                prog_name="crm",
             )
         except SystemExit:
             pass
@@ -170,8 +184,10 @@ def test_stage_only_persists_across_repl_lines(use_backend):
         # Line 2: bare per-line mutation, no --stage-only token.
         try:
             cli.main(
-                args=_add_attribute_args(), obj=ctx,
-                standalone_mode=False, prog_name="crm",
+                args=_add_attribute_args(),
+                obj=ctx,
+                standalone_mode=False,
+                prog_name="crm",
             )
         except SystemExit:
             pass
@@ -207,11 +223,21 @@ def test_stage_only_applies_to_create_entity(use_backend):
         )
         m.get(ent_url, json={"LogicalName": "new_project", "SchemaName": "new_Project"})
         m.post(backend.url_for("PublishAllXml"), status_code=204)
-        result = CliRunner().invoke(cli, [
-            "--stage-only", "--json", "metadata", "create-entity",
-            "--schema-name", "new_Project", "--display", "Project",
-            "--solution", "TestSol",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--stage-only",
+                "--json",
+                "metadata",
+                "create-entity",
+                "--schema-name",
+                "new_Project",
+                "--display",
+                "Project",
+                "--solution",
+                "TestSol",
+            ],
+        )
     assert result.exit_code == 0, result.output
     assert _publish_hits(m, backend) == []
     env = json.loads(result.output)
@@ -237,11 +263,21 @@ def _setup_one_to_many(m, backend):
         json={"SchemaName": "new_a_new_b", "ReferencingAttribute": "new_aid"},
     )
     return [
-        "--json", "metadata", "create-one-to-many",
-        "--schema-name", "new_a_new_b",
-        "--referenced-entity", "new_a", "--referencing-entity", "new_b",
-        "--lookup-schema", "new_AId", "--lookup-display", "A",
-        "--solution", "TestSol",
+        "--json",
+        "metadata",
+        "create-one-to-many",
+        "--schema-name",
+        "new_a_new_b",
+        "--referenced-entity",
+        "new_a",
+        "--referencing-entity",
+        "new_b",
+        "--lookup-schema",
+        "new_AId",
+        "--lookup-display",
+        "A",
+        "--solution",
+        "TestSol",
     ]
 
 
@@ -261,20 +297,33 @@ def _setup_many_to_many(m, backend):
         json={"SchemaName": "new_a_new_b", "IntersectEntityName": "new_a_new_b"},
     )
     return [
-        "--json", "metadata", "create-many-to-many",
-        "--schema-name", "new_a_new_b",
-        "--entity1", "new_a", "--entity2", "new_b",
-        "--intersect-entity", "new_a_new_b",
-        "--solution", "TestSol",
+        "--json",
+        "metadata",
+        "create-many-to-many",
+        "--schema-name",
+        "new_a_new_b",
+        "--entity1",
+        "new_a",
+        "--entity2",
+        "new_b",
+        "--intersect-entity",
+        "new_a_new_b",
+        "--solution",
+        "TestSol",
     ]
 
 
 def _setup_update_optionset(m, backend):
     m.post(backend.url_for("InsertOptionValue"), status_code=204)
     return [
-        "--json", "metadata", "update-optionset", "new_priority",
-        "--insert-option", "3:Critical",
-        "--solution", "TestSol",
+        "--json",
+        "metadata",
+        "update-optionset",
+        "new_priority",
+        "--insert-option",
+        "3:Critical",
+        "--solution",
+        "TestSol",
     ]
 
 
@@ -308,14 +357,30 @@ def test_stage_only_applies_to_create_optionset(use_backend):
             status_code=204,
             headers={"OData-EntityId": os_url},
         )
-        m.get(os_url, json={"Name": "new_priority", "MetadataId": "22222222-2222-2222-2222-222222222222"})
+        m.get(
+            os_url,
+            json={"Name": "new_priority", "MetadataId": "22222222-2222-2222-2222-222222222222"},
+        )
         m.post(backend.url_for("PublishAllXml"), status_code=204)
-        result = CliRunner().invoke(cli, [
-            "--stage-only", "--json", "metadata", "create-optionset",
-            "--name", "new_priority", "--display", "Priority",
-            "--option", "1:Low", "--option", "2:High",
-            "--solution", "TestSol",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--stage-only",
+                "--json",
+                "metadata",
+                "create-optionset",
+                "--name",
+                "new_priority",
+                "--display",
+                "Priority",
+                "--option",
+                "1:Low",
+                "--option",
+                "2:High",
+                "--solution",
+                "TestSol",
+            ],
+        )
     assert result.exit_code == 0, result.output
     assert _publish_hits(m, backend) == []
     env = json.loads(result.output)

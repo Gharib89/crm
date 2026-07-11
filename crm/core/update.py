@@ -32,6 +32,7 @@ from crm import __version__
 class UpdateError(Exception):
     """A self-update could not be completed; the existing install is untouched."""
 
+
 # Env var to opt out of the passive update notice entirely.
 _OPT_OUT_ENV = "CRM_NO_UPDATE_CHECK"
 
@@ -111,9 +112,7 @@ def write_cache(latest: str, now: float) -> None:
     """
     data: dict[str, Any] = {"checked_at": now, "latest": latest}
     existing = read_cache() or {}
-    if existing.get("latest") == latest and isinstance(
-        existing.get("notified_at"), (int, float)
-    ):
+    if existing.get("latest") == latest and isinstance(existing.get("notified_at"), (int, float)):
         data["notified_at"] = existing["notified_at"]
     _write_cache_dict(data)
 
@@ -206,9 +205,7 @@ def install_dir() -> Path:
 # ── Passive update notice ───────────────────────────────────────────────
 
 
-def is_check_enabled(
-    *, json_mode: bool, stderr_isatty: bool, env: Mapping[str, str]
-) -> bool:
+def is_check_enabled(*, json_mode: bool, stderr_isatty: bool, env: Mapping[str, str]) -> bool:
     """All guards must pass: human TTY only, never under --json / CI / opt-out."""
     if json_mode or not stderr_isatty:
         return False
@@ -234,9 +231,7 @@ def refresh_cache(now: float, base_url: str | None = None) -> None:
         pass
 
 
-def pending_notice(
-    current: str, *, frozen: bool = False, now: float | None = None
-) -> str | None:
+def pending_notice(current: str, *, frozen: bool = False, now: float | None = None) -> str | None:
     """One-line notice from the cache (no network) if a newer version is known.
 
     Read-only and fail-silent: a malformed cached `latest` never raises, and the
@@ -266,12 +261,12 @@ def pending_notice(
 # ── cli.py orchestrators (guarded, at most once per process) ─────────────
 
 _check_started = False  # background refresh spawned this process
-_notified = False       # notice printed this process
+_notified = False  # notice printed this process
 
 
 def run_background_check(
     *, json_mode: bool, stderr_isatty: bool, env: Mapping[str, str], now: float
-) -> "threading.Thread | None":
+) -> threading.Thread | None:
     """Spawn a daemon thread to refresh the version cache, if due and enabled.
 
     Returns the thread (started) or None when skipped. Never blocks the caller:
@@ -291,8 +286,12 @@ def run_background_check(
 
 
 def emit_pending_notice(
-    *, json_mode: bool, stderr_isatty: bool, env: Mapping[str, str],
-    stream: "IO[str] | None" = None, now: float | None = None,
+    *,
+    json_mode: bool,
+    stderr_isatty: bool,
+    env: Mapping[str, str],
+    stream: IO[str] | None = None,
+    now: float | None = None,
 ) -> bool:
     """Print the cached update notice, if enabled and due. Returns printed?
 
@@ -385,15 +384,11 @@ def _extract(archive: str, data: bytes, dest: Path) -> None:
         with zipfile.ZipFile(io.BytesIO(data)) as zf:
             for info in zf.infolist():
                 if not _is_safe_member(info.filename):
-                    raise UpdateError(
-                        f"Unsafe path in archive (traversal): {info.filename!r}"
-                    )
+                    raise UpdateError(f"Unsafe path in archive (traversal): {info.filename!r}")
                 # A symlink entry (S_IFLNK in the high external-attr bits) can point
                 # outside dest and be followed by a later member — reject it.
                 if (info.external_attr >> 16) & 0o170000 == 0o120000:
-                    raise UpdateError(
-                        f"Unsafe link member in archive: {info.filename!r}"
-                    )
+                    raise UpdateError(f"Unsafe link member in archive: {info.filename!r}")
             zf.extractall(dest)
     else:
         # `filter="data"` is the safe extractor, but it only exists on 3.12+
@@ -407,13 +402,9 @@ def _extract(archive: str, data: bytes, dest: Path) -> None:
         with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
             for member in tar.getmembers():
                 if not _is_safe_member(member.name):
-                    raise UpdateError(
-                        f"Unsafe path in archive (traversal): {member.name!r}"
-                    )
+                    raise UpdateError(f"Unsafe path in archive (traversal): {member.name!r}")
                 if not (member.isfile() or member.isdir()):
-                    raise UpdateError(
-                        f"Unsafe non-regular member in archive: {member.name!r}"
-                    )
+                    raise UpdateError(f"Unsafe non-regular member in archive: {member.name!r}")
             tar.extractall(dest, **extract_kwargs)
 
 
@@ -447,7 +438,9 @@ def cleanup_stale_updates(install_dir: Path) -> None:
 
 
 def perform_update(
-    *, install_dir: Path, base_url: str | None = None,
+    *,
+    install_dir: Path,
+    base_url: str | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """Download, checksum-verify, and swap the bundle. Mismatch leaves it intact."""
@@ -461,8 +454,7 @@ def perform_update(
     except ValueError as exc:
         raise UpdateError(f"Unexpected version format from release server: {latest!r}") from exc
     if outdated:
-        return {"updated": False, "current": current, "latest": latest,
-                "reason": "up-to-date"}
+        return {"updated": False, "current": current, "latest": latest, "reason": "up-to-date"}
 
     archive = platform_archive()
     if progress:
@@ -473,9 +465,7 @@ def perform_update(
     sums = _fetch_sha256sums(base, latest)
     expected = sums.get(archive)
     if not expected or not verify_sha256(data, expected):
-        raise UpdateError(
-            f"Checksum mismatch for {archive}; install left untouched."
-        )
+        raise UpdateError(f"Checksum mismatch for {archive}; install left untouched.")
 
     staged = install_dir.parent / f"{install_dir.name}.new-{os.getpid()}"
     if staged.exists():

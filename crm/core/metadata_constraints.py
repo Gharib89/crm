@@ -33,9 +33,7 @@ from dataclasses import dataclass
 from crm.utils.d365_backend import D365Error
 
 # ── value vocabularies ──────────────────────────────────────────────────────
-REQUIRED_LEVELS: frozenset[str] = frozenset(
-    {"None", "Recommended", "ApplicationRequired"}
-)
+REQUIRED_LEVELS: frozenset[str] = frozenset({"None", "Recommended", "ApplicationRequired"})
 OWNERSHIP_TYPES: frozenset[str] = frozenset({"UserOwned", "OrganizationOwned"})
 # Column source kinds add_attribute / apply accept (calculated & rollup carry a
 # FormulaDefinition; simple is the default). Mirrors the `--type` CLI choices.
@@ -48,18 +46,14 @@ STRING_FORMATS: frozenset[str] = frozenset(
 DATETIME_FORMATS: frozenset[str] = frozenset({"DateOnly", "DateAndTime"})
 # DateTimeBehavior values add_attribute can set on a datetime kind. Omitting the
 # behavior leaves it off the payload so the server default (UserLocal) applies.
-DATETIME_BEHAVIORS: frozenset[str] = frozenset(
-    {"UserLocal", "DateOnly", "TimeZoneIndependent"}
-)
+DATETIME_BEHAVIORS: frozenset[str] = frozenset({"UserLocal", "DateOnly", "TimeZoneIndependent"})
 CASCADE_TYPES: frozenset[str] = frozenset(
     {"NoCascade", "Cascade", "Active", "UserOwned", "RemoveLink", "Restrict"}
 )
 CASCADE_KEYS: frozenset[str] = frozenset(
     {"Assign", "Delete", "Merge", "Reparent", "Share", "Unshare", "RollupView"}
 )
-MENU_BEHAVIORS: frozenset[str] = frozenset(
-    {"UseLabel", "UseCollectionName", "DoNotDisplay"}
-)
+MENU_BEHAVIORS: frozenset[str] = frozenset({"UseLabel", "UseCollectionName", "DoNotDisplay"})
 
 
 # ── canonical kind table ────────────────────────────────────────────────────
@@ -168,7 +162,10 @@ def validate_cascade(value: str, *, subject: str = "cascade", echo: bool = False
 
 
 def validate_schema_name(
-    name: object, *, subject: str = "schema_name", example: str | None = None,
+    name: object,
+    *,
+    subject: str = "schema_name",
+    example: str | None = None,
     echo: bool = False,
 ) -> None:
     """Reject a schema / unique name that carries no publisher prefix.

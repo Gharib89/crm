@@ -1,5 +1,6 @@
 # pyright: basic
 """E2E tests for plugin commands."""
+
 from __future__ import annotations
 
 import os
@@ -27,23 +28,28 @@ def test_image_register_read_unregister_roundtrip(backend, request):
     """
     from crm.core import plugin as plugin_mod
 
-    msg = backend.get("sdkmessages", params={
-        "$filter": "name eq 'Update'", "$select": "sdkmessageid"})
+    msg = backend.get(
+        "sdkmessages", params={"$filter": "name eq 'Update'", "$select": "sdkmessageid"}
+    )
     msg_rows = msg.get("value", [])
     assert msg_rows, "Update sdkmessage missing from org"
     msg_id = msg_rows[0]["sdkmessageid"]
-    steps = backend.get("sdkmessageprocessingsteps", params={
-        "$filter": (f"_sdkmessageid_value eq {msg_id} "
-                    "and ismanaged eq false"),
-        "$select": "sdkmessageprocessingstepid", "$top": "1"})
+    steps = backend.get(
+        "sdkmessageprocessingsteps",
+        params={
+            "$filter": (f"_sdkmessageid_value eq {msg_id} and ismanaged eq false"),
+            "$select": "sdkmessageprocessingstepid",
+            "$top": "1",
+        },
+    )
     step_rows = steps.get("value", [])
     if not step_rows:
         pytest.skip("No unmanaged Update-message plug-in step on this org")
     step_id = step_rows[0]["sdkmessageprocessingstepid"]
 
     out = plugin_mod.register_image(
-        backend, step=step_id, image_type="pre",
-        alias=f"e2eimg{os.getpid()}", attributes="name")
+        backend, step=step_id, image_type="pre", alias=f"e2eimg{os.getpid()}", attributes="name"
+    )
     assert out["created"] is True
     iid = out["sdkmessageprocessingstepimageid"]
     assert iid, f"no image id parsed: {out}"
@@ -54,12 +60,13 @@ def test_image_register_read_unregister_roundtrip(backend, request):
             backend.delete(f"sdkmessageprocessingstepimages({iid})")
         except Exception:
             pass
+
     request.addfinalizer(_cleanup)
 
     got = backend.get(
         f"sdkmessageprocessingstepimages({iid})",
-        params={"$select": "name,entityalias,imagetype,"
-                           "messagepropertyname,attributes"})
+        params={"$select": "name,entityalias,imagetype,messagepropertyname,attributes"},
+    )
     assert got["imagetype"] == 0
     assert got["messagepropertyname"] == "Target"
     assert got["attributes"] == "name"
@@ -84,8 +91,12 @@ def test_webhook_register_and_bind_step_roundtrip(backend, request):
 
     name = f"e2e webhook {os.getpid()}"
     hook = plugin_mod.register_webhook(
-        backend, name=name, url="https://example.com/e2e-hook",
-        auth="webhookkey", auth_value="e2e-secret")
+        backend,
+        name=name,
+        url="https://example.com/e2e-hook",
+        auth="webhookkey",
+        auth_value="e2e-secret",
+    )
     assert hook["created"] is True
     se_id = hook["serviceendpointid"]
     assert se_id, f"no serviceendpointid parsed: {hook}"
@@ -102,21 +113,25 @@ def test_webhook_register_and_bind_step_roundtrip(backend, request):
             backend.delete(f"serviceendpoints({se_id})")
         except Exception:
             pass
+
     request.addfinalizer(_cleanup)
 
-    got = backend.get(f"serviceendpoints({se_id})",
-                      params={"$select": "url,contract,authtype"})
-    assert got["contract"] == 8          # Webhook
-    assert got["authtype"] == 4          # Webhook Key
+    got = backend.get(f"serviceendpoints({se_id})", params={"$select": "url,contract,authtype"})
+    assert got["contract"] == 8  # Webhook
+    assert got["authtype"] == 4  # Webhook Key
     assert got["url"] == "https://example.com/e2e-hook"
 
     # secure_configuration exercises the deep insert on a real org: the secure
     # config is a separate related record created and bound to the step in the
     # same POST (a mock can't validate the nav-property casing — the #159 lesson).
     step = plugin_mod.register_step(
-        backend, message="Create", entity="account",
-        service_endpoint=name, name=f"e2e webhook step {os.getpid()}",
-        secure_configuration="e2e-secret-cfg")
+        backend,
+        message="Create",
+        entity="account",
+        service_endpoint=name,
+        name=f"e2e webhook step {os.getpid()}",
+        secure_configuration="e2e-secret-cfg",
+    )
     assert step["created"] is True
     # Write-only: the secret is never echoed back in the return value.
     assert "e2e-secret-cfg" not in str(step)
@@ -125,14 +140,18 @@ def test_webhook_register_and_bind_step_roundtrip(backend, request):
 
     bound = backend.get(
         f"sdkmessageprocessingsteps({state['step_id']})",
-        params={"$expand": "eventhandler_serviceendpoint($select=serviceendpointid)",
-                "$select": "_sdkmessageprocessingstepsecureconfigid_value"})
+        params={
+            "$expand": "eventhandler_serviceendpoint($select=serviceendpointid)",
+            "$select": "_sdkmessageprocessingstepsecureconfigid_value",
+        },
+    )
     handler = bound.get("eventhandler_serviceendpoint") or {}
     assert handler.get("serviceendpointid", "").lower() == se_id.lower()
     # The deep insert created and bound a secure-config record — the lookup is
     # readable (write-only applies to the secret value, not the link).
     assert bound.get("_sdkmessageprocessingstepsecureconfigid_value"), (
-        f"secure-config record not linked to step: {bound}")
+        f"secure-config record not linked to step: {bound}"
+    )
 
     disabled = plugin_mod.set_step_state(backend, step=state["step_id"], enable=False)
     assert disabled["enabled"] is False
@@ -166,7 +185,8 @@ def test_plugin_list_types_returns_list(cli):
     "plugin unregister-assembly",
 )
 def test_assembly_register_step_unregister_lifecycle(
-        cli, plugin_assembly, backend, request, ephemeral_solution):
+    cli, plugin_assembly, backend, request, ephemeral_solution
+):
     """register-assembly -> register-type -> register-step -> unregister-* lifecycle.
 
     The `plugin_assembly` fixture builds a signed no-op IPlugin from committed C#
@@ -185,16 +205,25 @@ def test_assembly_register_step_unregister_lifecycle(
 
     # 1. Register the signed assembly in the sandbox.
     result = cli(
-        ["--json", "plugin", "register-assembly", asm.dll,
-         "--name", asm.assembly_name,
-         "--public-key-token", asm.public_key_token,
-         "--version", "1.0.0.0",
-         "--isolation-mode", "sandbox",
-         "--solution", ephemeral_solution],
+        [
+            "--json",
+            "plugin",
+            "register-assembly",
+            asm.dll,
+            "--name",
+            asm.assembly_name,
+            "--public-key-token",
+            asm.public_key_token,
+            "--version",
+            "1.0.0.0",
+            "--isolation-mode",
+            "sandbox",
+            "--solution",
+            ephemeral_solution,
+        ],
         check=False,
     )
-    assert result.returncode == 0, (
-        f"register-assembly failed: {result.stderr}\n{result.stdout}")
+    assert result.returncode == 0, f"register-assembly failed: {result.stderr}\n{result.stdout}"
     data = _json.loads(result.stdout)
     assert data["ok"] is True, f"register-assembly not ok: {data}"
     assert data["data"]["created"] is True
@@ -211,12 +240,14 @@ def test_assembly_register_step_unregister_lifecycle(
         if not state["assembly_id"]:
             return
         result = cli(
-            ["--json", "plugin", "unregister-assembly", state["assembly_id"],
-             "--yes"], check=False)
+            ["--json", "plugin", "unregister-assembly", state["assembly_id"], "--yes"], check=False
+        )
         if result.returncode != 0:
             warnings.warn(
-                f"e2e cleanup of plugin assembly {state['assembly_id']} failed: "
-                f"{result.stderr}", stacklevel=2)
+                f"e2e cleanup of plugin assembly {state['assembly_id']} failed: {result.stderr}",
+                stacklevel=2,
+            )
+
     request.addfinalizer(_cleanup)
 
     # 1b. Register the plug-in type via the CLI. Unlike the Plug-in Registration
@@ -227,13 +258,22 @@ def test_assembly_register_step_unregister_lifecycle(
     # cascade-deletes it when the assembly is unregistered, so it needs no separate
     # teardown.
     type_result = cli(
-        ["--json", "plugin", "register-type",
-         "--assembly", asm.assembly_name, "--type", asm.type_name,
-         "--solution", ephemeral_solution],
+        [
+            "--json",
+            "plugin",
+            "register-type",
+            "--assembly",
+            asm.assembly_name,
+            "--type",
+            asm.type_name,
+            "--solution",
+            ephemeral_solution,
+        ],
         check=False,
     )
     assert type_result.returncode == 0, (
-        f"register-type failed: {type_result.stderr}\n{type_result.stdout}")
+        f"register-type failed: {type_result.stderr}\n{type_result.stdout}"
+    )
     type_data = _json.loads(type_result.stdout)
     assert type_data["ok"] is True, f"register-type not ok: {type_data}"
     assert type_data["data"]["created"] is True
@@ -243,8 +283,7 @@ def test_assembly_register_step_unregister_lifecycle(
 
     # Confirm it is queryable before register-step resolves it by name (guards a
     # read-after-write lag, which would otherwise surface as register-step 404ing).
-    type_filter = (f"typename eq '{asm.type_name}' "
-                   f"and _pluginassemblyid_value eq {assembly_id}")
+    type_filter = f"typename eq '{asm.type_name}' and _pluginassemblyid_value eq {assembly_id}"
     for _ in range(10):
         if backend.get(
             "plugintypes",
@@ -261,17 +300,32 @@ def test_assembly_register_step_unregister_lifecycle(
     # POST. The value is write-only (never returned), so success is proven by the
     # step's secure-config lookup being populated, not by reading the secret back.
     step_result = cli(
-        ["--json", "plugin", "register-step",
-         "--message", "Create", "--entity", "account",
-         "--plugin-type", asm.type_name, "--assembly", asm.assembly_name,
-         "--name", f"{asm.assembly_name} create step",
-         "--configuration", "unsecure-cfg",
-         "--secure-configuration", "e2e-secret-cfg",
-         "--solution", ephemeral_solution],
+        [
+            "--json",
+            "plugin",
+            "register-step",
+            "--message",
+            "Create",
+            "--entity",
+            "account",
+            "--plugin-type",
+            asm.type_name,
+            "--assembly",
+            asm.assembly_name,
+            "--name",
+            f"{asm.assembly_name} create step",
+            "--configuration",
+            "unsecure-cfg",
+            "--secure-configuration",
+            "e2e-secret-cfg",
+            "--solution",
+            ephemeral_solution,
+        ],
         check=False,
     )
     assert step_result.returncode == 0, (
-        f"register-step failed: {step_result.stderr}\n{step_result.stdout}")
+        f"register-step failed: {step_result.stderr}\n{step_result.stdout}"
+    )
     step_data = _json.loads(step_result.stdout)
     assert step_data["ok"] is True, f"register-step not ok: {step_data}"
     assert step_data["data"]["created"] is True
@@ -283,25 +337,28 @@ def test_assembly_register_step_unregister_lifecycle(
     # the lookup value on the step is readable and confirms the link.
     step_row = backend.get(
         f"sdkmessageprocessingsteps({step_id})",
-        params={"$select": "_sdkmessageprocessingstepsecureconfigid_value"})
+        params={"$select": "_sdkmessageprocessingstepsecureconfigid_value"},
+    )
     assert step_row.get("_sdkmessageprocessingstepsecureconfigid_value"), (
-        f"secure-config record not linked to step: {step_row}")
+        f"secure-config record not linked to step: {step_row}"
+    )
 
     # 3. Unregister the step.
-    unstep_result = cli(
-        ["--json", "plugin", "unregister-step", step_id, "--yes"], check=False)
+    unstep_result = cli(["--json", "plugin", "unregister-step", step_id, "--yes"], check=False)
     assert unstep_result.returncode == 0, (
-        f"unregister-step failed: {unstep_result.stderr}\n{unstep_result.stdout}")
+        f"unregister-step failed: {unstep_result.stderr}\n{unstep_result.stdout}"
+    )
     unstep = _json.loads(unstep_result.stdout)
     assert unstep["ok"] is True, f"unregister-step not ok: {unstep}"
     assert unstep["data"]["deleted"] is True
 
     # 4. Unregister the assembly. The step is already gone, so nothing cascades.
     unasm_result = cli(
-        ["--json", "plugin", "unregister-assembly", assembly_id, "--yes"],
-        check=False)
+        ["--json", "plugin", "unregister-assembly", assembly_id, "--yes"], check=False
+    )
     assert unasm_result.returncode == 0, (
-        f"unregister-assembly failed: {unasm_result.stderr}\n{unasm_result.stdout}")
+        f"unregister-assembly failed: {unasm_result.stderr}\n{unasm_result.stdout}"
+    )
     unasm = _json.loads(unasm_result.stdout)
     assert unasm["ok"] is True, f"unregister-assembly not ok: {unasm}"
     assert unasm["data"]["deleted"] is True

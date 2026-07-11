@@ -9,6 +9,7 @@ end-to-end cases drive the real hook contract: JSON payload on stdin, exit 0
 Secret-looking test inputs are built by RUNTIME CONCATENATION so no literal in
 this file can ever match the very patterns the hook scans commits for.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -61,7 +62,8 @@ def _git(repo: Path, *args: str) -> None:
 @pytest.fixture()
 def crm_repo(tmp_path: Path) -> Path:
     """A throwaway repo shaped like the shared main checkout: branch `main`,
-    origin pointing at this project, one initial commit."""
+    origin pointing at this project, one initial commit.
+    """
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init", "-b", "main")
@@ -120,7 +122,9 @@ class TestGitParts:
 
 
 class TestDocsPath:
-    @pytest.mark.parametrize("path", ["README.md", "docs/how-to/query.md", "mkdocs.yml", "CLAUDE.md"])
+    @pytest.mark.parametrize(
+        "path", ["README.md", "docs/how-to/query.md", "mkdocs.yml", "CLAUDE.md"]
+    )
     def test_docs_paths(self, path):
         assert _gate._is_docs_path(path) is True
 
@@ -215,7 +219,8 @@ class TestSegmentSplitting:
 
 class TestDestructiveSegmentUnion:
     """#675: a destructive crm verb must not slip past the gate when a quoted
-    argument contains a shell operator, and backtick coverage must survive."""
+    argument contains a shell operator, and backtick coverage must survive.
+    """
 
     def test_quoted_operator_argument_still_blocked(self, tmp_path):
         code, err = _run_hook(
@@ -278,7 +283,8 @@ class TestLocalTokens:
 class TestSecretScanEndToEnd:
     def _isolated_env(self, tmp_path: Path) -> dict:
         """Env whose HOME has no token file, so only generic patterns run —
-        keeps the test independent of any real ~/.claude token file."""
+        keeps the test independent of any real ~/.claude token file.
+        """
         import os
 
         home = tmp_path / "home"
@@ -292,7 +298,10 @@ class TestSecretScanEndToEnd:
         (crm_repo / "config.py").write_text(f"secret = '{FAKE_AZURE_SECRET}'\n", encoding="utf-8")
         _git(crm_repo, "add", "config.py")
         code, err = _run_hook(
-            _SCAN_PATH, "git commit -m 'add config'", str(crm_repo), env=self._isolated_env(tmp_path)
+            _SCAN_PATH,
+            "git commit -m 'add config'",
+            str(crm_repo),
+            env=self._isolated_env(tmp_path),
         )
         assert code == 2
         assert "config.py" in err

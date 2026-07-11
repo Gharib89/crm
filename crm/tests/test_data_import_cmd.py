@@ -1,5 +1,6 @@
 # pyright: basic
 """Command-level tests for `crm data import` (#75)."""
+
 from __future__ import annotations
 
 import json
@@ -31,16 +32,30 @@ class _StubBackend:
         self.calls = []  # records kwargs from every batch() call
 
     def batch(self, ops, *, transactional, continue_on_error, timeout=None):
-        self.calls.append(
-            {"transactional": transactional, "continue_on_error": continue_on_error}
-        )
+        self.calls.append({"transactional": transactional, "continue_on_error": continue_on_error})
         if self.dry_run:
-            return [{"method": "POST", "url": "accounts", "status": 0,
-                     "headers": {}, "body": None, "error": "dry-run"}
-                    for _ in ops]
-        return [{"method": "POST", "url": "accounts", "status": 201,
-                 "headers": {}, "body": None, "error": None}
-                for _ in ops]
+            return [
+                {
+                    "method": "POST",
+                    "url": "accounts",
+                    "status": 0,
+                    "headers": {},
+                    "body": None,
+                    "error": "dry-run",
+                }
+                for _ in ops
+            ]
+        return [
+            {
+                "method": "POST",
+                "url": "accounts",
+                "status": 201,
+                "headers": {},
+                "body": None,
+                "error": None,
+            }
+            for _ in ops
+        ]
 
 
 class TestGuards:
@@ -48,9 +63,16 @@ class TestGuards:
         """--continue-on-error without --no-transaction → UsageError (exit 2)."""
         f = tmp_path / "data.jsonl"
         f.write_text('{"name": "x"}\n', encoding="utf-8")
-        result = CliRunner().invoke(cli, [
-            "data", "import", "accounts", str(f), "--continue-on-error",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "data",
+                "import",
+                "accounts",
+                str(f),
+                "--continue-on-error",
+            ],
+        )
         assert result.exit_code == 2
         assert "--no-transaction" in (result.output + result.stderr)
 
@@ -58,10 +80,21 @@ class TestGuards:
         """--id-column with --key → UsageError (exit 2)."""
         f = tmp_path / "data.jsonl"
         f.write_text('{"emailaddress1": "a@b.com"}\n', encoding="utf-8")
-        result = CliRunner().invoke(cli, [
-            "data", "import", "contacts", str(f), "--mode", "upsert",
-            "--id-column", "contactid", "--key", "emailaddress1",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "data",
+                "import",
+                "contacts",
+                str(f),
+                "--mode",
+                "upsert",
+                "--id-column",
+                "contactid",
+                "--key",
+                "emailaddress1",
+            ],
+        )
         assert result.exit_code == 2
         assert "mutually exclusive" in (result.output + result.stderr)
 
@@ -69,9 +102,17 @@ class TestGuards:
         """--mode upsert with neither --id-column nor --key → UsageError (exit 2)."""
         f = tmp_path / "data.jsonl"
         f.write_text('{"name": "x"}\n', encoding="utf-8")
-        result = CliRunner().invoke(cli, [
-            "data", "import", "contacts", str(f), "--mode", "upsert",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "data",
+                "import",
+                "contacts",
+                str(f),
+                "--mode",
+                "upsert",
+            ],
+        )
         assert result.exit_code == 2
         assert "--key" in (result.output + result.stderr)
 
@@ -79,9 +120,17 @@ class TestGuards:
         """--key without --mode upsert → UsageError (exit 2)."""
         f = tmp_path / "data.jsonl"
         f.write_text('{"emailaddress1": "a@b.com"}\n', encoding="utf-8")
-        result = CliRunner().invoke(cli, [
-            "data", "import", "contacts", str(f), "--key", "emailaddress1",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "data",
+                "import",
+                "contacts",
+                str(f),
+                "--key",
+                "emailaddress1",
+            ],
+        )
         assert result.exit_code == 2
         assert "upsert" in (result.output + result.stderr)
 
@@ -89,9 +138,19 @@ class TestGuards:
         """--key naming no attribute (e.g. ',,,') → UsageError (exit 2)."""
         f = tmp_path / "data.jsonl"
         f.write_text('{"name": "x"}\n', encoding="utf-8")
-        result = CliRunner().invoke(cli, [
-            "data", "import", "contacts", str(f), "--mode", "upsert", "--key", ",,,",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "data",
+                "import",
+                "contacts",
+                str(f),
+                "--mode",
+                "upsert",
+                "--key",
+                ",,,",
+            ],
+        )
         assert result.exit_code == 2
         assert "at least one attribute" in (result.output + result.stderr)
 
@@ -99,9 +158,17 @@ class TestGuards:
         """--mode delete with neither --id-column nor --key → UsageError (exit 2)."""
         f = tmp_path / "data.jsonl"
         f.write_text('{"name": "x"}\n', encoding="utf-8")
-        result = CliRunner().invoke(cli, [
-            "data", "import", "accounts", str(f), "--mode", "delete",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "data",
+                "import",
+                "accounts",
+                str(f),
+                "--mode",
+                "delete",
+            ],
+        )
         assert result.exit_code == 2
         assert "--id-column" in (result.output + result.stderr)
 
@@ -116,15 +183,34 @@ class TestDeleteMode:
         class _DelBackend(_StubBackend):
             def batch(self, ops, *, transactional, continue_on_error, timeout=None):
                 self.ops = ops
-                return [{"method": "DELETE", "url": ops[0]["url"], "status": 204,
-                         "headers": {}, "body": None, "error": None}]
+                return [
+                    {
+                        "method": "DELETE",
+                        "url": ops[0]["url"],
+                        "status": 204,
+                        "headers": {},
+                        "body": None,
+                        "error": None,
+                    }
+                ]
 
         stub = _DelBackend()
         monkeypatch.setattr(CLIContext, "backend", lambda self: stub)
-        result = CliRunner().invoke(cli, [
-            "--json", "data", "import", "accounts", str(f),
-            "--mode", "delete", "--id-column", "accountid", "--yes",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "data",
+                "import",
+                "accounts",
+                str(f),
+                "--mode",
+                "delete",
+                "--id-column",
+                "accountid",
+                "--yes",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert stub.ops[0]["method"] == "DELETE"
         assert stub.ops[0]["url"] == f"accounts({guid})"
@@ -134,8 +220,10 @@ class TestUpsertByAlternateKey:
     def test_key_routes_alternate_key_attrs_to_core(self, monkeypatch, tmp_path):
         """--key validates against metadata and reaches import_records as alt_key."""
         from crm.core import entity as entity_mod
+
         monkeypatch.setattr(
-            entity_mod, "resolve_alternate_key",
+            entity_mod,
+            "resolve_alternate_key",
             lambda backend, entity_set, attrs: attrs,
         )
         f = tmp_path / "data.jsonl"
@@ -144,15 +232,33 @@ class TestUpsertByAlternateKey:
         class _PatchBackend(_StubBackend):
             def batch(self, ops, *, transactional, continue_on_error, timeout=None):
                 self.ops = ops
-                return [{"method": "PATCH", "url": ops[0]["url"], "status": 204,
-                         "headers": {}, "body": None, "error": None}]
+                return [
+                    {
+                        "method": "PATCH",
+                        "url": ops[0]["url"],
+                        "status": 204,
+                        "headers": {},
+                        "body": None,
+                        "error": None,
+                    }
+                ]
 
         stub = _PatchBackend()
         monkeypatch.setattr(CLIContext, "backend", lambda self: stub)
-        result = CliRunner().invoke(cli, [
-            "--json", "data", "import", "contacts", str(f),
-            "--mode", "upsert", "--key", "emailaddress1",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "data",
+                "import",
+                "contacts",
+                str(f),
+                "--mode",
+                "upsert",
+                "--key",
+                "emailaddress1",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert stub.ops[0]["method"] == "PATCH"
         assert stub.ops[0]["url"] == "contacts(emailaddress1='joe%40x.com')"
@@ -170,10 +276,20 @@ class TestUpsertByAlternateKey:
         monkeypatch.setattr(CLIContext, "backend", lambda self: stub)
         f = tmp_path / "data.jsonl"
         f.write_text('{"nope": "x"}\n', encoding="utf-8")
-        result = CliRunner().invoke(cli, [
-            "--json", "data", "import", "contacts", str(f),
-            "--mode", "upsert", "--key", "nope",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "data",
+                "import",
+                "contacts",
+                str(f),
+                "--mode",
+                "upsert",
+                "--key",
+                "nope",
+            ],
+        )
         assert result.exit_code == 1
         envelope = json.loads(result.output)
         assert envelope["ok"] is False
@@ -185,9 +301,16 @@ class TestHappyPath:
         """Happy path: JSON output contains imported, failed, chunks."""
         stub = _StubBackend()
         monkeypatch.setattr(CLIContext, "backend", lambda self: stub)
-        result = CliRunner().invoke(cli, [
-            "--json", "data", "import", "accounts", str(jsonl_file),
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "data",
+                "import",
+                "accounts",
+                str(jsonl_file),
+            ],
+        )
         assert result.exit_code == 0, result.output
         envelope = json.loads(result.output)
         assert envelope["ok"] is True
@@ -200,10 +323,18 @@ class TestHappyPath:
         """--no-transaction --continue-on-error → transactional=False, continue_on_error=True."""
         stub = _StubBackend()
         monkeypatch.setattr(CLIContext, "backend", lambda self: stub)
-        result = CliRunner().invoke(cli, [
-            "--json", "data", "import", "accounts", str(jsonl_file),
-            "--no-transaction", "--continue-on-error",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "data",
+                "import",
+                "accounts",
+                str(jsonl_file),
+                "--no-transaction",
+                "--continue-on-error",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert len(stub.calls) >= 1
         call = stub.calls[0]
@@ -214,16 +345,23 @@ class TestHappyPath:
         """--dry-run: output shows dry_run true, imported 0."""
         stub = _StubBackend(dry_run=True)
         monkeypatch.setattr(CLIContext, "backend", lambda self: stub)
-        result = CliRunner().invoke(cli, [
-            "--dry-run", "--json", "data", "import", "accounts", str(jsonl_file),
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--dry-run",
+                "--json",
+                "data",
+                "import",
+                "accounts",
+                str(jsonl_file),
+            ],
+        )
         assert result.exit_code == 0, result.output
         envelope = json.loads(result.output)
         assert envelope["ok"] is True
         # dry_run appears in meta (root cli --dry-run injects it) or in data
-        dry_run_signal = (
-            envelope.get("meta", {}).get("dry_run")
-            or envelope.get("data", {}).get("dry_run")
+        dry_run_signal = envelope.get("meta", {}).get("dry_run") or envelope.get("data", {}).get(
+            "dry_run"
         )
         assert dry_run_signal is True
         assert envelope["data"]["imported"] == 0
@@ -234,15 +372,23 @@ class TestHappyPath:
         csv_file.write_text("name\nAcme Corp\nGlobex\n", encoding="utf-8")
         stub = _StubBackend()
         monkeypatch.setattr(CLIContext, "backend", lambda self: stub)
-        result = CliRunner().invoke(cli, [
-            "--json", "data", "import", "accounts", str(csv_file),
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "data",
+                "import",
+                "accounts",
+                str(csv_file),
+            ],
+        )
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)["data"]
         assert data["format"] == "csv"
 
     def test_failed_records_warning(self, monkeypatch, jsonl_file):
         """When some records fail, ok is still true and meta.warnings contains the count."""
+
         class _MixedBackend(_StubBackend):
             def batch(self, ops, *, transactional, continue_on_error, timeout=None):
                 self.calls.append(
@@ -251,20 +397,42 @@ class TestHappyPath:
                 results = []
                 for i, _ in enumerate(ops):
                     if i % 2 == 0:
-                        results.append({"method": "POST", "url": "accounts",
-                                        "status": 204, "headers": {}, "body": None, "error": None})
+                        results.append(
+                            {
+                                "method": "POST",
+                                "url": "accounts",
+                                "status": 204,
+                                "headers": {},
+                                "body": None,
+                                "error": None,
+                            }
+                        )
                     else:
-                        results.append({"method": "POST", "url": "accounts",
-                                        "status": 400, "headers": {}, "body": None,
-                                        "error": "Bad Request"})
+                        results.append(
+                            {
+                                "method": "POST",
+                                "url": "accounts",
+                                "status": 400,
+                                "headers": {},
+                                "body": None,
+                                "error": "Bad Request",
+                            }
+                        )
                 return results
 
         stub = _MixedBackend()
         monkeypatch.setattr(CLIContext, "backend", lambda self: stub)
-        result = CliRunner().invoke(cli, [
-            "--json", "data", "import", "accounts", str(jsonl_file),
-            "--no-transaction",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "data",
+                "import",
+                "accounts",
+                str(jsonl_file),
+                "--no-transaction",
+            ],
+        )
         assert result.exit_code == 0, result.output
         envelope = json.loads(result.output)
         assert envelope["ok"] is True
@@ -276,17 +444,31 @@ class _MixedBackend(_StubBackend):
     """Backend stub: even-index ops succeed (204), odd-index ops fail (400)."""
 
     def batch(self, ops, *, transactional, continue_on_error, timeout=None):
-        self.calls.append(
-            {"transactional": transactional, "continue_on_error": continue_on_error}
-        )
+        self.calls.append({"transactional": transactional, "continue_on_error": continue_on_error})
         results = []
         for i, _ in enumerate(ops):
             if i % 2 == 0:
-                results.append({"method": "POST", "url": "accounts", "status": 204,
-                                "headers": {}, "body": None, "error": None})
+                results.append(
+                    {
+                        "method": "POST",
+                        "url": "accounts",
+                        "status": 204,
+                        "headers": {},
+                        "body": None,
+                        "error": None,
+                    }
+                )
             else:
-                results.append({"method": "POST", "url": "accounts", "status": 400,
-                                "headers": {}, "body": None, "error": "Bad Request"})
+                results.append(
+                    {
+                        "method": "POST",
+                        "url": "accounts",
+                        "status": 400,
+                        "headers": {},
+                        "body": None,
+                        "error": "Bad Request",
+                    }
+                )
         return results
 
 
@@ -295,10 +477,18 @@ class TestFailuresReporting:
         """--json: data.failures lists each failed row with index, status, error."""
         stub = _MixedBackend()
         monkeypatch.setattr(CLIContext, "backend", lambda self: stub)
-        result = CliRunner().invoke(cli, [
-            "--json", "data", "import", "accounts", str(jsonl_file),
-            "--no-transaction", "--continue-on-error",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "data",
+                "import",
+                "accounts",
+                str(jsonl_file),
+                "--no-transaction",
+                "--continue-on-error",
+            ],
+        )
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)["data"]
         # jsonl_file has two rows; row 2 (index 2) fails.
@@ -310,9 +500,16 @@ class TestFailuresReporting:
         """--json success path: failures present as [] (clone's convention)."""
         stub = _StubBackend()
         monkeypatch.setattr(CLIContext, "backend", lambda self: stub)
-        result = CliRunner().invoke(cli, [
-            "--json", "data", "import", "accounts", str(jsonl_file),
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "data",
+                "import",
+                "accounts",
+                str(jsonl_file),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert json.loads(result.output)["data"]["failures"] == []
 
@@ -320,10 +517,17 @@ class TestFailuresReporting:
         """Human mode prints a per-failure line (row + status + error), not just a count."""
         stub = _MixedBackend()
         monkeypatch.setattr(CLIContext, "backend", lambda self: stub)
-        result = CliRunner().invoke(cli, [
-            "data", "import", "accounts", str(jsonl_file),
-            "--no-transaction", "--continue-on-error",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "data",
+                "import",
+                "accounts",
+                str(jsonl_file),
+                "--no-transaction",
+                "--continue-on-error",
+            ],
+        )
         assert result.exit_code == 0, result.output
         out = result.output + result.stderr
         assert "row 2" in out
@@ -336,23 +540,41 @@ class TestFailuresReporting:
         """Upsert failures still lead with `row N`, then append the record id."""
         guid = "12345678-1234-1234-1234-123456789abc"
         jf = tmp_path / "accounts_upsert.jsonl"
-        jf.write_text(json.dumps({"accountid": guid, "name": "Acme"}) + "\n",
-                      encoding="utf-8")
+        jf.write_text(json.dumps({"accountid": guid, "name": "Acme"}) + "\n", encoding="utf-8")
 
         class _FailBackend(_StubBackend):
             def batch(self, ops, *, transactional, continue_on_error, timeout=None):
-                self.calls.append({"transactional": transactional,
-                                   "continue_on_error": continue_on_error})
-                return [{"method": "PATCH", "url": f"accounts({guid})", "status": 400,
-                         "headers": {}, "body": None, "error": "Bad Request"}]
+                self.calls.append(
+                    {"transactional": transactional, "continue_on_error": continue_on_error}
+                )
+                return [
+                    {
+                        "method": "PATCH",
+                        "url": f"accounts({guid})",
+                        "status": 400,
+                        "headers": {},
+                        "body": None,
+                        "error": "Bad Request",
+                    }
+                ]
 
         stub = _FailBackend()
         monkeypatch.setattr(CLIContext, "backend", lambda self: stub)
-        result = CliRunner().invoke(cli, [
-            "data", "import", "accounts", str(jf),
-            "--mode", "upsert", "--id-column", "accountid",
-            "--no-transaction", "--continue-on-error",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "data",
+                "import",
+                "accounts",
+                str(jf),
+                "--mode",
+                "upsert",
+                "--id-column",
+                "accountid",
+                "--no-transaction",
+                "--continue-on-error",
+            ],
+        )
         assert result.exit_code == 0, result.output
         out = result.output + result.stderr
         assert f"row 1 (id {guid})" in out

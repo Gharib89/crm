@@ -26,8 +26,7 @@ ARCHIVE_NAME = "crm-linux-x86_64.tar.gz"
 VERSION = "v9.9.9"
 
 pytestmark = pytest.mark.skipif(
-    os.name != "posix"
-    or any(shutil.which(t) is None for t in ("sh", "curl", "sha256sum", "tar")),
+    os.name != "posix" or any(shutil.which(t) is None for t in ("sh", "curl", "sha256sum", "tar")),
     reason="install.sh integration test needs a POSIX shell with curl/sha256sum/tar",
 )
 
@@ -192,9 +191,7 @@ def test_sha256sum_failure_surfaces_clearly(tmp_path: Path):
     stub.chmod(0o755)
 
     with _Server(files) as server:
-        result = _run_install(
-            server.base_url, home, {"PATH": f"{stub_bin}:{os.environ['PATH']}"}
-        )
+        result = _run_install(server.base_url, home, {"PATH": f"{stub_bin}:{os.environ['PATH']}"})
 
     assert result.returncode != 0
     assert not (home / ".local" / "share" / "crm" / "crm").exists()

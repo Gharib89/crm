@@ -7,6 +7,7 @@ rejects it with a generic 500. `odata_query` raises a status-less `D365Error`
 leaving the native `Microsoft.Dynamics.CRM.In(...)` function and any quoted
 literal / column name containing the substring `in` untouched.
 """
+
 from __future__ import annotations
 
 import json
@@ -18,7 +19,6 @@ from click.testing import CliRunner
 from crm.cli import cli
 from crm.core.query import odata_query
 from crm.utils.d365_backend import D365Backend, D365Error
-
 
 _RAISING_FILTERS = [
     "workflowid in ('a','b')",
@@ -39,7 +39,9 @@ _PASSTHROUGH_FILTERS = [
 @pytest.mark.parametrize("filter_", _RAISING_FILTERS)
 def test_bare_in_operator_raises_before_network(filter_, make_fake_backend):
     with pytest.raises(D365Error) as excinfo:
-        odata_query(cast(D365Backend, make_fake_backend(forbid=("get",))), "workflows", filter_=filter_)
+        odata_query(
+            cast(D365Backend, make_fake_backend(forbid=("get",))), "workflows", filter_=filter_
+        )
     assert "in" in str(excinfo.value).lower()
     # Status-less → classified validation / not retryable.
     assert excinfo.value.status is None
@@ -55,7 +57,8 @@ def test_legitimate_filters_pass_through(filter_, make_fake_backend):
 
 def test_envelope_classifies_in_operator_as_validation(make_fake_backend, inject_backend):
     """Full CLI path: `in` operator surfaces as a non-retryable validation error
-    and never reaches the (asserting) backend."""
+    and never reaches the (asserting) backend.
+    """
     inject_backend(make_fake_backend(forbid=("get",)))
     result = CliRunner().invoke(
         cli,

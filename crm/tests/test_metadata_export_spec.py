@@ -20,8 +20,8 @@ from crm.cli import CLIContext, cli
 from crm.core import apply as apply_mod
 from crm.utils.d365_backend import D365Error
 
-
 # ── URL helpers ────────────────────────────────────────────────────────────────
+
 
 def _entity_url(backend) -> str:
     return backend.url_for("EntityDefinitions(LogicalName='new_project')")
@@ -38,9 +38,7 @@ def _attr_url(backend, attr, entity="new_project") -> str:
 
 
 def _o2m_url(backend) -> str:
-    return backend.url_for(
-        "EntityDefinitions(LogicalName='new_project')/OneToManyRelationships"
-    )
+    return backend.url_for("EntityDefinitions(LogicalName='new_project')/OneToManyRelationships")
 
 
 def _savedqueries_url(backend) -> str:
@@ -48,6 +46,7 @@ def _savedqueries_url(backend) -> str:
 
 
 # ── fixture data ───────────────────────────────────────────────────────────────
+
 
 def _label(text: str) -> dict:
     return {"UserLocalizedLabel": {"Label": text, "LanguageCode": 1033}}
@@ -98,11 +97,13 @@ def _string_info() -> dict:
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
+
 def _stub(monkeypatch, backend) -> None:
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
 
 
 # ── tests ──────────────────────────────────────────────────────────────────────
+
 
 class TestNoOutput:
     """Without -o: spec emitted under the standard JSON envelope."""
@@ -116,9 +117,7 @@ class TestNoOutput:
             m.get(_attrs_url(backend), json=attrs)
             m.get(_attr_url(backend, "new_name"), json=_primary_info())
             m.get(_attr_url(backend, "new_code"), json=_string_info())
-            result = CliRunner().invoke(
-                cli, ["--json", "metadata", "export-spec", "new_project"]
-            )
+            result = CliRunner().invoke(cli, ["--json", "metadata", "export-spec", "new_project"])
 
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
@@ -135,7 +134,8 @@ class TestOutputFile:
 
     def test_round_trip_validate_spec(self, monkeypatch, backend, tmp_path):
         """Without --solution: bare spec has no top-level 'solution' key, and it
-        is a valid-but-non-appliable document — validate_spec raises (#636)."""
+        is a valid-but-non-appliable document — validate_spec raises (#636).
+        """
         _stub(monkeypatch, backend)
         attrs = {"value": [_shallow("new_name"), _shallow("new_code")]}
         out_file = tmp_path / "spec.yaml"
@@ -146,8 +146,7 @@ class TestOutputFile:
             m.get(_attr_url(backend, "new_name"), json=_primary_info())
             m.get(_attr_url(backend, "new_code"), json=_string_info())
             result = CliRunner().invoke(
-                cli, ["--json", "metadata", "export-spec", "new_project",
-                      "-o", str(out_file)]
+                cli, ["--json", "metadata", "export-spec", "new_project", "-o", str(out_file)]
             )
 
         assert result.exit_code == 0, result.output
@@ -157,8 +156,8 @@ class TestOutputFile:
         # The file must exist and be the BARE spec (not the envelope).
         assert out_file.exists()
         loaded = yaml.safe_load(out_file.read_text(encoding="utf-8"))
-        assert "ok" not in loaded        # NOT the envelope
-        assert "entities" in loaded      # bare spec
+        assert "ok" not in loaded  # NOT the envelope
+        assert "entities" in loaded  # bare spec
         assert "solution" not in loaded  # no --solution -> no solution block
         assert loaded["entities"][0]["schema_name"] == "new_Project"
 
@@ -166,11 +165,10 @@ class TestOutputFile:
         with pytest.raises(D365Error, match="solution"):
             apply_mod.validate_spec(loaded)
 
-    def test_with_solution_bakes_solution_block_and_validates(
-        self, monkeypatch, backend, tmp_path
-    ):
+    def test_with_solution_bakes_solution_block_and_validates(self, monkeypatch, backend, tmp_path):
         """--solution X bakes a top-level solution: block, and the written file
-        then round-trips through validate_spec (#636)."""
+        then round-trips through validate_spec (#636).
+        """
         _stub(monkeypatch, backend)
         attrs = {"value": [_shallow("new_name"), _shallow("new_code")]}
         out_file = tmp_path / "spec.yaml"
@@ -181,8 +179,17 @@ class TestOutputFile:
             m.get(_attr_url(backend, "new_name"), json=_primary_info())
             m.get(_attr_url(backend, "new_code"), json=_string_info())
             result = CliRunner().invoke(
-                cli, ["--json", "metadata", "export-spec", "new_project",
-                      "--solution", "testsln", "-o", str(out_file)]
+                cli,
+                [
+                    "--json",
+                    "metadata",
+                    "export-spec",
+                    "new_project",
+                    "--solution",
+                    "testsln",
+                    "-o",
+                    str(out_file),
+                ],
             )
 
         assert result.exit_code == 0, result.output
@@ -208,8 +215,7 @@ class TestOutputFile:
             m.get(_attr_url(backend, "new_name"), json=_primary_info())
             m.get(_attr_url(backend, "new_code"), json=_string_info())
             result = CliRunner().invoke(
-                cli, ["--json", "metadata", "export-spec", "new_project",
-                      "-o", str(out_file)]
+                cli, ["--json", "metadata", "export-spec", "new_project", "-o", str(out_file)]
             )
 
         assert result.exit_code == 0, result.output
@@ -217,7 +223,7 @@ class TestOutputFile:
         data = env["data"]
         assert data["path"] == str(out_file)
         assert data["entities"] == 1
-        assert data["attributes"] == 1    # new_code only (new_name = primary_attr)
+        assert data["attributes"] == 1  # new_code only (new_name = primary_attr)
         assert data["relationships"] == 0
         assert data["views"] == 0
         assert data["optionsets"] == 0
@@ -233,7 +239,7 @@ class TestWithViewsAndRelationships:
             '<grid name="resultset" object="10042" jump="new_name" select="1">'
             '<row name="result" id="new_projectid">'
             '<cell name="new_name" width="200" />'
-            '</row></grid>'
+            "</row></grid>"
         )
         fetch = (
             '<fetch version="1.0" output-format="xml-platform" mapping="logical">'
@@ -241,14 +247,18 @@ class TestWithViewsAndRelationships:
             '<attribute name="new_projectid" />'
             '<attribute name="new_name" />'
             '<order attribute="new_name" descending="false" />'
-            '</entity></fetch>'
+            "</entity></fetch>"
         )
-        savedqueries = {"value": [{
-            "name": "Active Projects",
-            "layoutxml": layout,
-            "fetchxml": fetch,
-            "isdefault": True,
-        }]}
+        savedqueries = {
+            "value": [
+                {
+                    "name": "Active Projects",
+                    "layoutxml": layout,
+                    "fetchxml": fetch,
+                    "isdefault": True,
+                }
+            ]
+        }
         out_file = tmp_path / "spec.yaml"
 
         with requests_mock.Mocker() as m:
@@ -257,8 +267,18 @@ class TestWithViewsAndRelationships:
             m.get(_attr_url(backend, "new_name"), json=_primary_info())
             m.get(_savedqueries_url(backend), json=savedqueries)
             result = CliRunner().invoke(
-                cli, ["--json", "metadata", "export-spec", "new_project",
-                      "--with-views", "--solution", "testsln", "-o", str(out_file)]
+                cli,
+                [
+                    "--json",
+                    "metadata",
+                    "export-spec",
+                    "new_project",
+                    "--with-views",
+                    "--solution",
+                    "testsln",
+                    "-o",
+                    str(out_file),
+                ],
             )
 
         assert result.exit_code == 0, result.output
@@ -275,15 +295,19 @@ class TestWithViewsAndRelationships:
     def test_with_relationships(self, monkeypatch, backend, tmp_path):
         _stub(monkeypatch, backend)
         attrs = {"value": [_shallow("new_name")]}
-        o2m = {"value": [{
-            "SchemaName": "new_project_new_task",
-            "ReferencedEntity": "new_project",
-            "ReferencingEntity": "new_task",
-            "ReferencingAttribute": "new_projectid",
-            "IsCustomRelationship": True,
-            "CascadeConfiguration": {"Assign": "NoCascade", "Delete": "RemoveLink"},
-            "AssociatedMenuConfiguration": {"Behavior": "UseCollectionName"},
-        }]}
+        o2m = {
+            "value": [
+                {
+                    "SchemaName": "new_project_new_task",
+                    "ReferencedEntity": "new_project",
+                    "ReferencingEntity": "new_task",
+                    "ReferencingAttribute": "new_projectid",
+                    "IsCustomRelationship": True,
+                    "CascadeConfiguration": {"Assign": "NoCascade", "Delete": "RemoveLink"},
+                    "AssociatedMenuConfiguration": {"Behavior": "UseCollectionName"},
+                }
+            ]
+        }
         rel_attr = {
             "LogicalName": "new_projectid",
             "DisplayName": _label("Project"),
@@ -298,9 +322,18 @@ class TestWithViewsAndRelationships:
             m.get(_o2m_url(backend), json=o2m)
             m.get(_attr_url(backend, "new_projectid", entity="new_task"), json=rel_attr)
             result = CliRunner().invoke(
-                cli, ["--json", "metadata", "export-spec", "new_project",
-                      "--with-relationships", "--solution", "testsln",
-                      "-o", str(out_file)]
+                cli,
+                [
+                    "--json",
+                    "metadata",
+                    "export-spec",
+                    "new_project",
+                    "--with-relationships",
+                    "--solution",
+                    "testsln",
+                    "-o",
+                    str(out_file),
+                ],
             )
 
         assert result.exit_code == 0, result.output
@@ -320,23 +353,28 @@ def _form_string_info() -> dict:
 
 
 _MAIN_FORM = (
-    '<form><tabs>'
+    "<form><tabs>"
     '<tab name="general" id="{aaaa1111-0000-0000-0000-000000000001}">'
     '<labels><label description="General" languagecode="1033" /></labels>'
     '<columns><column width="100%"><sections>'
     '<section name="summary" id="{bbbb2222-0000-0000-0000-000000000002}">'
-    '<rows>'
+    "<rows>"
     '<row><cell id="{c0000000-0000-0000-0000-000000000001}"><control id="new_name" '
     'classid="{4273EDBD-AC1D-40D3-9FB2-095C621B552D}" datafieldname="new_name" />'
-    '</cell></row>'
+    "</cell></row>"
     '<row><cell id="{c0000000-0000-0000-0000-000000000002}"><control id="new_code" '
     'classid="{4273EDBD-AC1D-40D3-9FB2-095C621B552D}" datafieldname="new_code" />'
-    '</cell></row>'
-    '</rows></section></sections></column></columns></tab></tabs></form>'
+    "</cell></row>"
+    "</rows></section></sections></column></columns></tab></tabs></form>"
 )
-_FORM_ROW = {"formid": "ffff0000-0000-0000-0000-00000000000f", "name": "Information",
-             "objecttypecode": "new_project", "type": 2, "formxml": _MAIN_FORM,
-             "isdefault": True}
+_FORM_ROW = {
+    "formid": "ffff0000-0000-0000-0000-00000000000f",
+    "name": "Information",
+    "objecttypecode": "new_project",
+    "type": 2,
+    "formxml": _MAIN_FORM,
+    "isdefault": True,
+}
 
 
 class TestWithForms:
@@ -353,8 +391,19 @@ class TestWithForms:
             m.get(_attr_url(backend, "new_code"), json=_form_string_info())
             m.get(backend.url_for("systemforms"), json={"value": [_FORM_ROW]})
             result = CliRunner().invoke(
-                cli, ["--json", "metadata", "export-spec", "new_project",
-                      "--with-forms", "--solution", "testsln", "-o", str(out_file)])
+                cli,
+                [
+                    "--json",
+                    "metadata",
+                    "export-spec",
+                    "new_project",
+                    "--with-forms",
+                    "--solution",
+                    "testsln",
+                    "-o",
+                    str(out_file),
+                ],
+            )
 
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
@@ -369,8 +418,12 @@ class TestWithForms:
     def test_additional_main_form_surfaces_in_meta_skipped(self, monkeypatch, backend):
         _stub(monkeypatch, backend)
         attrs = {"value": [_shallow("new_name"), _shallow("new_code")]}
-        second = {**_FORM_ROW, "formid": "eeee0000-0000-0000-0000-00000000000e",
-                  "name": "Secondary", "isdefault": False}
+        second = {
+            **_FORM_ROW,
+            "formid": "eeee0000-0000-0000-0000-00000000000e",
+            "name": "Secondary",
+            "isdefault": False,
+        }
         with requests_mock.Mocker() as m:
             m.get(_entity_url(backend), json=_ENTITY)
             m.get(_attrs_url(backend), json=attrs)
@@ -378,8 +431,8 @@ class TestWithForms:
             m.get(_attr_url(backend, "new_code"), json=_form_string_info())
             m.get(backend.url_for("systemforms"), json={"value": [_FORM_ROW, second]})
             result = CliRunner().invoke(
-                cli, ["--json", "metadata", "export-spec", "new_project",
-                      "--with-forms"])
+                cli, ["--json", "metadata", "export-spec", "new_project", "--with-forms"]
+            )
 
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
@@ -403,8 +456,7 @@ class TestFileWriteOSError:
             m.get(_attrs_url(backend), json=attrs)
             m.get(_attr_url(backend, "new_name"), json=_primary_info())
             result = CliRunner().invoke(
-                cli, ["--json", "metadata", "export-spec", "new_project",
-                      "-o", bad_path]
+                cli, ["--json", "metadata", "export-spec", "new_project", "-o", bad_path]
             )
 
         assert result.exit_code == 1, result.output  # exit 1 (emit false, not crash)
@@ -434,8 +486,7 @@ class TestFileWriteOSError:
             m.get(_attrs_url(backend), json=attrs)
             m.get(_attr_url(backend, "new_name"), json=_primary_info())
             result = CliRunner().invoke(
-                cli, ["--json", "metadata", "export-spec", "new_project",
-                      "-o", str(out_file)]
+                cli, ["--json", "metadata", "export-spec", "new_project", "-o", str(out_file)]
             )
 
         assert result.exit_code == 1, result.output
@@ -451,11 +502,12 @@ class TestMissingEntity:
         _stub(monkeypatch, backend)
 
         with requests_mock.Mocker() as m:
-            m.get(_entity_url(backend), status_code=404,
-                  json={"error": {"code": "0x80040217", "message": "entity not found"}})
-            result = CliRunner().invoke(
-                cli, ["--json", "metadata", "export-spec", "new_project"]
+            m.get(
+                _entity_url(backend),
+                status_code=404,
+                json={"error": {"code": "0x80040217", "message": "entity not found"}},
             )
+            result = CliRunner().invoke(cli, ["--json", "metadata", "export-spec", "new_project"])
 
         assert result.exit_code == 1, result.output
         env = json.loads(result.output)
@@ -481,9 +533,7 @@ def _local_pick_info() -> dict:
 
 
 class TestExportSpecWarningsCommand:
-    def test_export_spec_emits_meta_warnings_for_dropped_picklist(
-        self, monkeypatch, backend
-    ):
+    def test_export_spec_emits_meta_warnings_for_dropped_picklist(self, monkeypatch, backend):
         # A custom picklist whose cast 403s -> dropped -> warning in meta.warnings.
         _stub(monkeypatch, backend)
         attrs = {"value": [_shallow("new_name"), _shallow("new_priority")]}
@@ -493,9 +543,11 @@ class TestExportSpecWarningsCommand:
             m.get(_attrs_url(backend), json=attrs)
             m.get(_attr_url(backend, "new_name"), json=_primary_info())
             m.get(_attr_url(backend, "new_priority"), json=_local_pick_info())
-            m.get(_pick_cast_url(backend, "new_priority"), status_code=403, json={
-                "error": {"code": "0x0", "message": "forbidden"}
-            })
+            m.get(
+                _pick_cast_url(backend, "new_priority"),
+                status_code=403,
+                json={"error": {"code": "0x0", "message": "forbidden"}},
+            )
             result = runner.invoke(cli, ["--json", "metadata", "export-spec", "new_project"])
 
         assert result.exit_code == 0

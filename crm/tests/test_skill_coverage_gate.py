@@ -7,6 +7,7 @@ at **group** granularity: no cited command may be dead, and every real top-level
 group must be cited or explicitly waived. Complements — does not replace — the
 structural guards in `test_skill_bundle.py`.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

@@ -23,8 +23,10 @@ def _mock_convert(m, base):
 
 
 def _mock_preview(m, base, count=3):
-    m.get(f"{base}contacts",
-          json={"@odata.context": f"{base}$metadata#contacts", "value": [], "@odata.count": count})
+    m.get(
+        f"{base}contacts",
+        json={"@odata.context": f"{base}$metadata#contacts", "value": [], "@odata.count": count},
+    )
 
 
 class TestSubmit:
@@ -45,10 +47,14 @@ class TestSubmit:
             _mock_convert(m, base)
             _mock_preview(m, base, count=5)
             m.post(f"{base}BulkDelete", json={"JobId": _JOB_ID})
-            m.get(f"{base}asyncoperations({_JOB_ID})",
-                  json={"asyncoperationid": _JOB_ID, "statecode": 3, "statuscode": 30})
-            m.get(f"{base}bulkdeleteoperations",
-                  json={"value": [{"successcount": 5, "failurecount": 0}]})
+            m.get(
+                f"{base}asyncoperations({_JOB_ID})",
+                json={"asyncoperationid": _JOB_ID, "statecode": 3, "statuscode": 30},
+            )
+            m.get(
+                f"{base}bulkdeleteoperations",
+                json={"value": [{"successcount": 5, "failurecount": 0}]},
+            )
             result = bulk_delete.bulk_delete(backend, "contacts", _FETCH, wait=True)
         assert result["status"] == "completed"
         assert result["succeeded"] == 5

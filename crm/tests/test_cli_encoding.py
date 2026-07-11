@@ -1,4 +1,5 @@
 """Unit tests for force_utf8_output — Windows cp1252 console fix (#146a)."""
+
 # pyright: basic
 from __future__ import annotations
 
@@ -24,6 +25,7 @@ def test_box_chars_encodable_after_reconfigure():
 def test_noop_on_stream_without_reconfigure():
     class Dummy:
         encoding = "cp1252"
+
     d = Dummy()
     force_utf8_output(d)  # must not raise
     assert d.encoding == "cp1252"
@@ -32,6 +34,7 @@ def test_noop_on_stream_without_reconfigure():
 def test_noop_on_stream_with_none_encoding():
     class Dummy:
         encoding = None
+
     d = Dummy()
     force_utf8_output(d)  # must not raise AttributeError on None.lower()
 

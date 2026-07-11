@@ -15,6 +15,7 @@ else does, so they are parsed once here and stored on the run record:
 
 Kept a pure, offline-testable seam (no agent, no org), mirroring ``analyze``/``taskspec``.
 """
+
 from __future__ import annotations
 
 import json

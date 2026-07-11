@@ -81,25 +81,42 @@ def _depth_name(value: Any) -> str:
         return _DEPTH_BY_INT[value]
     return str(value)
 
+
 # Friendly/alias depth name (lower-case) → canonical Web API Depth enum member.
 _DEPTH_ALIASES: dict[str, str] = {
-    "basic": "Basic", "user": "Basic",
-    "local": "Local", "businessunit": "Local",
-    "deep": "Deep", "parentchild": "Deep",
-    "global": "Global", "organization": "Global",
+    "basic": "Basic",
+    "user": "Basic",
+    "local": "Local",
+    "businessunit": "Local",
+    "deep": "Deep",
+    "parentchild": "Deep",
+    "global": "Global",
+    "organization": "Global",
 }
 
 # Access keyword → AccessRights bitmask (the `privileges` entity's `accessright`
 # column). Canonical platform enum values — verified live on cloud + on-prem.
 _ACCESS_BITMASK: dict[str, int] = {
-    "read": 1, "write": 2, "append": 4, "appendto": 16,
-    "create": 32, "delete": 65536, "share": 262144, "assign": 524288,
+    "read": 1,
+    "write": 2,
+    "append": 4,
+    "appendto": 16,
+    "create": 32,
+    "delete": 65536,
+    "share": 262144,
+    "assign": 524288,
 }
 
 # Access keyword → metadata PrivilegeType enum member (EntityMetadata.Privileges).
 _ACCESS_PRIVILEGE_TYPE: dict[str, str] = {
-    "read": "Read", "write": "Write", "append": "Append", "appendto": "AppendTo",
-    "create": "Create", "delete": "Delete", "share": "Share", "assign": "Assign",
+    "read": "Read",
+    "write": "Write",
+    "append": "Append",
+    "appendto": "AppendTo",
+    "create": "Create",
+    "delete": "Delete",
+    "share": "Share",
+    "assign": "Assign",
 }
 
 # ── Reads ────────────────────────────────────────────────────────────────
@@ -291,9 +308,7 @@ def _principal_ref(principal_type: str, principal_id: str) -> dict[str, str]:
     spec = _PRINCIPAL_TYPES.get(principal_type.lower())
     if spec is None:
         valid = ", ".join(_PRINCIPAL_TYPES)
-        raise D365Error(
-            f"unknown principal type {principal_type!r}; expected one of: {valid}"
-        )
+        raise D365Error(f"unknown principal type {principal_type!r}; expected one of: {valid}")
     logical, id_attr = spec
     gid = normalize_guid(principal_id)
     if gid is None:
@@ -444,7 +459,8 @@ def _find_role_by_name(backend: D365Backend, name: str, business_unit: str) -> s
 def _resolve_business_unit(backend: D365Backend, business_unit: str | None) -> str:
     """The target business unit GUID for a role: an explicit one (validated) or the
     caller's own (WhoAmI). Shared by create_role and find_role so both scope a role
-    name to the same BU."""
+    name to the same BU.
+    """
     if business_unit is None:
         return _caller_business_unit(backend)
     normalized = normalize_guid(business_unit)
@@ -454,7 +470,10 @@ def _resolve_business_unit(backend: D365Backend, business_unit: str | None) -> s
 
 
 def find_role(
-    backend: D365Backend, name: str, *, business_unit: str | None = None,
+    backend: D365Backend,
+    name: str,
+    *,
+    business_unit: str | None = None,
 ) -> str | None:
     """The roleid of a role with this name in its business unit, or None.
 
@@ -492,8 +511,7 @@ def create_role(
     existing = _find_role_by_name(backend, name, bu)
     if existing is not None:
         if if_exists == "skip":
-            return {"roleid": existing, "name": name,
-                    "businessunitid": bu, "existed": True}
+            return {"roleid": existing, "name": name, "businessunitid": bu, "existed": True}
         raise D365Error(
             f"a role named {name!r} already exists in business unit {bu} "
             "(use --if-exists skip to reuse it)"
@@ -506,9 +524,10 @@ def create_role(
     if backend.dry_run:
         # Stable preview shape (mirrors themes/dashboard/charts cores) rather
         # than leaking the backend's raw request echo.
-        return {"_dry_run": True,
-                "would_create": {"entity_set": _ROLES_SET, "body": payload,
-                                  "solution": solution}}
+        return {
+            "_dry_run": True,
+            "would_create": {"entity_set": _ROLES_SET, "body": payload, "solution": solution},
+        }
     result = entity_mod.create(backend, _ROLES_SET, payload, solution=solution)
     return {
         "roleid": str(result.get("roleid", "")),
@@ -547,6 +566,7 @@ def _norm_priv(raw: dict[str, Any]) -> dict[str, Any]:
     the ``privileges`` entity shape (lower-case ``canbebasic`` …, ``name``,
     ``privilegeid``).
     """
+
     def flag(*keys: str) -> bool:
         for key in keys:
             if key in raw:
@@ -650,9 +670,11 @@ def _entity_privileges_bulk(
     if backend.dry_run or backend.read_only:
         return {lg: _entity_privileges(backend, lg) for lg in logicals}
     ops: list[BatchOperation] = [
-        {"method": "GET",
-         "url": f"EntityDefinitions(LogicalName='{lg.replace(chr(39), chr(39) * 2)}')"
-                "?$select=Privileges"}
+        {
+            "method": "GET",
+            "url": f"EntityDefinitions(LogicalName='{lg.replace(chr(39), chr(39) * 2)}')"
+            "?$select=Privileges",
+        }
         for lg in logicals
     ]
     # Fail-fast (raise on the first failing entity), so continue-on-error is off:
@@ -667,10 +689,7 @@ def _entity_privileges_bulk(
             raise D365Error(str(err), status=res.get("status"))
         body = res.get("body")
         privileges = body.get("Privileges") if isinstance(body, dict) else None
-        out[lg] = (
-            cast("list[dict[str, Any]]", privileges)
-            if isinstance(privileges, list) else []
-        )
+        out[lg] = cast("list[dict[str, Any]]", privileges) if isinstance(privileges, list) else []
     return out
 
 
@@ -678,7 +697,8 @@ def _all_entity_privileges(backend: D365Backend, access: list[str]) -> list[dict
     """Fetch every privilege matching the requested access types, org-wide."""
     clauses = " or ".join(f"accessright eq {_ACCESS_BITMASK[a]}" for a in access)
     return backend.get_collection(
-        "privileges", params={"$select": _PRIV_SELECT, "$filter": clauses},
+        "privileges",
+        params={"$select": _PRIV_SELECT, "$filter": clauses},
     )
 
 
@@ -686,7 +706,8 @@ def _named_privileges(backend: D365Backend, names: list[str]) -> list[dict[str, 
     """Fetch privileges by exact name; raise if any requested name is unknown."""
     clauses = " or ".join(f"name eq '{n.replace(chr(39), chr(39) * 2)}'" for n in names)
     rows = backend.get_collection(
-        "privileges", params={"$select": _PRIV_SELECT, "$filter": clauses},
+        "privileges",
+        params={"$select": _PRIV_SELECT, "$filter": clauses},
     )
     found = {str(r.get("name")) for r in rows}
     missing = [n for n in names if n not in found]
@@ -723,9 +744,7 @@ def resolve_role_privileges(
     if access:
         access = _validate_access(access)
         if not entities and not all_entities:
-            raise D365Error(
-                "--access requires an entity scope: add --entities or --all-entities"
-            )
+            raise D365Error("--access requires an entity scope: add --entities or --all-entities")
     elif entities or all_entities:
         raise D365Error("--entities/--all-entities require --access")
     if not access and not privilege_names:
@@ -797,14 +816,16 @@ def merge_privilege_sets(sets: list[list[dict[str, Any]]]) -> list[dict[str, Any
 
 
 def _post_role_privileges(
-    backend: D365Backend, role_id: str, privileges: list[dict[str, Any]], *, replace: bool,
+    backend: D365Backend,
+    role_id: str,
+    privileges: list[dict[str, Any]],
+    *,
+    replace: bool,
 ) -> None:
     """POST AddPrivilegesRole / ReplacePrivilegesRole for a resolved privilege list."""
     action = _REPLACE_PRIVILEGES_ACTION if replace else _ADD_PRIVILEGES_ACTION
     body = {
-        "Privileges": [
-            {"PrivilegeId": p["privilegeid"], "Depth": p["depth"]} for p in privileges
-        ]
+        "Privileges": [{"PrivilegeId": p["privilegeid"], "Depth": p["depth"]} for p in privileges]
     }
     path = f"{entity_mod.build_record_path(_ROLES_SET, role_id)}/{action}"
     backend.post(path, json_body=body)
@@ -825,16 +846,20 @@ def get_role_privileges(backend: D365Backend, role_id: str) -> list[dict[str, An
         raw_id = str(rp.get("PrivilegeId", ""))
         # PrivilegeName is absent on-prem; fall back to the id so a drift report
         # still has a stable label. The reconcile compares by id+depth, not name.
-        out.append({
-            "name": str(rp.get("PrivilegeName") or raw_id),
-            "privilegeid": normalize_guid(raw_id) or raw_id,
-            "depth": _depth_name(rp.get("Depth")),
-        })
+        out.append(
+            {
+                "name": str(rp.get("PrivilegeName") or raw_id),
+                "privilegeid": normalize_guid(raw_id) or raw_id,
+                "depth": _depth_name(rp.get("Depth")),
+            }
+        )
     return out
 
 
 def replace_role_privileges(
-    backend: D365Backend, role_id: str, privileges: list[dict[str, Any]],
+    backend: D365Backend,
+    role_id: str,
+    privileges: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """Replace a role's entire privilege set with ``privileges`` (ReplacePrivilegesRole).
 
@@ -843,8 +868,7 @@ def replace_role_privileges(
     contract), so apply's reconcile can compute drift read-only.
     """
     if backend.dry_run:
-        return {"_dry_run": True,
-                "would_replace": {"roleid": role_id, "count": len(privileges)}}
+        return {"_dry_run": True, "would_replace": {"roleid": role_id, "count": len(privileges)}}
     _post_role_privileges(backend, role_id, privileges, replace=True)
     return {"applied": True, "roleid": role_id, "count": len(privileges)}
 
@@ -877,8 +901,13 @@ def set_role_privileges(
     # raise before any HTTP).
     role_id = _resolve_role_id(backend, role)
     privileges, warnings = resolve_role_privileges(
-        backend, access=access, entities=entities, all_entities=all_entities,
-        privilege_names=privilege_names, depth=depth)
+        backend,
+        access=access,
+        entities=entities,
+        all_entities=all_entities,
+        privilege_names=privilege_names,
+        depth=depth,
+    )
     out: dict[str, Any] = {
         "roleid": role_id,
         "mode": "replace" if replace else "add",

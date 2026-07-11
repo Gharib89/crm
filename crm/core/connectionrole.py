@@ -64,7 +64,10 @@ def resolve_role_id(backend: D365Backend, role: str) -> str:
     if gid is not None:
         return gid
     rid = backend.resolve_id_by_name(
-        ROLES_SET, filter_field="name", id_field=_ROLE_ID, value=role,
+        ROLES_SET,
+        filter_field="name",
+        id_field=_ROLE_ID,
+        value=role,
     )
     if rid is None:
         raise D365Error(f"No connection role named {role!r}.", code="NotFound")
@@ -97,9 +100,13 @@ def create_role(
         body["category"] = CATEGORIES[category]
     if description is not None:
         body["description"] = description
-    result = as_dict(backend.post(
-        ROLES_SET, json_body=body, solution=solution,
-    ))
+    result = as_dict(
+        backend.post(
+            ROLES_SET,
+            json_body=body,
+            solution=solution,
+        )
+    )
     if result.get("_dry_run"):
         result["would_create"] = True
         return result
@@ -115,8 +122,7 @@ def create_role(
         out["category_name"] = category
     if not role_id:
         out["connectionrole_lookup_error"] = (
-            "Could not parse connectionroleid from response: "
-            f"{result.get('_entity_id_url')!r}"
+            f"Could not parse connectionroleid from response: {result.get('_entity_id_url')!r}"
         )
     return out
 
@@ -141,9 +147,13 @@ def scope(
         "associatedobjecttypecode": entity,
         f"{_ROLE_ID}@odata.bind": f"/{ROLES_SET}({role_id})",
     }
-    result = as_dict(backend.post(
-        OBJECTTYPECODES_SET, json_body=body, solution=solution,
-    ))
+    result = as_dict(
+        backend.post(
+            OBJECTTYPECODES_SET,
+            json_body=body,
+            solution=solution,
+        )
+    )
     if result.get("_dry_run"):
         result["would_create"] = True
         return result
@@ -179,7 +189,12 @@ def match(
     a_id = resolve_role_id(backend, role_a)
     b_id = resolve_role_id(backend, role_b)
     result = entity_mod.associate(
-        backend, ROLES_SET, a_id, _MATCH_NAV, ROLES_SET, b_id,
+        backend,
+        ROLES_SET,
+        a_id,
+        _MATCH_NAV,
+        ROLES_SET,
+        b_id,
     )
     if result.get("_dry_run"):
         result["would_match"] = True

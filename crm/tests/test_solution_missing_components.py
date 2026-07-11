@@ -5,6 +5,7 @@ parameter is the exported solution .zip bytes (Edm.Binary), passed as a
 ``binary'<base64>'`` parameter-alias literal — verified live against Dataverse.
 All HTTP is mocked via requests_mock; no live D365 server.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -25,8 +26,10 @@ def _write_solution(tmp_path, data: bytes = b"PK\x03\x04 fake solution zip"):
 
 
 def _mock_missing(m, backend, *, components):
-    m.get(backend.url_for("RetrieveMissingComponents(CustomizationFile=@p1)"),
-          json={"MissingComponents": components})
+    m.get(
+        backend.url_for("RetrieveMissingComponents(CustomizationFile=@p1)"),
+        json={"MissingComponents": components},
+    )
 
 
 class TestRetrieveMissingComponents:
@@ -41,7 +44,9 @@ class TestRetrieveMissingComponents:
         b64 = base64.b64encode(data).decode("ascii")
         sent = m.request_history[0].url
         assert "RetrieveMissingComponents(CustomizationFile=@p1)" in sent
-        assert b64 in sent or b64.replace("+", "%2B").replace("/", "%2F").replace("=", "%3D") in sent
+        assert (
+            b64 in sent or b64.replace("+", "%2B").replace("/", "%2F").replace("=", "%3D") in sent
+        )
 
     def test_returns_missing_list(self, backend, tmp_path):
         path, _ = _write_solution(tmp_path)
@@ -62,8 +67,7 @@ class TestMissingComponentsCommand:
         self._stub_backend(monkeypatch, backend)
         with requests_mock.Mocker() as m:
             _mock_missing(m, backend, components=[{"RequiredComponent": {"type": 1}}])
-            res = CliRunner().invoke(
-                cli, ["--json", "solution", "missing-components", str(path)])
+            res = CliRunner().invoke(cli, ["--json", "solution", "missing-components", str(path)])
         assert res.exit_code == 0, res.output
         data = json.loads(res.output)
         assert data["ok"] is True
@@ -73,5 +77,6 @@ class TestMissingComponentsCommand:
     def test_missing_file_errors(self, monkeypatch, backend, tmp_path):
         self._stub_backend(monkeypatch, backend)
         res = CliRunner().invoke(
-            cli, ["--json", "solution", "missing-components", str(tmp_path / "nope.zip")])
+            cli, ["--json", "solution", "missing-components", str(tmp_path / "nope.zip")]
+        )
         assert res.exit_code != 0

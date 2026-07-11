@@ -84,14 +84,22 @@ def odata_query(
             "pass one or the other, not both."
         )
     if track_changes or delta_token is not None:
-        bad = [name for name, val in (
-            ("--filter", filter_), ("--order-by", orderby),
-            ("--expand", expand), ("--top", top),
-            ("--all", all_pages), ("--max-records", max_records is not None),
-        ) if val]
+        bad = [
+            name
+            for name, val in (
+                ("--filter", filter_),
+                ("--order-by", orderby),
+                ("--expand", expand),
+                ("--top", top),
+                ("--all", all_pages),
+                ("--max-records", max_records is not None),
+            )
+            if val
+        ]
         if bad:
             raise D365Error(
-                "change tracking does not support " + "/".join(bad)
+                "change tracking does not support "
+                + "/".join(bad)
                 + ": the Dataverse Web API rejects $filter/$orderby/$expand/$top with "
                 "Prefer: odata.track-changes, and page-following drops the delta link. "
                 "Use --select to shape columns; resume with --delta-token."
@@ -105,7 +113,8 @@ def odata_query(
             raise D365Error(
                 "OData 'in' operator is not supported by the Dataverse Web API (OData 4.0).\n"
                 "Use the In query function:\n"
-                "  --filter \"Microsoft.Dynamics.CRM.In(PropertyName='<column>',PropertyValues=['<val1>','<val2>'])\"\n"
+                "  --filter \"Microsoft.Dynamics.CRM.In(PropertyName='<column>',"
+                "PropertyValues=['<val1>','<val2>'])\"\n"
                 "or run the equivalent FetchXML via `crm query fetchxml`."
             )
         params["$filter"] = filter_
@@ -191,11 +200,13 @@ def fetchxml_query(
     headers: dict[str, str] | None = (
         {"Prefer": 'odata.include-annotations="*"'} if include_annotations else None
     )
-    return as_dict(backend.get(
-        entity_set,
-        params={"fetchXml": fetch_xml},
-        extra_headers=headers,
-    ))
+    return as_dict(
+        backend.get(
+            entity_set,
+            params={"fetchXml": fetch_xml},
+            extra_headers=headers,
+        )
+    )
 
 
 # ── Count ───────────────────────────────────────────────────────────────
@@ -230,11 +241,13 @@ def saved_query(
     Reference: https://learn.microsoft.com/power-apps/developer/data-platform/webapi/retrieve-and-execute-predefined-queries
     """
     headers = _prefer_header(include_annotations, page_size)
-    return as_dict(backend.get(
-        entity_set,
-        params={"savedQuery": savedquery_id},
-        extra_headers=headers or None,
-    ))
+    return as_dict(
+        backend.get(
+            entity_set,
+            params={"savedQuery": savedquery_id},
+            extra_headers=headers or None,
+        )
+    )
 
 
 def user_query(
@@ -250,11 +263,13 @@ def user_query(
     Equivalent to: GET /<set>?userQuery=<guid>
     """
     headers = _prefer_header(include_annotations, page_size)
-    return as_dict(backend.get(
-        entity_set,
-        params={"userQuery": userquery_id},
-        extra_headers=headers or None,
-    ))
+    return as_dict(
+        backend.get(
+            entity_set,
+            params={"userQuery": userquery_id},
+            extra_headers=headers or None,
+        )
+    )
 
 
 def count_entity_set(backend: D365Backend, entity_set: str) -> int:

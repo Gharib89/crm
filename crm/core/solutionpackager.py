@@ -39,7 +39,8 @@ _SUBCOMMAND = {"Extract": "unpack", "Pack": "pack"}
 def pac_subcommand(action: str | None) -> str:
     """The real `pac solution` subcommand for an envelope `action` (Extract →
     unpack, Pack → pack); an unknown action is returned unchanged. Lets callers
-    show the runnable command without duplicating the mapping."""
+    show the runnable command without duplicating the mapping.
+    """
     return _SUBCOMMAND.get(action or "", action or "")
 
 
@@ -58,9 +59,7 @@ def _normalize_package_type(value: str) -> str:
         return _PACKAGE_TYPES[value.strip().lower()]
     except KeyError:
         known = ", ".join(_PACKAGE_TYPES.values())
-        raise D365Error(
-            f"unknown package type {value!r}; choose one of: {known}."
-        ) from None
+        raise D365Error(f"unknown package type {value!r}; choose one of: {known}.") from None
 
 
 def _resolve_pac(path_override: str | None) -> str:
@@ -70,12 +69,9 @@ def _resolve_pac(path_override: str | None) -> str:
 
     `CRM_SOLUTIONPACKAGER` is honored as a deprecated back-compat alias for
     `CRM_PAC` (point it at `pac`, not SolutionPackager.exe) so callers that set
-    the old env var keep resolving an executable after the #500 migration."""
-    candidate = (
-        path_override
-        or os.environ.get("CRM_PAC")
-        or os.environ.get("CRM_SOLUTIONPACKAGER")
-    )
+    the old env var keep resolving an executable after the #500 migration.
+    """
+    candidate = path_override or os.environ.get("CRM_PAC") or os.environ.get("CRM_SOLUTIONPACKAGER")
     if candidate:
         # Expand ~ and $VARS so a flag/env value like "~/.dotnet/tools/pac"
         # resolves (the shell only expands these for values typed at the prompt).
@@ -99,28 +95,35 @@ def _run_pac(
     timeout: int | None,
 ) -> dict[str, Any]:
     """Shell out to `pac solution <unpack|pack>` for `action` (Extract|Pack) and
-    return the `{action, exit_code, folder, zipfile, stdout_tail}` envelope."""
+    return the `{action, exit_code, folder, zipfile, stdout_tail}` envelope.
+    """
     if timeout is not None and timeout <= 0:
-        raise D365Error(
-            f"timeout must be a positive number of seconds; got {timeout}."
-        )
+        raise D365Error(f"timeout must be a positive number of seconds; got {timeout}.")
     pkg = _normalize_package_type(package_type)
     exe = _resolve_pac(pac_path)
     argv = [
         exe,
         "solution",
         _SUBCOMMAND[action],
-        "--zipfile", str(zipfile),
-        "--folder", str(folder),
-        "--packagetype", pkg,
+        "--zipfile",
+        str(zipfile),
+        "--folder",
+        str(folder),
+        "--packagetype",
+        pkg,
     ]
     try:
         proc = subprocess.run(
-            argv, check=False, capture_output=True, text=True,
+            argv,
+            check=False,
+            capture_output=True,
+            text=True,
             # Pin the capture decode to UTF-8 (error-tolerant) instead of the OS
             # locale default, so a Windows cp1252 console can't mojibake pac's
             # output in error messages and the stdout tail (#683).
-            encoding="utf-8", errors="replace", timeout=timeout,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
         )
     except subprocess.TimeoutExpired as exc:
         raise D365Error(
@@ -130,9 +133,7 @@ def _run_pac(
     except OSError as exc:
         # The path exists (is_file passed) but could not be executed — e.g. it is
         # not the real binary (wrong format) or lacks execute permission.
-        raise D365Error(
-            f"Could not run pac at {exe!r}: {exc}. {_PAC_HINT}"
-        ) from exc
+        raise D365Error(f"Could not run pac at {exe!r}: {exc}. {_PAC_HINT}") from exc
     return {
         "action": action,
         "exit_code": proc.returncode,
@@ -153,8 +154,11 @@ def extract_solution(
     """Extract an exported solution zip into a source-controllable folder tree."""
     return _run_pac(
         "Extract",
-        zipfile=zipfile, folder=folder, package_type=package_type,
-        pac_path=pac_path, timeout=timeout,
+        zipfile=zipfile,
+        folder=folder,
+        package_type=package_type,
+        pac_path=pac_path,
+        timeout=timeout,
     )
 
 
@@ -169,6 +173,9 @@ def pack_solution(
     """Pack a source folder tree back into an importable solution zip."""
     return _run_pac(
         "Pack",
-        zipfile=zipfile, folder=folder, package_type=package_type,
-        pac_path=pac_path, timeout=timeout,
+        zipfile=zipfile,
+        folder=folder,
+        package_type=package_type,
+        pac_path=pac_path,
+        timeout=timeout,
     )

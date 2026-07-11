@@ -18,21 +18,33 @@ from crm.cli import CLIContext, cli
 
 
 def _attrs_url(backend, logical_name: str) -> str:
-    return backend.url_for(
-        f"EntityDefinitions(LogicalName='{logical_name}')/Attributes"
-    )
+    return backend.url_for(f"EntityDefinitions(LogicalName='{logical_name}')/Attributes")
 
 
-_SAMPLE = {"value": [
-    {"LogicalName": "name", "SchemaName": "Name", "AttributeType": "String",
-     "IsCustomAttribute": False, "IsValidForCreate": True,
-     "IsValidForUpdate": True, "IsValidForRead": True,
-     "RequiredLevel": {"Value": "ApplicationRequired"}},
-    {"LogicalName": "fullname", "SchemaName": "FullName",
-     "AttributeType": "String", "IsCustomAttribute": False,
-     "IsValidForCreate": False, "IsValidForUpdate": False,
-     "IsValidForRead": True, "RequiredLevel": {"Value": "None"}},
-]}
+_SAMPLE = {
+    "value": [
+        {
+            "LogicalName": "name",
+            "SchemaName": "Name",
+            "AttributeType": "String",
+            "IsCustomAttribute": False,
+            "IsValidForCreate": True,
+            "IsValidForUpdate": True,
+            "IsValidForRead": True,
+            "RequiredLevel": {"Value": "ApplicationRequired"},
+        },
+        {
+            "LogicalName": "fullname",
+            "SchemaName": "FullName",
+            "AttributeType": "String",
+            "IsCustomAttribute": False,
+            "IsValidForCreate": False,
+            "IsValidForUpdate": False,
+            "IsValidForRead": True,
+            "RequiredLevel": {"Value": "None"},
+        },
+    ]
+}
 
 
 @pytest.fixture
@@ -45,8 +57,9 @@ def test_cmd_attributes_json_carries_validity_fields(runner, backend, monkeypatc
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
     with requests_mock.Mocker() as m:
         m.get(_attrs_url(backend, "contact"), json=_SAMPLE)
-        result = runner.invoke(cli, ["--json", "metadata", "attributes", "contact"],
-                               catch_exceptions=False)
+        result = runner.invoke(
+            cli, ["--json", "metadata", "attributes", "contact"], catch_exceptions=False
+        )
     assert result.exit_code == 0
     data = json.loads(result.output)
     first = data["data"][0]
@@ -61,8 +74,7 @@ def test_cmd_attributes_human_surfaces_validity(runner, backend, monkeypatch):
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
     with requests_mock.Mocker() as m:
         m.get(_attrs_url(backend, "contact"), json=_SAMPLE)
-        result = runner.invoke(cli, ["metadata", "attributes", "contact"],
-                               catch_exceptions=False)
+        result = runner.invoke(cli, ["metadata", "attributes", "contact"], catch_exceptions=False)
     assert result.exit_code == 0
     assert "ApplicationRequired" in result.output
     # The required-level string of a read-only attribute is "None"; the create

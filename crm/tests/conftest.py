@@ -21,8 +21,9 @@ from __future__ import annotations
 
 import os
 import time as _time
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Callable, Iterator
+from typing import Any, Callable
 
 import pytest
 
@@ -32,14 +33,25 @@ from crm.utils.d365_backend import ConnectionProfile, D365Backend
 # path reads these any more, but a developer's stray export must never sway a
 # test, so isolated_home scrubs them for the duration of each test.
 _LEGACY_CRED_ENV = (
-    "D365_URL", "CRM_BASE_URL", "CRM_URL",
-    "D365_USERNAME", "CRM_USERNAME", "CRM_USER",
-    "D365_PASSWORD", "CRM_PASSWORD", "CRM_PASS",
-    "D365_DOMAIN", "CRM_DOMAIN",
-    "D365_AUTH", "CRM_AUTH",
-    "D365_TENANT_ID", "CRM_TENANT_ID",
-    "D365_CLIENT_ID", "CRM_CLIENT_ID",
-    "D365_CLIENT_SECRET", "CRM_CLIENT_SECRET",
+    "D365_URL",
+    "CRM_BASE_URL",
+    "CRM_URL",
+    "D365_USERNAME",
+    "CRM_USERNAME",
+    "CRM_USER",
+    "D365_PASSWORD",
+    "CRM_PASSWORD",
+    "CRM_PASS",
+    "D365_DOMAIN",
+    "CRM_DOMAIN",
+    "D365_AUTH",
+    "CRM_AUTH",
+    "D365_TENANT_ID",
+    "CRM_TENANT_ID",
+    "D365_CLIENT_ID",
+    "CRM_CLIENT_ID",
+    "D365_CLIENT_SECRET",
+    "CRM_CLIENT_SECRET",
 )
 
 
@@ -50,7 +62,8 @@ _LEGACY_CRED_ENV = (
 def profile() -> ConnectionProfile:
     """The canonical test profile. Override in a module only to vary a field
     (e.g. ``api_version="v9.1"``); ``backend``/``dry_backend`` resolve the
-    nearest ``profile``, so a local override flows through automatically."""
+    nearest ``profile``, so a local override flows through automatically.
+    """
     return ConnectionProfile(
         name="testp",
         url="https://crm.contoso.local/contoso",
@@ -64,7 +77,8 @@ def profile() -> ConnectionProfile:
 @pytest.fixture
 def backend(profile: ConnectionProfile) -> D365Backend:
     """A real ``D365Backend`` (no network at construction). Pair with
-    ``requests_mock`` to exercise the transport layer."""
+    ``requests_mock`` to exercise the transport layer.
+    """
     return D365Backend(profile, password="pw", dry_run=False)
 
 
@@ -88,7 +102,8 @@ def isolated_home(tmp_path: Path) -> Iterator[Path]:
     cannot undo it (cf. #56). Yields ``tmp_path`` for callers that need it.
 
     Opt in per module with
-    ``pytestmark = pytest.mark.usefixtures("isolated_home")``."""
+    ``pytestmark = pytest.mark.usefixtures("isolated_home")``.
+    """
     saved = dict(os.environ)
     os.environ["CRM_HOME"] = str(tmp_path / ".crm")
     os.environ["CRM_DOTENV"] = str(tmp_path / "noop.env")
@@ -107,7 +122,8 @@ def isolated_home(tmp_path: Path) -> Iterator[Path]:
 @pytest.fixture
 def no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
     """Neutralise ``time.sleep`` so retry/async-backoff tests don't actually
-    wait. Patches the stdlib ``time`` module (the backend sleeps via it)."""
+    wait. Patches the stdlib ``time`` module (the backend sleeps via it).
+    """
 
     def _noop(*_args: Any, **_kwargs: Any) -> None:
         return None
@@ -122,10 +138,18 @@ def no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
 # when a test does not override it — lets commands that resolve a name through
 # ``entity_names.load_name_map`` (e.g. ``query count``) work out of the box.
 _DEFAULT_ENTITY_DEFINITIONS: list[dict[str, str]] = [
-    {"LogicalName": "account", "EntitySetName": "accounts",
-     "PrimaryIdAttribute": "accountid", "PrimaryNameAttribute": "name"},
-    {"LogicalName": "contact", "EntitySetName": "contacts",
-     "PrimaryIdAttribute": "contactid", "PrimaryNameAttribute": "fullname"},
+    {
+        "LogicalName": "account",
+        "EntitySetName": "accounts",
+        "PrimaryIdAttribute": "accountid",
+        "PrimaryNameAttribute": "name",
+    },
+    {
+        "LogicalName": "contact",
+        "EntitySetName": "contacts",
+        "PrimaryIdAttribute": "contactid",
+        "PrimaryNameAttribute": "fullname",
+    },
 ]
 
 
@@ -193,9 +217,7 @@ class FakeBackend:
 
     def _dispatch(self, verb: str, path: Any, kwargs: dict[str, Any]) -> Any:
         if verb in self._forbid:
-            raise AssertionError(
-                f"FakeBackend.{verb} should not be called (path={path!r})"
-            )
+            raise AssertionError(f"FakeBackend.{verb} should not be called (path={path!r})")
         self.calls.append((verb, path, kwargs))
         if verb in self._errors:
             raise self._errors[verb]
@@ -204,9 +226,7 @@ class FakeBackend:
             return resp(path) if callable(resp) else resp
         return self._default(verb)
 
-    def get(
-        self, path: Any = None, *_args: Any, params: Any = None, **kwargs: Any
-    ) -> Any:
+    def get(self, path: Any = None, *_args: Any, params: Any = None, **kwargs: Any) -> Any:
         return self._dispatch("get", path, {"params": params, **kwargs})
 
     def get_collection(
@@ -233,6 +253,7 @@ class FakeBackend:
 
     def url_for(self, path: str) -> str:
         import urllib.parse
+
         return urllib.parse.urljoin(self.profile.api_base, path.lstrip("/"))
 
 
@@ -257,7 +278,8 @@ def inject_backend(monkeypatch: pytest.MonkeyPatch) -> Callable[[Any], Any]:
     """Inject a backend at the ``CLIContext.backend`` seam and return it.
 
     ``b = inject_backend(make_fake_backend(responses={"get": ...}))`` — every
-    command run in the test then sees ``b`` instead of a live backend."""
+    command run in the test then sees ``b`` instead of a live backend.
+    """
     from crm.cli import CLIContext
 
     def _inject(backend: Any) -> Any:

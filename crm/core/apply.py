@@ -19,12 +19,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, TypeVar, cast
 
-from crm.core.batch import run_batched
 from crm.core import appmodule as app_mod
 from crm.core import forms as forms_mod
 from crm.core import metadata as meta_mod
 from crm.core import metadata_attrs as attrs_mod
-from crm.core.metadata_attrs import ATTRIBUTE_KINDS
 from crm.core import metadata_constraints as mc
 from crm.core import metadata_update as meta_update_mod
 from crm.core import optionsets as os_mod
@@ -34,6 +32,8 @@ from crm.core import security as sec_mod
 from crm.core import solution as sol_mod
 from crm.core import views as views_mod
 from crm.core import webresource as wr_mod
+from crm.core.batch import run_batched
+from crm.core.metadata_attrs import ATTRIBUTE_KINDS
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 from crm.utils.d365_types import BatchOperation
 
@@ -71,9 +71,11 @@ def _resolve_otc(backend: D365Backend, logical: str) -> int | None:
     (401/403/5xx) is re-raised so real failures are not silently masked.
     """
     try:
-        rb = as_dict(backend.get(
-            f"EntityDefinitions(LogicalName='{logical}')",
-            params={"$select": "ObjectTypeCode"}))
+        rb = as_dict(
+            backend.get(
+                f"EntityDefinitions(LogicalName='{logical}')", params={"$select": "ObjectTypeCode"}
+            )
+        )
     except D365Error as exc:
         if exc.status == 404:
             return None
@@ -129,7 +131,8 @@ def _require_str(obj: Any, key: str, label: str, *, optional: bool = False) -> N
     """Require ``key`` on the mapping ``obj`` to be a string — present-and-typed,
     or (when ``optional``) absent-or-typed. A non-mapping ``obj`` (e.g. a bare
     string in a list where a block was expected) fails as a clean usage error,
-    not a ``TypeError`` — the first call per block validates its shape."""
+    not a ``TypeError`` — the first call per block validates its shape.
+    """
     if not isinstance(obj, dict):
         raise D365Error(f"{label} must be a mapping.")
     cobj = cast("dict[str, Any]", obj)
@@ -193,8 +196,7 @@ def _validate_form_block(block: Any, elabel: str) -> None:
                 raise D365Error(f"{hlabel}: {flag!r} must be true or false.")
         event = handler.get("event")
         if event not in forms_mod.EVENT_CHOICES:
-            raise D365Error(
-                f"{hlabel}: event must be one of {', '.join(forms_mod.EVENT_CHOICES)}.")
+            raise D365Error(f"{hlabel}: event must be one of {', '.join(forms_mod.EVENT_CHOICES)}.")
         if event == "onchange" and not handler.get("field"):
             raise D365Error(f"{hlabel}: an onchange handler requires a 'field'.")
         if event != "onchange" and handler.get("field"):
@@ -207,7 +209,8 @@ def _validate_sitemap_block(sitemap: Any, applabel: str) -> None:
     Only document shape is checked here — the referential integrity and duplicate-Id
     rules are the builder's authority (``appmodule.build_sitemapxml``), enforced
     client-side before any POST. Nesting makes an orphan group/subarea impossible by
-    construction, so up-front validation is purely structural."""
+    construction, so up-front validation is purely structural.
+    """
     label = f"{applabel} sitemap"
     if not isinstance(sitemap, dict):
         raise D365Error(f"{label} must be a mapping.")
@@ -246,8 +249,7 @@ def _validate_app_block(block: Any) -> None:
     _require_str(block, "description", label, optional=True)
     # Identity is a publisher-prefixed unique name — reject a malformed one up front
     # rather than deep inside create_app's first backend touch.
-    mc.validate_schema_name(block["unique_name"], subject="unique_name",
-                            example="cwx_crmworx")
+    mc.validate_schema_name(block["unique_name"], subject="unique_name", example="cwx_crmworx")
     _require_list(block, "components", label)
     for comp in _as_list(block.get("components")):
         clabel = f"{label} component"
@@ -255,16 +257,17 @@ def _validate_app_block(block: Any) -> None:
         _require_str(comp, "id", clabel)
         if comp["kind"] not in app_mod.APP_COMPONENT_KINDS:
             raise D365Error(
-                f"{clabel}: kind must be one of "
-                f"{', '.join(sorted(app_mod.APP_COMPONENT_KINDS))}.")
+                f"{clabel}: kind must be one of {', '.join(sorted(app_mod.APP_COMPONENT_KINDS))}."
+            )
     if block.get("sitemap") is not None:
         _validate_sitemap_block(block["sitemap"], label)
 
 
 def _sitemap_tuples(
     sitemap: dict[str, Any],
-) -> tuple[list[tuple[str, str]], list[tuple[str, str, str]],
-           list[tuple[str, str, str, str | None]]]:
+) -> tuple[
+    list[tuple[str, str]], list[tuple[str, str, str]], list[tuple[str, str, str, str | None]]
+]:
     """Flatten a nested ``sitemap:`` block into build_sitemapxml's tuple inputs.
 
     Returns ``(areas, groups, subareas)`` where ``areas=[(id, title)]``,
@@ -282,16 +285,18 @@ def _sitemap_tuples(
             groups.append((aid, gid, str(group.get("title") or "")))
             for sub in _as_list(group.get("subareas")):
                 title = sub.get("title")
-                subareas.append((aid, gid, str(sub["entity"]),
-                                 str(title) if title else None))
+                subareas.append((aid, gid, str(sub["entity"]), str(title) if title else None))
     return areas, groups, subareas
 
 
 def _reconcile_app(
-    backend: D365Backend, app_spec: dict[str, Any], entry: Entry,
-    components: list[tuple[str, str]], sitemap_xml: str | None,
+    backend: D365Backend,
+    app_spec: dict[str, Any],
+    entry: Entry,
+    components: list[tuple[str, str]],
+    sitemap_xml: str | None,
     solution: str | None,
-) -> "_Verdict":
+) -> _Verdict:
     """Converge an existing app's component set + sitemap; classify the verdict.
 
     Delegates the read/diff/converge to ``appmodule.reconcile_app`` (ADR 0024, #796)
@@ -302,8 +307,12 @@ def _reconcile_app(
     the declared block is ``skipped``.
     """
     res = app_mod.reconcile_app(
-        backend, unique_name=app_spec["unique_name"], components=components,
-        sitemap_xml=sitemap_xml, solution=solution)
+        backend,
+        unique_name=app_spec["unique_name"],
+        components=components,
+        sitemap_xml=sitemap_xml,
+        solution=solution,
+    )
     if res.get("unreadable"):
         # The app exists (create reported it present) but is not GET-retrievable on
         # this org — nothing to converge, so skip rather than fail (see reconcile_app).
@@ -411,9 +420,9 @@ class Adapter:
     block_label: str = ""
     extra_validate: Callable[[dict[str, Any]], None] | None = None
     find_live: Callable[[D365Backend, dict[str, Any], ReconcileCtx], Any] | None = None
-    reconcile: Callable[
-        [D365Backend, dict[str, Any], Any, ReconcileCtx, Entry], "_Verdict"
-    ] | None = None
+    reconcile: (
+        Callable[[D365Backend, dict[str, Any], Any, ReconcileCtx, Entry], _Verdict] | None
+    ) = None
 
     @property
     def transform_targets(self) -> frozenset[str]:
@@ -465,14 +474,15 @@ class Adapter:
 def validate_spec(spec: Any) -> None:
     """Validate spec shape up front so a malformed file fails before any HTTP call."""
     if not isinstance(spec, dict):
-        raise D365Error(
-            "spec must be a mapping with publisher / solution / entities / optionsets.")
+        raise D365Error("spec must be a mapping with publisher / solution / entities / optionsets.")
     sp = cast("dict[str, Any]", spec)
     if sp.get("publisher") is not None:
         _require(sp["publisher"], ("unique_name", "prefix", "option_value_prefix"), "publisher")
         if not isinstance(sp["publisher"]["option_value_prefix"], int):
-            raise D365Error("publisher: option_value_prefix must be an integer "
-                            "(10000-99999), not a quoted string.")
+            raise D365Error(
+                "publisher: option_value_prefix must be an integer "
+                "(10000-99999), not a quoted string."
+            )
     # A customization write must target an explicit unmanaged solution: the
     # spec's top-level `solution:` block is mandatory (#636). A spec exported
     # without one (`metadata export-spec` sans --solution) is a valid document
@@ -481,10 +491,10 @@ def validate_spec(spec: Any) -> None:
         raise D365Error(
             "spec must declare a top-level 'solution:' block with 'unique_name' — "
             "customization writes must target an explicit unmanaged solution "
-            "(re-export with `metadata export-spec --solution`).")
+            "(re-export with `metadata export-spec --solution`)."
+        )
     _require(sp["solution"], ("unique_name",), "solution")
-    for key in ("entities", "optionsets", "webresources", "security_roles",
-                "plugins", "apps"):
+    for key in ("entities", "optionsets", "webresources", "security_roles", "plugins", "apps"):
         if key in sp and not isinstance(sp[key], list):
             raise D365Error(f"{key} must be a list.")
     for ent in _as_list(sp.get("entities")):
@@ -535,8 +545,7 @@ def validate_spec(spec: Any) -> None:
             _require_list(step, "images", slabel)
             for img in _as_list(step.get("images")):
                 _require(img, ("alias", "image_type"), f"{slabel} image")
-                for key in ("alias", "image_type", "attributes", "name",
-                            "message_property_name"):
+                for key in ("alias", "image_type", "attributes", "name", "message_property_name"):
                     if img.get(key) is not None and not isinstance(img[key], str):
                         raise D365Error(f"{slabel}: image {key!r} must be a string.")
     # A top-level model-driven app (`apps:`) delegates its whole shape — the app
@@ -584,7 +593,8 @@ def _present(result: dict[str, Any]) -> bool:
     `would_skip`. Either way the component is live, so apply reconciles it against
     the spec rather than creating it — the same reconcile path runs in both modes
     (its writes are no-ops under dry-run per the reads-execute rule), which is what
-    turns `--dry-run` into a full drift report (#550)."""
+    turns `--dry-run` into a full drift report (#550).
+    """
     return bool(result.get("skipped") or result.get("would_skip"))
 
 
@@ -624,8 +634,11 @@ def _drift(desired: Any, live_label: Any) -> bool:
     """
     if desired is None:
         return False
-    current = (meta_mod.label_text(cast("dict[str, Any]", live_label))
-               if isinstance(live_label, dict) else "")
+    current = (
+        meta_mod.label_text(cast("dict[str, Any]", live_label))
+        if isinstance(live_label, dict)
+        else ""
+    )
     return str(desired) != current
 
 
@@ -636,7 +649,8 @@ def _with_diff(entry: Entry, update_result: dict[str, Any]) -> Entry:
     branch (the PUT/action body is suppressed); a real apply returns no diff. So
     under --dry-run the `updated` bucket carries what each component WOULD change,
     turning a list of names into an actual drift report; a real apply's entry is
-    left unchanged."""
+    left unchanged.
+    """
     diff = update_result.get("diff")
     return {**entry, "diff": diff} if diff else entry
 
@@ -657,16 +671,20 @@ def _reconcile(
 
 
 def _find_live_entity(
-    backend: D365Backend, ent: dict[str, Any], ctx: ReconcileCtx,
+    backend: D365Backend,
+    ent: dict[str, Any],
+    ctx: ReconcileCtx,
 ) -> dict[str, Any]:
     """Read the live entity definition this block reconciles against."""
-    return meta_mod.entity_info(
-        backend, ctx.entity_logical or ent["schema_name"].lower())
+    return meta_mod.entity_info(backend, ctx.entity_logical or ent["schema_name"].lower())
 
 
 def _reconcile_entity(
-    backend: D365Backend, ent: dict[str, Any], live: dict[str, Any],
-    ctx: ReconcileCtx, entry: Entry,
+    backend: D365Backend,
+    ent: dict[str, Any],
+    live: dict[str, Any],
+    ctx: ReconcileCtx,
+    entry: Entry,
 ) -> _Verdict:
     """Diff an existing entity against the spec; update, skip, or block.
 
@@ -687,24 +705,26 @@ def _reconcile_entity(
         return "replace_blocked", {
             **entry,
             "reason": f"ownership change {live_ownership!r} -> {desired_ownership!r} "
-                      "requires a destructive drop-and-recreate; refusing (no write).",
+            "requires a destructive drop-and-recreate; refusing (no write).",
         }
     desired_is_activity = ent.get("is_activity")
     live_is_activity = live.get("IsActivity")
-    if (desired_is_activity is not None and live_is_activity is not None
-            and desired_is_activity != live_is_activity):
+    if (
+        desired_is_activity is not None
+        and live_is_activity is not None
+        and desired_is_activity != live_is_activity
+    ):
         return "replace_blocked", {
             **entry,
             "reason": f"is_activity change {live_is_activity!r} -> {desired_is_activity!r} "
-                      "is an identity change (a table cannot be converted to/from an "
-                      "activity table in place); refusing (no write).",
+            "is an identity change (a table cannot be converted to/from an "
+            "activity table in place); refusing (no write).",
         }
     changes: dict[str, Any] = {}
     # has_notes / has_activities are enable-only: false->true is additive
     # (updatable), but the platform forbids disabling, so an explicit true->false
     # is replace-blocked rather than silently skipped.
-    for spec_key, live_key in (("has_notes", "HasNotes"),
-                               ("has_activities", "HasActivities")):
+    for spec_key, live_key in (("has_notes", "HasNotes"), ("has_activities", "HasActivities")):
         desired = ent.get(spec_key)
         if desired is None or desired == live.get(live_key):
             continue
@@ -712,7 +732,7 @@ def _reconcile_entity(
             return "replace_blocked", {
                 **entry,
                 "reason": f"{spec_key} cannot be disabled once enabled (enable-only "
-                          "capability); refusing (no write).",
+                "capability); refusing (no write).",
             }
         changes[spec_key] = True
     if _drift(ent.get("display_name"), live.get("DisplayName")):
@@ -728,7 +748,9 @@ def _reconcile_entity(
 
 
 def _find_live_attribute(
-    backend: D365Backend, attr: dict[str, Any], ctx: ReconcileCtx,
+    backend: D365Backend,
+    attr: dict[str, Any],
+    ctx: ReconcileCtx,
 ) -> dict[str, Any] | None:
     """Read the live attribute's base projection, or None when there is nothing to
     reconcile here — a lookup/customer kind is relationship-backed (apply's create
@@ -743,13 +765,15 @@ def _find_live_attribute(
     if info is None or kind in ("lookup", "customer"):
         return None
     attr_logical = attr["schema_name"].lower()
-    return meta_mod.attribute_info(
-        backend, ctx.entity_logical or "", attr_logical)
+    return meta_mod.attribute_info(backend, ctx.entity_logical or "", attr_logical)
 
 
 def _reconcile_attribute(
-    backend: D365Backend, attr: dict[str, Any], live: dict[str, Any] | None,
-    ctx: ReconcileCtx, entry: Entry,
+    backend: D365Backend,
+    attr: dict[str, Any],
+    live: dict[str, Any] | None,
+    ctx: ReconcileCtx,
+    entry: Entry,
 ) -> _Verdict:
     """Diff an existing attribute against the spec; update, skip, or block.
 
@@ -773,7 +797,7 @@ def _reconcile_attribute(
         return "replace_blocked", {
             **entry,
             "reason": f"data-type change {live_cast!r} -> {info.cast!r} requires a "
-                      "destructive drop-and-recreate; refusing (no write).",
+            "destructive drop-and-recreate; refusing (no write).",
         }
     changes: dict[str, Any] = {}
     if _drift(attr.get("display_name"), base.get("DisplayName")):
@@ -788,9 +812,12 @@ def _reconcile_attribute(
     desired_max = attr.get("max_length")
     if desired_max is not None and kind in ("string", "memo"):
         # MaxLength lives only on the typed cast projection — a second GET.
-        typed = as_dict(backend.get(
-            f"EntityDefinitions(LogicalName='{entity_logical}')"
-            f"/Attributes(LogicalName='{attr_logical}')/{info.cast}"))
+        typed = as_dict(
+            backend.get(
+                f"EntityDefinitions(LogicalName='{entity_logical}')"
+                f"/Attributes(LogicalName='{attr_logical}')/{info.cast}"
+            )
+        )
         live_max = typed.get("MaxLength")
         # ponytail: GROW only. Shrinking max-length truncates data and is out of
         # scope for this slice; a desired length <= the live length is left as-is.
@@ -798,8 +825,9 @@ def _reconcile_attribute(
             changes["max_length"] = desired_max
     if not changes:
         return "skipped", entry
-    out = meta_update_mod.update_attribute(backend, entity_logical, attr_logical,
-                                           solution=solution, **changes)
+    out = meta_update_mod.update_attribute(
+        backend, entity_logical, attr_logical, solution=solution, **changes
+    )
     return "updated", _with_diff(entry, out)
 
 
@@ -817,7 +845,9 @@ _ONE_TO_MANY_CAST = "Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
 
 
 def _find_live_relationship(
-    backend: D365Backend, rel: dict[str, Any], ctx: ReconcileCtx,
+    backend: D365Backend,
+    rel: dict[str, Any],
+    ctx: ReconcileCtx,
 ) -> dict[str, Any]:
     """Read the relationship's base (un-cast) projection carrying RelationshipType.
 
@@ -826,14 +856,20 @@ def _find_live_relationship(
     referencing entities) is read inside ``reconcile`` only when the type matches.
     """
     schema = rel["schema_name"]
-    return as_dict(backend.get(
-        f"RelationshipDefinitions(SchemaName='{schema}')",
-        params={"$select": "RelationshipType"}))
+    return as_dict(
+        backend.get(
+            f"RelationshipDefinitions(SchemaName='{schema}')",
+            params={"$select": "RelationshipType"},
+        )
+    )
 
 
 def _reconcile_relationship(
-    backend: D365Backend, rel: dict[str, Any], base: dict[str, Any],
-    ctx: ReconcileCtx, entry: Entry,
+    backend: D365Backend,
+    rel: dict[str, Any],
+    base: dict[str, Any],
+    ctx: ReconcileCtx,
+    entry: Entry,
 ) -> _Verdict:
     """Diff an existing 1:N relationship against the spec; update, skip, or block.
 
@@ -854,29 +890,36 @@ def _reconcile_relationship(
         return "replace_blocked", {
             **entry,
             "reason": f"relationship type {base.get('RelationshipType')!r} is not "
-                      "one-to-many; a type change requires a destructive "
-                      "drop-and-recreate; refusing (no write).",
+            "one-to-many; a type change requires a destructive "
+            "drop-and-recreate; refusing (no write).",
         }
     # The 1:N cast is the only projection carrying Cascade/AssociatedMenu/the
     # referenced/referencing entities.
-    live = as_dict(backend.get(
-        f"RelationshipDefinitions(SchemaName='{schema}')/{_ONE_TO_MANY_CAST}",
-        params={"$select": "ReferencedEntity,ReferencingEntity,ReferencingAttribute,"
-                           "CascadeConfiguration,AssociatedMenuConfiguration,IsHierarchical"}))
+    live = as_dict(
+        backend.get(
+            f"RelationshipDefinitions(SchemaName='{schema}')/{_ONE_TO_MANY_CAST}",
+            params={
+                "$select": "ReferencedEntity,ReferencingEntity,ReferencingAttribute,"
+                "CascadeConfiguration,AssociatedMenuConfiguration,IsHierarchical"
+            },
+        )
+    )
     # Identity fields fixed at create — referenced/referencing entity, and the
     # lookup column (ReferencingAttribute, the FK created with the relationship).
     # A divergence on any of them is an immutable change: reconciling the live
     # column anyway would silently leave the spec unsatisfied, so refuse instead.
-    for spec_key, live_key in (("referenced_entity", "ReferencedEntity"),
-                               ("referencing_entity", "ReferencingEntity"),
-                               ("lookup_schema", "ReferencingAttribute")):
+    for spec_key, live_key in (
+        ("referenced_entity", "ReferencedEntity"),
+        ("referencing_entity", "ReferencingEntity"),
+        ("lookup_schema", "ReferencingAttribute"),
+    ):
         desired = rel.get(spec_key)
         current = live.get(live_key)
         if desired and current and str(desired).lower() != str(current).lower():
             return "replace_blocked", {
                 **entry,
                 "reason": f"{spec_key} change {current!r} -> {desired!r} requires a "
-                          "destructive drop-and-recreate; refusing (no write).",
+                "destructive drop-and-recreate; refusing (no write).",
             }
     # Relationship-level drift → update_relationship kwargs.
     rel_kwargs: dict[str, Any] = {}
@@ -895,7 +938,9 @@ def _reconcile_relationship(
         rel_kwargs["menu_label"] = rel["menu_label"]
     if rel.get("menu_order") is not None and rel["menu_order"] != menu_live.get("Order"):
         rel_kwargs["menu_order"] = rel["menu_order"]
-    if rel.get("is_hierarchical") is not None and rel["is_hierarchical"] != live.get("IsHierarchical"):
+    if rel.get("is_hierarchical") is not None and rel["is_hierarchical"] != live.get(
+        "IsHierarchical"
+    ):
         rel_kwargs["is_hierarchical"] = rel["is_hierarchical"]
     # Lookup-attribute drift (display / description / required) on the referencing
     # entity — the relationship-backed lookup column, matched by ReferencingAttribute.
@@ -922,14 +967,17 @@ def _reconcile_relationship(
         out = meta_update_mod.update_relationship(backend, schema, solution=solution, **rel_kwargs)
         diff.update(cast("dict[str, Any]", out.get("diff") or {}))
     if lookup_changes:
-        out = meta_update_mod.update_attribute(backend, referencing, lookup_logical,
-                                               solution=solution, **lookup_changes)
+        out = meta_update_mod.update_attribute(
+            backend, referencing, lookup_logical, solution=solution, **lookup_changes
+        )
         diff.update(cast("dict[str, Any]", out.get("diff") or {}))
     return "updated", ({**entry, "diff": diff} if diff else entry)
 
 
 def _find_live_view(
-    backend: D365Backend, view: dict[str, Any], ctx: ReconcileCtx,
+    backend: D365Backend,
+    view: dict[str, Any],
+    ctx: ReconcileCtx,
 ) -> list[dict[str, Any]]:
     """Read the saved view(s) sharing this block's identity tuple.
 
@@ -943,16 +991,22 @@ def _find_live_view(
     return backend.get_collection(
         "savedqueries",
         params={
-            "$filter": (f"name eq {odata_literal(name)} "
-                        f"and returnedtypecode eq {odata_literal(ctx.entity_logical or '')} "
-                        f"and querytype eq {querytype}"),
+            "$filter": (
+                f"name eq {odata_literal(name)} "
+                f"and returnedtypecode eq {odata_literal(ctx.entity_logical or '')} "
+                f"and querytype eq {querytype}"
+            ),
             "$select": "savedqueryid,name,fetchxml,layoutxml,isdefault,description",
-        })
+        },
+    )
 
 
 def _reconcile_view(
-    backend: D365Backend, view: dict[str, Any], rows: list[dict[str, Any]],
-    ctx: ReconcileCtx, entry: Entry,
+    backend: D365Backend,
+    view: dict[str, Any],
+    rows: list[dict[str, Any]],
+    ctx: ReconcileCtx,
+    entry: Entry,
 ) -> _Verdict:
     """Diff an existing saved view against the spec; update in place or skip.
 
@@ -977,9 +1031,9 @@ def _reconcile_view(
         return "skipped", {
             **entry,
             "reason": f"{len(rows)} {query_type} views named {name!r} on "
-                      f"{entity_logical} share the (name, query_type) identity; "
-                      "refusing to reconcile an arbitrary one (resolve the "
-                      "duplicate, or edit by savedqueryid).",
+            f"{entity_logical} share the (name, query_type) identity; "
+            "refusing to reconcile an arbitrary one (resolve the "
+            "duplicate, or edit by savedqueryid).",
         }
     if not rows:
         # No live match (the create path owns creation, and a rename creates a new
@@ -989,8 +1043,9 @@ def _reconcile_view(
     sqid = str(row.get("savedqueryid"))
     # Live state first, so a field the spec omits can fall back to it.
     live_columns = _columns(views_mod.parse_layout_columns(row.get("layoutxml") or ""))
-    live_order_by, live_order_desc, live_filter_active = \
-        views_mod.parse_fetch_order_filter(row.get("fetchxml") or "")
+    live_order_by, live_order_desc, live_filter_active = views_mod.parse_fetch_order_filter(
+        row.get("fetchxml") or ""
+    )
     live_is_default = bool(row.get("isdefault", False))
     live_description = row.get("description")
 
@@ -1002,12 +1057,11 @@ def _reconcile_view(
     # filter_active/order would strip a live sort/filter on a columns-only edit).
     desired_columns = _columns(view.get("columns"))
     desired_order_by = view["order_by"] if "order_by" in view else live_order_by
-    desired_order_desc = (bool(view["order_desc"]) if "order_desc" in view
-                          else live_order_desc)
-    desired_filter_active = (bool(view["filter_active"]) if "filter_active" in view
-                             else live_filter_active)
-    desired_is_default = (bool(view["is_default"]) if "is_default" in view
-                          else live_is_default)
+    desired_order_desc = bool(view["order_desc"]) if "order_desc" in view else live_order_desc
+    desired_filter_active = (
+        bool(view["filter_active"]) if "filter_active" in view else live_filter_active
+    )
+    desired_is_default = bool(view["is_default"]) if "is_default" in view else live_is_default
     desired_description = view.get("description")
 
     diff: dict[str, Any] = {}
@@ -1023,8 +1077,7 @@ def _reconcile_view(
     # (names only); a sort/active-filter change drives fetchxml alone.
     if desired_columns != live_columns:
         diff["columns"] = {"old": live_columns, "new": desired_columns}
-        changes["layoutxml"] = views_mod.build_layoutxml(
-            entity_logical, otc, desired_columns)
+        changes["layoutxml"] = views_mod.build_layoutxml(entity_logical, otc, desired_columns)
     if desired_order_by != live_order_by:
         diff["order_by"] = {"old": live_order_by, "new": desired_order_by}
     if desired_order_desc != live_order_desc:
@@ -1035,11 +1088,16 @@ def _reconcile_view(
         [n for n, _ in desired_columns] != [n for n, _ in live_columns]
         or desired_order_by != live_order_by
         or desired_order_desc != live_order_desc
-        or desired_filter_active != live_filter_active)
+        or desired_filter_active != live_filter_active
+    )
     if fetch_drift:
         changes["fetchxml"] = views_mod.build_fetchxml(
-            entity_logical, desired_columns, desired_order_by,
-            desired_filter_active, desired_order_desc)
+            entity_logical,
+            desired_columns,
+            desired_order_by,
+            desired_filter_active,
+            desired_order_desc,
+        )
     if not changes:
         return "skipped", entry
     views_mod.update_view(backend, savedqueryid=sqid, changes=changes, solution=solution)
@@ -1073,16 +1131,17 @@ def _validate_entity_block(ent: dict[str, Any]) -> None:
 
 def _validate_attribute_block(attr: dict[str, Any]) -> None:
     """Kind vocabulary, kind-specific requirements, option shape, and the
-    calculated/rollup source_type ↔ formula_definition cross-rules (#554)."""
+    calculated/rollup source_type ↔ formula_definition cross-rules (#554).
+    """
     kind, name = attr["kind"], attr["schema_name"]
     if kind not in ATTRIBUTE_KINDS:
         raise D365Error(f"attribute {name!r}: unknown kind {kind!r}.")
     if kind == "lookup" and not attr.get("target_entity"):
         raise D365Error(f"lookup attribute {name!r} requires target_entity.")
     if kind in ("picklist", "multiselect") and not (
-            attr.get("optionset_name") or attr.get("options")):
-        raise D365Error(
-            f"{kind} attribute {name!r} requires optionset_name or options.")
+        attr.get("optionset_name") or attr.get("options")
+    ):
+        raise D365Error(f"{kind} attribute {name!r} requires optionset_name or options.")
     if "options" in attr:
         _require_list(attr, "options", f"attribute {name!r}")
         for opt in cast("list[Any]", attr["options"] or []):
@@ -1090,8 +1149,7 @@ def _validate_attribute_block(attr: dict[str, Any]) -> None:
     # max_length is compared numerically during reconciliation (grow check);
     # a quoted/non-int value from the spec must fail here, not blow up later.
     if attr.get("max_length") is not None and not isinstance(attr["max_length"], int):
-        raise D365Error(
-            f"attribute {name!r}: max_length must be an integer (unquoted in YAML).")
+        raise D365Error(f"attribute {name!r}: max_length must be an integer (unquoted in YAML).")
     # source_type / formula_definition (calculated & rollup columns, #554):
     # mirror add_attribute's contract — a non-simple source needs a formula and is
     # invalid for the relationship-backed kinds; a formula is invalid on a simple
@@ -1101,25 +1159,25 @@ def _validate_attribute_block(attr: dict[str, Any]) -> None:
     source_type = attr.get("source_type")
     if "source_type" in attr and source_type not in mc.SOURCE_TYPES:
         raise D365Error(
-            f"attribute {name!r}: source_type must be one of "
-            f"{sorted(mc.SOURCE_TYPES)}.")
+            f"attribute {name!r}: source_type must be one of {sorted(mc.SOURCE_TYPES)}."
+        )
     formula = attr.get("formula_definition")
     if formula is not None and not isinstance(formula, str):
-        raise D365Error(
-            f"attribute {name!r}: formula_definition must be a string.")
+        raise D365Error(f"attribute {name!r}: formula_definition must be a string.")
     if source_type in ("calculated", "rollup"):
         if kind in ("lookup", "customer"):
             raise D365Error(
-                f"attribute {name!r}: source_type {source_type!r} is not "
-                f"valid for kind {kind!r}.")
+                f"attribute {name!r}: source_type {source_type!r} is not valid for kind {kind!r}."
+            )
         if not formula:
             raise D365Error(
-                f"attribute {name!r}: source_type {source_type!r} requires "
-                "formula_definition.")
+                f"attribute {name!r}: source_type {source_type!r} requires formula_definition."
+            )
     elif "formula_definition" in attr:
         raise D365Error(
             f"attribute {name!r}: formula_definition is only valid with "
-            "source_type 'calculated' or 'rollup'.")
+            "source_type 'calculated' or 'rollup'."
+        )
 
 
 def _validate_relationship_block(rel: dict[str, Any]) -> None:
@@ -1129,8 +1187,8 @@ def _validate_relationship_block(rel: dict[str, Any]) -> None:
     # after the entity/attribute phases have already landed).
     if rel.get("menu_behavior") == "UseLabel" and not rel.get("menu_label"):
         raise D365Error(
-            f"relationship {rel['schema_name']!r}: menu_behavior 'UseLabel' "
-            "requires menu_label.")
+            f"relationship {rel['schema_name']!r}: menu_behavior 'UseLabel' requires menu_label."
+        )
 
 
 def _validate_view_block(view: dict[str, Any]) -> None:
@@ -1141,7 +1199,8 @@ def _validate_view_block(view: dict[str, Any]) -> None:
     if view.get("query_type") is not None and view["query_type"] not in views_mod.QUERY_TYPES:
         raise D365Error(
             f"view {view['name']!r}: unknown query_type {view['query_type']!r}; "
-            f"choose from {sorted(views_mod.QUERY_TYPES)}.")
+            f"choose from {sorted(views_mod.QUERY_TYPES)}."
+        )
     if not isinstance(view["columns"], list) or not view["columns"]:
         raise D365Error(f"view {view['name']!r}: columns must be a non-empty list.")
     for col in cast("list[Any]", view["columns"]):
@@ -1149,9 +1208,13 @@ def _validate_view_block(view: dict[str, Any]) -> None:
 
 
 def _reconcile_via_adapter(
-    adapter: "Adapter", backend: D365Backend, block: dict[str, Any],
-    ctx: ReconcileCtx, entry: Entry,
-    routes: dict[str, list[Entry]], failed: list[Entry],
+    adapter: Adapter,
+    backend: D365Backend,
+    block: dict[str, Any],
+    ctx: ReconcileCtx,
+    entry: Entry,
+    routes: dict[str, list[Entry]],
+    failed: list[Entry],
 ) -> None:
     """Present-branch reconcile through a component-kind adapter.
 
@@ -1176,7 +1239,9 @@ def _reconcile_via_adapter(
 # them; the helpers they call at run time (_webresource_content,
 # _desired_role_privileges, _privilege_diff) live further down, unchanged.
 def _find_live_optionset(
-    backend: D365Backend, os_spec: dict[str, Any], ctx: ReconcileCtx,
+    backend: D365Backend,
+    os_spec: dict[str, Any],
+    ctx: ReconcileCtx,
 ) -> dict[str, Any]:
     """Read the live global option set this block reconciles against."""
     return os_mod.get_optionset(backend, os_spec["name"])
@@ -1190,8 +1255,11 @@ def _validate_optionset_block(os_spec: dict[str, Any]) -> None:
 
 
 def _reconcile_optionset(
-    backend: D365Backend, os_spec: dict[str, Any], live: dict[str, Any],
-    ctx: ReconcileCtx, entry: Entry,
+    backend: D365Backend,
+    os_spec: dict[str, Any],
+    live: dict[str, Any],
+    ctx: ReconcileCtx,
+    entry: Entry,
 ) -> _Verdict:
     """Diff an existing global option set; insert spec-declared options it lacks.
 
@@ -1203,18 +1271,20 @@ def _reconcile_optionset(
     live_options = cast("list[dict[str, Any]]", live.get("Options") or [])
     live_values = {o.get("Value") for o in live_options if isinstance(o.get("Value"), int)}
     inserts: list[tuple[int | None, str]] = [
-        (o["value"], o["label"]) for o in _as_list(os_spec.get("options"))
+        (o["value"], o["label"])
+        for o in _as_list(os_spec.get("options"))
         if isinstance(o.get("value"), int) and o["value"] not in live_values
     ]
     if not inserts:
         return "skipped", entry
-    out = os_mod.update_optionset(
-        backend, os_spec["name"], insert=inserts, solution=ctx.solution)
+    out = os_mod.update_optionset(backend, os_spec["name"], insert=inserts, solution=ctx.solution)
     return "updated", _with_diff(entry, out)
 
 
 def _find_live_webresource(
-    backend: D365Backend, wr: dict[str, Any], ctx: ReconcileCtx,
+    backend: D365Backend,
+    wr: dict[str, Any],
+    ctx: ReconcileCtx,
 ) -> dict[str, Any] | None:
     """Read the live web resource by name, or None when it must be created."""
     return wr_mod.find_webresource(backend, wr["name"])
@@ -1222,13 +1292,13 @@ def _find_live_webresource(
 
 def _validate_webresource_block(wr: dict[str, Any]) -> None:
     """Body source (a `file` xor inline `content`), string-typed fields, and a
-    resolvable web-resource type — the up-front rules create_webresource assumes."""
+    resolvable web-resource type — the up-front rules create_webresource assumes.
+    """
     # A web resource's body comes from either a `file` on disk or an inline
     # base64 `content` string (export-spec emits the latter so the spec is
     # self-contained). Exactly one source is needed.
     if wr.get("file") is None and wr.get("content") is None:
-        raise D365Error(
-            f"web resource {wr.get('name')!r}: needs 'file' or inline 'content'.")
+        raise D365Error(f"web resource {wr.get('name')!r}: needs 'file' or inline 'content'.")
     # name/file/display_name/content reach os.path.join + base64 + the Web API
     # as strings; a non-string (e.g. an unquoted YAML number) must fail here with
     # a clean D365Error, not blow up later inside os.path.join / base64.
@@ -1236,8 +1306,7 @@ def _validate_webresource_block(wr: dict[str, Any]) -> None:
         if wr.get(key) is not None and not isinstance(wr[key], str):
             raise D365Error(f"web resource {wr.get('name')!r}: {key} must be a string.")
     if wr.get("webresourcetype") is not None and not isinstance(wr["webresourcetype"], int):
-        raise D365Error(
-            f"web resource {wr['name']!r}: webresourcetype must be an integer.")
+        raise D365Error(f"web resource {wr['name']!r}: webresourcetype must be an integer.")
     # Fail fast (before any HTTP) on a type that can't be resolved. With a `file`,
     # an unknown extension and no explicit type is the error; with inline
     # `content` there is no extension to infer from, so webresourcetype is
@@ -1247,12 +1316,16 @@ def _validate_webresource_block(wr: dict[str, Any]) -> None:
     elif wr.get("webresourcetype") is None:
         raise D365Error(
             f"web resource {wr['name']!r}: webresourcetype is required when the "
-            "body is inline 'content' (no file extension to infer the type from).")
+            "body is inline 'content' (no file extension to infer the type from)."
+        )
 
 
 def _reconcile_webresource(
-    backend: D365Backend, wr: dict[str, Any], live: dict[str, Any],
-    ctx: ReconcileCtx, entry: Entry,
+    backend: D365Backend,
+    wr: dict[str, Any],
+    live: dict[str, Any],
+    ctx: ReconcileCtx,
+    entry: Entry,
 ) -> _Verdict:
     """Diff an existing web resource against the spec; update content/display or skip.
 
@@ -1273,22 +1346,31 @@ def _reconcile_webresource(
     if not changes:
         return "skipped", entry
     wr_mod.update_webresource(
-        backend, wr["name"], content=changes.get("content"),
-        display_name=changes.get("display_name"), solution=ctx.solution, publish=False)
+        backend,
+        wr["name"],
+        content=changes.get("content"),
+        display_name=changes.get("display_name"),
+        solution=ctx.solution,
+        publish=False,
+    )
     return "updated", {**entry, "diff": {"fields": sorted(changes)}}
 
 
 def _find_live_security_role(
-    backend: D365Backend, role_spec: dict[str, Any], ctx: ReconcileCtx,
+    backend: D365Backend,
+    role_spec: dict[str, Any],
+    ctx: ReconcileCtx,
 ) -> str | None:
     """The existing role's id (scoped to its business unit), or None to create."""
     return sec_mod.find_role(
-        backend, role_spec["name"], business_unit=role_spec.get("business_unit"))
+        backend, role_spec["name"], business_unit=role_spec.get("business_unit")
+    )
 
 
 def _validate_security_role_block(role: dict[str, Any]) -> None:
     """String-typed name / business_unit and the privilege-matrix shape (≥1 row,
-    each row a well-formed set-role-privileges selector group)."""
+    each row a well-formed set-role-privileges selector group).
+    """
     rlabel = f"security role {role['name']!r}"
     if not isinstance(role["name"], str):
         raise D365Error("security role: name must be a string.")
@@ -1316,12 +1398,16 @@ def _validate_security_role_block(role: dict[str, Any]) -> None:
         if not (row.get("access") or row.get("privilege_names")):
             raise D365Error(
                 f"{rlabel}: each privilege row needs 'access' (with 'entities' or "
-                "'all_entities') or 'privilege_names'.")
+                "'all_entities') or 'privilege_names'."
+            )
 
 
 def _reconcile_security_role(
-    backend: D365Backend, role_spec: dict[str, Any], role_id: str,
-    ctx: ReconcileCtx, entry: Entry,
+    backend: D365Backend,
+    role_spec: dict[str, Any],
+    role_id: str,
+    ctx: ReconcileCtx,
+    entry: Entry,
 ) -> _Verdict:
     """Reconcile an existing role's privileges to the declared set.
 
@@ -1368,12 +1454,13 @@ def _reconcile_security_role(
 # live further down, unchanged.
 def _assembly_name(plugin: dict[str, Any]) -> str:
     """The assembly's registration name: explicit ``assembly`` or the DLL basename."""
-    return plugin.get("assembly") or os.path.splitext(
-        os.path.basename(plugin["file"]))[0]
+    return plugin.get("assembly") or os.path.splitext(os.path.basename(plugin["file"]))[0]
 
 
 def _find_live_plugin_assembly(
-    backend: D365Backend, plugin: dict[str, Any], ctx: ReconcileCtx,
+    backend: D365Backend,
+    plugin: dict[str, Any],
+    ctx: ReconcileCtx,
 ) -> dict[str, Any] | None:
     """Probe the live plug-in assembly this block reconciles against (or None)."""
     return plugin_mod.find_assembly(backend, _assembly_name(plugin))
@@ -1397,16 +1484,23 @@ def _validate_plugin_assembly_block(plugin: dict[str, Any]) -> None:
     # invalid (register_assembly rejects None — it is not in the map) and must fail
     # here, not slip through to_kwargs and blow up mid-apply. An omitted key falls
     # to the builder's own default.
-    if "isolation_mode" in plugin and plugin["isolation_mode"] not in plugin_mod.ISOLATION_MODE_VALUES:
+    if (
+        "isolation_mode" in plugin
+        and plugin["isolation_mode"] not in plugin_mod.ISOLATION_MODE_VALUES
+    ):
         raise D365Error(
             f"plug-in {_assembly_name(plugin)!r}: unknown isolation_mode "
             f"{plugin['isolation_mode']!r}; "
-            f"choose from {sorted(plugin_mod.ISOLATION_MODE_VALUES)}.")
+            f"choose from {sorted(plugin_mod.ISOLATION_MODE_VALUES)}."
+        )
 
 
 def _reconcile_plugin_assembly(
-    backend: D365Backend, plugin: dict[str, Any], live: dict[str, Any],
-    ctx: ReconcileCtx, entry: Entry,
+    backend: D365Backend,
+    plugin: dict[str, Any],
+    live: dict[str, Any],
+    ctx: ReconcileCtx,
+    entry: Entry,
 ) -> _Verdict:
     """Diff an existing plug-in assembly against the rebuilt DLL; update or skip.
 
@@ -1423,18 +1517,29 @@ def _reconcile_plugin_assembly(
         return "skipped", entry
     asm_path = os.path.join(ctx.base_dir or "", plugin["file"])
     plugin_mod.register_assembly(
-        backend, path=asm_path, name=name, update=True, solution=ctx.solution)
+        backend, path=asm_path, name=name, update=True, solution=ctx.solution
+    )
     return "updated", {**entry, "diff": {"fields": ["content"]}}
 
 
 # Step string-typed fields: every one reaches the Web API as a string, so an
 # unquoted YAML scalar must fail up front, not blow up mid-apply.
-_STEP_STRING_KEYS = ("name", "message", "plugin_type", "entity", "stage", "mode",
-                     "filtering_attributes", "configuration")
+_STEP_STRING_KEYS = (
+    "name",
+    "message",
+    "plugin_type",
+    "entity",
+    "stage",
+    "mode",
+    "filtering_attributes",
+    "configuration",
+)
 
 
 def _find_live_plugin_step(
-    backend: D365Backend, step: dict[str, Any], ctx: ReconcileCtx,
+    backend: D365Backend,
+    step: dict[str, Any],
+    ctx: ReconcileCtx,
 ) -> dict[str, Any] | None:
     """Probe the live plug-in step (by unique name) this block reconciles against."""
     return plugin_mod.find_step(backend, step["name"])
@@ -1465,19 +1570,27 @@ def _validate_plugin_step_block(step: dict[str, Any]) -> None:
     # not in the map) and must fail here rather than slip through to_kwargs and
     # blow up mid-apply. An omitted key falls to the builder's own default.
     if "stage" in step and step["stage"] not in plugin_mod.STAGE_VALUES:
-        raise D365Error(f"{slabel}: unknown stage {step['stage']!r}; "
-                        f"choose from {sorted(plugin_mod.STAGE_VALUES)}.")
+        raise D365Error(
+            f"{slabel}: unknown stage {step['stage']!r}; "
+            f"choose from {sorted(plugin_mod.STAGE_VALUES)}."
+        )
     if "mode" in step and step["mode"] not in plugin_mod.MODE_VALUES:
-        raise D365Error(f"{slabel}: unknown mode {step['mode']!r}; "
-                        f"choose from {sorted(plugin_mod.MODE_VALUES)}.")
+        raise D365Error(
+            f"{slabel}: unknown mode {step['mode']!r}; "
+            f"choose from {sorted(plugin_mod.MODE_VALUES)}."
+        )
     if step.get("mode") == "async" and step.get("stage", "postoperation") != "postoperation":
-        raise D365Error(f"{slabel}: asynchronous mode requires the postoperation "
-                        f"stage (got {step['stage']!r}).")
+        raise D365Error(
+            f"{slabel}: asynchronous mode requires the postoperation stage (got {step['stage']!r})."
+        )
 
 
 def _reconcile_plugin_step(
-    backend: D365Backend, step: dict[str, Any], live: dict[str, Any],
-    ctx: ReconcileCtx, entry: Entry,
+    backend: D365Backend,
+    step: dict[str, Any],
+    live: dict[str, Any],
+    ctx: ReconcileCtx,
+    entry: Entry,
 ) -> _Verdict:
     """Diff an existing plug-in step against the spec; update, skip, or block.
 
@@ -1489,14 +1602,15 @@ def _reconcile_plugin_step(
     only the fields the spec explicitly declares are reconciled, so an omitted
     field is left as-is. MS Learn recommends updating a step over delete-recreate.
     """
-    if (step["message"] != _expanded(live, "sdkmessageid", "name")
-            or step.get("entity") != _expanded(live, "sdkmessagefilterid",
-                                                "primaryobjecttypecode")
-            or step["plugin_type"] != _expanded(live, "plugintypeid", "typename")):
+    if (
+        step["message"] != _expanded(live, "sdkmessageid", "name")
+        or step.get("entity") != _expanded(live, "sdkmessagefilterid", "primaryobjecttypecode")
+        or step["plugin_type"] != _expanded(live, "plugintypeid", "typename")
+    ):
         return "replace_blocked", {
             **entry,
             "reason": "step binding change (message / entity / plug-in type) "
-                      "requires a destructive delete-and-recreate; refusing (no write).",
+            "requires a destructive delete-and-recreate; refusing (no write).",
         }
     changes: dict[str, Any] = {}
     if "stage" in step and plugin_mod.STAGE_VALUES.get(step["stage"]) != live.get("stage"):
@@ -1508,16 +1622,19 @@ def _reconcile_plugin_step(
     # filteringattributes is only meaningful on Update (register_step ignores it
     # otherwise), so only reconcile it there — else a declared filter on a
     # non-Update step would re-update on every run.
-    if ("filtering_attributes" in step and step["message"].lower() == "update"
-            and step["filtering_attributes"] != live.get("filteringattributes")):
+    if (
+        "filtering_attributes" in step
+        and step["message"].lower() == "update"
+        and step["filtering_attributes"] != live.get("filteringattributes")
+    ):
         changes["filtering_attributes"] = step["filtering_attributes"]
     if "configuration" in step and step["configuration"] != live.get("configuration"):
         changes["configuration"] = step["configuration"]
     if not changes:
         return "skipped", entry
     plugin_mod.update_step(
-        backend, step_id=str(live["sdkmessageprocessingstepid"]),
-        solution=ctx.solution, **changes)
+        backend, step_id=str(live["sdkmessageprocessingstepid"]), solution=ctx.solution, **changes
+    )
     return "updated", {**entry, "diff": {"fields": sorted(changes)}}
 
 
@@ -1595,13 +1712,20 @@ REGISTRY: dict[str, Adapter] = {
         schema_name_keys=("schema_name", "lookup_schema"),
         required_keys=("required",),
         cascade_keys=(
-            "cascade_assign", "cascade_delete", "cascade_reparent",
-            "cascade_share", "cascade_unshare", "cascade_merge",
+            "cascade_assign",
+            "cascade_delete",
+            "cascade_reparent",
+            "cascade_share",
+            "cascade_unshare",
+            "cascade_merge",
         ),
         menu_keys=("menu_behavior",),
         required_block_keys=(
-            "schema_name", "referenced_entity", "referencing_entity",
-            "lookup_schema", "lookup_display",
+            "schema_name",
+            "referenced_entity",
+            "referencing_entity",
+            "lookup_schema",
+            "lookup_display",
         ),
         block_label="relationship",
         extra_validate=_validate_relationship_block,
@@ -1627,9 +1751,11 @@ REGISTRY: dict[str, Adapter] = {
         },
         transforms={
             "primary_attr_schema": lambda b: cast(
-                "dict[str, Any]", b.get("primary_attr") or {}).get("schema_name"),
-            "primary_attr_label": lambda b: cast(
-                "dict[str, Any]", b.get("primary_attr") or {}).get("label"),
+                "dict[str, Any]", b.get("primary_attr") or {}
+            ).get("schema_name"),
+            "primary_attr_label": lambda b: cast("dict[str, Any]", b.get("primary_attr") or {}).get(
+                "label"
+            ),
         },
         injected=frozenset({"backend", "solution", "if_exists"}),
         defaults={"ownership": "UserOwned"},
@@ -1690,8 +1816,7 @@ REGISTRY: dict[str, Adapter] = {
         # content (read from file/base64 against base_dir) and webresourcetype
         # (resolved from the extension or an override) are computed by the driver
         # and passed in, so both are injected rather than mapped/transformed.
-        injected=frozenset(
-            {"backend", "content", "webresourcetype", "solution", "publish"}),
+        injected=frozenset({"backend", "content", "webresourcetype", "solution", "publish"}),
         defaults={},
         required_block_keys=("name",),
         block_label="web resource",
@@ -1757,8 +1882,15 @@ REGISTRY: dict[str, Adapter] = {
         # cannot be reconciled against a live read — the declarative apply spec
         # covers only unsecure `configuration`.)
         injected=frozenset(
-            {"backend", "assembly", "solution", "asyncautodelete",
-             "service_endpoint", "secure_configuration"}),
+            {
+                "backend",
+                "assembly",
+                "solution",
+                "asyncautodelete",
+                "service_endpoint",
+                "secure_configuration",
+            }
+        ),
         defaults={},
         required_block_keys=("message",),
         block_label="plug-in step",
@@ -1804,7 +1936,8 @@ def _webresource_content(base_dir: str | None, wr: dict[str, Any]) -> bytes:
 
 
 def _desired_role_privileges(
-    backend: D365Backend, role_spec: dict[str, Any],
+    backend: D365Backend,
+    role_spec: dict[str, Any],
 ) -> tuple[list[dict[str, Any]], list[str]]:
     """Resolve a role's privilege matrix to the union of its rows (highest depth wins).
 
@@ -1829,15 +1962,19 @@ def _desired_role_privileges(
 
 
 def _privilege_diff(
-    live: list[dict[str, Any]], desired: list[dict[str, Any]],
+    live: list[dict[str, Any]],
+    desired: list[dict[str, Any]],
 ) -> dict[str, list[str]]:
     """Field-level drift between a role's live and desired privilege sets."""
     lmap = {p["privilegeid"]: p for p in live}
     dmap = {p["privilegeid"]: p for p in desired}
     added = [d["name"] for pid, d in dmap.items() if pid not in lmap]
     removed = [lp["name"] for pid, lp in lmap.items() if pid not in dmap]
-    changed = [f"{d['name']}: {lmap[pid]['depth']} -> {d['depth']}"
-               for pid, d in dmap.items() if pid in lmap and lmap[pid]["depth"] != d["depth"]]
+    changed = [
+        f"{d['name']}: {lmap[pid]['depth']} -> {d['depth']}"
+        for pid, d in dmap.items()
+        if pid in lmap and lmap[pid]["depth"] != d["depth"]
+    ]
     return {"added": sorted(added), "removed": sorted(removed), "changed": sorted(changed)}
 
 
@@ -1846,8 +1983,13 @@ def _privilege_diff(
 # activates immediately — they are not published-XML customizations. Gating the
 # end-of-run publish on the publishable writes only keeps a plugin-only apply from
 # issuing a pointless PublishAllXml.
-_NON_PUBLISHABLE = {"security-role", "plugin-assembly", "plugin-type",
-                    "plugin-step", "plugin-image"}
+_NON_PUBLISHABLE = {
+    "security-role",
+    "plugin-assembly",
+    "plugin-type",
+    "plugin-step",
+    "plugin-image",
+}
 
 
 def _expanded(row: dict[str, Any], nav: str, field: str) -> Any:
@@ -1874,10 +2016,10 @@ def _expanded(row: dict[str, Any], nav: str, field: str) -> Any:
 # Top-level kinds resolved straight from a solution objectid:
 # componenttype -> (record-path template keyed by objectid, name column, kind).
 _PRUNE_TOPLEVEL: dict[int, tuple[str, str, str]] = {
-    1:  ("EntityDefinitions({id})",         "LogicalName", "entity"),
-    20: ("roles({id})",                     "name",        "security-role"),
-    61: ("webresourceset({id})",            "name",        "webresource"),
-    92: ("sdkmessageprocessingsteps({id})", "name",        "plugin-step"),
+    1: ("EntityDefinitions({id})", "LogicalName", "entity"),
+    20: ("roles({id})", "name", "security-role"),
+    61: ("webresourceset({id})", "name", "webresource"),
+    92: ("sdkmessageprocessingsteps({id})", "name", "plugin-step"),
 }
 # Entity-scoped kinds — diffed per declared entity, not globally, because their
 # names are unique only within an owning entity.
@@ -1888,7 +2030,9 @@ _DATA_BEARING_PRUNE = {"entity", "attribute"}
 
 
 def _prune_candidates(
-    backend: D365Backend, spec: dict[str, Any], solution_name: str,
+    backend: D365Backend,
+    spec: dict[str, Any],
+    solution_name: str,
 ) -> list[dict[str, Any]]:
     """Solution members absent from the spec (the six prune-eligible kinds).
 
@@ -1915,8 +2059,11 @@ def _prune_candidates(
         "entity": {e["schema_name"].lower() for e in _as_list(spec.get("entities"))},
         "security-role": {r["name"].lower() for r in _as_list(spec.get("security_roles"))},
         "webresource": {w["name"].lower() for w in _as_list(spec.get("webresources"))},
-        "plugin-step": {s["name"].lower() for p in _as_list(spec.get("plugins"))
-                        for s in _as_list(p.get("steps"))},
+        "plugin-step": {
+            s["name"].lower()
+            for p in _as_list(spec.get("plugins"))
+            for s in _as_list(p.get("steps"))
+        },
     }
     # Resolve every in-solution objectid's name in one $batch instead of one GET
     # per candidate (issue #703). `top_specs` keeps (kind, name_col, oid) in the
@@ -1927,15 +2074,14 @@ def _prune_candidates(
     for ct, (path_tmpl, name_col, kind) in _PRUNE_TOPLEVEL.items():
         for oid in sorted(by_type.get(ct, set())):
             top_specs.append(
-                (kind, name_col, oid, f"{path_tmpl.format(id=oid)}?$select={name_col}"))
+                (kind, name_col, oid, f"{path_tmpl.format(id=oid)}?$select={name_col}")
+            )
 
     top_rows: list[dict[str, Any]] = []
     if backend.dry_run or backend.read_only:
         top_rows = [as_dict(backend.get(url)) for _, _, _, url in top_specs]
     else:
-        ops: list[BatchOperation] = [
-            {"method": "GET", "url": url} for _, _, _, url in top_specs
-        ]
+        ops: list[BatchOperation] = [{"method": "GET", "url": url} for _, _, _, url in top_specs]
         # Fail-fast: continue-on-error off so the server stops at the first
         # failing read and we never iterate past it.
         for res in run_batched(backend, ops, continue_on_error=False):
@@ -1967,17 +2113,26 @@ def _prune_candidates(
             for attr in meta_mod.list_attributes(backend, logical):
                 mid = str(attr.get("MetadataId") or "").lower()
                 lname = attr.get("LogicalName")
-                if (attr.get("IsCustomAttribute") and mid in attr_ids
-                        and isinstance(lname, str) and lname.lower() not in declared):
-                    out.append({"kind": "attribute", "name": lname,
-                                "ref": lname, "entity": logical})
+                if (
+                    attr.get("IsCustomAttribute")
+                    and mid in attr_ids
+                    and isinstance(lname, str)
+                    and lname.lower() not in declared
+                ):
+                    out.append(
+                        {"kind": "attribute", "name": lname, "ref": lname, "entity": logical}
+                    )
         if view_ids and isinstance(ent.get("views"), list):
             declared = {v["name"].lower() for v in _as_list(ent.get("views"))}
             for view in views_mod.read_entity_views(backend, logical):
                 vid = str(view.get("savedqueryid") or "").lower()
                 vname = view.get("name")
-                if (vid in view_ids and isinstance(vname, str)
-                        and vname and vname.lower() not in declared):
+                if (
+                    vid in view_ids
+                    and isinstance(vname, str)
+                    and vname
+                    and vname.lower() not in declared
+                ):
                     out.append({"kind": "view", "name": vname, "ref": vid, "entity": None})
     return out
 
@@ -2047,7 +2202,9 @@ def apply_spec(
     failed: list[Entry] = []
     # Reconcile verdicts ("updated"/"skipped"/"replace_blocked") route here.
     routes: dict[str, list[Entry]] = {
-        "updated": updated, "skipped": skipped, "replace_blocked": replace_blocked,
+        "updated": updated,
+        "skipped": skipped,
+        "replace_blocked": replace_blocked,
     }
     # Names of resources this run would create but that do not exist yet (dry-run
     # greenfield). Dependents of a planned resource are reported planned without
@@ -2069,14 +2226,18 @@ def apply_spec(
         # Phase: publisher.
         if pub:
             entry: Entry = {"kind": "publisher", "name": pub["unique_name"]}
-            result = _call(entry, lambda: sol_mod.create_publisher(
-                backend,
-                name=pub["unique_name"],
-                friendly_name=pub.get("friendly_name"),
-                prefix=pub["prefix"],
-                option_value_prefix=pub["option_value_prefix"],
-                if_exists="skip",
-            ), failed)
+            result = _call(
+                entry,
+                lambda: sol_mod.create_publisher(
+                    backend,
+                    name=pub["unique_name"],
+                    friendly_name=pub.get("friendly_name"),
+                    prefix=pub["prefix"],
+                    option_value_prefix=pub["option_value_prefix"],
+                    if_exists="skip",
+                ),
+                failed,
+            )
             pub_id = result.get("publisherid")
             if _classify(result, entry, applied, skipped, planned) == "planned":
                 planned_names.add(pub["unique_name"])
@@ -2090,36 +2251,45 @@ def apply_spec(
                 # No publisher to build the bind: create_solution resolves a publisher
                 # before its dry-run short-circuit and would raise even when the
                 # solution already exists. Probe existence directly instead.
-                (skipped if _solution_exists(backend, sol["unique_name"])
-                 else planned).append(entry)
+                (skipped if _solution_exists(backend, sol["unique_name"]) else planned).append(
+                    entry
+                )
             else:
-                result = _call(entry, lambda: sol_mod.create_solution(
-                    backend,
-                    name=sol["unique_name"],
-                    friendly_name=sol.get("friendly_name"),
-                    version=sol.get("version", "1.0.0.0"),
-                    publisher_id=pub_id,
-                    publisher_unique_name=pub["unique_name"] if pub else None,
-                    if_exists="skip",
-                ), failed)
+                result = _call(
+                    entry,
+                    lambda: sol_mod.create_solution(
+                        backend,
+                        name=sol["unique_name"],
+                        friendly_name=sol.get("friendly_name"),
+                        version=sol.get("version", "1.0.0.0"),
+                        publisher_id=pub_id,
+                        publisher_unique_name=pub["unique_name"] if pub else None,
+                        if_exists="skip",
+                    ),
+                    failed,
+                )
                 _classify(result, entry, applied, skipped, planned)
 
         # Phase: entities. Capture each schema_name -> logical_name for later phases.
         for ent in _as_list(spec.get("entities")):
             entry = {"kind": "entity", "name": ent["schema_name"]}
-            result = _call(entry, lambda ent=ent: meta_mod.create_entity(
-                backend,
-                **REGISTRY["entity"].to_kwargs(ent),
-                solution=solution_name,
-                if_exists="skip",
-            ), failed)
+            result = _call(
+                entry,
+                lambda ent=ent: meta_mod.create_entity(
+                    backend,
+                    **REGISTRY["entity"].to_kwargs(ent),
+                    solution=solution_name,
+                    if_exists="skip",
+                ),
+                failed,
+            )
             logical_name: str = result.get("logical_name") or ent["schema_name"].lower()
             entity_logicals[ent["schema_name"]] = logical_name
             if _present(result):
-                ctx = ReconcileCtx(solution=solution_name, base_dir=base_dir,
-                                   entity_logical=logical_name)
-                _reconcile_via_adapter(REGISTRY["entity"], backend, ent, ctx,
-                                       entry, routes, failed)
+                ctx = ReconcileCtx(
+                    solution=solution_name, base_dir=base_dir, entity_logical=logical_name
+                )
+                _reconcile_via_adapter(REGISTRY["entity"], backend, ent, ctx, entry, routes, failed)
             elif _classify(result, entry, applied, skipped, planned) == "planned":
                 planned_names.add(logical_name)
 
@@ -2129,19 +2299,24 @@ def apply_spec(
         os_created: set[str] = set()
         for os_spec in _as_list(spec.get("optionsets")):
             entry = {"kind": "optionset", "name": os_spec["name"]}
-            result = _call(entry, lambda os_spec=os_spec: os_mod.create_optionset(
-                backend,
-                **REGISTRY["optionset"].to_kwargs(os_spec),
-                is_global=True,
-                solution=solution_name,
-                if_exists="skip",
-            ), failed)
+            result = _call(
+                entry,
+                lambda os_spec=os_spec: os_mod.create_optionset(
+                    backend,
+                    **REGISTRY["optionset"].to_kwargs(os_spec),
+                    is_global=True,
+                    solution=solution_name,
+                    if_exists="skip",
+                ),
+                failed,
+            )
             if _present(result):
                 # Pre-existing: reconcile (insert missing options). Left out of
                 # os_created so the solution-component phase still ensures membership.
                 ctx = ReconcileCtx(solution=solution_name, base_dir=base_dir)
-                _reconcile_via_adapter(REGISTRY["optionset"], backend, os_spec, ctx,
-                                       entry, routes, failed)
+                _reconcile_via_adapter(
+                    REGISTRY["optionset"], backend, os_spec, ctx, entry, routes, failed
+                )
                 continue
             bucket = _classify(result, entry, applied, skipped, planned)
             if bucket == "planned":
@@ -2164,10 +2339,12 @@ def apply_spec(
                     planned.append(comp_entry)
                     continue
                 try:
-                    raw = as_dict(backend.get(
-                        f"GlobalOptionSetDefinitions(Name='{os_name}')",
-                        params={"$select": "MetadataId"},
-                    ))
+                    raw = as_dict(
+                        backend.get(
+                            f"GlobalOptionSetDefinitions(Name='{os_name}')",
+                            params={"$select": "MetadataId"},
+                        )
+                    )
                     metadata_id = raw.get("MetadataId")
                     if not isinstance(metadata_id, str) or not metadata_id:
                         raise D365Error(
@@ -2210,12 +2387,16 @@ def apply_spec(
                         entity=logical,
                         solution=solution_name,
                         if_exists="skip",
-                    ), failed)
+                    ),
+                    failed,
+                )
                 if _present(result):
-                    ctx = ReconcileCtx(solution=solution_name, base_dir=base_dir,
-                                       entity_logical=logical)
-                    _reconcile_via_adapter(REGISTRY["attribute"], backend, attr, ctx,
-                                           entry, routes, failed)
+                    ctx = ReconcileCtx(
+                        solution=solution_name, base_dir=base_dir, entity_logical=logical
+                    )
+                    _reconcile_via_adapter(
+                        REGISTRY["attribute"], backend, attr, ctx, entry, routes, failed
+                    )
                 else:
                     _classify(result, entry, applied, skipped, planned)
 
@@ -2226,16 +2407,21 @@ def apply_spec(
                 if {rel["referenced_entity"], rel["referencing_entity"]} & planned_names:
                     planned.append(entry)
                     continue
-                result = _call(entry, lambda rel=rel: rel_mod.create_one_to_many(
-                    backend,
-                    **REGISTRY["relationship"].to_kwargs(rel),
-                    solution=solution_name,
-                    if_exists="skip",
-                ), failed)
+                result = _call(
+                    entry,
+                    lambda rel=rel: rel_mod.create_one_to_many(
+                        backend,
+                        **REGISTRY["relationship"].to_kwargs(rel),
+                        solution=solution_name,
+                        if_exists="skip",
+                    ),
+                    failed,
+                )
                 if _present(result):
                     ctx = ReconcileCtx(solution=solution_name, base_dir=base_dir)
-                    _reconcile_via_adapter(REGISTRY["relationship"], backend, rel, ctx,
-                                           entry, routes, failed)
+                    _reconcile_via_adapter(
+                        REGISTRY["relationship"], backend, rel, ctx, entry, routes, failed
+                    )
                 else:
                     _classify(result, entry, applied, skipped, planned)
 
@@ -2266,12 +2452,19 @@ def apply_spec(
                         object_type_code=otc,
                         solution=solution_name,
                         if_exists="skip",
-                    ), failed)
+                    ),
+                    failed,
+                )
                 if _present(result):
-                    ctx = ReconcileCtx(solution=solution_name, base_dir=base_dir,
-                                       entity_logical=logical_v, object_type_code=otc)
-                    _reconcile_via_adapter(REGISTRY["view"], backend, view, ctx,
-                                           entry, routes, failed)
+                    ctx = ReconcileCtx(
+                        solution=solution_name,
+                        base_dir=base_dir,
+                        entity_logical=logical_v,
+                        object_type_code=otc,
+                    )
+                    _reconcile_via_adapter(
+                        REGISTRY["view"], backend, view, ctx, entry, routes, failed
+                    )
                 else:
                     _classify(result, entry, applied, skipped, planned)
 
@@ -2284,26 +2477,35 @@ def apply_spec(
             name: str = wr["name"]
             entry = {"kind": "webresource", "name": name}
             ctx = ReconcileCtx(solution=solution_name, base_dir=base_dir)
-            live_wr = _call(entry, lambda wr=wr, ctx=ctx:
-                            _find_live_webresource(backend, wr, ctx), failed)
+            live_wr = _call(
+                entry, lambda wr=wr, ctx=ctx: _find_live_webresource(backend, wr, ctx), failed
+            )
             if live_wr is None:
-                content = _call(entry, lambda wr=wr: _webresource_content(base_dir, wr),
-                                failed)
-                result = _call(entry, lambda wr=wr, content=content:
-                               wr_mod.create_webresource(
-                                   backend,
-                                   **REGISTRY["webresource"].to_kwargs(wr),
-                                   content=content,
-                                   webresourcetype=wr_mod.resolve_webresourcetype(
-                                       wr.get("file") or "", wr.get("webresourcetype")),
-                                   solution=solution_name,
-                                   publish=False,
-                               ), failed)
+                content = _call(entry, lambda wr=wr: _webresource_content(base_dir, wr), failed)
+                result = _call(
+                    entry,
+                    lambda wr=wr, content=content: wr_mod.create_webresource(
+                        backend,
+                        **REGISTRY["webresource"].to_kwargs(wr),
+                        content=content,
+                        webresourcetype=wr_mod.resolve_webresourcetype(
+                            wr.get("file") or "", wr.get("webresourcetype")
+                        ),
+                        solution=solution_name,
+                        publish=False,
+                    ),
+                    failed,
+                )
                 _classify(result, entry, applied, skipped, planned)
             else:
-                _reconcile(entry, lambda wr=wr, live_wr=live_wr, ctx=ctx, entry=entry:
-                           _reconcile_webresource(backend, wr, live_wr, ctx, entry),
-                           failed, routes)
+                _reconcile(
+                    entry,
+                    lambda wr=wr, live_wr=live_wr, ctx=ctx, entry=entry: _reconcile_webresource(
+                        backend, wr, live_wr, ctx, entry
+                    ),
+                    failed,
+                    routes,
+                )
 
         # Phase: forms (ADR 0024). Runs after attributes and web resources so a
         # declared field's attribute and a declared library's web resource already
@@ -2317,20 +2519,28 @@ def apply_spec(
             forms_blocks = _as_list(ent.get("forms"))
             if not forms_blocks:
                 continue
-            logical_f: str = (entity_logicals.get(ent["schema_name"])
-                              or str(ent["schema_name"]).lower())
+            logical_f: str = (
+                entity_logicals.get(ent["schema_name"]) or str(ent["schema_name"]).lower()
+            )
             for block in forms_blocks:
                 fname = block.get("name")
-                entry = {"kind": "form",
-                         "name": fname if isinstance(fname, str) else f"{logical_f} main form"}
+                entry = {
+                    "kind": "form",
+                    "name": fname if isinstance(fname, str) else f"{logical_f} main form",
+                }
                 if logical_f in planned_names:
                     planned.append(entry)
                     continue
 
-                def _converge(b: "dict[str, Any]" = block, lf: str = logical_f) -> "dict[str, Any]":
+                def _converge(b: dict[str, Any] = block, lf: str = logical_f) -> dict[str, Any]:
                     return forms_mod.apply_form_spec(
-                        backend, lf, b, publish=False, solution=solution_name,
-                        dry_run=backend.dry_run)
+                        backend,
+                        lf,
+                        b,
+                        publish=False,
+                        solution=solution_name,
+                        dry_run=backend.dry_run,
+                    )
 
                 result: dict[str, Any] = _call(entry, _converge, failed)
                 if result.get("unmaterialized"):
@@ -2342,8 +2552,7 @@ def apply_spec(
                 blocked = cast("list[dict[str, Any]]", result.get("blocked") or [])
                 if blocked:
                     for b in blocked:
-                        replace_blocked.append({**entry, "name": b["name"],
-                                                "reason": b["reason"]})
+                        replace_blocked.append({**entry, "name": b["name"], "reason": b["reason"]})
                     continue
                 # Report the resolved main-form identity, not the placeholder label.
                 if isinstance(result.get("form"), str):
@@ -2373,8 +2582,11 @@ def apply_spec(
                             if not c.get("diff"):
                                 continue
                             scope = c.get("tab") or c.get("event")
-                            key = (f"{c['kind']}:{scope}/{c['name']}" if scope
-                                   else f"{c['kind']}:{c['name']}")
+                            key = (
+                                f"{c['kind']}:{scope}/{c['name']}"
+                                if scope
+                                else f"{c['kind']}:{c['name']}"
+                            )
                             diff[key] = c["diff"]
                         if diff:
                             entry["diff"] = diff
@@ -2396,13 +2608,22 @@ def apply_spec(
             # the role (create_role only seeds it — it has no reconcile of its own)
             # and apply the declared set. The probe is a read, so it runs under
             # dry-run too; a greenfield role is then reported planned.
-            role_id = _call(entry, lambda role_spec=role_spec, ctx=ctx:
-                            _find_live_security_role(backend, role_spec, ctx), failed)
+            role_id = _call(
+                entry,
+                lambda role_spec=role_spec, ctx=ctx: _find_live_security_role(
+                    backend, role_spec, ctx
+                ),
+                failed,
+            )
             if role_id is not None:
-                _reconcile(entry, lambda role_spec=role_spec, role_id=role_id, ctx=ctx,
-                           entry=entry: _reconcile_security_role(
-                               backend, role_spec, role_id, ctx, entry),
-                           failed, routes)
+                _reconcile(
+                    entry,
+                    lambda role_spec=role_spec, role_id=role_id, ctx=ctx, entry=entry: (
+                        _reconcile_security_role(backend, role_spec, role_id, ctx, entry)
+                    ),
+                    failed,
+                    routes,
+                )
                 continue
             if backend.dry_run:
                 planned.append(entry)  # greenfield: role + privileges would be created
@@ -2414,23 +2635,39 @@ def apply_spec(
             # its privileges, matching the present-branch semantics above. Otherwise
             # ReplacePrivilegesRole drops the removable default privileges and applies
             # the declared ones; the platform's immovable baseline stays.
-            result = _call(entry, lambda role_spec=role_spec: sec_mod.create_role(
-                backend,
-                **REGISTRY["security-role"].to_kwargs(role_spec),
-                if_exists="skip",
-                solution=solution_name,
-            ), failed)
+            result = _call(
+                entry,
+                lambda role_spec=role_spec: sec_mod.create_role(
+                    backend,
+                    **REGISTRY["security-role"].to_kwargs(role_spec),
+                    if_exists="skip",
+                    solution=solution_name,
+                ),
+                failed,
+            )
             role_id = result["roleid"]
             if result.get("existed"):
-                _reconcile(entry, lambda role_spec=role_spec, role_id=role_id, ctx=ctx,
-                           entry=entry: _reconcile_security_role(
-                               backend, role_spec, role_id, ctx, entry),
-                           failed, routes)
+                _reconcile(
+                    entry,
+                    lambda role_spec=role_spec, role_id=role_id, ctx=ctx, entry=entry: (
+                        _reconcile_security_role(backend, role_spec, role_id, ctx, entry)
+                    ),
+                    failed,
+                    routes,
+                )
                 continue
-            desired = _call(entry, lambda role_spec=role_spec:
-                            _desired_role_privileges(backend, role_spec)[0], failed)
-            _call(entry, lambda role_id=role_id, desired=desired:
-                  sec_mod.replace_role_privileges(backend, role_id, desired), failed)
+            desired = _call(
+                entry,
+                lambda role_spec=role_spec: _desired_role_privileges(backend, role_spec)[0],
+                failed,
+            )
+            _call(
+                entry,
+                lambda role_id=role_id, desired=desired: sec_mod.replace_role_privileges(
+                    backend, role_id, desired
+                ),
+                failed,
+            )
             applied.append(entry)
 
         # Phase: plug-ins. A declared plug-in is compound: the assembly is the
@@ -2449,25 +2686,40 @@ def apply_spec(
             ctx = ReconcileCtx(solution=solution_name, base_dir=base_dir)
 
             # Assembly: probe → absent ⇒ register, present ⇒ reconcile content drift.
-            live_asm = _call(asm_entry, lambda plugin=plugin, ctx=ctx:
-                             _find_live_plugin_assembly(backend, plugin, ctx), failed)
+            live_asm = _call(
+                asm_entry,
+                lambda plugin=plugin, ctx=ctx: _find_live_plugin_assembly(backend, plugin, ctx),
+                failed,
+            )
             assembly_planned = False
             assembly_created = False
             if live_asm is None:
-                result = _call(asm_entry, lambda plugin=plugin:
-                               plugin_mod.register_assembly(
-                                   backend,
-                                   **REGISTRY["plugin-assembly"].to_kwargs(plugin),
-                                   path=asm_path, name=name, solution=solution_name,
-                                   update=False), failed)
+                result = _call(
+                    asm_entry,
+                    lambda plugin=plugin, asm_path=asm_path, name=name: (
+                        plugin_mod.register_assembly(
+                            backend,
+                            **REGISTRY["plugin-assembly"].to_kwargs(plugin),
+                            path=asm_path,
+                            name=name,
+                            solution=solution_name,
+                            update=False,
+                        )
+                    ),
+                    failed,
+                )
                 bucket = _classify(result, asm_entry, applied, skipped, planned)
                 assembly_planned = bucket == "planned"
                 assembly_created = bucket == "applied"
             else:
-                _reconcile(asm_entry, lambda plugin=plugin, live_asm=live_asm, ctx=ctx:
-                           _reconcile_plugin_assembly(
-                               backend, plugin, live_asm, ctx, asm_entry),
-                           failed, routes)
+                _reconcile(
+                    asm_entry,
+                    lambda plugin=plugin, live_asm=live_asm, ctx=ctx, asm_entry=asm_entry: (
+                        _reconcile_plugin_assembly(backend, plugin, live_asm, ctx, asm_entry)
+                    ),
+                    failed,
+                    routes,
+                )
 
             # Types (create-only, nested). A just-created assembly has none, so
             # register each declared type directly; a pre-existing one is listed
@@ -2480,16 +2732,26 @@ def apply_spec(
                     continue
                 if not assembly_created:
                     if live_typenames is None:
-                        listing = _call(t_entry, lambda: plugin_mod.list_types(
-                            backend, assembly=name), failed)
-                        live_typenames = {str(r.get("typename"))
-                                          for r in listing.get("value", [])}
+                        listing = _call(
+                            t_entry,
+                            lambda name=name: plugin_mod.list_types(backend, assembly=name),
+                            failed,
+                        )
+                        live_typenames = {str(r.get("typename")) for r in listing.get("value", [])}
                     if typ["type_name"] in live_typenames:
                         skipped.append(t_entry)
                         continue
-                result = _call(t_entry, lambda typ=typ: plugin_mod.register_type(
-                    backend, assembly=name, type_name=typ["type_name"],
-                    friendly_name=typ.get("friendly_name"), solution=solution_name), failed)
+                result = _call(
+                    t_entry,
+                    lambda typ=typ, name=name: plugin_mod.register_type(
+                        backend,
+                        assembly=name,
+                        type_name=typ["type_name"],
+                        friendly_name=typ.get("friendly_name"),
+                        solution=solution_name,
+                    ),
+                    failed,
+                )
                 _classify(result, t_entry, applied, skipped, planned)
 
             # Steps (registry-driven, nested) with their images (create-only).
@@ -2500,14 +2762,24 @@ def apply_spec(
                     for img in _as_list(step.get("images")):
                         planned.append({"kind": "plugin-image", "name": img["alias"]})
                     continue
-                live_step = _call(s_entry, lambda step=step, ctx=ctx:
-                                  _find_live_plugin_step(backend, step, ctx), failed)
+                live_step = _call(
+                    s_entry,
+                    lambda step=step, ctx=ctx: _find_live_plugin_step(backend, step, ctx),
+                    failed,
+                )
                 step_id: str | None = None
                 step_blocked = False
                 if live_step is None:
-                    result = _call(s_entry, lambda step=step: plugin_mod.register_step(
-                        backend, **REGISTRY["plugin-step"].to_kwargs(step),
-                        assembly=name, solution=solution_name), failed)
+                    result = _call(
+                        s_entry,
+                        lambda step=step, name=name: plugin_mod.register_step(
+                            backend,
+                            **REGISTRY["plugin-step"].to_kwargs(step),
+                            assembly=name,
+                            solution=solution_name,
+                        ),
+                        failed,
+                    )
                     _classify(result, s_entry, applied, skipped, planned)
                     step_id = result.get("sdkmessageprocessingstepid")  # None under dry-run
                 else:
@@ -2516,7 +2788,8 @@ def apply_spec(
                     # reconcile directly rather than through the routing wrapper.
                     try:
                         verdict, payload = _reconcile_plugin_step(
-                            backend, step, live_step, ctx, s_entry)
+                            backend, step, live_step, ctx, s_entry
+                        )
                     except D365Error as exc:
                         failed.append({**s_entry, "error": str(exc)})
                         raise _Aborted from exc
@@ -2532,18 +2805,29 @@ def apply_spec(
                         planned.append(img_entry)  # dry-run: step would be created → image too
                         continue
                     existing_img = _call(
-                        img_entry, lambda img=img, step_id=step_id:
-                        plugin_mod.find_step_image(backend, step_id, img["alias"]), failed)
+                        img_entry,
+                        lambda img=img, step_id=step_id: plugin_mod.find_step_image(
+                            backend, step_id, img["alias"]
+                        ),
+                        failed,
+                    )
                     if existing_img is not None:
                         skipped.append(img_entry)
                         continue
-                    result = _call(img_entry, lambda img=img, step_id=step_id:
-                                   plugin_mod.register_image(
-                                       backend, step=step_id, image_type=img["image_type"],
-                                       alias=img["alias"], attributes=img.get("attributes"),
-                                       name=img.get("name"),
-                                       message_property_name=img.get("message_property_name"),
-                                       solution=solution_name), failed)
+                    result = _call(
+                        img_entry,
+                        lambda img=img, step_id=step_id: plugin_mod.register_image(
+                            backend,
+                            step=step_id,
+                            image_type=img["image_type"],
+                            alias=img["alias"],
+                            attributes=img.get("attributes"),
+                            name=img.get("name"),
+                            message_property_name=img.get("message_property_name"),
+                            solution=solution_name,
+                        ),
+                        failed,
+                    )
                     _classify(result, img_entry, applied, skipped, planned)
 
         # Phase: model-driven apps (ADR 0024, #795/#796). Runs last so every record-
@@ -2561,27 +2845,34 @@ def apply_spec(
         # with the converge writes suppressed (reads-execute rule).
         for app_spec in _as_list(spec.get("apps")):
             entry = {"kind": "app", "name": app_spec["unique_name"]}
-            result = _call(entry, lambda a=app_spec: app_mod.create_app(
-                backend,
-                name=a["name"],
-                unique_name=a["unique_name"],
-                description=a.get("description"),
-                solution=solution_name,
-                if_exists="skip",
-                publish=False,
-            ), failed)
+            result = _call(
+                entry,
+                lambda a=app_spec: app_mod.create_app(
+                    backend,
+                    name=a["name"],
+                    unique_name=a["unique_name"],
+                    description=a.get("description"),
+                    solution=solution_name,
+                    if_exists="skip",
+                    publish=False,
+                ),
+                failed,
+            )
             if _present(result):
                 # Existing app (real skip, or dry-run would-skip): converge in place.
-                components = [(c["kind"], c["id"])
-                              for c in _as_list(app_spec.get("components"))]
+                components = [(c["kind"], c["id"]) for c in _as_list(app_spec.get("components"))]
                 sitemap = app_spec.get("sitemap")
-                sitemap_xml = (app_mod.build_sitemapxml(*_sitemap_tuples(sitemap))
-                               if sitemap else None)
+                sitemap_xml = (
+                    app_mod.build_sitemapxml(*_sitemap_tuples(sitemap)) if sitemap else None
+                )
                 _reconcile(
                     entry,
-                    lambda a=app_spec, e=entry, c=components, sx=sitemap_xml:
-                    _reconcile_app(backend, a, e, c, sx, solution_name),
-                    failed, routes)
+                    lambda a=app_spec, e=entry, c=components, sx=sitemap_xml: _reconcile_app(
+                        backend, a, e, c, sx, solution_name
+                    ),
+                    failed,
+                    routes,
+                )
                 continue
             # Create path: bind components + sitemap only when this run actually
             # created the app. A dry-run would-create (planned) writes nothing further.
@@ -2589,8 +2880,7 @@ def apply_spec(
                 continue
             app_id = result.get("appmoduleid")
             entry["appmoduleid"] = app_id
-            components = [(c["kind"], c["id"])
-                          for c in _as_list(app_spec.get("components"))]
+            components = [(c["kind"], c["id"]) for c in _as_list(app_spec.get("components"))]
             sitemap = app_spec.get("sitemap")
             # The app row was created but its server id could not be resolved
             # (an unparseable OData-EntityId, or a publish-before-read miss —
@@ -2601,33 +2891,55 @@ def apply_spec(
             # unreachable, defeating the point of the block.
             if not app_id and (components or sitemap):
                 applied.remove(entry)
-                failed.append({**entry, "error": result.get("app_lookup_error")
-                               or "app created but its appmoduleid could not be "
-                               "resolved; components/sitemap not bound."})
+                failed.append(
+                    {
+                        **entry,
+                        "error": result.get("app_lookup_error")
+                        or "app created but its appmoduleid could not be "
+                        "resolved; components/sitemap not bound.",
+                    }
+                )
                 raise _Aborted
             if components and app_id:
-                _call(entry, lambda app_id=app_id, components=components:
-                      app_mod.add_app_components(
-                          backend, app_id=app_id, components=components), failed)
+                _call(
+                    entry,
+                    lambda app_id=app_id, components=components: app_mod.add_app_components(
+                        backend, app_id=app_id, components=components
+                    ),
+                    failed,
+                )
             if sitemap and app_id:
                 areas, groups, subareas = _sitemap_tuples(sitemap)
-                sm_result = _call(entry, lambda a=app_spec, areas=areas, groups=groups,
-                                  subareas=subareas: app_mod.build_sitemap(
-                                      backend,
-                                      sitemap_name=a["unique_name"],
-                                      areas=areas, groups=groups, subareas=subareas,
-                                      unique_name=a["unique_name"],
-                                      solution=solution_name,
-                                      publish=False), failed)
+                sm_result = _call(
+                    entry,
+                    lambda a=app_spec, areas=areas, groups=groups, subareas=subareas: (
+                        app_mod.build_sitemap(
+                            backend,
+                            sitemap_name=a["unique_name"],
+                            areas=areas,
+                            groups=groups,
+                            subareas=subareas,
+                            unique_name=a["unique_name"],
+                            solution=solution_name,
+                            publish=False,
+                        )
+                    ),
+                    failed,
+                )
                 if sm_result.get("sitemapid"):
                     entry["sitemapid"] = sm_result["sitemapid"]
                     # Bind the sitemap to the app (component 62) so the app contains
                     # a sitemap and the end-of-run app-publish passes ValidateApp —
                     # the sitemapnameunique link alone does not (#809).
-                    _call(entry, lambda app_id=app_id, smid=sm_result["sitemapid"]:
-                          app_mod.add_app_components(
-                              backend, app_id=app_id,
-                              components=[("sitemap", str(smid))]), failed)
+                    _call(
+                        entry,
+                        lambda app_id=app_id, smid=sm_result["sitemapid"]: (
+                            app_mod.add_app_components(
+                                backend, app_id=app_id, components=[("sitemap", str(smid))]
+                            )
+                        ),
+                        failed,
+                    )
     except _Aborted:
         pass
 
@@ -2638,8 +2950,7 @@ def apply_spec(
     # Deletes are suppressed when the convergence itself failed — a partial-failure
     # run must not also start deleting org-extras.
     pruned: list[Entry] = []
-    if (solution_name and (prune or backend.dry_run)
-            and _solution_exists(backend, solution_name)):
+    if solution_name and (prune or backend.dry_run) and _solution_exists(backend, solution_name):
         suppressed = bool(failed or replace_blocked)
         for cand in _prune_candidates(backend, spec, solution_name):
             kind, name = cand["kind"], cand["name"]
@@ -2655,8 +2966,14 @@ def apply_spec(
                     entry["reason"] = "data-bearing; pass --allow-data-loss to delete"
                 pruned.append(entry)
             elif prune and data_bearing and not allow_data_loss:
-                pruned.append({"kind": kind, "name": name, "deleted": False,
-                               "reason": "data-bearing; pass --allow-data-loss to delete"})
+                pruned.append(
+                    {
+                        "kind": kind,
+                        "name": name,
+                        "deleted": False,
+                        "reason": "data-bearing; pass --allow-data-loss to delete",
+                    }
+                )
             elif would_delete and not suppressed:
                 try:
                     _prune_delete(backend, cand)
@@ -2677,8 +2994,9 @@ def apply_spec(
     # publishable writes only.
     publishable = [e for e in applied + updated if e.get("kind") not in _NON_PUBLISHABLE]
     wrote = bool(publishable) and not backend.dry_run
-    published = (wrote and not stage_only and not failed
-                 and not replace_blocked and not backend.dry_run)
+    published = (
+        wrote and not stage_only and not failed and not replace_blocked and not backend.dry_run
+    )
     if published:
         sol_mod.publish_all(backend)
         # PublishAllXml does NOT flip an appmodule to Published (#809), so an app
@@ -2689,12 +3007,13 @@ def apply_spec(
         # pass ValidateApp, so it is skipped; an updated app whose sitemap merely
         # changed was already published.) dry-run/stage-only never reach here.
         newly_publishable = [
-            e for e in applied
+            e
+            for e in applied
             if e.get("kind") == "app" and e.get("appmoduleid") and e.get("sitemapid")
         ] + [
-            e for e in updated
-            if e.get("kind") == "app" and e.get("appmoduleid")
-            and e.get("sitemap") == "added"
+            e
+            for e in updated
+            if e.get("kind") == "app" and e.get("appmoduleid") and e.get("sitemap") == "added"
         ]
         for e in newly_publishable:
             try:

@@ -1,6 +1,8 @@
 # pyright: basic
 """E2E tests for entity associate/disassociate, set-lookup/clear-lookup,
-clone, upsert, and children verbs."""
+clone, upsert, and children verbs.
+"""
+
 from __future__ import annotations
 
 import json
@@ -71,12 +73,18 @@ def test_set_and_clear_lookup(backend, cli, unique, request):
     # set-lookup: wire contact.parentcustomerid → account.
     # parentcustomerid is a polymorphic Customer type; the typed single-valued
     # nav property for binding to an account is parentcustomerid_account.
-    set_res = cli([
-        "--json", "entity", "set-lookup",
-        "contacts", ctct_id,
-        "parentcustomerid_account",  # typed nav for Customer→account
-        "accounts", acct_id,
-    ])
+    set_res = cli(
+        [
+            "--json",
+            "entity",
+            "set-lookup",
+            "contacts",
+            ctct_id,
+            "parentcustomerid_account",  # typed nav for Customer→account
+            "accounts",
+            acct_id,
+        ]
+    )
     assert set_res.returncode == 0, set_res.stderr
     env = json.loads(set_res.stdout)
     assert env["ok"], env
@@ -87,12 +95,17 @@ def test_set_and_clear_lookup(backend, cli, unique, request):
 
     # clear-lookup: remove it via the typed nav property (--yes: guarded verb,
     # non-interactive run)
-    clr_res = cli([
-        "--json", "entity", "clear-lookup",
-        "contacts", ctct_id,
-        "parentcustomerid_account",
-        "--yes",
-    ])
+    clr_res = cli(
+        [
+            "--json",
+            "entity",
+            "clear-lookup",
+            "contacts",
+            ctct_id,
+            "parentcustomerid_account",
+            "--yes",
+        ]
+    )
     assert clr_res.returncode == 0, clr_res.stderr
     assert json.loads(clr_res.stdout)["ok"]
 
@@ -109,7 +122,8 @@ def test_associate_and_disassociate(backend, cli, unique, request):
     """Associate a contact to an account via contact_customer_accounts (1:N from account),
     then disassociate it.  The nav property on the account side is `contact_customer_accounts`;
     this is a system 1:N where account is the parent and contact references it via
-    parentcustomerid.  We drive it through the associate/disassociate CLI verbs."""
+    parentcustomerid.  We drive it through the associate/disassociate CLI verbs.
+    """
     # Create throwaway account + contact
     acct = backend.post(
         "accounts",
@@ -128,12 +142,18 @@ def test_associate_and_disassociate(backend, cli, unique, request):
     request.addfinalizer(lambda: _safe(backend, f"contacts({ctct_id})"))
 
     # associate: POST accounts(<id>)/contact_customer_accounts/$ref → contacts(<id>)
-    assoc_res = cli([
-        "--json", "entity", "associate",
-        "accounts", acct_id,
-        "contact_customer_accounts",   # collection-valued nav property on account
-        "contacts", ctct_id,
-    ])
+    assoc_res = cli(
+        [
+            "--json",
+            "entity",
+            "associate",
+            "accounts",
+            acct_id,
+            "contact_customer_accounts",  # collection-valued nav property on account
+            "contacts",
+            ctct_id,
+        ]
+    )
     assert assoc_res.returncode == 0, assoc_res.stderr
     env = json.loads(assoc_res.stdout)
     assert env["ok"], env
@@ -143,14 +163,21 @@ def test_associate_and_disassociate(backend, cli, unique, request):
     assert got.get("_parentcustomerid_value") == acct_id
 
     # disassociate: DELETE accounts(<id>)/contact_customer_accounts/$ref?$id=contacts(<id>)
-    disassoc_res = cli([
-        "--json", "entity", "disassociate",
-        "accounts", acct_id,
-        "contact_customer_accounts",
-        "--related-set", "contacts",
-        "--related-id", ctct_id,
-        "--yes",  # guarded verb, non-interactive run
-    ])
+    disassoc_res = cli(
+        [
+            "--json",
+            "entity",
+            "disassociate",
+            "accounts",
+            acct_id,
+            "contact_customer_accounts",
+            "--related-set",
+            "contacts",
+            "--related-id",
+            ctct_id,
+            "--yes",  # guarded verb, non-interactive run
+        ]
+    )
     assert disassoc_res.returncode == 0, disassoc_res.stderr
     assert json.loads(disassoc_res.stdout)["ok"]
 
@@ -173,9 +200,15 @@ def test_entity_clone(backend, cli, unique, request):
     src_id = ctct["contactid"]
     request.addfinalizer(lambda: _safe(backend, f"contacts({src_id})"))
 
-    clone_res = cli([
-        "--json", "entity", "clone", "contacts", src_id,
-    ])
+    clone_res = cli(
+        [
+            "--json",
+            "entity",
+            "clone",
+            "contacts",
+            src_id,
+        ]
+    )
     assert clone_res.returncode == 0, clone_res.stderr
     env = json.loads(clone_res.stdout)
     assert env["ok"], env
@@ -221,10 +254,16 @@ def test_entity_children(backend, cli, unique, request):
     ctct_id = ctct["contactid"]
     request.addfinalizer(lambda: _safe(backend, f"contacts({ctct_id})"))
 
-    children_res = cli([
-        "--json", "entity", "children", "accounts", acct_id,
-        "--non-empty",
-    ])
+    children_res = cli(
+        [
+            "--json",
+            "entity",
+            "children",
+            "accounts",
+            acct_id,
+            "--non-empty",
+        ]
+    )
     assert children_res.returncode == 0, children_res.stderr
     env = json.loads(children_res.stdout)
     assert env["ok"], env
@@ -234,7 +273,5 @@ def test_entity_children(backend, cli, unique, request):
 
     # At least one row should correspond to contacts referencing this account
     contact_rows = [r for r in rows if r.get("entity") == "contact"]
-    assert contact_rows, (
-        f"No 'contact' row in children output (all rows: {rows[:5]})"
-    )
+    assert contact_rows, f"No 'contact' row in children output (all rows: {rows[:5]})"
     assert any(r.get("count", 0) >= 1 for r in contact_rows), contact_rows

@@ -1,5 +1,6 @@
 """CLI-layer tests for the metadata state-model / mapping commands:
-status-add, state-relabel, create-mapping."""
+status-add, state-relabel, create-mapping.
+"""
 # pyright: basic
 
 from __future__ import annotations
@@ -20,10 +21,22 @@ class TestStatusAdd:
     def test_inserts_status(self, make_fake_backend, inject_backend, tmp_path):
         fake = make_fake_backend(responses={"post": {"NewOptionValue": 12}})
         res = _run(
-            ["--json", "metadata", "status-add", "new_widget",
-             "--state", "0", "--label", "Pending",
-             "--solution", "TestSol", "--no-publish"],
-            inject_backend, fake, tmp_path,
+            [
+                "--json",
+                "metadata",
+                "status-add",
+                "new_widget",
+                "--state",
+                "0",
+                "--label",
+                "Pending",
+                "--solution",
+                "TestSol",
+                "--no-publish",
+            ],
+            inject_backend,
+            fake,
+            tmp_path,
         )
         assert res.exit_code == 0, res.output
         data = json.loads(res.output)["data"]
@@ -36,9 +49,22 @@ class TestStatusAdd:
     def test_dry_run_previews(self, make_fake_backend, inject_backend, tmp_path):
         fake = make_fake_backend(dry_run=True)
         res = _run(
-            ["--json", "--dry-run", "metadata", "status-add", "new_widget",
-             "--state", "0", "--label", "Pending", "--solution", "TestSol"],
-            inject_backend, fake, tmp_path,
+            [
+                "--json",
+                "--dry-run",
+                "metadata",
+                "status-add",
+                "new_widget",
+                "--state",
+                "0",
+                "--label",
+                "Pending",
+                "--solution",
+                "TestSol",
+            ],
+            inject_backend,
+            fake,
+            tmp_path,
         )
         assert res.exit_code == 0, res.output
         assert json.loads(res.output)["meta"]["dry_run"] is True
@@ -48,10 +74,22 @@ class TestStateRelabel:
     def test_relabels(self, make_fake_backend, inject_backend, tmp_path):
         fake = make_fake_backend(responses={"post": None})
         res = _run(
-            ["--json", "metadata", "state-relabel", "new_widget",
-             "--value", "1", "--label", "Dormant",
-             "--solution", "TestSol", "--no-publish"],
-            inject_backend, fake, tmp_path,
+            [
+                "--json",
+                "metadata",
+                "state-relabel",
+                "new_widget",
+                "--value",
+                "1",
+                "--label",
+                "Dormant",
+                "--solution",
+                "TestSol",
+                "--no-publish",
+            ],
+            inject_backend,
+            fake,
+            tmp_path,
         )
         assert res.exit_code == 0, res.output
         assert json.loads(res.output)["data"]["updated"] is True
@@ -60,9 +98,22 @@ class TestStateRelabel:
     def test_dry_run_previews(self, make_fake_backend, inject_backend, tmp_path):
         fake = make_fake_backend(dry_run=True)
         res = _run(
-            ["--json", "--dry-run", "metadata", "state-relabel", "new_widget",
-             "--value", "1", "--label", "Dormant", "--solution", "TestSol"],
-            inject_backend, fake, tmp_path,
+            [
+                "--json",
+                "--dry-run",
+                "metadata",
+                "state-relabel",
+                "new_widget",
+                "--value",
+                "1",
+                "--label",
+                "Dormant",
+                "--solution",
+                "TestSol",
+            ],
+            inject_backend,
+            fake,
+            tmp_path,
         )
         assert res.exit_code == 0, res.output
         assert json.loads(res.output)["meta"]["dry_run"] is True
@@ -76,14 +127,27 @@ class TestCreateMapping:
             if path == "entitymaps":
                 return {"value": [{"entitymapid": "abc"}]}
             return {"value": []}
+
         return make_fake_backend(responses={"get": _get, "post": None})
 
     def test_create_from_to(self, make_fake_backend, inject_backend, tmp_path):
         fake = self._pair_backend(make_fake_backend)
         res = _run(
-            ["--json", "metadata", "create-mapping", "new_account_new_widget",
-             "--from", "name", "--to", "new_name", "--solution", "TestSol"],
-            inject_backend, fake, tmp_path,
+            [
+                "--json",
+                "metadata",
+                "create-mapping",
+                "new_account_new_widget",
+                "--from",
+                "name",
+                "--to",
+                "new_name",
+                "--solution",
+                "TestSol",
+            ],
+            inject_backend,
+            fake,
+            tmp_path,
         )
         assert res.exit_code == 0, res.output
         assert json.loads(res.output)["data"]["created"] is True
@@ -92,9 +156,18 @@ class TestCreateMapping:
     def test_auto(self, make_fake_backend, inject_backend, tmp_path):
         fake = self._pair_backend(make_fake_backend)
         res = _run(
-            ["--json", "metadata", "create-mapping", "new_account_new_widget",
-             "--auto", "--solution", "TestSol"],
-            inject_backend, fake, tmp_path,
+            [
+                "--json",
+                "metadata",
+                "create-mapping",
+                "new_account_new_widget",
+                "--auto",
+                "--solution",
+                "TestSol",
+            ],
+            inject_backend,
+            fake,
+            tmp_path,
         )
         assert res.exit_code == 0, res.output
         assert json.loads(res.output)["data"]["auto_mapped"] is True
@@ -104,10 +177,22 @@ class TestCreateMapping:
         fake = self._pair_backend(make_fake_backend)
         fake.dry_run = True
         res = _run(
-            ["--json", "--dry-run", "metadata", "create-mapping",
-             "new_account_new_widget", "--from", "name", "--to", "new_name",
-             "--solution", "TestSol"],
-            inject_backend, fake, tmp_path,
+            [
+                "--json",
+                "--dry-run",
+                "metadata",
+                "create-mapping",
+                "new_account_new_widget",
+                "--from",
+                "name",
+                "--to",
+                "new_name",
+                "--solution",
+                "TestSol",
+            ],
+            inject_backend,
+            fake,
+            tmp_path,
         )
         assert res.exit_code == 0, res.output
         assert json.loads(res.output)["meta"]["dry_run"] is True
@@ -115,9 +200,10 @@ class TestCreateMapping:
     def test_auto_with_from_is_usage_error(self, make_fake_backend, inject_backend, tmp_path):
         fake = make_fake_backend()
         res = _run(
-            ["metadata", "create-mapping", "rel", "--auto", "--from", "x",
-             "--solution", "TestSol"],
-            inject_backend, fake, tmp_path,
+            ["metadata", "create-mapping", "rel", "--auto", "--from", "x", "--solution", "TestSol"],
+            inject_backend,
+            fake,
+            tmp_path,
         )
         assert res.exit_code != 0
         assert "--auto cannot be combined" in res.output
@@ -125,9 +211,10 @@ class TestCreateMapping:
     def test_missing_from_to_is_usage_error(self, make_fake_backend, inject_backend, tmp_path):
         fake = make_fake_backend()
         res = _run(
-            ["metadata", "create-mapping", "rel", "--from", "x",
-             "--solution", "TestSol"],
-            inject_backend, fake, tmp_path,
+            ["metadata", "create-mapping", "rel", "--from", "x", "--solution", "TestSol"],
+            inject_backend,
+            fake,
+            tmp_path,
         )
         assert res.exit_code != 0
         assert "both --from and --to" in res.output

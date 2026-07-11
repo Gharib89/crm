@@ -8,13 +8,13 @@ import requests_mock
 
 from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
 
-
 _ENTITY_META_ID = "aaaa0001-0000-0000-0000-000000000000"
 
 
 class TestDeleteEntity:
     def test_refuses_non_custom_entity(self, backend):
         from crm.core import metadata as meta_mod
+
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("EntityDefinitions(LogicalName='account')"),
@@ -25,6 +25,7 @@ class TestDeleteEntity:
 
     def test_refuses_managed_entity(self, backend):
         from crm.core import metadata as meta_mod
+
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("EntityDefinitions(LogicalName='managed_thing')"),
@@ -35,6 +36,7 @@ class TestDeleteEntity:
 
     def test_happy_path_deletes_with_solution_header(self, backend):
         from crm.core import metadata as meta_mod
+
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("EntityDefinitions(LogicalName='new_widget')"),
@@ -54,6 +56,7 @@ class TestDeleteEntity:
 
     def test_delete_server_failure_surfaces_d365error(self, backend):
         from crm.core import metadata as meta_mod
+
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("EntityDefinitions(LogicalName='new_widget')"),
@@ -62,7 +65,9 @@ class TestDeleteEntity:
             m.delete(
                 backend.url_for("EntityDefinitions(LogicalName='new_widget')"),
                 status_code=400,
-                json={"error": {"code": "0x80048404", "message": "Cannot delete: dependencies exist"}},
+                json={
+                    "error": {"code": "0x80048404", "message": "Cannot delete: dependencies exist"}
+                },
             )
             with pytest.raises(D365Error, match="dependencies"):
                 meta_mod.delete_entity(backend, "new_widget")
@@ -70,12 +75,15 @@ class TestDeleteEntity:
     def test_check_dependencies_off_by_default_no_extra_get(self, backend):
         """Without --check-dependencies, no dependency GETs fire."""
         from crm.core import metadata as meta_mod
+
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("EntityDefinitions(LogicalName='new_widget')"),
                 json={"IsCustomEntity": True, "IsManaged": False},
             )
-            m.delete(backend.url_for("EntityDefinitions(LogicalName='new_widget')"), status_code=204)
+            m.delete(
+                backend.url_for("EntityDefinitions(LogicalName='new_widget')"), status_code=204
+            )
             info = meta_mod.delete_entity(backend, "new_widget")
         assert "can_delete" not in info
         assert "blockers" not in info
@@ -86,6 +94,7 @@ class TestDeleteEntity:
     def test_check_dependencies_with_blockers(self, backend):
         """check_dependencies=True fires resolve GET + function GET; blockers appear in result."""
         from crm.core import metadata as meta_mod
+
         dep_url = backend.url_for(
             f"RetrieveDependenciesForDelete(ObjectId={_ENTITY_META_ID},ComponentType=1)"
         )
@@ -93,20 +102,28 @@ class TestDeleteEntity:
             m.get(
                 backend.url_for("EntityDefinitions(LogicalName='new_widget')"),
                 json={
-                    "IsCustomEntity": True, "IsManaged": False,
+                    "IsCustomEntity": True,
+                    "IsManaged": False,
                     "MetadataId": _ENTITY_META_ID,
                 },
             )
-            m.get(dep_url, json={"value": [
-                {
-                    "dependentcomponenttype": 24,
-                    "dependentcomponentobjectid": "bbbb0001-0000-0000-0000-000000000000",
-                    "dependentcomponentparentid": None,
-                    "requiredcomponenttype": 1,
-                    "dependencytype": 2,
+            m.get(
+                dep_url,
+                json={
+                    "value": [
+                        {
+                            "dependentcomponenttype": 24,
+                            "dependentcomponentobjectid": "bbbb0001-0000-0000-0000-000000000000",
+                            "dependentcomponentparentid": None,
+                            "requiredcomponenttype": 1,
+                            "dependencytype": 2,
+                        },
+                    ]
                 },
-            ]})
-            m.delete(backend.url_for("EntityDefinitions(LogicalName='new_widget')"), status_code=204)
+            )
+            m.delete(
+                backend.url_for("EntityDefinitions(LogicalName='new_widget')"), status_code=204
+            )
             info = meta_mod.delete_entity(backend, "new_widget", check_dependencies=True)
         assert info["deleted"] is True
         assert info["can_delete"] is False
@@ -119,6 +136,7 @@ class TestDeleteEntity:
     def test_check_dependencies_no_blockers_can_delete_true(self, backend):
         """When RetrieveDependenciesForDelete returns empty value, can_delete is True."""
         from crm.core import metadata as meta_mod
+
         dep_url = backend.url_for(
             f"RetrieveDependenciesForDelete(ObjectId={_ENTITY_META_ID},ComponentType=1)"
         )
@@ -126,12 +144,15 @@ class TestDeleteEntity:
             m.get(
                 backend.url_for("EntityDefinitions(LogicalName='new_widget')"),
                 json={
-                    "IsCustomEntity": True, "IsManaged": False,
+                    "IsCustomEntity": True,
+                    "IsManaged": False,
                     "MetadataId": _ENTITY_META_ID,
                 },
             )
             m.get(dep_url, json={"value": []})
-            m.delete(backend.url_for("EntityDefinitions(LogicalName='new_widget')"), status_code=204)
+            m.delete(
+                backend.url_for("EntityDefinitions(LogicalName='new_widget')"), status_code=204
+            )
             info = meta_mod.delete_entity(backend, "new_widget", check_dependencies=True)
         assert info["can_delete"] is True
         assert info["blockers"] == []
@@ -142,6 +163,7 @@ class TestDeleteEntityDryRun:
 
     def test_dryrun_returns_preview_not_deleted(self, profile):
         from crm.core import metadata as meta_mod
+
         dry_backend = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
             m.get(
@@ -164,6 +186,7 @@ class TestDeleteEntityDryRun:
 
     def test_dryrun_with_check_dependencies_merges_blockers(self, profile):
         from crm.core import metadata as meta_mod
+
         dry_backend = D365Backend(profile, password="pw", dry_run=True)
         dep_url = dry_backend.url_for(
             f"RetrieveDependenciesForDelete(ObjectId={_ENTITY_META_ID},ComponentType=1)"
@@ -172,7 +195,8 @@ class TestDeleteEntityDryRun:
             m.get(
                 dry_backend.url_for("EntityDefinitions(LogicalName='new_widget')"),
                 json={
-                    "IsCustomEntity": True, "IsManaged": False,
+                    "IsCustomEntity": True,
+                    "IsManaged": False,
                     "MetadataId": _ENTITY_META_ID,
                 },
             )
@@ -192,6 +216,7 @@ class TestDeleteEntityCommand:
 
     def test_check_dependencies_flag_plumbs_through(self, profile, monkeypatch, tmp_path):
         from click.testing import CliRunner
+
         from crm.commands.metadata import metadata_group
         from crm.core import metadata as meta_mod
         from crm.core import session as session_mod
@@ -200,9 +225,14 @@ class TestDeleteEntityCommand:
         # seed an active profile + secret for ctx.backend() to resolve.
         monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
         monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
-        session_mod.save_profile(ConnectionProfile(
-            name="t", url="https://crm.contoso.local/contoso",
-            domain="CONTOSO", username="alice"))
+        session_mod.save_profile(
+            ConnectionProfile(
+                name="t",
+                url="https://crm.contoso.local/contoso",
+                domain="CONTOSO",
+                username="alice",
+            )
+        )
         session_mod.save_profile_secret_plaintext("t", "pw")
         state = session_mod.load_session("default")
         state["active_profile"] = "t"
@@ -219,8 +249,14 @@ class TestDeleteEntityCommand:
         runner = CliRunner()
         result = runner.invoke(
             metadata_group,
-            ["delete-entity", "new_widget", "--yes", "--check-dependencies",
-             "--solution", "DevSolution"],
+            [
+                "delete-entity",
+                "new_widget",
+                "--yes",
+                "--check-dependencies",
+                "--solution",
+                "DevSolution",
+            ],
             catch_exceptions=False,
         )
         assert result.exit_code == 0

@@ -10,13 +10,12 @@ import difflib
 import json
 from typing import Any, cast
 
+from crm.core import dependencies as dep_mod
+from crm.core import entity_names, metadata_cache
+from crm.core import metadata_constraints as mc
+from crm.core.batch import run_batched
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 from crm.utils.d365_types import BatchOperation
-from crm.core.batch import run_batched
-from crm.core import dependencies as dep_mod
-from crm.core import entity_names
-from crm.core import metadata_cache
-from crm.core import metadata_constraints as mc
 
 
 def list_entities(
@@ -43,7 +42,7 @@ def list_entities(
         clauses.append("IsManaged eq true")
     if filter_expr:
         clauses.append(filter_expr)
-        
+
     if clauses:
         params["$filter"] = " and ".join(clauses)
 
@@ -56,9 +55,7 @@ def list_entities(
     return items
 
 
-def suggest_logical_name(
-    backend: D365Backend, wrong_name: str
-) -> dict[str, Any] | None:
+def suggest_logical_name(backend: D365Backend, wrong_name: str) -> dict[str, Any] | None:
     """Return a logical-name suggestion for `wrong_name`, or None.
 
     Two passes against a single 2-field GET (LogicalName + EntitySetName):
@@ -127,12 +124,16 @@ def list_attributes(backend: D365Backend, logical_name: str) -> list[dict[str, A
     normalization in :func:`entity_names.specs_from_rows`.
     """
     path = f"EntityDefinitions(LogicalName='{logical_name}')/Attributes"
-    result = as_dict(backend.get(
-        path,
-        params={"$select": "LogicalName,SchemaName,AttributeType,IsCustomAttribute,"
+    result = as_dict(
+        backend.get(
+            path,
+            params={
+                "$select": "LogicalName,SchemaName,AttributeType,IsCustomAttribute,"
                 "IsValidForCreate,IsValidForUpdate,IsValidForRead,RequiredLevel,"
-                "SourceType,MetadataId"},
-    ))
+                "SourceType,MetadataId"
+            },
+        )
+    )
     rows: list[dict[str, Any]] = result.get("value", [])
     for row in rows:
         required: dict[str, Any] = row.get("RequiredLevel") or {}
@@ -143,16 +144,11 @@ def list_attributes(backend: D365Backend, logical_name: str) -> list[dict[str, A
 
 def attribute_info(backend: D365Backend, logical_name: str, attribute: str) -> dict[str, Any]:
     """Retrieve a single attribute definition."""
-    path = (
-        f"EntityDefinitions(LogicalName='{logical_name}')"
-        f"/Attributes(LogicalName='{attribute}')"
-    )
+    path = f"EntityDefinitions(LogicalName='{logical_name}')/Attributes(LogicalName='{attribute}')"
     return as_dict(backend.get(path))
 
 
-def attribute_info_or_raise(
-    backend: D365Backend, entity: str, column: str
-) -> dict[str, Any]:
+def attribute_info_or_raise(backend: D365Backend, entity: str, column: str) -> dict[str, Any]:
     """Confirm ``column`` exists on ``entity`` and return its metadata, with a
     clean error if it does not. The shared existence check for the XML editors
     (charts, views) that validate a referenced column before a write.
@@ -165,8 +161,7 @@ def attribute_info_or_raise(
         return attribute_info(backend, entity, column)
     except D365Error as exc:
         if exc.status == 404:
-            raise D365Error(
-                f"attribute {column!r} does not exist on {entity!r}.") from exc
+            raise D365Error(f"attribute {column!r} does not exist on {entity!r}.") from exc
         raise
 
 
@@ -207,10 +202,12 @@ def picklist_options(
         f"/Attributes(LogicalName='{attribute}')/"
         f"Microsoft.Dynamics.CRM.{cast_subtype}"
     )
-    return as_dict(backend.get(
-        path,
-        params={"$select": "LogicalName", "$expand": expand},
-    ))
+    return as_dict(
+        backend.get(
+            path,
+            params={"$select": "LogicalName", "$expand": expand},
+        )
+    )
 
 
 def multiselect_options(
@@ -238,10 +235,12 @@ def multiselect_options(
         f"/Attributes(LogicalName='{attribute}')/{cast}"
     )
     expand = "OptionSet" + (",GlobalOptionSet" if global_optionset else "")
-    return as_dict(backend.get(
-        path,
-        params={"$select": "LogicalName", "$expand": expand},
-    ))
+    return as_dict(
+        backend.get(
+            path,
+            params={"$select": "LogicalName", "$expand": expand},
+        )
+    )
 
 
 def label_text(label_obj: dict[str, Any]) -> str:
@@ -295,14 +294,16 @@ def _enrich_options(
     Mutates `writable` in place. No-op for kinds the entity does not use.
     """
     present = {a["attribute_type"] for a in writable}
-    for attr_type, cast, expand in _OPTION_SET_CASTS:
+    for attr_type, cast_name, expand in _OPTION_SET_CASTS:
         if attr_type not in present:
             continue
-        res = as_dict(backend.get(
-            f"EntityDefinitions(LogicalName='{logical_name}')/Attributes/"
-            f"Microsoft.Dynamics.CRM.{cast}",
-            params={"$select": "LogicalName", "$expand": expand},
-        ))
+        res = as_dict(
+            backend.get(
+                f"EntityDefinitions(LogicalName='{logical_name}')/Attributes/"
+                f"Microsoft.Dynamics.CRM.{cast_name}",
+                params={"$select": "LogicalName", "$expand": expand},
+            )
+        )
         rows: list[dict[str, Any]] = res.get("value", [])
         by_logical: dict[str, dict[str, Any]] = {}
         for r in rows:
@@ -325,9 +326,7 @@ def _enrich_options(
                 attr["options"] = flatten_options(local)
 
 
-def lookup_nav_map(
-    backend: D365Backend, logical_name: str
-) -> dict[str, list[tuple[str, str]]]:
+def lookup_nav_map(backend: D365Backend, logical_name: str) -> dict[str, list[tuple[str, str]]]:
     """Map each lookup column of *logical_name* to its bind targets.
 
     Returns ``{ReferencingAttribute: [(referenced_entity_logical, nav_property)]}``
@@ -338,22 +337,27 @@ def lookup_nav_map(
     owner / regarding) yields one entry per target table; a single-target lookup
     yields one. Empty when the entity has no lookup columns.
     """
-    m2o = as_dict(backend.get(
-        f"EntityDefinitions(LogicalName='{logical_name}')/ManyToOneRelationships",
-        params={"$select":
-                "ReferencingAttribute,ReferencedEntity,"
-                "ReferencingEntityNavigationPropertyName"},
-    ))
+    m2o = as_dict(
+        backend.get(
+            f"EntityDefinitions(LogicalName='{logical_name}')/ManyToOneRelationships",
+            params={
+                "$select": "ReferencingAttribute,ReferencedEntity,"
+                "ReferencingEntityNavigationPropertyName"
+            },
+        )
+    )
     rels: list[dict[str, Any]] = m2o.get("value", [])
     by_attr: dict[str, list[tuple[str, str]]] = {}
     for r in rels:
         ref_attr = r.get("ReferencingAttribute")
         if not ref_attr:
             continue
-        by_attr.setdefault(ref_attr, []).append((
-            r.get("ReferencedEntity") or "",
-            r.get("ReferencingEntityNavigationPropertyName") or "",
-        ))
+        by_attr.setdefault(ref_attr, []).append(
+            (
+                r.get("ReferencedEntity") or "",
+                r.get("ReferencingEntityNavigationPropertyName") or "",
+            )
+        )
     return by_attr
 
 
@@ -402,10 +406,12 @@ def _enrich_lookups(
 
 def _set_name_via_get(backend: D365Backend, ref_logical: str) -> str:
     """Resolve one referenced entity's EntitySetName via a direct GET."""
-    rb = as_dict(backend.get(
-        f"EntityDefinitions(LogicalName='{ref_logical}')",
-        params={"$select": "EntitySetName"},
-    ))
+    rb = as_dict(
+        backend.get(
+            f"EntityDefinitions(LogicalName='{ref_logical}')",
+            params={"$select": "EntitySetName"},
+        )
+    )
     return rb.get("EntitySetName") or ""
 
 
@@ -423,8 +429,7 @@ def _resolve_set_names(backend: D365Backend, refs: list[str]) -> dict[str, str]:
     if backend.dry_run or backend.read_only:
         return {ref: _set_name_via_get(backend, ref) for ref in refs}
     ops: list[BatchOperation] = [
-        {"method": "GET",
-         "url": f"EntityDefinitions(LogicalName='{ref}')?$select=EntitySetName"}
+        {"method": "GET", "url": f"EntityDefinitions(LogicalName='{ref}')?$select=EntitySetName"}
         for ref in refs
     ]
     # Fail-fast: continue-on-error off so the server stops at the first failing
@@ -448,22 +453,25 @@ def describe_entity(backend: D365Backend, logical_name: str) -> dict[str, Any]:
     """
     if not logical_name:
         raise D365Error("logical_name is required.")
-    ent = as_dict(backend.get(
-        f"EntityDefinitions(LogicalName='{logical_name}')",
-        params={"$select":
-                "LogicalName,EntitySetName,PrimaryIdAttribute,PrimaryNameAttribute"},
-    ))
+    ent = as_dict(
+        backend.get(
+            f"EntityDefinitions(LogicalName='{logical_name}')",
+            params={"$select": "LogicalName,EntitySetName,PrimaryIdAttribute,PrimaryNameAttribute"},
+        )
+    )
     # Writable = valid for create OR update. The IsValidForCreate/IsValidForUpdate
     # walk lives once in entity_names.attribute_specs (#261).
     writable: list[dict[str, Any]] = []
     for spec in entity_names.attribute_specs(backend, logical_name):
         if not (spec.valid_for_create or spec.valid_for_update):
             continue
-        writable.append({
-            "logical_name": spec.logical_name,
-            "attribute_type": spec.attribute_type,
-            "required_level": spec.required_level,
-        })
+        writable.append(
+            {
+                "logical_name": spec.logical_name,
+                "attribute_type": spec.attribute_type,
+                "required_level": spec.required_level,
+            }
+        )
 
     _enrich_lookups(backend, logical_name, writable)
     _enrich_options(backend, logical_name, writable)
@@ -507,6 +515,7 @@ def maybe_publish(backend: D365Backend, info: dict[str, Any], publish: bool) -> 
     if not publish or info.get("_dry_run"):
         return info
     from crm.core import solution as sol_mod
+
     sol_mod.publish_all(backend)
     info["published"] = True
     return info
@@ -537,6 +546,7 @@ def create_entity(
     """Create a new custom entity (table) via POST /EntityDefinitions.
 
     Args:
+        backend: Connected Web API client used for the create request.
         schema_name: PascalCase with publisher prefix, e.g. `new_Project`.
         display_name: Singular UI name, e.g. "Project".
         display_collection_name: Plural UI name; defaults to display_name + 's'.
@@ -563,6 +573,8 @@ def create_entity(
         external_collection_name: External collection (plural) name.
         solution: Optional `uniquename` to add the entity to a specific solution
             via the `MSCRM.SolutionUniqueName` header.
+        if_exists: `error` (default) to fail if the entity already exists, or
+            `skip` to return without creating it.
 
     Returns a dict describing the created entity. The Web API returns 204 No
     Content with an `OData-EntityId` header pointing at the new MetadataId.
@@ -579,8 +591,7 @@ def create_entity(
     # rejects a partial set, so require the three load-bearing values together
     # (data_source_id stays optional — the docs allow a null source at create
     # time). Standard tables must leave all four null or the server faults.
-    is_virtual = any((data_provider_id, data_source_id, external_name,
-                      external_collection_name))
+    is_virtual = any((data_provider_id, data_source_id, external_name, external_collection_name))
     if is_virtual:
         if not external_name:
             raise D365Error(
@@ -601,9 +612,7 @@ def create_entity(
     prefix, _, _ = schema_name.partition("_")
     logical_name = schema_name.lower()
 
-    exists = target_exists(
-        backend, f"EntityDefinitions(LogicalName='{logical_name}')"
-    )
+    exists = target_exists(backend, f"EntityDefinitions(LogicalName='{logical_name}')")
     if exists and not backend.dry_run:
         if if_exists == "error":
             raise D365Error(
@@ -618,8 +627,7 @@ def create_entity(
         }
 
     primary_schema = primary_attr_schema or f"{prefix}_Name"
-    mc.validate_schema_name(
-        primary_schema, subject="primary_attr_schema", example=f"{prefix}_Name")
+    mc.validate_schema_name(primary_schema, subject="primary_attr_schema", example=f"{prefix}_Name")
     primary_logical = primary_schema.lower()
     primary_label_text = primary_attr_label or "Name"
     collection_label = display_collection_name or (display_name + "s")
@@ -634,16 +642,18 @@ def create_entity(
         "HasActivities": has_activities,
         "HasNotes": has_notes,
         "IsActivity": is_activity,
-        "Attributes": [{
-            "@odata.type": "Microsoft.Dynamics.CRM.StringAttributeMetadata",
-            "SchemaName": primary_schema,
-            "LogicalName": primary_logical,
-            "RequiredLevel": {"Value": "ApplicationRequired"},
-            "MaxLength": primary_attr_max_length,
-            "FormatName": {"Value": "Text"},
-            "DisplayName": label(primary_label_text),
-            "IsPrimaryName": True,
-        }],
+        "Attributes": [
+            {
+                "@odata.type": "Microsoft.Dynamics.CRM.StringAttributeMetadata",
+                "SchemaName": primary_schema,
+                "LogicalName": primary_logical,
+                "RequiredLevel": {"Value": "ApplicationRequired"},
+                "MaxLength": primary_attr_max_length,
+                "FormatName": {"Value": "Text"},
+                "DisplayName": label(primary_label_text),
+                "IsPrimaryName": True,
+            }
+        ],
     }
     if description:
         body["Description"] = label(description)
@@ -658,11 +668,13 @@ def create_entity(
         if data_source_id:
             body["DataSourceId"] = data_source_id
 
-    result = as_dict(backend.post(
-        "EntityDefinitions",
-        json_body=body,
-        solution=solution,
-    ))
+    result = as_dict(
+        backend.post(
+            "EntityDefinitions",
+            json_body=body,
+            solution=solution,
+        )
+    )
     if result.get("_dry_run"):
         result["_exists"] = exists
         result["would_skip"] = exists and if_exists == "skip"
@@ -683,10 +695,12 @@ def create_entity(
         )
     else:
         try:
-            rb = as_dict(backend.get(
-                f"EntityDefinitions({metadata_id})",
-                params={"$select": "EntitySetName,LogicalName"},
-            ))
+            rb = as_dict(
+                backend.get(
+                    f"EntityDefinitions({metadata_id})",
+                    params={"$select": "EntitySetName,LogicalName"},
+                )
+            )
             name = rb.get("EntitySetName")
             if isinstance(name, str) and name:  # pyright: ignore[reportUnnecessaryIsInstance]
                 entity_set_name = name
@@ -727,6 +741,10 @@ def delete_entity(
     relationships) and returns 4xx on conflict.
 
     Args:
+        backend: Connected Web API client used for the delete.
+        logical_name: Logical name of the entity to delete.
+        solution: Optional `uniquename` to scope the DELETE to, via the
+            `MSCRM.SolutionUniqueName` header.
         check_dependencies: When True, call RetrieveDependenciesForDelete
             before the DELETE and fold ``can_delete`` + ``blockers`` into the
             result. Informational only — does not abort the delete.
@@ -734,10 +752,12 @@ def delete_entity(
     if not logical_name:
         raise D365Error("logical_name is required.")
     path = f"EntityDefinitions(LogicalName='{logical_name}')"
-    rb = as_dict(backend.get(
-        path,
-        params={"$select": "IsCustomEntity,IsManaged,MetadataId"},
-    ))
+    rb = as_dict(
+        backend.get(
+            path,
+            params={"$select": "IsCustomEntity,IsManaged,MetadataId"},
+        )
+    )
     if rb.get("IsCustomEntity") is False:
         raise D365Error(
             f"{logical_name!r} is not a custom entity; refusing to delete.",
@@ -745,8 +765,7 @@ def delete_entity(
         )
     if rb.get("IsManaged") is True:
         raise D365Error(
-            f"{logical_name!r} is a managed entity; uninstall the parent "
-            "solution to remove it.",
+            f"{logical_name!r} is a managed entity; uninstall the parent solution to remove it.",
             code="ManagedEntity",
         )
     deps = None
@@ -792,9 +811,7 @@ def _fetch_csdl(backend: D365Backend) -> list[_ET.Element]:
     """GET $metadata and parse as XML. Returns all <Schema> elements."""
     # $metadata is served only as CSDL XML; the default Accept: application/json
     # makes Dataverse answer HTTP 415 (#266). Override Accept for this call only.
-    raw = backend.get(
-        "$metadata", expect_json=False, extra_headers={"Accept": "application/xml"}
-    )
+    raw = backend.get("$metadata", expect_json=False, extra_headers={"Accept": "application/xml"})
     if not isinstance(raw, str):
         raise D365Error("$metadata response was not text/xml")
     try:
@@ -804,8 +821,7 @@ def _fetch_csdl(backend: D365Backend) -> list[_ET.Element]:
     all_schemas = root.findall(f".//{{{_EDM_NS}}}Schema")
     if not all_schemas:
         raise D365Error("No <Schema> element in $metadata response")
-    d365_schemas = [s for s in all_schemas
-                    if s.attrib.get("Namespace") == _D365_NAMESPACE]
+    d365_schemas = [s for s in all_schemas if s.attrib.get("Namespace") == _D365_NAMESPACE]
     return d365_schemas if d365_schemas else all_schemas
 
 
@@ -817,10 +833,12 @@ def _extract_callable(schema: _ET.Element, tag: str) -> list[dict[str, Any]]:
     for elem in schema.findall(f"{{{_EDM_NS}}}{tag}"):
         params: list[dict[str, str]] = []
         for p in elem.findall(f"{{{_EDM_NS}}}Parameter"):
-            params.append({
-                "name": p.attrib.get("Name", ""),
-                "type": p.attrib.get("Type", ""),
-            })
+            params.append(
+                {
+                    "name": p.attrib.get("Name", ""),
+                    "type": p.attrib.get("Type", ""),
+                }
+            )
         return_type = elem.find(f"{{{_EDM_NS}}}ReturnType")
         item: dict[str, Any] = {
             "name": elem.attrib.get("Name", ""),
@@ -858,10 +876,12 @@ def list_entity_definitions(backend: D365Backend) -> list[dict[str, str]]:
     Fetches both LogicalName and EntitySetName in one call so callers can
     derive either list without a second round-trip.
     """
-    result = as_dict(backend.get(
-        "EntityDefinitions",
-        params={"$select": "LogicalName,EntitySetName"},
-    ))
+    result = as_dict(
+        backend.get(
+            "EntityDefinitions",
+            params={"$select": "LogicalName,EntitySetName"},
+        )
+    )
     items: list[dict[str, str]] = []
     for e in result.get("value", []):
         logical: str = e.get("LogicalName") or ""
@@ -883,19 +903,23 @@ def list_entity_keys(backend: D365Backend, logical_name: str) -> list[dict[str, 
     if not logical_name:
         raise D365Error("logical_name is required.")
     path = f"EntityDefinitions(LogicalName='{logical_name}')/Keys"
-    result = as_dict(backend.get(
-        path,
-        params={"$select": "LogicalName,SchemaName,KeyAttributes,EntityKeyIndexStatus"},
-    ))
+    result = as_dict(
+        backend.get(
+            path,
+            params={"$select": "LogicalName,SchemaName,KeyAttributes,EntityKeyIndexStatus"},
+        )
+    )
     rows: list[dict[str, Any]] = result.get("value", [])
     out: list[dict[str, Any]] = []
     for r in rows:
-        out.append({
-            "logical_name": r.get("LogicalName") or "",
-            "schema_name": r.get("SchemaName") or "",
-            "key_attributes": r.get("KeyAttributes") or [],
-            "index_status": r.get("EntityKeyIndexStatus") or "",
-        })
+        out.append(
+            {
+                "logical_name": r.get("LogicalName") or "",
+                "schema_name": r.get("SchemaName") or "",
+                "key_attributes": r.get("KeyAttributes") or [],
+                "index_status": r.get("EntityKeyIndexStatus") or "",
+            }
+        )
     return out
 
 
@@ -918,6 +942,8 @@ def create_entity_key(
     created key starts with ``EntityKeyIndexStatus`` ``Pending``.
 
     Args:
+        backend: Connected Web API client used for the create request.
+        entity: Logical name of the entity to add the key to.
         schema_name: PascalCase with publisher prefix, e.g. ``new_Code``.
         key_attributes: Attribute logical names forming the key (1..n).
         display_name: UI label; defaults to ``schema_name``.
@@ -967,11 +993,13 @@ def create_entity_key(
         "DisplayName": label(display),
         "KeyAttributes": list(key_attributes),
     }
-    result = as_dict(backend.post(
-        f"EntityDefinitions(LogicalName='{entity}')/Keys",
-        json_body=body,
-        solution=solution,
-    ))
+    result = as_dict(
+        backend.post(
+            f"EntityDefinitions(LogicalName='{entity}')/Keys",
+            json_body=body,
+            solution=solution,
+        )
+    )
     if result.get("_dry_run"):
         result["_exists"] = exists
         result["would_skip"] = exists and if_exists == "skip"
@@ -1007,10 +1035,7 @@ def delete_entity_key(
     if not key:
         raise D365Error("key is required.")
     key_logical = key.lower()
-    path = (
-        f"EntityDefinitions(LogicalName='{entity}')"
-        f"/Keys(LogicalName='{key_logical}')"
-    )
+    path = f"EntityDefinitions(LogicalName='{entity}')/Keys(LogicalName='{key_logical}')"
     preview = backend.delete(path, solution=solution)
     if isinstance(preview, dict) and preview.get("_dry_run"):
         return {
@@ -1042,9 +1067,7 @@ def delete_entity_key(
 _DELETED_METADATA_FILTER_ALL = "Microsoft.Dynamics.CRM.DeletedMetadataFilters'All'"
 
 
-def _build_changes_query(
-    entities: list[str] | None, attributes: bool
-) -> dict[str, Any]:
+def _build_changes_query(entities: list[str] | None, attributes: bool) -> dict[str, Any]:
     """Build the EntityQueryExpression for :func:`metadata_changes`.
 
     Always selects entity ``SchemaName``/``DisplayName`` (``LogicalName``,

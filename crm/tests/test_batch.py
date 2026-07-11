@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 import pytest
@@ -41,19 +40,23 @@ class TestAssembly:
             {"method": "GET", "url": "contacts(00000000-0000-0000-0000-000000000001)"},
         ]
         body, content_type = _assemble_batch_body(
-            ops, transactional=True,
+            ops,
+            transactional=True,
         )
         assert content_type == "multipart/mixed; boundary=batch_batchXX"
         # GET parts only; no changeset wrapper.
-        assert body.count("--batch_batchXX") == 3   # 2 parts + closing
+        assert body.count("--batch_batchXX") == 3  # 2 parts + closing
         assert "GET accounts?$select=name HTTP/1.1" in body
         assert "multipart/mixed; boundary=changeset" not in body
 
     def test_single_changeset(self, profile, fixed_boundaries):
         ops = [
             {"method": "POST", "url": "accounts", "body": {"name": "a"}},
-            {"method": "PATCH", "url": "accounts(00000000-0000-0000-0000-000000000001)",
-             "body": {"name": "b"}},
+            {
+                "method": "PATCH",
+                "url": "accounts(00000000-0000-0000-0000-000000000001)",
+                "body": {"name": "b"},
+            },
         ]
         body, _ = _assemble_batch_body(ops, transactional=True)
         assert "multipart/mixed; boundary=changeset_csetXX" in body
@@ -68,12 +71,15 @@ class TestAssembly:
         ops = [
             {"method": "GET", "url": "accounts"},
             {"method": "POST", "url": "accounts", "body": {"name": "a"}},
-            {"method": "PATCH", "url": "accounts(00000000-0000-0000-0000-000000000001)",
-             "body": {"name": "b"}},
+            {
+                "method": "PATCH",
+                "url": "accounts(00000000-0000-0000-0000-000000000001)",
+                "body": {"name": "b"},
+            },
         ]
         body, _ = _assemble_batch_body(ops, transactional=True)
         # 1 GET part + 1 changeset part = 2 top-level parts.
-        assert body.count("--batch_batchXX") == 3   # 2 + closing
+        assert body.count("--batch_batchXX") == 3  # 2 + closing
         assert "multipart/mixed; boundary=changeset_csetXX" in body
         assert "GET accounts HTTP/1.1" in body
         assert "Content-ID: 1" in body
@@ -100,8 +106,11 @@ class TestAssembly:
     def test_non_transactional_flattens(self, profile, fixed_boundaries):
         ops = [
             {"method": "POST", "url": "accounts", "body": {"name": "a"}},
-            {"method": "PATCH", "url": "accounts(00000000-0000-0000-0000-000000000001)",
-             "body": {"name": "b"}},
+            {
+                "method": "PATCH",
+                "url": "accounts(00000000-0000-0000-0000-000000000001)",
+                "body": {"name": "b"},
+            },
         ]
         body, _ = _assemble_batch_body(ops, transactional=False)
         assert "boundary=changeset" not in body
@@ -117,23 +126,25 @@ class TestParseResponse:
         return text.encode("utf-8")
 
     def test_parses_two_top_level_gets(self):
-        body = self._build_response_body([
-            "Content-Type: application/http\r\n"
-            "Content-Transfer-Encoding: binary\r\n"
-            "\r\n"
-            "HTTP/1.1 200 OK\r\n"
-            "Content-Type: application/json\r\n"
-            "\r\n"
-            '{"value": [{"name": "a"}]}',
-
-            "Content-Type: application/http\r\n"
-            "Content-Transfer-Encoding: binary\r\n"
-            "\r\n"
-            "HTTP/1.1 200 OK\r\n"
-            "Content-Type: application/json\r\n"
-            "\r\n"
-            '{"value": [{"name": "b"}]}',
-        ], boundary="batchresp")
+        body = self._build_response_body(
+            [
+                "Content-Type: application/http\r\n"
+                "Content-Transfer-Encoding: binary\r\n"
+                "\r\n"
+                "HTTP/1.1 200 OK\r\n"
+                "Content-Type: application/json\r\n"
+                "\r\n"
+                '{"value": [{"name": "a"}]}',
+                "Content-Type: application/http\r\n"
+                "Content-Transfer-Encoding: binary\r\n"
+                "\r\n"
+                "HTTP/1.1 200 OK\r\n"
+                "Content-Type: application/json\r\n"
+                "\r\n"
+                '{"value": [{"name": "b"}]}',
+            ],
+            boundary="batchresp",
+        )
         ops = [
             {"method": "GET", "url": "accounts"},
             {"method": "GET", "url": "contacts"},
@@ -169,37 +180,47 @@ class TestParseResponse:
         body = self._build_response_body([cs_part], boundary="batchresp")
         ops = [
             {"method": "POST", "url": "accounts", "body": {"name": "a"}},
-            {"method": "PATCH", "url": "accounts(00000000-0000-0000-0000-000000000001)",
-             "body": {"name": "b"}},
+            {
+                "method": "PATCH",
+                "url": "accounts(00000000-0000-0000-0000-000000000001)",
+                "body": {"name": "b"},
+            },
         ]
         results = _parse_batch_response(body, "multipart/mixed; boundary=batchresp", ops)
         assert len(results) == 2
         assert results[0]["status"] == 204
         assert results[1]["status"] == 204
-        assert results[0]["headers"].get("OData-EntityId", "").endswith(
-            "accounts(00000000-0000-0000-0000-000000000001)"
+        assert (
+            results[0]["headers"]
+            .get("OData-EntityId", "")
+            .endswith("accounts(00000000-0000-0000-0000-000000000001)")
         )
 
     def test_parses_non_transactional_writes_at_top_level(self):
-        body = self._build_response_body([
-            "Content-Type: application/http\r\n"
-            "Content-Transfer-Encoding: binary\r\n"
-            "\r\n"
-            "HTTP/1.1 204 No Content\r\n"
-            "OData-EntityId: https://x/accounts(11111111-1111-1111-1111-111111111111)\r\n"
-            "\r\n",
-            "Content-Type: application/http\r\n"
-            "Content-Transfer-Encoding: binary\r\n"
-            "\r\n"
-            "HTTP/1.1 204 No Content\r\n"
-            "OData-EntityId: https://x/contacts(22222222-2222-2222-2222-222222222222)\r\n"
-            "\r\n",
-        ], boundary="batchresp")
+        body = self._build_response_body(
+            [
+                "Content-Type: application/http\r\n"
+                "Content-Transfer-Encoding: binary\r\n"
+                "\r\n"
+                "HTTP/1.1 204 No Content\r\n"
+                "OData-EntityId: https://x/accounts(11111111-1111-1111-1111-111111111111)\r\n"
+                "\r\n",
+                "Content-Type: application/http\r\n"
+                "Content-Transfer-Encoding: binary\r\n"
+                "\r\n"
+                "HTTP/1.1 204 No Content\r\n"
+                "OData-EntityId: https://x/contacts(22222222-2222-2222-2222-222222222222)\r\n"
+                "\r\n",
+            ],
+            boundary="batchresp",
+        )
         ops = [
             {"method": "POST", "url": "accounts", "body": {"name": "a"}},
             {"method": "POST", "url": "contacts", "body": {"firstname": "c"}},
         ]
-        results = _parse_batch_response(body, "multipart/mixed; boundary=batchresp", ops, transactional=False)
+        results = _parse_batch_response(
+            body, "multipart/mixed; boundary=batchresp", ops, transactional=False
+        )
         assert len(results) == 2
         assert results[0]["status"] == 204
         assert results[1]["status"] == 204
@@ -225,7 +246,10 @@ class TestParseResponse:
             {"method": "POST", "url": "accounts", "body": {"name": "a"}, "content_id": "acct1"},
         ]
         results = _parse_batch_response(
-            body, "multipart/mixed; boundary=batchresp", ops, transactional=True,
+            body,
+            "multipart/mixed; boundary=batchresp",
+            ops,
+            transactional=True,
         )
         assert results[0]["status"] == 204
         assert "accounts(11111111-1111-1111-1111-111111111111)" in (
@@ -261,7 +285,10 @@ class TestParseResponse:
             {"method": "POST", "url": "contacts", "body": {"name": "y"}, "content_id": "b"},
         ]
         results = _parse_batch_response(
-            body, "multipart/mixed; boundary=batchresp", ops, transactional=True,
+            body,
+            "multipart/mixed; boundary=batchresp",
+            ops,
+            transactional=True,
         )
         # Despite the response coming in cs-part order [b, a], results align to input ops by cid.
         assert "accounts(11111111-1111-1111-1111-111111111111)" in (
@@ -272,15 +299,18 @@ class TestParseResponse:
         )
 
     def test_error_populated_on_non_2xx_subpart(self):
-        body = self._build_response_body([
-            "Content-Type: application/http\r\n"
-            "Content-Transfer-Encoding: binary\r\n"
-            "\r\n"
-            "HTTP/1.1 404 Not Found\r\n"
-            "Content-Type: application/json\r\n"
-            "\r\n"
-            '{"error":{"code":"0x80040217","message":"Record not found"}}',
-        ], boundary="batchresp")
+        body = self._build_response_body(
+            [
+                "Content-Type: application/http\r\n"
+                "Content-Transfer-Encoding: binary\r\n"
+                "\r\n"
+                "HTTP/1.1 404 Not Found\r\n"
+                "Content-Type: application/json\r\n"
+                "\r\n"
+                '{"error":{"code":"0x80040217","message":"Record not found"}}',
+            ],
+            boundary="batchresp",
+        )
         ops = [{"method": "GET", "url": "accounts(00000000-0000-0000-0000-000000000099)"}]
         results = _parse_batch_response(body, "multipart/mixed; boundary=batchresp", ops)
         assert results[0]["status"] == 404
@@ -444,10 +474,14 @@ class TestBatchMethod:
                 status_code=404,
             )
             with pytest.raises(D365Error) as exc:
-                backend.batch([
-                    {"method": "DELETE",
-                     "url": "contacts(00000000-0000-0000-0000-000000000099)"},
-                ])
+                backend.batch(
+                    [
+                        {
+                            "method": "DELETE",
+                            "url": "contacts(00000000-0000-0000-0000-000000000099)",
+                        },
+                    ]
+                )
         assert "Does Not Exist" in str(exc.value)
         assert "--batchresponse" not in str(exc.value)
         assert exc.value.code == "0x80040217"
@@ -523,10 +557,14 @@ class TestBatchMethod:
                 status_code=404,
             )
             with pytest.raises(D365Error) as exc:
-                backend.batch([
-                    {"method": "DELETE",
-                     "url": "contacts(00000000-0000-0000-0000-000000000099)"},
-                ])
+                backend.batch(
+                    [
+                        {
+                            "method": "DELETE",
+                            "url": "contacts(00000000-0000-0000-0000-000000000099)",
+                        },
+                    ]
+                )
         assert long_msg in str(exc.value)
 
     def test_batch_validates_method(self, backend):
@@ -547,7 +585,9 @@ class TestBatchMethod:
         # Leading-slash URLs resolve against the host root (404), not the
         # service root — reject client-side with a bare-relative-path hint.
         with pytest.raises(D365Error, match="relative"):
-            backend.batch([{"method": "GET", "url": "/contacts(00000000-0000-0000-0000-000000000001)"}])
+            backend.batch(
+                [{"method": "GET", "url": "/contacts(00000000-0000-0000-0000-000000000001)"}]
+            )
 
     def test_batch_rejects_leading_slash_url_in_dry_run(self, profile):
         # Validation runs before the dry-run branch, so the check fires there too.
@@ -581,9 +621,11 @@ class TestBatchMethod:
                 f"{profile.api_base}$batch",
                 [
                     {"status_code": 429, "headers": {"Retry-After": "0"}, "text": ""},
-                    {"status_code": 200,
-                     "headers": {"Content-Type": "multipart/mixed; boundary=batchresp"},
-                     "content": resp_body.encode("utf-8")},
+                    {
+                        "status_code": 200,
+                        "headers": {"Content-Type": "multipart/mixed; boundary=batchresp"},
+                        "content": resp_body.encode("utf-8"),
+                    },
                 ],
             )
             results = backend.batch(ops)
@@ -593,7 +635,8 @@ class TestBatchMethod:
     def test_batch_caps_hostile_retry_after(self, backend, profile, fixed_boundaries, monkeypatch):
         """A huge server `Retry-After` on a batch 429 is capped at the profile's
         retry_max_delay — the same cap the single-request path applies via
-        _compute_delay — so a hostile header can't stall a run indefinitely (#704)."""
+        _compute_delay — so a hostile header can't stall a run indefinitely (#704).
+        """
         import time
 
         sleeps: list[float] = []
@@ -615,9 +658,11 @@ class TestBatchMethod:
                 f"{profile.api_base}$batch",
                 [
                     {"status_code": 429, "headers": {"Retry-After": huge}, "text": ""},
-                    {"status_code": 200,
-                     "headers": {"Content-Type": "multipart/mixed; boundary=batchresp"},
-                     "content": resp_body.encode("utf-8")},
+                    {
+                        "status_code": 200,
+                        "headers": {"Content-Type": "multipart/mixed; boundary=batchresp"},
+                        "content": resp_body.encode("utf-8"),
+                    },
                 ],
             )
             backend.batch([{"method": "GET", "url": "accounts"}])
@@ -652,10 +697,10 @@ class TestBatchMethod:
         assert preview[0]["error"] is None or preview[0]["error"] == "dry-run"
 
 
-
 class TestParseBatchFile:
     def test_parses_valid_list(self, tmp_path):
         from crm.core.batch import parse_batch_file
+
         p = tmp_path / "batch.json"
         p.write_text(
             '[{"method": "GET", "url": "accounts"}, '
@@ -669,6 +714,7 @@ class TestParseBatchFile:
 
     def test_rejects_non_list_root(self, tmp_path):
         from crm.core.batch import parse_batch_file
+
         p = tmp_path / "batch.json"
         p.write_text('{"method": "GET", "url": "x"}', encoding="utf-8")
         with pytest.raises(D365Error, match="list"):
@@ -676,6 +722,7 @@ class TestParseBatchFile:
 
     def test_rejects_invalid_method(self, tmp_path):
         from crm.core.batch import parse_batch_file
+
         p = tmp_path / "batch.json"
         p.write_text('[{"method": "POKE", "url": "x"}]', encoding="utf-8")
         with pytest.raises(D365Error, match="method"):
@@ -683,6 +730,7 @@ class TestParseBatchFile:
 
     def test_rejects_missing_url(self, tmp_path):
         from crm.core.batch import parse_batch_file
+
         p = tmp_path / "batch.json"
         p.write_text('[{"method": "GET"}]', encoding="utf-8")
         with pytest.raises(D365Error, match="url"):
@@ -690,6 +738,7 @@ class TestParseBatchFile:
 
     def test_rejects_body_on_get(self, tmp_path):
         from crm.core.batch import parse_batch_file
+
         p = tmp_path / "batch.json"
         p.write_text('[{"method": "GET", "url": "x", "body": {"a": 1}}]', encoding="utf-8")
         with pytest.raises(D365Error, match="body"):
@@ -699,20 +748,31 @@ class TestParseBatchFile:
 class TestBatchCLI:
     def test_continue_on_error_rejected_in_transactional_mode(self, tmp_path):
         from click.testing import CliRunner
+
         from crm import cli as crm_cli
+
         runner = CliRunner()
         p = tmp_path / "b.json"
         p.write_text('[{"method": "GET", "url": "accounts"}]', encoding="utf-8")
-        result = runner.invoke(crm_cli.cli, [
-            "batch", str(p), "--continue-on-error",
-        ])
+        result = runner.invoke(
+            crm_cli.cli,
+            [
+                "batch",
+                str(p),
+                "--continue-on-error",
+            ],
+        )
         assert result.exit_code != 0
-        assert "continue-on-error" in result.output.lower() or "transaction" in result.output.lower()
+        assert (
+            "continue-on-error" in result.output.lower() or "transaction" in result.output.lower()
+        )
 
     def test_batch_cli_accepts_output_flags(self, backend, monkeypatch, tmp_path):
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
         from click.testing import CliRunner
+
         from crm import cli as crm_cli
+
         runner = CliRunner()
         p = tmp_path / "b.json"
         p.write_text('[{"method": "GET", "url": "accounts"}]', encoding="utf-8")
@@ -738,9 +798,16 @@ class TestBatchCLI:
                 headers={"Content-Type": "multipart/mixed; boundary=batchresp"},
                 status_code=200,
             )
-            result = runner.invoke(crm_cli.cli, [
-                "--json", "batch", str(p), "-o", str(out_o),
-            ])
+            result = runner.invoke(
+                crm_cli.cli,
+                [
+                    "--json",
+                    "batch",
+                    str(p),
+                    "-o",
+                    str(out_o),
+                ],
+            )
         assert result.exit_code == 0, result.output
         assert out_o.exists()
 
@@ -753,9 +820,16 @@ class TestBatchCLI:
                 headers={"Content-Type": "multipart/mixed; boundary=batchresp"},
                 status_code=200,
             )
-            result = runner.invoke(crm_cli.cli, [
-                "--json", "batch", str(p), "--output", str(out_output),
-            ])
+            result = runner.invoke(
+                crm_cli.cli,
+                [
+                    "--json",
+                    "batch",
+                    str(p),
+                    "--output",
+                    str(out_output),
+                ],
+            )
         assert result.exit_code == 0, result.output
         assert out_output.exists()
 
@@ -763,10 +837,12 @@ class TestBatchCLI:
 class TestRenderBatchSummary:
     def test_empty_results(self):
         from crm.core.batch import render_batch_summary
+
         assert render_batch_summary([]) == {"total": 0, "success": 0, "failed": 0}
 
     def test_mixed_2xx_and_failure(self):
         from crm.core.batch import render_batch_summary
+
         results = [
             {"status": 200},
             {"status": 204},
@@ -779,18 +855,25 @@ class TestRenderBatchSummary:
 
     def test_status_300_counts_as_failed(self):
         from crm.core.batch import render_batch_summary
+
         assert render_batch_summary([{"status": 300}]) == {
-            "total": 1, "success": 0, "failed": 1,
+            "total": 1,
+            "success": 0,
+            "failed": 1,
         }
 
 
 class TestParseBatchFileRequiresBody:
-    @pytest.mark.parametrize("op", [
-        '{"method": "POST", "url": "accounts"}',
-        '{"method": "PATCH", "url": "accounts(1)"}',
-    ])
+    @pytest.mark.parametrize(
+        "op",
+        [
+            '{"method": "POST", "url": "accounts"}',
+            '{"method": "PATCH", "url": "accounts(1)"}',
+        ],
+    )
     def test_write_without_body_rejected(self, tmp_path, op):
         from crm.core.batch import parse_batch_file
+
         p = tmp_path / "b.json"
         p.write_text(f"[{op}]", encoding="utf-8")
         with pytest.raises(D365Error, match="requires a JSON object 'body'"):
@@ -800,12 +883,14 @@ class TestParseBatchFileRequiresBody:
 class TestParseBatchFileIOError:
     def test_missing_file_raises_d365error(self, tmp_path):
         from crm.core.batch import parse_batch_file
+
         with pytest.raises(D365Error, match="Could not read"):
             parse_batch_file(tmp_path / "missing.json")
 
     def test_invalid_json_raises_d365error(self, tmp_path):
         # lines 23-24: ValueError from json.loads on malformed JSON
         from crm.core.batch import parse_batch_file
+
         p = tmp_path / "bad.json"
         p.write_text("{not valid json", encoding="utf-8")
         with pytest.raises(D365Error, match="Could not parse"):
@@ -814,6 +899,7 @@ class TestParseBatchFileIOError:
     def test_op_not_a_dict_raises(self, tmp_path):
         # line 32: op is not a dict (e.g. a string in the list)
         from crm.core.batch import parse_batch_file
+
         p = tmp_path / "b.json"
         p.write_text('["not_an_object"]', encoding="utf-8")
         with pytest.raises(D365Error, match="expected an object"):
@@ -822,6 +908,7 @@ class TestParseBatchFileIOError:
     def test_missing_method_raises(self, tmp_path):
         # line 36: method is absent (None from op.get) → not isinstance(None, str)
         from crm.core.batch import parse_batch_file
+
         p = tmp_path / "b.json"
         p.write_text('[{"url": "accounts"}]', encoding="utf-8")
         with pytest.raises(D365Error, match="missing or invalid 'method'"):
@@ -830,6 +917,7 @@ class TestParseBatchFileIOError:
     def test_method_as_int_raises(self, tmp_path):
         # line 36: method present but not a string
         from crm.core.batch import parse_batch_file
+
         p = tmp_path / "b.json"
         p.write_text('[{"method": 1, "url": "accounts"}]', encoding="utf-8")
         with pytest.raises(D365Error, match="missing or invalid 'method'"):
@@ -852,6 +940,7 @@ class TestParseBatchFileIOError:
     def test_headers_non_dict_raises(self, tmp_path):
         # lines 61-62: headers present but not a dict
         from crm.core.batch import parse_batch_file
+
         p = tmp_path / "b.json"
         p.write_text('[{"method": "GET", "url": "x", "headers": "bad"}]', encoding="utf-8")
         with pytest.raises(D365Error, match="headers must be an object"):
@@ -860,6 +949,7 @@ class TestParseBatchFileIOError:
     def test_header_value_non_string_raises(self, tmp_path):
         # lines 65-69: header value is not a string
         from crm.core.batch import parse_batch_file
+
         p = tmp_path / "b.json"
         p.write_text(
             '[{"method": "GET", "url": "x", "headers": {"X-Custom": 123}}]',
@@ -871,6 +961,7 @@ class TestParseBatchFileIOError:
     def test_header_valid_passes_through(self, tmp_path):
         # line 70: valid headers stored in validated
         from crm.core.batch import parse_batch_file
+
         p = tmp_path / "b.json"
         p.write_text(
             '[{"method": "GET", "url": "x", "headers": {"Prefer": "odata.maxpagesize=100"}}]',
@@ -882,6 +973,7 @@ class TestParseBatchFileIOError:
     def test_content_id_bool_raises(self, tmp_path):
         # line 73-74: content_id is bool → rejected before int check
         from crm.core.batch import parse_batch_file
+
         p = tmp_path / "b.json"
         p.write_text('[{"method": "GET", "url": "x", "content_id": true}]', encoding="utf-8")
         with pytest.raises(D365Error, match="not bool"):
@@ -890,6 +982,7 @@ class TestParseBatchFileIOError:
     def test_content_id_empty_string_raises(self, tmp_path):
         # line 76-77: content_id is an empty string
         from crm.core.batch import parse_batch_file
+
         p = tmp_path / "b.json"
         p.write_text('[{"method": "GET", "url": "x", "content_id": ""}]', encoding="utf-8")
         with pytest.raises(D365Error, match="non-empty string"):
@@ -898,6 +991,7 @@ class TestParseBatchFileIOError:
     def test_content_id_non_positive_int_raises(self, tmp_path):
         # lines 80-81: content_id is int but <= 0
         from crm.core.batch import parse_batch_file
+
         p = tmp_path / "b.json"
         p.write_text('[{"method": "GET", "url": "x", "content_id": 0}]', encoding="utf-8")
         with pytest.raises(D365Error, match="must be positive"):
@@ -906,6 +1000,7 @@ class TestParseBatchFileIOError:
     def test_content_id_wrong_type_raises(self, tmp_path):
         # lines 83-86: content_id is a float (not str, not int, not bool)
         from crm.core.batch import parse_batch_file
+
         p = tmp_path / "b.json"
         p.write_text('[{"method": "GET", "url": "x", "content_id": 1.5}]', encoding="utf-8")
         with pytest.raises(D365Error, match="must be a string or int"):
@@ -914,6 +1009,7 @@ class TestParseBatchFileIOError:
     def test_content_id_valid_string_stored(self, tmp_path):
         # line 78: valid non-empty string content_id stored in output
         from crm.core.batch import parse_batch_file
+
         p = tmp_path / "b.json"
         p.write_text('[{"method": "GET", "url": "x", "content_id": "ref1"}]', encoding="utf-8")
         ops = parse_batch_file(p)
@@ -922,6 +1018,7 @@ class TestParseBatchFileIOError:
     def test_content_id_valid_positive_int_stored(self, tmp_path):
         # line 82: valid positive int content_id stored in output
         from crm.core.batch import parse_batch_file
+
         p = tmp_path / "b.json"
         p.write_text('[{"method": "GET", "url": "x", "content_id": 3}]', encoding="utf-8")
         ops = parse_batch_file(p)
@@ -962,11 +1059,7 @@ class TestParseResponseEdgeCases:
             '{"value": []}'
         )
         boundary = "batchresp"
-        text = (
-            f"--{boundary}\r\n{cs_part}\r\n"
-            f"--{boundary}\r\n{get_part}\r\n"
-            f"--{boundary}--\r\n"
-        )
+        text = f"--{boundary}\r\n{cs_part}\r\n--{boundary}\r\n{get_part}\r\n--{boundary}--\r\n"
         ops = [
             {"method": "POST", "url": "accounts", "body": {"name": "x"}},
             {"method": "GET", "url": "accounts"},
@@ -1017,11 +1110,7 @@ class TestParseResponseEdgeCases:
             "--cs2--"
         )
         boundary = "batchresp"
-        text = (
-            f"--{boundary}\r\n{cs_part1}\r\n"
-            f"--{boundary}\r\n{cs_part2}\r\n"
-            f"--{boundary}--\r\n"
-        )
+        text = f"--{boundary}\r\n{cs_part1}\r\n--{boundary}\r\n{cs_part2}\r\n--{boundary}--\r\n"
         # Only one write op, so only one changeset_group.
         ops = [{"method": "POST", "url": "accounts", "body": {"x": 1}}]
         results = _parse_batch_response(
@@ -1102,11 +1191,7 @@ class TestParseResponseEdgeCases:
         )
         boundary = "batchresp"
         # Two identical response parts but only one GET op.
-        text = (
-            f"--{boundary}\r\n{part}\r\n"
-            f"--{boundary}\r\n{part}\r\n"
-            f"--{boundary}--\r\n"
-        )
+        text = f"--{boundary}\r\n{part}\r\n--{boundary}\r\n{part}\r\n--{boundary}--\r\n"
         ops = [{"method": "GET", "url": "accounts"}]
         results = _parse_batch_response(
             text.encode("utf-8"), f"multipart/mixed; boundary={boundary}", ops
@@ -1159,21 +1244,17 @@ class TestParseResponseEdgeCases:
 def _json_batch_response(bodies: list[dict[str, Any]], boundary: str = "batchresp") -> bytes:
     """Multipart $batch response: one 200 application/json part per body."""
     import json as _json
+
     parts = [
         "Content-Type: application/http\r\n"
         "Content-Transfer-Encoding: binary\r\n"
         "\r\n"
         "HTTP/1.1 200 OK\r\n"
         "Content-Type: application/json\r\n"
-        "\r\n"
-        + _json.dumps(b)
+        "\r\n" + _json.dumps(b)
         for b in bodies
     ]
-    text = (
-        f"--{boundary}\r\n"
-        + f"\r\n--{boundary}\r\n".join(parts)
-        + f"\r\n--{boundary}--\r\n"
-    )
+    text = f"--{boundary}\r\n" + f"\r\n--{boundary}\r\n".join(parts) + f"\r\n--{boundary}--\r\n"
     return text.encode("utf-8")
 
 
@@ -1181,16 +1262,30 @@ class TestRunBatched:
     def test_chunks_into_ceil_n_over_size_posts(self, backend, profile):
         from crm.core.batch import run_batched
         from crm.utils.d365_types import BatchOperation
+
         hdr = {"Content-Type": "multipart/mixed; boundary=batchresp"}
-        ops: list[BatchOperation] = [
-            {"method": "GET", "url": f"accounts({i})"} for i in range(5)
-        ]
+        ops: list[BatchOperation] = [{"method": "GET", "url": f"accounts({i})"} for i in range(5)]
         with requests_mock.Mocker() as m:
-            m.post(profile.api_base + "$batch", [
-                {"content": _json_batch_response([{"i": 0}, {"i": 1}]), "headers": hdr, "status_code": 200},
-                {"content": _json_batch_response([{"i": 2}, {"i": 3}]), "headers": hdr, "status_code": 200},
-                {"content": _json_batch_response([{"i": 4}]), "headers": hdr, "status_code": 200},
-            ])
+            m.post(
+                profile.api_base + "$batch",
+                [
+                    {
+                        "content": _json_batch_response([{"i": 0}, {"i": 1}]),
+                        "headers": hdr,
+                        "status_code": 200,
+                    },
+                    {
+                        "content": _json_batch_response([{"i": 2}, {"i": 3}]),
+                        "headers": hdr,
+                        "status_code": 200,
+                    },
+                    {
+                        "content": _json_batch_response([{"i": 4}]),
+                        "headers": hdr,
+                        "status_code": 200,
+                    },
+                ],
+            )
             results = run_batched(backend, ops, chunk_size=2)
             posts = [r for r in m.request_history if r.method == "POST"]
         # ceil(5/2) = 3 $batch POSTs, results concatenated in input order.
@@ -1200,6 +1295,7 @@ class TestRunBatched:
 
     def test_empty_ops_issue_no_request(self, backend):
         from crm.core.batch import run_batched
+
         with requests_mock.Mocker() as m:
             results = run_batched(backend, [])
             assert m.request_history == []
@@ -1207,5 +1303,6 @@ class TestRunBatched:
 
     def test_non_positive_chunk_size_raises(self, backend):
         from crm.core.batch import run_batched
+
         with pytest.raises(D365Error, match="positive"):
             run_batched(backend, [], chunk_size=0)

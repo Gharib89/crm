@@ -73,7 +73,9 @@ def _map_blocker(record: dict[str, Any]) -> dict[str, Any]:
         "dependent_id": record.get("dependentcomponentobjectid"),
         "dependent_parent_id": record.get("dependentcomponentparentid"),
         "required_type": _component_label(record.get("requiredcomponenttype")),
-        "dependency_type": record.get("dependencytype"),  # raw int; no label map for dependencytype enum
+        "dependency_type": record.get(
+            "dependencytype"
+        ),  # raw int; no label map for dependencytype enum
     }
 
 
@@ -83,10 +85,7 @@ def _resolve_path(kind: str, target: str) -> str:
         return f"EntityDefinitions(LogicalName='{target}')"
     if kind == "attribute":
         entity, _, attr = target.partition(".")
-        return (
-            f"EntityDefinitions(LogicalName='{entity}')"
-            f"/Attributes(LogicalName='{attr}')"
-        )
+        return f"EntityDefinitions(LogicalName='{entity}')/Attributes(LogicalName='{attr}')"
     if kind == "optionset":
         return f"GlobalOptionSetDefinitions(Name='{target}')"
     if kind == "relationship":
@@ -108,8 +107,12 @@ def _get_metadata_id(backend: D365Backend, path: str, kind: str, target: str) ->
         return metadata_id
     except D365Error as exc:
         if exc.status == 404:
-            raise D365Error(f"{kind} {target!r} not found", code="NotFound",
-                            status=exc.status, response_body=exc.response_body) from exc
+            raise D365Error(
+                f"{kind} {target!r} not found",
+                code="NotFound",
+                status=exc.status,
+                response_body=exc.response_body,
+            ) from exc
         raise
 
 
@@ -165,9 +168,7 @@ def build_dependency_path(
     """
     func = _FUNCTION_NAMES.get(for_)
     if func is None:
-        raise D365Error(
-            f"unknown for_ {for_!r}; valid: {sorted(_FUNCTION_NAMES)}"
-        )
+        raise D365Error(f"unknown for_ {for_!r}; valid: {sorted(_FUNCTION_NAMES)}")
     return f"{func}(ObjectId={metadata_id},ComponentType={component_type})"
 
 
@@ -178,7 +179,10 @@ def build_uninstall_dependency_path(solution_unique_name: str) -> str:
     doubled per OData), unlike the unquoted GUID/int encoding in
     ``build_dependency_path``.
     """
-    return f"RetrieveDependenciesForUninstall(SolutionUniqueName={odata_literal(solution_unique_name)})"
+    return (
+        f"RetrieveDependenciesForUninstall(SolutionUniqueName="
+        f"{odata_literal(solution_unique_name)})"
+    )
 
 
 def dependencies_by_id(

@@ -47,8 +47,9 @@
 ## Formatting & linting
 
 Decision record: [Decide: coding standards for the repo](https://github.com/Gharib89/crm/issues/826);
-gates land via [Task: adopt ruff](https://github.com/Gharib89/crm/issues/828). Until that task
-merges, these are convention-only.
+gates landed via [Task: adopt ruff](https://github.com/Gharib89/crm/issues/828) — CI enforces
+`ruff check` + `ruff format --check`, and `pre-commit install` (once per clone) runs both on
+staged files so the format round-trip never reaches CI.
 
 - **ruff** is the single formatter and linter. `pyproject.toml` is the source of truth for the
   exact rule codes; the agreed shape:
@@ -56,7 +57,10 @@ merges, these are convention-only.
     - rule families `E`, `W`, `F`, `I` (import order), `B` (bugbear), `UP` (pyupgrade,
       `target-version = py39`), plus the format-only `D` subset above,
     - deliberately excluded: `S` (bandit — rejected in the tooling sweep), `C90` complexity,
-      `ANN` (pyright owns typing), `D1xx` docstring coverage.
+      `ANN` (pyright owns typing), `D1xx` docstring coverage,
+    - temporarily ignored: `D205` (blank line between docstring summary and description) —
+      adoption debt, not a rule rejection: ~560 pre-existing docstrings violate it; tracked as
+      a follow-up issue.
 - `ruff format` covers the whole tree — `crm/` including tests, plus `scripts/` — no carve-outs.
 - Noisy rules in tests get a scoped `per-file-ignores` entry, never a global rule removal.
 

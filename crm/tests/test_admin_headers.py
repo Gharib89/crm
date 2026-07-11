@@ -13,10 +13,10 @@ from crm.utils.d365_backend import (
     ConnectionProfile,
     D365Backend,
     D365Error,
-    classify_d365_error,
+    _resolve_bool_env,
     _resolve_caller_id,
     _resolve_caller_object_id,
-    _resolve_bool_env,
+    classify_d365_error,
 )
 
 
@@ -98,14 +98,19 @@ class TestBackendDefaults:
 class TestHeaderInjection:
     def _mock_ok(self, m, method, path, profile):
         url = f"{profile.api_base}{path}"
-        m.request(method, url, json={"value": []}, status_code=200,
-                  headers={"Content-Type": "application/json"})
+        m.request(
+            method,
+            url,
+            json={"value": []},
+            status_code=200,
+            headers={"Content-Type": "application/json"},
+        )
         return url
 
     def test_caller_id_kwarg_sets_mscrmcallerid(self, backend, profile):
         guid = "11111111-2222-3333-4444-555555555555"
         with requests_mock.Mocker() as m:
-            url = self._mock_ok(m, "GET", "accounts", profile)
+            self._mock_ok(m, "GET", "accounts", profile)
             backend.get("accounts", caller_id=guid)
             assert m.last_request.headers["MSCRMCallerID"] == guid
 
@@ -135,18 +140,30 @@ class TestHeaderInjection:
 
     def test_suppress_dup_detection_kwarg_sets_header(self, backend, profile):
         with requests_mock.Mocker() as m:
-            m.post(f"{profile.api_base}accounts", status_code=204,
-                   headers={"OData-EntityId": f"{profile.api_base}accounts(00000000-0000-0000-0000-000000000001)"})
-            backend.post("accounts", json_body={"name": "a"},
-                         suppress_duplicate_detection=True)
+            m.post(
+                f"{profile.api_base}accounts",
+                status_code=204,
+                headers={
+                    "OData-EntityId": (
+                        f"{profile.api_base}accounts(00000000-0000-0000-0000-000000000001)"
+                    )
+                },
+            )
+            backend.post("accounts", json_body={"name": "a"}, suppress_duplicate_detection=True)
             assert m.last_request.headers["MSCRM.SuppressDuplicateDetection"] == "true"
 
     def test_bypass_plugins_kwarg_sets_header(self, backend, profile):
         with requests_mock.Mocker() as m:
-            m.post(f"{profile.api_base}accounts", status_code=204,
-                   headers={"OData-EntityId": f"{profile.api_base}accounts(00000000-0000-0000-0000-000000000001)"})
-            backend.post("accounts", json_body={"name": "a"},
-                         bypass_custom_plugin_execution=True)
+            m.post(
+                f"{profile.api_base}accounts",
+                status_code=204,
+                headers={
+                    "OData-EntityId": (
+                        f"{profile.api_base}accounts(00000000-0000-0000-0000-000000000001)"
+                    )
+                },
+            )
+            backend.post("accounts", json_body={"name": "a"}, bypass_custom_plugin_execution=True)
             assert m.last_request.headers["MSCRM.BypassCustomPluginExecution"] == "true"
 
     def test_solution_kwarg_sets_header(self, backend, profile):
@@ -212,9 +229,11 @@ class TestHeaderInjection:
         b = D365Backend(profile, password="pw")
         with requests_mock.Mocker() as m:
             m.get(f"{profile.api_base}accounts", json={"value": []})
-            b.get("accounts",
-                  caller_id="",
-                  extra_headers={"MSCRMCallerID": "ffffffff-ffff-ffff-ffff-ffffffffffff"})
+            b.get(
+                "accounts",
+                caller_id="",
+                extra_headers={"MSCRMCallerID": "ffffffff-ffff-ffff-ffff-ffffffffffff"},
+            )
             assert "MSCRMCallerID" not in m.last_request.headers
 
     def test_suppress_false_pops_extra_headers_collision(self, monkeypatch, profile):
@@ -222,9 +241,12 @@ class TestHeaderInjection:
         b = D365Backend(profile, password="pw")
         with requests_mock.Mocker() as m:
             m.post(f"{profile.api_base}accounts", status_code=204)
-            b.post("accounts", json_body={"name": "a"},
-                   suppress_duplicate_detection=False,
-                   extra_headers={"MSCRM.SuppressDuplicateDetection": "true"})
+            b.post(
+                "accounts",
+                json_body={"name": "a"},
+                suppress_duplicate_detection=False,
+                extra_headers={"MSCRM.SuppressDuplicateDetection": "true"},
+            )
             assert "MSCRM.SuppressDuplicateDetection" not in m.last_request.headers
 
     def test_headers_absent_when_neither_kwarg_nor_env(self, monkeypatch, backend, profile):
@@ -290,9 +312,11 @@ class TestCallerObjectId:
         b = D365Backend(profile, password="pw")
         with requests_mock.Mocker() as m:
             m.get(f"{profile.api_base}accounts", json={"value": []})
-            b.get("accounts",
-                  caller_object_id="",
-                  extra_headers={"CallerObjectId": "ffffffff-ffff-ffff-ffff-ffffffffffff"})
+            b.get(
+                "accounts",
+                caller_object_id="",
+                extra_headers={"CallerObjectId": "ffffffff-ffff-ffff-ffff-ffffffffffff"},
+            )
             assert "CallerObjectId" not in m.last_request.headers
 
     def test_object_id_supersedes_differently_cased_extra_header(self, backend, profile):
@@ -372,10 +396,16 @@ class TestCallerObjectId:
         # An oauth profile with the systemuserid input still emits MSCRMCallerID:
         # header choice is independent of auth_scheme. Stub the oauth adapter so
         # construction never reaches msal/AAD.
-        monkeypatch.setattr(D365Backend, "_make_oauth_auth", lambda self, secret: (lambda r: r))
+        monkeypatch.setattr(D365Backend, "_make_oauth_auth", lambda self, secret: lambda r: r)
         oauth_profile = ConnectionProfile(
-            name="cloud", url="https://contoso.crm.dynamics.com", domain="", username="",
-            auth_scheme="oauth", tenant_id="tid", client_id="cid", verify_ssl=False,
+            name="cloud",
+            url="https://contoso.crm.dynamics.com",
+            domain="",
+            username="",
+            auth_scheme="oauth",
+            tenant_id="tid",
+            client_id="cid",
+            verify_ssl=False,
         )
         b = D365Backend(oauth_profile, password="secret")
         guid = "33333333-3333-3333-3333-333333333333"
@@ -396,13 +426,17 @@ class TestCallerObjectIdCli:
         for k in ("CRM_AS_USER", "CRM_AS_USER_OBJECT_ID"):
             monkeypatch.delenv(k, raising=False)
         from crm.core import session as session_mod
-        session_mod.save_profile(ConnectionProfile(
-            name="t", url=base, domain="CONTOSO", username="alice",
-            api_version="v9.2"))
+
+        session_mod.save_profile(
+            ConnectionProfile(
+                name="t", url=base, domain="CONTOSO", username="alice", api_version="v9.2"
+            )
+        )
         session_mod.save_profile_secret_plaintext("t", "pw")
 
     def test_cli_as_user_object_id_emits_callerobjectid(self, monkeypatch, tmp_path):
         from click.testing import CliRunner
+
         from crm.cli import cli
 
         base = "https://contoso.crm.dynamics.com"
@@ -412,17 +446,30 @@ class TestCallerObjectIdCli:
         rec = "55555555-5555-5555-5555-555555555555"
         with requests_mock.Mocker() as m:
             m.patch(f"{base}/api/data/v9.2/accounts({rec})", status_code=204)
-            result = CliRunner().invoke(cli, [
-                "--json", "--profile", "t", "entity", "update", "accounts", rec,
-                "--data", '{"name": "x"}', "--allow-create",
-                "--as-user-object-id", guid,
-            ])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "--profile",
+                    "t",
+                    "entity",
+                    "update",
+                    "accounts",
+                    rec,
+                    "--data",
+                    '{"name": "x"}',
+                    "--allow-create",
+                    "--as-user-object-id",
+                    guid,
+                ],
+            )
             assert result.exit_code == 0, result.output
             assert m.last_request.headers["CallerObjectId"] == guid
             assert "MSCRMCallerID" not in m.last_request.headers
 
     def test_cli_both_as_user_flags_collide(self, monkeypatch, tmp_path):
         from click.testing import CliRunner
+
         from crm.cli import cli
 
         base = "https://contoso.crm.dynamics.com"
@@ -431,12 +478,25 @@ class TestCallerObjectIdCli:
         rec = "55555555-5555-5555-5555-555555555555"
         with requests_mock.Mocker() as m:
             m.patch(f"{base}/api/data/v9.2/accounts({rec})", status_code=204)
-            result = CliRunner().invoke(cli, [
-                "--json", "--profile", "t", "entity", "update", "accounts", rec,
-                "--data", '{"name": "x"}', "--allow-create",
-                "--as-user", "11111111-1111-1111-1111-111111111111",
-                "--as-user-object-id", "22222222-2222-2222-2222-222222222222",
-            ])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "--profile",
+                    "t",
+                    "entity",
+                    "update",
+                    "accounts",
+                    rec,
+                    "--data",
+                    '{"name": "x"}',
+                    "--allow-create",
+                    "--as-user",
+                    "11111111-1111-1111-1111-111111111111",
+                    "--as-user-object-id",
+                    "22222222-2222-2222-2222-222222222222",
+                ],
+            )
             assert result.exit_code != 0
             assert m.call_count == 0
         assert "both" in result.output
@@ -445,8 +505,9 @@ class TestCallerObjectIdCli:
 class TestEtag:
     def test_etag_value_sets_if_match(self, backend, profile):
         with requests_mock.Mocker() as m:
-            m.patch(f"{profile.api_base}accounts(00000000-0000-0000-0000-000000000001)",
-                    status_code=204)
+            m.patch(
+                f"{profile.api_base}accounts(00000000-0000-0000-0000-000000000001)", status_code=204
+            )
             backend.patch(
                 "accounts(00000000-0000-0000-0000-000000000001)",
                 json_body={"name": "a"},
@@ -456,8 +517,9 @@ class TestEtag:
 
     def test_etag_star_sets_if_match_star(self, backend, profile):
         with requests_mock.Mocker() as m:
-            m.patch(f"{profile.api_base}accounts(00000000-0000-0000-0000-000000000001)",
-                    status_code=204)
+            m.patch(
+                f"{profile.api_base}accounts(00000000-0000-0000-0000-000000000001)", status_code=204
+            )
             backend.patch(
                 "accounts(00000000-0000-0000-0000-000000000001)",
                 json_body={"name": "a"},
@@ -467,8 +529,9 @@ class TestEtag:
 
     def test_etag_on_delete(self, backend, profile):
         with requests_mock.Mocker() as m:
-            m.delete(f"{profile.api_base}accounts(00000000-0000-0000-0000-000000000001)",
-                     status_code=204)
+            m.delete(
+                f"{profile.api_base}accounts(00000000-0000-0000-0000-000000000001)", status_code=204
+            )
             backend.delete(
                 "accounts(00000000-0000-0000-0000-000000000001)",
                 etag='W/"7"',
@@ -497,12 +560,14 @@ class TestEtag:
 class TestErrorMapping:
     def test_412_preserves_body_code(self, backend, profile):
         """412 with a D365 code in the body preserves it; PreconditionFailed is
-        the fallback only when the body carries no code (#232)."""
+        the fallback only when the body carries no code (#232).
+        """
         body = {"error": {"code": "0x80048d04", "message": "Concurrency mismatch"}}
         with requests_mock.Mocker() as m:
             m.patch(
                 f"{profile.api_base}accounts(00000000-0000-0000-0000-000000000001)",
-                status_code=412, json=body,
+                status_code=412,
+                json=body,
             )
             with pytest.raises(D365Error) as exc_info:
                 backend.patch(
@@ -519,7 +584,8 @@ class TestErrorMapping:
         with requests_mock.Mocker() as m:
             m.patch(
                 f"{profile.api_base}accounts(00000000-0000-0000-0000-000000000001)",
-                status_code=412, json=body,
+                status_code=412,
+                json=body,
             )
             with pytest.raises(D365Error) as exc_info:
                 backend.patch(
@@ -533,16 +599,20 @@ class TestErrorMapping:
     def test_403_priv_bypass_keeps_server_code_classifies_forbidden(self, backend, profile):
         """The fragile MissingPrivilege substring synthesis is subsumed by the
         taxonomy (#62): the server's own code is preserved and the 403
-        classifies as `forbidden` — no message-substring code rewriting."""
-        body = {"error": {
-            "code": "0x80040220",
-            "message": "User does not have prvBypassCustomPluginExecution privilege",
-        }}
+        classifies as `forbidden` — no message-substring code rewriting.
+        """
+        body = {
+            "error": {
+                "code": "0x80040220",
+                "message": "User does not have prvBypassCustomPluginExecution privilege",
+            }
+        }
         with requests_mock.Mocker() as m:
             m.post(f"{profile.api_base}accounts", status_code=403, json=body)
             with pytest.raises(D365Error) as exc_info:
-                backend.post("accounts", json_body={"name": "a"},
-                             bypass_custom_plugin_execution=True)
+                backend.post(
+                    "accounts", json_body={"name": "a"}, bypass_custom_plugin_execution=True
+                )
             assert exc_info.value.status == 403
             assert exc_info.value.code == "0x80040220"
             assert classify_d365_error(

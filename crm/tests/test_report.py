@@ -1,4 +1,5 @@
 """Core-layer tests for `crm report` (reports + reportcategory verbs)."""
+
 # pyright: basic
 from __future__ import annotations
 
@@ -58,14 +59,18 @@ class TestGetReport:
 
 class TestCreateReport:
     def _post_mock(self, m, backend):
-        m.post(_reports_url(backend), status_code=204,
-               headers={"OData-EntityId": backend.url_for(f"reports({_NEW_ID})")})
+        m.post(
+            _reports_url(backend),
+            status_code=204,
+            headers={"OData-EntityId": backend.url_for(f"reports({_NEW_ID})")},
+        )
 
     def test_rdl_upload_sets_bodytext_and_type(self, backend):
         with requests_mock.Mocker() as m:
             self._post_mock(m, backend)
             out = report.create_report(
-                backend, name="Sales", body="<Report/>", filename="sales.rdl")
+                backend, name="Sales", body="<Report/>", filename="sales.rdl"
+            )
         body = m.last_request.json()
         assert body["bodytext"] == "<Report/>"
         assert body["reporttypecode"] == report.RDL_REPORT
@@ -77,8 +82,7 @@ class TestCreateReport:
     def test_link_sets_bodyurl_and_type(self, backend):
         with requests_mock.Mocker() as m:
             self._post_mock(m, backend)
-            report.create_report(
-                backend, name="Link", url="https://example.com/r")
+            report.create_report(backend, name="Link", url="https://example.com/r")
         body = m.last_request.json()
         assert body["bodyurl"] == "https://example.com/r"
         assert body["reporttypecode"] == report.LINK_REPORT
@@ -88,14 +92,12 @@ class TestCreateReport:
         with pytest.raises(D365Error, match="exactly one"):
             report.create_report(backend, name="X")
         with pytest.raises(D365Error, match="exactly one"):
-            report.create_report(
-                backend, name="X", body="<Report/>", url="https://e.com/r")
+            report.create_report(backend, name="X", body="<Report/>", url="https://e.com/r")
 
     def test_org_sets_ispersonal_false(self, backend):
         with requests_mock.Mocker() as m:
             self._post_mock(m, backend)
-            report.create_report(
-                backend, name="Org", url="https://e.com/r", org=True)
+            report.create_report(backend, name="Org", url="https://e.com/r", org=True)
         assert m.last_request.json()["ispersonal"] is False
 
     def test_personal_by_default_omits_ispersonal(self, backend):
@@ -108,13 +110,11 @@ class TestCreateReport:
     def test_adds_solution_header(self, backend):
         with requests_mock.Mocker() as m:
             self._post_mock(m, backend)
-            report.create_report(
-                backend, name="S", url="https://e.com/r", solution="MySol")
+            report.create_report(backend, name="S", url="https://e.com/r", solution="MySol")
         assert m.last_request.headers.get("MSCRM.SolutionUniqueName") == "MySol"
 
     def test_dry_run_previews_resolved_body(self, dry_backend):
-        out = report.create_report(
-            dry_backend, name="Sales", body="<Report/>", org=True)
+        out = report.create_report(dry_backend, name="Sales", body="<Report/>", org=True)
         assert out["_dry_run"] is True
         assert out["would_create"]["entity_set"] == "reports"
         assert out["would_create"]["body"]["ispersonal"] is False
@@ -123,9 +123,11 @@ class TestCreateReport:
 
 class TestSetCategory:
     def _post_mock(self, m, backend):
-        m.post(_categories_url(backend), status_code=204,
-               headers={"OData-EntityId":
-                        backend.url_for(f"reportcategories({_RC_ID})")})
+        m.post(
+            _categories_url(backend),
+            status_code=204,
+            headers={"OData-EntityId": backend.url_for(f"reportcategories({_RC_ID})")},
+        )
 
     def test_creates_bound_category_record(self, backend):
         with requests_mock.Mocker() as m:
@@ -162,5 +164,4 @@ class TestDeleteReport:
 
     def test_delete_dry_run_previews(self, dry_backend):
         result = report.delete_report(dry_backend, _REPORT_ID)
-        assert result == {
-            "_dry_run": True, "would_delete": True, "reportid": _REPORT_ID}
+        assert result == {"_dry_run": True, "would_delete": True, "reportid": _REPORT_ID}

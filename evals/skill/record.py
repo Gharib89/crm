@@ -12,6 +12,7 @@ The run dir is **gitignored** (``evals/skill/runs/``): a trace carries live-org 
 and the org machine fingerprint, and this is a public repo. ``efficacy_review`` is filled
 in later by the review step; it is ``None`` on a freshly captured record.
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -131,7 +132,8 @@ def skill_sha(repo_root: str | Path | None = None) -> str:
     try:
         proc = subprocess.run(
             ["git", "-C", str(root), "rev-parse", "HEAD:crm/skills"],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
     except OSError:
         return "unknown"
@@ -141,7 +143,8 @@ def skill_sha(repo_root: str | Path | None = None) -> str:
     try:
         dirty = subprocess.run(
             ["git", "-C", str(root), "status", "--porcelain", "--", "crm/skills"],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
     except OSError:
         return sha

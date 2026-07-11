@@ -39,7 +39,8 @@ def runner():
 def _stub_account_name_map(monkeypatch):
     """Serve the accounts set→logical + primary-id resolution from a hand-built
     NameMap so the alt-key lookup exercises the shared cached seam (#261) without
-    a live EntityDefinitions GET (and without polluting the shared cache)."""
+    a live EntityDefinitions GET (and without polluting the shared cache).
+    """
     from crm.core import entity_names
 
     nm = entity_names.NameMap(
@@ -59,12 +60,14 @@ def test_parse_response_412_no_body_code_uses_fallback(profile):
 
     mock_resp = requests.Response()
     mock_resp.status_code = 412
-    mock_resp._content = json.dumps({
-        "error": {
-            "code": "",
-            "message": "Optimistic concurrency mismatch.",
+    mock_resp._content = json.dumps(
+        {
+            "error": {
+                "code": "",
+                "message": "Optimistic concurrency mismatch.",
+            }
         }
-    }).encode()
+    ).encode()
     mock_resp.headers["Content-Type"] = "application/json"
 
     with pytest.raises(D365Error) as exc_info:
@@ -79,6 +82,7 @@ def test_parse_response_412_no_body_code_uses_fallback(profile):
 def test_classify_0x80060892_is_duplicate_detected():
     """0x80060892 must be classified as duplicate_detected, not concurrency_conflict."""
     from crm.utils.d365_backend import classify_d365_error
+
     category, retryable = classify_d365_error(412, "0x80060892", "Entity Key violated.")
     assert category == "duplicate_detected"
     assert retryable is False
@@ -87,6 +91,7 @@ def test_classify_0x80060892_is_duplicate_detected():
 def test_classify_precondition_failed_is_concurrency_conflict():
     """Plain 412 with no D365 code still maps to concurrency_conflict."""
     from crm.utils.d365_backend import classify_d365_error
+
     category, retryable = classify_d365_error(412, "PreconditionFailed", "ETag mismatch")
     assert category == "concurrency_conflict"
 
@@ -103,9 +108,10 @@ def test_classify_precondition_failed_is_concurrency_conflict():
 
 def test_handle_d365_error_extra_meta_merged(backend):
     """extra_meta is merged into meta when calling _handle_d365_error."""
-    from crm.commands._helpers import _handle_d365_error
-    from click.testing import CliRunner
     import click
+    from click.testing import CliRunner
+
+    from crm.commands._helpers import _handle_d365_error
 
     runner = CliRunner()
     ctx = CLIContext()
@@ -128,28 +134,41 @@ def test_handle_d365_error_extra_meta_merged(backend):
 
 
 def test_entity_create_enriches_alternate_key_error(runner, backend, monkeypatch):
-    """entity create with duplicate-key error returns enriched meta.alternate_keys."""
+    """Entity create with duplicate-key error returns enriched meta.alternate_keys."""
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
     _stub_account_name_map(monkeypatch)
 
     with requests_mock.Mocker() as m:
         # The create POST fails with 412 + 0x80060892
-        m.post(backend.url_for("accounts"), status_code=412, json={
-            "error": {"code": "0x80060892", "message": "Entity Key violated."}
-        })
+        m.post(
+            backend.url_for("accounts"),
+            status_code=412,
+            json={"error": {"code": "0x80060892", "message": "Entity Key violated."}},
+        )
         # Keys fetch
-        m.get(backend.url_for("EntityDefinitions(LogicalName='account')/Keys"), json={"value": [
-            {
-                "LogicalName": "account_code_ak",
-                "SchemaName": "Account_Code_AK",
-                "KeyAttributes": ["accountnumber"],
-                "EntityKeyIndexStatus": "Active",
-            }
-        ]})
+        m.get(
+            backend.url_for("EntityDefinitions(LogicalName='account')/Keys"),
+            json={
+                "value": [
+                    {
+                        "LogicalName": "account_code_ak",
+                        "SchemaName": "Account_Code_AK",
+                        "KeyAttributes": ["accountnumber"],
+                        "EntityKeyIndexStatus": "Active",
+                    }
+                ]
+            },
+        )
         result = runner.invoke(
             cli,
-            ["--json", "entity", "create", "accounts",
-             "--data", json.dumps({"name": "Contoso", "accountnumber": "ACC-001"})],
+            [
+                "--json",
+                "entity",
+                "create",
+                "accounts",
+                "--data",
+                json.dumps({"name": "Contoso", "accountnumber": "ACC-001"}),
+            ],
             catch_exceptions=False,
         )
 
@@ -163,27 +182,41 @@ def test_entity_create_enriches_alternate_key_error(runner, backend, monkeypatch
 
 
 def test_entity_update_enriches_alternate_key_error(runner, backend, monkeypatch):
-    """entity update with duplicate-key error returns enriched meta.alternate_keys."""
+    """Entity update with duplicate-key error returns enriched meta.alternate_keys."""
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
     _stub_account_name_map(monkeypatch)
     record_id = "11111111-0000-0000-0000-000000000001"
 
     with requests_mock.Mocker() as m:
-        m.patch(backend.url_for(f"accounts({record_id})"), status_code=412, json={
-            "error": {"code": "0x80060892", "message": "Entity Key violated."}
-        })
-        m.get(backend.url_for("EntityDefinitions(LogicalName='account')/Keys"), json={"value": [
-            {
-                "LogicalName": "account_code_ak",
-                "SchemaName": "Account_Code_AK",
-                "KeyAttributes": ["accountnumber"],
-                "EntityKeyIndexStatus": "Active",
-            }
-        ]})
+        m.patch(
+            backend.url_for(f"accounts({record_id})"),
+            status_code=412,
+            json={"error": {"code": "0x80060892", "message": "Entity Key violated."}},
+        )
+        m.get(
+            backend.url_for("EntityDefinitions(LogicalName='account')/Keys"),
+            json={
+                "value": [
+                    {
+                        "LogicalName": "account_code_ak",
+                        "SchemaName": "Account_Code_AK",
+                        "KeyAttributes": ["accountnumber"],
+                        "EntityKeyIndexStatus": "Active",
+                    }
+                ]
+            },
+        )
         result = runner.invoke(
             cli,
-            ["--json", "entity", "update", "accounts", record_id,
-             "--data", json.dumps({"accountnumber": "ACC-001"})],
+            [
+                "--json",
+                "entity",
+                "update",
+                "accounts",
+                record_id,
+                "--data",
+                json.dumps({"accountnumber": "ACC-001"}),
+            ],
             catch_exceptions=False,
         )
 
@@ -194,55 +227,79 @@ def test_entity_update_enriches_alternate_key_error(runner, backend, monkeypatch
 
 
 def test_entity_update_rebinds_read_format_lookup_payload(runner, backend, monkeypatch):
-    """entity update accepts a read-format lookup value from get/query/export output."""
+    """Entity update accepts a read-format lookup value from get/query/export output."""
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
     record_id = "11111111-0000-0000-0000-000000000001"
     contact_id = "22222222-0000-0000-0000-000000000002"
 
     with requests_mock.Mocker() as m:
-        m.get(backend.url_for("EntityDefinitions"), json={"value": [
-            {
-                "LogicalName": "account",
-                "EntitySetName": "accounts",
-                "PrimaryIdAttribute": "accountid",
-                "PrimaryNameAttribute": "name",
-            },
-            {
-                "LogicalName": "contact",
-                "EntitySetName": "contacts",
-                "PrimaryIdAttribute": "contactid",
-                "PrimaryNameAttribute": "fullname",
-            },
-        ]})
         m.get(
-            backend.url_for("EntityDefinitions(LogicalName='account')/Attributes"),
-            json={"value": [
-                {"LogicalName": "name", "AttributeType": "String",
-                 "IsValidForCreate": True, "IsValidForUpdate": True},
-                {"LogicalName": "primarycontactid", "AttributeType": "Lookup",
-                 "IsValidForCreate": True, "IsValidForUpdate": True},
-            ]},
+            backend.url_for("EntityDefinitions"),
+            json={
+                "value": [
+                    {
+                        "LogicalName": "account",
+                        "EntitySetName": "accounts",
+                        "PrimaryIdAttribute": "accountid",
+                        "PrimaryNameAttribute": "name",
+                    },
+                    {
+                        "LogicalName": "contact",
+                        "EntitySetName": "contacts",
+                        "PrimaryIdAttribute": "contactid",
+                        "PrimaryNameAttribute": "fullname",
+                    },
+                ]
+            },
         )
         m.get(
-            backend.url_for(
-                "EntityDefinitions(LogicalName='account')/ManyToOneRelationships"
-            ),
-            json={"value": [
-                {
-                    "ReferencingAttribute": "primarycontactid",
-                    "ReferencedEntity": "contact",
-                    "ReferencingEntityNavigationPropertyName": "primarycontactid",
-                },
-            ]},
+            backend.url_for("EntityDefinitions(LogicalName='account')/Attributes"),
+            json={
+                "value": [
+                    {
+                        "LogicalName": "name",
+                        "AttributeType": "String",
+                        "IsValidForCreate": True,
+                        "IsValidForUpdate": True,
+                    },
+                    {
+                        "LogicalName": "primarycontactid",
+                        "AttributeType": "Lookup",
+                        "IsValidForCreate": True,
+                        "IsValidForUpdate": True,
+                    },
+                ]
+            },
+        )
+        m.get(
+            backend.url_for("EntityDefinitions(LogicalName='account')/ManyToOneRelationships"),
+            json={
+                "value": [
+                    {
+                        "ReferencingAttribute": "primarycontactid",
+                        "ReferencedEntity": "contact",
+                        "ReferencingEntityNavigationPropertyName": "primarycontactid",
+                    },
+                ]
+            },
         )
         m.patch(backend.url_for(f"accounts({record_id})"), status_code=204)
         result = runner.invoke(
             cli,
-            ["--json", "entity", "update", "accounts", record_id,
-             "--data", json.dumps({
-                 "name": "Contoso",
-                 "_primarycontactid_value": contact_id,
-             })],
+            [
+                "--json",
+                "entity",
+                "update",
+                "accounts",
+                record_id,
+                "--data",
+                json.dumps(
+                    {
+                        "name": "Contoso",
+                        "_primarycontactid_value": contact_id,
+                    }
+                ),
+            ],
             catch_exceptions=False,
         )
 
@@ -255,7 +312,7 @@ def test_entity_update_rebinds_read_format_lookup_payload(runner, backend, monke
 
 
 def test_entity_update_strips_synthetic_envelope_keys(runner, backend, monkeypatch):
-    """entity update tolerates crm's own JSON envelope id fields."""
+    """Entity update tolerates crm's own JSON envelope id fields."""
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
     record_id = "11111111-0000-0000-0000-000000000001"
 
@@ -263,12 +320,21 @@ def test_entity_update_strips_synthetic_envelope_keys(runner, backend, monkeypat
         m.patch(backend.url_for(f"accounts({record_id})"), status_code=204)
         result = runner.invoke(
             cli,
-            ["--json", "entity", "update", "accounts", record_id,
-             "--data", json.dumps({
-                 "_entity_id": record_id,
-                 "_entity_id_url": backend.url_for(f"accounts({record_id})"),
-                 "name": "Contoso",
-             })],
+            [
+                "--json",
+                "entity",
+                "update",
+                "accounts",
+                record_id,
+                "--data",
+                json.dumps(
+                    {
+                        "_entity_id": record_id,
+                        "_entity_id_url": backend.url_for(f"accounts({record_id})"),
+                        "name": "Contoso",
+                    }
+                ),
+            ],
             catch_exceptions=False,
         )
 
@@ -282,13 +348,14 @@ def test_entity_create_non_duplicate_key_error_not_enriched(runner, backend, mon
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
 
     with requests_mock.Mocker() as m:
-        m.post(backend.url_for("accounts"), status_code=403, json={
-            "error": {"code": "0x80048306", "message": "Access denied"}
-        })
+        m.post(
+            backend.url_for("accounts"),
+            status_code=403,
+            json={"error": {"code": "0x80048306", "message": "Access denied"}},
+        )
         result = runner.invoke(
             cli,
-            ["--json", "entity", "create", "accounts",
-             "--data", json.dumps({"name": "Contoso"})],
+            ["--json", "entity", "create", "accounts", "--data", json.dumps({"name": "Contoso"})],
             catch_exceptions=False,
         )
 
@@ -304,14 +371,21 @@ def test_entity_create_human_mode_no_enrichment_calls(runner, backend, monkeypat
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
 
     with requests_mock.Mocker() as m:
-        m.post(backend.url_for("accounts"), status_code=412, json={
-            "error": {"code": "0x80060892", "message": "Entity Key violated."}
-        })
+        m.post(
+            backend.url_for("accounts"),
+            status_code=412,
+            json={"error": {"code": "0x80060892", "message": "Entity Key violated."}},
+        )
         # No EntityDefinitions or Keys mock registered — if called they'd raise NoMockAddress
         result = runner.invoke(
             cli,
-            ["entity", "create", "accounts",  # no --json
-             "--data", json.dumps({"name": "Contoso"})],
+            [
+                "entity",
+                "create",
+                "accounts",  # no --json
+                "--data",
+                json.dumps({"name": "Contoso"}),
+            ],
             catch_exceptions=False,
         )
 
@@ -325,17 +399,20 @@ def test_entity_create_enrichment_failure_passes_original_error(runner, backend,
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
 
     with requests_mock.Mocker() as m:
-        m.post(backend.url_for("accounts"), status_code=412, json={
-            "error": {"code": "0x80060892", "message": "Entity Key violated."}
-        })
+        m.post(
+            backend.url_for("accounts"),
+            status_code=412,
+            json={"error": {"code": "0x80060892", "message": "Entity Key violated."}},
+        )
         # Entity definitions lookup also fails
-        m.get(backend.url_for("EntityDefinitions"), status_code=500, json={
-            "error": {"message": "Server error"}
-        })
+        m.get(
+            backend.url_for("EntityDefinitions"),
+            status_code=500,
+            json={"error": {"message": "Server error"}},
+        )
         result = runner.invoke(
             cli,
-            ["--json", "entity", "create", "accounts",
-             "--data", json.dumps({"name": "Contoso"})],
+            ["--json", "entity", "create", "accounts", "--data", json.dumps({"name": "Contoso"})],
             catch_exceptions=False,
         )
 

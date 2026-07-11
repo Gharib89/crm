@@ -5,6 +5,7 @@ Sends `If-None-Match: *` so a PATCH-upsert succeeds only when the record does
 NOT already exist; the server returns a 412 precondition failure otherwise. The
 create-only complement to `entity update --if-match`.
 """
+
 from __future__ import annotations
 
 import json
@@ -25,8 +26,7 @@ def _last_headers(backend):
 
 def test_upsert_if_none_match_sets_header(make_fake_backend):
     backend = make_fake_backend()
-    upsert(cast(D365Backend, backend), "accounts", GUID, {"name": "X"},
-           if_none_match=True)
+    upsert(cast(D365Backend, backend), "accounts", GUID, {"name": "X"}, if_none_match=True)
     assert _last_headers(backend)["If-None-Match"] == "*"
 
 
@@ -39,18 +39,30 @@ def test_upsert_without_if_none_match_sends_no_header(make_fake_backend):
 
 def test_upsert_by_key_if_none_match_sets_header(make_fake_backend):
     backend = make_fake_backend()
-    upsert_by_key(cast(D365Backend, backend), "contacts",
-                  {"emailaddress1": "a@b.com"}, {"emailaddress1": "a@b.com",
-                                                 "firstname": "A"},
-                  if_none_match=True)
+    upsert_by_key(
+        cast(D365Backend, backend),
+        "contacts",
+        {"emailaddress1": "a@b.com"},
+        {"emailaddress1": "a@b.com", "firstname": "A"},
+        if_none_match=True,
+    )
     assert _last_headers(backend)["If-None-Match"] == "*"
 
 
 def test_cli_upsert_if_none_match_threads_header(make_fake_backend, inject_backend):
     backend = inject_backend(make_fake_backend())
-    result = CliRunner().invoke(cli, [
-        "--json", "entity", "upsert", "accounts", GUID,
-        "--data", json.dumps({"name": "X"}), "--if-none-match",
-    ])
+    result = CliRunner().invoke(
+        cli,
+        [
+            "--json",
+            "entity",
+            "upsert",
+            "accounts",
+            GUID,
+            "--data",
+            json.dumps({"name": "X"}),
+            "--if-none-match",
+        ],
+    )
     assert result.exit_code == 0, result.output
     assert _last_headers(backend)["If-None-Match"] == "*"

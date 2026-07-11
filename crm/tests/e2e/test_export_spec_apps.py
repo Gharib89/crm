@@ -17,6 +17,7 @@ envelope, never a query). Projection needs the app *readable*, so the test polls
 for it and skips if the window has not cleared within the budget; on on-prem the
 app is retrievable right after publish, so the full round-trip runs there.
 """
+
 from __future__ import annotations
 
 import json
@@ -52,6 +53,7 @@ def _wait_app_readable(backend, app_id: str) -> bool:
             time.sleep(_APP_VISIBLE_POLL_S)
     return False
 
+
 from crm.tests.e2e.coverage import covers
 
 
@@ -83,17 +85,29 @@ def test_export_spec_apps_round_trip(
     # ephemeral solution (so export-spec's member walk finds the appmodule).
     setup = {
         "solution": {"unique_name": ephemeral_solution},
-        "apps": [{
-            "name": app_name,
-            "unique_name": app_unique,
-            "sitemap": {"areas": [{
-                "id": "xp_area", "title": "Export Area",
-                "groups": [{
-                    "id": "xp_group", "title": "Export Group",
-                    "subareas": [{"entity": ephemeral_entity, "title": "Export Rows"}],
-                }],
-            }]},
-        }],
+        "apps": [
+            {
+                "name": app_name,
+                "unique_name": app_unique,
+                "sitemap": {
+                    "areas": [
+                        {
+                            "id": "xp_area",
+                            "title": "Export Area",
+                            "groups": [
+                                {
+                                    "id": "xp_group",
+                                    "title": "Export Group",
+                                    "subareas": [
+                                        {"entity": ephemeral_entity, "title": "Export Rows"}
+                                    ],
+                                }
+                            ],
+                        }
+                    ]
+                },
+            }
+        ],
     }
     setup_path = tmp_path / "setup.json"
     setup_path.write_text(json.dumps(setup), encoding="utf-8")
@@ -103,13 +117,25 @@ def test_export_spec_apps_round_trip(
     # An org that rejects appmodule writes (on-prem v9.1) or is transiently
     # rate-limited (service-protection 429 exhausting the retry budget) is an
     # environmental skip, not a projection failure.
-    if r_setup.returncode != 0 and any(kw in combined.lower() for kw in (
-        "not supported", "privilege", "accessdenied", "403",
-        "businessnotfound", "notimplemented", "429", "too many requests",
-        "timed out", "service protection",
-    )):
-        pytest.skip(f"appmodule write unavailable on this org "
-                    f"(on-prem limitation / throttled): {combined[:400]}")
+    if r_setup.returncode != 0 and any(
+        kw in combined.lower()
+        for kw in (
+            "not supported",
+            "privilege",
+            "accessdenied",
+            "403",
+            "businessnotfound",
+            "notimplemented",
+            "429",
+            "too many requests",
+            "timed out",
+            "service protection",
+        )
+    ):
+        pytest.skip(
+            f"appmodule write unavailable on this org "
+            f"(on-prem limitation / throttled): {combined[:400]}"
+        )
     assert r_setup.returncode == 0, f"setup apply failed: {combined[:800]}"
     setup_data = json.loads(r_setup.stdout)["data"]
     assert not setup_data.get("failed"), f"setup apply failed: {setup_data}"
@@ -123,8 +149,10 @@ def test_export_spec_apps_round_trip(
     # by minutes. Wait for it, else skip — the export code is proven against
     # established apps; this window is a create-then-read-in-one-run artifact.
     if not _wait_app_readable(backend, app_applied[0]["appmoduleid"]):
-        pytest.skip("freshly-created appmodule not yet readable (Dataverse "
-                    "publish-before-read visibility lag); export needs it readable.")
+        pytest.skip(
+            "freshly-created appmodule not yet readable (Dataverse "
+            "publish-before-read visibility lag); export needs it readable."
+        )
 
     # 1) Project the solution: the app lands under a top-level apps: block with its
     #    Entity-backed sitemap (the seedable slice).
@@ -140,7 +168,8 @@ def test_export_spec_apps_round_trip(
     subs = {
         s["entity"]
         for area in block["sitemap"]["areas"]
-        for g in area["groups"] for s in g["subareas"]
+        for g in area["groups"]
+        for s in g["subareas"]
     }
     assert ephemeral_entity in subs, f"entity subarea not projected: {block}"
 

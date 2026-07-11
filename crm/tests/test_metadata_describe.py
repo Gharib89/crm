@@ -27,15 +27,12 @@ def _attrs_url(backend) -> str:
 
 
 def _m2o_url(backend) -> str:
-    return backend.url_for(
-        "EntityDefinitions(LogicalName='new_project')/ManyToOneRelationships"
-    )
+    return backend.url_for("EntityDefinitions(LogicalName='new_project')/ManyToOneRelationships")
 
 
 def _cast_url(backend, cast: str) -> str:
     return backend.url_for(
-        f"EntityDefinitions(LogicalName='new_project')/Attributes/"
-        f"Microsoft.Dynamics.CRM.{cast}"
+        f"EntityDefinitions(LogicalName='new_project')/Attributes/Microsoft.Dynamics.CRM.{cast}"
     )
 
 
@@ -58,13 +55,13 @@ def _mock_set_name_batch(m, backend, bodies):
         "\r\n"
         "HTTP/1.1 200 OK\r\n"
         "Content-Type: application/json\r\n"
-        "\r\n"
-        + json.dumps(b)
+        "\r\n" + json.dumps(b)
         for b in bodies
     ]
     text = "--batchresp\r\n" + "\r\n--batchresp\r\n".join(parts) + "\r\n--batchresp--\r\n"
-    return m.post(backend.url_for("$batch"), content=text.encode("utf-8"),
-                  headers=_BATCH_HDR, status_code=200)
+    return m.post(
+        backend.url_for("$batch"), content=text.encode("utf-8"), headers=_BATCH_HDR, status_code=200
+    )
 
 
 _ENTITY = {
@@ -88,12 +85,15 @@ def _attr(logical, attr_type, *, required="None", create=True, update=True):
 class TestTracer:
     def test_brief_carries_entity_set_primary_ids_and_writable_attrs(self, backend):
         from crm.core import metadata as meta
-        attrs = {"value": [
-            _attr("new_name", "String", required="ApplicationRequired"),
-            _attr("new_code", "String"),
-            # Not writable: system column valid for neither create nor update.
-            _attr("createdon", "DateTime", create=False, update=False),
-        ]}
+
+        attrs = {
+            "value": [
+                _attr("new_name", "String", required="ApplicationRequired"),
+                _attr("new_code", "String"),
+                # Not writable: system column valid for neither create nor update.
+                _attr("createdon", "DateTime", create=False, update=False),
+            ]
+        }
         with requests_mock.Mocker() as m:
             m.get(_entity_url(backend), json=_ENTITY)
             m.get(_attrs_url(backend), json=attrs)
@@ -115,22 +115,29 @@ class TestTracer:
 class TestLookupBindEnrichment:
     def test_lookup_exposes_bind_key_and_targets_with_set_name(self, backend):
         from crm.core import metadata as meta
-        attrs = {"value": [
-            _attr("new_name", "String", required="ApplicationRequired"),
-            _attr("new_accountid", "Lookup"),
-        ]}
+
+        attrs = {
+            "value": [
+                _attr("new_name", "String", required="ApplicationRequired"),
+                _attr("new_accountid", "Lookup"),
+            ]
+        }
         # All three names differ so asserting the wrong field cannot pass:
         #  - attribute logical name      : new_accountid
         #  - referencing nav prop (CORRECT, single-valued, case-preserved,
         #    used in @odata.bind)         : new_AccountId
         #  - referenced nav prop (WRONG, collection-valued on the OTHER entity,
         #    rejected by the server)      : new_project_AccountId
-        m2o = {"value": [{
-            "ReferencingAttribute": "new_accountid",
-            "ReferencedEntity": "account",
-            "ReferencingEntityNavigationPropertyName": "new_AccountId",
-            "ReferencedEntityNavigationPropertyName": "new_project_AccountId",
-        }]}
+        m2o = {
+            "value": [
+                {
+                    "ReferencingAttribute": "new_accountid",
+                    "ReferencedEntity": "account",
+                    "ReferencingEntityNavigationPropertyName": "new_AccountId",
+                    "ReferencedEntityNavigationPropertyName": "new_project_AccountId",
+                }
+            ]
+        }
         with requests_mock.Mocker() as m:
             m.get(_entity_url(backend), json=_ENTITY)
             m.get(_attrs_url(backend), json=attrs)
@@ -155,65 +162,93 @@ class TestLookupBindEnrichment:
         # issue #703: N distinct lookup targets → one $batch of set-name GETs,
         # not one GET per target, and no per-target sequential reads.
         from crm.core import metadata as meta
-        attrs = {"value": [
-            _attr("new_accountid", "Lookup"),
-            _attr("new_contactid", "Lookup"),
-        ]}
-        m2o = {"value": [
-            {"ReferencingAttribute": "new_accountid", "ReferencedEntity": "account",
-             "ReferencingEntityNavigationPropertyName": "new_AccountId",
-             "ReferencedEntityNavigationPropertyName": "new_project_AccountId"},
-            {"ReferencingAttribute": "new_contactid", "ReferencedEntity": "contact",
-             "ReferencingEntityNavigationPropertyName": "new_ContactId",
-             "ReferencedEntityNavigationPropertyName": "new_project_ContactId"},
-        ]}
+
+        attrs = {
+            "value": [
+                _attr("new_accountid", "Lookup"),
+                _attr("new_contactid", "Lookup"),
+            ]
+        }
+        m2o = {
+            "value": [
+                {
+                    "ReferencingAttribute": "new_accountid",
+                    "ReferencedEntity": "account",
+                    "ReferencingEntityNavigationPropertyName": "new_AccountId",
+                    "ReferencedEntityNavigationPropertyName": "new_project_AccountId",
+                },
+                {
+                    "ReferencingAttribute": "new_contactid",
+                    "ReferencedEntity": "contact",
+                    "ReferencingEntityNavigationPropertyName": "new_ContactId",
+                    "ReferencedEntityNavigationPropertyName": "new_project_ContactId",
+                },
+            ]
+        }
         with requests_mock.Mocker() as m:
             m.get(_entity_url(backend), json=_ENTITY)
             m.get(_attrs_url(backend), json=attrs)
             m.get(_m2o_url(backend), json=m2o)
-            _mock_set_name_batch(m, backend,
-                                 [{"EntitySetName": "accounts"},
-                                  {"EntitySetName": "contacts"}])
+            _mock_set_name_batch(
+                m, backend, [{"EntitySetName": "accounts"}, {"EntitySetName": "contacts"}]
+            )
             brief = meta.describe_entity(backend, "new_project")
-            batch_posts = [r for r in m.request_history
-                           if r.method == "POST" and r.url.endswith("$batch")]
-            target_gets = [r for r in m.request_history if r.method == "GET"
-                           and ("LogicalName='account'" in r.url
-                                or "LogicalName='contact'" in r.url)]
-        assert len(batch_posts) == 1        # one $batch, not one GET per target
-        assert target_gets == []            # no per-target sequential reads
+            batch_posts = [
+                r for r in m.request_history if r.method == "POST" and r.url.endswith("$batch")
+            ]
+            target_gets = [
+                r
+                for r in m.request_history
+                if r.method == "GET"
+                and ("LogicalName='account'" in r.url or "LogicalName='contact'" in r.url)
+            ]
+        assert len(batch_posts) == 1  # one $batch, not one GET per target
+        assert target_gets == []  # no per-target sequential reads
         by_name = {a["logical_name"]: a for a in brief["writable_attributes"]}
         assert by_name["new_accountid"]["targets"] == [
-            {"logical": "account", "set_name": "accounts"}]
+            {"logical": "account", "set_name": "accounts"}
+        ]
         assert by_name["new_contactid"]["targets"] == [
-            {"logical": "contact", "set_name": "contacts"}]
+            {"logical": "contact", "set_name": "contacts"}
+        ]
 
     def test_read_only_profile_resolves_set_name_directly_not_batch(self, profile):
         # $batch is refused on a read-only profile; describe's set-name reads must
         # fall back to direct GETs so the brief still builds (issue #703).
         import dataclasses
+
         from crm.core import metadata as meta
         from crm.utils.d365_backend import D365Backend
+
         ro = D365Backend(dataclasses.replace(profile, read_only=True), password="pw")
         attrs = {"value": [_attr("new_accountid", "Lookup")]}
-        m2o = {"value": [{
-            "ReferencingAttribute": "new_accountid", "ReferencedEntity": "account",
-            "ReferencingEntityNavigationPropertyName": "new_AccountId",
-            "ReferencedEntityNavigationPropertyName": "new_project_AccountId"}]}
+        m2o = {
+            "value": [
+                {
+                    "ReferencingAttribute": "new_accountid",
+                    "ReferencedEntity": "account",
+                    "ReferencingEntityNavigationPropertyName": "new_AccountId",
+                    "ReferencedEntityNavigationPropertyName": "new_project_AccountId",
+                }
+            ]
+        }
         with requests_mock.Mocker() as m:
             m.get(_entity_url(ro), json=_ENTITY)
             m.get(_attrs_url(ro), json=attrs)
             m.get(_m2o_url(ro), json=m2o)
-            m.get(ro.url_for("EntityDefinitions(LogicalName='account')"),
-                  json={"EntitySetName": "accounts"})
+            m.get(
+                ro.url_for("EntityDefinitions(LogicalName='account')"),
+                json={"EntitySetName": "accounts"},
+            )
             brief = meta.describe_entity(ro, "new_project")
             assert "POST" not in {r.method for r in m.request_history}  # no $batch
-        lookup = next(a for a in brief["writable_attributes"]
-                      if a["logical_name"] == "new_accountid")
+        lookup = next(
+            a for a in brief["writable_attributes"] if a["logical_name"] == "new_accountid"
+        )
         assert lookup["targets"] == [{"logical": "account", "set_name": "accounts"}]
 
     def test_describe_bind_key_round_trips_through_entity_validate(self, backend):
-        """describe's `bind_key` must be accepted by `entity create --validate`.
+        """Describe's `bind_key` must be accepted by `entity create --validate`.
 
         Both code paths key off `ReferencingEntityNavigationPropertyName`; this
         drives them off ONE mocked metadata view and asserts the bind key
@@ -225,16 +260,23 @@ class TestLookupBindEnrichment:
         """
         from crm.core import entity as ent
         from crm.core import metadata as meta
-        attrs = {"value": [
-            _attr("new_name", "String", required="ApplicationRequired"),
-            _attr("new_accountid", "Lookup"),
-        ]}
-        m2o = {"value": [{
-            "ReferencingAttribute": "new_accountid",
-            "ReferencedEntity": "account",
-            "ReferencingEntityNavigationPropertyName": "new_AccountId",
-            "ReferencedEntityNavigationPropertyName": "new_project_AccountId",
-        }]}
+
+        attrs = {
+            "value": [
+                _attr("new_name", "String", required="ApplicationRequired"),
+                _attr("new_accountid", "Lookup"),
+            ]
+        }
+        m2o = {
+            "value": [
+                {
+                    "ReferencingAttribute": "new_accountid",
+                    "ReferencedEntity": "account",
+                    "ReferencingEntityNavigationPropertyName": "new_AccountId",
+                    "ReferencedEntityNavigationPropertyName": "new_project_AccountId",
+                }
+            ]
+        }
         with requests_mock.Mocker() as m:
             m.get(_entity_url(backend), json=_ENTITY)
             m.get(_attrs_url(backend), json=attrs)
@@ -242,16 +284,19 @@ class TestLookupBindEnrichment:
             _mock_set_name_batch(m, backend, [{"EntitySetName": "accounts"}])
             brief = meta.describe_entity(backend, "new_project")
             lookup = next(
-                a for a in brief["writable_attributes"]
-                if a["logical_name"] == "new_accountid"
+                a for a in brief["writable_attributes"] if a["logical_name"] == "new_accountid"
             )
             # Set-name resolution for validate's entity-set -> logical lookup.
             m.get(
                 backend.url_for("EntityDefinitions"),
-                json={"value": [{
-                    "LogicalName": "new_project",
-                    "EntitySetName": "new_projects",
-                }]},
+                json={
+                    "value": [
+                        {
+                            "LogicalName": "new_project",
+                            "EntitySetName": "new_projects",
+                        }
+                    ]
+                },
             )
             payload = {lookup["bind_key"]: "/accounts(00000000-0000-0000-0000-000000000000)"}
             result = ent.validate_payload(backend, "new_projects", payload)
@@ -262,19 +307,26 @@ class TestLookupBindEnrichment:
 class TestPicklistLocalOptions:
     def test_local_picklist_exposes_inline_options(self, backend):
         from crm.core import metadata as meta
-        attrs = {"value": [
-            _attr("new_name", "String", required="ApplicationRequired"),
-            _attr("new_stage", "Picklist"),
-        ]}
-        picklists = {"value": [{
-            "LogicalName": "new_stage",
-            "OptionSet": {
-                "MetadataId": "55555555-5555-5555-5555-555555555555",
-                "IsGlobal": False,
-                "Options": [_opt(1, "New"), _opt(2, "Done")],
-            },
-            "GlobalOptionSet": None,
-        }]}
+
+        attrs = {
+            "value": [
+                _attr("new_name", "String", required="ApplicationRequired"),
+                _attr("new_stage", "Picklist"),
+            ]
+        }
+        picklists = {
+            "value": [
+                {
+                    "LogicalName": "new_stage",
+                    "OptionSet": {
+                        "MetadataId": "55555555-5555-5555-5555-555555555555",
+                        "IsGlobal": False,
+                        "Options": [_opt(1, "New"), _opt(2, "Done")],
+                    },
+                    "GlobalOptionSet": None,
+                }
+            ]
+        }
         with requests_mock.Mocker() as m:
             m.get(_entity_url(backend), json=_ENTITY)
             m.get(_attrs_url(backend), json=attrs)
@@ -293,27 +345,31 @@ class TestPicklistLocalOptions:
 class TestPicklistGlobalOptionSet:
     def test_global_bound_picklist_emits_options_and_optionset_id(self, backend):
         from crm.core import metadata as meta
+
         attrs = {"value": [_attr("new_priority", "Picklist")]}
         # Global-bound: OptionSet is null, GlobalOptionSet carries the options
         # AND the MetadataId GUID (on-prem 9.1 needs the GUID to bind on create).
         gos_id = "99999999-9999-9999-9999-999999999999"
-        picklists = {"value": [{
-            "LogicalName": "new_priority",
-            "OptionSet": None,
-            "GlobalOptionSet": {
-                "MetadataId": gos_id,
-                "IsGlobal": True,
-                "Options": [_opt(10, "Low"), _opt(20, "High")],
-            },
-        }]}
+        picklists = {
+            "value": [
+                {
+                    "LogicalName": "new_priority",
+                    "OptionSet": None,
+                    "GlobalOptionSet": {
+                        "MetadataId": gos_id,
+                        "IsGlobal": True,
+                        "Options": [_opt(10, "Low"), _opt(20, "High")],
+                    },
+                }
+            ]
+        }
         with requests_mock.Mocker() as m:
             m.get(_entity_url(backend), json=_ENTITY)
             m.get(_attrs_url(backend), json=attrs)
             m.get(_cast_url(backend, "PicklistAttributeMetadata"), json=picklists)
             brief = meta.describe_entity(backend, "new_project")
 
-        prio = {a["logical_name"]: a
-                for a in brief["writable_attributes"]}["new_priority"]
+        prio = {a["logical_name"]: a for a in brief["writable_attributes"]}["new_priority"]
         assert prio["options"] == [
             {"value": 10, "label": "Low"},
             {"value": 20, "label": "High"},
@@ -324,18 +380,29 @@ class TestPicklistGlobalOptionSet:
 class TestStateStatusOptions:
     def test_state_and_status_carry_inline_options(self, backend):
         from crm.core import metadata as meta
-        attrs = {"value": [
-            _attr("statecode", "State"),
-            _attr("statuscode", "Status"),
-        ]}
-        states = {"value": [{
-            "LogicalName": "statecode",
-            "OptionSet": {"Options": [_opt(0, "Active"), _opt(1, "Inactive")]},
-        }]}
-        statuses = {"value": [{
-            "LogicalName": "statuscode",
-            "OptionSet": {"Options": [_opt(1, "Active"), _opt(2, "Inactive")]},
-        }]}
+
+        attrs = {
+            "value": [
+                _attr("statecode", "State"),
+                _attr("statuscode", "Status"),
+            ]
+        }
+        states = {
+            "value": [
+                {
+                    "LogicalName": "statecode",
+                    "OptionSet": {"Options": [_opt(0, "Active"), _opt(1, "Inactive")]},
+                }
+            ]
+        }
+        statuses = {
+            "value": [
+                {
+                    "LogicalName": "statuscode",
+                    "OptionSet": {"Options": [_opt(1, "Active"), _opt(2, "Inactive")]},
+                }
+            ]
+        }
         with requests_mock.Mocker() as m:
             m.get(_entity_url(backend), json=_ENTITY)
             m.get(_attrs_url(backend), json=attrs)
@@ -360,15 +427,15 @@ class TestCommand:
 
     def test_describe_emits_brief_via_pure_gets(self, monkeypatch, backend):
         self._stub(monkeypatch, backend)
-        attrs = {"value": [
-            _attr("new_name", "String", required="ApplicationRequired"),
-        ]}
+        attrs = {
+            "value": [
+                _attr("new_name", "String", required="ApplicationRequired"),
+            ]
+        }
         with requests_mock.Mocker() as m:
             m.get(_entity_url(backend), json=_ENTITY)
             m.get(_attrs_url(backend), json=attrs)
-            result = CliRunner().invoke(
-                cli, ["--json", "metadata", "describe", "new_project"]
-            )
+            result = CliRunner().invoke(cli, ["--json", "metadata", "describe", "new_project"])
             # The brief is built from read-only GETs alone.
             assert {r.method for r in m.request_history} == {"GET"}
         assert result.exit_code == 0, result.output
@@ -392,8 +459,7 @@ class TestPicklistMetaOptions:
 
     def _attr_info_url(self, backend) -> str:
         return backend.url_for(
-            "EntityDefinitions(LogicalName='account')"
-            "/Attributes(LogicalName='industrycode')"
+            "EntityDefinitions(LogicalName='account')/Attributes(LogicalName='industrycode')"
         )
 
     def _picklist_url(self, backend) -> str:
@@ -411,8 +477,10 @@ class TestPicklistMetaOptions:
             "GlobalOptionSet": None,
         }
         with requests_mock.Mocker() as m:
-            m.get(self._attr_info_url(backend),
-                  json={"LogicalName": "industrycode", "AttributeType": "Picklist"})
+            m.get(
+                self._attr_info_url(backend),
+                json={"LogicalName": "industrycode", "AttributeType": "Picklist"},
+            )
             m.get(self._picklist_url(backend), json=raw)
             result = CliRunner().invoke(
                 cli, ["--json", "metadata", "picklist", "account", "industrycode"]
@@ -436,8 +504,10 @@ class TestPicklistMetaOptions:
             "GlobalOptionSet": {"Options": [_opt(10, "Low"), _opt(20, "High")]},
         }
         with requests_mock.Mocker() as m:
-            m.get(self._attr_info_url(backend),
-                  json={"LogicalName": "industrycode", "AttributeType": "Picklist"})
+            m.get(
+                self._attr_info_url(backend),
+                json={"LogicalName": "industrycode", "AttributeType": "Picklist"},
+            )
             m.get(self._picklist_url(backend), json=raw)
             result = CliRunner().invoke(
                 cli, ["--json", "metadata", "picklist", "account", "industrycode"]
@@ -456,8 +526,7 @@ class TestPicklistTableLabels:
 
     def _attr_info_url(self, backend) -> str:
         return backend.url_for(
-            "EntityDefinitions(LogicalName='account')"
-            "/Attributes(LogicalName='industrycode')"
+            "EntityDefinitions(LogicalName='account')/Attributes(LogicalName='industrycode')"
         )
 
     def _picklist_url(self, backend) -> str:
@@ -473,18 +542,20 @@ class TestPicklistTableLabels:
         # table branch previously rendered this blank; it must now resolve it.
         raw = {
             "LogicalName": "industrycode",
-            "OptionSet": {"Options": [
-                {"Value": 5, "Label": {"LocalizedLabels": [{"Label": "Localized Only"}]}},
-            ]},
+            "OptionSet": {
+                "Options": [
+                    {"Value": 5, "Label": {"LocalizedLabels": [{"Label": "Localized Only"}]}},
+                ]
+            },
             "GlobalOptionSet": None,
         }
         with requests_mock.Mocker() as m:
-            m.get(self._attr_info_url(backend),
-                  json={"LogicalName": "industrycode", "AttributeType": "Picklist"})
-            m.get(self._picklist_url(backend), json=raw)
-            result = CliRunner().invoke(
-                cli, ["metadata", "picklist", "account", "industrycode"]
+            m.get(
+                self._attr_info_url(backend),
+                json={"LogicalName": "industrycode", "AttributeType": "Picklist"},
             )
+            m.get(self._picklist_url(backend), json=raw)
+            result = CliRunner().invoke(cli, ["metadata", "picklist", "account", "industrycode"])
         assert result.exit_code == 0, result.output
         assert "Localized Only" in result.output
 
@@ -545,9 +616,7 @@ class TestGetOptionsetMetaOptions:
                 backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
                 json=raw,
             )
-            result = CliRunner().invoke(
-                cli, ["metadata", "get-optionset", "new_priority"]
-            )
+            result = CliRunner().invoke(cli, ["metadata", "get-optionset", "new_priority"])
         assert result.exit_code == 0, result.output
         # The flattened-options repr is emitted only via the meta status line.
         assert "{'value': 1, 'label': 'Low'}" not in result.output
@@ -562,15 +631,19 @@ class TestSuggestLogicalName:
 
     def _filter_url(self, backend, set_name: str) -> str:
         import urllib.parse
+
         filt = f"EntitySetName eq '{set_name}'"
-        params = urllib.parse.urlencode({
-            "$select": "LogicalName,EntitySetName",
-            "$filter": filt,
-        })
+        params = urllib.parse.urlencode(
+            {
+                "$select": "LogicalName,EntitySetName",
+                "$filter": filt,
+            }
+        )
         return backend.url_for("EntityDefinitions") + "?" + params
 
     def test_exact_set_name_match_returns_logical_name(self, backend):
         from crm.core.metadata import suggest_logical_name
+
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("EntityDefinitions"),
@@ -583,12 +656,15 @@ class TestSuggestLogicalName:
 
     def test_fuzzy_match_returns_close_logical_name(self, backend):
         from crm.core.metadata import suggest_logical_name
+
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("EntityDefinitions"),
-                json={"value": [
-                    {"LogicalName": "webresource", "EntitySetName": "webresourceset"},
-                ]},
+                json={
+                    "value": [
+                        {"LogicalName": "webresource", "EntitySetName": "webresourceset"},
+                    ]
+                },
             )
             result = suggest_logical_name(backend, "webresources")
         assert result is not None
@@ -597,20 +673,23 @@ class TestSuggestLogicalName:
 
     def test_no_match_returns_none(self, backend):
         from crm.core.metadata import suggest_logical_name
+
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("EntityDefinitions"),
-                json={"value": [
-                    {"LogicalName": "account", "EntitySetName": "accounts"},
-                    {"LogicalName": "contact", "EntitySetName": "contacts"},
-                ]},
+                json={
+                    "value": [
+                        {"LogicalName": "account", "EntitySetName": "accounts"},
+                        {"LogicalName": "contact", "EntitySetName": "contacts"},
+                    ]
+                },
             )
             result = suggest_logical_name(backend, "zzzznotanentity")
         assert result is None
 
     def test_recovery_get_raises_returns_none(self, backend):
         from crm.core.metadata import suggest_logical_name
-        from crm.utils.d365_backend import D365Error
+
         with requests_mock.Mocker() as m:
             m.get(backend.url_for("EntityDefinitions"), status_code=500)
             result = suggest_logical_name(backend, "accounts")
@@ -619,13 +698,16 @@ class TestSuggestLogicalName:
     def test_exact_set_wins_over_fuzzy_when_both_match(self, backend):
         """EntitySetName exact match takes priority over any fuzzy hit."""
         from crm.core.metadata import suggest_logical_name
+
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("EntityDefinitions"),
-                json={"value": [
-                    {"LogicalName": "account", "EntitySetName": "accounts"},
-                    {"LogicalName": "accountbase", "EntitySetName": "accountbaseset"},
-                ]},
+                json={
+                    "value": [
+                        {"LogicalName": "account", "EntitySetName": "accounts"},
+                        {"LogicalName": "accountbase", "EntitySetName": "accountbaseset"},
+                    ]
+                },
             )
             result = suggest_logical_name(backend, "accounts")
         assert result is not None
@@ -650,9 +732,14 @@ class TestDescribeHint:
         self._stub(monkeypatch, backend)
         with requests_mock.Mocker() as m:
             m.get(self._entity_url(backend, "accounts"), status_code=404)
-            m.get(self._list_url(backend), json={"value": [
-                {"LogicalName": "account", "EntitySetName": "accounts"},
-            ]})
+            m.get(
+                self._list_url(backend),
+                json={
+                    "value": [
+                        {"LogicalName": "account", "EntitySetName": "accounts"},
+                    ]
+                },
+            )
             # attrs GET must NOT be called (404 short-circuits)
             result = CliRunner().invoke(cli, ["--json", "metadata", "describe", "accounts"])
         assert result.exit_code == 1, result.output
@@ -667,12 +754,15 @@ class TestDescribeHint:
         self._stub(monkeypatch, backend)
         with requests_mock.Mocker() as m:
             m.get(self._entity_url(backend, "webresources"), status_code=404)
-            m.get(self._list_url(backend), json={"value": [
-                {"LogicalName": "webresource", "EntitySetName": "webresourceset"},
-            ]})
-            result = CliRunner().invoke(
-                cli, ["--json", "metadata", "describe", "webresources"]
+            m.get(
+                self._list_url(backend),
+                json={
+                    "value": [
+                        {"LogicalName": "webresource", "EntitySetName": "webresourceset"},
+                    ]
+                },
             )
+            result = CliRunner().invoke(cli, ["--json", "metadata", "describe", "webresources"])
         assert result.exit_code == 1, result.output
         env = json.loads(result.output)
         assert env["ok"] is False
@@ -683,12 +773,15 @@ class TestDescribeHint:
         self._stub(monkeypatch, backend)
         with requests_mock.Mocker() as m:
             m.get(self._entity_url(backend, "zzzznotanentity"), status_code=404)
-            m.get(self._list_url(backend), json={"value": [
-                {"LogicalName": "account", "EntitySetName": "accounts"},
-            ]})
-            result = CliRunner().invoke(
-                cli, ["--json", "metadata", "describe", "zzzznotanentity"]
+            m.get(
+                self._list_url(backend),
+                json={
+                    "value": [
+                        {"LogicalName": "account", "EntitySetName": "accounts"},
+                    ]
+                },
             )
+            result = CliRunner().invoke(cli, ["--json", "metadata", "describe", "zzzznotanentity"])
         assert result.exit_code == 1, result.output
         env = json.loads(result.output)
         assert env["ok"] is False
@@ -697,23 +790,37 @@ class TestDescribeHint:
     def test_happy_path_no_recovery_get(self, monkeypatch, backend):
         """`metadata describe account` success → no recovery GET fired."""
         self._stub(monkeypatch, backend)
-        attrs = {"value": [
-            {"LogicalName": "name", "AttributeType": "String",
-             "RequiredLevel": {"Value": "None"},
-             "IsValidForCreate": True, "IsValidForUpdate": True},
-        ]}
+        attrs = {
+            "value": [
+                {
+                    "LogicalName": "name",
+                    "AttributeType": "String",
+                    "RequiredLevel": {"Value": "None"},
+                    "IsValidForCreate": True,
+                    "IsValidForUpdate": True,
+                },
+            ]
+        }
         with requests_mock.Mocker() as m:
-            m.get(self._entity_url(backend, "account"), json={
-                "LogicalName": "account", "EntitySetName": "accounts",
-                "PrimaryIdAttribute": "accountid", "PrimaryNameAttribute": "name",
-            })
+            m.get(
+                self._entity_url(backend, "account"),
+                json={
+                    "LogicalName": "account",
+                    "EntitySetName": "accounts",
+                    "PrimaryIdAttribute": "accountid",
+                    "PrimaryNameAttribute": "name",
+                },
+            )
             m.get(
                 backend.url_for("EntityDefinitions(LogicalName='account')/Attributes"),
                 json=attrs,
             )
             result = CliRunner().invoke(cli, ["--json", "metadata", "describe", "account"])
-            list_calls = [r for r in m.request_history
-                          if r.url == self._list_url(backend) + "?$select=LogicalName%2CEntitySetName"]
+            list_calls = [
+                r
+                for r in m.request_history
+                if r.url == self._list_url(backend) + "?$select=LogicalName%2CEntitySetName"
+            ]
         assert result.exit_code == 0, result.output
         assert list_calls == []
 
@@ -723,9 +830,7 @@ class TestDescribeHint:
         with requests_mock.Mocker() as m:
             m.get(self._entity_url(backend, "accounts"), status_code=404)
             m.get(self._list_url(backend), status_code=500)
-            result = CliRunner().invoke(
-                cli, ["--json", "metadata", "describe", "accounts"]
-            )
+            result = CliRunner().invoke(cli, ["--json", "metadata", "describe", "accounts"])
         assert result.exit_code == 1, result.output
         env = json.loads(result.output)
         assert env["ok"] is False
