@@ -94,7 +94,7 @@ read the current labels first, then write the modified set — never a bare
 mcp__github__issue_read   method=get_labels owner=Gharib89 repo=crm issue_number=$NUM
     → LABELS = its label names
 mcp__github__issue_write  method=update owner=Gharib89 repo=crm issue_number=$NUM
-    labels = (LABELS − {"agent-working", "ready-for-agent"} + "ready-for-human")
+    labels = LABELS, with "agent-working" and "ready-for-agent" removed and "ready-for-human" added
 mcp__github__add_issue_comment  owner=Gharib89 repo=crm issue_number=$NUM
     body="<one-line reason it is blocked>"
 ```
