@@ -300,6 +300,128 @@ class TestUpdateAttributeFormat:
             assert put.call_count == 0
 
 
+# A UserLocal datetime column with the managed property unlocked — the one
+# starting state from which the platform permits a behavior change.
+_FULL_DATETIME_ATTR_USERLOCAL = {
+    "@odata.type": "#Microsoft.Dynamics.CRM.DateTimeAttributeMetadata",
+    "MetadataId": "77777777-7777-7777-7777-777777777777",
+    "SchemaName": "new_Due",
+    "LogicalName": "new_due",
+    "Format": "DateAndTime",
+    "DateTimeBehavior": {"Value": "UserLocal"},
+    "CanChangeDateTimeBehavior": {"Value": True, "CanBeChanged": True},
+    "DisplayName": {"LocalizedLabels": [{"Label": "Due", "LanguageCode": 1033}]},
+    "RequiredLevel": {"Value": "None", "CanBeChanged": True},
+}
+
+
+class TestUpdateAttributeBehavior:
+    """The one-time DateTimeBehavior flip (UserLocal → DateOnly/TimeZoneIndependent)."""
+
+    def _paths(self, backend):
+        base = backend.url_for(
+            "EntityDefinitions(LogicalName='new_project')"
+            "/Attributes(LogicalName='new_due')"
+        )
+        return base, base + "/Microsoft.Dynamics.CRM.DateTimeAttributeMetadata"
+
+    def test_dateonly_from_userlocal_puts_behavior_and_autoformat(self, backend):
+        from crm.core import metadata_update as mu
+        base, cast = self._paths(backend)
+        with requests_mock.Mocker() as m:
+            m.get(base, json=_FULL_DATETIME_ATTR_USERLOCAL)
+            cast_get = m.get(cast, json=_FULL_DATETIME_ATTR_USERLOCAL)
+            m.put(cast, status_code=204)
+            mu.update_attribute(backend, "new_project", "new_due", behavior_name="DateOnly")
+        body = m.request_history[-1].json()
+        assert body["DateTimeBehavior"] == {"Value": "DateOnly"}
+        # DateOnly behavior must flip Format too or the server rejects the pair.
+        assert body["Format"] == "DateOnly"
+        # Untouched properties survive the full PUT.
+        assert body["SchemaName"] == "new_Due"
+        # Typed body read exactly once — the precondition read is reused as the
+        # merge base (no redundant second GET on the cast path).
+        assert cast_get.call_count == 1
+
+    def test_tzi_from_userlocal_leaves_format(self, backend):
+        from crm.core import metadata_update as mu
+        base, cast = self._paths(backend)
+        with requests_mock.Mocker() as m:
+            m.get(base, json=_FULL_DATETIME_ATTR_USERLOCAL)
+            m.get(cast, json=_FULL_DATETIME_ATTR_USERLOCAL)
+            m.put(cast, status_code=204)
+            mu.update_attribute(backend, "new_project", "new_due",
+                                behavior_name="TimeZoneIndependent")
+        body = m.request_history[-1].json()
+        assert body["DateTimeBehavior"] == {"Value": "TimeZoneIndependent"}
+        # TimeZoneIndependent needs no format change.
+        assert body["Format"] == "DateAndTime"
+
+    def test_rejected_when_source_not_userlocal(self, backend):
+        from crm.core import metadata_update as mu
+        base, cast = self._paths(backend)
+        attr = {**_FULL_DATETIME_ATTR_USERLOCAL, "DateTimeBehavior": {"Value": "DateOnly"}}
+        with requests_mock.Mocker() as m:
+            m.get(base, json=attr)
+            m.get(cast, json=attr)
+            put = m.put(cast, status_code=204)
+            with pytest.raises(D365Error, match="UserLocal"):
+                mu.update_attribute(backend, "new_project", "new_due",
+                                    behavior_name="TimeZoneIndependent")
+            assert put.call_count == 0
+
+    def test_rejected_when_cannot_change(self, backend):
+        from crm.core import metadata_update as mu
+        base, cast = self._paths(backend)
+        attr = {**_FULL_DATETIME_ATTR_USERLOCAL,
+                "CanChangeDateTimeBehavior": {"Value": False}}
+        with requests_mock.Mocker() as m:
+            m.get(base, json=attr)
+            m.get(cast, json=attr)
+            put = m.put(cast, status_code=204)
+            with pytest.raises(D365Error, match="CanChangeDateTimeBehavior"):
+                mu.update_attribute(backend, "new_project", "new_due",
+                                    behavior_name="DateOnly")
+            assert put.call_count == 0
+
+    def test_userlocal_target_rejected_no_put(self, backend):
+        from crm.core import metadata_update as mu
+        base, cast = self._paths(backend)
+        with requests_mock.Mocker() as m:
+            m.get(base, json=_FULL_DATETIME_ATTR_USERLOCAL)
+            put = m.put(cast, status_code=204)
+            with pytest.raises(D365Error, match="UserLocal"):
+                mu.update_attribute(backend, "new_project", "new_due",
+                                    behavior_name="UserLocal")
+            assert put.call_count == 0
+
+    def test_behavior_on_non_datetime_rejected_no_put(self, backend):
+        from crm.core import metadata_update as mu
+        base = backend.url_for(
+            "EntityDefinitions(LogicalName='new_project')"
+            "/Attributes(LogicalName='new_code')"
+        )
+        cast = base + "/Microsoft.Dynamics.CRM.StringAttributeMetadata"
+        with requests_mock.Mocker() as m:
+            m.get(base, json=_FULL_STRING_ATTR)
+            put = m.put(cast, status_code=204)
+            with pytest.raises(D365Error, match="datetime"):
+                mu.update_attribute(backend, "new_project", "new_code",
+                                    behavior_name="DateOnly")
+            assert put.call_count == 0
+
+    def test_dateonly_with_conflicting_format_rejected_no_put(self, backend):
+        from crm.core import metadata_update as mu
+        base, cast = self._paths(backend)
+        with requests_mock.Mocker() as m:
+            m.get(base, json=_FULL_DATETIME_ATTR_USERLOCAL)
+            put = m.put(cast, status_code=204)
+            with pytest.raises(D365Error, match="DateOnly"):
+                mu.update_attribute(backend, "new_project", "new_due",
+                                    behavior_name="DateOnly", format_name="DateAndTime")
+            assert put.call_count == 0
+
+
 _FULL_PICKLIST_ATTR = {
     "@odata.type": "#Microsoft.Dynamics.CRM.PicklistAttributeMetadata",
     "MetadataId": "44444444-4444-4444-4444-444444444444",
@@ -900,3 +1022,37 @@ class TestBuildAttributeChanges:
             self._call(
                 **{**self._base("Microsoft.Dynamics.CRM.IntegerAttributeMetadata"),
                    "format_name": "Text"})
+
+    _DATETIME = "Microsoft.Dynamics.CRM.DateTimeAttributeMetadata"
+
+    def test_behavior_dateonly_sets_behavior_and_autoformat(self):
+        out = self._call(**{**self._base(self._DATETIME), "behavior_name": "DateOnly"})
+        assert out["DateTimeBehavior"] == {"Value": "DateOnly"}
+        assert out["Format"] == "DateOnly"
+
+    def test_behavior_tzi_leaves_format_unset(self):
+        out = self._call(
+            **{**self._base(self._DATETIME), "behavior_name": "TimeZoneIndependent"})
+        assert out["DateTimeBehavior"] == {"Value": "TimeZoneIndependent"}
+        assert "Format" not in out
+
+    def test_behavior_on_non_datetime_raises(self):
+        with pytest.raises(D365Error, match="datetime"):
+            self._call(
+                **{**self._base("Microsoft.Dynamics.CRM.StringAttributeMetadata"),
+                   "behavior_name": "DateOnly"})
+
+    def test_behavior_userlocal_target_raises(self):
+        with pytest.raises(D365Error, match="UserLocal"):
+            self._call(**{**self._base(self._DATETIME), "behavior_name": "UserLocal"})
+
+    def test_behavior_dateonly_conflicting_explicit_format_raises(self):
+        with pytest.raises(D365Error, match="DateOnly"):
+            self._call(**{**self._base(self._DATETIME),
+                          "behavior_name": "DateOnly", "format_name": "DateAndTime"})
+
+    def test_behavior_dateonly_with_explicit_dateonly_format_ok(self):
+        out = self._call(**{**self._base(self._DATETIME),
+                            "behavior_name": "DateOnly", "format_name": "DateOnly"})
+        assert out["Format"] == "DateOnly"
+        assert out["DateTimeBehavior"] == {"Value": "DateOnly"}

@@ -666,13 +666,21 @@ def metadata_update_entity(
 @click.option("--max", "max_value", type=float, default=None, help="Numeric: maximum value.")
 @click.option("--format", "format_name", default=None,
               help="String: Text|Email|Url|Phone|TextArea. Datetime: DateOnly|DateAndTime.")
+@click.option("--behavior", "behavior_name",
+              type=click.Choice(["UserLocal", "DateOnly", "TimeZoneIndependent"]),
+              default=None,
+              help="Datetime: change DateTimeBehavior. Only a UserLocal column may "
+                   "change, once, to DateOnly or TimeZoneIndependent (both terminal). "
+                   "DateOnly auto-sets --format DateOnly. Existing stored values are "
+                   "not migrated (no Web API backfill).")
 @_audit_option
 @_solution_option
 @_publish_option
 @pass_ctx
 def metadata_update_attribute(
     ctx: CLIContext, entity, attribute, display_name, description, required,
-    max_length, precision, min_value, max_value, format_name, audit, solution, publish,
+    max_length, precision, min_value, max_value, format_name, behavior_name,
+    audit, solution, publish,
 ):
     """Update an attribute (column) definition (retrieve-merge-write).
 
@@ -694,10 +702,14 @@ def metadata_update_attribute(
             max_value=max_value,
             format_name=format_name,
             is_audit_enabled=audit,
+            behavior_name=behavior_name,
             publish=publish,
             solution=solution,
         )
-    ctx.emit(True, data=info, meta=ctx.staged_meta())
+    # A successful behavior change alters only new writes — flag the un-backfilled
+    # existing rows on the structured warnings channel (reads well in both modes).
+    warning = mu_mod.BEHAVIOR_BACKFILL_WARNING if behavior_name else None
+    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
     _journal(ctx, f"{entity}.{attribute}", info, solution=solution)
 
 

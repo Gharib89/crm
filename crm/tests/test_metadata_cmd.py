@@ -368,3 +368,52 @@ class TestReorderParamType:
         ])
         assert result.exit_code == 2, result.output
         assert not fake_backend.called
+
+
+# --------------------------------------------------------------------------- #
+# update-attribute --behavior: the one-time DateTimeBehavior flip surfaces the
+# no-backfill advisory on the meta.warnings channel (#817).
+# --------------------------------------------------------------------------- #
+
+_USERLOCAL_DATETIME = {
+    "@odata.type": "#Microsoft.Dynamics.CRM.DateTimeAttributeMetadata",
+    "SchemaName": "new_Due",
+    "LogicalName": "new_due",
+    "Format": "DateAndTime",
+    "DateTimeBehavior": {"Value": "UserLocal"},
+    "CanChangeDateTimeBehavior": {"Value": True, "CanBeChanged": True},
+    "RequiredLevel": {"Value": "None", "CanBeChanged": True},
+}
+
+
+class TestMetadataUpdateAttributeBehaviorWarning:
+    def test_behavior_change_emits_backfill_warning(self, make_fake_backend, monkeypatch):
+        b = make_fake_backend(responses={
+            "get": _USERLOCAL_DATETIME,
+            "put": {"updated": True},
+        })
+        _use(monkeypatch, b)
+        result = CliRunner().invoke(cli, [
+            "--json", "metadata", "update-attribute", "new_project", "new_due",
+            "--behavior", "DateOnly", "--solution", "TestSol", "--no-publish",
+        ])
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        assert env["ok"] is True
+        warnings = env.get("meta", {}).get("warnings") or []
+        assert any("ConvertDateAndTimeBehavior" in w for w in warnings), warnings
+
+    def test_no_behavior_flag_emits_no_backfill_warning(self, make_fake_backend, monkeypatch):
+        b = make_fake_backend(responses={
+            "get": _USERLOCAL_DATETIME,
+            "put": {"updated": True},
+        })
+        _use(monkeypatch, b)
+        result = CliRunner().invoke(cli, [
+            "--json", "metadata", "update-attribute", "new_project", "new_due",
+            "--display", "Due Date", "--solution", "TestSol", "--no-publish",
+        ])
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        warnings = env.get("meta", {}).get("warnings") or []
+        assert not any("ConvertDateAndTimeBehavior" in w for w in warnings), warnings

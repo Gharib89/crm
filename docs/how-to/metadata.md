@@ -240,9 +240,26 @@ format. When `--behavior DateOnly` is given and `--format` is omitted, the forma
 auto-defaults to `DateOnly`. If you pass both `--behavior DateOnly --format DateAndTime`
 explicitly the server will reject the request with a validation error.
 
-**Behavior is immutable after create.** `DateTimeBehavior` cannot be changed after the
-column is created — get it right on create. `--behavior` is only valid for
-`--kind datetime`; using it with any other kind is rejected with an error.
+**Changing behavior later — the one-time flip.** `--behavior` is also available on
+`metadata update-attribute` for the platform's single supported behavior change,
+`UserLocal` → `DateOnly` or `TimeZoneIndependent` (both terminal):
+
+```bash
+# Flip a UserLocal column to DateOnly (Format auto-flips to DateOnly too)
+crm --json metadata update-attribute cwx_ticket cwx_duedate \
+  --behavior DateOnly --solution cwx_crmworx
+```
+
+The CLI enforces the platform rules before any write: the source must be a
+`UserLocal` datetime column with its `CanChangeDateTimeBehavior` managed property
+still `True`; a non-`UserLocal` source, a locked column, a non-datetime kind, or
+`--behavior UserLocal` (never a valid target) each fail with exit 1 and no HTTP call.
+A successful change affects only **new** writes — existing stored values keep their
+UTC interpretation and are **not** migrated (the `ConvertDateAndTimeBehavior` backfill
+is SOAP-only, absent from the Web API), so the command emits a `meta.warnings`
+advisory. Never drop-and-recreate a column to change its behavior; that destroys data
+for a change the platform supports in place. `--behavior` is only valid for
+`--kind datetime` / datetime columns; using it elsewhere is rejected with an error.
 
 ## Add an auto-number string column
 

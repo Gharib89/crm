@@ -24,24 +24,42 @@ value unchanged.
 
 `DateTimeBehavior` controls whether a datetime column stores time-zone-offset data
 (`UserLocal`), is treated as a date with no time component (`DateOnly`), or stores
-absolute UTC with no conversion (`TimeZoneIndependent`). Set it at create time —
-`metadata update-attribute` has no `--behavior`, so this CLI cannot change it later.
-The platform itself permits exactly one change, `UserLocal` → `DateOnly` or
-`TimeZoneIndependent` (`DateOnly`/`TimeZoneIndependent` are terminal), but the
-stored-value backfill (`ConvertDateAndTimeBehavior`) is a SOAP-only message absent
-from the Web API — already-stored values keep their UTC interpretation. So plan the
-behavior before you create; if a `UserLocal` column must become `DateOnly` later,
-that is an admin/designer task — **never drop-and-recreate the column for it**
-(destroys data for a change the platform supports in place).
+absolute UTC with no conversion (`TimeZoneIndependent`). Set it at create time with
+`--behavior` on `add-attribute`; change it later with `--behavior` on
+`update-attribute`.
 
-Two non-obvious coupling rules:
+**The one-time change (`update-attribute --behavior`).** The platform permits
+exactly one behavior change, and only `UserLocal` → `DateOnly` or
+`TimeZoneIndependent`; `DateOnly` and `TimeZoneIndependent` are terminal. The CLI
+enforces this before any write:
+
+- Source must be a **`UserLocal` datetime column** — a non-`UserLocal` source, a
+  non-datetime kind, or `--behavior UserLocal` (never a valid target) each fail
+  client-side with exit 1 and no HTTP call.
+- The column's **`CanChangeDateTimeBehavior`** managed property must be `True`; a
+  locked column (system columns like `createdon`, or a managed-solution restriction)
+  is rejected naming that property.
+
+**No stored-value backfill.** A successful change alters only *new* writes. The
+`ConvertDateAndTimeBehavior` backfill that migrates existing rows is a SOAP-only
+Organization-Service message absent from the Web API, so already-stored values keep
+their UTC interpretation and may render shifted — the command surfaces this on the
+`meta.warnings` channel. (This is why you should still plan the behavior at create
+time where you can.) **Never drop-and-recreate a column to change its behavior** —
+that destroys data for a change the platform supports in place.
+
+Two non-obvious coupling rules (identical on `add-attribute` and `update-attribute`):
 
 1. **`DateOnly` behavior auto-sets the format.** When `--behavior DateOnly` is given
-   and `--format` is omitted, the CLI auto-defaults `--format` to `DateOnly`. Passing
-   `--behavior DateOnly --format DateAndTime` explicitly is a server validation error.
+   and `--format` is omitted, the CLI auto-defaults `--format` to `DateOnly` (the
+   server rejects `DateOnly` behavior with the `DateAndTime` format). On
+   `update-attribute` the explicit conflict `--behavior DateOnly --format DateAndTime`
+   is rejected client-side; on `add-attribute` an explicit conflicting pair is left
+   for the server. `TimeZoneIndependent` needs no format change.
 2. **`--behavior` is rejected for non-datetime kinds** (errors before any HTTP call).
 
-Omitting `--behavior` leaves the column at the server default (`UserLocal`).
+Omitting `--behavior` on `add-attribute` leaves the column at the server default
+(`UserLocal`); omitting it on `update-attribute` leaves the existing behavior alone.
 
 ## Auto-number string columns (`--auto-number-format`)
 
