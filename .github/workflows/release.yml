@@ -62,6 +62,9 @@ jobs:
 
       - name: Smoke test (Windows)
         if: runner.os == 'Windows'
+        # PowerShell (backslash paths) — declare it so actionlint doesn't lint the
+        # block as bash (shellcheck reads `.\crm.exe` escapes as SC1001).
+        shell: pwsh
         run: |
           .\dist\crm\crm.exe --version
           .\dist\crm\crm.exe --help

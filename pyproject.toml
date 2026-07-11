@@ -54,10 +54,13 @@ convention = "google"
 [tool.codespell]
 # Typo checker wired as a pre-commit hook ONLY, deliberately NOT a CI gate (#848):
 # a jargon false positive must never block a merge. Run: `pre-commit run codespell`.
-# Skip generated/vendored/binary trees, the PSR-owned CHANGELOG, research build
-# artifacts, and the test suites (which carry intentional-misspelling fixtures:
-# did-you-mean tests feed deliberately mistyped entity names on purpose).
-skip = "./.git,./.venv,*.lock,*.min.js,*.svg,htmlcov,dist,build,CHANGELOG.md,./crm/tests,./evals,./docs/research/*.html,./docs/research/*.json"
+# Skip generated/vendored/binary trees (incl. the mkdocs `site/` build output),
+# the PSR-owned CHANGELOG, research build artifacts, and the test suites (which
+# carry intentional-misspelling fixtures: did-you-mean tests feed deliberately
+# mistyped entity names on purpose). Directory/path entries keep the `./` prefix:
+# codespell prunes a dir by fnmatch-ing its walked path (`./crm/tests`), so a bare
+# `crm/tests` would NOT match. Basename globs (`*.svg`) match without it.
+skip = "./.git,./.venv,./site,./htmlcov,./dist,./build,CHANGELOG.md,*.lock,*.min.js,*.svg,./crm/tests,./evals,./docs/research/*.html,./docs/research/*.json"
 # D365 / project jargon, proper nouns, verbatim external quotes, and house
 # spelling variants — none are typos:
 #   bu = Business Unit · datas = PyInstaller .spec API · unsecure = D365 plug-in
