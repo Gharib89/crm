@@ -80,7 +80,7 @@ class TestParseRetryAfter:
         import datetime as _dt
         from email.utils import format_datetime
 
-        future = _dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(seconds=60)
+        future = _dt.datetime.now(_dt.UTC) + _dt.timedelta(seconds=60)
         result = _parse_retry_after(format_datetime(future))
         assert result is not None and result > 0.0
 

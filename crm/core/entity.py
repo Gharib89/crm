@@ -884,7 +884,7 @@ def count_children(
         # the first such row; here each count is independent and an uncountable one
         # is reported as count=null + error rather than dropped or fatal.
         results = backend.batch(ops, transactional=False, continue_on_error=True)
-        for rel, res in zip(chunk, results):
+        for rel, res in zip(chunk, results, strict=False):
             err = res.get("error")
             if err:
                 rows.append({**rel, "count": None, "error": str(err)})

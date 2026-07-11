@@ -25,7 +25,6 @@ Inputs come from the environment (set by the workflow):
 import os
 import re
 import sys
-from typing import Optional
 
 # A Conventional-Commit subject: type, optional (scope), optional !, ": ", text.
 _TITLE_RE = re.compile(r"^([a-z]+)(\([^)]+\))?(!)?:\s+\S")
@@ -33,7 +32,7 @@ _TITLE_RE = re.compile(r"^([a-z]+)(\([^)]+\))?(!)?:\s+\S")
 _BREAKING_RE = re.compile(r"^BREAKING[ -]CHANGE:", re.MULTILINE)
 
 
-def required_label(title: str, body: str = "") -> Optional[str]:
+def required_label(title: str, body: str = "") -> str | None:
     """The label this PR must carry: ``"major"`` for a breaking change, or
     ``None`` otherwise (``feat:`` minor and patch-level bumps are not gated).
     Raises ``ValueError`` if the title is not a valid Conventional Commit.

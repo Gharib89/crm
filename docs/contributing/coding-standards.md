@@ -55,7 +55,7 @@ staged files so the format round-trip never reaches CI.
   exact rule codes; the agreed shape:
     - line length **100** (matches the codebase's natural style; not the ruff default 88),
     - rule families `E`, `W`, `F`, `I` (import order), `B` (bugbear), `UP` (pyupgrade,
-      `target-version = py39`), plus the format-only `D` subset above,
+      `target-version = py313`), plus the format-only `D` subset above,
     - deliberately excluded: `S` (bandit — rejected in the tooling sweep), `C90` complexity,
       `ANN` (pyright owns typing), `D1xx` docstring coverage, and `D205` (blank line between
       docstring summary and description) — D205 treats only physical line 1 as the summary, so

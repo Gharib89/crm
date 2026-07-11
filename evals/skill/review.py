@@ -30,9 +30,10 @@ import os
 import re
 import shlex
 import subprocess
+from collections.abc import Callable
 from datetime import date as _date
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from evals.skill.record import (
     RUNS_ROOT,

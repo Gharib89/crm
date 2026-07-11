@@ -12,7 +12,7 @@ Reference: https://learn.microsoft.com/power-apps/developer/data-platform/webapi
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, cast
 
 from crm.utils import safe_xml
@@ -127,7 +127,7 @@ def bulk_delete(
         "RecurrencePattern": "",
         # The server requires StartDateTime in the payload; "now" runs the job
         # immediately (it still only deletes rows that existed when it starts).
-        "StartDateTime": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "StartDateTime": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     resp = as_dict(backend.post("BulkDelete", json_body=body))
     if "_dry_run" in resp:

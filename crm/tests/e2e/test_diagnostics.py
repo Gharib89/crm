@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -300,7 +300,7 @@ def _seed_future_bulkdelete(backend, unique):
     )
     query = fetchxml_to_query_expression(backend, fetch)
     # Start a decade out so the async service never picks the job up mid-test.
-    start = (datetime.now(timezone.utc) + timedelta(days=3650)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    start = (datetime.now(UTC) + timedelta(days=3650)).strftime("%Y-%m-%dT%H:%M:%SZ")
     resp = backend.post(
         "BulkDelete",
         json_body={

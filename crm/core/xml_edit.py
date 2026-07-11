@@ -19,7 +19,8 @@ from __future__ import annotations
 import re
 import uuid
 import xml.etree.ElementTree as ET
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from crm.core.metadata import maybe_publish
 from crm.utils import safe_xml

@@ -681,7 +681,7 @@ def _entity_privileges_bulk(
     # the server stops at that subrequest and we never read past it.
     results = run_batched(backend, ops, continue_on_error=False)
     out: dict[str, list[dict[str, Any]]] = {}
-    for lg, res in zip(logicals, results):
+    for lg, res in zip(logicals, results, strict=False):
         err = res.get("error")
         if err:
             if res.get("status") == 404:

@@ -75,7 +75,7 @@ def _coerce_csv_value(raw: str | None, *, as_string: bool = False) -> Any:
 # ── record readers ───────────────────────────────────────────────────────────
 
 
-def _read_jsonl(path: Path) -> Generator[dict[str, Any], None, None]:
+def _read_jsonl(path: Path) -> Generator[dict[str, Any]]:
     """Yield one JSON object per non-blank line from a JSONL file."""
     # utf-8-sig tolerates a UTF-8 BOM (Excel/Windows editors add one) so it can't
     # corrupt the first object's first key; pure UTF-8 is unaffected (#683).
@@ -97,7 +97,7 @@ def _read_jsonl(path: Path) -> Generator[dict[str, Any], None, None]:
 
 def _read_csv(
     path: Path, string_columns: frozenset[str] = frozenset()
-) -> Generator[dict[str, Any], None, None]:
+) -> Generator[dict[str, Any]]:
     """Yield one coerced dict per row from a CSV file.
 
     Columns named in *string_columns* keep their verbatim string value instead of
@@ -212,7 +212,7 @@ def _build_delete_op(
 # ── chunking ─────────────────────────────────────────────────────────────────
 
 
-def _chunked(items: list[BatchOperation], size: int) -> Generator[list[BatchOperation], None, None]:
+def _chunked(items: list[BatchOperation], size: int) -> Generator[list[BatchOperation]]:
     for start in range(0, len(items), size):
         yield items[start : start + size]
 

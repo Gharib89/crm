@@ -36,7 +36,8 @@ from __future__ import annotations
 
 import re
 import xml.etree.ElementTree as ET
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from crm.core import xml_edit
 from crm.core.entity_names import resolve_logical_name

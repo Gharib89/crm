@@ -20,9 +20,9 @@ import sys as _sys
 import time
 import urllib.parse
 import uuid
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from crm.utils.d365_types import BatchOperation, BatchResult
 
@@ -1446,8 +1446,8 @@ def _parse_retry_after(header: str | None) -> float | None:
 
         dt = parsedate_to_datetime(raw)
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=_dt.timezone.utc)
-        now = _dt.datetime.now(_dt.timezone.utc)
+            dt = dt.replace(tzinfo=_dt.UTC)
+        now = _dt.datetime.now(_dt.UTC)
         delta = (dt - now).total_seconds()
         return max(0.0, delta)
     except (TypeError, ValueError):

@@ -11,7 +11,8 @@ attribute fields. The relationship-backed kinds short-circuit instead:
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from crm.core import dependencies as dep_mod
 from crm.core import metadata_cache

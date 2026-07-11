@@ -27,7 +27,8 @@ from __future__ import annotations
 import copy
 import re
 import xml.etree.ElementTree as ET
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from crm.core.metadata import attribute_info, attribute_info_or_raise, maybe_publish
 from crm.core.xml_edit import commit_xml_patches, parse_xml, serialize_xml

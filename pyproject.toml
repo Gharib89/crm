@@ -28,7 +28,7 @@ mode = "update"
 # the executable source of truth for the exact codes.
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py313"
 
 [tool.ruff.lint]
 # E/W pycodestyle, F pyflakes, I import order, B bugbear, UP pyupgrade,

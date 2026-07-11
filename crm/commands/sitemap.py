@@ -234,7 +234,7 @@ def _localized_pairs(node_id, lcids, values, *, value_flag):
         )
     seen: set[int] = set()
     pairs = []
-    for lcid, text in zip(lcids, values):
+    for lcid, text in zip(lcids, values, strict=False):
         if not 1000 <= lcid <= 9999:
             raise click.UsageError(f"--lcid {lcid} must be a 4-digit locale ID (e.g. 1033).")
         if not (text or "").strip():

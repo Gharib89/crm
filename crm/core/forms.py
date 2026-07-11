@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import re
 import xml.etree.ElementTree as ET
-from typing import Any, Callable, cast
+from collections.abc import Callable
+from typing import Any, cast
 
 from crm.core import webresource, xml_edit
 from crm.core.metadata import attribute_info, label_text, maybe_publish
@@ -1883,7 +1884,7 @@ def _reorder_declared(
     order = live_order(formxml)
     live_names = set(order)
     present = [n for n in declared if n in live_names]
-    for a, b in zip(present, present[1:]):
+    for a, b in zip(present, present[1:], strict=False):
         if order.index(b) < order.index(a):
             formxml = move(formxml, b, a)
             on_move(a, b)
