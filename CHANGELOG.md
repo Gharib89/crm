@@ -9,6 +9,30 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.69.0 (2026-07-11)
+
+### Chores
+
+- **review**: Address round-1 review comments ([#845](https://github.com/Gharib89/crm/pull/845),
+  [`aef8fec`](https://github.com/Gharib89/crm/commit/aef8fec3e0e0bdcc16bb041ab79debd2f624286d))
+
+- **review**: Wire CodeRabbit engagement into agent PR workflows
+  ([#845](https://github.com/Gharib89/crm/pull/845),
+  [`aef8fec`](https://github.com/Gharib89/crm/commit/aef8fec3e0e0bdcc16bb041ab79debd2f624286d))
+
+### Documentation
+
+- **review**: Pin --pythonversion in CLAUDE.md lint cmd; note click 8.4.1 raise in ADR 0026
+  ([#852](https://github.com/Gharib89/crm/pull/852),
+  [`653ee85`](https://github.com/Gharib89/crm/commit/653ee85423b54b7f0988d273affe31b2ad93d41b))
+
+### Features
+
+- Raise Python floor to 3.13 with a single-version policy
+  ([#852](https://github.com/Gharib89/crm/pull/852),
+  [`653ee85`](https://github.com/Gharib89/crm/commit/653ee85423b54b7f0988d273affe31b2ad93d41b))
+
+
 ## v1.68.3 (2026-07-11)
 
 ### Bug Fixes
