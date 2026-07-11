@@ -20,6 +20,7 @@ from uuid import uuid4
 from crm.core import entity as entity_ops
 from crm.core import metadata as metadata_ops
 from crm.core import solution as solution_ops
+from crm.utils import safe_xml
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 
 
@@ -163,7 +164,7 @@ def validate_workflow_xaml(
     # We distinguish them by the error message text.
     # ------------------------------------------------------------------
     try:
-        root = _ET.fromstring(xaml)
+        root = safe_xml.fromstring(xaml)
     except _ET.ParseError as exc:
         msg = str(exc)
         if "unbound prefix" in msg:
