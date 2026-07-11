@@ -9,6 +9,33 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.68.2 (2026-07-11)
+
+### Bug Fixes
+
+- Address Copilot review on safe_xml messaging ([#841](https://github.com/Gharib89/crm/pull/841),
+  [`7f9def7`](https://github.com/Gharib89/crm/commit/7f9def70a5d74a9f1fedfcd57e5696b5e2ada582))
+
+- Harden org-supplied XML parsing against entity-expansion bombs
+  ([#841](https://github.com/Gharib89/crm/pull/841),
+  [`7f9def7`](https://github.com/Gharib89/crm/commit/7f9def70a5d74a9f1fedfcd57e5696b5e2ada582))
+
+- Wrap corrupt-export zip errors in _rewrite_customizations
+  ([#841](https://github.com/Gharib89/crm/pull/841),
+  [`7f9def7`](https://github.com/Gharib89/crm/commit/7f9def70a5d74a9f1fedfcd57e5696b5e2ada582))
+
+### Chores
+
+- **review**: Add tuned .coderabbit.yaml ([#840](https://github.com/Gharib89/crm/pull/840),
+  [`f08b0ec`](https://github.com/Gharib89/crm/commit/f08b0ece1412551582f134523093ed52c7b39c53))
+
+### Documentation
+
+- **research**: Code-quality tooling sweep — 7-item shortlist beyond CodeRabbit/CodeQL
+  ([#823](https://github.com/Gharib89/crm/pull/823),
+  [`5118dcd`](https://github.com/Gharib89/crm/commit/5118dcd42e1632a2c76c7fb0d774fe3ecdb9a067))
+
+
 ## v1.68.1 (2026-07-11)
 
 ### Bug Fixes
