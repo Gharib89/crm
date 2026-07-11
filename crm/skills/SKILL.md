@@ -31,6 +31,13 @@ against both targets.
 { "ok": false, "error": "Record Not Found", "meta": {"status": 404, "code": "0x80040217", "category": "not_found", "retryable": false} }
 ```
 
+**Flag placement — five flags go either side of the subcommand.** `--json`,
+`--fields`, `--jq`, `--profile`, and `--dry-run` are dual-position: `crm entity get
+accounts --json` is identical to `crm --json entity get accounts`, so append them
+wherever it reads naturally. Every *other* global flag must still precede the
+subcommand (a trailing one exits 2 with a position hint). Don't supply one of the
+five in both positions at once — that is a usage error (exit 2).
+
 **`meta.profile` and `meta.url`** appear on every success envelope from a command
 that opened a backend connection — the serving profile name and Web API base URL,
 so the result is self-identifying without eyeball-matching GUIDs. They are absent

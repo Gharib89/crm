@@ -110,7 +110,7 @@ validate --against-org` catches it pre-import. Details → `reference/solutions.
 
 The promote flow above assumes one **active** profile. A CI pipeline instead targets a
 different org per **tier** in one non-interactive run: the global `crm --profile <tier>`
-(before the subcommand) picks the target, and each verb's **exit code gates the next
+(dual-position — before or after the subcommand) picks the target, and each verb's **exit code gates the next
 step** — any non-zero aborts the chain, so plain `&&` is the whole guard. On-prem gets the
 pipeline experience Microsoft ships only for cloud (Pipelines/PPAC).
 
