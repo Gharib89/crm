@@ -94,7 +94,7 @@ read the current labels first, then write the modified set — never a bare
 mcp__github__issue_read   method=get_labels owner=Gharib89 repo=crm issue_number=$NUM
     → LABELS = its label names
 mcp__github__issue_write  method=update owner=Gharib89 repo=crm issue_number=$NUM
-    labels = (LABELS − "agent-working" + "ready-for-human")
+    labels = (LABELS − {"agent-working", "ready-for-agent"} + "ready-for-human")
 mcp__github__add_issue_comment  owner=Gharib89 repo=crm issue_number=$NUM
     body="<one-line reason it is blocked>"
 ```
@@ -122,8 +122,9 @@ carries the open PR, so later fires skip it until the merge closes it.
 
 ## GitHub access in a fire
 
-**Do all GitHub reads and writes through the `mcp__github__*` connector; use the
-`git` CLI only for clone/fetch/commit/push.** The cloud sandbox's egress proxy
+**Route all GitHub API reads and writes through the `mcp__github__*` connector;
+use the `git` CLI for local repository work (branch/`switch`, status, diff,
+commit, fetch, push).** The cloud sandbox's egress proxy
 gates `gh`'s repo/PR/issue REST endpoints (`api.github.com`) — they return
 `403 "GitHub access is not enabled for this session"` regardless of `GH_TOKEN`,
 so **every** `gh` command the fire would otherwise run fails here — not just the
@@ -134,7 +135,11 @@ the **repo docs `ship` follows** (`docs/agents/issue-tracker.md`,
 Anthropic (exempt from the network policy) and `git` over `github.com` uses
 brokered credentials — both work. **This section outranks every literal `gh`
 command in `ship`, its references, and any repo doc it follows for the duration
-of a fire; translate each to its MCP equivalent:**
+of a fire.** The table maps every `gh` command a fire actually reaches (through
+the merge gate). The merge / post-merge commands in `reference/merge-gate.md`
+(`gh pr merge`, `gh pr view --json state,mergedAt`, `gh issue view`) are **out of
+a fire's path** — step 5 ends the fire *before* merging — so they need no
+mapping. Translate each command below to its MCP equivalent:
 
 | Where the fire would run `gh …` | Use instead |
 |---|---|
