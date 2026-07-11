@@ -37,7 +37,6 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
 
 REPO = Path(__file__).resolve().parent.parent
 CRM_HOME = Path(os.environ.get("CRM_HOME") or (Path.home() / ".crm"))
@@ -80,13 +79,13 @@ class Leg:
     marker: str
 
 
-LEGS: List[Leg] = [
+LEGS: list[Leg] = [
     Leg("onprem", "agent-on-prem", "e2e"),
     Leg("cloud", "agent-cloud", "e2e and requires_cloud"),
     Leg("cs-trial", "agent-cs-trial", "e2e and requires_cloud"),
 ]
 
-Row = Tuple[str, str, str, str]  # (leg, nodeid, outcome, reason)
+Row = tuple[str, str, str, str]  # (leg, nodeid, outcome, reason)
 
 # A pytest -v result line: "crm/tests/e2e/test_x.py::test_y[p] SKIPPED [ 3%]".
 _VLINE = re.compile(r"^(crm/\S+::\S+)\s+(PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASS)\b")
@@ -101,14 +100,14 @@ _VMAP = {
 
 
 # ── environment ──────────────────────────────────────────────────────────────
-def _pytest_cmd() -> List[str]:
+def _pytest_cmd() -> list[str]:
     for p in (REPO / ".venv/bin/pytest", REPO / ".venv/Scripts/pytest.exe"):
         if p.exists():
             return [str(p)]
     return [sys.executable, "-m", "pytest"]
 
 
-def _profile_host(profile: str) -> Optional[str]:
+def _profile_host(profile: str) -> str | None:
     """Target host from the profile JSON, or None if the profile file is absent.
 
     The host opens the *.dynamics.com prod-host guard for the exact org (the cs-trial
@@ -122,7 +121,7 @@ def _profile_host(profile: str) -> Optional[str]:
     return url.split("//", 1)[-1].split("/", 1)[0].lower()
 
 
-def _leg_env(profile: str, host: str) -> Dict[str, str]:
+def _leg_env(profile: str, host: str) -> dict[str, str]:
     env = dict(os.environ)
     # dotnet + its global tools (pac) install under ~/.dotnet, on PATH only via the
     # interactive shell rc. A non-reloaded/non-interactive shell won't have it, so the
@@ -139,7 +138,7 @@ def _leg_env(profile: str, host: str) -> Dict[str, str]:
 
 
 # ── running ──────────────────────────────────────────────────────────────────
-def _stream(cmd: List[str], env: Dict[str, str], log: Path) -> int:
+def _stream(cmd: list[str], env: dict[str, str], log: Path) -> int:
     """Run cmd from the repo root, streaming combined output to console AND log file.
     Popen avoids the shell pipe/tee SIGPIPE/MULTIOS exit-code corruption documented for
     this repo's zsh; the child's PYTHONUNBUFFERED + bufsize=1 keep progress live.
@@ -164,9 +163,9 @@ def _stream(cmd: List[str], env: Dict[str, str], log: Path) -> int:
 def _run_leg(
     leg: Leg,
     logdir: Path,
-    extra: List[str],
-    marker: Optional[str] = None,
-    nodes: Optional[List[str]] = None,
+    extra: list[str],
+    marker: str | None = None,
+    nodes: list[str] | None = None,
 ) -> int:
     """Run one leg: pass marker= for a full run or nodes= for a rerun (exactly one).
     Returns the pytest exit code (0=ok, 5=nothing collected — both tolerated by callers).
@@ -199,11 +198,11 @@ def _run_leg(
 
 
 # ── parsing ────────────────────────────────────────────────────────────────--
-def _rows(logdir: Path) -> List[Row]:
+def _rows(logdir: Path) -> list[Row]:
     """(leg, nodeid, outcome, reason) per testcase. Prefer junit XML (exact reasons);
     fall back to the .log -v lines (nodeid+outcome only) for pre-XML runs.
     """
-    rows: List[Row] = []
+    rows: list[Row] = []
     xmls = sorted(glob.glob(str(logdir / "*.xml")))
     if xmls:
         for xml in xmls:
@@ -238,13 +237,13 @@ def _rows(logdir: Path) -> List[Row]:
     return rows
 
 
-def _coverage(rows: List[Row]) -> Tuple[Dict[str, List[Row]], List[str], List[str]]:
+def _coverage(rows: list[Row]) -> tuple[dict[str, list[Row]], list[str], list[str]]:
     """Group rows by nodeid for union coverage. A test is a GAP iff every leg that
     collected it skipped it (it ran nowhere); otherwise it is COVERED — executed
     (passed/failed/error/xfail) on at least one leg. Returns (by_node, covered, gaps)
     with the node lists sorted for deterministic, diffable output.
     """
-    by_node: Dict[str, List[Row]] = {}
+    by_node: dict[str, list[Row]] = {}
     for row in rows:
         by_node.setdefault(row[1], []).append(row)
     gaps = sorted(n for n, inst in by_node.items() if all(o == "skipped" for _l, _n, o, _r in inst))
@@ -258,8 +257,8 @@ def _summary_text(logdir: Path) -> str:
     if not rows:
         return f"no leg results found in {logdir} — nothing to summarize.\n"
 
-    legs: List[str] = []
-    by_leg: Dict[str, Dict[str, int]] = {}
+    legs: list[str] = []
+    by_leg: dict[str, dict[str, int]] = {}
     tot = {k: 0 for k in ("passed", "skipped", "failed", "error", "xfail")}
     for leg, _node, outcome, _r in rows:
         if leg not in by_leg:
@@ -302,7 +301,7 @@ def _summary_text(logdir: Path) -> str:
         out.append("  (none)")
     for node in gaps:
         out.append(f"  {node}")
-        seen: Set[Tuple[str, str]] = set()
+        seen: set[tuple[str, str]] = set()
         for leg, _n, o, r in sorted(by_node[node]):
             if o == "skipped" and (leg, r) not in seen:
                 seen.add((leg, r))
@@ -332,7 +331,7 @@ def _summarize(logdir: Path) -> None:
     sys.stdout.write(text)
 
 
-def _rerun_nodes(logdir: Path, leg_name: str) -> List[str]:
+def _rerun_nodes(logdir: Path, leg_name: str) -> list[str]:
     """Per leg: failures/errors + skipped-here-AND-a-gap. Excludes skips that are
     covered on another leg (rerunning those on this profile would just re-skip).
     """
@@ -354,7 +353,7 @@ def _new_logdir(suffix: str = "") -> Path:
     return d
 
 
-def cmd_run(extra: List[str]) -> int:
+def cmd_run(extra: list[str]) -> int:
     logdir = _new_logdir()
     overall = 0
     for leg in LEGS:
@@ -367,7 +366,7 @@ def cmd_run(extra: List[str]) -> int:
     return overall
 
 
-def cmd_rerun(src: Path, extra: List[str]) -> int:
+def cmd_rerun(src: Path, extra: list[str]) -> int:
     if not src.is_dir():
         print("usage: python scripts/e2e_all.py rerun <prior-run-logdir>", file=sys.stderr)
         return 2
@@ -442,7 +441,7 @@ def cmd_selftest() -> int:
     return 0
 
 
-def main(argv: List[str]) -> int:
+def main(argv: list[str]) -> int:
     # Hand-rolled parse: argparse's REMAINDER drops leading-dash passthrough args
     # (e.g. `run -k foo`), so we split the command off the front and forward the rest
     # to pytest verbatim. First token that isn't a known command => an implicit `run`.

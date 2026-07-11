@@ -25,7 +25,7 @@ Inputs come from the environment (set by the workflow):
 import os
 import re
 import sys
-from typing import List, Optional, Tuple
+from typing import Optional
 
 # A Conventional-Commit subject: type, optional (scope), optional !, ": ", text.
 _TITLE_RE = re.compile(r"^([a-z]+)(\([^)]+\))?(!)?:\s+\S")
@@ -47,7 +47,7 @@ def required_label(title: str, body: str = "") -> Optional[str]:
     return None
 
 
-def check(title: str, body: str, labels: List[str]) -> Tuple[int, str]:
+def check(title: str, body: str, labels: list[str]) -> tuple[int, str]:
     """Return ``(exit_code, message)``: 0 if the PR is allowed, 1 otherwise."""
     try:
         needed = required_label(title, body)
@@ -70,7 +70,7 @@ def check(title: str, body: str, labels: List[str]) -> Tuple[int, str]:
     )
 
 
-def _split_labels(raw: str) -> List[str]:
+def _split_labels(raw: str) -> list[str]:
     return [part for part in re.split(r"[,\n]+", raw) if part.strip()]
 
 

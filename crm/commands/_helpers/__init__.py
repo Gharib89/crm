@@ -90,6 +90,11 @@ from .solutions import (
 )
 
 __all__ = [
+    # package-level surface pinned by test_helpers_package_surface.py:
+    # session_mod is the patch seam tests reach via `_helpers.session_mod`;
+    # _stdin_is_tty is the TTY probe re-exported for the command layer.
+    "session_mod",
+    "_stdin_is_tty",
     # rendering / output envelope
     "_sanitize",
     "_strip_odata_keys",

@@ -35,6 +35,15 @@ target-version = "py39"
 # D2xx/D4xx docstring FORMAT only — deliberately no D1xx (missing-docstring),
 # S (bandit), C90 (complexity), or ANN (pyright owns typing).
 select = ["E", "W", "F", "I", "B", "UP", "D2", "D4"]
+# D205 (blank line between summary and description) is adoption debt, not a
+# rule rejection: ~560 pre-existing docstrings violate it, and hand-editing
+# them would swamp the adoption diff. Tracked as a follow-up issue.
+ignore = ["D205"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests import mid-file deliberately (after env/path setup in conftest, or to
+# order fixtures); scoped ignore per the standards doc, never a global removal.
+"crm/tests/**" = ["E402"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

@@ -452,7 +452,6 @@ class ReplSkin:
         try:
             from prompt_toolkit import PromptSession
             from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
-            from prompt_toolkit.formatted_text import FormattedText
             from prompt_toolkit.history import FileHistory
 
             style = self.get_prompt_style()

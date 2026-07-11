@@ -24,6 +24,10 @@ from crm.core.solution_validate import validate_solution
 from crm.core.webresource import (
     get_webresource,  # pyright: ignore[reportUnusedImport]; re-exported for the command layer
 )
+
+# Redundant alias = explicit re-export for the command layer
+# (crm/commands/ribbon.py calls ribbon_mod.resolve_webresource_id).
+from crm.core.webresource import resolve_webresource_id as resolve_webresource_id
 from crm.utils import safe_xml
 from crm.utils.d365_backend import D365Error, odata_literal
 
