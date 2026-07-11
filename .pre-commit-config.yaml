@@ -1,0 +1,10 @@
+# Install once per clone: `pre-commit install` (after `pip install -e ".[dev]"`).
+# Runs ruff lint + format on staged files so the format round-trip never reaches
+# CI. rev is kept in lockstep with the ruff pin in setup.py [dev] — bump both.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.21
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format

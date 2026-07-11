@@ -1,4 +1,5 @@
-# python-semantic-release config only. Intentionally NO [build-system] table:
+# Tool config only (python-semantic-release, ruff, pytest). Intentionally NO
+# [build-system] table:
 # the project is still built from setup.py (setuptools legacy backend), and the
 # release pipeline (.github/workflows/release.yml, crm.spec) is unchanged.
 [tool.semantic_release]
@@ -21,6 +22,22 @@ match = "(main|master)"
 
 [tool.semantic_release.changelog]
 mode = "update"
+
+# Formatting & linting — the agreed shape is documented in
+# docs/contributing/coding-standards.md ("Formatting & linting"); this table is
+# the executable source of truth for the exact codes.
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+# E/W pycodestyle, F pyflakes, I import order, B bugbear, UP pyupgrade,
+# D2xx/D4xx docstring FORMAT only — deliberately no D1xx (missing-docstring),
+# S (bandit), C90 (complexity), or ANN (pyright owns typing).
+select = ["E", "W", "F", "I", "B", "UP", "D2", "D4"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 [tool.pytest.ini_options]
 testpaths = ["crm/tests"]
