@@ -61,7 +61,7 @@ staged files so the format round-trip never reaches CI.
       docstring summary and description) — D205 treats only physical line 1 as the summary, so
       it forces multi-line summaries onto one line, which then trips `E501` as breakable prose;
       482 of 569 sites can't satisfy both without rewording, and the descriptive-first-line
-      convention here is deliberate (#843),
+      convention here is deliberate (#843).
 - `ruff format` covers the whole tree — `crm/` including tests, plus `scripts/` — no carve-outs.
 - Noisy rules in tests get a scoped `per-file-ignores` entry, never a global rule removal.
 
