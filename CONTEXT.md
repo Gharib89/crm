@@ -177,6 +177,28 @@ columns. Formalized in
 _Avoid_: filter (that's a query `--filter`), `--select` (that's server-side field
 selection in the request; shaping is client-side, post-response).
 
+### Invocation & options
+
+**Global option**:
+A root-declared option that applies to the whole invocation rather than one
+command — `--json`, `--profile`, `--dry-run`, `--log-level`, `--stage-only`, … By
+default a global option must precede the subcommand (`crm --json entity get …`);
+a misplaced one gets a position hint. See **Dual-position global option** for the
+five exceptions.
+_Avoid_: floating flag, anywhere flag, persistent flag.
+
+**Dual-position global option**:
+The five global options valid **both** before and after the subcommand — `--json`,
+`--fields`, `--jq`, `--profile`, `--dry-run`. Position is pure syntax with zero
+semantic difference: `crm entity get accounts --json` is byte-identical to
+`crm --json entity get accounts`. Implemented by injecting the five into every leaf
+command ([ADR 0025](docs/adr/0025-dual-position-global-options.md)), not by argv
+rewriting. Supplying one in **both** positions is a usage error (exit 2); the other
+global options stay root-only.
+_Disambiguation_: a D365 **global option set** (a shared picklist) is always written
+"option set" in full — never shortened to "global option", which is this CLI-contract
+term.
+
 ### Dry-run
 
 **Dry-run preview**:

@@ -76,6 +76,12 @@ class CLIContext:
         # sticky. Typed `Any` because jq is imported lazily (kept out of cold start).
         self.jq_program: Any = None
         self.profile_name: str | None = None
+        # Which of the five dual-position global options (#818) were supplied at
+        # the ROOT position this invocation, as canonical kind strings ("json",
+        # "fields", "jq", "dry_run", "profile"). Populated by the root callback via
+        # ParameterSource; read by an injected leaf option's callback to reject the
+        # same flag given in both positions. Reset per invocation (per REPL line).
+        self._root_positions: set[str] = set()
         self.password: str | None = None
         self.auth_scheme: str | None = None
         self.stage_only: bool = False
@@ -341,30 +347,36 @@ def _suppress_bare_repl(json_mode: bool) -> bool:
 
 def _json_mode_active(args: list[str] | None) -> bool:
     """Decide whether to emit JSON by scanning argv — the authoritative per-invocation
-    signal. The root --json must precede the subcommand and is always present in argv
-    for a real --json invocation, so argv is the reliable source. The parsed
-    CLIContext.json_mode is deliberately NOT consulted: the root callback may not have
-    run yet when a usage error fires, and in the REPL it carries a stale value from a
-    prior --json line, which would mis-skin a subsequent human-mode error.
+    signal. `--json` is valid both before AND after the subcommand (#818), so it can
+    appear anywhere in argv for a real --json invocation; argv is the reliable source.
+    The parsed CLIContext.json_mode is deliberately NOT consulted: the root callback
+    may not have run yet when a usage error fires, and in the REPL it carries a stale
+    value from a prior --json line, which would mis-skin a subsequent human-mode error.
 
-    Only the leading run of root-level option tokens (everything before the first
-    subcommand token) is considered, and a value consumed by a preceding
-    value-taking root option is skipped — so a literal '--json' passed as an option
-    value (e.g. `entity get accounts --select --json`) is not mistaken for the flag."""
+    The whole argv is scanned (not just the leading root-option run) because `--json`
+    may now trail the subcommand. A value consumed by a preceding value-taking ROOT
+    option is skipped, so a '--json' sitting in such a slot is treated as a value, not
+    the flag. **Accepted false positive (#818, ADR 0025):** a leaf option that takes a
+    value is not in `value_opts`, so a literal '--json' passed as *its* value
+    (e.g. `entity get accounts --select --json`) is mistaken for the flag and, in an
+    invocation that also has a usage error, renders that error as a JSON envelope.
+    Purely cosmetic (the error text is unchanged), it only affects error skinning, and
+    is pinned by a test — accepted over reimplementing Click's per-command tokenizer
+    here just to shape usage-error output."""
     if not args:
         return False
-    # Root options that consume the following token as their value; '--json' sitting
-    # in such a slot is a value, not the root flag.
+    # ROOT options that consume the following token as their value; '--json' sitting
+    # in such a slot is a value, not the flag. `--fields`/`--jq` are included so a
+    # '--json' passed as *their* value doesn't flip skinning. (Arbitrary LEAF
+    # value-options — `--select`, `--data`, … — cannot be enumerated here, so a
+    # '--json' passed as one of THOSE values is the accepted false positive above.)
     value_opts = {
         "--profile", "--password", "--log-level", "--log-format",
-        "--auth-scheme", "--session",
+        "--auth-scheme", "--session", "--fields", "--jq",
     }
     i = 0
     while i < len(args):
         tok = args[i]
-        if not tok.startswith("-"):
-            # First subcommand token reached; the root --json must appear before it.
-            return False
         if tok == "--json":
             return True
         if tok in value_opts:
@@ -372,6 +384,176 @@ def _json_mode_active(args: list[str] | None) -> bool:
             continue
         i += 1
     return False
+
+
+# ── Dual-position global options (#818, ADR 0025) ────────────────────────────
+# Five root global options are ALSO valid after the subcommand — position is pure
+# syntax, semantics identical. They are injected into every leaf command's params
+# at the root resolution seam (`_LazyJsonAwareGroup.get_command`), NOT by rewriting
+# argv (which cannot tell a flag token from a flag-valued option value). Each
+# injected option has `expose_value=False` and a callback that funnels the value
+# through the SAME merge semantics as the root callback, so `crm entity list --json`
+# is byte-identical to `crm --json entity list`. See ADR 0025.
+
+# Canonical kind → the option's user-facing token, in declaration/injection order.
+_DUALPOS_TOKENS: dict[str, str] = {
+    "json": "--json",
+    "fields": "--fields",
+    "jq": "--jq",
+    "profile": "--profile",
+    "dry_run": "--dry-run",
+}
+# Help-text marker appended to every injected option so `--help` / `crm describe`
+# show it is a global flag that also works before the command (decision 6).
+_DUALPOS_HELP_SUFFIX = "  [global; also valid before the command]"
+
+
+def _parse_fields_value(value: str) -> list[str]:
+    """Parse a ``--fields`` value into its ordered key list, or raise a usage error.
+
+    Shared by the root callback and the injected leaf option so both positions
+    validate identically. An empty / whitespace-only value has nothing to project
+    and is a usage error (exit 2)."""
+    parsed = [f.strip() for f in value.split(",") if f.strip()]
+    if not parsed:
+        raise click.BadParameter("no field names given", param_hint="--fields")
+    return parsed
+
+
+def _compile_jq_value(value: str) -> Any:
+    """Compile a ``--jq`` program, or raise a usage error (exit 2).
+
+    Shared by root and leaf so an invalid program fails fast — before any profile
+    resolution or network call — in either position. The `jq` module is imported
+    lazily so the common no-jq path never pays for it."""
+    import jq  # lazy: never imported unless --jq is used
+
+    try:
+        return jq.compile(value)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc), param_hint="--jq") from exc
+
+
+def _reject_fields_jq_conflict(cli_ctx: "CLIContext") -> None:
+    """Cross-position guard: ``--fields`` and ``--jq`` are two spellings of the same
+    shaping seam, so having both set — in any combination of positions — is a usage
+    error (exit 2), matching the root-position check in the root callback."""
+    if cli_ctx.fields is not None and cli_ctx.jq_program is not None:
+        raise click.UsageError("--fields and --jq are mutually exclusive")
+
+
+def _dualpos_callback(kind: str, token: str):
+    """Build the parse callback for one injected dual-position option.
+
+    Fires for every parse, but does work only when the option was actually supplied
+    at the leaf (``ParameterSource.COMMANDLINE``). It then rejects the same option
+    given in BOTH positions (decision 2) and otherwise applies the value through the
+    exact merge semantics the root callback uses (decision 4): `--profile` sticky,
+    the rest per-invocation, `--jq` implying `--json` and compiling now, `--fields`
+    /`--jq` mutually exclusive cross-position."""
+    def _cb(ctx: click.Context, param: click.Parameter, value: Any) -> Any:
+        from click.core import ParameterSource
+
+        if ctx.get_parameter_source(param.name) != ParameterSource.COMMANDLINE:
+            return value  # not supplied after the subcommand → nothing to merge
+        cli_ctx = ctx.find_root().ensure_object(CLIContext)
+        if kind in cli_ctx._root_positions:
+            raise click.UsageError(
+                f"{token} was provided both before and after the subcommand; "
+                f"pick one."
+            )
+        if kind == "json":
+            cli_ctx.json_mode = True
+        elif kind == "dry_run":
+            cli_ctx.dry_run = True
+        elif kind == "profile":
+            cli_ctx.profile_name = value
+        elif kind == "fields":
+            cli_ctx.fields = _parse_fields_value(value)
+            _reject_fields_jq_conflict(cli_ctx)
+        elif kind == "jq":
+            cli_ctx.jq_program = _compile_jq_value(value)
+            cli_ctx.json_mode = True
+            _reject_fields_jq_conflict(cli_ctx)
+        return value
+
+    return _cb
+
+
+def _make_dualpos_options() -> list[click.Option]:
+    """Fresh ``click.Option`` instances for the five dual-position global options.
+
+    New instances every call: a Click Option is bound into the command it is added
+    to, so the same object must not be shared across every leaf. Each uses an
+    underscore-prefixed internal name that cannot collide with a real leaf param,
+    and `expose_value=False` so leaf command signatures are untouched."""
+    return [
+        click.Option(
+            ["--json", "_dualpos_json"], is_flag=True, default=False,
+            expose_value=False, callback=_dualpos_callback("json", "--json"),
+            help="Emit machine-readable JSON output." + _DUALPOS_HELP_SUFFIX,
+        ),
+        click.Option(
+            ["--fields", "_dualpos_fields"], default=None, metavar="KEY[,KEY...]",
+            expose_value=False, callback=_dualpos_callback("fields", "--fields"),
+            help="Project the data payload down to these comma-separated top-level "
+                 "keys." + _DUALPOS_HELP_SUFFIX,
+        ),
+        click.Option(
+            ["--jq", "_dualpos_jq"], default=None, metavar="PROGRAM",
+            expose_value=False, callback=_dualpos_callback("jq", "--jq"),
+            help="Run a jq program over the curated data payload; the result "
+                 "replaces data. Implies --json." + _DUALPOS_HELP_SUFFIX,
+        ),
+        click.Option(
+            ["--profile", "_dualpos_profile"], default=None,
+            shell_complete=_complete_profile_names, expose_value=False,
+            callback=_dualpos_callback("profile", "--profile"),
+            help="Connection profile name." + _DUALPOS_HELP_SUFFIX,
+        ),
+        click.Option(
+            ["--dry-run", "_dualpos_dry_run"], is_flag=True, default=False,
+            expose_value=False, callback=_dualpos_callback("dry_run", "--dry-run"),
+            help="Preview writes without issuing them; reads run normally."
+                 + _DUALPOS_HELP_SUFFIX,
+        ),
+    ]
+
+
+def _leaf_declares_token(cmd: click.Command, token: str) -> bool:
+    """Whether a command already declares an option under `token` (primary or `--no-`
+    secondary form)."""
+    for p in cmd.params:
+        if isinstance(p, click.Option) and (token in p.opts or token in p.secondary_opts):
+            return True
+    return False
+
+
+def _inject_dualpos_options(cmd: click.Command) -> None:
+    """Append the dual-position options to one leaf command, skipping any token the
+    leaf already declares.
+
+    That skip does double duty: it keeps injection **idempotent** (a second pass over
+    an already-injected leaf finds `--json` etc. present and skips all five), and it
+    preserves a leaf's OWN same-named option — `profile set-password --profile`,
+    `profile delete-password --profile` keep their required local meaning."""
+    for opt in _make_dualpos_options():
+        if not _leaf_declares_token(cmd, opt.opts[0]):
+            cmd.params.append(opt)
+
+
+def _inject_dualpos_tree(cmd: click.Command) -> None:
+    """Walk a resolved top-level command and inject the dual-position options into
+    every leaf beneath it.
+
+    Subgroups below the root are eager ``click.Group``s, so `.commands` is populated
+    and the walk reaches every leaf; only the root group itself is lazy, and it is
+    never passed here (injection is driven from the root's own `get_command`)."""
+    if isinstance(cmd, click.Group):
+        for sub in cmd.commands.values():
+            _inject_dualpos_tree(sub)
+    else:
+        _inject_dualpos_options(cmd)
 
 
 class _JsonAwareGroup(click.Group):
@@ -409,6 +591,13 @@ class _JsonAwareGroup(click.Group):
     def main(self, args=None, **kwargs):  # type: ignore[override]
         argv = list(args) if args is not None else sys.argv[1:]
         json_mode = _json_mode_active(argv)
+        # Whole-argv JSON signal for the root callback's passive guards (#818). A
+        # dual-position --json/--jq may trail the subcommand, so the root-position
+        # `json_mode` param the callback receives can't see it; stash the argv-wide
+        # answer here (argv only lives at this seam) for the callback to read. `--jq`
+        # implies --json, so either token means the invocation emits JSON. Recomputed
+        # per invocation — including each REPL line, which re-enters main().
+        self._json_for_guards = json_mode or "--jq" in argv
         # Run non-standalone so Click parse/usage errors reach us instead of being
         # printed-and-exited by Click. We re-render: a misplaced global flag gets a
         # position hint; under --json a usage error becomes the envelope; otherwise
@@ -540,6 +729,11 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
     def get_command(self, ctx, cmd_name):
         eager = super().get_command(ctx, cmd_name)
         if eager is not None:
+            # Dual-position global options (#818): inject the five into every leaf
+            # of the resolved subtree (idempotent — see _inject_dualpos_options) so
+            # `crm entity list --json` parses the trailing flag. Done at resolution
+            # rather than declaration because the root is lazy: modules load here.
+            _inject_dualpos_tree(eager)
             return eager
         target = self._lazy_commands.get(cmd_name)
         if target is None:
@@ -562,6 +756,7 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
             raise click.ClickException(
                 f"{target!r} did not resolve to a Click command for {cmd_name!r}"
             )
+        _inject_dualpos_tree(command)
         return command
 
 
@@ -711,6 +906,20 @@ def cli(ctx: click.Context, json_mode: bool, fields: str | None,
     setup_logging(level=effective_level, fmt=effective_fmt)  # type: ignore[arg-type]
 
     cli_ctx = ctx.ensure_object(CLIContext)
+    # Record which of the five dual-position global options (#818) were supplied at
+    # the ROOT position, so an injected leaf option can reject the same flag given
+    # in both positions. Fresh set per invocation (per REPL line). ParameterSource
+    # is imported from click.core (not top-level click) — pyright's bundled stubs
+    # only export it there.
+    from click.core import ParameterSource
+    cli_ctx._root_positions = {
+        kind
+        for kind, pname in (
+            ("json", "json_mode"), ("fields", "fields"), ("jq", "jq_program"),
+            ("dry_run", "dry_run"), ("profile", "profile_name"),
+        )
+        if ctx.get_parameter_source(pname) == ParameterSource.COMMANDLINE
+    }
     cli_ctx.json_mode = json_mode
     # Shaping is per-invocation, never sticky: each command (each REPL line)
     # re-decides whether to project, so a bare later line clears a prior --fields.
@@ -722,10 +931,7 @@ def cli(ctx: click.Context, json_mode: bool, fields: str | None,
     if fields is not None and jq_program is not None:
         raise click.UsageError("--fields and --jq are mutually exclusive")
     if fields is not None:
-        parsed = [f.strip() for f in fields.split(",") if f.strip()]
-        if not parsed:
-            raise click.BadParameter("no field names given", param_hint="--fields")
-        cli_ctx.fields = parsed
+        cli_ctx.fields = _parse_fields_value(fields)
     # --jq (#736): compile the program NOW — before any profile resolution or
     # network call — so a syntactically invalid program fails fast with exit 2 and
     # provably issues no request (validate-before-backend). The jq module is imported
@@ -734,12 +940,7 @@ def cli(ctx: click.Context, json_mode: bool, fields: str | None,
     # mode: a jq result has no meaningful human render.
     cli_ctx.jq_program = None
     if jq_program is not None:
-        import jq  # lazy: never imported unless --jq is used
-
-        try:
-            cli_ctx.jq_program = jq.compile(jq_program)
-        except ValueError as exc:
-            raise click.BadParameter(str(exc), param_hint="--jq") from exc
+        cli_ctx.jq_program = _compile_jq_value(jq_program)
         json_mode = True
         cli_ctx.json_mode = True
     cli_ctx.dry_run = dry_run
@@ -769,11 +970,9 @@ def cli(ctx: click.Context, json_mode: bool, fields: str | None,
     cli_ctx.refresh_metadata = refresh_metadata
     # Sticky session: the REPL re-invokes this callback for every typed line; a bare
     # line omits --session so Click passes the literal default "default", which would
-    # silently clobber the session name set at REPL-launch time (#128).
-    # Imported from click.core (not top-level click) because pyright's bundled click
-    # stubs only export ParameterSource there; `click.ParameterSource` / `from click
-    # import ParameterSource` fail strict type-checking even though both work at runtime.
-    from click.core import ParameterSource
+    # silently clobber the session name set at REPL-launch time (#128). ParameterSource
+    # (imported from click.core at the top of this callback) distinguishes an explicit
+    # --session from Click's default fill.
     if ctx.get_parameter_source("session_name") == ParameterSource.COMMANDLINE:
         cli_ctx.session_name = session_name
 
@@ -781,7 +980,15 @@ def cli(ctx: click.Context, json_mode: bool, fields: str | None,
     # guards run inline so machine/CI/--json paths never import the update module
     # (and its requests dependency) — keeping CLI startup lean. The authoritative
     # guard set lives in crm.core.update.is_check_enabled.
-    _maybe_update_check(json_mode)
+    #
+    # A dual-position --json/--jq (#818) trails the subcommand, so the root-position
+    # `json_mode` local does not yet reflect it (the leaf callback runs later). Use
+    # the whole-argv guard signal computed in `_JsonAwareGroup.main`, so a trailing
+    # --json/--jq gates the check exactly as a leading one — root and leaf placement
+    # stay consistent. (The notice itself is gated on the final json_mode in the
+    # result callback; this only governs whether the background probe starts.)
+    json_for_guards = getattr(cli, "_json_for_guards", json_mode)
+    _maybe_update_check(json_for_guards)
 
     if ctx.invoked_subcommand is None:
         if _suppress_bare_repl(json_mode):
