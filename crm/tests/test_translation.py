@@ -58,6 +58,17 @@ class TestExportTranslation:
             with pytest.raises(D365Error, match="ExportTranslationFile"):
                 translation.export_translation(backend, "CRMWorx", tmp_path / "x.zip")
 
+    def test_export_invalid_base64_raises(self, backend, tmp_path):
+        from crm.core import translation
+
+        with requests_mock.Mocker() as m:
+            m.post(
+                backend.url_for("solutions/Microsoft.Dynamics.CRM.ExportTranslation"),
+                json={"ExportTranslationFile": "not valid base64!!!"},
+            )
+            with pytest.raises(D365Error, match="not valid base64"):
+                translation.export_translation(backend, "CRMWorx", tmp_path / "x.zip")
+
     def test_export_dry_run_previews_without_writing(self, tmp_path):
         from crm.core import translation
 
