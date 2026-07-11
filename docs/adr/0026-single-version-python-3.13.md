@@ -9,7 +9,8 @@ Decided in #847 after a primary-source research pass
 benchmarks.
 
 The declared `python_requires=">=3.9"` floor had been fictional for some time:
-`click>=8.4` (pinned for `NoSuchCommand`, see `crm/cli.py`) declares
+`click>=8.4` (pinned for `NoSuchCommand`, see `crm/cli.py`; since raised to
+`>=8.4.1` for an unrelated 8.4.0 `get_parameter_source()` regression) declares
 `requires_python >=3.10`, so a 3.9 `pip install crm` cannot resolve — and 3.9
 itself went EOL 2025-10-31. Meanwhile nothing exercised the floor anyway: CI
 tested on 3.11, e2e on 3.12, release binaries built on 3.11, dev venv on 3.13.

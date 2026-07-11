@@ -31,7 +31,7 @@ Worktrees have no `.venv` — verify with `PYTHONPATH=$WT <main-venv>/bin/python
 pip install -e ".[dev,docs]"              # dev + docs deps
 pytest                                    # offline suite; addopts pins `-m 'not e2e'`, so e2e is skipped by default
 pytest crm/tests/test_query.py::test_x    # single test (or `-k '<expr>'` to match by name); `-m slow` for the slow ops
-pyright --pythonpath .venv/bin/python     # local lint (omit → ~56 false errors); strict mode + py3.13 pinned in pyrightconfig.json
+pyright --pythonpath .venv/bin/python --pythonversion 3.13   # local lint (omit pythonpath → ~56 false errors); strict + py3.13 pinned in pyrightconfig.json
 ruff check . && ruff format --check .     # lint + format gate; CI runs both (config in pyproject.toml)
 pre-commit install                        # once per clone: ruff runs on staged files at commit time
 mkdocs build --strict                     # docs; CI runs this, warnings fail
