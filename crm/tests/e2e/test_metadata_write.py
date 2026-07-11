@@ -190,6 +190,71 @@ def test_update_integer_attribute_bounds(cli, ephemeral_entity, unique, ephemera
         ], check=False)
 
 
+@covers("metadata update-attribute")
+@pytest.mark.slow
+def test_update_datetime_behavior_userlocal_to_dateonly(
+    cli, ephemeral_entity, unique, ephemeral_solution
+):
+    """The one-time DateTimeBehavior flip on a datetime column (#817):
+      1. add-attribute datetime (defaults to UserLocal / DateAndTime)
+      2. update-attribute --behavior DateOnly; assert updated=True and the
+         no-backfill advisory rides meta.warnings
+      3. read back: server reports DateTimeBehavior=DateOnly and the coupled
+         Format=DateOnly (auto-set)
+    """
+    attr_schema = f"new_e2edt{unique}"
+    attr_logical = attr_schema.lower()
+
+    r_add = cli([
+        "--json", "metadata", "add-attribute", ephemeral_entity,
+        "--kind", "datetime",
+        "--schema-name", attr_schema,
+        "--display", f"E2E DT {unique}",
+        "--no-publish",
+        "--solution", ephemeral_solution,
+    ])
+    assert r_add.returncode == 0, r_add.stderr
+    assert json.loads(r_add.stdout)["ok"], r_add.stdout
+
+    def _behavior(attr):
+        b = attr.get("DateTimeBehavior")
+        return b.get("Value") if isinstance(b, dict) else b
+
+    try:
+        # Sanity: a fresh custom datetime column starts UserLocal (the only state
+        # from which a behavior change is legal).
+        r0 = cli(["--json", "metadata", "attribute", ephemeral_entity, attr_logical])
+        assert r0.returncode == 0, r0.stderr
+        assert _behavior(json.loads(r0.stdout)["data"]) == "UserLocal"
+
+        r_upd = cli([
+            "--json", "metadata", "update-attribute", ephemeral_entity, attr_logical,
+            "--behavior", "DateOnly",
+            "--no-publish",
+            "--solution", ephemeral_solution,
+        ])
+        assert r_upd.returncode == 0, r_upd.stderr
+        env_upd = json.loads(r_upd.stdout)
+        assert env_upd["ok"], env_upd
+        assert env_upd["data"].get("updated") is True
+        warnings = (env_upd.get("meta") or {}).get("warnings") or []
+        assert any("ConvertDateAndTimeBehavior" in w for w in warnings), env_upd
+
+        # Server confirms both the behavior flip and the coupled format change.
+        r_read = cli(["--json", "metadata", "attribute", ephemeral_entity, attr_logical])
+        assert r_read.returncode == 0, r_read.stderr
+        attr_data = json.loads(r_read.stdout)["data"]
+        assert _behavior(attr_data) == "DateOnly", attr_data.get("DateTimeBehavior")
+        assert attr_data.get("Format") == "DateOnly", attr_data.get("Format")
+
+    finally:
+        cli([
+            "--json", "metadata", "delete-attribute", ephemeral_entity, attr_logical,
+            "--yes",
+            "--solution", ephemeral_solution,
+        ], check=False)
+
+
 @covers("metadata add-attribute", "metadata update-attribute", "metadata update-entity")
 @pytest.mark.slow
 def test_audit_enablement_on_attribute_and_entity(

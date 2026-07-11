@@ -99,6 +99,7 @@ def _retrieve_merge_write(
     publish: bool,
     write_path: str | None = None,
     ensure: dict[str, Any] | None = None,
+    current: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """GET the full definition at `path`, deep-merge `changes`, PUT it back.
 
@@ -109,6 +110,10 @@ def _retrieve_merge_write(
     `path` must be the path that returns the *complete* definition. For typed
     attributes that is the `@odata.type` cast path (the un-cast projection omits
     type-specific properties); callers resolve the cast before calling here.
+
+    `current` lets a caller that already read the full definition at `path` (to
+    validate a precondition) hand it in as the merge base, so the resource is
+    GET once, not twice — a `None` reads it here as before.
 
     `write_path` is the PUT target and defaults to `path`. Relationships read
     their merge base from the typed cast `path` (the only projection that carries
@@ -123,7 +128,8 @@ def _retrieve_merge_write(
     dry-run diff.
     """
     target = write_path or path
-    current = _read(backend, path)
+    if current is None:
+        current = _read(backend, path)
     if ensure:
         defaults = {k: v for k, v in ensure.items() if k not in current}
         if defaults:
@@ -245,6 +251,7 @@ def _build_attribute_changes(
     max_value: float | None,
     format_name: str | None,
     is_audit_enabled: bool | None = None,
+    behavior_name: str | None = None,
 ) -> dict[str, Any]:
     """Build the sparse `changes` dict, validated against the attribute type.
 
@@ -298,6 +305,31 @@ def _build_attribute_changes(
             raise D365Error(
                 "--format is only valid for string or datetime attributes."
             )
+    if behavior_name is not None:
+        if odata_type != _DATETIME_TYPE:
+            raise D365Error("--behavior is only valid for datetime attributes.")
+        mc.validate_behavior(behavior_name, subject="--behavior")
+        if behavior_name == "UserLocal":
+            # UserLocal is the source-only default; the platform permits exactly
+            # one UserLocal → DateOnly/TimeZoneIndependent change and no target
+            # can be UserLocal. (The source-must-be-UserLocal check needs the
+            # current definition and lives in update_attribute.)
+            raise D365Error(
+                "--behavior cannot target UserLocal — it is the source-only "
+                "default; the platform allows one UserLocal → "
+                "DateOnly/TimeZoneIndependent change."
+            )
+        if behavior_name == "DateOnly":
+            # Dataverse rejects DateOnly behavior paired with the DateAndTime
+            # format, so DateOnly forces Format=DateOnly. A conflicting explicit
+            # --format is a client-side error rather than a deferred server fault.
+            if format_name is not None and format_name != "DateOnly":
+                raise D365Error(
+                    "--behavior DateOnly requires --format DateOnly (or omit "
+                    f"--format); got --format {format_name}."
+                )
+            changes["Format"] = "DateOnly"
+        changes["DateTimeBehavior"] = {"Value": behavior_name}
     if is_audit_enabled is not None:
         # IsAuditEnabled lives on the base AttributeMetadata (valid for every
         # type), so it needs no odata_type guard. Sparse {"Value": …} merges
@@ -320,6 +352,7 @@ def update_attribute(
     max_value: float | None = None,
     format_name: str | None = None,
     is_audit_enabled: bool | None = None,
+    behavior_name: str | None = None,
     publish: bool = False,
     solution: str | None = None,
 ) -> dict[str, Any]:
@@ -347,13 +380,13 @@ def update_attribute(
         v is None
         for v in (
             display_name, description, required, max_length, precision,
-            min_value, max_value, format_name, is_audit_enabled,
+            min_value, max_value, format_name, is_audit_enabled, behavior_name,
         )
     ):
         raise D365Error(
             "nothing to update — pass at least one of "
             "--display/--description/--required/--max-length/--precision/"
-            "--min/--max/--format/--audit."
+            "--min/--max/--format/--behavior/--audit."
         )
 
     base_path = (
@@ -381,15 +414,70 @@ def update_attribute(
         max_value=max_value,
         format_name=format_name,
         is_audit_enabled=is_audit_enabled,
+        behavior_name=behavior_name,
     )
+
+    # A behavior change is stateful: it is legal only from a UserLocal source with
+    # the managed property unlocked. Read the full typed body once, validate, and
+    # reuse it as the merge base so the cast path is still GET exactly once.
+    # (`_build_attribute_changes` has already rejected a non-datetime kind and a
+    # UserLocal *target*, so here the attribute is datetime.)
+    current: dict[str, Any] | None = None
+    if behavior_name is not None:
+        current = _read(backend, cast_path)
+        _check_behavior_transition(current, entity, attribute)
 
     out = _retrieve_merge_write(
         backend, path=cast_path, changes=changes, solution=solution,
-        publish=publish,
+        publish=publish, current=current,
     )
     out.setdefault("entity", entity)
     out.setdefault("attribute", attribute)
     return out
+
+
+# Advisory surfaced whenever a DateTimeBehavior change succeeds: the Web API
+# changes the behavior of *new* writes but cannot backfill existing rows.
+BEHAVIOR_BACKFILL_WARNING = (
+    "DateTimeBehavior changed: existing stored values keep their original UTC "
+    "interpretation and are NOT migrated. The ConvertDateAndTimeBehavior backfill "
+    "is a SOAP-only Organization-Service message with no Web API equivalent "
+    "(#453), so this CLI cannot convert existing rows — new writes use the new "
+    "behavior; older rows may render shifted."
+)
+
+
+def _managed_value(prop: Any) -> Any:
+    """Unwrap a `{"Value": …}` managed-property object; pass a bare value through."""
+    if isinstance(prop, dict):
+        return cast("dict[str, Any]", prop).get("Value")
+    return prop
+
+
+def _check_behavior_transition(
+    current: dict[str, Any], entity: str, attribute: str
+) -> None:
+    """Reject a DateTimeBehavior change the platform would fault on.
+
+    The platform permits exactly one behavior change, and only from a
+    `UserLocal` source with the `CanChangeDateTimeBehavior` managed property
+    unlocked; `DateOnly` and `TimeZoneIndependent` are terminal. Checking both
+    client-side turns a server fault into a clean error before any PUT.
+    """
+    source = _managed_value(current.get("DateTimeBehavior"))
+    if source != "UserLocal":
+        raise D365Error(
+            f"{entity}.{attribute} has DateTimeBehavior {source!r}; only a "
+            "UserLocal column can change behavior (UserLocal → "
+            "DateOnly/TimeZoneIndependent is a one-time change; DateOnly and "
+            "TimeZoneIndependent are terminal)."
+        )
+    if _managed_value(current.get("CanChangeDateTimeBehavior")) is not True:
+        raise D365Error(
+            f"{entity}.{attribute} cannot change behavior: its "
+            "CanChangeDateTimeBehavior managed property is False (the behavior "
+            "is locked, e.g. a system column or a managed-solution restriction)."
+        )
 
 
 def _build_relationship_changes(

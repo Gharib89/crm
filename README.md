@@ -522,6 +522,7 @@ picklist/state/status options — everything needed to build a valid record payl
 one call. Write verbs new in 0.5.0:
 
 - `metadata add-attribute <entity> --kind <k>` — add a column (15 kinds, incl. `customer` composite lookup); `--type rollup` or `--type calculated` layers rollup/calculated on top of a supported column kind (requires `--formula-file <xaml>` — XAML is editor-authored and sent verbatim)
+- `metadata update-attribute <entity> <attribute>` — edit a column (display/description/required/bounds/format/audit); `--behavior` performs the platform's one-time datetime behavior change `UserLocal` → `DateOnly`/`TimeZoneIndependent` (both terminal), auto-coupling the format and warning that existing stored values are not backfilled
 - `metadata create-one-to-many` / `create-many-to-many` — relationships; `create-one-to-many` accepts `--hierarchical` to mark the 1:N as a parent/child hierarchy (self-referencing entity required)
 - `metadata update-relationship <schema>` — update cascade/menu on an existing relationship; `--hierarchical / --no-hierarchical` sets `IsHierarchical` on a 1:N (rejected for N:N)
 - `metadata can-relate <entity> --as referenced|referencing|many-to-many` — read-only eligibility check before creating a relationship; `--valid-partners` lists legal partner tables (N:N partner list is org-global, not entity-scoped)
