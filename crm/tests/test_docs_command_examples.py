@@ -433,14 +433,16 @@ def _audit(command: str) -> list[str]:
     return audit_example(MODEL, Example("<test>", 0, command, toks))
 
 
-# The four examples fixed in 41ba0ba — reintroducing any must fail the gate.
+# Genuine path bugs (unknown subcommand) — reintroducing either must fail the gate.
+# NB: the two trailing-`--json` examples once fixed in 41ba0ba are no longer bugs —
+# #818 made the five dual-position globals valid after the subcommand, so they moved
+# to test_valid_invocations_pass. `query account` stays: `account` is still not a
+# `query` subcommand, so those two remain path bugs regardless of flag placement.
 @pytest.mark.parametrize(
     "command",
     [
         "crm query account --top 5",  # quickstart: account not a query subcommand
         "Agent:  Running: crm query account --top 5 --select name --orderby name --json",
-        "Agent:  Running: crm entity create account --data '{\"name\":\"x\"}' --json",
-        "crm connection whoami --json",  # index: trailing global option
     ],
 )
 def test_known_bugs_are_caught(command: str) -> None:
@@ -458,6 +460,11 @@ def test_known_bugs_are_caught(command: str) -> None:
         "crm profile add --password PLACEHOLDER",  # own flag shadows a global
         "crm query odata accounts --top 5",  # the corrected query form
         "crm profile",  # bare group reference (prose)
+        # Dual-position globals (#818): valid AFTER the subcommand — injected onto
+        # every leaf, so `describe` reports them as own flags and the gate accepts them.
+        "crm connection whoami --json",
+        "Agent:  Running: crm entity create account --data '{\"name\":\"x\"}' --json",
+        "crm entity get accounts --fields name,accountid",
     ],
 )
 def test_valid_invocations_pass(command: str) -> None:

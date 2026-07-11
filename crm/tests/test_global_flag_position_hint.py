@@ -1,11 +1,17 @@
-"""Global flags placed after the subcommand get a position hint (#297).
+"""Root-only global flags placed after the subcommand get a position hint (#297).
 
-A root-level global option (`--json`, `--dry-run`, `--profile`, …) is only
+A root-only global option (`--password`, `--stage-only`, `--session`, …) is only
 accepted before the subcommand. Placed after it, Click rejects it as a bare
 `No such option` (and sometimes an actively misleading `Did you mean '--count'?`).
 The root group rewrites that into a hint naming it as a global option and showing
 the corrected `crm <flag> <command> ...` form. Genuinely unknown options are left
 untouched. Parse-time only — no backend involved.
+
+Since #818 the five **dual-position** global options (`--json`, `--fields`, `--jq`,
+`--profile`, `--dry-run`) are valid *after* the subcommand too, so they no longer
+hint — they are injected into every leaf and just work. Their positive behavior is
+pinned in test_dual_position_global_options.py; here we assert the hint still fires
+for every *root-only* flag.
 """
 # pyright: basic
 from __future__ import annotations
@@ -15,7 +21,7 @@ import json
 import pytest
 from click.testing import CliRunner
 
-from crm.cli import cli
+from crm.cli import _DUALPOS_TOKENS, cli
 
 # Every root global option (introspected the same way the implementation does),
 # so the parametrized test follows the option set automatically.
@@ -27,54 +33,59 @@ GLOBAL_FLAGS = sorted(
     if opt.startswith("--")
 )
 
+# The five dual-position flags accept the after-the-subcommand position (#818), so
+# they are NOT hinted; every other root flag still is. Derived from the code so the
+# split can never drift from the actual dual-position set.
+ROOT_ONLY_FLAGS = [f for f in GLOBAL_FLAGS if f not in set(_DUALPOS_TOKENS.values())]
 
-def test_trailing_json_human_mode_hint():
-    """`crm profile list --json` → exit 2, hint on stderr, no `Did you mean`."""
-    result = CliRunner().invoke(cli, ["profile", "list", "--json"])
+
+def test_trailing_stage_only_human_mode_hint():
+    """`crm profile list --stage-only` → exit 2, hint on stderr, no `Did you mean`."""
+    result = CliRunner().invoke(cli, ["profile", "list", "--stage-only"])
     assert result.exit_code == 2, result.output
-    assert "'--json' is a global option" in result.stderr
-    assert "crm --json profile list" in result.stderr
+    assert "'--stage-only' is a global option" in result.stderr
+    assert "crm --stage-only profile list" in result.stderr
     assert "Did you mean" not in result.stderr
     # Human path: never a JSON envelope.
     with pytest.raises((ValueError, json.JSONDecodeError)):
         json.loads(result.stdout)
 
 
-def test_trailing_json_after_query_drops_misleading_suggestion():
-    """`crm query odata accounts --json` → hint; the bogus `--count` suggestion gone."""
+def test_trailing_root_only_after_query_drops_misleading_suggestion():
+    """`crm query odata accounts --stage-only` → hint; the bogus `--count` gone."""
     result = CliRunner().invoke(
-        cli, ["query", "odata", "accounts", "--json"]
+        cli, ["query", "odata", "accounts", "--stage-only"]
     )
     assert result.exit_code == 2, result.output
-    assert "'--json' is a global option" in result.stderr
+    assert "'--stage-only' is a global option" in result.stderr
     # The hint rebuilds the command chain (positional args aren't part of it).
-    assert "crm --json query odata ..." in result.stderr
+    assert "crm --stage-only query odata ..." in result.stderr
     assert "--count" not in result.stderr
 
 
-@pytest.mark.parametrize("flag", GLOBAL_FLAGS)
-def test_every_global_flag_after_subcommand_hints(flag):
-    """Each root global flag placed after a subcommand produces the position hint."""
+@pytest.mark.parametrize("flag", ROOT_ONLY_FLAGS)
+def test_every_root_only_flag_after_subcommand_hints(flag):
+    """Each root-only global flag placed after a subcommand produces the hint."""
     result = CliRunner().invoke(cli, ["profile", "list", flag])
     assert result.exit_code == 2, result.output
     assert f"{flag!r} is a global option" in result.stderr
     assert f"crm {flag} profile list" in result.stderr
 
 
-def test_trailing_global_flag_json_mode_envelope():
-    """`crm --json profile list --dry-run` → JSON usage envelope on stdout, exit 2.
+def test_trailing_root_only_flag_json_mode_envelope():
+    """`crm --json profile list --stage-only` → JSON usage envelope on stdout, exit 2.
 
-    Root --json leads (so JSON mode is on); a *different* global flag trails and
-    must surface the hint through the standard envelope, not raw stderr text.
+    Root --json leads (so JSON mode is on); a root-only global flag trails and must
+    surface the hint through the standard envelope, not raw stderr text.
     """
     result = CliRunner().invoke(
-        cli, ["--json", "profile", "list", "--dry-run"]
+        cli, ["--json", "profile", "list", "--stage-only"]
     )
     assert result.exit_code == 2, result.output
     env = json.loads(result.stdout)
     assert env["ok"] is False
-    assert "'--dry-run' is a global option" in env["error"]
-    assert "crm --dry-run profile list" in env["error"]
+    assert "'--stage-only' is a global option" in env["error"]
+    assert "crm --stage-only profile list" in env["error"]
 
 
 def test_unknown_non_global_option_unchanged():
