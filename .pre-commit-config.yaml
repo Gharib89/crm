@@ -31,5 +31,6 @@ repos:
             crm/tests/|
             evals/|
             docs/research/.*\.(html|json)$|
+            .*\.(svg|lock|min\.js)$|
             CHANGELOG\.md$
           )

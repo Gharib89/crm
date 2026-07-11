@@ -54,13 +54,16 @@ jobs:
           "$RUNNER_TEMP/semgrep-venv/bin/semgrep" scan \
             --config ci/semgrep-rules.yml --error --metrics off
       # Lint workflow YAML + the inline bash in `run:` blocks (shellcheck-backed).
-      # Pinned to the same rev as the actionlint pre-commit hook — bump both.
-      # Download the release binary rather than a marketplace action so nothing
-      # new needs pinning/auditing; actionlint auto-discovers .github/workflows.
+      # Download the pinned release binary rather than a marketplace action so
+      # nothing new needs auditing; the SHA256 pins the exact bytes (a version
+      # tag alone is mutable). Version is kept in lockstep with the actionlint
+      # pre-commit hook rev — bump the version, URL, and checksum together.
+      # actionlint auto-discovers .github/workflows.
       - name: Lint workflows (actionlint)
         run: |
           curl -fsSL -o actionlint.tar.gz \
             https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  actionlint.tar.gz" | sha256sum -c -
           tar -xzf actionlint.tar.gz actionlint
           ./actionlint -color
 
