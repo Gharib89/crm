@@ -9,6 +9,75 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.68.0 (2026-07-11)
+
+### Bug Fixes
+
+- **cli**: Honor trailing --json/--jq in the passive update-check guard
+  ([#835](https://github.com/Gharib89/crm/pull/835),
+  [`f654de9`](https://github.com/Gharib89/crm/commit/f654de9b8d040a72afa902e7392c0908d2a79beb))
+
+- **cli**: Skip --fields/--jq values in the JSON-mode argv scan
+  ([#835](https://github.com/Gharib89/crm/pull/835),
+  [`f654de9`](https://github.com/Gharib89/crm/commit/f654de9b8d040a72afa902e7392c0908d2a79beb))
+
+### Chores
+
+- **skills**: Strip model-invocation flag in user-dir source too
+  ([`1096124`](https://github.com/Gharib89/crm/commit/1096124ee989bc4984e395e6cde397583ee9ca6c))
+
+### Documentation
+
+- Add customizations-as-code golden-workflow guide + skill spine
+  ([#815](https://github.com/Gharib89/crm/pull/815),
+  [`95ca069`](https://github.com/Gharib89/crm/commit/95ca069aaa31c3dd226b914c5dbd777ccdc66517))
+
+- Address Copilot round 2 — crm prefix in spine, unsplit code spans
+  ([#815](https://github.com/Gharib89/crm/pull/815),
+  [`95ca069`](https://github.com/Gharib89/crm/commit/95ca069aaa31c3dd226b914c5dbd777ccdc66517))
+
+- Document dual-position global options ([#835](https://github.com/Gharib89/crm/pull/835),
+  [`f654de9`](https://github.com/Gharib89/crm/commit/f654de9b8d040a72afa902e7392c0908d2a79beb))
+
+- Fix stale-plan anchor + clarify plug-in projection in customizations-as-code guide
+  ([#815](https://github.com/Gharib89/crm/pull/815),
+  [`95ca069`](https://github.com/Gharib89/crm/commit/95ca069aaa31c3dd226b914c5dbd777ccdc66517))
+
+- Make convergence-verify steps read-only (--dry-run)
+  ([#815](https://github.com/Gharib89/crm/pull/815),
+  [`95ca069`](https://github.com/Gharib89/crm/commit/95ca069aaa31c3dd226b914c5dbd777ccdc66517))
+
+- Pass doc-example + skill-bundle gates; tighten skill spine
+  ([#815](https://github.com/Gharib89/crm/pull/815),
+  [`95ca069`](https://github.com/Gharib89/crm/commit/95ca069aaa31c3dd226b914c5dbd777ccdc66517))
+
+- **research**: CodeQL evaluation — go on default setup + security-extended
+  ([#822](https://github.com/Gharib89/crm/pull/822),
+  [`1eca9d3`](https://github.com/Gharib89/crm/commit/1eca9d34fd41ec8e29f45509f59cf264d9bcfd69))
+
+- **research**: CodeRabbit OSS plan eligibility + PR-level surface
+  ([#820](https://github.com/Gharib89/crm/pull/820),
+  [`19f94ff`](https://github.com/Gharib89/crm/commit/19f94ffd3d22613a34b3ea1da6ba1e3561d93cd8))
+
+- **skills**: Address Copilot round 1 on audit-crm-skill snippets
+  ([#816](https://github.com/Gharib89/crm/pull/816),
+  [`94a1f4f`](https://github.com/Gharib89/crm/commit/94a1f4f15de3406d38a9604d6ba65d71fd378084))
+
+- **skills**: Fix stale claims, add D365 best-practice gotchas, trim --help restatements
+  ([#816](https://github.com/Gharib89/crm/pull/816),
+  [`94a1f4f`](https://github.com/Gharib89/crm/commit/94a1f4f15de3406d38a9604d6ba65d71fd378084))
+
+- **skills**: Register-image --step matches name or GUID, not name only
+  ([#816](https://github.com/Gharib89/crm/pull/816),
+  [`94a1f4f`](https://github.com/Gharib89/crm/commit/94a1f4f15de3406d38a9604d6ba65d71fd378084))
+
+### Features
+
+- **cli**: Accept --json/--fields/--jq/--profile/--dry-run after the subcommand
+  ([#835](https://github.com/Gharib89/crm/pull/835),
+  [`f654de9`](https://github.com/Gharib89/crm/commit/f654de9b8d040a72afa902e7392c0908d2a79beb))
+
+
 ## v1.67.0 (2026-07-10)
 
 ### Documentation
