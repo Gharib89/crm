@@ -5,6 +5,11 @@ review bot re-reads the **whole PR** on each round and ignores your replies, so
 treat every round's output as a fresh read of the committed tree, not a
 conversation.
 
+This file's loop, round counting, and ceiling govern the **re-requested**
+reviewer — the one whose rounds you must ask for. A repo may run a **second,
+push-triggered reviewer** alongside it (per project instructions); see the
+section at the end — its rounds are free and never touch this ceiling.
+
 ## The loop
 
 1. **Round 1 is automatic.** Most setups request the bot on PR *creation* (per
@@ -87,6 +92,25 @@ absolute cap regardless: a full-lane change never exceeds it.
 - A correctly-formed re-request can simply produce **no review at all** (silence,
   no error). That's flakiness, not a missed poll. Bounded wait (~one poll
   window), then proceed per the ceiling — don't loop forever.
+
+## A second, push-triggered reviewer
+
+If project instructions name an additional reviewer that **re-reviews
+automatically on push** (e.g. an incremental-review bot), fold it into the same
+loop instead of running a second one:
+
+- **Its comments get the same auto-triage** (step 3, judgment tier): address or
+  decline with evidence. Unlike the re-requested bot, it *does* read replies —
+  reply **on each of its review threads** ("fixed in `<sha>`" / decline +
+  evidence), and use its documented thread-resolution mechanism only once every
+  thread carries a disposition.
+- **Its rounds are free.** They never increment the round counter or consume
+  the ceiling above, and need no re-request — each push triggers one. The
+  batch-fixes rule matters double: every push spends its (usually rate-limited)
+  review quota.
+- **The merge-gate bar includes it:** every one of its threads dispositioned —
+  fixed or declined with evidence — before phase 9. Its dispositions get their
+  own block in the merge summary (per-reviewer, not merged into one list).
 
 ## Cleanup
 

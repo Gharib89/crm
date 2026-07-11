@@ -28,7 +28,7 @@ Self-review (code-review skill)
   - <comment> → <fixed | rejected: reason | n/a>
   ...
 
-Automated review
+Automated review   (one block per reviewer when the repo runs more than one)
   - rounds used: <n>/3  (<clean | ceiling reached>)
   - <comment> → <fixed | rejected: reason | n/a>
   ...

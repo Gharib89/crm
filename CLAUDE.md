@@ -113,9 +113,11 @@ echo '{"reviewers":["copilot-pull-request-reviewer[bot]"]}' | \
 
 Then verify `requested_reviewers` actually populated — a bare HTTP 201 can silently no-op (passing the display name `"Copilot"` instead of the bot login is the classic trap). Review effort is **Medium** (the only model lever); house rules + a known-non-issues list live in `.github/copilot-instructions.md` (only its first 4000 chars are read).
 
+**CodeRabbit** also reviews every ready PR (OSS plan; config in `.coderabbit.yaml` — chill profile, agent PRs deliberately unfiltered during the Copilot-comparison trial). Unlike Copilot it **re-reviews automatically on every push** (incremental; auto-pauses after 5 reviewed commits — `@coderabbitai review` lifts the pause or forces a round). Engage its comments with the same rigor as Copilot rounds — address or decline with evidence, replying **on each review thread** ("fixed in `<sha>`" / decline + evidence). Once every thread carries a disposition, comment `@coderabbitai resolve` to close them all — never earlier (it bulk-resolves every CodeRabbit thread, dispositioned or not). CodeRabbit rounds are **free**: they never consume the Copilot 3-round budget and need no re-request — but batch fixes into one push per round anyway (OSS quota is 1–10 reviews/hr rolling, 150 files/review; `@coderabbitai rate limit` checks standing without spending one; PRs of roughly 300+ files get skipped by **both** bots). **During the trial:** the shipping/gate summary splits review dispositions **per reviewer** (Copilot vs CodeRabbit) — that comparison feeds the Copilot-fate decision.
+
 ### PR merge gate
 
-Inbound agent-shipped PRs (cloud-ship routine, codex, teammates' agents) get a second, local review pass via the **`merge-gate`** skill before the maintainer merges: drift checklist + targeted live e2e + scoped fix-in-place + Copilot re-request, ending in a `gate-passed`/`gate-failed` label. Gate rounds carry their own 3-round budget, exempt from the shipping run's ceiling above. See `docs/agents/pr-merge-gate.md`.
+Inbound agent-shipped PRs (cloud-ship routine, codex, teammates' agents) get a second, local review pass via the **`merge-gate`** skill before the maintainer merges: drift checklist + targeted live e2e + scoped fix-in-place + review-bot iteration (Copilot re-request; CodeRabbit re-reviews the push automatically), ending in a `gate-passed`/`gate-failed` label. Gate rounds carry their own 3-round budget, exempt from the shipping run's ceiling above. See `docs/agents/pr-merge-gate.md`.
 
 ### Domain docs
 
