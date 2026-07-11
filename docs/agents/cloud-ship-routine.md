@@ -51,6 +51,12 @@ Configure a dedicated environment (e.g. `crm-ship`) and select it for the routin
     fact **gated** by the sandbox egress proxy (403), which is why the fire uses
     MCP; see cloud-ship SKILL.md → "GitHub access in a fire". The only direct
     GitHub egress is `git` push/fetch over `github.com` (brokered credentials).
+  - Note: other repo docs the fire follows still show literal `gh` commands —
+    most of `docs/agents/issue-tracker.md`, and `/ship`'s phase-1 `agent-working`
+    claim (label edit + comment). In a fire those `gh` calls **also** 403; the
+    cloud-ship SKILL.md "GitHub access in a fire" mapping table translates every
+    one (including the `gh issue` operations) to its `mcp__github__*` equivalent
+    and outranks the literal `gh` in those docs for the duration of a fire.
 - **Environment variables** (nothing org-specific is committed — the bootstrap
   reads every connection value from here, replacing `<…>` with your real values):
   - `D365_URL` = `https://<your-org>.crm.dynamics.com`

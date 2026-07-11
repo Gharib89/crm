@@ -126,17 +126,23 @@ carries the open PR, so later fires skip it until the merge closes it.
 `git` CLI only for clone/fetch/commit/push.** The cloud sandbox's egress proxy
 gates `gh`'s repo/PR/issue REST endpoints (`api.github.com`) — they return
 `403 "GitHub access is not enabled for this session"` regardless of `GH_TOKEN`,
-so the `gh` commands printed in the composed **`ship`** skill and its
-`reference/*.md` do **not** work here. The GitHub **MCP** connector is brokered
-through Anthropic (exempt from the network policy) and `git` over `github.com`
-uses brokered credentials — both work. **This section outranks every literal
-`gh` command in `ship` for the duration of a fire; translate each to its MCP
-equivalent:**
+so **every** `gh` command the fire would otherwise run fails here — not just the
+ones in the composed **`ship`** skill and its `reference/*.md`, but also those in
+the **repo docs `ship` follows** (`docs/agents/issue-tracker.md`,
+`docs/agents/triage-labels.md`), notably the phase-1 `agent-working` claim
+(label edit + comment). The GitHub **MCP** connector is brokered through
+Anthropic (exempt from the network policy) and `git` over `github.com` uses
+brokered credentials — both work. **This section outranks every literal `gh`
+command in `ship`, its references, and any repo doc it follows for the duration
+of a fire; translate each to its MCP equivalent:**
 
-| `ship` / reference says (`gh …`) | Use instead |
+| Where the fire would run `gh …` | Use instead |
 |---|---|
+| `gh issue view <n> --comments` — read the spec (ship phase 1) | `mcp__github__issue_read` `method=get` (+ `get_comments` / `get_labels`) |
+| `gh issue list … --label …` | `mcp__github__list_issues` (`labels`, `state`, `orderBy`) |
+| `gh issue edit <n> --add-label/--remove-label` — the phase-1 claim (−`ready-for-agent` +`agent-working`) and the step-4 hand-off | `issue_read method=get_labels` → `issue_write method=update` with the **full** modified label set (it replaces, not merges) |
+| `gh issue comment <n>` — phase-1 claim comment, PR-reflect, block reason | `mcp__github__add_issue_comment` |
 | `gh pr create` / "open a ready PR" (ship phase 6) | `mcp__github__create_pull_request` (`draft` omitted) |
-| reflect the PR back on the issue (ship phase 6) | `mcp__github__add_issue_comment` |
 | `gh pr view <n> --json mergeable,mergeStateStatus` (conflict check, ship phase 8) | `mcp__github__pull_request_read method=get` |
 | `gh pr view <n> --json reviews,statusCheckRollup` (poll, copilot-loop) | `pull_request_read` `method=get_reviews` + `get_check_runs` (or `get_status`) |
 | re-request the reviewer (copilot-loop step 4 / CLAUDE.md REST call) | `mcp__github__request_copilot_review`; verify it took via `get_reviews` |
