@@ -1,0 +1,36 @@
+# Custom Semgrep Community Edition (LGPL-2.1) rules — crm house conventions.
+#
+# Encodes prose CLAUDE.md / coding-standards conventions that ruff (no
+# custom-rule mechanism, astral-sh/ruff#283) and CodeQL (heavy authoring cost)
+# cannot express deterministically. Custom rules only — NO registry rulesets
+# (`p/python` etc. re-tread ruff/CodeQL and add noise). Adopted per issue #849
+# (decision recorded on #831).
+#
+# Run locally:  semgrep scan --config ci/semgrep-rules.yml --error
+# The engine needs Python >=3.10 — install it in its own venv/step, never the
+# dev virtualenv (see docs/contributing/coding-standards.md "Dry-run contract").
+#
+# LIMITATION (by design): the dry-run rule catches the *direct-return* violation
+# shape only — `if backend.dry_run: ... return {<dict literal>}` that omits the
+# `_dry_run` key. Indirect returns (a preview built into a local variable, then
+# returned) are out of a pattern's reach and stay with LLM / human review. A
+# partial net is acceptable; the hard bar is zero false positives on the
+# conforming `crm/core/*` modules.
+
+rules:
+  - id: dry-run-missing-preview-shape
+    languages: [python]
+    severity: ERROR
+    paths:
+      include:
+        - /crm/core/
+    message: >-
+      Dry-run contract: a `backend.dry_run` short-circuit must return a preview
+      dict containing `_dry_run` (with a `would_*` key), never a bare success
+      shape. See docs/contributing/coding-standards.md "Dry-run contract".
+    patterns:
+      - pattern-inside: |
+          if $BACKEND.dry_run:
+              ...
+      - pattern: 'return {...}'
+      - pattern-not: 'return {..., "_dry_run": ...}'

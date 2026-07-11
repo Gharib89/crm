@@ -64,6 +64,13 @@ staged files so the format round-trip never reaches CI.
       convention here is deliberate (#843).
 - `ruff format` covers the whole tree — `crm/` including tests, plus `scripts/` — no carve-outs.
 - Noisy rules in tests get a scoped `per-file-ignores` entry, never a global rule removal.
+- **Semgrep CE** enforces house-convention rules ruff structurally can't express (see *Dry-run
+  contract* below). It is **not** in the `[dev]` extras — its engine needs Python ≥3.10, so it
+  runs in its own venv in CI and is installed separately locally: `pipx install semgrep` (or
+  `uvx semgrep scan --config ci/semgrep-rules.yml --error`). Custom rules only; no registry
+  rulesets (they re-tread ruff/CodeQL). Decision: tooling sweep on
+  [#831](https://github.com/Gharib89/crm/issues/831) / adopted in
+  [#849](https://github.com/Gharib89/crm/issues/849).
 
 ## Click command pattern
 
@@ -131,6 +138,12 @@ House rules on top of the shape:
   guesses.
 - A dry-run mutator returns `{_dry_run: true, would_*}` (plus `meta.dry_run: true`), never the
   bare success key a real write would return (`deleted: true`, etc.).
+- **Machine-checked** by a Semgrep CE rule (`ci/semgrep-rules.yml`, CI `lint` job): a
+  `backend.dry_run` short-circuit that directly returns a dict literal missing `_dry_run` fails
+  the build. The rule catches the *direct-return* shape only — a preview built into a local
+  variable then returned stays with LLM/human review (documented in the rule header). Iterate
+  new house-convention rules the same way: zero false positives on conforming `crm/core/*` is the
+  bar before a rule ships.
 
 ## Encoding
 
