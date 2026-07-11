@@ -15,6 +15,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from typing import Any, cast
 
+from crm.utils import safe_xml
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 
 # The QuerySet element is typed Collection(QueryExpression); the converted query
@@ -29,7 +30,7 @@ def _with_total_record_count(fetch_xml: str) -> str:
     asks for it; the user's query usually won't, so set it for the preview read.
     """
     try:
-        root = ET.fromstring(fetch_xml)
+        root = safe_xml.fromstring(fetch_xml)
     except ET.ParseError as exc:
         raise D365Error(f"--fetchxml is not well-formed XML: {exc}") from exc
     if root.tag != "fetch":
@@ -50,7 +51,7 @@ def fetchxml_to_query_expression(backend: D365Backend, fetch_xml: str) -> dict[s
     clear message instead of an opaque server round-trip.
     """
     try:
-        root = ET.fromstring(fetch_xml)
+        root = safe_xml.fromstring(fetch_xml)
     except ET.ParseError as exc:
         raise D365Error(f"FetchXML is not well-formed XML: {exc}") from exc
     if root.tag != "fetch":

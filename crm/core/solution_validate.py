@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from crm.core.solution import SOLUTION_COMPONENT_TYPES as _CT
+from crm.utils import safe_xml
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 
 _REQUIRED_MEMBERS = ("solution.xml", "customizations.xml", "[Content_Types].xml")
@@ -519,13 +520,13 @@ def _load(
     sol_root: ET.Element | None = None
     cust_root: ET.Element | None = None
     try:
-        sol_root = ET.fromstring(sol_raw)
+        sol_root = safe_xml.fromstring(sol_raw)
     except ET.ParseError as exc:
         findings.append(Finding("error", "package",
                                 f"solution.xml is not well-formed: {exc}",
                                 location="solution.xml"))
     try:
-        cust_root = ET.fromstring(cust_raw)
+        cust_root = safe_xml.fromstring(cust_raw)
     except ET.ParseError as exc:
         findings.append(Finding("error", "package",
                                 f"customizations.xml is not well-formed: {exc}",

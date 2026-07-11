@@ -8,6 +8,7 @@ from crm.core import query as query_mod
 from crm.core.query import total_record_count
 from crm.core.entity_names import resolve_logical_name
 from crm.core.metadata import resolve_entity_set_name
+from crm.utils import safe_xml
 from crm.cli import CLIContext, pass_ctx, _complete_entity_set_names
 from crm.commands._helpers import (
     d365_errors,
@@ -24,7 +25,7 @@ def _parse_entity_name_from_fetchxml(fetch_xml: str) -> str:
     caller should pass ENTITY_SET explicitly instead.
     """
     try:
-        root = ET.fromstring(fetch_xml)
+        root = safe_xml.fromstring(fetch_xml)
     except ET.ParseError as exc:
         raise click.UsageError(
             f"Could not parse FetchXML: {exc}. "

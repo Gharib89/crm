@@ -12,6 +12,7 @@ from typing import Any, cast
 from xml.etree import ElementTree
 from xml.sax.saxutils import quoteattr
 
+from crm.utils import safe_xml
 from crm.utils.d365_backend import (
     D365Backend, D365Error, as_dict, normalize_guid, odata_literal,
 )
@@ -77,7 +78,7 @@ def parse_layout_columns(layoutxml: str) -> list[dict[str, Any]]:
     if not layoutxml:
         return columns
     try:
-        root = ElementTree.fromstring(layoutxml)
+        root = safe_xml.fromstring(layoutxml)
     except ElementTree.ParseError:
         return columns
     for cell in root.iter("cell"):
@@ -110,7 +111,7 @@ def parse_fetch_order_filter(fetchxml: str) -> tuple[str | None, bool, bool]:
     if not fetchxml:
         return order_by, order_desc, filter_active
     try:
-        fetch_root = ElementTree.fromstring(fetchxml)
+        fetch_root = safe_xml.fromstring(fetchxml)
     except ElementTree.ParseError:
         return order_by, order_desc, filter_active
     entity_el = fetch_root.find("{*}entity")

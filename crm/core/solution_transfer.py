@@ -15,6 +15,7 @@ import zipfile
 from pathlib import Path
 from typing import Any, BinaryIO
 
+from crm.utils import safe_xml
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 
 
@@ -260,7 +261,7 @@ def _sniff_solution_managed(zip_src: str | Path | BinaryIO) -> bool | None:
             if zf.getinfo("solution.xml").file_size > _MAX_SOLUTION_XML_BYTES:
                 return None
             raw = zf.read("solution.xml")
-        el = ET.fromstring(raw).find(".//Managed")
+        el = safe_xml.fromstring(raw).find(".//Managed")
     except Exception:
         # Advisory sniff only — must never block an import the server would
         # accept. Beyond bad-zip/missing/parse, zf.read can raise
@@ -461,7 +462,7 @@ def parse_import_job_data(data_xml: str) -> dict[str, Any]:
     if not data_xml or not data_xml.strip():
         raise D365Error("ImportJob data is empty; nothing to parse.")
     try:
-        root = ET.fromstring(data_xml)
+        root = safe_xml.fromstring(data_xml)
     except ET.ParseError as exc:
         raise D365Error(f"Could not parse ImportJob data XML: {exc}") from exc
 

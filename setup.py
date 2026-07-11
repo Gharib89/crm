@@ -38,6 +38,11 @@ setup(
         # lazily (only when --jq is passed) to keep CLI cold-start cheap; wheels
         # cover the Python 3.9 floor and all three release OSes (verified v1.11.0).
         "jq>=1.8",
+        # Entity-safe XML parsing (crm/utils/safe_xml.py, #838). Org-supplied XML
+        # — solution/customization archives, Web-API formxml/fetchxml/CSDL, CLI
+        # inputs — is parsed through defusedxml so a hostile document cannot carry
+        # an entity-expansion bomb (billion-laughs DoS). Pure-Python, py3.9-safe.
+        "defusedxml>=0.7",
     ],
     extras_require={
         # pyright is pinned EXACT, not floored: the pip wrapper's bundled node

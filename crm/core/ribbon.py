@@ -23,6 +23,7 @@ from crm.core.webresource import (
     get_webresource,
     resolve_webresource_id,  # pyright: ignore[reportUnusedImport]; re-exported for the command layer
 )
+from crm.utils import safe_xml
 from crm.utils.d365_backend import D365Error, odata_literal
 
 if TYPE_CHECKING:
@@ -52,7 +53,10 @@ def decode_compressed_ribbon(compressed_b64: str) -> ET.Element:
             (n for n in names if n.lower().endswith(".xml")
              and not n.startswith("[")), names[0])
         xml_bytes = zf.read(member)
-    return ET.fromstring(xml_bytes)
+    try:
+        return safe_xml.fromstring(xml_bytes)
+    except ET.ParseError as exc:
+        raise D365Error(f"CompressedEntityXml is not valid ribbon XML: {exc}") from exc
 
 
 def retrieve_entity_ribbon(backend: "D365Backend", entity: str) -> ET.Element:
@@ -789,9 +793,17 @@ def _rewrite_customizations(
 ) -> None:
     """Copy every member of ``src_zip`` to ``dst_zip``, applying ``mutate`` to the
     parsed customizations.xml root before writing it back."""
-    with zipfile.ZipFile(src_zip) as zin:
-        members = {name: zin.read(name) for name in zin.namelist()}
-    cust_root = ET.fromstring(members["customizations.xml"])
+    try:
+        with zipfile.ZipFile(src_zip) as zin:
+            members = {name: zin.read(name) for name in zin.namelist()}
+        cust_root = safe_xml.fromstring(members["customizations.xml"])
+    except (zipfile.BadZipFile, KeyError, ET.ParseError) as exc:
+        # This sits on the org boundary (the exported solution zip); keep a
+        # corrupt/incomplete export behind the D365Error seam rather than let it
+        # escape as a raw traceback (d365_errors catches only D365Error), matching
+        # load_solution_ribbon_diff.
+        raise D365Error(
+            f"exported customizations.xml could not be read: {exc}") from exc
     mutate(cust_root)
     members["customizations.xml"] = ET.tostring(cust_root, encoding="utf-8")
     with zipfile.ZipFile(dst_zip, "w", zipfile.ZIP_DEFLATED) as zout:
@@ -864,7 +876,7 @@ def load_solution_ribbon_diff(
         export_solution(backend, solution, src, export_customizations=True)
         try:
             with zipfile.ZipFile(src) as z:
-                cust_root = ET.fromstring(z.read("customizations.xml"))
+                cust_root = safe_xml.fromstring(z.read("customizations.xml"))
         except (zipfile.BadZipFile, KeyError, ET.ParseError) as exc:
             # Keep zip/parse failures behind the error seam rather than letting a
             # corrupt export escape as an unhandled traceback (d365_errors catches
@@ -926,7 +938,7 @@ def load_ribbon_diff_file(path: "str | Path") -> ET.Element:
     except OSError as exc:
         raise D365Error(f"could not read diff file {p}: {exc}") from exc
     try:
-        root = ET.fromstring(text)
+        root = safe_xml.fromstring(text)
     except ET.ParseError as exc:
         raise D365Error(f"diff file {p} is not valid XML: {exc}") from exc
     if root.tag != "RibbonDiffXml":

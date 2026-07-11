@@ -780,6 +780,8 @@ def delete_entity(
 
 import xml.etree.ElementTree as _ET  # noqa: E402
 
+from crm.utils import safe_xml  # noqa: E402
+
 _EDM_NS = "http://docs.oasis-open.org/odata/ns/edm"
 
 
@@ -796,7 +798,7 @@ def _fetch_csdl(backend: D365Backend) -> list[_ET.Element]:
     if not isinstance(raw, str):
         raise D365Error("$metadata response was not text/xml")
     try:
-        root = _ET.fromstring(raw)
+        root = safe_xml.fromstring(raw)
     except _ET.ParseError as exc:
         raise D365Error(f"Failed to parse $metadata XML: {exc}") from exc
     all_schemas = root.findall(f".//{{{_EDM_NS}}}Schema")

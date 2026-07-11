@@ -22,6 +22,7 @@ import xml.etree.ElementTree as ET
 from typing import Any, Callable
 
 from crm.core.metadata import maybe_publish
+from crm.utils import safe_xml
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 
 # --- T0: parse / re-serialize ---------------------------------------------------
@@ -34,7 +35,7 @@ def parse_xml(xml: str, *, label: str = "XML") -> "ET.Element":
     standard error envelope rather than a raw traceback.
     """
     try:
-        return ET.fromstring(xml)
+        return safe_xml.fromstring(xml)
     except ET.ParseError as exc:
         raise D365Error(f"Could not parse the {label}: {exc}") from exc
 
