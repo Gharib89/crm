@@ -21,9 +21,9 @@ from __future__ import annotations
 
 import os
 import time as _time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import pytest
 

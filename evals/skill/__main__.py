@@ -26,8 +26,8 @@ import json
 import os
 import sys
 from collections.abc import Callable
+from datetime import UTC, datetime
 from datetime import date as _date
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -131,7 +131,7 @@ def run(
 
     # The durable run dir is a fixed, timestamped location under the eval tree so `review`
     # can find the latest run; the runner also persists per-task records here on first write.
-    run_dir = Path(runs_root) / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    run_dir = Path(runs_root) / datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
     # result.json + run.log default to the run dir (beside the per-task records) so a run's
     # artifacts live together instead of littering the repo cwd; --out overrides.

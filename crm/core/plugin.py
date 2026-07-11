@@ -26,8 +26,9 @@ from __future__ import annotations
 
 import base64
 import re
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from crm.core import references as ref_mod
 from crm.utils.d365_backend import (

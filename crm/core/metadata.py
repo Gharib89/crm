@@ -435,7 +435,7 @@ def _resolve_set_names(backend: D365Backend, refs: list[str]) -> dict[str, str]:
     # Fail-fast: continue-on-error off so the server stops at the first failing
     # read and we never iterate past it.
     out: dict[str, str] = {}
-    for ref, res in zip(refs, run_batched(backend, ops, continue_on_error=False)):
+    for ref, res in zip(refs, run_batched(backend, ops, continue_on_error=False), strict=False):
         err = res.get("error")
         if err:
             raise D365Error(str(err), status=res.get("status"))

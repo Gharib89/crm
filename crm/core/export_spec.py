@@ -63,7 +63,8 @@ version-sensitive — so `min_value`/`max_value` are in `EXPORTED_KEYS`, not gap
 
 from __future__ import annotations
 
-from typing import Any, Callable, cast
+from collections.abc import Callable
+from typing import Any, cast
 
 from crm.core import (
     forms,

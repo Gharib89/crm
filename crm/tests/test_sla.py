@@ -81,7 +81,7 @@ def _requests(m, method):
 def _mock_sla_reads(m, backend, sla_state=0, wf_states=(0, 0)):
     m.get(backend.url_for(f"slas({_SLA_ID})"), json=_sla_row(sla_state))
     m.get(backend.url_for("slaitems"), json=_items_payload())
-    for wid, state in zip((_WF1, _WF2), wf_states):
+    for wid, state in zip((_WF1, _WF2), wf_states, strict=False):
         m.get(backend.url_for(f"workflows({wid})"), json=_wf_row(wid, state))
 
 

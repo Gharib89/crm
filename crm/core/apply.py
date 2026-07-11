@@ -17,7 +17,7 @@ import base64
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, TypeVar, cast
+from typing import Any, cast
 
 from crm.core import appmodule as app_mod
 from crm.core import forms as forms_mod
@@ -598,10 +598,7 @@ def _present(result: dict[str, Any]) -> bool:
     return bool(result.get("skipped") or result.get("would_skip"))
 
 
-_T = TypeVar("_T")
-
-
-def _call(entry: Entry, fn: Callable[[], _T], failed: list[Entry]) -> _T:
+def _call[T](entry: Entry, fn: Callable[[], T], failed: list[Entry]) -> T:
     """Run a core call; on D365Error record a failed entry and signal abort."""
     try:
         return fn()
@@ -2093,7 +2090,7 @@ def _prune_candidates(
             body = res.get("body")
             top_rows.append(body if isinstance(body, dict) else {})
 
-    for (kind, name_col, oid, _url), row in zip(top_specs, top_rows):
+    for (kind, name_col, oid, _url), row in zip(top_specs, top_rows, strict=False):
         name = row.get(name_col)
         if isinstance(name, str) and name and name.lower() not in declared_top[kind]:
             # The id-keyed deleters (role/webresource/step) take the objectid;

@@ -19,7 +19,7 @@ import json
 import os
 import re
 from collections import deque
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -102,7 +102,7 @@ def record(
     stored. Failures (path resolution, directory creation, file write) are
     silently swallowed so the caller is never disrupted by a journal error.
     """
-    ts = (now or datetime.now(timezone.utc)).isoformat()
+    ts = (now or datetime.now(UTC)).isoformat()
     result_id = _extract_result_id(result)
     line: dict[str, Any] = {
         "ts": ts,

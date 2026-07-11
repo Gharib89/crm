@@ -474,7 +474,7 @@ def delete_app(backend: D365Backend, name_or_id: str) -> dict[str, Any]:
     ops: list[BatchOperation] = [
         {"method": "DELETE", "url": f"{dep['set']}({dep['id']})"} for dep in dependents
     ]
-    for dep, res in zip(dependents, run_batched(backend, ops)):
+    for dep, res in zip(dependents, run_batched(backend, ops), strict=False):
         (skipped if res.get("error") else deleted).append(dep)
     try:
         backend.delete(f"appmodules({app_id})")

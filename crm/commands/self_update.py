@@ -10,8 +10,9 @@ running vs. latest version in either case without changing anything.
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import click
 

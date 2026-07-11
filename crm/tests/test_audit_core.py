@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import builtins
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -16,7 +16,7 @@ from crm.core.audit import _extract_result_id, read, record
 # Fixtures
 # ---------------------------------------------------------------------------
 
-FIXED_TS = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+FIXED_TS = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 SESSION = "test-session-abc"
 
 

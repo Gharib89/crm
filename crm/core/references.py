@@ -18,7 +18,8 @@ advisory by the caller.
 
 from __future__ import annotations
 
-from typing import Any, Callable, TypedDict, cast
+from collections.abc import Callable
+from typing import Any, TypedDict, cast
 
 from crm.core.metadata import target_exists
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict

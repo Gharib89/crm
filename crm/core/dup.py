@@ -22,7 +22,7 @@ pyright-strict.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, cast
 
 from crm.core import entity as entity_mod
@@ -472,7 +472,7 @@ def bulk_detect(
         "RecurrencePattern": "",
         # "now" runs the job immediately (it still only sweeps rows present when
         # it starts); the server requires the field in the payload.
-        "RecurrenceStartTime": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "RecurrenceStartTime": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     resp = as_dict(backend.post("BulkDetectDuplicates", json_body=body))
     if "_dry_run" in resp:

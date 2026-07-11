@@ -22,7 +22,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, cast
 
 from crm import __version__
@@ -137,7 +137,7 @@ def build_plan(
             "organization_id": organization_id,
             "solution": solution,
             "cli_version": __version__,
-            "created_at": created_at or datetime.now(timezone.utc).isoformat(),
+            "created_at": created_at or datetime.now(UTC).isoformat(),
             "intent": {
                 "prune": prune,
                 "allow_data_loss": allow_data_loss,

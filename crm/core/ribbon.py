@@ -14,10 +14,10 @@ import tempfile
 import xml.dom.minidom as minidom
 import xml.etree.ElementTree as ET
 import zipfile
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from crm.core.solution import export_solution, import_solution, publish_all
 from crm.core.solution_validate import validate_solution

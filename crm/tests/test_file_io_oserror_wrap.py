@@ -27,8 +27,8 @@ from __future__ import annotations
 
 import base64
 import json
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 import pytest
 import requests_mock as rm_module
