@@ -27,6 +27,13 @@ def test_decode_compressed_ribbon_rejects_non_zip():
         ribbon.decode_compressed_ribbon(not_a_zip)
 
 
+def test_decode_compressed_ribbon_rejects_invalid_base64():
+    # "AAAA!!!!" would silently decode (junk chars stripped) without validate=True,
+    # then fail the later PK check with the wrong error; strict decode rejects it here.
+    with pytest.raises(D365Error, match="not valid base64"):
+        ribbon.decode_compressed_ribbon("AAAA!!!!")
+
+
 def test_retrieve_entity_ribbon_uses_inline_string_literals(make_fake_backend, inject_backend):
     b64 = FIXTURE.read_text()
     be = inject_backend(make_fake_backend(responses={"get": {"CompressedEntityXml": b64}}))

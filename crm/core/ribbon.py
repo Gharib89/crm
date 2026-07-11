@@ -43,7 +43,10 @@ def decode_compressed_ribbon(compressed_b64: str) -> ET.Element:
     The value is base64 over a ZIP archive (PK header — NOT gzip) whose
     ``RibbonXml.xml`` member is the ribbon document. Returns its root element.
     """
-    raw = base64.b64decode(compressed_b64)
+    try:
+        raw = base64.b64decode(compressed_b64, validate=True)
+    except ValueError as exc:  # binascii.Error subclasses ValueError
+        raise D365Error(f"compressed ribbon data is not valid base64: {exc}") from exc
     if raw[:2] != b"PK":
         raise D365Error("CompressedEntityXml is not a ZIP archive (no PK header)")
     try:

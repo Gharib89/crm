@@ -49,7 +49,10 @@ def export_translation(
     encoded = resp.get("ExportTranslationFile")
     if not encoded:
         raise D365Error("ExportTranslation returned no ExportTranslationFile payload.")
-    data = base64.b64decode(encoded)
+    try:
+        data = base64.b64decode(encoded, validate=True)
+    except ValueError as exc:  # binascii.Error subclasses ValueError
+        raise D365Error(f"ExportTranslationFile is not valid base64: {exc}") from exc
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(data)
