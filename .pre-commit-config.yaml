@@ -8,3 +8,28 @@ repos:
       - id: ruff-check
         args: [--fix]
       - id: ruff-format
+  # Workflow-YAML + inline-bash linter. Also enforced in CI's lint job (ci.yml),
+  # which pins the same rev — bump both together.
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint
+  # Typo checker — pre-commit only, NOT a CI gate (a jargon false positive must
+  # never block a merge). D365 ignore-words live in pyproject.toml's
+  # [tool.codespell]; additional_dependencies pulls tomli so it reads that config.
+  # `exclude` mirrors that config's `skip`: pre-commit passes explicit file paths,
+  # which bypass codespell's own `skip` (a directory-traversal filter), so the
+  # path exclusions must be repeated here. Both cover generated artifacts and the
+  # test suites' intentional-misspelling fixtures (did-you-mean tests).
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.2
+    hooks:
+      - id: codespell
+        additional_dependencies: [tomli]
+        exclude: |
+          (?x)^(
+            crm/tests/|
+            evals/|
+            docs/research/.*\.(html|json)$|
+            CHANGELOG\.md$
+          )

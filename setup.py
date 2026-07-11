@@ -63,6 +63,7 @@ setup(
         # Keep in lockstep with .pre-commit-config.yaml (ruff-pre-commit rev).
         "dev": [
             "pytest>=7.0",
+            "pytest-cov>=5.0",
             "requests_mock>=1.10",
             "pyinstaller>=6.0",
             "pyright==1.1.411",

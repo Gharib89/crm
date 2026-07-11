@@ -48,7 +48,7 @@ of the raw D365 Web API response. Concretely:
   extraction rule per command on the primary consumer (agents). The envelope is
   the CLI's contract (per CONTEXT.md), not a D365 mirror.
 - **Bare `id` instead of `_entity_id`**: rejected — a bare `id` injected into
-  create/get's full record would be indistinguishable from a genuine attribute
+  create/get full record would be indistinguishable from a genuine attribute
   and breaks the established leading-underscore convention for synthesized fields
   (`_dry_run`, `_exists`).
 - **Always resolve the primary-name attribute for the human render**: rejected as
