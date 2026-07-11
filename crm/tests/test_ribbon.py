@@ -555,8 +555,11 @@ def test_apply_ribbon_change_rewrites_and_imports(monkeypatch, tmp_path):
         )
 
     result = ribbon.apply_ribbon_change(
-        object(), solution="MySol", entity="cwx_ticket", mutate=mutate
-    )  # type: ignore[arg-type]
+        object(),  # type: ignore[arg-type]
+        solution="MySol",
+        entity="cwx_ticket",
+        mutate=mutate,
+    )
 
     assert result["status"] == "succeeded"
     assert captured["published"] is True
@@ -742,9 +745,9 @@ def test_apply_ribbon_change_aborts_on_validation_error(monkeypatch, tmp_path):
 
     with pytest.raises(D365Error, match="validation failed"):
         ribbon.apply_ribbon_change(
-            object(),
+            object(),  # type: ignore[arg-type]
             solution="MySol",
-            entity="cwx_ticket",  # type: ignore[arg-type]
+            entity="cwx_ticket",
             mutate=lambda r: None,
         )
     assert imported == []  # never imported a failing package

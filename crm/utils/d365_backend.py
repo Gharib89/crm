@@ -550,8 +550,8 @@ class D365Backend:
             return HttpNtlmAuth(user_principal, password)
         if scheme in ("kerberos", "negotiate"):
             try:
-                from requests_negotiate_sspi import (
-                    HttpNegotiateAuth,  # type: ignore[import-untyped]
+                from requests_negotiate_sspi import (  # type: ignore[import-untyped]
+                    HttpNegotiateAuth,  # pyright: ignore[reportUnknownVariableType]
                 )
             except ImportError as exc:
                 raise D365Error(

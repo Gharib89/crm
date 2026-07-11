@@ -63,9 +63,14 @@ def _export_json_write(tmp_path: Path):
     return (
         "write_text",
         out,
-        lambda: export_mod.export_records(None, "accounts", str(out), fmt="json"),
+        lambda: export_mod.export_records(
+            None,  # type: ignore[arg-type]
+            "accounts",
+            str(out),
+            fmt="json",
+        ),
         "cannot write",
-    )  # type: ignore[arg-type]
+    )
 
 
 def _export_csv_write(tmp_path: Path):
@@ -73,9 +78,14 @@ def _export_csv_write(tmp_path: Path):
     return (
         "open",
         out,
-        lambda: export_mod.export_records(None, "accounts", str(out), fmt="csv"),
+        lambda: export_mod.export_records(
+            None,  # type: ignore[arg-type]
+            "accounts",
+            str(out),
+            fmt="csv",
+        ),
         "cannot write",
-    )  # type: ignore[arg-type]
+    )
 
 
 def _export_mkdir(tmp_path: Path):
@@ -83,9 +93,14 @@ def _export_mkdir(tmp_path: Path):
     return (
         "mkdir",
         out,
-        lambda: export_mod.export_records(None, "accounts", str(out), fmt="json"),
+        lambda: export_mod.export_records(
+            None,  # type: ignore[arg-type]
+            "accounts",
+            str(out),
+            fmt="json",
+        ),
         "cannot write",
-    )  # type: ignore[arg-type]
+    )
 
 
 def _solution_export_write(tmp_path: Path):
@@ -106,9 +121,12 @@ def _solution_import_read(tmp_path: Path):
     return (
         "read_bytes",
         zip_path,
-        lambda: st_mod.import_solution(object(), str(zip_path)),
+        lambda: st_mod.import_solution(
+            object(),  # type: ignore[arg-type]
+            str(zip_path),
+        ),
         "cannot read",
-    )  # type: ignore[arg-type]
+    )
 
 
 _CORE_CASES = [
