@@ -19,17 +19,19 @@ pass is judged with.
 
 ## 1. Build the ground truth
 
-Dump the CLI catalogue and flatten it to one line per leaf command:
+Dump the CLI catalogue and flatten it to one line per leaf command (both
+snippets share the `SCRATCH` env var — export it to your scratchpad dir first):
 
 ```bash
+export SCRATCH=<scratchpad-dir>
 .venv/bin/python -m crm --json describe > "$SCRATCH/describe.json"
 ```
 
 ```python
 # flatten: describe.json "commands" is a FLAT list; nodes carry path/is_group/params
-import json
-S = "<scratchpad>"
-d = json.load(open(f"{S}/describe.json"))["data"]
+import json, os
+S = os.environ["SCRATCH"]
+d = json.load(open(f"{S}/describe.json", encoding="utf-8"))["data"]
 lines = []
 for n in d["commands"]:
     if n.get("is_group"):
@@ -39,13 +41,15 @@ for n in d["commands"]:
             if x.startswith("--")]
     h = (n.get("help") or "").split("\n")[0]
     lines.append(f'{n["path"]} :: {h} :: OPTS: {" ".join(opts)}')
-open(f"{S}/commands.txt", "w").write("\n".join(sorted(lines)))
+open(f"{S}/commands.txt", "w", encoding="utf-8").write("\n".join(sorted(lines)))
 print(len(lines), "leaf commands")   # sanity floor: expect > 200
 ```
 
-Never run the `crm` binary for inspection — a repo hook blocks it; always
-`.venv/bin/python -m crm`. `--json` is a global option: it goes **before**
-`describe`.
+Inspect via `.venv/bin/python -m crm`, never the installed `crm` binary: `python
+-m` exercises the current checkout (the binary may be stale), and the repo's
+destructive-verb gate token-matches `crm` invocations — it blocks even the
+`--help` form of a gated verb, while `python -m crm` passes. `--json` is a
+global option: it goes **before** `describe`.
 
 **Done when:** `commands.txt` exists and its count clears the sanity floor.
 
