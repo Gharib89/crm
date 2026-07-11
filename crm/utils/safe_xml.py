@@ -8,7 +8,7 @@ boundary can carry an entity-expansion bomb (billion-laughs DoS). ``defusedxml``
 refuses ``<!ENTITY>`` declarations (internal *and* external) before expansion or
 resolution; the predefined ``&amp;``/``&lt;`` references and numeric character
 references that real D365 XML depends on are untouched, so ordinary documents
-round-trip byte-for-byte unchanged.
+parse exactly as they did under stdlib ElementTree.
 
 ``defusedxml`` reports a rejection as ``DefusedXmlException`` — a ``ValueError``
 subclass, *not* an ``ElementTree.ParseError``. :func:`fromstring` normalizes it
@@ -45,4 +45,10 @@ def fromstring(text: "str | bytes") -> "ET.Element":
     try:
         return _defused_fromstring(text)
     except DefusedXmlException as exc:
-        raise ET.ParseError(f"unsafe XML rejected: {exc}") from exc
+        # Fixed message: the DefusedXmlException detail can echo
+        # attacker-controlled DTD text (e.g. a long SYSTEM identifier), so keep
+        # it off the user-facing message and logs — it stays on the chained
+        # cause via ``from exc`` for debugging.
+        raise ET.ParseError(
+            "unsafe XML rejected: DTD/entity declarations are not allowed"
+        ) from exc
