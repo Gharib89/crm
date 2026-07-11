@@ -9,6 +9,29 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.69.3 (2026-07-11)
+
+### Bug Fixes
+
+- **ribbon**: Wrap invalid base64 from b64decode at org boundaries
+  ([#862](https://github.com/Gharib89/crm/pull/862),
+  [`c814021`](https://github.com/Gharib89/crm/commit/c814021986c4008bd50047c33e37790f862b33aa))
+
+### Chores
+
+- Adopt semgrep CE with dry-run-contract house rule
+  ([#856](https://github.com/Gharib89/crm/pull/856),
+  [`58532fc`](https://github.com/Gharib89/crm/commit/58532fcabb0fc99f03d530c1e86d09eb1d0a2f3d))
+
+- Adopt tooling-sweep quick wins — actionlint, codespell, coverage artifact
+  ([#859](https://github.com/Gharib89/crm/pull/859),
+  [`1370d28`](https://github.com/Gharib89/crm/commit/1370d284ea0c5874f2b13b5668915d35772b2a18))
+
+- **review**: Wire post-trial review lanes — Copilot round 1 only, CodeRabbit owns iteration
+  ([#863](https://github.com/Gharib89/crm/pull/863),
+  [`b22bbae`](https://github.com/Gharib89/crm/commit/b22bbaef1fda1ce0df378b5179b4b981230ac054))
+
+
 ## v1.69.2 (2026-07-11)
 
 ### Bug Fixes
