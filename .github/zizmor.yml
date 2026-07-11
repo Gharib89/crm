@@ -1,0 +1,16 @@
+# zizmor (GitHub Actions security auditor) config. Enforced in CI's lint job
+# (ci.yml) and the zizmor pre-commit hook, both pinned to the same version.
+#
+# Scoped unpinned-uses policy (not a blanket ignore): zizmor v1.20+ defaults to a
+# blanket hash-pin requirement, but this repo deliberately pins first-party
+# actions/* to major tags (@v6, @v4, …) — there is no dependabot/renovate to keep
+# SHA pins fresh (out of scope, map #819). So we allow ref/tag pins ONLY for the
+# trusted actions/* org; every other (third-party) action still requires a full
+# SHA pin. All three third-party actions in use are already SHA-pinned, so this
+# leaves zizmor's supply-chain audits fully armed for any future addition.
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        actions/*: ref-pin
+        "*": hash-pin

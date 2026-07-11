@@ -34,7 +34,8 @@ pytest crm/tests/test_query.py::test_x    # single test (or `-k '<expr>'` to mat
 pyright --pythonpath .venv/bin/python --pythonversion 3.13   # local lint (omit pythonpath → ~56 false errors); strict + py3.13 pinned in pyrightconfig.json
 ruff check . && ruff format --check .     # lint + format gate; CI runs both (config in pyproject.toml)
 uvx semgrep scan --config ci/semgrep-rules.yml --error --metrics off   # house-convention rules (dry-run contract); CI `lint` runs this in its own venv. Not in [dev] — engine needs py>=3.10; `pipx install semgrep` or `uvx semgrep`
-pre-commit install                        # once per clone: ruff + codespell run on staged files at commit time (actionlint on workflow edits)
+uvx zizmor==1.26.1 .                       # GitHub Actions security audit; CI `lint` runs it pinned in its own venv (config `.github/zizmor.yml`, scoped unpinned-uses policy). Also a pre-commit hook; version lockstep across both. Not in [dev]
+pre-commit install                        # once per clone: ruff + codespell run on staged files at commit time (actionlint + zizmor on workflow edits)
 mkdocs build --strict                     # docs; CI runs this, warnings fail
 ```
 

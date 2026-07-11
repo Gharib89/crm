@@ -14,6 +14,12 @@ repos:
     rev: v1.7.12
     hooks:
       - id: actionlint
+  # GitHub Actions security auditor. Also enforced in CI's lint job (ci.yml),
+  # which pins the same version — bump both together. Config: .github/zizmor.yml.
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: v1.26.1
+    hooks:
+      - id: zizmor
   # Typo checker — pre-commit only, NOT a CI gate (a jargon false positive must
   # never block a merge). D365 ignore-words live in pyproject.toml's
   # [tool.codespell]; additional_dependencies pulls tomli so it reads that config.

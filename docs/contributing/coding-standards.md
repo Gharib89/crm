@@ -72,13 +72,21 @@ staged files so the format round-trip never reaches CI.
   [#831](https://github.com/Gharib89/crm/issues/831) / adopted in
   [#849](https://github.com/Gharib89/crm/issues/849).
 
-Three more tools landed in the tooling sweep ([#848](https://github.com/Gharib89/crm/issues/848)):
+More tools landed in the tooling sweep ([#848](https://github.com/Gharib89/crm/issues/848)):
 
 - **actionlint** lints workflow YAML and the inline bash in `run:` blocks (shellcheck-backed). It
   runs both as a pre-commit hook and as a step in CI's `lint` job. The pre-commit hook fires only on
   `.github/workflows/**` changes, so a Go toolchain is needed locally only when editing a workflow;
   CI runs the pinned release binary directly. The rev is pinned in both `.pre-commit-config.yaml`
   and `ci.yml` — bump together.
+- **zizmor** audits the workflows for security issues (credential persistence, cache poisoning,
+  excessive permissions, unpinned actions). It runs both as a pre-commit hook and as a step in CI's
+  `lint` job (its own pinned venv, like semgrep), version in lockstep across both. Config is
+  `.github/zizmor.yml`: a **scoped `unpinned-uses` policy** allows ref/tag pins only for the
+  first-party `actions/*` org (the repo's deliberate tag-pin convention, no dependabot per
+  [#819](https://github.com/Gharib89/crm/issues/819)) while third-party actions still require a full
+  SHA pin; every other audit stays armed. Adopted in
+  [#858](https://github.com/Gharib89/crm/issues/858).
 - **codespell** is a typo checker wired as a **pre-commit hook only — deliberately not a CI gate**,
   because a jargon false positive must never block a merge. Its D365 ignore-words list and skip
   paths live in `[tool.codespell]` (`pyproject.toml`); the hook's `exclude` mirrors that `skip`
