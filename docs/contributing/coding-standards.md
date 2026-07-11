@@ -1,14 +1,13 @@
 # Coding standards
 
-> **Draft.** Assembled from the rules already in force across `.github/copilot-instructions.md`,
-> `CLAUDE.md`, `CONTEXT.md`, the ADRs, and the actual code — nothing here is invented. Gaps and
-> contested points are called out at the end for the follow-up grilling session
-> ([Decide: coding standards for the repo](https://github.com/Gharib89/crm/issues/826)); everything
-> above that line is already-established convention, not up for debate.
+> The canonical coding-standards doc — assembled from the rules already in force across
+> `.github/copilot-instructions.md`, `CLAUDE.md`, `CONTEXT.md`, the ADRs, and the actual code;
+> previously-open points (docstrings, formatting/linting, the commands-layer type-checking split)
+> were settled in [Decide: coding standards for the repo](https://github.com/Gharib89/crm/issues/826).
 >
-> Once accepted, this doc is the single source reviewers (the `code-review` skill, CodeRabbit's
-> path instructions, `.github/copilot-instructions.md`) derive from — they should shrink to a
-> pointer here rather than repeat these rules.
+> This doc is the single source reviewers (the `code-review` skill, CodeRabbit's path
+> instructions, `.github/copilot-instructions.md`) derive from — they should shrink to a pointer
+> here rather than repeat these rules.
 
 ## Architecture & layering
 
@@ -22,14 +21,43 @@
 ## Type checking
 
 - `pyrightconfig.json` sets `strict` globally; `crm/commands/*` and most test files opt back out
-  to basic via a `# pyright: basic` header comment — intentional, not a gap to close file-by-file.
-  `crm/core/*` and `crm/utils/d365_backend.py` are the strict surface and stay that way.
+  to basic via a `# pyright: basic` header comment. This split is **permanent by design**, not
+  debt: the commands layer is thin, decorator-heavy Click glue where strict mode fights the
+  framework for near-zero bug yield. Don't flag it and don't tighten files opportunistically —
+  when a command file accumulates real logic, the fix is moving that logic into `crm/core/*`
+  (the strict surface, together with `crm/utils/d365_backend.py`), not strictening the wrapper.
 - Boundary rule for D365 payloads: `dict[str, Any]` at the raw OData seam (a `TypedDict` cast
   over external JSON is a false contract — the server can add/omit keys the type doesn't know
   about). Reserve `TypedDict` for structures the CLI itself constructs and owns (e.g.
   `Reference` in `crm/core/references.py`).
 - Run pyright locally with `--pythonpath .venv/bin/python --pythonversion 3.9` — omitting either
   flag masks import errors or lets 3.10+-only symbols pass that fail at the pinned runtime.
+
+## Docstrings
+
+- Intent rule, not a coverage quota: a public function in `crm/core/*` gets a docstring when its
+  name and signature don't already say what it does and why. Self-explanatory helpers stay bare —
+  forced docstrings are narrative noise.
+- Sectioned docstrings use **Google style** (`Args:` / `Returns:` / `Raises:`) — the only style
+  in use today; don't introduce Sphinx/NumPy variants.
+- Lint enforces **format only** (ruff `D2xx`/`D4xx`: quoting, blank lines, imperative mood) on
+  docstrings that exist; there is deliberately no missing-docstring (`D1xx`) rule.
+
+## Formatting & linting
+
+Settled in [Decide: coding standards for the repo](https://github.com/Gharib89/crm/issues/826);
+gates land via [Task: adopt ruff](https://github.com/Gharib89/crm/issues/828). Until that task
+merges, these are convention-only.
+
+- **ruff** is the single formatter and linter. `pyproject.toml` is the source of truth for the
+  exact rule codes; the agreed shape:
+    - line length **100** (matches the codebase's natural style; not the ruff default 88),
+    - rule families `E`, `W`, `F`, `I` (import order), `B` (bugbear), `UP` (pyupgrade,
+      `target-version = py39`), plus the format-only `D` subset above,
+    - deliberately excluded: `S` (bandit — rejected in the tooling sweep), `C90` complexity,
+      `ANN` (pyright owns typing), `D1xx` docstring coverage.
+- `ruff format` covers the whole tree — `crm/` including tests, plus `scripts/` — no carve-outs.
+- Noisy rules in tests get a scoped `per-file-ignores` entry, never a global rule removal.
 
 ## Click command pattern
 
@@ -142,25 +170,3 @@ real-looking GUIDs in tests/docs. Placeholders are `Contoso` / `internalcrm.cont
 - `# pyright: basic` headers in test files are intentional (see Type checking above).
 - OAuth token acquisition raises `D365Error` during `session.get()`, not a `requests` exception —
   a caller catching `D365Error` around a raw session call is correct, not dead code.
-
-## Gaps & contested points (for the grilling session)
-
-These are open questions this research ticket surfaces but does not resolve — for
-[Decide: coding standards for the repo](https://github.com/Gharib89/crm/issues/826):
-
-- **Docstrings**: present in `crm/core/*` (module + function level, e.g. `entity.py`) but
-  spot-checked rather than systematic or enforced anywhere. No stated rule exists today beyond
-  CLAUDE.md's "document public APIs and non-obvious WHY" — worth deciding whether that's
-  sufficient or needs a sharper, checkable rule.
-- **Enforcement**: none of the above is mechanically gated yet (no ruff, no docstring linter).
-  This doc is convention-only until [Task: adopt ruff](https://github.com/Gharib89/crm/issues/828)
-  lands; whether ruff should also enforce any of these specific conventions (import order,
-  line length, etc.) is undecided.
-- **`crm/commands/*` pyright basic**: is the split permanent-by-design, or should command files
-  tighten to strict over time? Not decided — flagging so the grilling session states it
-  explicitly rather than leaving it implicit.
-- **Reviewer wiring**: this doc's structure assumes CodeRabbit path instructions and
-  `.github/copilot-instructions.md` will point here rather than restate it — the actual wiring
-  (which sections map to which path globs, how much of copilot-instructions.md shrinks) is
-  [Task: wire coding standards into all reviewers](https://github.com/Gharib89/crm/issues/827),
-  not this ticket.
