@@ -100,8 +100,9 @@ redesign someone else's PR.
 ### 6 · Review-bot iteration
 
 Only when the gate pushed commits (nothing pushed → nothing new to review; skip
-— but undispositioned CodeRabbit threads found in preflight still get resolved
-via step 3/5 first):
+— but CodeRabbit threads found undispositioned in preflight must still be
+triaged (step 3), fixed where valid (step 5), replied to on-thread, and
+bulk-resolved via `@coderabbitai resolve` before the verdict):
 
 1. Re-request Copilot review via the project's documented mechanism (CLAUDE.md →
    *Code review* — the REST path; verify `requested_reviewers` actually
@@ -110,12 +111,13 @@ via step 3/5 first):
    **Gate rounds are exempt from the shipping run's 3-round ceiling**
    — that budget belonged to the author agent's pipeline; the gate carries its own.
 2. Poll bounded, auto-triage **both reviewers'** returned comments (same rigor as
-   step 3), fix valid ones, push, re-request. Reply on each CodeRabbit thread
+   step 3), fix valid ones, push, then re-request **Copilot only** — CodeRabbit
+   re-reviews the push on its own. Reply on each CodeRabbit thread
    ("fixed in `<sha>`" / decline + evidence); once every thread is dispositioned,
    `@coderabbitai resolve` closes them — never earlier (it bulk-resolves).
 3. **Gate budget: 3 rounds** (Copilot re-requests; CodeRabbit's auto-rounds are
    free and don't count). Converged = a round returns zero substantive comments
-   from **either** reviewer (declined-with-evidence nits count as converged).
+   from **both** reviewers (declined-with-evidence nits count as converged).
    Still substantive after 3 → stop; the PR has a shape problem more rounds
    won't fix.
 

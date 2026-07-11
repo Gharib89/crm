@@ -29,7 +29,7 @@ Self-review (code-review skill)
   ...
 
 Automated review   (one block per reviewer when the repo runs more than one)
-  - rounds used: <n>/3  (<clean | ceiling reached>)
+  - rounds used: <n>/3  (<clean | ceiling reached>)   (push-triggered reviewer → "rounds: n/a — auto on push")
   - <comment> → <fixed | rejected: reason | n/a>
   ...
 

@@ -40,7 +40,7 @@ Review dispositions   (label each finding's source: gate review / Copilot / Code
   - <finding> → <fixed | declined: evidence>
 
 Copilot gate rounds: <n>/3 — <converged | not converged | skipped: no push>
-CodeRabbit threads:  <m dispositioned, resolved | none | skipped: no push, none pending>
+CodeRabbit threads:  <dispositioned <m>/<total> · resolved <yes | pending> | none | skipped: no push, none pending>
 
 Issues surfaced (surface-only — the gate files nothing)
   - Filed during this PR: <#N — desc | none>

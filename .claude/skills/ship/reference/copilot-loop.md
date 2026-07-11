@@ -109,8 +109,10 @@ loop instead of running a second one:
   batch-fixes rule matters double: every push spends its (usually rate-limited)
   review quota.
 - **The merge-gate bar includes it:** every one of its threads dispositioned —
-  fixed or declined with evidence — before phase 9. Its dispositions get their
-  own block in the merge summary (per-reviewer, not merged into one list).
+  fixed or declined with evidence — **and then closed** via its documented
+  thread-resolution mechanism before phase 9; open threads at the gate are
+  unfinished work. Its dispositions get their own block in the merge summary
+  (per-reviewer, not merged into one list).
 
 ## Cleanup
 
