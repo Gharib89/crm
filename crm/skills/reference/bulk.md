@@ -50,14 +50,10 @@ results in `data.failures` just like the other modes. Only `--mode delete` uses
 the destructive confirmation path; create/upsert imports do not prompt.
 
 **Alternate-key import gotcha.** `--key` resolves and validates the key against
-entity metadata before the first row is processed. If the alternate key's index
-is not yet `Active`, the server returns 404 per row (not a bulk failure — each
-row fails individually in `data.failures`). Check index status first:
-
-```bash
-crm --json metadata keys <entity>
-# look for "index_status": "Active" on the matching key
-```
+entity metadata before the first row is processed. A not-yet-`Active` key index
+404s **per row** — each row fails individually in `data.failures`, not as one
+bulk failure. Poll `metadata keys` until the index is `Active` first (the
+index-status note in `reference/metadata.md`).
 
 Output: `{imported, failed, chunks, entity_set, mode, dry_run, format, failures}`.
 `failures` is **always present** (empty `[]` when nothing failed); each entry is
@@ -69,6 +65,12 @@ is 0 on partial failure** — read `data.failures` for which rows failed and why
 to re-issue rows to discover it), don't rely on `$?`. (This is a different per-row shape
 from `entity clone`'s `{entity, source_id, reason}` in `reference/records.md`, and
 here `ok` stays `true`.)
+
+Scrub and validate the input **before** a big run (`--dry-run`, a small pilot
+chunk) rather than discovering bad rows via thousands of `failures` entries. On
+Dataverse online, sustained bulk traffic also hits service-protection throttling
+(HTTP 429) — retried automatically (`reference/troubleshooting.md`), but it
+stretches wall-clock time; keep big loads sequential, not parallel.
 
 **Alternate-key collision hint.** A row that fails with the alternate-key uniqueness
 code (`0x80060892`) additionally carries best-effort enrichment fields on its

@@ -248,7 +248,7 @@ relationship where the record is the parent (one level, no recursion; custom = t
 Child rows follow the same never-copy/lookup rules, plus: **every** child lookup whose
 value equals the source parent is repointed to the *new* parent (not just the
 relationship's own attribute); other lookups copy as-is. `--override`/`--unset` hit the
-parent only.
+parent only. Scope the sweep down with repeatable `--skip-child-entity`.
 
 **Contract + gotcha — no rollback (ADR 0007).** Parent-create failure → clean
 `{ok:false}`, nothing else done. A *child*-create failure neither aborts nor deletes
@@ -352,10 +352,9 @@ server. You do not need to remove them yourself.
 **Pre-flight validation.** The CLI calls `metadata keys` before the PATCH and
 verifies the named attribute(s) match a **defined** alternate key on the entity.
 An unknown or unregistered combination returns a clean error listing defined
-keys — the PATCH is never issued. If the key's index is not yet `Active`
-(asynchronous activation in Dataverse after key creation), the server returns a
-404; check index status with `crm --json metadata keys <entity>` and wait for
-`"index_status": "Active"`.
+keys — the PATCH is never issued. A not-yet-`Active` key index makes the server
+404 — poll `metadata keys` until the index is `Active` (the index-status note in
+`reference/metadata.md`).
 
 **Composite keys.** Multiple attributes (comma-separated) must exactly match the
 attribute set of one defined key — a subset or superset is rejected. The CLI

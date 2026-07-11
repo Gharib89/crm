@@ -32,10 +32,9 @@ immediately — no job, no `--wait`. (Mechanism note: publish is a *bound* actio
 the rule; unpublish is an *unbound* action taking the id in its body — both
 handled internally.)
 
-**`--operator-param` pairs only with the character-count operators.** The
-`same-first` / `same-last` operators **require** `--operator-param` (the
-character count); every other operator **rejects** it. Mismatching the two is a
-clean error before any backend call. Multiple conditions on a rule are AND-ed.
+**Conditions AND together** — repeated `add-condition` calls on one rule combine
+as AND, never OR. Operator/`--operator-param` mispairings are caught client-side
+with a clean error before any backend call.
 
 **`check` tests a candidate record by value, not id.** Supply the would-be
 record's columns via `--data` (inline JSON) or `--data-file`; the record need not
