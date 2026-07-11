@@ -25,9 +25,11 @@ rules:
       include:
         - /crm/core/
     message: >-
-      Dry-run contract: a `backend.dry_run` short-circuit must return a preview
-      dict containing `_dry_run` (with a `would_*` key), never a bare success
-      shape. See docs/contributing/coding-standards.md "Dry-run contract".
+      Dry-run contract: a `backend.dry_run` short-circuit must return a
+      `{_dry_run: true, would_*}` preview, never a bare success shape. This rule
+      flags a direct dict return that omits the `_dry_run` marker (the `would_*`
+      key itself is not enforced here — see the rule-file header on scope). See
+      docs/contributing/coding-standards.md "Dry-run contract".
     patterns:
       - pattern-inside: |
           if $BACKEND.dry_run:

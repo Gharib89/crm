@@ -67,7 +67,7 @@ staged files so the format round-trip never reaches CI.
 - **Semgrep CE** enforces house-convention rules ruff structurally can't express (see *Dry-run
   contract* below). It is **not** in the `[dev]` extras — its engine needs Python ≥3.10, so it
   runs in its own venv in CI and is installed separately locally: `pipx install semgrep` (or
-  `uvx semgrep scan --config ci/semgrep-rules.yml --error`). Custom rules only; no registry
+  `uvx semgrep scan --config ci/semgrep-rules.yml --error --metrics off`). Custom rules only; no registry
   rulesets (they re-tread ruff/CodeQL). Decision: tooling sweep on
   [#831](https://github.com/Gharib89/crm/issues/831) / adopted in
   [#849](https://github.com/Gharib89/crm/issues/849).
