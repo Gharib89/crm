@@ -11,7 +11,6 @@ download step like ExportSolutionAsync.
 from __future__ import annotations
 
 import base64
-import binascii
 import uuid
 import zipfile
 from pathlib import Path
@@ -51,8 +50,8 @@ def export_translation(
     if not encoded:
         raise D365Error("ExportTranslation returned no ExportTranslationFile payload.")
     try:
-        data = base64.b64decode(encoded)
-    except binascii.Error as exc:
+        data = base64.b64decode(encoded, validate=True)
+    except ValueError as exc:  # binascii.Error subclasses ValueError
         raise D365Error(f"ExportTranslationFile is not valid base64: {exc}") from exc
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)

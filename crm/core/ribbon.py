@@ -8,7 +8,6 @@ export -> validate -> import -> publish path.
 from __future__ import annotations
 
 import base64
-import binascii
 import io
 import re
 import tempfile
@@ -45,9 +44,9 @@ def decode_compressed_ribbon(compressed_b64: str) -> ET.Element:
     ``RibbonXml.xml`` member is the ribbon document. Returns its root element.
     """
     try:
-        raw = base64.b64decode(compressed_b64)
-    except binascii.Error as exc:
-        raise D365Error(f"CompressedEntityXml is not valid base64: {exc}") from exc
+        raw = base64.b64decode(compressed_b64, validate=True)
+    except ValueError as exc:  # binascii.Error subclasses ValueError
+        raise D365Error(f"compressed ribbon data is not valid base64: {exc}") from exc
     if raw[:2] != b"PK":
         raise D365Error("CompressedEntityXml is not a ZIP archive (no PK header)")
     try:

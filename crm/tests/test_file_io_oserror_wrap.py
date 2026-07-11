@@ -143,7 +143,7 @@ def test_solution_export_invalid_base64_raises() -> None:
     # Org-supplied ExportSolutionFile that is not valid base64 must wrap into
     # D365Error, not surface a raw binascii.Error traceback.
     with pytest.raises(D365Error, match="not valid base64"):
-        st_mod._write_export_file("unused.zip", "not valid base64!!!")
+        st_mod._write_export_file("unused.zip", "AAAA!!!!")
 
 
 @pytest.mark.parametrize("scenario", _CORE_CASES)

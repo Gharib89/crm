@@ -9,7 +9,6 @@ ImportJob `data` XML parsing. Every public name here is re-exported from
 from __future__ import annotations
 
 import base64
-import binascii
 import io
 import xml.etree.ElementTree as ET
 import zipfile
@@ -115,8 +114,8 @@ def _import_solution_sync(
 
 def _write_export_file(output_path: str | Path, encoded: str) -> tuple[Path, int]:
     try:
-        data = base64.b64decode(encoded)
-    except binascii.Error as exc:
+        data = base64.b64decode(encoded, validate=True)
+    except ValueError as exc:  # binascii.Error subclasses ValueError
         raise D365Error(f"exported solution payload is not valid base64: {exc}") from exc
     out = Path(output_path)
     try:
