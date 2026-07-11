@@ -110,7 +110,7 @@ class TestHeaderInjection:
     def test_caller_id_kwarg_sets_mscrmcallerid(self, backend, profile):
         guid = "11111111-2222-3333-4444-555555555555"
         with requests_mock.Mocker() as m:
-            url = self._mock_ok(m, "GET", "accounts", profile)
+            self._mock_ok(m, "GET", "accounts", profile)
             backend.get("accounts", caller_id=guid)
             assert m.last_request.headers["MSCRMCallerID"] == guid
 
@@ -144,7 +144,9 @@ class TestHeaderInjection:
                 f"{profile.api_base}accounts",
                 status_code=204,
                 headers={
-                    "OData-EntityId": f"{profile.api_base}accounts(00000000-0000-0000-0000-000000000001)"
+                    "OData-EntityId": (
+                        f"{profile.api_base}accounts(00000000-0000-0000-0000-000000000001)"
+                    )
                 },
             )
             backend.post("accounts", json_body={"name": "a"}, suppress_duplicate_detection=True)
@@ -156,7 +158,9 @@ class TestHeaderInjection:
                 f"{profile.api_base}accounts",
                 status_code=204,
                 headers={
-                    "OData-EntityId": f"{profile.api_base}accounts(00000000-0000-0000-0000-000000000001)"
+                    "OData-EntityId": (
+                        f"{profile.api_base}accounts(00000000-0000-0000-0000-000000000001)"
+                    )
                 },
             )
             backend.post("accounts", json_body={"name": "a"}, bypass_custom_plugin_execution=True)

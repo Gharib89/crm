@@ -16,7 +16,9 @@ _CHART = {
     "savedqueryvisualizationid": "11112222-3333-4444-5555-666677778888",
     "name": "Tickets by Priority",
     "primaryentitytypecode": "new_project",
-    "datadescription": '<datadefinition><fetch><entity name="new_project"/></fetch></datadefinition>',
+    "datadescription": (
+        '<datadefinition><fetch><entity name="new_project"/></fetch></datadefinition>'
+    ),
     "presentationdescription": "<Chart/>",
     "description": "By priority",
     "isdefault": False,

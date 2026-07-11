@@ -139,11 +139,13 @@ EXAMPLES: dict[str, list[Example]] = {
             "List a table's columns.",
         ),
         Example(
-            'crm metadata add-attribute account --kind string --schema-name new_nickname --display "Nickname" --solution SOLUTION_NAME',
+            "crm metadata add-attribute account --kind string --schema-name new_nickname "
+            '--display "Nickname" --solution SOLUTION_NAME',
             "Add a column to a table.",
         ),
         Example(
-            'crm metadata create-optionset --name new_color --display "Color" --option 1:Red --option 2:Blue --solution SOLUTION_NAME',
+            'crm metadata create-optionset --name new_color --display "Color" --option 1:Red '
+            "--option 2:Blue --solution SOLUTION_NAME",
             "Create a global choice (option set).",
         ),
     ],

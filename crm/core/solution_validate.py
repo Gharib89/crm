@@ -93,7 +93,9 @@ _SCANNED_TYPES: frozenset[int] = frozenset(NODE_COMPONENT_TYPE.values())
 @dataclass(frozen=True)
 class Finding:
     severity: str  # "error" | "warning"
-    check: str  # "package" | "root-parity" | "webresource-ref" | "optionset-binding" | "package-version" | "guid-collision"
+    # "package" | "root-parity" | "webresource-ref" | "optionset-binding" |
+    # "package-version" | "guid-collision"
+    check: str
     message: str
     component: str | None = None
     location: str | None = None

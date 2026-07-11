@@ -259,7 +259,10 @@ def _ribbon(*refs):
         f"</CommandDefinition>"
         for i, r in enumerate(refs)
     )
-    return f"<Entity><RibbonDiffXml><CommandDefinitions>{cmds}</CommandDefinitions></RibbonDiffXml></Entity>"
+    return (
+        f"<Entity><RibbonDiffXml><CommandDefinitions>{cmds}"
+        f"</CommandDefinitions></RibbonDiffXml></Entity>"
+    )
 
 
 class TestWebresourceRefs:
@@ -341,7 +344,10 @@ _FORM_GUID = "22222222-2222-2222-2222-222222222222"
 
 
 def _form(guid):
-    return f"<Entity><FormXml><forms><systemform><formid>{guid}</formid></systemform></forms></FormXml></Entity>"
+    return (
+        f"<Entity><FormXml><forms><systemform><formid>{guid}"
+        f"</formid></systemform></forms></FormXml></Entity>"
+    )
 
 
 class TestOrgCollisions:

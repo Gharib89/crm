@@ -1,4 +1,5 @@
-"""crm — Click-based CLI + REPL for Microsoft Dynamics 365 CE — on-prem v9.x (NTLM) or Dataverse online (OAuth).
+"""crm — Click-based CLI + REPL for Microsoft Dynamics 365 CE — on-prem v9.x (NTLM) or
+Dataverse online (OAuth).
 
 Entry point: `crm` (installed) or `python -m crm`.
 
@@ -670,7 +671,7 @@ class _JsonAwareGroup(click.Group):
                 click.echo(f"Error: {hint}", err=True)
             if standalone:
                 sys.exit(exc.exit_code)
-            raise click.exceptions.Exit(exc.exit_code)
+            raise click.exceptions.Exit(exc.exit_code) from exc
         except click.ClickException as exc:
             return self._render_usage_error(exc, json_mode, standalone)
         except click.exceptions.Abort:
@@ -1004,7 +1005,9 @@ def cli(
     refresh_metadata: bool,
     session_name: str,
 ):
-    """Stateful CLI for Microsoft Dynamics 365 CE — on-prem v9.x (NTLM) or Dataverse online (OAuth), over the Web API."""
+    """Stateful CLI for Microsoft Dynamics 365 CE — on-prem v9.x (NTLM) or Dataverse online
+    (OAuth), over the Web API.
+    """
     force_utf8_output(sys.stdout)
     force_utf8_output(sys.stderr)
     _valid_levels = ("debug", "info", "warning", "error")

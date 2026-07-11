@@ -353,7 +353,6 @@ class TestFrozenUpdate:
             update_mod, "install_dir", lambda: __import__("pathlib").Path("/tmp/crm")
         )
         monkeypatch.setattr(update_mod, "cleanup_stale_updates", lambda *a, **k: None)
-        captured: list[str] = []
 
         def fake_update(*a, progress=None, **k):
             if progress:

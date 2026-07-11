@@ -1,5 +1,5 @@
 # pyright: basic
-"""E2E tests for solution WRITE/lifecycle verbs:
+"""E2E tests for solution WRITE/lifecycle verbs.
 
 add-component / remove-component / set-version / clone-as-patch /
 publish / publish-all / import / import-result / job-status /

@@ -51,7 +51,9 @@ def _helper_callers() -> dict[str, bool]:
                             skip_on_dry_run = bool(
                                 isinstance(kw.value, ast.Constant) and kw.value.value
                             )
-                    callers[f"{path.stem}:{self.stack[-1]}"] = skip_on_dry_run
+                    # B023 suppressed: Visitor().visit(tree) runs inside the same
+                    # loop iteration that binds `path` — the closure never outlives it.
+                    callers[f"{path.stem}:{self.stack[-1]}"] = skip_on_dry_run  # noqa: B023
                 self.generic_visit(node)
 
         Visitor().visit(tree)

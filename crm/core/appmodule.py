@@ -480,7 +480,7 @@ def delete_app(backend: D365Backend, name_or_id: str) -> dict[str, Any]:
         backend.delete(f"appmodules({app_id})")
     except D365Error as exc:
         if exc.code == _FK_RESTRICT_CODE:
-            raise _remaining_blocker_error(backend, app_row, rels, exc)
+            raise _remaining_blocker_error(backend, app_row, rels, exc) from exc
         raise
     result: dict[str, Any] = {
         "deleted": True,

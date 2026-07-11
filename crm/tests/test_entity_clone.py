@@ -131,7 +131,7 @@ class TestTracer:
 class TestWarmCacheServesResolution:
     """AC4 (#261): core name-resolution reads go through the read-through metadata
     cache, so clone does not re-fetch entity definitions live when the cache is warm.
-    (--with-children reuses the same in-memory map, so a plain clone demonstrates it.)
+    (--with-children reuses the same in-memory map, so a plain clone demonstrates it).
     """
 
     def test_clone_does_not_refetch_definitions_when_cache_warm(self, backend):

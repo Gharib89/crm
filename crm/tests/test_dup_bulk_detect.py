@@ -86,7 +86,7 @@ class TestSubmit:
         assert result["duplicates"] == dupes
 
     def test_dry_run_previews_without_submitting(self, dry_backend, profile):
-        with requests_mock.Mocker() as m:
+        with requests_mock.Mocker():
             # No BulkDetectDuplicates POST is mocked: under dry-run the POST is
             # previewed, never submitted (GET reads would still execute, but a
             # bare-entity sweep issues none).

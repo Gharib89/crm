@@ -831,7 +831,7 @@ def count_children(
     try:
         pattern = re.compile(filter_entities) if filter_entities else None
     except re.error as exc:
-        raise D365Error(f"--filter-entities is not a valid regular expression: {exc}")
+        raise D365Error(f"--filter-entities is not a valid regular expression: {exc}") from exc
 
     # Logical↔set map via the shared seam (#261): resolves the parent set→logical
     # and each child logical→set, served read-through from the metadata cache.

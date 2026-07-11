@@ -219,7 +219,6 @@ class TestCloneEntityForms:
         assert captured.get("published") is True
 
     def test_without_forms_does_not_read_forms(self, monkeypatch):
-        captured: dict = {}
         called = {"read": False}
         monkeypatch.setattr(
             clone_mod,

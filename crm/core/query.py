@@ -113,7 +113,8 @@ def odata_query(
             raise D365Error(
                 "OData 'in' operator is not supported by the Dataverse Web API (OData 4.0).\n"
                 "Use the In query function:\n"
-                "  --filter \"Microsoft.Dynamics.CRM.In(PropertyName='<column>',PropertyValues=['<val1>','<val2>'])\"\n"
+                "  --filter \"Microsoft.Dynamics.CRM.In(PropertyName='<column>',"
+                "PropertyValues=['<val1>','<val2>'])\"\n"
                 "or run the equivalent FetchXML via `crm query fetchxml`."
             )
         params["$filter"] = filter_

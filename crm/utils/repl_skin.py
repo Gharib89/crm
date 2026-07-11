@@ -403,7 +403,6 @@ class ReplSkin:
         print(header_line)
 
         # Separator
-        sep_parts = [self._c(_DARK_GRAY, _H_LINE * w) for w in col_widths]
         sep_line = self._c(_DARK_GRAY, f"  {'───'.join([_H_LINE * w for w in col_widths])}")
         print(sep_line)
 

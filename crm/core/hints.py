@@ -27,7 +27,9 @@ from crm.core.session import DEFAULT_HOME
 HINTS: dict[str, str] = {
     "profile_add": "Next: crm connection whoami — confirm you're connected to the right org.",
     "profile_use": "Tip: crm connection status shows the active target.",
-    "solution_export": "Tip: crm solution unpack extracts the zip into source-control-friendly files.",
+    "solution_export": (
+        "Tip: crm solution unpack extracts the zip into source-control-friendly files."
+    ),
     "query_odata": "Tip: crm repl gives an interactive session with tab-completion for queries.",
 }
 

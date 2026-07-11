@@ -143,7 +143,7 @@ def _command_path(command: str) -> list[str]:
 
 
 def test_customization_write_examples_target_a_solution():
-    for group, ex in reg.listing(None):
+    for _group, ex in reg.listing(None):
         path = _command_path(ex.command)
         # Check the verb *position* (metadata <verb>), tolerating a leading global
         # option before the group, rather than mere token membership.
@@ -159,7 +159,7 @@ def test_optionset_examples_use_colon_option_syntax():
     # (`_parse_value_labels`) raises a click.UsageError when the ':' is missing, so
     # an example using '=' never runs. Check both token shapes Click accepts:
     # `--option VALUE` and `--option=VALUE`.
-    for group, ex in reg.listing(None):
+    for _group, ex in reg.listing(None):
         toks = shlex.split(ex.command)
         for i, tok in enumerate(toks):
             value = None

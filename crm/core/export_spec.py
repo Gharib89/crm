@@ -538,6 +538,8 @@ def build_entity_spec(
     non-appliable document until a solution block is added.
 
     Args:
+        backend: Connected Web API client used for the reads.
+        logical_name: Logical name of the entity to export.
         with_views: When True, attach the entity's public views (via
             `views.read_entity_views`); the key is omitted when there are none.
         with_relationships: When True, attach the entity's custom 1:N
@@ -548,6 +550,8 @@ def build_entity_spec(
             0019 seedable invariant; the key is omitted when nothing custom
             projects. A non-seedable form (an additional main form) is recorded in
             `skipped`; a non-seedable component is recorded in `warnings`.
+        solution: Optional unique name to emit a top-level `solution` block for
+            (see above); omitted when not passed.
         warnings: Optional list to accumulate structured drop-reason strings.
             Each silently skipped attribute appends one entry. Callers that
             want to surface diagnostics pass an empty list here; callers that

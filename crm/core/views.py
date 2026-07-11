@@ -876,9 +876,7 @@ def _iter_entity_conditions(
     return found
 
 
-def _prune_empty_filters(
-    entity: ElementTree.Element, emptied: list[ElementTree.Element]
-) -> None:
+def _prune_empty_filters(entity: ElementTree.Element, emptied: list[ElementTree.Element]) -> None:
     """Remove each filter in ``emptied`` that has no conditions and no child
     filters, cascading to any ancestor filter the prune leaves empty.
 

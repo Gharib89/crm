@@ -129,7 +129,8 @@ def build_review_prompt(
             "Compare the two to measure the skill's lift (commands, turns, success).\n"
             f"### Skill-absent crm commands\n{_commands_block(counterfactual.commands)}\n"
             f"### Skill-absent metrics\n{json.dumps(counterfactual.metrics, default=str)}\n"
-            f"### Skill-absent correctness\n{json.dumps(counterfactual.correctness_verdict, default=str)}\n"
+            f"### Skill-absent correctness\n"
+            f"{json.dumps(counterfactual.correctness_verdict, default=str)}\n"
         )
     return (
         "You are reviewing the *skill efficacy* of the `crm` CLI agent skill on one "
@@ -320,7 +321,8 @@ def guard_org_agnostic(text: str) -> None:
         raise ReviewError(f"refusing to write org-derived content: GUID {m.group()!r} present")
     if _ORG_FINGERPRINT in text.lower():
         raise ReviewError(
-            f"refusing to write org-derived content: org MAC fingerprint {_ORG_FINGERPRINT!r} present"
+            f"refusing to write org-derived content: org MAC fingerprint "
+            f"{_ORG_FINGERPRINT!r} present"
         )
 
 
@@ -385,7 +387,8 @@ def run_review_cmd(
     target = Path(run_dir) if run_dir is not None else latest_run_dir(runs_root)
     if target is None or not Path(target).is_dir():
         print(
-            f"no run dir to review (looked under {runs_root}); run `python -m evals.skill run` first"
+            f"no run dir to review (looked under {runs_root}); run "
+            f"`python -m evals.skill run` first"
         )
         return 1
     target = Path(target)

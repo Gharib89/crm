@@ -14,7 +14,8 @@ def _admin_header_options(f):
         "--bypass-plugins",
         is_flag=True,
         default=False,
-        help="Send MSCRM.BypassCustomPluginExecution: true (requires prvBypassCustomPluginExecution).",
+        help="Send MSCRM.BypassCustomPluginExecution: true (requires "
+        "prvBypassCustomPluginExecution).",
     )(f)
     f = click.option(
         "--suppress-dup-detection",

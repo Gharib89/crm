@@ -183,8 +183,10 @@ def resolve_group(location: str, entity: str, group_override: str | None) -> str
         return group_override
     try:
         return DEFAULT_GROUPS[location].format(entity=entity)
-    except KeyError:
-        raise D365Error(f"unknown location {location!r}; expected one of {sorted(DEFAULT_GROUPS)}")
+    except KeyError as exc:
+        raise D365Error(
+            f"unknown location {location!r}; expected one of {sorted(DEFAULT_GROUPS)}"
+        ) from exc
 
 
 @dataclass(frozen=True)
@@ -541,7 +543,9 @@ def _upsert_loclabel_title(ribbon_diff: ET.Element, loclabel_id: str, lcid: int,
     loclabels = ribbon_diff.find("LocLabels")
     if loclabels is None:
         loclabels = ET.SubElement(ribbon_diff, "LocLabels")
-    loclabel = next((l for l in loclabels.findall("LocLabel") if l.get("Id") == loclabel_id), None)
+    loclabel = next(
+        (lbl for lbl in loclabels.findall("LocLabel") if lbl.get("Id") == loclabel_id), None
+    )
     if loclabel is None:
         loclabel = ET.SubElement(loclabels, "LocLabel", {"Id": loclabel_id})
     titles = loclabel.find("Titles")

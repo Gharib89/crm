@@ -260,7 +260,8 @@ def test_data_import_rebinds_exported_lookups(backend, cli, tmp_path, unique):
         assert r.returncode == 0, f"data export failed:\n{r.stderr}\n{r.stdout}"
         exported = json.loads(export_file.read_text(encoding="utf-8"))[0]
         assert exported.get("_primarycontactid_value") == contact_id, (
-            f"export did not emit the lookup in READ form: {exported.get('_primarycontactid_value')!r}"
+            f"export did not emit the lookup in READ form: "
+            f"{exported.get('_primarycontactid_value')!r}"
         )
 
         # Import a fresh account carrying the exported lookup (plus a polymorphic

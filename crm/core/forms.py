@@ -240,9 +240,7 @@ def _resolve_target_tab(root: ET.Element, tab: str | None) -> ET.Element:
     return target_tab
 
 
-def _resolve_target_section(
-    root: ET.Element, tab: str | None, section: str | None
-) -> ET.Element:
+def _resolve_target_section(root: ET.Element, tab: str | None, section: str | None) -> ET.Element:
     """Pick the ``<section>`` to place a field in.
 
     Defaults to the first section of the first tab; ``tab`` / ``section`` narrow

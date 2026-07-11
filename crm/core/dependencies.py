@@ -179,7 +179,10 @@ def build_uninstall_dependency_path(solution_unique_name: str) -> str:
     doubled per OData), unlike the unquoted GUID/int encoding in
     ``build_dependency_path``.
     """
-    return f"RetrieveDependenciesForUninstall(SolutionUniqueName={odata_literal(solution_unique_name)})"
+    return (
+        f"RetrieveDependenciesForUninstall(SolutionUniqueName="
+        f"{odata_literal(solution_unique_name)})"
+    )
 
 
 def dependencies_by_id(

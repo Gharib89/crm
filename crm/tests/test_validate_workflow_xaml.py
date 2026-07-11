@@ -19,7 +19,8 @@ _VALID_EMPTY = (
     ' Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"'
     ' xmlns:mxs="clr-namespace:Microsoft.Xrm.Sdk;assembly=Microsoft.Xrm.Sdk,'
     ' Version=9.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"'
-    ' xmlns:mxswa="clr-namespace:Microsoft.Xrm.Sdk.Workflow.Activities;assembly=Microsoft.Xrm.Sdk.Workflow,'
+    ' xmlns:mxswa="clr-namespace:Microsoft.Xrm.Sdk.Workflow.Activities;'
+    "assembly=Microsoft.Xrm.Sdk.Workflow,"
     ' Version=9.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"'
     ' xmlns:scg="clr-namespace:System.Collections.Generic;assembly=mscorlib,'
     ' Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"'
@@ -28,9 +29,11 @@ _VALID_EMPTY = (
     ' xmlns:this="clr-namespace:"'
     ' xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">\n'
     "  <x:Members>\n"
-    '    <x:Property Name="InputEntities" Type="InArgument(scg:IDictionary(x:String, mxs:Entity))" />\n'
+    '    <x:Property Name="InputEntities" Type="InArgument(scg:IDictionary(x:String, '
+    'mxs:Entity))" />\n'
     "  </x:Members>\n"
-    "  <mva:VisualBasic.Settings>Assembly references and imported namespaces for internal implementation</mva:VisualBasic.Settings>\n"
+    "  <mva:VisualBasic.Settings>Assembly references and imported namespaces for internal "
+    "implementation</mva:VisualBasic.Settings>\n"
     "  <mxswa:Workflow />\n"
     "</Activity>"
 )
@@ -43,7 +46,8 @@ _VALID_WITH_STEP = (
     ' Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"'
     ' xmlns:mxs="clr-namespace:Microsoft.Xrm.Sdk;assembly=Microsoft.Xrm.Sdk,'
     ' Version=9.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"'
-    ' xmlns:mxswa="clr-namespace:Microsoft.Xrm.Sdk.Workflow.Activities;assembly=Microsoft.Xrm.Sdk.Workflow,'
+    ' xmlns:mxswa="clr-namespace:Microsoft.Xrm.Sdk.Workflow.Activities;'
+    "assembly=Microsoft.Xrm.Sdk.Workflow,"
     ' Version=9.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"'
     ' xmlns:scg="clr-namespace:System.Collections.Generic;assembly=mscorlib,'
     ' Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"'
@@ -52,11 +56,14 @@ _VALID_WITH_STEP = (
     ' xmlns:this="clr-namespace:"'
     ' xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">\n'
     "  <x:Members>\n"
-    '    <x:Property Name="InputEntities" Type="InArgument(scg:IDictionary(x:String, mxs:Entity))" />\n'
+    '    <x:Property Name="InputEntities" Type="InArgument(scg:IDictionary(x:String, '
+    'mxs:Entity))" />\n'
     "  </x:Members>\n"
-    "  <mva:VisualBasic.Settings>Assembly references and imported namespaces for internal implementation</mva:VisualBasic.Settings>\n"
+    "  <mva:VisualBasic.Settings>Assembly references and imported namespaces for internal "
+    "implementation</mva:VisualBasic.Settings>\n"
     "  <mxswa:Workflow>\n"
-    '    <mxswa:SetEntityProperty Entity="someref" EntityName="cwx_ticket" Attribute="cwx_name" Value="x" />\n'
+    '    <mxswa:SetEntityProperty Entity="someref" EntityName="cwx_ticket"'
+    ' Attribute="cwx_name" Value="x" />\n'
     "  </mxswa:Workflow>\n"
     "</Activity>"
 )
@@ -117,7 +124,8 @@ _UNKNOWN_ACTIVITY = (
     ' Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"'
     ' xmlns:mxs="clr-namespace:Microsoft.Xrm.Sdk;assembly=Microsoft.Xrm.Sdk,'
     ' Version=9.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"'
-    ' xmlns:mxswa="clr-namespace:Microsoft.Xrm.Sdk.Workflow.Activities;assembly=Microsoft.Xrm.Sdk.Workflow,'
+    ' xmlns:mxswa="clr-namespace:Microsoft.Xrm.Sdk.Workflow.Activities;'
+    "assembly=Microsoft.Xrm.Sdk.Workflow,"
     ' Version=9.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"'
     ' xmlns:scg="clr-namespace:System.Collections.Generic;assembly=mscorlib,'
     ' Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"'
@@ -139,7 +147,8 @@ _BAD_ATTRIBUTE = (
     ' Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"'
     ' xmlns:mxs="clr-namespace:Microsoft.Xrm.Sdk;assembly=Microsoft.Xrm.Sdk,'
     ' Version=9.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"'
-    ' xmlns:mxswa="clr-namespace:Microsoft.Xrm.Sdk.Workflow.Activities;assembly=Microsoft.Xrm.Sdk.Workflow,'
+    ' xmlns:mxswa="clr-namespace:Microsoft.Xrm.Sdk.Workflow.Activities;'
+    "assembly=Microsoft.Xrm.Sdk.Workflow,"
     ' Version=9.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"'
     ' xmlns:scg="clr-namespace:System.Collections.Generic;assembly=mscorlib,'
     ' Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"'
@@ -165,7 +174,8 @@ _PROPERTY_ELEMENT_VALUE = (
     ' Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"'
     ' xmlns:mxs="clr-namespace:Microsoft.Xrm.Sdk;assembly=Microsoft.Xrm.Sdk,'
     ' Version=9.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"'
-    ' xmlns:mxswa="clr-namespace:Microsoft.Xrm.Sdk.Workflow.Activities;assembly=Microsoft.Xrm.Sdk.Workflow,'
+    ' xmlns:mxswa="clr-namespace:Microsoft.Xrm.Sdk.Workflow.Activities;'
+    "assembly=Microsoft.Xrm.Sdk.Workflow,"
     ' Version=9.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"'
     ' xmlns:scg="clr-namespace:System.Collections.Generic;assembly=mscorlib,'
     ' Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"'
@@ -192,7 +202,8 @@ _MISSING_ARG = (
     ' Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"'
     ' xmlns:mxs="clr-namespace:Microsoft.Xrm.Sdk;assembly=Microsoft.Xrm.Sdk,'
     ' Version=9.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"'
-    ' xmlns:mxswa="clr-namespace:Microsoft.Xrm.Sdk.Workflow.Activities;assembly=Microsoft.Xrm.Sdk.Workflow,'
+    ' xmlns:mxswa="clr-namespace:Microsoft.Xrm.Sdk.Workflow.Activities;'
+    "assembly=Microsoft.Xrm.Sdk.Workflow,"
     ' Version=9.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"'
     ' xmlns:scg="clr-namespace:System.Collections.Generic;assembly=mscorlib,'
     ' Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"'
@@ -269,7 +280,9 @@ class TestValidateWorkflowXaml:
         )
 
     def test_missing_required_arg_emits_warning(self):
-        """SetEntityProperty missing Entity → 'SetEntityProperty missing required argument: Entity'."""
+        """SetEntityProperty missing Entity →
+        'SetEntityProperty missing required argument: Entity'.
+        """
         warnings = validate_workflow_xaml(_MISSING_ARG, _ATTRIBUTE_SET)
         assert any(
             "SetEntityProperty" in w and "missing required argument" in w and "Entity" in w

@@ -71,8 +71,8 @@ def _parse_column(raw: str) -> tuple[str, int]:
         return name, 100
     try:
         width = int(w.strip())
-    except ValueError:
-        raise click.BadParameter(f"column width must be an int: {raw!r}")
+    except ValueError as exc:
+        raise click.BadParameter(f"column width must be an int: {raw!r}") from exc
     if width <= 0:
         raise click.BadParameter(f"column width must be positive: {raw!r}")
     return name, width
@@ -104,8 +104,8 @@ def _parse_width(raw: str) -> tuple[str, int]:
         raise click.BadParameter(f"--width must be 'logical:int': {raw!r}")
     try:
         width = int(w.strip())
-    except ValueError:
-        raise click.BadParameter(f"column width must be an int: {raw!r}")
+    except ValueError as exc:
+        raise click.BadParameter(f"column width must be an int: {raw!r}") from exc
     if width <= 0:
         raise click.BadParameter(f"column width must be positive: {raw!r}")
     return name, width

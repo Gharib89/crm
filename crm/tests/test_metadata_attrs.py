@@ -121,7 +121,7 @@ class TestAddAttributeMemo:
 
         with requests_mock.Mocker() as m:
             _mock_post_and_readback(m, backend, "new_widget", "new_notes", "Memo")
-            info = ma.add_attribute(
+            ma.add_attribute(
                 backend,
                 entity="new_widget",
                 kind="memo",

@@ -3,7 +3,8 @@
 then report — and rerun — by skip/fail with full reasons.
 
     onprem    agent-on-prem    -m 'e2e'                    whole suite; requires_cloud self-skip
-    cloud     agent-cloud      -m 'e2e and requires_cloud' cloud-gated; CS-only skip-with-instructions
+    cloud     agent-cloud      -m 'e2e and requires_cloud' cloud-gated; CS-only
+                                                           skip-with-instructions
     cs-trial  agent-cs-trial   -m 'e2e and requires_cloud' same selection, CS-only subset now RUNS
 
 CS-only tests carry no marker — they are requires_cloud tests that runtime-skip unless the

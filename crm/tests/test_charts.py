@@ -14,7 +14,11 @@ _CHART_ROW = {
     "savedqueryvisualizationid": "11112222-3333-4444-5555-666677778888",
     "name": "Tickets by Priority",
     "primaryentitytypecode": "new_project",
-    "datadescription": '<datadefinition><fetchcollection><fetch aggregate="true"><entity name="new_project"><attribute alias="aggregate_column" name="new_projectid" aggregate="count" /></entity></fetch></fetchcollection></datadefinition>',
+    "datadescription": (
+        '<datadefinition><fetchcollection><fetch aggregate="true"><entity name="new_project">'
+        '<attribute alias="aggregate_column" name="new_projectid" aggregate="count" /></entity>'
+        "</fetch></fetchcollection></datadefinition>"
+    ),
     "presentationdescription": '<Chart><Series><Series ChartType="Column" /></Series></Chart>',
     "description": "By priority",
     "isdefault": False,
@@ -154,7 +158,10 @@ _USER_CHART_ROW = {
     "userqueryvisualizationid": "aaaa1111-2222-3333-4444-555566667777",
     "name": "My Tickets",
     "primaryentitytypecode": "new_project",
-    "datadescription": '<datadefinition><fetchcollection><fetch><entity name="new_project"/></fetch></fetchcollection></datadefinition>',
+    "datadescription": (
+        '<datadefinition><fetchcollection><fetch><entity name="new_project"/></fetch>'
+        "</fetchcollection></datadefinition>"
+    ),
     "presentationdescription": "<Chart/>",
     "description": "personal",
 }
@@ -732,9 +739,12 @@ class TestAliasCoupling:
             '<attribute name="new_projectid" aggregate="count" alias="agg" />'
             "</entity></fetch></fetchcollection>"
             "<categorycollection>"
-            '<category alias="g1"><measurecollection><measure alias="agg" /></measurecollection></category>'
-            '<category alias="g2"><measurecollection><measure alias="agg" /></measurecollection></category>'
-            '<category alias="g3"><measurecollection><measure alias="agg" /></measurecollection></category>'
+            '<category alias="g1"><measurecollection><measure alias="agg" />'
+            "</measurecollection></category>"
+            '<category alias="g2"><measurecollection><measure alias="agg" />'
+            "</measurecollection></category>"
+            '<category alias="g3"><measurecollection><measure alias="agg" />'
+            "</measurecollection></category>"
             "</categorycollection></datadefinition>"
         )
         with pytest.raises(D365Error, match="one or two categories"):

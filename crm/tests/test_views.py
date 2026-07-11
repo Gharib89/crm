@@ -1947,7 +1947,8 @@ class TestReadEntityViews:
             '<order attribute="cwx_name" descending="false" />'
             '<link-entity name="account" from="accountid" to="cwx_accountid">'
             '<order attribute="name" descending="true" />'
-            '<filter type="and"><condition attribute="statecode" operator="eq" value="0" /></filter>'
+            '<filter type="and">'
+            '<condition attribute="statecode" operator="eq" value="0" /></filter>'
             "</link-entity>"
             "</entity></fetch>"
         )

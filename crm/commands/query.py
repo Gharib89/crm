@@ -33,7 +33,7 @@ def _parse_entity_name_from_fetchxml(fetch_xml: str) -> str:
     except ET.ParseError as exc:
         raise click.UsageError(
             f"Could not parse FetchXML: {exc}. Pass ENTITY_SET explicitly or fix the XML."
-        )
+        ) from exc
     entity_el = root.find("entity")
     if entity_el is None:
         raise click.UsageError(
@@ -261,7 +261,9 @@ def query_fetchxml(ctx: CLIContext, entity_set, xml_inline, xml_file, annotation
 )
 @pass_ctx
 def query_saved(ctx: CLIContext, entity_set, savedquery_id, annotations, page_size, minimal):
-    """Execute a system view (savedquery) by GUID. Use `--json query odata savedqueries` to discover IDs."""
+    """Execute a system view (savedquery) by GUID. Use `--json query odata savedqueries` to
+    discover IDs.
+    """
     with d365_errors(ctx):
         result = query_mod.saved_query(
             ctx.backend(),

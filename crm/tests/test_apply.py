@@ -5025,7 +5025,8 @@ def test_apply_plugin_step_update_failure_lands_in_failed(backend, tmp_path):
 def test_prune_candidates_skips_malformed_component(backend):
     spec = {"solution": {"unique_name": "ContosoCore"}}
     with requests_mock.Mocker() as m:
-        # Component with missing objectid → if isinstance(ct, int) and isinstance(oid, str) is False.
+        # Component with missing objectid → if isinstance(ct, int) and isinstance(oid, str)
+        # is False.
         m.get(
             backend.url_for("solutions"),
             json={"value": [{"solutionid": _GUID2, "uniquename": "ContosoCore"}]},

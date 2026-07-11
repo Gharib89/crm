@@ -294,13 +294,13 @@ def _enrich_options(
     Mutates `writable` in place. No-op for kinds the entity does not use.
     """
     present = {a["attribute_type"] for a in writable}
-    for attr_type, cast, expand in _OPTION_SET_CASTS:
+    for attr_type, cast_name, expand in _OPTION_SET_CASTS:
         if attr_type not in present:
             continue
         res = as_dict(
             backend.get(
                 f"EntityDefinitions(LogicalName='{logical_name}')/Attributes/"
-                f"Microsoft.Dynamics.CRM.{cast}",
+                f"Microsoft.Dynamics.CRM.{cast_name}",
                 params={"$select": "LogicalName", "$expand": expand},
             )
         )
@@ -546,6 +546,7 @@ def create_entity(
     """Create a new custom entity (table) via POST /EntityDefinitions.
 
     Args:
+        backend: Connected Web API client used for the create request.
         schema_name: PascalCase with publisher prefix, e.g. `new_Project`.
         display_name: Singular UI name, e.g. "Project".
         display_collection_name: Plural UI name; defaults to display_name + 's'.
@@ -572,6 +573,8 @@ def create_entity(
         external_collection_name: External collection (plural) name.
         solution: Optional `uniquename` to add the entity to a specific solution
             via the `MSCRM.SolutionUniqueName` header.
+        if_exists: `error` (default) to fail if the entity already exists, or
+            `skip` to return without creating it.
 
     Returns a dict describing the created entity. The Web API returns 204 No
     Content with an `OData-EntityId` header pointing at the new MetadataId.
@@ -738,6 +741,10 @@ def delete_entity(
     relationships) and returns 4xx on conflict.
 
     Args:
+        backend: Connected Web API client used for the delete.
+        logical_name: Logical name of the entity to delete.
+        solution: Optional `uniquename` to scope the DELETE to, via the
+            `MSCRM.SolutionUniqueName` header.
         check_dependencies: When True, call RetrieveDependenciesForDelete
             before the DELETE and fold ``can_delete`` + ``blockers`` into the
             result. Informational only — does not abort the delete.
@@ -935,6 +942,8 @@ def create_entity_key(
     created key starts with ``EntityKeyIndexStatus`` ``Pending``.
 
     Args:
+        backend: Connected Web API client used for the create request.
+        entity: Logical name of the entity to add the key to.
         schema_name: PascalCase with publisher prefix, e.g. ``new_Code``.
         key_attributes: Attribute logical names forming the key (1..n).
         display_name: UI label; defaults to ``schema_name``.

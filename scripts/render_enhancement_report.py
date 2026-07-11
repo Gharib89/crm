@@ -91,15 +91,18 @@ def render_recommendation(rec: dict) -> str:
     parts.append("</div>")
     if rec.get("problem"):
         parts.append(
-            f'<div class="field"><span class="field__l">Problem</span><p>{esc(rec["problem"])}</p></div>'
+            f'<div class="field"><span class="field__l">Problem</span>'
+            f"<p>{esc(rec['problem'])}</p></div>"
         )
     if rec.get("proposal"):
         parts.append(
-            f'<div class="field"><span class="field__l">Proposal</span><p>{esc(rec["proposal"])}</p></div>'
+            f'<div class="field"><span class="field__l">Proposal</span>'
+            f"<p>{esc(rec['proposal'])}</p></div>"
         )
     if rec.get("rationale"):
         parts.append(
-            f'<div class="field"><span class="field__l">Why it matters</span><p>{esc(rec["rationale"])}</p></div>'
+            f'<div class="field"><span class="field__l">Why it matters</span>'
+            f"<p>{esc(rec['rationale'])}</p></div>"
         )
     parts.append(mermaid_block(rec.get("mermaid")))
     parts.append(pointer_list("code", rec.get("codePointers")))
@@ -181,7 +184,8 @@ def render(data: dict) -> str:
         f'<section id="current-state" class="sec"><h2>Current state</h2>'
         f"<p>{esc(cur.get('summary', ''))}</p>"
         f'<div class="two-col">'
-        f'<div class="panel panel--good"><h3>Strengths</h3>{bullet_list(cur.get("strengths"))}</div>'
+        f'<div class="panel panel--good"><h3>Strengths</h3>'
+        f"{bullet_list(cur.get('strengths'))}</div>"
         f'<div class="panel panel--gap"><h3>Gaps</h3>{bullet_list(cur.get("gaps"))}</div>'
         f"</div></section>"
     )
@@ -200,7 +204,8 @@ def render(data: dict) -> str:
     )
     S.append(
         f'<section id="matrix" class="sec"><h2>Impact / effort</h2>'
-        f'<p class="hint">Top-left = highest leverage. Tap a chip to jump to the recommendation.</p>'
+        f'<p class="hint">Top-left = highest leverage. Tap a chip to jump to the '
+        f"recommendation.</p>"
         f"{render_matrix(syn.get('impactEffortMatrix'))}</section>"
     )
 
@@ -231,7 +236,8 @@ def render(data: dict) -> str:
         for s in src_items
     )
     S.append(
-        f'<section id="sources" class="sec"><h2>Sources</h2><ul class="sources">{src_html}</ul></section>'
+        f'<section id="sources" class="sec"><h2>Sources</h2>'
+        f'<ul class="sources">{src_html}</ul></section>'
     )
 
     if refuted_list:
@@ -242,9 +248,11 @@ def render(data: dict) -> str:
         )
         S.append(
             '<section id="refuted" class="sec"><h2>Considered &amp; dropped</h2>'
-            '<p class="hint">Candidate ideas the verification pass rejected as already-implemented or '
+            '<p class="hint">Candidate ideas the verification pass rejected as '
+            "already-implemented or "
             "inaccurate for on-prem. Kept for transparency.</p>"
-            '<table class="tbl"><thead><tr><th>Idea</th><th>Area</th><th>Why dropped</th></tr></thead>'
+            '<table class="tbl"><thead><tr><th>Idea</th><th>Area</th>'
+            "<th>Why dropped</th></tr></thead>"
             f"<tbody>{rrows}</tbody></table></section>"
         )
 
@@ -309,7 +317,8 @@ a:hover{text-decoration:underline}
 .sec--anchor{padding-bottom:8px;border-bottom:none}
 .sec--cat{padding-top:18px;border-bottom:none}
 .sec h2{font-size:21px;margin:0 0 14px;letter-spacing:-.2px}
-.sec--cat h2{font-size:17px;color:var(--accent2);border-left:3px solid var(--accent2);padding-left:10px}
+.sec--cat h2{font-size:17px;color:var(--accent2);border-left:3px solid var(--accent2);
+  padding-left:10px}
 .sec h3{font-size:15px;margin:0 0 8px}
 .lede{font-size:16.5px;line-height:1.7;color:#d6dae4}
 .hint{color:var(--faint);font-size:13px;margin:-4px 0 14px}
@@ -321,7 +330,8 @@ a:hover{text-decoration:underline}
 .stat span{color:var(--muted);font-size:12.5px}
 
 .two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.panel{border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;background:var(--surface)}
+.panel{border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;
+  background:var(--surface)}
 .panel--good{border-top:3px solid var(--good)}
 .panel--gap{border-top:3px solid var(--gap)}
 .panel ul{margin:6px 0 0;padding-left:18px}
@@ -346,7 +356,8 @@ pre.mermaid{margin:0;background:transparent;display:inline-block;min-width:100%}
 .rec .diagram{margin-top:12px;text-align:left}
 
 .chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;
-  padding:3px 9px;border-radius:20px;border:1px solid var(--line);background:var(--surface2);color:var(--ink)}
+  padding:3px 9px;border-radius:20px;border:1px solid var(--line);
+  background:var(--surface2);color:var(--ink)}
 .chip__k{color:var(--faint);font-weight:500;text-transform:uppercase;font-size:9.5px;letter-spacing:.05em}
 .chip--cat{background:rgba(110,168,254,.12);border-color:rgba(110,168,254,.35);color:#bcd4ff}
 .chip--high{color:#ffd0d0;border-color:rgba(255,107,107,.5);background:rgba(255,107,107,.12)}
@@ -364,7 +375,8 @@ pre.mermaid{margin:0;background:transparent;display:inline-block;min-width:100%}
 .matrix__corner{font-size:11px;color:var(--faint);display:flex;align-items:flex-end}
 .matrix__colh{font-size:12px;color:var(--muted);text-align:center;align-self:end;padding-bottom:4px;font-weight:600}
 .matrix__rowh{font-size:12px;color:var(--muted);display:flex;align-items:center;font-weight:600}
-.matrix__cell{min-height:64px;background:var(--surface);border:1px solid var(--line);border-radius:10px;
+.matrix__cell{min-height:64px;background:var(--surface);
+  border:1px solid var(--line);border-radius:10px;
   padding:8px;display:flex;flex-wrap:wrap;gap:5px;align-content:flex-start;position:relative}
 .matrix__cell--quick{border-color:rgba(126,224,192,.6);background:rgba(126,224,192,.07)}
 .matrix__qtag{position:absolute;top:6px;right:8px;font-size:9.5px;color:var(--accent2);
@@ -378,7 +390,8 @@ pre.mermaid{margin:0;background:transparent;display:inline-block;min-width:100%}
 .sources{padding-left:18px}
 .sources li{margin:5px 0;word-break:break-all}
 .tbl{width:100%;border-collapse:collapse;font-size:13.5px}
-.tbl th,.tbl td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+.tbl th,.tbl td{text-align:left;padding:8px 10px;
+  border-bottom:1px solid var(--line);vertical-align:top}
 .tbl th{color:var(--muted);font-weight:600}
 
 .foot{color:var(--faint);font-size:12px;padding:24px 32px;border-top:1px solid var(--line)}
@@ -400,10 +413,11 @@ pre.mermaid{margin:0;background:transparent;display:inline-block;min-width:100%}
   </aside>
   <div class="main">
     <header class="hero">
-      <h1>Enhancing the <span class="mono">crm</span> CLI for agentic coding &amp; D365 on-prem customization</h1>
+      <h1>Enhancing the <span class="mono">crm</span> CLI for agentic coding &amp;
+         D365 on-prem customization</h1>
       <p>A repo-grounded, adversarially verified set of enhancements: how to make the
-         Dynamics 365 CE on-prem (v9.x, Web API / NTLM) CLI a first-class actuator for AI coding agents
-         and for on-prem solution / customization ALM.</p>
+         Dynamics 365 CE on-prem (v9.x, Web API / NTLM) CLI a first-class actuator for AI
+         coding agents and for on-prem solution / customization ALM.</p>
       <div class="tagrow">
         <span class="tag">generated <b>__DATE__</b></span>
         <span class="tag">D365 CE <b>on-prem v9.x</b></span>

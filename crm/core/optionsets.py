@@ -299,7 +299,7 @@ def update_optionset(
             try:
                 backend.post("InsertOptionValue", json_body=body, solution=solution)
             except D365Error as exc:
-                raise _attach_partial(exc, "insert")
+                raise _attach_partial(exc, "insert") from exc
             completed.append(f"insert:{value if value is not None else 'auto'}")
 
     if update:
@@ -313,7 +313,7 @@ def update_optionset(
             try:
                 backend.post("UpdateOptionValue", json_body=body, solution=solution)
             except D365Error as exc:
-                raise _attach_partial(exc, "update")
+                raise _attach_partial(exc, "update") from exc
             completed.append(f"update:{value}")
 
     if delete:
@@ -322,7 +322,7 @@ def update_optionset(
             try:
                 backend.post("DeleteOptionValue", json_body=body, solution=solution)
             except D365Error as exc:
-                raise _attach_partial(exc, "delete")
+                raise _attach_partial(exc, "delete") from exc
             completed.append(f"delete:{value}")
 
     if reorder:
@@ -330,7 +330,7 @@ def update_optionset(
         try:
             backend.post("OrderOption", json_body=body, solution=solution)
         except D365Error as exc:
-            raise _attach_partial(exc, "reorder")
+            raise _attach_partial(exc, "reorder") from exc
         completed.append("reorder")
 
     out: dict[str, Any] = {
@@ -358,6 +358,10 @@ def delete_optionset(
     rejects with 400 if any picklist still references the option set.
 
     Args:
+        backend: Connected Web API client used for the delete.
+        name: Name of the global option set to delete.
+        solution: Optional `uniquename` to scope the DELETE to, via the
+            `MSCRM.SolutionUniqueName` header.
         check_dependencies: When True, call RetrieveDependenciesForDelete
             before the DELETE and fold ``can_delete`` + ``blockers`` into the
             result. Informational only — does not abort the delete.

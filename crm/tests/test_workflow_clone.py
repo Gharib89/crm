@@ -16,7 +16,8 @@ _XAML = (
     '<?xml version="1.0" encoding="utf-16"?>\n'
     '<Activity x:Class="XrmWorkflow8f9e7a6b5c4d3e2f1a0b9c8d7e6f5a4b" '
     'xmlns:this="clr-namespace:XrmWorkflow8f9e7a6b5c4d3e2f1a0b9c8d7e6f5a4b">\n'
-    '  <mxsw:GetEntityProperty Attribute="cwx_name" Entity="cwx_ticket" EntityName="cwx_ticket" />\n'
+    '  <mxsw:GetEntityProperty Attribute="cwx_name" '
+    'Entity="cwx_ticket" EntityName="cwx_ticket" />\n'
     "  <Comment>lookup field cwx_ticketcategory stays on cwx_ticket</Comment>\n"
     "  <this:XrmWorkflow8f9e7a6b5c4d3e2f1a0b9c8d7e6f5a4b.Variables />\n"
     "</Activity>\n"

@@ -112,7 +112,9 @@ def test_e2e_hierarchical_relationship_create_and_update(backend):
 
 @covers("metadata create-entity")
 def test_e2e_create_custom_entity_reads_back_set_name(backend):
-    """§3.3: create a unique custom entity, assert returned entity_set_name resolves via metadata.list_entities."""
+    """§3.3: create a unique custom entity, assert returned entity_set_name resolves via
+    metadata.list_entities.
+    """
     from crm.core import metadata as meta_mod
 
     suffix = uuid.uuid4().hex[:8]

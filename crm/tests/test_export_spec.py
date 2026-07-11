@@ -1237,7 +1237,8 @@ class TestRoundTrip:
 
 class TestExportSpecWarnings:
     def test_unmapped_type_warns(self, backend):
-        # An attribute whose AttributeTypeName.Value maps to no kind (metadata_constraints.kind_for_type_name → None).
+        # An attribute whose AttributeTypeName.Value maps to no kind
+        # (metadata_constraints.kind_for_type_name → None).
         attrs = {"value": [_shallow("new_name"), _shallow("new_weird")]}
         weird = {
             "SchemaName": "new_Weird",

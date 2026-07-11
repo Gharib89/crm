@@ -428,7 +428,8 @@ def metadata_describe(ctx: CLIContext, logical_name):
     "valid but non-appliable document.",
 )
 @_output_option(
-    help="Write the bare spec as YAML to FILE (appliable with crm apply -f when --solution is given)."
+    help="Write the bare spec as YAML to FILE (appliable with crm apply -f when "
+    "--solution is given)."
 )
 @pass_ctx
 def metadata_export_spec(
@@ -1071,7 +1072,8 @@ def metadata_can_relate(ctx: CLIContext, entity, role, valid_partners):
     "check_dependencies",
     is_flag=True,
     default=False,
-    help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; pairs with --dry-run.",
+    help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; "
+    "pairs with --dry-run.",
 )
 @pass_ctx
 def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution, check_dependencies):
@@ -1168,7 +1170,8 @@ def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution, check_d
     "--option",
     "options",
     multiple=True,
-    help="Picklist/multiselect: inline option as 'value:label' or ':label' (auto value). Repeatable.",
+    help="Picklist/multiselect: inline option as 'value:label' or ':label' (auto value). "
+    "Repeatable.",
 )
 @click.option("--target-entity", default=None, help="Lookup: referenced entity logical name.")
 @click.option(
@@ -1304,7 +1307,8 @@ def metadata_add_attribute(
     "check_dependencies",
     is_flag=True,
     default=False,
-    help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; pairs with --dry-run.",
+    help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; "
+    "pairs with --dry-run.",
 )
 @pass_ctx
 def metadata_delete_attribute(
@@ -1564,7 +1568,8 @@ def metadata_create_many_to_many(
     "check_dependencies",
     is_flag=True,
     default=False,
-    help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; pairs with --dry-run.",
+    help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; "
+    "pairs with --dry-run.",
 )
 @pass_ctx
 def metadata_delete_relationship(ctx: CLIContext, schema_name, yes, solution, check_dependencies):
@@ -1735,7 +1740,8 @@ def metadata_update_optionset(
     "check_dependencies",
     is_flag=True,
     default=False,
-    help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; pairs with --dry-run.",
+    help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; "
+    "pairs with --dry-run.",
 )
 @pass_ctx
 def metadata_delete_optionset(ctx: CLIContext, name, yes, solution, check_dependencies):

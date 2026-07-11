@@ -2696,13 +2696,15 @@ def apply_spec(
             if live_asm is None:
                 result = _call(
                     asm_entry,
-                    lambda plugin=plugin: plugin_mod.register_assembly(
-                        backend,
-                        **REGISTRY["plugin-assembly"].to_kwargs(plugin),
-                        path=asm_path,
-                        name=name,
-                        solution=solution_name,
-                        update=False,
+                    lambda plugin=plugin, asm_path=asm_path, name=name: (
+                        plugin_mod.register_assembly(
+                            backend,
+                            **REGISTRY["plugin-assembly"].to_kwargs(plugin),
+                            path=asm_path,
+                            name=name,
+                            solution=solution_name,
+                            update=False,
+                        )
                     ),
                     failed,
                 )
@@ -2712,8 +2714,8 @@ def apply_spec(
             else:
                 _reconcile(
                     asm_entry,
-                    lambda plugin=plugin, live_asm=live_asm, ctx=ctx: _reconcile_plugin_assembly(
-                        backend, plugin, live_asm, ctx, asm_entry
+                    lambda plugin=plugin, live_asm=live_asm, ctx=ctx, asm_entry=asm_entry: (
+                        _reconcile_plugin_assembly(backend, plugin, live_asm, ctx, asm_entry)
                     ),
                     failed,
                     routes,
@@ -2731,7 +2733,9 @@ def apply_spec(
                 if not assembly_created:
                     if live_typenames is None:
                         listing = _call(
-                            t_entry, lambda: plugin_mod.list_types(backend, assembly=name), failed
+                            t_entry,
+                            lambda name=name: plugin_mod.list_types(backend, assembly=name),
+                            failed,
                         )
                         live_typenames = {str(r.get("typename")) for r in listing.get("value", [])}
                     if typ["type_name"] in live_typenames:
@@ -2739,7 +2743,7 @@ def apply_spec(
                         continue
                 result = _call(
                     t_entry,
-                    lambda typ=typ: plugin_mod.register_type(
+                    lambda typ=typ, name=name: plugin_mod.register_type(
                         backend,
                         assembly=name,
                         type_name=typ["type_name"],
@@ -2768,7 +2772,7 @@ def apply_spec(
                 if live_step is None:
                     result = _call(
                         s_entry,
-                        lambda step=step: plugin_mod.register_step(
+                        lambda step=step, name=name: plugin_mod.register_step(
                             backend,
                             **REGISTRY["plugin-step"].to_kwargs(step),
                             assembly=name,

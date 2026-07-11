@@ -33,14 +33,16 @@ def test_default_agent_cmd_is_skip_permissions_streamjson_sonnet():
     # #588: the default emits stream-json (+ --verbose) so the run record captures the
     # crm command sequence + metrics the skill-efficacy review reads.
     assert build_agent_cmd(None, None) == (
-        "claude -p --dangerously-skip-permissions --output-format stream-json --verbose --model sonnet"
+        "claude -p --dangerously-skip-permissions --output-format stream-json --verbose "
+        "--model sonnet"
     )
     assert DEFAULT_MODEL == "sonnet"
 
 
 def test_model_swaps_the_default_model():
     assert build_agent_cmd(None, "opus") == (
-        "claude -p --dangerously-skip-permissions --output-format stream-json --verbose --model opus"
+        "claude -p --dangerously-skip-permissions --output-format stream-json --verbose "
+        "--model opus"
     )
 
 

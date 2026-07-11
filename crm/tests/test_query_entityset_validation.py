@@ -75,7 +75,9 @@ _PATH_SHAPED = [
 
 @pytest.mark.parametrize("entity_set", _PATH_SHAPED)
 def test_path_shaped_arg_passes_through_verbatim(entity_set, make_fake_backend):
-    """All three accepted forms (bare entity set, metadata path, bound-function) pass through verbatim."""
+    """All three accepted forms (bare entity set, metadata path, bound-function) pass
+    through verbatim.
+    """
     backend = make_fake_backend()
     odata_query(cast(D365Backend, backend), entity_set)
     assert backend.called, "path-shaped arg must reach backend.get"

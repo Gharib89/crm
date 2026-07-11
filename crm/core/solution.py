@@ -545,9 +545,7 @@ def solution_components(backend: D365Backend, unique_name: str) -> list[dict[str
     return backend.get_collection("solutioncomponents", params=params)
 
 
-def retrieve_missing_components(
-    backend: D365Backend, solution_file: str | Path
-) -> dict[str, Any]:
+def retrieve_missing_components(backend: D365Backend, solution_file: str | Path) -> dict[str, Any]:
     """List components an exported solution needs that the connected org lacks.
 
     ``solution_file`` is a path to an exported solution ``.zip``. Its bytes are

@@ -5,7 +5,7 @@
   - metadata delete-attribute
   - metadata create-many-to-many  (+ metadata delete-relationship)
   - metadata update-relationship  (uses a 1:N created in the same lifecycle test)
-  - metadata clone-entity
+  - metadata clone-entity.
 
 All tests use `ephemeral_entity` as the base so they never pay the
 create+publish cost themselves. Each test cleans up exactly what it creates;
@@ -276,7 +276,7 @@ def test_update_datetime_behavior_userlocal_to_dateonly(
     2. update-attribute --behavior DateOnly; assert updated=True and the
        no-backfill advisory rides meta.warnings
     3. read back: server reports DateTimeBehavior=DateOnly and the coupled
-       Format=DateOnly (auto-set)
+       Format=DateOnly (auto-set).
     """
     attr_schema = f"new_e2edt{unique}"
     attr_logical = attr_schema.lower()

@@ -26,7 +26,8 @@ def _load_payload(data_json: str | None, data_file: str | None) -> dict[str, Any
         # letting json.loads fail with an opaque "Expecting value" error.
         if data_json.lstrip().startswith("@"):
             raise click.UsageError(
-                "--data does not read files; use --data-file <path> to load a JSON payload from a file."
+                "--data does not read files; use --data-file <path> to load a JSON payload "
+                "from a file."
             )
         try:
             parsed = json.loads(data_json)

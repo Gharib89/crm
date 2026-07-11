@@ -456,7 +456,8 @@ def _repl_help(ctx):
             "metadata add-attribute <entity> --kind <k>": "Add a column to an entity",
             "metadata create-entity / delete-entity": "Custom entity lifecycle",
             "metadata create-one-to-many / create-many-to-many": "Relationships",
-            "metadata list-optionsets / create-optionset / update-optionset / delete-optionset": "Global option sets",
+            "metadata list-optionsets / create-optionset / update-optionset / "
+            "delete-optionset": "Global option sets",
             "metadata list-actions": "List OData actions (POST verbs)",
             "metadata list-functions": "List OData functions (GET verbs)",
             "solution list / info / export / import": "Solution lifecycle",

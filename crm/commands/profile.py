@@ -73,7 +73,7 @@ def _validate_prefix_opt(_ctx, _param, value):
     try:
         validate_customization_prefix(value)
     except D365Error as exc:
-        raise click.BadParameter(str(exc))
+        raise click.BadParameter(str(exc)) from exc
     return value
 
 

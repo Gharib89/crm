@@ -311,9 +311,7 @@ def _apply_from_plan(
     _emit_plan_outcome(ctx, plan_path, outcome, warnings)
 
 
-def _emit_plan_outcome(
-    ctx: CLIContext, plan_path: str, outcome: dict, warnings: list[str]
-) -> None:
+def _emit_plan_outcome(ctx: CLIContext, plan_path: str, outcome: dict, warnings: list[str]) -> None:
     """Map a `run_plan` outcome onto the {ok, data, meta} envelope."""
     meta: dict[str, object] = {"from_plan": plan_path}
     if warnings:

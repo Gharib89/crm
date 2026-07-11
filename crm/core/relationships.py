@@ -301,6 +301,10 @@ def delete_relationship(
     Server enforces remaining-dependency checks and returns 4xx on conflict.
 
     Args:
+        backend: Connected Web API client used for the delete.
+        schema_name: Schema name of the relationship to delete.
+        solution: Optional `uniquename` to scope the DELETE to, via the
+            `MSCRM.SolutionUniqueName` header.
         check_dependencies: When True, call RetrieveDependenciesForDelete
             before the DELETE and fold ``can_delete`` + ``blockers`` into the
             result. Informational only — does not abort the delete.

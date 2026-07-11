@@ -261,7 +261,7 @@ def entity_children(ctx: CLIContext, entity_set, record_id, non_empty, filter_en
         except re.error as exc:
             raise click.BadParameter(
                 f"not a valid regular expression: {exc}", param_hint="--filter-entities"
-            )
+            ) from exc
     with d365_errors(ctx):
         rows = entity_mod.count_children(
             ctx.backend(),

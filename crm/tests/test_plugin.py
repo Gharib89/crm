@@ -1751,7 +1751,6 @@ class TestSetStepState:
         from crm.core import plugin
 
         step_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
-        img_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
         with requests_mock.Mocker() as m:
             _mock_image_resolution(m, backend)
             m.patch(step_url, status_code=204)
@@ -1765,7 +1764,6 @@ class TestSetStepState:
         from crm.core import plugin
 
         step_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
-        img_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
         with requests_mock.Mocker() as m:
             _mock_image_resolution(m, backend)
             m.patch(step_url, status_code=204)

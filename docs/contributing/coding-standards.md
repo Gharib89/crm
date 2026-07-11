@@ -47,8 +47,9 @@
 ## Formatting & linting
 
 Decision record: [Decide: coding standards for the repo](https://github.com/Gharib89/crm/issues/826);
-gates land via [Task: adopt ruff](https://github.com/Gharib89/crm/issues/828). Until that task
-merges, these are convention-only.
+gates landed via [Task: adopt ruff](https://github.com/Gharib89/crm/issues/828) — CI enforces
+`ruff check` + `ruff format --check`, and `pre-commit install` (once per clone) runs both on
+staged files so the format round-trip never reaches CI.
 
 - **ruff** is the single formatter and linter. `pyproject.toml` is the source of truth for the
   exact rule codes; the agreed shape:

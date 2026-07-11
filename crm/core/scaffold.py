@@ -77,13 +77,15 @@ def _parse_opts(raw_opts: str, column_label: str) -> dict[str, Any]:
         if key == "max_length":
             try:
                 int_val = int(value)
-            except ValueError:
+            except ValueError as exc:
                 raise D365Error(
-                    f"column {column_label!r}: max_length must be a positive integer, got {value!r}."
-                )
+                    f"column {column_label!r}: max_length must be a positive integer, "
+                    f"got {value!r}."
+                ) from exc
             if int_val <= 0:
                 raise D365Error(
-                    f"column {column_label!r}: max_length must be a positive integer, got {int_val}."
+                    f"column {column_label!r}: max_length must be a positive integer, "
+                    f"got {int_val}."
                 )
             result[key] = int_val
         elif key == "required":

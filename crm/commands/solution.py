@@ -32,7 +32,9 @@ from crm.core import solutionpackager as sp_mod
 
 @click.group("solution")
 def solution_group():
-    """Solution lifecycle (create-publisher / create / list / info / components / export / import)."""
+    """Solution lifecycle (create-publisher / create / list / info / components / export /
+    import).
+    """
 
 
 def _autowire_profile(ctx: CLIContext, field: str, value: str, result: dict) -> None:
@@ -126,7 +128,9 @@ def solution_dependencies_cmd(ctx: CLIContext, unique_name):
 )
 @pass_ctx
 def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path):
-    """List solution components; with --save write a normalized inventory, with --diff compare live vs expected (non-zero exit on drift)."""
+    """List solution components; with --save write a normalized inventory, with --diff
+    compare live vs expected (non-zero exit on drift).
+    """
     # A caller mistake (invalid flag combination) is a usage error (exit 2,
     # ADR 0001), not an operational failure — mirror entity update's pattern.
     if diff_path and save_path:

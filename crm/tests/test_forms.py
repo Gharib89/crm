@@ -839,7 +839,7 @@ class TestAddLibraryToFormxml:
 
         out = forms.add_library_to_formxml(_MAIN_FORMXML, library_name="new_lib.js")
         libs = _ET.fromstring(out).findall("formLibraries/Library")
-        assert [l.get("name") for l in libs] == ["new_lib.js"]
+        assert [lib.get("name") for lib in libs] == ["new_lib.js"]
         assert libs[0].get("libraryUniqueId"), "library got no unique id"
 
     def test_is_idempotent_no_duplicate(self):
@@ -881,7 +881,7 @@ class TestAddHandlerToFormxml:
         out = forms.add_handler_to_formxml(
             _MAIN_FORMXML, event="onload", function="App.onLoad", library_name="new_lib.js"
         )
-        names = [l.get("name") for l in _ET.fromstring(out).findall("formLibraries/Library")]
+        names = [lib.get("name") for lib in _ET.fromstring(out).findall("formLibraries/Library")]
         assert names == ["new_lib.js"]
 
     def test_merges_into_existing_event_preserving_order(self):

@@ -1,5 +1,5 @@
 # pyright: basic
-"""E2E test for the single-org managed-upgrade lifecycle:
+"""E2E test for the single-org managed-upgrade lifecycle.
 
 `solution stage-and-upgrade` (stage a holding solution) + `solution apply-upgrade`
 (DeleteAndPromote). The managed-upgrade flow is normally cross-org (author in a

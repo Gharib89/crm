@@ -22,25 +22,31 @@ _JOB_ID = "33333333-3333-3333-3333-333333333333"
 
 # A real op-9-1 ImportJob.data document (MS docs "Work with solutions" sample):
 # a managed solution carrying a single global option set, everything succeeded.
-_DATA_SUCCESS = """<importexportxml start="634224017519682730" stop="634224017609764033" progress="80" processed="true">
+_DATA_SUCCESS = """<importexportxml start="634224017519682730" stop="634224017609764033" \
+progress="80" processed="true">
  <solutionManifests>
-  <solutionManifest languagecode="1033" id="samplesolutionforImport" LocalizedName="Sample Solution for Import" processed="true">
+  <solutionManifest languagecode="1033" id="samplesolutionforImport" \
+LocalizedName="Sample Solution for Import" processed="true">
    <UniqueName>samplesolutionforImport</UniqueName>
    <Version>1.0</Version>
    <Managed>1</Managed>
    <results />
-   <result result="success" errorcode="0" errortext="" datetime="20:49:12.08" datetimeticks="634224269520845122" />
+   <result result="success" errorcode="0" errortext="" datetime="20:49:12.08" \
+datetimeticks="634224269520845122" />
   </solutionManifest>
  </solutionManifests>
  <entities />
  <optionSets>
-  <optionSet id="sample_tempsampleglobaloptionsetname" LocalizedName="Example Option Set" Description="" processed="true">
-   <result result="success" errorcode="0" errortext="" datetime="20:49:16.10" datetimeticks="634224269561025400" />
+  <optionSet id="sample_tempsampleglobaloptionsetname" \
+LocalizedName="Example Option Set" Description="" processed="true">
+   <result result="success" errorcode="0" errortext="" datetime="20:49:16.10" \
+datetimeticks="634224269561025400" />
   </optionSet>
  </optionSets>
  <rootComponents>
   <rootComponent processed="true">
-   <result result="success" errorcode="0" errortext="" datetime="20:49:20.83" datetimeticks="634224269608387238" />
+   <result result="success" errorcode="0" errortext="" datetime="20:49:20.83" \
+datetimeticks="634224269608387238" />
   </rootComponent>
  </rootComponents>
 </importexportxml>"""

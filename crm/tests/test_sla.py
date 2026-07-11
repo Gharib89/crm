@@ -300,8 +300,14 @@ def _failure_result():
 _NEW_SLA = "7a7a7a7a-1111-2222-3333-444444444444"
 _NEW_ITEM = "8b8b8b8b-1111-2222-3333-555555555555"
 _BUSINESS_HOURS = "9c9c9c9c-1111-2222-3333-666666666666"
-_FETCH = '<fetch><entity name="incident"><filter><condition attribute="prioritycode" operator="eq" value="1"/></filter></entity></fetch>'
-_SUCCESS = '<fetch><entity name="incident"><filter><condition attribute="statecode" operator="eq" value="1"/></filter></entity></fetch>'
+_FETCH = (
+    '<fetch><entity name="incident"><filter><condition attribute="prioritycode" operator="eq" '
+    'value="1"/></filter></entity></fetch>'
+)
+_SUCCESS = (
+    '<fetch><entity name="incident"><filter><condition attribute="statecode" operator="eq" '
+    'value="1"/></filter></entity></fetch>'
+)
 
 
 def _created_header(entity_set, guid):
