@@ -20,10 +20,11 @@ never does.
 3. **Fixes in place** — scoped gaps (CI red, checklist failures, valid findings)
    are committed straight onto the PR branch; design-level problems are escalated
    instead of rewritten.
-4. **Iterates the review bots** when it pushed fixes — Copilot re-requested,
-   CodeRabbit re-reviewing the push automatically. Gate rounds carry their own
-   budget of 3 and are exempt from the shipping run's 3-round ceiling — that
-   ceiling bounds the author agent's pipeline, not the gate.
+4. **Iterates the review bots** when it pushed fixes — CodeRabbit re-reviews each
+   push automatically and owns iteration; Copilot gets at most **one** re-request,
+   and only when the gate significantly rewrote the PR (the merge-gate exception to
+   the round-1-only lane). Converged = CodeRabbit quiet on the latest push and
+   every Copilot thread dispositioned.
 5. **Posts a verdict** comment (checklist with evidence, fixes pushed, review
    dispositions) and sets `gate-passed` or `gate-failed`.
 6. **Reports follow-ups** to the maintainer in the session — issues the PR says

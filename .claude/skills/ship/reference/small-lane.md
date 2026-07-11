@@ -16,8 +16,9 @@ test). On top of that:
   node** (run that node locally for red→green proof). Lean on CI for the rest of
   the suite, lint, and type-check — CI re-runs them, and a red CI on a small
   change is a cheap round-trip.
-- **Review-bot budget shrinks** — the ceiling table in
-  [copilot-loop.md](copilot-loop.md) is canonical.
+- **Round-1 review is the whole review gate** — disposition it once and go; the
+  iterating reviewer (if any) still owns its free push-rounds. See
+  [copilot-loop.md](copilot-loop.md).
 - **Subagents: usually none of your own.** You can already point at the file (no
   mapper), and the proving test node's output is short (run it inline); the
   `code-review` skill and the poll loop bring their own. The delegation rule is in
@@ -35,5 +36,6 @@ The lane is falsifiable: any later contradiction — CI red on behavior, the bot
 flags a real bug, the secret scan hits, or you find the change touches the public
 surface — **downgrades to the full lane** for the remaining phases: run the
 skipped integrated test / self-review, add the missing test or docs-sync, and the
-review budget becomes the full 3. Downgrading once is cheap; shipping a non-small
-change as small is the failure.
+full-lane review applies (round-1 dispositioned, the iterating reviewer driven to
+quiet). Downgrading once is cheap; shipping a non-small change as small is the
+failure.

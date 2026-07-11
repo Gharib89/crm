@@ -6,7 +6,7 @@ phase-3 deep-dives follow at the end.
 ## Phase 2 — classify, then implement test-first
 
 First **classify the change** into one of three classes — this decides whether
-TDD applies and (later, phase 7) the review ceiling. **Announce the class and the
+TDD applies and (later, phase 7) whether the review phase runs at all. **Announce the class and the
 skip path it implies** — e.g. "classified `docs` → skipping TDD and the phase-3
 integrated test, going straight to the local gate" — so a wrong label is a
 visible decision now, not a silently-skipped verification later. Later phases

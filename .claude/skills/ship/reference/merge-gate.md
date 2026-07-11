@@ -28,8 +28,9 @@ Self-review (code-review skill)
   - <comment> → <fixed | rejected: reason | n/a>
   ...
 
-Automated review   (one block per reviewer when the repo runs more than one)
-  - rounds used: <n>/3  (<clean | ceiling reached>)   (push-triggered reviewer → "rounds: n/a — auto on push")
+Automated review   (one block per reviewer — lanes need the per-reviewer split)
+  - round-1 reviewer: <clean | threads dispositioned>   (never re-requested)
+  - iterating reviewer: <converged: quiet on latest push | n/a — no push-triggered bot>
   - <comment> → <fixed | rejected: reason | n/a>
   ...
 
