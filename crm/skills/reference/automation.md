@@ -43,8 +43,9 @@ crm --json plugin register-webhook \
 # register-step: the polymorphic event handler binds via plugintypeid
 # (--plugin-type) or eventhandler_serviceendpoint by endpoint NAME
 # (--service-endpoint, e.g. a webhook from register-webhook). The step name is
-# auto-derived as '<handler>: <message> of <entity>' — that derived string is
-# what register-image's --step matches on. --secure-configuration lands in a
+# auto-derived as '<handler>: <message> of <entity>' — when register-image's
+# --step is given a name rather than a GUID, it must match this derived string
+# exactly. --secure-configuration lands in a
 # separate related record; a --dry-run preview echoes the request body INCLUDING
 # the secret, so treat dry-run output as sensitive.
 crm --json plugin register-step \
