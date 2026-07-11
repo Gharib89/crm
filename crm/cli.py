@@ -366,11 +366,13 @@ def _json_mode_active(args: list[str] | None) -> bool:
     if not args:
         return False
     # ROOT options that consume the following token as their value; '--json' sitting
-    # in such a slot is a value, not the flag. (Leaf value-options are not enumerated
-    # here — see the accepted false positive above.)
+    # in such a slot is a value, not the flag. `--fields`/`--jq` are included so a
+    # '--json' passed as *their* value doesn't flip skinning. (Arbitrary LEAF
+    # value-options — `--select`, `--data`, … — cannot be enumerated here, so a
+    # '--json' passed as one of THOSE values is the accepted false positive above.)
     value_opts = {
         "--profile", "--password", "--log-level", "--log-format",
-        "--auth-scheme", "--session",
+        "--auth-scheme", "--session", "--fields", "--jq",
     }
     i = 0
     while i < len(args):

@@ -198,8 +198,17 @@ def test_scanner_skips_root_value_option_values():
 
 def test_scanner_accepted_false_positive_leaf_value():
     """A literal '--json' passed as a LEAF option's value is (acceptably) mistaken
-    for the flag — leaf value-options are not enumerated in the scanner."""
+    for the flag — arbitrary leaf value-options are not enumerated in the scanner."""
     assert _json_mode_active(["entity", "get", "accounts", "--select", "--json"]) is True
+
+
+def test_scanner_skips_fields_and_jq_values():
+    """`--fields`/`--jq` are root value-taking options, so a '--json' passed as their
+    value is NOT mistaken for the flag (Copilot round 2)."""
+    assert _json_mode_active(["--fields", "--json", "profile", "list"]) is False
+    assert _json_mode_active(["--jq", "--json", "profile", "list"]) is False
+    # A real trailing --json after a --fields projection is still detected.
+    assert _json_mode_active(["--fields", "name", "profile", "list", "--json"]) is True
 
 
 # ── REPL: leaf --profile sticky; root-only flag NOT injected ─────────────────
