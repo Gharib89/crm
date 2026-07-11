@@ -164,5 +164,6 @@ nav:
       - CLI: reference/cli.md
       - Changelog: changelog.md
   - Contributing:
+      - Coding standards: contributing/coding-standards.md
       - Skill & CLI sync: contributing/skill-and-cli.md
       - File-boundary encoding: contributing/encoding.md
