@@ -2,7 +2,7 @@
 
 Inbound PRs arrive from several shipping streams — the cloud-ship routine, codex
 runs, and teammates' agent sessions — each stopping at its own merge gate with
-tests green and Copilot rounds addressed. The **`merge-gate` skill**
+tests green and review-bot rounds (Copilot and CodeRabbit) addressed. The **`merge-gate` skill**
 (`.claude/skills/merge-gate/`, source of truth) is the maintainer's independent
 second gate: run locally (the only environment with both live-org profiles), it
 re-verifies the PR instead of trusting the author agent's claims, and leaves it
@@ -20,7 +20,8 @@ never does.
 3. **Fixes in place** — scoped gaps (CI red, checklist failures, valid findings)
    are committed straight onto the PR branch; design-level problems are escalated
    instead of rewritten.
-4. **Re-requests Copilot** when it pushed fixes. Gate rounds carry their own
+4. **Iterates the review bots** when it pushed fixes — Copilot re-requested,
+   CodeRabbit re-reviewing the push automatically. Gate rounds carry their own
    budget of 3 and are exempt from the shipping run's 3-round ceiling — that
    ceiling bounds the author agent's pipeline, not the gate.
 5. **Posts a verdict** comment (checklist with evidence, fixes pushed, review

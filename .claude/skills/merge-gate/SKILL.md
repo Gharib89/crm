@@ -1,6 +1,6 @@
 ---
 name: merge-gate
-description: Review inbound agent-shipped PRs at the merge gate — drift checklist, targeted live e2e, fix-in-place, Copilot re-request — leaving each PR merge-confident (gate-passed) or explicitly failed (gate-failed).
+description: Review inbound agent-shipped PRs at the merge gate — drift checklist, targeted live e2e, fix-in-place, review-bot iteration (Copilot + CodeRabbit) — leaving each PR merge-confident (gate-passed) or explicitly failed (gate-failed).
 argument-hint: "[pr-number]"
 disable-model-invocation: true
 ---
@@ -36,7 +36,10 @@ Every comment posted to the PR starts with:
 - Skip drafts and PRs whose head received a push in the last ~15 minutes (the
   author agent may still be working); note the skip.
 - Read the PR: body, comments (including the author agent's merge summary and its
-  Copilot dispositions), linked issue + brief, diff stat, labels.
+  per-reviewer dispositions — Copilot and CodeRabbit), linked issue + brief,
+  diff stat, labels. A CodeRabbit thread with **no disposition** (neither a fix
+  nor a decline-with-evidence reply) is a gap the author agent left — treat it
+  as a review finding for step 3.
 - Read CI (`gh pr view <n> --json statusCheckRollup,mergeable`). **Red CI or a
   merge conflict is fix item #1**, not a blocker — the gate fixes in place.
 
@@ -94,19 +97,29 @@ asked for, a diff that needs re-scoping — is a **finding, not a fix**: record 
 label `gate-failed`, and escalate in the verdict. The gate polishes; it does not
 redesign someone else's PR.
 
-### 6 · Copilot iteration
+### 6 · Review-bot iteration
 
-Only when the gate pushed commits (nothing pushed → nothing new to review; skip):
+Only when the gate pushed commits (nothing pushed → nothing new to review; skip
+— but CodeRabbit threads found undispositioned in preflight must still be
+triaged (step 3), fixed where valid (step 5), replied to on-thread, and
+bulk-resolved via `@coderabbitai resolve` before the verdict):
 
 1. Re-request Copilot review via the project's documented mechanism (CLAUDE.md →
    *Code review* — the REST path; verify `requested_reviewers` actually
-   populated). **Gate rounds are exempt from the shipping run's 3-round ceiling**
+   populated). **CodeRabbit needs no re-request** — it re-reviews each push
+   automatically (if it auto-paused, `@coderabbitai review` lifts the pause).
+   **Gate rounds are exempt from the shipping run's 3-round ceiling**
    — that budget belonged to the author agent's pipeline; the gate carries its own.
-2. Poll bounded, auto-triage the returned comments (same rigor as step 3), fix
-   valid ones, push, re-request.
-3. **Gate budget: 3 rounds.** Converged = a round returns zero substantive
-   comments (declined-with-evidence nits count as converged). Still substantive
-   after 3 → stop; the PR has a shape problem more rounds won't fix.
+2. Poll bounded, auto-triage **both reviewers'** returned comments (same rigor as
+   step 3), fix valid ones, push, then re-request **Copilot only** — CodeRabbit
+   re-reviews the push on its own. Reply on each CodeRabbit thread
+   ("fixed in `<sha>`" / decline + evidence); once every thread is dispositioned,
+   `@coderabbitai resolve` closes them — never earlier (it bulk-resolves).
+3. **Gate budget: 3 rounds** (Copilot re-requests; CodeRabbit's auto-rounds are
+   free and don't count). Converged = a round returns zero substantive comments
+   from **both** reviewers (declined-with-evidence nits count as converged).
+   Still substantive after 3 → stop; the PR has a shape problem more rounds
+   won't fix.
 
 ### 7 · Verdict
 

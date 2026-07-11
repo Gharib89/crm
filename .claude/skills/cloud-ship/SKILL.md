@@ -92,7 +92,9 @@ gh issue comment "$NUM" --repo Gharib89/crm --body "<one-line reason it is block
 **5 · End at the merge gate — do not merge.** On success `ship` reaches its merge
 gate and will try to **wait** for a human "merge." **Override it.** The moment the
 PR is merge-ready — CI green, Copilot review addressed within its round budget,
-`mergeable` — **post the PR link + a disposition summary and END the fire.** Do
+every CodeRabbit thread dispositioned (fixed or declined with evidence) and
+then resolved (`@coderabbitai resolve`), `mergeable` — **post the PR link + a
+per-reviewer disposition summary and END the fire.** Do
 not wait, poll, or merge. A human merges out of band later; the squash
 `Closes #$NUM` closes the issue then. **Leave the issue `agent-working`** — it
 carries the open PR, so later fires skip it until the merge closes it.
