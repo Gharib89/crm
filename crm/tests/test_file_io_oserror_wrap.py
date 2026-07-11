@@ -22,6 +22,7 @@ already wrap ``OSError`` → ``click.UsageError`` (verified as already-satisfied
 for #699 — the correct exit-2 treatment for a command-layer input file), so
 churning them would only add noise.
 """
+
 from __future__ import annotations
 
 import base64
@@ -37,7 +38,6 @@ from crm.cli import cli
 from crm.core import export as export_mod
 from crm.core import solution_transfer as st_mod
 from crm.utils.d365_backend import D365Error
-
 
 # The command-layer tests drive the CLI via CliRunner; isolate CRM_HOME and
 # scrub legacy credential env vars so a developer's real profile/env can't sway
@@ -60,20 +60,32 @@ def _raise_oserror(*_args, **_kwargs):
 # --------------------------------------------------------------------------- #
 def _export_json_write(tmp_path: Path):
     out = tmp_path / "export.json"
-    return "write_text", out, lambda: export_mod.export_records(
-        None, "accounts", str(out), fmt="json"), "cannot write"  # type: ignore[arg-type]
+    return (
+        "write_text",
+        out,
+        lambda: export_mod.export_records(None, "accounts", str(out), fmt="json"),
+        "cannot write",
+    )  # type: ignore[arg-type]
 
 
 def _export_csv_write(tmp_path: Path):
     out = tmp_path / "export.csv"
-    return "open", out, lambda: export_mod.export_records(
-        None, "accounts", str(out), fmt="csv"), "cannot write"  # type: ignore[arg-type]
+    return (
+        "open",
+        out,
+        lambda: export_mod.export_records(None, "accounts", str(out), fmt="csv"),
+        "cannot write",
+    )  # type: ignore[arg-type]
 
 
 def _export_mkdir(tmp_path: Path):
     out = tmp_path / "nested" / "export.json"
-    return "mkdir", out, lambda: export_mod.export_records(
-        None, "accounts", str(out), fmt="json"), "cannot write"  # type: ignore[arg-type]
+    return (
+        "mkdir",
+        out,
+        lambda: export_mod.export_records(None, "accounts", str(out), fmt="json"),
+        "cannot write",
+    )  # type: ignore[arg-type]
 
 
 def _solution_export_write(tmp_path: Path):
@@ -91,8 +103,12 @@ def _solution_export_mkdir(tmp_path: Path):
 def _solution_import_read(tmp_path: Path):
     zip_path = tmp_path / "import.zip"
     zip_path.write_bytes(b"not-really-a-zip")  # is_file() guard must pass first
-    return "read_bytes", zip_path, lambda: st_mod.import_solution(
-        object(), str(zip_path)), "cannot read"  # type: ignore[arg-type]
+    return (
+        "read_bytes",
+        zip_path,
+        lambda: st_mod.import_solution(object(), str(zip_path)),
+        "cannot read",
+    )  # type: ignore[arg-type]
 
 
 _CORE_CASES = [
@@ -110,9 +126,7 @@ def test_core_io_failure_raises_d365error_naming_path(
     scenario: Callable[[Path], tuple], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     # Isolate the export write paths from the backend/query: yield a fixed record.
-    monkeypatch.setattr(
-        export_mod, "_iter_records", lambda *a, **k: [{"id": "1", "name": "x"}]
-    )
+    monkeypatch.setattr(export_mod, "_iter_records", lambda *a, **k: [{"id": "1", "name": "x"}])
     method, expected_path, call_site, expected_op = scenario(tmp_path)
     monkeypatch.setattr(Path, method, _raise_oserror)
     with pytest.raises(D365Error) as exc:
@@ -127,12 +141,15 @@ def test_core_io_failure_raises_d365error_naming_path(
 # Command layer: input-file reads — clean envelope (exit 1), not a traceback.
 # --------------------------------------------------------------------------- #
 _CMD_READ_CASES = [
-    pytest.param(["query", "fetchxml", "accounts", "--file"], "query.xml",
-                 id="query-fetchxml-file"),
-    pytest.param(["solution", "publish", "--xml-file"], "publish.xml",
-                 id="solution-publish-xml-file"),
-    pytest.param(["app", "set-sitemap", "MySite", "--xml-file"], "sitemap.xml",
-                 id="app-set-sitemap-xml-file"),
+    pytest.param(
+        ["query", "fetchxml", "accounts", "--file"], "query.xml", id="query-fetchxml-file"
+    ),
+    pytest.param(
+        ["solution", "publish", "--xml-file"], "publish.xml", id="solution-publish-xml-file"
+    ),
+    pytest.param(
+        ["app", "set-sitemap", "MySite", "--xml-file"], "sitemap.xml", id="app-set-sitemap-xml-file"
+    ),
 ]
 
 
@@ -190,10 +207,18 @@ def test_form_export_write_failure_clean_envelope(
     monkeypatch.setattr(Path, "write_text", _selective)
     with rm_module.Mocker() as m:
         m.get(backend.url_for("systemforms"), json={"value": [_FORM]})
-        result = CliRunner().invoke(cli, [
-            "--json", "form", "export", "new_project", "Information",
-            "--output", str(out_file),
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "form",
+                "export",
+                "new_project",
+                "Information",
+                "--output",
+                str(out_file),
+            ],
+        )
     assert result.exit_code == 1, result.output
     env = json.loads(result.output)
     assert env["ok"] is False

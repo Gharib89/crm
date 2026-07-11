@@ -33,15 +33,10 @@ def _batch_count_response(counts: list[int], boundary: str = "batchresp") -> byt
         "\r\n"
         "HTTP/1.1 200 OK\r\n"
         "Content-Type: application/json\r\n"
-        "\r\n"
-        + json.dumps({"@odata.count": c, "value": [{}] if c else []})
+        "\r\n" + json.dumps({"@odata.count": c, "value": [{}] if c else []})
         for c in counts
     ]
-    text = (
-        f"--{boundary}\r\n"
-        + f"\r\n--{boundary}\r\n".join(parts)
-        + f"\r\n--{boundary}--\r\n"
-    )
+    text = f"--{boundary}\r\n" + f"\r\n--{boundary}\r\n".join(parts) + f"\r\n--{boundary}--\r\n"
     return text.encode("utf-8")
 
 
@@ -61,8 +56,7 @@ def _batch_mixed_response(items: list, boundary: str = "batchresp") -> bytes:
                 "\r\n"
                 "HTTP/1.1 200 OK\r\n"
                 "Content-Type: application/json\r\n"
-                "\r\n"
-                + json.dumps({"@odata.count": it, "value": [{}] if it else []})
+                "\r\n" + json.dumps({"@odata.count": it, "value": [{}] if it else []})
             )
         else:
             parts.append(
@@ -71,14 +65,9 @@ def _batch_mixed_response(items: list, boundary: str = "batchresp") -> bytes:
                 "\r\n"
                 "HTTP/1.1 400 Bad Request\r\n"
                 "Content-Type: application/json\r\n"
-                "\r\n"
-                + json.dumps({"error": {"code": "0x80040800", "message": it[1]}})
+                "\r\n" + json.dumps({"error": {"code": "0x80040800", "message": it[1]}})
             )
-    text = (
-        f"--{boundary}\r\n"
-        + f"\r\n--{boundary}\r\n".join(parts)
-        + f"\r\n--{boundary}--\r\n"
-    )
+    text = f"--{boundary}\r\n" + f"\r\n--{boundary}\r\n".join(parts) + f"\r\n--{boundary}--\r\n"
     return text.encode("utf-8")
 
 
@@ -98,8 +87,11 @@ def _stub_one_to_many(m, backend, parent_logical: str, rels: list[tuple[str, str
         ),
         json={
             "value": [
-                {"ReferencingEntity": child, "ReferencingAttribute": attr,
-                 "ReferencedEntity": parent_logical}
+                {
+                    "ReferencingEntity": child,
+                    "ReferencingAttribute": attr,
+                    "ReferencedEntity": parent_logical,
+                }
                 for child, attr in rels
             ]
         },
@@ -109,15 +101,24 @@ def _stub_one_to_many(m, backend, parent_logical: str, rels: list[tuple[str, str
 class TestCountChildren:
     def test_returns_one_row_per_relationship_with_counts(self, backend, profile):
         with requests_mock.Mocker() as m:
-            _stub_defs(m, backend, [
-                ("account", "accounts"),
-                ("contact", "contacts"),
-                ("contoso_invoice", "contoso_invoices"),
-            ])
-            _stub_one_to_many(m, backend, "account", [
-                ("contact", "parentaccountid"),
-                ("contoso_invoice", "contoso_account"),
-            ])
+            _stub_defs(
+                m,
+                backend,
+                [
+                    ("account", "accounts"),
+                    ("contact", "contacts"),
+                    ("contoso_invoice", "contoso_invoices"),
+                ],
+            )
+            _stub_one_to_many(
+                m,
+                backend,
+                "account",
+                [
+                    ("contact", "parentaccountid"),
+                    ("contoso_invoice", "contoso_account"),
+                ],
+            )
             m.post(
                 profile.api_base + "$batch",
                 content=_batch_count_response([12, 7]),
@@ -127,10 +128,13 @@ class TestCountChildren:
             rows = entity_mod.count_children(backend, "accounts", _GUID)
 
         assert rows == [
-            {"entity": "contact", "attribute": "parentaccountid",
-             "set": "contacts", "count": 12},
-            {"entity": "contoso_invoice", "attribute": "contoso_account",
-             "set": "contoso_invoices", "count": 7},
+            {"entity": "contact", "attribute": "parentaccountid", "set": "contacts", "count": 12},
+            {
+                "entity": "contoso_invoice",
+                "attribute": "contoso_account",
+                "set": "contoso_invoices",
+                "count": 7,
+            },
         ]
 
     def test_zero_count_rows_are_kept(self, backend, profile):
@@ -145,8 +149,7 @@ class TestCountChildren:
             )
             rows = entity_mod.count_children(backend, "accounts", _GUID)
         assert rows == [
-            {"entity": "contact", "attribute": "parentaccountid",
-             "set": "contacts", "count": 0},
+            {"entity": "contact", "attribute": "parentaccountid", "set": "contacts", "count": 0},
         ]
 
     def test_no_relationships_returns_empty_without_batch(self, backend):
@@ -160,15 +163,24 @@ class TestCountChildren:
 
     def test_non_empty_drops_zero_count_rows(self, backend, profile):
         with requests_mock.Mocker() as m:
-            _stub_defs(m, backend, [
-                ("account", "accounts"),
-                ("contact", "contacts"),
-                ("contoso_invoice", "contoso_invoices"),
-            ])
-            _stub_one_to_many(m, backend, "account", [
-                ("contact", "parentaccountid"),
-                ("contoso_invoice", "contoso_account"),
-            ])
+            _stub_defs(
+                m,
+                backend,
+                [
+                    ("account", "accounts"),
+                    ("contact", "contacts"),
+                    ("contoso_invoice", "contoso_invoices"),
+                ],
+            )
+            _stub_one_to_many(
+                m,
+                backend,
+                "account",
+                [
+                    ("contact", "parentaccountid"),
+                    ("contoso_invoice", "contoso_account"),
+                ],
+            )
             m.post(
                 profile.api_base + "$batch",
                 content=_batch_count_response([0, 7]),
@@ -177,36 +189,58 @@ class TestCountChildren:
             )
             rows = entity_mod.count_children(backend, "accounts", _GUID, non_empty=True)
         assert rows == [
-            {"entity": "contoso_invoice", "attribute": "contoso_account",
-             "set": "contoso_invoices", "count": 7},
+            {
+                "entity": "contoso_invoice",
+                "attribute": "contoso_account",
+                "set": "contoso_invoices",
+                "count": 7,
+            },
         ]
 
     def test_uncountable_child_reported_not_fatal(self, backend, profile):
         # A child entity that rejects RetrieveMultiple (e.g. postregarding) must
         # surface as count=null + error, not abort the whole audit.
         with requests_mock.Mocker() as m:
-            _stub_defs(m, backend, [
-                ("account", "accounts"),
-                ("contact", "contacts"),
-                ("postregarding", "postregardings"),
-            ])
-            _stub_one_to_many(m, backend, "account", [
-                ("contact", "parentcustomerid"),
-                ("postregarding", "regardingobjectid"),
-            ])
+            _stub_defs(
+                m,
+                backend,
+                [
+                    ("account", "accounts"),
+                    ("contact", "contacts"),
+                    ("postregarding", "postregardings"),
+                ],
+            )
+            _stub_one_to_many(
+                m,
+                backend,
+                "account",
+                [
+                    ("contact", "parentcustomerid"),
+                    ("postregarding", "regardingobjectid"),
+                ],
+            )
             m.post(
                 profile.api_base + "$batch",
-                content=_batch_mixed_response([
-                    5,
-                    ("err", "The 'RetrieveMultiple' method does not support "
-                            "entities of type 'postregarding'."),
-                ]),
+                content=_batch_mixed_response(
+                    [
+                        5,
+                        (
+                            "err",
+                            "The 'RetrieveMultiple' method does not support "
+                            "entities of type 'postregarding'.",
+                        ),
+                    ]
+                ),
                 headers={"Content-Type": "multipart/mixed; boundary=batchresp"},
                 status_code=200,
             )
             rows = entity_mod.count_children(backend, "accounts", _GUID)
-        assert rows[0] == {"entity": "contact", "attribute": "parentcustomerid",
-                           "set": "contacts", "count": 5}
+        assert rows[0] == {
+            "entity": "contact",
+            "attribute": "parentcustomerid",
+            "set": "contacts",
+            "count": 5,
+        }
         assert rows[1]["entity"] == "postregarding"
         assert rows[1]["count"] is None
         assert "RetrieveMultiple" in rows[1]["error"]
@@ -215,15 +249,24 @@ class TestCountChildren:
         # --non-empty drops confirmed-zero rows but keeps count=null (unknown,
         # not zero) — silently dropping them would hide them from an audit.
         with requests_mock.Mocker() as m:
-            _stub_defs(m, backend, [
-                ("account", "accounts"),
-                ("contact", "contacts"),
-                ("postregarding", "postregardings"),
-            ])
-            _stub_one_to_many(m, backend, "account", [
-                ("contact", "parentcustomerid"),
-                ("postregarding", "regardingobjectid"),
-            ])
+            _stub_defs(
+                m,
+                backend,
+                [
+                    ("account", "accounts"),
+                    ("contact", "contacts"),
+                    ("postregarding", "postregardings"),
+                ],
+            )
+            _stub_one_to_many(
+                m,
+                backend,
+                "account",
+                [
+                    ("contact", "parentcustomerid"),
+                    ("postregarding", "regardingobjectid"),
+                ],
+            )
             m.post(
                 profile.api_base + "$batch",
                 content=_batch_mixed_response([0, ("err", "not supported")]),
@@ -246,23 +289,31 @@ class TestCountChildren:
             )
             rows = entity_mod.count_children(backend, "accounts", _GUID)
         assert rows == [
-            {"entity": "account", "attribute": "parentaccountid",
-             "set": "accounts", "count": 3},
+            {"entity": "account", "attribute": "parentaccountid", "set": "accounts", "count": 3},
         ]
 
     def test_filter_entities_reduces_relationships_queried(self, backend, profile):
         with requests_mock.Mocker() as m:
-            _stub_defs(m, backend, [
-                ("account", "accounts"),
-                ("contact", "contacts"),
-                ("contoso_invoice", "contoso_invoices"),
-                ("task", "tasks"),
-            ])
-            _stub_one_to_many(m, backend, "account", [
-                ("contact", "parentaccountid"),
-                ("contoso_invoice", "contoso_account"),
-                ("task", "regardingobjectid"),
-            ])
+            _stub_defs(
+                m,
+                backend,
+                [
+                    ("account", "accounts"),
+                    ("contact", "contacts"),
+                    ("contoso_invoice", "contoso_invoices"),
+                    ("task", "tasks"),
+                ],
+            )
+            _stub_one_to_many(
+                m,
+                backend,
+                "account",
+                [
+                    ("contact", "parentaccountid"),
+                    ("contoso_invoice", "contoso_account"),
+                    ("task", "regardingobjectid"),
+                ],
+            )
             m.post(
                 profile.api_base + "$batch",
                 content=_batch_count_response([7]),
@@ -270,7 +321,10 @@ class TestCountChildren:
                 status_code=200,
             )
             rows = entity_mod.count_children(
-                backend, "accounts", _GUID, filter_entities=r"^contoso_",
+                backend,
+                "accounts",
+                _GUID,
+                filter_entities=r"^contoso_",
             )
             posts = [req for req in m.request_history if req.method == "POST"]
             body = posts[0].text
@@ -282,8 +336,12 @@ class TestCountChildren:
         # narrow $select keeps each counted row to the one lookup column
         assert "$select=_contoso_account_value" in body
         assert rows == [
-            {"entity": "contoso_invoice", "attribute": "contoso_account",
-             "set": "contoso_invoices", "count": 7},
+            {
+                "entity": "contoso_invoice",
+                "attribute": "contoso_account",
+                "set": "contoso_invoices",
+                "count": 7,
+            },
         ]
 
     def test_counts_are_batched_not_sequential(self, backend, profile):
@@ -291,30 +349,43 @@ class TestCountChildren:
         # 2 metadata GETs + ceil(3/2)=2 $batch POSTs, and zero standalone $count GETs.
         hdr = {"Content-Type": "multipart/mixed; boundary=batchresp"}
         with requests_mock.Mocker() as m:
-            _stub_defs(m, backend, [
-                ("account", "accounts"),
-                ("contact", "contacts"),
-                ("contoso_invoice", "contoso_invoices"),
-                ("task", "tasks"),
-            ])
-            _stub_one_to_many(m, backend, "account", [
-                ("contact", "parentaccountid"),
-                ("contoso_invoice", "contoso_account"),
-                ("task", "regardingobjectid"),
-            ])
-            m.post(profile.api_base + "$batch", [
-                {"content": _batch_count_response([5, 6]), "headers": hdr, "status_code": 200},
-                {"content": _batch_count_response([7]), "headers": hdr, "status_code": 200},
-            ])
+            _stub_defs(
+                m,
+                backend,
+                [
+                    ("account", "accounts"),
+                    ("contact", "contacts"),
+                    ("contoso_invoice", "contoso_invoices"),
+                    ("task", "tasks"),
+                ],
+            )
+            _stub_one_to_many(
+                m,
+                backend,
+                "account",
+                [
+                    ("contact", "parentaccountid"),
+                    ("contoso_invoice", "contoso_account"),
+                    ("task", "regardingobjectid"),
+                ],
+            )
+            m.post(
+                profile.api_base + "$batch",
+                [
+                    {"content": _batch_count_response([5, 6]), "headers": hdr, "status_code": 200},
+                    {"content": _batch_count_response([7]), "headers": hdr, "status_code": 200},
+                ],
+            )
             rows = entity_mod.count_children(backend, "accounts", _GUID, batch_chunk_size=2)
             methods = [req.method for req in m.request_history]
             count_gets = [
-                req for req in m.request_history
+                req
+                for req in m.request_history
                 if req.method == "GET" and "%24count=true" in req.url.replace("$", "%24")
             ]
-        assert methods.count("GET") == 2          # the two metadata reads only
-        assert methods.count("POST") == 2          # ceil(3 / 2) batches
-        assert count_gets == []                    # no per-relationship sequential GETs
+        assert methods.count("GET") == 2  # the two metadata reads only
+        assert methods.count("POST") == 2  # ceil(3 / 2) batches
+        assert count_gets == []  # no per-relationship sequential GETs
         assert [row["count"] for row in rows] == [5, 6, 7]
 
 
@@ -324,25 +395,37 @@ class TestCountChildrenGuards:
         # counts must run as direct GETs and report REAL numbers, not a preview stub.
         dry = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
-            _stub_defs(m, dry, [
-                ("account", "accounts"),
-                ("contact", "contacts"),
-                ("contoso_invoice", "contoso_invoices"),
-            ])
-            _stub_one_to_many(m, dry, "account", [
-                ("contact", "parentaccountid"),
-                ("contoso_invoice", "contoso_account"),
-            ])
+            _stub_defs(
+                m,
+                dry,
+                [
+                    ("account", "accounts"),
+                    ("contact", "contacts"),
+                    ("contoso_invoice", "contoso_invoices"),
+                ],
+            )
+            _stub_one_to_many(
+                m,
+                dry,
+                "account",
+                [
+                    ("contact", "parentaccountid"),
+                    ("contoso_invoice", "contoso_account"),
+                ],
+            )
             m.get(dry.url_for("contacts"), json={"@odata.count": 4, "value": [{}]})
             m.get(dry.url_for("contoso_invoices"), json={"@odata.count": 0, "value": []})
             rows = entity_mod.count_children(dry, "accounts", _GUID)
             methods = [r.method for r in m.request_history]
         assert "POST" not in methods  # no $batch under dry-run
         assert rows == [
-            {"entity": "contact", "attribute": "parentaccountid",
-             "set": "contacts", "count": 4},
-            {"entity": "contoso_invoice", "attribute": "contoso_account",
-             "set": "contoso_invoices", "count": 0},
+            {"entity": "contact", "attribute": "parentaccountid", "set": "contacts", "count": 4},
+            {
+                "entity": "contoso_invoice",
+                "attribute": "contoso_account",
+                "set": "contoso_invoices",
+                "count": 0,
+            },
         ]
 
     def test_invalid_filter_regex_raises_before_any_request(self, backend):
@@ -378,22 +461,30 @@ class TestChildrenCommand:
         env = json.loads(result.output)
         assert env["ok"] is True
         assert env["data"] == [
-            {"entity": "contact", "attribute": "parentaccountid",
-             "set": "contacts", "count": 4},
+            {"entity": "contact", "attribute": "parentaccountid", "set": "contacts", "count": 4},
         ]
 
     def test_non_empty_flag_wires_through(self, backend, profile, monkeypatch):
         self._bind(monkeypatch, backend)
         with requests_mock.Mocker() as m:
-            _stub_defs(m, backend, [
-                ("account", "accounts"),
-                ("contact", "contacts"),
-                ("contoso_invoice", "contoso_invoices"),
-            ])
-            _stub_one_to_many(m, backend, "account", [
-                ("contact", "parentaccountid"),
-                ("contoso_invoice", "contoso_account"),
-            ])
+            _stub_defs(
+                m,
+                backend,
+                [
+                    ("account", "accounts"),
+                    ("contact", "contacts"),
+                    ("contoso_invoice", "contoso_invoices"),
+                ],
+            )
+            _stub_one_to_many(
+                m,
+                backend,
+                "account",
+                [
+                    ("contact", "parentaccountid"),
+                    ("contoso_invoice", "contoso_account"),
+                ],
+            )
             m.post(
                 profile.api_base + "$batch",
                 content=_batch_count_response([0, 9]),
@@ -411,15 +502,24 @@ class TestChildrenCommand:
     def test_filter_entities_flag_wires_through(self, backend, profile, monkeypatch):
         self._bind(monkeypatch, backend)
         with requests_mock.Mocker() as m:
-            _stub_defs(m, backend, [
-                ("account", "accounts"),
-                ("contact", "contacts"),
-                ("contoso_invoice", "contoso_invoices"),
-            ])
-            _stub_one_to_many(m, backend, "account", [
-                ("contact", "parentaccountid"),
-                ("contoso_invoice", "contoso_account"),
-            ])
+            _stub_defs(
+                m,
+                backend,
+                [
+                    ("account", "accounts"),
+                    ("contact", "contacts"),
+                    ("contoso_invoice", "contoso_invoices"),
+                ],
+            )
+            _stub_one_to_many(
+                m,
+                backend,
+                "account",
+                [
+                    ("contact", "parentaccountid"),
+                    ("contoso_invoice", "contoso_account"),
+                ],
+            )
             m.post(
                 profile.api_base + "$batch",
                 content=_batch_count_response([7]),
@@ -428,8 +528,15 @@ class TestChildrenCommand:
             )
             result = CliRunner().invoke(
                 crm_cli.cli,
-                ["--json", "entity", "children", "accounts", _GUID,
-                 "--filter-entities", r"^contoso_"],
+                [
+                    "--json",
+                    "entity",
+                    "children",
+                    "accounts",
+                    _GUID,
+                    "--filter-entities",
+                    r"^contoso_",
+                ],
             )
             body = [r for r in m.request_history if r.method == "POST"][0].text
         assert result.exit_code == 0, result.output
@@ -442,6 +549,7 @@ class TestChildrenCommand:
         # backend never constructed (ctx.backend would raise if called).
         def _boom(self):
             raise AssertionError("backend constructed before regex validation")
+
         monkeypatch.setattr(CLIContext, "backend", _boom)
         result = CliRunner().invoke(
             crm_cli.cli,

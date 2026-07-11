@@ -219,8 +219,7 @@ def _validate_plan_shape(plan: dict[str, Any], path: str) -> None:
         raise D365Error(f"{label}: 'payloads' must be an object.")
     for key, val in cast("dict[Any, Any]", payloads).items():
         if not isinstance(key, str) or not (val is None or isinstance(val, str)):
-            raise D365Error(
-                f"{label}: 'payloads' must map file paths to sha256 strings (or null).")
+            raise D365Error(f"{label}: 'payloads' must map file paths to sha256 strings (or null).")
     if not isinstance(plan.get("spec", {}), dict):
         raise D365Error(f"{label}: 'spec' must be an object.")
 
@@ -263,8 +262,11 @@ def _payload_mismatches(payloads: dict[str, Any], base_dir: str | None) -> list[
 
 
 def preflight_plan(
-    plan: dict[str, Any], backend: D365Backend, *,
-    organization_id: str | None, base_dir: str | None,
+    plan: dict[str, Any],
+    backend: D365Backend,
+    *,
+    organization_id: str | None,
+    base_dir: str | None,
 ) -> list[str]:
     """Refuse an un-executable plan before any read of its spec; return warnings.
 
@@ -281,37 +283,44 @@ def preflight_plan(
     if fmt != PLAN_FORMAT_VERSION:
         raise D365Error(
             f"plan format {fmt!r} is not supported (this CLI writes and reads "
-            f"format {PLAN_FORMAT_VERSION}); re-create the plan.")
+            f"format {PLAN_FORMAT_VERSION}); re-create the plan."
+        )
     header = cast("dict[str, Any]", plan.get("header") or {})
     plan_org = header.get("organization_id")
     if plan_org and organization_id and plan_org != organization_id:
         raise D365Error(
             f"plan targets organization {plan_org!r} but the active connection is "
-            f"organization {organization_id!r}; refusing to apply it here.")
+            f"organization {organization_id!r}; refusing to apply it here."
+        )
     plan_url = header.get("url")
     if plan_url and plan_url != backend.profile.api_base:
         warnings.append(
             f"plan was built against {plan_url!r}; the active connection is "
-            f"{backend.profile.api_base!r} — proceeding (hostnames may be aliased).")
+            f"{backend.profile.api_base!r} — proceeding (hostnames may be aliased)."
+        )
     plan_cli = header.get("cli_version")
     if plan_cli and plan_cli != __version__:
         warnings.append(
-            f"plan was built with CLI version {plan_cli}; this is {__version__} — "
-            "proceeding.")
-    blocking = [v for v in _as_list(plan.get("verdicts"))
-                if v.get("verdict") in ("replace_blocked", "failed")]
+            f"plan was built with CLI version {plan_cli}; this is {__version__} — proceeding."
+        )
+    blocking = [
+        v
+        for v in _as_list(plan.get("verdicts"))
+        if v.get("verdict") in ("replace_blocked", "failed")
+    ]
     if blocking:
-        names = "; ".join(f"{v.get('kind')} {v.get('name')} ({v.get('verdict')})"
-                          for v in blocking)
+        names = "; ".join(f"{v.get('kind')} {v.get('name')} ({v.get('verdict')})" for v in blocking)
         raise D365Error(
             "plan is not executable — it records replace_blocked/failed components "
-            f"({names}); fix the spec and re-plan.")
-    mismatches = _payload_mismatches(
-        cast("dict[str, Any]", plan.get("payloads") or {}), base_dir)
+            f"({names}); fix the spec and re-plan."
+        )
+    mismatches = _payload_mismatches(cast("dict[str, Any]", plan.get("payloads") or {}), base_dir)
     if mismatches:
         raise D365Error(
             "plan payload(s) no longer match what was pinned at plan time: "
-            + "; ".join(mismatches) + "; re-create the plan.")
+            + "; ".join(mismatches)
+            + "; re-create the plan."
+        )
     return warnings
 
 
@@ -365,7 +374,9 @@ def _describe(record: dict[str, Any] | None) -> str:
 
 
 def diff_plan(
-    plan: dict[str, Any], live_report: dict[str, Any], *,
+    plan: dict[str, Any],
+    live_report: dict[str, Any],
+    *,
     prune_intent: bool | None = None,
 ) -> list[dict[str, Any]]:
     """The whole-run divergence gate: how a recomputed report departs from the plan.
@@ -397,14 +408,18 @@ def diff_plan(
         p_key = _action_key(p) if p is not None else None
         live_key = _action_key(live) if live is not None else None
         if p_key != live_key:
-            out.append({"kind": key[0], "name": key[1],
-                        "plan": _describe(p), "live": _describe(live)})
+            out.append(
+                {"kind": key[0], "name": key[1], "plan": _describe(p), "live": _describe(live)}
+            )
     return out
 
 
 def run_plan(
-    backend: D365Backend, plan: dict[str, Any], *,
-    base_dir: str | None, verify_only: bool,
+    backend: D365Backend,
+    plan: dict[str, Any],
+    *,
+    base_dir: str | None,
+    verify_only: bool,
     include_referenced_optionsets: bool = True,
 ) -> dict[str, Any]:
     """Verify a plan against the live org and, unless stale or in verify mode, run it.

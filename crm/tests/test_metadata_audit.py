@@ -5,6 +5,7 @@ and `AttributeMetadata`. These lock in the managed-property body shape the CLI
 writes: an object `{"Value": <bool>}` (never a bare boolean), on create bodies and
 on the retrieve-merge-write update bodies. All HTTP is mocked; no live server.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -16,7 +17,6 @@ from crm.cli import cli
 from crm.core import metadata as meta_mod
 from crm.core import metadata_attrs as ma_mod
 from crm.core import metadata_update as mu_mod
-
 
 _ATTR_ID = "33333333-3333-3333-3333-333333333333"
 
@@ -35,8 +35,9 @@ def _mock_create_entity(m, backend):
     probe = backend.url_for("EntityDefinitions(LogicalName='new_widget')")
     md_url = backend.url_for("EntityDefinitions(11111111-1111-1111-1111-111111111111)")
     m.get(probe, status_code=404, json={"error": {"code": "0x", "message": "no"}})
-    m.post(backend.url_for("EntityDefinitions"), status_code=204,
-           headers={"OData-EntityId": md_url})
+    m.post(
+        backend.url_for("EntityDefinitions"), status_code=204, headers={"OData-EntityId": md_url}
+    )
     m.get(md_url, json={"LogicalName": "new_widget", "EntitySetName": "new_widgets"})
 
 
@@ -45,7 +46,9 @@ class TestCreateEntityAudit:
         with requests_mock.Mocker() as m:
             _mock_create_entity(m, backend)
             meta_mod.create_entity(
-                backend, schema_name="new_Widget", display_name="Widget",
+                backend,
+                schema_name="new_Widget",
+                display_name="Widget",
                 is_audit_enabled=True,
             )
         assert _post_body(m)["IsAuditEnabled"] == {"Value": True}
@@ -54,7 +57,9 @@ class TestCreateEntityAudit:
         with requests_mock.Mocker() as m:
             _mock_create_entity(m, backend)
             meta_mod.create_entity(
-                backend, schema_name="new_Widget", display_name="Widget",
+                backend,
+                schema_name="new_Widget",
+                display_name="Widget",
                 is_audit_enabled=False,
             )
         assert _post_body(m)["IsAuditEnabled"] == {"Value": False}
@@ -63,7 +68,9 @@ class TestCreateEntityAudit:
         with requests_mock.Mocker() as m:
             _mock_create_entity(m, backend)
             meta_mod.create_entity(
-                backend, schema_name="new_Widget", display_name="Widget",
+                backend,
+                schema_name="new_Widget",
+                display_name="Widget",
             )
         assert "IsAuditEnabled" not in _post_body(m)
 
@@ -74,20 +81,18 @@ class TestCreateEntityAudit:
 def _mock_add_attribute(m, backend, entity="new_widget", attr="new_label"):
     m.get(
         backend.url_for(
-            f"EntityDefinitions(LogicalName='{entity}')"
-            f"/Attributes(LogicalName='{attr}')"
+            f"EntityDefinitions(LogicalName='{entity}')/Attributes(LogicalName='{attr}')"
         ),
-        status_code=404, json={"error": {"code": "0x", "message": "no"}},
+        status_code=404,
+        json={"error": {"code": "0x", "message": "no"}},
     )
-    attr_url = backend.url_for(
-        f"EntityDefinitions(LogicalName='{entity}')/Attributes({_ATTR_ID})"
-    )
+    attr_url = backend.url_for(f"EntityDefinitions(LogicalName='{entity}')/Attributes({_ATTR_ID})")
     m.post(
         backend.url_for(f"EntityDefinitions(LogicalName='{entity}')/Attributes"),
-        status_code=204, headers={"OData-EntityId": attr_url},
+        status_code=204,
+        headers={"OData-EntityId": attr_url},
     )
-    m.get(attr_url, json={"LogicalName": attr, "SchemaName": attr,
-                          "AttributeType": "String"})
+    m.get(attr_url, json={"LogicalName": attr, "SchemaName": attr, "AttributeType": "String"})
 
 
 class TestAddAttributeAudit:
@@ -95,8 +100,11 @@ class TestAddAttributeAudit:
         with requests_mock.Mocker() as m:
             _mock_add_attribute(m, backend)
             ma_mod.add_attribute(
-                backend, entity="new_widget", kind="string",
-                schema_name="new_Label", display_name="Label",
+                backend,
+                entity="new_widget",
+                kind="string",
+                schema_name="new_Label",
+                display_name="Label",
                 is_audit_enabled=True,
             )
         assert _post_body(m)["IsAuditEnabled"] == {"Value": True}
@@ -105,8 +113,11 @@ class TestAddAttributeAudit:
         with requests_mock.Mocker() as m:
             _mock_add_attribute(m, backend)
             ma_mod.add_attribute(
-                backend, entity="new_widget", kind="string",
-                schema_name="new_Label", display_name="Label",
+                backend,
+                entity="new_widget",
+                kind="string",
+                schema_name="new_Label",
+                display_name="Label",
                 is_audit_enabled=False,
             )
         assert _post_body(m)["IsAuditEnabled"] == {"Value": False}
@@ -115,8 +126,11 @@ class TestAddAttributeAudit:
         with requests_mock.Mocker() as m:
             _mock_add_attribute(m, backend)
             ma_mod.add_attribute(
-                backend, entity="new_widget", kind="string",
-                schema_name="new_Label", display_name="Label",
+                backend,
+                entity="new_widget",
+                kind="string",
+                schema_name="new_Label",
+                display_name="Label",
             )
         assert "IsAuditEnabled" not in _post_body(m)
 
@@ -168,16 +182,14 @@ _STRING_ATTR_WITH_AUDIT = {
 class TestUpdateAttributeAudit:
     def test_merge_sets_value_and_preserves_other_props(self, backend):
         base = backend.url_for(
-            "EntityDefinitions(LogicalName='new_project')"
-            "/Attributes(LogicalName='new_code')"
+            "EntityDefinitions(LogicalName='new_project')/Attributes(LogicalName='new_code')"
         )
         cast = base + "/Microsoft.Dynamics.CRM.StringAttributeMetadata"
         with requests_mock.Mocker() as m:
             m.get(base, json=_STRING_ATTR_WITH_AUDIT)
             m.get(cast, json=_STRING_ATTR_WITH_AUDIT)
             m.put(cast, status_code=204)
-            mu_mod.update_attribute(backend, "new_project", "new_code",
-                                    is_audit_enabled=False)
+            mu_mod.update_attribute(backend, "new_project", "new_code", is_audit_enabled=False)
         body = m.request_history[-1].json()
         assert body["IsAuditEnabled"] == {"Value": False, "CanBeChanged": True}
         # Type-specific props survive the merge.
@@ -186,16 +198,14 @@ class TestUpdateAttributeAudit:
 
     def test_audit_alone_satisfies_nothing_to_update_guard(self, backend):
         base = backend.url_for(
-            "EntityDefinitions(LogicalName='new_project')"
-            "/Attributes(LogicalName='new_code')"
+            "EntityDefinitions(LogicalName='new_project')/Attributes(LogicalName='new_code')"
         )
         cast = base + "/Microsoft.Dynamics.CRM.StringAttributeMetadata"
         with requests_mock.Mocker() as m:
             m.get(base, json=_STRING_ATTR_WITH_AUDIT)
             m.get(cast, json=_STRING_ATTR_WITH_AUDIT)
             m.put(cast, status_code=204)
-            out = mu_mod.update_attribute(backend, "new_project", "new_code",
-                                          is_audit_enabled=True)
+            out = mu_mod.update_attribute(backend, "new_project", "new_code", is_audit_enabled=True)
         assert out["updated"] is True
 
 
@@ -206,24 +216,53 @@ class TestUpdateAttributeAudit:
 # every verb and reaches core with the right boolean.
 _SOL = ["--solution", "Default"]
 _FORWARD_CASES = [
-    (meta_mod, "create_entity",
-     ["metadata", "create-entity", "--schema-name", "new_Widget",
-      "--display", "Widget", "--audit", *_SOL], True),
-    (ma_mod, "add_attribute",
-     ["metadata", "add-attribute", "new_widget", "--kind", "string",
-      "--schema-name", "new_Label", "--display", "Label", "--no-audit", *_SOL],
-     False),
-    (mu_mod, "update_entity",
-     ["metadata", "update-entity", "new_widget", "--audit", *_SOL], True),
-    (mu_mod, "update_attribute",
-     ["metadata", "update-attribute", "new_widget", "new_code", "--no-audit", *_SOL],
-     False),
+    (
+        meta_mod,
+        "create_entity",
+        [
+            "metadata",
+            "create-entity",
+            "--schema-name",
+            "new_Widget",
+            "--display",
+            "Widget",
+            "--audit",
+            *_SOL,
+        ],
+        True,
+    ),
+    (
+        ma_mod,
+        "add_attribute",
+        [
+            "metadata",
+            "add-attribute",
+            "new_widget",
+            "--kind",
+            "string",
+            "--schema-name",
+            "new_Label",
+            "--display",
+            "Label",
+            "--no-audit",
+            *_SOL,
+        ],
+        False,
+    ),
+    (mu_mod, "update_entity", ["metadata", "update-entity", "new_widget", "--audit", *_SOL], True),
+    (
+        mu_mod,
+        "update_attribute",
+        ["metadata", "update-attribute", "new_widget", "new_code", "--no-audit", *_SOL],
+        False,
+    ),
 ]
 
 
 @pytest.mark.parametrize("module, func_name, argv, expected", _FORWARD_CASES)
-def test_audit_flag_forwarded_to_core(module, func_name, argv, expected,
-                                      inject_backend, make_fake_backend, monkeypatch):
+def test_audit_flag_forwarded_to_core(
+    module, func_name, argv, expected, inject_backend, make_fake_backend, monkeypatch
+):
     inject_backend(make_fake_backend())
     captured: dict = {}
 

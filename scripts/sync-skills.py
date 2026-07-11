@@ -29,6 +29,7 @@ referenced skill in too. Auto-pulled deps keep their upstream flag.
 Skills NOT reachable from this list (ship, cloud-ship, merge-gate, live-e2e,
 ...) are project-native and never touched.
 """
+
 from __future__ import annotations
 
 import re
@@ -96,12 +97,11 @@ def find_refs(skill_dir: Path, universe: set[str]) -> set[str]:
     return refs
 
 
-def resolve_closure(
-    seed: dict[str, bool], universe: set[str]
-) -> tuple[dict[str, bool], set[str]]:
+def resolve_closure(seed: dict[str, bool], universe: set[str]) -> tuple[dict[str, bool], set[str]]:
     """Transitively add every referenced skill. Auto-added deps default to
     keeping their upstream flag (model_invokable=False). Returns (name ->
-    force-invokable, set-of-auto-added-names)."""
+    force-invokable, set-of-auto-added-names).
+    """
     wanted = dict(seed)
     auto: set[str] = set()
     stack = list(seed)

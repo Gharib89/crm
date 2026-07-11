@@ -7,6 +7,7 @@ verbs), not raw JSON strings. `--json` output must be unchanged.
 Offline: the core fetch is monkeypatched and the backend stubbed, so no HTTP.
 GUIDs are placeholders (no real org identifiers).
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -21,35 +22,59 @@ _OID_B = "cccccccc-cccc-cccc-cccc-cccccccccccc"
 
 
 def _stub_components(monkeypatch, items):
-    monkeypatch.setattr("crm.core.solution.solution_components",
-                        lambda backend, unique_name: items)
+    monkeypatch.setattr("crm.core.solution.solution_components", lambda backend, unique_name: items)
     monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
 
 
 def _stub_relationships(monkeypatch, info):
-    monkeypatch.setattr("crm.core.relationships.list_relationships",
-                        lambda backend, logical_name: info)
+    monkeypatch.setattr(
+        "crm.core.relationships.list_relationships", lambda backend, logical_name: info
+    )
     monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
 
 
 _REL_INFO = {
-    "OneToMany": [{"@odata.etag": 'W/"1"', "SchemaName": "account_tasks",
-                   "ReferencedEntity": "account", "ReferencingEntity": "task",
-                   "ReferencingAttribute": "regardingobjectid"}],
-    "ManyToOne": [{"SchemaName": "task_owner", "ReferencedEntity": "systemuser",
-                   "ReferencingEntity": "task", "ReferencingAttribute": "owninguser"}],
-    "ManyToMany": [{"SchemaName": "accountleads_association",
-                    "Entity1LogicalName": "account", "Entity2LogicalName": "lead",
-                    "IntersectEntityName": "accountleads"}],
+    "OneToMany": [
+        {
+            "@odata.etag": 'W/"1"',
+            "SchemaName": "account_tasks",
+            "ReferencedEntity": "account",
+            "ReferencingEntity": "task",
+            "ReferencingAttribute": "regardingobjectid",
+        }
+    ],
+    "ManyToOne": [
+        {
+            "SchemaName": "task_owner",
+            "ReferencedEntity": "systemuser",
+            "ReferencingEntity": "task",
+            "ReferencingAttribute": "owninguser",
+        }
+    ],
+    "ManyToMany": [
+        {
+            "SchemaName": "accountleads_association",
+            "Entity1LogicalName": "account",
+            "Entity2LogicalName": "lead",
+            "IntersectEntityName": "accountleads",
+        }
+    ],
 }
 
 
 class TestSolutionComponentsTable:
     def test_human_mode_renders_type_name_not_raw_json(self, monkeypatch):
-        _stub_components(monkeypatch, [
-            {"@odata.etag": 'W/"123"', "componenttype": 1, "objectid": _OID_A,
-             "rootcomponentbehavior": 0},
-        ])
+        _stub_components(
+            monkeypatch,
+            [
+                {
+                    "@odata.etag": 'W/"123"',
+                    "componenttype": 1,
+                    "objectid": _OID_A,
+                    "rootcomponentbehavior": 0,
+                },
+            ],
+        )
         result = CliRunner().invoke(cli, ["solution", "components", "CRMWorx"])
         assert result.exit_code == 0, result.output
         # componenttype 1 resolves to its friendly name, not the bare int.
@@ -60,16 +85,25 @@ class TestSolutionComponentsTable:
         assert "@odata.etag" not in result.output
 
     def test_unknown_componenttype_falls_back_to_int(self, monkeypatch):
-        _stub_components(monkeypatch, [
-            {"componenttype": 99999, "objectid": _OID_A, "rootcomponentbehavior": 0},
-        ])
+        _stub_components(
+            monkeypatch,
+            [
+                {"componenttype": 99999, "objectid": _OID_A, "rootcomponentbehavior": 0},
+            ],
+        )
         result = CliRunner().invoke(cli, ["solution", "components", "CRMWorx"])
         assert result.exit_code == 0, result.output
         assert "99999" in result.output
 
     def test_json_mode_injects_typename_and_strips_odata(self, monkeypatch):
-        items = [{"@odata.etag": 'W/"1"', "componenttype": 61, "objectid": _OID_B,
-                  "rootcomponentbehavior": 0}]
+        items = [
+            {
+                "@odata.etag": 'W/"1"',
+                "componenttype": 61,
+                "objectid": _OID_B,
+                "rootcomponentbehavior": 0,
+            }
+        ]
         _stub_components(monkeypatch, items)
         result = CliRunner().invoke(cli, ["--json", "solution", "components", "CRMWorx"])
         assert result.exit_code == 0, result.output
@@ -77,9 +111,14 @@ class TestSolutionComponentsTable:
         # JSON carries the numeric type plus the resolved `componenttypename`
         # (#627), while `@odata.*` protocol keys are still stripped from the
         # curated data payload (ADR 0008 / #304).
-        assert payload["data"] == [{"componenttype": 61, "objectid": _OID_B,
-                                    "rootcomponentbehavior": 0,
-                                    "componenttypename": "webresource"}]
+        assert payload["data"] == [
+            {
+                "componenttype": 61,
+                "objectid": _OID_B,
+                "rootcomponentbehavior": 0,
+                "componenttypename": "webresource",
+            }
+        ]
         assert payload["meta"]["count"] == 1
 
 
@@ -97,14 +136,13 @@ class TestMetadataRelationshipsTable:
         assert "account_tasks" in out
         assert "task_owner" in out
         assert "accountleads_association" in out
-        assert "accountleads" in out          # N:N intersect entity column
+        assert "accountleads" in out  # N:N intersect entity column
         # No raw JSON-string dump, no protocol keys as columns.
         assert '{"' not in out
         assert "@odata.etag" not in out
 
     def test_empty_categories_render_without_error(self, monkeypatch):
-        _stub_relationships(monkeypatch, {"OneToMany": [], "ManyToOne": [],
-                                          "ManyToMany": []})
+        _stub_relationships(monkeypatch, {"OneToMany": [], "ManyToOne": [], "ManyToMany": []})
         result = CliRunner().invoke(cli, ["metadata", "relationships", "account"])
         assert result.exit_code == 0, result.output
         # All three sections still render their headers, each marked empty.
@@ -119,8 +157,9 @@ class TestMetadataRelationshipsTable:
         # the nested rows of the curated data payload (ADR 0008 / #304).
         expected = {
             **_REL_INFO,
-            "OneToMany": [{k: v for k, v in _REL_INFO["OneToMany"][0].items()
-                           if k != "@odata.etag"}],
+            "OneToMany": [
+                {k: v for k, v in _REL_INFO["OneToMany"][0].items() if k != "@odata.etag"}
+            ],
         }
         assert payload["data"] == expected
         assert payload["meta"] == {"one_to_many": 1, "many_to_one": 1, "many_to_many": 1}

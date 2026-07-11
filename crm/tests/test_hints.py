@@ -3,24 +3,26 @@
 Next-step hints are show-once success-path guidance rendered in human/REPL mode
 only (never in the JSON envelope). See issue #657 and CONTEXT.md "Next-step hint".
 """
+
 # pyright: basic
 from __future__ import annotations
-
-import json
 
 import pytest
 from click.testing import CliRunner
 
-_WHOAMI = {"UserId": "00000000-0000-0000-0000-000000000001",
-           "BusinessUnitId": "00000000-0000-0000-0000-0000000000bb",
-           "OrganizationId": "00000000-0000-0000-0000-0000000000cc"}
+_WHOAMI = {
+    "UserId": "00000000-0000-0000-0000-000000000001",
+    "BusinessUnitId": "00000000-0000-0000-0000-0000000000bb",
+    "OrganizationId": "00000000-0000-0000-0000-0000000000cc",
+}
 
 
 @pytest.fixture
 def crm_home(isolated_home, monkeypatch):
     """Isolated CRM_HOME (via the suite's ``isolated_home``, which also disables
     .env autoload and snapshots the environment) with CRM_NO_HINTS cleared so a
-    stray outer-env value can't skew the show-once assertions."""
+    stray outer-env value can't skew the show-once assertions.
+    """
     monkeypatch.delenv("CRM_NO_HINTS", raising=False)
     return isolated_home
 
@@ -121,10 +123,19 @@ class TestProfileAddHintEndToEnd:
 
     def _add_profile_args(self):
         return [
-            "profile", "add",
-            "--url", "https://crm.contoso.local/contoso",
-            "--username", "alice", "--domain", "CONTOSO",
-            "--password", "pw", "--name", "contoso", "--yes",
+            "profile",
+            "add",
+            "--url",
+            "https://crm.contoso.local/contoso",
+            "--username",
+            "alice",
+            "--domain",
+            "CONTOSO",
+            "--password",
+            "pw",
+            "--name",
+            "contoso",
+            "--yes",
         ]
 
     def test_prints_hint_once_on_tty(self, crm_home, monkeypatch):

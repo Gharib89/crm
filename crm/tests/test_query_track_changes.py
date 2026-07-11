@@ -9,6 +9,7 @@ carrying a `$deletedEntity` context, stripped to `{id, reason}`). The Dataverse
 Web API rejects `$filter/$orderby/$expand/$top` with change tracking, so those
 combinations (and page-following) are rejected client-side.
 """
+
 from __future__ import annotations
 
 import json
@@ -22,8 +23,10 @@ from crm.core.query import odata_query
 from crm.utils.d365_backend import D365Backend, D365Error
 
 CTX = "https://crm.contoso.local/contoso/api/data/v9.2/$metadata#accounts"
-DELTA = ("https://crm.contoso.local/contoso/api/data/v9.2/accounts"
-         "?$select=name&$deltatoken=919042%2108%2f22%2f2017%2008%3a10%3a44")
+DELTA = (
+    "https://crm.contoso.local/contoso/api/data/v9.2/accounts"
+    "?$select=name&$deltatoken=919042%2108%2f22%2f2017%2008%3a10%3a44"
+)
 TOKEN = "919042!08/22/2017 08:10:44"
 
 
@@ -46,14 +49,17 @@ def test_delta_token_sends_deltatoken_param(make_fake_backend):
     assert _last_kwargs(backend)["extra_headers"] is None
 
 
-@pytest.mark.parametrize("kwargs", [
-    {"filter_": "name eq 'x'"},
-    {"orderby": "name"},
-    {"expand": ["primarycontactid"]},
-    {"top": 5},
-    {"all_pages": True},
-    {"max_records": 10},
-])
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"filter_": "name eq 'x'"},
+        {"orderby": "name"},
+        {"expand": ["primarycontactid"]},
+        {"top": 5},
+        {"all_pages": True},
+        {"max_records": 10},
+    ],
+)
 def test_track_changes_rejects_unsupported_options(make_fake_backend, kwargs):
     backend = make_fake_backend()
     with pytest.raises(D365Error):
@@ -65,27 +71,34 @@ def test_track_changes_rejects_unsupported_options(make_fake_backend, kwargs):
 def test_delta_token_rejects_unsupported_options(make_fake_backend):
     backend = make_fake_backend()
     with pytest.raises(D365Error):
-        odata_query(cast(D365Backend, backend), "accounts",
-                    delta_token=TOKEN, filter_="name eq 'x'")
+        odata_query(
+            cast(D365Backend, backend), "accounts", delta_token=TOKEN, filter_="name eq 'x'"
+        )
     assert not backend.called
 
 
 def test_track_changes_and_delta_token_are_mutually_exclusive(make_fake_backend):
     backend = make_fake_backend()
     with pytest.raises(D365Error):
-        odata_query(cast(D365Backend, backend), "accounts",
-                    track_changes=True, delta_token=TOKEN)
+        odata_query(cast(D365Backend, backend), "accounts", track_changes=True, delta_token=TOKEN)
     assert not backend.called
 
 
 def test_cli_track_changes_surfaces_delta_link_and_token(make_fake_backend, inject_backend):
-    inject_backend(make_fake_backend(responses={"get": {
-        "@odata.context": CTX,
-        "@odata.deltaLink": DELTA,
-        "value": [{"accountid": "1", "name": "Monte"}],
-    }}))
+    inject_backend(
+        make_fake_backend(
+            responses={
+                "get": {
+                    "@odata.context": CTX,
+                    "@odata.deltaLink": DELTA,
+                    "value": [{"accountid": "1", "name": "Monte"}],
+                }
+            }
+        )
+    )
     result = CliRunner().invoke(
-        cli, ["--json", "query", "odata", "accounts", "--track-changes", "--select", "name"])
+        cli, ["--json", "query", "odata", "accounts", "--track-changes", "--select", "name"]
+    )
     assert result.exit_code == 0, result.output
     env = json.loads(result.output)
     assert [r["accountid"] for r in env["data"]] == ["1"]
@@ -97,17 +110,23 @@ def test_cli_track_changes_surfaces_delta_link_and_token(make_fake_backend, inje
 
 
 def test_cli_delta_token_passes_through_deletes(make_fake_backend, inject_backend):
-    backend = inject_backend(make_fake_backend(responses={"get": {
-        "@odata.context": CTX + "/$delta",
-        "@odata.deltaLink": DELTA,
-        "value": [
-            {"accountid": "1", "name": "Monte"},
-            {"@odata.context": CTX + "/$deletedEntity",
-             "id": "2", "reason": "deleted"},
-        ],
-    }}))
+    backend = inject_backend(
+        make_fake_backend(
+            responses={
+                "get": {
+                    "@odata.context": CTX + "/$delta",
+                    "@odata.deltaLink": DELTA,
+                    "value": [
+                        {"accountid": "1", "name": "Monte"},
+                        {"@odata.context": CTX + "/$deletedEntity", "id": "2", "reason": "deleted"},
+                    ],
+                }
+            }
+        )
+    )
     result = CliRunner().invoke(
-        cli, ["--json", "query", "odata", "accounts", "--delta-token", TOKEN])
+        cli, ["--json", "query", "odata", "accounts", "--delta-token", TOKEN]
+    )
     assert result.exit_code == 0, result.output
     env = json.loads(result.output)
     # The resume sent the token as $deltatoken.

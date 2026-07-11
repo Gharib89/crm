@@ -5,6 +5,7 @@ example is resolved against the *live* Click tree, so an example that references
 a removed command or flag fails CI. The command-behavior tests cover the JSON
 contract, the group filter, and the TTY picker flow.
 """
+
 # pyright: basic
 import json
 import shlex
@@ -102,10 +103,16 @@ def test_every_curated_example_resolves_against_live_cli():
 # The static resolver above can't see this runtime requirement, so a curated
 # example that omits --solution parses fine yet fails for every user (verified
 # live against the cloud org). Guard the gallery against that class of drift.
-_CUSTOMIZATION_WRITE_VERBS = frozenset({
-    "add-attribute", "create-optionset", "update-optionset",
-    "create-entity", "create-one-to-many", "create-many-to-many",
-})
+_CUSTOMIZATION_WRITE_VERBS = frozenset(
+    {
+        "add-attribute",
+        "create-optionset",
+        "update-optionset",
+        "create-entity",
+        "create-one-to-many",
+        "create-many-to-many",
+    }
+)
 
 
 def _command_path(command: str) -> list[str]:
@@ -113,7 +120,8 @@ def _command_path(command: str) -> list[str]:
     options stripped, so ``path[0]`` is the top-level group and ``path[1]`` the
     verb. Mirrors the leading-global skip in :func:`_resolve` so a curated example
     like ``crm --profile NAME metadata ...`` is still checked at its verb position,
-    not silently skipped."""
+    not silently skipped.
+    """
     toks = shlex.split(command)
     if toks and toks[0] == "crm":
         toks = toks[1:]
@@ -143,9 +151,7 @@ def test_customization_write_examples_target_a_solution():
             # Accept both the space form (--solution X) and Click's equals form
             # (--solution=X), so a valid equals-form example isn't misflagged.
             has_solution = any(t == "--solution" or t.startswith("--solution=") for t in path)
-            assert has_solution, (
-                f"customization-write example must pass --solution: {ex.command!r}"
-            )
+            assert has_solution, f"customization-write example must pass --solution: {ex.command!r}"
 
 
 def test_optionset_examples_use_colon_option_syntax():

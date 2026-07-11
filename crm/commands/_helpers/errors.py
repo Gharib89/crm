@@ -1,9 +1,13 @@
 """D365 error translation + the `d365_errors` envelope seam (#264)."""
+
 # pyright: basic
 from __future__ import annotations
+
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Callable
+
 import click
+
 if TYPE_CHECKING:
     from crm.cli import CLIContext
     from crm.utils.d365_backend import D365Error
@@ -15,7 +19,7 @@ _RESERVED_META_KEYS = frozenset({"status", "code", "category", "retryable"})
 
 
 def _handle_d365_error(
-    ctx: "CLIContext",
+    ctx: CLIContext,
     exc: D365Error,
     *,
     hint: str | None = None,
@@ -25,6 +29,7 @@ def _handle_d365_error(
     # Local import: this only runs after the backend already raised a D365Error,
     # so d365_backend is loaded — keeps it off the `crm --version` fast path.
     from crm.utils.d365_backend import classify_d365_error
+
     category, retryable = classify_d365_error(exc.status, exc.code, str(exc))
     meta: dict[str, Any] = {
         "status": exc.status,
@@ -37,8 +42,9 @@ def _handle_d365_error(
     # name comes from the resolved backend, else the --profile flag.
     if hint is None and exc.status == 401:
         backend = getattr(ctx, "_backend", None)
-        pname = (getattr(getattr(backend, "profile", None), "name", None)
-                 or ctx.profile_name or "<name>")
+        pname = (
+            getattr(getattr(backend, "profile", None), "name", None) or ctx.profile_name or "<name>"
+        )
         hint = _auth_error_hint(exc.status, pname)
     # Partial-failure context (#64): only the non-transactional optionset update
     # path sets these. Guarded is-not-None so every other error site keeps
@@ -57,8 +63,7 @@ def _handle_d365_error(
         collision = _RESERVED_META_KEYS & extra_meta.keys()
         if collision:
             raise ValueError(
-                f"extra_meta may not overwrite reserved error keys: "
-                f"{sorted(collision)}"
+                f"extra_meta may not overwrite reserved error keys: {sorted(collision)}"
             )
         meta.update(extra_meta)
     message = f"{exc}\nHint: {hint}" if hint else str(exc)
@@ -67,7 +72,9 @@ def _handle_d365_error(
 
 @contextmanager
 def d365_errors(
-    ctx: "CLIContext", *, hint: str | None = None,
+    ctx: CLIContext,
+    *,
+    hint: str | None = None,
     warnings: list[str] | None = None,
     enrich: Callable[[D365Error], tuple[str | None, dict | None]] | None = None,
 ):
@@ -89,14 +96,17 @@ def d365_errors(
     A derived hint (when non-None) wins over the static `hint=`.
     """
     from crm.utils.d365_backend import D365Error
+
     try:
         yield
     except D365Error as exc:
         e_hint, e_meta = enrich(exc) if enrich else (None, None)
         _handle_d365_error(
-            ctx, exc,
+            ctx,
+            exc,
             hint=e_hint if e_hint is not None else hint,
-            extra_meta=e_meta, warnings=warnings,
+            extra_meta=e_meta,
+            warnings=warnings,
         )
 
 
@@ -112,6 +122,7 @@ def usage_guard():
     server) is left to propagate to `d365_errors` → exit `1`.
     """
     from crm.utils.d365_backend import D365Error
+
     try:
         yield
     except D365Error as exc:
@@ -124,7 +135,8 @@ def _auth_error_hint(status: int | None, profile_name: str) -> str:
     """Map an auth failure to a copy-paste fix command, or '' when none applies.
 
     A 401 (rejected secret) steers the user to re-store the secret for the
-    active profile."""
+    active profile.
+    """
     if status == 401:
         return f"run: crm profile set-password --profile {profile_name}"
     return ""

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 # ── Solution component type codes (#71) ──────────────────────────────────────
 #
 # Flat friendly-name → integer map for the `componenttype` global optionset
@@ -77,21 +76,23 @@ def normalize_components(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for row in items:
         objectid = row["objectid"]
         if not isinstance(objectid, str):
-            raise ValueError(
-                f"objectid must be a string, got {type(objectid).__name__}"
-            )
+            raise ValueError(f"objectid must be a string, got {type(objectid).__name__}")
         rcb_raw = row.get("rootcomponentbehavior")
         rcb: int | None = None if rcb_raw is None else int(rcb_raw)
-        out.append({
-            "componenttype": int(row["componenttype"]),
-            "objectid": objectid.lower(),
-            "rootcomponentbehavior": rcb,
-        })
-    out.sort(key=lambda c: (
-        c["componenttype"],
-        c["objectid"],
-        c["rootcomponentbehavior"] if c["rootcomponentbehavior"] is not None else -1,
-    ))
+        out.append(
+            {
+                "componenttype": int(row["componenttype"]),
+                "objectid": objectid.lower(),
+                "rootcomponentbehavior": rcb,
+            }
+        )
+    out.sort(
+        key=lambda c: (
+            c["componenttype"],
+            c["objectid"],
+            c["rootcomponentbehavior"] if c["rootcomponentbehavior"] is not None else -1,
+        )
+    )
     return out
 
 
@@ -122,8 +123,8 @@ def diff_components(
     live_keys = {_key(c): c for c in norm_live}
     expected_keys = {_key(c): c for c in norm_expected}
 
-    missing    = [c for c in norm_expected if _key(c) not in live_keys]
-    unexpected = [c for c in norm_live    if _key(c) not in expected_keys]
+    missing = [c for c in norm_expected if _key(c) not in live_keys]
+    unexpected = [c for c in norm_live if _key(c) not in expected_keys]
     return {
         "matches": len(missing) == 0 and len(unexpected) == 0,
         "missing": missing,
@@ -139,7 +140,8 @@ _COMPONENT_TYPE_NAMES: dict[int, str] = {v: k for k, v in SOLUTION_COMPONENT_TYP
 
 def component_type_name(componenttype: int) -> str:
     """Friendly name for a ``componenttype`` int (e.g. 1 → 'entity'), or its string
-    form when the type is not in SOLUTION_COMPONENT_TYPES."""
+    form when the type is not in SOLUTION_COMPONENT_TYPES.
+    """
     return _COMPONENT_TYPE_NAMES.get(componenttype, str(componenttype))
 
 
@@ -178,12 +180,14 @@ def layer_conflicts(
         match = unmanaged_by_key.get(_key(c))
         if match is None:
             continue
-        conflicts.append({
-            "componenttype": c["componenttype"],
-            "type_name": component_type_name(c["componenttype"]),
-            "objectid": c["objectid"],
-            "managed_rootcomponentbehavior": c["rootcomponentbehavior"],
-            "unmanaged_rootcomponentbehavior": match["rootcomponentbehavior"],
-        })
+        conflicts.append(
+            {
+                "componenttype": c["componenttype"],
+                "type_name": component_type_name(c["componenttype"]),
+                "objectid": c["objectid"],
+                "managed_rootcomponentbehavior": c["rootcomponentbehavior"],
+                "unmanaged_rootcomponentbehavior": match["rootcomponentbehavior"],
+            }
+        )
     conflicts.sort(key=lambda c: (c["componenttype"], c["objectid"]))
     return conflicts

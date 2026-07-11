@@ -8,6 +8,7 @@ skill-absent sandbox needs no ``crm`` binary at all.
 
     pytest evals/skill
 """
+
 from __future__ import annotations
 
 import pytest

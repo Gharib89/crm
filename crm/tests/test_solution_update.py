@@ -6,6 +6,7 @@ CannotUpdateSolutionPatch), builds a payload of only the supplied fields, and
 delegates to the shared entity.update record-update path (If-Match:* + dry-run
 reused, no new HTTP). All HTTP is mocked via requests_mock; no live D365 server.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -19,7 +20,6 @@ from crm.cli import cli
 from crm.core import solution as sol_mod
 from crm.utils.d365_backend import D365Error
 
-
 _SOL_ID = "22222222-2222-2222-2222-222222222222"
 
 
@@ -28,8 +28,12 @@ def _patches(m):
 
 
 def _unmanaged_row(**extra):
-    row = {"solutionid": _SOL_ID, "uniquename": "CRMWorx",
-           "ismanaged": False, "_parentsolutionid_value": None}
+    row = {
+        "solutionid": _SOL_ID,
+        "uniquename": "CRMWorx",
+        "ismanaged": False,
+        "_parentsolutionid_value": None,
+    }
     row.update(extra)
     return row
 
@@ -53,6 +57,7 @@ class TestUpdateSolution:
 
     def test_unique_name_single_quote_escaped_in_filter(self, backend):
         from urllib.parse import unquote
+
         with requests_mock.Mocker() as m:
             m.get(backend.url_for("solutions"), json={"value": [_unmanaged_row()]})
             m.patch(backend.url_for(f"solutions({_SOL_ID})"), status_code=204)
@@ -66,15 +71,14 @@ class TestUpdateSolution:
             m.get(backend.url_for("solutions"), json={"value": [_unmanaged_row()]})
             m.patch(backend.url_for(f"solutions({_SOL_ID})"), status_code=204)
             out = sol_mod.update_solution(
-                backend, "CRMWorx", friendly_name="CRM Worx", description="prod build")
+                backend, "CRMWorx", friendly_name="CRM Worx", description="prod build"
+            )
         assert out["updated"] is True
         # only the supplied fields land in the payload; version is absent
-        assert _patches(m)[0].json() == {
-            "friendlyname": "CRM Worx", "description": "prod build"}
+        assert _patches(m)[0].json() == {"friendlyname": "CRM Worx", "description": "prod build"}
 
     def test_patch_target_fails_fast_no_patch(self, backend):
-        patch_row = _unmanaged_row(
-            _parentsolutionid_value="99999999-9999-9999-9999-999999999999")
+        patch_row = _unmanaged_row(_parentsolutionid_value="99999999-9999-9999-9999-999999999999")
         with requests_mock.Mocker() as m:
             m.get(backend.url_for("solutions"), json={"value": [patch_row]})
             m.patch(backend.url_for(f"solutions({_SOL_ID})"), status_code=204)
@@ -103,14 +107,17 @@ class TestUpdateSolution:
         assert _patches(m) == []  # no real PATCH under dry-run
         assert any(r.method == "GET" for r in m.request_history)  # forced-real resolve
 
-    @pytest.mark.parametrize("bad_version", [
-        "2.0",          # too few parts
-        "1.0.0",        # 3-part (Dataverse version is 4-part)
-        "1.0.0.0.0",    # too many parts
-        "1.0.0.x",      # non-numeric segment
-        "v2.0.0.0",     # leading non-numeric
-        "1.0.0.",       # trailing dot
-    ])
+    @pytest.mark.parametrize(
+        "bad_version",
+        [
+            "2.0",  # too few parts
+            "1.0.0",  # 3-part (Dataverse version is 4-part)
+            "1.0.0.0.0",  # too many parts
+            "1.0.0.x",  # non-numeric segment
+            "v2.0.0.0",  # leading non-numeric
+            "1.0.0.",  # trailing dot
+        ],
+    )
     def test_invalid_version_raises_pre_http(self, backend, bad_version):
         with requests_mock.Mocker() as m:
             with pytest.raises(D365Error, match="4-part dotted"):
@@ -132,28 +139,42 @@ class TestSolutionSetVersionCommand:
 
         monkeypatch.setattr("crm.core.solution.update_solution", fake)
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-        result = CliRunner().invoke(cli, [
-            "--json", "solution", "set-version", "CRMWorx",
-            "--version", "2.0.0.0",
-            "--friendly-name", "CRM Worx", "--description", "prod build",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "solution",
+                "set-version",
+                "CRMWorx",
+                "--version",
+                "2.0.0.0",
+                "--friendly-name",
+                "CRM Worx",
+                "--description",
+                "prod build",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert captured == {
-            "unique_name": "CRMWorx", "version": "2.0.0.0",
-            "friendly_name": "CRM Worx", "description": "prod build"}
+            "unique_name": "CRMWorx",
+            "version": "2.0.0.0",
+            "friendly_name": "CRM Worx",
+            "description": "prod build",
+        }
         assert json.loads(result.output)["data"]["updated"] is True
 
     def test_version_only_passes_none_for_omitted(self, monkeypatch):
         captured = {}
         monkeypatch.setattr(
             "crm.core.solution.update_solution",
-            lambda backend, unique_name, **kw: captured.update(kw) or {"updated": True})
+            lambda backend, unique_name, **kw: captured.update(kw) or {"updated": True},
+        )
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-        result = CliRunner().invoke(cli, [
-            "--json", "solution", "set-version", "CRMWorx", "--version", "2.0.0.0"])
+        result = CliRunner().invoke(
+            cli, ["--json", "solution", "set-version", "CRMWorx", "--version", "2.0.0.0"]
+        )
         assert result.exit_code == 0, result.output
-        assert captured == {"version": "2.0.0.0",
-                            "friendly_name": None, "description": None}
+        assert captured == {"version": "2.0.0.0", "friendly_name": None, "description": None}
 
     def test_core_error_exit_1(self, monkeypatch):
         def boom(backend, unique_name, **kw):
@@ -200,8 +221,7 @@ class TestSolutionImportConfirm:
 
     def test_yes_skips_prompt_and_imports(self, monkeypatch, zip_path):
         captured = self._stub_import(monkeypatch)
-        result = CliRunner().invoke(
-            cli, ["--json", "solution", "import", zip_path, "--yes"])
+        result = CliRunner().invoke(cli, ["--json", "solution", "import", zip_path, "--yes"])
         assert result.exit_code == 0, result.output
         assert json.loads(result.output)["data"] == {"imported": True}
         # default semantics unchanged: publish + overwrite both stay ON (#378)
@@ -215,7 +235,8 @@ class TestSolutionImportConfirm:
         # gates it). It must import cleanly with overwrite OFF, no prompt emitted.
         captured = self._stub_import(monkeypatch)
         result = CliRunner().invoke(
-            cli, ["--json", "solution", "import", zip_path, "--no-overwrite"])
+            cli, ["--json", "solution", "import", zip_path, "--no-overwrite"]
+        )
         assert result.exit_code == 0, result.output
         assert "Continue?" not in result.output
         assert captured["overwrite_unmanaged_customizations"] is False
@@ -225,13 +246,15 @@ class TestSolutionImportConfirm:
         # imports with PublishWorkflows ON; the negative half turns it off.
         captured = self._stub_import(monkeypatch)
         result = CliRunner().invoke(
-            cli, ["--json", "solution", "import", zip_path, "--publish", "--yes"])
+            cli, ["--json", "solution", "import", zip_path, "--publish", "--yes"]
+        )
         assert result.exit_code == 0, result.output
         assert captured["publish_workflows"] is True
 
         captured = self._stub_import(monkeypatch)
         result = CliRunner().invoke(
-            cli, ["--json", "solution", "import", zip_path, "--no-publish", "--yes"])
+            cli, ["--json", "solution", "import", zip_path, "--no-publish", "--yes"]
+        )
         assert result.exit_code == 0, result.output
         assert captured["publish_workflows"] is False
 
@@ -240,6 +263,7 @@ class TestSolutionImportConfirm:
         # form keeps the destructive overwrite ON (still gated by --yes).
         captured = self._stub_import(monkeypatch)
         result = CliRunner().invoke(
-            cli, ["--json", "solution", "import", zip_path, "--overwrite", "--yes"])
+            cli, ["--json", "solution", "import", zip_path, "--overwrite", "--yes"]
+        )
         assert result.exit_code == 0, result.output
         assert captured["overwrite_unmanaged_customizations"] is True

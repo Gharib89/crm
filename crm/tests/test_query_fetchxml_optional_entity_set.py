@@ -14,6 +14,7 @@ metadata cache. So the resolver reads the full ``EntityDefinitions`` collection
 via ``get_collection`` (not a per-logical row GET); tests isolate CRM_HOME and
 feed the map through ``get_collection``.
 """
+
 from __future__ import annotations
 
 import json
@@ -33,7 +34,8 @@ from crm.utils.d365_backend import ConnectionProfile, D365Error
 def _isolate_crm_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """resolve_entity_set_name now reads the name map through the metadata cache
     (#261); isolate CRM_HOME so a real ~/.crm is never touched and each test
-    starts with a cold cache."""
+    starts with a cold cache.
+    """
     monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
 
 
@@ -50,9 +52,11 @@ def _profile(name: str = "testp") -> ConnectionProfile:
 
 # ── Resolver unit tests ─────────────────────────────────────────────────────
 
+
 class _ResolverBackend:
     """Serves the EntityDefinitions collection through ``get_collection`` (what the
-    seam's ``load_name_map`` calls) and records the paths requested."""
+    seam's ``load_name_map`` calls) and records the paths requested.
+    """
 
     def __init__(self, defs: list[dict[str, Any]]) -> None:
         self.profile = _profile()
@@ -90,6 +94,7 @@ def test_resolve_entity_set_name_raises_on_unknown_logical_name():
 
 def test_resolve_entity_set_name_propagates_d365_error():
     """Server returns 404 → D365Error (backend raises, not swallowed)."""
+
     class _ErrorBackend:
         profile = _profile()
 
@@ -103,15 +108,16 @@ def test_resolve_entity_set_name_propagates_d365_error():
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
-_FETCH_ACCOUNT = "<fetch><entity name=\"account\"><attribute name=\"name\"/></entity></fetch>"
-_FETCH_NO_NAME = "<fetch><entity><attribute name=\"name\"/></entity></fetch>"
-_FETCH_NO_ENTITY = "<fetch><attribute name=\"name\"/></fetch>"
+_FETCH_ACCOUNT = '<fetch><entity name="account"><attribute name="name"/></entity></fetch>'
+_FETCH_NO_NAME = '<fetch><entity><attribute name="name"/></entity></fetch>'
+_FETCH_NO_ENTITY = '<fetch><attribute name="name"/></fetch>'
 _NOT_XML = "this is not xml <<<"
 
 
 def _make_backend(monkeypatch: pytest.MonkeyPatch, calls: list[str] | None = None) -> MagicMock:
     """Stub backend: records paths, resolves names via get_collection, and returns
-    empty value arrays for the fetchxml query GET."""
+    empty value arrays for the fetchxml query GET.
+    """
     mock = MagicMock()
     mock.profile = _profile()
     recorded: list[str] = calls if calls is not None else []
@@ -134,6 +140,7 @@ def _make_backend(monkeypatch: pytest.MonkeyPatch, calls: list[str] | None = Non
 
 # ── Backward-compat: positional provided → NO resolver round-trip ───────────
 
+
 def test_positional_provided_no_extra_metadata_get(monkeypatch: pytest.MonkeyPatch):
     """When ENTITY_SET is given, only the FetchXML query GET fires — no resolver call."""
     calls: list[str] = []
@@ -151,6 +158,7 @@ def test_positional_provided_no_extra_metadata_get(monkeypatch: pytest.MonkeyPat
 
 
 # ── Derived path: no positional → parse + resolve → query ───────────────────
+
 
 def test_no_positional_derives_entity_set(monkeypatch: pytest.MonkeyPatch):
     """Omitting ENTITY_SET derives it from XML name → one resolver read + one query GET."""
@@ -206,6 +214,7 @@ def test_no_positional_result_uses_resolved_name(monkeypatch: pytest.MonkeyPatch
 
 # ── Error paths ──────────────────────────────────────────────────────────────
 
+
 def test_no_positional_unparseable_xml_exit2(monkeypatch: pytest.MonkeyPatch):
     """Unparseable XML with no positional → exit 2 (UsageError)."""
     _make_backend(monkeypatch)
@@ -238,6 +247,7 @@ def test_no_positional_no_entity_element_exit2(monkeypatch: pytest.MonkeyPatch):
 
 def test_no_positional_unknown_logical_name_exit1(monkeypatch: pytest.MonkeyPatch):
     """Resolver raises D365Error (404) → exit 1 clean error envelope."""
+
     class _404Backend:
         profile = _profile()
 

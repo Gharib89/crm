@@ -1,17 +1,26 @@
 """Model-driven app (appmodule) commands."""
+
 # pyright: basic
 from __future__ import annotations
+
 from pathlib import Path
+
 import click
-from crm.core import appmodule as app_mod
-from crm.core import webresource as wr_mod
+
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
+    _confirm_destructive,
+    _destructive_option,
+    _emit_with_warning,
+    _journal,
     _publish_option,
-    _journal, _resolve_publish, _solution_option,
-    _resolve_solution, _emit_with_warning, d365_errors,
-    _confirm_destructive, _destructive_option,
+    _resolve_publish,
+    _resolve_solution,
+    _solution_option,
+    d365_errors,
 )
+from crm.core import appmodule as app_mod
+from crm.core import webresource as wr_mod
 
 
 @click.group("app")
@@ -21,18 +30,24 @@ def app_group():
 
 @app_group.command("create")
 @click.option("--name", required=True, help="App display name.")
-@click.option("--unique-name", required=True,
-              help="Publisher-prefixed unique name, e.g. 'cwx_crmworx'.")
+@click.option(
+    "--unique-name", required=True, help="Publisher-prefixed unique name, e.g. 'cwx_crmworx'."
+)
 @click.option("--description", default=None)
 @click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error")
-@click.option("--icon-webresource", "icon_webresource", default=None,
-              help="Web resource (name or GUID) for the app icon. "
-                   "Defaults to the platform icon when omitted.")
+@click.option(
+    "--icon-webresource",
+    "icon_webresource",
+    default=None,
+    help="Web resource (name or GUID) for the app icon. "
+    "Defaults to the platform icon when omitted.",
+)
 @_solution_option
 @_publish_option
 @pass_ctx
-def app_create(ctx: CLIContext, name, unique_name, description, if_exists,
-               icon_webresource, solution, publish):
+def app_create(
+    ctx: CLIContext, name, unique_name, description, if_exists, icon_webresource, solution, publish
+):
     """Create a model-driven app."""
     solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
@@ -43,9 +58,14 @@ def app_create(ctx: CLIContext, name, unique_name, description, if_exists,
         else:
             web_resource_id = app_mod.DEFAULT_APP_ICON
         info = app_mod.create_app(
-            backend, name=name, unique_name=unique_name,
-            description=description, web_resource_id=web_resource_id,
-            solution=solution, if_exists=if_exists, publish=publish,
+            backend,
+            name=name,
+            unique_name=unique_name,
+            description=description,
+            web_resource_id=web_resource_id,
+            solution=solution,
+            if_exists=if_exists,
+            publish=publish,
         )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, unique_name, info, solution=solution)
@@ -84,30 +104,38 @@ def _parse_components(components) -> list[tuple[str, str]]:
 
 @app_group.command("add-components")
 @click.argument("app_id")
-@click.option("--component", "components", multiple=True, required=True,
-              help="Repeatable 'kind:guid' (kind: view|chart|form|dashboard|sitemap|bpf).")
+@click.option(
+    "--component",
+    "components",
+    multiple=True,
+    required=True,
+    help="Repeatable 'kind:guid' (kind: view|chart|form|dashboard|sitemap|bpf).",
+)
 @pass_ctx
 def app_add_components(ctx: CLIContext, app_id, components):
     """Bind components to an app (AddAppComponents)."""
     parsed = _parse_components(components)
     with d365_errors(ctx):
-        info = app_mod.add_app_components(ctx.backend(), app_id=app_id,
-                                          components=parsed)
+        info = app_mod.add_app_components(ctx.backend(), app_id=app_id, components=parsed)
     ctx.emit(True, data=info)
     _journal(ctx, app_id, info)
 
 
 @app_group.command("remove-components")
 @click.argument("app_id")
-@click.option("--component", "components", multiple=True, required=True,
-              help="Repeatable 'kind:guid' (kind: view|chart|form|dashboard|sitemap|bpf).")
+@click.option(
+    "--component",
+    "components",
+    multiple=True,
+    required=True,
+    help="Repeatable 'kind:guid' (kind: view|chart|form|dashboard|sitemap|bpf).",
+)
 @pass_ctx
 def app_remove_components(ctx: CLIContext, app_id, components):
     """Unbind components from an app (RemoveAppComponents)."""
     parsed = _parse_components(components)
     with d365_errors(ctx):
-        info = app_mod.remove_app_components(ctx.backend(), app_id=app_id,
-                                             components=parsed)
+        info = app_mod.remove_app_components(ctx.backend(), app_id=app_id, components=parsed)
     ctx.emit(True, data=info)
     _journal(ctx, app_id, info)
 
@@ -129,8 +157,7 @@ def _parse_group(raw: str) -> tuple[str, str, str]:
     # Exactly one '/': a stray slash (area/group/extra) would otherwise be
     # absorbed into the group id and silently produce a surprising Id.
     if not sep or not area_id or not group_id or "/" in group_id:
-        raise click.BadParameter(
-            f"--group must be 'areaId/groupId[:Title]': {raw!r}")
+        raise click.BadParameter(f"--group must be 'areaId/groupId[:Title]': {raw!r}")
     return area_id, group_id, title.strip()
 
 
@@ -144,19 +171,20 @@ def _parse_subarea(raw: str) -> tuple[str, str, str, str | None]:
     ref, sep, rest = raw.partition(":")
     if not sep:
         raise click.BadParameter(
-            f"--subarea must be 'areaId/groupId:entity=<logical>[:Title]': {raw!r}")
+            f"--subarea must be 'areaId/groupId:entity=<logical>[:Title]': {raw!r}"
+        )
     area_id, ref_sep, group_id = ref.partition("/")
     area_id, group_id = area_id.strip(), group_id.strip()
     # Exactly one '/' in the ref (consistent with --group); reject stray slashes.
     if not ref_sep or not area_id or not group_id or "/" in group_id:
         raise click.BadParameter(
-            f"--subarea must be 'areaId/groupId:entity=<logical>[:Title]': {raw!r}")
+            f"--subarea must be 'areaId/groupId:entity=<logical>[:Title]': {raw!r}"
+        )
     ent_part, _, title = rest.partition(":")
     ent_part = ent_part.strip()
     if not ent_part.startswith("entity="):
-        raise click.BadParameter(
-            f"--subarea must bind a table via 'entity=<logical>': {raw!r}")
-    entity = ent_part[len("entity="):].strip()
+        raise click.BadParameter(f"--subarea must bind a table via 'entity=<logical>': {raw!r}")
+    entity = ent_part[len("entity=") :].strip()
     if not entity:
         raise click.BadParameter(f"--subarea entity must not be empty: {raw!r}")
     title = title.strip()
@@ -165,20 +193,25 @@ def _parse_subarea(raw: str) -> tuple[str, str, str, str | None]:
 
 @app_group.command("build-sitemap")
 @click.argument("sitemap_name")
-@click.option("--area", "areas", multiple=True, required=True,
-              help="Repeatable 'id[:Title]'.")
-@click.option("--group", "groups", multiple=True,
-              help="Repeatable 'areaId/groupId[:Title]'.")
-@click.option("--subarea", "subareas", multiple=True,
-              help="Repeatable 'areaId/groupId:entity=<logical>[:Title]'. "
-                   "Binds a table via Entity=.")
-@click.option("--unique-name", default=None,
-              help="App uniquename to link the sitemap to (sets sitemapnameunique).")
+@click.option("--area", "areas", multiple=True, required=True, help="Repeatable 'id[:Title]'.")
+@click.option("--group", "groups", multiple=True, help="Repeatable 'areaId/groupId[:Title]'.")
+@click.option(
+    "--subarea",
+    "subareas",
+    multiple=True,
+    help="Repeatable 'areaId/groupId:entity=<logical>[:Title]'. Binds a table via Entity=.",
+)
+@click.option(
+    "--unique-name",
+    default=None,
+    help="App uniquename to link the sitemap to (sets sitemapnameunique).",
+)
 @_solution_option
 @_publish_option
 @pass_ctx
-def app_build_sitemap(ctx: CLIContext, sitemap_name, areas, groups, subareas,
-                      unique_name, solution, publish):
+def app_build_sitemap(
+    ctx: CLIContext, sitemap_name, areas, groups, subareas, unique_name, solution, publish
+):
     """Build a SiteMapXml from areas/groups/subareas and create the sitemap."""
     parsed_areas = [_parse_area(a) for a in areas]
     parsed_groups = [_parse_group(g) for g in groups]
@@ -187,9 +220,14 @@ def app_build_sitemap(ctx: CLIContext, sitemap_name, areas, groups, subareas,
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = app_mod.build_sitemap(
-            ctx.backend(), sitemap_name=sitemap_name, areas=parsed_areas,
-            groups=parsed_groups, subareas=parsed_subareas,
-            unique_name=unique_name, solution=solution, publish=publish,
+            ctx.backend(),
+            sitemap_name=sitemap_name,
+            areas=parsed_areas,
+            groups=parsed_groups,
+            subareas=parsed_subareas,
+            unique_name=unique_name,
+            solution=solution,
+            publish=publish,
         )
     # Dry-run's deliverable is the SiteMapXml itself. In human mode print it in
     # full (and to stdout, so `> sitemap.xml` works) — the default emit path
@@ -203,15 +241,21 @@ def app_build_sitemap(ctx: CLIContext, sitemap_name, areas, groups, subareas,
 
 @app_group.command("set-sitemap")
 @click.argument("sitemap_name")
-@click.option("--xml-file", type=click.Path(exists=True, dir_okay=False), required=True,
-              help="Path to a file containing the SiteMapXml.")
-@click.option("--unique-name", default=None,
-              help="App uniquename to link the sitemap to (sets sitemapnameunique).")
+@click.option(
+    "--xml-file",
+    type=click.Path(exists=True, dir_okay=False),
+    required=True,
+    help="Path to a file containing the SiteMapXml.",
+)
+@click.option(
+    "--unique-name",
+    default=None,
+    help="App uniquename to link the sitemap to (sets sitemapnameunique).",
+)
 @_solution_option
 @_publish_option
 @pass_ctx
-def app_set_sitemap(ctx: CLIContext, sitemap_name, xml_file, unique_name,
-                    solution, publish):
+def app_set_sitemap(ctx: CLIContext, sitemap_name, xml_file, unique_name, solution, publish):
     """Create a sitemap from a SiteMapXml file."""
     # click.Path(exists=True) validated the file at parse, but a permission
     # edge or a delete-after-check race can still fail the read — surface it
@@ -224,8 +268,13 @@ def app_set_sitemap(ctx: CLIContext, sitemap_name, xml_file, unique_name,
     solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
-        info = app_mod.set_sitemap(ctx.backend(), sitemap_name=sitemap_name,
-                                   sitemap_xml=xml, unique_name=unique_name,
-                                   solution=solution, publish=publish)
+        info = app_mod.set_sitemap(
+            ctx.backend(),
+            sitemap_name=sitemap_name,
+            sitemap_xml=xml,
+            unique_name=unique_name,
+            solution=solution,
+            publish=publish,
+        )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, sitemap_name, info, solution=solution)

@@ -13,8 +13,9 @@ from __future__ import annotations
 import json as _json
 import re
 import xml.etree.ElementTree as _ET
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable, cast
+from typing import Any, cast
 from uuid import uuid4
 
 from crm.core import entity as entity_ops
@@ -22,7 +23,6 @@ from crm.core import metadata as metadata_ops
 from crm.core import solution as solution_ops
 from crm.utils import safe_xml
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
-
 
 # `workflow.category` values per the SDK
 CATEGORY_WORKFLOW = 0
@@ -64,7 +64,7 @@ _WAIT_ACTIVITY_RE = re.compile(r"<(?:\w+:)?Postpone[\s/>]")
 _ACTIVITY_ASSEMBLY_RE = re.compile(r'AssemblyQualifiedName="[^,"]+,\s*([^,"]+)')
 
 # Activation state pairs
-STATE_DRAFT = (0, 1)        # (statecode, statuscode)
+STATE_DRAFT = (0, 1)  # (statecode, statuscode)
 STATE_ACTIVATED = (1, 2)
 
 
@@ -98,20 +98,22 @@ def retarget_xaml(
 
 # Allowlist of known mxswa activity local names (grounded in Microsoft Learn /
 # Microsoft.Xrm.Sdk.Workflow.Activities namespace documentation).
-_MXSWA_ACTIVITY_ALLOWLIST: frozenset[str] = frozenset({
-    "Workflow",
-    "ActivityReference",
-    "SetEntityProperty",
-    "GetEntityProperty",
-    "CreateEntity",
-    "UpdateEntity",
-    "AssignEntity",
-    "DeleteEntity",
-    "SetState",
-    "SetStateDynamicEntity",
-    "SendEmail",
-    "Postpone",
-})
+_MXSWA_ACTIVITY_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        "Workflow",
+        "ActivityReference",
+        "SetEntityProperty",
+        "GetEntityProperty",
+        "CreateEntity",
+        "UpdateEntity",
+        "AssignEntity",
+        "DeleteEntity",
+        "SetState",
+        "SetStateDynamicEntity",
+        "SendEmail",
+        "Postpone",
+    }
+)
 
 # Required arguments per activity (grounded in [RequiredArgument] properties
 # documented on Microsoft Learn for the Microsoft.Xrm.Sdk.Workflow.Activities
@@ -125,16 +127,14 @@ _MXSWA_REQUIRED_ARGS: dict[str, frozenset[str]] = {
 
 # NCName prefix: beyond \w, XML namespace prefixes may legally contain '.' and
 # '-' (e.g. "my-ns"), so match those too or a hyphenated prefix slips through.
-_NCNAME = r'[\w.\-]+'
+_NCNAME = r"[\w.\-]+"
 # Regex to pre-scan namespace prefix declarations (xmlns:foo="…") in raw text.
-_XMLNS_DECL_RE = re.compile(rf'xmlns:({_NCNAME})\s*=')
+_XMLNS_DECL_RE = re.compile(rf"xmlns:({_NCNAME})\s*=")
 # Regex to find used prefixes on element/attribute names (foo:bar patterns).
-_PREFIX_USE_RE = re.compile(rf'</?({_NCNAME}):\w+|({_NCNAME}):\w+\s*=')
+_PREFIX_USE_RE = re.compile(rf"</?({_NCNAME}):\w+|({_NCNAME}):\w+\s*=")
 
 
-def validate_workflow_xaml(
-    xaml: str, attribute_set: Iterable[str]
-) -> list[str]:
+def validate_workflow_xaml(xaml: str, attribute_set: Iterable[str]) -> list[str]:
     """Reference-validate a workflow XAML definition offline. Returns advisory
     warnings (never raises on a reference problem; promotion to hard failure is
     the caller's job).
@@ -204,7 +204,7 @@ def validate_workflow_xaml(
         if tag.startswith("{") and "}" in tag:
             close = tag.index("}")
             ns_uri = tag[1:close]
-            local = tag[close + 1:]
+            local = tag[close + 1 :]
         else:
             ns_uri = ""
             local = tag
@@ -237,9 +237,7 @@ def validate_workflow_xaml(
                 for child in elem:
                     child_tag = child.tag
                     child_local = (
-                        child_tag[child_tag.index("}") + 1:]
-                        if "}" in child_tag
-                        else child_tag
+                        child_tag[child_tag.index("}") + 1 :] if "}" in child_tag else child_tag
                     )
                     # Convention: child element for arg "Value" is named
                     # "SetEntityProperty.Value" — strip the activity prefix.
@@ -250,9 +248,7 @@ def validate_workflow_xaml(
                 xml_attrs = set(elem.attrib.keys())
                 for req_arg in sorted(required):
                     if req_arg not in xml_attrs and req_arg not in child_names:
-                        warnings.append(
-                            f"{local} missing required argument: '{req_arg}'"
-                        )
+                        warnings.append(f"{local} missing required argument: '{req_arg}'")
 
     return warnings
 
@@ -273,9 +269,7 @@ def get_workflow(backend: D365Backend, workflow_id: str) -> dict[str, Any]:
     """
     if not workflow_id:
         raise D365Error("workflow_id is required.")
-    result = as_dict(backend.get(
-        f"workflows({workflow_id})", params={"$select": _WORKFLOW_SELECT}
-    ))
+    result = as_dict(backend.get(f"workflows({workflow_id})", params={"$select": _WORKFLOW_SELECT}))
     if result.get("type") == TYPE_ACTIVATION:
         raise D365Error(
             f"Workflow {workflow_id} is a type=2 activation copy; "
@@ -292,9 +286,19 @@ _NEEDS_MORE_CATEGORIES = {CATEGORY_ACTION, CATEGORY_BPF}
 _UNSUPPORTED_CATEGORIES = {CATEGORY_DIALOG, CATEGORY_MODERN_FLOW}
 
 _CLONE_COPY_FIELDS = (
-    "category", "mode", "scope", "ondemand", "subprocess", "languagecode",
-    "triggeroncreate", "triggerondelete", "triggeronupdateattributelist",
-    "asyncautodelete", "runas", "syncworkflowlogonfailure", "istransacted",
+    "category",
+    "mode",
+    "scope",
+    "ondemand",
+    "subprocess",
+    "languagecode",
+    "triggeroncreate",
+    "triggerondelete",
+    "triggeronupdateattributelist",
+    "asyncautodelete",
+    "runas",
+    "syncworkflowlogonfailure",
+    "istransacted",
 )
 COMPONENT_TYPE_WORKFLOW = 29
 
@@ -326,9 +330,7 @@ def clone_workflow_to_entity(
     category = src.get("category")
 
     if category in _UNSUPPORTED_CATEGORIES:
-        raise D365Error(
-            f"Cloning category {category} (dialog/modern flow) is not supported."
-        )
+        raise D365Error(f"Cloning category {category} (dialog/modern flow) is not supported.")
     if category in _NEEDS_MORE_CATEGORIES:
         raise D365Error(
             f"Cloning category {category} (action/BPF) is not yet supported: it "
@@ -341,19 +343,27 @@ def clone_workflow_to_entity(
     new_id = str(uuid4())
     new_xaml = retarget_xaml(
         src.get("xaml", ""),
-        src_entity=src["primaryentity"], dst_entity=target_entity,
-        src_id=workflow_id, dst_id=new_id,
+        src_entity=src["primaryentity"],
+        dst_entity=target_entity,
+        src_id=workflow_id,
+        dst_id=new_id,
     )
     payload: dict[str, Any] = {k: src[k] for k in _CLONE_COPY_FIELDS if k in src}
-    payload.update({
-        "name": name or f"{src.get('name', 'Workflow')} (Clone)",
-        "primaryentity": target_entity,
-        "type": TYPE_DEFINITION,
-        "xaml": new_xaml,
-    })
+    payload.update(
+        {
+            "name": name or f"{src.get('name', 'Workflow')} (Clone)",
+            "primaryentity": target_entity,
+            "type": TYPE_DEFINITION,
+            "xaml": new_xaml,
+        }
+    )
     upserted = entity_ops.upsert(
-        backend, "workflows", new_id, payload,
-        caller_id=caller_id, caller_object_id=caller_object_id,
+        backend,
+        "workflows",
+        new_id,
+        payload,
+        caller_id=caller_id,
+        caller_object_id=caller_object_id,
         suppress_duplicate_detection=suppress_duplicate_detection,
         bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )
@@ -378,8 +388,11 @@ def clone_workflow_to_entity(
     activated = False
     if activate:
         set_workflow_state(
-            backend, new_id, activate=True,
-            caller_id=caller_id, caller_object_id=caller_object_id,
+            backend,
+            new_id,
+            activate=True,
+            caller_id=caller_id,
+            caller_object_id=caller_object_id,
             suppress_duplicate_detection=suppress_duplicate_detection,
             bypass_custom_plugin_execution=bypass_custom_plugin_execution,
         )
@@ -387,8 +400,10 @@ def clone_workflow_to_entity(
 
     if solution:
         solution_ops.add_solution_component(
-            backend, solution=solution,
-            component_id=new_id, component_type=COMPONENT_TYPE_WORKFLOW,
+            backend,
+            solution=solution,
+            component_id=new_id,
+            component_type=COMPONENT_TYPE_WORKFLOW,
         )
 
     return {
@@ -403,10 +418,24 @@ def clone_workflow_to_entity(
 
 
 _EXPORT_FIELDS = (
-    "workflowid", "name", "category", "primaryentity", "type", "xaml",
-    "mode", "scope", "ondemand", "subprocess", "languagecode",
-    "triggeroncreate", "triggerondelete", "triggeronupdateattributelist",
-    "asyncautodelete", "runas", "syncworkflowlogonfailure", "istransacted",
+    "workflowid",
+    "name",
+    "category",
+    "primaryentity",
+    "type",
+    "xaml",
+    "mode",
+    "scope",
+    "ondemand",
+    "subprocess",
+    "languagecode",
+    "triggeroncreate",
+    "triggerondelete",
+    "triggeronupdateattributelist",
+    "asyncautodelete",
+    "runas",
+    "syncworkflowlogonfailure",
+    "istransacted",
 )
 
 
@@ -442,16 +471,23 @@ def import_workflow(
     payload = {k: v for k, v in record.items() if k != "workflowid"}
     payload["type"] = TYPE_DEFINITION
     entity_ops.upsert(
-        backend, "workflows", wf_id, payload,
-        caller_id=caller_id, caller_object_id=caller_object_id,
+        backend,
+        "workflows",
+        wf_id,
+        payload,
+        caller_id=caller_id,
+        caller_object_id=caller_object_id,
         suppress_duplicate_detection=suppress_duplicate_detection,
         bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )
     activated = False
     if activate:
         set_workflow_state(
-            backend, wf_id, activate=True,
-            caller_id=caller_id, caller_object_id=caller_object_id,
+            backend,
+            wf_id,
+            activate=True,
+            caller_id=caller_id,
+            caller_object_id=caller_object_id,
             suppress_duplicate_detection=suppress_duplicate_detection,
             bypass_custom_plugin_execution=bypass_custom_plugin_execution,
         )
@@ -502,8 +538,7 @@ def assess_workflow_migration(row: dict[str, Any]) -> dict[str, Any]:
         blockers.append(MIGRATION_BLOCKER_REAL_TIME)
     if _WAIT_ACTIVITY_RE.search(xaml):
         blockers.append(MIGRATION_BLOCKER_WAIT)
-    if any(asm.strip() != _OOB_ACTIVITY_ASSEMBLY
-           for asm in _ACTIVITY_ASSEMBLY_RE.findall(xaml)):
+    if any(asm.strip() != _OOB_ACTIVITY_ASSEMBLY for asm in _ACTIVITY_ASSEMBLY_RE.findall(xaml)):
         blockers.append(MIGRATION_BLOCKER_CUSTOM_ACTIVITY)
     return {
         "id": row.get("workflowid"),
@@ -572,23 +607,25 @@ def set_workflow_state(
     body: dict[str, Any] = {"statecode": state, "statuscode": status}
 
     def _patch(target_id: str) -> dict[str, Any]:
-        return as_dict(backend.patch(
-            f"workflows({target_id})",
-            json_body=body,
-            etag="*",
-            caller_id=caller_id,
-            caller_object_id=caller_object_id,
-            suppress_duplicate_detection=suppress_duplicate_detection,
-            bypass_custom_plugin_execution=bypass_custom_plugin_execution,
-        ))
+        return as_dict(
+            backend.patch(
+                f"workflows({target_id})",
+                json_body=body,
+                etag="*",
+                caller_id=caller_id,
+                caller_object_id=caller_object_id,
+                suppress_duplicate_detection=suppress_duplicate_detection,
+                bypass_custom_plugin_execution=bypass_custom_plugin_execution,
+            )
+        )
 
     target_id = workflow_id
     resolved_from: str | None = None
 
     if auto_resolve_parent and backend.dry_run:
         parent = _resolve_parent_workflow_id(
-            backend, workflow_id,
-            caller_id=caller_id, caller_object_id=caller_object_id)
+            backend, workflow_id, caller_id=caller_id, caller_object_id=caller_object_id
+        )
         if parent:
             target_id, resolved_from = parent, workflow_id
 
@@ -598,8 +635,8 @@ def set_workflow_state(
         if not (auto_resolve_parent and exc.code == ACTIVATION_PATCH_ERROR_CODE):
             raise
         parent = _resolve_parent_workflow_id(
-            backend, workflow_id,
-            caller_id=caller_id, caller_object_id=caller_object_id)
+            backend, workflow_id, caller_id=caller_id, caller_object_id=caller_object_id
+        )
         if not parent:
             raise
         result = _patch(parent)
@@ -695,14 +732,29 @@ def update_workflow(
         # so validation and the deactivate/PATCH/reactivate lifecycle don't
         # straddle two write shapes. (The command layer already blocks this
         # combination; this guard keeps the core honest when called directly.)
-        if any(v is not None for v in (name, scope, on_demand, trigger_on_create,
-                                       trigger_on_delete, trigger_on_update_attributes)):
+        if any(
+            v is not None
+            for v in (
+                name,
+                scope,
+                on_demand,
+                trigger_on_create,
+                trigger_on_delete,
+                trigger_on_update_attributes,
+            )
+        ):
             raise D365Error(
                 "The XAML logic path cannot be combined with metadata edits "
-                "(name/scope/triggers/on-demand); update them in separate calls.")
+                "(name/scope/triggers/on-demand); update them in separate calls."
+            )
         return _replace_workflow_xaml(
-            backend, workflow_id, xaml, strict=strict, rollback=rollback,
-            caller_id=caller_id, caller_object_id=caller_object_id,
+            backend,
+            workflow_id,
+            xaml,
+            strict=strict,
+            rollback=rollback,
+            caller_id=caller_id,
+            caller_object_id=caller_object_id,
             suppress_duplicate_detection=suppress_duplicate_detection,
             bypass_custom_plugin_execution=bypass_custom_plugin_execution,
         )
@@ -724,7 +776,8 @@ def update_workflow(
         raise D365Error("No metadata fields to update were given.")
 
     admin: dict[str, Any] = {
-        "caller_id": caller_id, "caller_object_id": caller_object_id,
+        "caller_id": caller_id,
+        "caller_object_id": caller_object_id,
         "suppress_duplicate_detection": suppress_duplicate_detection,
         "bypass_custom_plugin_execution": bypass_custom_plugin_execution,
     }
@@ -736,19 +789,25 @@ def update_workflow(
     # carries a parentworkflowid — needs a second GET of the resolved parent.
     # Runs live even under dry-run (reads-execute rule), so a missing id raises
     # here before any write and the preview is real.
-    current = as_dict(backend.get(
-        f"workflows({workflow_id})",
-        params={"$select": "parentworkflowid,name,statecode"},
-        caller_id=caller_id, caller_object_id=caller_object_id,
-    ))
+    current = as_dict(
+        backend.get(
+            f"workflows({workflow_id})",
+            params={"$select": "parentworkflowid,name,statecode"},
+            caller_id=caller_id,
+            caller_object_id=caller_object_id,
+        )
+    )
     parent = current.get("_parentworkflowid_value") or current.get("parentworkflowid")
     if parent:
         target_id, resolved_from = parent, workflow_id
-        current = as_dict(backend.get(
-            f"workflows({target_id})",
-            params={"$select": "name,statecode"},
-            caller_id=caller_id, caller_object_id=caller_object_id,
-        ))
+        current = as_dict(
+            backend.get(
+                f"workflows({target_id})",
+                params={"$select": "name,statecode"},
+                caller_id=caller_id,
+                caller_object_id=caller_object_id,
+            )
+        )
     else:
         target_id, resolved_from = workflow_id, None
     result_name = changes.get("name", current.get("name"))
@@ -788,31 +847,31 @@ def update_workflow(
         return _result(deactivated=False)
 
     # Published definition: deactivate, edit, reactivate.
-    set_workflow_state(backend, target_id, activate=False,
-                       auto_resolve_parent=False, **admin)
+    set_workflow_state(backend, target_id, activate=False, auto_resolve_parent=False, **admin)
     try:
         _patch_metadata()
     except D365Error as exc:
         raise D365Error(
             f"Workflow {target_id} was deactivated but the metadata update "
             f"failed; it remains a draft (no rollback). {exc}",
-            status=exc.status, code=exc.code, response_body=exc.response_body,
+            status=exc.status,
+            code=exc.code,
+            response_body=exc.response_body,
         ) from exc
     try:
-        set_workflow_state(backend, target_id, activate=True,
-                           auto_resolve_parent=False, **admin)
+        set_workflow_state(backend, target_id, activate=True, auto_resolve_parent=False, **admin)
     except D365Error as exc:
         raise D365Error(
             f"Workflow {target_id} metadata was updated but reactivation "
             f"failed; it remains deactivated (draft, no rollback). {exc}",
-            status=exc.status, code=exc.code, response_body=exc.response_body,
+            status=exc.status,
+            code=exc.code,
+            response_body=exc.response_body,
         ) from exc
     return _result(deactivated=True)
 
 
-def _map_xaml_fault(
-    exc: D365Error, target_id: str, *, note: str | None = None
-) -> D365Error:
+def _map_xaml_fault(exc: D365Error, target_id: str, *, note: str | None = None) -> D365Error:
     """Map a server fault from the XAML logic path to a clean ``D365Error``.
 
     The two provenance gates get an explanatory message instead of a leaked raw
@@ -822,20 +881,23 @@ def _map_xaml_fault(
     are always preserved.
     """
     if exc.code == XAML_PROVENANCE_CODE:
-        base = (f"D365 rejected the workflow XAML for {target_id}: its provenance "
-                f"is not the web designer ({XAML_PROVENANCE_CODE}). Workflow step "
-                f"XAML can only be edited on-premises, for definitions the "
-                f"platform authored.")
+        base = (
+            f"D365 rejected the workflow XAML for {target_id}: its provenance "
+            f"is not the web designer ({XAML_PROVENANCE_CODE}). Workflow step "
+            f"XAML can only be edited on-premises, for definitions the "
+            f"platform authored."
+        )
     elif exc.code == NONUI_XAML_NOT_PERMITTED_CODE:
-        base = (f"D365 rejected the workflow XAML for {target_id}: this "
-                f"organization does not permit non-UI (hand-authored) workflow "
-                f"XAML ({NONUI_XAML_NOT_PERMITTED_CODE}).")
+        base = (
+            f"D365 rejected the workflow XAML for {target_id}: this "
+            f"organization does not permit non-UI (hand-authored) workflow "
+            f"XAML ({NONUI_XAML_NOT_PERMITTED_CODE})."
+        )
     else:
         base = f"Workflow {target_id} XAML update failed. {exc}"
     if note:
         base = f"{base} {note}"
-    return D365Error(
-        base, status=exc.status, code=exc.code, response_body=exc.response_body)
+    return D365Error(base, status=exc.status, code=exc.code, response_body=exc.response_body)
 
 
 def _replace_workflow_xaml(
@@ -886,25 +948,30 @@ def _replace_workflow_xaml(
         )
 
     admin: dict[str, Any] = {
-        "caller_id": caller_id, "caller_object_id": caller_object_id,
+        "caller_id": caller_id,
+        "caller_object_id": caller_object_id,
         "suppress_duplicate_detection": suppress_duplicate_detection,
         "bypass_custom_plugin_execution": bypass_custom_plugin_execution,
     }
 
     # 2. Resolve a type=2 activation-record id to its type=1 parent.
     parent = _resolve_parent_workflow_id(
-        backend, workflow_id, caller_id=caller_id, caller_object_id=caller_object_id)
+        backend, workflow_id, caller_id=caller_id, caller_object_id=caller_object_id
+    )
     target_id = parent or workflow_id
     resolved_from = workflow_id if parent else None
 
     # 3a. Current state + referenced entity + prior XAML. Runs live even under
     # dry-run (reads-execute rule), so a missing id raises before any write and
     # the validation/preview are real.
-    current = as_dict(backend.get(
-        f"workflows({target_id})",
-        params={"$select": "name,statecode,primaryentity,xaml"},
-        caller_id=caller_id, caller_object_id=caller_object_id,
-    ))
+    current = as_dict(
+        backend.get(
+            f"workflows({target_id})",
+            params={"$select": "name,statecode,primaryentity,xaml"},
+            caller_id=caller_id,
+            caller_object_id=caller_object_id,
+        )
+    )
     was_active = current.get("statecode") == STATE_ACTIVATED[0]
     primary_entity = current.get("primaryentity")
     prior_xaml = current.get("xaml")
@@ -913,14 +980,16 @@ def _replace_workflow_xaml(
     warnings: list[str] = []
     if primary_entity:
         attribute_set = [
-            a["LogicalName"] for a in metadata_ops.list_attributes(backend, primary_entity)
+            a["LogicalName"]
+            for a in metadata_ops.list_attributes(backend, primary_entity)
             if a.get("LogicalName")
         ]
         warnings = validate_workflow_xaml(xaml, attribute_set)
     if strict and warnings:
         raise D365Error(
             f"Refusing to update workflow {target_id} XAML: --strict, and the "
-            f"reference validation produced warnings: " + "; ".join(warnings))
+            f"reference validation produced warnings: " + "; ".join(warnings)
+        )
 
     if backend.dry_run:
         return {
@@ -935,8 +1004,7 @@ def _replace_workflow_xaml(
         }
 
     def _patch_xaml(blob: str) -> None:
-        backend.patch(f"workflows({target_id})", json_body={"xaml": blob},
-                      etag="*", **admin)
+        backend.patch(f"workflows({target_id})", json_body={"xaml": blob}, etag="*", **admin)
 
     def _result(reactivated: bool) -> dict[str, Any]:
         # Only returned on success (draft patch, or a clean reactivation). A
@@ -953,15 +1021,19 @@ def _replace_workflow_xaml(
 
     # 4 + 6. Lifecycle: deactivate-if-active -> PATCH xaml -> reactivate.
     if was_active:
-        set_workflow_state(backend, target_id, activate=False,
-                           auto_resolve_parent=False, **admin)
+        set_workflow_state(backend, target_id, activate=False, auto_resolve_parent=False, **admin)
     try:
         _patch_xaml(xaml)
     except D365Error as exc:
         raise _map_xaml_fault(
-            exc, target_id,
-            note=(f"Workflow {target_id} was deactivated but the XAML update "
-                  f"failed; it remains a draft (no rollback)." if was_active else None),
+            exc,
+            target_id,
+            note=(
+                f"Workflow {target_id} was deactivated but the XAML update "
+                f"failed; it remains a draft (no rollback)."
+                if was_active
+                else None
+            ),
         ) from exc
 
     # A draft stays a draft — the user's next activate is the compile authority.
@@ -970,41 +1042,53 @@ def _replace_workflow_xaml(
 
     # 5. Reactivate (compile/semantic authority); roll back on failure.
     try:
-        set_workflow_state(backend, target_id, activate=True,
-                           auto_resolve_parent=False, **admin)
+        set_workflow_state(backend, target_id, activate=True, auto_resolve_parent=False, **admin)
     except D365Error as exc:
         if not rollback:
             raise _map_xaml_fault(
-                exc, target_id,
-                note=(f"Workflow {target_id}'s XAML was replaced but reactivation "
-                      f"failed; it remains deactivated with the rejected XAML in "
-                      f"place (--no-rollback)."),
+                exc,
+                target_id,
+                note=(
+                    f"Workflow {target_id}'s XAML was replaced but reactivation "
+                    f"failed; it remains deactivated with the rejected XAML in "
+                    f"place (--no-rollback)."
+                ),
             ) from exc
         if not prior_xaml:
             # An active workflow always has compiled XAML, so this is defensive:
             # never PATCH an empty blob as a "restore" — that would be a real
             # state change dressed as a rollback. Report truthfully instead.
             raise _map_xaml_fault(
-                exc, target_id,
-                note=(f"Workflow {target_id}'s XAML was replaced but reactivation "
-                      f"failed, and no prior XAML was captured to roll back to; "
-                      f"it remains deactivated with the rejected XAML in place."),
+                exc,
+                target_id,
+                note=(
+                    f"Workflow {target_id}'s XAML was replaced but reactivation "
+                    f"failed, and no prior XAML was captured to roll back to; "
+                    f"it remains deactivated with the rejected XAML in place."
+                ),
             ) from exc
         try:
             _patch_xaml(prior_xaml)
-            set_workflow_state(backend, target_id, activate=True,
-                               auto_resolve_parent=False, **admin)
+            set_workflow_state(
+                backend, target_id, activate=True, auto_resolve_parent=False, **admin
+            )
         except D365Error as rb_exc:
             raise _map_xaml_fault(
-                exc, target_id,
-                note=(f"Workflow {target_id}'s XAML was replaced but reactivation "
-                      f"failed, AND the rollback failed ({rb_exc}); the workflow "
-                      f"is deactivated and may hold the rejected XAML."),
+                exc,
+                target_id,
+                note=(
+                    f"Workflow {target_id}'s XAML was replaced but reactivation "
+                    f"failed, AND the rollback failed ({rb_exc}); the workflow "
+                    f"is deactivated and may hold the rejected XAML."
+                ),
             ) from exc
         raise _map_xaml_fault(
-            exc, target_id,
-            note=(f"Workflow {target_id}'s new XAML was rejected on reactivation; "
-                  f"rolled back to the prior XAML and reactivated."),
+            exc,
+            target_id,
+            note=(
+                f"Workflow {target_id}'s new XAML was rejected on reactivation; "
+                f"rolled back to the prior XAML and reactivated."
+            ),
         ) from exc
     return _result(reactivated=True)
 
@@ -1024,21 +1108,21 @@ def _resolve_parent_workflow_id(
     args keep the lookup under the same identity as the caller's state change.
     """
     try:
-        row = as_dict(backend.get(
-            f"workflows({workflow_id})",
-            params={"$select": "parentworkflowid"},
-            caller_id=caller_id,
-            caller_object_id=caller_object_id,
-        ))
+        row = as_dict(
+            backend.get(
+                f"workflows({workflow_id})",
+                params={"$select": "parentworkflowid"},
+                caller_id=caller_id,
+                caller_object_id=caller_object_id,
+            )
+        )
     except D365Error:
         return None
     parent = row.get("_parentworkflowid_value") or row.get("parentworkflowid")
     return parent or None
 
 
-def activation_record_hint(
-    backend: D365Backend, workflow_id: str, exc: D365Error
-) -> str | None:
+def activation_record_hint(backend: D365Backend, workflow_id: str, exc: D365Error) -> str | None:
     """If `exc` is the 'cannot update a workflow activation' rejection, return a
     hint pointing at the parent draft GUID; else None.
 
@@ -1062,9 +1146,7 @@ def activation_record_hint(
     )
 
 
-def activation_delete_hint(
-    backend: D365Backend, workflow_id: str, exc: D365Error
-) -> str | None:
+def activation_delete_hint(backend: D365Backend, workflow_id: str, exc: D365Error) -> str | None:
     """If `exc` is the 'cannot delete a workflow activation' rejection, return a
     hint pointing at deactivating the parent definition; else None.
 
@@ -1119,8 +1201,10 @@ def resolve_delete_target(
     if not workflow_id:
         raise D365Error("workflow_id is required.")
     return _resolve_delete_target_live(
-        backend, workflow_id,
-        caller_id=caller_id, caller_object_id=caller_object_id,
+        backend,
+        workflow_id,
+        caller_id=caller_id,
+        caller_object_id=caller_object_id,
     )
 
 
@@ -1131,12 +1215,14 @@ def _resolve_delete_target_live(
     caller_id: str | None = None,
     caller_object_id: str | None = None,
 ) -> dict[str, Any]:
-    row = as_dict(backend.get(
-        f"workflows({workflow_id})",
-        params={"$select": _DELETE_RESOLVE_SELECT},
-        caller_id=caller_id,
-        caller_object_id=caller_object_id,
-    ))
+    row = as_dict(
+        backend.get(
+            f"workflows({workflow_id})",
+            params={"$select": _DELETE_RESOLVE_SELECT},
+            caller_id=caller_id,
+            caller_object_id=caller_object_id,
+        )
+    )
     if row.get("type") != TYPE_ACTIVATION:
         return {
             "workflow_id": workflow_id,
@@ -1153,12 +1239,14 @@ def _resolve_delete_target_live(
     if not parent:
         raise no_parent
     try:
-        parent_row = as_dict(backend.get(
-            f"workflows({parent})",
-            params={"$select": "name,type,statecode"},
-            caller_id=caller_id,
-            caller_object_id=caller_object_id,
-        ))
+        parent_row = as_dict(
+            backend.get(
+                f"workflows({parent})",
+                params={"$select": "name,type,statecode"},
+                caller_id=caller_id,
+                caller_object_id=caller_object_id,
+            )
+        )
     except D365Error as exc:
         if exc.status == 404:
             raise no_parent from exc
@@ -1192,8 +1280,10 @@ def delete_workflow(
     (`{_dry_run, would_delete, would_deactivate, ...}`) without mutating.
     """
     target = resolved or resolve_delete_target(
-        backend, workflow_id,
-        caller_id=caller_id, caller_object_id=caller_object_id,
+        backend,
+        workflow_id,
+        caller_id=caller_id,
+        caller_object_id=caller_object_id,
     )
     target_id = target["workflow_id"]
     needs_deactivate = target.get("statecode") == STATE_ACTIVATED[0]
@@ -1209,8 +1299,12 @@ def delete_workflow(
     deactivated = False
     if needs_deactivate:
         set_workflow_state(
-            backend, target_id, activate=False, auto_resolve_parent=False,
-            caller_id=caller_id, caller_object_id=caller_object_id,
+            backend,
+            target_id,
+            activate=False,
+            auto_resolve_parent=False,
+            caller_id=caller_id,
+            caller_object_id=caller_object_id,
             suppress_duplicate_detection=suppress_duplicate_detection,
             bypass_custom_plugin_execution=bypass_custom_plugin_execution,
         )
@@ -1229,7 +1323,9 @@ def delete_workflow(
         raise D365Error(
             f"Workflow definition {target_id} was deactivated but the delete "
             f"failed; it remains a draft (no rollback). {exc}",
-            status=exc.status, code=exc.code, response_body=exc.response_body,
+            status=exc.status,
+            code=exc.code,
+            response_body=exc.response_body,
         ) from exc
     return {
         "deleted": True,
@@ -1256,18 +1352,18 @@ def execute_workflow(
     """
     if not workflow_id or not target_record_id:
         raise D365Error("workflow_id and target_record_id are required.")
-    path = (
-        f"workflows({workflow_id})/Microsoft.Dynamics.CRM.ExecuteWorkflow"
-    )
+    path = f"workflows({workflow_id})/Microsoft.Dynamics.CRM.ExecuteWorkflow"
     body: dict[str, Any] = {"EntityId": target_record_id}
-    result = as_dict(backend.post(
-        path,
-        json_body=body,
-        caller_id=caller_id,
-        caller_object_id=caller_object_id,
-        suppress_duplicate_detection=suppress_duplicate_detection,
-        bypass_custom_plugin_execution=bypass_custom_plugin_execution,
-    ))
+    result = as_dict(
+        backend.post(
+            path,
+            json_body=body,
+            caller_id=caller_id,
+            caller_object_id=caller_object_id,
+            suppress_duplicate_detection=suppress_duplicate_detection,
+            bypass_custom_plugin_execution=bypass_custom_plugin_execution,
+        )
+    )
     return {
         "workflow_id": workflow_id,
         "target_id": target_record_id,

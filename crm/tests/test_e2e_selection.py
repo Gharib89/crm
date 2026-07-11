@@ -5,20 +5,23 @@ credential sourcing, opt-in gating, and reachability classification) WITHOUT a
 live server. The file lives OUTSIDE ``crm/tests/e2e/`` so it is not auto-marked
 ``e2e`` and runs in the normal offline CI.
 """
+
 # pyright: basic
 from __future__ import annotations
 
 import pytest
 
 from crm.tests.e2e import conftest as e2e
+
 # The prefix the backend stamps on a wrapped transport failure (DNS/TCP/TLS/
 # timeout) — import the real constant so this test tracks any rename.
-from crm.utils.d365_backend import D365Error, _TRANSPORT_FAILURE_PREFIX
+from crm.utils.d365_backend import _TRANSPORT_FAILURE_PREFIX, D365Error
 
 
 class TestReachabilityClassification:
     """`_is_unreachable` — a host that never answers is unreachable; any HTTP
-    response (even an auth/server error) is reachable."""
+    response (even an auth/server error) is reachable.
+    """
 
     def test_status_less_transport_failure_is_unreachable(self):
         exc = D365Error(f"{_TRANSPORT_FAILURE_PREFIX}: Connection refused", status=None)
@@ -45,9 +48,14 @@ class TestReachabilityClassification:
 # tuple of credential-looking strings — that trips GitGuardian's Authentication
 # Tuple detector). Plus the auth/domain selectors, which aren't credentials.
 _ENV_CRED_VARS = (
-    e2e._E_URL, e2e._E_USERNAME, e2e._E_PW,
-    e2e._E_CLIENT_ID, e2e._E_CLIENT_SECRET, e2e._E_TENANT_ID,
-    "D365_AUTH", "D365_DOMAIN",
+    e2e._E_URL,
+    e2e._E_USERNAME,
+    e2e._E_PW,
+    e2e._E_CLIENT_ID,
+    e2e._E_CLIENT_SECRET,
+    e2e._E_TENANT_ID,
+    "D365_AUTH",
+    "D365_DOMAIN",
 )
 
 
@@ -61,7 +69,8 @@ def clean_e2e_env(monkeypatch):
 
 class TestOptIn:
     """`_e2e_opted_in` — D365_E2E=1 plus EITHER a named profile OR a full env
-    credential set."""
+    credential set.
+    """
 
     def test_not_opted_in_without_d365_e2e(self, clean_e2e_env):
         clean_e2e_env.setenv(e2e._E2E_PROFILE_ENV, "anyprofile")
@@ -87,17 +96,23 @@ class TestOptIn:
         assert e2e._e2e_opted_in() is False
 
 
-def _seed_profile(home, monkeypatch, *, name, url, auth_scheme,
-                  secret="pw", domain="", username="", **kw):
+def _seed_profile(
+    home, monkeypatch, *, name, url, auth_scheme, secret="pw", domain="", username="", **kw
+):
     """Save a real profile + plaintext secret under an isolated CRM_HOME, the way
-    `crm profile add` would, so `_resolve_e2e_profile` can load it back."""
+    `crm profile add` would, so `_resolve_e2e_profile` can load it back.
+    """
     from crm.core import session as session_mod
     from crm.utils.d365_backend import ConnectionProfile
 
     monkeypatch.setenv("CRM_HOME", str(home))
     profile = ConnectionProfile(
-        name=name, url=url, domain=domain, username=username,
-        auth_scheme=auth_scheme, **kw,
+        name=name,
+        url=url,
+        domain=domain,
+        username=username,
+        auth_scheme=auth_scheme,
+        **kw,
     )
     session_mod.save_profile(profile)
     session_mod.save_profile_secret_plaintext(name, secret)
@@ -106,7 +121,8 @@ def _seed_profile(home, monkeypatch, *, name, url, auth_scheme,
 
 class TestResolveEnvPath:
     """`_resolve_e2e_profile` with D365_E2E_PROFILE unset — builds the throwaway
-    profile from the flat D365_* env set (the unchanged CI path)."""
+    profile from the flat D365_* env set (the unchanged CI path).
+    """
 
     def test_ntlm_env_builds_onprem_profile(self, clean_e2e_env):
         clean_e2e_env.setenv(e2e._E_URL, "http://crm.contoso.local/Contoso")
@@ -140,32 +156,42 @@ class TestResolveEnvPath:
 class TestResolveProfilePath:
     """`_resolve_e2e_profile` with D365_E2E_PROFILE set — loads the named profile
     + secret from the real CRM_HOME and renames a copy to the throwaway profile.
-    Target is intrinsic to the loaded profile's auth scheme."""
+    Target is intrinsic to the loaded profile's auth scheme.
+    """
 
     def test_cloud_profile_loaded_and_renamed(self, tmp_path, clean_e2e_env):
         _seed_profile(
-            tmp_path, clean_e2e_env, name="mycloud",
-            url="https://org.example.crm.local", auth_scheme="oauth",
-            secret="pw-cloud", tenant_id="t1", client_id="c1",
+            tmp_path,
+            clean_e2e_env,
+            name="mycloud",
+            url="https://org.example.crm.local",
+            auth_scheme="oauth",
+            secret="pw-cloud",
+            tenant_id="t1",
+            client_id="c1",
         )
         clean_e2e_env.setenv(e2e._E2E_PROFILE_ENV, "mycloud")
         profile, secret = e2e._resolve_e2e_profile()
-        assert profile.name == e2e._LIVE_PROFILE         # renamed for the throwaway
-        assert profile.auth_scheme == "oauth"            # → target == cloud
+        assert profile.name == e2e._LIVE_PROFILE  # renamed for the throwaway
+        assert profile.auth_scheme == "oauth"  # → target == cloud
         assert profile.url == "https://org.example.crm.local"
         assert profile.client_id == "c1"
         assert secret == "pw-cloud"
 
     def test_onprem_profile_loaded_and_renamed(self, tmp_path, clean_e2e_env):
         _seed_profile(
-            tmp_path, clean_e2e_env, name="myonprem",
-            url="http://crm.contoso.local/Contoso", auth_scheme="ntlm",
-            secret="pw-np", username="contoso\\admin",
+            tmp_path,
+            clean_e2e_env,
+            name="myonprem",
+            url="http://crm.contoso.local/Contoso",
+            auth_scheme="ntlm",
+            secret="pw-np",
+            username="contoso\\admin",
         )
         clean_e2e_env.setenv(e2e._E2E_PROFILE_ENV, "myonprem")
         profile, secret = e2e._resolve_e2e_profile()
         assert profile.name == e2e._LIVE_PROFILE
-        assert profile.auth_scheme == "ntlm"             # → target == onprem
+        assert profile.auth_scheme == "ntlm"  # → target == onprem
         assert secret == "pw-np"
 
     def test_missing_profile_raises_naming_the_var(self, tmp_path, clean_e2e_env):
@@ -178,11 +204,17 @@ class TestResolveProfilePath:
     def test_profile_without_secret_raises(self, tmp_path, clean_e2e_env):
         from crm.core import session as session_mod
         from crm.utils.d365_backend import ConnectionProfile
+
         clean_e2e_env.setenv("CRM_HOME", str(tmp_path))
-        session_mod.save_profile(ConnectionProfile(
-            name="secretless", url="http://crm.contoso.local/Contoso",
-            domain="contoso", username="contoso\\admin", auth_scheme="ntlm",
-        ))
+        session_mod.save_profile(
+            ConnectionProfile(
+                name="secretless",
+                url="http://crm.contoso.local/Contoso",
+                domain="contoso",
+                username="contoso\\admin",
+                auth_scheme="ntlm",
+            )
+        )
         clean_e2e_env.setenv(e2e._E2E_PROFILE_ENV, "secretless")
         with pytest.raises(D365Error):
             e2e._resolve_e2e_profile()

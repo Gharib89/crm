@@ -24,8 +24,7 @@ from crm.utils.d365_backend import D365Error
 
 def _attr_info_url(backend, entity: str, attribute: str) -> str:
     return backend.url_for(
-        f"EntityDefinitions(LogicalName='{entity}')"
-        f"/Attributes(LogicalName='{attribute}')"
+        f"EntityDefinitions(LogicalName='{entity}')/Attributes(LogicalName='{attribute}')"
     )
 
 
@@ -46,6 +45,7 @@ class TestPicklistOptionsStatusType:
 
     def test_status_attribute_uses_status_cast(self, backend):
         from crm.core import metadata as meta
+
         with req_mock.Mocker() as m:
             m.get(
                 _attr_info_url(backend, "account", "statuscode"),
@@ -55,10 +55,12 @@ class TestPicklistOptionsStatusType:
                 _cast_url(backend, "account", "statuscode", "StatusAttributeMetadata"),
                 json={
                     "LogicalName": "statuscode",
-                    "OptionSet": {"Options": [
-                        _opt(1, "Active"),
-                        _opt(2, "Inactive"),
-                    ]},
+                    "OptionSet": {
+                        "Options": [
+                            _opt(1, "Active"),
+                            _opt(2, "Inactive"),
+                        ]
+                    },
                 },
             )
             info = meta.picklist_options(backend, "account", "statuscode")
@@ -79,10 +81,12 @@ class TestPicklistOptionsStatusType:
                 _cast_url(backend, "account", "statuscode", "StatusAttributeMetadata"),
                 json={
                     "LogicalName": "statuscode",
-                    "OptionSet": {"Options": [
-                        _opt(1, "Active"),
-                        _opt(2, "Inactive"),
-                    ]},
+                    "OptionSet": {
+                        "Options": [
+                            _opt(1, "Active"),
+                            _opt(2, "Inactive"),
+                        ]
+                    },
                 },
             )
             result = CliRunner().invoke(
@@ -103,6 +107,7 @@ class TestPicklistOptionsStateType:
 
     def test_state_attribute_uses_state_cast(self, backend):
         from crm.core import metadata as meta
+
         with req_mock.Mocker() as m:
             m.get(
                 _attr_info_url(backend, "account", "statecode"),
@@ -112,10 +117,12 @@ class TestPicklistOptionsStateType:
                 _cast_url(backend, "account", "statecode", "StateAttributeMetadata"),
                 json={
                     "LogicalName": "statecode",
-                    "OptionSet": {"Options": [
-                        _opt(0, "Active"),
-                        _opt(1, "Inactive"),
-                    ]},
+                    "OptionSet": {
+                        "Options": [
+                            _opt(0, "Active"),
+                            _opt(1, "Inactive"),
+                        ]
+                    },
                 },
             )
             info = meta.picklist_options(backend, "account", "statecode")
@@ -135,10 +142,12 @@ class TestPicklistOptionsStateType:
                 _cast_url(backend, "account", "statecode", "StateAttributeMetadata"),
                 json={
                     "LogicalName": "statecode",
-                    "OptionSet": {"Options": [
-                        _opt(0, "Active"),
-                        _opt(1, "Inactive"),
-                    ]},
+                    "OptionSet": {
+                        "Options": [
+                            _opt(0, "Active"),
+                            _opt(1, "Inactive"),
+                        ]
+                    },
                 },
             )
             result = CliRunner().invoke(
@@ -159,6 +168,7 @@ class TestPicklistOptionsPicklistType:
 
     def test_picklist_attribute_uses_picklist_cast(self, backend):
         from crm.core import metadata as meta
+
         with req_mock.Mocker() as m:
             m.get(
                 _attr_info_url(backend, "account", "industrycode"),
@@ -212,6 +222,7 @@ class TestNoGlobalFlag:
 
     def test_no_global_omits_global_optionset_expand(self, backend):
         from crm.core import metadata as meta
+
         with req_mock.Mocker() as m:
             m.get(
                 _attr_info_url(backend, "account", "industrycode"),
@@ -224,8 +235,7 @@ class TestNoGlobalFlag:
                     "OptionSet": {"Options": [_opt(1, "Tech")]},
                 },
             )
-            info = meta.picklist_options(backend, "account", "industrycode",
-                                         global_optionset=False)
+            info = meta.picklist_options(backend, "account", "industrycode", global_optionset=False)
 
         cast_req = m.request_history[-1]
         assert "GlobalOptionSet" not in cast_req.url
@@ -238,6 +248,7 @@ class TestPicklistOptionsUnsupportedType:
 
     def test_string_attribute_raises_clear_error(self, backend):
         from crm.core import metadata as meta
+
         with req_mock.Mocker() as m:
             m.get(
                 _attr_info_url(backend, "account", "name"),
@@ -253,9 +264,7 @@ class TestPicklistOptionsUnsupportedType:
                 _attr_info_url(backend, "account", "name"),
                 json={"LogicalName": "name", "AttributeType": "String"},
             )
-            result = CliRunner().invoke(
-                cli, ["--json", "metadata", "picklist", "account", "name"]
-            )
+            result = CliRunner().invoke(cli, ["--json", "metadata", "picklist", "account", "name"])
 
         # ok:false → cli emits JSON then exits with FAILURE_EXIT_CODE (1)
         assert result.exit_code == 1

@@ -11,6 +11,7 @@ only the curated table, the env kill-switch, and the seen-store. That split keep
 `take_hint` pure of any terminal state and lets the store logic be unit-tested
 without a CLI context.
 """
+
 from __future__ import annotations
 
 import json
@@ -35,7 +36,8 @@ def hints_disabled() -> bool:
     """True when the user has opted out via `CRM_NO_HINTS`. Presence in the
     environment disables hints regardless of value — including an empty string
     (`CRM_NO_HINTS=`), which a shell can set — matching the documented "any
-    value" contract."""
+    value" contract.
+    """
     return "CRM_NO_HINTS" in os.environ
 
 
@@ -46,7 +48,8 @@ def _seen_path() -> Path:
 
 def load_seen() -> set[str]:
     """Return the set of already-shown hint ids. A missing or corrupt store is
-    treated as empty and never raises — a broken file must not break commands."""
+    treated as empty and never raises — a broken file must not break commands.
+    """
     p = _seen_path()
     try:
         with p.open("r", encoding="utf-8") as f:
@@ -69,7 +72,8 @@ def mark_seen(hint_id: str) -> None:
     lost race merely re-shows a hint once — harmless, unlike session state. Any
     write failure (unwritable ``CRM_HOME``, fsync/rename error) is swallowed: a
     hint is optional UX and must never turn a successful command into a crash —
-    at worst the hint re-shows next time because it wasn't recorded."""
+    at worst the hint re-shows next time because it wasn't recorded.
+    """
     seen = load_seen()
     seen.add(hint_id)
     path = _seen_path()

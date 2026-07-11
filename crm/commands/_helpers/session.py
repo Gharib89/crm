@@ -1,11 +1,16 @@
 """Session / journal / no-retry-scope helpers."""
+
 # pyright: basic
 from __future__ import annotations
+
 import os
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
+
 import click
+
 from crm.core import session as session_mod
+
 if TYPE_CHECKING:
     from crm.cli import CLIContext
 
@@ -25,9 +30,10 @@ def _journal(ctx, target, result, *, solution=None, staged=None):
     """
     try:
         from crm.core import audit
+
         cctx = click.get_current_context()
         root_prog = cctx.find_root().info_name or ""
-        command = cctx.command_path[len(root_prog):].lstrip()
+        command = cctx.command_path[len(root_prog) :].lstrip()
         # Prefer the RESOLVED profile name from the backend that just ran the
         # mutation — ctx.profile_name is only the explicit --profile override and
         # is None for active-profile runs. The backend is already built (the
@@ -48,8 +54,7 @@ def _journal(ctx, target, result, *, solution=None, staged=None):
         pass
 
 
-def _touch_session(ctx: "CLIContext", entity_set: str, *,
-                   last_query: dict | None = None) -> None:
+def _touch_session(ctx: CLIContext, entity_set: str, *, last_query: dict | None = None) -> None:
     """Best-effort persist read-command session breadcrumbs (issue #719).
 
     The `current_entity_set` / `last_query` metadata is optional convenience
@@ -70,7 +75,7 @@ def _touch_session(ctx: "CLIContext", entity_set: str, *,
 
 
 @contextmanager
-def _no_retry_scope(ctx: "CLIContext", enabled: bool):
+def _no_retry_scope(ctx: CLIContext, enabled: bool):
     """Scope CRM_NO_RETRY=1 to the command body and rebuild the cached backend.
 
     Without rebuilding, D365Backend's retry config (captured at construction)

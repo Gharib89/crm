@@ -1,11 +1,12 @@
 # pyright: basic
 """E2E tests for the action group (OData function/action calls)."""
+
 from __future__ import annotations
 
 import json
 
-from crm.tests.e2e.coverage import covers
 from crm.tests.e2e.conftest import _safe_delete
+from crm.tests.e2e.coverage import covers
 
 
 @covers("action function")
@@ -29,8 +30,14 @@ def test_action_function_bound_retrieve_user_privileges(cli):
     user_id = who["data"]["UserId"]
     result = cli(
         [
-            "--json", "action", "function", "RetrieveUserPrivileges",
-            "--bind-set", "systemusers", "--bind-id", user_id,
+            "--json",
+            "action",
+            "function",
+            "RetrieveUserPrivileges",
+            "--bind-set",
+            "systemusers",
+            "--bind-id",
+            user_id,
         ]
     )
     data = json.loads(result.stdout)
@@ -60,9 +67,16 @@ def test_action_function_record_reference_param(cli, backend, request, unique):
     request.addfinalizer(lambda: _safe_delete(backend, f"contacts({contact_id})"))
     result = cli(
         [
-            "--json", "action", "function", "RetrievePrincipalAccess",
-            "--bind-set", "systemusers", "--bind-id", user_id,
-            "--params", json.dumps({"Target": {"@odata.id": f"contacts({contact_id})"}}),
+            "--json",
+            "action",
+            "function",
+            "RetrievePrincipalAccess",
+            "--bind-set",
+            "systemusers",
+            "--bind-id",
+            user_id,
+            "--params",
+            json.dumps({"Target": {"@odata.id": f"contacts({contact_id})"}}),
         ]
     )
     data = json.loads(result.stdout)

@@ -12,7 +12,6 @@ import pytest
 
 from crm.core.audit import _extract_result_id, read, record
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -51,7 +50,17 @@ def test_record_read_roundtrip(crm_home: Path) -> None:
     row = rows[0]
 
     # Exact key set
-    assert set(row.keys()) == {"ts", "profile", "command", "target", "solution", "staged", "dry_run", "ok", "result_id"}
+    assert set(row.keys()) == {
+        "ts",
+        "profile",
+        "command",
+        "target",
+        "solution",
+        "staged",
+        "dry_run",
+        "ok",
+        "result_id",
+    }
 
     # Values
     assert row["ts"] == FIXED_TS.isoformat()
@@ -72,7 +81,11 @@ def test_no_payload_stored(crm_home: Path) -> None:
         profile="cloud",
         command="entity create",
         target="account",
-        result={"id": "11111111-2222-3333-4444-555555555555", "name": "Acme", "secret": "top-secret"},
+        result={
+            "id": "11111111-2222-3333-4444-555555555555",
+            "name": "Acme",
+            "secret": "top-secret",
+        },
         now=FIXED_TS,
     )
     rows = read(SESSION)
@@ -104,7 +117,15 @@ def test_append_two_records(crm_home: Path) -> None:
 
 
 def test_dry_run_tagged(crm_home: Path) -> None:
-    record(session=SESSION, profile=None, command="entity delete", target="account", result=None, dry_run=True, now=FIXED_TS)
+    record(
+        session=SESSION,
+        profile=None,
+        command="entity delete",
+        target="account",
+        result=None,
+        dry_run=True,
+        now=FIXED_TS,
+    )
     rows = read(SESSION)
     assert rows[0]["dry_run"] is True
 
@@ -170,7 +191,9 @@ def test_read_missing_session_returns_empty(crm_home: Path) -> None:
 
 def test_tail_returns_last_n(crm_home: Path) -> None:
     for i in range(5):
-        record(session=SESSION, profile=None, command=f"cmd{i}", target=None, result=None, now=FIXED_TS)
+        record(
+            session=SESSION, profile=None, command=f"cmd{i}", target=None, result=None, now=FIXED_TS
+        )
     rows = read(SESSION, tail=3)
     assert len(rows) == 3
     assert rows[0]["command"] == "cmd2"
@@ -180,7 +203,9 @@ def test_tail_returns_last_n(crm_home: Path) -> None:
 
 def test_tail_larger_than_file_returns_all(crm_home: Path) -> None:
     for i in range(3):
-        record(session=SESSION, profile=None, command=f"cmd{i}", target=None, result=None, now=FIXED_TS)
+        record(
+            session=SESSION, profile=None, command=f"cmd{i}", target=None, result=None, now=FIXED_TS
+        )
     rows = read(SESSION, tail=100)
     assert len(rows) == 3
 
@@ -194,6 +219,7 @@ def test_malformed_line_skipped(crm_home: Path, monkeypatch: pytest.MonkeyPatch)
     record(session=SESSION, profile=None, command="good1", target=None, result=None, now=FIXED_TS)
     # Manually inject a corrupt line in the middle
     from crm.core.audit import _journal_path
+
     path = _journal_path(SESSION)
     lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
     lines.insert(0, "NOT VALID JSON }{{\n")  # prepend malformed
@@ -210,7 +236,9 @@ def test_malformed_line_skipped(crm_home: Path, monkeypatch: pytest.MonkeyPatch)
 # ---------------------------------------------------------------------------
 
 
-def test_oserror_swallowed_when_home_is_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_oserror_swallowed_when_home_is_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Point CRM_HOME at an existing FILE so audit/ mkdir fails → OSError swallowed."""
     fake_home = tmp_path / "notadir"
     fake_home.write_text("I am a file", encoding="utf-8")
@@ -252,9 +280,20 @@ def test_key_order_in_journal(crm_home: Path) -> None:
         now=FIXED_TS,
     )
     from crm.core.audit import _journal_path
+
     raw_line = _journal_path(SESSION).read_text(encoding="utf-8").strip()
     parsed = json.loads(raw_line)
-    expected_keys = ["ts", "profile", "command", "target", "solution", "staged", "dry_run", "ok", "result_id"]
+    expected_keys = [
+        "ts",
+        "profile",
+        "command",
+        "target",
+        "solution",
+        "staged",
+        "dry_run",
+        "ok",
+        "result_id",
+    ]
     assert list(parsed.keys()) == expected_keys
 
 
@@ -265,13 +304,17 @@ def test_key_order_in_journal(crm_home: Path) -> None:
 
 def test_tail_zero_returns_empty(crm_home: Path) -> None:
     for i in range(3):
-        record(session=SESSION, profile=None, command=f"cmd{i}", target=None, result=None, now=FIXED_TS)
+        record(
+            session=SESSION, profile=None, command=f"cmd{i}", target=None, result=None, now=FIXED_TS
+        )
     assert read(SESSION, tail=0) == []
 
 
 def test_tail_negative_returns_empty(crm_home: Path) -> None:
     for i in range(3):
-        record(session=SESSION, profile=None, command=f"cmd{i}", target=None, result=None, now=FIXED_TS)
+        record(
+            session=SESSION, profile=None, command=f"cmd{i}", target=None, result=None, now=FIXED_TS
+        )
     assert read(SESSION, tail=-2) == []
 
 
@@ -292,8 +335,14 @@ def test_session_with_path_separators_confined_to_audit_dir(crm_home: Path) -> N
 def test_evil_session_roundtrips_within_audit_dir(crm_home: Path) -> None:
     from crm.core.audit import _audit_root, _journal_path
 
-    record(session="/tmp/pwn", profile=None, command="entity create",
-           target="accounts", result={"id": "x"}, now=FIXED_TS)
+    record(
+        session="/tmp/pwn",
+        profile=None,
+        command="entity create",
+        target="accounts",
+        result={"id": "x"},
+        now=FIXED_TS,
+    )
     # The line was written inside the audit dir (hermetic — no real /tmp probe)...
     written = _journal_path("/tmp/pwn")
     assert written.parent == _audit_root()

@@ -4,6 +4,7 @@ Covers the three seams finished in #294: the `value:label` parser
 `_parse_value_labels` (with its int-guard hardening) and the paired option
 decorators `_publish_option` / `_destructive_option`.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -11,9 +12,9 @@ import click
 import pytest
 
 from crm.commands._helpers import (
+    _destructive_option,
     _parse_value_labels,
     _publish_option,
-    _destructive_option,
 )
 
 
@@ -48,21 +49,17 @@ class TestParseValueLabels:
         assert _parse_value_labels((), flag="--option") == []
 
     def test_required_value_ok(self):
-        assert _parse_value_labels(
-            ("1:Renamed",), flag="--update-option", require_value=True
-        ) == [(1, "Renamed")]
+        assert _parse_value_labels(("1:Renamed",), flag="--update-option", require_value=True) == [
+            (1, "Renamed")
+        ]
 
     def test_required_value_rejects_empty(self):
         with pytest.raises(click.UsageError):
-            _parse_value_labels(
-                (":Renamed",), flag="--update-option", require_value=True
-            )
+            _parse_value_labels((":Renamed",), flag="--update-option", require_value=True)
 
 
 def _option_named(cmd: click.Command, name: str) -> click.Option:
-    (opt,) = [
-        p for p in cmd.params if isinstance(p, click.Option) and p.name == name
-    ]
+    (opt,) = [p for p in cmd.params if isinstance(p, click.Option) and p.name == name]
     return opt
 
 

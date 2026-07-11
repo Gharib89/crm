@@ -19,6 +19,7 @@ On-demand / periodic invocation:
         CRM_EVAL_AGENT_CMD='claude -p --dangerously-skip-permissions' \\
         python -m evals.skill.both_runner --repeat 3 --update-baseline
 """
+
 from __future__ import annotations
 
 import argparse
@@ -90,7 +91,8 @@ class BothResult:
 
     def exit_code(self) -> int:
         """Non-zero iff a *reachable* target scored a failure/error. A skipped target
-        (unreachable VPN) is not a failure, so it never flips the code."""
+        (unreachable VPN) is not a failure, so it never flips the code.
+        """
         for e in self.entries:
             if e.result and any(o.status in (FAIL, ERROR) for o in e.result.outcomes):
                 return 1
@@ -106,21 +108,31 @@ class BothResult:
         rows: list[dict[str, Any]] = []
         for e in self.entries:
             if e.result is None:
-                rows.append({
-                    "date": today, "target": e.target or "?", "profile": e.profile,
-                    "pass_rate": "—", "scored": "—", "repeat": "—",
-                    "notes": e.skipped_reason or "",
-                })
+                rows.append(
+                    {
+                        "date": today,
+                        "target": e.target or "?",
+                        "profile": e.profile,
+                        "pass_rate": "—",
+                        "scored": "—",
+                        "repeat": "—",
+                        "notes": e.skipped_reason or "",
+                    }
+                )
                 continue
             rate = e.result.pass_rate()
             passes, trials = e.result.scored_fraction()
-            rows.append({
-                "date": today, "target": e.target or "?", "profile": e.profile,
-                "pass_rate": "n/a" if rate is None else f"{rate:.0%}",
-                "scored": f"{passes}/{trials}" if trials else "—",
-                "repeat": self.repeat,
-                "notes": "",
-            })
+            rows.append(
+                {
+                    "date": today,
+                    "target": e.target or "?",
+                    "profile": e.profile,
+                    "pass_rate": "n/a" if rate is None else f"{rate:.0%}",
+                    "scored": f"{passes}/{trials}" if trials else "—",
+                    "repeat": self.repeat,
+                    "notes": "",
+                }
+            )
         return rows
 
     def summary_lines(self) -> list[str]:
@@ -133,9 +145,13 @@ class BothResult:
             rate = e.result.pass_rate()
             passes, trials = e.result.scored_fraction()
             rate_str = "n/a" if rate is None else f"{rate:.0%}"
-            lines.append(f"{e.profile} ({e.target}): pass-rate {rate_str} ({passes}/{trials} trials)")
+            lines.append(
+                f"{e.profile} ({e.target}): pass-rate {rate_str} ({passes}/{trials} trials)"
+            )
         lines.append("")
-        lines.append(f"union coverage: {len(self.union_scored())} task(s) scored across reachable targets")
+        lines.append(
+            f"union coverage: {len(self.union_scored())} task(s) scored across reachable targets"
+        )
         return lines
 
     def to_dict(self) -> dict[str, Any]:
@@ -189,8 +205,9 @@ def run_both(
             except TargetError as exc:
                 entries.append(TargetRun(name, None, None, f"profile error: {exc}"))
                 if progress is not None:
-                    progress.leg(target="?", profile=name, reachable=False,
-                                 reason=f"profile error: {exc}")
+                    progress.leg(
+                        target="?", profile=name, reachable=False, reason=f"profile error: {exc}"
+                    )
                 continue
             if not probe_fn(name):
                 reason = "unreachable (VPN down / host not responding?)"
@@ -199,14 +216,19 @@ def run_both(
                     progress.leg(target=tgt, profile=name, reachable=False, reason=reason)
                 continue
             if progress is not None:
-                progress.leg(target=tgt, profile=name, reachable=True,
-                             runnable=count_runnable(tgt))
+                progress.leg(target=tgt, profile=name, reachable=True, runnable=count_runnable(tgt))
             # Both legs persist into the same run dir (#588); records are keyed by task AND
             # target (record_filename), so an `either` task's two legs don't collide.
             # counterfactual/task_filter are forwarded unchanged.
-            result = run_set_fn(repeat=repeat, agent_cmd=agent_cmd, active_target=tgt,
-                                progress=progress, run_dir=run_dir,
-                                counterfactual=counterfactual, task_filter=task_filter)
+            result = run_set_fn(
+                repeat=repeat,
+                agent_cmd=agent_cmd,
+                active_target=tgt,
+                progress=progress,
+                run_dir=run_dir,
+                counterfactual=counterfactual,
+                task_filter=task_filter,
+            )
             entries.append(TargetRun(name, tgt, result, None))
     finally:
         if saved is None:
@@ -235,17 +257,34 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Run the skill-eval set against both targets; union coverage + baseline trend."
     )
-    parser.add_argument("--profiles", default=",".join(DEFAULT_PROFILES),
-                        help="comma-separated profile names (default: agent-cloud,agent-on-prem)")
-    parser.add_argument("--repeat", type=int, default=1, metavar="N",
-                        help="run each scored task N times per target (variance smoothing; default 1)")
-    parser.add_argument("--agent-cmd", default=None, help="agent command (default: $CRM_EVAL_AGENT_CMD)")
-    parser.add_argument("--update-baseline", action="store_true",
-                        help=f"append a dated per-target row to {BASELINE.name}")
+    parser.add_argument(
+        "--profiles",
+        default=",".join(DEFAULT_PROFILES),
+        help="comma-separated profile names (default: agent-cloud,agent-on-prem)",
+    )
+    parser.add_argument(
+        "--repeat",
+        type=int,
+        default=1,
+        metavar="N",
+        help="run each scored task N times per target (variance smoothing; default 1)",
+    )
+    parser.add_argument(
+        "--agent-cmd", default=None, help="agent command (default: $CRM_EVAL_AGENT_CMD)"
+    )
+    parser.add_argument(
+        "--update-baseline",
+        action="store_true",
+        help=f"append a dated per-target row to {BASELINE.name}",
+    )
     parser.add_argument("--baseline", default=str(BASELINE), help="baseline file to append to")
     add_progress_flags(parser)
-    parser.add_argument("--json", action="store_true", dest="as_json",
-                        help="emit the machine-readable result instead of the summary")
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        dest="as_json",
+        help="emit the machine-readable result instead of the summary",
+    )
     args = parser.parse_args(argv)
 
     progress = (

@@ -8,6 +8,7 @@ online additionally requires the RDL's data source to use the fetch data
 provider (RDL authoring is out of the CLI's scope — it uploads verbatim), so the
 RDL branch is covered by the wire-level unit tests in crm/tests/test_report.py.
 """
+
 from __future__ import annotations
 
 import json
@@ -23,8 +24,7 @@ from crm.tests.e2e.coverage import covers
 def test_report_list(cli):
     """Stock orgs ship system reports; assert non-empty + shape."""
     result = cli(["--json", "report", "list"])
-    assert result.returncode == 0, (
-        f"report list failed:\n{result.stderr}\nstdout: {result.stdout}")
+    assert result.returncode == 0, f"report list failed:\n{result.stderr}\nstdout: {result.stdout}"
     env = json.loads(result.stdout)
     assert env["ok"], env
     items = env["data"]
@@ -45,12 +45,22 @@ def test_report_lifecycle(cli, unique, ephemeral_solution):
     """Create a link report, read it back, categorize it, then delete it."""
     name = f"E2E Report {unique}"
 
-    result = cli([
-        "--json", "report", "create",
-        "--name", name, "--url", "https://example.com/e2e-report",
-        "--solution", ephemeral_solution])
+    result = cli(
+        [
+            "--json",
+            "report",
+            "create",
+            "--name",
+            name,
+            "--url",
+            "https://example.com/e2e-report",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert result.returncode == 0, (
-        f"report create failed:\n{result.stderr}\nstdout: {result.stdout}")
+        f"report create failed:\n{result.stderr}\nstdout: {result.stdout}"
+    )
     created = json.loads(result.stdout)
     assert created["ok"], created
     report_id = created["data"]["reportid"]
@@ -64,9 +74,18 @@ def test_report_lifecycle(cli, unique, ephemeral_solution):
         assert env["data"]["name"] == name
         assert env["data"]["bodyurl"] == "https://example.com/e2e-report"
 
-        cat = cli([
-            "--json", "report", "set-category", report_id, "--category", "sales",
-            "--solution", ephemeral_solution])
+        cat = cli(
+            [
+                "--json",
+                "report",
+                "set-category",
+                report_id,
+                "--category",
+                "sales",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
         assert cat.returncode == 0, cat.stderr
         cat_env = json.loads(cat.stdout)
         assert cat_env["ok"], cat_env

@@ -1,4 +1,5 @@
 """Unit tests for crm.utils.safe_xml (entity-safe XML parsing, #838)."""
+
 # pyright: basic
 from __future__ import annotations
 
@@ -12,19 +13,19 @@ from crm.utils import safe_xml
 # would expand exponentially if the parser honoured them.
 BILLION_LAUGHS = (
     '<?xml version="1.0"?>'
-    '<!DOCTYPE lolz ['
+    "<!DOCTYPE lolz ["
     '<!ENTITY lol "lol">'
     '<!ENTITY lol2 "&lol;&lol;&lol;&lol;">'
     '<!ENTITY lol3 "&lol2;&lol2;&lol2;&lol2;">'
-    ']>'
-    '<lolz>&lol3;</lolz>'
+    "]>"
+    "<lolz>&lol3;</lolz>"
 )
 
 # An external general entity pointing at a local file (classic XXE probe).
 EXTERNAL_ENTITY = (
     '<?xml version="1.0"?>'
     '<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>'
-    '<foo>&xxe;</foo>'
+    "<foo>&xxe;</foo>"
 )
 
 
@@ -78,7 +79,8 @@ class TestParsesOrdinaryXml:
 class TestCallerContractsPreserved:
     """Each affected caller keeps its established failure contract when it meets a
     hostile document — a typed error, a validation finding, an empty/default
-    result, or a non-blocking advisory — rather than leaking a raw traceback."""
+    result, or a non-blocking advisory — rather than leaking a raw traceback.
+    """
 
     def test_shared_customization_parser_raises_typed_error(self):
         from crm.core import xml_edit

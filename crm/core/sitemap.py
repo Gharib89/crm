@@ -86,7 +86,8 @@ class _Mutation:
 
 def _node_ids(root: ET.Element) -> set[str]:
     """Every Area / Group / SubArea ``Id`` in ``root`` (live nodes only — a
-    commented-out node is not matched by ``iter``)."""
+    commented-out node is not matched by ``iter``).
+    """
     ids: set[str] = set()
     for tag in _NODE_TAGS:
         for el in root.iter(tag):
@@ -122,14 +123,16 @@ def _validate_node_id(node_id: str, *, kind: str) -> str:
     if not _NODE_ID_RE.match(nid):
         raise D365Error(
             f"{kind} id {nid!r} is invalid: ids must match [a-zA-Z0-9_]+ "
-            "(a publisher prefix is recommended).")
+            "(a publisher prefix is recommended)."
+        )
     return nid
 
 
 def _safe_comment(text: str) -> str:
     """Make ``text`` safe inside an XML comment: no ``--`` run and no trailing
     ``-`` (both make ``<!-- ... -->`` malformed). A commented-out node only needs
-    to round-trip as text, so spacing the dashes is harmless."""
+    to round-trip as text, so spacing the dashes is harmless.
+    """
     text = re.sub(r"-(?=-)", "- ", text)
     return text + " " if text.endswith("-") else text
 
@@ -139,8 +142,7 @@ def _load(backend: D365Backend, sitemap_id: str) -> tuple[str, str]:
     rid = normalize_guid(sitemap_id)
     if rid is None:
         raise D365Error(f"Invalid sitemap id (expected GUID): {sitemap_id!r}")
-    row = as_dict(backend.get(
-        f"{_SITEMAP_SET}({rid})", params={"$select": _SITEMAP_COLUMN}))
+    row = as_dict(backend.get(f"{_SITEMAP_SET}({rid})", params={"$select": _SITEMAP_COLUMN}))
     xml = str(row.get(_SITEMAP_COLUMN) or "")
     if not xml.strip():
         raise D365Error(f"sitemap {rid} has no {_SITEMAP_COLUMN} to edit.")
@@ -183,14 +185,22 @@ def _edit(
         if _node_ids(rb) != expected:
             raise D365Error(
                 "SiteMap read-back (T3) failed: the published node-Id set does "
-                "not match the expected set after the edit.")
+                "not match the expected set after the edit."
+            )
         mut.verify(rb)
 
     return xml_edit.commit_xml_patch(
-        backend, entity_set=_SITEMAP_SET, record_id=rid, column=_SITEMAP_COLUMN,
-        new_xml=after_xml, result=result, dry_run_flag="would_edit",
-        publish=publish, solution=solution,
-        read_back=_read_back if publish else None)
+        backend,
+        entity_set=_SITEMAP_SET,
+        record_id=rid,
+        column=_SITEMAP_COLUMN,
+        new_xml=after_xml,
+        result=result,
+        dry_run_flag="would_edit",
+        publish=publish,
+        solution=solution,
+        read_back=_read_back if publish else None,
+    )
 
 
 # --- add-area -------------------------------------------------------------------
@@ -225,9 +235,15 @@ def add_area(
 
         return _Mutation(added={aid}, removed=set(), verify=verify)
 
-    return _edit(backend, sitemap_id, action="add-area",
-                 extra={"area_id": aid, "title": title},
-                 mutate=mutate, publish=publish, solution=solution)
+    return _edit(
+        backend,
+        sitemap_id,
+        action="add-area",
+        extra={"area_id": aid, "title": title},
+        mutate=mutate,
+        publish=publish,
+        solution=solution,
+    )
 
 
 # --- add-group ------------------------------------------------------------------
@@ -259,15 +275,19 @@ def add_group(
             # merely exist somewhere in the document.
             area_rb = _find(rb, "Area", aid)
             if area_rb is None or _find(area_rb, "Group", gid) is None:
-                raise D365Error(
-                    f"read-back: Group {gid!r} not under Area {aid!r} after "
-                    "publish.")
+                raise D365Error(f"read-back: Group {gid!r} not under Area {aid!r} after publish.")
 
         return _Mutation(added={gid}, removed=set(), verify=verify)
 
-    return _edit(backend, sitemap_id, action="add-group",
-                 extra={"area_id": aid, "group_id": gid, "title": title},
-                 mutate=mutate, publish=publish, solution=solution)
+    return _edit(
+        backend,
+        sitemap_id,
+        action="add-group",
+        extra={"area_id": aid, "group_id": gid, "title": title},
+        mutate=mutate,
+        publish=publish,
+        solution=solution,
+    )
 
 
 # --- add-subarea ----------------------------------------------------------------
@@ -291,13 +311,15 @@ def _subarea_content(
     renders a broken tile at runtime. Raises if zero or more than one mode is
     supplied.
     """
-    chosen = [(flag, val) for flag, val in
-              (("entity", entity), ("url", url), ("dashboard", dashboard))
-              if val]
+    chosen = [
+        (flag, val)
+        for flag, val in (("entity", entity), ("url", url), ("dashboard", dashboard))
+        if val
+    ]
     if len(chosen) != 1:
         raise D365Error(
-            "add-subarea needs exactly one of --entity, --url or --dashboard "
-            f"(got {len(chosen)}).")
+            f"add-subarea needs exactly one of --entity, --url or --dashboard (got {len(chosen)})."
+        )
     flag, value = chosen[0]
     if flag == "entity":
         # Resolve raises D365Error (with a close-match suggestion) on a miss.
@@ -323,20 +345,21 @@ def _resolve_dashboard(backend: D365Backend, value: str) -> str:
     if guid is None:
         raise D365Error(f"--dashboard must be a dashboard GUID: {value!r}")
     try:
-        row = as_dict(backend.get(
-            f"systemforms({guid})", params={"$select": "formid,type"}))
+        row = as_dict(backend.get(f"systemforms({guid})", params={"$select": "formid,type"}))
     except D365Error as exc:
         category, _ = classify_d365_error(exc.status, exc.code, str(exc))
         if category == "not_found":
             raise D365Error(
                 f"--dashboard {value!r}: no dashboard with id {guid} exists.",
-                code="DashboardNotFound") from exc
+                code="DashboardNotFound",
+            ) from exc
         raise
     if row.get("type") != _DASHBOARD_FORM_TYPE:
         raise D365Error(
             f"--dashboard {value!r}: systemform {guid} is not a dashboard "
             f"(form type {row.get('type')!r}, expected {_DASHBOARD_FORM_TYPE}).",
-            code="NotADashboard")
+            code="NotADashboard",
+        )
     return guid
 
 
@@ -368,10 +391,11 @@ def add_subarea(
     gid = group_id.strip()
     if pass_params and not url:
         raise D365Error(
-            "--pass-params applies only to a --url SubArea "
-            "(not --entity or --dashboard).")
+            "--pass-params applies only to a --url SubArea (not --entity or --dashboard)."
+        )
     cli_key, content_attr, content_val = _subarea_content(
-        backend, entity=entity, url=url, dashboard=dashboard)
+        backend, entity=entity, url=url, dashboard=dashboard
+    )
 
     def mutate(root: ET.Element) -> _Mutation:
         area = _find(root, "Area", aid)
@@ -379,8 +403,7 @@ def add_subarea(
             raise D365Error(f"parent Area {aid!r} not found in the sitemap.")
         group = _find(area, "Group", gid)
         if group is None:
-            raise D365Error(
-                f"parent Group {gid!r} not found in Area {aid!r}.")
+            raise D365Error(f"parent Group {gid!r} not found in Area {aid!r}.")
         _require_unique(root, sid)
         attrs = {"Id": sid, content_attr: content_val}
         if pass_params:
@@ -396,16 +419,19 @@ def add_subarea(
             area_rb = _find(rb, "Area", aid)
             group_rb = _find(area_rb, "Group", gid) if area_rb is not None else None
             if group_rb is None or _find(group_rb, "SubArea", sid) is None:
-                raise D365Error(
-                    f"read-back: SubArea {sid!r} not under {aid}/{gid} after "
-                    "publish.")
+                raise D365Error(f"read-back: SubArea {sid!r} not under {aid}/{gid} after publish.")
 
         return _Mutation(added={sid}, removed=set(), verify=verify)
 
-    return _edit(backend, sitemap_id, action="add-subarea",
-                 extra={"area_id": aid, "group_id": gid, "sub_id": sid,
-                        cli_key: content_val},
-                 mutate=mutate, publish=publish, solution=solution)
+    return _edit(
+        backend,
+        sitemap_id,
+        action="add-subarea",
+        extra={"area_id": aid, "group_id": gid, "sub_id": sid, cli_key: content_val},
+        mutate=mutate,
+        publish=publish,
+        solution=solution,
+    )
 
 
 # --- remove-node ----------------------------------------------------------------
@@ -440,8 +466,7 @@ def remove_node(
                 tag = candidate
                 break
         if target is None:
-            raise D365Error(
-                f"no Area, Group or SubArea with Id {nid!r} in the sitemap.")
+            raise D365Error(f"no Area, Group or SubArea with Id {nid!r} in the sitemap.")
         parent = parents.get(target)
         if parent is None:  # unreachable: a node Id never sits on the root
             raise D365Error("cannot remove the SiteMap root element.")
@@ -450,27 +475,28 @@ def remove_node(
         warning: str | None = None
         descendants = len(removed) - 1
         if tag in ("Area", "Group") and descendants:
-            warning = (
-                f"removing {tag} {nid!r} also removes {descendants} descendant "
-                "node(s).")
+            warning = f"removing {tag} {nid!r} also removes {descendants} descendant node(s)."
 
         index = list(parent).index(target)
         parent.remove(target)
         if comment_out:
-            parent.insert(
-                index, ET.Comment(_safe_comment(xml_edit.serialize_xml(target))))
+            parent.insert(index, ET.Comment(_safe_comment(xml_edit.serialize_xml(target))))
 
         def verify(rb: ET.Element) -> None:
             if nid in _node_ids(rb):
-                raise D365Error(
-                    f"read-back: node {nid!r} still present after publish.")
+                raise D365Error(f"read-back: node {nid!r} still present after publish.")
 
-        return _Mutation(added=set(), removed=removed, verify=verify,
-                         warning=warning)
+        return _Mutation(added=set(), removed=removed, verify=verify, warning=warning)
 
-    return _edit(backend, sitemap_id, action="remove-node",
-                 extra={"node_id": nid, "comment_out": comment_out},
-                 mutate=mutate, publish=publish, solution=solution)
+    return _edit(
+        backend,
+        sitemap_id,
+        action="remove-node",
+        extra={"node_id": nid, "comment_out": comment_out},
+        mutate=mutate,
+        publish=publish,
+        solution=solution,
+    )
 
 
 # --- move-node ------------------------------------------------------------------
@@ -507,19 +533,19 @@ def move_node(
     nid = node_id.strip()
     if not nid:
         raise D365Error("move-node --id must not be empty.")
-    chosen = [k for k, v in (("before", before), ("after", after),
-                             ("index", index)) if v is not None]
+    chosen = [
+        k for k, v in (("before", before), ("after", after), ("index", index)) if v is not None
+    ]
     if len(chosen) != 1:
         raise D365Error(
-            "move-node needs exactly one of --before, --after or --index "
-            f"(got {len(chosen)}).")
+            f"move-node needs exactly one of --before, --after or --index (got {len(chosen)})."
+        )
 
     def mutate(root: ET.Element) -> _Mutation:
         parents = {child: parent for parent in root.iter() for child in parent}
         target, tag = _locate(root, nid)
         if target is None:
-            raise D365Error(
-                f"no Area, Group or SubArea with Id {nid!r} in the sitemap.")
+            raise D365Error(f"no Area, Group or SubArea with Id {nid!r} in the sitemap.")
         parent = parents.get(target)
         if parent is None:  # unreachable: a node Id never sits on the root
             raise D365Error("cannot move the SiteMap root element.")
@@ -529,7 +555,8 @@ def move_node(
             if not 0 <= index < count:
                 raise D365Error(
                     f"--index {index} is out of range for {tag} {nid!r}: the "
-                    f"parent has {count} {tag} child(ren) (valid 0..{count - 1}).")
+                    f"parent has {count} {tag} child(ren) (valid 0..{count - 1})."
+                )
             parent.remove(target)
             remaining = [c for c in parent if c.tag == tag]
             if index < len(remaining):
@@ -543,19 +570,19 @@ def move_node(
             anchor_id = (before if before is not None else after or "").strip()
             anchor, anchor_tag = _locate(root, anchor_id)
             if anchor is None:
-                raise D365Error(
-                    f"anchor node {anchor_id!r} not found in the sitemap.")
+                raise D365Error(f"anchor node {anchor_id!r} not found in the sitemap.")
             if anchor is target:
-                raise D365Error(
-                    f"--{flag} {anchor_id!r} cannot be the node being moved.")
+                raise D365Error(f"--{flag} {anchor_id!r} cannot be the node being moved.")
             if anchor_tag != tag:
                 raise D365Error(
                     f"anchor {anchor_id!r} is a {anchor_tag}, not a {tag}; move "
-                    f"requires an anchor of the same node type as {nid!r}.")
+                    f"requires an anchor of the same node type as {nid!r}."
+                )
             if parents.get(anchor) is not parent:
                 raise D365Error(
                     f"anchor {anchor_id!r} is not a sibling of {nid!r} (they "
-                    "must share the same parent).")
+                    "must share the same parent)."
+                )
             parent.remove(target)
             pos = list(parent).index(anchor)
             parent.insert(pos if flag == "before" else pos + 1, target)
@@ -572,13 +599,13 @@ def move_node(
             parent_rb = rb if parent_id is None else _find(rb, parent_tag, parent_id)
             if parent_rb is None:
                 raise D365Error(
-                    f"read-back: parent {parent_tag} {parent_id!r} missing after "
-                    "publish.")
+                    f"read-back: parent {parent_tag} {parent_id!r} missing after publish."
+                )
             order = [c.get("Id") for c in parent_rb if c.tag == tag and c.get("Id")]
             if order != expected:
                 raise D365Error(
-                    f"read-back: {tag} {nid!r} is not at the requested position "
-                    "after publish.")
+                    f"read-back: {tag} {nid!r} is not at the requested position after publish."
+                )
 
         return _Mutation(added=set(), removed=set(), verify=verify)
 
@@ -589,8 +616,15 @@ def move_node(
         extra["before"] = before
     else:
         extra["after"] = after
-    return _edit(backend, sitemap_id, action="move-node", extra=extra,
-                 mutate=mutate, publish=publish, solution=solution)
+    return _edit(
+        backend,
+        sitemap_id,
+        action="move-node",
+        extra=extra,
+        mutate=mutate,
+        publish=publish,
+        solution=solution,
+    )
 
 
 # --- set-title / set-description (localized) ------------------------------------
@@ -611,7 +645,8 @@ def _container_index(node: ET.Element, container_tag: str) -> int:
     existing ``Titles`` — both ahead of the node's child nodes, honoring the
     strict child sequence. A comment node (e.g. a ``--comment-out`` soft-delete)
     has a non-string tag that matches no rank key, so it falls to the child-node
-    rank — a container is spliced ahead of it, which is schema-correct."""
+    rank — a container is spliced ahead of it, which is schema-correct.
+    """
     rank = _CONTAINER_RANK[container_tag]
     for i, child in enumerate(node):
         if _CONTAINER_RANK.get(child.tag, 2) >= rank:
@@ -629,7 +664,8 @@ def _child_order_ok(node: ET.Element) -> bool:
 
     Only the schema's known element tags are ranked; comment / PI nodes (whose
     tag is not one of these strings) are ignored, so a ``--comment-out``
-    soft-deleted child never trips the order check wherever it sits."""
+    soft-deleted child never trips the order check wherever it sits.
+    """
     ranks: list[int] = []
     for child in node:
         if child.tag == "Titles":
@@ -641,9 +677,7 @@ def _child_order_ok(node: ET.Element) -> bool:
     return ranks == sorted(ranks)
 
 
-def _normalize_entries(
-    entries: list[tuple[int, str]], *, item_tag: str
-) -> list[tuple[int, str]]:
+def _normalize_entries(entries: list[tuple[int, str]], *, item_tag: str) -> list[tuple[int, str]]:
     """Validate the ``(LCID, text)`` pairs for a localized set, enforcing one per
     LCID.
 
@@ -651,7 +685,8 @@ def _normalize_entries(
     duplicate ``<Title>`` / ``<Description>`` elements per language, but a node
     surfaces only one, so the CLI enforces one-per-LCID rather than let a typo
     strand a shadow entry. The text is preserved verbatim (only blank is
-    rejected)."""
+    rejected).
+    """
     label = item_tag.lower()
     if not entries:
         raise D365Error(f"set-{label} needs at least one --lcid/--{label} pair.")
@@ -659,13 +694,11 @@ def _normalize_entries(
     norm: list[tuple[int, str]] = []
     for lcid, text in entries:
         if not 1000 <= lcid <= 9999:
-            raise D365Error(
-                f"--lcid {lcid} must be a 4-digit locale ID (e.g. 1033).")
+            raise D365Error(f"--lcid {lcid} must be a 4-digit locale ID (e.g. 1033).")
         if not (text or "").strip():
             raise D365Error(f"{item_tag} for LCID {lcid} must not be empty.")
         if lcid in seen:
-            raise D365Error(
-                f"duplicate --lcid {lcid}: one {label} per language.")
+            raise D365Error(f"duplicate --lcid {lcid}: one {label} per language.")
         seen.add(lcid)
         norm.append((lcid, text))
     return norm
@@ -676,7 +709,8 @@ def _require_installed_lcids(backend: D365Backend, lcids: list[int]) -> None:
 
     A ``<Title>`` / ``<Description>`` for an un-provisioned language is silently
     ignored by the platform, so the editor refuses it up front rather than write
-    dead text."""
+    dead text.
+    """
     # `retrieve_provisioned_languages` raises D365Error directly (malformed
     # response or transport failure), so it already surfaces through the CLI's
     # error envelope without a translation wrapper.
@@ -686,7 +720,8 @@ def _require_installed_lcids(backend: D365Backend, lcids: list[int]) -> None:
         listed = ", ".join(str(x) for x in sorted(installed))
         raise D365Error(
             f"LCID(s) {', '.join(str(b) for b in bad)} are not installed "
-            f"languages (installed: {listed}).")
+            f"languages (installed: {listed})."
+        )
 
 
 def _set_localized(
@@ -706,7 +741,8 @@ def _set_localized(
     Finds (or creates, in schema order) the ``container_tag`` element on the node,
     then upserts one ``item_tag`` element per LCID — updating an existing entry
     for that language in place so no duplicate is ever minted. ``ResourceId`` and
-    every other attribute on the node are left untouched."""
+    every other attribute on the node are left untouched.
+    """
     # The command layer already validates this shape (exit 2); these guards also
     # protect a direct library call and are the single point that normalizes the
     # pairs the mutation writes.
@@ -718,8 +754,7 @@ def _set_localized(
     def mutate(root: ET.Element) -> _Mutation:
         node, _tag = _locate(root, nid)
         if node is None:
-            raise D365Error(
-                f"no Area, Group or SubArea with Id {nid!r} in the sitemap.")
+            raise D365Error(f"no Area, Group or SubArea with Id {nid!r} in the sitemap.")
         # The live installed-language check runs only once the target node is
         # known to exist, so a bad sitemap GUID / unknown node fails first
         # without a wasted RetrieveProvisionedLanguages call.
@@ -729,11 +764,9 @@ def _set_localized(
             container = ET.Element(container_tag)
             node.insert(_container_index(node, container_tag), container)
         for lcid, text in norm:
-            matches = [c for c in container.findall(item_tag)
-                       if c.get("LCID") == str(lcid)]
+            matches = [c for c in container.findall(item_tag) if c.get("LCID") == str(lcid)]
             if not matches:
-                ET.SubElement(
-                    container, item_tag, {"LCID": str(lcid), item_tag: text})
+                ET.SubElement(container, item_tag, {"LCID": str(lcid), item_tag: text})
             else:
                 # Enforce one element per LCID: update the first and drop any
                 # pre-existing same-LCID siblings (the XSD permits duplicates,
@@ -744,33 +777,38 @@ def _set_localized(
 
         def verify(rb: ET.Element) -> None:
             rb_node, _ = _locate(rb, nid)
-            rb_container = (
-                rb_node.find(container_tag) if rb_node is not None else None)
+            rb_container = rb_node.find(container_tag) if rb_node is not None else None
             if rb_node is None or rb_container is None:
-                raise D365Error(
-                    f"read-back: {container_tag} absent on node {nid!r} after "
-                    "publish.")
+                raise D365Error(f"read-back: {container_tag} absent on node {nid!r} after publish.")
             for lcid, text in norm:
                 if not any(
                     c.get("LCID") == str(lcid) and c.get(item_tag) == text
-                    for c in rb_container.findall(item_tag)):
+                    for c in rb_container.findall(item_tag)
+                ):
                     raise D365Error(
-                        f"read-back: {item_tag} LCID={lcid} absent on node "
-                        f"{nid!r} after publish.")
+                        f"read-back: {item_tag} LCID={lcid} absent on node {nid!r} after publish."
+                    )
             if not _child_order_ok(rb_node):
                 raise D365Error(
                     f"read-back: node {nid!r} children are out of schema order "
-                    "(Titles → Descriptions → child nodes) after publish.")
+                    "(Titles → Descriptions → child nodes) after publish."
+                )
 
         return _Mutation(added=set(), removed=set(), verify=verify)
 
     extra: dict[str, Any] = {
         "node_id": nid,
-        container_tag.lower(): [
-            {"lcid": lcid, item_tag.lower(): text} for lcid, text in norm],
+        container_tag.lower(): [{"lcid": lcid, item_tag.lower(): text} for lcid, text in norm],
     }
-    return _edit(backend, sitemap_id, action=action, extra=extra,
-                 mutate=mutate, publish=publish, solution=solution)
+    return _edit(
+        backend,
+        sitemap_id,
+        action=action,
+        extra=extra,
+        mutate=mutate,
+        publish=publish,
+        solution=solution,
+    )
 
 
 def set_title(
@@ -784,9 +822,16 @@ def set_title(
 ) -> dict[str, Any]:
     """Set localized ``<Title>`` text (one per LCID) on a nav node's ``<Titles>``."""
     return _set_localized(
-        backend, sitemap_id, node_id=node_id, entries=titles,
-        container_tag="Titles", item_tag="Title", action="set-title",
-        publish=publish, solution=solution)
+        backend,
+        sitemap_id,
+        node_id=node_id,
+        entries=titles,
+        container_tag="Titles",
+        item_tag="Title",
+        action="set-title",
+        publish=publish,
+        solution=solution,
+    )
 
 
 def set_description(
@@ -799,8 +844,16 @@ def set_description(
     solution: str | None = None,
 ) -> dict[str, Any]:
     """Set localized ``<Description>`` text (one per LCID) on a node's
-    ``<Descriptions>``."""
+    ``<Descriptions>``.
+    """
     return _set_localized(
-        backend, sitemap_id, node_id=node_id, entries=descriptions,
-        container_tag="Descriptions", item_tag="Description",
-        action="set-description", publish=publish, solution=solution)
+        backend,
+        sitemap_id,
+        node_id=node_id,
+        entries=descriptions,
+        container_tag="Descriptions",
+        item_tag="Description",
+        action="set-description",
+        publish=publish,
+        solution=solution,
+    )

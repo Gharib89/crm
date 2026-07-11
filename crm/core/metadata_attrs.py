@@ -13,12 +13,12 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict
-from crm.core.metadata import label, maybe_publish, target_exists
 from crm.core import dependencies as dep_mod
 from crm.core import metadata_cache
 from crm.core import metadata_constraints as mc
 from crm.core import references as ref_mod
+from crm.core.metadata import label, maybe_publish, target_exists
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 
 # string/memo MaxLength defaults — the single source of truth for the pair
 # (scaffold imports it) so all three create paths default consistently when
@@ -40,8 +40,12 @@ def _forbid(kwargs: dict[str, Any], *names: str) -> None:
 
 
 def _base_attr_payload(
-    *, schema_name: str, logical_name: str, display_name: str,
-    description: str | None, required: str,
+    *,
+    schema_name: str,
+    logical_name: str,
+    display_name: str,
+    description: str | None,
+    required: str,
 ) -> dict[str, Any]:
     mc.validate_required(required)
     payload: dict[str, Any] = {
@@ -56,8 +60,16 @@ def _base_attr_payload(
 
 
 def _string_attr(opts: dict[str, Any]) -> dict[str, Any]:
-    _forbid(opts, "precision", "target_entity", "optionset_name", "options",
-            "min_value", "max_value", "max_size_kb")
+    _forbid(
+        opts,
+        "precision",
+        "target_entity",
+        "optionset_name",
+        "options",
+        "min_value",
+        "max_value",
+        "max_size_kb",
+    )
     _require(opts, "max_length")
     fmt = opts.get("format_name") or "Text"
     mc.validate_format("string", fmt)
@@ -77,8 +89,16 @@ def _string_attr(opts: dict[str, Any]) -> dict[str, Any]:
 
 
 def _memo_attr(opts: dict[str, Any]) -> dict[str, Any]:
-    _forbid(opts, "precision", "target_entity", "optionset_name", "options",
-            "min_value", "max_value", "max_size_kb")
+    _forbid(
+        opts,
+        "precision",
+        "target_entity",
+        "optionset_name",
+        "options",
+        "min_value",
+        "max_value",
+        "max_size_kb",
+    )
     _require(opts, "max_length")
     body = _base_attr_payload(
         schema_name=opts["schema_name"],
@@ -94,8 +114,15 @@ def _memo_attr(opts: dict[str, Any]) -> dict[str, Any]:
 
 
 def _common_numeric(opts: dict[str, Any], odata_type: str) -> dict[str, Any]:
-    _forbid(opts, "max_length", "target_entity", "optionset_name", "options",
-            "format_name", "max_size_kb")
+    _forbid(
+        opts,
+        "max_length",
+        "target_entity",
+        "optionset_name",
+        "options",
+        "format_name",
+        "max_size_kb",
+    )
     body = _base_attr_payload(
         schema_name=opts["schema_name"],
         logical_name=opts["logical_name"],
@@ -146,7 +173,9 @@ def _bigint_attr(opts: dict[str, Any]) -> dict[str, Any]:
 
 
 def _numeric_with_precision(
-    opts: dict[str, Any], odata_type: str, kind: str,
+    opts: dict[str, Any],
+    odata_type: str,
+    kind: str,
 ) -> dict[str, Any]:
     _require(opts, "precision")
     prec = opts["precision"]
@@ -158,25 +187,41 @@ def _numeric_with_precision(
 
 def _decimal_attr(opts: dict[str, Any]) -> dict[str, Any]:
     return _numeric_with_precision(
-        opts, "Microsoft.Dynamics.CRM.DecimalAttributeMetadata", "decimal",
+        opts,
+        "Microsoft.Dynamics.CRM.DecimalAttributeMetadata",
+        "decimal",
     )
 
 
 def _double_attr(opts: dict[str, Any]) -> dict[str, Any]:
     return _numeric_with_precision(
-        opts, "Microsoft.Dynamics.CRM.DoubleAttributeMetadata", "double",
+        opts,
+        "Microsoft.Dynamics.CRM.DoubleAttributeMetadata",
+        "double",
     )
 
 
 def _money_attr(opts: dict[str, Any]) -> dict[str, Any]:
     return _numeric_with_precision(
-        opts, "Microsoft.Dynamics.CRM.MoneyAttributeMetadata", "money",
+        opts,
+        "Microsoft.Dynamics.CRM.MoneyAttributeMetadata",
+        "money",
     )
 
 
 def _bool_attr(opts: dict[str, Any]) -> dict[str, Any]:
-    _forbid(opts, "max_length", "precision", "target_entity", "optionset_name",
-            "options", "format_name", "min_value", "max_value", "max_size_kb")
+    _forbid(
+        opts,
+        "max_length",
+        "precision",
+        "target_entity",
+        "optionset_name",
+        "options",
+        "format_name",
+        "min_value",
+        "max_value",
+        "max_size_kb",
+    )
     body = _base_attr_payload(
         schema_name=opts["schema_name"],
         logical_name=opts["logical_name"],
@@ -196,8 +241,17 @@ def _bool_attr(opts: dict[str, Any]) -> dict[str, Any]:
 
 
 def _datetime_attr(opts: dict[str, Any]) -> dict[str, Any]:
-    _forbid(opts, "max_length", "precision", "target_entity", "optionset_name",
-            "options", "min_value", "max_value", "max_size_kb")
+    _forbid(
+        opts,
+        "max_length",
+        "precision",
+        "target_entity",
+        "optionset_name",
+        "options",
+        "min_value",
+        "max_value",
+        "max_size_kb",
+    )
     behavior = opts.get("behavior_name")
     if behavior is not None:
         mc.validate_behavior(behavior)
@@ -241,13 +295,9 @@ def _build_options_payload(
     has_inline = bool(options)
     has_global = bool(optionset_name)
     if has_inline and has_global:
-        raise D365Error(
-            "--options and --optionset-name are mutually exclusive."
-        )
+        raise D365Error("--options and --optionset-name are mutually exclusive.")
     if not has_inline and not has_global:
-        raise D365Error(
-            "either optionset_name or options is required for picklist/multiselect."
-        )
+        raise D365Error("either optionset_name or options is required for picklist/multiselect.")
     if has_global:
         key = optionset_metadata_id or f"Name='{optionset_name}'"
         return {"GlobalOptionSet@odata.bind": f"GlobalOptionSetDefinitions({key})"}
@@ -267,14 +317,24 @@ def _build_options_payload(
         option_list.append(opt)
     return {
         "OptionSet": {
-            "Options": option_list, "IsGlobal": False, "OptionSetType": "Picklist",
+            "Options": option_list,
+            "IsGlobal": False,
+            "OptionSetType": "Picklist",
         }
     }
 
 
 def _picklist_attr(opts: dict[str, Any]) -> dict[str, Any]:
-    _forbid(opts, "max_length", "precision", "target_entity",
-            "min_value", "max_value", "format_name", "max_size_kb")
+    _forbid(
+        opts,
+        "max_length",
+        "precision",
+        "target_entity",
+        "min_value",
+        "max_value",
+        "format_name",
+        "max_size_kb",
+    )
     body = _base_attr_payload(
         schema_name=opts["schema_name"],
         logical_name=opts["logical_name"],
@@ -283,18 +343,29 @@ def _picklist_attr(opts: dict[str, Any]) -> dict[str, Any]:
         required=opts.get("required", "None"),
     )
     body["@odata.type"] = "Microsoft.Dynamics.CRM.PicklistAttributeMetadata"
-    body.update(_build_options_payload(
-        opts.get("options"), opts.get("optionset_name"),
-        opts.get("optionset_metadata_id"),
-    ))
+    body.update(
+        _build_options_payload(
+            opts.get("options"),
+            opts.get("optionset_name"),
+            opts.get("optionset_metadata_id"),
+        )
+    )
     if opts.get("default_value") is not None:
         body["DefaultFormValue"] = int(opts["default_value"])
     return body
 
 
 def _multiselect_attr(opts: dict[str, Any]) -> dict[str, Any]:
-    _forbid(opts, "max_length", "precision", "target_entity",
-            "min_value", "max_value", "format_name", "max_size_kb")
+    _forbid(
+        opts,
+        "max_length",
+        "precision",
+        "target_entity",
+        "min_value",
+        "max_value",
+        "format_name",
+        "max_size_kb",
+    )
     body = _base_attr_payload(
         schema_name=opts["schema_name"],
         logical_name=opts["logical_name"],
@@ -303,17 +374,29 @@ def _multiselect_attr(opts: dict[str, Any]) -> dict[str, Any]:
         required=opts.get("required", "None"),
     )
     body["@odata.type"] = "Microsoft.Dynamics.CRM.MultiSelectPicklistAttributeMetadata"
-    body.update(_build_options_payload(
-        opts.get("options"), opts.get("optionset_name"),
-        opts.get("optionset_metadata_id"),
-    ))
+    body.update(
+        _build_options_payload(
+            opts.get("options"),
+            opts.get("optionset_name"),
+            opts.get("optionset_metadata_id"),
+        )
+    )
     return body
 
 
 def _image_attr(opts: dict[str, Any]) -> dict[str, Any]:
-    _forbid(opts, "max_length", "precision", "target_entity",
-            "min_value", "max_value", "optionset_name", "options",
-            "format_name", "max_size_kb")
+    _forbid(
+        opts,
+        "max_length",
+        "precision",
+        "target_entity",
+        "min_value",
+        "max_value",
+        "optionset_name",
+        "options",
+        "format_name",
+        "max_size_kb",
+    )
     body = _base_attr_payload(
         schema_name=opts["schema_name"],
         logical_name=opts["logical_name"],
@@ -327,9 +410,17 @@ def _image_attr(opts: dict[str, Any]) -> dict[str, Any]:
 
 
 def _file_attr(opts: dict[str, Any]) -> dict[str, Any]:
-    _forbid(opts, "max_length", "precision", "target_entity",
-            "min_value", "max_value", "optionset_name", "options",
-            "format_name")
+    _forbid(
+        opts,
+        "max_length",
+        "precision",
+        "target_entity",
+        "min_value",
+        "max_value",
+        "optionset_name",
+        "options",
+        "format_name",
+    )
     body = _base_attr_payload(
         schema_name=opts["schema_name"],
         logical_name=opts["logical_name"],
@@ -371,15 +462,15 @@ def _resolve_global_optionset_id(backend: D365Backend, name: str) -> str:
     Needed because the ``GlobalOptionSet`` @odata.bind on attribute create only
     accepts the MetadataId key on on-prem 9.x, not the Name alternate key.
     """
-    rb = as_dict(backend.get(
-        f"GlobalOptionSetDefinitions(Name='{name}')",
-        params={"$select": "MetadataId"},
-    ))
+    rb = as_dict(
+        backend.get(
+            f"GlobalOptionSetDefinitions(Name='{name}')",
+            params={"$select": "MetadataId"},
+        )
+    )
     metadata_id = rb.get("MetadataId")
     if not metadata_id:
-        raise D365Error(
-            f"Could not resolve MetadataId for global option set {name!r}."
-        )
+        raise D365Error(f"Could not resolve MetadataId for global option set {name!r}.")
     return str(metadata_id)
 
 
@@ -405,13 +496,15 @@ def delete_attribute(
     """
     if not entity or not attribute:
         raise D365Error("entity and attribute are required.")
-    path = (
-        f"EntityDefinitions(LogicalName='{entity}')"
-        f"/Attributes(LogicalName='{attribute}')"
+    path = f"EntityDefinitions(LogicalName='{entity}')/Attributes(LogicalName='{attribute}')"
+    rb = as_dict(
+        backend.get(
+            path,
+            params={
+                "$select": "IsCustomAttribute,IsManaged,IsPrimaryId,IsPrimaryName,AttributeOf,MetadataId",
+            },
+        )
     )
-    rb = as_dict(backend.get(path, params={
-        "$select": "IsCustomAttribute,IsManaged,IsPrimaryId,IsPrimaryName,AttributeOf,MetadataId",
-    }))
     if rb.get("IsCustomAttribute") is False:
         raise D365Error(
             f"{attribute!r} is not a custom attribute; refusing to delete.",
@@ -466,9 +559,7 @@ def delete_attribute(
     return result
 
 
-def check_formula_compat(
-    kind: str, source_type: str, formula_definition: str | None
-) -> None:
+def check_formula_compat(kind: str, source_type: str, formula_definition: str | None) -> None:
     """Validate the formula ↔ source-type ↔ kind rule (#595).
 
     A ``simple`` column takes no formula; ``rollup``/``calculated`` require one and
@@ -479,9 +570,7 @@ def check_formula_compat(
     """
     if source_type == "simple":
         if formula_definition is not None:
-            raise D365Error(
-                "--formula-file is only valid with --type rollup or calculated."
-            )
+            raise D365Error("--formula-file is only valid with --type rollup or calculated.")
     else:
         if formula_definition is None:
             raise D365Error(f"--formula-file is required for --type {source_type}.")
@@ -516,9 +605,7 @@ def parse_default(kind: str, value: str | bool | int | None) -> bool | int | Non
     try:
         return int(value)
     except (ValueError, TypeError) as exc:
-        raise D365Error(
-            f"--default-value must be int for kind {kind!r}: {value!r}"
-        ) from exc
+        raise D365Error(f"--default-value must be int for kind {kind!r}: {value!r}") from exc
 
 
 def add_attribute(
@@ -592,16 +679,20 @@ def add_attribute(
         if target_entity is None:
             raise D365Error("--target-entity is required for lookup attribute.")
         _forbid_kwargs = {
-            "max_length": max_length, "precision": precision,
-            "min_value": min_value, "max_value": max_value,
+            "max_length": max_length,
+            "precision": precision,
+            "min_value": min_value,
+            "max_value": max_value,
             "format_name": format_name,
-            "optionset_name": optionset_name, "options": options,
+            "optionset_name": optionset_name,
+            "options": options,
             "max_size_kb": max_size_kb,
         }
         for n, v in _forbid_kwargs.items():
             if v is not None:
                 raise D365Error(f"--{n.replace('_', '-')} is not valid for lookup.")
         from crm.core import relationships as rel
+
         rel_schema = relationship_schema or f"{entity}_{logical_name}"
         result = rel.create_one_to_many(
             backend,
@@ -635,10 +726,13 @@ def add_attribute(
         # so its only inputs are the lookup's own fields. Everything that
         # parameterizes a single-target lookup or another kind is rejected.
         _forbid_kwargs = {
-            "max_length": max_length, "precision": precision,
-            "min_value": min_value, "max_value": max_value,
+            "max_length": max_length,
+            "precision": precision,
+            "min_value": min_value,
+            "max_value": max_value,
             "format_name": format_name,
-            "optionset_name": optionset_name, "options": options,
+            "optionset_name": optionset_name,
+            "options": options,
             "max_size_kb": max_size_kb,
             "target_entity": target_entity,
             "relationship_schema": relationship_schema,
@@ -647,6 +741,7 @@ def add_attribute(
             if v is not None:
                 raise D365Error(f"--{n.replace('_', '-')} is not valid for customer.")
         from crm.core import relationships as rel
+
         return rel.create_customer_relationships(
             backend,
             referencing_entity=entity,
@@ -696,14 +791,13 @@ def add_attribute(
             # the preview body matches the real write; when absent the builder
             # falls back to the Name bind for the (echo-only) preview.
             os_id = ref_mod.resolve_global_optionset_id(backend, optionset_name)
-            references.append(ref_mod.make_reference(
-                "optionset", optionset_name, os_id is not None))
+            references.append(
+                ref_mod.make_reference("optionset", optionset_name, os_id is not None)
+            )
             if os_id is not None:
                 opts["optionset_metadata_id"] = os_id
         else:
-            opts["optionset_metadata_id"] = _resolve_global_optionset_id(
-                backend, optionset_name
-            )
+            opts["optionset_metadata_id"] = _resolve_global_optionset_id(backend, optionset_name)
     # Default MaxLength for string/memo when omitted so the builder's _require
     # resolves to the kind default rather than erroring; an explicit value (any
     # path) is honored verbatim (#321).
@@ -723,8 +817,7 @@ def add_attribute(
 
     exists = target_exists(
         backend,
-        f"EntityDefinitions(LogicalName='{entity}')"
-        f"/Attributes(LogicalName='{logical_name}')",
+        f"EntityDefinitions(LogicalName='{entity}')/Attributes(LogicalName='{logical_name}')",
     )
     if exists and not backend.dry_run:
         if if_exists == "error":
@@ -758,10 +851,12 @@ def add_attribute(
         lookup_error = f"Could not parse AttributeId from response: {entity_id_url!r}"
     else:
         try:
-            rb = as_dict(backend.get(
-                f"EntityDefinitions(LogicalName='{entity}')/Attributes({attr_id})",
-                params={"$select": "LogicalName,SchemaName,AttributeType"},
-            ))
+            rb = as_dict(
+                backend.get(
+                    f"EntityDefinitions(LogicalName='{entity}')/Attributes({attr_id})",
+                    params={"$select": "LogicalName,SchemaName,AttributeType"},
+                )
+            )
             attr_logical = rb.get("LogicalName")
             attr_type = rb.get("AttributeType")
         except D365Error as exc:

@@ -4,24 +4,25 @@ Reads via RetrieveEntityRibbon (decode the zipped CompressedEntityXml) and edits
 the entity's RibbonDiffXml inside a user-supplied solution, applying through the
 export -> validate -> import -> publish path.
 """
+
 from __future__ import annotations
 
 import base64
 import io
 import re
 import tempfile
-import zipfile
 import xml.dom.minidom as minidom
 import xml.etree.ElementTree as ET
+import zipfile
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Sequence
+from typing import TYPE_CHECKING, Any, Callable
 
 from crm.core.solution import export_solution, import_solution, publish_all
 from crm.core.solution_validate import validate_solution
 from crm.core.webresource import (
-    get_webresource,
-    resolve_webresource_id,  # pyright: ignore[reportUnusedImport]; re-exported for the command layer
+    get_webresource,  # pyright: ignore[reportUnusedImport]; re-exported for the command layer
 )
 from crm.utils import safe_xml
 from crm.utils.d365_backend import D365Error, odata_literal
@@ -49,9 +50,13 @@ def decode_compressed_ribbon(compressed_b64: str) -> ET.Element:
         names = zf.namelist()
         if not names:
             raise D365Error("CompressedEntityXml ZIP archive contains no members")
-        member = _RIBBON_MEMBER if _RIBBON_MEMBER in names else next(
-            (n for n in names if n.lower().endswith(".xml")
-             and not n.startswith("[")), names[0])
+        member = (
+            _RIBBON_MEMBER
+            if _RIBBON_MEMBER in names
+            else next(
+                (n for n in names if n.lower().endswith(".xml") and not n.startswith("[")), names[0]
+            )
+        )
         xml_bytes = zf.read(member)
     try:
         return safe_xml.fromstring(xml_bytes)
@@ -59,23 +64,21 @@ def decode_compressed_ribbon(compressed_b64: str) -> ET.Element:
         raise D365Error(f"CompressedEntityXml is not valid ribbon XML: {exc}") from exc
 
 
-def retrieve_entity_ribbon(backend: "D365Backend", entity: str) -> ET.Element:
+def retrieve_entity_ribbon(backend: D365Backend, entity: str) -> ET.Element:
     """Call RetrieveEntityRibbon for ``entity`` and return the decoded ribbon root.
 
     The enum filter MUST be an inline OData string literal (``'All'``); parameter
     aliases are rejected by the server (verified live). Returns the full composed
     ribbon (system + custom).
     """
-    path = (f"RetrieveEntityRibbon(EntityName={odata_literal(entity)},"
-            f"RibbonLocationFilter='All')")
+    path = f"RetrieveEntityRibbon(EntityName={odata_literal(entity)},RibbonLocationFilter='All')"
     resp = backend.get(path)
     if not isinstance(resp, dict) or "CompressedEntityXml" not in resp:
-        raise D365Error(
-            f"RetrieveEntityRibbon returned no CompressedEntityXml for {entity!r}")
+        raise D365Error(f"RetrieveEntityRibbon returned no CompressedEntityXml for {entity!r}")
     return decode_compressed_ribbon(str(resp["CompressedEntityXml"]))
 
 
-def retrieve_application_ribbon(backend: "D365Backend") -> ET.Element:
+def retrieve_application_ribbon(backend: D365Backend) -> ET.Element:
     """Call RetrieveApplicationRibbon and return the decoded ribbon root.
 
     The application-wide ribbon (everything not bound to a specific table). The
@@ -85,15 +88,15 @@ def retrieve_application_ribbon(backend: "D365Backend") -> ET.Element:
     """
     resp = backend.get("RetrieveApplicationRibbon()")
     if not isinstance(resp, dict) or "CompressedApplicationRibbonXml" not in resp:
-        raise D365Error(
-            "RetrieveApplicationRibbon returned no CompressedApplicationRibbonXml")
+        raise D365Error("RetrieveApplicationRibbon returned no CompressedApplicationRibbonXml")
     return decode_compressed_ribbon(str(resp["CompressedApplicationRibbonXml"]))
 
 
 @dataclass(frozen=True)
 class RibbonButton:
     """One custom command-bar button parsed from a RibbonDiffXml."""
-    button_id: str          # the CustomAction Id (what `remove --button-id` takes)
+
+    button_id: str  # the CustomAction Id (what `remove --button-id` takes)
     label: str
     location: str
     command: str
@@ -124,8 +127,10 @@ def _diff_is_effectively_empty(ribbon_diff: ET.Element) -> bool:
     hint speaks to. Gated on both, not just buttons/commands alone, so the hint is
     not appended when the diff holds only unrelated elements (rules, LocLabels).
     """
-    return (next(ribbon_diff.iter("CustomAction"), None) is None
-            and next(ribbon_diff.iter("CommandDefinition"), None) is None)
+    return (
+        next(ribbon_diff.iter("CustomAction"), None) is None
+        and next(ribbon_diff.iter("CommandDefinition"), None) is None
+    )
 
 
 def list_custom_buttons(ribbon_diff: ET.Element) -> list[RibbonButton]:
@@ -143,14 +148,16 @@ def list_custom_buttons(ribbon_diff: ET.Element) -> list[RibbonButton]:
             continue
         command = btn.get("Command") or ""
         fn, lib = commands.get(command, ("", ""))
-        buttons.append(RibbonButton(
-            button_id=action.get("Id") or "",
-            label=btn.get("LabelText") or "",
-            location=action.get("Location") or "",
-            command=command,
-            function=fn,
-            library=lib,
-        ))
+        buttons.append(
+            RibbonButton(
+                button_id=action.get("Id") or "",
+                label=btn.get("LabelText") or "",
+                location=action.get("Location") or "",
+                command=command,
+                function=fn,
+                library=lib,
+            )
+        )
     return buttons
 
 
@@ -173,13 +180,13 @@ def resolve_group(location: str, entity: str, group_override: str | None) -> str
     try:
         return DEFAULT_GROUPS[location].format(entity=entity)
     except KeyError:
-        raise D365Error(
-            f"unknown location {location!r}; expected one of {sorted(DEFAULT_GROUPS)}")
+        raise D365Error(f"unknown location {location!r}; expected one of {sorted(DEFAULT_GROUPS)}")
 
 
 @dataclass(frozen=True)
 class ButtonIds:
     """The three deterministic IDs a custom button needs."""
+
     custom_action: str
     button: str
     command: str
@@ -192,8 +199,7 @@ def build_button_ids(
     if not base_override:
         slug = slugify(label)
         if not slug:
-            raise D365Error(
-                f"label {label!r} produces an empty slug; use --id to set a base ID")
+            raise D365Error(f"label {label!r} produces an empty slug; use --id to set a base ID")
         base = f"{entity}.{location}.{slug}"
     else:
         base = base_override
@@ -208,14 +214,20 @@ def build_button_ids(
 # (a command cannot be legacy-web-only AND modern-only) — so a CommandDefinition
 # carrying both is always hidden. MS-documented reversible hide; reuse verbatim as
 # fixed platform refs, never regenerate. See `hide_button_display_rule`.
-RIBBON_HIDE_DISPLAY_RULES: tuple[str, str] = (
-    "Mscrm.HideOnModern", "Mscrm.ShowOnlyOnModern")
+RIBBON_HIDE_DISPLAY_RULES: tuple[str, str] = ("Mscrm.HideOnModern", "Mscrm.ShowOnlyOnModern")
 
 # Composed-ribbon control elements that carry an ``Id`` a hide can target.
-_COMPOSED_CONTROL_TAGS = frozenset({
-    "Button", "SplitButton", "ToggleButton", "FlyoutAnchor", "Group", "Control",
-    "MenuSection",
-})
+_COMPOSED_CONTROL_TAGS = frozenset(
+    {
+        "Button",
+        "SplitButton",
+        "ToggleButton",
+        "FlyoutAnchor",
+        "Group",
+        "Control",
+        "MenuSection",
+    }
+)
 
 
 def find_composed_element(composed_root: ET.Element, target_id: str) -> ET.Element | None:
@@ -244,8 +256,13 @@ def find_entity_node(cust_root: ET.Element, entity: str) -> ET.Element:
 # The RibbonDiffXml child containers, in schema order. A freshly-created diff (or
 # a working-copy file) must carry all of them so the mutate builders can append
 # into a stable skeleton.
-_RIBBON_DIFF_CONTAINERS = ("CustomActions", "Templates", "CommandDefinitions",
-                           "RuleDefinitions", "LocLabels")
+_RIBBON_DIFF_CONTAINERS = (
+    "CustomActions",
+    "Templates",
+    "CommandDefinitions",
+    "RuleDefinitions",
+    "LocLabels",
+)
 
 
 def ensure_ribbon_diff_skeleton(diff: ET.Element) -> ET.Element:
@@ -282,12 +299,21 @@ def get_or_create_ribbon_diff(entity_node: ET.Element) -> ET.Element:
 _SVG_WEBRESOURCE_TYPE = 11
 _RASTER_WEBRESOURCE_TYPES: frozenset[int] = frozenset({5, 6, 7, 10})
 _ICON_SLOTS: dict[str, tuple[str, frozenset[int], str]] = {
-    "modern_image": ("ModernImage", frozenset({_SVG_WEBRESOURCE_TYPE}),
-                     "an SVG web resource (webresourcetype 11)"),
-    "image16": ("Image16by16", _RASTER_WEBRESOURCE_TYPES,
-                "a raster image web resource (PNG/JPG/GIF/ICO)"),
-    "image32": ("Image32by32", _RASTER_WEBRESOURCE_TYPES,
-                "a raster image web resource (PNG/JPG/GIF/ICO)"),
+    "modern_image": (
+        "ModernImage",
+        frozenset({_SVG_WEBRESOURCE_TYPE}),
+        "an SVG web resource (webresourcetype 11)",
+    ),
+    "image16": (
+        "Image16by16",
+        _RASTER_WEBRESOURCE_TYPES,
+        "a raster image web resource (PNG/JPG/GIF/ICO)",
+    ),
+    "image32": (
+        "Image32by32",
+        _RASTER_WEBRESOURCE_TYPES,
+        "a raster image web resource (PNG/JPG/GIF/ICO)",
+    ),
 }
 
 
@@ -300,17 +326,15 @@ def _set_icon_attrs(
 ) -> None:
     """Write each given icon web-resource name onto ``button`` as a ``$webresource:``
     reference. A ``None`` slot is left untouched (so a subset — or nothing — is safe
-    and the icon-less button stays byte-for-byte unchanged)."""
-    for slot, name in (("modern_image", modern_image), ("image16", image16),
-                       ("image32", image32)):
+    and the icon-less button stays byte-for-byte unchanged).
+    """
+    for slot, name in (("modern_image", modern_image), ("image16", image16), ("image32", image32)):
         if name is None:
             continue
         button.set(_ICON_SLOTS[slot][0], f"$webresource:{name}")
 
 
-def validate_icon_webresource(
-    backend: "D365Backend", *, slot: str, name: str
-) -> None:
+def validate_icon_webresource(backend: D365Backend, *, slot: str, name: str) -> None:
     """Confirm the icon web resource ``name`` exists and matches ``slot``'s type.
 
     ``slot`` is one of the :data:`_ICON_SLOTS` keys
@@ -321,13 +345,13 @@ def validate_icon_webresource(
     or wrong-type reference is caught before the slow export → import round-trip
     (mirroring the `--webresource` existence check `add-button` already runs). Per
     ADR 0001 this in-command validation is an operational failure (exit 1), not a
-    Click usage error."""
+    Click usage error.
+    """
     if slot not in _ICON_SLOTS:
         # Guard the internal enum-like arg so a bad slot surfaces as a D365Error
         # (through the CLI's error seam) rather than a raw KeyError — mirrors
         # `validate_rule_ids`' `kind` guard.
-        raise D365Error(
-            f"unknown icon slot {slot!r}; expected one of {sorted(_ICON_SLOTS)}")
+        raise D365Error(f"unknown icon slot {slot!r}; expected one of {sorted(_ICON_SLOTS)}")
     _attr, allowed, human = _ICON_SLOTS[slot]
     # get_webresource raises D365Error (code WebResourceNotFound) if the name is absent.
     record = get_webresource(backend, name)
@@ -345,7 +369,8 @@ def validate_icon_webresource(
         flag = slot.replace("_", "-")
         raise D365Error(
             f"web resource {name!r} (webresourcetype {raw}) is not valid for "
-            f"--{flag}, which requires {human}")
+            f"--{flag}, which requires {human}"
+        )
 
 
 def add_custom_action(
@@ -369,38 +394,56 @@ def add_custom_action(
     corresponding icon attribute on the button as a ``$webresource:`` reference;
     omitting all three leaves the button icon-less exactly as before.
     """
-    existing = {el.get("Id") for el in ribbon_diff.iter()
-                if el.tag in ("CustomAction", "Button", "CommandDefinition")}
+    existing = {
+        el.get("Id")
+        for el in ribbon_diff.iter()
+        if el.tag in ("CustomAction", "Button", "CommandDefinition")
+    }
     for new_id in (ids.custom_action, ids.button, ids.command):
         if new_id in existing:
-            raise D365Error(
-                f"ribbon id {new_id!r} already exists — use a different --label/--id")
+            raise D365Error(f"ribbon id {new_id!r} already exists — use a different --label/--id")
 
     actions = ribbon_diff.find("CustomActions")
     cmds = ribbon_diff.find("CommandDefinitions")
     if actions is None or cmds is None:
         raise D365Error("RibbonDiffXml missing CustomActions/CommandDefinitions")
 
-    action = ET.SubElement(actions, "CustomAction", {
-        "Id": ids.custom_action,
-        "Location": f"{group}.Controls._children",
-        "Sequence": str(sequence),
-    })
+    action = ET.SubElement(
+        actions,
+        "CustomAction",
+        {
+            "Id": ids.custom_action,
+            "Location": f"{group}.Controls._children",
+            "Sequence": str(sequence),
+        },
+    )
     uidef = ET.SubElement(action, "CommandUIDefinition")
-    button = ET.SubElement(uidef, "Button", {
-        "Id": ids.button, "Command": ids.command, "LabelText": label,
-        "ToolTipTitle": label, "TemplateAlias": "o1", "Sequence": str(sequence),
-    })
-    _set_icon_attrs(button, modern_image=modern_image, image16=image16,
-                    image32=image32)
+    button = ET.SubElement(
+        uidef,
+        "Button",
+        {
+            "Id": ids.button,
+            "Command": ids.command,
+            "LabelText": label,
+            "ToolTipTitle": label,
+            "TemplateAlias": "o1",
+            "Sequence": str(sequence),
+        },
+    )
+    _set_icon_attrs(button, modern_image=modern_image, image16=image16, image32=image32)
 
     cdef = ET.SubElement(cmds, "CommandDefinition", {"Id": ids.command})
     ET.SubElement(cdef, "EnableRules")
     ET.SubElement(cdef, "DisplayRules")
     actions_el = ET.SubElement(cdef, "Actions")
-    jsf = ET.SubElement(actions_el, "JavaScriptFunction", {
-        "Library": f"$webresource:{webresource}", "FunctionName": function,
-    })
+    jsf = ET.SubElement(
+        actions_el,
+        "JavaScriptFunction",
+        {
+            "Library": f"$webresource:{webresource}",
+            "FunctionName": function,
+        },
+    )
     ET.SubElement(jsf, "CrmParameter", {"Value": param})
 
 
@@ -419,8 +462,7 @@ def hide_button_display_rule(ribbon_diff: ET.Element, command_id: str) -> None:
     if cmds is None:
         raise D365Error("RibbonDiffXml missing CommandDefinitions")
     if any(c.get("Id") == command_id for c in cmds.findall("CommandDefinition")):
-        raise D365Error(
-            f"command {command_id!r} is already overridden in this solution's ribbon")
+        raise D365Error(f"command {command_id!r} is already overridden in this solution's ribbon")
     cdef = ET.SubElement(cmds, "CommandDefinition", {"Id": command_id})
     ET.SubElement(cdef, "EnableRules")
     rules = ET.SubElement(cdef, "DisplayRules")
@@ -442,16 +484,19 @@ def hide_button_hide_action(ribbon_diff: ET.Element, target_id: str) -> None:
     actions = ribbon_diff.find("CustomActions")
     if actions is None:
         raise D365Error("RibbonDiffXml missing CustomActions")
-    if any(h.get("Location") == target_id
-           for h in actions.findall("HideCustomAction")):
+    if any(h.get("Location") == target_id for h in actions.findall("HideCustomAction")):
         raise D365Error(f"element {target_id!r} is already hidden in this solution's ribbon")
-    ET.SubElement(actions, "HideCustomAction", {
-        "HideActionId": f"{target_id}.HideAction",
-        "Location": target_id,
-    })
+    ET.SubElement(
+        actions,
+        "HideCustomAction",
+        {
+            "HideActionId": f"{target_id}.HideAction",
+            "Location": target_id,
+        },
+    )
 
 
-def retrieve_provisioned_languages(backend: "D365Backend") -> list[int]:
+def retrieve_provisioned_languages(backend: D365Backend) -> list[int]:
     """Return the LCIDs of the org's provisioned (enabled) languages.
 
     Calls the parameterless ``RetrieveProvisionedLanguages`` Web API function,
@@ -460,7 +505,8 @@ def retrieve_provisioned_languages(backend: "D365Backend") -> list[int]:
     resp = backend.get("RetrieveProvisionedLanguages()")
     if not isinstance(resp, dict) or "RetrieveProvisionedLanguages" not in resp:
         raise D365Error(
-            "RetrieveProvisionedLanguages returned no RetrieveProvisionedLanguages list")
+            "RetrieveProvisionedLanguages returned no RetrieveProvisionedLanguages list"
+        )
     try:
         return [int(x) for x in resp["RetrieveProvisionedLanguages"]]
     except (TypeError, ValueError) as exc:
@@ -480,9 +526,7 @@ _LABEL_ATTRS: dict[str, str] = {
 }
 
 
-def _upsert_loclabel_title(
-    ribbon_diff: ET.Element, loclabel_id: str, lcid: int, text: str
-) -> None:
+def _upsert_loclabel_title(ribbon_diff: ET.Element, loclabel_id: str, lcid: int, text: str) -> None:
     """Set ``text`` as the ``<Title>`` for ``lcid`` under ``<LocLabel Id=loclabel_id>``.
 
     Creates the LocLabel / Titles / Title scaffold as needed; updates the existing
@@ -493,16 +537,14 @@ def _upsert_loclabel_title(
     loclabels = ribbon_diff.find("LocLabels")
     if loclabels is None:
         loclabels = ET.SubElement(ribbon_diff, "LocLabels")
-    loclabel = next((l for l in loclabels.findall("LocLabel")
-                     if l.get("Id") == loclabel_id), None)
+    loclabel = next((l for l in loclabels.findall("LocLabel") if l.get("Id") == loclabel_id), None)
     if loclabel is None:
         loclabel = ET.SubElement(loclabels, "LocLabel", {"Id": loclabel_id})
     titles = loclabel.find("Titles")
     if titles is None:
         titles = ET.SubElement(loclabel, "Titles")
     lang = str(lcid)
-    title = next((t for t in titles.findall("Title")
-                  if t.get("languagecode") == lang), None)
+    title = next((t for t in titles.findall("Title") if t.get("languagecode") == lang), None)
     if title is None:
         title = ET.SubElement(titles, "Title", {"languagecode": lang})
     title.set("description", text)
@@ -531,21 +573,25 @@ def set_button_label(
     Without ``lcid`` the text is written inline on the attribute (XML-escaped on
     serialize by ElementTree).
     """
-    fields = {"label": label, "tooltip_title": tooltip_title,
-              "tooltip_description": tooltip_description}
+    fields = {
+        "label": label,
+        "tooltip_title": tooltip_title,
+        "tooltip_description": tooltip_description,
+    }
     if all(v is None for v in fields.values()):
         raise D365Error(
-            "set_button_label needs at least one of label / tooltip_title / "
-            "tooltip_description")
+            "set_button_label needs at least one of label / tooltip_title / tooltip_description"
+        )
     actions = ribbon_diff.find("CustomActions")
-    action = (next((a for a in actions.findall("CustomAction")
-                    if a.get("Id") == button_id), None)
-              if actions is not None else None)
+    action = (
+        next((a for a in actions.findall("CustomAction") if a.get("Id") == button_id), None)
+        if actions is not None
+        else None
+    )
     button = action.find(".//Button") if action is not None else None
     if button is None:
         available = [b.button_id for b in list_custom_buttons(ribbon_diff)]
-        msg = (f"button-id {button_id!r} not found as a custom Button; "
-               f"available: {available}")
+        msg = f"button-id {button_id!r} not found as a custom Button; available: {available}"
         if _diff_is_effectively_empty(ribbon_diff):
             msg += _STAGED_UNPUBLISHED_HINT
         raise D365Error(msg)
@@ -579,22 +625,21 @@ def set_button_icon(
     are protected. Pass at least one of ``modern_image`` / ``image16`` / ``image32``.
     """
     if modern_image is None and image16 is None and image32 is None:
-        raise D365Error(
-            "set_button_icon needs at least one of modern_image / image16 / image32")
+        raise D365Error("set_button_icon needs at least one of modern_image / image16 / image32")
     actions = ribbon_diff.find("CustomActions")
-    action = (next((a for a in actions.findall("CustomAction")
-                    if a.get("Id") == button_id), None)
-              if actions is not None else None)
+    action = (
+        next((a for a in actions.findall("CustomAction") if a.get("Id") == button_id), None)
+        if actions is not None
+        else None
+    )
     button = action.find(".//Button") if action is not None else None
     if button is None:
         available = [b.button_id for b in list_custom_buttons(ribbon_diff)]
-        msg = (f"button-id {button_id!r} not found as a custom Button; "
-               f"available: {available}")
+        msg = f"button-id {button_id!r} not found as a custom Button; available: {available}"
         if _diff_is_effectively_empty(ribbon_diff):
             msg += _STAGED_UNPUBLISHED_HINT
         raise D365Error(msg)
-    _set_icon_attrs(button, modern_image=modern_image, image16=image16,
-                    image32=image32)
+    _set_icon_attrs(button, modern_image=modern_image, image16=image16, image32=image32)
 
 
 def remove_custom_action(ribbon_diff: ET.Element, button_id: str) -> bool:
@@ -606,16 +651,16 @@ def remove_custom_action(ribbon_diff: ET.Element, button_id: str) -> bool:
     cmds = ribbon_diff.find("CommandDefinitions")
     if actions is None:
         return False
-    target = next((a for a in actions.findall("CustomAction")
-                   if a.get("Id") == button_id), None)
+    target = next((a for a in actions.findall("CustomAction") if a.get("Id") == button_id), None)
     if target is None:
         return False
     btn = target.find(".//Button")
     command_id = btn.get("Command") if btn is not None else None
     actions.remove(target)
     if command_id and cmds is not None:
-        cdef = next((c for c in cmds.findall("CommandDefinition")
-                     if c.get("Id") == command_id), None)
+        cdef = next(
+            (c for c in cmds.findall("CommandDefinition") if c.get("Id") == command_id), None
+        )
         if cdef is not None:
             cmds.remove(cdef)
     return True
@@ -630,18 +675,22 @@ def remove_custom_action(ribbon_diff: ET.Element, button_id: str) -> bool:
 # `add_custom_rule`). The lists are grouped by the rule kind they may reference,
 # grounded in the documented predefined rules; extend as new ids are needed.
 # https://learn.microsoft.com/power-apps/developer/model-driven-apps/define-ribbon-enable-rules
-PLATFORM_ENABLE_RULES: frozenset[str] = frozenset({
-    "Mscrm.SelectionCountExactlyOne",
-    "Mscrm.ShowOnGrid",
-    "Mscrm.ShowOnQuickAction",
-    "Mscrm.ShowOnGridAndQuickAction",
-})
+PLATFORM_ENABLE_RULES: frozenset[str] = frozenset(
+    {
+        "Mscrm.SelectionCountExactlyOne",
+        "Mscrm.ShowOnGrid",
+        "Mscrm.ShowOnQuickAction",
+        "Mscrm.ShowOnGridAndQuickAction",
+    }
+)
 # Mscrm.HideOnModern + Mscrm.ShowOnlyOnModern are the always-false modern-UI
 # display rules (the pair the hide-button editor reuses verbatim).
-PLATFORM_DISPLAY_RULES: frozenset[str] = frozenset({
-    "Mscrm.HideOnModern",
-    "Mscrm.ShowOnlyOnModern",
-})
+PLATFORM_DISPLAY_RULES: frozenset[str] = frozenset(
+    {
+        "Mscrm.HideOnModern",
+        "Mscrm.ShowOnlyOnModern",
+    }
+)
 
 _OOB_COMMAND_PREFIX = "Mscrm."
 
@@ -659,7 +708,7 @@ def is_oob_command(command_id: str) -> bool:
     return command_id.startswith(_OOB_COMMAND_PREFIX)
 
 
-def validate_rule_ids(rule_ids: "Sequence[str]", *, kind: str) -> None:
+def validate_rule_ids(rule_ids: Sequence[str], *, kind: str) -> None:
     """Reject any ``Mscrm.*`` id not in the curated allow-list for ``kind``.
 
     ``kind`` is ``"enable"`` or ``"display"``. Non-``Mscrm.`` (custom) ids pass —
@@ -677,21 +726,22 @@ def validate_rule_ids(rule_ids: "Sequence[str]", *, kind: str) -> None:
         # canonical-case allow-list: a mis-cased id like 'mscrm.ShowOnGrid' is a
         # platform-rule typo the server would silently ignore, so it must be
         # rejected here rather than slip through as if it were a custom id.
-        if (rid.lower().startswith(_OOB_COMMAND_PREFIX.lower())
-                and rid not in allowed):
+        if rid.lower().startswith(_OOB_COMMAND_PREFIX.lower()) and rid not in allowed:
             raise D365Error(
                 f"{kind}-rule id {rid!r} is not a recognized platform rule — the "
                 f"server silently ignores an unknown Mscrm.* rule. Allowed platform "
                 f"{kind} rules: {sorted(allowed)}. For a custom rule, define it with "
-                f"`ribbon add-custom-rule`.")
+                f"`ribbon add-custom-rule`."
+            )
 
 
 def find_command_definition(ribbon_diff: ET.Element, command_id: str) -> ET.Element:
     """Locate the ``<CommandDefinition Id=command_id>`` in a RibbonDiffXml."""
     cmds = ribbon_diff.find("CommandDefinitions")
     if cmds is not None:
-        cdef = next((c for c in cmds.findall("CommandDefinition")
-                     if c.get("Id") == command_id), None)
+        cdef = next(
+            (c for c in cmds.findall("CommandDefinition") if c.get("Id") == command_id), None
+        )
         if cdef is not None:
             return cdef
     available = [c.get("Id") for c in ribbon_diff.iter("CommandDefinition")]
@@ -707,14 +757,14 @@ def _ensure_command_child(cdef: ET.Element, tag: str) -> ET.Element:
     if child is not None:
         return child
     child = ET.Element(tag)
-    after = set(_COMMAND_CHILD_ORDER[_COMMAND_CHILD_ORDER.index(tag) + 1:])
+    after = set(_COMMAND_CHILD_ORDER[_COMMAND_CHILD_ORDER.index(tag) + 1 :])
     idx = next((i for i, el in enumerate(list(cdef)) if el.tag in after), len(cdef))
     cdef.insert(idx, child)
     return child
 
 
 def _set_rule_refs(
-    cdef: ET.Element, container_tag: str, ref_tag: str, rule_ids: "Sequence[str]"
+    cdef: ET.Element, container_tag: str, ref_tag: str, rule_ids: Sequence[str]
 ) -> None:
     """Replace ``cdef``'s ``<container_tag>`` children with one ref per id, in order."""
     container = _ensure_command_child(cdef, container_tag)
@@ -728,8 +778,8 @@ def set_command_rules(
     ribbon_diff: ET.Element,
     *,
     command_id: str,
-    enable_rules: "Sequence[str]",
-    display_rules: "Sequence[str]",
+    enable_rules: Sequence[str],
+    display_rules: Sequence[str],
 ) -> None:
     """Set a command's enable/display rule references to exactly the given ids.
 
@@ -749,8 +799,7 @@ def build_custom_rule_id(command_id: str, function: str) -> str:
     """Deterministic id for a custom enable rule: ``{command_id}.{slug(fn)}.EnableRule``."""
     slug = slugify(function)
     if not slug:
-        raise D365Error(
-            f"function {function!r} produces an empty slug; cannot derive a rule id")
+        raise D365Error(f"function {function!r} produces an empty slug; cannot derive a rule id")
     return f"{command_id}.{slug}.EnableRule"
 
 
@@ -779,10 +828,12 @@ def add_custom_rule(
     if any(r.get("Id") == rule_id for r in enable_defs.findall("EnableRule")):
         raise D365Error(
             f"custom rule id {rule_id!r} already exists — that function is already "
-            f"wired on this command")
+            f"wired on this command"
+        )
     rule = ET.SubElement(enable_defs, "EnableRule", {"Id": rule_id})
-    ET.SubElement(rule, "CustomRule", {
-        "Library": f"$webresource:{webresource}", "FunctionName": function})
+    ET.SubElement(
+        rule, "CustomRule", {"Library": f"$webresource:{webresource}", "FunctionName": function}
+    )
     refs = _ensure_command_child(cdef, "EnableRules")
     if not any(r.get("Id") == rule_id for r in refs.findall("EnableRule")):
         ET.SubElement(refs, "EnableRule", {"Id": rule_id})
@@ -792,7 +843,8 @@ def _rewrite_customizations(
     src_zip: Path, dst_zip: Path, mutate: Callable[[ET.Element], None]
 ) -> None:
     """Copy every member of ``src_zip`` to ``dst_zip``, applying ``mutate`` to the
-    parsed customizations.xml root before writing it back."""
+    parsed customizations.xml root before writing it back.
+    """
     try:
         with zipfile.ZipFile(src_zip) as zin:
             members = {name: zin.read(name) for name in zin.namelist()}
@@ -802,8 +854,7 @@ def _rewrite_customizations(
         # corrupt/incomplete export behind the D365Error seam rather than let it
         # escape as a raw traceback (d365_errors catches only D365Error), matching
         # load_solution_ribbon_diff.
-        raise D365Error(
-            f"exported customizations.xml could not be read: {exc}") from exc
+        raise D365Error(f"exported customizations.xml could not be read: {exc}") from exc
     mutate(cust_root)
     members["customizations.xml"] = ET.tostring(cust_root, encoding="utf-8")
     with zipfile.ZipFile(dst_zip, "w", zipfile.ZIP_DEFLATED) as zout:
@@ -812,7 +863,7 @@ def _rewrite_customizations(
 
 
 def apply_ribbon_change(
-    backend: "D365Backend",
+    backend: D365Backend,
     *,
     solution: str,
     entity: str,
@@ -831,9 +882,9 @@ def apply_ribbon_change(
     with tempfile.TemporaryDirectory() as td:
         src = Path(td) / "export.zip"
         dst = Path(td) / "import.zip"
-        export_result = export_solution(backend, solution, src,
-                                        export_customizations=True,
-                                        timeout=timeout)
+        export_result = export_solution(
+            backend, solution, src, export_customizations=True, timeout=timeout
+        )
         if "_dry_run" in export_result:
             return export_result
 
@@ -850,20 +901,16 @@ def apply_ribbon_change(
             # the web-resource-ref check (the new button's JS) still runs.
             report = validate_solution(dst, backend=backend, check_collisions=False)
             if not report["valid"]:
-                errs = [f for f in report["findings"]
-                        if f.get("severity") == "error"]
+                errs = [f for f in report["findings"] if f.get("severity") == "error"]
                 msgs = "; ".join(e.get("message", "") for e in errs[:3])
-                raise D365Error(
-                    f"pre-import validation failed ({len(errs)} error(s)): {msgs}")
+                raise D365Error(f"pre-import validation failed ({len(errs)} error(s)): {msgs}")
         result = import_solution(backend, dst, timeout=timeout)
         if publish:
             publish_all(backend)
         return result
 
 
-def load_solution_ribbon_diff(
-    backend: "D365Backend", solution: str, entity: str
-) -> ET.Element:
+def load_solution_ribbon_diff(backend: D365Backend, solution: str, entity: str) -> ET.Element:
     """Export ``solution`` and return ``entity``'s ``<RibbonDiffXml>`` element.
 
     The read-only sibling of `apply_ribbon_change`: export -> unzip -> parse the
@@ -881,8 +928,7 @@ def load_solution_ribbon_diff(
             # Keep zip/parse failures behind the error seam rather than letting a
             # corrupt export escape as an unhandled traceback (d365_errors catches
             # only D365Error).
-            raise D365Error(
-                f"could not parse exported solution {solution!r}: {exc}") from exc
+            raise D365Error(f"could not parse exported solution {solution!r}: {exc}") from exc
     node = find_entity_node(cust_root, entity)
     return get_or_create_ribbon_diff(node)
 
@@ -919,12 +965,13 @@ def serialize_ribbon_diff(diff: ET.Element) -> str:
 
     Strips pre-existing whitespace nodes first so repeated load→edit→save cycles do
     not accumulate blank lines. Mutates ``diff`` in place (harmless — callers pass a
-    transient element they are about to serialize and discard)."""
+    transient element they are about to serialize and discard).
+    """
     _strip_ribbon_whitespace(diff)
     return minidom.parseString(ET.tostring(diff)).toprettyxml(indent="  ")
 
 
-def load_ribbon_diff_file(path: "str | Path") -> ET.Element:
+def load_ribbon_diff_file(path: str | Path) -> ET.Element:
     """Parse a local working-copy ``RibbonDiffXml`` file into its root element.
 
     The file must be a ``<RibbonDiffXml>`` fragment as written by
@@ -944,11 +991,12 @@ def load_ribbon_diff_file(path: "str | Path") -> ET.Element:
     if root.tag != "RibbonDiffXml":
         raise D365Error(
             f"diff file {p} has root <{root.tag}>, expected <RibbonDiffXml> — pass a "
-            "file written by `crm ribbon export ENTITY --solution S --output FILE`")
+            "file written by `crm ribbon export ENTITY --solution S --output FILE`"
+        )
     return ensure_ribbon_diff_skeleton(root)
 
 
-def save_ribbon_diff_file(path: "str | Path", diff: ET.Element) -> None:
+def save_ribbon_diff_file(path: str | Path, diff: ET.Element) -> None:
     """Write a ``<RibbonDiffXml>`` fragment to ``path`` as stable pretty XML."""
     p = Path(path)
     try:
@@ -957,9 +1005,7 @@ def save_ribbon_diff_file(path: "str | Path", diff: ET.Element) -> None:
         raise D365Error(f"could not write diff file {p}: {exc}") from exc
 
 
-def edit_ribbon_diff_file(
-    path: "str | Path", mutate: Callable[[ET.Element], None]
-) -> None:
+def edit_ribbon_diff_file(path: str | Path, mutate: Callable[[ET.Element], None]) -> None:
     """Load a working-copy fragment, apply ``mutate`` to it, and write it back.
 
     The offline analogue of `apply_ribbon_change`: it hands ``mutate`` the file's

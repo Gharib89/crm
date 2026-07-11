@@ -23,19 +23,14 @@ def _async_export_unavailable(exc: D365Error) -> bool:
     """True when the org lacks the ExportSolutionAsync action (older on-prem)."""
     msg = str(exc).lower()
     return "exportsolutionasync" in msg and (
-        "not enabled" in msg
-        or "not supported" in msg
-        or "resource not found" in msg
+        "not enabled" in msg or "not supported" in msg or "resource not found" in msg
     )
 
 
 def _import_job_id_rejected(exc: D365Error) -> bool:  # pyright: ignore[reportUnusedFunction]
     """True when on-prem rejects ImportJobId as an invalid parameter."""
     msg = str(exc).lower()
-    return "importjobid" in msg and (
-        "not a valid parameter" in msg
-        or "invalid parameter" in msg
-    )
+    return "importjobid" in msg and ("not a valid parameter" in msg or "invalid parameter" in msg)
 
 
 def _import_solution_sync(
@@ -60,6 +55,7 @@ def _import_solution_sync(
     global request default untouched.
     """
     import time as _time
+
     read_timeout = timeout if timeout is not None else backend.profile.async_timeout
     try:
         backend.post("ImportSolution", json_body=body, timeout=read_timeout)
@@ -68,14 +64,18 @@ def _import_solution_sync(
         # per-component results the server recorded before the fault.
         raise D365Error(
             f"{exc} (import_job_id={import_job_id})",
-            status=exc.status, code=exc.code, response_body=exc.response_body,
+            status=exc.status,
+            code=exc.code,
+            response_body=exc.response_body,
         ) from exc
 
     try:
-        job_row = as_dict(backend.get(
-            f"importjobs({import_job_id})",
-            params={"$select": "progress,startedon,completedon,data"},
-        ))
+        job_row = as_dict(
+            backend.get(
+                f"importjobs({import_job_id})",
+                params={"$select": "progress,startedon,completedon,data"},
+            )
+        )
         detail = "the importjob data column was empty"
     except D365Error as exc:
         # The import itself already succeeded; a missing/unreadable importjob
@@ -134,6 +134,7 @@ def _export_solution_sync(
 ) -> dict[str, Any]:
     """Synchronous fallback: ExportSolution returns the zip bytes inline."""
     import time as _time
+
     resp = as_dict(backend.post("ExportSolution", json_body=body))
     encoded = resp.get("ExportSolutionFile")
     if not encoded:
@@ -174,6 +175,7 @@ def export_solution(
     duration in ms.
     """
     import time as _time
+
     body: dict[str, Any] = {
         "SolutionName": unique_name,
         "Managed": managed,
@@ -197,8 +199,12 @@ def export_solution(
         # synchronous ExportSolution, which returns the zip bytes inline.
         if _async_export_unavailable(exc):
             return _export_solution_sync(
-                backend, body, unique_name, output_path,
-                managed=managed, started=started,
+                backend,
+                body,
+                unique_name,
+                output_path,
+                managed=managed,
+                started=started,
             )
         raise
     if "_dry_run" in resp:
@@ -207,21 +213,19 @@ def export_solution(
     async_op_id = resp.get("AsyncOperationId")
     export_job_id = resp.get("ExportJobId")
     if not async_op_id or not export_job_id:
-        raise D365Error(
-            "ExportSolutionAsync returned no AsyncOperationId / ExportJobId."
-        )
+        raise D365Error("ExportSolutionAsync returned no AsyncOperationId / ExportJobId.")
 
     backend.poll_async_operation(async_op_id, timeout=timeout)
 
-    dl = as_dict(backend.post(
-        "DownloadSolutionExportData",
-        json_body={"ExportJobId": export_job_id},
-    ))
+    dl = as_dict(
+        backend.post(
+            "DownloadSolutionExportData",
+            json_body={"ExportJobId": export_job_id},
+        )
+    )
     encoded = dl.get("ExportSolutionFile")
     if not encoded:
-        raise D365Error(
-            "DownloadSolutionExportData returned no ExportSolutionFile payload."
-        )
+        raise D365Error("DownloadSolutionExportData returned no ExportSolutionFile payload.")
     out, _bytes = _write_export_file(output_path, encoded)
 
     duration_ms = int((_time.monotonic() - started) * 1000)
@@ -351,14 +355,22 @@ def import_solution(
         # creates an ImportJob row for it — fall back to the synchronous
         # ImportSolution, which accepts the same client GUID (#182).
         return _import_solution_sync(
-            backend, body, import_job_id,
-            managed=managed, started=started,
-            timeout=timeout, formatted=formatted,
+            backend,
+            body,
+            import_job_id,
+            managed=managed,
+            started=started,
+            timeout=timeout,
+            formatted=formatted,
         )
 
     if "_dry_run" in resp:
-        return {**resp, "action": "ImportSolutionAsync", "import_job_id": import_job_id,
-                "managed": managed}
+        return {
+            **resp,
+            "action": "ImportSolutionAsync",
+            "import_job_id": import_job_id,
+            "managed": managed,
+        }
 
     async_op_id = resp.get("AsyncOperationId")
     if not async_op_id:
@@ -392,15 +404,19 @@ def import_solution(
     except D365Error as exc:
         raise D365Error(
             f"{exc} (import_job_id={import_job_id})",
-            status=exc.status, code=exc.code, response_body=exc.response_body,
+            status=exc.status,
+            code=exc.code,
+            response_body=exc.response_body,
         ) from exc
 
     # Final importjobs read for the canonical progress + timestamps + the per-
     # component result envelope (data column).
-    job_row = as_dict(backend.get(
-        f"importjobs({import_job_id})",
-        params={"$select": "progress,startedon,completedon,data"},
-    ))
+    job_row = as_dict(
+        backend.get(
+            f"importjobs({import_job_id})",
+            params={"$select": "progress,startedon,completedon,data"},
+        )
+    )
     duration_ms = int((_time.monotonic() - started) * 1000)
     prog = job_row.get("progress")
     out: dict[str, Any] = {
@@ -438,7 +454,8 @@ def import_solution(
 def _component_name(el: ET.Element) -> str:
     """Best human label for a component element: LocalizedName, name, id, or
     UniqueName — falling back to the element tag so the name is never null (some
-    components, e.g. <rootComponent>/<dependency>, carry no label of their own)."""
+    components, e.g. <rootComponent>/<dependency>, carry no label of their own).
+    """
     for attr in ("LocalizedName", "name", "id"):
         v = el.get(attr)
         if v:
@@ -503,7 +520,8 @@ def parse_import_job_data(data_xml: str) -> dict[str, Any]:
 def _result_warnings(result: str, components: list[dict[str, Any]]) -> list[str]:
     """Advisory notes for a parsed import result: the solution-level outcome if it
     is not `success`, plus one note per non-success component. Empty when clean —
-    so a real partial failure surfaces even when the async op reported success."""
+    so a real partial failure surfaces even when the async op reported success.
+    """
     warnings: list[str] = []
     if result != "success":
         warnings.append(f"solution-level import result is {result!r}.")
@@ -525,11 +543,10 @@ def _attach_import_results(out: dict[str, Any], data_xml: str | None) -> None:
     a `warnings` note for any non-success component. Best-effort: a missing or
     unparseable data column degrades to a `warnings` note, never an error — so the
     post-hoc report can't fail an import the server already completed, and an
-    absent result/components is never read as "checked and clean"."""
+    absent result/components is never read as "checked and clean".
+    """
     if not data_xml:
-        out["warnings"] = [
-            "import job data column was empty; per-component results not verified."
-        ]
+        out["warnings"] = ["import job data column was empty; per-component results not verified."]
         return
     try:
         env = parse_import_job_data(data_xml)
@@ -545,9 +562,7 @@ def _attach_import_results(out: dict[str, Any], data_xml: str | None) -> None:
 
 def _formatted_import_results(backend: D365Backend, import_job_id: str) -> str | None:
     """Fetch the Excel-format RetrieveFormattedImportJobResults report (verbatim)."""
-    fr = as_dict(backend.get(
-        f"RetrieveFormattedImportJobResults(ImportJobId={import_job_id})"
-    ))
+    fr = as_dict(backend.get(f"RetrieveFormattedImportJobResults(ImportJobId={import_job_id})"))
     return fr.get("FormattedResults")
 
 
@@ -565,10 +580,12 @@ def import_result(
     data column degrades to a warning, never an error. With `formatted=True`, also
     attaches the Excel-format report verbatim under `formatted_results`.
     """
-    job = as_dict(backend.get(
-        f"importjobs({import_job_id})",
-        params={"$select": "data,solutionname,progress,startedon,completedon"},
-    ))
+    job = as_dict(
+        backend.get(
+            f"importjobs({import_job_id})",
+            params={"$select": "data,solutionname,progress,startedon,completedon"},
+        )
+    )
     out: dict[str, Any] = {
         "import_job_id": import_job_id,
         "solution": job.get("solutionname"),
@@ -584,4 +601,5 @@ def import_result(
 
 def _new_guid() -> str:
     import uuid
+
     return str(uuid.uuid4())

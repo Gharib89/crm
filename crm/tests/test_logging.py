@@ -1,4 +1,5 @@
 """Unit tests for Spec E logging setup."""
+
 # pyright: basic
 from __future__ import annotations
 
@@ -30,8 +31,12 @@ class TestTextFormat:
     def test_request_log_text_format(self, capsys):
         setup_logging(level="debug", fmt="text")
         logging.getLogger("crm.http").debug(
-            "request", extra={"event": "request", "method": "GET",
-                              "url": "https://crm/api/data/v9.2/accounts"}
+            "request",
+            extra={
+                "event": "request",
+                "method": "GET",
+                "url": "https://crm/api/data/v9.2/accounts",
+            },
         )
         err = capsys.readouterr().err
         assert "[DEBUG]" in err
@@ -52,8 +57,12 @@ class TestJsonLineFormat:
     def test_request_log_emits_single_json_line(self, capsys):
         setup_logging(level="debug", fmt="json-line")
         logging.getLogger("crm.http").debug(
-            "request", extra={"event": "request", "method": "GET",
-                              "url": "https://crm/api/data/v9.2/accounts"}
+            "request",
+            extra={
+                "event": "request",
+                "method": "GET",
+                "url": "https://crm/api/data/v9.2/accounts",
+            },
         )
         err = capsys.readouterr().err.strip()
         assert err.count("\n") == 0
@@ -79,27 +88,31 @@ class TestSetupIdempotency:
     def test_repeated_setup_does_not_stack_handlers(self):
         setup_logging(level="debug", fmt="text")
         setup_logging(level="warning", fmt="json-line")
-        handlers = [h for h in logging.getLogger("crm").handlers
-                    if isinstance(h, CrmLogHandler)]
+        handlers = [h for h in logging.getLogger("crm").handlers if isinstance(h, CrmLogHandler)]
         assert len(handlers) == 1
         assert handlers[0].fmt == "json-line"
 
     def test_level_filters_below_threshold(self, capsys):
         setup_logging(level="warning", fmt="text")
-        logging.getLogger("crm.http").debug("request",
-            extra={"event": "request", "method": "GET", "url": "..."})
+        logging.getLogger("crm.http").debug(
+            "request", extra={"event": "request", "method": "GET", "url": "..."}
+        )
         assert capsys.readouterr().err == ""
 
 
 class TestBackendIntegration:
     def test_backend_request_emits_request_response_logs(self, capsys):
         import requests_mock
+
         from crm.utils.d365_backend import ConnectionProfile, D365Backend
 
         setup_logging(level="debug", fmt="text")
         profile = ConnectionProfile(
-            name="t", url="https://crm.contoso.local/contoso",
-            domain="CONTOSO", username="alice", verify_ssl=False,
+            name="t",
+            url="https://crm.contoso.local/contoso",
+            domain="CONTOSO",
+            username="alice",
+            verify_ssl=False,
         )
         backend = D365Backend(profile, password="pw")
         with requests_mock.Mocker() as m:

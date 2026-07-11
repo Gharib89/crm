@@ -9,6 +9,7 @@ Run on demand (not collected by the default suite):
 
     pytest evals/skill
 """
+
 from __future__ import annotations
 
 import json
@@ -40,8 +41,17 @@ TASKS_DIR = Path(__file__).parent / "tasks"
 # (issue #571 AC1). Domains intentionally not sampled here are documented in
 # evals/skill/README.md (setup → local; troubleshooting → diagnostic/#572; etc.).
 EXPECTED_DOMAINS = {
-    "records", "metadata", "customizations", "solutions", "automation",
-    "security", "dup", "connectionrole", "fieldsec", "feedback", "authoring",
+    "records",
+    "metadata",
+    "customizations",
+    "solutions",
+    "automation",
+    "security",
+    "dup",
+    "connectionrole",
+    "fieldsec",
+    "feedback",
+    "authoring",
 }
 
 
@@ -66,13 +76,13 @@ def test_eight_trials_formalized():
     ids = {s.id for s in _specs()}
     trials = {
         "trial-customization-workflow",  # TRIAL-1
-        "trial-global-optionset",        # TRIAL-2
-        "customizations-view-edit",      # TRIAL-3 (cloud)
-        "trial-webresource-iterate",     # TRIAL-4
-        "trial-process-state",           # TRIAL-5
-        "trial-bulk-load",               # TRIAL-6
-        "records-validate-write",        # TRIAL-7 (cloud)
-        "trial-import-diagnosis",        # TRIAL-8
+        "trial-global-optionset",  # TRIAL-2
+        "customizations-view-edit",  # TRIAL-3 (cloud)
+        "trial-webresource-iterate",  # TRIAL-4
+        "trial-process-state",  # TRIAL-5
+        "trial-bulk-load",  # TRIAL-6
+        "records-validate-write",  # TRIAL-7 (cloud)
+        "trial-import-diagnosis",  # TRIAL-8
     }
     missing = trials - ids
     assert not missing, f"trials not formalized: {missing}"
@@ -137,10 +147,15 @@ def _stub(verdicts: dict[str, bool], *, raises: set[str] | None = None):
         if spec.id in raises:
             raise RunError(f"boom: {spec.id}")
         if dry_run:
-            return RunResult(task_id=spec.id, dry_run=True, isolation_checks={"skill-installed": "x"})
+            return RunResult(
+                task_id=spec.id, dry_run=True, isolation_checks={"skill-installed": "x"}
+            )
         return RunResult(
-            task_id=spec.id, dry_run=False, isolation_checks={"skill-installed": "x"},
-            passed=verdicts.get(spec.id, False), reason="stubbed",
+            task_id=spec.id,
+            dry_run=False,
+            isolation_checks={"skill-installed": "x"},
+            passed=verdicts.get(spec.id, False),
+            reason="stubbed",
         )
 
     return run_one
@@ -206,7 +221,9 @@ def test_repeat_runs_each_scored_task_n_times_and_smooths():
         calls[spec.id] = n + 1
         # the flaky task passes on calls 0 and 2, fails on call 1 → 2 of 3 trials.
         passed = True if spec.id != flaky else n != 1
-        return RunResult(task_id=spec.id, dry_run=False, isolation_checks={}, passed=passed, reason="x")
+        return RunResult(
+            task_id=spec.id, dry_run=False, isolation_checks={}, passed=passed, reason="x"
+        )
 
     result = run_set(TASKS_DIR, active_target="cloud", repeat=3, run_one=run_one)
     by_id = {o.task_id: o for o in result.outcomes}
@@ -226,7 +243,8 @@ def test_harness_error_is_isolated_not_fatal():
     cloud_ids = [s.id for s in specs if s.target in ("cloud", "either")]
     boom = cloud_ids[0]
     result = run_set(
-        TASKS_DIR, active_target="cloud",
+        TASKS_DIR,
+        active_target="cloud",
         run_one=_stub({tid: True for tid in cloud_ids}, raises={boom}),
     )
     by_id = {o.task_id: o for o in result.outcomes}
@@ -239,7 +257,8 @@ def test_harness_error_is_isolated_not_fatal():
 def test_set_result_shapes():
     result = SetResult(
         outcomes=[TaskOutcome("a", PASS, "cloud"), TaskOutcome("b", SKIP, "onprem")],
-        active_target="cloud", dry_run=False,
+        active_target="cloud",
+        dry_run=False,
     )
     d = result.to_dict()
     assert d["counts"][PASS] == 1 and d["counts"][SKIP] == 1
@@ -254,23 +273,34 @@ def test_run_set_raises_on_empty_dir(tmp_path):
 
 # --- run-record persistence + counterfactual + task filter (#588) --------------------
 
-_TRACE = json.dumps({
-    "type": "assistant",
-    "message": {"content": [{"type": "tool_use", "name": "Bash",
-                             "input": {"command": "crm whoami"}}]}})
+_TRACE = json.dumps(
+    {
+        "type": "assistant",
+        "message": {
+            "content": [{"type": "tool_use", "name": "Bash", "input": {"command": "crm whoami"}}]
+        },
+    }
+)
 
 
 def _trace_stub(verdicts: dict[str, bool], *, calls: list | None = None):
     """A run_one stub that returns a transcript and records its install_skill arg, so
-    the persistence + counterfactual wiring can be driven without a real agent."""
+    the persistence + counterfactual wiring can be driven without a real agent.
+    """
+
     def run_one(path, *, dry_run, agent_cmd, crm_bin, install_skill=True):
         spec = parse_task_file(path)
         if calls is not None:
             calls.append((spec.id, install_skill))
         return RunResult(
-            task_id=spec.id, dry_run=False, isolation_checks={},
-            passed=verdicts.get(spec.id, True), reason="stubbed", transcript=_TRACE,
+            task_id=spec.id,
+            dry_run=False,
+            isolation_checks={},
+            passed=verdicts.get(spec.id, True),
+            reason="stubbed",
+            transcript=_TRACE,
         )
+
     return run_one
 
 
@@ -297,9 +327,16 @@ def test_no_run_dir_writes_nothing(tmp_path):
 def test_counterfactual_writes_absent_leg_with_install_skill_false(tmp_path):
     run_dir = tmp_path / "cf"
     calls: list = []
-    run_set(TASKS_DIR, active_target="cloud", run_one=_trace_stub({}, calls=calls),
-            run_dir=run_dir, counterfactual=True)
-    present = {p.name for p in run_dir.glob("*.json") if not p.name.endswith(".counterfactual.json")}
+    run_set(
+        TASKS_DIR,
+        active_target="cloud",
+        run_one=_trace_stub({}, calls=calls),
+        run_dir=run_dir,
+        counterfactual=True,
+    )
+    present = {
+        p.name for p in run_dir.glob("*.json") if not p.name.endswith(".counterfactual.json")
+    }
     absent = {p.name for p in run_dir.glob("*.counterfactual.json")}
     assert present and len(absent) == len(present)  # a paired absent leg per scored task
     # the absent leg ran the task with the skill not installed
@@ -309,8 +346,9 @@ def test_counterfactual_writes_absent_leg_with_install_skill_false(tmp_path):
 
 def test_task_filter_runs_only_the_named_task(tmp_path):
     one = _scored_ids()[0]
-    result = run_set(TASKS_DIR, active_target="cloud", run_one=_trace_stub({}),
-                     task_filter=one, run_dir=tmp_path)
+    result = run_set(
+        TASKS_DIR, active_target="cloud", run_one=_trace_stub({}), task_filter=one, run_dir=tmp_path
+    )
     assert [o.task_id for o in result.outcomes] == [one]
     assert {r.task_id for r in record_mod.load_records(tmp_path)} == {one}
 
@@ -318,8 +356,13 @@ def test_task_filter_runs_only_the_named_task(tmp_path):
 def test_unknown_task_filter_fails_loud_not_silent(tmp_path):
     # `--task` with an id that matches nothing is a typo, not a clean empty success.
     with pytest.raises(RunError, match="no task matched"):
-        run_set(TASKS_DIR, active_target="cloud", run_one=_trace_stub({}),
-                task_filter="does-not-exist", run_dir=tmp_path)
+        run_set(
+            TASKS_DIR,
+            active_target="cloud",
+            run_one=_trace_stub({}),
+            task_filter="does-not-exist",
+            run_dir=tmp_path,
+        )
 
 
 def test_errored_task_with_a_captured_trace_still_persists_a_record(tmp_path):
@@ -334,11 +377,23 @@ def test_errored_task_with_a_captured_trace_still_persists_a_record(tmp_path):
         calls[spec.id] = n + 1
         if n == 1:  # the second trial raises after the first produced a trace
             raise RunError("trial 1 boom")
-        return RunResult(task_id=spec.id, dry_run=False, isolation_checks={},
-                         passed=True, reason="ok", transcript=_TRACE)
+        return RunResult(
+            task_id=spec.id,
+            dry_run=False,
+            isolation_checks={},
+            passed=True,
+            reason="ok",
+            transcript=_TRACE,
+        )
 
-    result = run_set(TASKS_DIR, active_target="cloud", run_one=run_one, run_dir=tmp_path,
-                     repeat=2, task_filter=one)
+    result = run_set(
+        TASKS_DIR,
+        active_target="cloud",
+        run_one=run_one,
+        run_dir=tmp_path,
+        repeat=2,
+        task_filter=one,
+    )
     assert [o.status for o in result.outcomes] == [set_runner.ERROR]
     recs = record_mod.load_records(tmp_path)
     assert [r.task_id for r in recs] == [one]

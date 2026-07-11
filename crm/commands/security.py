@@ -1,20 +1,23 @@
 """Security role commands."""
+
 # pyright: basic
 from __future__ import annotations
+
 import click
-from crm.core import security as security_mod
-from crm.cli import CLIContext, pass_ctx, _complete_entity_set_names
+
+from crm.cli import CLIContext, _complete_entity_set_names, pass_ctx
 from crm.commands._helpers import (
-    _destructive_option,
-    d365_errors,
-    _confirm_destructive,
     _admin_header_options,
     _admin_kwargs,
+    _confirm_destructive,
+    _destructive_option,
     _emit_with_warning,
     _journal,
     _resolve_solution,
     _solution_option,
+    d365_errors,
 )
+from crm.core import security as security_mod
 
 
 @click.group("security")
@@ -36,26 +39,38 @@ def _split_principal(value: str) -> tuple[str, str]:
 
 
 @security_group.command("list-roles")
-@click.option("--business-unit", "business_unit", metavar="GUID", default=None,
-              help="Filter to roles belonging to this business unit GUID.")
-@click.option("--name-contains", "name_contains", metavar="TEXT", default=None,
-              help="Filter to roles whose name contains this text (server-side).")
+@click.option(
+    "--business-unit",
+    "business_unit",
+    metavar="GUID",
+    default=None,
+    help="Filter to roles belonging to this business unit GUID.",
+)
+@click.option(
+    "--name-contains",
+    "name_contains",
+    metavar="TEXT",
+    default=None,
+    help="Filter to roles whose name contains this text (server-side).",
+)
 @pass_ctx
 def list_roles(ctx: CLIContext, business_unit, name_contains):
     """List security roles (optionally filtered by business unit or name)."""
     with d365_errors(ctx):
         items = security_mod.list_roles(
-            ctx.backend(), business_unit=business_unit, name_contains=name_contains,
+            ctx.backend(),
+            business_unit=business_unit,
+            name_contains=name_contains,
         )
     if ctx.json_mode:
         ctx.emit(True, data=items, meta={"count": len(items)})
         return
     headers = ["name", "roleid", "businessunitid"]
-    rows = [[it.get("name", ""), it.get("roleid", ""),
-             it.get("_businessunitid_value", "")] for it in items]
-    ctx.emit(True, table={"headers": headers, "rows": rows},
-             meta={"count": len(items)})
-
+    rows = [
+        [it.get("name", ""), it.get("roleid", ""), it.get("_businessunitid_value", "")]
+        for it in items
+    ]
+    ctx.emit(True, table={"headers": headers, "rows": rows}, meta={"count": len(items)})
 
 
 def _csv(value: str | None) -> list[str]:
@@ -65,17 +80,25 @@ def _csv(value: str | None) -> list[str]:
 
 @security_group.command("create-role")
 @click.argument("name")
-@click.option("--business-unit", "business_unit", metavar="GUID", default=None,
-              help="Business unit GUID for the role (defaults to the caller's).")
-@click.option("--if-exists", "if_exists", type=click.Choice(["error", "skip"]),
-              default="error", show_default=True,
-              help="On a same-name role in the same business unit: error, or "
-                   "skip (reuse the existing role).")
+@click.option(
+    "--business-unit",
+    "business_unit",
+    metavar="GUID",
+    default=None,
+    help="Business unit GUID for the role (defaults to the caller's).",
+)
+@click.option(
+    "--if-exists",
+    "if_exists",
+    type=click.Choice(["error", "skip"]),
+    default="error",
+    show_default=True,
+    help="On a same-name role in the same business unit: error, or skip (reuse the existing role).",
+)
 @_solution_option
 @_destructive_option
 @pass_ctx
-def create_role(ctx: CLIContext, name, business_unit, if_exists, solution,
-                yes):
+def create_role(ctx: CLIContext, name, business_unit, if_exists, solution, yes):
     """Create a security role (NAME is the role's display name).
 
     The role starts with no privileges; grant them with
@@ -84,12 +107,14 @@ def create_role(ctx: CLIContext, name, business_unit, if_exists, solution,
     --if-exists skip an existing role is reused, not added). Use --dry-run to
     preview without writing.
     """
-    _confirm_destructive(ctx, "role", name, yes,
-                         message=f"Create security role {name!r}?")
+    _confirm_destructive(ctx, "role", name, yes, message=f"Create security role {name!r}?")
     solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         result = security_mod.create_role(
-            ctx.backend(), name, business_unit=business_unit, if_exists=if_exists,
+            ctx.backend(),
+            name,
+            business_unit=business_unit,
+            if_exists=if_exists,
             solution=solution,
         )
     _emit_with_warning(ctx, result, None, meta=ctx.staged_meta())
@@ -98,29 +123,56 @@ def create_role(ctx: CLIContext, name, business_unit, if_exists, solution,
 
 @security_group.command("set-role-privileges")
 @click.argument("role")
-@click.option("--access", default=None, metavar="LIST",
-              help="Comma-separated access types: "
-                   "read,write,create,delete,append,appendto,assign,share. "
-                   "Requires --entities or --all-entities.")
-@click.option("--entities", default=None, metavar="LIST",
-              help="Comma-separated entity logical names to scope --access to.")
-@click.option("--all-entities", "all_entities", is_flag=True,
-              help="Apply --access across every entity (org-wide).")
-@click.option("--privilege", "privilege", default=None, metavar="LIST",
-              help="Explicit privilege names (comma-separated), e.g. "
-                   "prvCreateEntity. The escape hatch for non-entity privileges.")
-@click.option("--depth", required=True, metavar="LEVEL",
-              help="Privilege depth: basic|local|deep|global (aliases "
-                   "user|businessunit|parentchild|organization). Clamped per "
-                   "privilege to the levels it supports.")
-@click.option("--add", "add", is_flag=True,
-              help="Merge privileges into the role (default, non-destructive).")
-@click.option("--replace", "replace", is_flag=True,
-              help="Replace the role's privileges with exactly the resolved set.")
+@click.option(
+    "--access",
+    default=None,
+    metavar="LIST",
+    help="Comma-separated access types: "
+    "read,write,create,delete,append,appendto,assign,share. "
+    "Requires --entities or --all-entities.",
+)
+@click.option(
+    "--entities",
+    default=None,
+    metavar="LIST",
+    help="Comma-separated entity logical names to scope --access to.",
+)
+@click.option(
+    "--all-entities",
+    "all_entities",
+    is_flag=True,
+    help="Apply --access across every entity (org-wide).",
+)
+@click.option(
+    "--privilege",
+    "privilege",
+    default=None,
+    metavar="LIST",
+    help="Explicit privilege names (comma-separated), e.g. "
+    "prvCreateEntity. The escape hatch for non-entity privileges.",
+)
+@click.option(
+    "--depth",
+    required=True,
+    metavar="LEVEL",
+    help="Privilege depth: basic|local|deep|global (aliases "
+    "user|businessunit|parentchild|organization). Clamped per "
+    "privilege to the levels it supports.",
+)
+@click.option(
+    "--add", "add", is_flag=True, help="Merge privileges into the role (default, non-destructive)."
+)
+@click.option(
+    "--replace",
+    "replace",
+    is_flag=True,
+    help="Replace the role's privileges with exactly the resolved set.",
+)
 @_destructive_option
 @pass_ctx
-def set_role_privileges(ctx: CLIContext, role, access, entities, all_entities,
-                        privilege, depth, add, replace, yes):
+def set_role_privileges(
+    ctx: CLIContext, role, access, entities, all_entities, privilege, depth, add, replace, yes
+):
     """Add or replace a security role's privileges (ROLE is a role id or name).
 
     Resolve privileges from access×entity selectors and/or explicit privilege
@@ -141,9 +193,14 @@ def set_role_privileges(ctx: CLIContext, role, access, entities, all_entities,
     _confirm_destructive(ctx, "role", role, yes, message=message)
     with d365_errors(ctx):
         result = security_mod.set_role_privileges(
-            ctx.backend(), role,
-            access=_csv(access), entities=_csv(entities), all_entities=all_entities,
-            privilege_names=_csv(privilege), depth=depth, replace=replace,
+            ctx.backend(),
+            role,
+            access=_csv(access),
+            entities=_csv(entities),
+            all_entities=all_entities,
+            privilege_names=_csv(privilege),
+            depth=depth,
+            replace=replace,
         )
     warnings = result.pop("warnings", None) or None
     ctx.emit(True, data=result, warnings=warnings)
@@ -167,8 +224,7 @@ def list_user_roles(ctx: CLIContext, user_id):
         return
     headers = ["name", "roleid"]
     rows = [[it.get("name", ""), it.get("roleid", "")] for it in items]
-    ctx.emit(True, table={"headers": headers, "rows": rows},
-             meta={"count": len(items)})
+    ctx.emit(True, table={"headers": headers, "rows": rows}, meta={"count": len(items)})
 
 
 @security_group.command("list-team-roles")
@@ -183,8 +239,7 @@ def list_team_roles(ctx: CLIContext, team_id):
         return
     headers = ["name", "roleid"]
     rows = [[it.get("name", ""), it.get("roleid", "")] for it in items]
-    ctx.emit(True, table={"headers": headers, "rows": rows},
-             meta={"count": len(items)})
+    ctx.emit(True, table={"headers": headers, "rows": rows}, meta={"count": len(items)})
 
 
 @security_group.command("user-privileges")
@@ -203,23 +258,39 @@ def user_privileges(ctx: CLIContext, user_id):
         ctx.emit(True, data=items, meta={"count": len(items)})
         return
     headers = ["name", "depth", "privilegeid"]
-    rows = [[it.get("PrivilegeName", ""), it.get("Depth", ""),
-             it.get("PrivilegeId", "")] for it in items]
-    ctx.emit(True, table={"headers": headers, "rows": rows},
-             meta={"count": len(items)})
+    rows = [
+        [it.get("PrivilegeName", ""), it.get("Depth", ""), it.get("PrivilegeId", "")]
+        for it in items
+    ]
+    ctx.emit(True, table={"headers": headers, "rows": rows}, meta={"count": len(items)})
 
 
 @security_group.command("assign-role")
 @click.argument("role_id")
-@click.option("--to-user", "to_user", metavar="GUID", default=None,
-              help="Assign the role to this system user GUID.")
-@click.option("--to-team", "to_team", metavar="GUID", default=None,
-              help="Assign the role to this team GUID.")
+@click.option(
+    "--to-user",
+    "to_user",
+    metavar="GUID",
+    default=None,
+    help="Assign the role to this system user GUID.",
+)
+@click.option(
+    "--to-team", "to_team", metavar="GUID", default=None, help="Assign the role to this team GUID."
+)
 @_destructive_option
 @_admin_header_options
 @pass_ctx
-def assign_role(ctx: CLIContext, role_id, to_user, to_team, yes,
-                as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
+def assign_role(
+    ctx: CLIContext,
+    role_id,
+    to_user,
+    to_team,
+    yes,
+    as_user,
+    as_user_object_id,
+    suppress_dup_detection,
+    bypass_plugins,
+):
     """Assign a security role to a user or team.
 
     Exactly one of --to-user or --to-team must be provided.
@@ -237,15 +308,17 @@ def assign_role(ctx: CLIContext, role_id, to_user, to_team, yes,
     with d365_errors(ctx):
         if to_user:
             result = security_mod.assign_role_to_user(
-                ctx.backend(), to_user, role_id,
-                **_admin_kwargs(as_user, as_user_object_id,
-                                suppress_dup_detection, bypass_plugins),
+                ctx.backend(),
+                to_user,
+                role_id,
+                **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
             )
         else:
             result = security_mod.assign_role_to_team(
-                ctx.backend(), to_team, role_id,
-                **_admin_kwargs(as_user, as_user_object_id,
-                                suppress_dup_detection, bypass_plugins),
+                ctx.backend(),
+                to_team,
+                role_id,
+                **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
             )
     ctx.emit(True, data=result)
     _journal(ctx, role_id, result)
@@ -254,11 +327,19 @@ def assign_role(ctx: CLIContext, role_id, to_user, to_team, yes,
 @security_group.command("grant")
 @click.argument("entity_set", shell_complete=_complete_entity_set_names)
 @click.argument("record_id")
-@click.option("--to", "to", metavar="TYPE:GUID", required=True,
-              help="Principal to share with, as <user|team|org>:<guid>.")
-@click.option("--rights", required=True, metavar="RIGHTS",
-              help="Comma-separated access rights: "
-                   "Read,Write,Append,AppendTo,Create,Delete,Share,Assign.")
+@click.option(
+    "--to",
+    "to",
+    metavar="TYPE:GUID",
+    required=True,
+    help="Principal to share with, as <user|team|org>:<guid>.",
+)
+@click.option(
+    "--rights",
+    required=True,
+    metavar="RIGHTS",
+    help="Comma-separated access rights: Read,Write,Append,AppendTo,Create,Delete,Share,Assign.",
+)
 @_destructive_option
 @pass_ctx
 def grant(ctx: CLIContext, entity_set, record_id, to, rights, yes):
@@ -275,8 +356,12 @@ def grant(ctx: CLIContext, entity_set, record_id, to, rights, yes):
     _confirm_destructive(ctx, "record", record_id, yes, message=message)
     with d365_errors(ctx):
         result = security_mod.grant_access(
-            ctx.backend(), entity_set, record_id,
-            principal_type=principal_type, principal_id=principal_id, rights=rights,
+            ctx.backend(),
+            entity_set,
+            record_id,
+            principal_type=principal_type,
+            principal_id=principal_id,
+            rights=rights,
         )
     ctx.emit(True, data=result)
     _journal(ctx, record_id, result)
@@ -285,8 +370,13 @@ def grant(ctx: CLIContext, entity_set, record_id, to, rights, yes):
 @security_group.command("revoke")
 @click.argument("entity_set", shell_complete=_complete_entity_set_names)
 @click.argument("record_id")
-@click.option("--from", "from_", metavar="TYPE:GUID", required=True,
-              help="Principal to unshare, as <user|team|org>:<guid>.")
+@click.option(
+    "--from",
+    "from_",
+    metavar="TYPE:GUID",
+    required=True,
+    help="Principal to unshare, as <user|team|org>:<guid>.",
+)
 @_destructive_option
 @pass_ctx
 def revoke(ctx: CLIContext, entity_set, record_id, from_, yes):
@@ -297,14 +387,16 @@ def revoke(ctx: CLIContext, entity_set, record_id, from_, yes):
     """
     principal_type, principal_id = _split_principal(from_)
     message = (
-        f"Revoke {principal_type} {principal_id}'s shared access to "
-        f"{entity_set}({record_id})?"
+        f"Revoke {principal_type} {principal_id}'s shared access to {entity_set}({record_id})?"
     )
     _confirm_destructive(ctx, "record", record_id, yes, message=message)
     with d365_errors(ctx):
         result = security_mod.revoke_access(
-            ctx.backend(), entity_set, record_id,
-            principal_type=principal_type, principal_id=principal_id,
+            ctx.backend(),
+            entity_set,
+            record_id,
+            principal_type=principal_type,
+            principal_id=principal_id,
         )
     ctx.emit(True, data=result)
     _journal(ctx, record_id, result)
@@ -327,7 +419,8 @@ def list_access(ctx: CLIContext, entity_set, record_id):
         ctx.emit(True, data=items, meta={"count": len(items)})
         return
     headers = ["principalType", "principalId", "accessMask"]
-    rows = [[it.get("principalType", ""), it.get("principalId", ""),
-             it.get("accessMask", "")] for it in items]
-    ctx.emit(True, table={"headers": headers, "rows": rows},
-             meta={"count": len(items)})
+    rows = [
+        [it.get("principalType", ""), it.get("principalId", ""), it.get("accessMask", "")]
+        for it in items
+    ]
+    ctx.emit(True, table={"headers": headers, "rows": rows}, meta={"count": len(items)})

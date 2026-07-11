@@ -5,6 +5,7 @@ Every test collected under this package is marked `e2e` so the default
 this package (crm/tests/test_e2e_coverage_gate.py) so it is never marked and
 runs in the fast offline CI.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -34,11 +35,11 @@ _E_CLIENT_ID = "D365_CLIENT_ID"
 _E_CLIENT_SECRET = "D365_CLIENT_SECRET"
 _E_TENANT_ID = "D365_TENANT_ID"
 
-_REQUIRED = (_E_URL, _E_USERNAME, _E_PW)                    # NTLM / on-prem
+_REQUIRED = (_E_URL, _E_USERNAME, _E_PW)  # NTLM / on-prem
 # OAuth/Dataverse hard-requires tenant_id + client_id (D365Backend raises
 # otherwise) — list it here so a missing value fails fast at opt-in instead
 # of crashing the suite mid-run with a less actionable auth error.
-_REQUIRED_OAUTH = (_E_URL, _E_CLIENT_ID, _E_TENANT_ID)     # when D365_AUTH=oauth
+_REQUIRED_OAUTH = (_E_URL, _E_CLIENT_ID, _E_TENANT_ID)  # when D365_AUTH=oauth
 # Opt-in env var naming an EXISTING profile to source creds + target from. When
 # set, the target (cloud/on-prem) is intrinsic to the profile's auth scheme and
 # the flat D365_* env set is not consulted (#273). Unset → the D365_* env path.
@@ -153,7 +154,8 @@ def _probe_or_skip(profile, secret) -> None:
     """One short-timeout GET to the service root. A connection-level failure
     (DNS/TCP/timeout — host unreachable) skips the whole session naming the
     likely cause; any HTTP response (incl 401/403) means the host is reachable,
-    so we proceed and let the tests surface auth/server errors normally (#273)."""
+    so we proceed and let the tests surface auth/server errors normally (#273).
+    """
     import dataclasses
 
     from crm.utils.d365_backend import D365Backend, D365Error
@@ -171,8 +173,7 @@ def _probe_or_skip(profile, secret) -> None:
         # fixture will raise it again, so the tests surface it with full context.
         if _is_unreachable(exc):
             pytest.skip(
-                f"target {profile.url!r} unreachable (VPN down / host not "
-                f"responding?) — {exc}"
+                f"target {profile.url!r} unreachable (VPN down / host not responding?) — {exc}"
             )
 
 
@@ -187,7 +188,8 @@ def live_profile(tmp_path_factory):
     Pulled for every *non-offline* test by the autouse `_enforce_capability`
     gate (it used to be ``autouse`` itself). Routing it through the gate lets an
     ``@pytest.mark.offline`` test — one that needs only a local binary, no org —
-    bypass the opt-in/reachability skip and run in plain CI (#529)."""
+    bypass the opt-in/reachability skip and run in plain CI (#529).
+    """
     if not _e2e_opted_in():
         pytest.skip(
             "e2e opt-in required: set D365_E2E=1 plus EITHER "
@@ -261,9 +263,7 @@ def cli():
         merged = os.environ.copy()
         if env:
             merged.update(env)
-        return subprocess.run(
-            base + args, capture_output=True, text=True, check=check, env=merged
-        )
+        return subprocess.run(base + args, capture_output=True, text=True, check=check, env=merged)
 
     return run
 
@@ -279,7 +279,8 @@ def target(live_profile):
     """'cloud' for an OAuth target, 'onprem' for NTLM — drives capability markers
     and the in-test branching used by divergent (`both`) tests. Derived from the
     resolved profile's auth scheme, so it is correct whether creds came from a
-    named profile (D365_E2E_PROFILE) or the D365_* env set."""
+    named profile (D365_E2E_PROFILE) or the D365_* env set.
+    """
     from crm.core import session as session_mod
 
     return "cloud" if session_mod.load_profile(_LIVE_PROFILE).auth_scheme == "oauth" else "onprem"
@@ -321,7 +322,8 @@ def marker_prefix(suffix: str) -> str:
     ``8 - len(marker)`` chars of ``suffix`` survive). Deriving it from the per-run
     suffix keeps it collision-resistant across concurrent runs on the shared org —
     unlike a fixed literal, which would always clash on the environment-unique
-    publisher prefix."""
+    publisher prefix.
+    """
     return f"{E2E_MARKER}{suffix}"[:8]
 
 
@@ -329,8 +331,10 @@ def marker_prefix(suffix: str) -> str:
 def ephemeral_entity(backend):
     """One uniquely-named custom entity for the whole session — backs attribute/
     relationship/form/ribbon tests. Session scope avoids paying the slow on-prem
-    create+publish cycle in every module."""
+    create+publish cycle in every module.
+    """
     import uuid as _uuid
+
     from crm.core import metadata as meta_mod
 
     suffix = _uuid.uuid4().hex[:8]
@@ -354,6 +358,7 @@ def ephemeral_entity(backend):
 def ephemeral_solution(backend):
     """Throwaway publisher + unmanaged solution for solution-component tests."""
     import uuid as _uuid
+
     from crm.core import solution as sol_mod
 
     suffix = _uuid.uuid4().hex[:8]
@@ -361,7 +366,9 @@ def ephemeral_solution(backend):
     pub_name = f"new_{E2E_MARKER}pub_{suffix}"
     sol_name = f"new_{E2E_MARKER}sol_{suffix}"
     pub = sol_mod.create_publisher(
-        backend, name=pub_name, prefix=prefix,
+        backend,
+        name=pub_name,
+        prefix=prefix,
         option_value_prefix=10000 + (int(suffix, 16) % 90000),
     )
     sol_mod.create_solution(backend, name=sol_name, publisher_unique_name=pub_name)
@@ -411,9 +418,18 @@ def plugin_assembly(tmp_path_factory):
     asm_name = f"CrmCliNoOp{uuid.uuid4().hex[:8]}"
     out_dir = tmp_path_factory.mktemp("plugin_build")
     proc = subprocess.run(
-        ["dotnet", "build", str(_PLUGIN_SRC / "NoOpPlugin.csproj"),
-         "-c", "Release", f"-p:AssemblyName={asm_name}", "-o", str(out_dir)],
-        capture_output=True, text=True,
+        [
+            "dotnet",
+            "build",
+            str(_PLUGIN_SRC / "NoOpPlugin.csproj"),
+            "-c",
+            "Release",
+            f"-p:AssemblyName={asm_name}",
+            "-o",
+            str(out_dir),
+        ],
+        capture_output=True,
+        text=True,
     )
     if proc.returncode != 0:
         # In CI (the authoritative run) the SDK + network are present, so a build
@@ -425,8 +441,7 @@ def plugin_assembly(tmp_path_factory):
         )
     dll = out_dir / f"{asm_name}.dll"
     identity = out_dir / "assembly-identity.txt"
-    token = (identity.read_text(encoding="utf-8").strip().lower()
-             if identity.is_file() else "")
+    token = identity.read_text(encoding="utf-8").strip().lower() if identity.is_file() else ""
     if not re.fullmatch(r"[0-9a-f]{16}", token):
         pytest.fail(
             f"could not read the assembly public key token from {identity} "

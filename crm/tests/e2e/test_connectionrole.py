@@ -5,6 +5,7 @@ Works on both targets (connection roles exist on on-prem v9.x and cloud). The
 lifecycle test builds two throwaway roles, scopes one to `account` (present on
 every org), pairs them, then deletes both — leaving the org as it found it.
 """
+
 from __future__ import annotations
 
 import json
@@ -32,11 +33,19 @@ def test_connectionrole_lifecycle(backend, cli, request, unique, ephemeral_solut
     request.addfinalizer(_cleanup)
 
     # create role A (with a category)
-    result = cli([
-        "--json", "connectionrole", "create",
-        "--name", f"E2E Role A {unique}", "--category", "business",
-        "--solution", ephemeral_solution,
-    ])
+    result = cli(
+        [
+            "--json",
+            "connectionrole",
+            "create",
+            "--name",
+            f"E2E Role A {unique}",
+            "--category",
+            "business",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert result.returncode == 0, (
         f"connectionrole create A failed:\n{result.stderr}\nstdout: {result.stdout}"
     )
@@ -47,10 +56,17 @@ def test_connectionrole_lifecycle(backend, cli, request, unique, ephemeral_solut
     created.append(role_a)
 
     # create role B
-    result = cli([
-        "--json", "connectionrole", "create", "--name", f"E2E Role B {unique}",
-        "--solution", ephemeral_solution,
-    ])
+    result = cli(
+        [
+            "--json",
+            "connectionrole",
+            "create",
+            "--name",
+            f"E2E Role B {unique}",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert result.returncode == 0, (
         f"connectionrole create B failed:\n{result.stderr}\nstdout: {result.stdout}"
     )
@@ -59,10 +75,18 @@ def test_connectionrole_lifecycle(backend, cli, request, unique, ephemeral_solut
     created.append(role_b)
 
     # scope role A to the account entity
-    result = cli([
-        "--json", "connectionrole", "scope", role_a, "--entity", "account",
-        "--solution", ephemeral_solution,
-    ])
+    result = cli(
+        [
+            "--json",
+            "connectionrole",
+            "scope",
+            role_a,
+            "--entity",
+            "account",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert result.returncode == 0, (
         f"connectionrole scope failed:\n{result.stderr}\nstdout: {result.stdout}"
     )
@@ -71,9 +95,15 @@ def test_connectionrole_lifecycle(backend, cli, request, unique, ephemeral_solut
     assert scoped.get("connectionroleobjecttypecodeid"), scoped
 
     # match role A with role B
-    result = cli([
-        "--json", "connectionrole", "match", role_a, role_b,
-    ])
+    result = cli(
+        [
+            "--json",
+            "connectionrole",
+            "match",
+            role_a,
+            role_b,
+        ]
+    )
     assert result.returncode == 0, (
         f"connectionrole match failed:\n{result.stderr}\nstdout: {result.stdout}"
     )

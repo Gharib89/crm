@@ -8,33 +8,38 @@ import requests_mock
 
 from crm.utils.d365_backend import D365Backend, D365Error
 
-
 _OS_ID = "44444444-4444-4444-4444-444444444444"
 
 
 class TestListOptionsets:
     def test_list_all(self, backend):
         from crm.core import optionsets as os_mod
+
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("GlobalOptionSetDefinitions"),
-                json={"value": [
-                    {"Name": "new_priority", "IsCustomOptionSet": True, "IsGlobal": True},
-                    {"Name": "statecode", "IsCustomOptionSet": False, "IsGlobal": True},
-                ]},
+                json={
+                    "value": [
+                        {"Name": "new_priority", "IsCustomOptionSet": True, "IsGlobal": True},
+                        {"Name": "statecode", "IsCustomOptionSet": False, "IsGlobal": True},
+                    ]
+                },
             )
             rows = os_mod.list_optionsets(backend)
         assert len(rows) == 2
 
     def test_list_custom_only_filters(self, backend):
         from crm.core import optionsets as os_mod
+
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("GlobalOptionSetDefinitions"),
-                json={"value": [
-                    {"Name": "new_priority", "IsCustomOptionSet": True},
-                    {"Name": "statecode", "IsCustomOptionSet": False},
-                ]},
+                json={
+                    "value": [
+                        {"Name": "new_priority", "IsCustomOptionSet": True},
+                        {"Name": "statecode", "IsCustomOptionSet": False},
+                    ]
+                },
             )
             rows = os_mod.list_optionsets(backend, custom_only=True)
         assert len(rows) == 1
@@ -42,12 +47,11 @@ class TestListOptionsets:
 
     def test_list_top_slice(self, backend):
         from crm.core import optionsets as os_mod
+
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("GlobalOptionSetDefinitions"),
-                json={"value": [
-                    {"Name": f"opt_{i}"} for i in range(5)
-                ]},
+                json={"value": [{"Name": f"opt_{i}"} for i in range(5)]},
             )
             rows = os_mod.list_optionsets(backend, top=2)
         assert len(rows) == 2
@@ -56,12 +60,14 @@ class TestListOptionsets:
 class TestGetOptionset:
     def test_get_returns_options(self, backend):
         from crm.core import optionsets as os_mod
+
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
-                json={"Name": "new_priority", "Options": [
-                    {"Value": 1, "Label": {"LocalizedLabels": [{"Label": "Low"}]}}
-                ]},
+                json={
+                    "Name": "new_priority",
+                    "Options": [{"Value": 1, "Label": {"LocalizedLabels": [{"Label": "Low"}]}}],
+                },
             )
             info = os_mod.get_optionset(backend, "new_priority")
         assert info["Name"] == "new_priority"
@@ -74,6 +80,7 @@ class TestGetOptionset:
         # property. A plain GET serializes the full derived type, Options
         # included (issue #179).
         from crm.core import optionsets as os_mod
+
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
@@ -86,6 +93,7 @@ class TestGetOptionset:
 class TestCreateOptionset:
     def test_create_with_options(self, backend):
         from crm.core import optionsets as os_mod
+
         url = backend.url_for(f"GlobalOptionSetDefinitions({_OS_ID})")
         with requests_mock.Mocker() as m:
             # --if-exists probe: option set not present (404), so create proceeds.
@@ -122,37 +130,49 @@ class TestCreateOptionset:
 
     def test_create_rejects_duplicate_values(self, backend):
         from crm.core import optionsets as os_mod
+
         with pytest.raises(D365Error, match="Duplicate"):
             os_mod.create_optionset(
-                backend, name="new_dupe", display_name="Dupe",
+                backend,
+                name="new_dupe",
+                display_name="Dupe",
                 options=[(1, "A"), (1, "B")],
             )
 
     def test_create_rejects_empty_option_label(self, backend):
         from crm.core import optionsets as os_mod
+
         with pytest.raises(D365Error, match="empty"):
             os_mod.create_optionset(
-                backend, name="new_test", display_name="Test",
+                backend,
+                name="new_test",
+                display_name="Test",
                 options=[(1, "")],
             )
 
     def test_create_rejects_bad_if_exists(self, backend):
         from crm.core import optionsets as os_mod
+
         with pytest.raises(D365Error, match="if_exists"):
             os_mod.create_optionset(
-                backend, name="new_priority", display_name="Priority",
+                backend,
+                name="new_priority",
+                display_name="Priority",
                 if_exists="bogus",
             )
 
     def test_create_if_exists_skip_returns_skipped(self, backend):
         from crm.core import optionsets as os_mod
+
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
                 json={"Name": "new_priority"},  # 200 = exists
             )
             info = os_mod.create_optionset(
-                backend, name="new_priority", display_name="Priority",
+                backend,
+                name="new_priority",
+                display_name="Priority",
                 if_exists="skip",
             )
         assert info["skipped"] is True
@@ -160,6 +180,7 @@ class TestCreateOptionset:
 
     def test_create_includes_description_when_given(self, backend):
         from crm.core import optionsets as os_mod
+
         url = backend.url_for(f"GlobalOptionSetDefinitions({_OS_ID})")
         with requests_mock.Mocker() as m:
             m.get(
@@ -174,7 +195,9 @@ class TestCreateOptionset:
             )
             m.get(url, json={"Name": "new_priority", "IsCustomOptionSet": True})
             os_mod.create_optionset(
-                backend, name="new_priority", display_name="Priority",
+                backend,
+                name="new_priority",
+                display_name="Priority",
                 description="The priority level",
             )
         body = next(r for r in m.request_history if r.method == "POST").json()
@@ -182,6 +205,7 @@ class TestCreateOptionset:
 
     def test_create_readback_failure_non_fatal(self, backend):
         from crm.core import optionsets as os_mod
+
         url = backend.url_for(f"GlobalOptionSetDefinitions({_OS_ID})")
         with requests_mock.Mocker() as m:
             m.get(
@@ -196,13 +220,16 @@ class TestCreateOptionset:
             )
             m.get(url, status_code=500, json={"error": {"message": "boom"}})
             info = os_mod.create_optionset(
-                backend, name="new_priority", display_name="Priority",
+                backend,
+                name="new_priority",
+                display_name="Priority",
             )
         assert info["created"] is True
         assert "optionset_lookup_error" in info
 
     def test_create_no_entity_id_sets_lookup_error(self, backend):
         from crm.core import optionsets as os_mod
+
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
@@ -215,7 +242,9 @@ class TestCreateOptionset:
                 status_code=204,
             )
             info = os_mod.create_optionset(
-                backend, name="new_priority", display_name="Priority",
+                backend,
+                name="new_priority",
+                display_name="Priority",
             )
         assert info["created"] is True
         assert "optionset_lookup_error" in info
@@ -224,11 +253,12 @@ class TestCreateOptionset:
 class TestUpdateOptionset:
     def test_insert_only(self, backend):
         from crm.core import optionsets as os_mod
+
         with requests_mock.Mocker() as m:
-            m.post(backend.url_for("InsertOptionValue"),
-                   status_code=204, json={})
+            m.post(backend.url_for("InsertOptionValue"), status_code=204, json={})
             info = os_mod.update_optionset(
-                backend, "new_priority",
+                backend,
+                "new_priority",
                 insert=[(7, "Critical")],
             )
         assert info["completed_steps"] == ["insert:7"]
@@ -238,13 +268,15 @@ class TestUpdateOptionset:
 
     def test_full_dispatch_order(self, backend):
         from crm.core import optionsets as os_mod
+
         with requests_mock.Mocker() as m:
             m.post(backend.url_for("InsertOptionValue"), status_code=204, json={})
             m.post(backend.url_for("UpdateOptionValue"), status_code=204, json={})
             m.post(backend.url_for("DeleteOptionValue"), status_code=204, json={})
             m.post(backend.url_for("OrderOption"), status_code=204, json={})
             info = os_mod.update_optionset(
-                backend, "new_priority",
+                backend,
+                "new_priority",
                 insert=[(None, "Auto")],
                 update=[(2, "New Medium")],
                 delete=[3],
@@ -260,14 +292,18 @@ class TestUpdateOptionset:
 
     def test_partial_failure_returns_envelope(self, backend):
         from crm.core import optionsets as os_mod
+
         with requests_mock.Mocker() as m:
             m.post(backend.url_for("InsertOptionValue"), status_code=204, json={})
-            m.post(backend.url_for("UpdateOptionValue"),
-                   status_code=400,
-                   json={"error": {"message": "value 99 not found"}})
+            m.post(
+                backend.url_for("UpdateOptionValue"),
+                status_code=400,
+                json={"error": {"message": "value 99 not found"}},
+            )
             with pytest.raises(D365Error, match="value 99 not found") as exc_info:
                 os_mod.update_optionset(
-                    backend, "new_priority",
+                    backend,
+                    "new_priority",
                     insert=[(7, "OK")],
                     update=[(99, "Bad")],
                 )
@@ -277,6 +313,7 @@ class TestUpdateOptionset:
 
     def test_empty_request_rejected(self, backend):
         from crm.core import optionsets as os_mod
+
         with pytest.raises(D365Error, match="nothing to update"):
             os_mod.update_optionset(backend, "new_priority")
 
@@ -285,6 +322,7 @@ class TestUpdateOptionset:
     def test_dryrun_fires_get_for_diff(self, profile):
         """GET must fire under dry-run; no POST must be issued."""
         from crm.core import optionsets as os_mod
+
         dry_backend = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
             m.get(
@@ -298,7 +336,8 @@ class TestUpdateOptionset:
                 },
             )
             result = os_mod.update_optionset(
-                dry_backend, "new_priority",
+                dry_backend,
+                "new_priority",
                 insert=[(7, "Critical")],
             )
         # GET for diff must have fired
@@ -315,6 +354,7 @@ class TestUpdateOptionset:
     def test_dryrun_diff_classification(self, profile):
         """Diff must classify insert / update / delete / reorder correctly."""
         from crm.core import optionsets as os_mod
+
         dry_backend = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
             m.get(
@@ -329,7 +369,8 @@ class TestUpdateOptionset:
                 },
             )
             result = os_mod.update_optionset(
-                dry_backend, "new_priority",
+                dry_backend,
+                "new_priority",
                 insert=[(7, "Critical")],
                 update=[(2, "Mid")],
                 delete=[3],
@@ -349,6 +390,7 @@ class TestUpdateOptionset:
     def test_dryrun_return_shape(self, profile):
         """Dry-run returns _dry_run:True, name, diff, actions; no updated key."""
         from crm.core import optionsets as os_mod
+
         dry_backend = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
             m.get(
@@ -356,7 +398,8 @@ class TestUpdateOptionset:
                 json={"Name": "new_priority", "Options": []},
             )
             result = os_mod.update_optionset(
-                dry_backend, "new_priority",
+                dry_backend,
+                "new_priority",
                 insert=[(None, "Auto")],
             )
         assert result["_dry_run"] is True
@@ -366,8 +409,9 @@ class TestUpdateOptionset:
         assert "updated" not in result
 
     def test_dryrun_actions_in_dispatch_order(self, profile):
-        """actions list captures bodies in insert→update→delete→reorder order."""
+        """Actions list captures bodies in insert→update→delete→reorder order."""
         from crm.core import optionsets as os_mod
+
         dry_backend = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
             m.get(
@@ -380,7 +424,8 @@ class TestUpdateOptionset:
                 },
             )
             result = os_mod.update_optionset(
-                dry_backend, "new_priority",
+                dry_backend,
+                "new_priority",
                 insert=[(7, "Critical")],
                 update=[(2, "Mid")],
                 delete=[2],
@@ -397,6 +442,7 @@ class TestUpdateOptionset:
     def test_dryrun_old_label_none_for_missing_value(self, profile):
         """old_label is None when the value doesn't exist in current options."""
         from crm.core import optionsets as os_mod
+
         dry_backend = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
             m.get(
@@ -404,16 +450,16 @@ class TestUpdateOptionset:
                 json={"Name": "new_priority", "Options": []},
             )
             result = os_mod.update_optionset(
-                dry_backend, "new_priority",
+                dry_backend,
+                "new_priority",
                 update=[(99, "Ghost")],
             )
-        assert result["diff"]["updates"] == [
-            {"value": 99, "old_label": None, "new_label": "Ghost"}
-        ]
+        assert result["diff"]["updates"] == [{"value": 99, "old_label": None, "new_label": "Ghost"}]
 
     def test_dryrun_no_reorder_key_when_absent(self, profile):
-        """reorder key is absent from diff when no reorder is requested."""
+        """Reorder key is absent from diff when no reorder is requested."""
         from crm.core import optionsets as os_mod
+
         dry_backend = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
             m.get(
@@ -421,7 +467,8 @@ class TestUpdateOptionset:
                 json={"Name": "new_priority", "Options": []},
             )
             result = os_mod.update_optionset(
-                dry_backend, "new_priority",
+                dry_backend,
+                "new_priority",
                 insert=[(1, "One")],
             )
         assert "reorder" not in result["diff"]
@@ -429,21 +476,25 @@ class TestUpdateOptionset:
     def test_dryrun_empty_insert_label_still_raises(self, profile):
         """Validation must still fire under dry-run; empty label raises D365Error."""
         from crm.core import optionsets as os_mod
+
         dry_backend = D365Backend(profile, password="pw", dry_run=True)
         with pytest.raises(D365Error, match="insert label must not be empty"):
             os_mod.update_optionset(
-                dry_backend, "new_priority",
+                dry_backend,
+                "new_priority",
                 insert=[(1, "")],
             )
 
     def test_dryrun_empty_update_label_still_raises(self, profile):
         """Empty update label raises before the dry-run branch, no GET/POST fired."""
         from crm.core import optionsets as os_mod
+
         dry_backend = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
             with pytest.raises(D365Error, match="update label must not be empty"):
                 os_mod.update_optionset(
-                    dry_backend, "new_priority",
+                    dry_backend,
+                    "new_priority",
                     update=[(1, "")],
                 )
             assert m.request_history == []
@@ -455,6 +506,7 @@ _OS_META_ID = "cccc0001-0000-0000-0000-000000000000"
 class TestDeleteOptionset:
     def test_refuses_non_custom(self, backend):
         from crm.core import optionsets as os_mod
+
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("GlobalOptionSetDefinitions(Name='statecode')"),
@@ -465,6 +517,7 @@ class TestDeleteOptionset:
 
     def test_refuses_managed(self, backend):
         from crm.core import optionsets as os_mod
+
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("GlobalOptionSetDefinitions(Name='vendor_set')"),
@@ -475,6 +528,7 @@ class TestDeleteOptionset:
 
     def test_happy_path(self, backend):
         from crm.core import optionsets as os_mod
+
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
@@ -491,12 +545,15 @@ class TestDeleteOptionset:
     def test_check_dependencies_off_by_default_no_extra_get(self, backend):
         """Without check_dependencies, no dependency GETs fire."""
         from crm.core import optionsets as os_mod
+
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
                 json={"Name": "new_priority", "IsCustomOptionSet": True, "IsManaged": False},
             )
-            m.delete(backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"), status_code=204)
+            m.delete(
+                backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"), status_code=204
+            )
             info = os_mod.delete_optionset(backend, "new_priority")
         assert "can_delete" not in info
         assert "blockers" not in info
@@ -506,6 +563,7 @@ class TestDeleteOptionset:
     def test_check_dependencies_with_blockers(self, backend):
         """check_dependencies=True fires resolve GET + function GET; blockers in result."""
         from crm.core import optionsets as os_mod
+
         dep_url = backend.url_for(
             f"RetrieveDependenciesForDelete(ObjectId={_OS_META_ID},ComponentType=9)"
         )
@@ -513,20 +571,29 @@ class TestDeleteOptionset:
             m.get(
                 backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
                 json={
-                    "Name": "new_priority", "IsCustomOptionSet": True, "IsManaged": False,
+                    "Name": "new_priority",
+                    "IsCustomOptionSet": True,
+                    "IsManaged": False,
                     "MetadataId": _OS_META_ID,
                 },
             )
-            m.get(dep_url, json={"value": [
-                {
-                    "dependentcomponenttype": 2,
-                    "dependentcomponentobjectid": "dddd0001-0000-0000-0000-000000000000",
-                    "dependentcomponentparentid": "eeee0001-0000-0000-0000-000000000000",
-                    "requiredcomponenttype": 9,
-                    "dependencytype": 1,
+            m.get(
+                dep_url,
+                json={
+                    "value": [
+                        {
+                            "dependentcomponenttype": 2,
+                            "dependentcomponentobjectid": "dddd0001-0000-0000-0000-000000000000",
+                            "dependentcomponentparentid": "eeee0001-0000-0000-0000-000000000000",
+                            "requiredcomponenttype": 9,
+                            "dependencytype": 1,
+                        },
+                    ]
                 },
-            ]})
-            m.delete(backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"), status_code=204)
+            )
+            m.delete(
+                backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"), status_code=204
+            )
             info = os_mod.delete_optionset(backend, "new_priority", check_dependencies=True)
         assert info["deleted"] is True
         assert info["can_delete"] is False
@@ -538,6 +605,7 @@ class TestDeleteOptionset:
     def test_check_dependencies_no_blockers(self, backend):
         """Empty dependency list → can_delete True."""
         from crm.core import optionsets as os_mod
+
         dep_url = backend.url_for(
             f"RetrieveDependenciesForDelete(ObjectId={_OS_META_ID},ComponentType=9)"
         )
@@ -545,12 +613,16 @@ class TestDeleteOptionset:
             m.get(
                 backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
                 json={
-                    "Name": "new_priority", "IsCustomOptionSet": True, "IsManaged": False,
+                    "Name": "new_priority",
+                    "IsCustomOptionSet": True,
+                    "IsManaged": False,
                     "MetadataId": _OS_META_ID,
                 },
             )
             m.get(dep_url, json={"value": []})
-            m.delete(backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"), status_code=204)
+            m.delete(
+                backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"), status_code=204
+            )
             info = os_mod.delete_optionset(backend, "new_priority", check_dependencies=True)
         assert info["can_delete"] is True
         assert info["blockers"] == []
@@ -561,6 +633,7 @@ class TestDeleteOptionsetDryRun:
 
     def test_dryrun_returns_preview_not_deleted(self, profile):
         from crm.core import optionsets as os_mod
+
         dry_backend = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
             m.get(
@@ -582,6 +655,7 @@ class TestDeleteOptionsetDryRun:
 
     def test_dryrun_with_check_dependencies_merges_blockers(self, profile):
         from crm.core import optionsets as os_mod
+
         dry_backend = D365Backend(profile, password="pw", dry_run=True)
         dep_url = dry_backend.url_for(
             f"RetrieveDependenciesForDelete(ObjectId={_OS_META_ID},ComponentType=9)"
@@ -590,7 +664,9 @@ class TestDeleteOptionsetDryRun:
             m.get(
                 dry_backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
                 json={
-                    "Name": "new_priority", "IsCustomOptionSet": True, "IsManaged": False,
+                    "Name": "new_priority",
+                    "IsCustomOptionSet": True,
+                    "IsManaged": False,
                     "MetadataId": _OS_META_ID,
                 },
             )

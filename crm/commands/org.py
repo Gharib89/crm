@@ -3,6 +3,7 @@
 `brief` is the group's first (and currently only) verb: a single read-only call
 that returns a summarized org inventory shaped for an agent's context budget.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -55,25 +56,41 @@ def org_brief(ctx: CLIContext):
     ctx.skin.section("Identity")
     ctx.skin.table(
         ["key", "value"],
-        [[k, _cell(ident.get(k))] for k in
-         ("org_name", "version", "url", "profile", "api_version",
-          "user_id", "organization_id")],
+        [
+            [k, _cell(ident.get(k))]
+            for k in (
+                "org_name",
+                "version",
+                "url",
+                "profile",
+                "api_version",
+                "user_id",
+                "organization_id",
+            )
+        ],
     )
 
     sol = brief["solutions"]
     ctx.skin.section("Solutions")
     ctx.skin.table(
         ["managed", "unmanaged", "candidate targets (unmanaged, non-default)"],
-        [[str(sol["managed"]), str(sol["unmanaged"]),
-          ", ".join(sol["unmanaged_names"]) or "(none)"]],
+        [
+            [
+                str(sol["managed"]),
+                str(sol["unmanaged"]),
+                ", ".join(sol["unmanaged_names"]) or "(none)",
+            ]
+        ],
     )
 
     ctx.skin.section("Publishers")
     pubs = brief["publishers"]["items"]
     ctx.skin.table(
         ["unique_name", "prefix", "friendly_name"],
-        [[_cell(p.get("unique_name")), _cell(p.get("prefix")), _cell(p.get("friendly_name"))]
-         for p in pubs]
+        [
+            [_cell(p.get("unique_name")), _cell(p.get("prefix")), _cell(p.get("friendly_name"))]
+            for p in pubs
+        ]
         or [["(none)", "", ""]],
     )
 
@@ -81,8 +98,13 @@ def org_brief(ctx: CLIContext):
     ctx.skin.section("Schema")
     ctx.skin.table(
         ["custom entities", "global option sets", "custom entity names"],
-        [[str(schema["custom_entities"]), str(schema["global_optionsets"]),
-          ", ".join(schema["custom_entity_names"]) or "(none)"]],
+        [
+            [
+                str(schema["custom_entities"]),
+                str(schema["global_optionsets"]),
+                ", ".join(schema["custom_entity_names"]) or "(none)",
+            ]
+        ],
     )
 
     apps = brief["apps"]
@@ -96,8 +118,14 @@ def org_brief(ctx: CLIContext):
     ctx.skin.section("Automation")
     ctx.skin.table(
         ["plugin assemblies", "plugin steps", "workflows", "SLAs"],
-        [[str(auto["plugin_assemblies"]), str(auto["plugin_steps"]),
-          str(auto["workflows"]["total"]), str(auto["slas"])]],
+        [
+            [
+                str(auto["plugin_assemblies"]),
+                str(auto["plugin_steps"]),
+                str(auto["workflows"]["total"]),
+                str(auto["slas"]),
+            ]
+        ],
     )
     wf_rows = [
         [cat, str(counts["total"]), str(counts["activated"])]
@@ -111,7 +139,12 @@ def org_brief(ctx: CLIContext):
     ctx.skin.section("Components")
     ctx.skin.table(
         ["web resources", "by type", "custom security roles", "duplicate rules"],
-        [[str(wr["total"]),
-          ", ".join(f"{k}={v}" for k, v in wr["by_type"].items()),
-          str(comp["security_roles_custom"]), str(comp["duplicate_rules"])]],
+        [
+            [
+                str(wr["total"]),
+                ", ".join(f"{k}={v}" for k, v in wr["by_type"].items()),
+                str(comp["security_roles_custom"]),
+                str(comp["duplicate_rules"]),
+            ]
+        ],
     )

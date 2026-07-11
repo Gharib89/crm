@@ -6,6 +6,7 @@ helper rolls the solution warning plus any *_lookup_error read-back keys into it
 and a partial optionset failure surfaces completed_steps/failed_stage on the error
 envelope while every other error site keeps emitting only {status, code, ...}.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -37,9 +38,7 @@ class TestEmitWarnings:
     def test_appends_to_existing_meta_warnings(self, capsys):
         ctx = CLIContext()
         ctx.json_mode = True
-        env = _emit_envelope(
-            ctx, capsys, data={"x": 1}, meta={"warnings": ["x"]}, warnings=["y"]
-        )
+        env = _emit_envelope(ctx, capsys, data={"x": 1}, meta={"warnings": ["x"]}, warnings=["y"])
         assert env["meta"]["warnings"] == ["x", "y"]
 
     def test_non_list_existing_warning_is_coerced_not_split(self, capsys):
@@ -47,17 +46,13 @@ class TestEmitWarnings:
         # split into characters or raise (Copilot, PR #98).
         ctx = CLIContext()
         ctx.json_mode = True
-        env = _emit_envelope(
-            ctx, capsys, data={"x": 1}, meta={"warnings": "oops"}, warnings=["y"]
-        )
+        env = _emit_envelope(ctx, capsys, data={"x": 1}, meta={"warnings": "oops"}, warnings=["y"])
         assert env["meta"]["warnings"] == ["oops", "y"]
 
     def test_warnings_do_not_clobber_other_meta_keys(self, capsys):
         ctx = CLIContext()
         ctx.json_mode = True
-        env = _emit_envelope(
-            ctx, capsys, data={"x": 1}, meta={"staged": True}, warnings=["y"]
-        )
+        env = _emit_envelope(ctx, capsys, data={"x": 1}, meta={"staged": True}, warnings=["y"])
         assert env["meta"]["staged"] is True
         assert env["meta"]["warnings"] == ["y"]
 
@@ -132,7 +127,8 @@ class TestHandleD365ErrorPartial:
 
 class TestUpdateOptionsetPartialEndToEnd:
     """The real update_optionset attach path surfaced through the command boundary;
-    only the HTTP POST is stubbed."""
+    only the HTTP POST is stubbed.
+    """
 
     class _PartialStub:
         dry_run = False
@@ -147,13 +143,22 @@ class TestUpdateOptionsetPartialEndToEnd:
         monkeypatch.setattr(CLIContext, "backend", lambda _self: stub)
         result = CliRunner().invoke(
             cli,
-            ["--json", "metadata", "update-optionset", "new_priority",
-             "--insert-option", "7:OK", "--update-option", "99:Bad",
-             "--solution", "TestSol", "--no-publish"],
+            [
+                "--json",
+                "metadata",
+                "update-optionset",
+                "new_priority",
+                "--insert-option",
+                "7:OK",
+                "--update-option",
+                "99:Bad",
+                "--solution",
+                "TestSol",
+                "--no-publish",
+            ],
             env={"CRM_HOME": str(tmp_path)},
         )
         assert result.exit_code == 1, result.output
         meta = json.loads(result.output)["meta"]
         assert meta["completed_steps"] == ["insert:7"]
         assert meta["failed_stage"] == "update"
-

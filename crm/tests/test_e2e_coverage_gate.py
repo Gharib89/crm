@@ -10,8 +10,13 @@ def test_walk_finds_all_leaves_via_lazy_loader():
     # returns 0; the real walker must drive list_commands/get_command.
     assert len(leaves) > 100, f"walk returned only {len(leaves)} leaves; lazy load broke"
     # Known deep leaves across groups:
-    for leaf in ("entity create", "metadata add-attribute", "workflow activate",
-                 "solution export", "query odata"):
+    for leaf in (
+        "entity create",
+        "metadata add-attribute",
+        "workflow activate",
+        "solution export",
+        "query odata",
+    ):
         assert leaf in leaves, f"missing {leaf!r} from walk: {sorted(leaves)[:20]}..."
 
 
@@ -25,7 +30,8 @@ from crm.tests.e2e.coverage import COVERED, E2E_SKIP, LOCAL_GROUPS
 def _import_all_e2e_test_modules():
     """Populate COVERED by importing every e2e test module. Auto-discovered so a
     new test file is never silently uncounted. Imports must be side-effect-free
-    (no module-level skipif touching live env, no connection at import)."""
+    (no module-level skipif touching live env, no connection at import).
+    """
     for mod in pkgutil.walk_packages(e2e_pkg.__path__, e2e_pkg.__name__ + "."):
         name = mod.name.rsplit(".", 1)[-1]
         if name.startswith("test_"):

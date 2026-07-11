@@ -49,28 +49,48 @@ def _post_url(b) -> str:
     return b.url_for("accounts")
 
 
-_DEFS = {"value": [
-    {"LogicalName": "account", "EntitySetName": "accounts",
-     "PrimaryIdAttribute": "accountid", "PrimaryNameAttribute": "name"},
-    {"LogicalName": "contact", "EntitySetName": "contacts",
-     "PrimaryIdAttribute": "contactid", "PrimaryNameAttribute": "fullname"},
-    {"LogicalName": "systemuser", "EntitySetName": "systemusers",
-     "PrimaryIdAttribute": "systemuserid", "PrimaryNameAttribute": "fullname"},
-]}
+_DEFS = {
+    "value": [
+        {
+            "LogicalName": "account",
+            "EntitySetName": "accounts",
+            "PrimaryIdAttribute": "accountid",
+            "PrimaryNameAttribute": "name",
+        },
+        {
+            "LogicalName": "contact",
+            "EntitySetName": "contacts",
+            "PrimaryIdAttribute": "contactid",
+            "PrimaryNameAttribute": "fullname",
+        },
+        {
+            "LogicalName": "systemuser",
+            "EntitySetName": "systemusers",
+            "PrimaryIdAttribute": "systemuserid",
+            "PrimaryNameAttribute": "fullname",
+        },
+    ]
+}
 
 # A simple account: a primary id, two Uniqueidentifier columns (primary +
 # address child id), the state/status/owner never-copy trio, one read-only
 # system column, and two plain writable fields.
-_ATTRS_SIMPLE = {"value": [
-    {"LogicalName": "accountid", "AttributeType": "Uniqueidentifier", "IsValidForCreate": True},
-    {"LogicalName": "address1_addressid", "AttributeType": "Uniqueidentifier", "IsValidForCreate": True},
-    {"LogicalName": "statecode", "AttributeType": "State", "IsValidForCreate": True},
-    {"LogicalName": "statuscode", "AttributeType": "Status", "IsValidForCreate": True},
-    {"LogicalName": "ownerid", "AttributeType": "Owner", "IsValidForCreate": True},
-    {"LogicalName": "createdon", "AttributeType": "DateTime", "IsValidForCreate": False},
-    {"LogicalName": "name", "AttributeType": "String", "IsValidForCreate": True},
-    {"LogicalName": "telephone1", "AttributeType": "String", "IsValidForCreate": True},
-]}
+_ATTRS_SIMPLE = {
+    "value": [
+        {"LogicalName": "accountid", "AttributeType": "Uniqueidentifier", "IsValidForCreate": True},
+        {
+            "LogicalName": "address1_addressid",
+            "AttributeType": "Uniqueidentifier",
+            "IsValidForCreate": True,
+        },
+        {"LogicalName": "statecode", "AttributeType": "State", "IsValidForCreate": True},
+        {"LogicalName": "statuscode", "AttributeType": "Status", "IsValidForCreate": True},
+        {"LogicalName": "ownerid", "AttributeType": "Owner", "IsValidForCreate": True},
+        {"LogicalName": "createdon", "AttributeType": "DateTime", "IsValidForCreate": False},
+        {"LogicalName": "name", "AttributeType": "String", "IsValidForCreate": True},
+        {"LogicalName": "telephone1", "AttributeType": "String", "IsValidForCreate": True},
+    ]
+}
 
 _SOURCE_SIMPLE = {
     "@odata.etag": 'W/"1001"',
@@ -111,16 +131,19 @@ class TestTracer:
 class TestWarmCacheServesResolution:
     """AC4 (#261): core name-resolution reads go through the read-through metadata
     cache, so clone does not re-fetch entity definitions live when the cache is warm.
-    (--with-children reuses the same in-memory map, so a plain clone demonstrates it.)"""
+    (--with-children reuses the same in-memory map, so a plain clone demonstrates it.)
+    """
 
     def test_clone_does_not_refetch_definitions_when_cache_warm(self, backend):
         # Warm the read-through cache for this profile (CRM_HOME is isolated to a
         # temp dir by the autouse fixture).
         metadata_cache.write_definitions(
             backend.profile,
-            [{"logical": "account", "set_name": "accounts"},
-             {"logical": "contact", "set_name": "contacts"},
-             {"logical": "systemuser", "set_name": "systemusers"}],
+            [
+                {"logical": "account", "set_name": "accounts"},
+                {"logical": "contact", "set_name": "contacts"},
+                {"logical": "systemuser", "set_name": "systemusers"},
+            ],
             now=time.time(),
         )
         with requests_mock.Mocker() as m:
@@ -137,12 +160,14 @@ class TestWarmCacheServesResolution:
 
 # Account with a single-target lookup (primarycontactid -> contact) and a
 # polymorphic one (customerid -> account|contact). Both are valid for create.
-_ATTRS_LOOKUP = {"value": [
-    {"LogicalName": "accountid", "AttributeType": "Uniqueidentifier", "IsValidForCreate": True},
-    {"LogicalName": "name", "AttributeType": "String", "IsValidForCreate": True},
-    {"LogicalName": "primarycontactid", "AttributeType": "Lookup", "IsValidForCreate": True},
-    {"LogicalName": "customerid", "AttributeType": "Customer", "IsValidForCreate": True},
-]}
+_ATTRS_LOOKUP = {
+    "value": [
+        {"LogicalName": "accountid", "AttributeType": "Uniqueidentifier", "IsValidForCreate": True},
+        {"LogicalName": "name", "AttributeType": "String", "IsValidForCreate": True},
+        {"LogicalName": "primarycontactid", "AttributeType": "Lookup", "IsValidForCreate": True},
+        {"LogicalName": "customerid", "AttributeType": "Customer", "IsValidForCreate": True},
+    ]
+}
 
 _CONTACT = "cccccccc-cccc-cccc-cccc-cccccccccccc"
 
@@ -233,10 +258,12 @@ class TestOverrideUnset:
             post = m.post(_post_url(backend), json={"accountid": _NEW}, status_code=201)
 
             entity_mod.clone_record(
-                backend, "accounts", _SRC,
+                backend,
+                "accounts",
+                _SRC,
                 overrides={
-                    "name": "Renamed",            # wins over the cloned value
-                    "creditlimit": 5000,          # not a known attr — passes raw
+                    "name": "Renamed",  # wins over the cloned value
+                    "creditlimit": 5000,  # not a known attr — passes raw
                     "ownerid@odata.bind": "/systemusers(00000000-0000-0000-0000-000000000002)",
                 },
                 return_record=False,
@@ -259,7 +286,9 @@ class TestOverrideUnset:
             post = m.post(_post_url(backend), json={"accountid": _NEW}, status_code=201)
 
             entity_mod.clone_record(
-                backend, "accounts", _SRC,
+                backend,
+                "accounts",
+                _SRC,
                 unset=["name", "primarycontactid"],
                 return_record=False,
             )
@@ -310,8 +339,7 @@ class TestDryRunAndReturn:
             m.get(_defs_url(backend), json=_DEFS)
             m.get(_attrs_url(backend), json=_ATTRS_SIMPLE)
             m.get(_record_url(backend), json=_SOURCE_SIMPLE)
-            m.post(_post_url(backend), status_code=204,
-                   headers={"OData-EntityId": entity_url})
+            m.post(_post_url(backend), status_code=204, headers={"OData-EntityId": entity_url})
 
             result = entity_mod.clone_record(backend, "accounts", _SRC, return_record=False)
 
@@ -340,12 +368,14 @@ class TestDryRunAndReturn:
 
 class TestParseOverrides:
     def test_value_parsed_as_json_with_string_fallback(self):
-        out = _parse_overrides((
-            "creditlimit=5000",
-            "donotemail=true",
-            "name=Acme Corp",
-            "ownerid@odata.bind=/systemusers(00000000-0000-0000-0000-000000000002)",
-        ))
+        out = _parse_overrides(
+            (
+                "creditlimit=5000",
+                "donotemail=true",
+                "name=Acme Corp",
+                "ownerid@odata.bind=/systemusers(00000000-0000-0000-0000-000000000002)",
+            )
+        )
         assert out == {
             "creditlimit": 5000,
             "donotemail": True,
@@ -355,6 +385,7 @@ class TestParseOverrides:
 
     def test_missing_equals_is_usage_error(self):
         import click
+
         with pytest.raises(click.UsageError):
             _parse_overrides(("nofield",))
 
@@ -388,10 +419,19 @@ class TestCommand:
             m.get(_attrs_url(backend), json=_ATTRS_SIMPLE)
             m.get(_record_url(backend), json=_SOURCE_SIMPLE)
             post = m.post(_post_url(backend), json={"accountid": _NEW}, status_code=201)
-            result = CliRunner().invoke(cli, [
-                "--json", "entity", "clone", "accounts", _SRC,
-                "--override", "name=Renamed", "--no-return",
-            ])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "entity",
+                    "clone",
+                    "accounts",
+                    _SRC,
+                    "--override",
+                    "name=Renamed",
+                    "--no-return",
+                ],
+            )
             body = post.last_request.json()
         assert result.exit_code == 0, result.output
         assert body["name"] == "Renamed"
@@ -403,9 +443,17 @@ class TestCommand:
             m.get(_attrs_url(dry_backend), json=_ATTRS_SIMPLE)
             m.get(_record_url(dry_backend), json=_SOURCE_SIMPLE)
             post = m.post(_post_url(dry_backend), json={"accountid": _NEW}, status_code=201)
-            result = CliRunner().invoke(cli, [
-                "--json", "--dry-run", "entity", "clone", "accounts", _SRC,
-            ])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "--dry-run",
+                    "entity",
+                    "clone",
+                    "accounts",
+                    _SRC,
+                ],
+            )
             assert post.call_count == 0
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
@@ -415,7 +463,8 @@ class TestCommand:
         assert env["data"]["_dry_run"] is True
         assert env["data"]["would_create"]["entity_set"] == "accounts"
         assert env["data"]["would_create"]["body"] == {
-            "name": "Contoso", "telephone1": "555-0100",
+            "name": "Contoso",
+            "telephone1": "555-0100",
         }
 
     def test_cli_bad_guid_fails_before_backend(self, monkeypatch):
@@ -423,6 +472,7 @@ class TestCommand:
         # constructing a backend (no credential resolution / token acquisition).
         def _boom(self):
             raise AssertionError("backend() must not be called for a bad GUID")
+
         monkeypatch.setattr(CLIContext, "backend", _boom)
         result = CliRunner().invoke(cli, ["--json", "entity", "clone", "accounts", "not-a-guid"])
         assert result.exit_code == 1
@@ -434,8 +484,17 @@ class TestCommand:
             m.get(_defs_url(backend), json=_DEFS)
             m.get(_attrs_url(backend), json=_ATTRS_SIMPLE)
             m.get(_record_url(backend), json=_SOURCE_SIMPLE)
-            result = CliRunner().invoke(cli, [
-                "--json", "entity", "clone", "accounts", _SRC, "--unset", "nosuchfield",
-            ])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "entity",
+                    "clone",
+                    "accounts",
+                    _SRC,
+                    "--unset",
+                    "nosuchfield",
+                ],
+            )
         assert result.exit_code == 1
         assert json.loads(result.output)["ok"] is False

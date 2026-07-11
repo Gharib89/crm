@@ -4,6 +4,7 @@ The AddAppComponents payload shape and the appmodule `webresourceid` requirement
 were both verified live against D365 CE on-prem 9.1 (walkthrough §11): the action
 takes typed entity references, and `appmodules` rejects a null `webresourceid`.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -14,7 +15,6 @@ import requests_mock
 
 from crm.utils.d365_backend import D365Backend, D365Error
 
-
 _APP_ID = "77777777-7777-7777-7777-777777777777"
 _DEFAULT_ICON = "953b9fac-1e5e-e611-80d6-00155ded156f"
 _SITEMAP_ID = "88888888-8888-8888-8888-888888888888"
@@ -23,20 +23,36 @@ _SITEMAP_ID = "88888888-8888-8888-8888-888888888888"
 _APP_UNIQUE = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"  # appmoduleidunique value
 _APPSETTING_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
 _REL_URL = "EntityDefinitions(LogicalName='appmodule')/OneToManyRelationships"
-_APP_ROW = {"appmoduleid": _APP_ID, "appmoduleidunique": _APP_UNIQUE,
-            "uniquename": "cwx_crmworx", "name": "CRMWorx", "ismanaged": False}
+_APP_ROW = {
+    "appmoduleid": _APP_ID,
+    "appmoduleidunique": _APP_UNIQUE,
+    "uniquename": "cwx_crmworx",
+    "name": "CRMWorx",
+    "ismanaged": False,
+}
 # appmodule 1:N relationships. The sweep ignores CascadeConfiguration on purpose
 # (appsetting reports Cascade on online yet its FK still blocks the delete), so
 # the fixtures carry only the shape the sweep actually uses.
-_RELS = {"value": [
-    {"ReferencingEntity": "appsetting", "ReferencingAttribute": "parentappmoduleid",
-     "ReferencedAttribute": "appmoduleid"},
-]}
+_RELS = {
+    "value": [
+        {
+            "ReferencingEntity": "appsetting",
+            "ReferencingAttribute": "parentappmoduleid",
+            "ReferencedAttribute": "appmoduleid",
+        },
+    ]
+}
 # A second child to prove the sweep removes *every* referencing row, not just one.
-_RELS_TWO = {"value": _RELS["value"] + [
-    {"ReferencingEntity": "appconfig", "ReferencingAttribute": "appmoduleid",
-     "ReferencedAttribute": "appmoduleid"},
-]}
+_RELS_TWO = {
+    "value": _RELS["value"]
+    + [
+        {
+            "ReferencingEntity": "appconfig",
+            "ReferencingAttribute": "appmoduleid",
+            "ReferencedAttribute": "appmoduleid",
+        },
+    ]
+}
 _APPCONFIG_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc"
 
 # App resolution reads the unpublished view so a still-unpublished app resolves
@@ -56,23 +72,33 @@ class TestCreateApp:
         # is not bound to appmodule), so a freshly created (still unpublished) app
         # resolves without a spurious app_lookup_error (#809).
         from crm.core import appmodule
+
         with requests_mock.Mocker() as m:
             m.get(backend.url_for("appmodules"), json={"value": []})  # existence guard
             app_url = backend.url_for(f"appmodules({_APP_ID})")
-            m.post(backend.url_for("appmodules"), status_code=204,
-                   headers={"OData-EntityId": app_url})
-            m.get(backend.url_for(_UNPUB_MULTIPLE),
-                  json={"value": [{"appmoduleid": _APP_ID, "name": "CRMWorx",
-                                   "uniquename": "cwx_crmworx"}]})
+            m.post(
+                backend.url_for("appmodules"), status_code=204, headers={"OData-EntityId": app_url}
+            )
+            m.get(
+                backend.url_for(_UNPUB_MULTIPLE),
+                json={
+                    "value": [
+                        {"appmoduleid": _APP_ID, "name": "CRMWorx", "uniquename": "cwx_crmworx"}
+                    ]
+                },
+            )
             out = appmodule.create_app(
-                backend, name="CRMWorx", unique_name="cwx_crmworx",
+                backend,
+                name="CRMWorx",
+                unique_name="cwx_crmworx",
                 description="IT ticketing",
             )
         assert out["created"] is True
         assert out["appmoduleid"] == _APP_ID
         assert "app_lookup_error" not in out  # read-back via unpublished view succeeded
-        assert any("RetrieveUnpublishedMultiple()" in r.url for r in m.request_history
-                   if r.method == "GET")
+        assert any(
+            "RetrieveUnpublishedMultiple()" in r.url for r in m.request_history if r.method == "GET"
+        )
         body = _posts(m)[0].json()
         assert body["uniquename"] == "cwx_crmworx"
         assert body["name"] == "CRMWorx"
@@ -81,12 +107,16 @@ class TestCreateApp:
 
     def test_create_app_dry_run_probes_for_real_and_reports_would_skip(self, profile):
         from crm.core import appmodule
+
         dry = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
-            m.get(dry.url_for("appmodules"),
-                  json={"value": [{"appmoduleid": _APP_ID, "uniquename": "cwx_crmworx"}]})
-            out = appmodule.create_app(dry, name="CRMWorx",
-                                       unique_name="cwx_crmworx", if_exists="skip")
+            m.get(
+                dry.url_for("appmodules"),
+                json={"value": [{"appmoduleid": _APP_ID, "uniquename": "cwx_crmworx"}]},
+            )
+            out = appmodule.create_app(
+                dry, name="CRMWorx", unique_name="cwx_crmworx", if_exists="skip"
+            )
         assert out["_dry_run"] is True
         assert out["_exists"] is True
         assert out["would_skip"] is True
@@ -100,45 +130,60 @@ class TestCreateApp:
         # complete (apply binds the sitemap then app-publishes). PublishAllXml runs
         # before the read-back (#809).
         from crm.core import appmodule
+
         with requests_mock.Mocker() as m:
             m.get(backend.url_for("appmodules"), json={"value": []})  # guard
             app_url = backend.url_for(f"appmodules({_APP_ID})")
-            m.post(backend.url_for("appmodules"), status_code=204,
-                   headers={"OData-EntityId": app_url})
+            m.post(
+                backend.url_for("appmodules"), status_code=204, headers={"OData-EntityId": app_url}
+            )
             m.post(backend.url_for("PublishAllXml"), status_code=204)
-            m.get(backend.url_for(_UNPUB_MULTIPLE),
-                  json={"value": [{"appmoduleid": _APP_ID, "name": "CRMWorx"}]})
-            appmodule.create_app(backend, name="CRMWorx",
-                                 unique_name="cwx_crmworx", publish=True)
+            m.get(
+                backend.url_for(_UNPUB_MULTIPLE),
+                json={"value": [{"appmoduleid": _APP_ID, "name": "CRMWorx"}]},
+            )
+            appmodule.create_app(backend, name="CRMWorx", unique_name="cwx_crmworx", publish=True)
         kinds = [(r.method, r.url) for r in m.request_history]
-        publish_i = next(i for i, (mth, u) in enumerate(kinds)
-                         if mth == "POST" and "PublishAllXml" in u)
-        readback_i = next(i for i, (mth, u) in enumerate(kinds)
-                          if mth == "GET" and "RetrieveUnpublishedMultiple()" in u)
+        publish_i = next(
+            i for i, (mth, u) in enumerate(kinds) if mth == "POST" and "PublishAllXml" in u
+        )
+        readback_i = next(
+            i
+            for i, (mth, u) in enumerate(kinds)
+            if mth == "GET" and "RetrieveUnpublishedMultiple()" in u
+        )
         assert publish_i < readback_i
         # No app-scoped PublishXml from create_app — a bare app is not publishable.
-        assert not any(r.method == "POST" and r.url.endswith("PublishXml")
-                       for r in m.request_history)
+        assert not any(
+            r.method == "POST" and r.url.endswith("PublishXml") for r in m.request_history
+        )
 
     def test_create_app_unparseable_id_sets_lookup_error(self, backend):
         from crm.core import appmodule
+
         with requests_mock.Mocker() as m:
             m.get(backend.url_for("appmodules"), json={"value": []})
-            m.post(backend.url_for("appmodules"), status_code=204,
-                   headers={"OData-EntityId": "https://x/appmodules(bogus)"})
-            out = appmodule.create_app(backend, name="CRMWorx",
-                                       unique_name="cwx_crmworx")
+            m.post(
+                backend.url_for("appmodules"),
+                status_code=204,
+                headers={"OData-EntityId": "https://x/appmodules(bogus)"},
+            )
+            out = appmodule.create_app(backend, name="CRMWorx", unique_name="cwx_crmworx")
         assert out["created"] is True
         assert out["appmoduleid"] is None
         assert "app_lookup_error" in out
 
     def test_create_app_skips_when_exists(self, backend):
         from crm.core import appmodule
+
         with requests_mock.Mocker() as m:
-            m.get(backend.url_for("appmodules"),
-                  json={"value": [{"appmoduleid": _APP_ID, "uniquename": "cwx_crmworx"}]})
-            out = appmodule.create_app(backend, name="CRMWorx",
-                                       unique_name="cwx_crmworx", if_exists="skip")
+            m.get(
+                backend.url_for("appmodules"),
+                json={"value": [{"appmoduleid": _APP_ID, "uniquename": "cwx_crmworx"}]},
+            )
+            out = appmodule.create_app(
+                backend, name="CRMWorx", unique_name="cwx_crmworx", if_exists="skip"
+            )
         assert out["skipped"] is True
         assert not _posts(m)
 
@@ -147,45 +192,69 @@ class TestCreateApp:
         # the POST hits the server duplicate fault (0x80050135). if_exists=skip must
         # treat that as a skip and re-query to surface the id (issue #322).
         from crm.core import appmodule
+
         with requests_mock.Mocker() as m:
-            m.get(backend.url_for("appmodules"), [
-                {"json": {"value": []}},  # first filter: not yet visible
-                {"json": {"value": [{"appmoduleid": _APP_ID,
-                                     "uniquename": "cwx_crmworx"}]}},  # re-query hit
-            ])
-            m.post(backend.url_for("appmodules"), status_code=400, json={
-                "error": {"code": "0x80050135",
-                          "message": "A duplicate uniquename exists."}})
-            out = appmodule.create_app(backend, name="CRMWorx",
-                                       unique_name="cwx_crmworx", if_exists="skip")
-        assert out == {"skipped": True, "exists": True,
-                       "uniquename": "cwx_crmworx", "appmoduleid": _APP_ID}
+            m.get(
+                backend.url_for("appmodules"),
+                [
+                    {"json": {"value": []}},  # first filter: not yet visible
+                    {
+                        "json": {"value": [{"appmoduleid": _APP_ID, "uniquename": "cwx_crmworx"}]}
+                    },  # re-query hit
+                ],
+            )
+            m.post(
+                backend.url_for("appmodules"),
+                status_code=400,
+                json={"error": {"code": "0x80050135", "message": "A duplicate uniquename exists."}},
+            )
+            out = appmodule.create_app(
+                backend, name="CRMWorx", unique_name="cwx_crmworx", if_exists="skip"
+            )
+        assert out == {
+            "skipped": True,
+            "exists": True,
+            "uniquename": "cwx_crmworx",
+            "appmoduleid": _APP_ID,
+        }
 
     def test_create_app_skip_swallows_duplicate_fault_when_still_invisible(self, backend):
         # If the lag persists, the re-query still misses: skip semantics hold, the
         # contract is "no error" — the id is best-effort and may be None.
         from crm.core import appmodule
+
         with requests_mock.Mocker() as m:
             m.get(backend.url_for("appmodules"), json={"value": []})
-            m.post(backend.url_for("appmodules"), status_code=400, json={
-                "error": {"code": "0x80050135",
-                          "message": "A duplicate uniquename exists."}})
-            out = appmodule.create_app(backend, name="CRMWorx",
-                                       unique_name="cwx_crmworx", if_exists="skip")
-        assert out == {"skipped": True, "exists": True,
-                       "uniquename": "cwx_crmworx", "appmoduleid": None}
+            m.post(
+                backend.url_for("appmodules"),
+                status_code=400,
+                json={"error": {"code": "0x80050135", "message": "A duplicate uniquename exists."}},
+            )
+            out = appmodule.create_app(
+                backend, name="CRMWorx", unique_name="cwx_crmworx", if_exists="skip"
+            )
+        assert out == {
+            "skipped": True,
+            "exists": True,
+            "uniquename": "cwx_crmworx",
+            "appmoduleid": None,
+        }
 
     def test_create_app_error_still_raises_on_duplicate_fault(self, backend):
         # if_exists=error must NOT swallow the duplicate — it genuinely collided.
         from crm.core import appmodule
+
         with requests_mock.Mocker() as m:
             m.get(backend.url_for("appmodules"), json={"value": []})
-            m.post(backend.url_for("appmodules"), status_code=400, json={
-                "error": {"code": "0x80050135",
-                          "message": "A duplicate uniquename exists."}})
+            m.post(
+                backend.url_for("appmodules"),
+                status_code=400,
+                json={"error": {"code": "0x80050135", "message": "A duplicate uniquename exists."}},
+            )
             with pytest.raises(D365Error):
-                appmodule.create_app(backend, name="CRMWorx",
-                                     unique_name="cwx_crmworx", if_exists="error")
+                appmodule.create_app(
+                    backend, name="CRMWorx", unique_name="cwx_crmworx", if_exists="error"
+                )
 
     def test_create_app_skip_swallows_onprem_sql_duplicate_fault(self, backend):
         # On-prem v9.x surfaces the publish-before-read duplicate as a SQL
@@ -193,51 +262,80 @@ class TestCreateApp:
         # duplicate-detected code family cloud returns (issue #496, incomplete
         # #322 fix). if_exists=skip must treat it as a skip and re-query the id.
         from crm.core import appmodule
+
         with requests_mock.Mocker() as m:
-            m.get(backend.url_for("appmodules"), [
-                {"json": {"value": []}},  # first filter: not yet visible
-                {"json": {"value": [{"appmoduleid": _APP_ID,
-                                     "uniquename": "cwx_crmworx"}]}},  # re-query hit
-            ])
-            m.post(backend.url_for("appmodules"), status_code=500, json={
-                "error": {"code": "0x80040216", "message": ""}})
-            out = appmodule.create_app(backend, name="CRMWorx",
-                                       unique_name="cwx_crmworx", if_exists="skip")
-        assert out == {"skipped": True, "exists": True,
-                       "uniquename": "cwx_crmworx", "appmoduleid": _APP_ID}
+            m.get(
+                backend.url_for("appmodules"),
+                [
+                    {"json": {"value": []}},  # first filter: not yet visible
+                    {
+                        "json": {"value": [{"appmoduleid": _APP_ID, "uniquename": "cwx_crmworx"}]}
+                    },  # re-query hit
+                ],
+            )
+            m.post(
+                backend.url_for("appmodules"),
+                status_code=500,
+                json={"error": {"code": "0x80040216", "message": ""}},
+            )
+            out = appmodule.create_app(
+                backend, name="CRMWorx", unique_name="cwx_crmworx", if_exists="skip"
+            )
+        assert out == {
+            "skipped": True,
+            "exists": True,
+            "uniquename": "cwx_crmworx",
+            "appmoduleid": _APP_ID,
+        }
 
     def test_create_app_skip_onprem_duplicate_id_best_effort_when_invisible(self, backend):
         # The duplicating app may still be unpublished and thus invisible to the
         # re-query — skip semantics still hold, id is best-effort None.
         from crm.core import appmodule
+
         with requests_mock.Mocker() as m:
             m.get(backend.url_for("appmodules"), json={"value": []})
-            m.post(backend.url_for("appmodules"), status_code=500, json={
-                "error": {"code": "0x80040216", "message": ""}})
-            out = appmodule.create_app(backend, name="CRMWorx",
-                                       unique_name="cwx_crmworx", if_exists="skip")
-        assert out == {"skipped": True, "exists": True,
-                       "uniquename": "cwx_crmworx", "appmoduleid": None}
+            m.post(
+                backend.url_for("appmodules"),
+                status_code=500,
+                json={"error": {"code": "0x80040216", "message": ""}},
+            )
+            out = appmodule.create_app(
+                backend, name="CRMWorx", unique_name="cwx_crmworx", if_exists="skip"
+            )
+        assert out == {
+            "skipped": True,
+            "exists": True,
+            "uniquename": "cwx_crmworx",
+            "appmoduleid": None,
+        }
 
     def test_create_app_error_still_raises_on_onprem_sql_duplicate(self, backend):
         # if_exists=error must still propagate the on-prem duplicate fault.
         from crm.core import appmodule
+
         with requests_mock.Mocker() as m:
             m.get(backend.url_for("appmodules"), json={"value": []})
-            m.post(backend.url_for("appmodules"), status_code=500, json={
-                "error": {"code": "0x80040216", "message": ""}})
+            m.post(
+                backend.url_for("appmodules"),
+                status_code=500,
+                json={"error": {"code": "0x80040216", "message": ""}},
+            )
             with pytest.raises(D365Error):
-                appmodule.create_app(backend, name="CRMWorx",
-                                     unique_name="cwx_crmworx", if_exists="error")
+                appmodule.create_app(
+                    backend, name="CRMWorx", unique_name="cwx_crmworx", if_exists="error"
+                )
 
 
 class TestAddComponents:
     def test_add_components_builds_typed_references(self, backend):
         from crm.core import appmodule
+
         with requests_mock.Mocker() as m:
             m.post(backend.url_for("AddAppComponents"), status_code=204)
             out = appmodule.add_app_components(
-                backend, app_id=_APP_ID,
+                backend,
+                app_id=_APP_ID,
                 components=[("view", "bbbb"), ("chart", "cccc"), ("sitemap", "dddd")],
             )
         assert out["added"] == 3
@@ -250,21 +348,22 @@ class TestAddComponents:
             "Microsoft.Dynamics.CRM.savedqueryvisualization",
             "Microsoft.Dynamics.CRM.sitemap",
         }
-        view = next(c for c in body["Components"]
-                    if c["@odata.type"].endswith(".savedquery"))
+        view = next(c for c in body["Components"] if c["@odata.type"].endswith(".savedquery"))
         assert view["savedqueryid"] == "bbbb"
 
     def test_add_components_rejects_unknown_kind(self, backend):
         from crm.core import appmodule
+
         with pytest.raises(D365Error, match="unknown component kind"):
-            appmodule.add_app_components(backend, app_id=_APP_ID,
-                                         components=[("widget", "xxxx")])
+            appmodule.add_app_components(backend, app_id=_APP_ID, components=[("widget", "xxxx")])
 
     def test_add_components_dry_run_previews(self, profile):
         from crm.core import appmodule
+
         dry = D365Backend(profile, password="pw", dry_run=True)
         out = appmodule.add_app_components(
-            dry, app_id=_APP_ID, components=[("view", "bbbb"), ("chart", "cccc")])
+            dry, app_id=_APP_ID, components=[("view", "bbbb"), ("chart", "cccc")]
+        )
         # dry-run surfaces the preview instead of a fake "added" count
         assert out["_dry_run"] is True
         assert out["components"] == 2
@@ -275,10 +374,12 @@ class TestAddComponents:
 class TestRemoveComponents:
     def test_remove_components_builds_typed_references(self, backend):
         from crm.core import appmodule
+
         with requests_mock.Mocker() as m:
             m.post(backend.url_for("RemoveAppComponents"), status_code=204)
             out = appmodule.remove_app_components(
-                backend, app_id=_APP_ID,
+                backend,
+                app_id=_APP_ID,
                 components=[("view", "bbbb"), ("chart", "cccc"), ("sitemap", "dddd")],
             )
         assert out["removed"] == 3
@@ -291,21 +392,24 @@ class TestRemoveComponents:
             "Microsoft.Dynamics.CRM.savedqueryvisualization",
             "Microsoft.Dynamics.CRM.sitemap",
         }
-        view = next(c for c in body["Components"]
-                    if c["@odata.type"].endswith(".savedquery"))
+        view = next(c for c in body["Components"] if c["@odata.type"].endswith(".savedquery"))
         assert view["savedqueryid"] == "bbbb"
 
     def test_remove_components_rejects_unknown_kind(self, backend):
         from crm.core import appmodule
+
         with pytest.raises(D365Error, match="unknown component kind"):
-            appmodule.remove_app_components(backend, app_id=_APP_ID,
-                                            components=[("widget", "xxxx")])
+            appmodule.remove_app_components(
+                backend, app_id=_APP_ID, components=[("widget", "xxxx")]
+            )
 
     def test_remove_components_dry_run_previews(self, profile):
         from crm.core import appmodule
+
         dry = D365Backend(profile, password="pw", dry_run=True)
         out = appmodule.remove_app_components(
-            dry, app_id=_APP_ID, components=[("view", "bbbb"), ("chart", "cccc")])
+            dry, app_id=_APP_ID, components=[("view", "bbbb"), ("chart", "cccc")]
+        )
         # dry-run surfaces the preview instead of a fake "removed" count
         assert out["_dry_run"] is True
         assert out["components"] == 2
@@ -316,14 +420,16 @@ class TestRemoveComponents:
 class TestSetSitemap:
     def test_set_sitemap_posts_and_reads_id(self, backend):
         from crm.core import appmodule
+
         sm_url = backend.url_for(f"sitemaps({_SITEMAP_ID})")
         with requests_mock.Mocker() as m:
-            m.post(backend.url_for("sitemaps"), status_code=204,
-                   headers={"OData-EntityId": sm_url})
+            m.post(backend.url_for("sitemaps"), status_code=204, headers={"OData-EntityId": sm_url})
             out = appmodule.set_sitemap(
-                backend, sitemap_name="CRMWorx SiteMap",
+                backend,
+                sitemap_name="CRMWorx SiteMap",
                 sitemap_xml="<SiteMap><Area Id='cwx' /></SiteMap>",
-                unique_name="cwx_crmworx", solution="cwx_sol",
+                unique_name="cwx_crmworx",
+                solution="cwx_sol",
             )
         assert out["created"] is True
         assert out["sitemapid"] == _SITEMAP_ID
@@ -337,54 +443,57 @@ class TestSetSitemap:
 
     def test_set_sitemap_unparseable_id_sets_lookup_error(self, backend):
         from crm.core import appmodule
+
         with requests_mock.Mocker() as m:
-            m.post(backend.url_for("sitemaps"), status_code=204,
-                   headers={"OData-EntityId": "https://x/sitemaps(bogus)"})
-            out = appmodule.set_sitemap(backend, sitemap_name="X",
-                                        sitemap_xml="<SiteMap/>")
+            m.post(
+                backend.url_for("sitemaps"),
+                status_code=204,
+                headers={"OData-EntityId": "https://x/sitemaps(bogus)"},
+            )
+            out = appmodule.set_sitemap(backend, sitemap_name="X", sitemap_xml="<SiteMap/>")
         assert out["created"] is True
         assert out["sitemapid"] is None
         assert "sitemap_lookup_error" in out
 
     def test_set_sitemap_rejects_empty_xml(self, backend):
         from crm.core import appmodule
+
         with pytest.raises(D365Error, match="must not be empty"):
             appmodule.set_sitemap(backend, sitemap_name="x", sitemap_xml="   ")
 
     def test_set_sitemap_does_not_publish_by_default(self, backend):
         from crm.core import appmodule
+
         sm_url = backend.url_for(f"sitemaps({_SITEMAP_ID})")
         with requests_mock.Mocker() as m:
-            m.post(backend.url_for("sitemaps"), status_code=204,
-                   headers={"OData-EntityId": sm_url})
-            out = appmodule.set_sitemap(backend, sitemap_name="X",
-                                        sitemap_xml="<SiteMap/>")
+            m.post(backend.url_for("sitemaps"), status_code=204, headers={"OData-EntityId": sm_url})
+            out = appmodule.set_sitemap(backend, sitemap_name="X", sitemap_xml="<SiteMap/>")
         assert "published" not in out
-        assert not any(r.method == "POST" and "PublishAllXml" in r.url
-                       for r in m.request_history)
+        assert not any(r.method == "POST" and "PublishAllXml" in r.url for r in m.request_history)
 
     def test_set_sitemap_publishes_when_requested(self, backend):
         from crm.core import appmodule
+
         sm_url = backend.url_for(f"sitemaps({_SITEMAP_ID})")
         with requests_mock.Mocker() as m:
-            m.post(backend.url_for("sitemaps"), status_code=204,
-                   headers={"OData-EntityId": sm_url})
+            m.post(backend.url_for("sitemaps"), status_code=204, headers={"OData-EntityId": sm_url})
             m.post(backend.url_for("PublishAllXml"), status_code=204)
-            out = appmodule.set_sitemap(backend, sitemap_name="X",
-                                        sitemap_xml="<SiteMap/>", publish=True)
+            out = appmodule.set_sitemap(
+                backend, sitemap_name="X", sitemap_xml="<SiteMap/>", publish=True
+            )
         assert out["published"] is True
-        assert any(r.method == "POST" and "PublishAllXml" in r.url
-                   for r in m.request_history)
+        assert any(r.method == "POST" and "PublishAllXml" in r.url for r in m.request_history)
 
     def test_app_set_sitemap_command_wires_core(self, monkeypatch):
         from click.testing import CliRunner
+
         from crm.cli import cli
+
         captured = {}
 
         def fake_set_sitemap(backend, **kw):
             captured.update(kw)
-            return {"created": True, "sitemapid": _SITEMAP_ID,
-                    "sitemapname": kw["sitemap_name"]}
+            return {"created": True, "sitemapid": _SITEMAP_ID, "sitemapname": kw["sitemap_name"]}
 
         monkeypatch.setattr("crm.core.appmodule.set_sitemap", fake_set_sitemap)
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
@@ -392,11 +501,21 @@ class TestSetSitemap:
         with runner.isolated_filesystem():
             with open("sm.xml", "w", encoding="utf-8") as fh:
                 fh.write("<SiteMap><Area Id='cwx' /></SiteMap>")
-            result = runner.invoke(cli, [
-                "--json", "app", "set-sitemap", "CRMWorx SiteMap",
-                "--xml-file", "sm.xml", "--unique-name", "cwx_crmworx",
-                "--solution", "cwx_sol",
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "--json",
+                    "app",
+                    "set-sitemap",
+                    "CRMWorx SiteMap",
+                    "--xml-file",
+                    "sm.xml",
+                    "--unique-name",
+                    "cwx_crmworx",
+                    "--solution",
+                    "cwx_sol",
+                ],
+            )
         assert result.exit_code == 0, result.output
         assert captured["sitemap_name"] == "CRMWorx SiteMap"
         assert captured["unique_name"] == "cwx_crmworx"
@@ -405,13 +524,14 @@ class TestSetSitemap:
 
     def test_app_set_sitemap_publish_flag_wires_core(self, monkeypatch):
         from click.testing import CliRunner
+
         from crm.cli import cli
+
         captured = {}
 
         def fake_set_sitemap(backend, **kw):
             captured.update(kw)
-            return {"created": True, "sitemapid": _SITEMAP_ID,
-                    "sitemapname": kw["sitemap_name"]}
+            return {"created": True, "sitemapid": _SITEMAP_ID, "sitemapname": kw["sitemap_name"]}
 
         monkeypatch.setattr("crm.core.appmodule.set_sitemap", fake_set_sitemap)
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
@@ -419,10 +539,20 @@ class TestSetSitemap:
         with runner.isolated_filesystem():
             with open("sm.xml", "w", encoding="utf-8") as fh:
                 fh.write("<SiteMap><Area Id='cwx' /></SiteMap>")
-            result = runner.invoke(cli, [
-                "--json", "app", "set-sitemap", "CRMWorx SiteMap",
-                "--xml-file", "sm.xml", "--solution", "cwx_sol", "--publish",
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "--json",
+                    "app",
+                    "set-sitemap",
+                    "CRMWorx SiteMap",
+                    "--xml-file",
+                    "sm.xml",
+                    "--solution",
+                    "cwx_sol",
+                    "--publish",
+                ],
+            )
         assert result.exit_code == 0, result.output
         assert captured["publish"] is True
 
@@ -442,6 +572,7 @@ def _batch_delete_response(statuses, boundary: str = "batchresp") -> bytes:
     mirroring the per-dependent DELETEs `delete_app` now batches (issue #703).
     """
     import json as _json
+
     parts = []
     for st in statuses:
         if 200 <= st < 300:
@@ -459,14 +590,9 @@ def _batch_delete_response(statuses, boundary: str = "batchresp") -> bytes:
                 "\r\n"
                 f"HTTP/1.1 {st} Error\r\n"
                 "Content-Type: application/json\r\n"
-                "\r\n"
-                + _json.dumps({"error": {"code": "0x0", "message": "not deletable"}})
+                "\r\n" + _json.dumps({"error": {"code": "0x0", "message": "not deletable"}})
             )
-    text = (
-        f"--{boundary}\r\n"
-        + f"\r\n--{boundary}\r\n".join(parts)
-        + f"\r\n--{boundary}--\r\n"
-    )
+    text = f"--{boundary}\r\n" + f"\r\n--{boundary}\r\n".join(parts) + f"\r\n--{boundary}--\r\n"
     return text.encode("utf-8")
 
 
@@ -478,25 +604,30 @@ class TestDeleteApp:
     def _name_map(self, monkeypatch):
         """Stub load_name_map so child set/PK resolution needs no metadata GET."""
         from crm.core.entity_names import NameMap
+
         nm = NameMap(
             logical_to_set={"appsetting": "appsettings", "appconfig": "appconfigs"},
             set_to_logical={"appsettings": "appsetting", "appconfigs": "appconfig"},
             primary_id={"appsetting": "appsettingid", "appconfig": "appconfigid"},
         )
-        monkeypatch.setattr("crm.core.appmodule.load_name_map",
-                            lambda backend, **kw: nm)
+        monkeypatch.setattr("crm.core.appmodule.load_name_map", lambda backend, **kw: nm)
 
     def test_sweeps_dependent_then_deletes_app(self, backend, monkeypatch):
         from crm.core import appmodule
+
         self._name_map(monkeypatch)
         with requests_mock.Mocker() as m:
             m.get(backend.url_for(_UNPUB_MULTIPLE), json={"value": [_APP_ROW]})
             m.get(backend.url_for(_REL_URL), json=_RELS)
-            m.get(backend.url_for("appsettings"),
-                  json={"value": [{"appsettingid": _APPSETTING_ID}]})
-            m.post(backend.url_for("$batch"),
-                   content=_batch_delete_response([204]),
-                   headers=_BATCH_HDR, status_code=200)
+            m.get(
+                backend.url_for("appsettings"), json={"value": [{"appsettingid": _APPSETTING_ID}]}
+            )
+            m.post(
+                backend.url_for("$batch"),
+                content=_batch_delete_response([204]),
+                headers=_BATCH_HDR,
+                status_code=200,
+            )
             m.delete(backend.url_for(f"appmodules({_APP_ID})"), status_code=204)
             out = appmodule.delete_app(backend, _APP_ID)
         assert out["deleted"] is True
@@ -515,17 +646,21 @@ class TestDeleteApp:
         # The sweep keys off "a row references the app", NOT metadata cascade — so
         # every referencing child (appsetting + appconfig) is removed.
         from crm.core import appmodule
+
         self._name_map(monkeypatch)
         with requests_mock.Mocker() as m:
             m.get(backend.url_for(_UNPUB_MULTIPLE), json={"value": [_APP_ROW]})
             m.get(backend.url_for(_REL_URL), json=_RELS_TWO)
-            m.get(backend.url_for("appsettings"),
-                  json={"value": [{"appsettingid": _APPSETTING_ID}]})
-            m.get(backend.url_for("appconfigs"),
-                  json={"value": [{"appconfigid": _APPCONFIG_ID}]})
-            m.post(backend.url_for("$batch"),
-                   content=_batch_delete_response([204, 204]),
-                   headers=_BATCH_HDR, status_code=200)
+            m.get(
+                backend.url_for("appsettings"), json={"value": [{"appsettingid": _APPSETTING_ID}]}
+            )
+            m.get(backend.url_for("appconfigs"), json={"value": [{"appconfigid": _APPCONFIG_ID}]})
+            m.post(
+                backend.url_for("$batch"),
+                content=_batch_delete_response([204, 204]),
+                headers=_BATCH_HDR,
+                status_code=200,
+            )
             m.delete(backend.url_for(f"appmodules({_APP_ID})"), status_code=204)
             out = appmodule.delete_app(backend, _APP_ID)
         entities = {d["entity"] for d in out["dependents_deleted"]}
@@ -538,15 +673,20 @@ class TestDeleteApp:
         # A dependent that won't delete is left for the parent DELETE to cascade;
         # the app still deletes and the failed child is absent from the result.
         from crm.core import appmodule
+
         self._name_map(monkeypatch)
         with requests_mock.Mocker() as m:
             m.get(backend.url_for(_UNPUB_MULTIPLE), json={"value": [_APP_ROW]})
             m.get(backend.url_for(_REL_URL), json=_RELS)
-            m.get(backend.url_for("appsettings"),
-                  json={"value": [{"appsettingid": _APPSETTING_ID}]})
-            m.post(backend.url_for("$batch"),
-                   content=_batch_delete_response([400]),
-                   headers=_BATCH_HDR, status_code=200)
+            m.get(
+                backend.url_for("appsettings"), json={"value": [{"appsettingid": _APPSETTING_ID}]}
+            )
+            m.post(
+                backend.url_for("$batch"),
+                content=_batch_delete_response([400]),
+                headers=_BATCH_HDR,
+                status_code=200,
+            )
             m.delete(backend.url_for(f"appmodules({_APP_ID})"), status_code=204)
             out = appmodule.delete_app(backend, _APP_ID)
         assert out["deleted"] is True
@@ -556,6 +696,7 @@ class TestDeleteApp:
 
     def test_resolves_uniquename(self, backend, monkeypatch):
         from crm.core import appmodule
+
         self._name_map(monkeypatch)
         with requests_mock.Mocker() as m:
             m.get(backend.url_for(_UNPUB_MULTIPLE), json={"value": [_APP_ROW]})
@@ -569,11 +710,14 @@ class TestDeleteApp:
 
     def test_falls_back_to_display_name(self, backend, monkeypatch):
         from crm.core import appmodule
+
         self._name_map(monkeypatch)
         with requests_mock.Mocker() as m:
             # uniquename miss, then display-name hit.
-            m.get(backend.url_for(_UNPUB_MULTIPLE),
-                  [{"json": {"value": []}}, {"json": {"value": [_APP_ROW]}}])
+            m.get(
+                backend.url_for(_UNPUB_MULTIPLE),
+                [{"json": {"value": []}}, {"json": {"value": [_APP_ROW]}}],
+            )
             m.get(backend.url_for(_REL_URL), json={"value": []})
             m.delete(backend.url_for(f"appmodules({_APP_ID})"), status_code=204)
             out = appmodule.delete_app(backend, "CRMWorx")
@@ -583,6 +727,7 @@ class TestDeleteApp:
 
     def test_unknown_target_raises(self, backend, monkeypatch):
         from crm.core import appmodule
+
         with requests_mock.Mocker() as m:
             m.get(backend.url_for(_UNPUB_MULTIPLE), json={"value": []})
             with pytest.raises(D365Error, match="was not found"):
@@ -590,6 +735,7 @@ class TestDeleteApp:
 
     def test_ambiguous_name_raises(self, backend, monkeypatch):
         from crm.core import appmodule
+
         with requests_mock.Mocker() as m:
             m.get(backend.url_for(_UNPUB_MULTIPLE), json={"value": [_APP_ROW, _APP_ROW]})
             with pytest.raises(D365Error, match="ambiguous"):
@@ -597,6 +743,7 @@ class TestDeleteApp:
 
     def test_refuses_managed_app(self, backend, monkeypatch):
         from crm.core import appmodule
+
         managed = dict(_APP_ROW, ismanaged=True)
         with requests_mock.Mocker() as m:
             m.get(backend.url_for(_UNPUB_MULTIPLE), json={"value": [managed]})
@@ -607,63 +754,77 @@ class TestDeleteApp:
 
     def test_dry_run_previews_without_deleting(self, profile, monkeypatch):
         from crm.core import appmodule
+
         dry = D365Backend(profile, password="pw", dry_run=True)
         self._name_map(monkeypatch)
         with requests_mock.Mocker() as m:
             m.get(dry.url_for(_UNPUB_MULTIPLE), json={"value": [_APP_ROW]})
             m.get(dry.url_for(_REL_URL), json=_RELS)
-            m.get(dry.url_for("appsettings"),
-                  json={"value": [{"appsettingid": _APPSETTING_ID}]})
+            m.get(dry.url_for("appsettings"), json={"value": [{"appsettingid": _APPSETTING_ID}]})
             out = appmodule.delete_app(dry, _APP_ID)
         assert out["_dry_run"] is True
         assert out["would_delete"]["appmodule"] == _APP_ID
-        assert out["would_delete"]["dependents"] == [
-            {"entity": "appsetting", "id": _APPSETTING_ID}]
+        assert out["would_delete"]["dependents"] == [{"entity": "appsetting", "id": _APPSETTING_ID}]
         assert not _deletes(m)  # discovery is read-only; no DELETE
 
     def test_remaining_blocker_names_entity(self, backend, monkeypatch):
         # appmodule DELETE still 0x80048d21 after the sweep → name the live blocker.
         from crm.core import appmodule
+
         self._name_map(monkeypatch)
         with requests_mock.Mocker() as m:
             m.get(backend.url_for(_UNPUB_MULTIPLE), json={"value": [_APP_ROW]})
             m.get(backend.url_for(_REL_URL), json=_RELS)
-            m.get(backend.url_for("appsettings"),
-                  json={"value": [{"appsettingid": _APPSETTING_ID}]})
-            m.post(backend.url_for("$batch"),
-                   content=_batch_delete_response([204]),
-                   headers=_BATCH_HDR, status_code=200)
-            m.delete(backend.url_for(f"appmodules({_APP_ID})"), status_code=400, json={
-                "error": {"code": "0x80048d21",
-                          "message": "cannot delete; referenced by another record"}})
+            m.get(
+                backend.url_for("appsettings"), json={"value": [{"appsettingid": _APPSETTING_ID}]}
+            )
+            m.post(
+                backend.url_for("$batch"),
+                content=_batch_delete_response([204]),
+                headers=_BATCH_HDR,
+                status_code=200,
+            )
+            m.delete(
+                backend.url_for(f"appmodules({_APP_ID})"),
+                status_code=400,
+                json={
+                    "error": {
+                        "code": "0x80048d21",
+                        "message": "cannot delete; referenced by another record",
+                    }
+                },
+            )
             with pytest.raises(D365Error, match="appsetting"):
                 appmodule.delete_app(backend, _APP_ID)
 
     def test_command_wires_core_with_yes(self, monkeypatch):
         from click.testing import CliRunner
+
         from crm.cli import cli
+
         captured = {}
         monkeypatch.setattr(
             "crm.core.appmodule.delete_app",
-            lambda backend, name_or_id: captured.setdefault("target", name_or_id)
-            or {"deleted": True, "appmodule": _APP_ID, "dependents_deleted": []})
+            lambda backend, name_or_id: (
+                captured.setdefault("target", name_or_id)
+                or {"deleted": True, "appmodule": _APP_ID, "dependents_deleted": []}
+            ),
+        )
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-        result = CliRunner().invoke(
-            cli, ["--json", "app", "delete", "cwx_crmworx", "--yes"])
+        result = CliRunner().invoke(cli, ["--json", "app", "delete", "cwx_crmworx", "--yes"])
         assert result.exit_code == 0, result.output
         assert captured["target"] == "cwx_crmworx"
 
     def test_command_dry_run_skips_confirm_and_previews(self, monkeypatch):
         # --dry-run is a read-only preview: no --yes, no TTY, must NOT abort.
         from click.testing import CliRunner
+
         from crm.cli import cli
-        preview = {"_dry_run": True,
-                   "would_delete": {"appmodule": _APP_ID, "dependents": []}}
-        monkeypatch.setattr("crm.core.appmodule.delete_app",
-                            lambda backend, name_or_id: preview)
+
+        preview = {"_dry_run": True, "would_delete": {"appmodule": _APP_ID, "dependents": []}}
+        monkeypatch.setattr("crm.core.appmodule.delete_app", lambda backend, name_or_id: preview)
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-        result = CliRunner().invoke(
-            cli, ["--json", "--dry-run", "app", "delete", "cwx_crmworx"])
+        result = CliRunner().invoke(cli, ["--json", "--dry-run", "app", "delete", "cwx_crmworx"])
         assert result.exit_code == 0, result.output
         assert '"_dry_run": true' in result.output
 
@@ -671,6 +832,7 @@ class TestDeleteApp:
 class TestBuildSitemapXml:
     def test_nests_areas_groups_subareas_in_order(self):
         from crm.core import appmodule
+
         xml = appmodule.build_sitemapxml(
             areas=[("area1", "Sales"), ("area2", "Service")],
             groups=[("area1", "g1", "Accounts"), ("area2", "g2", "Cases")],
@@ -680,22 +842,24 @@ class TestBuildSitemapXml:
             ],
         )
         assert xml == (
-            '<SiteMap>'
+            "<SiteMap>"
             '<Area Id="area1" Title="Sales">'
             '<Group Id="g1" Title="Accounts">'
             '<SubArea Id="account" Entity="account" Title="Accounts" />'
-            '</Group></Area>'
+            "</Group></Area>"
             '<Area Id="area2" Title="Service">'
             '<Group Id="g2" Title="Cases">'
             '<SubArea Id="incident" Entity="incident" Title="Cases" />'
-            '</Group></Area>'
-            '</SiteMap>'
+            "</Group></Area>"
+            "</SiteMap>"
         )
 
     def test_subarea_omits_title_when_none(self):
         from crm.core import appmodule
+
         xml = appmodule.build_sitemapxml(
-            areas=[("a", "A")], groups=[("a", "g", "G")],
+            areas=[("a", "A")],
+            groups=[("a", "g", "G")],
             subareas=[("a", "g", "account", None)],
         )
         assert '<SubArea Id="account" Entity="account" />' in xml
@@ -703,16 +867,20 @@ class TestBuildSitemapXml:
 
     def test_subarea_omits_title_when_empty(self):
         from crm.core import appmodule
+
         xml = appmodule.build_sitemapxml(
-            areas=[("a", "A")], groups=[("a", "g", "G")],
+            areas=[("a", "A")],
+            groups=[("a", "g", "G")],
             subareas=[("a", "g", "account", "   ")],
         )
         assert '<SubArea Id="account" Entity="account" />' in xml
 
     def test_empty_area_group_title_defaults_to_id(self):
         from crm.core import appmodule
+
         xml = appmodule.build_sitemapxml(
-            areas=[("area1", "  ")], groups=[("area1", "grp1", "")],
+            areas=[("area1", "  ")],
+            groups=[("area1", "grp1", "")],
             subareas=[],
         )
         assert '<Area Id="area1" Title="area1">' in xml
@@ -720,6 +888,7 @@ class TestBuildSitemapXml:
 
     def test_attribute_values_are_quoteattr_escaped(self):
         from crm.core import appmodule
+
         xml = appmodule.build_sitemapxml(
             areas=[("a", 'Tom & "Jerry" <x>')],
             groups=[("a", "g", "G")],
@@ -728,13 +897,15 @@ class TestBuildSitemapXml:
         # quoteattr escapes & and <; double quotes inside force single-quote wrapping
         assert "&amp;" in xml
         assert "&lt;" in xml
-        assert 'Title=\'Tom &amp; "Jerry" &lt;x&gt;\'' in xml
-        assert 'Title=\'Acc &amp; "B" &lt;c&gt;\'' in xml
+        assert "Title='Tom &amp; \"Jerry\" &lt;x&gt;'" in xml
+        assert "Title='Acc &amp; \"B\" &lt;c&gt;'" in xml
 
     def test_duplicate_subarea_entity_gets_distinct_ids(self):
         from crm.core import appmodule
+
         xml = appmodule.build_sitemapxml(
-            areas=[("a", "A")], groups=[("a", "g", "G")],
+            areas=[("a", "A")],
+            groups=[("a", "g", "G")],
             subareas=[
                 ("a", "g", "account", None),
                 ("a", "g", "account", None),
@@ -747,6 +918,7 @@ class TestBuildSitemapXml:
 
     def test_subarea_ids_unique_across_whole_document(self):
         from crm.core import appmodule
+
         xml = appmodule.build_sitemapxml(
             areas=[("a1", "A1"), ("a2", "A2")],
             groups=[("a1", "g1", "G1"), ("a2", "g2", "G2")],
@@ -760,17 +932,19 @@ class TestBuildSitemapXml:
 
     def test_empty_areas_raises(self):
         from crm.core import appmodule
+
         with pytest.raises(D365Error, match="at least one area"):
             appmodule.build_sitemapxml(areas=[], groups=[], subareas=[])
 
     def test_duplicate_area_id_raises(self):
         from crm.core import appmodule
+
         with pytest.raises(D365Error, match="duplicate area"):
-            appmodule.build_sitemapxml(
-                areas=[("a", "A"), ("a", "B")], groups=[], subareas=[])
+            appmodule.build_sitemapxml(areas=[("a", "A"), ("a", "B")], groups=[], subareas=[])
 
     def test_duplicate_group_id_raises(self):
         from crm.core import appmodule
+
         with pytest.raises(D365Error, match="duplicate group"):
             appmodule.build_sitemapxml(
                 areas=[("a", "A")],
@@ -780,20 +954,23 @@ class TestBuildSitemapXml:
 
     def test_group_unknown_area_raises(self):
         from crm.core import appmodule
+
         with pytest.raises(D365Error, match="unknown area"):
-            appmodule.build_sitemapxml(
-                areas=[("a", "A")], groups=[("nope", "g", "G")], subareas=[])
+            appmodule.build_sitemapxml(areas=[("a", "A")], groups=[("nope", "g", "G")], subareas=[])
 
     def test_subarea_unknown_group_raises(self):
         from crm.core import appmodule
+
         with pytest.raises(D365Error, match="does not reference"):
             appmodule.build_sitemapxml(
-                areas=[("a", "A")], groups=[("a", "g", "G")],
+                areas=[("a", "A")],
+                groups=[("a", "g", "G")],
                 subareas=[("a", "nope", "account", None)],
             )
 
     def test_subarea_group_in_wrong_area_raises(self):
         from crm.core import appmodule
+
         with pytest.raises(D365Error, match="does not reference"):
             appmodule.build_sitemapxml(
                 areas=[("a1", "A1"), ("a2", "A2")],
@@ -803,44 +980,48 @@ class TestBuildSitemapXml:
 
     def test_empty_entity_raises(self):
         from crm.core import appmodule
+
         with pytest.raises(D365Error, match="entity"):
             appmodule.build_sitemapxml(
-                areas=[("a", "A")], groups=[("a", "g", "G")],
+                areas=[("a", "A")],
+                groups=[("a", "g", "G")],
                 subareas=[("a", "g", "", None)],
             )
 
     def test_empty_area_id_raises(self):
         from crm.core import appmodule
+
         with pytest.raises(D365Error, match="area"):
-            appmodule.build_sitemapxml(
-                areas=[("", "A")], groups=[], subareas=[])
+            appmodule.build_sitemapxml(areas=[("", "A")], groups=[], subareas=[])
 
     def test_empty_group_id_raises(self):
         from crm.core import appmodule
+
         with pytest.raises(D365Error, match="group"):
-            appmodule.build_sitemapxml(
-                areas=[("a", "A")], groups=[("a", "", "G")], subareas=[])
+            appmodule.build_sitemapxml(areas=[("a", "A")], groups=[("a", "", "G")], subareas=[])
 
     def test_whitespace_only_ids_are_stripped_and_rejected(self):
         # Whitespace-only identifiers are treated as empty in core too (not just
         # the CLI), keeping programmatic callers safe.
         from crm.core import appmodule
+
         with pytest.raises(D365Error, match="area"):
-            appmodule.build_sitemapxml(
-                areas=[("   ", "A")], groups=[], subareas=[])
+            appmodule.build_sitemapxml(areas=[("   ", "A")], groups=[], subareas=[])
         with pytest.raises(D365Error, match="entity"):
             appmodule.build_sitemapxml(
-                areas=[("a", "A")], groups=[("a", "g", "G")],
-                subareas=[("a", "g", "   ", None)])
+                areas=[("a", "A")], groups=[("a", "g", "G")], subareas=[("a", "g", "   ", None)]
+            )
 
     def test_ids_are_stripped_in_output(self):
         # Surrounding whitespace on Ids/entity is stripped before emission, so
         # references still resolve and the XML stays clean.
         from crm.core import appmodule
+
         xml = appmodule.build_sitemapxml(
             areas=[("  sales  ", "Sales")],
             groups=[("sales", "  accts  ", "Accounts")],
-            subareas=[("sales", "accts", "  account  ", None)])
+            subareas=[("sales", "accts", "  account  ", None)],
+        )
         assert 'Id="sales"' in xml
         assert 'Id="accts"' in xml
         assert 'Entity="account"' in xml
@@ -857,6 +1038,7 @@ class TestBuildSitemap:
 
     def test_dry_run_returns_xml_without_posting(self, profile):
         from crm.core import appmodule
+
         dry = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
             out = appmodule.build_sitemap(dry, **self._args())
@@ -868,6 +1050,7 @@ class TestBuildSitemap:
 
     def test_empty_name_raises(self, backend):
         from crm.core import appmodule
+
         args = self._args()
         args["sitemap_name"] = "   "
         with pytest.raises(D365Error, match="sitemap_name"):
@@ -875,14 +1058,16 @@ class TestBuildSitemap:
 
     def test_posts_via_set_sitemap_body_unchanged(self, backend):
         from crm.core import appmodule
+
         a = self._args()
         expected_xml = appmodule.build_sitemapxml(
-            areas=a["areas"], groups=a["groups"], subareas=a["subareas"],
+            areas=a["areas"],
+            groups=a["groups"],
+            subareas=a["subareas"],
         )
         sm_url = backend.url_for(f"sitemaps({_SITEMAP_ID})")
         with requests_mock.Mocker() as m:
-            m.post(backend.url_for("sitemaps"), status_code=204,
-                   headers={"OData-EntityId": sm_url})
+            m.post(backend.url_for("sitemaps"), status_code=204, headers={"OData-EntityId": sm_url})
             out = appmodule.build_sitemap(backend, **self._args())
         assert out["created"] is True
         assert out["sitemapid"] == _SITEMAP_ID
@@ -890,36 +1075,38 @@ class TestBuildSitemap:
         assert len(posts) == 1
         # Byte-identical to what set_sitemap would build (no sitemapnameunique here)
         assert posts[0].json() == {
-            "sitemapname": "CRMWorx SiteMap", "sitemapxml": expected_xml,
+            "sitemapname": "CRMWorx SiteMap",
+            "sitemapxml": expected_xml,
         }
 
     def test_posts_with_unique_name_adds_sitemapnameunique(self, backend):
         from crm.core import appmodule
+
         sm_url = backend.url_for(f"sitemaps({_SITEMAP_ID})")
         with requests_mock.Mocker() as m:
-            m.post(backend.url_for("sitemaps"), status_code=204,
-                   headers={"OData-EntityId": sm_url})
+            m.post(backend.url_for("sitemaps"), status_code=204, headers={"OData-EntityId": sm_url})
             appmodule.build_sitemap(backend, unique_name="cwx_crmworx", **self._args())
         body = _posts(m)[0].json()
         assert body["sitemapnameunique"] == "cwx_crmworx"
 
     def test_publish_runs_when_requested(self, backend):
         from crm.core import appmodule
+
         sm_url = backend.url_for(f"sitemaps({_SITEMAP_ID})")
         with requests_mock.Mocker() as m:
-            m.post(backend.url_for("sitemaps"), status_code=204,
-                   headers={"OData-EntityId": sm_url})
+            m.post(backend.url_for("sitemaps"), status_code=204, headers={"OData-EntityId": sm_url})
             m.post(backend.url_for("PublishAllXml"), status_code=204)
             out = appmodule.build_sitemap(backend, publish=True, **self._args())
         assert out["published"] is True
-        assert any(r.method == "POST" and "PublishAllXml" in r.url
-                   for r in m.request_history)
+        assert any(r.method == "POST" and "PublishAllXml" in r.url for r in m.request_history)
 
 
 class TestAppCommands:
     def test_app_create_command_wires_core(self, monkeypatch):
         from click.testing import CliRunner
+
         from crm.cli import cli
+
         captured = {}
 
         def fake_create_app(backend, **kw):
@@ -929,17 +1116,29 @@ class TestAppCommands:
         monkeypatch.setattr("crm.core.appmodule.create_app", fake_create_app)
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         monkeypatch.setattr("crm.core.solution.publish_all", lambda b: {"ok": True})
-        result = CliRunner().invoke(cli, [
-            "--json", "app", "create", "--name", "CRMWorx",
-            "--unique-name", "cwx_crmworx", "--no-publish",
-            "--solution", "cwx_sol",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "app",
+                "create",
+                "--name",
+                "CRMWorx",
+                "--unique-name",
+                "cwx_crmworx",
+                "--no-publish",
+                "--solution",
+                "cwx_sol",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert captured["unique_name"] == "cwx_crmworx"
 
     def test_app_create_icon_webresource_guid_passthrough(self, monkeypatch):
         from click.testing import CliRunner
+
         from crm.cli import cli
+
         captured = {}
 
         def fake_create_app(backend, **kw):
@@ -949,18 +1148,31 @@ class TestAppCommands:
         monkeypatch.setattr("crm.core.appmodule.create_app", fake_create_app)
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         monkeypatch.setattr("crm.core.solution.publish_all", lambda b: {"ok": True})
-        result = CliRunner().invoke(cli, [
-            "--json", "app", "create", "--name", "CRMWorx",
-            "--unique-name", "cwx_crmworx", "--no-publish",
-            "--icon-webresource", "11111111-1111-1111-1111-111111111111",
-            "--solution", "cwx_sol",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "app",
+                "create",
+                "--name",
+                "CRMWorx",
+                "--unique-name",
+                "cwx_crmworx",
+                "--no-publish",
+                "--icon-webresource",
+                "11111111-1111-1111-1111-111111111111",
+                "--solution",
+                "cwx_sol",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert captured["web_resource_id"] == "11111111-1111-1111-1111-111111111111"
 
     def test_app_create_icon_webresource_resolves_name(self, monkeypatch):
         from click.testing import CliRunner
+
         from crm.cli import cli
+
         captured = {}
         seen = {}
 
@@ -976,19 +1188,32 @@ class TestAppCommands:
         monkeypatch.setattr("crm.core.appmodule.create_app", fake_create_app)
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         monkeypatch.setattr("crm.core.solution.publish_all", lambda b: {"ok": True})
-        result = CliRunner().invoke(cli, [
-            "--json", "app", "create", "--name", "CRMWorx",
-            "--unique-name", "cwx_crmworx", "--no-publish",
-            "--icon-webresource", "cwx_/icons/app.svg",
-            "--solution", "cwx_sol",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "app",
+                "create",
+                "--name",
+                "CRMWorx",
+                "--unique-name",
+                "cwx_crmworx",
+                "--no-publish",
+                "--icon-webresource",
+                "cwx_/icons/app.svg",
+                "--solution",
+                "cwx_sol",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert seen["name_or_guid"] == "cwx_/icons/app.svg"
         assert captured["web_resource_id"] == "99999999-9999-9999-9999-999999999999"
 
     def test_app_create_defaults_icon_when_omitted(self, monkeypatch):
         from click.testing import CliRunner
+
         from crm.cli import cli
+
         captured = {}
 
         def fake_create_app(backend, **kw):
@@ -998,35 +1223,59 @@ class TestAppCommands:
         monkeypatch.setattr("crm.core.appmodule.create_app", fake_create_app)
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         monkeypatch.setattr("crm.core.solution.publish_all", lambda b: {"ok": True})
-        result = CliRunner().invoke(cli, [
-            "--json", "app", "create", "--name", "CRMWorx",
-            "--unique-name", "cwx_crmworx", "--no-publish",
-            "--solution", "cwx_sol",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "app",
+                "create",
+                "--name",
+                "CRMWorx",
+                "--unique-name",
+                "cwx_crmworx",
+                "--no-publish",
+                "--solution",
+                "cwx_sol",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert captured["web_resource_id"] == _DEFAULT_ICON
 
     def test_app_build_sitemap_command_wires_core(self, monkeypatch):
         from click.testing import CliRunner
+
         from crm.cli import cli
+
         captured: dict[str, Any] = {}
 
         def fake_build_sitemap(backend, **kw):
             captured.update(kw)
-            return {"created": True, "sitemapid": _SITEMAP_ID,
-                    "sitemapname": kw["sitemap_name"]}
+            return {"created": True, "sitemapid": _SITEMAP_ID, "sitemapname": kw["sitemap_name"]}
 
         monkeypatch.setattr("crm.core.appmodule.build_sitemap", fake_build_sitemap)
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-        result = CliRunner().invoke(cli, [
-            "--json", "app", "build-sitemap", "CRMWorx SiteMap",
-            "--area", "sales:Sales",
-            "--group", "sales/accts:Accounts",
-            "--subarea", "sales/accts:entity=account:Accounts",
-            "--subarea", "sales/accts:entity=contact",
-            "--unique-name", "cwx_crmworx", "--no-publish",
-            "--solution", "cwx_sol",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "app",
+                "build-sitemap",
+                "CRMWorx SiteMap",
+                "--area",
+                "sales:Sales",
+                "--group",
+                "sales/accts:Accounts",
+                "--subarea",
+                "sales/accts:entity=account:Accounts",
+                "--subarea",
+                "sales/accts:entity=contact",
+                "--unique-name",
+                "cwx_crmworx",
+                "--no-publish",
+                "--solution",
+                "cwx_sol",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert captured["sitemap_name"] == "CRMWorx SiteMap"
         assert captured["areas"] == [("sales", "Sales")]
@@ -1040,29 +1289,40 @@ class TestAppCommands:
 
     def test_app_build_sitemap_dry_run_emits_xml_without_post(self, monkeypatch):
         from click.testing import CliRunner
+
         from crm.cli import cli
 
         def fake_build_sitemap(backend, **kw):
             assert backend.dry_run is True
-            xml = appmodule.build_sitemapxml(
-                kw["areas"], kw["groups"], kw["subareas"])
-            return {"_dry_run": True, "sitemapname": kw["sitemap_name"],
-                    "sitemapxml": xml}
+            xml = appmodule.build_sitemapxml(kw["areas"], kw["groups"], kw["subareas"])
+            return {"_dry_run": True, "sitemapname": kw["sitemap_name"], "sitemapxml": xml}
 
         from crm.core import appmodule
+
         monkeypatch.setattr("crm.core.appmodule.build_sitemap", fake_build_sitemap)
 
         class _DryBackend:
             dry_run = True
 
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: _DryBackend())
-        result = CliRunner().invoke(cli, [
-            "--json", "--dry-run", "app", "build-sitemap", "CRMWorx SiteMap",
-            "--area", "sales:Sales",
-            "--group", "sales/accts:Accounts",
-            "--subarea", "sales/accts:entity=account",
-            "--solution", "cwx_sol",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "--dry-run",
+                "app",
+                "build-sitemap",
+                "CRMWorx SiteMap",
+                "--area",
+                "sales:Sales",
+                "--group",
+                "sales/accts:Accounts",
+                "--subarea",
+                "sales/accts:entity=account",
+                "--solution",
+                "cwx_sol",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "<SiteMap" in result.output
         assert "<SubArea" in result.output
@@ -1071,14 +1331,13 @@ class TestAppCommands:
         # Human (non-JSON) mode must print the WHOLE SiteMapXml, not the
         # _short_repr-truncated dict value — dry-run's deliverable is the XML.
         from click.testing import CliRunner
+
         from crm.cli import cli
         from crm.core import appmodule
 
         def fake_build_sitemap(backend, **kw):
-            xml = appmodule.build_sitemapxml(
-                kw["areas"], kw["groups"], kw["subareas"])
-            return {"_dry_run": True, "sitemapname": kw["sitemap_name"],
-                    "sitemapxml": xml}
+            xml = appmodule.build_sitemapxml(kw["areas"], kw["groups"], kw["subareas"])
+            return {"_dry_run": True, "sitemapname": kw["sitemap_name"], "sitemapxml": xml}
 
         monkeypatch.setattr("crm.core.appmodule.build_sitemap", fake_build_sitemap)
 
@@ -1086,14 +1345,25 @@ class TestAppCommands:
             dry_run = True
 
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: _DryBackend())
-        result = CliRunner().invoke(cli, [
-            "--dry-run", "app", "build-sitemap", "CRMWorx SiteMap",
-            "--area", "sales:Sales",
-            "--group", "sales/accts:Accounts",
-            "--subarea", "sales/accts:entity=account:Accounts",
-            "--subarea", "sales/accts:entity=contact:Contacts",
-            "--solution", "cwx_sol",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--dry-run",
+                "app",
+                "build-sitemap",
+                "CRMWorx SiteMap",
+                "--area",
+                "sales:Sales",
+                "--group",
+                "sales/accts:Accounts",
+                "--subarea",
+                "sales/accts:entity=account:Accounts",
+                "--subarea",
+                "sales/accts:entity=contact:Contacts",
+                "--solution",
+                "cwx_sol",
+            ],
+        )
         assert result.exit_code == 0, result.output
         # stdout must be pure XML so `> sitemap.xml` works: it starts with the
         # root tag (no warning/preamble leaked in), carries the closing tag
@@ -1105,7 +1375,9 @@ class TestAppCommands:
 
     def test_app_add_components_command(self, monkeypatch):
         from click.testing import CliRunner
+
         from crm.cli import cli
+
         captured = {}
 
         def fake_add(backend, **kw):
@@ -1114,30 +1386,52 @@ class TestAppCommands:
 
         monkeypatch.setattr("crm.core.appmodule.add_app_components", fake_add)
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-        result = CliRunner().invoke(cli, [
-            "--json", "app", "add-components", _APP_ID,
-            "--component", "view:bbbb", "--component", "chart:cccc",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "app",
+                "add-components",
+                _APP_ID,
+                "--component",
+                "view:bbbb",
+                "--component",
+                "chart:cccc",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert captured["components"] == [("view", "bbbb"), ("chart", "cccc")]
 
     def test_app_add_components_strips_whitespace(self, monkeypatch):
         from click.testing import CliRunner
+
         from crm.cli import cli
+
         captured = {}
         monkeypatch.setattr(
             "crm.core.appmodule.add_app_components",
-            lambda backend, **kw: captured.update(kw) or {"added": len(kw["components"])})
+            lambda backend, **kw: captured.update(kw) or {"added": len(kw["components"])},
+        )
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-        result = CliRunner().invoke(cli, [
-            "--json", "app", "add-components", _APP_ID, "--component", " view : bbbb ",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "app",
+                "add-components",
+                _APP_ID,
+                "--component",
+                " view : bbbb ",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert captured["components"] == [("view", "bbbb")]
 
     def test_app_remove_components_command(self, monkeypatch):
         from click.testing import CliRunner
+
         from crm.cli import cli
+
         captured = {}
 
         def fake_remove(backend, **kw):
@@ -1146,94 +1440,132 @@ class TestAppCommands:
 
         monkeypatch.setattr("crm.core.appmodule.remove_app_components", fake_remove)
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-        result = CliRunner().invoke(cli, [
-            "--json", "app", "remove-components", _APP_ID,
-            "--component", "view:bbbb", "--component", "chart:cccc",
-        ])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "app",
+                "remove-components",
+                _APP_ID,
+                "--component",
+                "view:bbbb",
+                "--component",
+                "chart:cccc",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert captured["components"] == [("view", "bbbb"), ("chart", "cccc")]
-
 
 
 class TestSitemapParsers:
     def test_parse_area_with_title(self):
         from crm.commands.app import _parse_area
+
         assert _parse_area(" sales : Sales ") == ("sales", "Sales")
 
     def test_parse_area_empty_title_ok(self):
         from crm.commands.app import _parse_area
+
         assert _parse_area("sales") == ("sales", "")
 
     def test_parse_area_empty_id_rejected(self):
         import click
+
         from crm.commands.app import _parse_area
+
         with pytest.raises(click.BadParameter):
             _parse_area(" :Sales")
 
     def test_parse_group_valid(self):
         from crm.commands.app import _parse_group
-        assert _parse_group(" sales / accts : Accounts ") == (
-            "sales", "accts", "Accounts")
+
+        assert _parse_group(" sales / accts : Accounts ") == ("sales", "accts", "Accounts")
 
     def test_parse_group_no_slash_rejected(self):
         import click
+
         from crm.commands.app import _parse_group
+
         with pytest.raises(click.BadParameter):
             _parse_group("sales:Accounts")
 
     def test_parse_group_empty_id_rejected(self):
         import click
+
         from crm.commands.app import _parse_group
+
         with pytest.raises(click.BadParameter):
             _parse_group("sales/:Accounts")
 
     def test_parse_group_extra_slash_rejected(self):
         import click
+
         from crm.commands.app import _parse_group
+
         with pytest.raises(click.BadParameter):
             _parse_group("sales/accts/extra:Accounts")
 
     def test_parse_subarea_with_title(self):
         from crm.commands.app import _parse_subarea
+
         assert _parse_subarea("sales/accts:entity=account:Accounts") == (
-            "sales", "accts", "account", "Accounts")
+            "sales",
+            "accts",
+            "account",
+            "Accounts",
+        )
 
     def test_parse_subarea_without_title(self):
         from crm.commands.app import _parse_subarea
-        assert _parse_subarea("sales/accts:entity=account") == (
-            "sales", "accts", "account", None)
+
+        assert _parse_subarea("sales/accts:entity=account") == ("sales", "accts", "account", None)
 
     def test_parse_subarea_blank_title_is_none(self):
         from crm.commands.app import _parse_subarea
+
         assert _parse_subarea("sales/accts:entity=account:   ") == (
-            "sales", "accts", "account", None)
+            "sales",
+            "accts",
+            "account",
+            None,
+        )
 
     def test_parse_subarea_no_colon_rejected(self):
         import click
+
         from crm.commands.app import _parse_subarea
+
         with pytest.raises(click.BadParameter):
             _parse_subarea("sales/accts")
 
     def test_parse_subarea_extra_slash_rejected(self):
         import click
+
         from crm.commands.app import _parse_subarea
+
         with pytest.raises(click.BadParameter):
             _parse_subarea("sales/accts/extra:entity=account")
 
     def test_parse_subarea_missing_entity_prefix_rejected(self):
         import click
+
         from crm.commands.app import _parse_subarea
+
         with pytest.raises(click.BadParameter):
             _parse_subarea("sales/accts:account")
 
     def test_parse_subarea_empty_entity_rejected(self):
         import click
+
         from crm.commands.app import _parse_subarea
+
         with pytest.raises(click.BadParameter):
             _parse_subarea("sales/accts:entity=")
 
     def test_parse_subarea_bad_ref_rejected(self):
         import click
+
         from crm.commands.app import _parse_subarea
+
         with pytest.raises(click.BadParameter):
             _parse_subarea("sales:entity=account")

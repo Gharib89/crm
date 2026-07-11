@@ -1,5 +1,6 @@
 # pyright: basic
 """Tests for crm/core/update.py — version compare, update-check cache, self-update."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -8,12 +9,12 @@ import pytest
 
 import crm.core.update as update_mod
 from crm.core.update import (
-    compare_versions,
-    fetch_latest_version,
     UpdateError,
     check_for_update,
     cleanup_stale_updates,
+    compare_versions,
     emit_pending_notice,
+    fetch_latest_version,
     is_check_enabled,
     parse_sha256sums,
     pending_notice,
@@ -41,11 +42,11 @@ class TestCompareVersions:
     @pytest.mark.parametrize(
         "current,latest,expected_sign",
         [
-            ("2.9.0", "2.9.1", -1),   # patch behind
+            ("2.9.0", "2.9.1", -1),  # patch behind
             ("2.9.0", "2.10.0", -1),  # numeric, not lexical (10 > 9)
             ("v2.10.0", "2.9.0", 1),  # ahead, v-prefix tolerated on either side
-            ("2.9.0", "v2.9.0", 0),   # equal despite v-prefix mismatch
-            ("2.9.0", "3.0.0", -1),   # major behind
+            ("2.9.0", "v2.9.0", 0),  # equal despite v-prefix mismatch
+            ("2.9.0", "3.0.0", -1),  # major behind
         ],
     )
     def test_sign(self, current: str, latest: str, expected_sign: int) -> None:
@@ -61,6 +62,7 @@ class _Resp:
     def raise_for_status(self) -> None:
         if self.status_code >= 400:
             import requests
+
             raise requests.HTTPError(f"{self.status_code}")
 
 
@@ -69,6 +71,7 @@ class TestFetchLatestVersion:
 
     def test_success_hits_latest_version_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import requests
+
         seen: dict[str, object] = {}
 
         def fake_get(url: str, timeout: float | None = None, **kw: object) -> _Resp:
@@ -83,14 +86,14 @@ class TestFetchLatestVersion:
         assert seen["url"] == "https://r2.example/base/latest/VERSION"
         assert seen["timeout"] is not None  # a bounded timeout is always passed
 
-    def test_non_semver_payload_returns_none(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_non_semver_payload_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # A 200 with junk (proxy login page, "latest", HTML) must not be cached
         # or compared — it would crash compare_versions downstream.
         import requests
+
         monkeypatch.setattr(
-            requests, "get",
+            requests,
+            "get",
             lambda *a, **k: _Resp("<html>nope</html>"),
         )
         assert fetch_latest_version("https://r2.example") is None
@@ -230,9 +233,7 @@ class TestPendingNotice:
 class TestRefreshCache:
     """Background-thread body (sync): probe + persist; silent on failure."""
 
-    def test_writes_cache_on_success(
-        self, crm_home: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_writes_cache_on_success(self, crm_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(update_mod, "fetch_latest_version", lambda *a, **k: "v9.9.9")
         refresh_cache(now=555.0)
         cache = read_cache()
@@ -251,8 +252,10 @@ class TestRefreshCache:
     ) -> None:
         # CRM_HOME on a read-only fs: the daemon thread must never raise.
         monkeypatch.setattr(update_mod, "fetch_latest_version", lambda *a, **k: "v9.9.9")
+
         def boom(*a, **k):
             raise OSError("read-only filesystem")
+
         monkeypatch.setattr(update_mod, "write_cache", boom)
         refresh_cache(now=1.0)  # must not raise
 
@@ -261,10 +264,7 @@ class TestSha256Sums:
     """Mirror the install scripts' SHA256SUMS contract (two-space, CRLF-tolerant)."""
 
     def test_parse_picks_named_archive(self) -> None:
-        body = (
-            "aaa111  crm-linux-x86_64.tar.gz\r\n"
-            "bbb222  crm-windows-x86_64.zip\n"
-        )
+        body = "aaa111  crm-linux-x86_64.tar.gz\r\nbbb222  crm-windows-x86_64.zip\n"
         sums = parse_sha256sums(body)
         assert sums["crm-linux-x86_64.tar.gz"] == "aaa111"
         assert sums["crm-windows-x86_64.zip"] == "bbb222"
@@ -272,6 +272,7 @@ class TestSha256Sums:
     def test_verify_matches_case_insensitively(self) -> None:
         data = b"hello world"
         import hashlib
+
         digest = hashlib.sha256(data).hexdigest()
         assert verify_sha256(data, digest.upper()) is True
         assert verify_sha256(data, digest) is True
@@ -321,17 +322,13 @@ class TestCheckForUpdate:
         monkeypatch.setattr(update_mod, "fetch_latest_version", lambda *a, **k: "v2.9.0")
         assert check_for_update()["update_available"] is False
 
-    def test_malformed_latest_becomes_update_error(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_malformed_latest_becomes_update_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(update_mod, "current_version", lambda: "2.9.0")
         monkeypatch.setattr(update_mod, "fetch_latest_version", lambda *a, **k: "garbage")
         with pytest.raises(UpdateError):
             check_for_update()
 
-    def test_raises_when_latest_unreachable(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_raises_when_latest_unreachable(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(update_mod, "fetch_latest_version", lambda *a, **k: None)
         with pytest.raises(UpdateError):
             check_for_update()
@@ -381,7 +378,9 @@ class TestExtractRejectsLinks:
     """Defense-in-depth: link members can escape `dest` even without `..`."""
 
     def test_tar_symlink_member_rejected(self, tmp_path: Path) -> None:
-        import io, tarfile
+        import io
+        import tarfile
+
         from crm.core.update import _extract
 
         buf = io.BytesIO()
@@ -395,7 +394,8 @@ class TestExtractRejectsLinks:
         assert not (tmp_path / "out" / "lib").exists()
 
     def test_zip_symlink_member_rejected(self, tmp_path: Path) -> None:
-        import io, zipfile
+        import io
+        import zipfile
 
         from crm.core.update import _extract
 
@@ -411,18 +411,14 @@ class TestExtractRejectsLinks:
 class TestPerformUpdate:
     """Full download → verify → swap, driven against a tmp install dir."""
 
-    def _wire(
-        self, monkeypatch: pytest.MonkeyPatch, archive: bytes, sums: dict[str, str]
-    ) -> None:
+    def _wire(self, monkeypatch: pytest.MonkeyPatch, archive: bytes, sums: dict[str, str]) -> None:
         monkeypatch.setattr(update_mod, "current_version", lambda: "2.9.0")
         monkeypatch.setattr(update_mod, "fetch_latest_version", lambda *a, **k: "v3.0.0")
         monkeypatch.setattr(update_mod, "_download_archive", lambda *a, **k: archive)
         monkeypatch.setattr(update_mod, "_fetch_sha256sums", lambda *a, **k: sums)
         monkeypatch.setattr(update_mod.sys, "platform", "linux")
 
-    def test_happy_path_swaps_bundle(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_happy_path_swaps_bundle(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         import hashlib
 
         archive = _make_targz({"crm": b"NEW-BINARY", "lib.so": b"x"})
@@ -479,15 +475,18 @@ class TestPerformUpdate:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import requests
+
         monkeypatch.setattr(update_mod, "current_version", lambda: "2.9.0")
         monkeypatch.setattr(update_mod, "fetch_latest_version", lambda *a, **k: "v3.0.0")
         monkeypatch.setattr(update_mod.sys, "platform", "linux")
 
         def boom(url, **kw):
             raise requests.ConnectionError("dead")
+
         monkeypatch.setattr(requests, "get", boom)
 
-        install = tmp_path / "crm"; install.mkdir()
+        install = tmp_path / "crm"
+        install.mkdir()
         (install / "crm").write_text("OLD", encoding="utf-8")
         with pytest.raises(UpdateError):
             perform_update(install_dir=install)
@@ -497,11 +496,13 @@ class TestPerformUpdate:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import hashlib
+
         archive = _make_targz({"../evil": b"pwned", "crm": b"x"})
         sums = {"crm-linux-x86_64.tar.gz": hashlib.sha256(archive).hexdigest()}
         self._wire(monkeypatch, archive, sums)
 
-        install = tmp_path / "crm"; install.mkdir()
+        install = tmp_path / "crm"
+        install.mkdir()
         (install / "crm").write_text("OLD", encoding="utf-8")
         with pytest.raises(UpdateError, match="(?i)unsafe|traversal|path"):
             perform_update(install_dir=install)
@@ -512,14 +513,18 @@ class TestPerformUpdate:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import hashlib
+
         archive = _make_targz({"crm": b"NEW"})
         sums = {"crm-linux-x86_64.tar.gz": hashlib.sha256(archive).hexdigest()}
         self._wire(monkeypatch, archive, sums)
+
         def boom(*a, **k):
             raise OSError("rename failed / locked")
+
         monkeypatch.setattr(update_mod, "swap_bundle", boom)
 
-        install = tmp_path / "crm"; install.mkdir()
+        install = tmp_path / "crm"
+        install.mkdir()
         (install / "crm").write_text("OLD", encoding="utf-8")
         with pytest.raises(UpdateError):
             perform_update(install_dir=install)
@@ -539,19 +544,13 @@ class TestOrchestrators:
         self, crm_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(update_mod, "fetch_latest_version", lambda *a, **k: "v9.9.9")
-        thread = run_background_check(
-            json_mode=False, stderr_isatty=True, env={}, now=1.0
-        )
+        thread = run_background_check(json_mode=False, stderr_isatty=True, env={}, now=1.0)
         assert thread is not None
         thread.join(timeout=2)
         assert read_cache()["latest"] == "v9.9.9"  # type: ignore[index]
 
-    def test_background_check_skipped_when_disabled(
-        self, crm_home: Path
-    ) -> None:
-        thread = run_background_check(
-            json_mode=True, stderr_isatty=True, env={}, now=1.0
-        )
+    def test_background_check_skipped_when_disabled(self, crm_home: Path) -> None:
+        thread = run_background_check(json_mode=True, stderr_isatty=True, env={}, now=1.0)
         assert thread is None
         assert read_cache() is None
 
@@ -561,12 +560,11 @@ class TestOrchestrators:
         write_cache("v1.0.0", now=1000.0)
         called = {"n": 0}
         monkeypatch.setattr(
-            update_mod, "refresh_cache",
+            update_mod,
+            "refresh_cache",
             lambda *a, **k: called.__setitem__("n", called["n"] + 1),
         )
-        assert run_background_check(
-            json_mode=False, stderr_isatty=True, env={}, now=1000.0
-        ) is None
+        assert run_background_check(json_mode=False, stderr_isatty=True, env={}, now=1000.0) is None
         assert called["n"] == 0
 
     def test_background_check_once_per_process(
@@ -585,9 +583,7 @@ class TestOrchestrators:
         monkeypatch.setattr(update_mod, "current_version", lambda: "2.9.0")
         write_cache("v3.0.0", now=1.0)
         stream = _io.StringIO()
-        printed = emit_pending_notice(
-            json_mode=False, stderr_isatty=True, env={}, stream=stream
-        )
+        printed = emit_pending_notice(json_mode=False, stderr_isatty=True, env={}, stream=stream)
         assert printed is True
         assert "3.0.0" in stream.getvalue()
 
@@ -599,9 +595,7 @@ class TestOrchestrators:
         monkeypatch.setattr(update_mod, "current_version", lambda: "2.9.0")
         write_cache("v3.0.0", now=1.0)
         stream = _io.StringIO()
-        printed = emit_pending_notice(
-            json_mode=True, stderr_isatty=True, env={}, stream=stream
-        )
+        printed = emit_pending_notice(json_mode=True, stderr_isatty=True, env={}, stream=stream)
         assert printed is False
         assert stream.getvalue() == ""
 
@@ -613,9 +607,12 @@ class TestOrchestrators:
         monkeypatch.setattr(update_mod, "current_version", lambda: "2.9.0")
         write_cache("v3.0.0", now=1.0)
         stream = _io.StringIO()
-        assert emit_pending_notice(
-            json_mode=False, stderr_isatty=True, env={}, stream=stream, now=5000.0
-        ) is True
+        assert (
+            emit_pending_notice(
+                json_mode=False, stderr_isatty=True, env={}, stream=stream, now=5000.0
+            )
+            is True
+        )
         assert read_cache()["notified_at"] == 5000.0  # type: ignore[index]
 
 
@@ -624,18 +621,27 @@ class TestFetchSha256sums:
 
     def test_parses_valid_manifest(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import requests
+
         body = (
             "aabbcc1122334455aabbcc1122334455aabbcc1122334455aabbcc1122334455  crm-linux\n"
             "ddee556677889900ddee556677889900ddee556677889900ddee556677889900  crm-windows.exe\n"
         )
         monkeypatch.setattr(requests, "get", lambda url, timeout=None, **k: _Resp(body))
         from crm.core.update import _fetch_sha256sums
+
         result = _fetch_sha256sums("https://r2.example/base", "v3.1.4")
-        assert result["crm-linux"] == "aabbcc1122334455aabbcc1122334455aabbcc1122334455aabbcc1122334455"
-        assert result["crm-windows.exe"] == "ddee556677889900ddee556677889900ddee556677889900ddee556677889900"
+        assert (
+            result["crm-linux"]
+            == "aabbcc1122334455aabbcc1122334455aabbcc1122334455aabbcc1122334455"
+        )
+        assert (
+            result["crm-windows.exe"]
+            == "ddee556677889900ddee556677889900ddee556677889900ddee556677889900"
+        )
 
     def test_constructs_correct_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import requests
+
         seen: dict[str, str] = {}
 
         def fake_get(url: str, timeout: object = None, **k: object) -> _Resp:
@@ -644,32 +650,40 @@ class TestFetchSha256sums:
 
         monkeypatch.setattr(requests, "get", fake_get)
         from crm.core.update import _fetch_sha256sums
+
         _fetch_sha256sums("https://r2.example/base", "v3.1.4")
         assert seen["url"] == "https://r2.example/base/v3.1.4/SHA256SUMS"
 
     def test_fetch_failure_raises_update_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import requests
+
         monkeypatch.setattr(
-            requests, "get",
-            lambda url, timeout=None, **k: (_ for _ in ()).throw(
-                requests.ConnectionError("dead")))
-        from crm.core.update import _fetch_sha256sums, UpdateError
+            requests,
+            "get",
+            lambda url, timeout=None, **k: (_ for _ in ()).throw(requests.ConnectionError("dead")),
+        )
+        from crm.core.update import UpdateError, _fetch_sha256sums
+
         with pytest.raises(UpdateError, match="Failed to fetch checksums"):
             _fetch_sha256sums("https://dead.invalid", "v1.0.0")
 
     def test_http_error_raises_update_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import requests
+
         monkeypatch.setattr(requests, "get", lambda url, timeout=None, **k: _Resp("", status=404))
-        from crm.core.update import _fetch_sha256sums, UpdateError
+        from crm.core.update import UpdateError, _fetch_sha256sums
+
         with pytest.raises(UpdateError, match="Failed to fetch checksums"):
             _fetch_sha256sums("https://r2.example/base", "v1.0.0")
 
     def test_blank_lines_are_skipped(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Blank / whitespace-only lines (len(parts) != 2) are silently skipped."""
         import requests
+
         # blank line and trailing whitespace-only line must not end up in the dict
         body = "\naabbcc  crm-linux\n  \n"
         monkeypatch.setattr(requests, "get", lambda url, timeout=None, **k: _Resp(body))
         from crm.core.update import _fetch_sha256sums
+
         result = _fetch_sha256sums("https://r2.example/base", "v1.0.0")
         assert result == {"crm-linux": "aabbcc"}

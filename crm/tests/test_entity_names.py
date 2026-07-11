@@ -70,6 +70,7 @@ _DEFS = [
 
 # ── load_name_map: bidirectional resolution ─────────────────────────────────
 
+
 def test_load_name_map_resolves_both_directions():
     backend = _FakeBackend(defs=_DEFS)
     name_map = entity_names.load_name_map(backend)  # type: ignore[arg-type]
@@ -108,6 +109,7 @@ def test_load_name_map_refresh_forces_live_get():
 
 # ── NameMap.resolve: user-supplied name → logical name (#305) ────────────────
 
+
 class TestResolve:
     """A user-supplied entity name (logical or set, any case) → logical name."""
 
@@ -122,8 +124,8 @@ class TestResolve:
 
     def test_resolve_is_case_insensitive(self):
         nm = self._map()
-        assert nm.resolve("Account") == "account"   # mixed-case logical
-        assert nm.resolve("Accounts") == "account"   # mixed-case set
+        assert nm.resolve("Account") == "account"  # mixed-case logical
+        assert nm.resolve("Accounts") == "account"  # mixed-case set
         assert nm.resolve("ACCOUNTS") == "account"
 
     def test_resolve_unknown_raises_without_false_suggestion(self):
@@ -149,12 +151,20 @@ class TestResolve:
 # ── attribute_specs: the one IsValidForCreate/IsValidForUpdate walk ──────────
 
 _ATTRS = [
-    {"LogicalName": "name", "AttributeType": "String",
-     "RequiredLevel": {"Value": "ApplicationRequired"},
-     "IsValidForCreate": True, "IsValidForUpdate": True},
-    {"LogicalName": "createdon", "AttributeType": "DateTime",
-     "RequiredLevel": {"Value": "None"},
-     "IsValidForCreate": False, "IsValidForUpdate": False},
+    {
+        "LogicalName": "name",
+        "AttributeType": "String",
+        "RequiredLevel": {"Value": "ApplicationRequired"},
+        "IsValidForCreate": True,
+        "IsValidForUpdate": True,
+    },
+    {
+        "LogicalName": "createdon",
+        "AttributeType": "DateTime",
+        "RequiredLevel": {"Value": "None"},
+        "IsValidForCreate": False,
+        "IsValidForUpdate": False,
+    },
 ]
 
 

@@ -54,11 +54,13 @@ def run_batched(
     ops_list = list(ops)
     results: list[BatchResult] = []
     for start in range(0, len(ops_list), chunk_size):
-        results.extend(backend.batch(
-            ops_list[start:start + chunk_size],
-            transactional=transactional,
-            continue_on_error=continue_on_error,
-        ))
+        results.extend(
+            backend.batch(
+                ops_list[start : start + chunk_size],
+                transactional=transactional,
+                continue_on_error=continue_on_error,
+            )
+        )
     return results
 
 
@@ -88,8 +90,7 @@ def parse_batch_file(path: str | Path) -> list[dict[str, Any]]:
         method = method_raw.upper()
         if method not in _VALID_METHODS:
             raise D365Error(
-                f"{p} op #{i}: invalid method {method_raw!r} "
-                f"(must be one of {_VALID_METHODS})"
+                f"{p} op #{i}: invalid method {method_raw!r} (must be one of {_VALID_METHODS})"
             )
         url = op.get("url")
         if not isinstance(url, str) or not url:
@@ -133,8 +134,7 @@ def parse_batch_file(path: str | Path) -> list[dict[str, Any]]:
                 validated["content_id"] = cid
             else:
                 raise D365Error(
-                    f"{p} op #{i}: content_id must be a string or int, "
-                    f"got {type(cid).__name__}"
+                    f"{p} op #{i}: content_id must be a string or int, got {type(cid).__name__}"
                 )
         out.append(validated)
     return out

@@ -7,6 +7,7 @@ are covered uniformly and forced-real existence-probe GETs do not false-positive
 Existing meta keys (e.g. staged) are preserved. The signal is scoped to JSON mode;
 the in-data _dry_run sentinel is retained for back-compat (ADR 0002 reads it pre-emit).
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -24,9 +25,12 @@ def _seed_profile(tmp_path, monkeypatch):
     monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
     from crm.core import session as session_mod
     from crm.utils.d365_backend import ConnectionProfile
-    session_mod.save_profile(ConnectionProfile(
-        name="t", url="https://crm.contoso.local/contoso",
-        domain="CONTOSO", username="alice"))
+
+    session_mod.save_profile(
+        ConnectionProfile(
+            name="t", url="https://crm.contoso.local/contoso", domain="CONTOSO", username="alice"
+        )
+    )
     session_mod.save_profile_secret_plaintext("t", "pw")
 
 
@@ -88,8 +92,17 @@ class TestDryRunMetaEndToEnd:
         _seed_profile(tmp_path, monkeypatch)
         result = CliRunner().invoke(
             cli,
-            ["--json", "--profile", "t", "--dry-run", "entity", "create", "accounts",
-             "--data", '{"name": "Acme"}'],
+            [
+                "--json",
+                "--profile",
+                "t",
+                "--dry-run",
+                "entity",
+                "create",
+                "accounts",
+                "--data",
+                '{"name": "Acme"}',
+            ],
         )
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
@@ -111,7 +124,8 @@ class TestDryRunMetaEndToEnd:
     def test_read_verb_dry_run_executes_and_returns_real_data(self, tmp_path, monkeypatch):
         """Reads-execute rule: a read verb under --dry-run runs the real GET and
         returns live data (NOT the request echo); the envelope still flags
-        meta.dry_run=true."""
+        meta.dry_run=true.
+        """
         _seed_profile(tmp_path, monkeypatch)
         with requests_mock.Mocker() as m:
             m.get(requests_mock.ANY, json={"value": [{"name": "Acme Corp"}]})

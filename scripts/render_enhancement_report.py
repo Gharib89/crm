@@ -13,6 +13,7 @@ surfaced as an appendix.
 Output is one HTML file: embedded CSS, sticky sidebar nav with scroll-spy, and
 Mermaid (loaded from CDN) for the diagrams. No build step, no server.
 """
+
 from __future__ import annotations
 
 import html
@@ -83,15 +84,23 @@ def render_recommendation(rec: dict) -> str:
     parts.append('<div class="rec__badges">')
     parts.append(chip("cat", "", rec.get("category", "")))
     parts.append(chip("impact", "impact", rec.get("impact", "")))
-    parts.append(chip("effort", "effort", EFFORT_LABEL.get(rec.get("effort", ""), rec.get("effort", ""))))
+    parts.append(
+        chip("effort", "effort", EFFORT_LABEL.get(rec.get("effort", ""), rec.get("effort", "")))
+    )
     parts.append(f'<span class="rec__id">{esc(rid)}</span>')
     parts.append("</div>")
     if rec.get("problem"):
-        parts.append(f'<div class="field"><span class="field__l">Problem</span><p>{esc(rec["problem"])}</p></div>')
+        parts.append(
+            f'<div class="field"><span class="field__l">Problem</span><p>{esc(rec["problem"])}</p></div>'
+        )
     if rec.get("proposal"):
-        parts.append(f'<div class="field"><span class="field__l">Proposal</span><p>{esc(rec["proposal"])}</p></div>')
+        parts.append(
+            f'<div class="field"><span class="field__l">Proposal</span><p>{esc(rec["proposal"])}</p></div>'
+        )
     if rec.get("rationale"):
-        parts.append(f'<div class="field"><span class="field__l">Why it matters</span><p>{esc(rec["rationale"])}</p></div>')
+        parts.append(
+            f'<div class="field"><span class="field__l">Why it matters</span><p>{esc(rec["rationale"])}</p></div>'
+        )
     parts.append(mermaid_block(rec.get("mermaid")))
     parts.append(pointer_list("code", rec.get("codePointers")))
     parts.append(pointer_list("refs", rec.get("citations")))
@@ -115,8 +124,8 @@ def render_matrix(matrix: list) -> str:
             quick = imp == "High" and eff == "S"
             klass = "matrix__cell" + (" matrix__cell--quick" if quick else "")
             chips = "".join(
-                f'<a class="mx-chip mx-chip--{slug(imp)}" href="#rec-{esc(slug(m.get("id","")))}" '
-                f'title="{esc(m.get("title",""))}">{esc(m.get("id",""))}</a>'
+                f'<a class="mx-chip mx-chip--{slug(imp)}" href="#rec-{esc(slug(m.get("id", "")))}" '
+                f'title="{esc(m.get("title", ""))}">{esc(m.get("id", ""))}</a>'
                 for m in cells.get((imp, eff), [])
             )
             tag = '<span class="matrix__qtag">quick wins</span>' if quick else ""
@@ -154,9 +163,7 @@ def render(data: dict) -> str:
     if refuted_list:
         nav.append(("refuted", "Considered &amp; dropped"))
 
-    nav_html = "".join(
-        f'<a class="nav__link" href="#{nid}">{label}</a>' for nid, label in nav
-    )
+    nav_html = "".join(f'<a class="nav__link" href="#{nid}">{label}</a>' for nid, label in nav)
 
     # ---- sections ----
     S = []
@@ -167,16 +174,16 @@ def render(data: dict) -> str:
         f'<div class="stat"><b>{esc(verified)}</b><span>verified enhancements</span></div>'
         f'<div class="stat"><b>{esc(len(ordered_cats))}</b><span>focus areas</span></div>'
         f'<div class="stat"><b>{esc(refuted)}</b><span>findings refuted / dropped</span></div>'
-        f'</div></section>'
+        f"</div></section>"
     )
 
     S.append(
         f'<section id="current-state" class="sec"><h2>Current state</h2>'
-        f'<p>{esc(cur.get("summary", ""))}</p>'
+        f"<p>{esc(cur.get('summary', ''))}</p>"
         f'<div class="two-col">'
         f'<div class="panel panel--good"><h3>Strengths</h3>{bullet_list(cur.get("strengths"))}</div>'
         f'<div class="panel panel--gap"><h3>Gaps</h3>{bullet_list(cur.get("gaps"))}</div>'
-        f'</div></section>'
+        f"</div></section>"
     )
 
     S.append(
@@ -194,7 +201,7 @@ def render(data: dict) -> str:
     S.append(
         f'<section id="matrix" class="sec"><h2>Impact / effort</h2>'
         f'<p class="hint">Top-left = highest leverage. Tap a chip to jump to the recommendation.</p>'
-        f'{render_matrix(syn.get("impactEffortMatrix"))}</section>'
+        f"{render_matrix(syn.get('impactEffortMatrix'))}</section>"
     )
 
     rec_sections = [
@@ -211,35 +218,42 @@ def render(data: dict) -> str:
 
     S.append(
         f'<section id="open-questions" class="sec"><h2>Open questions</h2>'
-        f'{bullet_list(syn.get("openQuestions"))}</section>'
+        f"{bullet_list(syn.get('openQuestions'))}</section>"
     )
 
     src_items = syn.get("sources", []) or []
     src_html = "".join(
-        (f'<li><a href="{esc(s)}" target="_blank" rel="noopener">{esc(s)}</a></li>'
-         if str(s).startswith("http") else f"<li>{esc(s)}</li>")
+        (
+            f'<li><a href="{esc(s)}" target="_blank" rel="noopener">{esc(s)}</a></li>'
+            if str(s).startswith("http")
+            else f"<li>{esc(s)}</li>"
+        )
         for s in src_items
     )
-    S.append(f'<section id="sources" class="sec"><h2>Sources</h2><ul class="sources">{src_html}</ul></section>')
+    S.append(
+        f'<section id="sources" class="sec"><h2>Sources</h2><ul class="sources">{src_html}</ul></section>'
+    )
 
     if refuted_list:
         rrows = "".join(
-            f'<tr><td>{esc(r.get("title",""))}</td><td>{esc(r.get("category",""))}</td>'
-            f'<td>{esc(r.get("note",""))}</td></tr>'
+            f"<tr><td>{esc(r.get('title', ''))}</td><td>{esc(r.get('category', ''))}</td>"
+            f"<td>{esc(r.get('note', ''))}</td></tr>"
             for r in refuted_list
         )
         S.append(
             '<section id="refuted" class="sec"><h2>Considered &amp; dropped</h2>'
             '<p class="hint">Candidate ideas the verification pass rejected as already-implemented or '
-            'inaccurate for on-prem. Kept for transparency.</p>'
+            "inaccurate for on-prem. Kept for transparency.</p>"
             '<table class="tbl"><thead><tr><th>Idea</th><th>Area</th><th>Why dropped</th></tr></thead>'
-            f'<tbody>{rrows}</tbody></table></section>'
+            f"<tbody>{rrows}</tbody></table></section>"
         )
 
     body = "\n".join(S)
     today = date.today().isoformat()
 
-    return TEMPLATE.replace("__NAV__", nav_html).replace("__BODY__", body).replace("__DATE__", today)
+    return (
+        TEMPLATE.replace("__NAV__", nav_html).replace("__BODY__", body).replace("__DATE__", today)
+    )
 
 
 TEMPLATE = r"""<!DOCTYPE html>

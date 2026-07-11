@@ -1,5 +1,6 @@
 # pyright: basic
 """E2E tests for ribbon verbs: export / list / add-button + remove / hide-button."""
+
 from __future__ import annotations
 
 import json
@@ -24,13 +25,14 @@ def _add_entity_to_solution(backend, solution: str, entity_logical: str) -> None
     metadata_id = info.get("MetadataId")
     if not metadata_id:
         pytest.skip(
-            f"MetadataId not returned for {entity_logical!r}; "
-            "cannot add entity to solution"
+            f"MetadataId not returned for {entity_logical!r}; cannot add entity to solution"
         )
     try:
         sol_mod.add_solution_component(
-            backend, solution=solution,
-            component_type=1, component_id=metadata_id,
+            backend,
+            solution=solution,
+            component_type=1,
+            component_id=metadata_id,
             add_required_components=False,
         )
     except Exception:
@@ -45,10 +47,16 @@ def _add_entity_to_solution(backend, solution: str, entity_logical: str) -> None
 def test_ribbon_export_account(cli, tmp_path):
     """Export the composed ribbon XML for 'account' to a file; assert ok + XML."""
     out_file = tmp_path / "account_ribbon.xml"
-    result = cli([
-        "--json", "ribbon", "export", "account",
-        "--output", str(out_file),
-    ])
+    result = cli(
+        [
+            "--json",
+            "ribbon",
+            "export",
+            "account",
+            "--output",
+            str(out_file),
+        ]
+    )
     assert result.returncode == 0, (
         f"ribbon export failed:\n{result.stderr}\nstdout: {result.stdout}"
     )
@@ -77,11 +85,10 @@ def test_ribbon_export_account(cli, tmp_path):
 @covers("ribbon export")
 def test_ribbon_export_application(cli):
     """--application exports the app-wide ribbon (RetrieveApplicationRibbon) — a
-    different Web API function and JSON shape than the per-entity path."""
+    different Web API function and JSON shape than the per-entity path.
+    """
     r = cli(["--json", "ribbon", "export", "--application"])
-    assert r.returncode == 0, (
-        f"ribbon export --application failed:\n{r.stderr}\nstdout: {r.stdout}"
-    )
+    assert r.returncode == 0, f"ribbon export --application failed:\n{r.stderr}\nstdout: {r.stdout}"
     env = json.loads(r.stdout)
     assert env["ok"], env
     assert env["data"].get("application") is True
@@ -100,13 +107,17 @@ def test_ribbon_list_ephemeral(cli, backend, ephemeral_entity, ephemeral_solutio
     """
     _add_entity_to_solution(backend, ephemeral_solution, ephemeral_entity)
 
-    result = cli([
-        "--json", "ribbon", "list", ephemeral_entity,
-        "--solution", ephemeral_solution,
-    ])
-    assert result.returncode == 0, (
-        f"ribbon list failed:\n{result.stderr}\nstdout: {result.stdout}"
+    result = cli(
+        [
+            "--json",
+            "ribbon",
+            "list",
+            ephemeral_entity,
+            "--solution",
+            ephemeral_solution,
+        ]
     )
+    assert result.returncode == 0, f"ribbon list failed:\n{result.stderr}\nstdout: {result.stdout}"
     env = json.loads(result.stdout)
     assert env["ok"], env
     items = env["data"]
@@ -137,13 +148,21 @@ def test_ribbon_add_and_remove_button(
     # ── CREATE WEBRESOURCE ────────────────────────────────────────────────────
     js_src = tmp_path / f"{unique}.js"
     js_src.write_bytes(b"// e2e ribbon test")
-    wr_result = cli([
-        "--json", "webresource", "create",
-        "--name", wr_name,
-        "--file", str(js_src),
-        "--display-name", f"E2E Ribbon WR {unique}",
-        "--solution", ephemeral_solution,
-    ])
+    wr_result = cli(
+        [
+            "--json",
+            "webresource",
+            "create",
+            "--name",
+            wr_name,
+            "--file",
+            str(js_src),
+            "--display-name",
+            f"E2E Ribbon WR {unique}",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert wr_result.returncode == 0, (
         f"webresource create failed:\n{wr_result.stderr}\nstdout: {wr_result.stdout}"
     )
@@ -164,16 +183,27 @@ def test_ribbon_add_and_remove_button(
     # --publish: add-button stages by default (parity with the other ribbon
     # verbs), and `ribbon list` reads the *exported* solution, which only carries
     # published customizations — so verify-via-list requires publishing here.
-    add_result = cli([
-        "--json", "ribbon", "add-button", ephemeral_entity,
-        "--solution", ephemeral_solution,
-        "--label", button_label,
-        "--location", "form",
-        "--webresource", wr_name,
-        "--function", js_func,
-        "--param", "PrimaryControl",
-        "--publish",
-    ])
+    add_result = cli(
+        [
+            "--json",
+            "ribbon",
+            "add-button",
+            ephemeral_entity,
+            "--solution",
+            ephemeral_solution,
+            "--label",
+            button_label,
+            "--location",
+            "form",
+            "--webresource",
+            wr_name,
+            "--function",
+            js_func,
+            "--param",
+            "PrimaryControl",
+            "--publish",
+        ]
+    )
     assert add_result.returncode == 0, (
         f"ribbon add-button failed:\n{add_result.stderr}\nstdout: {add_result.stdout}"
     )
@@ -184,10 +214,16 @@ def test_ribbon_add_and_remove_button(
     assert actual_button_id, f"button_id missing from add-button response: {add_data}"
 
     # ── VERIFY BUTTON EXISTS ──────────────────────────────────────────────────
-    list_result = cli([
-        "--json", "ribbon", "list", ephemeral_entity,
-        "--solution", ephemeral_solution,
-    ])
+    list_result = cli(
+        [
+            "--json",
+            "ribbon",
+            "list",
+            ephemeral_entity,
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert list_result.returncode == 0, list_result.stderr
     list_env = json.loads(list_result.stdout)
     assert list_env["ok"], list_env
@@ -197,13 +233,20 @@ def test_ribbon_add_and_remove_button(
     )
 
     # ── REMOVE ────────────────────────────────────────────────────────────────
-    remove_result = cli([
-        "--json", "ribbon", "remove", ephemeral_entity,
-        "--solution", ephemeral_solution,
-        "--button-id", actual_button_id,
-        "--yes",
-        "--publish",  # publish so the removal is reflected in the exported list
-    ])
+    remove_result = cli(
+        [
+            "--json",
+            "ribbon",
+            "remove",
+            ephemeral_entity,
+            "--solution",
+            ephemeral_solution,
+            "--button-id",
+            actual_button_id,
+            "--yes",
+            "--publish",  # publish so the removal is reflected in the exported list
+        ]
+    )
     assert remove_result.returncode == 0, (
         f"ribbon remove failed:\n{remove_result.stderr}\nstdout: {remove_result.stdout}"
     )
@@ -214,10 +257,16 @@ def test_ribbon_add_and_remove_button(
     )
 
     # ── VERIFY BUTTON GONE ────────────────────────────────────────────────────
-    list_after = cli([
-        "--json", "ribbon", "list", ephemeral_entity,
-        "--solution", ephemeral_solution,
-    ])
+    list_after = cli(
+        [
+            "--json",
+            "ribbon",
+            "list",
+            ephemeral_entity,
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert list_after.returncode == 0, list_after.stderr
     list_after_env = json.loads(list_after.stdout)
     assert list_after_env["ok"], list_after_env
@@ -247,11 +296,21 @@ def test_ribbon_set_label_relabels_custom_button(
     wr_name = f"new_e2esl_{unique}.js"
     js_src = tmp_path / f"{unique}.js"
     js_src.write_bytes(b"// e2e set-label test")
-    wr_result = cli([
-        "--json", "webresource", "create", "--name", wr_name,
-        "--file", str(js_src), "--display-name", f"E2E SetLabel WR {unique}",
-        "--solution", ephemeral_solution,
-    ])
+    wr_result = cli(
+        [
+            "--json",
+            "webresource",
+            "create",
+            "--name",
+            wr_name,
+            "--file",
+            str(js_src),
+            "--display-name",
+            f"E2E SetLabel WR {unique}",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert wr_result.returncode == 0, (
         f"webresource create failed:\n{wr_result.stderr}\n{wr_result.stdout}"
     )
@@ -266,17 +325,30 @@ def test_ribbon_set_label_relabels_custom_button(
 
     request.addfinalizer(_cleanup_wr)
 
-    add_result = cli([
-        "--json", "ribbon", "add-button", ephemeral_entity,
-        "--solution", ephemeral_solution,
-        "--label", f"SL{unique}", "--location", "form",
-        "--webresource", wr_name, "--function", "ns.e2eSetLabel",
-        "--param", "PrimaryControl",
-        # --publish: set-label locates the button by exporting the solution, and
-        # an UNPUBLISHED RibbonDiffXml is not carried by ExportSolution on either
-        # target (#766). Publish so the staged button is exportable/editable.
-        "--publish",
-    ])
+    add_result = cli(
+        [
+            "--json",
+            "ribbon",
+            "add-button",
+            ephemeral_entity,
+            "--solution",
+            ephemeral_solution,
+            "--label",
+            f"SL{unique}",
+            "--location",
+            "form",
+            "--webresource",
+            wr_name,
+            "--function",
+            "ns.e2eSetLabel",
+            "--param",
+            "PrimaryControl",
+            # --publish: set-label locates the button by exporting the solution, and
+            # an UNPUBLISHED RibbonDiffXml is not carried by ExportSolution on either
+            # target (#766). Publish so the staged button is exportable/editable.
+            "--publish",
+        ]
+    )
     assert add_result.returncode == 0, (
         f"ribbon add-button failed:\n{add_result.stderr}\n{add_result.stdout}"
     )
@@ -287,13 +359,25 @@ def test_ribbon_set_label_relabels_custom_button(
     new_label = f"Tom & {unique} <ok>"
     new_tip = 'Title with "quotes" & <ampersand>'
     new_desc = "Body & <desc> with 'apos'"
-    set_result = cli([
-        "--json", "ribbon", "set-label", ephemeral_entity,
-        "--solution", ephemeral_solution, "--publish",
-        "--button-id", button_id,
-        "--label", new_label, "--tooltip-title", new_tip,
-        "--tooltip-description", new_desc,
-    ])
+    set_result = cli(
+        [
+            "--json",
+            "ribbon",
+            "set-label",
+            ephemeral_entity,
+            "--solution",
+            ephemeral_solution,
+            "--publish",
+            "--button-id",
+            button_id,
+            "--label",
+            new_label,
+            "--tooltip-title",
+            new_tip,
+            "--tooltip-description",
+            new_desc,
+        ]
+    )
     assert set_result.returncode == 0, (
         f"ribbon set-label failed:\n{set_result.stderr}\n{set_result.stdout}"
     )
@@ -302,11 +386,8 @@ def test_ribbon_set_label_relabels_custom_button(
     # T3: re-read the composed ribbon; the Button carries all new ToolTip* values by
     # parsed value (XML-escaping must have round-tripped), protected attrs intact.
     composed = _composed_ribbon(cli, ephemeral_entity)
-    btns = [b for b in composed.iter("Button")
-            if b.get("LabelText") == new_label]
-    assert btns, (
-        f"no Button with the new LabelText {new_label!r} in composed ribbon"
-    )
+    btns = [b for b in composed.iter("Button") if b.get("LabelText") == new_label]
+    assert btns, f"no Button with the new LabelText {new_label!r} in composed ribbon"
     btn = btns[0]
     composed_btn_id = btn.get("Id")
     assert btn.get("ToolTipTitle") == new_tip, btn.attrib
@@ -318,16 +399,29 @@ def test_ribbon_set_label_relabels_custom_button(
     # specific LCID being installed (the command rightly errors on an unprovisioned
     # one). The first provisioned LCID is the org's base language.
     from crm.core import ribbon as ribbon_mod
+
     provisioned = ribbon_mod.retrieve_provisioned_languages(backend)
     assert provisioned, "org reports no provisioned languages"
     lcid = provisioned[0]
     loc_label = f"Loc{unique}"
-    langs = cli(["--json", "ribbon", "set-label", ephemeral_entity,
-                 "--solution", ephemeral_solution, "--publish", "--button-id", button_id,
-                 "--label", loc_label, "--lcid", str(lcid)])
-    assert langs.returncode == 0, (
-        f"ribbon set-label --lcid failed:\n{langs.stderr}\n{langs.stdout}"
+    langs = cli(
+        [
+            "--json",
+            "ribbon",
+            "set-label",
+            ephemeral_entity,
+            "--solution",
+            ephemeral_solution,
+            "--publish",
+            "--button-id",
+            button_id,
+            "--label",
+            loc_label,
+            "--lcid",
+            str(lcid),
+        ]
     )
+    assert langs.returncode == 0, f"ribbon set-label --lcid failed:\n{langs.stderr}\n{langs.stdout}"
     env = json.loads(langs.stdout)
     assert env["ok"], env
     assert env["data"].get("lcid") == lcid, env["data"]
@@ -340,15 +434,11 @@ def test_ribbon_set_label_relabels_custom_button(
     # text) is a regression. The raw LocLabel `<Title>` row is asserted by parsed
     # value in the offline unit tests (the composed ribbon doesn't expose it).
     after_loc = _composed_ribbon(cli, ephemeral_entity)
-    loc_btn = next((b for b in after_loc.iter("Button")
-                    if b.get("Id") == composed_btn_id), None)
-    assert loc_btn is not None, (
-        f"custom button {composed_btn_id!r} missing after --lcid relabel"
-    )
+    loc_btn = next((b for b in after_loc.iter("Button") if b.get("Id") == composed_btn_id), None)
+    assert loc_btn is not None, f"custom button {composed_btn_id!r} missing after --lcid relabel"
     lt = loc_btn.get("LabelText", "")
     assert lt == loc_label or lt.startswith("$LocLabels:"), (
-        f"expected the localized label {loc_label!r} or a $LocLabels directive, "
-        f"got {lt!r}"
+        f"expected the localized label {loc_label!r} or a $LocLabels directive, got {lt!r}"
     )
 
 
@@ -378,11 +468,21 @@ def test_ribbon_set_icon_sets_modern_image(
         b'viewBox="0 0 16 16"><rect width="16" height="16" '
         b'fill="currentColor"/></svg>'
     )
-    svg_result = cli([
-        "--json", "webresource", "create", "--name", svg_name,
-        "--file", str(svg_src), "--display-name", f"E2E Icon {unique}",
-        "--solution", ephemeral_solution,
-    ])
+    svg_result = cli(
+        [
+            "--json",
+            "webresource",
+            "create",
+            "--name",
+            svg_name,
+            "--file",
+            str(svg_src),
+            "--display-name",
+            f"E2E Icon {unique}",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert svg_result.returncode == 0, (
         f"webresource create (svg) failed:\n{svg_result.stderr}\n{svg_result.stdout}"
     )
@@ -393,11 +493,21 @@ def test_ribbon_set_icon_sets_modern_image(
     js_name = f"new_e2eiconjs_{unique}.js"
     js_src = tmp_path / f"{unique}.js"
     js_src.write_bytes(b"// e2e set-icon test")
-    js_result = cli([
-        "--json", "webresource", "create", "--name", js_name,
-        "--file", str(js_src), "--display-name", f"E2E Icon JS {unique}",
-        "--solution", ephemeral_solution,
-    ])
+    js_result = cli(
+        [
+            "--json",
+            "webresource",
+            "create",
+            "--name",
+            js_name,
+            "--file",
+            str(js_src),
+            "--display-name",
+            f"E2E Icon JS {unique}",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert js_result.returncode == 0, (
         f"webresource create (js) failed:\n{js_result.stderr}\n{js_result.stdout}"
     )
@@ -421,13 +531,28 @@ def test_ribbon_set_icon_sets_modern_image(
     # cloud target a staged-but-unpublished custom button is not read back (the same
     # cross-verb behavior the add/remove lifecycle test publishes for, and tracked
     # for set-label/set-rules in #766). Publish here so the button is materialized.
-    add_result = cli([
-        "--json", "ribbon", "add-button", ephemeral_entity,
-        "--solution", ephemeral_solution,
-        "--label", f"IC{unique}", "--location", "form",
-        "--webresource", js_name, "--function", "ns.e2eSetIcon",
-        "--param", "PrimaryControl", "--publish",
-    ], check=False)
+    add_result = cli(
+        [
+            "--json",
+            "ribbon",
+            "add-button",
+            ephemeral_entity,
+            "--solution",
+            ephemeral_solution,
+            "--label",
+            f"IC{unique}",
+            "--location",
+            "form",
+            "--webresource",
+            js_name,
+            "--function",
+            "ns.e2eSetIcon",
+            "--param",
+            "PrimaryControl",
+            "--publish",
+        ],
+        check=False,
+    )
     assert add_result.returncode == 0, (
         f"ribbon add-button failed:\n{add_result.stderr}\n{add_result.stdout}"
     )
@@ -443,22 +568,43 @@ def test_ribbon_set_icon_sets_modern_image(
     # resource, unlike cloud). Registered after _cleanup_wrs so it runs first (LIFO),
     # stripping the button while the icon still exists.
     def _remove_button():
-        cli([
-            "--json", "ribbon", "remove", ephemeral_entity,
-            "--solution", ephemeral_solution,
-            "--button-id", button_id, "--yes", "--publish",
-        ], check=False)
+        cli(
+            [
+                "--json",
+                "ribbon",
+                "remove",
+                ephemeral_entity,
+                "--solution",
+                ephemeral_solution,
+                "--button-id",
+                button_id,
+                "--yes",
+                "--publish",
+            ],
+            check=False,
+        )
 
     request.addfinalizer(_remove_button)
 
     # ── SET-ICON (--modern-image → ModernImage=$webresource:<svg>) ────────────
     # check=False so a non-zero exit surfaces the CLI's JSON error envelope in the
     # assertion message rather than an opaque CalledProcessError.
-    set_result = cli([
-        "--json", "ribbon", "set-icon", ephemeral_entity,
-        "--solution", ephemeral_solution, "--publish",
-        "--button-id", button_id, "--modern-image", svg_name,
-    ], check=False)
+    set_result = cli(
+        [
+            "--json",
+            "ribbon",
+            "set-icon",
+            ephemeral_entity,
+            "--solution",
+            ephemeral_solution,
+            "--publish",
+            "--button-id",
+            button_id,
+            "--modern-image",
+            svg_name,
+        ],
+        check=False,
+    )
     assert set_result.returncode == 0, (
         f"ribbon set-icon failed:\n{set_result.stderr}\n{set_result.stdout}"
     )
@@ -468,8 +614,7 @@ def test_ribbon_set_icon_sets_modern_image(
 
     # ── VERIFY (T3): the composed ribbon's custom Button carries ModernImage ──
     composed = _composed_ribbon(cli, ephemeral_entity)
-    btn = next((b for b in composed.iter("Button")
-                if b.get("Id") == composed_btn_id), None)
+    btn = next((b for b in composed.iter("Button") if b.get("Id") == composed_btn_id), None)
     assert btn is not None, (
         f"custom button {composed_btn_id!r} missing from composed ribbon after set-icon"
     )
@@ -499,26 +644,31 @@ def _pick_oob_button(root: ET.Element) -> tuple[str, str]:
 
 @covers("ribbon hide-button")
 @pytest.mark.slow
-def test_ribbon_hide_button_display_rule(
-    cli, backend, ephemeral_entity, ephemeral_solution
-):
+def test_ribbon_hide_button_display_rule(cli, backend, ephemeral_entity, ephemeral_solution):
     """Hide an OOB button on ephemeral_entity via the reversible display-rule method,
     then re-read the composed ribbon (RetrieveEntityRibbon) and assert the target's
     command now carries the two always-false platform DisplayRules — asserting the
-    parsed value, since customizations.xml is reserialized on the round-trip (T3)."""
+    parsed value, since customizations.xml is reserialized on the round-trip (T3).
+    """
     _add_entity_to_solution(backend, ephemeral_solution, ephemeral_entity)
 
     before = _composed_ribbon(cli, ephemeral_entity)
     target_id, command_id = _pick_oob_button(before)
 
-    hide = cli([
-        "--json", "ribbon", "hide-button", ephemeral_entity,
-        "--solution", ephemeral_solution, "--publish",
-        "--target-id", target_id,
-    ])
-    assert hide.returncode == 0, (
-        f"ribbon hide-button failed:\n{hide.stderr}\nstdout: {hide.stdout}"
+    hide = cli(
+        [
+            "--json",
+            "ribbon",
+            "hide-button",
+            ephemeral_entity,
+            "--solution",
+            ephemeral_solution,
+            "--publish",
+            "--target-id",
+            target_id,
+        ]
     )
+    assert hide.returncode == 0, f"ribbon hide-button failed:\n{hide.stderr}\nstdout: {hide.stdout}"
     env = json.loads(hide.stdout)
     assert env["ok"], env
     assert env["data"].get("hidden") == target_id, env["data"]
@@ -542,18 +692,29 @@ def test_ribbon_hide_button_hide_action_removes_element(
     """Hide an OOB button via the one-way hide-action method, then re-read the
     composed ribbon and assert the element is gone — HideCustomAction removes the
     element from ribbon processing (T3: target absent). Irreversible, but the
-    ephemeral entity is torn down after, so the hide does not outlive the test."""
+    ephemeral entity is torn down after, so the hide does not outlive the test.
+    """
     _add_entity_to_solution(backend, ephemeral_solution, ephemeral_entity)
 
     before = _composed_ribbon(cli, ephemeral_entity)
     target_id, _ = _pick_oob_button(before)
 
-    hide = cli([
-        "--json", "ribbon", "hide-button", ephemeral_entity,
-        "--solution", ephemeral_solution, "--publish",
-        "--target-id", target_id,
-        "--method", "hide-action", "--yes",
-    ])
+    hide = cli(
+        [
+            "--json",
+            "ribbon",
+            "hide-button",
+            ephemeral_entity,
+            "--solution",
+            ephemeral_solution,
+            "--publish",
+            "--target-id",
+            target_id,
+            "--method",
+            "hide-action",
+            "--yes",
+        ]
+    )
     assert hide.returncode == 0, (
         f"ribbon hide-button (hide-action) failed:\n{hide.stderr}\nstdout: {hide.stdout}"
     )
@@ -564,9 +725,9 @@ def test_ribbon_hide_button_hide_action_removes_element(
     # T3: the hidden control is absent from the composed ribbon.
     after = _composed_ribbon(cli, ephemeral_entity)
     ids_after = {b.get("Id") for b in after.iter("Button")}
-    assert target_id not in ids_after, (
-        f"button {target_id!r} still present after hide-action"
-    )
+    assert target_id not in ids_after, f"button {target_id!r} still present after hide-action"
+
+
 # ── ribbon set-rules + add-custom-rule (lifecycle) ────────────────────────────
 
 
@@ -587,12 +748,21 @@ def test_ribbon_set_rules_and_add_custom_rule(
 
     js_src = tmp_path / f"{unique}.js"
     js_src.write_bytes(b"// e2e rule test")
-    wr_result = cli([
-        "--json", "webresource", "create",
-        "--name", wr_name, "--file", str(js_src),
-        "--display-name", f"E2E Rule WR {unique}",
-        "--solution", ephemeral_solution,
-    ])
+    wr_result = cli(
+        [
+            "--json",
+            "webresource",
+            "create",
+            "--name",
+            wr_name,
+            "--file",
+            str(js_src),
+            "--display-name",
+            f"E2E Rule WR {unique}",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert wr_result.returncode == 0, (
         f"webresource create failed:\n{wr_result.stderr}\nstdout: {wr_result.stdout}"
     )
@@ -610,17 +780,30 @@ def test_ribbon_set_rules_and_add_custom_rule(
     request.addfinalizer(_cleanup_wr)
 
     # ── ADD-BUTTON (creates the CommandDefinition the rules attach to) ─────────
-    add_result = cli([
-        "--json", "ribbon", "add-button", ephemeral_entity,
-        "--solution", ephemeral_solution,
-        "--label", button_label, "--location", "form",
-        "--webresource", wr_name, "--function", js_func,
-        "--param", "PrimaryControl",
-        # --publish: set-rules locates the CommandDefinition by exporting the
-        # solution, and an UNPUBLISHED RibbonDiffXml is not carried by
-        # ExportSolution on either target (#766). Publish so it is exportable.
-        "--publish",
-    ])
+    add_result = cli(
+        [
+            "--json",
+            "ribbon",
+            "add-button",
+            ephemeral_entity,
+            "--solution",
+            ephemeral_solution,
+            "--label",
+            button_label,
+            "--location",
+            "form",
+            "--webresource",
+            wr_name,
+            "--function",
+            js_func,
+            "--param",
+            "PrimaryControl",
+            # --publish: set-rules locates the CommandDefinition by exporting the
+            # solution, and an UNPUBLISHED RibbonDiffXml is not carried by
+            # ExportSolution on either target (#766). Publish so it is exportable.
+            "--publish",
+        ]
+    )
     assert add_result.returncode == 0, (
         f"ribbon add-button failed:\n{add_result.stderr}\nstdout: {add_result.stdout}"
     )
@@ -631,13 +814,23 @@ def test_ribbon_set_rules_and_add_custom_rule(
     command_id = button_id[: -len(".CustomAction")] + ".Command"
 
     # ── SET-RULES ─────────────────────────────────────────────────────────────
-    set_result = cli([
-        "--json", "ribbon", "set-rules", ephemeral_entity,
-        "--solution", ephemeral_solution, "--publish",
-        "--command-id", command_id,
-        "--enable-rule", "Mscrm.SelectionCountExactlyOne",
-        "--display-rule", "Mscrm.HideOnModern",
-    ])
+    set_result = cli(
+        [
+            "--json",
+            "ribbon",
+            "set-rules",
+            ephemeral_entity,
+            "--solution",
+            ephemeral_solution,
+            "--publish",
+            "--command-id",
+            command_id,
+            "--enable-rule",
+            "Mscrm.SelectionCountExactlyOne",
+            "--display-rule",
+            "Mscrm.HideOnModern",
+        ]
+    )
     assert set_result.returncode == 0, (
         f"ribbon set-rules failed:\n{set_result.stderr}\nstdout: {set_result.stdout}"
     )
@@ -646,12 +839,23 @@ def test_ribbon_set_rules_and_add_custom_rule(
     assert set_env["data"]["enable_rules"] == ["Mscrm.SelectionCountExactlyOne"]
 
     # ── ADD-CUSTOM-RULE ───────────────────────────────────────────────────────
-    rule_result = cli([
-        "--json", "ribbon", "add-custom-rule", ephemeral_entity,
-        "--solution", ephemeral_solution, "--publish",
-        "--command-id", command_id,
-        "--webresource", wr_name, "--function", js_func,
-    ])
+    rule_result = cli(
+        [
+            "--json",
+            "ribbon",
+            "add-custom-rule",
+            ephemeral_entity,
+            "--solution",
+            ephemeral_solution,
+            "--publish",
+            "--command-id",
+            command_id,
+            "--webresource",
+            wr_name,
+            "--function",
+            js_func,
+        ]
+    )
     assert rule_result.returncode == 0, (
         f"ribbon add-custom-rule failed:\n{rule_result.stderr}\nstdout: {rule_result.stdout}"
     )
@@ -663,15 +867,21 @@ def test_ribbon_set_rules_and_add_custom_rule(
     # ── VERIFY (T3): parse the exported ribbon and assert the command's rule
     #    set matches EXACTLY, in order — no drop, no reorder (asserted by value) ─
     out_file = tmp_path / "ribbon.xml"
-    export_result = cli([
-        "--json", "ribbon", "export", ephemeral_entity, "--output", str(out_file),
-    ])
+    export_result = cli(
+        [
+            "--json",
+            "ribbon",
+            "export",
+            ephemeral_entity,
+            "--output",
+            str(out_file),
+        ]
+    )
     assert export_result.returncode == 0, (
         f"ribbon export failed:\n{export_result.stderr}\nstdout: {export_result.stdout}"
     )
     root = ET.fromstring(out_file.read_text(encoding="utf-8"))
-    cdef = next((c for c in root.iter("CommandDefinition")
-                 if c.get("Id") == command_id), None)
+    cdef = next((c for c in root.iter("CommandDefinition") if c.get("Id") == command_id), None)
     assert cdef is not None, f"command {command_id!r} absent from exported ribbon"
     enable_refs = [e.get("Id") for e in cdef.findall("EnableRules/EnableRule")]
     display_refs = [d.get("Id") for d in cdef.findall("DisplayRules/DisplayRule")]
@@ -702,11 +912,21 @@ def test_ribbon_apply_working_copy_flow(
     wr_name = f"new_e2eapply_{unique}.js"
     js_src = tmp_path / f"{unique}.js"
     js_src.write_bytes(b"// e2e ribbon apply test")
-    wr_result = cli([
-        "--json", "webresource", "create", "--name", wr_name,
-        "--file", str(js_src), "--display-name", f"E2E Apply WR {unique}",
-        "--solution", ephemeral_solution,
-    ])
+    wr_result = cli(
+        [
+            "--json",
+            "webresource",
+            "create",
+            "--name",
+            wr_name,
+            "--file",
+            str(js_src),
+            "--display-name",
+            f"E2E Apply WR {unique}",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert wr_result.returncode == 0, (
         f"webresource create failed:\n{wr_result.stderr}\n{wr_result.stdout}"
     )
@@ -715,10 +935,18 @@ def test_ribbon_apply_working_copy_flow(
 
     # ── EXPORT --solution → local working-copy fragment file ──────────────────
     diff_file = tmp_path / "ribbon_diff.xml"
-    export = cli([
-        "--json", "ribbon", "export", ephemeral_entity,
-        "--solution", ephemeral_solution, "--output", str(diff_file),
-    ])
+    export = cli(
+        [
+            "--json",
+            "ribbon",
+            "export",
+            ephemeral_entity,
+            "--solution",
+            ephemeral_solution,
+            "--output",
+            str(diff_file),
+        ]
+    )
     assert export.returncode == 0, (
         f"ribbon export --solution failed:\n{export.stderr}\n{export.stdout}"
     )
@@ -734,13 +962,26 @@ def test_ribbon_apply_working_copy_flow(
     new_label = f"Applied{unique}"
 
     # ── THREE OFFLINE EDITS against the local file (zero backend calls) ────────
-    add = cli([
-        "--json", "ribbon", "add-button", ephemeral_entity,
-        "--diff-file", str(diff_file),
-        "--label", label, "--location", "form",
-        "--webresource", wr_name, "--function", "ns.e2eApply",
-        "--param", "PrimaryControl",
-    ])
+    add = cli(
+        [
+            "--json",
+            "ribbon",
+            "add-button",
+            ephemeral_entity,
+            "--diff-file",
+            str(diff_file),
+            "--label",
+            label,
+            "--location",
+            "form",
+            "--webresource",
+            wr_name,
+            "--function",
+            "ns.e2eApply",
+            "--param",
+            "PrimaryControl",
+        ]
+    )
     assert add.returncode == 0, f"add-button --diff-file failed:\n{add.stderr}\n{add.stdout}"
     add_env = json.loads(add.stdout)
     assert add_env["ok"], add_env
@@ -749,31 +990,55 @@ def test_ribbon_apply_working_copy_flow(
     command_id = button_id[: -len(".CustomAction")] + ".Command"
     composed_btn_id = button_id[: -len(".CustomAction")] + ".Button"
 
-    relabel = cli([
-        "--json", "ribbon", "set-label", ephemeral_entity,
-        "--diff-file", str(diff_file), "--button-id", button_id,
-        "--label", new_label,
-    ])
+    relabel = cli(
+        [
+            "--json",
+            "ribbon",
+            "set-label",
+            ephemeral_entity,
+            "--diff-file",
+            str(diff_file),
+            "--button-id",
+            button_id,
+            "--label",
+            new_label,
+        ]
+    )
     assert relabel.returncode == 0, (
         f"set-label --diff-file failed:\n{relabel.stderr}\n{relabel.stdout}"
     )
     assert json.loads(relabel.stdout)["ok"]
 
-    rules = cli([
-        "--json", "ribbon", "set-rules", ephemeral_entity,
-        "--diff-file", str(diff_file), "--command-id", command_id,
-        "--enable-rule", "Mscrm.SelectionCountExactlyOne",
-    ])
-    assert rules.returncode == 0, (
-        f"set-rules --diff-file failed:\n{rules.stderr}\n{rules.stdout}"
+    rules = cli(
+        [
+            "--json",
+            "ribbon",
+            "set-rules",
+            ephemeral_entity,
+            "--diff-file",
+            str(diff_file),
+            "--command-id",
+            command_id,
+            "--enable-rule",
+            "Mscrm.SelectionCountExactlyOne",
+        ]
     )
+    assert rules.returncode == 0, f"set-rules --diff-file failed:\n{rules.stderr}\n{rules.stdout}"
     assert json.loads(rules.stdout)["ok"]
 
     # ── APPLY (single export → import → publish) ──────────────────────────────
-    apply_result = cli([
-        "--json", "ribbon", "apply", ephemeral_entity,
-        "--solution", ephemeral_solution, "--from", str(diff_file),
-    ])
+    apply_result = cli(
+        [
+            "--json",
+            "ribbon",
+            "apply",
+            ephemeral_entity,
+            "--solution",
+            ephemeral_solution,
+            "--from",
+            str(diff_file),
+        ]
+    )
     assert apply_result.returncode == 0, (
         f"ribbon apply failed:\n{apply_result.stderr}\n{apply_result.stdout}"
     )
@@ -789,27 +1054,35 @@ def test_ribbon_apply_working_copy_flow(
             pass
 
     def _remove_button():
-        cli([
-            "--json", "ribbon", "remove", ephemeral_entity,
-            "--solution", ephemeral_solution,
-            "--button-id", button_id, "--yes", "--publish",
-        ], check=False)
+        cli(
+            [
+                "--json",
+                "ribbon",
+                "remove",
+                ephemeral_entity,
+                "--solution",
+                ephemeral_solution,
+                "--button-id",
+                button_id,
+                "--yes",
+                "--publish",
+            ],
+            check=False,
+        )
 
     request.addfinalizer(_cleanup_wr)
     request.addfinalizer(_remove_button)
 
     # ── VERIFY (T3): the composed ribbon shows all three edits ────────────────
     composed = _composed_ribbon(cli, ephemeral_entity)
-    btn = next((b for b in composed.iter("Button")
-                if b.get("Id") == composed_btn_id), None)
+    btn = next((b for b in composed.iter("Button") if b.get("Id") == composed_btn_id), None)
     assert btn is not None, (
         f"custom button {composed_btn_id!r} missing from composed ribbon after apply"
     )
     assert btn.get("LabelText") == new_label, (
         f"expected relabelled {new_label!r}, got {btn.get('LabelText')!r}"
     )
-    cdef = next((c for c in composed.iter("CommandDefinition")
-                 if c.get("Id") == command_id), None)
+    cdef = next((c for c in composed.iter("CommandDefinition") if c.get("Id") == command_id), None)
     assert cdef is not None, f"command {command_id!r} absent from composed ribbon"
     enable_refs = {e.get("Id") for e in cdef.findall("EnableRules/EnableRule")}
     assert "Mscrm.SelectionCountExactlyOne" in enable_refs, (

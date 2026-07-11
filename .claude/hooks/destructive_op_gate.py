@@ -92,7 +92,8 @@ VALUE_OPTIONS: set[str] = {
 
 def _strip_global_options(tokens: list[str]) -> list[str]:
     """Drop root-group options (and the value of value-taking ones) from the
-    tokens after `crm`, leaving the command group and verb as the first two."""
+    tokens after `crm`, leaving the command group and verb as the first two.
+    """
     rest: list[str] = []
     skip_next = False
     for tok in tokens:
@@ -115,7 +116,8 @@ def _confirm_present(tokens: list[str]) -> bool:
     A `--yes` that is consumed as the VALUE of a value-taking global option
     (e.g. `crm --profile --yes metadata delete-entity x`) does NOT count — it is
     the option's argument, not a confirmation. Walk with the same skip-next
-    logic as `_strip_global_options` so such a smuggled `--yes` is ignored."""
+    logic as `_strip_global_options` so such a smuggled `--yes` is ignored.
+    """
     skip_next = False
     for tok in tokens:
         if skip_next:
@@ -153,7 +155,8 @@ def _is_crm_invocation(token: str) -> bool:
 def _split_segments(command: str) -> list[list[str]]:
     """Split the raw command string into shlex-tokenized command segments on
     shell operators. Splitting the string (not the token list) catches operators
-    glued to neighbouring words, which shlex would otherwise fold into one token."""
+    glued to neighbouring words, which shlex would otherwise fold into one token.
+    """
     segments: list[list[str]] = []
     for piece in _SEGMENT_SPLIT.split(command):
         if not piece.strip():
@@ -170,7 +173,8 @@ def _split_segments(command: str) -> list[list[str]]:
 def _destructive_match(tokens: list[str]) -> str | None:
     """Return a human-readable verb label if `tokens` (one command segment) are
     a destructive crm invocation, else None. The first non-assignment token must
-    be a `crm` invocation (bare or path-prefixed). Does not block on --yes."""
+    be a `crm` invocation (bare or path-prefixed). Does not block on --yes.
+    """
     # Drop any leading `NAME=value` env-var assignment prefixes so `FOO=1 crm ...`
     # is treated identically to `crm ...`.
     i = 0
@@ -298,7 +302,8 @@ def _git_parts(tokens: list[str]) -> tuple[str | None, str | None, list[str]]:
 
 def _resolve_dir(base: str, candidate: str) -> str | None:
     """Resolve `candidate` against `base`; None when it cannot be resolved
-    statically (unexpanded shell variables)."""
+    statically (unexpanded shell variables).
+    """
     if "$" in candidate:
         return None
     candidate = os.path.expanduser(candidate)

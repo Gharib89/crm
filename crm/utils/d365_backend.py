@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import copy
 import json
+import logging as _logging
 import os as _os
 import random
 import re
@@ -19,10 +20,9 @@ import sys as _sys
 import time
 import urllib.parse
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Literal, Sequence, cast
-
-import logging as _logging
+from typing import TYPE_CHECKING, Any, Callable, Literal, cast
 
 from crm.utils.d365_types import BatchOperation, BatchResult
 
@@ -41,8 +41,14 @@ _http_logger = _logging.getLogger("crm.http")
 class D365Error(RuntimeError):
     """Raised when the Web API returns an error or the request itself fails."""
 
-    def __init__(self, message: str, *, status: int | None = None,
-                 code: str | None = None, response_body: Any = None):
+    def __init__(
+        self,
+        message: str,
+        *,
+        status: int | None = None,
+        code: str | None = None,
+        response_body: Any = None,
+    ):
         super().__init__(message)
         self.status = status
         self.code = code
@@ -87,19 +93,13 @@ def validate_profile_name(name: str) -> str:
             f"profile/session name must be a non-empty single path component; got {name!r}"
         )
     if "\x00" in name:
-        raise D365Error(
-            f"profile/session name must not contain a null byte; got {name!r}"
-        )
+        raise D365Error(f"profile/session name must not contain a null byte; got {name!r}")
     if "/" in name or "\\" in name:
-        raise D365Error(
-            f"profile/session name must not contain a path separator; got {name!r}"
-        )
+        raise D365Error(f"profile/session name must not contain a path separator; got {name!r}")
     if ":" in name:
         raise D365Error(f"profile/session name must not contain ':'; got {name!r}")
     if _os.path.basename(name) != name:
-        raise D365Error(
-            f"profile/session name must be a single path component; got {name!r}"
-        )
+        raise D365Error(f"profile/session name must be a single path component; got {name!r}")
     return name
 
 
@@ -128,8 +128,12 @@ def classify_d365_error(
         return ("validation", False)
 
     haystack = f"{code or ''} {message or ''}".lower()
-    if ("0x80040237" in haystack or "0x80060892" in haystack
-            or "0x80050135" in haystack or "duplicaterecord" in haystack):
+    if (
+        "0x80040237" in haystack
+        or "0x80060892" in haystack
+        or "0x80050135" in haystack
+        or "duplicaterecord" in haystack
+    ):
         return ("duplicate_detected", False)
     if "0x80040217" in haystack:
         return ("not_found", False)
@@ -154,16 +158,16 @@ class ConnectionProfile:
     """A reusable D365 connection profile (no secrets)."""
 
     name: str
-    url: str                      # e.g. https://crm.contoso.local/contoso
+    url: str  # e.g. https://crm.contoso.local/contoso
     domain: str
     username: str
     api_version: str = "v9.2"
     verify_ssl: bool = True
-    auth_scheme: str = "ntlm"      # ntlm | kerberos | negotiate | oauth
-    tenant_id: str | None = None   # oauth: AAD tenant (non-secret)
-    client_id: str | None = None   # oauth: app-registration id (non-secret)
+    auth_scheme: str = "ntlm"  # ntlm | kerberos | negotiate | oauth
+    tenant_id: str | None = None  # oauth: AAD tenant (non-secret)
+    client_id: str | None = None  # oauth: app-registration id (non-secret)
     publisher_prefix: str | None = None  # schema-name prefix, e.g. "new"
-    read_only: bool = False        # guardrail: backend refuses org mutations
+    read_only: bool = False  # guardrail: backend refuses org mutations
     timeout: int = 120
     retry_max: int = 5
     retry_base_delay: float = 1.0
@@ -205,17 +209,13 @@ class ConnectionProfile:
             ("async_timeout", self.async_timeout),
         ):
             if _value < 0:
-                raise D365Error(
-                    f"ConnectionProfile.{_field} must be >= 0, got {_value!r}"
-                )
+                raise D365Error(f"ConnectionProfile.{_field} must be >= 0, got {_value!r}")
         for _field, _value in (
             ("async_poll_initial", self.async_poll_initial),
             ("async_poll_max", self.async_poll_max),
         ):
             if _value <= 0:
-                raise D365Error(
-                    f"ConnectionProfile.{_field} must be > 0, got {_value!r}"
-                )
+                raise D365Error(f"ConnectionProfile.{_field} must be > 0, got {_value!r}")
         if self.async_poll_max < self.async_poll_initial:
             raise D365Error(
                 f"ConnectionProfile.async_poll_max ({self.async_poll_max}) must be "
@@ -246,7 +246,7 @@ class ConnectionProfile:
         }
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "ConnectionProfile":
+    def from_dict(cls, d: dict[str, Any]) -> ConnectionProfile:
         return cls(
             name=d["name"],
             url=d["url"],  # normalized by __post_init__ → self-heals a stored URL
@@ -282,12 +282,14 @@ class ConnectionProfile:
 # a transient server-side asyncoperation row — accepted, conceptually a read.
 # Enumerated from the call sites in crm/core/solution_transfer.py and
 # crm/core/translation.py.
-READ_SAFE_ACTIONS: frozenset[str] = frozenset({
-    "ExportSolution",
-    "ExportSolutionAsync",
-    "DownloadSolutionExportData",
-    "ExportTranslation",
-})
+READ_SAFE_ACTIONS: frozenset[str] = frozenset(
+    {
+        "ExportSolution",
+        "ExportSolutionAsync",
+        "DownloadSolutionExportData",
+        "ExportTranslation",
+    }
+)
 
 
 def _action_name(path: str) -> str:
@@ -335,10 +337,10 @@ def _oauth_cache_path() -> str | None:
 # deferred behind this factory so importing the module never imports requests; by
 # the time an OAuth session is built, D365Backend.__init__ has already imported
 # requests, so the import here is free (issue #247).
-_oauth_auth_cls: "Callable[..., AuthBase] | None" = None
+_oauth_auth_cls: Callable[..., AuthBase] | None = None
 
 
-def _oauth_bearer_auth_cls() -> "Callable[..., AuthBase]":
+def _oauth_bearer_auth_cls() -> Callable[..., AuthBase]:
     """Define (once) and return the AAD bearer-token auth class.
 
     The class subclasses requests' ``AuthBase``, so its definition is deferred to
@@ -358,8 +360,16 @@ def _oauth_bearer_auth_cls() -> "Callable[..., AuthBase]":
         persisted to disk (0600) so the token survives across `crm` invocations.
         """
 
-        def __init__(self, msal_mod: Any, client_id: str, authority: str, secret: str,
-                     scope: str, cache: Any = None, cache_path: str | None = None) -> None:
+        def __init__(
+            self,
+            msal_mod: Any,
+            client_id: str,
+            authority: str,
+            secret: str,
+            scope: str,
+            cache: Any = None,
+            cache_path: str | None = None,
+        ) -> None:
             self._msal = msal_mod
             self._client_id = client_id
             self._authority = authority
@@ -389,7 +399,7 @@ def _oauth_bearer_auth_cls() -> "Callable[..., AuthBase]":
                     ) from exc
             return self._app
 
-        def __call__(self, request: "requests.PreparedRequest") -> "requests.PreparedRequest":
+        def __call__(self, request: requests.PreparedRequest) -> requests.PreparedRequest:
             app = self._ensure_app()
             try:
                 result: dict[str, Any] = app.acquire_token_for_client(scopes=[self._scope])
@@ -444,8 +454,13 @@ class D365Backend:
     Stateless aside from the requests.Session it holds for keep-alive + auth.
     """
 
-    def __init__(self, profile: ConnectionProfile, password: str,
-                 dry_run: bool = False, retry_on_ambiguous: bool = False):
+    def __init__(
+        self,
+        profile: ConnectionProfile,
+        password: str,
+        dry_run: bool = False,
+        retry_on_ambiguous: bool = False,
+    ):
         if not profile.url:
             raise D365Error(f"Profile {profile.name!r} is missing the server URL.")
         if profile.auth_scheme != "oauth" and not profile.username:
@@ -497,7 +512,7 @@ class D365Backend:
         """
         return self._read_only
 
-    def as_dry_run(self) -> "D365Backend":
+    def as_dry_run(self) -> D365Backend:
         """A dry-run twin sharing this backend's session and auth (``self`` if
         already dry-run).
 
@@ -525,17 +540,19 @@ class D365Backend:
                 from requests_ntlm import HttpNtlmAuth
             except ImportError as exc:
                 raise D365Error(
-                    "requests_ntlm is not installed. "
-                    "Install with: pip install requests_ntlm"
+                    "requests_ntlm is not installed. Install with: pip install requests_ntlm"
                 ) from exc
             user_principal = (
                 f"{self.profile.domain}\\{self.profile.username}"
-                if self.profile.domain else self.profile.username
+                if self.profile.domain
+                else self.profile.username
             )
             return HttpNtlmAuth(user_principal, password)
         if scheme in ("kerberos", "negotiate"):
             try:
-                from requests_negotiate_sspi import HttpNegotiateAuth  # type: ignore[import-untyped]
+                from requests_negotiate_sspi import (
+                    HttpNegotiateAuth,  # type: ignore[import-untyped]
+                )
             except ImportError as exc:
                 raise D365Error(
                     "Kerberos/Negotiate auth requires 'requests_negotiate_sspi'. "
@@ -544,9 +561,7 @@ class D365Backend:
             return HttpNegotiateAuth()  # type: ignore[no-any-return]
         if scheme == "oauth":
             return self._make_oauth_auth(password)
-        raise D365Error(
-            f"Unknown auth_scheme {scheme!r}; expected ntlm|kerberos|negotiate|oauth"
-        )
+        raise D365Error(f"Unknown auth_scheme {scheme!r}; expected ntlm|kerberos|negotiate|oauth")
 
     def _make_oauth_auth(self, secret: str) -> AuthBase:
         """Build a bearer-token auth via OAuth 2.0 client-credentials.
@@ -557,15 +572,12 @@ class D365Backend:
         try:
             import msal  # type: ignore[import-untyped]
         except ImportError as exc:
-            raise D365Error(
-                "OAuth auth requires 'msal'. Install it: pip install msal"
-            ) from exc
+            raise D365Error("OAuth auth requires 'msal'. Install it: pip install msal") from exc
         _msal: Any = msal  # msal ships no type stubs; launder member access to Any
 
         if not secret:
             raise D365Error(
-                "OAuth requires a client secret "
-                "(crm profile set-password, or pass --password)."
+                "OAuth requires a client secret (crm profile set-password, or pass --password)."
             )
         tenant = self.profile.tenant_id
         client = self.profile.client_id
@@ -766,7 +778,9 @@ class D365Backend:
         attempt = 0
         while True:
             try:
-                _http_logger.debug("request", extra={"event": "request", "method": method, "url": url})
+                _http_logger.debug(
+                    "request", extra={"event": "request", "method": method, "url": url}
+                )
                 resp = self._session.request(  # pyright: ignore[reportUnknownMemberType]
                     method,
                     url,
@@ -782,14 +796,16 @@ class D365Backend:
                 if attempt >= max_retries or post_blocks_retry or not _is_transport_retryable(exc):
                     raise D365Error(f"{_TRANSPORT_FAILURE_PREFIX}: {exc}") from exc
                 delay = _compute_delay(attempt, self.profile, retry_after=None)
-                _log_retry(method, url, attempt, delay,
-                           effective_max=max_retries, reason=str(exc))
+                _log_retry(method, url, attempt, delay, effective_max=max_retries, reason=str(exc))
                 time.sleep(delay)
                 attempt += 1
                 continue
 
             elapsed_ms = int((resp.elapsed.total_seconds() if resp.elapsed else 0) * 1000)
-            _http_logger.debug("response", extra={"event": "response", "status": resp.status_code, "ms": elapsed_ms})
+            _http_logger.debug(
+                "response",
+                extra={"event": "response", "status": resp.status_code, "ms": elapsed_ms},
+            )
 
             # One log per response: always emit when this response is about to be
             # retried (the computed `retryable` decision below — which already
@@ -813,9 +829,18 @@ class D365Backend:
 
             retry_after = _parse_retry_after(resp.headers.get("Retry-After"))
             delay = _compute_delay(attempt, self.profile, retry_after=retry_after)
-            _log_retry(method, url, attempt, delay, effective_max=max_retries,
-                       reason=(f"HTTP {resp.status_code} {lock_code}"
-                               if lock_code else f"HTTP {resp.status_code}"))
+            _log_retry(
+                method,
+                url,
+                attempt,
+                delay,
+                effective_max=max_retries,
+                reason=(
+                    f"HTTP {resp.status_code} {lock_code}"
+                    if lock_code
+                    else f"HTTP {resp.status_code}"
+                ),
+            )
             resp.close()
             time.sleep(delay)
             attempt += 1
@@ -861,9 +886,7 @@ class D365Backend:
         safe to call from a preview path that needs live rows.
         """
         if max_pages is not None and max_pages < 1:
-            raise D365Error(
-                f"get_collection max_pages must be >= 1, got {max_pages!r}"
-            )
+            raise D365Error(f"get_collection max_pages must be >= 1, got {max_pages!r}")
         rows: list[dict[str, Any]] = []
         page = as_dict(self.get(path, params=params, **admin_kw))
         pages_consumed = 1
@@ -915,7 +938,7 @@ class D365Backend:
 
     def batch(
         self,
-        operations: "Sequence[BatchOperation]",
+        operations: Sequence[BatchOperation],
         *,
         transactional: bool = True,
         continue_on_error: bool = False,
@@ -936,18 +959,12 @@ class D365Backend:
             if m_upper not in ("GET", "POST", "PATCH", "DELETE"):
                 raise D365Error(f"batch op #{i} invalid method: {op['method']!r}")
             if m_upper in ("GET", "DELETE") and op.get("body") is not None:
-                raise D365Error(
-                    f"batch op #{i}: body not allowed on {m_upper}"
-                )
+                raise D365Error(f"batch op #{i}: body not allowed on {m_upper}")
             if m_upper in ("POST", "PATCH") and op.get("body") is None:
-                raise D365Error(
-                    f"batch op #{i}: body required on {m_upper}"
-                )
+                raise D365Error(f"batch op #{i}: body required on {m_upper}")
             url = op["url"]
             if not isinstance(url, str):  # pyright: ignore[reportUnnecessaryIsInstance]
-                raise D365Error(
-                    f"batch op #{i}: url must be a string; got {type(url).__name__}"
-                )
+                raise D365Error(f"batch op #{i}: url must be a string; got {type(url).__name__}")
             if url.startswith("/"):
                 raise D365Error(
                     f"batch op #{i}: url must be a bare relative path like "
@@ -965,17 +982,20 @@ class D365Backend:
             validated.append({**op, "method": m_upper})
 
         if self.dry_run:
-            return cast(list[BatchResult], [
-                {
-                    "method": op["method"],
-                    "url": op["url"],
-                    "status": 0,
-                    "headers": {},
-                    "body": None,
-                    "error": "dry-run",
-                }
-                for op in validated
-            ])
+            return cast(
+                list[BatchResult],
+                [
+                    {
+                        "method": op["method"],
+                        "url": op["url"],
+                        "status": 0,
+                        "headers": {},
+                        "body": None,
+                        "error": "dry-run",
+                    }
+                    for op in validated
+                ],
+            )
 
         # $batch is the bulk-write path (no GET-only batch use exists today), so
         # read-only refuses it unconditionally. Ordered after the dry-run echo so
@@ -988,7 +1008,8 @@ class D365Backend:
             )
 
         body_text, content_type = _assemble_batch_body(
-            validated, transactional=transactional,
+            validated,
+            transactional=transactional,
         )
 
         headers = dict(DEFAULT_HEADERS)
@@ -1004,7 +1025,8 @@ class D365Backend:
             attempt += 1
             try:
                 resp = self._session.request(  # pyright: ignore[reportUnknownMemberType]
-                    "POST", url,
+                    "POST",
+                    url,
                     data=body_text.encode("utf-8"),
                     headers=headers,
                     timeout=effective_timeout,
@@ -1017,8 +1039,14 @@ class D365Backend:
                 # Route Retry-After through _compute_delay so a hostile header is
                 # capped at retry_max_delay, matching the single-request path (#704).
                 delay = _compute_delay(attempt - 1, self.profile, retry_after=retry_after)
-                _log_retry("POST", url, attempt - 1, delay,
-                           effective_max=self._effective_retry_max, reason=f"HTTP {resp.status_code}")
+                _log_retry(
+                    "POST",
+                    url,
+                    attempt - 1,
+                    delay,
+                    effective_max=self._effective_retry_max,
+                    reason=f"HTTP {resp.status_code}",
+                )
                 resp.close()
                 time.sleep(delay)
                 continue
@@ -1026,7 +1054,8 @@ class D365Backend:
 
         if not (200 <= resp.status_code < 300):
             inner_msg, inner_code = _extract_batch_error(
-                resp.content, resp.headers.get("Content-Type", ""),
+                resp.content,
+                resp.headers.get("Content-Type", ""),
             )
             if inner_msg:
                 detail = inner_msg
@@ -1041,10 +1070,15 @@ class D365Backend:
                 response_body=resp.text,
             )
 
-        return cast(list[BatchResult], _parse_batch_response(
-            resp.content, resp.headers.get("Content-Type", ""), validated,
-            transactional=transactional,
-        ))
+        return cast(
+            list[BatchResult],
+            _parse_batch_response(
+                resp.content,
+                resp.headers.get("Content-Type", ""),
+                validated,
+                transactional=transactional,
+            ),
+        )
 
     def poll_async_operation(
         self,
@@ -1075,9 +1109,7 @@ class D365Backend:
             D365Error on operation failure (statuscode != 30) or timeout.
         """
         if timeout is not None and timeout < 0:
-            raise D365Error(
-                f"poll_async_operation timeout must be >= 0, got {timeout!r}"
-            )
+            raise D365Error(f"poll_async_operation timeout must be >= 0, got {timeout!r}")
         if self.dry_run:
             return {
                 "_dry_run": True,
@@ -1095,10 +1127,13 @@ class D365Backend:
 
             if import_job_id is not None and on_progress is not None:
                 try:
-                    job_row = cast(dict[str, Any], self.get(
-                        f"importjobs({import_job_id})",
-                        params={"$select": "progress,solutionname,startedon,completedon"},
-                    ))
+                    job_row = cast(
+                        dict[str, Any],
+                        self.get(
+                            f"importjobs({import_job_id})",
+                            params={"$select": "progress,solutionname,startedon,completedon"},
+                        ),
+                    )
                 except D365Error as exc:
                     # Right after ImportSolutionAsync the importjob row may not be
                     # committed yet, so this progress-only read can come back
@@ -1194,20 +1229,22 @@ def _parse_response(resp: requests.Response, *, expect_json: bool) -> dict[str, 
 
 def _compute_delay(
     attempt: int,
-    profile: "ConnectionProfile",
+    profile: ConnectionProfile,
     *,
     retry_after: float | None,
 ) -> float:
     """Compute the sleep duration before the next retry attempt."""
     if retry_after is not None:
         return min(retry_after, profile.retry_max_delay)
-    base = min(profile.retry_base_delay * (2 ** attempt), profile.retry_max_delay)
+    base = min(profile.retry_base_delay * (2**attempt), profile.retry_max_delay)
     if profile.retry_jitter:
         return random.uniform(0.0, base)
     return base
 
 
-def _is_response_retryable(resp: "requests.Response", method: str, retry_on_ambiguous: bool = False) -> bool:
+def _is_response_retryable(
+    resp: requests.Response, method: str, retry_on_ambiguous: bool = False
+) -> bool:
     """Return True if the response status warrants a retry for this method."""
     status = resp.status_code
     method_upper = method.upper()
@@ -1235,15 +1272,17 @@ def _is_response_retryable(resp: "requests.Response", method: str, retry_on_ambi
 # POSTs (#84). The codes ride different HTTP statuses by target (429 on cloud,
 # 400 on the on-prem publish path), so the retry keys on the body code alone.
 # Stored lowercase for case-insensitive matching.
-_CUSTOMIZATION_LOCK_CODES = frozenset({
-    "0x80071151",  # "another [EntityCustomization]/[PublishAll] is running"
-    "0x7c27f812",  # CustomizationLockException
-    "0x7c27f9fd",  # CustomizationLockException
-    "0x7c27f89f",  # CustomizationLockException
-})
+_CUSTOMIZATION_LOCK_CODES = frozenset(
+    {
+        "0x80071151",  # "another [EntityCustomization]/[PublishAll] is running"
+        "0x7c27f812",  # CustomizationLockException
+        "0x7c27f9fd",  # CustomizationLockException
+        "0x7c27f89f",  # CustomizationLockException
+    }
+)
 
 
-def _customization_lock_code(resp: "requests.Response") -> str | None:
+def _customization_lock_code(resp: requests.Response) -> str | None:
     """Return the CustomizationLockException body code if this error carries one.
 
     Detection is status-independent (the codes arrive as 429 or 400 by target),
@@ -1274,11 +1313,14 @@ def _is_transport_retryable(exc: BaseException) -> bool:
 
     if isinstance(exc, requests.exceptions.SSLError):
         return False
-    return isinstance(exc, (
-        requests.exceptions.ConnectionError,
-        requests.exceptions.Timeout,
-        requests.exceptions.ChunkedEncodingError,
-    ))
+    return isinstance(
+        exc,
+        (
+            requests.exceptions.ConnectionError,
+            requests.exceptions.Timeout,
+            requests.exceptions.ChunkedEncodingError,
+        ),
+    )
 
 
 _RATE_LIMIT_HEADER_MAP = (
@@ -1307,7 +1349,9 @@ def _log_rate_limit_headers(resp: requests.Response, *, on_retryable: bool) -> N
     _sys.stderr.write(f"[crm] ratelimit {' '.join(parts)}\n")
 
 
-def _log_retry(method: str, url: str, attempt: int, delay: float, *, effective_max: int, reason: str) -> None:
+def _log_retry(
+    method: str, url: str, attempt: int, delay: float, *, effective_max: int, reason: str
+) -> None:
     """One-line stderr trace of a retry decision."""
     _sys.stderr.write(
         f"[crm] retry {method} {url} attempt={attempt + 1}/{effective_max} "
@@ -1327,9 +1371,7 @@ def _resolve_retry_max(profile: ConnectionProfile) -> int:
         try:
             value = int(override)
         except ValueError as exc:
-            raise D365Error(
-                f"CRM_RETRY_MAX must be an integer; got {override!r}"
-            ) from exc
+            raise D365Error(f"CRM_RETRY_MAX must be an integer; got {override!r}") from exc
         if value < 0:
             raise D365Error(f"CRM_RETRY_MAX must be >= 0; got {value}")
         return value
@@ -1399,8 +1441,9 @@ def _parse_retry_after(header: str | None) -> float | None:
         pass
     # Fall back to HTTP-date.
     try:
-        from email.utils import parsedate_to_datetime
         import datetime as _dt
+        from email.utils import parsedate_to_datetime
+
         dt = parsedate_to_datetime(raw)
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=_dt.timezone.utc)
@@ -1416,8 +1459,7 @@ def _format_http_part(op: dict[str, Any], content_id: int | str | None = None) -
     method = op["method"].upper()
     url = op["url"]
     extra: dict[str, str] = op.get("headers") or {}
-    lines: list[str] = ["Content-Type: application/http",
-                        "Content-Transfer-Encoding: binary"]
+    lines: list[str] = ["Content-Type: application/http", "Content-Transfer-Encoding: binary"]
     if content_id is not None:
         lines.append(f"Content-ID: {content_id}")
     lines.append("")
@@ -1489,7 +1531,7 @@ def _assemble_batch_body(
 
 def _split_mime_parts(body: bytes, boundary: str) -> list[bytes]:
     """Split a multipart body on its boundary, ignoring preamble/epilogue."""
-    sep = f"--{boundary}".encode("utf-8")
+    sep = f"--{boundary}".encode()
     chunks = body.split(sep)
     # First chunk is preamble (often empty); last is "--\r\n" epilogue marker.
     parts: list[bytes] = []
@@ -1519,8 +1561,7 @@ def _inner_error_from_json(obj: Any) -> tuple[str | None, str | None]:
         e = cast(dict[str, Any], err)
         msg = e.get("message")
         code = e.get("code")
-        return (msg if isinstance(msg, str) else None,
-                code if isinstance(code, str) else None)
+        return (msg if isinstance(msg, str) else None, code if isinstance(code, str) else None)
     msg = d.get("Message")
     if isinstance(msg, str):
         return msg, None
@@ -1534,13 +1575,17 @@ def _extract_batch_error(body: bytes, content_type: str) -> tuple[str | None, st
     changeset parts, returning the first (message, code) it can parse. Returns
     (None, None) when the body has no boundary or no parseable inner error.
     """
-    m = re.search(r'boundary=([^;\s]+)', content_type)
+    m = re.search(r"boundary=([^;\s]+)", content_type)
     if not m:
         return None, None
     boundary = m.group(1).strip('"')
     for part in _split_mime_parts(body, boundary):
         ctype_match = re.search(rb"Content-Type:\s*([^\r\n;]+)", part, re.IGNORECASE)
-        ctype_val = ctype_match.group(1).decode("utf-8", errors="replace").strip().lower() if ctype_match else ""
+        ctype_val = (
+            ctype_match.group(1).decode("utf-8", errors="replace").strip().lower()
+            if ctype_match
+            else ""
+        )
         if ctype_val == "multipart/mixed":
             inner_m = re.search(rb"boundary=([^\r\n;]+)", part, re.IGNORECASE)
             if not inner_m:
@@ -1561,18 +1606,30 @@ def _parse_http_subpart(raw: bytes) -> dict[str, Any]:
     # Strip the leading MIME headers (Content-Type: application/http, etc.)
     sep = raw.find(b"\r\n\r\n")
     if sep < 0:
-        return {"method": "", "url": "", "status": 0, "headers": {}, "body": None,
-                "error": "malformed batch subpart"}
+        return {
+            "method": "",
+            "url": "",
+            "status": 0,
+            "headers": {},
+            "body": None,
+            "error": "malformed batch subpart",
+        }
     mime_headers_raw = raw[:sep].decode("utf-8", errors="replace")
-    http_block = raw[sep + 4:]
+    http_block = raw[sep + 4 :]
 
     # First line of http_block: "HTTP/1.1 <code> <reason>"
     status_sep = http_block.find(b"\r\n")
     if status_sep < 0:
-        return {"method": "", "url": "", "status": 0, "headers": {}, "body": None,
-                "error": "malformed status line"}
+        return {
+            "method": "",
+            "url": "",
+            "status": 0,
+            "headers": {},
+            "body": None,
+            "error": "malformed status line",
+        }
     status_line = http_block[:status_sep].decode("utf-8", errors="replace").strip()
-    rest = http_block[status_sep + 2:]
+    rest = http_block[status_sep + 2 :]
     m = re.match(r"^HTTP/[\d.]+\s+(\d+)", status_line)
     status = int(m.group(1)) if m else 0
 
@@ -1583,7 +1640,7 @@ def _parse_http_subpart(raw: bytes) -> dict[str, Any]:
         body_text = ""
     else:
         header_text = rest[:body_sep].decode("utf-8", errors="replace")
-        body_text = rest[body_sep + 4:].decode("utf-8", errors="replace").strip()
+        body_text = rest[body_sep + 4 :].decode("utf-8", errors="replace").strip()
 
     headers: dict[str, str] = {}
     for line in header_text.splitlines():
@@ -1610,7 +1667,9 @@ def _parse_http_subpart(raw: bytes) -> dict[str, Any]:
     if not (200 <= status < 300):
         if isinstance(parsed_body, dict):
             pb = cast(dict[str, Any], parsed_body)
-            err: dict[str, Any] | None = pb.get("error") if isinstance(pb.get("error"), dict) else None
+            err: dict[str, Any] | None = (
+                pb.get("error") if isinstance(pb.get("error"), dict) else None
+            )
             if err is not None:
                 error = str(err.get("message") or f"HTTP {status}")
             else:
@@ -1632,12 +1691,12 @@ def _parse_http_subpart(raw: bytes) -> dict[str, Any]:
 def _parse_batch_response(
     body: bytes,
     content_type: str,
-    operations: "Sequence[dict[str, Any]]",
+    operations: Sequence[dict[str, Any]],
     *,
     transactional: bool = True,
 ) -> list[dict[str, Any]]:
     """Parse a multipart/mixed $batch response into one BatchResult per input op."""
-    m = re.search(r'boundary=([^;\s]+)', content_type)
+    m = re.search(r"boundary=([^;\s]+)", content_type)
     if not m:
         raise D365Error(f"Cannot find boundary in $batch response Content-Type: {content_type!r}")
     boundary = m.group(1).strip('"')
@@ -1677,7 +1736,9 @@ def _parse_batch_response(
 
     for part in _split_mime_parts(body, boundary):
         ctype_match = re.search(rb"Content-Type:\s*([^\r\n;]+)", part, re.IGNORECASE)
-        ctype_val = ctype_match.group(1).decode("utf-8", errors="replace").strip() if ctype_match else ""
+        ctype_val = (
+            ctype_match.group(1).decode("utf-8", errors="replace").strip() if ctype_match else ""
+        )
         if ctype_val.lower() == "multipart/mixed":
             # Changeset response
             inner_m = re.search(rb"boundary=([^\r\n;]+)", part, re.IGNORECASE)
@@ -1769,9 +1830,7 @@ def normalize_guid(value: str) -> str | None:
     regex it replaces, so adopting it never narrows a caller's accepted input.
     """
     s = value.strip()
-    if len(s) >= 2 and (
-        (s[0] == "{" and s[-1] == "}") or (s[0] == "(" and s[-1] == ")")
-    ):
+    if len(s) >= 2 and ((s[0] == "{" and s[-1] == "}") or (s[0] == "(" and s[-1] == ")")):
         s = s[1:-1].strip()
     try:
         return str(uuid.UUID(s))

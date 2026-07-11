@@ -1,14 +1,21 @@
 """View (savedquery) creation command."""
+
 # pyright: basic
 from __future__ import annotations
+
 import click
-from crm.core import views as views_mod
+
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
+    _emit_with_warning,
+    _journal,
     _publish_option,
-    d365_errors, _journal, _resolve_publish, _solution_option,
-    _resolve_solution, _emit_with_warning,
+    _resolve_publish,
+    _resolve_solution,
+    _solution_option,
+    d365_errors,
 )
+from crm.core import views as views_mod
 
 
 @click.group("view")
@@ -27,20 +34,31 @@ def view_list(ctx: CLIContext, entity: str) -> None:
     # columns + order_by (parsed from layout/fetch xml), which would bloat
     # --json output and surprise consumers expecting list columns.
     listed = [
-        {"name": v.get("name", ""), "savedqueryid": v.get("savedqueryid"),
-         "isdefault": bool(v.get("is_default", False)),
-         "querytype": v.get("querytype")}
+        {
+            "name": v.get("name", ""),
+            "savedqueryid": v.get("savedqueryid"),
+            "isdefault": bool(v.get("is_default", False)),
+            "querytype": v.get("querytype"),
+        }
         for v in views
     ]
     rows = [
-        [r["name"], r["savedqueryid"] or "", str(r["isdefault"]),
-         "" if r["querytype"] is None else str(r["querytype"])]
+        [
+            r["name"],
+            r["savedqueryid"] or "",
+            str(r["isdefault"]),
+            "" if r["querytype"] is None else str(r["querytype"]),
+        ]
         for r in listed
     ]
-    ctx.emit(True, data=listed, table={
-        "headers": ["name", "savedqueryid", "isdefault", "querytype"],
-        "rows": rows,
-    })
+    ctx.emit(
+        True,
+        data=listed,
+        table={
+            "headers": ["name", "savedqueryid", "isdefault", "querytype"],
+            "rows": rows,
+        },
+    )
 
 
 def _parse_column(raw: str) -> tuple[str, int]:
@@ -75,8 +93,7 @@ def _parse_order(raw: str) -> tuple[str, bool]:
             return parts[0], False
         if direction == "desc":
             return parts[0], True
-    raise click.UsageError(
-        f"order must be '<attribute>' or '<attribute> asc|desc': {raw!r}")
+    raise click.UsageError(f"order must be '<attribute>' or '<attribute> asc|desc': {raw!r}")
 
 
 def _parse_width(raw: str) -> tuple[str, int]:
@@ -97,29 +114,60 @@ def _parse_width(raw: str) -> tuple[str, int]:
 @view_group.command("create")
 @click.argument("entity")
 @click.option("--name", required=True, help="View display name.")
-@click.option("--otc", "object_type_code", type=int, required=True,
-              help="Entity ObjectTypeCode (from `metadata entity <name>`).")
-@click.option("--column", "columns", multiple=True, required=True,
-              help="Repeatable 'logicalname[:width]'. Order preserved.")
-@click.option("--order-by", "order_by", default=None,
-              help="Sort attribute, optional 'asc'/'desc' suffix "
-                   "(e.g. 'createdon desc'). Default: ascending.")
-@click.option("--order", "order_alias", default=None, hidden=True,
-              help="Deprecated alias for --order-by.")
+@click.option(
+    "--otc",
+    "object_type_code",
+    type=int,
+    required=True,
+    help="Entity ObjectTypeCode (from `metadata entity <name>`).",
+)
+@click.option(
+    "--column",
+    "columns",
+    multiple=True,
+    required=True,
+    help="Repeatable 'logicalname[:width]'. Order preserved.",
+)
+@click.option(
+    "--order-by",
+    "order_by",
+    default=None,
+    help="Sort attribute, optional 'asc'/'desc' suffix "
+    "(e.g. 'createdon desc'). Default: ascending.",
+)
+@click.option(
+    "--order", "order_alias", default=None, hidden=True, help="Deprecated alias for --order-by."
+)
 @click.option("--filter-active", is_flag=True, help="Filter to statecode=0 (active) rows.")
 @click.option("--default", "is_default", is_flag=True, help="Mark as the default view.")
 @click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error")
-@click.option("--query-type", type=click.Choice(list(views_mod.QUERY_TYPES)),
-              default="public", show_default=True,
-              help="Saved-query type to create.")
+@click.option(
+    "--query-type",
+    type=click.Choice(list(views_mod.QUERY_TYPES)),
+    default="public",
+    show_default=True,
+    help="Saved-query type to create.",
+)
 @click.option("--description", default=None, help="View description.")
 @_solution_option
 @_publish_option
 @pass_ctx
-def view_create(ctx: CLIContext, entity, name, object_type_code, columns,
-                order_by, order_alias, filter_active, is_default, if_exists,
-                query_type, description,
-                solution, publish):
+def view_create(
+    ctx: CLIContext,
+    entity,
+    name,
+    object_type_code,
+    columns,
+    order_by,
+    order_alias,
+    filter_active,
+    is_default,
+    if_exists,
+    query_type,
+    description,
+    solution,
+    publish,
+):
     """Create a system view on ENTITY (public by default; see --query-type)."""
     # --order-by is canonical; --order is a hidden deprecated alias (#711).
     # Precedence by presence, not truthiness: an explicit --order-by "" stays
@@ -133,44 +181,67 @@ def view_create(ctx: CLIContext, entity, name, object_type_code, columns,
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = views_mod.create_view(
-            ctx.backend(), entity=entity, object_type_code=object_type_code,
-            name=name, columns=parsed, order_by=order_by, order_desc=order_desc,
-            filter_active=filter_active, is_default=is_default,
-            solution=solution, if_exists=if_exists, publish=publish,
-            query_type=query_type, description=description,
+            ctx.backend(),
+            entity=entity,
+            object_type_code=object_type_code,
+            name=name,
+            columns=parsed,
+            order_by=order_by,
+            order_desc=order_desc,
+            filter_active=filter_active,
+            is_default=is_default,
+            solution=solution,
+            if_exists=if_exists,
+            publish=publish,
+            query_type=query_type,
+            description=description,
         )
-    _emit_with_warning(ctx, info, None,
-                       meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, name, info, solution=solution)
 
 
 _query_type_option = click.option(
-    "--query-type", type=click.Choice(list(views_mod.QUERY_TYPES)),
-    default="public", show_default=True,
-    help="Saved-query type to resolve the view by (with its name).")
+    "--query-type",
+    type=click.Choice(list(views_mod.QUERY_TYPES)),
+    default="public",
+    show_default=True,
+    help="Saved-query type to resolve the view by (with its name).",
+)
 
 
 @view_group.command("edit-columns")
 @click.argument("entity")
 @click.argument("view")
 @_query_type_option
-@click.option("--add", "add", multiple=True,
-              help="Add a column 'logicalname[:width]' (repeatable). Adds both "
-                   "the layout cell and the fetch attribute.")
-@click.option("--remove", "remove", multiple=True,
-              help="Remove a column by logical name (repeatable).")
-@click.option("--width", "width", multiple=True,
-              help="Resize an existing column 'logicalname:width' (repeatable).")
-@click.option("--reorder", default=None,
-              help="Comma-separated logical names giving the new column order "
-                   "(must be a permutation of the current columns; "
-                   "not combinable with --add/--remove/--width).")
+@click.option(
+    "--add",
+    "add",
+    multiple=True,
+    help="Add a column 'logicalname[:width]' (repeatable). Adds both "
+    "the layout cell and the fetch attribute.",
+)
+@click.option(
+    "--remove", "remove", multiple=True, help="Remove a column by logical name (repeatable)."
+)
+@click.option(
+    "--width",
+    "width",
+    multiple=True,
+    help="Resize an existing column 'logicalname:width' (repeatable).",
+)
+@click.option(
+    "--reorder",
+    default=None,
+    help="Comma-separated logical names giving the new column order "
+    "(must be a permutation of the current columns; "
+    "not combinable with --add/--remove/--width).",
+)
 @_solution_option
 @_publish_option
 @pass_ctx
-def view_edit_columns(ctx: CLIContext, entity, view, query_type,
-                      add, remove, width, reorder,
-                      solution, publish):
+def view_edit_columns(
+    ctx: CLIContext, entity, view, query_type, add, remove, width, reorder, solution, publish
+):
     """Edit the grid columns of VIEW on ENTITY (by name or savedqueryid).
 
     \b
@@ -178,23 +249,29 @@ def view_edit_columns(ctx: CLIContext, entity, view, query_type,
     solution upgrade may revert.
     """
     if reorder is not None and (add or remove or width):
-        raise click.UsageError(
-            "--reorder cannot be combined with --add / --remove / --width.")
+        raise click.UsageError("--reorder cannot be combined with --add / --remove / --width.")
     if reorder is None and not (add or remove or width):
-        raise click.UsageError(
-            "nothing to do: pass --add, --remove, --width, or --reorder.")
+        raise click.UsageError("nothing to do: pass --add, --remove, --width, or --reorder.")
     add_parsed = [_parse_column(c) for c in add]
     width_parsed = [_parse_width(w) for w in width]
     reorder_parsed = (
-        [c.strip() for c in reorder.split(",") if c.strip()]
-        if reorder is not None else None)
+        [c.strip() for c in reorder.split(",") if c.strip()] if reorder is not None else None
+    )
     solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = views_mod.edit_view_columns(
-            ctx.backend(), entity=entity, view=view, query_type=query_type,
-            add=add_parsed, remove=list(remove), width=width_parsed,
-            reorder=reorder_parsed, solution=solution, publish=publish)
+            ctx.backend(),
+            entity=entity,
+            view=view,
+            query_type=query_type,
+            add=add_parsed,
+            remove=list(remove),
+            width=width_parsed,
+            reorder=reorder_parsed,
+            solution=solution,
+            publish=publish,
+        )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, view, info, solution=solution)
 
@@ -210,7 +287,8 @@ def _parse_condition(raw: str) -> tuple[str, str, list[str]]:
     parts = raw.split()
     if len(parts) < 2:
         raise click.BadParameter(
-            f"--condition must be '<attribute> <operator> [value ...]': {raw!r}")
+            f"--condition must be '<attribute> <operator> [value ...]': {raw!r}"
+        )
     return parts[0], parts[1], parts[2:]
 
 
@@ -218,19 +296,30 @@ def _parse_condition(raw: str) -> tuple[str, str, list[str]]:
 @click.argument("entity")
 @click.argument("view")
 @_query_type_option
-@click.option("--condition", "conditions", multiple=True, required=True,
-              help="Add a filter condition '<attribute> <operator> [value ...]' "
-                   "(repeatable). Operator must be a FetchXML condition operator; "
-                   "value count must match it ('null' none, 'between' two, 'in' a "
-                   "list).")
-@click.option("--type", "filter_type", type=click.Choice(["and", "or"]),
-              default="and", show_default=True,
-              help="Combine the condition(s) into an and/or filter.")
+@click.option(
+    "--condition",
+    "conditions",
+    multiple=True,
+    required=True,
+    help="Add a filter condition '<attribute> <operator> [value ...]' "
+    "(repeatable). Operator must be a FetchXML condition operator; "
+    "value count must match it ('null' none, 'between' two, 'in' a "
+    "list).",
+)
+@click.option(
+    "--type",
+    "filter_type",
+    type=click.Choice(["and", "or"]),
+    default="and",
+    show_default=True,
+    help="Combine the condition(s) into an and/or filter.",
+)
 @_solution_option
 @_publish_option
 @pass_ctx
-def view_add_filter(ctx: CLIContext, entity, view, query_type, conditions,
-                    filter_type, solution, publish):
+def view_add_filter(
+    ctx: CLIContext, entity, view, query_type, conditions, filter_type, solution, publish
+):
     """Add FetchXML filter condition(s) to VIEW on ENTITY (by name or savedqueryid).
 
     \b
@@ -242,9 +331,15 @@ def view_add_filter(ctx: CLIContext, entity, view, query_type, conditions,
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = views_mod.add_view_filter(
-            ctx.backend(), entity=entity, view=view, query_type=query_type,
-            conditions=parsed, filter_type=filter_type,
-            solution=solution, publish=publish)
+            ctx.backend(),
+            entity=entity,
+            view=view,
+            query_type=query_type,
+            conditions=parsed,
+            filter_type=filter_type,
+            solution=solution,
+            publish=publish,
+        )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, view, info, solution=solution)
 
@@ -253,15 +348,19 @@ def view_add_filter(ctx: CLIContext, entity, view, query_type, conditions,
 @click.argument("entity")
 @click.argument("view")
 @_query_type_option
-@click.option("--condition", "conditions", multiple=True, required=True,
-              help="Remove a filter condition matching '<attribute> <operator> "
-                   "[value ...]' (repeatable). Add value(s) to disambiguate when "
-                   "several conditions share the same attribute and operator.")
+@click.option(
+    "--condition",
+    "conditions",
+    multiple=True,
+    required=True,
+    help="Remove a filter condition matching '<attribute> <operator> "
+    "[value ...]' (repeatable). Add value(s) to disambiguate when "
+    "several conditions share the same attribute and operator.",
+)
 @_solution_option
 @_publish_option
 @pass_ctx
-def view_remove_filter(ctx: CLIContext, entity, view, query_type, conditions,
-                       solution, publish):
+def view_remove_filter(ctx: CLIContext, entity, view, query_type, conditions, solution, publish):
     """Remove FetchXML filter condition(s) from VIEW on ENTITY (by name or id).
 
     \b
@@ -273,8 +372,14 @@ def view_remove_filter(ctx: CLIContext, entity, view, query_type, conditions,
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = views_mod.remove_view_filter(
-            ctx.backend(), entity=entity, view=view, query_type=query_type,
-            conditions=parsed, solution=solution, publish=publish)
+            ctx.backend(),
+            entity=entity,
+            view=view,
+            query_type=query_type,
+            conditions=parsed,
+            solution=solution,
+            publish=publish,
+        )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, view, info, solution=solution)
 
@@ -283,19 +388,26 @@ def view_remove_filter(ctx: CLIContext, entity, view, query_type, conditions,
 @click.argument("entity")
 @click.argument("view")
 @_query_type_option
-@click.option("--order", "order", multiple=True,
-              help="Replace the sort with '<attribute> [asc|desc]' (repeatable "
-                   "to sort by several attributes, in order).")
-@click.option("--add-order", "add_order", multiple=True,
-              help="Append '<attribute> [asc|desc]' to the current sort "
-                   "(repeatable).")
+@click.option(
+    "--order",
+    "order",
+    multiple=True,
+    help="Replace the sort with '<attribute> [asc|desc]' (repeatable "
+    "to sort by several attributes, in order).",
+)
+@click.option(
+    "--add-order",
+    "add_order",
+    multiple=True,
+    help="Append '<attribute> [asc|desc]' to the current sort (repeatable).",
+)
 @click.option("--clear-order", is_flag=True, help="Remove all sorting.")
 @_solution_option
 @_publish_option
 @pass_ctx
-def view_set_order(ctx: CLIContext, entity, view, query_type,
-                   order, add_order, clear_order,
-                   solution, publish):
+def view_set_order(
+    ctx: CLIContext, entity, view, query_type, order, add_order, clear_order, solution, publish
+):
     """Set the sort order of VIEW on ENTITY (by name or savedqueryid).
 
     \b
@@ -303,16 +415,22 @@ def view_set_order(ctx: CLIContext, entity, view, query_type,
     solution upgrade may revert.
     """
     if not (order or add_order or clear_order):
-        raise click.UsageError(
-            "nothing to do: pass --order, --add-order, or --clear-order.")
+        raise click.UsageError("nothing to do: pass --order, --add-order, or --clear-order.")
     order_parsed = [_parse_order(o) for o in order]
     add_order_parsed = [_parse_order(o) for o in add_order]
     solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = views_mod.set_view_order(
-            ctx.backend(), entity=entity, view=view, query_type=query_type,
-            order=order_parsed, add_order=add_order_parsed,
-            clear_order=clear_order, solution=solution, publish=publish)
+            ctx.backend(),
+            entity=entity,
+            view=view,
+            query_type=query_type,
+            order=order_parsed,
+            add_order=add_order_parsed,
+            clear_order=clear_order,
+            solution=solution,
+            publish=publish,
+        )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, view, info, solution=solution)

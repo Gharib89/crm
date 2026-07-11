@@ -1,29 +1,33 @@
 """Solution lifecycle commands."""
+
 # pyright: basic
 from __future__ import annotations
-from pathlib import Path
+
 import json
+from pathlib import Path
+
 import click
+
+from crm.cli import CLIContext, pass_ctx
+from crm.commands._helpers import (
+    _EXPORT_SETTING_KEYS,
+    _active_profile,
+    _confirm_destructive,
+    _destructive_option,
+    _journal,
+    _no_retry_scope,
+    _output_option,
+    d365_errors,
+    select_one,
+)
+from crm.commands._tty import _stdin_is_tty
 from crm.core import async_ops as async_ops_mod
 from crm.core import dependencies as dep_mod
 from crm.core import export_spec as export_spec_mod
+from crm.core import session as session_mod
 from crm.core import solution as sol_mod
 from crm.core import solution_validate as sv_mod
 from crm.core import solutionpackager as sp_mod
-from crm.core import session as session_mod
-from crm.cli import CLIContext, pass_ctx
-from crm.commands._tty import _stdin_is_tty
-from crm.commands._helpers import (
-    _destructive_option,
-    d365_errors,
-    _confirm_destructive,
-    _journal,
-    _no_retry_scope,
-    _active_profile,
-    _EXPORT_SETTING_KEYS,
-    _output_option,
-    select_one,
-)
 
 
 @click.group("solution")
@@ -106,12 +110,20 @@ def solution_dependencies_cmd(ctx: CLIContext, unique_name):
 
 @solution_group.command("components")
 @click.argument("unique_name")
-@click.option("--diff", "diff_path", default=None,
-              type=click.Path(exists=True, dir_okay=False, readable=True),
-              help="Compare live components against this saved JSON snapshot; exits non-zero on drift.")
-@click.option("--save", "save_path", default=None,
-              type=click.Path(dir_okay=False),
-              help="Write a normalized component inventory to this path as JSON.")
+@click.option(
+    "--diff",
+    "diff_path",
+    default=None,
+    type=click.Path(exists=True, dir_okay=False, readable=True),
+    help="Compare live components against this saved JSON snapshot; exits non-zero on drift.",
+)
+@click.option(
+    "--save",
+    "save_path",
+    default=None,
+    type=click.Path(dir_okay=False),
+    help="Write a normalized component inventory to this path as JSON.",
+)
 @pass_ctx
 def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path):
     """List solution components; with --save write a normalized inventory, with --diff compare live vs expected (non-zero exit on drift)."""
@@ -135,7 +147,9 @@ def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path):
             ctx.emit(False, error=f"Could not parse {diff_path!r} as JSON: {exc}")
             return
         if not isinstance(raw, list):
-            ctx.emit(False, error=f"Expected a JSON list in {diff_path!r}, got {type(raw).__name__}.")
+            ctx.emit(
+                False, error=f"Expected a JSON list in {diff_path!r}, got {type(raw).__name__}."
+            )
             return
         expected = raw
 
@@ -161,8 +175,10 @@ def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path):
             ctx.emit(False, error=f"Malformed component row in {diff_path!r}: {exc}")
             return
         if not result["matches"]:
-            msg = (f"Drift detected: {len(result['missing'])} missing, "
-                   f"{len(result['unexpected'])} unexpected component(s).")
+            msg = (
+                f"Drift detected: {len(result['missing'])} missing, "
+                f"{len(result['unexpected'])} unexpected component(s)."
+            )
             ctx.emit(False, data=result, error=msg)
             return
         ctx.emit(True, data=result, meta={"matches": True})
@@ -179,17 +195,22 @@ def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path):
         ctx.emit(True, data=enriched, meta={"count": len(enriched)})
         return
     headers = ["componenttype", "objectid", "rootcomponentbehavior"]
-    rows = [[
-        sol_mod.component_type_name(it.get("componenttype", 0)),
-        it.get("objectid", ""),
-        "" if it.get("rootcomponentbehavior") is None else it.get("rootcomponentbehavior"),
-    ] for it in items]
+    rows = [
+        [
+            sol_mod.component_type_name(it.get("componenttype", 0)),
+            it.get("objectid", ""),
+            "" if it.get("rootcomponentbehavior") is None else it.get("rootcomponentbehavior"),
+        ]
+        for it in items
+    ]
     ctx.emit(True, table={"headers": headers, "rows": rows}, meta={"count": len(items)})
 
 
 @solution_group.command("export-spec")
 @click.argument("unique_name")
-@_output_option(help="Write the bare merged spec as YAML to FILE (directly consumable by crm apply -f).")
+@_output_option(
+    help="Write the bare merged spec as YAML to FILE (directly consumable by crm apply -f)."
+)
 @pass_ctx
 def solution_export_spec(ctx: CLIContext, unique_name, output):
     """Project a whole solution into one apply-consumable desired-state spec.
@@ -215,8 +236,7 @@ def solution_export_spec(ctx: CLIContext, unique_name, output):
     """
     warnings: list[str] = []
     with d365_errors(ctx):
-        result = export_spec_mod.build_solution_spec(
-            ctx.backend(), unique_name, warnings=warnings)
+        result = export_spec_mod.build_solution_spec(ctx.backend(), unique_name, warnings=warnings)
     spec = result["spec"]
     skipped = result["skipped"]
     entities = spec.get("entities", [])
@@ -225,42 +245,50 @@ def solution_export_spec(ctx: CLIContext, unique_name, output):
 
     if output:
         import yaml
+
         try:
             with open(output, "w", encoding="utf-8") as fh:
                 yaml.safe_dump(spec, fh, sort_keys=False, allow_unicode=True)
         except OSError as exc:
             ctx.emit(False, error=f"Could not write {output!r}: {exc}")
             return
-        ctx.emit(True, data={
-            "path": output,
-            "solution": unique_name,
-            "entities": len(entities),
-            "attributes": attr_count,
-            "forms": form_count,
-            "optionsets": len(spec.get("optionsets", [])),
-            "security_roles": len(spec.get("security_roles", [])),
-            "webresources": len(spec.get("webresources", [])),
-            "apps": len(spec.get("apps", [])),
-            "skipped": skipped,
-        }, warnings=warnings or None)
+        ctx.emit(
+            True,
+            data={
+                "path": output,
+                "solution": unique_name,
+                "entities": len(entities),
+                "attributes": attr_count,
+                "forms": form_count,
+                "optionsets": len(spec.get("optionsets", [])),
+                "security_roles": len(spec.get("security_roles", [])),
+                "webresources": len(spec.get("webresources", [])),
+                "apps": len(spec.get("apps", [])),
+                "skipped": skipped,
+            },
+            warnings=warnings or None,
+        )
         return
 
-    ctx.emit(True, data={
-        "solution": unique_name,
-        "entities": [e.get("schema_name") for e in entities],
-        "attributes": attr_count,
-        "forms": form_count,
-        "optionsets": [o.get("name") for o in spec.get("optionsets", [])],
-        "security_roles": [r.get("name") for r in spec.get("security_roles", [])],
-        "webresources": [w.get("name") for w in spec.get("webresources", [])],
-        "apps": [a.get("unique_name") for a in spec.get("apps", [])],
-        "skipped": skipped,
-    }, warnings=warnings or None)
+    ctx.emit(
+        True,
+        data={
+            "solution": unique_name,
+            "entities": [e.get("schema_name") for e in entities],
+            "attributes": attr_count,
+            "forms": form_count,
+            "optionsets": [o.get("name") for o in spec.get("optionsets", [])],
+            "security_roles": [r.get("name") for r in spec.get("security_roles", [])],
+            "webresources": [w.get("name") for w in spec.get("webresources", [])],
+            "apps": [a.get("unique_name") for a in spec.get("apps", [])],
+            "skipped": skipped,
+        },
+        warnings=warnings or None,
+    )
 
 
 @solution_group.command("missing-components")
-@click.argument("solution_file",
-                type=click.Path(exists=True, dir_okay=False, readable=True))
+@click.argument("solution_file", type=click.Path(exists=True, dir_okay=False, readable=True))
 @pass_ctx
 def solution_missing_components_cmd(ctx: CLIContext, solution_file):
     """List components an exported solution needs that this org is missing.
@@ -279,10 +307,10 @@ def solution_missing_components_cmd(ctx: CLIContext, solution_file):
 
 
 @solution_group.command("layer-conflicts")
-@click.option("--solution", "managed_name", required=True,
-              help="Managed solution unique name.")
-@click.option("--unmanaged-solution", "unmanaged_name", required=True,
-              help="Unmanaged solution unique name.")
+@click.option("--solution", "managed_name", required=True, help="Managed solution unique name.")
+@click.option(
+    "--unmanaged-solution", "unmanaged_name", required=True, help="Unmanaged solution unique name."
+)
 @pass_ctx
 def solution_layer_conflicts_cmd(ctx: CLIContext, managed_name, unmanaged_name):
     """Report components present in BOTH a managed and an unmanaged solution.
@@ -305,7 +333,9 @@ def solution_layer_conflicts_cmd(ctx: CLIContext, managed_name, unmanaged_name):
         ctx.emit(False, error=f"--solution {managed_name!r} is not a managed solution.")
         return
     if unmanaged_info.get("ismanaged"):
-        ctx.emit(False, error=f"--unmanaged-solution {unmanaged_name!r} is not an unmanaged solution.")
+        ctx.emit(
+            False, error=f"--unmanaged-solution {unmanaged_name!r} is not an unmanaged solution."
+        )
         return
 
     with d365_errors(ctx):
@@ -321,33 +351,53 @@ def solution_layer_conflicts_cmd(ctx: CLIContext, managed_name, unmanaged_name):
         ctx.emit(True, data={"message": "no conflicts found"}, meta=meta)
         return
     headers = ["type", "type_name", "objectid", "managed_rcb", "unmanaged_rcb"]
-    rows = [[str(c["componenttype"]), c["type_name"], c["objectid"],
-             str(c["managed_rootcomponentbehavior"]),
-             str(c["unmanaged_rootcomponentbehavior"])]
-            for c in conflicts]
+    rows = [
+        [
+            str(c["componenttype"]),
+            c["type_name"],
+            c["objectid"],
+            str(c["managed_rootcomponentbehavior"]),
+            str(c["unmanaged_rootcomponentbehavior"]),
+        ]
+        for c in conflicts
+    ]
     ctx.emit(True, table={"headers": headers, "rows": rows}, meta=meta)
 
 
 @solution_group.command("create-publisher")
 @click.option("--name", required=True, help="Publisher unique name, e.g. 'crmworx'.")
-@click.option("--display", "display", default=None,
-              help="Friendly name (defaults to --name).")
-@click.option("--prefix", required=True,
-              help="Customization prefix: 2-8 alphanumeric, starts with a letter, "
-                   "not 'mscrm'. e.g. 'cwx'.")
-@click.option("--option-value-prefix", "option_value_prefix", type=int, required=True,
-              help="Option-value prefix (integer 10000-99999).")
+@click.option("--display", "display", default=None, help="Friendly name (defaults to --name).")
+@click.option(
+    "--prefix",
+    required=True,
+    help="Customization prefix: 2-8 alphanumeric, starts with a letter, not 'mscrm'. e.g. 'cwx'.",
+)
+@click.option(
+    "--option-value-prefix",
+    "option_value_prefix",
+    type=int,
+    required=True,
+    help="Option-value prefix (integer 10000-99999).",
+)
 @click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error")
-@click.option("--set-default/--no-set-default", default=True,
-              help="Write publisher_prefix back to the active named profile (default on).")
+@click.option(
+    "--set-default/--no-set-default",
+    default=True,
+    help="Write publisher_prefix back to the active named profile (default on).",
+)
 @pass_ctx
-def solution_create_publisher(ctx: CLIContext, name, display, prefix,
-                              option_value_prefix, if_exists, set_default):
+def solution_create_publisher(
+    ctx: CLIContext, name, display, prefix, option_value_prefix, if_exists, set_default
+):
     """Create a solution publisher (publishers)."""
     with d365_errors(ctx):
         info = sol_mod.create_publisher(
-            ctx.backend(), name=name, friendly_name=display, prefix=prefix,
-            option_value_prefix=option_value_prefix, if_exists=if_exists,
+            ctx.backend(),
+            name=name,
+            friendly_name=display,
+            prefix=prefix,
+            option_value_prefix=option_value_prefix,
+            if_exists=if_exists,
         )
     if set_default:
         _autowire_profile(ctx, "publisher_prefix", prefix, info)
@@ -357,24 +407,34 @@ def solution_create_publisher(ctx: CLIContext, name, display, prefix,
 
 @solution_group.command("create")
 @click.option("--name", required=True, help="Solution unique name, e.g. 'CRMWorx'.")
-@click.option("--display", "display", default=None,
-              help="Friendly name (defaults to --name).")
+@click.option("--display", "display", default=None, help="Friendly name (defaults to --name).")
 @click.option("--version", default="1.0.0.0", help="Solution version (default 1.0.0.0).")
-@click.option("--publisher", "publisher", default=None,
-              help="Publisher unique name (mutually exclusive with --publisher-id).")
-@click.option("--publisher-id", "publisher_id", default=None,
-              help="Publisher GUID (mutually exclusive with --publisher).")
+@click.option(
+    "--publisher",
+    "publisher",
+    default=None,
+    help="Publisher unique name (mutually exclusive with --publisher-id).",
+)
+@click.option(
+    "--publisher-id",
+    "publisher_id",
+    default=None,
+    help="Publisher GUID (mutually exclusive with --publisher).",
+)
 @click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error")
 @pass_ctx
-def solution_create(ctx: CLIContext, name, display, version, publisher,
-                    publisher_id, if_exists):
+def solution_create(ctx: CLIContext, name, display, version, publisher, publisher_id, if_exists):
     """Create an unmanaged solution bound to a publisher (solutions)."""
     if bool(publisher) == bool(publisher_id):
         raise click.UsageError("Provide exactly one of --publisher or --publisher-id.")
     with d365_errors(ctx):
         info = sol_mod.create_solution(
-            ctx.backend(), name=name, friendly_name=display, version=version,
-            publisher_unique_name=publisher, publisher_id=publisher_id,
+            ctx.backend(),
+            name=name,
+            friendly_name=display,
+            version=version,
+            publisher_unique_name=publisher,
+            publisher_id=publisher_id,
             if_exists=if_exists,
         )
     ctx.emit(True, data=info)
@@ -383,18 +443,19 @@ def solution_create(ctx: CLIContext, name, display, version, publisher,
 
 @solution_group.command("set-version")
 @click.argument("unique_name")
-@click.option("--version", default=None,
-              help="New 4-part dotted version, e.g. 2.0.0.0.")
-@click.option("--friendly-name", "friendly_name", default=None,
-              help="New friendly (display) name.")
+@click.option("--version", default=None, help="New 4-part dotted version, e.g. 2.0.0.0.")
+@click.option("--friendly-name", "friendly_name", default=None, help="New friendly (display) name.")
 @click.option("--description", default=None, help="New description.")
 @pass_ctx
 def solution_set_version(ctx: CLIContext, unique_name, version, friendly_name, description):
     """Update an unmanaged solution's version / friendly name / description in place."""
     with d365_errors(ctx):
         info = sol_mod.update_solution(
-            ctx.backend(), unique_name,
-            version=version, friendly_name=friendly_name, description=description,
+            ctx.backend(),
+            unique_name,
+            version=version,
+            friendly_name=friendly_name,
+            description=description,
         )
     ctx.emit(True, data=info)
     _journal(ctx, unique_name, info)
@@ -402,53 +463,85 @@ def solution_set_version(ctx: CLIContext, unique_name, version, friendly_name, d
 
 @solution_group.command("add-component")
 @click.option("--solution", required=True, help="Target unmanaged solution unique name.")
-@click.option("--type", "type_", required=True,
-              help="Component type: integer or friendly name (e.g. 61 or webresource).")
-@click.option("--id", "component_id", required=True, metavar="GUID",
-              help="Component GUID (objectid) to add.")
-@click.option("--no-add-required", is_flag=True,
-              help="Do not also add required components (AddRequiredComponents: false).")
-@click.option("--no-subcomponents", is_flag=True,
-              help="Exclude subcomponents (DoNotIncludeSubcomponents: true).")
+@click.option(
+    "--type",
+    "type_",
+    required=True,
+    help="Component type: integer or friendly name (e.g. 61 or webresource).",
+)
+@click.option(
+    "--id", "component_id", required=True, metavar="GUID", help="Component GUID (objectid) to add."
+)
+@click.option(
+    "--no-add-required",
+    is_flag=True,
+    help="Do not also add required components (AddRequiredComponents: false).",
+)
+@click.option(
+    "--no-subcomponents",
+    is_flag=True,
+    help="Exclude subcomponents (DoNotIncludeSubcomponents: true).",
+)
 @pass_ctx
-def solution_add_component(ctx: CLIContext, solution, type_, component_id,
-                           no_add_required, no_subcomponents):
+def solution_add_component(
+    ctx: CLIContext, solution, type_, component_id, no_add_required, no_subcomponents
+):
     """Add an existing component to an unmanaged solution (AddSolutionComponent)."""
     with d365_errors(ctx):
         component_type = sol_mod.resolve_component_type(type_)
         info = sol_mod.add_solution_component(
-            ctx.backend(), solution=solution, component_id=component_id,
+            ctx.backend(),
+            solution=solution,
+            component_id=component_id,
             component_type=component_type,
             add_required_components=not no_add_required,
             do_not_include_subcomponents=no_subcomponents,
         )
     meta = None
     if component_type == 1 and not no_add_required:  # entity + AddRequiredComponents
-        meta = {"note": ("AddRequiredComponents was enabled: the server may have "
-                         "silently added required components beyond the requested "
-                         "entity; the response does not report them.")}
+        meta = {
+            "note": (
+                "AddRequiredComponents was enabled: the server may have "
+                "silently added required components beyond the requested "
+                "entity; the response does not report them."
+            )
+        }
     ctx.emit(True, data=info, meta=meta)
     _journal(ctx, solution, info)
 
 
 @solution_group.command("remove-component")
 @click.option("--solution", required=True, help="Target unmanaged solution unique name.")
-@click.option("--type", "type_", required=True,
-              help="Component type: integer or friendly name (e.g. 61 or webresource).")
-@click.option("--id", "component_id", required=True, metavar="GUID",
-              help="Component GUID (objectid) to remove.")
+@click.option(
+    "--type",
+    "type_",
+    required=True,
+    help="Component type: integer or friendly name (e.g. 61 or webresource).",
+)
+@click.option(
+    "--id",
+    "component_id",
+    required=True,
+    metavar="GUID",
+    help="Component GUID (objectid) to remove.",
+)
 @_destructive_option
 @pass_ctx
 def solution_remove_component(ctx: CLIContext, solution, type_, component_id, yes):
     """Remove a component from an unmanaged solution (RemoveSolutionComponent)."""
     _confirm_destructive(
-        ctx, "component", f"{component_id} from solution {solution!r}", yes,
+        ctx,
+        "component",
+        f"{component_id} from solution {solution!r}",
+        yes,
         message=(f"Removing component {component_id} from solution {solution!r}. Continue?"),
     )
     with d365_errors(ctx):
         component_type = sol_mod.resolve_component_type(type_)
         info = sol_mod.remove_solution_component(
-            ctx.backend(), solution=solution, component_id=component_id,
+            ctx.backend(),
+            solution=solution,
+            component_id=component_id,
             component_type=component_type,
         )
     ctx.emit(True, data=info)
@@ -456,31 +549,48 @@ def solution_remove_component(ctx: CLIContext, solution, type_, component_id, ye
 
 
 @solution_group.command("clone-as-patch")
-@click.option("--solution", "parent_solution", required=True,
-              help="Parent solution unique name to clone a patch from.")
-@click.option("--display", "display", default=None,
-              help="Patch display name (defaults to the parent's friendly name).")
-@click.option("--version", default=None,
-              help="Patch version (4-part dotted). Must share the parent's "
-                   "major.minor; defaults to the parent version with the "
-                   "revision bumped.")
+@click.option(
+    "--solution",
+    "parent_solution",
+    required=True,
+    help="Parent solution unique name to clone a patch from.",
+)
+@click.option(
+    "--display",
+    "display",
+    default=None,
+    help="Patch display name (defaults to the parent's friendly name).",
+)
+@click.option(
+    "--version",
+    default=None,
+    help="Patch version (4-part dotted). Must share the parent's "
+    "major.minor; defaults to the parent version with the "
+    "revision bumped.",
+)
 @pass_ctx
 def solution_clone_as_patch(ctx: CLIContext, parent_solution, display, version):
     """Create a solution patch from a parent solution (CloneAsPatch)."""
     with d365_errors(ctx):
         info = sol_mod.clone_as_patch(
-            ctx.backend(), parent_solution=parent_solution,
-            display_name=display, version=version,
+            ctx.backend(),
+            parent_solution=parent_solution,
+            display_name=display,
+            version=version,
         )
     ctx.emit(True, data=info)
     _journal(ctx, parent_solution, info)
 
 
 @solution_group.command("uninstall")
-@click.option("--solution", "unique_name", required=True,
-              help="Unique name of the solution to uninstall.")
-@click.option("--force", is_flag=True,
-              help="Uninstall even if dependency blockers exist (skip the pre-check).")
+@click.option(
+    "--solution", "unique_name", required=True, help="Unique name of the solution to uninstall."
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Uninstall even if dependency blockers exist (skip the pre-check).",
+)
 @_destructive_option
 @pass_ctx
 def solution_uninstall(ctx: CLIContext, unique_name, force, yes):
@@ -491,9 +601,14 @@ def solution_uninstall(ctx: CLIContext, unique_name, force, yes):
     its patches.
     """
     _confirm_destructive(
-        ctx, "solution", unique_name, yes,
-        message=(f"Uninstalling solution {unique_name!r} removes it (and, for a "
-                 f"managed base solution, all of its patches). Continue?"),
+        ctx,
+        "solution",
+        unique_name,
+        yes,
+        message=(
+            f"Uninstalling solution {unique_name!r} removes it (and, for a "
+            f"managed base solution, all of its patches). Continue?"
+        ),
     )
     with d365_errors(ctx):
         info = sol_mod.uninstall_solution(ctx.backend(), unique_name, force=force)
@@ -503,31 +618,61 @@ def solution_uninstall(ctx: CLIContext, unique_name, force, yes):
 
 @solution_group.command("stage-and-upgrade")
 @click.argument("zip_path", type=click.Path(exists=True, dir_okay=False))
-@click.option("--promote", is_flag=True,
-              help="After staging, apply the upgrade with DeleteAndPromote "
-                   "(replaces the base solution). Requires --solution.")
-@click.option("--solution", "solution_name", default=None,
-              help="Unique name of the staged solution to promote "
-                   "(required with --promote).")
+@click.option(
+    "--promote",
+    is_flag=True,
+    help="After staging, apply the upgrade with DeleteAndPromote "
+    "(replaces the base solution). Requires --solution.",
+)
+@click.option(
+    "--solution",
+    "solution_name",
+    default=None,
+    help="Unique name of the staged solution to promote (required with --promote).",
+)
 @click.option("--no-publish", is_flag=True)
 @click.option("--no-overwrite", is_flag=True)
-@click.option("--skip-dependency-check", "skip_dependency_check", is_flag=True,
-              help="Set ImportSolution SkipProductUpdateDependencies to proceed "
-                   "past a product-update dependency block.")
-@click.option("--timeout", type=int, default=None,
-              help="Async operation timeout in seconds. Overrides profile.async_timeout.")
-@click.option("--no-retry", is_flag=True,
-              help="Disable the 429/5xx retry loop for this invocation.")
-@click.option("--quiet", "-q", is_flag=True,
-              help="Suppress per-tick import-progress lines on stderr.")
-@click.option("--formatted", is_flag=True,
-              help="Also fetch the Excel-format RetrieveFormattedImportJobResults "
-                   "report and attach it verbatim under formatted_results.")
+@click.option(
+    "--skip-dependency-check",
+    "skip_dependency_check",
+    is_flag=True,
+    help="Set ImportSolution SkipProductUpdateDependencies to proceed "
+    "past a product-update dependency block.",
+)
+@click.option(
+    "--timeout",
+    type=int,
+    default=None,
+    help="Async operation timeout in seconds. Overrides profile.async_timeout.",
+)
+@click.option(
+    "--no-retry", is_flag=True, help="Disable the 429/5xx retry loop for this invocation."
+)
+@click.option(
+    "--quiet", "-q", is_flag=True, help="Suppress per-tick import-progress lines on stderr."
+)
+@click.option(
+    "--formatted",
+    is_flag=True,
+    help="Also fetch the Excel-format RetrieveFormattedImportJobResults "
+    "report and attach it verbatim under formatted_results.",
+)
 @click.option("--yes", is_flag=True, help="Skip the staging/promote confirmation prompt.")
 @pass_ctx
-def solution_stage_and_upgrade_cmd(ctx: CLIContext, zip_path, promote, solution_name,
-                                   no_publish, no_overwrite, skip_dependency_check,
-                                   timeout, no_retry, quiet, formatted, yes):
+def solution_stage_and_upgrade_cmd(
+    ctx: CLIContext,
+    zip_path,
+    promote,
+    solution_name,
+    no_publish,
+    no_overwrite,
+    skip_dependency_check,
+    timeout,
+    no_retry,
+    quiet,
+    formatted,
+    yes,
+):
     """Stage a managed-solution upgrade as a holding solution (ImportSolution HoldingSolution).
 
     Stages only by default; pass --promote (with --solution) to also apply the
@@ -537,17 +682,19 @@ def solution_stage_and_upgrade_cmd(ctx: CLIContext, zip_path, promote, solution_
     if promote and not solution_name:
         raise click.UsageError("--promote requires --solution <unique name>.")
 
-    action = (f"Staging {zip_path!r} as a holding solution and promoting it over "
-              f"{solution_name!r} (DeleteAndPromote replaces the base solution)."
-              if promote else
-              f"Staging {zip_path!r} as a holding solution for upgrade.")
-    _confirm_destructive(ctx, "solution", zip_path, yes,
-                         message=f"{action} Continue?")
+    action = (
+        f"Staging {zip_path!r} as a holding solution and promoting it over "
+        f"{solution_name!r} (DeleteAndPromote replaces the base solution)."
+        if promote
+        else f"Staging {zip_path!r} as a holding solution for upgrade."
+    )
+    _confirm_destructive(ctx, "solution", zip_path, yes, message=f"{action} Continue?")
 
     with _no_retry_scope(ctx, no_retry):
         with d365_errors(ctx):
             info = sol_mod.import_solution(
-                ctx.backend(), zip_path,
+                ctx.backend(),
+                zip_path,
                 publish_workflows=not no_publish,
                 overwrite_unmanaged_customizations=not no_overwrite,
                 holding_solution=True,
@@ -577,10 +724,15 @@ def solution_apply_upgrade_cmd(ctx: CLIContext, unique_name, yes):
     `stage-and-upgrade --promote` remains the one-shot path.
     """
     _confirm_destructive(
-        ctx, "solution", unique_name, yes,
-        message=(f"Promoting the staged upgrade for solution {unique_name!r} via "
-                 f"DeleteAndPromote (replaces the base solution and deletes its "
-                 f"patches). Continue?"),
+        ctx,
+        "solution",
+        unique_name,
+        yes,
+        message=(
+            f"Promoting the staged upgrade for solution {unique_name!r} via "
+            f"DeleteAndPromote (replaces the base solution and deletes its "
+            f"patches). Continue?"
+        ),
     )
     with d365_errors(ctx):
         info = sol_mod.delete_and_promote(ctx.backend(), unique_name)
@@ -592,7 +744,8 @@ def _solution_pick_label(s: dict) -> str:
     """One-line picker label for a solution: unique name + friendly name + version.
 
     A ``(managed)`` marker disambiguates managed solutions, since unmanaged and
-    managed are interleaved by name in the org but shown unmanaged-first here."""
+    managed are interleaved by name in the org but shown unmanaged-first here.
+    """
     name = s.get("uniquename", "")
     friendly = s.get("friendlyname") or ""
     version = s.get("version") or ""
@@ -617,11 +770,13 @@ def _pick_solution(ctx: CLIContext, title: str) -> str | None:
     operational-failure envelope rather than a picker crash. On an empty list or
     a user cancel it emits a clean error envelope via ``ctx.emit(False)`` (which
     always raises ``Exit``), so it never actually returns ``None`` — the
-    ``str | None`` return and the caller's guard are defensive."""
+    ``str | None`` return and the caller's guard are defensive.
+    """
     if not (_stdin_is_tty() and not ctx.json_mode):
         raise click.UsageError(
             "a solution unique name is required here — the interactive picker "
-            "needs a human terminal and is disabled under --json.")
+            "needs a human terminal and is disabled under --json."
+        )
     items = sol_mod.list_solutions(ctx.backend())
     items.sort(key=lambda s: (bool(s.get("ismanaged")), s.get("uniquename", "")))
     if not items:
@@ -646,17 +801,25 @@ def _pick_solution(ctx: CLIContext, title: str) -> str | None:
     type=click.Choice(sorted(_EXPORT_SETTING_KEYS.keys())),
     help="Repeatable; include a named export setting in the solution payload.",
 )
-@click.option("--timeout", type=int, default=None,
-              help="Async operation timeout in seconds. Overrides profile.async_timeout.")
-@click.option("--no-retry", is_flag=True,
-              help="Disable the 429/5xx retry loop for this invocation.")
+@click.option(
+    "--timeout",
+    type=int,
+    default=None,
+    help="Async operation timeout in seconds. Overrides profile.async_timeout.",
+)
+@click.option(
+    "--no-retry", is_flag=True, help="Disable the 429/5xx retry loop for this invocation."
+)
 @pass_ctx
-def solution_export_cmd(ctx: CLIContext, unique_name, output, managed, export_settings, timeout, no_retry):
+def solution_export_cmd(
+    ctx: CLIContext, unique_name, output, managed, export_settings, timeout, no_retry
+):
     """Export a solution to a zip.
 
     With no UNIQUE_NAME on an interactive terminal, lists the org's solutions
     (unmanaged first) and prompts you to pick one. Under --json or with no TTY
-    the name is required (a missing one is a usage error, exit 2)."""
+    the name is required (a missing one is a usage error, exit 2).
+    """
     kwargs = {_EXPORT_SETTING_KEYS[name]: True for name in export_settings}
     with _no_retry_scope(ctx, no_retry):
         with d365_errors(ctx):
@@ -668,8 +831,12 @@ def solution_export_cmd(ctx: CLIContext, unique_name, output, managed, export_se
                 if unique_name is None:
                     return
             info = sol_mod.export_solution(
-                ctx.backend(), unique_name, output, managed=managed,
-                timeout=timeout, **kwargs,
+                ctx.backend(),
+                unique_name,
+                output,
+                managed=managed,
+                timeout=timeout,
+                **kwargs,
             )
         ctx.emit(True, data=info)
     ctx.hint("solution_export")
@@ -688,8 +855,11 @@ def solution_publish_all(ctx: CLIContext):
 
 @solution_group.command("publish")
 @click.option("--xml", "parameter_xml", help="Inline Publish Request Schema XML.")
-@click.option("--xml-file", type=click.Path(exists=True, dir_okay=False),
-              help="Path to a Publish Request Schema XML file.")
+@click.option(
+    "--xml-file",
+    type=click.Path(exists=True, dir_okay=False),
+    help="Path to a Publish Request Schema XML file.",
+)
 @pass_ctx
 def solution_publish(ctx: CLIContext, parameter_xml, xml_file):
     """Call PublishXml with a Publish Request Schema XML payload."""
@@ -744,41 +914,76 @@ def solution_job_cancel(ctx: CLIContext, async_operation_id, yes):
 
 @solution_group.command("import")
 @click.argument("zip_path", type=click.Path(exists=True, dir_okay=False))
-@click.option("--publish/--no-publish", default=True,
-              help="Set the import's PublishWorkflows server option (activate "
-                   "imported workflows). NOT PublishAllXml. Default: publish.")
-@click.option("--overwrite/--no-overwrite", default=True,
-              help="Set ImportSolution OverwriteUnmanagedCustomizations. Default: "
-                   "overwrite (clobbers unmanaged customizations in the target org).")
-@click.option("--skip-dependency-check", "skip_dependency_check", is_flag=True,
-              help="Set ImportSolution SkipProductUpdateDependencies to proceed "
-                   "past a product-update dependency block.")
-@click.option("--timeout", type=int, default=None,
-              help="Async operation timeout in seconds. Overrides profile.async_timeout.")
-@click.option("--no-retry", is_flag=True,
-              help="Disable the 429/5xx retry loop for this invocation.")
-@click.option("--quiet", "-q", is_flag=True,
-              help="Suppress per-tick import-progress lines on stderr.")
-@click.option("--formatted", is_flag=True,
-              help="Also fetch the Excel-format RetrieveFormattedImportJobResults "
-                   "report and attach it verbatim under formatted_results.")
-@click.option("--yes", is_flag=True,
-              help="Skip the overwrite confirmation prompt.")
+@click.option(
+    "--publish/--no-publish",
+    default=True,
+    help="Set the import's PublishWorkflows server option (activate "
+    "imported workflows). NOT PublishAllXml. Default: publish.",
+)
+@click.option(
+    "--overwrite/--no-overwrite",
+    default=True,
+    help="Set ImportSolution OverwriteUnmanagedCustomizations. Default: "
+    "overwrite (clobbers unmanaged customizations in the target org).",
+)
+@click.option(
+    "--skip-dependency-check",
+    "skip_dependency_check",
+    is_flag=True,
+    help="Set ImportSolution SkipProductUpdateDependencies to proceed "
+    "past a product-update dependency block.",
+)
+@click.option(
+    "--timeout",
+    type=int,
+    default=None,
+    help="Async operation timeout in seconds. Overrides profile.async_timeout.",
+)
+@click.option(
+    "--no-retry", is_flag=True, help="Disable the 429/5xx retry loop for this invocation."
+)
+@click.option(
+    "--quiet", "-q", is_flag=True, help="Suppress per-tick import-progress lines on stderr."
+)
+@click.option(
+    "--formatted",
+    is_flag=True,
+    help="Also fetch the Excel-format RetrieveFormattedImportJobResults "
+    "report and attach it verbatim under formatted_results.",
+)
+@click.option("--yes", is_flag=True, help="Skip the overwrite confirmation prompt.")
 @pass_ctx
-def solution_import_cmd(ctx: CLIContext, zip_path, publish, overwrite, skip_dependency_check, timeout, no_retry, quiet, formatted, yes):
+def solution_import_cmd(
+    ctx: CLIContext,
+    zip_path,
+    publish,
+    overwrite,
+    skip_dependency_check,
+    timeout,
+    no_retry,
+    quiet,
+    formatted,
+    yes,
+):
     # An overwrite import (the default) clobbers unmanaged customizations in the
     # target org — gate it like a delete (#67). A `--no-overwrite` import is not
     # prompted here (the PreToolUse hook still requires --yes for any import).
     if overwrite:
         _confirm_destructive(
-            ctx, "solution", zip_path, yes,
-            message=(f"Importing {zip_path!r} will OVERWRITE unmanaged customizations "
-                     f"in the target org. Continue?"),
+            ctx,
+            "solution",
+            zip_path,
+            yes,
+            message=(
+                f"Importing {zip_path!r} will OVERWRITE unmanaged customizations "
+                f"in the target org. Continue?"
+            ),
         )
     with _no_retry_scope(ctx, no_retry):
         with d365_errors(ctx):
             info = sol_mod.import_solution(
-                ctx.backend(), zip_path,
+                ctx.backend(),
+                zip_path,
                 publish_workflows=publish,
                 overwrite_unmanaged_customizations=overwrite,
                 skip_dependency_check=skip_dependency_check,
@@ -794,7 +999,8 @@ def solution_import_cmd(ctx: CLIContext, zip_path, publish, overwrite, skip_depe
 def _emit_packager_result(ctx: CLIContext, info: dict) -> None:
     """Emit a pac-solution envelope, failing the command (ADR 0001) when the tool
     returned a non-zero exit code — the data (exit_code, stdout_tail) is kept so
-    the failure is diagnosable."""
+    the failure is diagnosable.
+    """
     exit_code = info.get("exit_code")
     if exit_code:
         # Embed the tail in the error itself: human mode drops `data`, so a bare
@@ -819,18 +1025,31 @@ def _pac_options(f):
     here (--package-type, --pac-path, --solutionpackager-path, --timeout).
     """
     options = [
-        click.option("--package-type", "package_type",
-                     type=click.Choice(["Unmanaged", "Managed", "Both"], case_sensitive=False),
-                     default="Unmanaged",
-                     help="pac --packagetype (default Unmanaged)."),
-        click.option("--pac-path", "pac_path", default=None,
-                     type=click.Path(dir_okay=False),
-                     help="Path to the pac executable (else CRM_PAC env, then PATH)."),
-        click.option("--solutionpackager-path", "solutionpackager_path", default=None,
-                     type=click.Path(dir_okay=False), hidden=True,
-                     help="Deprecated alias for --pac-path (point it at pac)."),
-        click.option("--timeout", type=int, default=None,
-                     help="pac subprocess timeout in seconds."),
+        click.option(
+            "--package-type",
+            "package_type",
+            type=click.Choice(["Unmanaged", "Managed", "Both"], case_sensitive=False),
+            default="Unmanaged",
+            help="pac --packagetype (default Unmanaged).",
+        ),
+        click.option(
+            "--pac-path",
+            "pac_path",
+            default=None,
+            type=click.Path(dir_okay=False),
+            help="Path to the pac executable (else CRM_PAC env, then PATH).",
+        ),
+        click.option(
+            "--solutionpackager-path",
+            "solutionpackager_path",
+            default=None,
+            type=click.Path(dir_okay=False),
+            hidden=True,
+            help="Deprecated alias for --pac-path (point it at pac).",
+        ),
+        click.option(
+            "--timeout", type=int, default=None, help="pac subprocess timeout in seconds."
+        ),
     ]
     for opt in reversed(options):
         f = opt(f)
@@ -838,53 +1057,81 @@ def _pac_options(f):
 
 
 @solution_group.command("extract")
-@click.option("--zipfile", required=True, type=click.Path(exists=True, dir_okay=False),
-              help="Exported solution zip to unpack.")
-@click.option("--folder", required=True, type=click.Path(file_okay=False),
-              help="Destination folder for the source-controllable tree.")
+@click.option(
+    "--zipfile",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Exported solution zip to unpack.",
+)
+@click.option(
+    "--folder",
+    required=True,
+    type=click.Path(file_okay=False),
+    help="Destination folder for the source-controllable tree.",
+)
 @_pac_options
 @pass_ctx
-def solution_extract_cmd(ctx: CLIContext, zipfile, folder, package_type,
-                         pac_path, solutionpackager_path, timeout):
+def solution_extract_cmd(
+    ctx: CLIContext, zipfile, folder, package_type, pac_path, solutionpackager_path, timeout
+):
     """Extract a solution zip into a folder tree (offline; pac solution unpack).
 
     OFFLINE local-file transform — no connection or profile required.
     """
     with d365_errors(ctx):
         info = sp_mod.extract_solution(
-            zipfile=zipfile, folder=folder, package_type=package_type,
-            pac_path=pac_path or solutionpackager_path, timeout=timeout,
+            zipfile=zipfile,
+            folder=folder,
+            package_type=package_type,
+            pac_path=pac_path or solutionpackager_path,
+            timeout=timeout,
         )
     _emit_packager_result(ctx, info)
 
 
 @solution_group.command("pack")
-@click.option("--zipfile", required=True, type=click.Path(dir_okay=False),
-              help="Destination solution zip to build.")
-@click.option("--folder", required=True, type=click.Path(exists=True, file_okay=False),
-              help="Source folder tree to pack.")
+@click.option(
+    "--zipfile",
+    required=True,
+    type=click.Path(dir_okay=False),
+    help="Destination solution zip to build.",
+)
+@click.option(
+    "--folder",
+    required=True,
+    type=click.Path(exists=True, file_okay=False),
+    help="Source folder tree to pack.",
+)
 @_pac_options
 @pass_ctx
-def solution_pack_cmd(ctx: CLIContext, zipfile, folder, package_type,
-                      pac_path, solutionpackager_path, timeout):
+def solution_pack_cmd(
+    ctx: CLIContext, zipfile, folder, package_type, pac_path, solutionpackager_path, timeout
+):
     """Pack a folder tree back into a solution zip (offline; pac solution pack).
 
     OFFLINE local-file transform — no connection or profile required.
     """
     with d365_errors(ctx):
         info = sp_mod.pack_solution(
-            zipfile=zipfile, folder=folder, package_type=package_type,
-            pac_path=pac_path or solutionpackager_path, timeout=timeout,
+            zipfile=zipfile,
+            folder=folder,
+            package_type=package_type,
+            pac_path=pac_path or solutionpackager_path,
+            timeout=timeout,
         )
     _emit_packager_result(ctx, info)
 
 
 @solution_group.command("validate")
 @click.argument("zip_path", type=click.Path(exists=True, dir_okay=False))
-@click.option("--against-org", "against_org", is_flag=True,
-              help="Also run online checks against the connected org "
-                   "(form/view + BPF process-stage GUID collisions, web-resource "
-                   "& option-set existence). Requires a connection/profile.")
+@click.option(
+    "--against-org",
+    "against_org",
+    is_flag=True,
+    help="Also run online checks against the connected org "
+    "(form/view + BPF process-stage GUID collisions, web-resource "
+    "& option-set existence). Requires a connection/profile.",
+)
 @pass_ctx
 def solution_validate_cmd(ctx: CLIContext, zip_path, against_org):
     """Statically validate a solution zip before import.
@@ -908,9 +1155,12 @@ def solution_validate_cmd(ctx: CLIContext, zip_path, against_org):
 
 @solution_group.command("import-result")
 @click.argument("import_job_id")
-@click.option("--formatted", is_flag=True,
-              help="Also fetch the Excel-format RetrieveFormattedImportJobResults "
-                   "report and attach it verbatim under formatted_results.")
+@click.option(
+    "--formatted",
+    is_flag=True,
+    help="Also fetch the Excel-format RetrieveFormattedImportJobResults "
+    "report and attach it verbatim under formatted_results.",
+)
 @pass_ctx
 def solution_import_result_cmd(ctx: CLIContext, import_job_id, formatted):
     """Re-fetch a prior ImportJob and parse its per-component pass/fail results."""

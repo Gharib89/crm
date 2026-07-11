@@ -1,6 +1,7 @@
 # crm/tests/test_skill_registry.py
 # pyright: basic
 """Unit tests for the installed-skill registry (${CRM_HOME}/installed-skills.json)."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -21,7 +22,9 @@ def test_record_then_read():
 
     reg.record_install("claude", "/abs/path", "2.10.0")
     skills = reg.read_skills()
-    assert skills == [{"target": "claude", "dest": _norm("/abs/path"), "installed_version": "2.10.0"}]
+    assert skills == [
+        {"target": "claude", "dest": _norm("/abs/path"), "installed_version": "2.10.0"}
+    ]
 
 
 def test_reinstall_same_dest_updates_in_place():
@@ -86,8 +89,9 @@ def test_corrupt_file_reads_as_empty(tmp_path):
 def test_read_propagates_unexpected_io_error(monkeypatch):
     # A real I/O fault (e.g. PermissionError) is NOT corruption — it must surface,
     # not be silently swallowed as an empty registry (would clobber state on write).
-    from crm.commands import skill_registry as reg
     from pathlib import Path
+
+    from crm.commands import skill_registry as reg
 
     def boom(*a, **k):
         raise PermissionError("denied")
@@ -115,8 +119,9 @@ def test_refresh_stale_dest_is_refreshed(tmp_path):
 
     results = reg.refresh_skills("2.0.0", src)
 
-    assert results == [{"dest": str(dest), "from_version": "1.0.0",
-                        "to_version": "2.0.0", "status": "refreshed"}]
+    assert results == [
+        {"dest": str(dest), "from_version": "1.0.0", "to_version": "2.0.0", "status": "refreshed"}
+    ]
     assert (dest / "SKILL.md").read_text(encoding="utf-8") == "NEW"
     assert reg.read_skills()[0]["installed_version"] == "2.0.0"
 

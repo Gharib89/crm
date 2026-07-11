@@ -1,5 +1,6 @@
 # pyright: basic
 """E2E tests for translation export/import commands."""
+
 from __future__ import annotations
 
 import zipfile
@@ -19,12 +20,19 @@ def test_translation_export_import_roundtrip(cli, ephemeral_solution, tmp_path):
     zip_path = tmp_path / "translations.zip"
 
     # Export
-    result = cli([
-        "--json", "translation", "export",
-        "--solution", ephemeral_solution,
-        "--output", str(zip_path),
-    ])
+    result = cli(
+        [
+            "--json",
+            "translation",
+            "export",
+            "--solution",
+            ephemeral_solution,
+            "--output",
+            str(zip_path),
+        ]
+    )
     import json as _json
+
     assert result.returncode == 0, (
         f"translation export failed:\n{result.stderr}\nstdout: {result.stdout}"
     )
@@ -37,11 +45,15 @@ def test_translation_export_import_roundtrip(cli, ephemeral_solution, tmp_path):
     assert zipfile.is_zipfile(zip_path), "translation export output is not a valid zip"
 
     # Import the exported zip back — round-trip with an unchanged file is a no-op
-    result = cli([
-        "--json", "translation", "import",
-        "--yes",
-        str(zip_path),
-    ])
+    result = cli(
+        [
+            "--json",
+            "translation",
+            "import",
+            "--yes",
+            str(zip_path),
+        ]
+    )
     assert result.returncode == 0, (
         f"translation import failed:\n{result.stderr}\nstdout: {result.stdout}"
     )
@@ -56,12 +68,22 @@ def test_translation_export_import_roundtrip(cli, ephemeral_solution, tmp_path):
 
 @covers("translation import")
 def test_translation_import_with_publish(cli, ephemeral_solution, tmp_path):
-    """translation import --publish chains PublishAllXml after a successful import."""
+    """Translation import --publish chains PublishAllXml after a successful import."""
     import json as _json
+
     zip_path = tmp_path / "translations_pub.zip"
 
-    export = cli(["--json", "translation", "export",
-                  "--solution", ephemeral_solution, "--output", str(zip_path)])
+    export = cli(
+        [
+            "--json",
+            "translation",
+            "export",
+            "--solution",
+            ephemeral_solution,
+            "--output",
+            str(zip_path),
+        ]
+    )
     assert export.returncode == 0
     assert _json.loads(export.stdout)["ok"] is True
 

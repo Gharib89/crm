@@ -29,18 +29,18 @@ import re
 from pathlib import Path
 from typing import Any, Callable
 
+from crm.core import references as ref_mod
 from crm.utils.d365_backend import (
     D365Backend,
     D365Error,
     as_dict,
     odata_literal,
 )
-from crm.core import references as ref_mod
 
 # Isolation mode -> pluginassembly isolationmode option set (verified MS Learn).
 _ISOLATION_MODE: dict[str, int] = {
-    "none": 1,      # None
-    "sandbox": 2,   # Sandbox
+    "none": 1,  # None
+    "sandbox": 2,  # Sandbox
 }
 
 # Documented defaults for an unsigned, single-file assembly registered without
@@ -91,8 +91,8 @@ _IMAGE_TYPE: dict[str, int] = {
 # serviceendpoint entity reference). Only the three webhook-valid schemes are
 # exposed; the Service Bus auth types (ACS / SAS*) don't apply to a webhook.
 _WEBHOOK_AUTHTYPE: dict[str, int] = {
-    "webhookkey": 4,       # Webhook Key (?code=<value>, e.g. Azure Functions)
-    "httpheader": 5,       # Http Header (key:value pairs in the request header)
+    "webhookkey": 4,  # Webhook Key (?code=<value>, e.g. Azure Functions)
+    "httpheader": 5,  # Http Header (key:value pairs in the request header)
     "httpquerystring": 6,  # Http Query String (key=value query params)
 }
 # serviceendpoint option-set constants for a webhook (verified MS Learn):
@@ -150,8 +150,7 @@ def register_assembly(
     """
     if isolation_mode not in _ISOLATION_MODE:
         raise D365Error(
-            f"Unknown isolation mode {isolation_mode!r}; "
-            f"choose from {sorted(_ISOLATION_MODE)}."
+            f"Unknown isolation mode {isolation_mode!r}; choose from {sorted(_ISOLATION_MODE)}."
         )
     src = Path(path)
     if not src.is_file():
@@ -163,8 +162,8 @@ def register_assembly(
 
     if update:
         return _update_assembly_content(
-            backend, name=resolved_name, content_b64=content_b64,
-            solution=solution)
+            backend, name=resolved_name, content_b64=content_b64, solution=solution
+        )
 
     iso_int = _ISOLATION_MODE[isolation_mode]
     body: dict[str, Any] = {
@@ -179,8 +178,7 @@ def register_assembly(
     if description is not None:
         body["description"] = description
 
-    result = as_dict(backend.post(
-        "pluginassemblies", json_body=body, solution=solution))
+    result = as_dict(backend.post("pluginassemblies", json_body=body, solution=solution))
     if result.get("_dry_run"):
         return result
 
@@ -202,7 +200,9 @@ def register_assembly(
 
 
 def list_types(
-    backend: D365Backend, *, assembly: str | None = None,
+    backend: D365Backend,
+    *,
+    assembly: str | None = None,
 ) -> dict[str, Any]:
     """List registered plug-in types (the `plugintypes` entity set).
 
@@ -268,8 +268,7 @@ def register_type(
         "friendlyname": friendly_name or type_name,
         "pluginassemblyid@odata.bind": f"/pluginassemblies({pid})",
     }
-    result = as_dict(backend.post(
-        "plugintypes", json_body=body, solution=solution))
+    result = as_dict(backend.post("plugintypes", json_body=body, solution=solution))
     if result.get("_dry_run"):
         result["would_create"] = True
         return result
@@ -349,13 +348,12 @@ def register_step(
         raise D365Error(
             "Provide exactly one of plugin_type or service_endpoint "
             "(a step binds to a single event handler).",
-            code="StepHandlerRequired")
+            code="StepHandlerRequired",
+        )
     if stage not in _STAGE:
-        raise D365Error(
-            f"Unknown stage {stage!r}; choose from {sorted(_STAGE)}.")
+        raise D365Error(f"Unknown stage {stage!r}; choose from {sorted(_STAGE)}.")
     if mode not in _MODE:
-        raise D365Error(
-            f"Unknown mode {mode!r}; choose from {sorted(_MODE)}.")
+        raise D365Error(f"Unknown mode {mode!r}; choose from {sorted(_MODE)}.")
     stage_int = _STAGE[stage]
     mode_int = _MODE[mode]
     # Async plug-ins can only run in the postoperation stage (MS Learn:
@@ -363,7 +361,8 @@ def register_step(
     if mode_int == 1 and stage_int != 40:
         raise D365Error(
             f"Asynchronous mode requires the postoperation stage (got {stage!r}).",
-            code="AsyncRequiresPostOperation")
+            code="AsyncRequiresPostOperation",
+        )
 
     # The same _resolve_* id lookups run for a real write and a dry-run preview
     # (reads-execute rule). For a real write a missing message/type/filter raises;
@@ -375,22 +374,26 @@ def register_step(
     serviceendpoint_id: str | None = None
     if backend.dry_run:
         message_id = _resolve_or_none(
-            lambda: _resolve_sdkmessage_id(backend, message), "SdkMessageNotFound")
-        references.append(ref_mod.make_reference(
-            "message", message, message_id is not None))
+            lambda: _resolve_sdkmessage_id(backend, message), "SdkMessageNotFound"
+        )
+        references.append(ref_mod.make_reference("message", message, message_id is not None))
         if plugin_type is not None:
             plugintype_id = _resolve_or_none(
-                lambda: _resolve_plugintype_id(backend, plugin_type, assembly),
-                "PluginTypeNotFound")
-            references.append(ref_mod.make_reference(
-                "plugin_type", plugin_type, plugintype_id is not None))
+                lambda: _resolve_plugintype_id(backend, plugin_type, assembly), "PluginTypeNotFound"
+            )
+            references.append(
+                ref_mod.make_reference("plugin_type", plugin_type, plugintype_id is not None)
+            )
         elif service_endpoint is not None:  # exactly-one guard above ensures this
             serviceendpoint_id = _resolve_or_none(
                 lambda: _resolve_serviceendpoint_id(backend, service_endpoint),
-                "ServiceEndpointNotFound")
-            references.append(ref_mod.make_reference(
-                "service_endpoint", service_endpoint,
-                serviceendpoint_id is not None))
+                "ServiceEndpointNotFound",
+            )
+            references.append(
+                ref_mod.make_reference(
+                    "service_endpoint", service_endpoint, serviceendpoint_id is not None
+                )
+            )
         filter_id: str | None = None
         if entity is not None:
             # The filter binds an entity to a message, so it can only resolve when
@@ -398,22 +401,23 @@ def register_step(
             if message_id is not None:
                 filter_id = _resolve_or_none(
                     lambda: _resolve_sdkmessagefilter_id(backend, entity, message_id),
-                    "SdkMessageFilterNotFound")
-            references.append(ref_mod.make_reference(
-                "entity", entity, filter_id is not None))
+                    "SdkMessageFilterNotFound",
+                )
+            references.append(ref_mod.make_reference("entity", entity, filter_id is not None))
     else:
         message_id = _resolve_sdkmessage_id(backend, message)
         if plugin_type is not None:
             plugintype_id = _resolve_plugintype_id(backend, plugin_type, assembly)
         elif service_endpoint is not None:  # exactly-one guard above ensures this
-            serviceendpoint_id = _resolve_serviceendpoint_id(
-                backend, service_endpoint)
-        filter_id = (_resolve_sdkmessagefilter_id(backend, entity, message_id)
-                     if entity is not None else None)
+            serviceendpoint_id = _resolve_serviceendpoint_id(backend, service_endpoint)
+        filter_id = (
+            _resolve_sdkmessagefilter_id(backend, entity, message_id)
+            if entity is not None
+            else None
+        )
 
     handler_label = plugin_type or service_endpoint
-    resolved_name = name or (
-        f"{handler_label}: {message} of {entity or 'any entity'}")
+    resolved_name = name or (f"{handler_label}: {message} of {entity or 'any entity'}")
     body: dict[str, Any] = {
         "name": resolved_name,
         "stage": stage_int,
@@ -429,8 +433,7 @@ def register_step(
     # related record and binds it in the same POST. It is write-only per platform
     # semantics — passed on registration, never echoed back in `out` below.
     if secure_configuration is not None:
-        body["sdkmessageprocessingstepsecureconfigid"] = {
-            "secureconfig": secure_configuration}
+        body["sdkmessageprocessingstepsecureconfigid"] = {"secureconfig": secure_configuration}
     if asyncautodelete:
         body["asyncautodelete"] = True
     # sdkmessageprocessingstep nav-props are lowercase logical names in $metadata;
@@ -442,16 +445,13 @@ def register_step(
     if plugintype_id is not None:
         body["plugintypeid@odata.bind"] = f"/plugintypes({plugintype_id})"
     if serviceendpoint_id is not None:
-        body["eventhandler_serviceendpoint@odata.bind"] = (
-            f"/serviceendpoints({serviceendpoint_id})")
+        body["eventhandler_serviceendpoint@odata.bind"] = f"/serviceendpoints({serviceendpoint_id})"
     if entity is not None and filter_id is not None:
-        body["sdkmessagefilterid@odata.bind"] = (
-            f"/sdkmessagefilters({filter_id})")
+        body["sdkmessagefilterid@odata.bind"] = f"/sdkmessagefilters({filter_id})"
     if filtering_attributes is not None and message.lower() == "update":
         body["filteringattributes"] = filtering_attributes
 
-    result = as_dict(backend.post(
-        "sdkmessageprocessingsteps", json_body=body, solution=solution))
+    result = as_dict(backend.post("sdkmessageprocessingsteps", json_body=body, solution=solution))
     if result.get("_dry_run"):
         if references:
             result["references"] = references
@@ -473,8 +473,7 @@ def register_step(
     if not sid:
         entity_id_url = result.get("_entity_id_url") or ""
         out["sdkmessageprocessingstep_lookup_error"] = (
-            "Could not parse sdkmessageprocessingstepid from response: "
-            f"{entity_id_url!r}"
+            f"Could not parse sdkmessageprocessingstepid from response: {entity_id_url!r}"
         )
     return out
 
@@ -491,8 +490,7 @@ def set_step_state(
     state_int = 0 if enable else 1
     status_int = 1 if enable else 2
     body = {"statecode": state_int, "statuscode": status_int}
-    result = as_dict(backend.patch(
-        f"sdkmessageprocessingsteps({step_id})", json_body=body))
+    result = as_dict(backend.patch(f"sdkmessageprocessingsteps({step_id})", json_body=body))
     # Honour the dry-run contract: surface the backend's echo as a preview
     # rather than fabricating an `updated: True` success (sibling to register_step).
     if result.get("_dry_run"):
@@ -532,9 +530,7 @@ def register_webhook(
     contract 8=Webhook, connectionmode 1=Normal, messageformat 2=Json.
     """
     if auth not in _WEBHOOK_AUTHTYPE:
-        raise D365Error(
-            f"Unknown auth scheme {auth!r}; choose from "
-            f"{sorted(_WEBHOOK_AUTHTYPE)}.")
+        raise D365Error(f"Unknown auth scheme {auth!r}; choose from {sorted(_WEBHOOK_AUTHTYPE)}.")
     authtype_int = _WEBHOOK_AUTHTYPE[auth]
     body: dict[str, Any] = {
         "name": name,
@@ -545,8 +541,7 @@ def register_webhook(
         "authtype": authtype_int,
         "authvalue": auth_value,
     }
-    result = as_dict(backend.post(
-        "serviceendpoints", json_body=body, solution=solution))
+    result = as_dict(backend.post("serviceendpoints", json_body=body, solution=solution))
     if result.get("_dry_run"):
         return result
 
@@ -587,9 +582,7 @@ def register_image(
     validity rules client-side.
     """
     if image_type not in _IMAGE_TYPE:
-        raise D365Error(
-            f"Unknown image type {image_type!r}; "
-            f"choose from {sorted(_IMAGE_TYPE)}.")
+        raise D365Error(f"Unknown image type {image_type!r}; choose from {sorted(_IMAGE_TYPE)}.")
     type_int = _IMAGE_TYPE[image_type]
     step_id, stage_int, message_id = _step_image_info(backend, step)
     message_name = _resolve_sdkmessage_name(backend, message_id)
@@ -601,17 +594,20 @@ def register_image(
         raise D365Error(
             "A post-image requires a step registered in the PostOperation "
             f"stage (step {step!r} is registered in stage {stage_int}).",
-            code="PostImageRequiresPostOperation")
+            code="PostImageRequiresPostOperation",
+        )
     if type_int in (0, 2) and message_name.lower() == "create":
         raise D365Error(
             "A pre-image is not available on a Create-message step "
             "(the record does not exist before the operation).",
-            code="PreImageInvalidForCreate")
+            code="PreImageInvalidForCreate",
+        )
     if type_int in (1, 2) and message_name.lower() == "delete":
         raise D365Error(
             "A post-image is not available on a Delete-message step "
             "(the record no longer exists after the operation).",
-            code="PostImageInvalidForDelete")
+            code="PostImageInvalidForDelete",
+        )
     mpn = message_property_name or _MESSAGE_PROPERTY.get(message_name.lower())
     if mpn is None:
         raise D365Error(
@@ -620,7 +616,8 @@ def register_image(
             f"{sorted(_MESSAGE_PROPERTY)} (and Send, via an explicit "
             f"property) support entity images; pass message_property_name "
             f"(--message-property-name) to override.",
-            code="MessagePropertyUnknown")
+            code="MessagePropertyUnknown",
+        )
 
     resolved_name = name or alias
     body: dict[str, Any] = {
@@ -630,16 +627,16 @@ def register_image(
         "messagepropertyname": mpn,
         # sdkmessageprocessingstepimage nav-props are lowercase logical names
         # in $metadata; PascalCase is rejected with HTTP 400 (issue #159).
-        "sdkmessageprocessingstepid@odata.bind": (
-            f"/sdkmessageprocessingsteps({step_id})"),
+        "sdkmessageprocessingstepid@odata.bind": (f"/sdkmessageprocessingsteps({step_id})"),
     }
     # Omitting `attributes` means ALL columns are included in the image — a
     # documented performance anti-pattern, so callers should pass a filter.
     if attributes is not None:
         body["attributes"] = attributes
 
-    result = as_dict(backend.post(
-        "sdkmessageprocessingstepimages", json_body=body, solution=solution))
+    result = as_dict(
+        backend.post("sdkmessageprocessingstepimages", json_body=body, solution=solution)
+    )
     if result.get("_dry_run"):
         return result
 
@@ -658,14 +655,14 @@ def register_image(
     if not iid:
         entity_id_url = result.get("_entity_id_url") or ""
         out["sdkmessageprocessingstepimage_lookup_error"] = (
-            "Could not parse sdkmessageprocessingstepimageid from response: "
-            f"{entity_id_url!r}"
+            f"Could not parse sdkmessageprocessingstepimageid from response: {entity_id_url!r}"
         )
     return out
 
 
 def _step_image_info(
-    backend: D365Backend, step: str,
+    backend: D365Backend,
+    step: str,
 ) -> tuple[str, int, str]:
     """Resolve a step (GUID or exact name) to (id, stage, sdkmessage id).
 
@@ -678,17 +675,17 @@ def _step_image_info(
     else:
         filt = f"name eq {odata_literal(step)}"
     rows = _force_read_rows(
-        backend, "sdkmessageprocessingsteps",
-        {"$filter": filt,
-         "$select": "sdkmessageprocessingstepid,stage,_sdkmessageid_value"})
+        backend,
+        "sdkmessageprocessingsteps",
+        {"$filter": filt, "$select": "sdkmessageprocessingstepid,stage,_sdkmessageid_value"},
+    )
     if not rows or not rows[0].get("sdkmessageprocessingstepid"):
-        raise D365Error(
-            f"Plug-in step not found: {step}", code="SdkStepNotFound")
+        raise D365Error(f"Plug-in step not found: {step}", code="SdkStepNotFound")
     if len(rows) > 1:
         raise D365Error(
-            f"Multiple plug-in steps match name {step!r}; "
-            f"pass the step's GUID instead.",
-            code="AmbiguousStepName")
+            f"Multiple plug-in steps match name {step!r}; pass the step's GUID instead.",
+            code="AmbiguousStepName",
+        )
     row = rows[0]
     return (
         str(row["sdkmessageprocessingstepid"]),
@@ -700,11 +697,10 @@ def _step_image_info(
 def _resolve_sdkmessage_name(backend: D365Backend, message_id: str) -> str:
     """Resolve an SDK message's name by id (force-reads)."""
     rows = _force_read_rows(
-        backend, "sdkmessages",
-        {"$filter": f"sdkmessageid eq {message_id}", "$select": "name"})
+        backend, "sdkmessages", {"$filter": f"sdkmessageid eq {message_id}", "$select": "name"}
+    )
     if not rows or not rows[0].get("name"):
-        raise D365Error(
-            f"SDK message not found: {message_id}", code="SdkMessageNotFound")
+        raise D365Error(f"SDK message not found: {message_id}", code="SdkMessageNotFound")
     return str(rows[0]["name"])
 
 
@@ -716,10 +712,8 @@ def unregister_image(backend: D365Backend, image: str) -> dict[str, Any]:
     passes through the backend's delete preview (no real DELETE).
     """
     image = image.strip()
-    image_id = image if _looks_like_guid(image) else (
-        _resolve_image_id(backend, image))
-    result = as_dict(backend.delete(
-        f"sdkmessageprocessingstepimages({image_id})"))
+    image_id = image if _looks_like_guid(image) else (_resolve_image_id(backend, image))
+    result = as_dict(backend.delete(f"sdkmessageprocessingstepimages({image_id})"))
     if result.get("_dry_run"):
         return result
     return {"deleted": True, "sdkmessageprocessingstepimageid": image_id}
@@ -728,18 +722,18 @@ def unregister_image(backend: D365Backend, image: str) -> dict[str, Any]:
 def _resolve_image_id(backend: D365Backend, name: str) -> str:
     """Resolve an sdkmessageprocessingstepimage id by exact name (force-reads)."""
     rows = _force_read_rows(
-        backend, "sdkmessageprocessingstepimages",
-        {"$filter": f"name eq {odata_literal(name)}",
-         "$select": "sdkmessageprocessingstepimageid"})
+        backend,
+        "sdkmessageprocessingstepimages",
+        {"$filter": f"name eq {odata_literal(name)}", "$select": "sdkmessageprocessingstepimageid"},
+    )
     if not rows or not rows[0].get("sdkmessageprocessingstepimageid"):
-        raise D365Error(
-            f"Plug-in step image not found: {name}", code="SdkImageNotFound")
+        raise D365Error(f"Plug-in step image not found: {name}", code="SdkImageNotFound")
     if len(rows) > 1:
         # Image names are not unique across steps; refuse to guess.
         raise D365Error(
-            f"Multiple plug-in step images match name {name!r}; "
-            f"pass the image's GUID instead.",
-            code="AmbiguousImageName")
+            f"Multiple plug-in step images match name {name!r}; pass the image's GUID instead.",
+            code="AmbiguousImageName",
+        )
     return str(rows[0]["sdkmessageprocessingstepimageid"])
 
 
@@ -763,7 +757,8 @@ def unregister_step(backend: D365Backend, step: str) -> dict[str, Any]:
 
 
 def unregister_assembly(
-    backend: D365Backend, assembly: str,
+    backend: D365Backend,
+    assembly: str,
 ) -> dict[str, Any]:
     """Unregister (delete) a plug-in assembly and its dependent steps.
 
@@ -782,8 +777,7 @@ def unregister_assembly(
     Raises D365Error when an assembly name resolves to nothing.
     """
     assembly = assembly.strip()
-    aid = assembly if _looks_like_guid(assembly) else (
-        _resolve_id_by_name(backend, assembly))
+    aid = assembly if _looks_like_guid(assembly) else (_resolve_id_by_name(backend, assembly))
     step_ids = _dependent_step_ids(backend, aid)
 
     if backend.dry_run:
@@ -811,19 +805,19 @@ def unregister_assembly(
 def _resolve_step_id(backend: D365Backend, name: str) -> str:
     """Resolve an sdkmessageprocessingstep id by exact name (force-reads)."""
     rows = _force_read_rows(
-        backend, "sdkmessageprocessingsteps",
-        {"$filter": f"name eq {odata_literal(name)}",
-         "$select": "sdkmessageprocessingstepid"})
+        backend,
+        "sdkmessageprocessingsteps",
+        {"$filter": f"name eq {odata_literal(name)}", "$select": "sdkmessageprocessingstepid"},
+    )
     if not rows or not rows[0].get("sdkmessageprocessingstepid"):
-        raise D365Error(
-            f"Plug-in step not found: {name}", code="SdkStepNotFound")
+        raise D365Error(f"Plug-in step not found: {name}", code="SdkStepNotFound")
     if len(rows) > 1:
         # The platform does not enforce unique step names; refuse to guess which
         # one to delete. The caller must disambiguate with the step's GUID.
         raise D365Error(
-            f"Multiple plug-in steps match name {name!r}; "
-            f"pass the step's GUID instead.",
-            code="AmbiguousStepName")
+            f"Multiple plug-in steps match name {name!r}; pass the step's GUID instead.",
+            code="AmbiguousStepName",
+        )
     return str(rows[0]["sdkmessageprocessingstepid"])
 
 
@@ -834,26 +828,32 @@ def _dependent_step_ids(backend: D365Backend, assembly_id: str) -> list[str]:
     force-read so the set is correct even under dry-run.
     """
     type_rows = _force_read_rows(
-        backend, "plugintypes",
-        {"$filter": f"_pluginassemblyid_value eq {assembly_id}",
-         "$select": "plugintypeid"})
+        backend,
+        "plugintypes",
+        {"$filter": f"_pluginassemblyid_value eq {assembly_id}", "$select": "plugintypeid"},
+    )
     step_ids: list[str] = []
     for tr in type_rows:
         ptid = tr.get("plugintypeid")
         if not ptid:
             continue
         step_rows = _force_read_rows(
-            backend, "sdkmessageprocessingsteps",
-            {"$filter": f"_plugintypeid_value eq {ptid}",
-             "$select": "sdkmessageprocessingstepid"})
+            backend,
+            "sdkmessageprocessingsteps",
+            {"$filter": f"_plugintypeid_value eq {ptid}", "$select": "sdkmessageprocessingstepid"},
+        )
         step_ids.extend(
-            str(sr["sdkmessageprocessingstepid"]) for sr in step_rows
-            if sr.get("sdkmessageprocessingstepid"))
+            str(sr["sdkmessageprocessingstepid"])
+            for sr in step_rows
+            if sr.get("sdkmessageprocessingstepid")
+        )
     return step_ids
 
 
 def _force_read_rows(
-    backend: D365Backend, entity_set: str, params: dict[str, str],
+    backend: D365Backend,
+    entity_set: str,
+    params: dict[str, str],
 ) -> list[dict[str, Any]]:
     """GET `entity_set` rows, forcing a real read even under dry-run.
 
@@ -864,7 +864,8 @@ def _force_read_rows(
 
 
 def _resolve_or_none(
-    resolve: Callable[[], str], not_found_code: str,
+    resolve: Callable[[], str],
+    not_found_code: str,
 ) -> str | None:
     """Run a raising ``_resolve_*`` id lookup, returning None for its documented
     not-found code instead of raising — the dry-run reference-probe form (#281).
@@ -881,16 +882,17 @@ def _resolve_or_none(
 def _resolve_sdkmessage_id(backend: D365Backend, message: str) -> str:
     """Resolve an SDK message id by exact name (e.g. Create/Update/Delete)."""
     mid = backend.resolve_id_by_name(
-        "sdkmessages", filter_field="name", id_field="sdkmessageid",
-        value=message)
+        "sdkmessages", filter_field="name", id_field="sdkmessageid", value=message
+    )
     if not mid:
-        raise D365Error(
-            f"SDK message not found: {message}", code="SdkMessageNotFound")
+        raise D365Error(f"SDK message not found: {message}", code="SdkMessageNotFound")
     return mid
 
 
 def _resolve_plugintype_id(
-    backend: D365Backend, typename: str, assembly: str | None,
+    backend: D365Backend,
+    typename: str,
+    assembly: str | None,
 ) -> str:
     """Resolve a plug-in type id by typename, optionally scoped to an assembly.
 
@@ -903,11 +905,10 @@ def _resolve_plugintype_id(
         pid = _resolve_id_by_name(backend, assembly)
         filt += f" and _pluginassemblyid_value eq {pid}"
     rows = _force_read_rows(
-        backend, "plugintypes",
-        {"$filter": filt, "$select": "plugintypeid,typename"})
+        backend, "plugintypes", {"$filter": filt, "$select": "plugintypeid,typename"}
+    )
     if not rows or not rows[0].get("plugintypeid"):
-        raise D365Error(
-            f"Plug-in type not found: {typename}", code="PluginTypeNotFound")
+        raise D365Error(f"Plug-in type not found: {typename}", code="PluginTypeNotFound")
     return str(rows[0]["plugintypeid"])
 
 
@@ -918,38 +919,43 @@ def _resolve_serviceendpoint_id(backend: D365Backend, name: str) -> str:
     resolvers — a step is POSTed only after its bound id is known).
     """
     sid = backend.resolve_id_by_name(
-        "serviceendpoints", filter_field="name",
-        id_field="serviceendpointid", value=name)
+        "serviceendpoints", filter_field="name", id_field="serviceendpointid", value=name
+    )
     if not sid:
-        raise D365Error(
-            f"Service endpoint not found: {name}",
-            code="ServiceEndpointNotFound")
+        raise D365Error(f"Service endpoint not found: {name}", code="ServiceEndpointNotFound")
     return sid
 
 
 def _resolve_sdkmessagefilter_id(
-    backend: D365Backend, entity: str, message_id: str,
+    backend: D365Backend,
+    entity: str,
+    message_id: str,
 ) -> str:
     """Resolve the sdkmessagefilter id for an entity + message pair.
 
     Raises D365Error when the message does not support the entity (no filter
     row), since binding one is required for an entity-scoped step.
     """
-    filt = (f"primaryobjecttypecode eq {odata_literal(entity)} "
-            f"and _sdkmessageid_value eq {message_id}")
+    filt = (
+        f"primaryobjecttypecode eq {odata_literal(entity)} and _sdkmessageid_value eq {message_id}"
+    )
     rows = _force_read_rows(
-        backend, "sdkmessagefilters",
-        {"$filter": filt, "$select": "sdkmessagefilterid"})
+        backend, "sdkmessagefilters", {"$filter": filt, "$select": "sdkmessagefilterid"}
+    )
     if not rows or not rows[0].get("sdkmessagefilterid"):
         raise D365Error(
             f"No SDK message filter for entity {entity!r} on this message "
             "(that message does not support that entity).",
-            code="SdkMessageFilterNotFound")
+            code="SdkMessageFilterNotFound",
+        )
     return str(rows[0]["sdkmessagefilterid"])
 
 
 def _update_assembly_content(
-    backend: D365Backend, *, name: str, content_b64: str,
+    backend: D365Backend,
+    *,
+    name: str,
+    content_b64: str,
     solution: str | None = None,
 ) -> dict[str, Any]:
     """PATCH only the `content` of an existing assembly resolved by name.
@@ -958,9 +964,11 @@ def _update_assembly_content(
     update lands in that solution (mirrors webresource.update_webresource).
     """
     pid = _resolve_id_by_name(backend, name)
-    result = as_dict(backend.patch(
-        f"pluginassemblies({pid})", json_body={"content": content_b64},
-        solution=solution))
+    result = as_dict(
+        backend.patch(
+            f"pluginassemblies({pid})", json_body={"content": content_b64}, solution=solution
+        )
+    )
     if result.get("_dry_run"):
         return result
     return {
@@ -979,11 +987,10 @@ def _resolve_id_by_name(backend: D365Backend, name: str) -> str:
     mirrors webresource._resolve_id_by_name).
     """
     pid = backend.resolve_id_by_name(
-        "pluginassemblies", filter_field="name", id_field="pluginassemblyid",
-        value=name)
+        "pluginassemblies", filter_field="name", id_field="pluginassemblyid", value=name
+    )
     if not pid:
-        raise D365Error(
-            f"Plug-in assembly not found: {name}", code="PluginAssemblyNotFound")
+        raise D365Error(f"Plug-in assembly not found: {name}", code="PluginAssemblyNotFound")
     return pid
 
 
@@ -1013,9 +1020,12 @@ def find_assembly(backend: D365Backend, name: str) -> dict[str, Any] | None:
     """
     rows = backend.get_collection(
         "pluginassemblies",
-        params={"$filter": f"name eq {odata_literal(name)}",
-                "$select": "pluginassemblyid,name,content"},
-        max_pages=1)
+        params={
+            "$filter": f"name eq {odata_literal(name)}",
+            "$select": "pluginassemblyid,name,content",
+        },
+        max_pages=1,
+    )
     return rows[0] if rows else None
 
 
@@ -1034,25 +1044,32 @@ def find_step(backend: D365Backend, name: str) -> dict[str, Any] | None:
         "sdkmessageprocessingsteps",
         params={
             "$filter": f"name eq {odata_literal(name)}",
-            "$select": ("sdkmessageprocessingstepid,stage,mode,rank,"
-                        "filteringattributes,configuration"),
-            "$expand": ("sdkmessageid($select=name),"
-                        "plugintypeid($select=typename),"
-                        "sdkmessagefilterid($select=primaryobjecttypecode)"),
+            "$select": (
+                "sdkmessageprocessingstepid,stage,mode,rank,filteringattributes,configuration"
+            ),
+            "$expand": (
+                "sdkmessageid($select=name),"
+                "plugintypeid($select=typename),"
+                "sdkmessagefilterid($select=primaryobjecttypecode)"
+            ),
         },
-        max_pages=1)
+        max_pages=1,
+    )
     if not rows:
         return None
     if len(rows) > 1:
         raise D365Error(
             f"Multiple plug-in steps match name {name!r}; step names are not "
             "unique — declare a unique name per step so apply can reconcile it.",
-            code="AmbiguousStepName")
+            code="AmbiguousStepName",
+        )
     return rows[0]
 
 
 def find_step_image(
-    backend: D365Backend, step_id: str, alias: str,
+    backend: D365Backend,
+    step_id: str,
+    alias: str,
 ) -> dict[str, Any] | None:
     """Find a step's entity image by alias; return its row or None.
 
@@ -1062,12 +1079,14 @@ def find_step_image(
     rows = backend.get_collection(
         "sdkmessageprocessingstepimages",
         params={
-            "$filter": (f"_sdkmessageprocessingstepid_value eq {step_id} "
-                        f"and entityalias eq {odata_literal(alias)}"),
-            "$select": ("sdkmessageprocessingstepimageid,entityalias,"
-                        "imagetype,attributes"),
+            "$filter": (
+                f"_sdkmessageprocessingstepid_value eq {step_id} "
+                f"and entityalias eq {odata_literal(alias)}"
+            ),
+            "$select": ("sdkmessageprocessingstepimageid,entityalias,imagetype,attributes"),
         },
-        max_pages=1)
+        max_pages=1,
+    )
     return rows[0] if rows else None
 
 
@@ -1098,13 +1117,11 @@ def update_step(
     body: dict[str, Any] = {}
     if stage is not None:
         if stage not in _STAGE:
-            raise D365Error(
-                f"Unknown stage {stage!r}; choose from {sorted(_STAGE)}.")
+            raise D365Error(f"Unknown stage {stage!r}; choose from {sorted(_STAGE)}.")
         body["stage"] = _STAGE[stage]
     if mode is not None:
         if mode not in _MODE:
-            raise D365Error(
-                f"Unknown mode {mode!r}; choose from {sorted(_MODE)}.")
+            raise D365Error(f"Unknown mode {mode!r}; choose from {sorted(_MODE)}.")
         body["mode"] = _MODE[mode]
     if rank is not None:
         body["rank"] = rank
@@ -1112,9 +1129,9 @@ def update_step(
         body["filteringattributes"] = filtering_attributes
     if configuration is not None:
         body["configuration"] = configuration
-    result = as_dict(backend.patch(
-        f"sdkmessageprocessingsteps({step_id})", json_body=body,
-        solution=solution))
+    result = as_dict(
+        backend.patch(f"sdkmessageprocessingsteps({step_id})", json_body=body, solution=solution)
+    )
     if result.get("_dry_run"):
         return result
     return {

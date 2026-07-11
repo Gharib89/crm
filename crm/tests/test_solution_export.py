@@ -10,12 +10,12 @@ import requests_mock
 
 from crm.utils.d365_backend import D365Error
 
-
 _ZIP_BYTES = b"PK\x03\x04 fake solution zip"
 
 
 def test_async_unavailable_predicate():
     from crm.core import solution_transfer as transfer
+
     yes = D365Error("ExportSolutionAsync is not enabled for this org", status=400)
     no = D365Error("Some unrelated server error", status=500)
     assert transfer._async_export_unavailable(yes) is True
@@ -24,14 +24,19 @@ def test_async_unavailable_predicate():
 
 def test_export_falls_back_to_sync_when_async_disabled(backend, tmp_path):
     from crm.core import solution as sol
+
     out = tmp_path / "crmworx.zip"
     encoded = base64.b64encode(_ZIP_BYTES).decode("ascii")
     with requests_mock.Mocker() as m:
         m.post(
             backend.url_for("ExportSolutionAsync"),
             status_code=400,
-            json={"error": {"code": "0x80040224",
-                            "message": "ExportSolutionAsync is not enabled for this org"}},
+            json={
+                "error": {
+                    "code": "0x80040224",
+                    "message": "ExportSolutionAsync is not enabled for this org",
+                }
+            },
         )
         m.post(
             backend.url_for("ExportSolution"),
@@ -45,6 +50,7 @@ def test_export_falls_back_to_sync_when_async_disabled(backend, tmp_path):
 
 def test_export_async_error_other_than_unavailable_propagates(backend, tmp_path):
     from crm.core import solution as sol
+
     with requests_mock.Mocker() as m:
         m.post(
             backend.url_for("ExportSolutionAsync"),

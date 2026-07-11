@@ -25,6 +25,7 @@ On-demand invocation:
         CRM_EVAL_AGENT_CMD='claude -p --dangerously-skip-permissions' \\
         python -m evals.skill.runner evals/skill/tasks/records-create-verify.md
 """
+
 from __future__ import annotations
 
 import argparse
@@ -88,7 +89,9 @@ def _crm_json(args: list[str], env: dict[str, str], crm_bin: str, cwd: str) -> A
         [crm_bin, "--json", *args], capture_output=True, text=True, env=env, cwd=cwd
     )
     if proc.returncode != 0:
-        raise RunError(f"crm {' '.join(args)} failed (exit {proc.returncode}): {proc.stderr.strip()}")
+        raise RunError(
+            f"crm {' '.join(args)} failed (exit {proc.returncode}): {proc.stderr.strip()}"
+        )
     try:
         envelope = json.loads(proc.stdout)
     except json.JSONDecodeError as exc:
@@ -118,14 +121,29 @@ def _run_agent(prompt: str, agent_cmd: list[str], iso: isolation.Isolation) -> s
 def _cleanup_org(spec: TaskSpec, env: dict[str, str], profile: str, crm_bin: str, cwd: str) -> None:
     """Delete every record each cleanup step matches. Idempotent and best-effort:
     a per-step or per-record failure is logged and skipped so one failure can't
-    strand the rest of the teardown (the org must be left as clean as possible)."""
+    strand the rest of the teardown (the org must be left as clean as possible).
+    """
     for step in spec.cleanup:
         try:
-            rows = _crm_json(
-                ["--profile", profile, "query", "odata", step.entity,
-                 "--filter", step.filter, "--select", step.id_field],
-                env, crm_bin, cwd,
-            ) or []
+            rows = (
+                _crm_json(
+                    [
+                        "--profile",
+                        profile,
+                        "query",
+                        "odata",
+                        step.entity,
+                        "--filter",
+                        step.filter,
+                        "--select",
+                        step.id_field,
+                    ],
+                    env,
+                    crm_bin,
+                    cwd,
+                )
+                or []
+            )
         except RunError as exc:
             print(f"[cleanup] listing {step.entity} failed, skipping: {exc}", file=sys.stderr)
             continue
@@ -136,7 +154,9 @@ def _cleanup_org(spec: TaskSpec, env: dict[str, str], profile: str, crm_bin: str
             try:
                 _crm_json(
                     ["--profile", profile, "entity", "delete", step.entity, rec_id, "--yes"],
-                    env, crm_bin, cwd,
+                    env,
+                    crm_bin,
+                    cwd,
                 )
             except RunError as exc:
                 print(f"[cleanup] deleting {step.entity} {rec_id} failed: {exc}", file=sys.stderr)
@@ -202,7 +222,10 @@ def run_task(
             if spec.expect:
                 passed, reason = evaluate_expect(data, spec.expect)
             else:
-                passed, reason = None, "diagnostic task: no programmatic predicate, scored by --analyze"
+                passed, reason = (
+                    None,
+                    "diagnostic task: no programmatic predicate, scored by --analyze",
+                )
             analysis: str | None = None
             if resolved_analyze is not None:
                 prompt = analyze.build_analysis_prompt(
@@ -225,8 +248,13 @@ def run_task(
         finally:
             _cleanup_org(spec, iso.env, profile, resolved_bin, work)
         return RunResult(
-            task_id=spec.id, dry_run=False, isolation_checks=checks,
-            passed=passed, reason=reason, transcript=transcript, analysis=analysis,
+            task_id=spec.id,
+            dry_run=False,
+            isolation_checks=checks,
+            passed=passed,
+            reason=reason,
+            transcript=transcript,
+            analysis=analysis,
         )
     finally:
         iso.cleanup()
@@ -235,21 +263,32 @@ def run_task(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run one skill-eval task (tracer).")
     parser.add_argument("task_file", help="path to a tasks/*.md task spec")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="parse + prove isolation only; no agent, no live org")
-    parser.add_argument("--agent-cmd", default=None,
-                        help="agent command (default: $CRM_EVAL_AGENT_CMD)")
-    parser.add_argument("--analyze", action="store_true",
-                        help="route task+transcript+org-state+verdict to Claude for a "
-                             "qualitative read (off by default); required to score a "
-                             "diagnostic task that has no end-state predicate")
-    parser.add_argument("--analyze-cmd", default=None,
-                        help="analyzer command (default: $CRM_EVAL_ANALYZE_CMD, else 'claude -p')")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="parse + prove isolation only; no agent, no live org"
+    )
+    parser.add_argument(
+        "--agent-cmd", default=None, help="agent command (default: $CRM_EVAL_AGENT_CMD)"
+    )
+    parser.add_argument(
+        "--analyze",
+        action="store_true",
+        help="route task+transcript+org-state+verdict to Claude for a "
+        "qualitative read (off by default); required to score a "
+        "diagnostic task that has no end-state predicate",
+    )
+    parser.add_argument(
+        "--analyze-cmd",
+        default=None,
+        help="analyzer command (default: $CRM_EVAL_ANALYZE_CMD, else 'claude -p')",
+    )
     args = parser.parse_args(argv)
 
     result = run_task(
-        args.task_file, dry_run=args.dry_run, agent_cmd=args.agent_cmd,
-        analyze_pass=args.analyze, analyze_cmd=args.analyze_cmd,
+        args.task_file,
+        dry_run=args.dry_run,
+        agent_cmd=args.agent_cmd,
+        analyze_pass=args.analyze,
+        analyze_cmd=args.analyze_cmd,
     )
     print(json.dumps(result.to_dict(), indent=2))
     # Exit non-zero on a scored failure. A diagnostic task scored via --analyze that

@@ -54,11 +54,15 @@ def resolve_profile_id(backend: D365Backend, profile: str) -> str:
     if gid is not None:
         return gid
     rid = backend.resolve_id_by_name(
-        PROFILES_SET, filter_field="name", id_field=_PROFILE_ID, value=profile,
+        PROFILES_SET,
+        filter_field="name",
+        id_field=_PROFILE_ID,
+        value=profile,
     )
     if rid is None:
         raise D365Error(
-            f"No field security profile named {profile!r}.", code="NotFound",
+            f"No field security profile named {profile!r}.",
+            code="NotFound",
         )
     return rid
 
@@ -82,15 +86,18 @@ def get_profile(backend: D365Backend, profile: str) -> dict[str, Any]:
     cancreate, canupdate, fieldpermissionid}`` entries.
     """
     profile_id = resolve_profile_id(backend, profile)
-    record = as_dict(backend.get(
-        entity_mod.build_record_path(PROFILES_SET, profile_id),
-        params={"$select": f"{_PROFILE_ID},name,description"},
-    ))
+    record = as_dict(
+        backend.get(
+            entity_mod.build_record_path(PROFILES_SET, profile_id),
+            params={"$select": f"{_PROFILE_ID},name,description"},
+        )
+    )
     permissions = backend.get_collection(
         PERMISSIONS_SET,
         params={
-            "$select": ("fieldpermissionid,entityname,attributelogicalname,"
-                        "cancreate,canread,canupdate"),
+            "$select": (
+                "fieldpermissionid,entityname,attributelogicalname,cancreate,canread,canupdate"
+            ),
             "$filter": f"{_PROFILE_LOOKUP_VALUE} eq {profile_id}",
         },
     )
@@ -114,9 +121,13 @@ def create_profile(
     body: dict[str, Any] = {"name": name}
     if description is not None:
         body["description"] = description
-    result = as_dict(backend.post(
-        PROFILES_SET, json_body=body, solution=solution,
-    ))
+    result = as_dict(
+        backend.post(
+            PROFILES_SET,
+            json_body=body,
+            solution=solution,
+        )
+    )
     if result.get("_dry_run"):
         result["would_create"] = True
         return result
@@ -169,9 +180,13 @@ def add_permission(
         "canupdate": PERM_ALLOWED if update else PERM_NOT_ALLOWED,
         f"{_PROFILE_ID}@odata.bind": f"/{PROFILES_SET}({profile_id})",
     }
-    result = as_dict(backend.post(
-        PERMISSIONS_SET, json_body=body, solution=solution,
-    ))
+    result = as_dict(
+        backend.post(
+            PERMISSIONS_SET,
+            json_body=body,
+            solution=solution,
+        )
+    )
     if result.get("_dry_run"):
         result["would_create"] = True
         return result
@@ -189,8 +204,7 @@ def add_permission(
     }
     if not permission_id:
         out["fieldpermission_lookup_error"] = (
-            "Could not parse fieldpermissionid from response: "
-            f"{result.get('_entity_id_url')!r}"
+            f"Could not parse fieldpermissionid from response: {result.get('_entity_id_url')!r}"
         )
     return out
 
@@ -211,14 +225,17 @@ def assign(
         raise D365Error("exactly one of user_id or team_id is required.")
     profile_id = resolve_profile_id(backend, profile)
     if user_id is not None:
-        nav, related_set, related_id, ptype = (
-            _USER_NAV, "systemusers", user_id, "user")
+        nav, related_set, related_id, ptype = (_USER_NAV, "systemusers", user_id, "user")
     else:
         assert team_id is not None
-        nav, related_set, related_id, ptype = (
-            _TEAM_NAV, "teams", team_id, "team")
+        nav, related_set, related_id, ptype = (_TEAM_NAV, "teams", team_id, "team")
     result = entity_mod.associate(
-        backend, PROFILES_SET, profile_id, nav, related_set, related_id,
+        backend,
+        PROFILES_SET,
+        profile_id,
+        nav,
+        related_set,
+        related_id,
     )
     if result.get("_dry_run"):
         result["would_assign"] = True

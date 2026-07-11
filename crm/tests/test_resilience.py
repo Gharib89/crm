@@ -27,7 +27,6 @@ from crm.utils.d365_backend import (
     _resolve_retry_max,
 )
 
-
 # ── Fixtures ────────────────────────────────────────────────────────────
 
 
@@ -52,8 +51,7 @@ def profile() -> ConnectionProfile:
 @pytest.fixture
 def backend(profile, monkeypatch):
     # Disable any inherited env vars so the profile drives behavior.
-    for var in ("CRM_RETRY_MAX", "CRM_NO_RETRY", "CRM_VERBOSE",
-                "CRM_RETRY_ON_AMBIGUOUS"):
+    for var in ("CRM_RETRY_MAX", "CRM_NO_RETRY", "CRM_VERBOSE", "CRM_RETRY_ON_AMBIGUOUS"):
         monkeypatch.delenv(var, raising=False)
     return D365Backend(profile, password="pw", dry_run=False)
 
@@ -81,6 +79,7 @@ class TestParseRetryAfter:
         # Use a dynamic future date so the positive-delta branch is always exercised.
         import datetime as _dt
         from email.utils import format_datetime
+
         future = _dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(seconds=60)
         result = _parse_retry_after(format_datetime(future))
         assert result is not None and result > 0.0
@@ -123,44 +122,50 @@ class TestComputeDelay:
 
 
 class TestIsResponseRetryable:
-    @pytest.mark.parametrize("method,status,expected", [
-        # 429 retryable on idempotent methods; NOT on POST by default (#84)
-        ("GET", 429, True),
-        ("POST", 429, False),
-        ("PATCH", 429, True),
-        # 503 retryable on idempotent methods; NOT on POST by default (#84)
-        ("GET", 503, True),
-        ("POST", 503, False),
-        # 502/504 retryable on idempotent methods only
-        ("GET", 502, True),
-        ("PATCH", 502, True),
-        ("DELETE", 504, True),
-        ("POST", 502, False),
-        ("POST", 504, False),
-        # 2xx, 4xx never retryable
-        ("GET", 200, False),
-        ("GET", 400, False),
-        ("GET", 401, False),
-        ("GET", 404, False),
-        ("POST", 200, False),
-        # 5xx other than 502/503/504 never retryable
-        ("GET", 500, False),
-        ("GET", 505, False),
-    ])
+    @pytest.mark.parametrize(
+        "method,status,expected",
+        [
+            # 429 retryable on idempotent methods; NOT on POST by default (#84)
+            ("GET", 429, True),
+            ("POST", 429, False),
+            ("PATCH", 429, True),
+            # 503 retryable on idempotent methods; NOT on POST by default (#84)
+            ("GET", 503, True),
+            ("POST", 503, False),
+            # 502/504 retryable on idempotent methods only
+            ("GET", 502, True),
+            ("PATCH", 502, True),
+            ("DELETE", 504, True),
+            ("POST", 502, False),
+            ("POST", 504, False),
+            # 2xx, 4xx never retryable
+            ("GET", 200, False),
+            ("GET", 400, False),
+            ("GET", 401, False),
+            ("GET", 404, False),
+            ("POST", 200, False),
+            # 5xx other than 502/503/504 never retryable
+            ("GET", 500, False),
+            ("GET", 505, False),
+        ],
+    )
     def test_truth_table(self, method, status, expected):
         resp = requests.Response()
         resp.status_code = status
         assert _is_response_retryable(resp, method) is expected
 
-    @pytest.mark.parametrize("status,expected", [
-        # With opt-in, POST regains its prior 429/503 retry behavior (#84).
-        (429, True),
-        (503, True),
-        # Opt-in does not widen POST to 502/504 (never was retryable there).
-        (502, False),
-        (504, False),
-        (200, False),
-    ])
+    @pytest.mark.parametrize(
+        "status,expected",
+        [
+            # With opt-in, POST regains its prior 429/503 retry behavior (#84).
+            (429, True),
+            (503, True),
+            # Opt-in does not widen POST to 502/504 (never was retryable there).
+            (502, False),
+            (504, False),
+            (200, False),
+        ],
+    )
     def test_post_opt_in_restores_retry(self, status, expected):
         resp = requests.Response()
         resp.status_code = status
@@ -202,12 +207,14 @@ class TestLogRateLimitHeaders:
         return resp
 
     def test_on_429_logs_all_present_headers(self, capsys):
-        resp = self._make_resp({
-            "x-ms-ratelimit-time-remaining-xrm-requests": "30",
-            "x-ms-ratelimit-burst-remaining-xrm-requests": "5",
-            "x-ms-ratelimit-limit-xrm-requests": "6000",
-            "Retry-After": "12",
-        })
+        resp = self._make_resp(
+            {
+                "x-ms-ratelimit-time-remaining-xrm-requests": "30",
+                "x-ms-ratelimit-burst-remaining-xrm-requests": "5",
+                "x-ms-ratelimit-limit-xrm-requests": "6000",
+                "Retry-After": "12",
+            }
+        )
         _log_rate_limit_headers(resp, on_retryable=True)
         err = capsys.readouterr().err
         assert "ratelimit" in err
@@ -254,10 +261,16 @@ class TestRetryLoop:
         monkeypatch.setattr(time, "sleep", lambda s: sleeps.append(s))
         url = backend.url_for("WhoAmI")
         with requests_mock.Mocker() as m:
-            m.get(url, [
-                {"status_code": 429, "headers": {"Retry-After": "0"}, "text": ""},
-                {"status_code": 200, "json": {"UserId": "00000000-0000-0000-0000-000000000001"}},
-            ])
+            m.get(
+                url,
+                [
+                    {"status_code": 429, "headers": {"Retry-After": "0"}, "text": ""},
+                    {
+                        "status_code": 200,
+                        "json": {"UserId": "00000000-0000-0000-0000-000000000001"},
+                    },
+                ],
+            )
             result = backend.get("WhoAmI")
         assert isinstance(result, dict)
         assert result["UserId"] == "00000000-0000-0000-0000-000000000001"
@@ -268,8 +281,12 @@ class TestRetryLoop:
         monkeypatch.setattr(time, "sleep", lambda s: None)
         url = backend.url_for("WhoAmI")
         with requests_mock.Mocker() as m:
-            m.get(url, status_code=429, headers={"Retry-After": "0"},
-                  json={"error": {"code": "0x80072322", "message": "Rate limited"}})
+            m.get(
+                url,
+                status_code=429,
+                headers={"Retry-After": "0"},
+                json={"error": {"code": "0x80072322", "message": "Rate limited"}},
+            )
             with pytest.raises(D365Error) as exc_info:
                 backend.get("WhoAmI")
         assert exc_info.value.status == 429
@@ -280,11 +297,14 @@ class TestRetryLoop:
         monkeypatch.setattr(time, "sleep", lambda s: None)
         url = backend.url_for("WhoAmI")
         with requests_mock.Mocker() as m:
-            m.get(url, [
-                {"exc": requests.exceptions.ConnectionError("boom")},
-                {"exc": requests.exceptions.ConnectionError("boom")},
-                {"status_code": 200, "json": {"ok": True}},
-            ])
+            m.get(
+                url,
+                [
+                    {"exc": requests.exceptions.ConnectionError("boom")},
+                    {"exc": requests.exceptions.ConnectionError("boom")},
+                    {"status_code": 200, "json": {"ok": True}},
+                ],
+            )
             result = backend.get("WhoAmI")
         assert isinstance(result, dict) and result["ok"] is True
 
@@ -293,8 +313,9 @@ class TestRetryLoop:
         monkeypatch.setattr(time, "sleep", lambda s: slept.append(s))
         url = backend.url_for("WhoAmI")
         with requests_mock.Mocker() as m:
-            m.get(url, status_code=404,
-                  json={"error": {"code": "0x80040217", "message": "Not found"}})
+            m.get(
+                url, status_code=404, json={"error": {"code": "0x80040217", "message": "Not found"}}
+            )
             with pytest.raises(D365Error) as exc_info:
                 backend.get("WhoAmI")
         assert exc_info.value.status == 404
@@ -306,8 +327,7 @@ class TestRetryLoop:
         monkeypatch.setattr(time, "sleep", lambda s: None)
         url = backend.url_for("accounts")
         with requests_mock.Mocker() as m:
-            m.post(url, status_code=503,
-                   json={"error": {"message": "Service Unavailable"}})
+            m.post(url, status_code=503, json={"error": {"message": "Service Unavailable"}})
             with pytest.raises(D365Error) as exc_info:
                 backend.post("accounts", json_body={"name": "Acme"})
         assert exc_info.value.status == 503
@@ -317,8 +337,12 @@ class TestRetryLoop:
         monkeypatch.setattr(time, "sleep", lambda s: None)
         url = backend.url_for("accounts")
         with requests_mock.Mocker() as m:
-            m.post(url, status_code=429, headers={"Retry-After": "0"},
-                   json={"error": {"message": "Rate limited"}})
+            m.post(
+                url,
+                status_code=429,
+                headers={"Retry-After": "0"},
+                json={"error": {"message": "Rate limited"}},
+            )
             with pytest.raises(D365Error) as exc_info:
                 backend.post("accounts", json_body={"name": "Acme"})
         assert exc_info.value.status == 429
@@ -332,11 +356,17 @@ class TestRetryLoop:
         monkeypatch.setattr(time, "sleep", lambda s: None)
         url = be.url_for("accounts")
         with requests_mock.Mocker() as m:
-            m.post(url, [
-                {"status_code": 503, "headers": {"Retry-After": "0"}},
-                {"status_code": 200, "headers": {"OData-EntityId": "https://x/y(1)"},
-                 "text": ""},
-            ])
+            m.post(
+                url,
+                [
+                    {"status_code": 503, "headers": {"Retry-After": "0"}},
+                    {
+                        "status_code": 200,
+                        "headers": {"OData-EntityId": "https://x/y(1)"},
+                        "text": "",
+                    },
+                ],
+            )
             result = be.post("accounts", json_body={"name": "Acme"})
         assert isinstance(result, dict)
         assert m.call_count == 2
@@ -359,11 +389,17 @@ class TestRetryLoop:
         monkeypatch.setattr(time, "sleep", lambda s: None)
         url = be.url_for("accounts")
         with requests_mock.Mocker() as m:
-            m.post(url, [
-                {"exc": requests.exceptions.ConnectionError("boom")},
-                {"status_code": 200, "headers": {"OData-EntityId": "https://x/y(1)"},
-                 "text": ""},
-            ])
+            m.post(
+                url,
+                [
+                    {"exc": requests.exceptions.ConnectionError("boom")},
+                    {
+                        "status_code": 200,
+                        "headers": {"OData-EntityId": "https://x/y(1)"},
+                        "text": "",
+                    },
+                ],
+            )
             result = be.post("accounts", json_body={"name": "Acme"})
         assert isinstance(result, dict)
         assert m.call_count == 2
@@ -373,10 +409,13 @@ class TestRetryLoop:
         monkeypatch.setattr(time, "sleep", lambda s: None)
         url = backend.url_for("accounts(00000000-0000-0000-0000-000000000001)")
         with requests_mock.Mocker() as m:
-            m.patch(url, [
-                {"status_code": 502, "json": {"error": {"message": "Bad Gateway"}}},
-                {"status_code": 204, "text": ""},
-            ])
+            m.patch(
+                url,
+                [
+                    {"status_code": 502, "json": {"error": {"message": "Bad Gateway"}}},
+                    {"status_code": 204, "text": ""},
+                ],
+            )
             result = backend.patch(
                 "accounts(00000000-0000-0000-0000-000000000001)",
                 json_body={"name": "Acme"},
@@ -388,10 +427,13 @@ class TestRetryLoop:
         monkeypatch.setattr(time, "sleep", lambda s: None)
         url = backend.url_for("accounts(00000000-0000-0000-0000-000000000001)")
         with requests_mock.Mocker() as m:
-            m.delete(url, [
-                {"status_code": 503, "headers": {"Retry-After": "0"}, "text": ""},
-                {"status_code": 204, "text": ""},
-            ])
+            m.delete(
+                url,
+                [
+                    {"status_code": 503, "headers": {"Retry-After": "0"}, "text": ""},
+                    {"status_code": 204, "text": ""},
+                ],
+            )
             backend.delete("accounts(00000000-0000-0000-0000-000000000001)")
         assert m.call_count == 2
 
@@ -424,23 +466,27 @@ class TestRetryLoop:
         monkeypatch.setattr(time, "sleep", lambda s: None)
         url = be.url_for("accounts")
         with requests_mock.Mocker() as m:
-            m.post(url, [
-                {"status_code": 503, "headers": {"Retry-After": "0"}},
-                {"status_code": 200, "headers": {"OData-EntityId": "https://x/y(1)"},
-                 "text": ""},
-            ])
+            m.post(
+                url,
+                [
+                    {"status_code": 503, "headers": {"Retry-After": "0"}},
+                    {
+                        "status_code": 200,
+                        "headers": {"OData-EntityId": "https://x/y(1)"},
+                        "text": "",
+                    },
+                ],
+            )
             result = be.post("accounts", json_body={"name": "Acme"})
         assert isinstance(result, dict)
         assert m.call_count == 2
 
     def test_construction_opt_in_flag(self, profile, monkeypatch):
         monkeypatch.delenv("CRM_RETRY_ON_AMBIGUOUS", raising=False)
-        assert D365Backend(
-            profile, password="pw", retry_on_ambiguous=True
-        )._retry_on_ambiguous is True
-        assert D365Backend(
-            profile, password="pw"
-        )._retry_on_ambiguous is False
+        assert (
+            D365Backend(profile, password="pw", retry_on_ambiguous=True)._retry_on_ambiguous is True
+        )
+        assert D365Backend(profile, password="pw")._retry_on_ambiguous is False
 
     def test_no_retry_env_disables_loop(self, profile, monkeypatch):
         monkeypatch.setenv("CRM_NO_RETRY", "1")
@@ -449,8 +495,12 @@ class TestRetryLoop:
         monkeypatch.setattr(time, "sleep", lambda s: slept.append(s))
         url = be.url_for("WhoAmI")
         with requests_mock.Mocker() as m:
-            m.get(url, status_code=429, headers={"Retry-After": "0"},
-                  json={"error": {"message": "rate"}})
+            m.get(
+                url,
+                status_code=429,
+                headers={"Retry-After": "0"},
+                json={"error": {"message": "rate"}},
+            )
             with pytest.raises(D365Error):
                 be.get("WhoAmI")
         assert m.call_count == 1
@@ -472,13 +522,20 @@ class TestRetryLoop:
         monkeypatch.setattr(time, "sleep", lambda s: None)
         url = backend.url_for("WhoAmI")
         with requests_mock.Mocker() as m:
-            m.get(url, [
-                {"status_code": 429, "headers": {
-                    "Retry-After": "0",
-                    "x-ms-ratelimit-time-remaining-xrm-requests": "30",
-                }, "text": ""},
-                {"status_code": 200, "json": {"ok": True}},
-            ])
+            m.get(
+                url,
+                [
+                    {
+                        "status_code": 429,
+                        "headers": {
+                            "Retry-After": "0",
+                            "x-ms-ratelimit-time-remaining-xrm-requests": "30",
+                        },
+                        "text": "",
+                    },
+                    {"status_code": 200, "json": {"ok": True}},
+                ],
+            )
             backend.get("WhoAmI")
         err = capsys.readouterr().err
         assert "ratelimit" in err
@@ -502,9 +559,7 @@ class TestCustomizationLockCode:
     def test_detects_each_lock_code_on_429(self, code):
         resp = requests.Response()
         resp.status_code = 429
-        resp._content = (
-            b'{"error":{"code":"' + code.encode() + b'","message":"locked"}}'
-        )
+        resp._content = b'{"error":{"code":"' + code.encode() + b'","message":"locked"}}'
         assert _customization_lock_code(resp) == code
 
     def test_detects_lock_code_on_400(self):
@@ -543,8 +598,12 @@ class TestCustomizationLockCode:
 
 class TestCustomizationLockRetry:
     def _lock_body(self, code: str) -> dict[str, Any]:
-        return {"error": {"code": code, "message":
-                          "Cannot start [EntityCustomization]; another is running."}}
+        return {
+            "error": {
+                "code": code,
+                "message": "Cannot start [EntityCustomization]; another is running.",
+            }
+        }
 
     @pytest.mark.parametrize("code", _LOCK_CODES)
     def test_post_retries_on_lock_code(self, backend, monkeypatch, code):
@@ -553,10 +612,13 @@ class TestCustomizationLockRetry:
         monkeypatch.setattr(time, "sleep", lambda s: None)
         url = backend.url_for("PublishAllXml")
         with requests_mock.Mocker() as m:
-            m.post(url, [
-                {"status_code": 429, "json": self._lock_body(code)},
-                {"status_code": 204, "text": ""},
-            ])
+            m.post(
+                url,
+                [
+                    {"status_code": 429, "json": self._lock_body(code)},
+                    {"status_code": 204, "text": ""},
+                ],
+            )
             result = backend.post("PublishAllXml")
         assert m.call_count == 2
         assert result is None or isinstance(result, dict)
@@ -566,10 +628,13 @@ class TestCustomizationLockRetry:
         monkeypatch.setattr(time, "sleep", lambda s: None)
         url = backend.url_for("PublishAllXml")
         with requests_mock.Mocker() as m:
-            m.post(url, [
-                {"status_code": 400, "json": self._lock_body("0x80071151")},
-                {"status_code": 204, "text": ""},
-            ])
+            m.post(
+                url,
+                [
+                    {"status_code": 400, "json": self._lock_body("0x80071151")},
+                    {"status_code": 204, "text": ""},
+                ],
+            )
             result = backend.post("PublishAllXml")
         assert m.call_count == 2
         assert result is None or isinstance(result, dict)
@@ -671,10 +736,13 @@ class TestPollAsyncOperation:
     def test_completes_successfully(self, backend, monkeypatch):
         monkeypatch.setattr(time, "sleep", lambda s: None)
         with requests_mock.Mocker() as m:
-            m.get(self._op_url(backend), [
-                {"json": {"statecode": 0, "statuscode": 0, "message": "Ready"}},
-                {"json": {"statecode": 3, "statuscode": 30, "message": "Succeeded"}},
-            ])
+            m.get(
+                self._op_url(backend),
+                [
+                    {"json": {"statecode": 0, "statuscode": 0, "message": "Ready"}},
+                    {"json": {"statecode": 3, "statuscode": 30, "message": "Succeeded"}},
+                ],
+            )
             result = backend.poll_async_operation(self.OP_ID)
         assert result["statecode"] == 3
         assert result["statuscode"] == 30
@@ -682,10 +750,14 @@ class TestPollAsyncOperation:
     def test_raises_on_failure_status(self, backend, monkeypatch):
         monkeypatch.setattr(time, "sleep", lambda s: None)
         with requests_mock.Mocker() as m:
-            m.get(self._op_url(backend), json={
-                "statecode": 3, "statuscode": 31,
-                "friendlymessage": "Solution import failed: missing dependency",
-            })
+            m.get(
+                self._op_url(backend),
+                json={
+                    "statecode": 3,
+                    "statuscode": 31,
+                    "friendlymessage": "Solution import failed: missing dependency",
+                },
+            )
             with pytest.raises(D365Error) as exc_info:
                 backend.poll_async_operation(self.OP_ID)
         assert "missing dependency" in str(exc_info.value)
@@ -694,9 +766,14 @@ class TestPollAsyncOperation:
     def test_raises_on_cancellation(self, backend, monkeypatch):
         monkeypatch.setattr(time, "sleep", lambda s: None)
         with requests_mock.Mocker() as m:
-            m.get(self._op_url(backend), json={
-                "statecode": 3, "statuscode": 32, "message": "User cancelled",
-            })
+            m.get(
+                self._op_url(backend),
+                json={
+                    "statecode": 3,
+                    "statuscode": 32,
+                    "message": "User cancelled",
+                },
+            )
             with pytest.raises(D365Error) as exc_info:
                 backend.poll_async_operation(self.OP_ID)
         assert "32" in str(exc_info.value) or "cancelled" in str(exc_info.value).lower()
@@ -708,9 +785,14 @@ class TestPollAsyncOperation:
         ticks = iter([0.0, 0.1, 5.0, 10.0])
         monkeypatch.setattr(time, "monotonic", lambda: next(ticks))
         with requests_mock.Mocker() as m:
-            m.get(self._op_url(backend), json={
-                "statecode": 0, "statuscode": 0, "message": "Pending",
-            })
+            m.get(
+                self._op_url(backend),
+                json={
+                    "statecode": 0,
+                    "statuscode": 0,
+                    "message": "Pending",
+                },
+            )
             with pytest.raises(D365Error, match="did not complete within"):
                 backend.poll_async_operation(self.OP_ID, timeout=2)
 
@@ -718,16 +800,23 @@ class TestPollAsyncOperation:
         monkeypatch.setattr(time, "sleep", lambda s: None)
         calls: list[tuple[float, str]] = []
         with requests_mock.Mocker() as m:
-            m.get(self._op_url(backend), [
-                {"json": {"statecode": 0, "statuscode": 0, "message": "Working"}},
-                {"json": {"statecode": 3, "statuscode": 30, "message": "Done"}},
-            ])
-            m.get(self._job_url(backend), [
-                {"json": {"progress": 50.0, "solutionname": "MySol"}},
-                {"json": {"progress": 100.0, "solutionname": "MySol"}},
-            ])
+            m.get(
+                self._op_url(backend),
+                [
+                    {"json": {"statecode": 0, "statuscode": 0, "message": "Working"}},
+                    {"json": {"statecode": 3, "statuscode": 30, "message": "Done"}},
+                ],
+            )
+            m.get(
+                self._job_url(backend),
+                [
+                    {"json": {"progress": 50.0, "solutionname": "MySol"}},
+                    {"json": {"progress": 100.0, "solutionname": "MySol"}},
+                ],
+            )
             backend.poll_async_operation(
-                self.OP_ID, import_job_id=self.JOB_ID,
+                self.OP_ID,
+                import_job_id=self.JOB_ID,
                 on_progress=lambda pct, msg: calls.append((pct, msg)),
             )
         assert len(calls) == 2
@@ -744,23 +833,37 @@ class TestPollAsyncOperation:
         monkeypatch.setattr(time, "sleep", lambda s: None)
         calls: list[tuple[float, str]] = []
         with requests_mock.Mocker() as m:
-            m.get(self._op_url(backend), [
-                {"json": {"statecode": 0, "statuscode": 0, "message": "Working"}},
-                {"json": {"statecode": 3, "statuscode": 30, "message": "Done"}},
-            ])
-            m.get(self._job_url(backend), [
-                {"status_code": 404, "json": {"error": {
-                    "code": "0x80040217",
-                    "message": ("Entity 'importjob' With Id = "
-                                f"{self.JOB_ID} Does Not Exist")}}},
-                {"json": {"progress": 100.0, "solutionname": "MySol"}},
-            ])
+            m.get(
+                self._op_url(backend),
+                [
+                    {"json": {"statecode": 0, "statuscode": 0, "message": "Working"}},
+                    {"json": {"statecode": 3, "statuscode": 30, "message": "Done"}},
+                ],
+            )
+            m.get(
+                self._job_url(backend),
+                [
+                    {
+                        "status_code": 404,
+                        "json": {
+                            "error": {
+                                "code": "0x80040217",
+                                "message": (
+                                    f"Entity 'importjob' With Id = {self.JOB_ID} Does Not Exist"
+                                ),
+                            }
+                        },
+                    },
+                    {"json": {"progress": 100.0, "solutionname": "MySol"}},
+                ],
+            )
             result = backend.poll_async_operation(
-                self.OP_ID, import_job_id=self.JOB_ID,
+                self.OP_ID,
+                import_job_id=self.JOB_ID,
                 on_progress=lambda pct, msg: calls.append((pct, msg)),
             )
-        assert result["statecode"] == 3        # import completed; no raise
-        assert calls == [(100.0, "Done")]      # 404 tick skipped, later tick reported
+        assert result["statecode"] == 3  # import completed; no raise
+        assert calls == [(100.0, "Done")]  # 404 tick skipped, later tick reported
 
     def test_progress_read_tolerates_not_found_code_on_non_404_status(self, backend, monkeypatch):
         # classify_d365_error maps 0x80040217 ("Does Not Exist") to not_found
@@ -768,19 +871,31 @@ class TestPollAsyncOperation:
         # tolerate it even when the server returns a non-404 status (#269 review).
         monkeypatch.setattr(time, "sleep", lambda s: None)
         with requests_mock.Mocker() as m:
-            m.get(self._op_url(backend), [
-                {"json": {"statecode": 0, "statuscode": 0, "message": "Working"}},
-                {"json": {"statecode": 3, "statuscode": 30, "message": "Done"}},
-            ])
-            m.get(self._job_url(backend), [
-                {"status_code": 400, "json": {"error": {
-                    "code": "0x80040217",
-                    "message": "Entity 'importjob' With Id = x Does Not Exist"}}},
-                {"json": {"progress": 100.0}},
-            ])
+            m.get(
+                self._op_url(backend),
+                [
+                    {"json": {"statecode": 0, "statuscode": 0, "message": "Working"}},
+                    {"json": {"statecode": 3, "statuscode": 30, "message": "Done"}},
+                ],
+            )
+            m.get(
+                self._job_url(backend),
+                [
+                    {
+                        "status_code": 400,
+                        "json": {
+                            "error": {
+                                "code": "0x80040217",
+                                "message": "Entity 'importjob' With Id = x Does Not Exist",
+                            }
+                        },
+                    },
+                    {"json": {"progress": 100.0}},
+                ],
+            )
             result = backend.poll_async_operation(
-                self.OP_ID, import_job_id=self.JOB_ID,
-                on_progress=lambda pct, msg: None)
+                self.OP_ID, import_job_id=self.JOB_ID, on_progress=lambda pct, msg: None
+            )
         assert result["statecode"] == 3  # tolerated despite the non-404 status
 
     def test_progress_read_non_404_error_still_propagates(self, backend, monkeypatch):
@@ -788,22 +903,34 @@ class TestPollAsyncOperation:
         # error (e.g. 500) must still surface rather than be silently swallowed.
         monkeypatch.setattr(time, "sleep", lambda s: None)
         with requests_mock.Mocker() as m:
-            m.get(self._op_url(backend), json={
-                "statecode": 0, "statuscode": 0, "message": "Working"})
-            m.get(self._job_url(backend), status_code=500,
-                  json={"error": {"code": "x", "message": "boom"}})
+            m.get(
+                self._op_url(backend), json={"statecode": 0, "statuscode": 0, "message": "Working"}
+            )
+            m.get(
+                self._job_url(backend),
+                status_code=500,
+                json={"error": {"code": "x", "message": "boom"}},
+            )
             with pytest.raises(D365Error) as exc_info:
                 backend.poll_async_operation(
-                    self.OP_ID, import_job_id=self.JOB_ID,
-                    on_progress=lambda pct, msg: None, timeout=2)
+                    self.OP_ID,
+                    import_job_id=self.JOB_ID,
+                    on_progress=lambda pct, msg: None,
+                    timeout=2,
+                )
         assert exc_info.value.status == 500 or "boom" in str(exc_info.value)
 
     def test_no_progress_callback_skips_job_fetch(self, backend, monkeypatch):
         monkeypatch.setattr(time, "sleep", lambda s: None)
         with requests_mock.Mocker() as m:
-            m.get(self._op_url(backend), json={
-                "statecode": 3, "statuscode": 30, "message": "Done",
-            })
+            m.get(
+                self._op_url(backend),
+                json={
+                    "statecode": 3,
+                    "statuscode": 30,
+                    "message": "Done",
+                },
+            )
             # No m.get for importjobs — would 404 if called.
             backend.poll_async_operation(self.OP_ID)
         # Pass if we get here without an unmatched-request exception.
@@ -838,14 +965,17 @@ class TestConnectionProfileValidation:
         username="alice",
     )
 
-    @pytest.mark.parametrize("field", [
-        "retry_max",
-        "retry_base_delay",
-        "retry_max_delay",
-        "async_poll_initial",
-        "async_poll_max",
-        "async_timeout",
-    ])
+    @pytest.mark.parametrize(
+        "field",
+        [
+            "retry_max",
+            "retry_base_delay",
+            "retry_max_delay",
+            "async_poll_initial",
+            "async_poll_max",
+            "async_timeout",
+        ],
+    )
     def test_negative_value_raises(self, field):
         kwargs = {**self._BASE, field: -1}
         with pytest.raises(D365Error, match=field):

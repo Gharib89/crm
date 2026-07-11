@@ -25,6 +25,7 @@ is actually present, raising :class:`IsolationError` on any leak. Hard filesyste
 sandboxing (containers, namespaces) is deliberately out of tracer scope — this proves
 the *environment* exposes no repo, which is what the trial protocol relied on.
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -72,7 +73,8 @@ def _real_claude_config_dir() -> Path:
     """The maintainer's *real* Claude Code config dir, read from the unscrubbed
     environment (``CLAUDE_CONFIG_DIR`` if set, else ``$HOME/.claude``). This is where
     Claude Code keeps the subscription credentials we pass through — resolved before
-    the sandbox repoints ``HOME``."""
+    the sandbox repoints ``HOME``.
+    """
     override = os.environ.get("CLAUDE_CONFIG_DIR")
     if override:
         return Path(override).expanduser()
@@ -224,9 +226,7 @@ def verify_isolation(
     # 3 · No CLAUDE.md or memory in the fresh HOME (no inherited agent memory).
     home = iso.home.resolve()
     home_leaks = [
-        str(home / rel)
-        for rel in ("CLAUDE.md", ".claude/CLAUDE.md")
-        if (home / rel).exists()
+        str(home / rel) for rel in ("CLAUDE.md", ".claude/CLAUDE.md") if (home / rel).exists()
     ]
     if home_leaks:
         failures.append(f"agent memory present in fresh HOME: {home_leaks}")

@@ -14,6 +14,7 @@ sitemap/bpf), not tables directly.  We resolve an existing system savedquery
 for 'account' to use as the view component so we never need to create an extra
 record.
 """
+
 from __future__ import annotations
 
 import json
@@ -27,15 +28,18 @@ from crm.tests.e2e.coverage import covers
 def _find_account_view(backend) -> str | None:
     """Return the savedqueryid of the first public view on 'account', or None."""
     from crm.utils.d365_backend import as_dict
+
     try:
-        page = as_dict(backend.get(
-            "savedqueries",
-            params={
-                "$filter": "returnedtypecode eq 'account' and querytype eq 0",
-                "$select": "savedqueryid",
-                "$top": "1",
-            },
-        ))
+        page = as_dict(
+            backend.get(
+                "savedqueries",
+                params={
+                    "$filter": "returnedtypecode eq 'account' and querytype eq 0",
+                    "$select": "savedqueryid",
+                    "$top": "1",
+                },
+            )
+        )
     except Exception:
         return None
     rows = page.get("value", [])
@@ -47,8 +51,13 @@ def _find_account_view(backend) -> str | None:
 # ── app lifecycle: create + add-components + build-sitemap + set-sitemap ──────
 
 
-@covers("app create", "app add-components", "app remove-components",
-        "app build-sitemap", "app set-sitemap")
+@covers(
+    "app create",
+    "app add-components",
+    "app remove-components",
+    "app build-sitemap",
+    "app set-sitemap",
+)
 @pytest.mark.slow
 def test_app_lifecycle(backend, cli, request, unique, ephemeral_solution):
     """Create a throwaway app, add a view component, build and set a sitemap.
@@ -78,27 +87,38 @@ def test_app_lifecycle(backend, cli, request, unique, ephemeral_solution):
     request.addfinalizer(_cleanup)
 
     # ── Step 1: app create ────────────────────────────────────────────────────
-    r_create = cli([
-        "--json", "app", "create",
-        "--name", app_name,
-        "--unique-name", app_unique,
-        "--solution", ephemeral_solution,
-        "--no-publish",
-    ], check=False)
+    r_create = cli(
+        [
+            "--json",
+            "app",
+            "create",
+            "--name",
+            app_name,
+            "--unique-name",
+            app_unique,
+            "--solution",
+            ephemeral_solution,
+            "--no-publish",
+        ],
+        check=False,
+    )
     if r_create.returncode != 0:
         # Error may appear in stderr or in the JSON envelope stdout.
         combined = (r_create.stderr or "") + (r_create.stdout or "")
         # On-prem v9.1 may reject appmodule write — skip rather than fail.
-        if any(kw in combined.lower() for kw in (
-            "not supported", "privilege", "accessdenied", "403",
-            "businessnotfound", "notimplemented",
-        )):
-            pytest.skip(
-                f"app create rejected by this org (on-prem limitation?): {combined[:400]}"
+        if any(
+            kw in combined.lower()
+            for kw in (
+                "not supported",
+                "privilege",
+                "accessdenied",
+                "403",
+                "businessnotfound",
+                "notimplemented",
             )
-        pytest.fail(
-            f"app create failed:\n{r_create.stderr}\nstdout: {r_create.stdout}"
-        )
+        ):
+            pytest.skip(f"app create rejected by this org (on-prem limitation?): {combined[:400]}")
+        pytest.fail(f"app create failed:\n{r_create.stderr}\nstdout: {r_create.stdout}")
     env_create = json.loads(r_create.stdout)
     assert env_create["ok"], env_create
     app_id = env_create["data"].get("appmoduleid")
@@ -113,17 +133,25 @@ def test_app_lifecycle(backend, cli, request, unique, ephemeral_solution):
     # shape differs by target — cloud's duplicate-detected code family vs on-prem's
     # SQL uniqueness violation 0x80040216 at HTTP 500 — and both are swallowed
     # (issues #322, #496).
-    r_skip = cli([
-        "--json", "app", "create",
-        "--name", app_name,
-        "--unique-name", app_unique,
-        "--solution", ephemeral_solution,
-        "--if-exists", "skip",
-        "--no-publish",
-    ], check=False)
+    r_skip = cli(
+        [
+            "--json",
+            "app",
+            "create",
+            "--name",
+            app_name,
+            "--unique-name",
+            app_unique,
+            "--solution",
+            ephemeral_solution,
+            "--if-exists",
+            "skip",
+            "--no-publish",
+        ],
+        check=False,
+    )
     assert r_skip.returncode == 0, (
-        f"app create --if-exists skip should not error:\n{r_skip.stderr}\n"
-        f"stdout: {r_skip.stdout}"
+        f"app create --if-exists skip should not error:\n{r_skip.stderr}\nstdout: {r_skip.stdout}"
     )
     env_skip = json.loads(r_skip.stdout)
     assert env_skip["ok"], env_skip
@@ -132,10 +160,17 @@ def test_app_lifecycle(backend, cli, request, unique, ephemeral_solution):
     # ── Step 2: app add-components ────────────────────────────────────────────
     view_guid = _find_account_view(backend)
     if view_guid:
-        r_add = cli([
-            "--json", "app", "add-components", app_id,
-            "--component", f"view:{view_guid}",
-        ], check=False)
+        r_add = cli(
+            [
+                "--json",
+                "app",
+                "add-components",
+                app_id,
+                "--component",
+                f"view:{view_guid}",
+            ],
+            check=False,
+        )
         assert r_add.returncode == 0, (
             f"app add-components failed:\n{r_add.stderr}\nstdout: {r_add.stdout}"
         )
@@ -146,10 +181,17 @@ def test_app_lifecycle(backend, cli, request, unique, ephemeral_solution):
         )
 
         # ── Step 2b: app remove-components (unbind what we just added) ─────────
-        r_rm = cli([
-            "--json", "app", "remove-components", app_id,
-            "--component", f"view:{view_guid}",
-        ], check=False)
+        r_rm = cli(
+            [
+                "--json",
+                "app",
+                "remove-components",
+                app_id,
+                "--component",
+                f"view:{view_guid}",
+            ],
+            check=False,
+        )
         assert r_rm.returncode == 0, (
             f"app remove-components failed:\n{r_rm.stderr}\nstdout: {r_rm.stdout}"
         )
@@ -163,15 +205,26 @@ def test_app_lifecycle(backend, cli, request, unique, ephemeral_solution):
 
     # ── Step 3: app build-sitemap ─────────────────────────────────────────────
     sitemap_name_build = f"e2esm_b_{unique[:8]}"
-    r_build = cli([
-        "--json", "app", "build-sitemap", sitemap_name_build,
-        "--area", "Area1:E2E Area",
-        "--group", "Area1/Grp1:E2E Group",
-        "--subarea", "Area1/Grp1:entity=account:Accounts",
-        "--unique-name", app_unique,
-        "--solution", ephemeral_solution,
-        "--no-publish",
-    ], check=False)
+    r_build = cli(
+        [
+            "--json",
+            "app",
+            "build-sitemap",
+            sitemap_name_build,
+            "--area",
+            "Area1:E2E Area",
+            "--group",
+            "Area1/Grp1:E2E Group",
+            "--subarea",
+            "Area1/Grp1:entity=account:Accounts",
+            "--unique-name",
+            app_unique,
+            "--solution",
+            ephemeral_solution,
+            "--no-publish",
+        ],
+        check=False,
+    )
     assert r_build.returncode == 0, (
         f"app build-sitemap failed:\n{r_build.stderr}\nstdout: {r_build.stdout}"
     )
@@ -189,36 +242,42 @@ def test_app_lifecycle(backend, cli, request, unique, ephemeral_solution):
     sitemap_unique_set = f"new_e2esm_{unique[:8]}"
     minimal_xml = (
         "<SiteMap>"
-        "<Area Id=\"Area1\" Title=\"E2E\">"
-        "<Group Id=\"Grp1\" Title=\"E2E\">"
-        "<SubArea Id=\"account\" Entity=\"account\" />"
+        '<Area Id="Area1" Title="E2E">'
+        '<Group Id="Grp1" Title="E2E">'
+        '<SubArea Id="account" Entity="account" />'
         "</Group></Area>"
         "</SiteMap>"
     )
     import tempfile
-    tmp_xml = tempfile.NamedTemporaryFile(
-        mode="w", suffix=".xml", delete=False, encoding="utf-8"
-    )
+
+    tmp_xml = tempfile.NamedTemporaryFile(mode="w", suffix=".xml", delete=False, encoding="utf-8")
     tmp_xml.write(minimal_xml)
     tmp_xml.close()
     xml_path = tmp_xml.name
 
     try:
-        r_set = cli([
-            "--json", "app", "set-sitemap", sitemap_name_set,
-            "--xml-file", xml_path,
-            "--unique-name", sitemap_unique_set,
-            "--solution", ephemeral_solution,
-        ], check=False)
+        r_set = cli(
+            [
+                "--json",
+                "app",
+                "set-sitemap",
+                sitemap_name_set,
+                "--xml-file",
+                xml_path,
+                "--unique-name",
+                sitemap_unique_set,
+                "--solution",
+                ephemeral_solution,
+            ],
+            check=False,
+        )
     finally:
         try:
             os.unlink(xml_path)
         except OSError:
             pass
 
-    assert r_set.returncode == 0, (
-        f"app set-sitemap failed:\n{r_set.stderr}\nstdout: {r_set.stdout}"
-    )
+    assert r_set.returncode == 0, f"app set-sitemap failed:\n{r_set.stderr}\nstdout: {r_set.stdout}"
     env_set = json.loads(r_set.stdout)
     assert env_set["ok"], env_set
     sm_set_id = env_set["data"].get("sitemapid")
@@ -236,8 +295,7 @@ def test_app_delete_unknown_target_errors(cli, unique):
     Runs on any target: it performs no write, so it is immune to the appmodule
     read-replica lag that gates the FK-sweep test below to on-prem.
     """
-    r = cli(["--json", "app", "delete", f"new_missing{unique[:8]}", "--yes"],
-            check=False)
+    r = cli(["--json", "app", "delete", f"new_missing{unique[:8]}", "--yes"], check=False)
     assert r.returncode != 0
     env = json.loads(r.stdout)
     assert env["ok"] is False
@@ -247,8 +305,9 @@ def test_app_delete_unknown_target_errors(cli, unique):
 @covers("app delete")
 @pytest.mark.requires_onprem
 @pytest.mark.slow
-def test_app_delete_sweeps_fk_blocking_dependents(backend, cli, request, unique,
-                                                    ephemeral_solution):
+def test_app_delete_sweeps_fk_blocking_dependents(
+    backend, cli, request, unique, ephemeral_solution
+):
     """`app delete` removes a published app whose `appsetting` rows FK-block it.
 
     Gated `requires_onprem`: the appmodule DELETE block (`0x80048d21`) reproduces
@@ -272,9 +331,12 @@ def test_app_delete_sweeps_fk_blocking_dependents(backend, cli, request, unique,
             try:
                 # Sweep dependents then the app, in case the test aborted mid-way.
                 for s in backend.get_collection(
-                        "appsettings",
-                        params={"$filter": f"_parentappmoduleid_value eq {created_id[0]}",
-                                "$select": "appsettingid"}):
+                    "appsettings",
+                    params={
+                        "$filter": f"_parentappmoduleid_value eq {created_id[0]}",
+                        "$select": "appsettingid",
+                    },
+                ):
                     backend.delete(f"appsettings({s['appsettingid']})")
                 backend.delete(f"appmodules({created_id[0]})")
             except Exception:
@@ -284,13 +346,27 @@ def test_app_delete_sweeps_fk_blocking_dependents(backend, cli, request, unique,
 
     # Publish so the appmodule is readable (on-prem is not readable pre-publish)
     # and so the platform materializes its appsetting rows.
-    r_create = cli(["--json", "app", "create", "--name", app_name,
-                    "--unique-name", app_unique, "--solution", ephemeral_solution,
-                    "--publish"], check=False)
+    r_create = cli(
+        [
+            "--json",
+            "app",
+            "create",
+            "--name",
+            app_name,
+            "--unique-name",
+            app_unique,
+            "--solution",
+            ephemeral_solution,
+            "--publish",
+        ],
+        check=False,
+    )
     if r_create.returncode != 0:
         combined = (r_create.stderr or "") + (r_create.stdout or "")
-        if any(k in combined.lower() for k in (
-                "not supported", "privilege", "accessdenied", "403", "notimplemented")):
+        if any(
+            k in combined.lower()
+            for k in ("not supported", "privilege", "accessdenied", "403", "notimplemented")
+        ):
             pytest.skip(f"app create rejected by this org: {combined[:300]}")
         pytest.fail(f"app create failed:\n{combined[:500]}")
     app_id = json.loads(r_create.stdout)["data"].get("appmoduleid")
@@ -312,6 +388,7 @@ def test_app_delete_sweeps_fk_blocking_dependents(backend, cli, request, unique,
     # FK. If it is NOT blocked, this org gave the app no FK-blocking child, so the
     # sweep can't be exercised here — skip rather than pass vacuously.
     from crm.utils.d365_backend import D365Error
+
     try:
         backend.delete(f"appmodules({app_id})")
         created_id.clear()  # plain delete succeeded → app already gone

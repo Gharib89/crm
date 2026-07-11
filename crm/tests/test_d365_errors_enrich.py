@@ -32,6 +32,7 @@ def _envelope(run):
     `_handle_d365_error`/`d365_errors` emit `ok=False` and raise `Exit(1)`, so the
     call must happen inside a Click command for the runner to capture the output.
     """
+
     @click.command()
     def _cmd():
         run()
@@ -46,7 +47,8 @@ def _envelope(run):
 @pytest.mark.parametrize("key", ["status", "code", "category", "retryable"])
 def test_extra_meta_reserved_key_raises_valueerror(key):
     """extra_meta naming a pure-error key raises ValueError before emit — the
-    enrich callback can never overwrite the reserved error envelope."""
+    enrich callback can never overwrite the reserved error envelope.
+    """
     from crm.commands._helpers import _handle_d365_error
 
     ctx = CLIContext()
@@ -61,8 +63,9 @@ def test_extra_meta_reserved_key_raises_valueerror(key):
 
 
 def test_enrich_lands_hint_and_extra_meta_additively():
-    """enrich returning (hint, extra_meta) adds both atop the pure error
-    envelope, which stays intact."""
+    """Enrich returning (hint, extra_meta) adds both atop the pure error
+    envelope, which stays intact.
+    """
     from crm.commands._helpers import d365_errors
 
     ctx = CLIContext()
@@ -93,8 +96,7 @@ def test_enrich_hint_wins_over_static_hint():
     ctx.json_mode = True
 
     def run():
-        with d365_errors(ctx, hint="static hint",
-                         enrich=lambda exc: ("derived wins", None)):
+        with d365_errors(ctx, hint="static hint", enrich=lambda exc: ("derived wins", None)):
             raise D365Error("boom", status=400, code="0x1")
 
     env = _envelope(run)
@@ -103,15 +105,15 @@ def test_enrich_hint_wins_over_static_hint():
 
 def test_enrich_none_hint_falls_back_to_static():
     """When enrich returns hint=None, the static hint= is used (entity-create
-    shape: derived meta, no derived hint)."""
+    shape: derived meta, no derived hint).
+    """
     from crm.commands._helpers import d365_errors
 
     ctx = CLIContext()
     ctx.json_mode = True
 
     def run():
-        with d365_errors(ctx, hint="static hint",
-                         enrich=lambda exc: (None, {"did_you_mean": "x"})):
+        with d365_errors(ctx, hint="static hint", enrich=lambda exc: (None, {"did_you_mean": "x"})):
             raise D365Error("boom", status=400, code="0x1")
 
     env = _envelope(run)
@@ -120,8 +122,9 @@ def test_enrich_none_hint_falls_back_to_static():
 
 
 def test_enrich_none_none_is_clean_noop():
-    """enrich returning (None, None) adds nothing — only the pure error
-    envelope, identical to a bare `with d365_errors(ctx):`."""
+    """Enrich returning (None, None) adds nothing — only the pure error
+    envelope, identical to a bare `with d365_errors(ctx):`.
+    """
     from crm.commands._helpers import d365_errors
 
     ctx = CLIContext()
@@ -136,7 +139,6 @@ def test_enrich_none_none_is_clean_noop():
     assert set(env["meta"]) == {"status", "code", "category", "retryable"}
 
 
-
 # --------------------------------------------------------------------------- #
 # usage_guard (#595): re-raises a status-less (client-side validation) D365Error
 # as a click.UsageError (exit 2) before the backend is touched, so core
@@ -145,21 +147,25 @@ def test_enrich_none_none_is_clean_noop():
 # to propagate to d365_errors (exit 1).
 # --------------------------------------------------------------------------- #
 
+
 class TestUsageGuard:
     def test_statusless_validation_error_becomes_usage_error(self):
         from crm.commands._helpers import usage_guard
+
         with pytest.raises(click.UsageError, match="bad combo"):
             with usage_guard():
                 raise D365Error("bad combo")
 
     def test_status_bearing_error_propagates(self):
         from crm.commands._helpers import usage_guard
+
         with pytest.raises(D365Error):
             with usage_guard():
                 raise D365Error("server boom", status=500)
 
     def test_clean_block_does_not_raise(self):
         from crm.commands._helpers import usage_guard
+
         with usage_guard():
             value = 1 + 1
         assert value == 2

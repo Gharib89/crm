@@ -7,6 +7,7 @@ alone. Injected once at the single emit chokepoint. Error envelopes keep their
 reserved meta shape; local/meta verbs that never connect stay clean; human
 output is unaffected (the injection is JSON-only).
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -27,9 +28,12 @@ def _seed_profile(tmp_path, monkeypatch):
     monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
     monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
     from crm.core import session as session_mod
-    session_mod.save_profile(ConnectionProfile(
-        name="t", url="https://crm.contoso.local/contoso",
-        domain="CONTOSO", username="alice"))
+
+    session_mod.save_profile(
+        ConnectionProfile(
+            name="t", url="https://crm.contoso.local/contoso", domain="CONTOSO", username="alice"
+        )
+    )
     session_mod.save_profile_secret_plaintext("t", "pw")
 
 
@@ -37,8 +41,8 @@ def _ctx_with_backend() -> CLIContext:
     ctx = CLIContext()
     ctx.json_mode = True
     profile = ConnectionProfile(
-        name="t", url="https://crm.contoso.local/contoso",
-        domain="CONTOSO", username="alice")
+        name="t", url="https://crm.contoso.local/contoso", domain="CONTOSO", username="alice"
+    )
     ctx._backend = D365Backend(profile, "pw")
     ctx.connection_resolved = True
     return ctx
@@ -68,8 +72,7 @@ class TestEmitConnectionIdentity:
 
     def test_error_envelope_is_not_stamped(self, capsys):
         # Error envelopes keep their reserved meta shape (#624 out of scope).
-        env = _emit(_ctx_with_backend(), capsys, ok=False,
-                    error="boom", meta={"status": 500})
+        env = _emit(_ctx_with_backend(), capsys, ok=False, error="boom", meta={"status": 500})
         assert "profile" not in env.get("meta", {})
         assert "url" not in env.get("meta", {})
 
@@ -99,14 +102,16 @@ class TestEmitConnectionIdentity:
 
 class TestEndToEndCoverage:
     """Acceptance: meta on a representative read AND mutate; override reflected;
-    a verb that never connects stays clean."""
+    a verb that never connects stays clean.
+    """
 
     def test_read_verb_envelope_carries_profile_and_url(self, tmp_path, monkeypatch):
         _seed_profile(tmp_path, monkeypatch)
         with requests_mock.Mocker() as m:
             m.get(requests_mock.ANY, json={"value": [{"name": "Acme"}]})
             result = CliRunner().invoke(
-                cli, ["--json", "--profile", "t", "query", "odata", "accounts"])
+                cli, ["--json", "--profile", "t", "query", "odata", "accounts"]
+            )
         assert result.exit_code == 0, result.output
         meta = json.loads(result.output)["meta"]
         assert meta["profile"] == "t"
@@ -116,11 +121,25 @@ class TestEndToEndCoverage:
         _seed_profile(tmp_path, monkeypatch)
         guid = "11111111-1111-1111-1111-111111111111"
         with requests_mock.Mocker() as m:
-            m.post(f"{_API_BASE}accounts", status_code=204,
-                   headers={"OData-EntityId": f"{_API_BASE}accounts({guid})"})
+            m.post(
+                f"{_API_BASE}accounts",
+                status_code=204,
+                headers={"OData-EntityId": f"{_API_BASE}accounts({guid})"},
+            )
             result = CliRunner().invoke(
-                cli, ["--json", "--profile", "t", "entity", "create", "accounts",
-                      "--data", '{"name": "Acme"}', "--no-return"])
+                cli,
+                [
+                    "--json",
+                    "--profile",
+                    "t",
+                    "entity",
+                    "create",
+                    "accounts",
+                    "--data",
+                    '{"name": "Acme"}',
+                    "--no-return",
+                ],
+            )
         assert result.exit_code == 0, result.output
         meta = json.loads(result.output)["meta"]
         assert meta["profile"] == "t"
@@ -130,9 +149,12 @@ class TestEndToEndCoverage:
         # Active profile is 't'; a per-run --profile override must win in meta.
         _seed_profile(tmp_path, monkeypatch)
         from crm.core import session as session_mod
-        session_mod.save_profile(ConnectionProfile(
-            name="prod", url="https://crm.contoso.local/prod",
-            domain="CONTOSO", username="bob"))
+
+        session_mod.save_profile(
+            ConnectionProfile(
+                name="prod", url="https://crm.contoso.local/prod", domain="CONTOSO", username="bob"
+            )
+        )
         session_mod.save_profile_secret_plaintext("prod", "pw")
         state = session_mod.load_session("default")
         state["active_profile"] = "t"
@@ -140,7 +162,8 @@ class TestEndToEndCoverage:
         with requests_mock.Mocker() as m:
             m.get(requests_mock.ANY, json={"value": []})
             result = CliRunner().invoke(
-                cli, ["--json", "--profile", "prod", "query", "odata", "accounts"])
+                cli, ["--json", "--profile", "prod", "query", "odata", "accounts"]
+            )
         assert result.exit_code == 0, result.output
         meta = json.loads(result.output)["meta"]
         assert meta["profile"] == "prod"
@@ -158,23 +181,23 @@ class TestEndToEndCoverage:
 
 
 class TestWhoamiEnriched:
-    def test_whoami_data_carries_profile_url_org_name_and_guids(
-        self, tmp_path, monkeypatch
-    ):
+    def test_whoami_data_carries_profile_url_org_name_and_guids(self, tmp_path, monkeypatch):
         _seed_profile(tmp_path, monkeypatch)
         with requests_mock.Mocker() as m:
-            m.get(f"{_API_BASE}WhoAmI", json={
-                "@odata.context": f"{_API_BASE}$metadata#Microsoft.Dynamics.CRM.WhoAmIResponse",
-                "UserId": "11111111-1111-1111-1111-111111111111",
-                "BusinessUnitId": "22222222-2222-2222-2222-222222222222",
-                "OrganizationId": "33333333-3333-3333-3333-333333333333",
-            })
+            m.get(
+                f"{_API_BASE}WhoAmI",
+                json={
+                    "@odata.context": f"{_API_BASE}$metadata#Microsoft.Dynamics.CRM.WhoAmIResponse",
+                    "UserId": "11111111-1111-1111-1111-111111111111",
+                    "BusinessUnitId": "22222222-2222-2222-2222-222222222222",
+                    "OrganizationId": "33333333-3333-3333-3333-333333333333",
+                },
+            )
             m.get(
                 f"{_API_BASE}organizations(33333333-3333-3333-3333-333333333333)",
                 json={"name": "Contoso Dev"},
             )
-            result = CliRunner().invoke(
-                cli, ["--json", "--profile", "t", "connection", "whoami"])
+            result = CliRunner().invoke(cli, ["--json", "--profile", "t", "connection", "whoami"])
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)["data"]
         assert data["UserId"] == "11111111-1111-1111-1111-111111111111"
@@ -185,23 +208,24 @@ class TestWhoamiEnriched:
         assert data["org_name"] == "Contoso Dev"
         assert data["read_only"] is False  # surfaced for the read-only guardrail (#665)
 
-    def test_whoami_org_name_best_effort_on_lookup_failure(
-        self, tmp_path, monkeypatch
-    ):
+    def test_whoami_org_name_best_effort_on_lookup_failure(self, tmp_path, monkeypatch):
         # A failed org-name read leaves org_name null, never masks the probe.
         _seed_profile(tmp_path, monkeypatch)
         with requests_mock.Mocker() as m:
-            m.get(f"{_API_BASE}WhoAmI", json={
-                "UserId": "11111111-1111-1111-1111-111111111111",
-                "BusinessUnitId": "22222222-2222-2222-2222-222222222222",
-                "OrganizationId": "33333333-3333-3333-3333-333333333333",
-            })
+            m.get(
+                f"{_API_BASE}WhoAmI",
+                json={
+                    "UserId": "11111111-1111-1111-1111-111111111111",
+                    "BusinessUnitId": "22222222-2222-2222-2222-222222222222",
+                    "OrganizationId": "33333333-3333-3333-3333-333333333333",
+                },
+            )
             m.get(
                 f"{_API_BASE}organizations(33333333-3333-3333-3333-333333333333)",
-                status_code=403, json={"error": {"message": "denied"}},
+                status_code=403,
+                json={"error": {"message": "denied"}},
             )
-            result = CliRunner().invoke(
-                cli, ["--json", "--profile", "t", "connection", "whoami"])
+            result = CliRunner().invoke(cli, ["--json", "--profile", "t", "connection", "whoami"])
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)["data"]
         assert data["org_name"] is None

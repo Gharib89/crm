@@ -6,6 +6,7 @@ synchronously (real-time), cannot use wait conditions, and cannot run custom
 (non-out-of-box) workflow activities. Detection markers were ground-truthed
 against live category-0 workflows on Dataverse online and on-prem v9.1.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -49,8 +50,7 @@ class TestAssessOneWorkflow:
 
     def test_wait_condition_detected_without_namespace_prefix(self):
         # A default-namespaced <Postpone> (no prefix) is still a wait condition.
-        out = workflow.assess_workflow_migration(
-            _row(xaml='<Activity><Postpone /></Activity>'))
+        out = workflow.assess_workflow_migration(_row(xaml="<Activity><Postpone /></Activity>"))
         assert out["blockers"] == [workflow.MIGRATION_BLOCKER_WAIT]
 
     def test_step_named_wait_without_postpone_is_not_blocked(self):
@@ -62,7 +62,7 @@ class TestAssessOneWorkflow:
 
     def test_custom_activity_workflow_is_blocked(self):
         xaml = (
-            '<Activity><mxswa:ActivityReference '
+            "<Activity><mxswa:ActivityReference "
             'AssemblyQualifiedName="Contoso.Workflows.DoThing, Contoso.Workflows, '
             'Version=1.0.0.0, Culture=neutral, PublicKeyToken=abc" /></Activity>'
         )
@@ -73,9 +73,9 @@ class TestAssessOneWorkflow:
     def test_oob_activity_reference_is_not_custom(self):
         # Out-of-box activities live in Microsoft.Crm.Workflow — never a blocker.
         xaml = (
-            '<Activity><mxswa:ActivityReference '
+            "<Activity><mxswa:ActivityReference "
             'AssemblyQualifiedName="Microsoft.Crm.Workflow.Activities.CreateEntity, '
-            'Microsoft.Crm.Workflow, Version=9.0.0.0, Culture=neutral, '
+            "Microsoft.Crm.Workflow, Version=9.0.0.0, Culture=neutral, "
             'PublicKeyToken=31bf3856ad364e35" /></Activity>'
         )
         out = workflow.assess_workflow_migration(_row(xaml=xaml))
@@ -91,9 +91,9 @@ class TestAssessOneWorkflow:
 
     def test_multiple_blockers_listed_in_order(self):
         xaml = (
-            '<Activity><mxswa:Postpone /><mxswa:ActivityReference '
+            "<Activity><mxswa:Postpone /><mxswa:ActivityReference "
             'AssemblyQualifiedName="Contoso.X, Contoso.Workflows, Version=1.0" />'
-            '</Activity>'
+            "</Activity>"
         )
         out = workflow.assess_workflow_migration(_row(mode=1, xaml=xaml))
         assert out["blockers"] == [
@@ -106,8 +106,12 @@ class TestAssessOneWorkflow:
 @pytest.fixture
 def backend():
     profile = ConnectionProfile(
-        name="testp", url="https://crm.contoso.local/contoso",
-        domain="CONTOSO", username="alice", api_version="v9.2", verify_ssl=False,
+        name="testp",
+        url="https://crm.contoso.local/contoso",
+        domain="CONTOSO",
+        username="alice",
+        api_version="v9.2",
+        verify_ssl=False,
     )
     return D365Backend(profile, password="pw", dry_run=False)
 
@@ -116,10 +120,15 @@ class TestAssessWorkflowMigrations:
     def test_filters_to_category0_definitions_and_assesses(self, backend):
         url = backend.url_for("workflows")
         with requests_mock.Mocker() as m:
-            m.get(url, json={"value": [
-                _row(workflowid="a" * 36, name="RT", mode=1),
-                _row(workflowid="b" * 36, name="Plain"),
-            ]})
+            m.get(
+                url,
+                json={
+                    "value": [
+                        _row(workflowid="a" * 36, name="RT", mode=1),
+                        _row(workflowid="b" * 36, name="Plain"),
+                    ]
+                },
+            )
             out = workflow.assess_workflow_migrations(backend)
             sent = m.request_history[0]
         # type=1 (definition) + category=0 filter is always applied
@@ -147,8 +156,12 @@ class TestAssessWorkflowMigrations:
         # Read-only assessment must fetch real rows even under --dry-run, not the
         # short-circuited preview dict (which would yield a silently empty report).
         profile = ConnectionProfile(
-            name="testp", url="https://crm.contoso.local/contoso",
-            domain="CONTOSO", username="alice", api_version="v9.2", verify_ssl=False,
+            name="testp",
+            url="https://crm.contoso.local/contoso",
+            domain="CONTOSO",
+            username="alice",
+            api_version="v9.2",
+            verify_ssl=False,
         )
         dry_backend = D365Backend(profile, password="pw", dry_run=True)
         url = dry_backend.url_for("workflows")
@@ -162,10 +175,13 @@ class TestAssessWorkflowMigrations:
         url = backend.url_for("workflows")
         next_link = url + "?$skiptoken=page2"
         with requests_mock.Mocker() as m:
-            m.get(url, json={
-                "value": [_row(workflowid="a" * 36)],
-                "@odata.nextLink": next_link,
-            })
+            m.get(
+                url,
+                json={
+                    "value": [_row(workflowid="a" * 36)],
+                    "@odata.nextLink": next_link,
+                },
+            )
             m.get(next_link, json={"value": [_row(workflowid="b" * 36, mode=1)]})
             out = workflow.assess_workflow_migrations(backend)
         assert [r["id"] for r in out] == ["a" * 36, "b" * 36]
@@ -174,27 +190,49 @@ class TestAssessWorkflowMigrations:
 
 # ── Command-layer tests for `crm workflow migration-assess` ──────────────────
 
+
 def _seed_profile(tmp_path, monkeypatch, *, name, auth_scheme):
     monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
     monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
     from crm.core import session as session_mod
+
     if auth_scheme == "oauth":
         prof = ConnectionProfile(
-            name=name, url="https://org.crm.dynamics.com", domain="", username="",
-            auth_scheme="oauth", tenant_id="t", client_id="c")
+            name=name,
+            url="https://org.crm.dynamics.com",
+            domain="",
+            username="",
+            auth_scheme="oauth",
+            tenant_id="t",
+            client_id="c",
+        )
     else:
         prof = ConnectionProfile(
-            name=name, url="https://crm.contoso.local/contoso",
-            domain="CONTOSO", username="alice")
+            name=name, url="https://crm.contoso.local/contoso", domain="CONTOSO", username="alice"
+        )
     session_mod.save_profile(prof)
     session_mod.save_profile_secret_plaintext(name, "pw")
 
 
 _CANNED = [
-    {"id": "a" * 36, "name": "RT", "primaryentity": "account", "state": "activated",
-     "mode": "realtime", "verdict": "blocked", "blockers": ["real_time"]},
-    {"id": "b" * 36, "name": "Plain", "primaryentity": "contact", "state": "draft",
-     "mode": "background", "verdict": "ready", "blockers": []},
+    {
+        "id": "a" * 36,
+        "name": "RT",
+        "primaryentity": "account",
+        "state": "activated",
+        "mode": "realtime",
+        "verdict": "blocked",
+        "blockers": ["real_time"],
+    },
+    {
+        "id": "b" * 36,
+        "name": "Plain",
+        "primaryentity": "contact",
+        "state": "draft",
+        "mode": "background",
+        "verdict": "ready",
+        "blockers": [],
+    },
 ]
 
 
@@ -202,6 +240,7 @@ class TestMigrationAssessCommand:
     def _invoke(self, monkeypatch, tmp_path, *, auth_scheme, extra=None):
         _seed_profile(tmp_path, monkeypatch, name="t", auth_scheme=auth_scheme)
         from crm.commands import workflow as wf_cmd
+
         captured = {}
 
         def fake_assess(backend, *, primary_entity=None, **kw):
@@ -210,6 +249,7 @@ class TestMigrationAssessCommand:
 
         monkeypatch.setattr(wf_cmd.workflow_mod, "assess_workflow_migrations", fake_assess)
         from crm.cli import cli
+
         args = ["--json", "--profile", "t", "workflow", "migration-assess"] + (extra or [])
         result = CliRunner().invoke(cli, args)
         return result, captured
@@ -232,6 +272,7 @@ class TestMigrationAssessCommand:
 
     def test_entity_flag_forwarded(self, monkeypatch, tmp_path):
         result, captured = self._invoke(
-            monkeypatch, tmp_path, auth_scheme="oauth", extra=["--entity", "account"])
+            monkeypatch, tmp_path, auth_scheme="oauth", extra=["--entity", "account"]
+        )
         assert result.exit_code == 0
         assert captured["primary_entity"] == "account"

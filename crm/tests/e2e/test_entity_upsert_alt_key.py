@@ -7,6 +7,7 @@ alternate key, waits for the key's index to activate (asynchronous in
 Dataverse), exercises both verbs by that key, then deletes the entity. Skips
 gracefully if the index does not activate within the timeout.
 """
+
 from __future__ import annotations
 
 import json
@@ -18,15 +19,19 @@ from crm.tests.e2e.coverage import covers
 
 _KEY_LABEL = {
     "@odata.type": "Microsoft.Dynamics.CRM.Label",
-    "LocalizedLabels": [{
-        "@odata.type": "Microsoft.Dynamics.CRM.LocalizedLabel",
-        "Label": "Code Key", "LanguageCode": 1033,
-    }],
+    "LocalizedLabels": [
+        {
+            "@odata.type": "Microsoft.Dynamics.CRM.LocalizedLabel",
+            "Label": "Code Key",
+            "LanguageCode": 1033,
+        }
+    ],
 }
 
 
 def _wait_for_active_key(backend, logical: str, *, timeout: int = 180) -> bool:
     from crm.core import metadata as meta_mod
+
     deadline = time.time() + timeout
     while time.time() < deadline:
         keys = meta_mod.list_entity_keys(backend, logical)
@@ -47,8 +52,11 @@ def test_upsert_by_alternate_key(backend, cli, unique, tmp_path):
     key_attr = key_schema.lower()  # primary attribute = the alternate-key column
 
     meta_mod.create_entity(
-        backend, schema_name=schema, display_name=f"E2E AK {unique}",
-        primary_attr_schema=key_schema, primary_attr_label="Code",
+        backend,
+        schema_name=schema,
+        display_name=f"E2E AK {unique}",
+        primary_attr_schema=key_schema,
+        primary_attr_label="Code",
     )
     try:
         # Resolve the OData entity-set name (Dataverse pluralizes the logical name).
@@ -73,29 +81,61 @@ def test_upsert_by_alternate_key(backend, cli, unique, tmp_path):
             pytest.skip("alternate-key index did not activate within the timeout")
 
         # entity upsert --key: first call creates, second matches the same record.
-        create = cli(["--json", "entity", "upsert", entity_set,
-                      "--key", key_attr,
-                      "--data", json.dumps({key_attr: "ALPHA-001"})])
+        create = cli(
+            [
+                "--json",
+                "entity",
+                "upsert",
+                entity_set,
+                "--key",
+                key_attr,
+                "--data",
+                json.dumps({key_attr: "ALPHA-001"}),
+            ]
+        )
         assert create.returncode == 0, create.stderr
         assert json.loads(create.stdout)["ok"]
 
-        update = cli(["--json", "entity", "upsert", entity_set,
-                      "--key", key_attr,
-                      "--data", json.dumps({key_attr: "ALPHA-001"})])
+        update = cli(
+            [
+                "--json",
+                "entity",
+                "upsert",
+                entity_set,
+                "--key",
+                key_attr,
+                "--data",
+                json.dumps({key_attr: "ALPHA-001"}),
+            ]
+        )
         assert update.returncode == 0, update.stderr
         assert json.loads(update.stdout)["ok"]
 
         # data import --mode upsert --key: one existing key (match) + one new (create).
         rows_file = tmp_path / "rows.jsonl"
         rows_file.write_text(
-            "\n".join([
-                json.dumps({key_attr: "ALPHA-001"}),
-                json.dumps({key_attr: "BETA-002"}),
-            ]) + "\n",
+            "\n".join(
+                [
+                    json.dumps({key_attr: "ALPHA-001"}),
+                    json.dumps({key_attr: "BETA-002"}),
+                ]
+            )
+            + "\n",
             encoding="utf-8",
         )
-        rows = cli(["--json", "data", "import", entity_set, str(rows_file),
-                    "--mode", "upsert", "--key", key_attr])
+        rows = cli(
+            [
+                "--json",
+                "data",
+                "import",
+                entity_set,
+                str(rows_file),
+                "--mode",
+                "upsert",
+                "--key",
+                key_attr,
+            ]
+        )
         assert rows.returncode == 0, rows.stderr
         imported = json.loads(rows.stdout)["data"]["imported"]
         assert imported == 2, rows.stdout

@@ -22,7 +22,6 @@ from crm.core.logging_setup import setup_logging
 
 if TYPE_CHECKING:
     from crm.utils.d365_backend import D365Backend
-from crm.utils.repl_skin import ReplSkin
 from crm.commands._helpers import (
     _apply_jq,
     _normalize_odata_envelope,
@@ -33,6 +32,7 @@ from crm.commands._helpers import (
     _strip_odata_keys,
 )
 from crm.commands._tty import _stdin_is_tty
+from crm.utils.repl_skin import ReplSkin
 
 # Exit code for an operational failure (ADR 0001): a command that ran but did not
 # achieve its effect — D365 server error, in-command validation, declined confirm.
@@ -98,9 +98,16 @@ class CLIContext:
         self._backend_key: tuple[str | None, str | None, bool, str | None, bool] | None = None
         self.skin: ReplSkin = ReplSkin("d365", version=__version__)
 
-    def emit(self, ok: bool, data: Any = None, *, error: str | None = None,
-             meta: dict | None = None, table: dict | None = None,
-             warnings: list[str] | None = None) -> None:
+    def emit(
+        self,
+        ok: bool,
+        data: Any = None,
+        *,
+        error: str | None = None,
+        meta: dict | None = None,
+        table: dict | None = None,
+        warnings: list[str] | None = None,
+    ) -> None:
         """Print either a JSON envelope or a human-friendly representation.
 
         `warnings` is the structured advisory channel (#64): each entry is
@@ -171,9 +178,11 @@ class CLIContext:
             # clean, and _backend must still be live (profile add invalidates
             # before emit). Fresh dict, so the caller's meta is not mutated.
             if ok and self.connection_resolved and self._backend is not None:
-                meta = {**(meta or {}),
-                        "profile": self._backend.profile.name,
-                        "url": self._backend.profile.api_base}
+                meta = {
+                    **(meta or {}),
+                    "profile": self._backend.profile.name,
+                    "url": self._backend.profile.api_base,
+                }
             if meta:
                 envelope["meta"] = meta
             click.echo(json.dumps(envelope, indent=2, default=str))
@@ -237,14 +246,16 @@ class CLIContext:
         if self.json_mode:
             return
         from crm.commands import _tty
+
         if not _tty._stdout_is_tty():
             return
         from crm.core import hints as hints_mod
+
         text = hints_mod.take_hint(hint_id)
         if text is not None:
             self.skin.hint(text)
 
-    def backend(self) -> "D365Backend":
+    def backend(self) -> D365Backend:
         from crm.core import connection as conn_mod
         from crm.core import session as session_mod
         from crm.utils.d365_backend import D365Backend
@@ -267,14 +278,21 @@ class CLIContext:
             # resolve_credentials() raise the actionable "run `crm profile add`"
             # error instead (never hang an agent/CI invocation).
             import click as _click
+
             from crm.commands.profile import profile_add
+
             _click.echo("No profile configured yet. Let's set one up:")
             _click.get_current_context().invoke(profile_add)
             state = session_mod.load_session(self.session_name)
             effective_profile = state.get("active_profile")
 
-        key = (effective_profile, self.password, self.dry_run, self.auth_scheme,
-               self.retry_on_ambiguous)
+        key = (
+            effective_profile,
+            self.password,
+            self.dry_run,
+            self.auth_scheme,
+            self.retry_on_ambiguous,
+        )
         if self._backend is None or self._backend_key != key:
             allow_prompt = _stdin_is_tty() and not self.json_mode
             resolved = conn_mod.resolve_credentials(
@@ -285,7 +303,9 @@ class CLIContext:
             if self.auth_scheme is not None:
                 resolved.profile.auth_scheme = self.auth_scheme
             self._backend = D365Backend(
-                resolved.profile, resolved.password, dry_run=self.dry_run,
+                resolved.profile,
+                resolved.password,
+                dry_run=self.dry_run,
                 retry_on_ambiguous=self.retry_on_ambiguous,
             )
             self._backend_key = key
@@ -294,7 +314,7 @@ class CLIContext:
         self.connection_resolved = True
         return self._backend
 
-    def materialized_backend(self) -> "D365Backend | None":
+    def materialized_backend(self) -> D365Backend | None:
         """Return the cached backend, if one already exists, without resolving it."""
         return self._backend
 
@@ -325,7 +345,8 @@ pass_ctx = click.make_pass_decorator(CLIContext, ensure=True)
 
 def _emit_error_envelope(message: str, *, meta: dict[str, Any] | None = None) -> None:
     """Print the standard {ok: false, error: ...} JSON error envelope. Usage errors
-    omit `meta`; non-usage ClickException failures pass an empty `meta` object."""
+    omit `meta`; non-usage ClickException failures pass an empty `meta` object.
+    """
     env: dict[str, Any] = {"ok": False, "error": message}
     if meta is not None:
         env["meta"] = meta
@@ -337,7 +358,8 @@ def _suppress_bare_repl(json_mode: bool) -> bool:
     the interactive REPL. True when the caller is clearly non-interactive: --json,
     an explicit CRM_NO_REPL opt-out, or a non-TTY stdin (piped/redirected, as
     agents and CI invoke it). A proactive isatty probe — intentionally stronger
-    than waiting for the REPL's EOF handler so a bare invocation never hangs."""
+    than waiting for the REPL's EOF handler so a bare invocation never hangs.
+    """
     if json_mode:
         return True
     if os.environ.get("CRM_NO_REPL", "").lower() in ("1", "true", "yes", "on"):
@@ -362,7 +384,8 @@ def _json_mode_active(args: list[str] | None) -> bool:
     invocation that also has a usage error, renders that error as a JSON envelope.
     Purely cosmetic (the error text is unchanged), it only affects error skinning, and
     is pinned by a test — accepted over reimplementing Click's per-command tokenizer
-    here just to shape usage-error output."""
+    here just to shape usage-error output.
+    """
     if not args:
         return False
     # ROOT options that consume the following token as their value; '--json' sitting
@@ -371,8 +394,14 @@ def _json_mode_active(args: list[str] | None) -> bool:
     # value-options — `--select`, `--data`, … — cannot be enumerated here, so a
     # '--json' passed as one of THOSE values is the accepted false positive above.)
     value_opts = {
-        "--profile", "--password", "--log-level", "--log-format",
-        "--auth-scheme", "--session", "--fields", "--jq",
+        "--profile",
+        "--password",
+        "--log-level",
+        "--log-format",
+        "--auth-scheme",
+        "--session",
+        "--fields",
+        "--jq",
     }
     i = 0
     while i < len(args):
@@ -413,7 +442,8 @@ def _parse_fields_value(value: str) -> list[str]:
 
     Shared by the root callback and the injected leaf option so both positions
     validate identically. An empty / whitespace-only value has nothing to project
-    and is a usage error (exit 2)."""
+    and is a usage error (exit 2).
+    """
     parsed = [f.strip() for f in value.split(",") if f.strip()]
     if not parsed:
         raise click.BadParameter("no field names given", param_hint="--fields")
@@ -425,7 +455,8 @@ def _compile_jq_value(value: str) -> Any:
 
     Shared by root and leaf so an invalid program fails fast — before any profile
     resolution or network call — in either position. The `jq` module is imported
-    lazily so the common no-jq path never pays for it."""
+    lazily so the common no-jq path never pays for it.
+    """
     import jq  # lazy: never imported unless --jq is used
 
     try:
@@ -434,10 +465,11 @@ def _compile_jq_value(value: str) -> Any:
         raise click.BadParameter(str(exc), param_hint="--jq") from exc
 
 
-def _reject_fields_jq_conflict(cli_ctx: "CLIContext") -> None:
+def _reject_fields_jq_conflict(cli_ctx: CLIContext) -> None:
     """Cross-position guard: ``--fields`` and ``--jq`` are two spellings of the same
     shaping seam, so having both set — in any combination of positions — is a usage
-    error (exit 2), matching the root-position check in the root callback."""
+    error (exit 2), matching the root-position check in the root callback.
+    """
     if cli_ctx.fields is not None and cli_ctx.jq_program is not None:
         raise click.UsageError("--fields and --jq are mutually exclusive")
 
@@ -450,7 +482,9 @@ def _dualpos_callback(kind: str, token: str):
     given in BOTH positions (decision 2) and otherwise applies the value through the
     exact merge semantics the root callback uses (decision 4): `--profile` sticky,
     the rest per-invocation, `--jq` implying `--json` and compiling now, `--fields`
-    /`--jq` mutually exclusive cross-position."""
+    /`--jq` mutually exclusive cross-position.
+    """
+
     def _cb(ctx: click.Context, param: click.Parameter, value: Any) -> Any:
         from click.core import ParameterSource
 
@@ -459,8 +493,7 @@ def _dualpos_callback(kind: str, token: str):
         cli_ctx = ctx.find_root().ensure_object(CLIContext)
         if kind in cli_ctx._root_positions:
             raise click.UsageError(
-                f"{token} was provided both before and after the subcommand; "
-                f"pick one."
+                f"{token} was provided both before and after the subcommand; pick one."
             )
         if kind == "json":
             cli_ctx.json_mode = True
@@ -486,43 +519,58 @@ def _make_dualpos_options() -> list[click.Option]:
     New instances every call: a Click Option is bound into the command it is added
     to, so the same object must not be shared across every leaf. Each uses an
     underscore-prefixed internal name that cannot collide with a real leaf param,
-    and `expose_value=False` so leaf command signatures are untouched."""
+    and `expose_value=False` so leaf command signatures are untouched.
+    """
     return [
         click.Option(
-            ["--json", "_dualpos_json"], is_flag=True, default=False,
-            expose_value=False, callback=_dualpos_callback("json", "--json"),
+            ["--json", "_dualpos_json"],
+            is_flag=True,
+            default=False,
+            expose_value=False,
+            callback=_dualpos_callback("json", "--json"),
             help="Emit machine-readable JSON output." + _DUALPOS_HELP_SUFFIX,
         ),
         click.Option(
-            ["--fields", "_dualpos_fields"], default=None, metavar="KEY[,KEY...]",
-            expose_value=False, callback=_dualpos_callback("fields", "--fields"),
+            ["--fields", "_dualpos_fields"],
+            default=None,
+            metavar="KEY[,KEY...]",
+            expose_value=False,
+            callback=_dualpos_callback("fields", "--fields"),
             help="Project the data payload down to these comma-separated top-level "
-                 "keys." + _DUALPOS_HELP_SUFFIX,
+            "keys." + _DUALPOS_HELP_SUFFIX,
         ),
         click.Option(
-            ["--jq", "_dualpos_jq"], default=None, metavar="PROGRAM",
-            expose_value=False, callback=_dualpos_callback("jq", "--jq"),
+            ["--jq", "_dualpos_jq"],
+            default=None,
+            metavar="PROGRAM",
+            expose_value=False,
+            callback=_dualpos_callback("jq", "--jq"),
             help="Run a jq program over the curated data payload; the result "
-                 "replaces data. Implies --json." + _DUALPOS_HELP_SUFFIX,
+            "replaces data. Implies --json." + _DUALPOS_HELP_SUFFIX,
         ),
         click.Option(
-            ["--profile", "_dualpos_profile"], default=None,
-            shell_complete=_complete_profile_names, expose_value=False,
+            ["--profile", "_dualpos_profile"],
+            default=None,
+            shell_complete=_complete_profile_names,
+            expose_value=False,
             callback=_dualpos_callback("profile", "--profile"),
             help="Connection profile name." + _DUALPOS_HELP_SUFFIX,
         ),
         click.Option(
-            ["--dry-run", "_dualpos_dry_run"], is_flag=True, default=False,
-            expose_value=False, callback=_dualpos_callback("dry_run", "--dry-run"),
-            help="Preview writes without issuing them; reads run normally."
-                 + _DUALPOS_HELP_SUFFIX,
+            ["--dry-run", "_dualpos_dry_run"],
+            is_flag=True,
+            default=False,
+            expose_value=False,
+            callback=_dualpos_callback("dry_run", "--dry-run"),
+            help="Preview writes without issuing them; reads run normally." + _DUALPOS_HELP_SUFFIX,
         ),
     ]
 
 
 def _leaf_declares_token(cmd: click.Command, token: str) -> bool:
     """Whether a command already declares an option under `token` (primary or `--no-`
-    secondary form)."""
+    secondary form).
+    """
     for p in cmd.params:
         if isinstance(p, click.Option) and (token in p.opts or token in p.secondary_opts):
             return True
@@ -536,7 +584,8 @@ def _inject_dualpos_options(cmd: click.Command) -> None:
     That skip does double duty: it keeps injection **idempotent** (a second pass over
     an already-injected leaf finds `--json` etc. present and skips all five), and it
     preserves a leaf's OWN same-named option — `profile set-password --profile`,
-    `profile delete-password --profile` keep their required local meaning."""
+    `profile delete-password --profile` keep their required local meaning.
+    """
     for opt in _make_dualpos_options():
         if not _leaf_declares_token(cmd, opt.opts[0]):
             cmd.params.append(opt)
@@ -548,7 +597,8 @@ def _inject_dualpos_tree(cmd: click.Command) -> None:
 
     Subgroups below the root are eager ``click.Group``s, so `.commands` is populated
     and the walk reaches every leaf; only the root group itself is lazy, and it is
-    never passed here (injection is driven from the root's own `get_command`)."""
+    never passed here (injection is driven from the root's own `get_command`).
+    """
     if isinstance(cmd, click.Group):
         for sub in cmd.commands.values():
             _inject_dualpos_tree(sub)
@@ -561,12 +611,14 @@ class _JsonAwareGroup(click.Group):
     global root option placed *after* the subcommand (which Click rejects as
     NoSuchOption) becomes a position hint, and under --json every usage error
     renders as the standard JSON envelope on stdout. Exit code is preserved (2,
-    per ADR 0001)."""
+    per ADR 0001).
+    """
 
     def _global_option_names(self) -> set[str]:
         """Every option token the root group declares — primary and secondary
         (`--no-*`) forms. Derived from the live params so the set never drifts from
-        the actual root options as global flags are added or renamed."""
+        the actual root options as global flags are added or renamed.
+        """
         names: set[str] = set()
         for param in self.params:
             if isinstance(param, click.Option):
@@ -574,10 +626,11 @@ class _JsonAwareGroup(click.Group):
                 names.update(param.secondary_opts)
         return names
 
-    def _global_option_hint(self, exc: "click.NoSuchOption") -> "str | None":
+    def _global_option_hint(self, exc: click.NoSuchOption) -> str | None:
         """If the rejected option is a root-level global option, return a message
         telling the user to place it before the subcommand; otherwise None (so a
-        genuinely unknown option keeps Click's error, incl. its "Did you mean")."""
+        genuinely unknown option keeps Click's error, incl. its "Did you mean").
+        """
         name = exc.option_name
         if name not in self._global_option_names():
             return None
@@ -585,8 +638,7 @@ class _JsonAwareGroup(click.Group):
         # global option hoisted to just after the root program name.
         parts = (exc.ctx.command_path.split() if exc.ctx else ["crm"]) or ["crm"]
         corrected = " ".join([parts[0], name, *parts[1:]])
-        return (f"{name!r} is a global option; place it before the command:\n"
-                f"  {corrected} ...")
+        return f"{name!r} is a global option; place it before the command:\n  {corrected} ..."
 
     def main(self, args=None, **kwargs):  # type: ignore[override]
         argv = list(args) if args is not None else sys.argv[1:]
@@ -630,13 +682,13 @@ class _JsonAwareGroup(click.Group):
             sys.exit(rv if isinstance(rv, int) else 0)
         return rv
 
-    def _render_usage_error(self, exc: "click.ClickException", json_mode: bool,
-                            standalone: bool):
+    def _render_usage_error(self, exc: click.ClickException, json_mode: bool, standalone: bool):
         """Render a non-global-flag ClickException exactly as before this hint was
         added, except that under --json any ClickException becomes a stdout JSON
         envelope. A direct human invocation keeps Click's standalone rendering,
         and the non-standalone human path still propagates to the REPL's
-        skin.error handler."""
+        skin.error handler.
+        """
         if json_mode:
             # Usage errors omit meta and keep Click's exit 2; non-usage
             # ClickExceptions carry an empty meta and Click's default exit 1.
@@ -655,7 +707,8 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
     """Root group that imports a subcommand's module only when that subcommand is
     invoked, so `crm --version` and direct command invocations avoid importing all
     command modules (and their requests/NTLM/prompt_toolkit deps). `crm --help`
-    still imports every module to render short help — an accepted trade-off."""
+    still imports every module to render short help — an accepted trade-off.
+    """
 
     # Click command name -> "module:attribute". This map is the sole command
     # registry — a new top-level command must be added here to be exposed.
@@ -718,12 +771,15 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
         truth) so `crm entit` → "Did you mean 'entity'?". The option-looking-token
         reparse side effect happens inside super() before the raise, so it stays
         intact; a no-close-match typo still yields the bare message (Click's
-        `get_close_matches` cutoff is reused unchanged)."""
+        `get_close_matches` cutoff is reused unchanged).
+        """
         try:
             return super().resolve_command(ctx, args)
         except click.exceptions.NoSuchCommand as exc:
             raise click.exceptions.NoSuchCommand(
-                exc.command_name, possibilities=self.list_commands(ctx), ctx=ctx,
+                exc.command_name,
+                possibilities=self.list_commands(ctx),
+                ctx=ctx,
             ) from None
 
     def get_command(self, ctx, cmd_name):
@@ -739,6 +795,7 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
         if target is None:
             return None
         import importlib
+
         module_name, attr = target.split(":")
         # Surface lazy-load failures as a clean ClickException (rendered as
         # "Error: ..." with no traceback) rather than dumping a raw ImportError
@@ -763,7 +820,9 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
 # ── Root group ──────────────────────────────────────────────────────────
 
 
-def _complete_profile_names(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[str]:
+def _complete_profile_names(
+    ctx: click.Context, param: click.Parameter, incomplete: str
+) -> list[str]:
     """Dynamic ``--profile`` value completion: saved profile names.
 
     Local file read only, never a network call — shell completion spawns a
@@ -771,6 +830,7 @@ def _complete_profile_names(ctx: click.Context, param: click.Parameter, incomple
     (deferred import) and no backend/connection is ever touched.
     """
     from crm.core.session import list_profiles
+
     try:
         return [name for name in list_profiles() if name.startswith(incomplete)]
     except OSError:  # e.g. CRM_HOME unwritable/unreadable — best-effort, never crash
@@ -784,7 +844,8 @@ def _completion_profile(ctx: click.Context):
 
     Local reads only (profile file + session pointer) — shell completion spawns
     a fresh ``crm`` per Tab, so this never touches the network. Returns a loaded
-    ``ConnectionProfile`` or ``None`` (no profile / unreadable / missing)."""
+    ``ConnectionProfile`` or ``None`` (no profile / unreadable / missing).
+    """
     from crm.core import session as session_mod
 
     root_params = ctx.find_root().params
@@ -808,17 +869,21 @@ def _completion_profile(ctx: click.Context):
         return None
 
 
-def _complete_entity_set_names(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[str]:
+def _complete_entity_set_names(
+    ctx: click.Context, param: click.Parameter, incomplete: str
+) -> list[str]:
     """Dynamic entity-set-name completion for OS-shell positional args.
 
     **Disk-cache only, never a network call** — shell completion runs a fresh
     ``crm`` process per Tab, so a per-keystroke round-trip is unacceptable and
     cold-start must stay cheap. Reads the on-disk metadata cache for the
     resolved profile (populated by earlier live runs / ``--cache-metadata``);
-    a cache miss returns no completions silently. Best-effort — never raises."""
+    a cache miss returns no completions silently. Best-effort — never raises.
+    """
     import time
 
     from crm.core import metadata_cache
+
     try:
         profile = _completion_profile(ctx)
         if profile is None:
@@ -826,64 +891,119 @@ def _complete_entity_set_names(ctx: click.Context, param: click.Parameter, incom
         definitions = metadata_cache.read_definitions(profile, now=time.time())
         if definitions is None:
             return []
-        return [d["set_name"] for d in definitions
-                if d["set_name"] and d["set_name"].startswith(incomplete)]
+        return [
+            d["set_name"]
+            for d in definitions
+            if d["set_name"] and d["set_name"].startswith(incomplete)
+        ]
     except Exception:  # noqa: BLE001 — completion must never crash the shell subprocess
         return []
 
 
-@click.group(cls=_LazyJsonAwareGroup, name="crm", invoke_without_command=True, context_settings={"help_option_names": ["-h", "--help"]})
+@click.group(
+    cls=_LazyJsonAwareGroup,
+    name="crm",
+    invoke_without_command=True,
+    context_settings={"help_option_names": ["-h", "--help"]},
+)
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON output.")
-@click.option("--fields", "fields", default=None, metavar="KEY[,KEY...]",
-              help="Project the data payload down to these comma-separated top-level "
-                   "keys (JSON: per row/record; human: table columns). Applied after "
-                   "curation; the ok/error/meta envelope is untouched.")
-@click.option("--jq", "jq_program", default=None, metavar="PROGRAM",
-              help="Run a jq program over the curated data payload; the result "
-                   "replaces data in the envelope. Implies --json. Mutually exclusive "
-                   "with --fields. An invalid program is a usage error (exit 2).")
-@click.option("--dry-run", is_flag=True,
-              help="Preview writes without issuing them; reads run normally.")
-@click.option("--profile", "profile_name", shell_complete=_complete_profile_names,
-              help="Connection profile name (from the profiles/ dir under CRM_HOME; default ~/.crm).")
+@click.option(
+    "--fields",
+    "fields",
+    default=None,
+    metavar="KEY[,KEY...]",
+    help="Project the data payload down to these comma-separated top-level "
+    "keys (JSON: per row/record; human: table columns). Applied after "
+    "curation; the ok/error/meta envelope is untouched.",
+)
+@click.option(
+    "--jq",
+    "jq_program",
+    default=None,
+    metavar="PROGRAM",
+    help="Run a jq program over the curated data payload; the result "
+    "replaces data in the envelope. Implies --json. Mutually exclusive "
+    "with --fields. An invalid program is a usage error (exit 2).",
+)
+@click.option(
+    "--dry-run", is_flag=True, help="Preview writes without issuing them; reads run normally."
+)
+@click.option(
+    "--profile",
+    "profile_name",
+    shell_complete=_complete_profile_names,
+    help="Connection profile name (from the profiles/ dir under CRM_HOME; default ~/.crm).",
+)
 @click.option("--password", help="Secret for this run (overrides the profile's stored secret).")
-@click.option("--log-level",
-              type=click.Choice(["debug", "info", "warning", "error"]),
-              default=None,
-              help="Log level (env: CRM_LOG_LEVEL). Default: warning.")
-@click.option("--verbose", "verbose", is_flag=True,
-              help="Alias for --log-level debug.")
-@click.option("--log-format",
-              type=click.Choice(["text", "json-line"]),
-              default=None,
-              help="Log output format (env: CRM_LOG_FORMAT). Default: text.")
-@click.option("--auth-scheme",
-              type=click.Choice(["ntlm", "kerberos", "negotiate", "oauth"]),
-              default=None,
-              help="Override the active profile's auth scheme for this run. "
-                   "ntlm/kerberos/negotiate = on-prem; oauth = cloud.")
-@click.option("--stage-only", "stage_only", is_flag=True,
-              help="Stage metadata changes without publishing (env: CRM_STAGE_ONLY). "
-                   "Forces every create/update command to --no-publish.")
-@click.option("--retry-on-ambiguous", "retry_on_ambiguous", is_flag=True,
-              help="Re-enable auto-retry of non-idempotent POST creates on "
-                   "transport error / 429 / 503 (env: CRM_RETRY_ON_AMBIGUOUS). "
-                   "Off by default: a lost POST response may have committed.")
-@click.option("--cache-metadata", "cache_metadata", is_flag=True,
-              help="Read entity definitions from the persistent on-disk cache "
-                   "(env: CRM_CACHE_METADATA). Default off.")
-@click.option("--refresh-metadata", "refresh_metadata", is_flag=True,
-              help="Force-refresh the on-disk metadata cache on this call (one-shot; no env override).")
+@click.option(
+    "--log-level",
+    type=click.Choice(["debug", "info", "warning", "error"]),
+    default=None,
+    help="Log level (env: CRM_LOG_LEVEL). Default: warning.",
+)
+@click.option("--verbose", "verbose", is_flag=True, help="Alias for --log-level debug.")
+@click.option(
+    "--log-format",
+    type=click.Choice(["text", "json-line"]),
+    default=None,
+    help="Log output format (env: CRM_LOG_FORMAT). Default: text.",
+)
+@click.option(
+    "--auth-scheme",
+    type=click.Choice(["ntlm", "kerberos", "negotiate", "oauth"]),
+    default=None,
+    help="Override the active profile's auth scheme for this run. "
+    "ntlm/kerberos/negotiate = on-prem; oauth = cloud.",
+)
+@click.option(
+    "--stage-only",
+    "stage_only",
+    is_flag=True,
+    help="Stage metadata changes without publishing (env: CRM_STAGE_ONLY). "
+    "Forces every create/update command to --no-publish.",
+)
+@click.option(
+    "--retry-on-ambiguous",
+    "retry_on_ambiguous",
+    is_flag=True,
+    help="Re-enable auto-retry of non-idempotent POST creates on "
+    "transport error / 429 / 503 (env: CRM_RETRY_ON_AMBIGUOUS). "
+    "Off by default: a lost POST response may have committed.",
+)
+@click.option(
+    "--cache-metadata",
+    "cache_metadata",
+    is_flag=True,
+    help="Read entity definitions from the persistent on-disk cache "
+    "(env: CRM_CACHE_METADATA). Default off.",
+)
+@click.option(
+    "--refresh-metadata",
+    "refresh_metadata",
+    is_flag=True,
+    help="Force-refresh the on-disk metadata cache on this call (one-shot; no env override).",
+)
 @click.option("--session", "session_name", default="default", help="Session name.")
 @click.version_option(__version__, prog_name="crm")
 @click.pass_context
-def cli(ctx: click.Context, json_mode: bool, fields: str | None,
-        jq_program: str | None, dry_run: bool,
-        profile_name: str | None, password: str | None,
-        log_level: str | None, verbose: bool, log_format: str | None,
-        auth_scheme: str | None, stage_only: bool, retry_on_ambiguous: bool,
-        cache_metadata: bool, refresh_metadata: bool,
-        session_name: str):
+def cli(
+    ctx: click.Context,
+    json_mode: bool,
+    fields: str | None,
+    jq_program: str | None,
+    dry_run: bool,
+    profile_name: str | None,
+    password: str | None,
+    log_level: str | None,
+    verbose: bool,
+    log_format: str | None,
+    auth_scheme: str | None,
+    stage_only: bool,
+    retry_on_ambiguous: bool,
+    cache_metadata: bool,
+    refresh_metadata: bool,
+    session_name: str,
+):
     """Stateful CLI for Microsoft Dynamics 365 CE — on-prem v9.x (NTLM) or Dataverse online (OAuth), over the Web API."""
     force_utf8_output(sys.stdout)
     force_utf8_output(sys.stderr)
@@ -912,11 +1032,15 @@ def cli(ctx: click.Context, json_mode: bool, fields: str | None,
     # is imported from click.core (not top-level click) — pyright's bundled stubs
     # only export it there.
     from click.core import ParameterSource
+
     cli_ctx._root_positions = {
         kind
         for kind, pname in (
-            ("json", "json_mode"), ("fields", "fields"), ("jq", "jq_program"),
-            ("dry_run", "dry_run"), ("profile", "profile_name"),
+            ("json", "json_mode"),
+            ("fields", "fields"),
+            ("jq", "jq_program"),
+            ("dry_run", "dry_run"),
+            ("profile", "profile_name"),
         )
         if ctx.get_parameter_source(pname) == ParameterSource.COMMANDLINE
     }
@@ -999,6 +1123,7 @@ def cli(ctx: click.Context, json_mode: bool, fields: str | None,
                 click.echo(f"Error: {msg}", err=True)
             raise click.exceptions.Exit(2)
         from crm.commands.repl import repl
+
         ctx.invoke(repl)
 
 
@@ -1020,9 +1145,14 @@ def _maybe_update_check(json_mode: bool) -> None:
     if not _update_check_eligible(json_mode):
         return
     import time
+
     from crm.core import update as update_mod
+
     update_mod.run_background_check(
-        json_mode=json_mode, stderr_isatty=True, env=os.environ, now=time.time(),
+        json_mode=json_mode,
+        stderr_isatty=True,
+        env=os.environ,
+        now=time.time(),
     )
 
 
@@ -1039,8 +1169,11 @@ def _emit_update_notice(result: Any, **_kwargs: Any) -> None:
     if not _update_check_eligible(json_mode):
         return
     from crm.core import update as update_mod
+
     update_mod.emit_pending_notice(
-        json_mode=json_mode, stderr_isatty=True, env=os.environ,
+        json_mode=json_mode,
+        stderr_isatty=True,
+        env=os.environ,
     )
 
 
@@ -1051,6 +1184,7 @@ def _emit_update_notice(result: Any, **_kwargs: Any) -> None:
 # get_completion_class("powershell") returns None and completion silently emits
 # nothing. completion_registry has no module-level crm.cli import, so this is safe.
 from click.shell_completion import add_completion_class  # noqa: E402
+
 from crm.commands.completion_registry import PowerShellComplete  # noqa: E402
 
 add_completion_class(PowerShellComplete)

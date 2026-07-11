@@ -10,6 +10,7 @@ anti-drift test (``crm/tests/test_examples.py``): if an example ever references
 a removed command or flag, CI fails. That gate is the whole point of keeping the
 gallery *in code* rather than as hand-written prose that silently rots.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -86,7 +87,7 @@ EXAMPLES: dict[str, list[Example]] = {
             "List installed solutions.",
         ),
         Example(
-            "crm solution create --name dev --display \"Dev\" --publisher acme",
+            'crm solution create --name dev --display "Dev" --publisher acme',
             "Create a new unmanaged solution.",
         ),
         Example(
@@ -138,11 +139,11 @@ EXAMPLES: dict[str, list[Example]] = {
             "List a table's columns.",
         ),
         Example(
-            "crm metadata add-attribute account --kind string --schema-name new_nickname --display \"Nickname\" --solution SOLUTION_NAME",
+            'crm metadata add-attribute account --kind string --schema-name new_nickname --display "Nickname" --solution SOLUTION_NAME',
             "Add a column to a table.",
         ),
         Example(
-            "crm metadata create-optionset --name new_color --display \"Color\" --option 1:Red --option 2:Blue --solution SOLUTION_NAME",
+            'crm metadata create-optionset --name new_color --display "Color" --option 1:Red --option 2:Blue --solution SOLUTION_NAME',
             "Create a global choice (option set).",
         ),
     ],

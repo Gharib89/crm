@@ -4,6 +4,7 @@
 `meta`, `@odata.*` protocol keys are stripped, and the affected record's GUID is
 surfaced under the normalized `_entity_id` key on write verbs + single-record get.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -60,10 +61,13 @@ class TestListPayloadBareArray:
         assert "statuscode@OData.Community.Display.V1.FormattedValue" in row
 
     def test_paging_relocated_to_meta(self, make_fake_backend, inject_backend):
-        env_resp = _collection(_row(), **{
-            "@odata.count": 42,
-            "@odata.nextLink": "https://crm.contoso.local/contoso/api/data/v9.2/accounts?$skiptoken=x",
-        })
+        env_resp = _collection(
+            _row(),
+            **{
+                "@odata.count": 42,
+                "@odata.nextLink": "https://crm.contoso.local/contoso/api/data/v9.2/accounts?$skiptoken=x",
+            },
+        )
         inject_backend(make_fake_backend(responses={"get": env_resp}))
         result = CliRunner().invoke(cli, ["--json", "query", "odata", "accounts"])
         env = json.loads(result.output)
@@ -104,6 +108,7 @@ class TestSingleRecordGet:
 class TestHumanPrimaryNameColumn:
     def test_infer_columns_hoists_primary_name_past_cap(self):
         from crm.commands._helpers import _infer_columns
+
         row: dict[str, object] = {f"sys{i}": i for i in range(10)}
         row["name"] = "X"
         cols = _infer_columns([row], primary_name="name")
@@ -112,6 +117,7 @@ class TestHumanPrimaryNameColumn:
 
     def test_infer_columns_no_primary_name_unchanged(self):
         from crm.commands._helpers import _infer_columns
+
         assert _infer_columns([{"a": 1, "b": 2}]) == ["a", "b"]
 
     def test_query_human_surfaces_name_when_cached(self, make_fake_backend, inject_backend):
@@ -122,6 +128,7 @@ class TestHumanPrimaryNameColumn:
         be = make_fake_backend(responses={"get": _collection(row)})
         inject_backend(be)
         from crm.core import entity_names
+
         entity_names.load_name_map(be, refresh=True)  # warm the cache (no GET on read)
         result = CliRunner().invoke(cli, ["query", "odata", "accounts"])
         assert result.exit_code == 0, result.output
@@ -147,8 +154,9 @@ class TestCreateNormalizedId:
     def test_create_no_return_emits_entity_id_not_id(self, make_fake_backend, inject_backend):
         url = f"https://crm.contoso.local/contoso/api/data/v9.2/accounts({GUID})"
         # The 204 no-return path surfaces the GUID from the OData-EntityId header.
-        inject_backend(make_fake_backend(
-            responses={"post": {"_entity_id": GUID, "_entity_id_url": url}}))
+        inject_backend(
+            make_fake_backend(responses={"post": {"_entity_id": GUID, "_entity_id_url": url}})
+        )
         result = CliRunner().invoke(
             cli, ["--json", "entity", "create", "accounts", "--data", '{"name":"x"}', "--no-return"]
         )
@@ -164,26 +172,34 @@ class TestDryRunPreviewNotCurated:
         # A dry-run mutation preview echoes the request that WOULD be sent; the
         # central @odata curation must not touch it (else @odata.bind disappears
         # and the preview no longer matches the wire payload).
-        import io
         import contextlib
+        import io
+
         from crm.cli import CLIContext
+
         ctx = CLIContext()
         ctx.json_mode = True
         ctx.dry_run = True
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            ctx.emit(True, data={
-                "_dry_run": True,
-                "would_create": {"body": {"name": "x",
-                                          "ownerid@odata.bind": "/systemusers(1)"}},
-            })
+            ctx.emit(
+                True,
+                data={
+                    "_dry_run": True,
+                    "would_create": {
+                        "body": {"name": "x", "ownerid@odata.bind": "/systemusers(1)"}
+                    },
+                },
+            )
         env = json.loads(buf.getvalue())
         assert env["data"]["would_create"]["body"]["ownerid@odata.bind"] == "/systemusers(1)"
         assert env["meta"]["dry_run"] is True
 
 
 class TestUpdateNormalizedId:
-    def test_update_no_return_fallback_emits_entity_id_not_id(self, make_fake_backend, inject_backend):
+    def test_update_no_return_fallback_emits_entity_id_not_id(
+        self, make_fake_backend, inject_backend
+    ):
         # An empty 204 (no OData-EntityId header) drives the fallback envelope.
         inject_backend(make_fake_backend(responses={"patch": None}))
         result = CliRunner().invoke(
@@ -200,6 +216,7 @@ class TestUpdateNormalizedId:
 class TestNameMapPrimaryAttrs:
     def test_primary_lookup_by_set_or_logical(self):
         from crm.core.entity_names import NameMap
+
         nm = NameMap(
             logical_to_set={"account": "accounts"},
             set_to_logical={"accounts": "account"},
@@ -214,10 +231,19 @@ class TestNameMapPrimaryAttrs:
     def test_load_name_map_carries_primary_attrs(self, make_fake_backend, tmp_path, monkeypatch):
         monkeypatch.setenv("CRM_HOME", str(tmp_path))
         from crm.core.entity_names import load_name_map
-        be = make_fake_backend(responses={"get_collection": [
-            {"LogicalName": "account", "EntitySetName": "accounts",
-             "PrimaryIdAttribute": "accountid", "PrimaryNameAttribute": "name"},
-        ]})
+
+        be = make_fake_backend(
+            responses={
+                "get_collection": [
+                    {
+                        "LogicalName": "account",
+                        "EntitySetName": "accounts",
+                        "PrimaryIdAttribute": "accountid",
+                        "PrimaryNameAttribute": "name",
+                    },
+                ]
+            }
+        )
         nm = load_name_map(be, refresh=True)
         assert nm.primary_id_for("accounts") == "accountid"
         assert nm.primary_name_for("accounts") == "name"
@@ -226,22 +252,36 @@ class TestNameMapPrimaryAttrs:
 class TestCacheSchemaVersion:
     def test_legacy_cache_without_schema_is_a_miss(self, profile, tmp_path, monkeypatch):
         import json as _json
+
         monkeypatch.setenv("CRM_HOME", str(tmp_path))
         from crm.core import metadata_cache as mc
+
         path = mc.cache_file(profile)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(_json.dumps({
-            "url": profile.url.rstrip("/"), "api_version": profile.api_version,
-            "cached_at": 10_000.0,
-            "definitions": [{"logical": "account", "set_name": "accounts"}],
-        }))
+        path.write_text(
+            _json.dumps(
+                {
+                    "url": profile.url.rstrip("/"),
+                    "api_version": profile.api_version,
+                    "cached_at": 10_000.0,
+                    "definitions": [{"logical": "account", "set_name": "accounts"}],
+                }
+            )
+        )
         assert mc.read_definitions(profile, now=10_001.0) is None
 
     def test_new_cache_with_primary_attrs_roundtrips(self, profile, tmp_path, monkeypatch):
         monkeypatch.setenv("CRM_HOME", str(tmp_path))
         from crm.core import metadata_cache as mc
-        defs = [{"logical": "account", "set_name": "accounts",
-                 "primary_id": "accountid", "primary_name": "name"}]
+
+        defs = [
+            {
+                "logical": "account",
+                "set_name": "accounts",
+                "primary_id": "accountid",
+                "primary_name": "name",
+            }
+        ]
         mc.write_definitions(profile, defs, now=10_000.0)
         assert mc.read_definitions(profile, now=10_001.0) == defs
 
@@ -249,9 +289,7 @@ class TestCacheSchemaVersion:
 class TestDeleteNormalizedId:
     def test_delete_emits_entity_id_not_id(self, make_fake_backend, inject_backend):
         inject_backend(make_fake_backend(responses={"delete": None}))
-        result = CliRunner().invoke(
-            cli, ["--json", "entity", "delete", "accounts", GUID, "--yes"]
-        )
+        result = CliRunner().invoke(cli, ["--json", "entity", "delete", "accounts", GUID, "--yes"])
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)["data"]
         assert data["deleted"] is True

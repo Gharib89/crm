@@ -8,6 +8,7 @@ a **stub reviewer** — Claude is never invoked.
 
     pytest evals/skill
 """
+
 from __future__ import annotations
 
 import json
@@ -18,14 +19,25 @@ from evals.skill import review
 from evals.skill.record import TaskRunRecord
 
 
-def _rec(task_id="records-create-verify", *, status="pass", passed=True,
-         commands=None, counterfactual=False) -> TaskRunRecord:
+def _rec(
+    task_id="records-create-verify",
+    *,
+    status="pass",
+    passed=True,
+    commands=None,
+    counterfactual=False,
+) -> TaskRunRecord:
     return TaskRunRecord(
-        task_id=task_id, prompt=f"Do {task_id}.", raw_trace="...",
-        commands=commands if commands is not None else ["crm whoami", "crm entity create contacts ..."],
+        task_id=task_id,
+        prompt=f"Do {task_id}.",
+        raw_trace="...",
+        commands=commands
+        if commands is not None
+        else ["crm whoami", "crm entity create contacts ..."],
         metrics={"num_turns": 5, "total_cost_usd": 0.1, "duration_ms": 1000},
         correctness_verdict={"passed": passed, "reason": "r", "status": status},
-        skill_sha="abc", counterfactual=counterfactual,
+        skill_sha="abc",
+        counterfactual=counterfactual,
     )
 
 
@@ -42,6 +54,7 @@ _GOOD_REVIEW = {
 
 # --- reviewer command resolution -----------------------------------------------------
 
+
 def test_default_review_cmd_is_opus():
     assert review.resolve_review_cmd() == ["claude", "-p", "--model", "opus"]
 
@@ -53,6 +66,7 @@ def test_review_cmd_env_and_arg_override(monkeypatch):
 
 
 # --- skill read ----------------------------------------------------------------------
+
 
 def test_read_skill_text_concatenates_skill_and_reference(tmp_path):
     (tmp_path / "SKILL.md").write_text("ROUTER BODY", encoding="utf-8")
@@ -72,23 +86,37 @@ def test_read_skill_text_fails_loud_on_empty_skill(tmp_path):
 
 # --- prompt assembly -----------------------------------------------------------------
 
+
 def test_build_review_prompt_carries_the_judgable_inputs():
     prompt = review.build_review_prompt(rec=_rec(), skill_text="SKILL TEXT HERE")
-    for needle in ("Do records-create-verify.", "crm entity create contacts", "SKILL TEXT HERE",
-                   "goal_reached", "command_economy", "skill_adherence", "skill_lift", "skill_fix",
-                   "helped", "neutral", "hindered"):
+    for needle in (
+        "Do records-create-verify.",
+        "crm entity create contacts",
+        "SKILL TEXT HERE",
+        "goal_reached",
+        "command_economy",
+        "skill_adherence",
+        "skill_lift",
+        "skill_fix",
+        "helped",
+        "neutral",
+        "hindered",
+    ):
         assert needle in prompt, f"prompt missing {needle!r}"
 
 
 def test_build_review_prompt_includes_counterfactual_leg_when_present():
-    cf = _rec(commands=["crm whoami", "crm help", "crm entity create ...", "crm query ..."],
-              counterfactual=True)
+    cf = _rec(
+        commands=["crm whoami", "crm help", "crm entity create ...", "crm query ..."],
+        counterfactual=True,
+    )
     prompt = review.build_review_prompt(rec=_rec(), skill_text="S", counterfactual=cf)
     assert "skill-absent" in prompt.lower() or "counterfactual" in prompt.lower()
     assert "crm help" in prompt  # the absent leg's commands are shown for comparison
 
 
 # --- structured-output parse ---------------------------------------------------------
+
 
 def test_parse_review_extracts_plain_json():
     assert review.parse_review(json.dumps(_GOOD_REVIEW)) == _GOOD_REVIEW
@@ -117,6 +145,7 @@ def test_parse_review_rejects_bad_lift_and_missing_json():
 
 # --- org-fingerprint guard on the tracked efficacy.md --------------------------------
 
+
 def test_guard_blocks_guids_and_fingerprint():
     # Obvious placeholders only — never embed a real org GUID/MAC in a public-repo test.
     with pytest.raises(review.ReviewError, match="GUID"):
@@ -126,18 +155,25 @@ def test_guard_blocks_guids_and_fingerprint():
 
 
 def test_guard_passes_org_agnostic_text():
-    review.guard_org_agnostic("Axis tallies: goal_reached good=3 weak=1. Fix: clarify the query verb.")
+    review.guard_org_agnostic(
+        "Axis tallies: goal_reached good=3 weak=1. Fix: clarify the query verb."
+    )
 
 
 # --- report + efficacy block ---------------------------------------------------------
 
+
 def test_build_report_tables_axes_and_clusters_fixes():
     recs = [
-        _rec("a"), _rec("b"),
+        _rec("a"),
+        _rec("b"),
     ]
     recs[0].efficacy_review = dict(_GOOD_REVIEW)
-    recs[1].efficacy_review = {**_GOOD_REVIEW, "skill_lift": "hindered",
-                               "skill_fix": "document the --validate flag default"}
+    recs[1].efficacy_review = {
+        **_GOOD_REVIEW,
+        "skill_lift": "hindered",
+        "skill_fix": "document the --validate flag default",
+    }
     report = review.build_report(recs)
     assert "| a |" in report and "| b |" in report
     assert "helped" in report and "hindered" in report
@@ -147,7 +183,11 @@ def test_build_report_tables_axes_and_clusters_fixes():
 def test_efficacy_block_is_tallies_and_fixes_only():
     recs = [_rec("a"), _rec("b")]
     recs[0].efficacy_review = dict(_GOOD_REVIEW)
-    recs[1].efficacy_review = {**_GOOD_REVIEW, "skill_lift": "hindered", "skill_fix": "add an example"}
+    recs[1].efficacy_review = {
+        **_GOOD_REVIEW,
+        "skill_lift": "hindered",
+        "skill_fix": "add an example",
+    }
     block = review.build_efficacy_block(recs, date="2026-06-26")
     assert "2026-06-26" in block
     assert "helped" in block and "hindered" in block  # lift tally
@@ -158,10 +198,12 @@ def test_efficacy_block_is_tallies_and_fixes_only():
 
 # --- batch orchestration with a stub reviewer ----------------------------------------
 
+
 def _stub_reviewer(captured: list[str]):
     def reviewer(prompt: str) -> str:
         captured.append(prompt)
         return json.dumps(_GOOD_REVIEW)
+
     return reviewer
 
 
@@ -180,7 +222,9 @@ def test_review_records_task_filter():
 
 def test_review_records_failed_only_filter():
     recs = [_rec("a", status="pass", passed=True), _rec("b", status="fail", passed=False)]
-    reviewed = review.review_records(recs, skill_text="S", reviewer=_stub_reviewer([]), failed_only=True)
+    reviewed = review.review_records(
+        recs, skill_text="S", reviewer=_stub_reviewer([]), failed_only=True
+    )
     assert [r.task_id for r in reviewed] == ["b"]
 
 
@@ -188,7 +232,9 @@ def test_review_records_pairs_counterfactual_leg_into_prompt():
     present = _rec("a")
     absent = _rec("a", commands=["crm help", "crm help query"], counterfactual=True)
     captured: list[str] = []
-    reviewed = review.review_records([present, absent], skill_text="S", reviewer=_stub_reviewer(captured))
+    reviewed = review.review_records(
+        [present, absent], skill_text="S", reviewer=_stub_reviewer(captured)
+    )
     # only the skill-present leg is reviewed; the absent leg is folded into its prompt.
     assert [r.task_id for r in reviewed] == ["a"]
     assert len(captured) == 1 and "crm help query" in captured[0]
@@ -202,14 +248,18 @@ def test_review_records_unparseable_reviewer_is_recorded_not_raised():
 
 # --- orchestration: writeback + report.md + efficacy.md ------------------------------
 
+
 def test_run_review_cmd_writes_back_records_and_report(tmp_path):
     from evals.skill import record as record_mod
+
     run_dir = tmp_path / "20260626T000000Z"
     record_mod.write_record(run_dir, _rec("a"))
     record_mod.write_record(run_dir, _rec("b", status="fail", passed=False))
 
     rc = review.run_review_cmd(
-        run_dir=run_dir, reviewer=_stub_reviewer([]), skill_reader=lambda d: "SKILL",
+        run_dir=run_dir,
+        reviewer=_stub_reviewer([]),
+        skill_reader=lambda d: "SKILL",
     )
     assert rc == 0
     # each record now carries its efficacy review on disk...
@@ -222,14 +272,19 @@ def test_run_review_cmd_writes_back_records_and_report(tmp_path):
 
 def test_run_review_cmd_record_flag_appends_guarded_efficacy(tmp_path):
     from evals.skill import record as record_mod
+
     run_dir = tmp_path / "20260626T010000Z"
     record_mod.write_record(run_dir, _rec("a"))
     efficacy = tmp_path / "efficacy.md"
     efficacy.write_text("# Efficacy trend\n", encoding="utf-8")
 
     rc = review.run_review_cmd(
-        run_dir=run_dir, reviewer=_stub_reviewer([]), skill_reader=lambda d: "SKILL",
-        record_efficacy=True, efficacy_path=efficacy, today="2026-06-26",
+        run_dir=run_dir,
+        reviewer=_stub_reviewer([]),
+        skill_reader=lambda d: "SKILL",
+        record_efficacy=True,
+        efficacy_path=efficacy,
+        today="2026-06-26",
     )
     assert rc == 0
     text = efficacy.read_text(encoding="utf-8")
@@ -239,6 +294,8 @@ def test_run_review_cmd_record_flag_appends_guarded_efficacy(tmp_path):
 def test_run_review_cmd_no_run_dir_is_an_error(tmp_path):
     # No run dir given and none on disk → a clean non-zero, not a crash.
     rc = review.run_review_cmd(
-        runs_root=tmp_path / "empty", reviewer=_stub_reviewer([]), skill_reader=lambda d: "S",
+        runs_root=tmp_path / "empty",
+        reviewer=_stub_reviewer([]),
+        skill_reader=lambda d: "S",
     )
     assert rc != 0

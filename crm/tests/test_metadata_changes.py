@@ -68,7 +68,8 @@ def test_metadata_changes_baseline(backend):
 
 def test_metadata_changes_since_delta(backend):
     """With --since: delta path carries ClientVersionStamp + DeletedMetadataFilters,
-    the stamp is sent as a quoted string literal, and deleted_count is surfaced."""
+    the stamp is sent as a quoted string literal, and deleted_count is surfaced.
+    """
     stamp = "3513553!06/20/2026 20:10:36"
     resp = _resp([], stamp="9999!06/20/2026 21:00:00", deleted_count=2)
     path = (
@@ -116,11 +117,15 @@ def test_metadata_changes_with_attributes(backend):
     sent = json.loads(_query_param(m.last_request))
     assert "Attributes" in sent["Properties"]["PropertyNames"]
     assert sent["AttributeQuery"]["Properties"]["PropertyNames"] == [
-        "LogicalName", "AttributeType", "DisplayName"
+        "LogicalName",
+        "AttributeType",
+        "DisplayName",
     ]
     shaped_attrs = out["entities"][0]["attributes"]
     assert shaped_attrs[0] == {
-        "logical_name": "name", "attribute_type": "String", "has_changed": True
+        "logical_name": "name",
+        "attribute_type": "String",
+        "has_changed": True,
     }
 
 
@@ -140,7 +145,8 @@ def _stub(monkeypatch, backend):
 
 def test_changes_cli_json_surfaces_stamp(monkeypatch, backend):
     """`--json metadata changes` returns the ok envelope, the entities under data,
-    and the new ServerVersionStamp (the value to save) in data."""
+    and the new ServerVersionStamp (the value to save) in data.
+    """
     _stub(monkeypatch, backend)
     resp = _resp([_entity("account", "Account", label="Account")], stamp="42!ts")
     with requests_mock.Mocker() as m:
@@ -166,8 +172,17 @@ def test_changes_cli_since_and_entity_options(monkeypatch, backend):
         m.get(backend.url_for(path), json=_resp([], stamp="99!ts", deleted_count=1))
         result = CliRunner().invoke(
             cli,
-            ["--json", "metadata", "changes", "--since", "42!ts",
-             "--entity", "account", "--entity", "contact"],
+            [
+                "--json",
+                "metadata",
+                "changes",
+                "--since",
+                "42!ts",
+                "--entity",
+                "account",
+                "--entity",
+                "contact",
+            ],
         )
     assert result.exit_code == 0, result.output
     env = json.loads(result.output)
@@ -178,7 +193,8 @@ def test_changes_cli_since_and_entity_options(monkeypatch, backend):
 
 def test_changes_cli_rejects_empty_since(monkeypatch, backend):
     """An explicit empty --since is rejected (would otherwise silently trigger an
-    expensive baseline) — and the error fires before any backend call."""
+    expensive baseline) — and the error fires before any backend call.
+    """
     called = {"backend": False}
 
     def _boom(self):
@@ -194,7 +210,8 @@ def test_changes_cli_rejects_empty_since(monkeypatch, backend):
 
 def test_changes_runs_live_under_dry_run(dry_backend):
     """`changes` is a read — the reads-execute rule means it runs live even in
-    dry-run mode (no _dry_run preview, real GET issued)."""
+    dry-run mode (no _dry_run preview, real GET issued).
+    """
     resp = _resp([_entity("account", "Account")], stamp="7!ts")
     with requests_mock.Mocker() as m:
         m.get(dry_backend.url_for("RetrieveMetadataChanges(Query=@p1)"), json=resp)

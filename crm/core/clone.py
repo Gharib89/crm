@@ -11,13 +11,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from crm.core import metadata_constraints as mc
 from crm.core.apply import apply_spec
 from crm.core.charts import clone_chart_to_entity, read_entity_charts
 from crm.core.export_spec import build_entity_spec
 from crm.core.forms import clone_form_to_entity, read_entity_forms
 from crm.core.solution import publish_all, validate_customization_prefix
 from crm.core.workflow import clone_workflow_to_entity, list_workflows
-from crm.core import metadata_constraints as mc
 from crm.utils.d365_backend import D365Backend, D365Error
 
 
@@ -82,13 +82,14 @@ def clone_entity(
     skipped_workflows, ribbon_note, apply}``.
     """
     mc.validate_schema_name(
-        new_schema_name, subject="new_schema_name", example="new_TicketClone", echo=True)
+        new_schema_name, subject="new_schema_name", example="new_TicketClone", echo=True
+    )
     prefix, _, _ = new_schema_name.partition("_")
     validate_customization_prefix(prefix)
 
     spec = build_entity_spec(
-        backend, source, with_views=with_views, with_relationships=False,
-        solution=solution)
+        backend, source, with_views=with_views, with_relationships=False, solution=solution
+    )
     retarget_spec(spec, new_schema=new_schema_name, display=display)
 
     apply_result = apply_spec(backend, spec, stage_only=not publish)
@@ -140,8 +141,7 @@ def clone_entity(
         for wf in list_workflows(backend, primary_entity=source):
             wf_id = wf.get("workflowid") or ""
             try:
-                clone_workflow_to_entity(
-                    backend, wf_id, clone_logical, solution=solution)
+                clone_workflow_to_entity(backend, wf_id, clone_logical, solution=solution)
                 wf_done += 1
             except D365Error as exc:
                 skipped_wf.append({"name": wf.get("name", ""), "reason": str(exc)})

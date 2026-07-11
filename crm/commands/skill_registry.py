@@ -16,6 +16,7 @@ still drop one update. That is acceptable here — `skill install`/`uninstall` a
 rare, interactive, one-shot operations, not a concurrent hot path — so we keep
 the write torn-free without the cross-platform cost of a real lockfile.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -111,7 +112,8 @@ def install_tree(src_dir: Path, dest_dir: Path) -> None:
             skill_md.unlink()
     dest_dir.mkdir(parents=True, exist_ok=True)
     shutil.copytree(
-        src_dir, dest_dir,
+        src_dir,
+        dest_dir,
         dirs_exist_ok=True,
         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
     )
@@ -136,13 +138,15 @@ def refresh_skills(target_version: str, src_dir: Path) -> list[dict[str, Any]]:
             kept.append(entry)
             continue
         if from_v == target_version:
-            results.append({"dest": dest, "from_version": from_v,
-                            "to_version": from_v, "status": "skipped"})
+            results.append(
+                {"dest": dest, "from_version": from_v, "to_version": from_v, "status": "skipped"}
+            )
             kept.append(entry)
             continue
         if not Path(dest).exists():
-            results.append({"dest": dest, "from_version": from_v,
-                            "to_version": None, "status": "pruned"})
+            results.append(
+                {"dest": dest, "from_version": from_v, "to_version": None, "status": "pruned"}
+            )
             changed = True
             continue  # drop the entry; do not recreate the folder
         try:
@@ -150,13 +154,25 @@ def refresh_skills(target_version: str, src_dir: Path) -> list[dict[str, Any]]:
         except Exception:
             # Report the intended target so callers see what the refresh aimed
             # for; the entry is kept (still stale) for a later retry.
-            results.append({"dest": dest, "from_version": from_v,
-                            "to_version": target_version, "status": "error"})
+            results.append(
+                {
+                    "dest": dest,
+                    "from_version": from_v,
+                    "to_version": target_version,
+                    "status": "error",
+                }
+            )
             kept.append(entry)
             continue
         kept.append({**entry, "installed_version": target_version})
-        results.append({"dest": dest, "from_version": from_v,
-                        "to_version": target_version, "status": "refreshed"})
+        results.append(
+            {
+                "dest": dest,
+                "from_version": from_v,
+                "to_version": target_version,
+                "status": "refreshed",
+            }
+        )
         changed = True
     if changed:
         _write_skills(kept)

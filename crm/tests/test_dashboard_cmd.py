@@ -1,12 +1,13 @@
 """Command-layer tests for `crm dashboard` (list / get / create / delete)."""
+
 # pyright: basic
 from __future__ import annotations
 
 import json
 
 import requests_mock as rm_module
-
 from click.testing import CliRunner
+
 from crm.cli import cli
 from crm.utils.d365_backend import D365Backend
 
@@ -72,8 +73,11 @@ class TestDashboardDelete:
 
 class TestDashboardCreate:
     def _post_mock(self, m, backend):
-        m.post(_forms_url(backend), status_code=204,
-               headers={"OData-EntityId": backend.url_for(f"systemforms({_NEW_ID})")})
+        m.post(
+            _forms_url(backend),
+            status_code=204,
+            headers={"OData-EntityId": backend.url_for(f"systemforms({_NEW_ID})")},
+        )
 
     def _formxml_file(self, tmp_path):
         f = tmp_path / "dash.xml"
@@ -84,10 +88,21 @@ class TestDashboardCreate:
         _use_backend(monkeypatch, backend)
         with rm_module.Mocker() as m:
             self._post_mock(m, backend)
-            result = CliRunner().invoke(cli, [
-                "--json", "dashboard", "create",
-                "--name", "Sales", "--formxml", self._formxml_file(tmp_path),
-                "--solution", "TestSol", "--no-publish"])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "dashboard",
+                    "create",
+                    "--name",
+                    "Sales",
+                    "--formxml",
+                    self._formxml_file(tmp_path),
+                    "--solution",
+                    "TestSol",
+                    "--no-publish",
+                ],
+            )
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["created"] is True
@@ -95,10 +110,20 @@ class TestDashboardCreate:
 
     def test_create_rejects_interactive(self, backend, monkeypatch, tmp_path):
         _use_backend(monkeypatch, backend)
-        result = CliRunner().invoke(cli, [
-            "--json", "dashboard", "create",
-            "--name", "X", "--formxml", self._formxml_file(tmp_path),
-            "--interactive", "--no-publish"])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "dashboard",
+                "create",
+                "--name",
+                "X",
+                "--formxml",
+                self._formxml_file(tmp_path),
+                "--interactive",
+                "--no-publish",
+            ],
+        )
         assert result.exit_code != 0
         # --json surfaces the rejection as the machine-readable error envelope
         env = json.loads(result.output)
@@ -107,16 +132,28 @@ class TestDashboardCreate:
 
     def test_create_requires_formxml(self, backend, monkeypatch):
         _use_backend(monkeypatch, backend)
-        result = CliRunner().invoke(cli, [
-            "--json", "dashboard", "create", "--name", "X", "--no-publish"])
+        result = CliRunner().invoke(
+            cli, ["--json", "dashboard", "create", "--name", "X", "--no-publish"]
+        )
         assert result.exit_code != 0
 
     def test_create_dry_run_previews(self, dry_backend, monkeypatch, tmp_path):
         _use_backend(monkeypatch, dry_backend)
-        result = CliRunner().invoke(cli, [
-            "--json", "dashboard", "create",
-            "--name", "Sales", "--formxml", self._formxml_file(tmp_path),
-            "--solution", "TestSol", "--no-publish"])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "dashboard",
+                "create",
+                "--name",
+                "Sales",
+                "--formxml",
+                self._formxml_file(tmp_path),
+                "--solution",
+                "TestSol",
+                "--no-publish",
+            ],
+        )
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["_dry_run"] is True
@@ -124,12 +161,12 @@ class TestDashboardCreate:
 
 
 _DASH_FORMXML = (
-    '<form><tabs>'
+    "<form><tabs>"
     '<tab name="tab0" id="{aaaaaaaa-0000-0000-0000-000000000001}">'
     '<columns><column width="100%"><sections>'
     '<section name="sec0" id="{aaaaaaaa-0000-0000-0000-000000000002}">'
-    '<rows/></section></sections></column></columns></tab>'
-    '</tabs></form>'
+    "<rows/></section></sections></column></columns></tab>"
+    "</tabs></form>"
 )
 _VIEW_ID = "cccccccc-0000-0000-0000-000000000001"
 _VIS_ID = "dddddddd-0000-0000-0000-000000000001"
@@ -138,23 +175,41 @@ _VIS_ID = "dddddddd-0000-0000-0000-000000000001"
 class TestDashboardAddChart:
     def _mock(self, m, backend):
         did = _DASH["formid"]
-        m.get(backend.url_for(f"systemforms({did})"),
-              json={**_DASH, "formxml": _DASH_FORMXML})
-        m.get(backend.url_for(f"savedqueries({_VIEW_ID})"),
-              json={"savedqueryid": _VIEW_ID, "returnedtypecode": "account", "name": "v"})
-        m.get(backend.url_for(f"savedqueryvisualizations({_VIS_ID})"),
-              json={"savedqueryvisualizationid": _VIS_ID,
-                    "primaryentitytypecode": "account", "name": "c"})
+        m.get(backend.url_for(f"systemforms({did})"), json={**_DASH, "formxml": _DASH_FORMXML})
+        m.get(
+            backend.url_for(f"savedqueries({_VIEW_ID})"),
+            json={"savedqueryid": _VIEW_ID, "returnedtypecode": "account", "name": "v"},
+        )
+        m.get(
+            backend.url_for(f"savedqueryvisualizations({_VIS_ID})"),
+            json={
+                "savedqueryvisualizationid": _VIS_ID,
+                "primaryentitytypecode": "account",
+                "name": "c",
+            },
+        )
         m.patch(backend.url_for(f"systemforms({did})"), status_code=204)
 
     def test_add_chart(self, backend, monkeypatch):
         _use_backend(monkeypatch, backend)
         with rm_module.Mocker() as m:
             self._mock(m, backend)
-            result = CliRunner().invoke(cli, [
-                "--json", "dashboard", "add-chart", _DASH["formid"],
-                "--view", _VIEW_ID, "--chart", _VIS_ID,
-                "--solution", "TestSol", "--no-publish"])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "dashboard",
+                    "add-chart",
+                    _DASH["formid"],
+                    "--view",
+                    _VIEW_ID,
+                    "--chart",
+                    _VIS_ID,
+                    "--solution",
+                    "TestSol",
+                    "--no-publish",
+                ],
+            )
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["updated"] is True
@@ -166,14 +221,29 @@ class TestDashboardAddView:
         _use_backend(monkeypatch, dry_backend)
         did = _DASH["formid"]
         with rm_module.Mocker() as m:
-            m.get(dry_backend.url_for(f"systemforms({did})"),
-                  json={**_DASH, "formxml": _DASH_FORMXML})
-            m.get(dry_backend.url_for(f"savedqueries({_VIEW_ID})"),
-                  json={"savedqueryid": _VIEW_ID, "returnedtypecode": "account", "name": "v"})
-            result = CliRunner().invoke(cli, [
-                "--json", "dashboard", "add-view", did,
-                "--view", _VIEW_ID, "--mode", "all",
-                "--solution", "TestSol", "--no-publish"])
+            m.get(
+                dry_backend.url_for(f"systemforms({did})"), json={**_DASH, "formxml": _DASH_FORMXML}
+            )
+            m.get(
+                dry_backend.url_for(f"savedqueries({_VIEW_ID})"),
+                json={"savedqueryid": _VIEW_ID, "returnedtypecode": "account", "name": "v"},
+            )
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "dashboard",
+                    "add-view",
+                    did,
+                    "--view",
+                    _VIEW_ID,
+                    "--mode",
+                    "all",
+                    "--solution",
+                    "TestSol",
+                    "--no-publish",
+                ],
+            )
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["_dry_run"] is True
@@ -188,13 +258,23 @@ class TestDashboardAddIframe:
         _use_backend(monkeypatch, backend)
         did = _DASH["formid"]
         with rm_module.Mocker() as m:
-            m.get(backend.url_for(f"systemforms({did})"),
-                  json={**_DASH, "formxml": _DASH_FORMXML})
+            m.get(backend.url_for(f"systemforms({did})"), json={**_DASH, "formxml": _DASH_FORMXML})
             m.patch(backend.url_for(f"systemforms({did})"), status_code=204)
-            result = CliRunner().invoke(cli, [
-                "--json", "dashboard", "add-iframe", did,
-                "--url", "https://example.com/x", "--security",
-                "--solution", "TestSol", "--no-publish"])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "dashboard",
+                    "add-iframe",
+                    did,
+                    "--url",
+                    "https://example.com/x",
+                    "--security",
+                    "--solution",
+                    "TestSol",
+                    "--no-publish",
+                ],
+            )
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["action"] == "add-iframe"
@@ -202,17 +282,19 @@ class TestDashboardAddIframe:
 
     def test_add_iframe_requires_url(self, backend, monkeypatch):
         _use_backend(monkeypatch, backend)
-        result = CliRunner().invoke(cli, [
-            "--json", "dashboard", "add-iframe", _DASH["formid"], "--no-publish"])
+        result = CliRunner().invoke(
+            cli, ["--json", "dashboard", "add-iframe", _DASH["formid"], "--no-publish"]
+        )
         assert result.exit_code != 0
 
     def test_add_iframe_blank_url_is_usage_error(self, backend, monkeypatch):
         # a whitespace-only --url is rejected in the command layer (exit 2),
         # before a backend is built
         _use_backend(monkeypatch, backend)
-        result = CliRunner().invoke(cli, [
-            "--json", "dashboard", "add-iframe", _DASH["formid"],
-            "--url", "   ", "--no-publish"])
+        result = CliRunner().invoke(
+            cli,
+            ["--json", "dashboard", "add-iframe", _DASH["formid"], "--url", "   ", "--no-publish"],
+        )
         assert result.exit_code == 2, result.output
 
 
@@ -221,16 +303,30 @@ class TestDashboardAddWebresource:
         _use_backend(monkeypatch, backend)
         did = _DASH["formid"]
         with rm_module.Mocker() as m:
-            m.get(backend.url_for(f"systemforms({did})"),
-                  json={**_DASH, "formxml": _DASH_FORMXML})
-            m.get(backend.url_for("webresourceset"),
-                  json={"value": [{"webresourceid": _WR_ID, "name": "new_/logic.js",
-                                   "webresourcetype": 3}]})
+            m.get(backend.url_for(f"systemforms({did})"), json={**_DASH, "formxml": _DASH_FORMXML})
+            m.get(
+                backend.url_for("webresourceset"),
+                json={
+                    "value": [
+                        {"webresourceid": _WR_ID, "name": "new_/logic.js", "webresourcetype": 3}
+                    ]
+                },
+            )
             m.patch(backend.url_for(f"systemforms({did})"), status_code=204)
-            result = CliRunner().invoke(cli, [
-                "--json", "dashboard", "add-webresource", did,
-                "--webresource", "new_/logic.js",
-                "--solution", "TestSol", "--no-publish"])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "dashboard",
+                    "add-webresource",
+                    did,
+                    "--webresource",
+                    "new_/logic.js",
+                    "--solution",
+                    "TestSol",
+                    "--no-publish",
+                ],
+            )
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["action"] == "add-webresource"
@@ -241,9 +337,18 @@ class TestDashboardAddWebresource:
 
     def test_add_webresource_blank_is_usage_error(self, backend, monkeypatch):
         _use_backend(monkeypatch, backend)
-        result = CliRunner().invoke(cli, [
-            "--json", "dashboard", "add-webresource", _DASH["formid"],
-            "--webresource", "  ", "--no-publish"])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "dashboard",
+                "add-webresource",
+                _DASH["formid"],
+                "--webresource",
+                "  ",
+                "--no-publish",
+            ],
+        )
         assert result.exit_code == 2, result.output
 
 
@@ -258,20 +363,31 @@ class TestDashboardRemoveComponent:
             f'<rows><row><cell id="{{cccc0000-0000-0000-0000-000000000001}}" '
             f'rowspan="1"><control id="ChartGrid" '
             f'classid="{{E7A81278-8635-4D9E-8D4D-59480B391C5B}}">'
-            f'<parameters><ViewId>{{{self._RV}}}</ViewId></parameters></control>'
-            '</cell></row></rows></section>'
-            '</sections></column></columns></tab></tabs></form>')
+            f"<parameters><ViewId>{{{self._RV}}}</ViewId></parameters></control>"
+            "</cell></row></rows></section>"
+            "</sections></column></columns></tab></tabs></form>"
+        )
 
     def test_remove_component(self, backend, monkeypatch):
         _use_backend(monkeypatch, backend)
         did = _DASH["formid"]
         with rm_module.Mocker() as m:
-            m.get(backend.url_for(f"systemforms({did})"),
-                  json={**_DASH, "formxml": self._xml()})
+            m.get(backend.url_for(f"systemforms({did})"), json={**_DASH, "formxml": self._xml()})
             m.patch(backend.url_for(f"systemforms({did})"), status_code=204)
-            result = CliRunner().invoke(cli, [
-                "--json", "dashboard", "remove-component", did,
-                "--view", self._RV, "--solution", "TestSol", "--no-publish"])
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "dashboard",
+                    "remove-component",
+                    did,
+                    "--view",
+                    self._RV,
+                    "--solution",
+                    "TestSol",
+                    "--no-publish",
+                ],
+            )
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["action"] == "remove-component"
@@ -281,15 +397,26 @@ class TestDashboardRemoveComponent:
         # a missing selector is a usage error (exit 2), raised in the command
         # layer before a backend is built — not an operational core error.
         _use_backend(monkeypatch, backend)
-        result = CliRunner().invoke(cli, [
-            "--json", "dashboard", "remove-component", _DASH["formid"],
-            "--no-publish"])
+        result = CliRunner().invoke(
+            cli, ["--json", "dashboard", "remove-component", _DASH["formid"], "--no-publish"]
+        )
         assert result.exit_code == 2, result.output
         assert json.loads(result.output)["ok"] is False
 
     def test_remove_component_rejects_two_selectors(self, backend, monkeypatch):
         _use_backend(monkeypatch, backend)
-        result = CliRunner().invoke(cli, [
-            "--json", "dashboard", "remove-component", _DASH["formid"],
-            "--index", "0", "--view", self._RV, "--no-publish"])
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "dashboard",
+                "remove-component",
+                _DASH["formid"],
+                "--index",
+                "0",
+                "--view",
+                self._RV,
+                "--no-publish",
+            ],
+        )
         assert result.exit_code == 2, result.output

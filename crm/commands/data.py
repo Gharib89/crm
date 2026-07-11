@@ -1,15 +1,22 @@
 """Data bulk import/export commands."""
+
 # pyright: basic
 from __future__ import annotations
+
 import click
-from crm.core import export as export_mod
+
+from crm.cli import CLIContext, _complete_entity_set_names, pass_ctx
+from crm.commands._helpers import (
+    _confirm_destructive,
+    _destructive_option,
+    _journal,
+    _output_option,
+    d365_errors,
+)
+from crm.core import bulk_delete as bulk_delete_mod
 from crm.core import data_import as import_mod
 from crm.core import entity as entity_mod
-from crm.core import bulk_delete as bulk_delete_mod
-from crm.cli import CLIContext, pass_ctx, _complete_entity_set_names
-from crm.commands._helpers import (
-    d365_errors, _journal, _output_option, _confirm_destructive, _destructive_option,
-)
+from crm.core import export as export_mod
 
 
 @click.group("data")
@@ -40,7 +47,9 @@ def data_export(ctx: CLIContext, entity_set, output, select, filter_, page_size,
         select_list.extend(part.strip() for part in s.split(",") if part.strip())
     with d365_errors(ctx):
         info = export_mod.export_records(
-            ctx.backend(), entity_set, output,
+            ctx.backend(),
+            entity_set,
+            output,
             select=select_list or None,
             filter_=filter_,
             page_size=page_size,
@@ -53,29 +62,69 @@ def data_export(ctx: CLIContext, entity_set, output, select, filter_, page_size,
 @data_group.command("import")
 @click.argument("entity_set", shell_complete=_complete_entity_set_names)
 @click.argument("input_file", type=click.Path(exists=True, dir_okay=False))
-@click.option("--format", "fmt", type=click.Choice(["jsonl", "csv"]), default=None,
-              help="Input format; inferred from suffix when omitted (.csv→csv, else jsonl).")
-@click.option("--mode", type=click.Choice(["create", "upsert", "delete"]), default="create",
-              help="create=POST new records; upsert=PATCH by GUID (--id-column) "
-                   "or by alternate key (--key); delete=DELETE by GUID (--id-column) "
-                   "or by alternate key (--key).")
-@click.option("--id-column", default=None,
-              help="Column/key holding the record GUID (for --mode upsert/delete; "
-                   "mutually exclusive with --key).")
-@click.option("--key", "alt_key", default=None, metavar="ATTR[,ATTR...]",
-              help="Upsert by an alternate key instead of the primary GUID: one "
-                   "attribute, or a comma-separated composite key. Values are read "
-                   "from each row. Mutually exclusive with --id-column.")
-@click.option("--chunk-size", type=int, default=100,
-              help="Records per $batch call (each chunk is one transactional changeset by default).")
-@click.option("--no-transaction", is_flag=True, default=False,
-              help="Send each op as a top-level operation; no changeset wrapping.")
-@click.option("--continue-on-error", is_flag=True, default=False,
-              help="Send Prefer: odata.continue-on-error (requires --no-transaction).")
+@click.option(
+    "--format",
+    "fmt",
+    type=click.Choice(["jsonl", "csv"]),
+    default=None,
+    help="Input format; inferred from suffix when omitted (.csv→csv, else jsonl).",
+)
+@click.option(
+    "--mode",
+    type=click.Choice(["create", "upsert", "delete"]),
+    default="create",
+    help="create=POST new records; upsert=PATCH by GUID (--id-column) "
+    "or by alternate key (--key); delete=DELETE by GUID (--id-column) "
+    "or by alternate key (--key).",
+)
+@click.option(
+    "--id-column",
+    default=None,
+    help="Column/key holding the record GUID (for --mode upsert/delete; "
+    "mutually exclusive with --key).",
+)
+@click.option(
+    "--key",
+    "alt_key",
+    default=None,
+    metavar="ATTR[,ATTR...]",
+    help="Upsert by an alternate key instead of the primary GUID: one "
+    "attribute, or a comma-separated composite key. Values are read "
+    "from each row. Mutually exclusive with --id-column.",
+)
+@click.option(
+    "--chunk-size",
+    type=int,
+    default=100,
+    help="Records per $batch call (each chunk is one transactional changeset by default).",
+)
+@click.option(
+    "--no-transaction",
+    is_flag=True,
+    default=False,
+    help="Send each op as a top-level operation; no changeset wrapping.",
+)
+@click.option(
+    "--continue-on-error",
+    is_flag=True,
+    default=False,
+    help="Send Prefer: odata.continue-on-error (requires --no-transaction).",
+)
 @_destructive_option
 @pass_ctx
-def data_import(ctx: CLIContext, entity_set, input_file, fmt, mode, id_column, alt_key,
-                chunk_size, no_transaction, continue_on_error, yes):
+def data_import(
+    ctx: CLIContext,
+    entity_set,
+    input_file,
+    fmt,
+    mode,
+    id_column,
+    alt_key,
+    chunk_size,
+    no_transaction,
+    continue_on_error,
+    yes,
+):
     """Bulk-import records from a JSONL/CSV file via $batch."""
     if continue_on_error and not no_transaction:
         raise click.UsageError(
@@ -90,8 +139,7 @@ def data_import(ctx: CLIContext, entity_set, input_file, fmt, mode, id_column, a
             )
         if not id_column and not alt_key:
             raise click.UsageError(
-                f"--mode {mode} requires --id-column (the GUID column) or "
-                "--key (an alternate key)."
+                f"--mode {mode} requires --id-column (the GUID column) or --key (an alternate key)."
             )
     elif alt_key:
         raise click.UsageError("--key applies only to --mode upsert or --mode delete.")
@@ -100,18 +148,26 @@ def data_import(ctx: CLIContext, entity_set, input_file, fmt, mode, id_column, a
         raise click.UsageError("--key must name at least one attribute.")
     if mode == "delete":
         _confirm_destructive(
-            ctx, "records", entity_set, yes,
-            message=(f"This permanently deletes {entity_set} records from "
-                     f"{input_file}. Continue?"),
+            ctx,
+            "records",
+            entity_set,
+            yes,
+            message=(f"This permanently deletes {entity_set} records from {input_file}. Continue?"),
         )
     with d365_errors(ctx):
         alt_key_attrs = (
             entity_mod.resolve_alternate_key(ctx.backend(), entity_set, requested_key)
-            if requested_key else None
+            if requested_key
+            else None
         )
         info = import_mod.import_records(
-            ctx.backend(), entity_set, input_file,
-            fmt=fmt, mode=mode, id_column=id_column, alt_key=alt_key_attrs,
+            ctx.backend(),
+            entity_set,
+            input_file,
+            fmt=fmt,
+            mode=mode,
+            id_column=id_column,
+            alt_key=alt_key_attrs,
             chunk_size=chunk_size,
             transactional=not no_transaction,
             continue_on_error=continue_on_error,
@@ -147,20 +203,41 @@ def data_import(ctx: CLIContext, entity_set, input_file, fmt, mode, id_column, a
 
 @data_group.command("delete")
 @click.argument("entity_set", shell_complete=_complete_entity_set_names)
-@click.option("--fetchxml", "fetch_xml", default=None,
-              help="FetchXML <fetch> document selecting the records to delete.")
-@click.option("--fetchxml-file", type=click.File("r", encoding="utf-8-sig"), default=None,
-              help="Read the FetchXML from a file instead of --fetchxml.")
-@click.option("--job-name", "job_name", default=None,
-              help="Name for the bulk-delete system job (default derived from the entity).")
-@click.option("--wait", is_flag=True, default=False,
-              help="Block until the job finishes, then report succeeded/failed counts.")
-@click.option("--timeout", type=int, default=None,
-              help="Seconds to wait under --wait (default: the profile's async timeout).")
+@click.option(
+    "--fetchxml",
+    "fetch_xml",
+    default=None,
+    help="FetchXML <fetch> document selecting the records to delete.",
+)
+@click.option(
+    "--fetchxml-file",
+    type=click.File("r", encoding="utf-8-sig"),
+    default=None,
+    help="Read the FetchXML from a file instead of --fetchxml.",
+)
+@click.option(
+    "--job-name",
+    "job_name",
+    default=None,
+    help="Name for the bulk-delete system job (default derived from the entity).",
+)
+@click.option(
+    "--wait",
+    is_flag=True,
+    default=False,
+    help="Block until the job finishes, then report succeeded/failed counts.",
+)
+@click.option(
+    "--timeout",
+    type=int,
+    default=None,
+    help="Seconds to wait under --wait (default: the profile's async timeout).",
+)
 @_destructive_option
 @pass_ctx
-def data_delete(ctx: CLIContext, entity_set, fetch_xml, fetchxml_file, job_name,
-                wait, timeout, yes):
+def data_delete(
+    ctx: CLIContext, entity_set, fetch_xml, fetchxml_file, job_name, wait, timeout, yes
+):
     """Submit a server-side BulkDelete job for records matching a FetchXML query.
 
     The Web API's BulkDelete action takes a QueryExpression, so the FetchXML is
@@ -172,14 +249,23 @@ def data_delete(ctx: CLIContext, entity_set, fetch_xml, fetchxml_file, job_name,
     if fetchxml_file is not None:
         fetch_xml = fetchxml_file.read()
     _confirm_destructive(
-        ctx, "records", entity_set, yes,
-        message=(f"This submits a BulkDelete job that permanently deletes all "
-                 f"{entity_set} records matching the FetchXML query. Continue?"),
+        ctx,
+        "records",
+        entity_set,
+        yes,
+        message=(
+            f"This submits a BulkDelete job that permanently deletes all "
+            f"{entity_set} records matching the FetchXML query. Continue?"
+        ),
     )
     with d365_errors(ctx):
         result = bulk_delete_mod.bulk_delete(
-            ctx.backend(), entity_set, fetch_xml,
-            job_name=job_name, wait=wait, timeout=timeout,
+            ctx.backend(),
+            entity_set,
+            fetch_xml,
+            job_name=job_name,
+            wait=wait,
+            timeout=timeout,
         )
     ctx.emit(True, data=result)
     _journal(ctx, entity_set, result)

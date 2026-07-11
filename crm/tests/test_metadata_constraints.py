@@ -14,7 +14,6 @@ from crm.core import metadata_constraints as mc
 from crm.utils.d365_backend import D365Error
 
 
-
 def test_known_membership():
     assert "ApplicationRequired" in mc.REQUIRED_LEVELS
     assert "OrganizationOwned" in mc.OWNERSHIP_TYPES
@@ -27,6 +26,7 @@ def test_known_membership():
 
 
 # ── validators: accept the valid, reject the invalid with canonical wording ──
+
 
 def test_validate_required_accepts_and_rejects():
     for v in mc.REQUIRED_LEVELS:
@@ -98,9 +98,15 @@ def test_validate_behavior_accepts_and_rejects():
 
 # ── precision ──
 
-@pytest.mark.parametrize("kind,lo,hi", [
-    ("decimal", 0, 10), ("double", 0, 5), ("money", 0, 4),
-])
+
+@pytest.mark.parametrize(
+    "kind,lo,hi",
+    [
+        ("decimal", 0, 10),
+        ("double", 0, 5),
+        ("money", 0, 4),
+    ],
+)
 def test_validate_precision_bounds(kind, lo, hi):
     mc.validate_precision(kind, lo)
     mc.validate_precision(kind, hi)
@@ -125,6 +131,7 @@ def test_validate_precision_non_precision_kind_raises():
 
 
 # ── KINDS table + the two lookups round-trip ──
+
 
 def test_kinds_has_fifteen_kinds():
     assert len(mc.KINDS) == 15
@@ -186,7 +193,9 @@ def test_validate_schema_name_rejects_unprefixed(bad):
 
 
 def test_validate_schema_name_subject_and_example_in_message():
-    with pytest.raises(D365Error, match=r"lookup_schema must include a publisher prefix, e.g. 'new_x'"):
+    with pytest.raises(
+        D365Error, match=r"lookup_schema must include a publisher prefix, e.g. 'new_x'"
+    ):
         mc.validate_schema_name("nope", subject="lookup_schema", example="new_x")
 
 

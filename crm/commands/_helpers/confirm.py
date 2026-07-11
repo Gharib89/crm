@@ -1,10 +1,15 @@
 """Confirm / secret-warning / interactive-select UX helpers."""
+
 # pyright: basic
 from __future__ import annotations
+
 import os
 from typing import TYPE_CHECKING
+
 import click
+
 from crm.commands._tty import _stdin_is_tty
+
 if TYPE_CHECKING:
     from crm.cli import CLIContext
 
@@ -25,8 +30,13 @@ def _plaintext_secret_warning() -> str:
 
 
 def _confirm_destructive(
-    ctx: "CLIContext", thing: str, name: str, yes: bool, *,
-    message: str | None = None, skip_on_dry_run: bool = True
+    ctx: CLIContext,
+    thing: str,
+    name: str,
+    yes: bool,
+    *,
+    message: str | None = None,
+    skip_on_dry_run: bool = True,
 ) -> None:
     """Gate a destructive op behind a confirmation; emit + abort on decline (#264).
 
@@ -56,13 +66,15 @@ def _confirm_destructive(
         text = prompt.strip()
         for tail in (" Continue?", "?"):
             if text.endswith(tail):
-                text = text[:-len(tail)].rstrip()
+                text = text[: -len(tail)].rstrip()
                 break
         suffix = "" if text.endswith((".", "!", ":")) else "."
         ctx.emit(
             False,
-            error=(f"{text}{suffix} Pass --yes to continue "
-                   "(no interactive prompt under --json or a non-TTY)."),
+            error=(
+                f"{text}{suffix} Pass --yes to continue "
+                "(no interactive prompt under --json or a non-TTY)."
+            ),
         )
     try:
         proceed = click.confirm(prompt, default=False)
@@ -83,12 +95,13 @@ def _destructive_option(f):
     (#294). The split is by design; do not "fix" it by adding `-y` here.
     """
     return click.option(
-        "--yes", is_flag=True, help="Skip interactive confirmation.",
+        "--yes",
+        is_flag=True,
+        help="Skip interactive confirmation.",
     )(f)
 
 
-def select_one(title: str, items: list[tuple[str, str]],
-               default: str | None = None) -> str | None:
+def select_one(title: str, items: list[tuple[str, str]], default: str | None = None) -> str | None:
     """Show an inline arrow-key single-select picker; return the chosen value
     (the first element of the chosen tuple) or None if the user cancelled.
 
@@ -96,20 +109,20 @@ def select_one(title: str, items: list[tuple[str, str]],
     that should be pre-selected and must match one of the item values. Raises
     ValueError on empty input or a default that isn't among the choices, and
     RuntimeError when stdin is not a TTY (scripts/CI must pass an explicit
-    choice instead of relying on the picker)."""
+    choice instead of relying on the picker).
+    """
     if not items:
         raise ValueError("select_one: no choices to display")
     if default is not None and default not in {value for value, _ in items}:
         raise ValueError(f"select_one: default {default!r} is not among the choices")
     if not _stdin_is_tty():
-        raise RuntimeError(
-            "select_one: no interactive terminal — pass an explicit choice instead"
-        )
+        raise RuntimeError("select_one: no interactive terminal — pass an explicit choice instead")
     # Lazy import: questionary (and its prompt_toolkit backend) is heavy; keep
     # it off the `crm --version` fast path (_helpers is imported by cli.py).
     # questionary.select renders inline (↑/↓ + Enter confirms, Esc cancels) —
     # no alternate-screen modal — and .ask() returns None on cancel.
     import questionary
+
     choices = [questionary.Choice(title=label, value=value) for value, label in items]
     return questionary.select(title, choices=choices, default=default).ask()
 
@@ -129,10 +142,12 @@ def prompt_secret(prompt: str) -> str | None:
     prompt at all — the secret must come from ``--password`` / ``--client-secret``
     or a stored secret — so there is no hidden-prompt fallback here. questionary
     is imported lazily (like `select_one`) to stay off the `crm --version` fast
-    path."""
+    path.
+    """
     if not _stdin_is_tty():
         raise RuntimeError(
             "prompt_secret: no interactive terminal — pass the secret explicitly instead"
         )
     import questionary
+
     return questionary.password(prompt).ask() or None

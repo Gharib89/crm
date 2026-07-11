@@ -13,6 +13,7 @@ hint — they are injected into every leaf and just work. Their positive behavio
 pinned in test_dual_position_global_options.py; here we assert the hint still fires
 for every *root-only* flag.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -53,9 +54,7 @@ def test_trailing_stage_only_human_mode_hint():
 
 def test_trailing_root_only_after_query_drops_misleading_suggestion():
     """`crm query odata accounts --stage-only` → hint; the bogus `--count` gone."""
-    result = CliRunner().invoke(
-        cli, ["query", "odata", "accounts", "--stage-only"]
-    )
+    result = CliRunner().invoke(cli, ["query", "odata", "accounts", "--stage-only"])
     assert result.exit_code == 2, result.output
     assert "'--stage-only' is a global option" in result.stderr
     # The hint rebuilds the command chain (positional args aren't part of it).
@@ -78,9 +77,7 @@ def test_trailing_root_only_flag_json_mode_envelope():
     Root --json leads (so JSON mode is on); a root-only global flag trails and must
     surface the hint through the standard envelope, not raw stderr text.
     """
-    result = CliRunner().invoke(
-        cli, ["--json", "profile", "list", "--stage-only"]
-    )
+    result = CliRunner().invoke(cli, ["--json", "profile", "list", "--stage-only"])
     assert result.exit_code == 2, result.output
     env = json.loads(result.stdout)
     assert env["ok"] is False
@@ -98,9 +95,7 @@ def test_unknown_non_global_option_unchanged():
 
 def test_unknown_non_global_option_json_unchanged():
     """An unknown non-global option under --json still renders the plain envelope."""
-    result = CliRunner().invoke(
-        cli, ["--json", "profile", "list", "--bogus"]
-    )
+    result = CliRunner().invoke(cli, ["--json", "profile", "list", "--bogus"])
     assert result.exit_code == 2, result.output
     env = json.loads(result.stdout)
     assert env["ok"] is False

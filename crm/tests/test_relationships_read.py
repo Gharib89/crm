@@ -6,11 +6,8 @@ from __future__ import annotations
 import requests_mock
 
 
-
 def _o2m_url(backend, entity: str = "new_project") -> str:
-    return backend.url_for(
-        f"EntityDefinitions(LogicalName='{entity}')/OneToManyRelationships"
-    )
+    return backend.url_for(f"EntityDefinitions(LogicalName='{entity}')/OneToManyRelationships")
 
 
 def _attr_url(backend, entity: str, attr: str) -> str:
@@ -61,6 +58,7 @@ _ATTR_INFO = {
 class TestReadEntityRelationshipsFull:
     def test_happy_path_full_cascade_and_menu(self, backend):
         from crm.core import relationships as rel
+
         with requests_mock.Mocker() as m:
             m.get(_o2m_url(backend), json={"value": [_FULL_ROW]})
             m.get(_attr_url(backend, "new_project", "new_accountid"), json=_ATTR_INFO)
@@ -94,8 +92,10 @@ class TestReadEntityRelationshipsFull:
         """Non-default cascade/menu emit the FLAT keys the relationship adapter
         consumes (cascade_*, menu_behavior/menu_label/menu_order, is_hierarchical)
         — not a nested `cascade`/`associated_menu` object the adapter ignores.
-        Dimensions at their create_one_to_many default are omitted (no bloat)."""
+        Dimensions at their create_one_to_many default are omitted (no bloat).
+        """
         from crm.core import relationships as rel
+
         row = {
             "SchemaName": "new_account_new_project",
             "ReferencedEntity": "account",
@@ -105,18 +105,18 @@ class TestReadEntityRelationshipsFull:
             "IsHierarchical": True,
             "CascadeConfiguration": {
                 "@odata.type": "#Microsoft.Dynamics.CRM.CascadeConfiguration",
-                "Assign": "Cascade",          # non-default → emitted
-                "Delete": "RemoveLink",       # default → omitted
-                "Reparent": "NoCascade",      # default → omitted
-                "Share": "Cascade",           # non-default → emitted
-                "Unshare": "NoCascade",       # default → omitted
-                "Merge": "NoCascade",         # default → omitted
-                "RollupView": "Cascade",      # not in adapter → dropped
+                "Assign": "Cascade",  # non-default → emitted
+                "Delete": "RemoveLink",  # default → omitted
+                "Reparent": "NoCascade",  # default → omitted
+                "Share": "Cascade",  # non-default → emitted
+                "Unshare": "NoCascade",  # default → omitted
+                "Merge": "NoCascade",  # default → omitted
+                "RollupView": "Cascade",  # not in adapter → dropped
             },
             "AssociatedMenuConfiguration": {
                 "Behavior": "UseLabel",
-                "Group": "Details",           # not in adapter → dropped
-                "Order": 500,                 # non-default → emitted
+                "Group": "Details",  # not in adapter → dropped
+                "Order": 500,  # non-default → emitted
                 "Label": {
                     "UserLocalizedLabel": {"Label": "Projects", "LanguageCode": 1033},
                 },
@@ -132,8 +132,14 @@ class TestReadEntityRelationshipsFull:
         assert r["cascade_assign"] == "Cascade"
         assert r["cascade_share"] == "Cascade"
         # Defaults and non-adapter dimensions omitted.
-        for omitted in ("cascade_delete", "cascade_reparent", "cascade_unshare",
-                        "cascade_merge", "cascade_rollup_view", "rollup_view"):
+        for omitted in (
+            "cascade_delete",
+            "cascade_reparent",
+            "cascade_unshare",
+            "cascade_merge",
+            "cascade_rollup_view",
+            "rollup_view",
+        ):
             assert omitted not in r
         assert r["menu_behavior"] == "UseLabel"
         assert r["menu_label"] == "Projects"
@@ -145,8 +151,10 @@ class TestReadEntityRelationshipsFull:
         """A UseLabel menu whose Label is missing/empty must NOT emit
         menu_behavior alone — validate_spec rejects UseLabel without menu_label,
         which would make export-spec output un-appliable. Fall back to omitting
-        the menu keys (default behavior)."""
+        the menu keys (default behavior).
+        """
         from crm.core import relationships as rel
+
         row = {
             "SchemaName": "new_account_new_project",
             "ReferencedEntity": "account",
@@ -173,6 +181,7 @@ class TestReadEntityRelationshipsFull:
     def test_default_cascade_and_menu_emit_nothing(self, backend):
         """A relationship at all platform defaults emits no cascade_*/menu_* keys."""
         from crm.core import relationships as rel
+
         row = {
             "SchemaName": "new_account_new_project",
             "ReferencedEntity": "account",
@@ -180,8 +189,12 @@ class TestReadEntityRelationshipsFull:
             "ReferencingAttribute": "new_accountid",
             "IsCustomRelationship": True,
             "CascadeConfiguration": {
-                "Assign": "NoCascade", "Delete": "RemoveLink", "Reparent": "NoCascade",
-                "Share": "NoCascade", "Unshare": "NoCascade", "Merge": "NoCascade",
+                "Assign": "NoCascade",
+                "Delete": "RemoveLink",
+                "Reparent": "NoCascade",
+                "Share": "NoCascade",
+                "Unshare": "NoCascade",
+                "Merge": "NoCascade",
             },
             "AssociatedMenuConfiguration": {"Behavior": "UseCollectionName", "Order": 10000},
         }
@@ -196,6 +209,7 @@ class TestReadEntityRelationshipsFull:
 
     def test_system_relationship_excluded(self, backend):
         from crm.core import relationships as rel
+
         system_row = {
             "SchemaName": "account_contacts",
             "ReferencedEntity": "account",
@@ -216,6 +230,7 @@ class TestReadEntityRelationshipsFull:
 
     def test_lookup_display_falls_back_to_referencing_attr_when_no_label(self, backend):
         from crm.core import relationships as rel
+
         attr_no_label = {
             "LogicalName": "new_accountid",
             "DisplayName": {
@@ -239,8 +254,10 @@ class TestReadEntityRelationshipsFull:
         """The 1:N relationship row's ReferencingAttribute is the lowercase logical
         name; the referencing attribute's SchemaName carries the original casing.
         `lookup_schema` must be sourced from the attribute metadata so a
-        round-tripped org re-creates the lookup with matching casing (#701)."""
+        round-tripped org re-creates the lookup with matching casing (#701).
+        """
         from crm.core import relationships as rel
+
         attr_mixed_case = {
             "LogicalName": "new_accountid",
             "SchemaName": "New_AccountID",
@@ -256,12 +273,16 @@ class TestReadEntityRelationshipsFull:
     def test_lookup_description_emitted_when_present(self, backend):
         """The lookup column's Description rides the attribute read the projection
         already makes, so it is emitted as `lookup_description` (an adapter key);
-        omitted when blank."""
+        omitted when blank.
+        """
         from crm.core import relationships as rel
+
         attr_with_desc = {
             "LogicalName": "new_accountid",
             "DisplayName": {"UserLocalizedLabel": {"Label": "Account", "LanguageCode": 1033}},
-            "Description": {"UserLocalizedLabel": {"Label": "The owning account", "LanguageCode": 1033}},
+            "Description": {
+                "UserLocalizedLabel": {"Label": "The owning account", "LanguageCode": 1033}
+            },
             "RequiredLevel": {"Value": "None"},
         }
         with requests_mock.Mocker() as m:
@@ -272,6 +293,7 @@ class TestReadEntityRelationshipsFull:
 
     def test_lookup_description_omitted_when_blank(self, backend):
         from crm.core import relationships as rel
+
         with requests_mock.Mocker() as m:
             m.get(_o2m_url(backend), json={"value": [_FULL_ROW]})
             m.get(_attr_url(backend, "new_project", "new_accountid"), json=_ATTR_INFO)
@@ -280,6 +302,7 @@ class TestReadEntityRelationshipsFull:
 
     def test_no_custom_relationships_returns_empty_list(self, backend):
         from crm.core import relationships as rel
+
         with requests_mock.Mocker() as m:
             m.get(_o2m_url(backend), json={"value": []})
             result = rel.read_entity_relationships(backend, "new_project")
@@ -288,6 +311,7 @@ class TestReadEntityRelationshipsFull:
 
     def test_single_quote_in_entity_name_is_escaped_in_url(self, backend):
         from crm.core import relationships as rel
+
         # Entity name with a single quote — must be escaped as '' in the URL
         entity_with_quote = "it's_table"
         escaped_url = backend.url_for(
@@ -305,6 +329,7 @@ class TestReadEntityRelationshipsFull:
     def test_all_custom_returns_both_filtered(self, backend):
         """When multiple custom 1:N exist, all are returned."""
         from crm.core import relationships as rel
+
         row2 = {
             "SchemaName": "new_contact_new_project",
             "ReferencedEntity": "contact",
@@ -312,7 +337,11 @@ class TestReadEntityRelationshipsFull:
             "ReferencingAttribute": "new_contactid",
             "IsCustomRelationship": True,
             "CascadeConfiguration": {"Assign": "Cascade", "Delete": "Cascade"},
-            "AssociatedMenuConfiguration": {"Behavior": "UseCollectionName", "Group": "Sales", "Order": 500},
+            "AssociatedMenuConfiguration": {
+                "Behavior": "UseCollectionName",
+                "Group": "Sales",
+                "Order": 500,
+            },
         }
         attr2 = {
             "LogicalName": "new_contactid",
@@ -341,7 +370,8 @@ class TestReadEntityRelationshipsFull:
 
     def test_attribute_info_404_falls_back_gracefully(self, backend):
         """When attribute_info raises D365Error (404), lookup_display falls back
-        to the referencing attribute logical name and 'required' is omitted."""
+        to the referencing attribute logical name and 'required' is omitted.
+        """
         from crm.core import relationships as rel
 
         custom_row = {

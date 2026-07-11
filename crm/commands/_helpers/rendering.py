@@ -1,8 +1,11 @@
 """Output / envelope rendering helpers for crm.commands.*."""
+
 # pyright: basic
 from __future__ import annotations
+
 import json
 from typing import TYPE_CHECKING, Any
+
 if TYPE_CHECKING:
     from crm.cli import CLIContext
 
@@ -36,15 +39,16 @@ def _strip_odata_keys(obj: Any) -> Any:
     kept.
     """
     if isinstance(obj, dict):
-        return {k: _strip_odata_keys(v)
-                for k, v in obj.items() if _ODATA_PROTOCOL_MARKER not in k}
+        return {k: _strip_odata_keys(v) for k, v in obj.items() if _ODATA_PROTOCOL_MARKER not in k}
     if isinstance(obj, list):
         return [_strip_odata_keys(x) for x in obj]
     return obj
 
 
 def _concise_record(
-    record: dict[str, Any], *, primary_name: str | None = None,
+    record: dict[str, Any],
+    *,
+    primary_name: str | None = None,
 ) -> dict[str, Any]:
     """Project a single record down to its populated business fields for the
     human render (#302 / ADR 0008 — Record render modes).
@@ -58,12 +62,12 @@ def _concise_record(
     the name in its natural position. The `--full` flag bypasses this projection.
     JSON output is unaffected — this shapes only the human key/value render.
     """
+
     def _empty(v: Any) -> bool:
         # None and the empty string/list/dict are noise; False and 0 are data.
         return v is None or v == "" or v == [] or v == {}
 
-    kept = {k: v for k, v in record.items()
-            if _ODATA_PROTOCOL_MARKER not in k and not _empty(v)}
+    kept = {k: v for k, v in record.items() if _ODATA_PROTOCOL_MARKER not in k and not _empty(v)}
     ordered: dict[str, Any] = {}
     for key in ("_entity_id", "_entity_id_url"):
         if key in kept:
@@ -74,7 +78,7 @@ def _concise_record(
     return ordered
 
 
-def _normalize_odata_envelope(data: Any) -> "tuple[Any, dict[str, Any]]":
+def _normalize_odata_envelope(data: Any) -> tuple[Any, dict[str, Any]]:
     """Unwrap a Web API collection envelope to a bare array, lifting paging.
 
     Returns ``(payload, paging)``. When *data* is a collection response (a dict
@@ -87,8 +91,7 @@ def _normalize_odata_envelope(data: Any) -> "tuple[Any, dict[str, Any]]":
     an empty *paging*. Detection keys on ``@odata.context`` so a hand-built
     ``{"value": [...]}`` (no protocol keys) is left alone.
     """
-    if (isinstance(data, dict) and "@odata.context" in data
-            and isinstance(data.get("value"), list)):
+    if isinstance(data, dict) and "@odata.context" in data and isinstance(data.get("value"), list):
         paging: dict[str, Any] = {}
         if "@odata.nextLink" in data:
             paging["next_link"] = data["@odata.nextLink"]
@@ -108,7 +111,8 @@ def _delta_token_of(delta_link: Any) -> str | None:
 
     The delta link is an opaque, percent-encoded resume URL; ``parse_qs`` decodes
     the token to the plain form ``--delta-token`` expects (the backend re-encodes
-    it on the next request). Returns ``None`` if the link carries no token."""
+    it on the next request). Returns ``None`` if the link carries no token.
+    """
     from urllib.parse import parse_qs, urlsplit
 
     if not isinstance(delta_link, str):
@@ -122,7 +126,7 @@ def _short_repr(v: Any, limit: int = 80) -> str:
     return s if len(s) <= limit else s[: limit - 3] + "..."
 
 
-def _project_fields(data: Any, fields: list[str]) -> "tuple[Any, list[str]]":
+def _project_fields(data: Any, fields: list[str]) -> tuple[Any, list[str]]:
     """Project the curated `data` payload down to the named top-level keys (#735).
 
     The client-side output shaper behind the global `--fields` flag, applied at the
@@ -141,6 +145,7 @@ def _project_fields(data: Any, fields: list[str]) -> "tuple[Any, list[str]]":
     fields (the typo tripwire). The envelope's `ok`/`error`/`meta` are never touched
     here — only what sits inside `data`.
     """
+
     def _project_one(record: dict[str, Any]) -> dict[str, Any]:
         return {f: record[f] for f in fields if f in record}
 
@@ -158,7 +163,7 @@ def _project_fields(data: Any, fields: list[str]) -> "tuple[Any, list[str]]":
     return data, [_NON_OBJECT_WARNING]
 
 
-def _apply_jq(data: Any, program: Any) -> "tuple[Any, str | None]":
+def _apply_jq(data: Any, program: Any) -> tuple[Any, str | None]:
     """Run a compiled jq `program` over the curated `data` payload (#736).
 
     The client-side jq shaper behind the global `--jq` flag, applied at the emit
@@ -188,12 +193,11 @@ def _apply_jq(data: Any, program: Any) -> "tuple[Any, str | None]":
 
 
 _NON_OBJECT_WARNING = (
-    "--fields ignored: data is not an object or a list of objects, so there are no "
-    "keys to project."
+    "--fields ignored: data is not an object or a list of objects, so there are no keys to project."
 )
 
 
-def _unmatched_warning(fields: list[str], matched: "set[str]") -> list[str]:
+def _unmatched_warning(fields: list[str], matched: set[str]) -> list[str]:
     """One `meta.warnings` entry naming the requested fields that matched nothing."""
     missing = [f for f in fields if f not in matched]
     if not missing:
@@ -203,7 +207,7 @@ def _unmatched_warning(fields: list[str], matched: "set[str]") -> list[str]:
 
 def _project_table_columns(
     table: dict[str, Any], fields: list[str]
-) -> "tuple[dict[str, Any], list[str]]":
+) -> tuple[dict[str, Any], list[str]]:
     """Select and order the human-mode table columns named by `--fields` (#735).
 
     Matches field names against the table's header cells case-insensitively (the
@@ -223,8 +227,11 @@ def _project_table_columns(
 
 
 def _emit_with_warning(
-    ctx: "CLIContext", data: Any, warning: str | None,
-    *, meta: dict[str, Any] | None = None,
+    ctx: CLIContext,
+    data: Any,
+    warning: str | None,
+    *,
+    meta: dict[str, Any] | None = None,
 ) -> None:
     """Emit a successful result, surfacing advisories via the warnings channel.
 
@@ -247,16 +254,17 @@ def _emit_with_warning(
     ctx.emit(True, data=data, meta=meta, warnings=warnings or None)
 
 
-def _emit_expectation_failure(ctx: "CLIContext", miss: dict[str, Any]) -> None:
+def _emit_expectation_failure(ctx: CLIContext, miss: dict[str, Any]) -> None:
     """Emit the standard `--expect` mismatch envelope (exit 1).
 
     `miss` is the {attr, expected, actual} dict from `_check_expectations`. The
     human-readable error string embeds the same three values because `emit`'s
-    human-mode failure path renders only `error`, not `meta`."""
+    human-mode failure path renders only `error`, not `meta`.
+    """
     ctx.emit(
         False,
         error=f"Expectation failed: {miss['attr']}={miss['expected']!r} "
-              f"(actual {miss['actual']!r})",
+        f"(actual {miss['actual']!r})",
         meta=miss,
     )
 
@@ -266,7 +274,8 @@ def _prune_annotations(record: dict[str, Any]) -> dict[str, Any]:
     keeping business fields, `_*_value` lookup GUIDs, and the primary id.
 
     Shallow prune: only top-level keys are stripped — annotations nested
-    inside expanded records (under `--expand`) are not pruned."""
+    inside expanded records (under `--expand`) are not pruned.
+    """
     return {k: v for k, v in record.items() if "@" not in k}
 
 
@@ -305,7 +314,11 @@ def _capped_page_warnings(result: Any) -> list[str]:
 
 
 def _emit_query_result(
-    ctx: "CLIContext", result: dict, entity_set: str, *, minimal: bool = False,
+    ctx: CLIContext,
+    result: dict,
+    entity_set: str,
+    *,
+    minimal: bool = False,
     extra_meta: dict[str, Any] | None = None,
 ) -> None:
     values = result.get("value", []) if isinstance(result, dict) else []
@@ -321,9 +334,10 @@ def _emit_query_result(
         # strips per-row `@odata.*` (ADR 0008). `--minimal` additionally drops the
         # opted-in formatted-value annotations the central strip keeps.
         if minimal:
-            result = {**result, "value": [
-                _prune_annotations(r) if isinstance(r, dict) else r for r in values
-            ]}
+            result = {
+                **result,
+                "value": [_prune_annotations(r) if isinstance(r, dict) else r for r in values],
+            }
         ctx.emit(True, data=result, meta=meta, warnings=warnings)
         return
     if not values:
@@ -333,6 +347,7 @@ def _emit_query_result(
     # (never via an added round-trip — ADR 0008): a cold cache simply leaves the
     # column order as-is.
     from crm.core.entity_names import cached_primary_name
+
     primary_name = cached_primary_name(ctx.backend(), entity_set)
     headers = _infer_columns(values, primary_name=primary_name)
     rows = [[_short_repr(rec.get(h, ""), 40) for h in headers] for rec in values[:50]]
@@ -347,7 +362,8 @@ def _infer_columns(values: list[dict], primary_name: str | None = None) -> list[
     *primary_name* (the entity's PrimaryNameAttribute, supplied only when already
     cached — never via an added round-trip) is placed first so a list table
     surfaces the record's name rather than burying it behind system columns or
-    dropping it past the 8-column cap (#302 repro #2)."""
+    dropping it past the 8-column cap (#302 repro #2).
+    """
     cols: list[str] = []
     seen: set[str] = set()
     if primary_name and any(primary_name in rec for rec in values[:5]):

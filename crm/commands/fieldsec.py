@@ -1,12 +1,19 @@
 """Field-level (column) security commands — `crm fieldsec`."""
+
 # pyright: basic
 from __future__ import annotations
+
 import click
-from crm.core import fieldsec as fieldsec_mod
+
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
-    d365_errors, _journal, _solution_option, _resolve_solution, _emit_with_warning,
+    _emit_with_warning,
+    _journal,
+    _resolve_solution,
+    _solution_option,
+    d365_errors,
 )
+from crm.core import fieldsec as fieldsec_mod
 
 
 @click.group("fieldsec")
@@ -21,14 +28,17 @@ def fieldsec_list(ctx: CLIContext) -> None:
     with d365_errors(ctx):
         profiles = fieldsec_mod.list_profiles(ctx.backend())
     rows = [
-        [p.get("name", ""), p.get("fieldsecurityprofileid") or "",
-         p.get("description") or ""]
+        [p.get("name", ""), p.get("fieldsecurityprofileid") or "", p.get("description") or ""]
         for p in profiles
     ]
-    ctx.emit(True, data=profiles, table={
-        "headers": ["name", "fieldsecurityprofileid", "description"],
-        "rows": rows,
-    })
+    ctx.emit(
+        True,
+        data=profiles,
+        table={
+            "headers": ["name", "fieldsecurityprofileid", "description"],
+            "rows": rows,
+        },
+    )
 
 
 @fieldsec_group.command("get")
@@ -46,13 +56,15 @@ def fieldsec_get(ctx: CLIContext, profile: str) -> None:
 @click.option("--description", default=None, help="Profile description.")
 @_solution_option
 @pass_ctx
-def fieldsec_create_profile(ctx: CLIContext, name, description,
-                            solution) -> None:
+def fieldsec_create_profile(ctx: CLIContext, name, description, solution) -> None:
     """Create a field security profile named NAME."""
     solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = fieldsec_mod.create_profile(
-            ctx.backend(), name=name, description=description, solution=solution,
+            ctx.backend(),
+            name=name,
+            description=description,
+            solution=solution,
         )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, name, info, solution=solution)
@@ -67,9 +79,9 @@ def fieldsec_create_profile(ctx: CLIContext, name, description,
 @click.option("--update", is_flag=True, help="Grant update access to the column.")
 @_solution_option
 @pass_ctx
-def fieldsec_add_permission(ctx: CLIContext, profile, entity, attribute,
-                            read, create, update,
-                            solution) -> None:
+def fieldsec_add_permission(
+    ctx: CLIContext, profile, entity, attribute, read, create, update, solution
+) -> None:
     """Grant column permissions on ENTITY.ATTRIBUTE for PROFILE (name or id).
 
     Pass at least one of --read / --create / --update.
@@ -82,8 +94,14 @@ def fieldsec_add_permission(ctx: CLIContext, profile, entity, attribute,
     solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = fieldsec_mod.add_permission(
-            ctx.backend(), profile=profile, entity=entity, attribute=attribute,
-            read=read, create=create, update=update, solution=solution,
+            ctx.backend(),
+            profile=profile,
+            entity=entity,
+            attribute=attribute,
+            read=read,
+            create=create,
+            update=update,
+            solution=solution,
         )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, f"{entity}.{attribute}", info, solution=solution)
@@ -95,8 +113,7 @@ def fieldsec_add_permission(ctx: CLIContext, profile, entity, attribute,
 # `--user-id` is canonical; `--user` stays a hidden back-compat alias (#712),
 # folded in by presence — a bare `--user` on chart is a boolean, so the explicit
 # spelling disambiguates. Separate dest so neither default clobbers the other.
-@click.option("--user", "user_id_alias", default=None, hidden=True,
-              help="Alias for --user-id.")
+@click.option("--user", "user_id_alias", default=None, hidden=True, help="Alias for --user-id.")
 @click.option("--team", "team_id", default=None, help="Team id to assign.")
 @pass_ctx
 def fieldsec_assign(ctx: CLIContext, profile, user_id, user_id_alias, team_id) -> None:
@@ -109,7 +126,10 @@ def fieldsec_assign(ctx: CLIContext, profile, user_id, user_id_alias, team_id) -
         raise click.UsageError("pass exactly one of --user-id / --team.")
     with d365_errors(ctx):
         info = fieldsec_mod.assign(
-            ctx.backend(), profile=profile, user_id=user_id, team_id=team_id,
+            ctx.backend(),
+            profile=profile,
+            user_id=user_id,
+            team_id=team_id,
         )
     ctx.emit(True, data=info)
     _journal(ctx, profile, info)

@@ -23,7 +23,6 @@ from click.testing import CliRunner
 from crm.cli import CLIContext, cli
 from crm.core import entity as entity_mod
 
-
 _GUID = "11111111-1111-1111-1111-111111111111"
 _RECORD = {"accountid": _GUID, "name": "Contoso", "statecode": 0}
 _ATTR = {"LogicalName": "industrycode", "AttributeType": "String"}
@@ -52,10 +51,17 @@ class TestEntityGet:
         _stub(monkeypatch, backend)
         with requests_mock.Mocker() as m:
             m.get(_get_url(backend), json=_RECORD)
-            result = _invoke([
-                "--json", "entity", "get", "accounts", _GUID,
-                "--expect", "name=Contoso",
-            ])
+            result = _invoke(
+                [
+                    "--json",
+                    "entity",
+                    "get",
+                    "accounts",
+                    _GUID,
+                    "--expect",
+                    "name=Contoso",
+                ]
+            )
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["ok"] is True
@@ -65,10 +71,17 @@ class TestEntityGet:
         _stub(monkeypatch, backend)
         with requests_mock.Mocker() as m:
             m.get(_get_url(backend), json=_RECORD)
-            result = _invoke([
-                "--json", "entity", "get", "accounts", _GUID,
-                "--expect", "name=Acme",
-            ])
+            result = _invoke(
+                [
+                    "--json",
+                    "entity",
+                    "get",
+                    "accounts",
+                    _GUID,
+                    "--expect",
+                    "name=Acme",
+                ]
+            )
         assert result.exit_code != 0
         env = json.loads(result.output)
         assert env["ok"] is False
@@ -79,10 +92,17 @@ class TestEntityGet:
         _stub(monkeypatch, backend)
         with requests_mock.Mocker() as m:
             m.get(_get_url(backend), json=_RECORD)
-            result = _invoke([
-                "--json", "entity", "get", "accounts", _GUID,
-                "--expect", "nope=anything",
-            ])
+            result = _invoke(
+                [
+                    "--json",
+                    "entity",
+                    "get",
+                    "accounts",
+                    _GUID,
+                    "--expect",
+                    "nope=anything",
+                ]
+            )
         assert result.exit_code != 0
         env = json.loads(result.output)
         assert env["ok"] is False
@@ -94,10 +114,17 @@ class TestEntityGet:
         _stub(monkeypatch, backend)
         with requests_mock.Mocker() as m:
             m.get(_get_url(backend), json=_RECORD)
-            result = _invoke([
-                "--json", "entity", "get", "accounts", _GUID,
-                "--expect", "nope=None",
-            ])
+            result = _invoke(
+                [
+                    "--json",
+                    "entity",
+                    "get",
+                    "accounts",
+                    _GUID,
+                    "--expect",
+                    "nope=None",
+                ]
+            )
         assert result.exit_code != 0
         env = json.loads(result.output)
         assert env["ok"] is False
@@ -110,10 +137,17 @@ class TestEntityGet:
         record = {**_RECORD, "name": "a=b"}
         with requests_mock.Mocker() as m:
             m.get(_get_url(backend), json=record)
-            result = _invoke([
-                "--json", "entity", "get", "accounts", _GUID,
-                "--expect", "name=a=b",
-            ])
+            result = _invoke(
+                [
+                    "--json",
+                    "entity",
+                    "get",
+                    "accounts",
+                    _GUID,
+                    "--expect",
+                    "name=a=b",
+                ]
+            )
         assert result.exit_code == 0, result.output
         assert json.loads(result.output)["ok"] is True
 
@@ -123,10 +157,17 @@ class TestEntityGet:
         _stub(monkeypatch, backend)
         with requests_mock.Mocker() as m:
             m.get(_get_url(backend), json=_RECORD)
-            result = _invoke([
-                "--json", "entity", "get", "accounts", _GUID,
-                "--expect", "statecode=1",
-            ])
+            result = _invoke(
+                [
+                    "--json",
+                    "entity",
+                    "get",
+                    "accounts",
+                    _GUID,
+                    "--expect",
+                    "statecode=1",
+                ]
+            )
         assert result.exit_code != 0
         env = json.loads(result.output)
         assert env["meta"]["actual"] == 0
@@ -138,10 +179,17 @@ class TestMetadataAttribute:
         _stub(monkeypatch, backend)
         with requests_mock.Mocker() as m:
             m.get(_attr_url(backend), json=_ATTR)
-            result = _invoke([
-                "--json", "metadata", "attribute", "account", "industrycode",
-                "--expect", "AttributeType=String",
-            ])
+            result = _invoke(
+                [
+                    "--json",
+                    "metadata",
+                    "attribute",
+                    "account",
+                    "industrycode",
+                    "--expect",
+                    "AttributeType=String",
+                ]
+            )
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["ok"] is True
@@ -151,15 +199,24 @@ class TestMetadataAttribute:
         _stub(monkeypatch, backend)
         with requests_mock.Mocker() as m:
             m.get(_attr_url(backend), json=_ATTR)
-            result = _invoke([
-                "--json", "metadata", "attribute", "account", "industrycode",
-                "--expect", "AttributeType=Lookup",
-            ])
+            result = _invoke(
+                [
+                    "--json",
+                    "metadata",
+                    "attribute",
+                    "account",
+                    "industrycode",
+                    "--expect",
+                    "AttributeType=Lookup",
+                ]
+            )
         assert result.exit_code != 0
         env = json.loads(result.output)
         assert env["ok"] is False
         assert env["meta"] == {
-            "attr": "AttributeType", "expected": "Lookup", "actual": "String",
+            "attr": "AttributeType",
+            "expected": "Lookup",
+            "actual": "String",
         }
 
 
@@ -168,10 +225,19 @@ class TestRepeatableAndGate:
         _stub(monkeypatch, backend)
         with requests_mock.Mocker() as m:
             m.get(_get_url(backend), json=_RECORD)
-            result = _invoke([
-                "--json", "entity", "get", "accounts", _GUID,
-                "--expect", "name=Contoso", "--expect", "statecode=0",
-            ])
+            result = _invoke(
+                [
+                    "--json",
+                    "entity",
+                    "get",
+                    "accounts",
+                    _GUID,
+                    "--expect",
+                    "name=Contoso",
+                    "--expect",
+                    "statecode=0",
+                ]
+            )
         assert result.exit_code == 0, result.output
         assert json.loads(result.output)["ok"] is True
 
@@ -181,10 +247,19 @@ class TestRepeatableAndGate:
         _stub(monkeypatch, backend)
         with requests_mock.Mocker() as m:
             m.get(_get_url(backend), json=_RECORD)
-            result = _invoke([
-                "--json", "entity", "get", "accounts", _GUID,
-                "--expect", "name=Contoso", "--expect", "statecode=9",
-            ])
+            result = _invoke(
+                [
+                    "--json",
+                    "entity",
+                    "get",
+                    "accounts",
+                    _GUID,
+                    "--expect",
+                    "name=Contoso",
+                    "--expect",
+                    "statecode=9",
+                ]
+            )
         assert result.exit_code != 0
         env = json.loads(result.output)
         assert env["ok"] is False
@@ -198,10 +273,17 @@ class TestMalformedPair:
         _stub(monkeypatch, backend)
         with requests_mock.Mocker() as m:
             m.get(_get_url(backend), json=_RECORD)
-            result = _invoke([
-                "--json", "entity", "get", "accounts", _GUID,
-                "--expect", "foo",
-            ])
+            result = _invoke(
+                [
+                    "--json",
+                    "entity",
+                    "get",
+                    "accounts",
+                    _GUID,
+                    "--expect",
+                    "foo",
+                ]
+            )
             assert m.request_history == []
         assert result.exit_code == 2
         assert "ATTR=VALUE" in result.output
@@ -210,10 +292,17 @@ class TestMalformedPair:
         _stub(monkeypatch, backend)
         with requests_mock.Mocker() as m:
             m.get(_attr_url(backend), json=_ATTR)
-            result = _invoke([
-                "--json", "metadata", "attribute", "account", "industrycode",
-                "--expect", "=value",
-            ])
+            result = _invoke(
+                [
+                    "--json",
+                    "metadata",
+                    "attribute",
+                    "account",
+                    "industrycode",
+                    "--expect",
+                    "=value",
+                ]
+            )
             assert m.request_history == []
         assert result.exit_code == 2
         assert "ATTR=VALUE" in result.output

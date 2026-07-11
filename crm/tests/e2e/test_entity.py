@@ -1,5 +1,6 @@
 # pyright: basic
 """E2E tests for entity CRUD (contact create/get/update/delete)."""
+
 from __future__ import annotations
 
 import json
@@ -25,9 +26,13 @@ def test_contact_crud_roundtrip(backend, request, unique):
     request.addfinalizer(lambda: _safe(backend, f"contacts({cid})"))
     got = backend.get(f"contacts({cid})", params={"$select": "firstname"})
     assert got["firstname"] == "CLI"
-    backend.patch(f"contacts({cid})", json_body={"telephone1": "+1-555-0001"},
-                  extra_headers={"If-Match": "*"})
-    assert backend.get(f"contacts({cid})", params={"$select": "telephone1"})["telephone1"] == "+1-555-0001"
+    backend.patch(
+        f"contacts({cid})", json_body={"telephone1": "+1-555-0001"}, extra_headers={"If-Match": "*"}
+    )
+    assert (
+        backend.get(f"contacts({cid})", params={"$select": "telephone1"})["telephone1"]
+        == "+1-555-0001"
+    )
     backend.delete(f"contacts({cid})")
 
 
@@ -39,10 +44,16 @@ def test_full_contact_workflow_cli(cli, tmp_path, unique):
         json.dumps({"firstname": "CLISub", "lastname": f"Test-{unique}"}),
         encoding="utf-8",
     )
-    create = cli([
-        "--json", "entity", "create", "contacts",
-        "--data-file", str(body_path),
-    ])
+    create = cli(
+        [
+            "--json",
+            "entity",
+            "create",
+            "contacts",
+            "--data-file",
+            str(body_path),
+        ]
+    )
     assert create.returncode == 0, create.stderr
     env = json.loads(create.stdout)
     assert env["ok"], env
@@ -56,10 +67,17 @@ def test_full_contact_workflow_cli(cli, tmp_path, unique):
 
     try:
         # Get — full record carries _entity_id, @odata.* stripped.
-        got = cli([
-            "--json", "entity", "get", "contacts", contact_id,
-            "--select", "fullname,firstname",
-        ])
+        got = cli(
+            [
+                "--json",
+                "entity",
+                "get",
+                "contacts",
+                contact_id,
+                "--select",
+                "fullname,firstname",
+            ]
+        )
         assert got.returncode == 0, got.stderr
         got_data = json.loads(got.stdout)["data"]
         assert got_data["firstname"] == "CLISub"
@@ -67,9 +85,17 @@ def test_full_contact_workflow_cli(cli, tmp_path, unique):
         assert not any("@odata." in k for k in got_data)
     finally:
         # Delete — returns {deleted, _entity_id, _entity_id_url} (not bare `id`).
-        deleted = cli([
-            "--json", "entity", "delete", "contacts", contact_id, "--yes",
-        ], check=False)
+        deleted = cli(
+            [
+                "--json",
+                "entity",
+                "delete",
+                "contacts",
+                contact_id,
+                "--yes",
+            ],
+            check=False,
+        )
         if deleted.returncode == 0:
             ddata = json.loads(deleted.stdout)["data"]
             assert ddata["deleted"] is True
@@ -90,24 +116,50 @@ def test_entity_update_round_trips_get_payload_with_lookup(backend, cli, tmp_pat
             _safe(backend, f"contacts({cid})")
 
     try:
-        r_contact = cli(["--json", "entity", "create", "contacts",
-                         "--data", json.dumps({"lastname": f"RoundTrip{unique[:6]}"})])
+        r_contact = cli(
+            [
+                "--json",
+                "entity",
+                "create",
+                "contacts",
+                "--data",
+                json.dumps({"lastname": f"RoundTrip{unique[:6]}"}),
+            ]
+        )
         assert r_contact.returncode == 0, r_contact.stderr
         contact_id = str(json.loads(r_contact.stdout)["data"]["_entity_id"])
         created_contacts.append(contact_id)
 
-        r_account = cli(["--json", "entity", "create", "accounts", "--data", json.dumps({
-            "name": f"E2E RoundTrip {unique[:6]} source",
-            "primarycontactid@odata.bind": f"/contacts({contact_id})",
-        })])
+        r_account = cli(
+            [
+                "--json",
+                "entity",
+                "create",
+                "accounts",
+                "--data",
+                json.dumps(
+                    {
+                        "name": f"E2E RoundTrip {unique[:6]} source",
+                        "primarycontactid@odata.bind": f"/contacts({contact_id})",
+                    }
+                ),
+            ]
+        )
         assert r_account.returncode == 0, r_account.stderr
         account_id = str(json.loads(r_account.stdout)["data"]["_entity_id"])
         created_accounts.append(account_id)
 
-        r_get = cli([
-            "--json", "entity", "get", "accounts", account_id,
-            "--select", "name,_primarycontactid_value",
-        ])
+        r_get = cli(
+            [
+                "--json",
+                "entity",
+                "get",
+                "accounts",
+                account_id,
+                "--select",
+                "name,_primarycontactid_value",
+            ]
+        )
         assert r_get.returncode == 0, r_get.stderr
         payload = json.loads(r_get.stdout)["data"]
         assert payload["_entity_id"] == account_id
@@ -116,10 +168,17 @@ def test_entity_update_round_trips_get_payload_with_lookup(backend, cli, tmp_pat
 
         body_path = tmp_path / "account_update.json"
         body_path.write_text(json.dumps(payload), encoding="utf-8")
-        r_update = cli([
-            "--json", "entity", "update", "accounts", account_id,
-            "--data-file", str(body_path),
-        ])
+        r_update = cli(
+            [
+                "--json",
+                "entity",
+                "update",
+                "accounts",
+                account_id,
+                "--data-file",
+                str(body_path),
+            ]
+        )
         assert r_update.returncode == 0, r_update.stderr
 
         row = backend.get(
@@ -142,19 +201,34 @@ def test_entity_upsert_if_none_match_is_create_only(backend, cli, unique):
     cid = str(uuid.uuid4())
     created = False
     try:
-        first = cli([
-            "--json", "entity", "upsert", "contacts", cid,
-            "--data", json.dumps({"firstname": "INM", "lastname": f"Test-{unique}"}),
-            "--if-none-match",
-        ])
+        first = cli(
+            [
+                "--json",
+                "entity",
+                "upsert",
+                "contacts",
+                cid,
+                "--data",
+                json.dumps({"firstname": "INM", "lastname": f"Test-{unique}"}),
+                "--if-none-match",
+            ]
+        )
         assert first.returncode == 0, first.stderr
         created = True
 
-        second = cli([
-            "--json", "entity", "upsert", "contacts", cid,
-            "--data", json.dumps({"firstname": "INM2", "lastname": f"Test-{unique}"}),
-            "--if-none-match",
-        ], check=False)
+        second = cli(
+            [
+                "--json",
+                "entity",
+                "upsert",
+                "contacts",
+                cid,
+                "--data",
+                json.dumps({"firstname": "INM2", "lastname": f"Test-{unique}"}),
+                "--if-none-match",
+            ],
+            check=False,
+        )
         assert second.returncode != 0, "create-only upsert should fail when the record exists"
         env = json.loads(second.stdout)
         assert env["ok"] is False

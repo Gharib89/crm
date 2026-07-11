@@ -10,8 +10,9 @@ from __future__ import annotations
 import csv
 import json
 import math
+from collections.abc import Generator
 from pathlib import Path
-from typing import Any, Generator, cast
+from typing import Any, cast
 
 from crm.core import entity as entity_mod
 from crm.core import lookup_bind
@@ -19,7 +20,7 @@ from crm.utils.d365_backend import D365Backend, D365Error
 from crm.utils.d365_types import BatchOperation, BatchResult
 
 
-def _batch_error_code(body: "dict[str, Any] | str | None") -> str | None:
+def _batch_error_code(body: dict[str, Any] | str | None) -> str | None:
     """Extract the D365 error code from a failed batch sub-op's parsed body.
 
     The backend already parses the OData error envelope into ``BatchResult.body``;
@@ -95,7 +96,7 @@ def _read_jsonl(path: Path) -> Generator[dict[str, Any], None, None]:
 
 
 def _read_csv(
-    path: Path, string_columns: "frozenset[str]" = frozenset()
+    path: Path, string_columns: frozenset[str] = frozenset()
 ) -> Generator[dict[str, Any], None, None]:
     """Yield one coerced dict per row from a CSV file.
 
@@ -112,18 +113,11 @@ def _read_csv(
             # key (a list) — a sign of a malformed row; reject it rather than
             # silently dropping or crashing on the list.
             if None in row:
-                raise D365Error(
-                    f"CSV line {reader.line_num}: more columns than the header"
-                )
-            yield {
-                k: _coerce_csv_value(v, as_string=k in string_columns)
-                for k, v in row.items()
-            }
+                raise D365Error(f"CSV line {reader.line_num}: more columns than the header")
+            yield {k: _coerce_csv_value(v, as_string=k in string_columns) for k, v in row.items()}
 
 
-def _string_key_columns(
-    backend: D365Backend, entity_set: str, attrs: list[str]
-) -> set[str]:
+def _string_key_columns(backend: D365Backend, entity_set: str, attrs: list[str]) -> set[str]:
     """Names in *attrs* whose D365 column type renders as a quoted string literal
     in an alternate-key URL (``String`` / ``Memo``).
 
@@ -175,9 +169,7 @@ def _build_upsert_op(
         key_values: dict[str, Any] = {}
         for attr in alt_key:
             if attr not in record:
-                raise D365Error(
-                    f"Upsert row {row_index}: missing key column {attr!r} in record"
-                )
+                raise D365Error(f"Upsert row {row_index}: missing key column {attr!r} in record")
             key_values[attr] = record[attr]
         # Strip the key attributes from the body — Dataverse identifies the
         # record from the URL key and rejects a differing body value.
@@ -186,9 +178,7 @@ def _build_upsert_op(
         return BatchOperation(method="PATCH", url=url, body=body)
     assert id_column is not None  # narrowed by import_records guard
     if id_column not in record:
-        raise D365Error(
-            f"Upsert row {row_index}: missing id_column {id_column!r} in record"
-        )
+        raise D365Error(f"Upsert row {row_index}: missing id_column {id_column!r} in record")
     body = {k: v for k, v in record.items() if k != id_column}
     url = entity_mod.build_record_path(entity_set, str(record[id_column]))
     return BatchOperation(method="PATCH", url=url, body=body)
@@ -208,17 +198,13 @@ def _build_delete_op(
         key_values: dict[str, Any] = {}
         for attr in alt_key:
             if attr not in record:
-                raise D365Error(
-                    f"Delete row {row_index}: missing key column {attr!r} in record"
-                )
+                raise D365Error(f"Delete row {row_index}: missing key column {attr!r} in record")
             key_values[attr] = record[attr]
         url = entity_mod.build_alternate_key_path(entity_set, key_values)
         return BatchOperation(method="DELETE", url=url)
     assert id_column is not None  # narrowed by import_records guard
     if id_column not in record:
-        raise D365Error(
-            f"Delete row {row_index}: missing id_column {id_column!r} in record"
-        )
+        raise D365Error(f"Delete row {row_index}: missing id_column {id_column!r} in record")
     url = entity_mod.build_record_path(entity_set, str(record[id_column]))
     return BatchOperation(method="DELETE", url=url)
 
@@ -226,9 +212,7 @@ def _build_delete_op(
 # ── chunking ─────────────────────────────────────────────────────────────────
 
 
-def _chunked(
-    items: list[BatchOperation], size: int
-) -> Generator[list[BatchOperation], None, None]:
+def _chunked(items: list[BatchOperation], size: int) -> Generator[list[BatchOperation], None, None]:
     for start in range(0, len(items), size):
         yield items[start : start + size]
 
@@ -288,7 +272,7 @@ def import_records(
         shows the hint, so it must not pay for it. ``True`` by default for
         non-command callers that consume the structured result.
 
-    Returns
+    Returns:
     -------
     dict
         Keys: ``imported``, ``failed``, ``chunks``, ``entity_set``, ``mode``,
@@ -321,9 +305,7 @@ def import_records(
     elif alt_key is not None:
         raise D365Error("alt_key is only valid when mode='upsert' or mode='delete'")
     if mode not in ("create", "upsert", "delete"):
-        raise D365Error(
-            f"Unsupported mode: {mode!r} (use 'create', 'upsert', or 'delete')"
-        )
+        raise D365Error(f"Unsupported mode: {mode!r} (use 'create', 'upsert', or 'delete')")
 
     # ── format ───────────────────────────────────────────────────────────────
     path = Path(input_path)
@@ -333,9 +315,7 @@ def import_records(
     else:
         resolved_fmt = fmt.lower()
     if resolved_fmt not in ("jsonl", "csv"):
-        raise D365Error(
-            f"Unsupported import format: {resolved_fmt!r} (use 'jsonl' or 'csv')"
-        )
+        raise D365Error(f"Unsupported import format: {resolved_fmt!r} (use 'jsonl' or 'csv')")
 
     # ── read records ─────────────────────────────────────────────────────────
     if resolved_fmt == "jsonl":
@@ -346,7 +326,8 @@ def import_records(
         # key-URL form (#683). Consult column metadata rather than guessing.
         string_cols: frozenset[str] = (
             frozenset(_string_key_columns(backend, entity_set, alt_key))
-            if alt_key is not None else frozenset()
+            if alt_key is not None
+            else frozenset()
         )
         records = list(_read_csv(path, string_cols))
 
@@ -372,13 +353,10 @@ def import_records(
             continue
         # upsert / delete both target an existing record by GUID or alternate key.
         build = _build_upsert_op if mode == "upsert" else _build_delete_op
-        ops.append(build(entity_set, record, row_index,
-                         id_column=id_column, alt_key=alt_key))
+        ops.append(build(entity_set, record, row_index, id_column=id_column, alt_key=alt_key))
         if alt_key is not None:
             # Record the alternate-key segment for failure traceability.
-            op_ids.append(entity_mod.format_alternate_key_segment(
-                {a: record[a] for a in alt_key}
-            ))
+            op_ids.append(entity_mod.format_alternate_key_segment({a: record[a] for a in alt_key}))
         else:
             assert id_column is not None  # narrow type for pyright (guarded above)
             op_ids.append(str(record[id_column]))
@@ -421,9 +399,11 @@ def import_records(
                 # Enrich an alternate-key collision with the entity's key schema
                 # and this row's colliding values (#347) — the same best-effort
                 # hint `entity create --json` attaches, now on bulk failures too.
-                if (enrich_alt_key
-                        and _batch_error_code(r.get("body")) == entity_mod.ALT_KEY_ERROR_CODE
-                        and op_index < len(records)):
+                if (
+                    enrich_alt_key
+                    and _batch_error_code(r.get("body")) == entity_mod.ALT_KEY_ERROR_CODE
+                    and op_index < len(records)
+                ):
                     if not alt_key_schema_fetched:
                         alt_key_schema = entity_mod.lookup_alternate_key_schema(backend, entity_set)
                         alt_key_schema_fetched = True

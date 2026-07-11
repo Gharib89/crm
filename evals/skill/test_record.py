@@ -8,6 +8,7 @@ latest run, and the skill-SHA provenance stamp — all offline.
 
     pytest evals/skill
 """
+
 from __future__ import annotations
 
 import json
@@ -22,29 +23,56 @@ _HEX40 = re.compile(r"^[0-9a-f]{40}$")
 
 def _spec(task_id: str = "records-create-verify") -> TaskSpec:
     return TaskSpec(
-        id=task_id, domain="records", target="cloud", prompt="Create a contact.",
-        query=["query", "odata", "contacts"], expect={"count": 1}, cleanup=[],
+        id=task_id,
+        domain="records",
+        target="cloud",
+        prompt="Create a contact.",
+        query=["query", "odata", "contacts"],
+        expect={"count": 1},
+        cleanup=[],
     )
 
 
 def _result(transcript: str) -> RunResult:
     return RunResult(
-        task_id="records-create-verify", dry_run=False, isolation_checks={},
-        passed=True, reason="all expectations met", transcript=transcript,
+        task_id="records-create-verify",
+        dry_run=False,
+        isolation_checks={},
+        passed=True,
+        reason="all expectations met",
+        transcript=transcript,
     )
 
 
-_TRACE = "\n".join([
-    json.dumps({"type": "assistant", "message": {"content": [
-        {"type": "tool_use", "name": "Bash", "input": {"command": "crm entity create contacts ..."}}]}}),
-    json.dumps({"type": "result", "num_turns": 3, "total_cost_usd": 0.04, "duration_ms": 900}),
-])
+_TRACE = "\n".join(
+    [
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "name": "Bash",
+                            "input": {"command": "crm entity create contacts ..."},
+                        }
+                    ]
+                },
+            }
+        ),
+        json.dumps({"type": "result", "num_turns": 3, "total_cost_usd": 0.04, "duration_ms": 900}),
+    ]
+)
 
 
 def test_record_round_trips_through_dict():
     rec = record.TaskRunRecord(
-        task_id="t", prompt="p", raw_trace="r", commands=["crm whoami"],
-        metrics={"num_turns": 2}, correctness_verdict={"passed": True, "reason": "", "status": "pass"},
+        task_id="t",
+        prompt="p",
+        raw_trace="r",
+        commands=["crm whoami"],
+        metrics={"num_turns": 2},
+        correctness_verdict={"passed": True, "reason": "", "status": "pass"},
         skill_sha="abc",
     )
     back = record.TaskRunRecord.from_dict(rec.to_dict())
@@ -57,8 +85,13 @@ def test_from_dict_tolerates_schema_drift():
     # (target/counterfactual/efficacy_review) and carrying an unknown legacy key must
     # still load — defaults fill the gaps, the unknown key is dropped.
     legacy = {
-        "task_id": "t", "prompt": "p", "raw_trace": "r", "commands": [],
-        "metrics": {}, "correctness_verdict": {"status": "pass"}, "skill_sha": "abc",
+        "task_id": "t",
+        "prompt": "p",
+        "raw_trace": "r",
+        "commands": [],
+        "metrics": {},
+        "correctness_verdict": {"status": "pass"},
+        "skill_sha": "abc",
         "since_removed_field": "ignored",  # unknown key from a later/earlier schema
     }
     rec = record.TaskRunRecord.from_dict(legacy)
@@ -67,13 +100,24 @@ def test_from_dict_tolerates_schema_drift():
 
 
 def test_build_record_parses_commands_and_metrics_from_transcript():
-    rec = record.build_record(_spec(), _result(_TRACE), status="pass", passed=True,
-                              reason="all expectations met", sha="deadbeef", target="cloud")
+    rec = record.build_record(
+        _spec(),
+        _result(_TRACE),
+        status="pass",
+        passed=True,
+        reason="all expectations met",
+        sha="deadbeef",
+        target="cloud",
+    )
     assert rec.task_id == "records-create-verify"
     assert rec.prompt == "Create a contact."
     assert rec.commands == ["crm entity create contacts ..."]
     assert rec.metrics == {"num_turns": 3, "total_cost_usd": 0.04, "duration_ms": 900}
-    assert rec.correctness_verdict == {"passed": True, "reason": "all expectations met", "status": "pass"}
+    assert rec.correctness_verdict == {
+        "passed": True,
+        "reason": "all expectations met",
+        "status": "pass",
+    }
     assert rec.skill_sha == "deadbeef"
     assert rec.target == "cloud"
     assert rec.counterfactual is False
@@ -82,14 +126,26 @@ def test_build_record_parses_commands_and_metrics_from_transcript():
 def test_build_record_verdict_is_aggregate_not_last_trial():
     # Under --repeat the captured trace is the last trial but the verdict is the aggregate;
     # passed/status/reason are passed in explicitly and must agree (no contradiction).
-    rec = record.build_record(_spec(), _result(_TRACE), status="fail", passed=False,
-                              reason="2/3 trials passed", sha="s")
-    assert rec.correctness_verdict == {"passed": False, "reason": "2/3 trials passed", "status": "fail"}
+    rec = record.build_record(
+        _spec(), _result(_TRACE), status="fail", passed=False, reason="2/3 trials passed", sha="s"
+    )
+    assert rec.correctness_verdict == {
+        "passed": False,
+        "reason": "2/3 trials passed",
+        "status": "fail",
+    }
 
 
 def test_write_and_load_round_trip(tmp_path):
-    rec = record.build_record(_spec(), _result(_TRACE), status="pass", passed=True,
-                              reason="ok", sha="sha1", target="cloud")
+    rec = record.build_record(
+        _spec(),
+        _result(_TRACE),
+        status="pass",
+        passed=True,
+        reason="ok",
+        sha="sha1",
+        target="cloud",
+    )
     path = record.write_record(tmp_path, rec)
     assert path.name == "records-create-verify.cloud.json"  # filename namespaced by target
     loaded = record.load_records(tmp_path)
@@ -100,13 +156,24 @@ def test_legs_of_one_task_across_targets_do_not_collide(tmp_path):
     # An `either` task in a `both` run produces a cloud and an on-prem leg (plus their
     # skill-absent counterparts); none may overwrite another on disk.
     def rec(target, counterfactual=False):
-        return record.build_record(_spec(), _result(_TRACE), status="pass", passed=True,
-                                    reason="ok", sha="s", target=target, counterfactual=counterfactual)
+        return record.build_record(
+            _spec(),
+            _result(_TRACE),
+            status="pass",
+            passed=True,
+            reason="ok",
+            sha="s",
+            target=target,
+            counterfactual=counterfactual,
+        )
+
     for r in (rec("cloud"), rec("onprem"), rec("cloud", True), rec("onprem", True)):
         record.write_record(tmp_path, r)
     assert {p.name for p in tmp_path.glob("*.json")} == {
-        "records-create-verify.cloud.json", "records-create-verify.onprem.json",
-        "records-create-verify.cloud.counterfactual.json", "records-create-verify.onprem.counterfactual.json",
+        "records-create-verify.cloud.json",
+        "records-create-verify.onprem.json",
+        "records-create-verify.cloud.counterfactual.json",
+        "records-create-verify.onprem.counterfactual.json",
     }
 
 

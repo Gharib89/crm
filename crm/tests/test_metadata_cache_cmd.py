@@ -1,5 +1,6 @@
 # pyright: basic
 """Tests for --cache-metadata / --refresh-metadata flags and metadata cache-clear command (#88)."""
+
 from __future__ import annotations
 
 import json
@@ -9,7 +10,6 @@ from click.testing import CliRunner
 
 from crm.cli import CLIContext, cli
 from crm.utils.d365_backend import D365Backend
-
 
 # Two-field response — used by the cache path (EntityDefinitions?$select=LogicalName,EntitySetName)
 _ENTITY_DEFS_2F = {
@@ -45,8 +45,11 @@ def _invoke(args: list[str]):
 # Test 1: cold miss — first fetch hits the network, result stored
 # ---------------------------------------------------------------------------
 
+
 class TestCacheMiss:
-    def test_cold_miss_returns_2field_rows(self, monkeypatch, tmp_path, backend: D365Backend) -> None:
+    def test_cold_miss_returns_2field_rows(
+        self, monkeypatch, tmp_path, backend: D365Backend
+    ) -> None:
         monkeypatch.setenv("CRM_HOME", str(tmp_path))
         _stub_backend(monkeypatch, backend)
         url = backend.url_for("EntityDefinitions")
@@ -66,6 +69,7 @@ class TestCacheMiss:
 # ---------------------------------------------------------------------------
 # Test 2: second call hits disk, NOT the network
 # ---------------------------------------------------------------------------
+
 
 class TestCacheHit:
     def test_second_call_is_disk_hit(self, monkeypatch, tmp_path, backend: D365Backend) -> None:
@@ -92,6 +96,7 @@ class TestCacheHit:
 # Test 3: --refresh-metadata forces a network fetch even when cache is warm
 # ---------------------------------------------------------------------------
 
+
 class TestRefreshMetadata:
     def test_refresh_hits_network(self, monkeypatch, tmp_path, backend: D365Backend) -> None:
         monkeypatch.setenv("CRM_HOME", str(tmp_path))
@@ -117,8 +122,11 @@ class TestRefreshMetadata:
 # Test 4: default path (no cache flags) — unchanged 5-field behavior
 # ---------------------------------------------------------------------------
 
+
 class TestDefaultPath:
-    def test_no_cache_flag_uses_5field_path(self, monkeypatch, tmp_path, backend: D365Backend) -> None:
+    def test_no_cache_flag_uses_5field_path(
+        self, monkeypatch, tmp_path, backend: D365Backend
+    ) -> None:
         monkeypatch.setenv("CRM_HOME", str(tmp_path))
         _stub_backend(monkeypatch, backend)
         url = backend.url_for("EntityDefinitions")
@@ -138,19 +146,21 @@ class TestDefaultPath:
 # Test 5: --custom-only + --cache-metadata is a usage error (exit 2)
 # ---------------------------------------------------------------------------
 
+
 class TestCustomOnlyConflict:
-    def test_custom_only_with_cache_exits_2(self, monkeypatch, tmp_path, backend: D365Backend) -> None:
+    def test_custom_only_with_cache_exits_2(
+        self, monkeypatch, tmp_path, backend: D365Backend
+    ) -> None:
         monkeypatch.setenv("CRM_HOME", str(tmp_path))
         _stub_backend(monkeypatch, backend)
-        result = _invoke([
-            "--json", "--cache-metadata", "metadata", "entities", "--custom-only"
-        ])
+        result = _invoke(["--json", "--cache-metadata", "metadata", "entities", "--custom-only"])
         assert result.exit_code == 2
 
 
 # ---------------------------------------------------------------------------
 # Test 6: --top with cache path
 # ---------------------------------------------------------------------------
+
 
 class TestTopWithCache:
     def test_top_slices_cached_results(self, monkeypatch, tmp_path, backend: D365Backend) -> None:
@@ -159,9 +169,7 @@ class TestTopWithCache:
         url = backend.url_for("EntityDefinitions")
         with requests_mock.Mocker() as m:
             m.get(url, json=_ENTITY_DEFS_2F)
-            result = _invoke([
-                "--json", "--cache-metadata", "metadata", "entities", "--top", "1"
-            ])
+            result = _invoke(["--json", "--cache-metadata", "metadata", "entities", "--top", "1"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["ok"] is True
@@ -173,6 +181,7 @@ class TestTopWithCache:
 # ---------------------------------------------------------------------------
 # Test 7: cache-clear command
 # ---------------------------------------------------------------------------
+
 
 class TestCacheClear:
     def test_clear_removes_cache_then_false_on_second(
@@ -207,6 +216,7 @@ class TestCacheClear:
 # Test 8: env-driven opt-in via CRM_CACHE_METADATA=1
 # ---------------------------------------------------------------------------
 
+
 class TestEnvDriven:
     def test_env_var_opts_in_cache(self, monkeypatch, tmp_path, backend: D365Backend) -> None:
         monkeypatch.setenv("CRM_HOME", str(tmp_path))
@@ -225,6 +235,7 @@ class TestEnvDriven:
 # ---------------------------------------------------------------------------
 # Test 9: human-mode cache output — 2-field table branch
 # ---------------------------------------------------------------------------
+
 
 class TestHumanModeCache:
     def test_human_mode_cache_shows_entity_names(

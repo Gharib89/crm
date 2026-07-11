@@ -23,6 +23,7 @@ with no items has no workflows to activate, so `sla activate` proceeds directly
 to flipping the SLA's statecode.  This still exercises the full code path in
 crm.core.sla.activate_sla (fetch plan + sla PATCH).
 """
+
 from __future__ import annotations
 
 import json
@@ -35,6 +36,7 @@ from crm.tests.e2e.coverage import covers
 def _create_draft_sla(backend, name: str) -> str | None:
     """POST a minimal draft SLA; return its slaid or None if the org rejects it."""
     from crm.utils.d365_backend import D365Error, as_dict
+
     body = {
         "name": name,
         "applicablefrom": "createdon",
@@ -49,6 +51,7 @@ def _create_draft_sla(backend, name: str) -> str | None:
         return None
     entity_id_url = result.get("_entity_id_url") or ""
     import re
+
     m = re.search(r"slas\(([0-9a-fA-F-]{36})\)", entity_id_url)
     return m.group(1) if m else None
 
@@ -88,23 +91,16 @@ def test_sla_activate(backend, cli, request, unique):
     sla_id.append(created)
 
     result = cli(["--json", "sla", "activate", created])
-    assert result.returncode == 0, (
-        f"sla activate failed:\n{result.stderr}\nstdout: {result.stdout}"
-    )
+    assert result.returncode == 0, f"sla activate failed:\n{result.stderr}\nstdout: {result.stdout}"
     env = json.loads(result.stdout)
-    assert env["ok"], (
-        f"sla activate returned ok=False: {env}"
-    )
+    assert env["ok"], f"sla activate returned ok=False: {env}"
     data = env["data"]
-    assert data.get("sla_activated") is True, (
-        f"expected sla_activated=True: {data}"
-    )
-    assert data.get("sla_id") == created, (
-        f"sla_id mismatch: {data}"
-    )
+    assert data.get("sla_activated") is True, f"expected sla_activated=True: {data}"
+    assert data.get("sla_id") == created, f"sla_id mismatch: {data}"
 
     # Verify the SLA is now active via direct GET.
     from crm.utils.d365_backend import as_dict
+
     row = as_dict(backend.get(f"slas({created})", params={"$select": "statecode"}))
     assert row.get("statecode") == 1, (
         f"SLA statecode not 1 after activate; got {row.get('statecode')}"
@@ -119,7 +115,8 @@ def _is_sla_enabled(md) -> bool:
 
     It is a BooleanManagedProperty (a ``{"Value": bool}`` object) but tolerate a
     bare bool too — mirrors crm.core.sla._sla_enabled_value without importing a
-    private symbol."""
+    private symbol.
+    """
     raw = md.get("IsSLAEnabled") if isinstance(md, dict) else None
     if isinstance(raw, dict):
         return bool(raw.get("Value"))
@@ -144,8 +141,7 @@ _KPI_SUCCESS = (
 @covers("sla create", "sla add-kpi")
 @pytest.mark.requires_cloud
 @pytest.mark.slow
-def test_sla_create_and_add_kpi_lifecycle(backend, cli, request, unique,
-                                            ephemeral_solution):
+def test_sla_create_and_add_kpi_lifecycle(backend, cli, request, unique, ephemeral_solution):
     """`sla create` then `sla add-kpi` against a CS-provisioned org.
 
     Ensures the target entity (`incident`) is SLA-enabled (a publish-requiring
@@ -184,13 +180,11 @@ def test_sla_create_and_add_kpi_lifecycle(backend, cli, request, unique,
     # no-op; enable + publish only when it is not, and restore only what we
     # changed so the org is left as found.
     if not _is_sla_enabled(md):
-        metadata_update.update_entity(
-            backend, entity, is_sla_enabled=True, publish=True)
+        metadata_update.update_entity(backend, entity, is_sla_enabled=True, publish=True)
 
         def _restore_sla_flag():
             try:
-                metadata_update.update_entity(
-                    backend, entity, is_sla_enabled=False, publish=True)
+                metadata_update.update_entity(backend, entity, is_sla_enabled=False, publish=True)
             except Exception:
                 pass
 
@@ -211,15 +205,24 @@ def test_sla_create_and_add_kpi_lifecycle(backend, cli, request, unique,
 
     sla_name = f"E2E SLA {unique}"
     created = cli(
-        ["--json", "sla", "create", "--name", sla_name, "--entity", entity,
-         "--applicable-from", "createdon", "--solution", ephemeral_solution],
+        [
+            "--json",
+            "sla",
+            "create",
+            "--name",
+            sla_name,
+            "--entity",
+            entity,
+            "--applicable-from",
+            "createdon",
+            "--solution",
+            ephemeral_solution,
+        ],
         check=False,
     )
     # Check the exit code before parsing so a non-JSON failure surfaces stderr
     # rather than a JSONDecodeError (matches `sla activate` above).
-    assert created.returncode == 0, (
-        f"sla create failed:\n{created.stderr}\n{created.stdout}"
-    )
+    assert created.returncode == 0, f"sla create failed:\n{created.stderr}\n{created.stdout}"
     env = json.loads(created.stdout)
     assert env["ok"], f"sla create returned ok=False: {env}"
     data = env["data"]
@@ -233,14 +236,24 @@ def test_sla_create_and_add_kpi_lifecycle(backend, cli, request, unique,
     assert data["sla_enabled"] == "already", data
 
     added = cli(
-        ["--json", "sla", "add-kpi", "--sla", sla_id, "--kpi", "resolvebykpiid",
-         "--applicable-when", _KPI_APPLICABLE_WHEN,
-         "--success-criteria", _KPI_SUCCESS, "--solution", ephemeral_solution],
+        [
+            "--json",
+            "sla",
+            "add-kpi",
+            "--sla",
+            sla_id,
+            "--kpi",
+            "resolvebykpiid",
+            "--applicable-when",
+            _KPI_APPLICABLE_WHEN,
+            "--success-criteria",
+            _KPI_SUCCESS,
+            "--solution",
+            ephemeral_solution,
+        ],
         check=False,
     )
-    assert added.returncode == 0, (
-        f"sla add-kpi failed:\n{added.stderr}\n{added.stdout}"
-    )
+    assert added.returncode == 0, f"sla add-kpi failed:\n{added.stderr}\n{added.stdout}"
     env = json.loads(added.stdout)
     assert env["ok"], f"sla add-kpi returned ok=False: {env}"
     item = env["data"]

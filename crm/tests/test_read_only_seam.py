@@ -18,15 +18,22 @@ import pytest
 import requests_mock
 
 from crm.utils.d365_backend import (
-    BatchOperation, ConnectionProfile, D365Backend, D365Error,
+    BatchOperation,
+    ConnectionProfile,
+    D365Backend,
+    D365Error,
 )
 
 
 def _profile(read_only: bool = True) -> ConnectionProfile:
     return ConnectionProfile(
-        name="ro", url="https://crm.contoso.local/contoso",
-        domain="CONTOSO", username="alice", api_version="v9.2",
-        verify_ssl=False, read_only=read_only,
+        name="ro",
+        url="https://crm.contoso.local/contoso",
+        domain="CONTOSO",
+        username="alice",
+        api_version="v9.2",
+        verify_ssl=False,
+        read_only=read_only,
     )
 
 
@@ -72,12 +79,15 @@ class TestMutationsRefused:
 
 
 class TestReadSafeActions:
-    @pytest.mark.parametrize("path", [
-        "ExportSolution",
-        "ExportSolutionAsync",
-        "DownloadSolutionExportData",
-        "solutions/Microsoft.Dynamics.CRM.ExportTranslation",
-    ])
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "ExportSolution",
+            "ExportSolutionAsync",
+            "DownloadSolutionExportData",
+            "solutions/Microsoft.Dynamics.CRM.ExportTranslation",
+        ],
+    )
     def test_read_safe_post_actions_execute(self, ro_backend: D365Backend, path: str):
         """Export actions extract rather than mutate — exempt from the refusal."""
         with requests_mock.Mocker() as m:
@@ -91,7 +101,8 @@ class TestReadSafeActions:
         self, ro_backend: D365Backend, verb: str
     ):
         """The export exemption is POST-only: a PATCH/DELETE to a path whose
-        action name matches the allowlist is still refused, not bypassed."""
+        action name matches the allowlist is still refused, not bypassed.
+        """
         call = getattr(ro_backend, verb)
         args = ("ExportSolution",) if verb == "delete" else ("ExportSolution", {})
         with requests_mock.Mocker() as m:
@@ -136,8 +147,7 @@ class TestReadOnlyIsConstructorOnly:
 class TestProfilePersistence:
     def test_from_dict_defaults_false_when_absent(self):
         """A flag-less profile JSON (pre-#665) loads as writable — back-compat."""
-        d = {"name": "old", "url": "https://crm.contoso.local/c",
-             "domain": "D", "username": "u"}
+        d = {"name": "old", "url": "https://crm.contoso.local/c", "domain": "D", "username": "u"}
         assert ConnectionProfile.from_dict(d).read_only is False
 
     def test_round_trips_through_dict(self):

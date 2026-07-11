@@ -8,6 +8,7 @@ everywhere; opting out still works via --no-annotations.
 These assert the *request* behavior (the Prefer header), not the rendered
 output, since that is what the default actually controls.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -56,8 +57,7 @@ class TestFetchxmlDefault:
         b = inject_backend(make_fake_backend(responses={"get": {"value": []}}))
         result = CliRunner().invoke(
             cli,
-            ["--json", "query", "fetchxml", "accounts", "--xml", self._FETCH,
-             "--no-annotations"],
+            ["--json", "query", "fetchxml", "accounts", "--xml", self._FETCH, "--no-annotations"],
         )
         assert result.exit_code == 0, result.output
         assert _prefer_header(b) is None

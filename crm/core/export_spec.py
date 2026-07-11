@@ -130,28 +130,73 @@ TRANSFORM_CONSUMED_KEYS: dict[str, frozenset[str]] = {
 # entry means the key CAN be emitted (most are conditional on the source metadata),
 # not that every export carries it.
 EXPORTED_KEYS: dict[str, frozenset[str]] = {
-    "attribute": frozenset({
-        "kind", "schema_name", "display_name", "description", "required",
-        "max_length", "format_name", "auto_number_format", "min_value",
-        "max_value", "behavior_name", "max_size_kb", "precision", "target_entity",
-        "options", "optionset_name", "source_type", "formula_definition",
-    }),
-    "entity": frozenset({
-        "schema_name", "display_name", "display_collection_name", "description",
-        "ownership", "has_notes", "has_activities", "primary_attr",
-        "primary_attr_max_length",
-    }),
-    "relationship": frozenset({
-        "schema_name", "referenced_entity", "referencing_entity", "lookup_schema",
-        "lookup_display", "required", "lookup_description", "cascade_assign",
-        "cascade_delete", "cascade_reparent", "cascade_share", "cascade_unshare",
-        "cascade_merge", "menu_behavior", "menu_label", "menu_order",
-        "is_hierarchical",
-    }),
-    "view": frozenset({
-        "name", "columns", "is_default", "description", "order_by", "order_desc",
-        "filter_active",
-    }),
+    "attribute": frozenset(
+        {
+            "kind",
+            "schema_name",
+            "display_name",
+            "description",
+            "required",
+            "max_length",
+            "format_name",
+            "auto_number_format",
+            "min_value",
+            "max_value",
+            "behavior_name",
+            "max_size_kb",
+            "precision",
+            "target_entity",
+            "options",
+            "optionset_name",
+            "source_type",
+            "formula_definition",
+        }
+    ),
+    "entity": frozenset(
+        {
+            "schema_name",
+            "display_name",
+            "display_collection_name",
+            "description",
+            "ownership",
+            "has_notes",
+            "has_activities",
+            "primary_attr",
+            "primary_attr_max_length",
+        }
+    ),
+    "relationship": frozenset(
+        {
+            "schema_name",
+            "referenced_entity",
+            "referencing_entity",
+            "lookup_schema",
+            "lookup_display",
+            "required",
+            "lookup_description",
+            "cascade_assign",
+            "cascade_delete",
+            "cascade_reparent",
+            "cascade_share",
+            "cascade_unshare",
+            "cascade_merge",
+            "menu_behavior",
+            "menu_label",
+            "menu_order",
+            "is_hierarchical",
+        }
+    ),
+    "view": frozenset(
+        {
+            "name",
+            "columns",
+            "is_default",
+            "description",
+            "order_by",
+            "order_desc",
+            "filter_active",
+        }
+    ),
     "optionset": frozenset({"name", "display_name", "description", "options"}),
     "webresource": frozenset({"name", "display_name"}),
     "security-role": frozenset({"name", "business_unit"}),
@@ -163,33 +208,33 @@ EXPORTED_KEYS: dict[str, frozenset[str]] = {
 EXPORT_GAPS: dict[str, dict[str, str]] = {
     "attribute": {
         "default_value": "lives under the OptionSet, which does not ride the "
-                         "un-cast attribute read; projecting it would need an "
-                         "extra per-column cast read.",
+        "un-cast attribute read; projecting it would need an "
+        "extra per-column cast read.",
         "true_label": "boolean label under the OptionSet; see default_value.",
         "false_label": "boolean label under the OptionSet; see default_value.",
         "relationship_schema": "niche and not round-trip-relevant for the custom "
-                               "tables this exporter targets.",
+        "tables this exporter targets.",
         "is_audit_enabled": "audit-enable state is a runtime setting the projectors "
-                            "do not read; not part of the customization round-trip.",
+        "do not read; not part of the customization round-trip.",
     },
     "entity": {
         "is_activity": "niche and not round-trip-relevant for the custom tables "
-                       "this exporter targets.",
+        "this exporter targets.",
         "data_provider_id": "virtual-table field; virtual tables are read-only on "
-                            "v9.1 and out of this exporter's scope.",
+        "v9.1 and out of this exporter's scope.",
         "data_source_id": "virtual-table field; see data_provider_id.",
         "external_name": "virtual-table field; see data_provider_id.",
         "external_collection_name": "virtual-table field; see data_provider_id.",
         "is_audit_enabled": "audit-enable state is a runtime setting the projectors "
-                            "do not read; not part of the customization round-trip.",
+        "do not read; not part of the customization round-trip.",
     },
     "relationship": {
         "is_audit_enabled": "audit-enable state is a runtime setting the projectors "
-                            "do not read; not part of the customization round-trip.",
+        "do not read; not part of the customization round-trip.",
     },
     "view": {
         "query_type": "the read filters to public views (querytype eq 0), so "
-                      "query_type is always the apply adapter's public default.",
+        "query_type is always the apply adapter's public default.",
     },
     "optionset": {},
     "webresource": {},
@@ -201,9 +246,9 @@ EXPORT_GAPS: dict[str, dict[str, str]] = {
 # (ADR 0019), so no live read can reconstruct them.
 KINDS_NOT_EXPORTED: dict[str, str] = {
     "plugin-assembly": "assembly DLL bytes do not exist in live org metadata "
-                       "(ADR 0019); not projectable from a live read.",
+    "(ADR 0019); not projectable from a live read.",
     "plugin-step": "hinges on its plug-in assembly, which is not projectable from "
-                   "a live read (ADR 0019).",
+    "a live read (ADR 0019).",
 }
 
 
@@ -336,9 +381,7 @@ def _project_options(
     local = _as_dict(pick.get("OptionSet"))
     options = metadata.flatten_options(local)
     if not options:
-        warnings.append(
-            f"dropped column {attr_logical!r}: resolved option list is empty"
-        )
+        warnings.append(f"dropped column {attr_logical!r}: resolved option list is empty")
         return False
     attr_out["options"] = options
     return True
@@ -386,9 +429,7 @@ def _project_attribute(
     if kind in _LENGTH_KINDS:
         max_length = info.get("MaxLength")
         if not isinstance(max_length, int):
-            warnings.append(
-                f"dropped column {attr_logical!r}: {kind} has no readable MaxLength"
-            )
+            warnings.append(f"dropped column {attr_logical!r}: {kind} has no readable MaxLength")
             return None
         out["max_length"] = max_length
 
@@ -414,8 +455,7 @@ def _project_attribute(
 
     if kind == "datetime":
         behavior = _as_dict(info.get("DateTimeBehavior")).get("Value")
-        if (isinstance(behavior, str) and behavior
-                and behavior != _DATETIME_DEFAULT_BEHAVIOR):
+        if isinstance(behavior, str) and behavior and behavior != _DATETIME_DEFAULT_BEHAVIOR:
             out["behavior_name"] = behavior
 
     if kind == "file":
@@ -426,9 +466,7 @@ def _project_attribute(
     if kind in _PRECISION_KINDS:
         precision = info.get("Precision")
         if not isinstance(precision, int):
-            warnings.append(
-                f"dropped column {attr_logical!r}: {kind} has no readable Precision"
-            )
+            warnings.append(f"dropped column {attr_logical!r}: {kind} has no readable Precision")
             return None
         out["precision"] = precision
 
@@ -644,14 +682,18 @@ def build_entity_spec(
     if with_views:
         # validate_spec requires both a non-empty name and non-empty columns per
         # view; drop any view that fails either check so the spec stays valid.
-        ent_views = [v for v in views.read_entity_views(backend, logical_name)
-                     if v.get("name") and v.get("columns")]
+        ent_views = [
+            v
+            for v in views.read_entity_views(backend, logical_name)
+            if v.get("name") and v.get("columns")
+        ]
         if ent_views:
             entity["views"] = ent_views
 
     if with_forms:
         form_blocks = forms.project_entity_forms(
-            backend, logical_name,
+            backend,
+            logical_name,
             custom_attr_types=custom_attr_types,
             warnings=warn,
             skipped=skipped if skipped is not None else [],
@@ -693,9 +735,11 @@ _AUTHORABLE_DEPTHS: tuple[str, ...] = ("Basic", "Local", "Deep", "Global")
 
 def _resolve_entity_logical(backend: D365Backend, metadata_id: str) -> str:
     """Resolve an entity MetadataId (a solution member's objectid) to its logical
-    name — the key build_entity_spec projects on. One EntityDefinitions GET."""
-    rec = as_dict(backend.get(
-        f"EntityDefinitions({metadata_id})", params={"$select": "LogicalName"}))
+    name — the key build_entity_spec projects on. One EntityDefinitions GET.
+    """
+    rec = as_dict(
+        backend.get(f"EntityDefinitions({metadata_id})", params={"$select": "LogicalName"})
+    )
     name = rec.get("LogicalName")
     if not isinstance(name, str) or not name:
         raise D365Error(f"entity metadata id {metadata_id!r} has no LogicalName.")
@@ -721,9 +765,12 @@ def build_webresource_spec(
     ``warnings`` is accepted for uniform dispatch with `build_role_spec` (see
     ``build_solution_spec._project``); a web resource has nothing to drop.
     """
-    rec = as_dict(backend.get(
-        f"webresourceset({webresource_id})",
-        params={"$select": "name,displayname,webresourcetype,content"}))
+    rec = as_dict(
+        backend.get(
+            f"webresourceset({webresource_id})",
+            params={"$select": "name,displayname,webresourcetype,content"},
+        )
+    )
     name = rec.get("name")
     if not isinstance(name, str) or not name:
         raise D365Error(f"web resource {webresource_id!r} has no name; cannot project.")
@@ -770,8 +817,9 @@ def build_role_spec(
     from crm.core import security as sec_mod  # lazy import: avoid an import cycle
 
     warn = warnings if warnings is not None else []
-    rec = as_dict(backend.get(
-        f"roles({role_id})", params={"$select": "name,_businessunitid_value"}))
+    rec = as_dict(
+        backend.get(f"roles({role_id})", params={"$select": "name,_businessunitid_value"})
+    )
     name = rec.get("name")
     if not isinstance(name, str) or not name:
         raise D365Error(f"security role {role_id!r} has no name; cannot project.")
@@ -783,18 +831,23 @@ def build_role_spec(
         if depth not in _AUTHORABLE_DEPTHS:
             warn.append(
                 f"role {name!r}: privilege {priv.get('name')!r} at non-authorable "
-                f"depth {depth!r} dropped (cannot round-trip through apply).")
+                f"depth {depth!r} dropped (cannot round-trip through apply)."
+            )
             continue
         by_depth.setdefault(depth, []).append(str(priv.get("name")))
 
     if not by_depth:
         raise D365Error(
             f"security role {name!r} has no apply-authorable privileges "
-            "(Basic/Local/Deep/Global); nothing to project.")
+            "(Basic/Local/Deep/Global); nothing to project."
+        )
 
     # Emit one selector row per depth, depths in canonical order, names sorted.
-    rows = [{"depth": depth, "privilege_names": sorted(by_depth[depth])}
-            for depth in _AUTHORABLE_DEPTHS if depth in by_depth]
+    rows = [
+        {"depth": depth, "privilege_names": sorted(by_depth[depth])}
+        for depth in _AUTHORABLE_DEPTHS
+        if depth in by_depth
+    ]
     spec: dict[str, Any] = {"name": name, "privileges": rows}
     bu = rec.get("_businessunitid_value")
     if isinstance(bu, str) and bu:
@@ -817,7 +870,9 @@ _SITEMAP_COMPONENT_TYPE = 62
 
 
 def _project_app_sitemap(
-    sitemap_xml: str, app_label: str, warnings: list[str],
+    sitemap_xml: str,
+    app_label: str,
+    warnings: list[str],
 ) -> dict[str, Any] | None:
     """Project a live SiteMapXml into apply's nested ``sitemap:`` block, or None.
 
@@ -848,12 +903,12 @@ def _project_app_sitemap(
             for sub in group.findall("SubArea"):
                 entity = sub.get("Entity")
                 if not entity:
-                    ident = (sub.get("Id") or sub.get("Url")
-                             or sub.get("DefaultDashboard") or "?")
+                    ident = sub.get("Id") or sub.get("Url") or sub.get("DefaultDashboard") or "?"
                     warnings.append(
                         f"{app_label} sitemap: dropped subarea {ident!r} — only "
                         "entity-backed subareas re-seed; a url/dashboard subarea "
-                        "binds to an org-specific target apply cannot re-create.")
+                        "binds to an org-specific target apply cannot re-create."
+                    )
                     continue
                 sub_out: dict[str, Any] = {"entity": entity}
                 title = sub.get("Title")
@@ -901,9 +956,12 @@ def build_app_spec(
     caller's ``skipped`` bucket) when the app has no readable name / unique name.
     """
     warn = warnings if warnings is not None else []
-    rec = as_dict(backend.get(
-        f"appmodules({app_id})",
-        params={"$select": "name,uniquename,description,appmoduleidunique"}))
+    rec = as_dict(
+        backend.get(
+            f"appmodules({app_id})",
+            params={"$select": "name,uniquename,description,appmoduleidunique"},
+        )
+    )
     name = rec.get("name")
     unique_name = rec.get("uniquename")
     if not isinstance(name, str) or not name:
@@ -915,11 +973,9 @@ def build_app_spec(
     # first-party app like `Customerservicehub`) cannot round-trip — skip it with a
     # reason rather than emit a block validate_spec would reject.
     try:
-        mc.validate_schema_name(unique_name, subject="unique_name",
-                                example="cwx_crmworx")
+        mc.validate_schema_name(unique_name, subject="unique_name", example="cwx_crmworx")
     except D365Error as exc:
-        raise D365Error(
-            f"app {unique_name!r} is not apply-seedable: {exc}") from exc
+        raise D365Error(f"app {unique_name!r} is not apply-seedable: {exc}") from exc
 
     app_label = f"app {unique_name!r}"
     block: dict[str, Any] = {"name": name, "unique_name": unique_name}
@@ -931,8 +987,11 @@ def build_app_spec(
     # (the inverse of appmodule.set_sitemap). Project its Entity subareas.
     sitemaps = backend.get_collection(
         "sitemaps",
-        params={"$filter": f"sitemapnameunique eq {odata_literal(unique_name)}",
-                "$select": "sitemapxml"})
+        params={
+            "$filter": f"sitemapnameunique eq {odata_literal(unique_name)}",
+            "$select": "sitemapxml",
+        },
+    )
     sitemap_xml = str(sitemaps[0].get("sitemapxml") or "") if sitemaps else ""
     if sitemap_xml.strip():
         sitemap = _project_app_sitemap(sitemap_xml, app_label, warn)
@@ -941,7 +1000,8 @@ def build_app_spec(
     else:
         warn.append(
             f"{app_label}: no app-specific sitemap found "
-            f"(sitemapnameunique {unique_name!r}); navigation not projected.")
+            f"(sitemapnameunique {unique_name!r}); navigation not projected."
+        )
 
     # Record-backed component bindings bind by org-specific id (ADR 0019): count
     # them so the omission is visible, never silent. The count excludes entity
@@ -950,13 +1010,15 @@ def build_app_spec(
     # full component list is never pulled just to count the relevant few.
     idunique = rec.get("appmoduleidunique")
     if isinstance(idunique, str) and idunique:
-        query = (f"_appmoduleidunique_value eq {idunique} "
-                 f"and componenttype ne {_ENTITY_COMPONENT_TYPE} "
-                 f"and componenttype ne {_SITEMAP_COMPONENT_TYPE}")
+        query = (
+            f"_appmoduleidunique_value eq {idunique} "
+            f"and componenttype ne {_ENTITY_COMPONENT_TYPE} "
+            f"and componenttype ne {_SITEMAP_COMPONENT_TYPE}"
+        )
         try:
             bound = backend.get_collection(
-                "appmodulecomponents",
-                params={"$filter": query, "$select": "componenttype"})
+                "appmodulecomponents", params={"$filter": query, "$select": "componenttype"}
+            )
         except D365Error as exc:
             # Best-effort: a failed bindings read must not fail the whole app
             # projection — but it must not be silent either (ADR 0019), so warn
@@ -964,14 +1026,16 @@ def build_app_spec(
             warn.append(
                 f"{app_label}: could not read component bindings ({exc}); "
                 "any record-backed bindings (views/charts/forms/dashboards/BPFs) "
-                "are not projected and were not counted.")
+                "are not projected and were not counted."
+            )
         else:
             if bound:
                 warn.append(
                     f"{app_label}: {len(bound)} record-backed component binding(s) "
                     "(views/charts/forms/dashboards/BPFs) not projected — they bind "
                     "by org-specific id and cannot re-seed on a fresh org (ADR 0019); "
-                    "tables reach the app through the sitemap's entity subareas.")
+                    "tables reach the app through the sitemap's entity subareas."
+                )
 
     return block
 
@@ -979,17 +1043,23 @@ def build_app_spec(
 def _skip_reason(componenttype: int) -> str:
     """Explain why a non-entity solution member is not directly projected."""
     if componenttype in _PLUGIN_COMPONENT_TYPES:
-        return ("plug-in component not projectable from a live org (its assembly "
-                "DLL bytes are absent from live metadata); export emits only "
-                "apply-seedable components.")
+        return (
+            "plug-in component not projectable from a live org (its assembly "
+            "DLL bytes are absent from live metadata); export emits only "
+            "apply-seedable components."
+        )
     if componenttype in _ENTITY_SUBCOMPONENT_TYPES:
-        return ("entity-rooted subcomponent: never projected individually and "
-                "not resolved to its parent entity (known simplification), so it "
-                "is always reported here; its data is still exported when that "
-                "parent entity is itself a solution member (projected in full).")
-    return (f"{solution_components.component_type_name(componenttype)} is not an "
-            "apply-seedable component type; export emits the apply-seedable kinds "
-            "(entities, security roles, web resources).")
+        return (
+            "entity-rooted subcomponent: never projected individually and "
+            "not resolved to its parent entity (known simplification), so it "
+            "is always reported here; its data is still exported when that "
+            "parent entity is itself a solution member (projected in full)."
+        )
+    return (
+        f"{solution_components.component_type_name(componenttype)} is not an "
+        "apply-seedable component type; export emits the apply-seedable kinds "
+        "(entities, security roles, web resources)."
+    )
 
 
 def build_solution_spec(
@@ -1044,19 +1114,28 @@ def build_solution_spec(
     apps: list[dict[str, Any]] = []
     seen: set[str] = set()
 
-    def _project(kind: str, objectid: Any,
-                 projector: Callable[..., dict[str, Any]],
-                 acc: list[dict[str, Any]]) -> None:
+    def _project(
+        kind: str,
+        objectid: Any,
+        projector: Callable[..., dict[str, Any]],
+        acc: list[dict[str, Any]],
+    ) -> None:
         """Project one objectid-keyed member, routing any failure to `skipped`."""
         if not isinstance(objectid, str) or not objectid:
-            skipped.append({"type": kind, "objectid": objectid,
-                            "reason": f"{kind} member has no objectid; cannot project."})
+            skipped.append(
+                {
+                    "type": kind,
+                    "objectid": objectid,
+                    "reason": f"{kind} member has no objectid; cannot project.",
+                }
+            )
             return
         try:
             acc.append(projector(backend, objectid, warnings=warn))
         except D365Error as exc:
-            skipped.append({"type": kind, "objectid": objectid,
-                            "reason": f"could not project {kind}: {exc}"})
+            skipped.append(
+                {"type": kind, "objectid": objectid, "reason": f"could not project {kind}: {exc}"}
+            )
 
     for member in members:
         componenttype = member.get("componenttype")
@@ -1065,27 +1144,34 @@ def build_solution_spec(
             # Defensive: a well-formed solutioncomponents row always carries an
             # int componenttype. Surface anything malformed rather than drop it
             # silently (the never-drop-silently invariant, ADR 0019).
-            skipped.append({
-                "type": str(componenttype),
-                "objectid": objectid,
-                "reason": "solution member has a non-integer componenttype; "
-                          "not projectable.",
-            })
+            skipped.append(
+                {
+                    "type": str(componenttype),
+                    "objectid": objectid,
+                    "reason": "solution member has a non-integer componenttype; not projectable.",
+                }
+            )
             continue
         if componenttype == _ENTITY_COMPONENT_TYPE:
             if not isinstance(objectid, str) or not objectid:
-                skipped.append({
-                    "type": "entity", "objectid": objectid,
-                    "reason": "entity member has no objectid; cannot resolve.",
-                })
+                skipped.append(
+                    {
+                        "type": "entity",
+                        "objectid": objectid,
+                        "reason": "entity member has no objectid; cannot resolve.",
+                    }
+                )
                 continue
             try:
                 logical = _resolve_entity_logical(backend, objectid)
             except D365Error as exc:
-                skipped.append({
-                    "type": "entity", "objectid": objectid,
-                    "reason": f"could not resolve entity metadata id: {exc}",
-                })
+                skipped.append(
+                    {
+                        "type": "entity",
+                        "objectid": objectid,
+                        "reason": f"could not resolve entity metadata id: {exc}",
+                    }
+                )
                 continue
             if logical not in seen:
                 seen.add(logical)
@@ -1099,26 +1185,38 @@ def build_solution_spec(
         elif componenttype == _SITEMAP_COMPONENT_TYPE:
             # The sitemap is projected under its app's `apps:` block (ADR 0024), so
             # a standalone SiteMap member is reported here rather than emitted twice.
-            skipped.append({
-                "type": "sitemap", "objectid": objectid,
-                "reason": ("sitemap rides under its app's apps: block (projected "
-                           "there when its app is a solution member), not as a "
-                           "standalone component (ADR 0024).")})
+            skipped.append(
+                {
+                    "type": "sitemap",
+                    "objectid": objectid,
+                    "reason": (
+                        "sitemap rides under its app's apps: block (projected "
+                        "there when its app is a solution member), not as a "
+                        "standalone component (ADR 0024)."
+                    ),
+                }
+            )
         else:
-            skipped.append({
-                "type": solution_components.component_type_name(componenttype),
-                "objectid": objectid,
-                "reason": _skip_reason(componenttype),
-            })
+            skipped.append(
+                {
+                    "type": solution_components.component_type_name(componenttype),
+                    "objectid": objectid,
+                    "reason": _skip_reason(componenttype),
+                }
+            )
 
     entity_logicals.sort()
     entities: list[dict[str, Any]] = []
     optionset_acc: dict[str, dict[str, Any]] = {}
     for logical in entity_logicals:
         es = build_entity_spec(
-            backend, logical,
-            with_views=True, with_relationships=True, with_forms=True,
-            warnings=warn, skipped=skipped,
+            backend,
+            logical,
+            with_views=True,
+            with_relationships=True,
+            with_forms=True,
+            warnings=warn,
+            skipped=skipped,
         )
         entities.extend(cast("list[dict[str, Any]]", es.get("entities", [])))
         for opt_set in cast("list[dict[str, Any]]", es.get("optionsets", [])):

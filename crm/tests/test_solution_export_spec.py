@@ -6,6 +6,7 @@ output-shaping — the `-o` bare-YAML write and the `skipped`-bucket surfacing i
 both human and --json modes — with `build_solution_spec` stubbed to a canned
 result so the test pins the envelope contract, not the projection.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -21,21 +22,27 @@ def _canned(skipped=None):
     return {
         "spec": {
             "solution": {"unique_name": "myorgsln"},
-            "entities": [{
-                "schema_name": "new_Project",
-                "display_name": "Project",
-                "attributes": [
-                    {"kind": "string", "schema_name": "new_Code", "display_name": "Code"},
-                ],
-            }],
+            "entities": [
+                {
+                    "schema_name": "new_Project",
+                    "display_name": "Project",
+                    "attributes": [
+                        {"kind": "string", "schema_name": "new_Code", "display_name": "Code"},
+                    ],
+                }
+            ],
             "optionsets": [{"name": "new_set", "display_name": "Set", "options": []}],
-            "apps": [{"name": "CRMWorx", "unique_name": "cwx_crmworx",
-                      "sitemap": {"areas": []}}],
+            "apps": [{"name": "CRMWorx", "unique_name": "cwx_crmworx", "sitemap": {"areas": []}}],
         },
-        "skipped": skipped if skipped is not None else [
-            {"type": "pluginassembly", "objectid": "p1",
-             "reason": "plugin assembly DLL not projectable from a live org; "
-                       "export emits only apply-seedable components."},
+        "skipped": skipped
+        if skipped is not None
+        else [
+            {
+                "type": "pluginassembly",
+                "objectid": "p1",
+                "reason": "plugin assembly DLL not projectable from a live org; "
+                "export emits only apply-seedable components.",
+            },
         ],
     }
 
@@ -52,7 +59,8 @@ class TestSolutionExportSpecCommand:
         self._stub(monkeypatch, backend)
         out_file = tmp_path / "spec.yaml"
         res = CliRunner().invoke(
-            cli, ["--json", "solution", "export-spec", "myorgsln", "-o", str(out_file)])
+            cli, ["--json", "solution", "export-spec", "myorgsln", "-o", str(out_file)]
+        )
         assert res.exit_code == 0, res.output
 
         # The file holds the BARE apply-ready spec — solution dict + entities,
@@ -93,10 +101,14 @@ class TestSolutionExportSpecCommand:
 
     def test_unsupported_only_still_succeeds(self, monkeypatch, backend):
         # A solution with no entity-rooted members projects nothing but exits 0.
-        self._stub(monkeypatch, backend, result={
-            "spec": {"solution": {"unique_name": "x"}, "entities": []},
-            "skipped": [{"type": "role", "objectid": "r1", "reason": "deferred."}],
-        })
+        self._stub(
+            monkeypatch,
+            backend,
+            result={
+                "spec": {"solution": {"unique_name": "x"}, "entities": []},
+                "skipped": [{"type": "role", "objectid": "r1", "reason": "deferred."}],
+            },
+        )
         res = CliRunner().invoke(cli, ["--json", "solution", "export-spec", "x"])
         assert res.exit_code == 0, res.output
         data = json.loads(res.output)["data"]

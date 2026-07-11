@@ -12,6 +12,7 @@ the `default_solution` half of ADR 0002). Covers:
 
 All HTTP is dry-run or mocked; no live D365 server needed.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -24,7 +25,6 @@ from click.testing import CliRunner
 from crm.cli import CLIContext, cli
 from crm.commands._helpers import _resolve_solution
 from crm.utils.d365_backend import ConnectionProfile
-
 
 # ── ConnectionProfile round-trip ─────────────────────────────────────────
 
@@ -77,6 +77,7 @@ def _ctx_with_profile(monkeypatch, *, publisher_prefix=None):
     ctx = CLIContext()
     ctx.profile_name = "p"
     from crm.commands import _helpers
+
     monkeypatch.setattr(_helpers.session_mod, "load_profile", lambda _n: profile)
     return ctx
 
@@ -129,8 +130,18 @@ def test_create_entity_uses_publisher_prefix(monkeypatch, tmp_path):
     monkeypatch.setattr(meta_mod, "create_entity", fake_create_entity)
     result = CliRunner().invoke(
         cli,
-        ["--json", "--profile", "p", "metadata", "create-entity",
-         "--display", "Project", "--solution", "MySol", "--no-publish"],
+        [
+            "--json",
+            "--profile",
+            "p",
+            "metadata",
+            "create-entity",
+            "--display",
+            "Project",
+            "--solution",
+            "MySol",
+            "--no-publish",
+        ],
     )
     assert result.exit_code == 0, result.output
     assert captured["schema_name"] == "new_Project"
@@ -150,8 +161,18 @@ def test_create_entity_multiword_display_pascalcases(monkeypatch, tmp_path):
     monkeypatch.setattr(meta_mod, "create_entity", fake_create_entity)
     result = CliRunner().invoke(
         cli,
-        ["--json", "--profile", "p", "metadata", "create-entity",
-         "--display", "Project Task", "--solution", "MySol", "--no-publish"],
+        [
+            "--json",
+            "--profile",
+            "p",
+            "metadata",
+            "create-entity",
+            "--display",
+            "Project Task",
+            "--solution",
+            "MySol",
+            "--no-publish",
+        ],
     )
     assert result.exit_code == 0, result.output
     assert captured["schema_name"] == "new_ProjectTask"
@@ -171,8 +192,18 @@ def test_create_optionset_multiword_display_pascalcases(monkeypatch, tmp_path):
     monkeypatch.setattr(os_mod, "create_optionset", fake_create_optionset)
     result = CliRunner().invoke(
         cli,
-        ["--json", "--profile", "p", "metadata", "create-optionset",
-         "--display", "Task Priority", "--solution", "MySol", "--no-publish"],
+        [
+            "--json",
+            "--profile",
+            "p",
+            "metadata",
+            "create-optionset",
+            "--display",
+            "Task Priority",
+            "--solution",
+            "MySol",
+            "--no-publish",
+        ],
     )
     assert result.exit_code == 0, result.output
     assert captured["name"] == "new_TaskPriority"
@@ -183,14 +214,26 @@ def test_create_entity_no_solution_errors(monkeypatch, tmp_path):
     _save_profile(monkeypatch, tmp_path, publisher_prefix="new")
 
     from crm.core import metadata as meta_mod
+
     monkeypatch.setattr(
-        meta_mod, "create_entity",
+        meta_mod,
+        "create_entity",
         lambda _b, **kw: {"_dry_run": True},
     )
     result = CliRunner().invoke(
         cli,
-        ["--json", "--profile", "p", "metadata", "create-entity",
-         "--schema-name", "new_Project", "--display", "Project", "--no-publish"],
+        [
+            "--json",
+            "--profile",
+            "p",
+            "metadata",
+            "create-entity",
+            "--schema-name",
+            "new_Project",
+            "--display",
+            "Project",
+            "--no-publish",
+        ],
     )
     assert result.exit_code == 2, result.output
     assert "solution" in result.output.lower()
@@ -201,8 +244,19 @@ def test_create_entity_no_solution_errors_under_dry_run(monkeypatch, tmp_path):
     _save_profile(monkeypatch, tmp_path, publisher_prefix="new")
     result = CliRunner().invoke(
         cli,
-        ["--json", "--dry-run", "--profile", "p", "metadata", "create-entity",
-         "--schema-name", "new_Project", "--display", "Project", "--no-publish"],
+        [
+            "--json",
+            "--dry-run",
+            "--profile",
+            "p",
+            "metadata",
+            "create-entity",
+            "--schema-name",
+            "new_Project",
+            "--display",
+            "Project",
+            "--no-publish",
+        ],
     )
     assert result.exit_code == 2, result.output
     assert "solution" in result.output.lower()
@@ -213,15 +267,29 @@ def test_add_attribute_no_solution_errors(monkeypatch, tmp_path):
     _save_profile(monkeypatch, tmp_path, publisher_prefix="new")
 
     from crm.core import metadata_attrs as ma_mod
+
     monkeypatch.setattr(
-        ma_mod, "add_attribute",
+        ma_mod,
+        "add_attribute",
         lambda _b, **kw: {"_dry_run": True},
     )
     result = CliRunner().invoke(
         cli,
-        ["--json", "--profile", "p", "metadata", "add-attribute", "new_project",
-         "--kind", "string", "--schema-name", "new_Note", "--display", "Note",
-         "--no-publish"],
+        [
+            "--json",
+            "--profile",
+            "p",
+            "metadata",
+            "add-attribute",
+            "new_project",
+            "--kind",
+            "string",
+            "--schema-name",
+            "new_Note",
+            "--display",
+            "Note",
+            "--no-publish",
+        ],
     )
     assert result.exit_code == 2, result.output
     assert "solution" in result.output.lower()
@@ -229,7 +297,8 @@ def test_add_attribute_no_solution_errors(monkeypatch, tmp_path):
 
 def test_delete_entity_exempt_no_solution_ok(monkeypatch, tmp_path):
     """Hard metadata delete is EXEMPT (#636): no --solution -> proceeds (exit 0),
-    not exit-2. The header is inert on a global delete, so it stays optional."""
+    not exit-2. The header is inert on a global delete, so it stays optional.
+    """
     _save_profile(monkeypatch, tmp_path, publisher_prefix="new")
     captured = {}
 
@@ -243,8 +312,7 @@ def test_delete_entity_exempt_no_solution_ok(monkeypatch, tmp_path):
     monkeypatch.setattr(meta_mod, "delete_entity", fake_delete_entity)
     result = CliRunner().invoke(
         cli,
-        ["--json", "--profile", "p", "metadata", "delete-entity", "new_project",
-         "--yes"],
+        ["--json", "--profile", "p", "metadata", "delete-entity", "new_project", "--yes"],
     )
     assert result.exit_code == 0, result.output
     assert captured["logical_name"] == "new_project"
@@ -265,8 +333,17 @@ def test_delete_entity_solution_forwarded_when_given(monkeypatch, tmp_path):
     monkeypatch.setattr(meta_mod, "delete_entity", fake_delete_entity)
     result = CliRunner().invoke(
         cli,
-        ["--json", "--profile", "p", "metadata", "delete-entity", "new_project",
-         "--solution", "MySol", "--yes"],
+        [
+            "--json",
+            "--profile",
+            "p",
+            "metadata",
+            "delete-entity",
+            "new_project",
+            "--solution",
+            "MySol",
+            "--yes",
+        ],
     )
     assert result.exit_code == 0, result.output
     assert captured["solution"] == "MySol"
@@ -286,9 +363,20 @@ def test_default_solution_satisfies_requirement(monkeypatch, tmp_path):
     monkeypatch.setattr(meta_mod, "create_entity", fake_create_entity)
     result = CliRunner().invoke(
         cli,
-        ["--json", "--profile", "p", "metadata", "create-entity",
-         "--schema-name", "new_Project", "--display", "Project",
-         "--solution", "Default", "--no-publish"],
+        [
+            "--json",
+            "--profile",
+            "p",
+            "metadata",
+            "create-entity",
+            "--schema-name",
+            "new_Project",
+            "--display",
+            "Project",
+            "--solution",
+            "Default",
+            "--no-publish",
+        ],
     )
     assert result.exit_code == 0, result.output
     assert captured["solution"] == "Default"
@@ -297,7 +385,8 @@ def test_default_solution_satisfies_requirement(monkeypatch, tmp_path):
 def test_connection_status_has_no_default_solution(monkeypatch, tmp_path):
     _save_profile(monkeypatch, tmp_path, publisher_prefix="new")
     result = CliRunner().invoke(
-        cli, ["--json", "--profile", "p", "connection", "status"],
+        cli,
+        ["--json", "--profile", "p", "connection", "status"],
     )
     assert result.exit_code == 0, result.output
     env = json.loads(result.output)

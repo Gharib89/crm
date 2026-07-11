@@ -2,7 +2,9 @@
 """Unit tests for scripts/check_bump_label.py — the bump-guard gate that fails a
 PR whose Conventional-Commit title implies a *major* bump unless the maintainer-
 applied `major` label is present. `feat:` (minor) and patch-level titles flow
-without a label; only a major bump is gated. See ADR 0011 and issues #398, #500."""
+without a label; only a major bump is gated. See ADR 0011 and issues #398, #500.
+"""
+
 import importlib.util
 from pathlib import Path
 
@@ -18,11 +20,21 @@ _spec.loader.exec_module(cbl)  # pyright: ignore[reportAttributeAccessIssue]
 
 # --- required_label: what bump a title/body implies -------------------------
 
+
 @pytest.mark.parametrize(
     "title",
-    ["fix: x", "perf: speed", "docs: readme", "chore: deps",
-     "refactor: tidy", "test: cover", "build: spec", "ci: yaml",
-     "fix(query): scope", "revert: bad"],
+    [
+        "fix: x",
+        "perf: speed",
+        "docs: readme",
+        "chore: deps",
+        "refactor: tidy",
+        "test: cover",
+        "build: spec",
+        "ci: yaml",
+        "fix(query): scope",
+        "revert: bad",
+    ],
 )
 def test_patch_types_need_no_label(title):
     assert cbl.required_label(title) is None
@@ -52,6 +64,7 @@ def test_invalid_title_raises():
 
 
 # --- check: title + body + labels -> (exit_code, message) -------------------
+
 
 def test_feat_passes_with_no_label():
     code, _ = cbl.check("feat: thing", "", [])

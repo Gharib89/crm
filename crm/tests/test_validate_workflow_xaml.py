@@ -1,4 +1,5 @@
 """Unit tests for crm.core.workflow.validate_workflow_xaml (pure, offline)."""
+
 # pyright: basic
 from __future__ import annotations
 
@@ -26,12 +27,12 @@ _VALID_EMPTY = (
     ' Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"'
     ' xmlns:this="clr-namespace:"'
     ' xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">\n'
-    '  <x:Members>\n'
+    "  <x:Members>\n"
     '    <x:Property Name="InputEntities" Type="InArgument(scg:IDictionary(x:String, mxs:Entity))" />\n'
-    '  </x:Members>\n'
-    '  <mva:VisualBasic.Settings>Assembly references and imported namespaces for internal implementation</mva:VisualBasic.Settings>\n'
-    '  <mxswa:Workflow />\n'
-    '</Activity>'
+    "  </x:Members>\n"
+    "  <mva:VisualBasic.Settings>Assembly references and imported namespaces for internal implementation</mva:VisualBasic.Settings>\n"
+    "  <mxswa:Workflow />\n"
+    "</Activity>"
 )
 
 # Skeleton with one well-formed SetEntityProperty step.
@@ -50,14 +51,14 @@ _VALID_WITH_STEP = (
     ' Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"'
     ' xmlns:this="clr-namespace:"'
     ' xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">\n'
-    '  <x:Members>\n'
+    "  <x:Members>\n"
     '    <x:Property Name="InputEntities" Type="InArgument(scg:IDictionary(x:String, mxs:Entity))" />\n'
-    '  </x:Members>\n'
-    '  <mva:VisualBasic.Settings>Assembly references and imported namespaces for internal implementation</mva:VisualBasic.Settings>\n'
-    '  <mxswa:Workflow>\n'
+    "  </x:Members>\n"
+    "  <mva:VisualBasic.Settings>Assembly references and imported namespaces for internal implementation</mva:VisualBasic.Settings>\n"
+    "  <mxswa:Workflow>\n"
     '    <mxswa:SetEntityProperty Entity="someref" EntityName="cwx_ticket" Attribute="cwx_name" Value="x" />\n'
-    '  </mxswa:Workflow>\n'
-    '</Activity>'
+    "  </mxswa:Workflow>\n"
+    "</Activity>"
 )
 
 # Drop a closing tag → malformed XML (no unbound-prefix issue — all xmlns declared).
@@ -65,7 +66,7 @@ _MALFORMED = (
     '<Activity x:Class="XrmWorkflow00000000000000000000000000000000"'
     ' xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"'
     ' xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">\n'
-    '  <Sequence>\n'
+    "  <Sequence>\n"
     # deliberately missing </Sequence> and </Activity>
 )
 
@@ -84,8 +85,8 @@ _MISSING_NAMESPACE = (
     ' Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"'
     ' xmlns:this="clr-namespace:"'
     ' xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">\n'
-    '  <mxswa:Workflow />\n'
-    '</Activity>'
+    "  <mxswa:Workflow />\n"
+    "</Activity>"
 )
 
 # Undeclared prefix whose name sorts lexically AFTER "xmlns" (regression guard:
@@ -94,8 +95,8 @@ _UNDECLARED_PREFIX_SORTS_AFTER_XMLNS = (
     '<Activity x:Class="XrmWorkflow00000000000000000000000000000000"'
     ' xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"'
     ' xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">\n'
-    '  <zzz:Workflow />\n'  # zzz declaration deliberately absent
-    '</Activity>'
+    "  <zzz:Workflow />\n"  # zzz declaration deliberately absent
+    "</Activity>"
 )
 
 # Undeclared prefix containing an NCName-legal hyphen (regression guard: the
@@ -104,8 +105,8 @@ _UNDECLARED_HYPHENATED_PREFIX = (
     '<Activity x:Class="XrmWorkflow00000000000000000000000000000000"'
     ' xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"'
     ' xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">\n'
-    '  <my-ns:Workflow />\n'  # my-ns declaration deliberately absent
-    '</Activity>'
+    "  <my-ns:Workflow />\n"  # my-ns declaration deliberately absent
+    "</Activity>"
 )
 
 # Unknown activity name not in the allowlist.
@@ -124,10 +125,10 @@ _UNKNOWN_ACTIVITY = (
     ' Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"'
     ' xmlns:this="clr-namespace:"'
     ' xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">\n'
-    '  <mxswa:Workflow>\n'
-    '    <mxswa:Bogus />\n'
-    '  </mxswa:Workflow>\n'
-    '</Activity>'
+    "  <mxswa:Workflow>\n"
+    "    <mxswa:Bogus />\n"
+    "  </mxswa:Workflow>\n"
+    "</Activity>"
 )
 
 # SetEntityProperty with an Attribute value not in _ATTRIBUTE_SET.
@@ -146,11 +147,11 @@ _BAD_ATTRIBUTE = (
     ' Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"'
     ' xmlns:this="clr-namespace:"'
     ' xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">\n'
-    '  <mxswa:Workflow>\n'
+    "  <mxswa:Workflow>\n"
     '    <mxswa:SetEntityProperty Entity="someref" EntityName="cwx_ticket"'
     ' Attribute="cwx_nonexistent" Value="x" />\n'
-    '  </mxswa:Workflow>\n'
-    '</Activity>'
+    "  </mxswa:Workflow>\n"
+    "</Activity>"
 )
 
 # SetEntityProperty with Value supplied as a property-element child
@@ -172,15 +173,15 @@ _PROPERTY_ELEMENT_VALUE = (
     ' Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"'
     ' xmlns:this="clr-namespace:"'
     ' xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">\n'
-    '  <mxswa:Workflow>\n'
+    "  <mxswa:Workflow>\n"
     '    <mxswa:SetEntityProperty Entity="someref" EntityName="cwx_ticket"'
     ' Attribute="cwx_name">\n'
-    '      <mxswa:SetEntityProperty.Value>\n'
-    '        <mxs:Entity />\n'
-    '      </mxswa:SetEntityProperty.Value>\n'
-    '    </mxswa:SetEntityProperty>\n'
-    '  </mxswa:Workflow>\n'
-    '</Activity>'
+    "      <mxswa:SetEntityProperty.Value>\n"
+    "        <mxs:Entity />\n"
+    "      </mxswa:SetEntityProperty.Value>\n"
+    "    </mxswa:SetEntityProperty>\n"
+    "  </mxswa:Workflow>\n"
+    "</Activity>"
 )
 
 # SetEntityProperty missing its required "Entity" argument.
@@ -199,11 +200,11 @@ _MISSING_ARG = (
     ' Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"'
     ' xmlns:this="clr-namespace:"'
     ' xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">\n'
-    '  <mxswa:Workflow>\n'
+    "  <mxswa:Workflow>\n"
     # Entity attribute removed — required arg missing
     '    <mxswa:SetEntityProperty EntityName="cwx_ticket" Attribute="cwx_name" Value="x" />\n'
-    '  </mxswa:Workflow>\n'
-    '</Activity>'
+    "  </mxswa:Workflow>\n"
+    "</Activity>"
 )
 
 
@@ -236,18 +237,14 @@ class TestValidateWorkflowXaml:
         candidate set, so any undeclared prefix sorting after it (e.g. 'zzz') was
         misreported as 'xmlns'.
         """
-        warnings = validate_workflow_xaml(
-            _UNDECLARED_PREFIX_SORTS_AFTER_XMLNS, _ATTRIBUTE_SET
-        )
+        warnings = validate_workflow_xaml(_UNDECLARED_PREFIX_SORTS_AFTER_XMLNS, _ATTRIBUTE_SET)
         assert len(warnings) == 1
         assert "zzz" in warnings[0]
         assert "'xmlns'" not in warnings[0]
 
     def test_undeclared_hyphenated_prefix_is_named(self):
         """An undeclared prefix with an NCName hyphen is named, not '(unknown)'."""
-        warnings = validate_workflow_xaml(
-            _UNDECLARED_HYPHENATED_PREFIX, _ATTRIBUTE_SET
-        )
+        warnings = validate_workflow_xaml(_UNDECLARED_HYPHENATED_PREFIX, _ATTRIBUTE_SET)
         assert len(warnings) == 1
         assert "my-ns" in warnings[0]
         assert "(unknown)" not in warnings[0]
@@ -267,7 +264,9 @@ class TestValidateWorkflowXaml:
     def test_bad_attribute_emits_warning(self):
         """An Attribute= value absent from attribute_set → 'attribute not found on entity: …'."""
         warnings = validate_workflow_xaml(_BAD_ATTRIBUTE, _ATTRIBUTE_SET)
-        assert any("attribute not found on entity" in w and "cwx_nonexistent" in w for w in warnings)
+        assert any(
+            "attribute not found on entity" in w and "cwx_nonexistent" in w for w in warnings
+        )
 
     def test_missing_required_arg_emits_warning(self):
         """SetEntityProperty missing Entity → 'SetEntityProperty missing required argument: Entity'."""

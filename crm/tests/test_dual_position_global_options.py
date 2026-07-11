@@ -15,6 +15,7 @@ flag (`--stage-only`) is NOT injected, and the injection tree-walk sanity check.
 backend and no profile needed, with a rich deterministic `data` payload for
 `--fields`/`--jq` — so an isolated CRM_HOME keeps every assertion hermetic.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -24,7 +25,7 @@ import click
 import pytest
 from click.testing import CliRunner
 
-from crm.cli import CLIContext, _DUALPOS_TOKENS, _json_mode_active, cli
+from crm.cli import _DUALPOS_TOKENS, CLIContext, _json_mode_active, cli
 
 pytestmark = pytest.mark.usefixtures("isolated_home")
 
@@ -85,16 +86,23 @@ def test_trailing_fields_projects():
 # (root-argv, leaf-argv) pairs — only the one flag under test changes position;
 # any co-required --json stays pinned at the root so the diff is purely positional.
 _EQUALITY_CASES = {
-    "json": (["--json", "describe", "entity"],
-             ["describe", "entity", "--json"]),
-    "dry_run": (["--json", "--dry-run", "describe", "entity"],
-                ["--json", "describe", "entity", "--dry-run"]),
-    "profile": (["--json", "--profile", "nope", "describe", "entity"],
-                ["--json", "describe", "entity", "--profile", "nope"]),
-    "fields": (["--json", "--fields", "commands", "describe", "entity"],
-               ["--json", "describe", "entity", "--fields", "commands"]),
-    "jq": (["--json", "--jq", ".commands | length", "describe", "entity"],
-           ["--json", "describe", "entity", "--jq", ".commands | length"]),
+    "json": (["--json", "describe", "entity"], ["describe", "entity", "--json"]),
+    "dry_run": (
+        ["--json", "--dry-run", "describe", "entity"],
+        ["--json", "describe", "entity", "--dry-run"],
+    ),
+    "profile": (
+        ["--json", "--profile", "nope", "describe", "entity"],
+        ["--json", "describe", "entity", "--profile", "nope"],
+    ),
+    "fields": (
+        ["--json", "--fields", "commands", "describe", "entity"],
+        ["--json", "describe", "entity", "--fields", "commands"],
+    ),
+    "jq": (
+        ["--json", "--jq", ".commands | length", "describe", "entity"],
+        ["--json", "describe", "entity", "--jq", ".commands | length"],
+    ),
 }
 
 
@@ -141,11 +149,14 @@ def test_both_positions_json_envelope():
 # ── Cross-position --fields / --jq mutual exclusion ──────────────────────────
 
 
-@pytest.mark.parametrize("args", [
-    ["--fields", "commands", "describe", "entity", "--jq", "."],   # root fields + leaf jq
-    ["--jq", ".", "describe", "entity", "--fields", "commands"],   # root jq   + leaf fields
-    ["describe", "entity", "--fields", "commands", "--jq", "."],   # both at leaf
-])
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["--fields", "commands", "describe", "entity", "--jq", "."],  # root fields + leaf jq
+        ["--jq", ".", "describe", "entity", "--fields", "commands"],  # root jq   + leaf fields
+        ["describe", "entity", "--fields", "commands", "--jq", "."],  # both at leaf
+    ],
+)
 def test_fields_jq_mutually_exclusive_cross_position(args):
     r = _run(args)
     assert r.exit_code == 2, r.output
@@ -157,11 +168,11 @@ def test_fields_jq_mutually_exclusive_cross_position(args):
 
 def test_set_password_keeps_local_required_profile():
     """`profile set-password` declares its own required `--profile`, so the injected
-    dual-position `--profile` is skipped and the local one still binds."""
+    dual-position `--profile` is skipped and the local one still binds.
+    """
     setpw = _resolve_leaf("profile", "set-password")
     profile_opts = [
-        p for p in setpw.params
-        if isinstance(p, click.Option) and "--profile" in p.opts
+        p for p in setpw.params if isinstance(p, click.Option) and "--profile" in p.opts
     ]
     assert len(profile_opts) == 1
     assert profile_opts[0].required is True
@@ -198,13 +209,15 @@ def test_scanner_skips_root_value_option_values():
 
 def test_scanner_accepted_false_positive_leaf_value():
     """A literal '--json' passed as a LEAF option's value is (acceptably) mistaken
-    for the flag — arbitrary leaf value-options are not enumerated in the scanner."""
+    for the flag — arbitrary leaf value-options are not enumerated in the scanner.
+    """
     assert _json_mode_active(["entity", "get", "accounts", "--select", "--json"]) is True
 
 
 def test_scanner_skips_fields_and_jq_values():
     """`--fields`/`--jq` are root value-taking options, so a '--json' passed as their
-    value is NOT mistaken for the flag (Copilot round 2)."""
+    value is NOT mistaken for the flag (Copilot round 2).
+    """
     assert _json_mode_active(["--fields", "--json", "profile", "list"]) is False
     assert _json_mode_active(["--jq", "--json", "profile", "list"]) is False
     # A real trailing --json after a --fields projection is still detected.
@@ -216,7 +229,8 @@ def test_scanner_skips_fields_and_jq_values():
 
 def test_leaf_profile_sticky_across_repl_lines():
     """The REPL reuses one CLIContext across lines (cli.main obj=ctx); a leaf
-    `--profile` set on one line stays set on the next bare line."""
+    `--profile` set on one line stays set on the next bare line.
+    """
     ctx = CLIContext()
 
     def line(argv):
@@ -233,7 +247,8 @@ def test_leaf_profile_sticky_across_repl_lines():
 
 def test_stage_only_not_injected_and_still_hints():
     """`--stage-only` is out of scope: not injected into leaves, and the position
-    hint still fires when it trails the subcommand."""
+    hint still fires when it trails the subcommand.
+    """
     entget = _resolve_leaf("entity", "get")
     tokens = {t for p in entget.params if isinstance(p, click.Option) for t in p.opts}
     assert "--stage-only" not in tokens
@@ -245,16 +260,20 @@ def test_stage_only_not_injected_and_still_hints():
 # ── Passive-guard JSON signal is position-independent (Copilot round 1) ──────
 
 
-@pytest.mark.parametrize("argv", [
-    ["--json", "describe", "entity"],
-    ["describe", "entity", "--json"],
-    ["--jq", ".", "describe", "entity"],
-    ["describe", "entity", "--jq", "."],
-])
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--json", "describe", "entity"],
+        ["describe", "entity", "--json"],
+        ["--jq", ".", "describe", "entity"],
+        ["describe", "entity", "--jq", "."],
+    ],
+)
 def test_json_guard_signal_set_for_json_either_position(argv):
     """The whole-argv guard signal (which gates the passive update-check) is True for
     a --json/--jq in EITHER position, so root and leaf placement behave identically —
-    not just at emit time (the update notice) but for the background-probe kickoff."""
+    not just at emit time (the update notice) but for the background-probe kickoff.
+    """
     _run(argv)
     assert cli._json_for_guards is True
 
@@ -269,7 +288,8 @@ def test_json_guard_signal_clear_for_plain_invocation():
 
 def test_injection_reaches_every_leaf():
     """Walking via list_commands/get_command (root is lazy — a naive `.commands`
-    walk would see 0), well over 100 leaves carry all five dual-position tokens."""
+    walk would see 0), well over 100 leaves carry all five dual-position tokens.
+    """
     cc = click.Context(cli, info_name="crm")
 
     def leaves(group):

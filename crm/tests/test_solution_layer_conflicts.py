@@ -4,10 +4,13 @@ CLI verb (#200).
 
 Pure-function tests need no HTTP. GUIDs are generic placeholders (no real org).
 """
+
 from __future__ import annotations
 
 import json
+
 from click.testing import CliRunner
+
 from crm.cli import cli
 from crm.core import solution as sol_mod
 
@@ -68,8 +71,11 @@ class TestLayerConflicts:
     def test_row_has_exact_five_keys(self):
         result = sol_mod.layer_conflicts([_comp(1, _A, 0)], [_comp(1, _A, 0)])
         assert set(result[0].keys()) == {
-            "componenttype", "type_name", "objectid",
-            "managed_rootcomponentbehavior", "unmanaged_rootcomponentbehavior",
+            "componenttype",
+            "type_name",
+            "objectid",
+            "managed_rootcomponentbehavior",
+            "unmanaged_rootcomponentbehavior",
         }
 
 
@@ -84,12 +90,17 @@ class TestLayerConflictsCmd:
     """CLI wiring for `solution layer-conflicts`."""
 
     def _invoke(self, *args):
-        return CliRunner().invoke(
-            cli, ["--json", "solution", "layer-conflicts", *args]
-        )
+        return CliRunner().invoke(cli, ["--json", "solution", "layer-conflicts", *args])
 
-    def _patch(self, monkeypatch, *, managed_ok=True, unmanaged_ok=True,
-               managed_comps=None, unmanaged_comps=None):
+    def _patch(
+        self,
+        monkeypatch,
+        *,
+        managed_ok=True,
+        unmanaged_ok=True,
+        managed_comps=None,
+        unmanaged_comps=None,
+    ):
         infos = {
             "Mgd": _info("Mgd", managed=managed_ok),
             "Unmgd": _info("Unmgd", managed=not unmanaged_ok),
@@ -98,16 +109,18 @@ class TestLayerConflictsCmd:
             "Mgd": managed_comps if managed_comps is not None else [],
             "Unmgd": unmanaged_comps if unmanaged_comps is not None else [],
         }
-        monkeypatch.setattr("crm.core.solution.solution_info",
-                            lambda backend, name: infos[name])
-        monkeypatch.setattr("crm.core.solution.solution_components",
-                            lambda backend, name: list(comps[name]))
+        monkeypatch.setattr("crm.core.solution.solution_info", lambda backend, name: infos[name])
+        monkeypatch.setattr(
+            "crm.core.solution.solution_components", lambda backend, name: list(comps[name])
+        )
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
 
     def test_overlap_exit0_lists_conflicts(self, monkeypatch):
-        self._patch(monkeypatch,
-                    managed_comps=[_comp(1, _A, 0), _comp(61, _B, 0)],
-                    unmanaged_comps=[_comp(1, _A, 0)])
+        self._patch(
+            monkeypatch,
+            managed_comps=[_comp(1, _A, 0), _comp(61, _B, 0)],
+            unmanaged_comps=[_comp(1, _A, 0)],
+        )
         result = self._invoke("--solution", "Mgd", "--unmanaged-solution", "Unmgd")
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)
@@ -117,9 +130,9 @@ class TestLayerConflictsCmd:
         assert data["meta"]["count"] == 1
 
     def test_no_conflicts_exit0_empty_list(self, monkeypatch):
-        self._patch(monkeypatch,
-                    managed_comps=[_comp(1, _A, 0)],
-                    unmanaged_comps=[_comp(20, _C, 0)])
+        self._patch(
+            monkeypatch, managed_comps=[_comp(1, _A, 0)], unmanaged_comps=[_comp(20, _C, 0)]
+        )
         result = self._invoke("--solution", "Mgd", "--unmanaged-solution", "Unmgd")
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)
@@ -128,12 +141,12 @@ class TestLayerConflictsCmd:
         assert data["meta"]["count"] == 0
 
     def test_no_conflicts_human_says_so(self, monkeypatch):
-        self._patch(monkeypatch,
-                    managed_comps=[_comp(1, _A, 0)],
-                    unmanaged_comps=[_comp(20, _C, 0)])
+        self._patch(
+            monkeypatch, managed_comps=[_comp(1, _A, 0)], unmanaged_comps=[_comp(20, _C, 0)]
+        )
         result = CliRunner().invoke(
-            cli, ["solution", "layer-conflicts",
-                  "--solution", "Mgd", "--unmanaged-solution", "Unmgd"]
+            cli,
+            ["solution", "layer-conflicts", "--solution", "Mgd", "--unmanaged-solution", "Unmgd"],
         )
         assert result.exit_code == 0, result.output
         assert "no conflicts found" in result.output.lower()

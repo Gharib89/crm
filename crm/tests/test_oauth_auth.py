@@ -3,6 +3,7 @@
 msal is always mocked here — these tests never reach AAD. The live WhoAmI
 check against a real cloud org is a manual smoke test (see docs).
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -60,8 +61,14 @@ def _oauth_profile():
     from crm.utils.d365_backend import ConnectionProfile
 
     return ConnectionProfile(
-        name="t", url="https://contoso.crm.dynamics.com", domain="", username="",
-        auth_scheme="oauth", tenant_id="tid", client_id="cid", verify_ssl=False,
+        name="t",
+        url="https://contoso.crm.dynamics.com",
+        domain="",
+        username="",
+        auth_scheme="oauth",
+        tenant_id="tid",
+        client_id="cid",
+        verify_ssl=False,
     )
 
 
@@ -153,10 +160,12 @@ class TestBearerFailure:
     def test_acquire_failure_raises_with_app_registration_guidance(self, monkeypatch):
         from crm.utils.d365_backend import D365Backend, D365Error
 
-        mod, _ = _fake_msal({
-            "error": "unauthorized_client",
-            "error_description": "AADSTS700016: app not found in tenant",
-        })
+        mod, _ = _fake_msal(
+            {
+                "error": "unauthorized_client",
+                "error_description": "AADSTS700016: app not found in tenant",
+            }
+        )
         monkeypatch.setitem(sys.modules, "msal", mod)
         b = D365Backend(_oauth_profile(), password="secret")
         req = requests.Request("GET", "https://contoso.crm.dynamics.com/x").prepare()
@@ -187,6 +196,7 @@ class TestTokenCache:
     def test_cache_file_written_at_0600(self, monkeypatch, tmp_path):
         import os
         import stat
+
         from crm.utils.d365_backend import D365Backend
 
         home = tmp_path / "h"
@@ -239,9 +249,18 @@ class TestResolveCredentialsOAuth:
     def _seed_oauth_profile(self):
         from crm.core import session as session_mod
         from crm.utils.d365_backend import ConnectionProfile
-        session_mod.save_profile(ConnectionProfile(
-            name="cloud", url="https://contoso.crm.dynamics.com", domain="",
-            username="", auth_scheme="oauth", tenant_id="tid", client_id="cid"))
+
+        session_mod.save_profile(
+            ConnectionProfile(
+                name="cloud",
+                url="https://contoso.crm.dynamics.com",
+                domain="",
+                username="",
+                auth_scheme="oauth",
+                tenant_id="tid",
+                client_id="cid",
+            )
+        )
 
     def test_client_secret_flows_as_password(self):
         from crm.core import connection as conn
@@ -268,8 +287,11 @@ class TestProfileAcceptsOAuth:
         from crm.utils.d365_backend import ConnectionProfile
 
         p = ConnectionProfile(
-            name="t", url="https://contoso.crm.dynamics.com", domain="",
-            username="", auth_scheme="oauth",
+            name="t",
+            url="https://contoso.crm.dynamics.com",
+            domain="",
+            username="",
+            auth_scheme="oauth",
             tenant_id="11111111-1111-1111-1111-111111111111",
             client_id="22222222-2222-2222-2222-222222222222",
         )

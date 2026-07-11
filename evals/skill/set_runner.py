@@ -23,6 +23,7 @@ On-demand invocation:
         python -m evals.skill.set_runner            # full live run
     python -m evals.skill.set_runner --dry-run      # offline: parse + isolation only
 """
+
 from __future__ import annotations
 
 import argparse
@@ -110,8 +111,13 @@ class StderrProgress:
             self._emit(f"{ev.target}: {tally[PASS]} pass / {tally[FAIL]} fail{denom}")
 
     def leg(
-        self, *, target: str, profile: str, reachable: bool,
-        runnable: int | None = None, reason: str | None = None,
+        self,
+        *,
+        target: str,
+        profile: str,
+        reachable: bool,
+        runnable: int | None = None,
+        reason: str | None = None,
     ) -> None:
         """A per-leg header for the both-targets runner (#585 AC4)."""
         if reachable:
@@ -215,7 +221,8 @@ class SetResult:
 
     def scored_fraction(self) -> tuple[int, int]:
         """``(passing_trials, total_trials)`` over scored tasks — the pass-rate as a
-        raw fraction, so a caller can record "27/30" alongside the percentage (#573)."""
+        raw fraction, so a caller can record "27/30" alongside the percentage (#573).
+        """
         scored = [o for o in self.outcomes if o.status in (PASS, FAIL)]
         return sum(o.passes or 0 for o in scored), sum(o.trials for o in scored)
 
@@ -315,10 +322,17 @@ def run_set(
             # task scored on cloud belongs to the cloud tally, not an "either" bucket);
             # a skipped/errored task keeps its own gate target, which its reason explains.
             shown = resolved if outcome.status in (PASS, FAIL) else outcome.target
-            progress(ProgressEvent(
-                done=done, total=total, task_id=outcome.task_id, target=shown or outcome.target,
-                status=outcome.status, reason=outcome.reason, runnable=runnable,
-            ))
+            progress(
+                ProgressEvent(
+                    done=done,
+                    total=total,
+                    task_id=outcome.task_id,
+                    target=shown or outcome.target,
+                    status=outcome.status,
+                    reason=outcome.reason,
+                    runnable=runnable,
+                )
+            )
 
     outcomes: list[TaskOutcome] = []
     matched_filter = False
@@ -353,15 +367,18 @@ def run_set(
         # scored by the --analyze pass, not this set — so skip them rather than letting
         # the single-task runner's "diagnostic needs --analyze" guard surface as ERROR.
         if spec.is_diagnostic:
-            o = TaskOutcome(spec.id, SKIP, spec.target,
-                            "diagnostic: scored by the --analyze pass, not the set")
+            o = TaskOutcome(
+                spec.id, SKIP, spec.target, "diagnostic: scored by the --analyze pass, not the set"
+            )
             outcomes.append(o)
             report(o, done)
             continue
 
         if should_skip(spec.target, resolved or ""):
             o = TaskOutcome(
-                spec.id, SKIP, spec.target,
+                spec.id,
+                SKIP,
+                spec.target,
                 f"requires {spec.target!r} target; active is {resolved!r}",
             )
             outcomes.append(o)
@@ -378,10 +395,17 @@ def run_set(
                 passes += 1 if result.passed else 0
                 last_reason = result.reason
                 if progress is not None and repeat > 1:
-                    progress(ProgressEvent(
-                        done=done, total=total, task_id=spec.id, target=resolved or spec.target,
-                        trial=trial + 1, trials=repeat, runnable=runnable,
-                    ))
+                    progress(
+                        ProgressEvent(
+                            done=done,
+                            total=total,
+                            task_id=spec.id,
+                            target=resolved or spec.target,
+                            trial=trial + 1,
+                            trials=repeat,
+                            runnable=runnable,
+                        )
+                    )
             status = PASS if passes == repeat else FAIL
             reason = last_reason if repeat == 1 else f"{passes}/{repeat} trials passed"
             o = TaskOutcome(spec.id, status, spec.target, reason, trials=repeat, passes=passes)
@@ -399,18 +423,45 @@ def run_set(
         # *scored* task and is a measurement: its failure is logged, never fatal.
         leg_target = resolved or spec.target
         if run_dir is not None and last_result is not None:
-            record_mod.write_record(run_dir, record_mod.build_record(
-                spec, last_result, status=o.status, passed=o.status == PASS, reason=o.reason,
-                sha=skill_sha, target=leg_target))
+            record_mod.write_record(
+                run_dir,
+                record_mod.build_record(
+                    spec,
+                    last_result,
+                    status=o.status,
+                    passed=o.status == PASS,
+                    reason=o.reason,
+                    sha=skill_sha,
+                    target=leg_target,
+                ),
+            )
             if o.status in (PASS, FAIL) and (counterfactual or spec.counterfactual):
                 try:
-                    cf = run_one(path, dry_run=False, agent_cmd=agent_cmd, crm_bin=crm_bin,
-                                 install_skill=False)
-                    record_mod.write_record(run_dir, record_mod.build_record(
-                        spec, cf, status=PASS if cf.passed else FAIL, passed=bool(cf.passed),
-                        reason=cf.reason, sha=skill_sha, target=leg_target, counterfactual=True))
+                    cf = run_one(
+                        path,
+                        dry_run=False,
+                        agent_cmd=agent_cmd,
+                        crm_bin=crm_bin,
+                        install_skill=False,
+                    )
+                    record_mod.write_record(
+                        run_dir,
+                        record_mod.build_record(
+                            spec,
+                            cf,
+                            status=PASS if cf.passed else FAIL,
+                            passed=bool(cf.passed),
+                            reason=cf.reason,
+                            sha=skill_sha,
+                            target=leg_target,
+                            counterfactual=True,
+                        ),
+                    )
                 except Exception as exc:  # noqa: BLE001 — measurement leg, never fatal
-                    print(f"[counterfactual] {spec.id} skill-absent leg failed: {exc}", file=sys.stderr)
+                    print(
+                        f"[counterfactual] {spec.id} skill-absent leg failed: {exc}",
+                        file=sys.stderr,
+                    )
 
     # ``--task X`` that matched nothing is a typo, not a clean empty success — fail loud
     # rather than silently scoring zero tasks and exiting 0 (#588).
@@ -422,7 +473,8 @@ def run_set(
 
 def want_progress(*, quiet: bool, progress: bool, isatty: bool) -> bool:
     """Resolve whether live progress is shown (#585): ``--quiet`` off > ``--progress``
-    on > default (follow the stderr TTY — on at a terminal, off under redirect)."""
+    on > default (follow the stderr TTY — on at a terminal, off under redirect).
+    """
     if quiet:
         return False
     if progress:
@@ -433,23 +485,43 @@ def want_progress(*, quiet: bool, progress: bool, isatty: bool) -> bool:
 def add_progress_flags(parser: argparse.ArgumentParser) -> None:
     """Add the mutually-exclusive ``--quiet`` / ``--progress`` gating flags (#585)."""
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("--quiet", action="store_true",
-                       help="suppress live progress even at a terminal")
-    group.add_argument("--progress", action="store_true",
-                       help="force live progress on even under redirect / non-TTY")
+    group.add_argument(
+        "--quiet", action="store_true", help="suppress live progress even at a terminal"
+    )
+    group.add_argument(
+        "--progress",
+        action="store_true",
+        help="force live progress on even under redirect / non-TTY",
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Run the whole skill-eval task set against one target.")
+    parser = argparse.ArgumentParser(
+        description="Run the whole skill-eval task set against one target."
+    )
     parser.add_argument("--tasks-dir", default=str(TASKS_DIR), help="directory of tasks/*.md specs")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="parse + prove isolation for every task; no agent, no live org")
-    parser.add_argument("--agent-cmd", default=None, help="agent command (default: $CRM_EVAL_AGENT_CMD)")
-    parser.add_argument("--repeat", type=int, default=1, metavar="N",
-                        help="run each scored task N times and report the passing fraction (default 1)")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="parse + prove isolation for every task; no agent, no live org",
+    )
+    parser.add_argument(
+        "--agent-cmd", default=None, help="agent command (default: $CRM_EVAL_AGENT_CMD)"
+    )
+    parser.add_argument(
+        "--repeat",
+        type=int,
+        default=1,
+        metavar="N",
+        help="run each scored task N times and report the passing fraction (default 1)",
+    )
     add_progress_flags(parser)
-    parser.add_argument("--json", action="store_true", dest="as_json",
-                        help="emit the machine-readable result instead of the table")
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        dest="as_json",
+        help="emit the machine-readable result instead of the table",
+    )
     args = parser.parse_args(argv)
 
     # Live progress is stderr-only; a dry run scores nothing, so there is nothing to show.
@@ -459,8 +531,13 @@ def main(argv: list[str] | None = None) -> int:
         and want_progress(quiet=args.quiet, progress=args.progress, isatty=sys.stderr.isatty())
         else None
     )
-    result = run_set(args.tasks_dir, dry_run=args.dry_run, agent_cmd=args.agent_cmd,
-                     repeat=args.repeat, progress=progress)
+    result = run_set(
+        args.tasks_dir,
+        dry_run=args.dry_run,
+        agent_cmd=args.agent_cmd,
+        repeat=args.repeat,
+        progress=progress,
+    )
     if args.as_json:
         print(json.dumps(result.to_dict(), indent=2))
     else:

@@ -1,20 +1,24 @@
 """SLA commands."""
+
 # pyright: basic
 from __future__ import annotations
+
 from pathlib import Path
+
 import click
-from crm.core import sla as sla_mod
+
 from crm.cli import CLIContext, pass_ctx
-from crm.utils.d365_backend import D365Error, normalize_guid
 from crm.commands._helpers import (
-    d365_errors,
     _admin_header_options,
     _admin_kwargs,
     _emit_with_warning,
     _journal,
     _resolve_solution,
     _solution_option,
+    d365_errors,
 )
+from crm.core import sla as sla_mod
+from crm.utils.d365_backend import D365Error, normalize_guid
 
 
 @click.group("sla")
@@ -26,7 +30,8 @@ def _inline_or_file(inline: str | None, file: str | None, flag: str) -> str:
     """Resolve an XML/condition value from an inline string or a file path.
 
     Mirrors `query fetchxml` (`--xml` / `--xml-file`): exactly one source is
-    required; the file is read as UTF-8."""
+    required; the file is read as UTF-8.
+    """
     if inline and file:
         raise click.UsageError(f"pass only one of {flag} / {flag}-file.")
     if inline:
@@ -43,7 +48,8 @@ def _inline_or_file(inline: str | None, file: str | None, flag: str) -> str:
 
 def _ui_required_error(result: dict) -> str:
     """Human message for the compile-error failure: which workflows failed and
-    why the Web API path is blocked."""
+    why the Web API path is blocked.
+    """
     failed = [w for w in result.get("workflows", []) if w.get("status") == "failed"]
     lines = [
         f"SLA {result.get('name') or result.get('sla_id')!r} was NOT activated: "
@@ -65,21 +71,42 @@ def _ui_required_error(result: dict) -> str:
 
 @sla_group.command("create")
 @click.option("--name", required=True, help="SLA name.")
-@click.option("--entity", required=True,
-              help="Target entity logical name (objecttypecode); also the "
-                   "entity whose IsSLAEnabled flag is verified/set.")
-@click.option("--applicable-from", "applicable_from", default=None,
-              help="Date-anchor field the SLA calculates from, e.g. 'createdon' "
-                   "(sla.applicablefrom).")
-@click.option("--business-hours", "business_hours", metavar="GUID", default=None,
-              help="Business-hours calendar id (sla.businesshoursid).")
+@click.option(
+    "--entity",
+    required=True,
+    help="Target entity logical name (objecttypecode); also the "
+    "entity whose IsSLAEnabled flag is verified/set.",
+)
+@click.option(
+    "--applicable-from",
+    "applicable_from",
+    default=None,
+    help="Date-anchor field the SLA calculates from, e.g. 'createdon' (sla.applicablefrom).",
+)
+@click.option(
+    "--business-hours",
+    "business_hours",
+    metavar="GUID",
+    default=None,
+    help="Business-hours calendar id (sla.businesshoursid).",
+)
 @click.option("--description", default=None, help="SLA description.")
 @_solution_option
 @_admin_header_options
 @pass_ctx
-def sla_create(ctx: CLIContext, name, entity, applicable_from, business_hours,
-               description, solution,
-               as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
+def sla_create(
+    ctx: CLIContext,
+    name,
+    entity,
+    applicable_from,
+    business_hours,
+    description,
+    solution,
+    as_user,
+    as_user_object_id,
+    suppress_dup_detection,
+    bypass_plugins,
+):
     """Create an SLA for a target entity and ensure that entity is SLA-enabled.
 
     Defines the SLA record; attach KPI / SLA-item conditions with
@@ -95,11 +122,14 @@ def sla_create(ctx: CLIContext, name, entity, applicable_from, business_hours,
     solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = sla_mod.create_sla(
-            ctx.backend(), name=name, entity=entity,
-            applicable_from=applicable_from, business_hours_id=business_hours,
-            description=description, solution=solution,
-            **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection,
-                            bypass_plugins),
+            ctx.backend(),
+            name=name,
+            entity=entity,
+            applicable_from=applicable_from,
+            business_hours_id=business_hours,
+            description=description,
+            solution=solution,
+            **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, name, info, solution=solution)
@@ -107,38 +137,65 @@ def sla_create(ctx: CLIContext, name, entity, applicable_from, business_hours,
 
 @sla_group.command("add-kpi")
 @click.option("--sla", "sla_id", required=True, help="Parent SLA id.")
-@click.option("--kpi", required=True,
-              help="KPI field the item tracks (slaitem.relatedfield); also the "
-                   "default item name.")
+@click.option(
+    "--kpi",
+    required=True,
+    help="KPI field the item tracks (slaitem.relatedfield); also the default item name.",
+)
 @click.option("--name", default=None, help="SLA-item name (defaults to --kpi).")
-@click.option("--applicable-when", "applicable_when", default=None,
-              help="FetchXML/condition for when the KPI applies "
-                   "(slaitem.applicablewhenxml).")
-@click.option("--applicable-when-file", "applicable_when_file", default=None,
-              type=click.Path(exists=True, dir_okay=False),
-              help="Read --applicable-when from a file.")
-@click.option("--success-criteria", "success_criteria", default=None,
-              help="FetchXML/condition defining KPI success "
-                   "(slaitem.successconditionsxml).")
-@click.option("--success-criteria-file", "success_criteria_file", default=None,
-              type=click.Path(exists=True, dir_okay=False),
-              help="Read --success-criteria from a file.")
+@click.option(
+    "--applicable-when",
+    "applicable_when",
+    default=None,
+    help="FetchXML/condition for when the KPI applies (slaitem.applicablewhenxml).",
+)
+@click.option(
+    "--applicable-when-file",
+    "applicable_when_file",
+    default=None,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Read --applicable-when from a file.",
+)
+@click.option(
+    "--success-criteria",
+    "success_criteria",
+    default=None,
+    help="FetchXML/condition defining KPI success (slaitem.successconditionsxml).",
+)
+@click.option(
+    "--success-criteria-file",
+    "success_criteria_file",
+    default=None,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Read --success-criteria from a file.",
+)
 @_solution_option
 @_admin_header_options
 @pass_ctx
-def sla_add_kpi(ctx: CLIContext, sla_id, kpi, name, applicable_when,
-                applicable_when_file, success_criteria, success_criteria_file,
-                solution,
-                as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
+def sla_add_kpi(
+    ctx: CLIContext,
+    sla_id,
+    kpi,
+    name,
+    applicable_when,
+    applicable_when_file,
+    success_criteria,
+    success_criteria_file,
+    solution,
+    as_user,
+    as_user_object_id,
+    suppress_dup_detection,
+    bypass_plugins,
+):
     """Attach a KPI / SLA-item to an existing SLA before activation.
 
     --applicable-when and --success-criteria each accept an inline FetchXML/
     condition string or a `*-file` path.
     """
-    applicable_when = _inline_or_file(
-        applicable_when, applicable_when_file, "--applicable-when")
+    applicable_when = _inline_or_file(applicable_when, applicable_when_file, "--applicable-when")
     success_criteria = _inline_or_file(
-        success_criteria, success_criteria_file, "--success-criteria")
+        success_criteria, success_criteria_file, "--success-criteria"
+    )
     # Validate the GUID before building an authenticated backend, matching
     # `sla activate` — an invalid id fails fast without a session round-trip.
     with d365_errors(ctx):
@@ -146,11 +203,14 @@ def sla_add_kpi(ctx: CLIContext, sla_id, kpi, name, applicable_when,
     solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = sla_mod.add_kpi(
-            ctx.backend(), sla_id=sla_id, kpi=kpi, name=name,
-            applicable_when=applicable_when, success_criteria=success_criteria,
+            ctx.backend(),
+            sla_id=sla_id,
+            kpi=kpi,
+            name=name,
+            applicable_when=applicable_when,
+            success_criteria=success_criteria,
             solution=solution,
-            **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection,
-                            bypass_plugins),
+            **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, kpi, info, solution=solution)
@@ -160,8 +220,9 @@ def sla_add_kpi(ctx: CLIContext, sla_id, kpi, name, applicable_when,
 @click.argument("sla_id")
 @_admin_header_options
 @pass_ctx
-def sla_activate(ctx: CLIContext, sla_id, as_user, as_user_object_id,
-                 suppress_dup_detection, bypass_plugins):
+def sla_activate(
+    ctx: CLIContext, sla_id, as_user, as_user_object_id, suppress_dup_detection, bypass_plugins
+):
     """Activate an SLA: its backing workflows first, then the SLA record.
 
     Backing workflows already active are skipped, so re-running is safe.
@@ -173,9 +234,9 @@ def sla_activate(ctx: CLIContext, sla_id, as_user, as_user_object_id,
         sla_id = sla_mod.validate_sla_id(sla_id)
     with d365_errors(ctx):
         result = sla_mod.activate_sla(
-            ctx.backend(), sla_id,
-            **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection,
-                            bypass_plugins),
+            ctx.backend(),
+            sla_id,
+            **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
     if result.get("ui_activation_required"):
         ctx.emit(False, data=result, error=_ui_required_error(result))

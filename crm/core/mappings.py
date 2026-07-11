@@ -32,11 +32,13 @@ def _resolve_pair(backend: D365Backend, relationship: str) -> tuple[str, str]:
     Source is ``ReferencedEntity`` (parent), target is ``ReferencingEntity``
     (child) — the direction mapping copies values along.
     """
-    rb = as_dict(backend.get(
-        f"RelationshipDefinitions(SchemaName='{relationship}')"
-        "/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
-        params={"$select": "ReferencedEntity,ReferencingEntity"},
-    ))
+    rb = as_dict(
+        backend.get(
+            f"RelationshipDefinitions(SchemaName='{relationship}')"
+            "/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
+            params={"$select": "ReferencedEntity,ReferencingEntity"},
+        )
+    )
     source = rb.get("ReferencedEntity")
     target = rb.get("ReferencingEntity")
     if not source or not target:
@@ -49,16 +51,18 @@ def _resolve_pair(backend: D365Backend, relationship: str) -> tuple[str, str]:
 
 def _find_entity_map(backend: D365Backend, source: str, target: str) -> str:
     """Return the entitymapid for a source→target pair, or raise if none exists."""
-    rb = as_dict(backend.get(
-        "entitymaps",
-        params={
-            "$select": "entitymapid",
-            "$filter": (
-                f"sourceentityname eq {odata_literal(source)} "
-                f"and targetentityname eq {odata_literal(target)}"
-            ),
-        },
-    ))
+    rb = as_dict(
+        backend.get(
+            "entitymaps",
+            params={
+                "$select": "entitymapid",
+                "$filter": (
+                    f"sourceentityname eq {odata_literal(source)} "
+                    f"and targetentityname eq {odata_literal(target)}"
+                ),
+            },
+        )
+    )
     rows: list[dict[str, Any]] = rb.get("value") or []
     if not rows:
         raise D365Error(

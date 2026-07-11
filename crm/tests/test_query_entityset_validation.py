@@ -10,6 +10,7 @@ OData query options must go through `--select`/`--filter`/etc., never inline.
 A `?` or `$` in the arg (e.g. `solutions?$select=uniquename`) is rejected
 client-side — the server would return a bare HTTP 400 with no recovery signal.
 """
+
 from __future__ import annotations
 
 import json
@@ -21,7 +22,6 @@ from click.testing import CliRunner
 from crm.cli import cli
 from crm.core.query import odata_query
 from crm.utils.d365_backend import D365Backend, D365Error
-
 
 _RAISING_SETS = [
     "solutions?$select=uniquename",
@@ -42,9 +42,7 @@ def test_odata_param_in_entity_set_raises_before_network(entity_set, make_fake_b
 
 def test_bare_entity_set_passes_through(make_fake_backend):
     backend = make_fake_backend()
-    result = odata_query(
-        cast(D365Backend, backend), "solutions", select=["uniquename"]
-    )
+    result = odata_query(cast(D365Backend, backend), "solutions", select=["uniquename"])
     assert backend.called, "a bare entity set should reach backend.get"
     assert backend.last_path == "solutions"
     assert result == {"value": []}
@@ -52,11 +50,10 @@ def test_bare_entity_set_passes_through(make_fake_backend):
 
 def test_envelope_classifies_malformed_set_as_validation(make_fake_backend, inject_backend):
     """Full CLI path: a malformed entity set surfaces as a validation error with a
-    non-null code and a recovery hint, never reaching the (asserting) backend."""
+    non-null code and a recovery hint, never reaching the (asserting) backend.
+    """
     inject_backend(make_fake_backend(forbid=("get",)))
-    result = CliRunner().invoke(
-        cli, ["--json", "query", "odata", "solutions?$select=uniquename"]
-    )
+    result = CliRunner().invoke(cli, ["--json", "query", "odata", "solutions?$select=uniquename"])
     assert result.exit_code == 1, result.output
     payload = json.loads(result.output)
     assert payload["ok"] is False
@@ -70,9 +67,9 @@ def test_envelope_classifies_malformed_set_as_validation(make_fake_backend, inje
 
 
 _PATH_SHAPED = [
-    "solutions",                                                                   # bare entity set
-    "EntityDefinitions(LogicalName='account')/Keys",                               # metadata path
-    "RetrieveAppComponents(AppModuleId=00000000-0000-0000-0000-000000000001)",     # bound-function
+    "solutions",  # bare entity set
+    "EntityDefinitions(LogicalName='account')/Keys",  # metadata path
+    "RetrieveAppComponents(AppModuleId=00000000-0000-0000-0000-000000000001)",  # bound-function
 ]
 
 

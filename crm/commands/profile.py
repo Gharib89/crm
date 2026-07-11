@@ -1,26 +1,30 @@
 """`crm profile` — create, switch, and manage connection profiles."""
+
 # pyright: basic
 from __future__ import annotations
 
 import click
 
 from crm.cli import CLIContext, pass_ctx
+from crm.commands._helpers import (
+    _confirm_destructive,
+    _handle_d365_error,
+    _plaintext_secret_warning,
+    d365_errors,
+    default_profile_name,
+    infer_auth_scheme,
+    prompt_secret,
+    select_one,
+)
 from crm.commands._tty import _stdin_is_tty
 from crm.core import connection as conn_mod
 from crm.core import keyring_store
 from crm.core import session as session_mod
-from crm.commands._helpers import (
-    _handle_d365_error,
-    d365_errors,
-    _plaintext_secret_warning,
-    _confirm_destructive,
-    infer_auth_scheme,
-    default_profile_name,
-    prompt_secret,
-    select_one,
-)
 from crm.utils.d365_backend import (
-    ConnectionProfile, D365Backend, D365Error, validate_profile_name,
+    ConnectionProfile,
+    D365Backend,
+    D365Error,
+    validate_profile_name,
 )
 
 # A profile file can be missing (FileNotFoundError), unreadable (OSError),
@@ -30,8 +34,13 @@ from crm.utils.d365_backend import (
 # scheme / name (D365Error). Treat all of these as "this one profile is
 # unusable" so a single bad file never crashes list/use.
 _PROFILE_LOAD_ERRORS = (
-    FileNotFoundError, OSError, ValueError, KeyError, TypeError,
-    AttributeError, D365Error,
+    FileNotFoundError,
+    OSError,
+    ValueError,
+    KeyError,
+    TypeError,
+    AttributeError,
+    D365Error,
 )
 
 
@@ -45,7 +54,8 @@ def _resolve_secret_flag(password_opt, client_secret_opt):
 
     The two name the same field (NTLM password vs OAuth client secret); passing
     both is a usage error (exit 2 per the house rule for mutually-exclusive flags)
-    rather than a silent last-wins."""
+    rather than a silent last-wins.
+    """
     if password_opt is not None and client_secret_opt is not None:
         raise click.UsageError("--password and --client-secret are mutually exclusive.")
     return password_opt if password_opt is not None else client_secret_opt
@@ -54,10 +64,12 @@ def _resolve_secret_flag(password_opt, client_secret_opt):
 def _validate_prefix_opt(_ctx, _param, value):
     """Validate --publisher-prefix at parse time so a bad value fails as a usage
     error (exit 2). An empty/omitted prefix is allowed (skip = no default prefix);
-    the wizard re-prompts on invalid instead of erroring."""
+    the wizard re-prompts on invalid instead of erroring.
+    """
     if not value:
         return value
     from crm.core.solution import validate_customization_prefix
+
     try:
         validate_customization_prefix(value)
     except D365Error as exc:
@@ -66,42 +78,88 @@ def _validate_prefix_opt(_ctx, _param, value):
 
 
 @profile_group.command("add")
-@click.option("--url", default=None, help="Server URL, e.g. https://crm.contoso.local/org "
-              "or https://org.crm.dynamics.com")
+@click.option(
+    "--url",
+    default=None,
+    help="Server URL, e.g. https://crm.contoso.local/org or https://org.crm.dynamics.com",
+)
 @click.option("--name", "name_opt", default=None, help="Profile name (default: URL host label).")
-@click.option("--auth-scheme", "auth_opt",
-              type=click.Choice(["ntlm", "kerberos", "negotiate", "oauth"]),
-              default=None, help="Override the auth scheme inferred from the URL.")
+@click.option(
+    "--auth-scheme",
+    "auth_opt",
+    type=click.Choice(["ntlm", "kerberos", "negotiate", "oauth"]),
+    default=None,
+    help="Override the auth scheme inferred from the URL.",
+)
 @click.option("--username", default=None, help="NTLM: username.")
 @click.option("--domain", default=None, help="NTLM: AD domain (blank for UPN).")
 @click.option("--tenant-id", default=None, help="OAuth: Azure AD tenant id.")
 @click.option("--client-id", default=None, help="OAuth: application (client) id.")
-@click.option("--password", "password_opt", default=None,
-              help="NTLM password (or OAuth client secret). Prompted if omitted on a TTY.")
-@click.option("--client-secret", "client_secret_opt", default=None,
-              help="OAuth client secret — alias for --password (mutually exclusive).")
-@click.option("--api-version", default=None,
-              help="Web API version. Omit to auto-negotiate (v9.2 → v9.1 on on-prem).")
+@click.option(
+    "--password",
+    "password_opt",
+    default=None,
+    help="NTLM password (or OAuth client secret). Prompted if omitted on a TTY.",
+)
+@click.option(
+    "--client-secret",
+    "client_secret_opt",
+    default=None,
+    help="OAuth client secret — alias for --password (mutually exclusive).",
+)
+@click.option(
+    "--api-version",
+    default=None,
+    help="Web API version. Omit to auto-negotiate (v9.2 → v9.1 on on-prem).",
+)
 @click.option("--no-verify-ssl", is_flag=True, help="Skip SSL certificate verification.")
-@click.option("--publisher-prefix", default=None, callback=_validate_prefix_opt,
-              help="Default schema-name prefix, e.g. 'new'.")
-@click.option("--store-password-plaintext", is_flag=True,
-              help="Force plaintext storage (skip the OS keyring).")
-@click.option("--read-only", is_flag=True,
-              help="Mark the profile read-only: the backend refuses org mutations. "
-                   "Clearing it later requires an interactive terminal.")
+@click.option(
+    "--publisher-prefix",
+    default=None,
+    callback=_validate_prefix_opt,
+    help="Default schema-name prefix, e.g. 'new'.",
+)
+@click.option(
+    "--store-password-plaintext",
+    is_flag=True,
+    help="Force plaintext storage (skip the OS keyring).",
+)
+@click.option(
+    "--read-only",
+    is_flag=True,
+    help="Mark the profile read-only: the backend refuses org mutations. "
+    "Clearing it later requires an interactive terminal.",
+)
 # Deliberate inline option (not _destructive_option): the profile setup verbs
 # keep a `-y` short alias the shared helper omits by design (#294).
 @click.option("--yes", "-y", is_flag=True, help="Skip the overwrite-confirm prompt.")
-@click.option("--save-on-test-failure", is_flag=True,
-              help="Save the profile even if the live connection test fails, as long "
-                   "as it is structurally valid (for CI / no-TTY runs; a malformed URL "
-                   "still errors). Distinct from --yes.")
+@click.option(
+    "--save-on-test-failure",
+    is_flag=True,
+    help="Save the profile even if the live connection test fails, as long "
+    "as it is structurally valid (for CI / no-TTY runs; a malformed URL "
+    "still errors). Distinct from --yes.",
+)
 @pass_ctx
-def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
-                tenant_id, client_id, password_opt, client_secret_opt, api_version,
-                no_verify_ssl, publisher_prefix,
-                store_password_plaintext, read_only, yes, save_on_test_failure):
+def profile_add(
+    ctx: CLIContext,
+    url,
+    name_opt,
+    auth_opt,
+    username,
+    domain,
+    tenant_id,
+    client_id,
+    password_opt,
+    client_secret_opt,
+    api_version,
+    no_verify_ssl,
+    publisher_prefix,
+    store_password_plaintext,
+    read_only,
+    yes,
+    save_on_test_failure,
+):
     """Create a profile, save its secret, test the connection, and activate it.
 
     Run with no flags for an interactive wizard; pass flags for scripting/CI.
@@ -119,8 +177,7 @@ def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
     auth_scheme = auth_opt or infer_auth_scheme(url)
     if interactive and auth_opt is None:
         schemes = ["ntlm", "kerberos", "negotiate", "oauth"]
-        chosen = select_one("Auth scheme", [(s, s) for s in schemes],
-                            default=auth_scheme)
+        chosen = select_one("Auth scheme", [(s, s) for s in schemes], default=auth_scheme)
         if chosen is None:
             ctx.emit(False, error="aborted by user")
             return
@@ -143,20 +200,27 @@ def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
                 raise click.UsageError("--username is required for an on-prem profile.")
             username = click.prompt("Username")
         if domain is None:
-            domain = click.prompt("AD domain (blank for UPN)", default="", show_default=False) \
-                if interactive else ""
+            domain = (
+                click.prompt("AD domain (blank for UPN)", default="", show_default=False)
+                if interactive
+                else ""
+            )
 
     name = name_opt or (
         click.prompt("Profile name", default=default_profile_name(url))
-        if interactive else default_profile_name(url))
+        if interactive
+        else default_profile_name(url)
+    )
     # Optional publisher prefix. The --publisher-prefix flag path is validated by
     # _validate_prefix_opt at parse time; here the wizard prompts (blank = skip)
     # and re-prompts on an invalid entry rather than aborting.
     if publisher_prefix is None and interactive:
         from crm.core.solution import validate_customization_prefix
+
         while True:
-            entered = click.prompt("Publisher prefix (blank to skip)",
-                                   default="", show_default=False).strip()
+            entered = click.prompt(
+                "Publisher prefix (blank to skip)", default="", show_default=False
+            ).strip()
             if not entered:
                 break
             try:
@@ -170,28 +234,41 @@ def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
     # N) when the flag wasn't already passed. Clearing it later is the gated step.
     if interactive and not read_only:
         read_only = click.confirm(
-            "Make this profile read-only (block org mutations)?", default=False)
+            "Make this profile read-only (block org mutations)?", default=False
+        )
     secret = password_opt
     if not secret and interactive:
         label = "Client secret" if auth_scheme == "oauth" else "Password"
         secret = prompt_secret(label)
     if not secret:
         raise click.UsageError(
-            "--password (or --client-secret) is required (no TTY to prompt for it).")
+            "--password (or --client-secret) is required (no TTY to prompt for it)."
+        )
 
     if name in session_mod.list_profiles() and not yes:
-        _confirm_destructive(ctx, "profile", name, yes,
-                             message=f"Profile {name!r} exists. Overwrite?",
-                             skip_on_dry_run=False)
+        _confirm_destructive(
+            ctx,
+            "profile",
+            name,
+            yes,
+            message=f"Profile {name!r} exists. Overwrite?",
+            skip_on_dry_run=False,
+        )
 
     negotiate = api_version is None
     try:
         profile = ConnectionProfile(
-            name=name, url=url, domain=domain or "", username=username or "",
+            name=name,
+            url=url,
+            domain=domain or "",
+            username=username or "",
             api_version=api_version or conn_mod.DEFAULT_API_VERSION,
-            verify_ssl=not no_verify_ssl, auth_scheme=auth_scheme,
-            tenant_id=tenant_id, client_id=client_id,
-            publisher_prefix=publisher_prefix, read_only=read_only,
+            verify_ssl=not no_verify_ssl,
+            auth_scheme=auth_scheme,
+            tenant_id=tenant_id,
+            client_id=client_id,
+            publisher_prefix=publisher_prefix,
+            read_only=read_only,
         )
     except D365Error as exc:
         # Invalid name / auth scheme — emit the clean envelope, not a traceback.
@@ -208,8 +285,9 @@ def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
         # Construction can itself raise D365Error (e.g. OAuth auth-handler setup),
         # so it stays inside the try — a construction failure is handled like a
         # failed test, never a leaked traceback.
-        test_backend = D365Backend(profile, secret, dry_run=ctx.dry_run,
-                                   retry_on_ambiguous=ctx.retry_on_ambiguous)
+        test_backend = D365Backend(
+            profile, secret, dry_run=ctx.dry_run, retry_on_ambiguous=ctx.retry_on_ambiguous
+        )
         info = conn_mod.test_connection(test_backend, negotiate=negotiate)
     except D365Error as exc:
         malformed = conn_mod.profile_structural_problem(profile, has_secret=bool(secret))
@@ -217,8 +295,10 @@ def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
             # Structurally implausible — the live failure is the typo, not a
             # transient outage. Hard error, no save, no prompt, even with the flag.
             _handle_d365_error(
-                ctx, exc,
-                hint=f"{malformed}; profile not saved — fix it and re-run `crm profile add`")
+                ctx,
+                exc,
+                hint=f"{malformed}; profile not saved — fix it and re-run `crm profile add`",
+            )
             return
         # Structurally plausible: the failure is likely transient (VPN down,
         # server unreachable, app user not yet provisioned). Save only on an
@@ -226,14 +306,19 @@ def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
         if not save_on_test_failure:
             if not interactive:
                 _handle_d365_error(
-                    ctx, exc,
+                    ctx,
+                    exc,
                     hint="profile not saved; re-run with --save-on-test-failure to "
-                         "save despite the failed live test")
+                    "save despite the failed live test",
+                )
                 return
             click.echo(f"Connection test failed: {exc}", err=True)
-            click.echo("The profile looks structurally valid, so this is likely "
-                       "transient (VPN down, server unreachable, or the app user "
-                       "isn't provisioned yet).", err=True)
+            click.echo(
+                "The profile looks structurally valid, so this is likely "
+                "transient (VPN down, server unreachable, or the app user "
+                "isn't provisioned yet).",
+                err=True,
+            )
             if not click.confirm("Save the profile anyway?", default=False):
                 ctx.emit(False, error="aborted — profile not saved")
                 return
@@ -270,8 +355,10 @@ def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
     ctx.password = None
     ctx.invalidate_backend()
     data = {
-        "profile": name, "auth_scheme": auth_scheme,
-        "credential_storage": where, "active": True,
+        "profile": name,
+        "auth_scheme": auth_scheme,
+        "credential_storage": where,
+        "active": True,
         "read_only": read_only,
         "user_id": info.get("user_id") if info else None,
         "api_version": profile.api_version,
@@ -306,8 +393,10 @@ def profile_use(ctx: CLIContext, name, clear):
             items = [(n, _use_label(n, active)) for n in names]
             name = select_one("Select profile to activate", items)
         except RuntimeError:
-            ctx.emit(False, error="profile name required (no TTY for the picker); "
-                     "see `crm profile list`.")
+            ctx.emit(
+                False,
+                error="profile name required (no TTY for the picker); see `crm profile list`.",
+            )
             return
         if not name:
             ctx.emit(False, error="no profile selected")
@@ -346,10 +435,10 @@ def _pick_profile(ctx: CLIContext, title: str) -> str | None:
     emits a clean error envelope via ``ctx.emit(False)`` — which always raises
     ``Exit`` — so it never actually returns ``None``. The ``str | None`` return
     and the callers' ``if name is None`` guards are defensive belt-and-suspenders
-    (``emit`` is not typed ``NoReturn``), not a live code path."""
+    (``emit`` is not typed ``NoReturn``), not a live code path.
+    """
     if not (_stdin_is_tty() and not ctx.json_mode):
-        raise click.UsageError(
-            "a profile name is required (no interactive terminal to pick one).")
+        raise click.UsageError("a profile name is required (no interactive terminal to pick one).")
     names = session_mod.list_profiles()
     if not names:
         ctx.emit(False, error="No profiles. Run `crm profile add`.")
@@ -389,16 +478,21 @@ def profile_list(ctx: CLIContext):
     for n in names:
         try:
             p = session_mod.load_profile(n)
-            rows.append({
-                "name": n, "active": n == active,
-                "target": "cloud" if p.auth_scheme == "oauth" else "on-prem",
-                "url": p.url, "credential_storage": _credential_storage(n),
-                "publisher_prefix": p.publisher_prefix,
-                "read_only": p.read_only,
-            })
+            rows.append(
+                {
+                    "name": n,
+                    "active": n == active,
+                    "target": "cloud" if p.auth_scheme == "oauth" else "on-prem",
+                    "url": p.url,
+                    "credential_storage": _credential_storage(n),
+                    "publisher_prefix": p.publisher_prefix,
+                    "read_only": p.read_only,
+                }
+            )
         except _PROFILE_LOAD_ERRORS:
-            rows.append({"name": n, "active": n == active,
-                        "credential_storage": _credential_storage(n)})
+            rows.append(
+                {"name": n, "active": n == active, "credential_storage": _credential_storage(n)}
+            )
     if ctx.json_mode:
         ctx.emit(True, data=rows)
         return
@@ -408,9 +502,10 @@ def profile_list(ctx: CLIContext):
     for r in rows:
         mark = "● " if r.get("active") else "○ "
         ro = "  read-only" if r.get("read_only") else ""
-        ctx.skin.status(mark + r["name"],
-                        f"{r.get('target','?')}  {r.get('url','?')}  "
-                        f"cred={r['credential_storage']}{ro}")
+        ctx.skin.status(
+            mark + r["name"],
+            f"{r.get('target', '?')}  {r.get('url', '?')}  cred={r['credential_storage']}{ro}",
+        )
 
 
 @profile_group.command("edit")
@@ -422,18 +517,38 @@ def profile_list(ctx: CLIContext):
 @click.option("--client-id", default=None)
 @click.option("--api-version", default=None)
 @click.option("--publisher-prefix", default=None, callback=_validate_prefix_opt)
-@click.option("--verify-ssl/--no-verify-ssl", "verify_ssl", default=None,
-              help="Enable or skip SSL certificate verification (parity with "
-                   "`profile add`'s --no-verify-ssl).")
-@click.option("--read-only/--no-read-only", "read_only", default=None,
-              help="Set or clear the read-only guardrail. Clearing (--no-read-only) "
-                   "requires an interactive terminal to confirm.")
+@click.option(
+    "--verify-ssl/--no-verify-ssl",
+    "verify_ssl",
+    default=None,
+    help="Enable or skip SSL certificate verification (parity with "
+    "`profile add`'s --no-verify-ssl).",
+)
+@click.option(
+    "--read-only/--no-read-only",
+    "read_only",
+    default=None,
+    help="Set or clear the read-only guardrail. Clearing (--no-read-only) "
+    "requires an interactive terminal to confirm.",
+)
 @pass_ctx
-def profile_edit(ctx: CLIContext, name, url, username, domain, tenant_id,
-                 client_id, api_version, publisher_prefix, verify_ssl, read_only):
+def profile_edit(
+    ctx: CLIContext,
+    name,
+    url,
+    username,
+    domain,
+    tenant_id,
+    client_id,
+    api_version,
+    publisher_prefix,
+    verify_ssl,
+    read_only,
+):
     """Change a profile's fields (not its secret — use set-password).
 
-    No NAME argument shows a picker."""
+    No NAME argument shows a picker.
+    """
     if not name:
         name = _pick_profile(ctx, "Select profile to edit")
         if name is None:
@@ -446,14 +561,22 @@ def profile_edit(ctx: CLIContext, name, url, username, domain, tenant_id,
     except _PROFILE_LOAD_ERRORS as exc:
         ctx.emit(False, error=f"Profile {name!r} is unreadable: {exc}")
         return
-    if url is not None: p.url = ConnectionProfile.normalize_url(url)
-    if username is not None: p.username = username
-    if domain is not None: p.domain = domain
-    if tenant_id is not None: p.tenant_id = tenant_id
-    if client_id is not None: p.client_id = client_id
-    if api_version is not None: p.api_version = api_version
-    if publisher_prefix is not None: p.publisher_prefix = publisher_prefix
-    if verify_ssl is not None: p.verify_ssl = verify_ssl
+    if url is not None:
+        p.url = ConnectionProfile.normalize_url(url)
+    if username is not None:
+        p.username = username
+    if domain is not None:
+        p.domain = domain
+    if tenant_id is not None:
+        p.tenant_id = tenant_id
+    if client_id is not None:
+        p.client_id = client_id
+    if api_version is not None:
+        p.api_version = api_version
+    if publisher_prefix is not None:
+        p.publisher_prefix = publisher_prefix
+    if verify_ssl is not None:
+        p.verify_ssl = verify_ssl
     # Read-only is asymmetric: tighten (--read-only) anywhere, but clearing it
     # (--no-read-only) is gated behind a real TTY + confirmation so a
     # non-interactive run (agent/CI/--json) can't flip the guardrail off. Same
@@ -462,14 +585,17 @@ def profile_edit(ctx: CLIContext, name, url, username, domain, tenant_id,
         p.read_only = True
     elif read_only is False and p.read_only:
         if not (_stdin_is_tty() and not ctx.json_mode):
-            ctx.emit(False, error=(
-                f"Clearing read-only on {name!r} requires an interactive terminal "
-                f"(a TTY, and not under --json) to confirm. Re-run "
-                f"`crm profile edit {name} --no-read-only` from an interactive shell "
-                f"without --json."))
+            ctx.emit(
+                False,
+                error=(
+                    f"Clearing read-only on {name!r} requires an interactive terminal "
+                    f"(a TTY, and not under --json) to confirm. Re-run "
+                    f"`crm profile edit {name} --no-read-only` from an interactive shell "
+                    f"without --json."
+                ),
+            )
             return
-        if not click.confirm(
-                f"Clear the read-only guardrail on profile {name!r}?", default=False):
+        if not click.confirm(f"Clear the read-only guardrail on profile {name!r}?", default=False):
             ctx.emit(False, error="aborted by user")
             return
         p.read_only = False
@@ -479,8 +605,7 @@ def profile_edit(ctx: CLIContext, name, url, username, domain, tenant_id,
         raise click.UsageError("--url cannot be empty.")
     if p.auth_scheme == "oauth":
         if not p.tenant_id or not p.client_id:
-            raise click.UsageError(
-                "an OAuth profile needs tenant_id and client_id.")
+            raise click.UsageError("an OAuth profile needs tenant_id and client_id.")
     elif not p.username:
         raise click.UsageError("an on-prem profile needs a username.")
     session_mod.save_profile(p)
@@ -548,7 +673,8 @@ def profile_rename(ctx: CLIContext, old, new):
         raise click.UsageError("OLD and NEW must differ.")
     if new in session_mod.list_profiles():
         _handle_d365_error(
-            ctx, D365Error(f"Profile {new!r} already exists; refusing to clobber it."))
+            ctx, D365Error(f"Profile {new!r} already exists; refusing to clobber it.")
+        )
         return
 
     # Capture any keyring-stored secret before the file move (inline plaintext
@@ -564,7 +690,8 @@ def profile_rename(ctx: CLIContext, old, new):
         except D365Error as exc:
             warnings.append(
                 f"Could not move the keyring secret to {new!r}: {exc} "
-                f"Run `crm profile set-password {new}` to re-store it.")
+                f"Run `crm profile set-password {new}` to re-store it."
+            )
     else:
         keyring_store.delete_secret(old)  # best-effort cleanup; no-op if absent
 
@@ -582,25 +709,36 @@ def profile_rename(ctx: CLIContext, old, new):
     # so a failed move is not fatal, just a stale dir under the old name.
     try:
         from crm.core import metadata_cache
+
         metadata_cache.move_cache(old, new)
     except OSError as exc:
         warnings.append(
-            f"Could not move the metadata cache to {new!r}: {exc} "
-            "It will be rebuilt on next use.")
+            f"Could not move the metadata cache to {new!r}: {exc} It will be rebuilt on next use."
+        )
 
-    ctx.emit(True, data={"profile": new, "renamed": True, "from": old, "to": new},
-             warnings=warnings or None)
+    ctx.emit(
+        True,
+        data={"profile": new, "renamed": True, "from": old, "to": new},
+        warnings=warnings or None,
+    )
 
 
 @profile_group.command("set-password")
 @click.option("--profile", "profile_name", required=True, help="Profile to store the secret for.")
-@click.option("--password", "password_opt", default=None, help="Secret to store (else prompted on a TTY).")
-@click.option("--client-secret", "client_secret_opt", default=None,
-              help="OAuth client secret — alias for --password (mutually exclusive).")
+@click.option(
+    "--password", "password_opt", default=None, help="Secret to store (else prompted on a TTY)."
+)
+@click.option(
+    "--client-secret",
+    "client_secret_opt",
+    default=None,
+    help="OAuth client secret — alias for --password (mutually exclusive).",
+)
 @click.option("--store-password-plaintext", is_flag=True, help="Force plaintext storage.")
 @pass_ctx
-def profile_set_password(ctx: CLIContext, profile_name, password_opt,
-                         client_secret_opt, store_password_plaintext):
+def profile_set_password(
+    ctx: CLIContext, profile_name, password_opt, client_secret_opt, store_password_plaintext
+):
     """Store/replace the secret for an existing profile."""
     password_opt = _resolve_secret_flag(password_opt, client_secret_opt)
     try:
@@ -618,8 +756,7 @@ def profile_set_password(ctx: CLIContext, profile_name, password_opt,
     with d365_errors(ctx):
         where = conn_mod.save_secret(profile_name, secret, force_plaintext=store_password_plaintext)
     warnings = [_plaintext_secret_warning()] if where == "plaintext" else None
-    ctx.emit(True, data={"profile": profile_name, "stored": True, "to": where},
-             warnings=warnings)
+    ctx.emit(True, data={"profile": profile_name, "stored": True, "to": where}, warnings=warnings)
 
 
 @profile_group.command("delete-password")
@@ -631,7 +768,12 @@ def profile_delete_password(ctx: CLIContext, profile_name):
     removed_plaintext = session_mod.clear_profile_secret(profile_name)
     removed = removed_keyring or removed_plaintext
     where = []
-    if removed_keyring: where.append("keyring")
-    if removed_plaintext: where.append("plaintext")
-    ctx.emit(True, data={"profile": profile_name, "removed": removed, "from": where},
-             meta=({"note": "no stored secret found"} if not removed else None))
+    if removed_keyring:
+        where.append("keyring")
+    if removed_plaintext:
+        where.append("plaintext")
+    ctx.emit(
+        True,
+        data={"profile": profile_name, "removed": removed, "from": where},
+        meta=({"note": "no stored secret found"} if not removed else None),
+    )

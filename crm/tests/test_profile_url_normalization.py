@@ -8,6 +8,7 @@ inside the API path — 404-ing every request. Normalization now lives in one se
 (`ConnectionProfile.normalize_url`, called from `__post_init__`), so construction,
 `from_dict` (self-healing a stored profile), and `profile edit` all get it.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -20,18 +21,21 @@ def _profile(url: str) -> ConnectionProfile:
 
 
 class TestNormalizeUrlStaticmethod:
-    @pytest.mark.parametrize("raw,expected", [
-        (" https://host.contoso.local/org", "https://host.contoso.local/org"),
-        ("https://host.contoso.local/org ", "https://host.contoso.local/org"),
-        ("  https://host.contoso.local/org  ", "https://host.contoso.local/org"),
-        ("https://host.contoso.local/org/", "https://host.contoso.local/org"),
-        (" https://host.contoso.local/org/ ", "https://host.contoso.local/org"),
-        ("\thttps://host.contoso.local/org\n", "https://host.contoso.local/org"),
-        # A space *before* the final slash must not re-surface as trailing
-        # whitespace once the slash is stripped (would reintroduce %20).
-        ("https://host.contoso.local/org /", "https://host.contoso.local/org"),
-        (" https://host.contoso.local/org / ", "https://host.contoso.local/org"),
-    ])
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            (" https://host.contoso.local/org", "https://host.contoso.local/org"),
+            ("https://host.contoso.local/org ", "https://host.contoso.local/org"),
+            ("  https://host.contoso.local/org  ", "https://host.contoso.local/org"),
+            ("https://host.contoso.local/org/", "https://host.contoso.local/org"),
+            (" https://host.contoso.local/org/ ", "https://host.contoso.local/org"),
+            ("\thttps://host.contoso.local/org\n", "https://host.contoso.local/org"),
+            # A space *before* the final slash must not re-surface as trailing
+            # whitespace once the slash is stripped (would reintroduce %20).
+            ("https://host.contoso.local/org /", "https://host.contoso.local/org"),
+            (" https://host.contoso.local/org / ", "https://host.contoso.local/org"),
+        ],
+    )
     def test_strips_surrounding_whitespace_and_trailing_slash(self, raw, expected):
         assert ConnectionProfile.normalize_url(raw) == expected
 
@@ -60,8 +64,10 @@ class TestConstructionNormalizes:
         assert _profile("https://host.contoso.local/org/").url == "https://host.contoso.local/org"
 
     def test_to_dict_url_normalized(self):
-        assert _profile("  https://host.contoso.local/org  ").to_dict()["url"] == \
-            "https://host.contoso.local/org"
+        assert (
+            _profile("  https://host.contoso.local/org  ").to_dict()["url"]
+            == "https://host.contoso.local/org"
+        )
 
     def test_interior_whitespace_untouched(self):
         assert _profile("https://ho st/org").url == "https://ho st/org"

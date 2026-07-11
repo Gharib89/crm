@@ -1,20 +1,24 @@
 """Query commands (OData, FetchXML, saved/user views)."""
+
 # pyright: basic
 from __future__ import annotations
+
 import xml.etree.ElementTree as ET
 from pathlib import Path
+
 import click
-from crm.core import query as query_mod
-from crm.core.query import total_record_count
-from crm.core.entity_names import resolve_logical_name
-from crm.core.metadata import resolve_entity_set_name
-from crm.utils import safe_xml
-from crm.cli import CLIContext, pass_ctx, _complete_entity_set_names
+
+from crm.cli import CLIContext, _complete_entity_set_names, pass_ctx
 from crm.commands._helpers import (
-    d365_errors,
     _emit_query_result,
     _touch_session,
+    d365_errors,
 )
+from crm.core import query as query_mod
+from crm.core.entity_names import resolve_logical_name
+from crm.core.metadata import resolve_entity_set_name
+from crm.core.query import total_record_count
+from crm.utils import safe_xml
 
 
 def _parse_entity_name_from_fetchxml(fetch_xml: str) -> str:
@@ -28,20 +32,19 @@ def _parse_entity_name_from_fetchxml(fetch_xml: str) -> str:
         root = safe_xml.fromstring(fetch_xml)
     except ET.ParseError as exc:
         raise click.UsageError(
-            f"Could not parse FetchXML: {exc}. "
-            "Pass ENTITY_SET explicitly or fix the XML."
+            f"Could not parse FetchXML: {exc}. Pass ENTITY_SET explicitly or fix the XML."
         )
     entity_el = root.find("entity")
     if entity_el is None:
         raise click.UsageError(
             "FetchXML has no <entity> element. "
-            "Pass ENTITY_SET explicitly or add <entity name=\"...\"> to the XML."
+            'Pass ENTITY_SET explicitly or add <entity name="..."> to the XML.'
         )
     name = entity_el.get("name", "").strip()
     if not name:
         raise click.UsageError(
             "FetchXML <entity> is missing the name= attribute. "
-            "Pass ENTITY_SET explicitly or add name=\"<logical-name>\" to <entity>."
+            'Pass ENTITY_SET explicitly or add name="<logical-name>" to <entity>.'
         )
     return name
 
@@ -52,43 +55,83 @@ def query_group():
 
 
 @query_group.command("odata")
-@click.argument("entity_set", metavar="ENTITY_SET|BOUND_FUNC|METADATA_PATH",
-                shell_complete=_complete_entity_set_names)
+@click.argument(
+    "entity_set",
+    metavar="ENTITY_SET|BOUND_FUNC|METADATA_PATH",
+    shell_complete=_complete_entity_set_names,
+)
 @click.option("--select", multiple=True)
 @click.option("--filter", "filter_", help="OData $filter expression.")
 @click.option("--top", type=int)
 @click.option("--order-by", "order_by", help="OData $orderby expression.")
-@click.option("--orderby", "orderby", hidden=True,
-              help="Deprecated alias for --order-by.")
+@click.option("--orderby", "orderby", hidden=True, help="Deprecated alias for --order-by.")
 @click.option("--expand", multiple=True)
-@click.option("--apply", "apply_", metavar="EXPR",
-              help="OData $apply aggregation expression, e.g. "
-                   "'groupby((field),aggregate(measure with sum as total))'. The "
-                   "result shape is whatever the aggregation returns.")
+@click.option(
+    "--apply",
+    "apply_",
+    metavar="EXPR",
+    help="OData $apply aggregation expression, e.g. "
+    "'groupby((field),aggregate(measure with sum as total))'. The "
+    "result shape is whatever the aggregation returns.",
+)
 @click.option("--count", is_flag=True, help="Also request $count.")
 @click.option("--page-size", type=int)
-@click.option("--all", "all_pages", is_flag=True, default=False,
-              help="Follow @odata.nextLink across all pages and merge the results "
-                   "into one array (default: a single server page).")
-@click.option("--max-records", type=int,
-              help="Cap the total rows returned, following @odata.nextLink only as "
-                   "far as needed. Implies page-following; bounds --all when both given.")
+@click.option(
+    "--all",
+    "all_pages",
+    is_flag=True,
+    default=False,
+    help="Follow @odata.nextLink across all pages and merge the results "
+    "into one array (default: a single server page).",
+)
+@click.option(
+    "--max-records",
+    type=int,
+    help="Cap the total rows returned, following @odata.nextLink only as "
+    "far as needed. Implies page-following; bounds --all when both given.",
+)
 @click.option("--annotations/--no-annotations", default=True, help="Include formatted values.")
-@click.option("--track-changes", is_flag=True, default=False,
-              help="Request a change-tracking delta link (Prefer: odata.track-changes): "
-                   "returns the current rows plus meta.delta_token/meta.delta_link to "
-                   "resume from later. Rejects --filter/--order-by/--expand/--top/--all.")
-@click.option("--delta-token",
-              help="Resume change tracking from a prior meta.delta_token: returns only "
-                   "rows created/updated/deleted since (deletes carry reason=\"deleted\").")
-@click.option("--minimal", is_flag=True, default=False,
-              help="JSON mode: drop every record key containing '@' (OData annotations "
-                   "like @odata.etag, *@FormattedValue, *@lookuplogicalname); keeps "
-                   "business fields, _*_value lookup GUIDs, and the primary id.")
+@click.option(
+    "--track-changes",
+    is_flag=True,
+    default=False,
+    help="Request a change-tracking delta link (Prefer: odata.track-changes): "
+    "returns the current rows plus meta.delta_token/meta.delta_link to "
+    "resume from later. Rejects --filter/--order-by/--expand/--top/--all.",
+)
+@click.option(
+    "--delta-token",
+    help="Resume change tracking from a prior meta.delta_token: returns only "
+    'rows created/updated/deleted since (deletes carry reason="deleted").',
+)
+@click.option(
+    "--minimal",
+    is_flag=True,
+    default=False,
+    help="JSON mode: drop every record key containing '@' (OData annotations "
+    "like @odata.etag, *@FormattedValue, *@lookuplogicalname); keeps "
+    "business fields, _*_value lookup GUIDs, and the primary id.",
+)
 @pass_ctx
-def query_odata(ctx: CLIContext, entity_set, select, filter_, top, order_by, orderby,
-                expand, apply_, count, page_size, all_pages, max_records, annotations,
-                track_changes, delta_token, minimal):
+def query_odata(
+    ctx: CLIContext,
+    entity_set,
+    select,
+    filter_,
+    top,
+    order_by,
+    orderby,
+    expand,
+    apply_,
+    count,
+    page_size,
+    all_pages,
+    max_records,
+    annotations,
+    track_changes,
+    delta_token,
+    minimal,
+):
     """OData v4 GET — entity set, bound-function path, or metadata path.
 
     \b
@@ -106,7 +149,8 @@ def query_odata(ctx: CLIContext, entity_set, select, filter_, top, order_by, ord
     orderby = order_by if order_by is not None else orderby
     with d365_errors(ctx):
         result = query_mod.odata_query(
-            ctx.backend(), entity_set,
+            ctx.backend(),
+            entity_set,
             select=list(select) or None,
             filter_=filter_,
             top=top,
@@ -129,16 +173,25 @@ def query_odata(ctx: CLIContext, entity_set, select, filter_, top, order_by, ord
 
 
 @query_group.command("fetchxml")
-@click.argument("entity_set", required=False, default=None,
-                shell_complete=_complete_entity_set_names)
+@click.argument(
+    "entity_set", required=False, default=None, shell_complete=_complete_entity_set_names
+)
 @click.option("--xml", "xml_inline", help="Inline FetchXML string.")
-@click.option("--file", "xml_file", type=click.Path(exists=True, dir_okay=False),
-              help="Path to a FetchXML file.")
+@click.option(
+    "--file",
+    "xml_file",
+    type=click.Path(exists=True, dir_okay=False),
+    help="Path to a FetchXML file.",
+)
 @click.option("--annotations/--no-annotations", default=True, help="Include formatted values.")
-@click.option("--minimal", is_flag=True, default=False,
-              help="JSON mode: drop every record key containing '@' (OData annotations "
-                   "like @odata.etag, *@FormattedValue, *@lookuplogicalname); keeps "
-                   "business fields, _*_value lookup GUIDs, and the primary id.")
+@click.option(
+    "--minimal",
+    is_flag=True,
+    default=False,
+    help="JSON mode: drop every record key containing '@' (OData annotations "
+    "like @odata.etag, *@FormattedValue, *@lookuplogicalname); keeps "
+    "business fields, _*_value lookup GUIDs, and the primary id.",
+)
 @pass_ctx
 def query_fetchxml(ctx: CLIContext, entity_set, xml_inline, xml_file, annotations, minimal):
     """Run a FetchXML query.
@@ -184,7 +237,9 @@ def query_fetchxml(ctx: CLIContext, entity_set, xml_inline, xml_file, annotation
 
     with d365_errors(ctx):
         result = query_mod.fetchxml_query(
-            ctx.backend(), entity_set, fetch_xml,
+            ctx.backend(),
+            entity_set,
+            fetch_xml,
             include_annotations=annotations,
         )
     _emit_query_result(ctx, result, entity_set, minimal=minimal)
@@ -196,17 +251,24 @@ def query_fetchxml(ctx: CLIContext, entity_set, xml_inline, xml_file, annotation
 @click.argument("savedquery_id")
 @click.option("--annotations/--no-annotations", default=True, help="Include formatted values.")
 @click.option("--page-size", type=int)
-@click.option("--minimal", is_flag=True, default=False,
-              help="JSON mode: drop every record key containing '@' (OData annotations "
-                   "like @odata.etag, *@FormattedValue, *@lookuplogicalname); keeps "
-                   "business fields, _*_value lookup GUIDs, and the primary id.")
+@click.option(
+    "--minimal",
+    is_flag=True,
+    default=False,
+    help="JSON mode: drop every record key containing '@' (OData annotations "
+    "like @odata.etag, *@FormattedValue, *@lookuplogicalname); keeps "
+    "business fields, _*_value lookup GUIDs, and the primary id.",
+)
 @pass_ctx
 def query_saved(ctx: CLIContext, entity_set, savedquery_id, annotations, page_size, minimal):
     """Execute a system view (savedquery) by GUID. Use `--json query odata savedqueries` to discover IDs."""
     with d365_errors(ctx):
         result = query_mod.saved_query(
-            ctx.backend(), entity_set, savedquery_id,
-            include_annotations=annotations, page_size=page_size,
+            ctx.backend(),
+            entity_set,
+            savedquery_id,
+            include_annotations=annotations,
+            page_size=page_size,
         )
     _emit_query_result(ctx, result, entity_set, minimal=minimal)
 
@@ -216,17 +278,24 @@ def query_saved(ctx: CLIContext, entity_set, savedquery_id, annotations, page_si
 @click.argument("userquery_id")
 @click.option("--annotations/--no-annotations", default=True, help="Include formatted values.")
 @click.option("--page-size", type=int)
-@click.option("--minimal", is_flag=True, default=False,
-              help="JSON mode: drop every record key containing '@' (OData annotations "
-                   "like @odata.etag, *@FormattedValue, *@lookuplogicalname); keeps "
-                   "business fields, _*_value lookup GUIDs, and the primary id.")
+@click.option(
+    "--minimal",
+    is_flag=True,
+    default=False,
+    help="JSON mode: drop every record key containing '@' (OData annotations "
+    "like @odata.etag, *@FormattedValue, *@lookuplogicalname); keeps "
+    "business fields, _*_value lookup GUIDs, and the primary id.",
+)
 @pass_ctx
 def query_user(ctx: CLIContext, entity_set, userquery_id, annotations, page_size, minimal):
     """Execute a saved view (userquery) by GUID."""
     with d365_errors(ctx):
         result = query_mod.user_query(
-            ctx.backend(), entity_set, userquery_id,
-            include_annotations=annotations, page_size=page_size,
+            ctx.backend(),
+            entity_set,
+            userquery_id,
+            include_annotations=annotations,
+            page_size=page_size,
         )
     _emit_query_result(ctx, result, entity_set, minimal=minimal)
 

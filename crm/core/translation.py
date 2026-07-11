@@ -37,11 +37,13 @@ def export_translation(
 
     started = _time.monotonic()
     read_timeout = timeout if timeout is not None else backend.profile.async_timeout
-    resp = as_dict(backend.post(
-        "solutions/Microsoft.Dynamics.CRM.ExportTranslation",
-        json_body={"SolutionName": solution_name},
-        timeout=read_timeout,
-    ))
+    resp = as_dict(
+        backend.post(
+            "solutions/Microsoft.Dynamics.CRM.ExportTranslation",
+            json_body={"SolutionName": solution_name},
+            timeout=read_timeout,
+        )
+    )
     if "_dry_run" in resp:
         return {**resp, "action": "ExportTranslation", "solution": solution_name}
     encoded = resp.get("ExportTranslationFile")

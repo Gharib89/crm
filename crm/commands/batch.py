@@ -1,13 +1,17 @@
 """Batch and service-document commands."""
+
 # pyright: basic
 from __future__ import annotations
+
 import json
 from pathlib import Path
+
 import click
+
+from crm.cli import CLIContext, pass_ctx
+from crm.commands._helpers import _journal, _output_option, d365_errors
 from crm.core import batch as batch_mod
 from crm.core import solution as sol_mod
-from crm.cli import CLIContext, pass_ctx
-from crm.commands._helpers import d365_errors, _journal, _output_option
 
 
 @click.command("service-document")
@@ -27,13 +31,25 @@ def service_document_cmd(ctx: CLIContext):
 
 @click.command("batch")
 @click.argument("file_path", type=click.Path(exists=True, dir_okay=False))
-@click.option("--no-transaction", is_flag=True, default=False,
-              help="Send each op as a top-level operation; no changeset wrapping.")
-@click.option("--continue-on-error", is_flag=True, default=False,
-              help="Send Prefer: odata.continue-on-error (requires --no-transaction).")
+@click.option(
+    "--no-transaction",
+    is_flag=True,
+    default=False,
+    help="Send each op as a top-level operation; no changeset wrapping.",
+)
+@click.option(
+    "--continue-on-error",
+    is_flag=True,
+    default=False,
+    help="Send Prefer: odata.continue-on-error (requires --no-transaction).",
+)
 @_output_option(help="Write BatchResult[] JSON to this path.")
-@click.option("--timeout", type=int, default=None,
-              help="Override request timeout (seconds) for the batch call.")
+@click.option(
+    "--timeout",
+    type=int,
+    default=None,
+    help="Override request timeout (seconds) for the batch call.",
+)
 @pass_ctx
 def batch_cmd(ctx: CLIContext, file_path, no_transaction, continue_on_error, output, timeout):
     """Execute a $batch from a JSON file."""
@@ -53,9 +69,7 @@ def batch_cmd(ctx: CLIContext, file_path, no_transaction, continue_on_error, out
 
     if output:
         try:
-            Path(output).write_text(
-                json.dumps(results, indent=2, default=str), encoding="utf-8"
-            )
+            Path(output).write_text(json.dumps(results, indent=2, default=str), encoding="utf-8")
         except OSError as exc:
             ctx.emit(False, error=f"Could not write {output}: {exc}")
             return

@@ -1,5 +1,6 @@
 # pyright: basic
 """E2E tests for connection commands."""
+
 from __future__ import annotations
 
 import json

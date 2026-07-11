@@ -6,11 +6,15 @@ passed as parameter aliases (`?@target=...&@paginginfo=...`), which the inline
 `Fn(k=v)` encoding can't express. Distinct from the local `session audit`
 journal, which records only this CLI's own mutations.
 """
+
 # pyright: basic
 from __future__ import annotations
+
 import json
+
 import click
-from crm.cli import CLIContext, pass_ctx, _complete_entity_set_names
+
+from crm.cli import CLIContext, _complete_entity_set_names, pass_ctx
 from crm.commands._helpers import d365_errors
 
 _CRM_NS = "#Microsoft.Dynamics.CRM."
@@ -24,11 +28,12 @@ def _decode_audit_types(obj):
     strips every `@odata.*` key (ADR 0008), which would erase the one piece of
     data that tells the AuditDetail-derived types apart. Copy the short name into
     `AuditDetailType` so the decoded type survives the strip. Walks nested dicts
-    and lists in place."""
+    and lists in place.
+    """
     if isinstance(obj, dict):
         t = obj.get("@odata.type")
         if isinstance(t, str) and t.startswith(_CRM_NS) and t.endswith("AuditDetail"):
-            obj["AuditDetailType"] = t[len(_CRM_NS):]
+            obj["AuditDetailType"] = t[len(_CRM_NS) :]
         for v in obj.values():
             _decode_audit_types(v)
     elif isinstance(obj, list):
@@ -45,12 +50,20 @@ def audit_group():
 @audit_group.command("history")
 @click.argument("entity_set", shell_complete=_complete_entity_set_names)
 @click.argument("record_id")
-@click.option("--page", type=int, default=1, show_default=True,
-              help="1-based page number to retrieve.")
-@click.option("--count", type=int, default=50, show_default=True,
-              help="Page size — audit rows to return per page.")
-@click.option("--paging-cookie",
-              help="PagingCookie from a prior page's AuditDetailCollection, to fetch the next page.")
+@click.option(
+    "--page", type=int, default=1, show_default=True, help="1-based page number to retrieve."
+)
+@click.option(
+    "--count",
+    type=int,
+    default=50,
+    show_default=True,
+    help="Page size — audit rows to return per page.",
+)
+@click.option(
+    "--paging-cookie",
+    help="PagingCookie from a prior page's AuditDetailCollection, to fetch the next page.",
+)
 @pass_ctx
 def audit_history(ctx: CLIContext, entity_set, record_id, page, count, paging_cookie):
     """Retrieve a record's audited data changes (RetrieveRecordChangeHistory).

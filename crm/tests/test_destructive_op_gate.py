@@ -5,6 +5,7 @@ Bash command Claude Code is about to run and BLOCKS (exit 2) destructive `crm`
 verbs unless an explicit `--yes` confirm token is present. Non-destructive verbs
 and non-crm commands pass through untouched (exit 0).
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -115,20 +116,26 @@ class TestBlocksDestructive:
         assert r.returncode == 0
 
     def test_block_solution_remove_component_no_yes(self):
-        r = _run("crm solution remove-component --solution CRMWorx --type 61 "
-                 "--id 33333333-3333-3333-3333-333333333333")
+        r = _run(
+            "crm solution remove-component --solution CRMWorx --type 61 "
+            "--id 33333333-3333-3333-3333-333333333333"
+        )
         assert r.returncode == BLOCK
         assert "remove-component" in r.stderr
 
     def test_allow_solution_remove_component_with_yes(self):
-        r = _run("crm solution remove-component --solution CRMWorx --type 61 "
-                 "--id 33333333-3333-3333-3333-333333333333 --yes")
+        r = _run(
+            "crm solution remove-component --solution CRMWorx --type 61 "
+            "--id 33333333-3333-3333-3333-333333333333 --yes"
+        )
         assert r.returncode == 0
 
     def test_allow_solution_add_component(self):
         # add-component is non-destructive: it must pass through without --yes.
-        r = _run("crm solution add-component --solution CRMWorx --type 61 "
-                 "--id 33333333-3333-3333-3333-333333333333")
+        r = _run(
+            "crm solution add-component --solution CRMWorx --type 61 "
+            "--id 33333333-3333-3333-3333-333333333333"
+        )
         assert r.returncode == 0
 
     def test_block_async_cancel_no_yes(self):
@@ -227,14 +234,17 @@ class TestAssignRole:
 
 
 class TestNonDestructivePassthrough:
-    @pytest.mark.parametrize("cmd", [
-        "crm query accounts --filter \"name eq 'x'\"",
-        "crm entity get contacts 11111111-1111-1111-1111-111111111111",
-        "crm metadata list-entities",
-        "crm metadata entities",
-        "crm async list",
-        "crm solution list",
-    ])
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "crm query accounts --filter \"name eq 'x'\"",
+            "crm entity get contacts 11111111-1111-1111-1111-111111111111",
+            "crm metadata list-entities",
+            "crm metadata entities",
+            "crm async list",
+            "crm solution list",
+        ],
+    )
     def test_non_destructive_is_noop(self, cmd):
         r = _run(cmd)
         assert r.returncode == 0, r.stderr
@@ -242,11 +252,14 @@ class TestNonDestructivePassthrough:
 
 
 class TestNoFalsePositives:
-    @pytest.mark.parametrize("cmd", [
-        "ls",
-        "git status",
-        "grep delete-entity README.md",
-    ])
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "ls",
+            "git status",
+            "grep delete-entity README.md",
+        ],
+    )
     def test_non_crm_commands_pass(self, cmd):
         # Commands that are not an actual `crm` invocation must not block.
         r = _run(cmd)
@@ -268,25 +281,31 @@ class TestFlagOrdering:
         r = _run("crm --json metadata delete-entity new_widget")
         assert r.returncode == BLOCK
 
-    @pytest.mark.parametrize("cmd", [
-        "crm --profile prod metadata delete-entity new_widget",
-        "crm --session foo entity delete contacts abc",
-        "crm --log-level debug metadata delete-entity new_widget",
-        "crm --log-format json-line metadata delete-optionset new_color",
-        "crm --auth-scheme ntlm async cancel 33333333-3333-3333-3333-333333333333",
-        "crm --password s3cret solution job-cancel 22222222-2222-2222-2222-222222222222",
-    ])
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "crm --profile prod metadata delete-entity new_widget",
+            "crm --session foo entity delete contacts abc",
+            "crm --log-level debug metadata delete-entity new_widget",
+            "crm --log-format json-line metadata delete-optionset new_color",
+            "crm --auth-scheme ntlm async cancel 33333333-3333-3333-3333-333333333333",
+            "crm --password s3cret solution job-cancel 22222222-2222-2222-2222-222222222222",
+        ],
+    )
     def test_value_option_before_verb_without_yes_blocked(self, cmd):
         # The option VALUE (prod/foo/debug/...) must not be mistaken for the
         # command group, which would silently defeat the gate.
         r = _run(cmd)
         assert r.returncode == BLOCK, f"gate bypassed by value option: {cmd}\n{r.stdout}"
 
-    @pytest.mark.parametrize("cmd", [
-        "crm --profile prod metadata delete-entity new_widget --yes",
-        "crm --session foo entity delete contacts abc --yes",
-        "crm --log-level debug metadata delete-entity new_widget --yes",
-    ])
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "crm --profile prod metadata delete-entity new_widget --yes",
+            "crm --session foo entity delete contacts abc --yes",
+            "crm --log-level debug metadata delete-entity new_widget --yes",
+        ],
+    )
     def test_value_option_before_verb_with_yes_allowed(self, cmd):
         r = _run(cmd)
         assert r.returncode == 0, r.stderr
@@ -296,14 +315,17 @@ class TestFlagOrdering:
         r = _run("crm --profile=prod metadata delete-entity new_widget")
         assert r.returncode == BLOCK
 
-    @pytest.mark.parametrize("cmd", [
-        # `--yes` smuggled in as the VALUE of a value-taking global option must
-        # NOT count as a confirm — the verb is still destructive and unconfirmed.
-        "crm --profile --yes metadata delete-entity foo",
-        "crm --password --yes entity delete contacts abc",
-        "crm --session --yes solution job-cancel 22222222-2222-2222-2222-222222222222",
-        "crm --log-level --yes metadata delete-optionset new_color",
-    ])
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            # `--yes` smuggled in as the VALUE of a value-taking global option must
+            # NOT count as a confirm — the verb is still destructive and unconfirmed.
+            "crm --profile --yes metadata delete-entity foo",
+            "crm --password --yes entity delete contacts abc",
+            "crm --session --yes solution job-cancel 22222222-2222-2222-2222-222222222222",
+            "crm --log-level --yes metadata delete-optionset new_color",
+        ],
+    )
     def test_yes_smuggled_as_option_value_blocked(self, cmd):
         r = _run(cmd)
         assert r.returncode == BLOCK, f"gate bypassed by --yes-as-option-value: {cmd}\n{r.stdout}"
@@ -333,19 +355,22 @@ class TestCompoundAndPathPrefix:
         r = _run("echo --yes && crm entity delete contacts abc")
         assert r.returncode == BLOCK
 
-    @pytest.mark.parametrize("cmd", [
-        # Operator glued to the destructive sub-command: shlex would fold the
-        # operator into a single token, so the gate must split the raw string.
-        "crm query x|crm entity delete y",
-        "crm query accounts &&crm entity delete y",
-        "crm query x||crm entity delete y",
-        "crm query x;crm entity delete y",
-        # Command substitution — both `$(...)` and backtick forms.
-        "$(crm entity delete x)",
-        "echo $(crm metadata delete-entity new_widget)",
-        "echo `crm entity delete contacts abc`",
-        "`crm metadata delete-entity new_widget`",
-    ])
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            # Operator glued to the destructive sub-command: shlex would fold the
+            # operator into a single token, so the gate must split the raw string.
+            "crm query x|crm entity delete y",
+            "crm query accounts &&crm entity delete y",
+            "crm query x||crm entity delete y",
+            "crm query x;crm entity delete y",
+            # Command substitution — both `$(...)` and backtick forms.
+            "$(crm entity delete x)",
+            "echo $(crm metadata delete-entity new_widget)",
+            "echo `crm entity delete contacts abc`",
+            "`crm metadata delete-entity new_widget`",
+        ],
+    )
     def test_glued_operator_and_command_substitution_blocked(self, cmd):
         r = _run(cmd)
         assert r.returncode == BLOCK, f"gate bypassed by glued operator/subst: {cmd}\n{r.stdout}"
@@ -356,14 +381,17 @@ class TestCompoundAndPathPrefix:
 
 
 class TestSeparatorAndPrefixBypass:
-    @pytest.mark.parametrize("cmd", [
-        # Newline separates commands just like `;` — a destructive verb on any
-        # line after the first must still be caught.
-        "crm query x\ncrm entity delete contacts abc",
-        "set -e\ncrm entity delete contacts abc",
-        "crm query accounts\ncrm metadata delete-entity new_widget",
-        "crm query x\r\ncrm entity delete contacts abc",
-    ])
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            # Newline separates commands just like `;` — a destructive verb on any
+            # line after the first must still be caught.
+            "crm query x\ncrm entity delete contacts abc",
+            "set -e\ncrm entity delete contacts abc",
+            "crm query accounts\ncrm metadata delete-entity new_widget",
+            "crm query x\r\ncrm entity delete contacts abc",
+        ],
+    )
     def test_newline_separated_destructive_blocked(self, cmd):
         r = _run(cmd)
         assert r.returncode == BLOCK, f"gate bypassed by newline: {cmd!r}\n{r.stdout}"
@@ -372,11 +400,14 @@ class TestSeparatorAndPrefixBypass:
         r = _run("crm query x\ncrm entity delete contacts abc --yes")
         assert r.returncode == 0, r.stderr
 
-    @pytest.mark.parametrize("cmd", [
-        # A leading shell variable-assignment prefix must not hide the crm verb.
-        "FOO=1 crm entity delete contacts abc",
-        "A=1 B=2 crm metadata delete-entity new_widget",
-    ])
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            # A leading shell variable-assignment prefix must not hide the crm verb.
+            "FOO=1 crm entity delete contacts abc",
+            "A=1 B=2 crm metadata delete-entity new_widget",
+        ],
+    )
     def test_env_var_prefix_destructive_blocked(self, cmd):
         r = _run(cmd)
         assert r.returncode == BLOCK, f"gate bypassed by env-var prefix: {cmd!r}\n{r.stdout}"
@@ -414,10 +445,12 @@ _GUID = "44444444-4444-4444-4444-444444444444"
 
 class TestCliConfirmParity:
     """Every destructive command accepts --yes (skip prompt) and aborts safely
-    without --yes in a non-TTY, matching the token the hook checks for."""
+    without --yes in a non-TTY, matching the token the hook checks for.
+    """
 
     def _runner(self):
         from click.testing import CliRunner
+
         return CliRunner()
 
     def _delete_import_file(self, tmp_path):
@@ -448,23 +481,37 @@ class TestCliConfirmParity:
             (
                 "data-import-delete",
                 [
-                    "data", "import", "contacts", self._delete_import_file(tmp_path),
-                    "--mode", "delete", "--id-column", "contactid",
+                    "data",
+                    "import",
+                    "contacts",
+                    self._delete_import_file(tmp_path),
+                    "--mode",
+                    "delete",
+                    "--id-column",
+                    "contactid",
                 ],
                 "crm.commands.data.import_mod.import_records",
                 lambda *a, **k: {
-                    "imported": 1, "failed": 0, "chunks": 1,
-                    "entity_set": "contacts", "mode": "delete",
-                    "dry_run": False, "format": "jsonl", "failures": [],
+                    "imported": 1,
+                    "failed": 0,
+                    "chunks": 1,
+                    "entity_set": "contacts",
+                    "mode": "delete",
+                    "dry_run": False,
+                    "format": "jsonl",
+                    "failures": [],
                 },
             ),
         ]
 
     def test_entity_delete_yes_skips_prompt(self, monkeypatch):
         from crm import cli as crm_cli
+
         called = {}
-        monkeypatch.setattr("crm.core.entity.delete",
-                            lambda backend, es, rid, **kw: called.setdefault("hit", (es, rid)) or {"deleted": True})
+        monkeypatch.setattr(
+            "crm.core.entity.delete",
+            lambda backend, es, rid, **kw: called.setdefault("hit", (es, rid)) or {"deleted": True},
+        )
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = self._runner().invoke(
             crm_cli.cli,
@@ -475,6 +522,7 @@ class TestCliConfirmParity:
 
     def test_entity_delete_no_yes_non_tty_aborts(self, monkeypatch):
         from crm import cli as crm_cli
+
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         # No input => the real non-TTY agent scenario. The helper must fail fast
         # with a clean JSON envelope naming --yes.
@@ -489,6 +537,7 @@ class TestCliConfirmParity:
     @pytest.mark.parametrize("case_index", range(4))
     def test_issue_697_delete_yes_skips_prompt(self, monkeypatch, tmp_path, case_index):
         from crm import cli as crm_cli
+
         label, argv, patch_path, replacement = self._issue_697_cases(tmp_path)[case_index]
         called = {}
 
@@ -505,6 +554,7 @@ class TestCliConfirmParity:
     @pytest.mark.parametrize("case_index", range(4))
     def test_issue_697_delete_no_yes_non_tty_aborts(self, monkeypatch, tmp_path, case_index):
         from crm import cli as crm_cli
+
         label, argv, patch_path, replacement = self._issue_697_cases(tmp_path)[case_index]
         called = {}
 
@@ -522,43 +572,51 @@ class TestCliConfirmParity:
 
     def test_app_delete_yes_skips_prompt(self, monkeypatch):
         from crm import cli as crm_cli
+
         called = {}
         monkeypatch.setattr(
             "crm.core.appmodule.delete_app",
-            lambda backend, name_or_id: called.setdefault("t", name_or_id)
-            or {"deleted": True})
+            lambda backend, name_or_id: called.setdefault("t", name_or_id) or {"deleted": True},
+        )
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = self._runner().invoke(
-            crm_cli.cli, ["--json", "app", "delete", "cwx_crmworx", "--yes"])
+            crm_cli.cli, ["--json", "app", "delete", "cwx_crmworx", "--yes"]
+        )
         assert result.exit_code == 0, result.output
         assert called["t"] == "cwx_crmworx"
 
     def test_app_delete_no_yes_non_tty_aborts(self, monkeypatch):
         from crm import cli as crm_cli
+
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-        result = self._runner().invoke(
-            crm_cli.cli, ["--json", "app", "delete", "cwx_crmworx"])
+        result = self._runner().invoke(crm_cli.cli, ["--json", "app", "delete", "cwx_crmworx"])
         assert result.exit_code == 1
         assert '"ok": false' in result.output
         assert "--yes" in result.output
 
     def test_solution_job_cancel_yes_skips_prompt(self, monkeypatch):
         from crm import cli as crm_cli
+
         called = {}
-        monkeypatch.setattr("crm.core.async_ops.cancel_async_operation",
-                            lambda backend, aid: called.setdefault("id", aid))
+        monkeypatch.setattr(
+            "crm.core.async_ops.cancel_async_operation",
+            lambda backend, aid: called.setdefault("id", aid),
+        )
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = self._runner().invoke(
-            crm_cli.cli, ["--json", "solution", "job-cancel", _GUID, "--yes"],
+            crm_cli.cli,
+            ["--json", "solution", "job-cancel", _GUID, "--yes"],
         )
         assert result.exit_code == 0, result.output
         assert called["id"] == _GUID
 
     def test_solution_job_cancel_no_yes_non_tty_aborts(self, monkeypatch):
         from crm import cli as crm_cli
+
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = self._runner().invoke(
-            crm_cli.cli, ["--json", "solution", "job-cancel", _GUID],
+            crm_cli.cli,
+            ["--json", "solution", "job-cancel", _GUID],
         )
         assert result.exit_code == 1
         assert '"ok": false' in result.output
@@ -566,21 +624,27 @@ class TestCliConfirmParity:
 
     def test_async_cancel_yes_skips_prompt(self, monkeypatch):
         from crm import cli as crm_cli
+
         called = {}
-        monkeypatch.setattr("crm.core.async_ops.cancel_async_operation",
-                            lambda backend, aid: called.setdefault("id", aid))
+        monkeypatch.setattr(
+            "crm.core.async_ops.cancel_async_operation",
+            lambda backend, aid: called.setdefault("id", aid),
+        )
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = self._runner().invoke(
-            crm_cli.cli, ["--json", "async", "cancel", _GUID, "--yes"],
+            crm_cli.cli,
+            ["--json", "async", "cancel", _GUID, "--yes"],
         )
         assert result.exit_code == 0, result.output
         assert called["id"] == _GUID
 
     def test_async_cancel_no_yes_non_tty_aborts(self, monkeypatch):
         from crm import cli as crm_cli
+
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = self._runner().invoke(
-            crm_cli.cli, ["--json", "async", "cancel", _GUID],
+            crm_cli.cli,
+            ["--json", "async", "cancel", _GUID],
         )
         assert result.exit_code == 1
         assert '"ok": false' in result.output
@@ -588,11 +652,12 @@ class TestCliConfirmParity:
 
     def test_plugin_unregister_assembly_yes_skips_prompt(self, monkeypatch):
         from crm import cli as crm_cli
+
         called = {}
         monkeypatch.setattr(
             "crm.core.plugin.unregister_assembly",
-            lambda backend, assembly: called.setdefault("a", assembly)
-            or {"deleted": True})
+            lambda backend, assembly: called.setdefault("a", assembly) or {"deleted": True},
+        )
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = self._runner().invoke(
             crm_cli.cli,
@@ -603,9 +668,11 @@ class TestCliConfirmParity:
 
     def test_plugin_unregister_assembly_no_yes_non_tty_aborts(self, monkeypatch):
         from crm import cli as crm_cli
+
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = self._runner().invoke(
-            crm_cli.cli, ["--json", "plugin", "unregister-assembly", "Contoso.Plugins"],
+            crm_cli.cli,
+            ["--json", "plugin", "unregister-assembly", "Contoso.Plugins"],
         )
         assert result.exit_code == 1
         assert '"ok": false' in result.output
@@ -613,11 +680,12 @@ class TestCliConfirmParity:
 
     def test_plugin_unregister_step_yes_skips_prompt(self, monkeypatch):
         from crm import cli as crm_cli
+
         called = {}
         monkeypatch.setattr(
             "crm.core.plugin.unregister_step",
-            lambda backend, step: called.setdefault("s", step)
-            or {"deleted": True})
+            lambda backend, step: called.setdefault("s", step) or {"deleted": True},
+        )
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = self._runner().invoke(
             crm_cli.cli,
@@ -628,9 +696,11 @@ class TestCliConfirmParity:
 
     def test_plugin_unregister_step_no_yes_non_tty_aborts(self, monkeypatch):
         from crm import cli as crm_cli
+
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = self._runner().invoke(
-            crm_cli.cli, ["--json", "plugin", "unregister-step", "My Step"],
+            crm_cli.cli,
+            ["--json", "plugin", "unregister-step", "My Step"],
         )
         assert result.exit_code == 1
         assert '"ok": false' in result.output

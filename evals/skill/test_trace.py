@@ -6,6 +6,7 @@ into the efficiency signal the skill-efficacy review reads: the ordered list of
 
     pytest evals/skill
 """
+
 from __future__ import annotations
 
 import json
@@ -21,25 +22,43 @@ def _line(obj: dict[str, Any]) -> str:
 def _assistant_tool_use(name: str, tool_input: dict[str, Any]) -> dict[str, Any]:
     return {
         "type": "assistant",
-        "message": {"role": "assistant", "content": [
-            {"type": "tool_use", "id": "toolu_1", "name": name, "input": tool_input},
-        ]},
+        "message": {
+            "role": "assistant",
+            "content": [
+                {"type": "tool_use", "id": "toolu_1", "name": name, "input": tool_input},
+            ],
+        },
     }
 
 
 # A representative trace: a text block, two crm Bash commands, one non-crm Bash
 # command, a non-Bash tool, then the final result event.
-SAMPLE = "\n".join([
-    _line({"type": "system", "subtype": "init", "session_id": "s1"}),
-    _line({"type": "assistant", "message": {"content": [{"type": "text", "text": "I'll start."}]}}),
-    _line(_assistant_tool_use("Bash", {"command": "crm whoami"})),
-    _line(_assistant_tool_use("Read", {"file_path": "/x/SKILL.md"})),
-    _line(_assistant_tool_use("Bash", {"command": "echo not-crm"})),
-    _line(_assistant_tool_use("Bash", {"command": "cd /tmp && crm query odata accounts --top 1"})),
-    _line({"type": "result", "subtype": "success", "is_error": False, "num_turns": 7,
-           "total_cost_usd": 0.12, "duration_ms": 4200, "result": "done",
-           "usage": {"input_tokens": 100, "output_tokens": 20}}),
-])
+SAMPLE = "\n".join(
+    [
+        _line({"type": "system", "subtype": "init", "session_id": "s1"}),
+        _line(
+            {"type": "assistant", "message": {"content": [{"type": "text", "text": "I'll start."}]}}
+        ),
+        _line(_assistant_tool_use("Bash", {"command": "crm whoami"})),
+        _line(_assistant_tool_use("Read", {"file_path": "/x/SKILL.md"})),
+        _line(_assistant_tool_use("Bash", {"command": "echo not-crm"})),
+        _line(
+            _assistant_tool_use("Bash", {"command": "cd /tmp && crm query odata accounts --top 1"})
+        ),
+        _line(
+            {
+                "type": "result",
+                "subtype": "success",
+                "is_error": False,
+                "num_turns": 7,
+                "total_cost_usd": 0.12,
+                "duration_ms": 4200,
+                "result": "done",
+                "usage": {"input_tokens": 100, "output_tokens": 20},
+            }
+        ),
+    ]
+)
 
 
 def test_parse_commands_extracts_ordered_crm_invocations():
@@ -56,10 +75,12 @@ def test_parse_commands_skips_non_bash_and_non_crm():
 
 def test_parse_commands_word_boundary_not_substring():
     # `scrmble` / `crmfoo` must not be mistaken for a crm invocation.
-    raw = "\n".join([
-        _line(_assistant_tool_use("Bash", {"command": "scrmble && crmfoo bar"})),
-        _line(_assistant_tool_use("Bash", {"command": "echo x | crm query count accounts"})),
-    ])
+    raw = "\n".join(
+        [
+            _line(_assistant_tool_use("Bash", {"command": "scrmble && crmfoo bar"})),
+            _line(_assistant_tool_use("Bash", {"command": "echo x | crm query count accounts"})),
+        ]
+    )
     assert trace.parse_commands(raw) == ["echo x | crm query count accounts"]
 
 
@@ -71,7 +92,14 @@ def test_parse_metrics_pulls_run_metrics_from_result_event():
 
 
 def test_parse_handles_blank_and_malformed_lines():
-    raw = "\n".join(["", "not json at all", "{", _line(_assistant_tool_use("Bash", {"command": "crm test connection"}))])
+    raw = "\n".join(
+        [
+            "",
+            "not json at all",
+            "{",
+            _line(_assistant_tool_use("Bash", {"command": "crm test connection"})),
+        ]
+    )
     assert trace.parse_commands(raw) == ["crm test connection"]
     assert trace.parse_metrics(raw) == {}  # no result event → empty metrics, no crash
 
@@ -84,9 +112,11 @@ def test_parse_metrics_empty_when_no_result_event():
 def test_parse_commands_matches_bare_and_terminal_crm():
     # A bare `crm` (default help) or a `crm` at the end of a compound line has no trailing
     # whitespace; it must still be counted, or command-economy is undercounted.
-    raw = "\n".join([
-        _line(_assistant_tool_use("Bash", {"command": "crm"})),                  # bare
-        _line(_assistant_tool_use("Bash", {"command": "cd /tmp && crm"})),        # terminal
-        _line(_assistant_tool_use("Bash", {"command": "crm whoami; echo done"})), # before ;
-    ])
+    raw = "\n".join(
+        [
+            _line(_assistant_tool_use("Bash", {"command": "crm"})),  # bare
+            _line(_assistant_tool_use("Bash", {"command": "cd /tmp && crm"})),  # terminal
+            _line(_assistant_tool_use("Bash", {"command": "crm whoami; echo done"})),  # before ;
+        ]
+    )
     assert trace.parse_commands(raw) == ["crm", "cd /tmp && crm", "crm whoami; echo done"]

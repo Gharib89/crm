@@ -3,14 +3,14 @@
 
 All HTTP mocked via requests_mock; no live D365 server.
 """
+
 from __future__ import annotations
 
 import pytest
 import requests_mock as req_mock
 
-from crm.utils.d365_backend import D365Backend, D365Error
 from crm.core import dependencies as dep_mod
-
+from crm.utils.d365_backend import D365Backend, D365Error
 
 # ── resolve_target ────────────────────────────────────────────────────────
 
@@ -220,9 +220,7 @@ class TestRetrieveDependencies:
         with req_mock.Mocker() as m:
             url = dry_backend.url_for("EntityDefinitions(LogicalName='new_widget')")
             m.get(url, json={"MetadataId": ENTITY_ID})
-            fn_path = (
-                f"RetrieveDependenciesForDelete(ObjectId={ENTITY_ID},ComponentType=1)"
-            )
+            fn_path = f"RetrieveDependenciesForDelete(ObjectId={ENTITY_ID},ComponentType=1)"
             m.get(dry_backend.url_for(fn_path), json={"value": []})
             result = dep_mod.retrieve_dependencies(dry_backend, "entity", "new_widget")
         assert len(m.request_history) >= 2
@@ -238,9 +236,7 @@ class TestDependenciesById:
     def test_skips_resolve(self, backend: D365Backend) -> None:
         """dependencies_by_id accepts pre-resolved id and skips the resolve GET."""
         with req_mock.Mocker() as m:
-            fn_path = (
-                f"RetrieveDependenciesForDelete(ObjectId={ENTITY_ID},ComponentType=1)"
-            )
+            fn_path = f"RetrieveDependenciesForDelete(ObjectId={ENTITY_ID},ComponentType=1)"
             m.get(backend.url_for(fn_path), json={"value": []})
             result = dep_mod.dependencies_by_id(backend, ENTITY_ID, 1, for_="delete")
         # Only one request (the function call), no resolve GET

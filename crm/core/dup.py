@@ -79,7 +79,10 @@ def resolve_rule_id(backend: D365Backend, rule: str) -> str:
     if gid is not None:
         return gid
     rid = backend.resolve_id_by_name(
-        RULES_SET, filter_field="name", id_field=_RULE_ID, value=rule,
+        RULES_SET,
+        filter_field="name",
+        id_field=_RULE_ID,
+        value=rule,
     )
     if rid is None:
         raise D365Error(f"No duplicate rule named {rule!r}.", code="NotFound")
@@ -90,7 +93,9 @@ def resolve_rule_id(backend: D365Backend, rule: str) -> str:
 
 
 def list_rules(
-    backend: D365Backend, *, entity: str | None = None,
+    backend: D365Backend,
+    *,
+    entity: str | None = None,
 ) -> list[dict[str, Any]]:
     """List duplicate rules (id, name, base/matching entity, status).
 
@@ -113,15 +118,17 @@ def get_rule(backend: D365Backend, rule: str) -> dict[str, Any]:
     matchingattributename, operatorcode, operatorparam}`` entries.
     """
     rule_id = resolve_rule_id(backend, rule)
-    record = as_dict(backend.get(
-        entity_mod.build_record_path(RULES_SET, rule_id),
-        params={
-            "$select": (
-                f"{_RULE_ID},name,baseentityname,matchingentityname,"
-                "statuscode,statecode,description"
-            ),
-        },
-    ))
+    record = as_dict(
+        backend.get(
+            entity_mod.build_record_path(RULES_SET, rule_id),
+            params={
+                "$select": (
+                    f"{_RULE_ID},name,baseentityname,matchingentityname,"
+                    "statuscode,statecode,description"
+                ),
+            },
+        )
+    )
     conditions = backend.get_collection(
         CONDITIONS_SET,
         params={
@@ -167,9 +174,13 @@ def create_rule(
     }
     if description is not None:
         body["description"] = description
-    result = as_dict(backend.post(
-        RULES_SET, json_body=body, solution=solution,
-    ))
+    result = as_dict(
+        backend.post(
+            RULES_SET,
+            json_body=body,
+            solution=solution,
+        )
+    )
     if result.get("_dry_run"):
         result["would_create"] = True
         return result
@@ -184,8 +195,7 @@ def create_rule(
     }
     if not rule_id:
         out["duplicaterule_lookup_error"] = (
-            "Could not parse duplicateruleid from response: "
-            f"{result.get('_entity_id_url')!r}"
+            f"Could not parse duplicateruleid from response: {result.get('_entity_id_url')!r}"
         )
     return out
 
@@ -236,9 +246,13 @@ def add_condition(
     }
     if needs_param:
         body["operatorparam"] = operator_param
-    result = as_dict(backend.post(
-        CONDITIONS_SET, json_body=body, solution=solution,
-    ))
+    result = as_dict(
+        backend.post(
+            CONDITIONS_SET,
+            json_body=body,
+            solution=solution,
+        )
+    )
     if result.get("_dry_run"):
         result["would_create"] = True
         return result
@@ -400,10 +414,13 @@ def _read_duplicate_records(backend: D365Backend, job_id: str) -> list[dict[str,
     Uses ``get_collection`` so ``@odata.nextLink`` paging is followed — a sweep
     can log up to 5,000 rows, well over one page.
     """
-    return backend.get_collection(_DUPLICATE_RECORDS_SET, params={
-        "$select": _DUP_RECORD_SELECT,
-        "$filter": f"_asyncoperationid_value eq {job_id}",
-    })
+    return backend.get_collection(
+        _DUPLICATE_RECORDS_SET,
+        params={
+            "$select": _DUP_RECORD_SELECT,
+            "$filter": f"_asyncoperationid_value eq {job_id}",
+        },
+    )
 
 
 def bulk_detect(

@@ -1,4 +1,5 @@
 """Unit tests for --minimal: prune OData annotation keys from JSON output (#85)."""
+
 # pyright: basic
 from __future__ import annotations
 
@@ -13,7 +14,7 @@ from crm.commands._helpers import _prune_annotations
 def _annotated_record() -> dict:
     """A record carrying the three annotation shapes the rule must drop."""
     return {
-        "@odata.etag": "W/\"123\"",
+        "@odata.etag": 'W/"123"',
         "accountid": "00000000-0000-0000-0000-000000000001",
         "name": "Contoso Ltd",
         "statuscode@OData.Community.Display.V1.FormattedValue": "Active",
@@ -36,19 +37,23 @@ class TestPruneAnnotations:
 
 
 def _stub_value_backend(make_fake_backend, inject_backend):
-    inject_backend(make_fake_backend(responses={"get": {
-        "@odata.context": "https://crm.contoso.local/contoso/api/data/v9.2/$metadata#accounts",
-        "value": [_annotated_record()],
-    }}))
+    inject_backend(
+        make_fake_backend(
+            responses={
+                "get": {
+                    "@odata.context": "https://crm.contoso.local/contoso/api/data/v9.2/$metadata#accounts",
+                    "value": [_annotated_record()],
+                }
+            }
+        )
+    )
 
 
 class TestCLIQuery:
     def test_minimal_prunes_records(self, make_fake_backend, inject_backend):
         _stub_value_backend(make_fake_backend, inject_backend)
         runner = CliRunner()
-        result = runner.invoke(
-            cli, ["--json", "query", "odata", "accounts", "--minimal"]
-        )
+        result = runner.invoke(cli, ["--json", "query", "odata", "accounts", "--minimal"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         # Bare array (ADR 0008): rows live at data[0], not data["value"][0].
@@ -57,7 +62,9 @@ class TestCLIQuery:
         assert rec["_owner_value"] == "00000000-0000-0000-0000-000000000002"
         assert rec["accountid"] == "00000000-0000-0000-0000-000000000001"
 
-    def test_default_keeps_formatted_values_strips_protocol_keys(self, make_fake_backend, inject_backend):
+    def test_default_keeps_formatted_values_strips_protocol_keys(
+        self, make_fake_backend, inject_backend
+    ):
         _stub_value_backend(make_fake_backend, inject_backend)
         runner = CliRunner()
         result = runner.invoke(cli, ["--json", "query", "odata", "accounts"])
@@ -71,12 +78,19 @@ class TestCLIQuery:
 
     def test_minimal_relocates_count_to_meta(self, make_fake_backend, inject_backend):
         """Paging relocates to `meta.count` (← `@odata.count`) even under
-        --minimal, and `data` is the bare pruned array — not an OData envelope."""
-        inject_backend(make_fake_backend(responses={"get": {
-            "@odata.context": "https://crm.contoso.local/contoso/api/data/v9.2/$metadata#accounts",
-            "@odata.count": 7,
-            "value": [_annotated_record()],
-        }}))
+        --minimal, and `data` is the bare pruned array — not an OData envelope.
+        """
+        inject_backend(
+            make_fake_backend(
+                responses={
+                    "get": {
+                        "@odata.context": "https://crm.contoso.local/contoso/api/data/v9.2/$metadata#accounts",
+                        "@odata.count": 7,
+                        "value": [_annotated_record()],
+                    }
+                }
+            )
+        )
         runner = CliRunner()
         result = runner.invoke(
             cli, ["--json", "query", "odata", "accounts", "--minimal", "--count"]
@@ -96,8 +110,14 @@ class TestCLIEntityGet:
         runner = CliRunner()
         result = runner.invoke(
             cli,
-            ["--json", "entity", "get", "accounts",
-             "00000000-0000-0000-0000-000000000001", "--minimal"],
+            [
+                "--json",
+                "entity",
+                "get",
+                "accounts",
+                "00000000-0000-0000-0000-000000000001",
+                "--minimal",
+            ],
         )
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)

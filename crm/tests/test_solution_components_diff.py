@@ -4,11 +4,14 @@
 Pure-function tests — no HTTP, no backend needed.
 GUIDs are generic placeholders (no real org names).
 """
+
 from __future__ import annotations
 
 import json
+
 import pytest
 from click.testing import CliRunner
+
 from crm.cli import cli
 from crm.core import solution as sol_mod
 
@@ -23,8 +26,14 @@ def _comp(ct: int, oid: str, rcb: int | None = 0) -> dict:
 
 class TestNormalizeComponents:
     def test_returns_exact_three_keys(self):
-        raw = [{"componenttype": 1, "objectid": _A, "rootcomponentbehavior": 0,
-                "extra_field": "ignored"}]
+        raw = [
+            {
+                "componenttype": 1,
+                "objectid": _A,
+                "rootcomponentbehavior": 0,
+                "extra_field": "ignored",
+            }
+        ]
         result = sol_mod.normalize_components(raw)
         assert len(result) == 1
         assert set(result[0].keys()) == {"componenttype", "objectid", "rootcomponentbehavior"}
@@ -47,10 +56,13 @@ class TestNormalizeComponents:
         with pytest.raises(ValueError, match="objectid must be a string"):
             sol_mod.normalize_components(raw)
 
-    @pytest.mark.parametrize("row", [
-        {"componenttype": 1, "objectid": _A},                                   # missing key
-        {"componenttype": 1, "objectid": _A, "rootcomponentbehavior": None},    # explicit null
-    ])
+    @pytest.mark.parametrize(
+        "row",
+        [
+            {"componenttype": 1, "objectid": _A},  # missing key
+            {"componenttype": 1, "objectid": _A, "rootcomponentbehavior": None},  # explicit null
+        ],
+    )
     def test_rootcomponentbehavior_none_stays_none(self, row):
         result = sol_mod.normalize_components([row])
         assert result[0]["rootcomponentbehavior"] is None
@@ -207,7 +219,9 @@ class TestComponentsDiffSave:
         return CliRunner().invoke(cli, ["--json", "solution", "components", "Contoso", *args])
 
     def _patch(self, monkeypatch):
-        monkeypatch.setattr("crm.core.solution.solution_components", lambda backend, name: list(_LIVE))
+        monkeypatch.setattr(
+            "crm.core.solution.solution_components", lambda backend, name: list(_LIVE)
+        )
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
 
     # 1. --diff exact match → exit 0, ok True, data["matches"] True
@@ -240,7 +254,7 @@ class TestComponentsDiffSave:
         assert data["ok"] is False
         assert len(data["data"]["missing"]) > 0
         assert len(data["data"]["unexpected"]) > 0
-        assert "1" in data["error"]   # counts in the error message
+        assert "1" in data["error"]  # counts in the error message
 
     # 3. --save writes normalized file; --diff round-trip → exit 0, matches True
     def test_save_and_roundtrip_diff(self, monkeypatch, tmp_path):
@@ -276,7 +290,7 @@ class TestComponentsDiffSave:
         f = tmp_path / "f.json"
         f.write_text("[]", encoding="utf-8")
         result = self._invoke("--diff", str(f), "--save", str(tmp_path / "out.json"))
-        assert result.exit_code == 2, result.output   # usage error (ADR 0001), not exit 1
+        assert result.exit_code == 2, result.output  # usage error (ADR 0001), not exit 1
         data = json.loads(result.output)
         assert data["ok"] is False
         assert "mutually exclusive" in data["error"].lower()
@@ -337,9 +351,9 @@ class TestComponentsDiffSave:
     # 9. --save to an unwritable path (parent is a file) → exit 1, clean ok=False envelope
     def test_save_oserror_clean_envelope(self, monkeypatch, tmp_path):
         self._patch(monkeypatch)
-        blocker = tmp_path / "blocker"          # a regular file, not a directory
+        blocker = tmp_path / "blocker"  # a regular file, not a directory
         blocker.write_text("x", encoding="utf-8")
-        target = blocker / "sub" / "out.json"   # mkdir(parents=True) under a file -> OSError
+        target = blocker / "sub" / "out.json"  # mkdir(parents=True) under a file -> OSError
         result = self._invoke("--save", str(target))
         assert result.exit_code == 1, result.output
         data = json.loads(result.output)
@@ -350,7 +364,7 @@ class TestComponentsDiffSave:
     def test_diff_non_utf8_file_clean_envelope(self, monkeypatch, tmp_path):
         self._patch(monkeypatch)
         bad_file = tmp_path / "bad4.json"
-        bad_file.write_bytes(b"\xff\xfe\x00bad")   # invalid UTF-8 -> UnicodeDecodeError
+        bad_file.write_bytes(b"\xff\xfe\x00bad")  # invalid UTF-8 -> UnicodeDecodeError
         result = self._invoke("--diff", str(bad_file))
         assert result.exit_code == 1, result.output
         data = json.loads(result.output)
@@ -362,12 +376,15 @@ class TestComponentsDiffSave:
     #     the integer's string form for an unmapped code (no crash).
     def test_json_injects_componenttypename(self, monkeypatch):
         live = [
-            {"componenttype": 20, "objectid": _A, "rootcomponentbehavior": 0,
-             "solutioncomponentid": _C},
+            {
+                "componenttype": 20,
+                "objectid": _A,
+                "rootcomponentbehavior": 0,
+                "solutioncomponentid": _C,
+            },
             {"componenttype": 99999, "objectid": _B, "rootcomponentbehavior": None},
         ]
-        monkeypatch.setattr("crm.core.solution.solution_components",
-                            lambda backend, name: live)
+        monkeypatch.setattr("crm.core.solution.solution_components", lambda backend, name: live)
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = self._invoke()
         assert result.exit_code == 0, result.output

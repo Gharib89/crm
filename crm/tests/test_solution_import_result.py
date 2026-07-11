@@ -100,10 +100,10 @@ def test_parse_anonymous_component_name_falls_back_to_type():
 
 def test_parse_overall_failure():
     xml = (
-        '<importexportxml><solutionManifests>'
-        '<solutionManifest><UniqueName>s</UniqueName>'
+        "<importexportxml><solutionManifests>"
+        "<solutionManifest><UniqueName>s</UniqueName>"
         '<result result="failure" errorcode="0x8004" errortext="boom" />'
-        '</solutionManifest></solutionManifests></importexportxml>'
+        "</solutionManifest></solutionManifests></importexportxml>"
     )
     env = sol.parse_import_job_data(xml)
     assert env["result"] == "failure"
@@ -111,6 +111,7 @@ def test_parse_overall_failure():
 
 def test_parse_unparseable_raises():
     from crm.utils.d365_backend import D365Error
+
     with pytest.raises(D365Error, match="empty"):
         sol.parse_import_job_data("   ")
     with pytest.raises(D365Error, match="parse"):
@@ -121,24 +122,32 @@ def test_import_result_reports_partial_failure_warning(backend):
     with requests_mock.Mocker() as m:
         m.get(
             backend.url_for(f"importjobs({_JOB_ID})"),
-            json={"data": _DATA_PARTIAL, "solutionname": "partialsolution",
-                  "progress": 100.0, "completedon": "2026-06-05T00:00:00Z"},
+            json={
+                "data": _DATA_PARTIAL,
+                "solutionname": "partialsolution",
+                "progress": 100.0,
+                "completedon": "2026-06-05T00:00:00Z",
+            },
         )
         out = sol.import_result(backend, _JOB_ID)
     assert out["import_job_id"] == _JOB_ID
     assert out["solution"] == "partialsolution"
-    assert out["result"] == "success"            # async said succeeded...
-    assert out["warnings"]                        # ...but a component failed
+    assert out["result"] == "success"  # async said succeeded...
+    assert out["warnings"]  # ...but a component failed
     assert any("Account" in w for w in out["warnings"])
 
 
 def test_import_result_formatted_attaches_report_verbatim(backend):
     report = "<xml>Excel-format report</xml>"
     with requests_mock.Mocker() as m:
-        m.get(backend.url_for(f"importjobs({_JOB_ID})"),
-              json={"data": _DATA_SUCCESS, "solutionname": "s", "progress": 100.0})
-        m.get(backend.url_for(f"RetrieveFormattedImportJobResults(ImportJobId={_JOB_ID})"),
-              json={"FormattedResults": report})
+        m.get(
+            backend.url_for(f"importjobs({_JOB_ID})"),
+            json={"data": _DATA_SUCCESS, "solutionname": "s", "progress": 100.0},
+        )
+        m.get(
+            backend.url_for(f"RetrieveFormattedImportJobResults(ImportJobId={_JOB_ID})"),
+            json={"FormattedResults": report},
+        )
         out = sol.import_result(backend, _JOB_ID, formatted=True)
     assert out["formatted_results"] == report
 
@@ -147,8 +156,9 @@ def test_import_result_missing_data_warns_not_raises(backend):
     # A job row with no data column: best-effort parsing degrades to a warning
     # rather than erroring — same contract as import_solution.
     with requests_mock.Mocker() as m:
-        m.get(backend.url_for(f"importjobs({_JOB_ID})"),
-              json={"solutionname": "s", "progress": 100.0})  # no data
+        m.get(
+            backend.url_for(f"importjobs({_JOB_ID})"), json={"solutionname": "s", "progress": 100.0}
+        )  # no data
         out = sol.import_result(backend, _JOB_ID)
     assert out["import_job_id"] == _JOB_ID
     assert out["solution"] == "s"
@@ -159,28 +169,40 @@ def test_import_result_missing_data_warns_not_raises(backend):
 def test_import_result_without_formatted_omits_report(backend):
     # No mock for RetrieveFormattedImportJobResults — a call would 404 (NoMockAddress).
     with requests_mock.Mocker() as m:
-        m.get(backend.url_for(f"importjobs({_JOB_ID})"),
-              json={"data": _DATA_SUCCESS, "solutionname": "s", "progress": 100.0})
+        m.get(
+            backend.url_for(f"importjobs({_JOB_ID})"),
+            json={"data": _DATA_SUCCESS, "solutionname": "s", "progress": 100.0},
+        )
         out = sol.import_result(backend, _JOB_ID)
     assert "formatted_results" not in out
-    assert "warnings" not in out                  # clean success → no warnings
+    assert "warnings" not in out  # clean success → no warnings
 
 
 def test_import_solution_surfaces_partial_failure(backend, tmp_path, no_sleep):
     zip_path = tmp_path / "in.zip"
     zip_path.write_bytes(b"PK\x03\x04stub")
     with requests_mock.Mocker() as m:
-        m.post(backend.url_for("ImportSolutionAsync"),
-               json={"AsyncOperationId": "55555555-5555-5555-5555-555555555555"})
-        m.get(re.compile(r"asyncoperations"),
-              json={"statecode": 3, "statuscode": 30, "message": "Done"})
-        m.get(re.compile(r"importjobs"),
-              json={"progress": 100.0, "startedon": "2026-06-05T00:00:00Z",
-                    "completedon": "2026-06-05T00:01:00Z", "data": _DATA_PARTIAL})
+        m.post(
+            backend.url_for("ImportSolutionAsync"),
+            json={"AsyncOperationId": "55555555-5555-5555-5555-555555555555"},
+        )
+        m.get(
+            re.compile(r"asyncoperations"),
+            json={"statecode": 3, "statuscode": 30, "message": "Done"},
+        )
+        m.get(
+            re.compile(r"importjobs"),
+            json={
+                "progress": 100.0,
+                "startedon": "2026-06-05T00:00:00Z",
+                "completedon": "2026-06-05T00:01:00Z",
+                "data": _DATA_PARTIAL,
+            },
+        )
         info = sol.import_solution(backend, zip_path, quiet=True)
-    assert info["status"] == "succeeded"          # async statuscode 30
-    assert info["result"] == "success"            # manifest-level
-    assert info["warnings"]                        # ...partial failure no longer hidden
+    assert info["status"] == "succeeded"  # async statuscode 30
+    assert info["result"] == "success"  # manifest-level
+    assert info["warnings"]  # ...partial failure no longer hidden
     assert any("Account" in w for w in info["warnings"])
 
 
@@ -191,10 +213,14 @@ def test_import_solution_warns_when_data_missing(backend, tmp_path, no_sleep):
     zip_path = tmp_path / "in.zip"
     zip_path.write_bytes(b"PK\x03\x04stub")
     with requests_mock.Mocker() as m:
-        m.post(backend.url_for("ImportSolutionAsync"),
-               json={"AsyncOperationId": "55555555-5555-5555-5555-555555555555"})
-        m.get(re.compile(r"asyncoperations"),
-              json={"statecode": 3, "statuscode": 30, "message": "Done"})
+        m.post(
+            backend.url_for("ImportSolutionAsync"),
+            json={"AsyncOperationId": "55555555-5555-5555-5555-555555555555"},
+        )
+        m.get(
+            re.compile(r"asyncoperations"),
+            json={"statecode": 3, "statuscode": 30, "message": "Done"},
+        )
         m.get(re.compile(r"importjobs"), json={"progress": 100.0})  # no data
         info = sol.import_solution(backend, zip_path, quiet=True)
     assert info["status"] == "succeeded"
@@ -224,13 +250,20 @@ def test_import_solution_managed_field_false_on_valid_unmanaged_zip(backend, tmp
     zip_path = tmp_path / "unmanaged.zip"
     _make_solution_zip(zip_path, "0")
     with requests_mock.Mocker() as m:
-        m.post(backend.url_for("ImportSolutionAsync"),
-               json={"AsyncOperationId": _ASYNC_OP_ID})
-        m.get(re.compile(r"asyncoperations"),
-              json={"statecode": 3, "statuscode": 30, "message": "Done"})
-        m.get(re.compile(r"importjobs"),
-              json={"progress": 100.0, "startedon": "2026-06-05T00:00:00Z",
-                    "completedon": "2026-06-05T00:01:00Z", "data": _DATA_PARTIAL})
+        m.post(backend.url_for("ImportSolutionAsync"), json={"AsyncOperationId": _ASYNC_OP_ID})
+        m.get(
+            re.compile(r"asyncoperations"),
+            json={"statecode": 3, "statuscode": 30, "message": "Done"},
+        )
+        m.get(
+            re.compile(r"importjobs"),
+            json={
+                "progress": 100.0,
+                "startedon": "2026-06-05T00:00:00Z",
+                "completedon": "2026-06-05T00:01:00Z",
+                "data": _DATA_PARTIAL,
+            },
+        )
         info = sol.import_solution(backend, zip_path, quiet=True)
     assert info["managed"] is False
 
@@ -240,13 +273,20 @@ def test_import_solution_managed_field_none_on_garbage_zip(backend, tmp_path, no
     zip_path = tmp_path / "garbage.zip"
     zip_path.write_bytes(b"PK\x03\x04stub")
     with requests_mock.Mocker() as m:
-        m.post(backend.url_for("ImportSolutionAsync"),
-               json={"AsyncOperationId": _ASYNC_OP_ID})
-        m.get(re.compile(r"asyncoperations"),
-              json={"statecode": 3, "statuscode": 30, "message": "Done"})
-        m.get(re.compile(r"importjobs"),
-              json={"progress": 100.0, "startedon": "2026-06-05T00:00:00Z",
-                    "completedon": "2026-06-05T00:01:00Z", "data": _DATA_PARTIAL})
+        m.post(backend.url_for("ImportSolutionAsync"), json={"AsyncOperationId": _ASYNC_OP_ID})
+        m.get(
+            re.compile(r"asyncoperations"),
+            json={"statecode": 3, "statuscode": 30, "message": "Done"},
+        )
+        m.get(
+            re.compile(r"importjobs"),
+            json={
+                "progress": 100.0,
+                "startedon": "2026-06-05T00:00:00Z",
+                "completedon": "2026-06-05T00:01:00Z",
+                "data": _DATA_PARTIAL,
+            },
+        )
         info = sol.import_solution(backend, zip_path, quiet=True)
     assert info["managed"] is None
 
@@ -254,8 +294,12 @@ def test_import_solution_managed_field_none_on_garbage_zip(backend, tmp_path, no
 def test_import_solution_dry_run_includes_managed_and_dry_run_sentinel(tmp_path):
     """Dry-run: managed False present AND _dry_run sentinel preserved."""
     profile = ConnectionProfile(
-        name="t", url="https://crm.contoso.local/contoso", domain="C",
-        username="u", api_version="v9.2", verify_ssl=False,
+        name="t",
+        url="https://crm.contoso.local/contoso",
+        domain="C",
+        username="u",
+        api_version="v9.2",
+        verify_ssl=False,
     )
     dry_backend = D365Backend(profile, password="pw", dry_run=True)
     zip_path = tmp_path / "unmanaged.zip"
@@ -272,8 +316,12 @@ def _save_profile(monkeypatch, tmp_path):
     monkeypatch.setenv("CRM_HOME", str(tmp_path))
     monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
     from crm.core import session as session_mod
+
     profile = ConnectionProfile(
-        name="p", url="https://crm.contoso.local/contoso", domain="C", username="alice",
+        name="p",
+        url="https://crm.contoso.local/contoso",
+        domain="C",
+        username="alice",
     )
     session_mod.save_profile(profile)
     session_mod.save_profile_secret_plaintext("p", "pw")
@@ -289,8 +337,11 @@ def test_import_result_command_surfaces_warnings_and_formatted(monkeypatch, tmp_
     def fake_import_result(_backend, job_id, *, formatted=False):
         captured["job_id"] = job_id
         captured["formatted"] = formatted
-        return {"import_job_id": job_id, "result": "success",
-                "warnings": ["entity 'Account' import result is 'failure'."]}
+        return {
+            "import_job_id": job_id,
+            "result": "success",
+            "warnings": ["entity 'Account' import result is 'failure'."],
+        }
 
     monkeypatch.setattr(sol, "import_result", fake_import_result)
     result = CliRunner().invoke(
@@ -300,14 +351,15 @@ def test_import_result_command_surfaces_warnings_and_formatted(monkeypatch, tmp_
     assert result.exit_code == 0, result.output
     env = json.loads(result.stdout)
     assert env["ok"] is True
-    assert env["meta"]["warnings"]                 # lifted into meta.warnings
-    assert "warnings" not in env["data"]           # not duplicated in data
+    assert env["meta"]["warnings"]  # lifted into meta.warnings
+    assert "warnings" not in env["data"]  # not duplicated in data
     assert captured == {"job_id": _JOB_ID, "formatted": True}
 
 
 def test_import_command_passes_skip_dependency_check(monkeypatch, tmp_path):
     """`solution import --skip-dependency-check` wires through to
-    import_solution(skip_dependency_check=True) (#376)."""
+    import_solution(skip_dependency_check=True) (#376).
+    """
     _save_profile(monkeypatch, tmp_path)
     zip_path = tmp_path / "pkg.zip"
     zip_path.write_bytes(b"PK\x03\x04stub")
@@ -320,8 +372,16 @@ def test_import_command_passes_skip_dependency_check(monkeypatch, tmp_path):
     monkeypatch.setattr(sol, "import_solution", fake_import_solution)
     result = CliRunner().invoke(
         cli,
-        ["--json", "--profile", "p", "solution", "import", str(zip_path),
-         "--skip-dependency-check", "--yes"],
+        [
+            "--json",
+            "--profile",
+            "p",
+            "solution",
+            "import",
+            str(zip_path),
+            "--skip-dependency-check",
+            "--yes",
+        ],
     )
     assert result.exit_code == 0, result.output
     assert captured["skip"] is True

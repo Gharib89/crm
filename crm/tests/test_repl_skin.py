@@ -5,16 +5,17 @@ The CLI always constructs the skin as the single ``"d365"`` software, which
 keyed no software-specific accent or hex, so both lookups were folded to the
 default constants. These assert that fold stays behavior-preserving.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
 
 from crm.utils.repl_skin import _display_home_path, _strip_ansi, _visible_len
 
-
 # ── Pure layout helpers ───────────────────────────────────────────────
 # These do the width math behind table/banner alignment; a bug here = mis
 # aligned output. Stable + no I/O, so worth a direct unit each.
+
 
 def test_strip_ansi_removes_color_codes():
     assert _strip_ansi("\033[38;5;75mhi\033[0m") == "hi"

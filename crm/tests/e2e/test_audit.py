@@ -11,6 +11,7 @@ enabled — it skips with setup instructions otherwise (e.g. the general cloud o
 which has org-level auditing off). See the test's docstring for why the auditid is
 resolved from the `audits` table rather than from `audit history`.
 """
+
 from __future__ import annotations
 
 import json

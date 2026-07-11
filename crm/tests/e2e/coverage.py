@@ -5,6 +5,7 @@ subcommand is loaded. A naive `.commands` recursion returns 0 leaves and the
 gate would pass vacuously. The walker therefore drives the lazy loader via
 `list_commands`/`get_command` with a real `click.Context`.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -18,7 +19,8 @@ COVERED: set[str] = set()
 
 def covers(*paths: str):
     """Stamp a test with the command path(s) it exercises. Accepts multiple so
-    one lifecycle test can own several verbs (create/get/update/delete)."""
+    one lifecycle test can own several verbs (create/get/update/delete).
+    """
     if not paths:
         raise ValueError("@covers requires at least one command path")
 
@@ -33,8 +35,7 @@ def covers(*paths: str):
 # ── Out-of-scope verbs ─────────────────────────────────────────────────────
 # Top-level groups that touch no Web API — unit-tested elsewhere.
 LOCAL_GROUPS = frozenset(
-    {"profile", "session", "skill", "self-update", "repl", "scaffold", "completion",
-     "examples"}
+    {"profile", "session", "skill", "self-update", "repl", "scaffold", "completion", "examples"}
 )
 
 # D365-touching verbs that genuinely cannot be auto-e2e'd yet. The gate forces a
@@ -60,9 +61,11 @@ E2E_SKIP: dict[str, str] = {}
 
 
 # ── Walker ─────────────────────────────────────────────────────────────────
-def walk_commands(group: click.Command | None = None,
-                  ctx: click.Context | None = None,
-                  prefix: tuple[str, ...] = ()):
+def walk_commands(
+    group: click.Command | None = None,
+    ctx: click.Context | None = None,
+    prefix: tuple[str, ...] = (),
+):
     """Yield full leaf command paths ('metadata add-attribute', ...)."""
     if group is None:
         group = cli
@@ -71,8 +74,8 @@ def walk_commands(group: click.Command | None = None,
     if not isinstance(group, click.Group):
         yield " ".join(prefix)
         return
-    for name in group.list_commands(ctx):       # triggers lazy load on the root
-        sub = group.get_command(ctx, name)      # materializes the command
+    for name in group.list_commands(ctx):  # triggers lazy load on the root
+        sub = group.get_command(ctx, name)  # materializes the command
         if sub is None:
             continue
         path = (*prefix, name)

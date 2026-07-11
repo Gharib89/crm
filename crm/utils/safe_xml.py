@@ -23,18 +23,19 @@ Kept in ``crm/utils`` (basic pyright mode) so the untyped ``defusedxml`` import
 stays out of the strict ``crm/core`` surface while callers still see the typed
 ``ET.Element`` signature.
 """
+
 # pyright: basic
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 
-from defusedxml.ElementTree import fromstring as _defused_fromstring
 from defusedxml.common import DefusedXmlException
+from defusedxml.ElementTree import fromstring as _defused_fromstring
 
 __all__ = ["fromstring"]
 
 
-def fromstring(text: "str | bytes") -> "ET.Element":
+def fromstring(text: str | bytes) -> ET.Element:
     """Parse an XML document from a string/bytes, rejecting entity attacks.
 
     A drop-in for ``xml.etree.ElementTree.fromstring`` on org-supplied input.
@@ -49,6 +50,4 @@ def fromstring(text: "str | bytes") -> "ET.Element":
         # attacker-controlled DTD text (e.g. a long SYSTEM identifier), so keep
         # it off the user-facing message and logs — it stays on the chained
         # cause via ``from exc`` for debugging.
-        raise ET.ParseError(
-            "unsafe XML rejected: DTD/entity declarations are not allowed"
-        ) from exc
+        raise ET.ParseError("unsafe XML rejected: DTD/entity declarations are not allowed") from exc

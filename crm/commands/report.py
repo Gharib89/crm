@@ -5,6 +5,7 @@ or a link report (``create --url``), file them under an area (``set-category``),
 make them organization-wide (``create --org``), and list / get / delete. Reports
 are solution-aware, so writes take ``--solution``.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -44,8 +45,7 @@ def report_list(ctx: CLIContext) -> None:
         reports = report_mod.list_reports(ctx.backend())
     headers = ["name", "reportid", "reporttypecode", "ispersonal"]
     rows = [
-        [r["name"], r.get("reportid") or "", str(r.get("reporttypecode")),
-         str(r["ispersonal"])]
+        [r["name"], r.get("reportid") or "", str(r.get("reporttypecode")), str(r["ispersonal"])]
         for r in reports
     ]
     ctx.emit(True, data=reports, table={"headers": headers, "rows": rows})
@@ -75,20 +75,29 @@ def report_delete(ctx: CLIContext, report_id: str, yes: bool) -> None:
 
 @report_group.command("create")
 @click.option("--name", required=True, help="Report display name.")
-@click.option("--body-file", "body_file",
-              type=click.Path(exists=True, dir_okay=False, readable=True),
-              default=None,
-              help="Path to an SSRS RDL file to upload (Reporting Services "
-                   "report). Mutually exclusive with --url.")
-@click.option("--url", default=None,
-              help="External report URL (link report). Mutually exclusive with "
-                   "--body-file.")
-@click.option("--filename", default=None,
-              help="Report file name. Defaults to the --body-file basename.")
+@click.option(
+    "--body-file",
+    "body_file",
+    type=click.Path(exists=True, dir_okay=False, readable=True),
+    default=None,
+    help="Path to an SSRS RDL file to upload (Reporting Services "
+    "report). Mutually exclusive with --url.",
+)
+@click.option(
+    "--url",
+    default=None,
+    help="External report URL (link report). Mutually exclusive with --body-file.",
+)
+@click.option(
+    "--filename", default=None, help="Report file name. Defaults to the --body-file basename."
+)
 @click.option("--description", default=None, help="Report description.")
-@click.option("--org", is_flag=True, default=False,
-              help="Make the report available to the organization "
-                   "(ispersonal=false). Default: personal.")
+@click.option(
+    "--org",
+    is_flag=True,
+    default=False,
+    help="Make the report available to the organization (ispersonal=false). Default: personal.",
+)
 @_solution_option
 @pass_ctx
 def report_create(
@@ -104,7 +113,8 @@ def report_create(
     """Create a report from an RDL file (--body-file) or a link (--url)."""
     if bool(body_file) == bool(url):
         raise click.UsageError(
-            "pass exactly one of --body-file (RDL upload) or --url (link report).")
+            "pass exactly one of --body-file (RDL upload) or --url (link report)."
+        )
 
     body = None
     if body_file:
@@ -130,9 +140,12 @@ def report_create(
 
 @report_group.command("set-category")
 @click.argument("report_id")
-@click.option("--category", required=True,
-              type=click.Choice(sorted(report_mod.CATEGORY_CODES)),
-              help="Report area: sales, service, marketing, or administrative.")
+@click.option(
+    "--category",
+    required=True,
+    type=click.Choice(sorted(report_mod.CATEGORY_CODES)),
+    help="Report area: sales, service, marketing, or administrative.",
+)
 @_solution_option
 @pass_ctx
 def report_set_category(
@@ -145,6 +158,7 @@ def report_set_category(
     solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = report_mod.set_category(
-            ctx.backend(), report_id, category=category, solution=solution)
+            ctx.backend(), report_id, category=category, solution=solution
+        )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, report_id, info, solution=solution)

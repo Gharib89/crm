@@ -5,6 +5,7 @@ catalogue of every command, its options/arguments, Choice enums, defaults, and
 envvars. Pure introspection of live Click objects — no mkdocs-click dependency
 and no D365 connection required.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -33,7 +34,8 @@ def _default(param: click.Parameter):
     A param with no declared default holds Click's UNSET sentinel; emitted verbatim
     it stringifies (via the JSON encoder's `default=str`) to the literal
     "Sentinel.UNSET", a phantom value that misleads an agent generating invocations
-    from the catalogue. Report a real default or an explicit null instead."""
+    from the catalogue. Report a real default or an explicit null instead.
+    """
     default = param.default
     return None if default is _UNSET_DEFAULT else default
 
@@ -71,8 +73,7 @@ def _describe_command(cmd: click.Command, path: list[str]) -> dict:
     # Hidden options are deliberately off the public surface (deprecated aliases,
     # internal escape hatches); dropping them keeps the catalogue truthful.
     params = [
-        _serialize_option(p) for p in cmd.params
-        if isinstance(p, click.Option) and not p.hidden
+        _serialize_option(p) for p in cmd.params if isinstance(p, click.Option) and not p.hidden
     ]
     return {
         "name": path[-1],
@@ -113,8 +114,7 @@ def describe_cmd(ctx: CLIContext, group: str | None):
     # Root sticky global options (--json, --dry-run, --profile, …) are not part of
     # any subcommand but apply to every invocation, so surface them separately.
     root_options = [
-        _serialize_option(p) for p in cli.params
-        if isinstance(p, click.Option) and not p.hidden
+        _serialize_option(p) for p in cli.params if isinstance(p, click.Option) and not p.hidden
     ]
     if group:
         # Excluded leaves (repl) are absent from the catalogue everywhere — naming
@@ -136,10 +136,7 @@ def describe_cmd(ctx: CLIContext, group: str | None):
         return
     # Human mode: a flat table is far more legible than the truncated JSON blob
     # emit() would otherwise render for the nested lists.
-    rows = [
-        [c["path"], "group" if c["is_group"] else "command", c["help"]]
-        for c in commands
-    ]
+    rows = [[c["path"], "group" if c["is_group"] else "command", c["help"]] for c in commands]
     ctx.emit(
         True,
         table={"headers": ["command", "kind", "help"], "rows": rows},

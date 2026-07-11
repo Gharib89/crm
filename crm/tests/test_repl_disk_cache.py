@@ -1,11 +1,12 @@
 # pyright: basic
 """Tests for MetadataCache integration with the persistent on-disk entity-definition cache."""
+
 from __future__ import annotations
 
 import requests_mock as rm_module
 
-from crm.core import metadata_cache as mc_mod
 from crm.commands.repl import MetadataCache
+from crm.core import metadata_cache as mc_mod
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -23,10 +24,9 @@ _ENTITY_RESPONSE = {
 # Test 1: cold cache (empty CRM_HOME) — network hit, disk file created
 # ---------------------------------------------------------------------------
 
+
 class TestColdCacheWritesToDisk:
-    def test_logical_names_and_set_names(
-        self, monkeypatch, tmp_path, profile, backend
-    ) -> None:
+    def test_logical_names_and_set_names(self, monkeypatch, tmp_path, profile, backend) -> None:
         monkeypatch.setenv("CRM_HOME", str(tmp_path))
         url = backend.url_for("EntityDefinitions")
         with rm_module.Mocker() as m:
@@ -44,10 +44,9 @@ class TestColdCacheWritesToDisk:
 # Test 2: disk hit across instances — second instance must NOT hit the network
 # ---------------------------------------------------------------------------
 
+
 class TestDiskHitAcrossInstances:
-    def test_second_instance_served_from_disk(
-        self, monkeypatch, tmp_path, backend
-    ) -> None:
+    def test_second_instance_served_from_disk(self, monkeypatch, tmp_path, backend) -> None:
         monkeypatch.setenv("CRM_HOME", str(tmp_path))
         url = backend.url_for("EntityDefinitions")
         with rm_module.Mocker() as m:
@@ -73,10 +72,9 @@ class TestDiskHitAcrossInstances:
 # Test 3: default MetadataCache() (no cache) — always hits network, no disk file
 # ---------------------------------------------------------------------------
 
+
 class TestDefaultNoCachePath:
-    def test_two_instances_both_hit_network(
-        self, monkeypatch, tmp_path, profile, backend
-    ) -> None:
+    def test_two_instances_both_hit_network(self, monkeypatch, tmp_path, profile, backend) -> None:
         monkeypatch.setenv("CRM_HOME", str(tmp_path))
         url = backend.url_for("EntityDefinitions")
         with rm_module.Mocker() as m:
@@ -98,10 +96,9 @@ class TestDefaultNoCachePath:
 # Test 4: refresh=True is one-shot — _refresh cleared after first load
 # ---------------------------------------------------------------------------
 
+
 class TestRefreshIsOneShot:
-    def test_refresh_false_after_first_load(
-        self, monkeypatch, tmp_path, backend
-    ) -> None:
+    def test_refresh_false_after_first_load(self, monkeypatch, tmp_path, backend) -> None:
         monkeypatch.setenv("CRM_HOME", str(tmp_path))
         url = backend.url_for("EntityDefinitions")
         with rm_module.Mocker() as m:

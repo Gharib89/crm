@@ -8,7 +8,6 @@ import requests_mock
 
 from crm.utils.d365_backend import D365Error
 
-
 _REL_ID = "33333333-3333-3333-3333-333333333333"
 
 # A realistic, property-rich entity definition as the server would return it.
@@ -38,20 +37,28 @@ _FULL_ENTITY = {
 class TestRetrieveMergeWriteEntity:
     def test_put_carries_all_original_properties_plus_change(self, backend):
         from crm.core import metadata_update as mu
+
         path = backend.url_for("EntityDefinitions(LogicalName='new_project')")
         with requests_mock.Mocker() as m:
             m.get(path, json=_FULL_ENTITY)
             m.put(path, status_code=204)
-            mu.update_entity(backend, "new_project", display_name="Engagement",
-                             publish=False)
+            mu.update_entity(backend, "new_project", display_name="Engagement", publish=False)
         # Last request is the PUT.
         put_req = m.request_history[-1]
         assert put_req.method == "PUT"
         body = put_req.json()
         # No-wipe proof: every original top-level property survives.
-        for key in ("SchemaName", "LogicalName", "DisplayCollectionName",
-                    "Description", "OwnershipType", "HasActivities", "HasNotes",
-                    "IsAuditEnabled", "IsCustomEntity"):
+        for key in (
+            "SchemaName",
+            "LogicalName",
+            "DisplayCollectionName",
+            "Description",
+            "OwnershipType",
+            "HasActivities",
+            "HasNotes",
+            "IsAuditEnabled",
+            "IsCustomEntity",
+        ):
             assert body[key] == _FULL_ENTITY[key], key
         # New DisplayName landed.
         assert body["DisplayName"]["LocalizedLabels"][0]["Label"] == "Engagement"
@@ -60,6 +67,7 @@ class TestRetrieveMergeWriteEntity:
 
     def test_put_to_exact_path_with_mergelabels_header(self, backend):
         from crm.core import metadata_update as mu
+
         path = backend.url_for("EntityDefinitions(LogicalName='new_project')")
         with requests_mock.Mocker() as m:
             m.get(path, json=_FULL_ENTITY)
@@ -72,11 +80,13 @@ class TestRetrieveMergeWriteEntity:
 
     def test_empty_logical_name_raises(self, backend):
         from crm.core import metadata_update as mu
+
         with pytest.raises(D365Error, match="logical_name"):
             mu.update_entity(backend, "", display_name="X")
 
     def test_empty_changes_raises_before_any_http(self, backend):
         from crm.core import metadata_update as mu
+
         with requests_mock.Mocker() as m:
             m.get(requests_mock.ANY, status_code=500)
             with pytest.raises(D365Error, match="nothing to update"):
@@ -85,6 +95,7 @@ class TestRetrieveMergeWriteEntity:
 
     def test_get_error_propagates_no_put(self, backend):
         from crm.core import metadata_update as mu
+
         path = backend.url_for("EntityDefinitions(LogicalName='nope')")
         with requests_mock.Mocker() as m:
             m.get(path, status_code=404, json={"error": {"message": "not found"}})
@@ -110,17 +121,16 @@ _FULL_STRING_ATTR = {
 class TestUpdateAttribute:
     def test_changing_required_preserves_other_props_via_cast_path(self, backend):
         from crm.core import metadata_update as mu
+
         base = backend.url_for(
-            "EntityDefinitions(LogicalName='new_project')"
-            "/Attributes(LogicalName='new_code')"
+            "EntityDefinitions(LogicalName='new_project')/Attributes(LogicalName='new_code')"
         )
         cast = base + "/Microsoft.Dynamics.CRM.StringAttributeMetadata"
         with requests_mock.Mocker() as m:
             m.get(base, json=_FULL_STRING_ATTR)
             m.get(cast, json=_FULL_STRING_ATTR)
             m.put(cast, status_code=204)
-            mu.update_attribute(backend, "new_project", "new_code",
-                                required="ApplicationRequired")
+            mu.update_attribute(backend, "new_project", "new_code", required="ApplicationRequired")
         put_req = m.request_history[-1]
         assert put_req.method == "PUT"
         assert put_req.url == cast
@@ -136,9 +146,9 @@ class TestUpdateAttribute:
 
     def test_integer_min_max_serialize_as_ints(self, backend):
         from crm.core import metadata_update as mu
+
         base = backend.url_for(
-            "EntityDefinitions(LogicalName='new_project')"
-            "/Attributes(LogicalName='new_count')"
+            "EntityDefinitions(LogicalName='new_project')/Attributes(LogicalName='new_count')"
         )
         cast = base + "/Microsoft.Dynamics.CRM.IntegerAttributeMetadata"
         with requests_mock.Mocker() as m:
@@ -146,8 +156,11 @@ class TestUpdateAttribute:
             m.get(cast, json=_FULL_INTEGER_ATTR)
             m.put(cast, status_code=204)
             mu.update_attribute(
-                backend, "new_project", "new_count",
-                min_value=0.0, max_value=100.0,
+                backend,
+                "new_project",
+                "new_count",
+                min_value=0.0,
+                max_value=100.0,
             )
         body = m.request_history[-1].json()
         assert isinstance(body["MinValue"], int)
@@ -157,9 +170,9 @@ class TestUpdateAttribute:
 
     def test_integer_fractional_bound_rejected_before_put(self, backend):
         from crm.core import metadata_update as mu
+
         base = backend.url_for(
-            "EntityDefinitions(LogicalName='new_project')"
-            "/Attributes(LogicalName='new_count')"
+            "EntityDefinitions(LogicalName='new_project')/Attributes(LogicalName='new_count')"
         )
         cast = base + "/Microsoft.Dynamics.CRM.IntegerAttributeMetadata"
         with requests_mock.Mocker() as m:
@@ -168,8 +181,11 @@ class TestUpdateAttribute:
             put = m.put(cast, status_code=204)
             with pytest.raises(D365Error, match="whole number"):
                 mu.update_attribute(
-                    backend, "new_project", "new_count",
-                    min_value=0.0, max_value=100.5,
+                    backend,
+                    "new_project",
+                    "new_count",
+                    min_value=0.0,
+                    max_value=100.5,
                 )
         assert put.call_count == 0
 
@@ -198,9 +214,9 @@ class TestUpdateAttributeMergeBaseFromCastPath:
 
     def test_type_specific_prop_absent_from_uncast_survives_the_put(self, backend):
         from crm.core import metadata_update as mu
+
         base = backend.url_for(
-            "EntityDefinitions(LogicalName='new_project')"
-            "/Attributes(LogicalName='new_code')"
+            "EntityDefinitions(LogicalName='new_project')/Attributes(LogicalName='new_code')"
         )
         cast = base + "/Microsoft.Dynamics.CRM.StringAttributeMetadata"
         with requests_mock.Mocker() as m:
@@ -208,8 +224,7 @@ class TestUpdateAttributeMergeBaseFromCastPath:
             base_get = m.get(base, json=_BASE_ONLY_STRING_ATTR)
             cast_get = m.get(cast, json=_FULL_STRING_ATTR)
             m.put(cast, status_code=204)
-            mu.update_attribute(backend, "new_project", "new_code",
-                                display_name="Phase")
+            mu.update_attribute(backend, "new_project", "new_code", display_name="Phase")
         # The cast path is read for the typed merge base...
         assert base_get.call_count == 1
         assert cast_get.call_count == 1
@@ -240,9 +255,9 @@ _FULL_DATETIME_ATTR = {
 class TestUpdateAttributeFormat:
     def test_datetime_format_writes_plain_format_not_formatname(self, backend):
         from crm.core import metadata_update as mu
+
         base = backend.url_for(
-            "EntityDefinitions(LogicalName='new_project')"
-            "/Attributes(LogicalName='new_due')"
+            "EntityDefinitions(LogicalName='new_project')/Attributes(LogicalName='new_due')"
         )
         cast = base + "/Microsoft.Dynamics.CRM.DateTimeAttributeMetadata"
         with requests_mock.Mocker() as m:
@@ -258,9 +273,9 @@ class TestUpdateAttributeFormat:
 
     def test_string_format_writes_value_wrapped_formatname(self, backend):
         from crm.core import metadata_update as mu
+
         base = backend.url_for(
-            "EntityDefinitions(LogicalName='new_project')"
-            "/Attributes(LogicalName='new_code')"
+            "EntityDefinitions(LogicalName='new_project')/Attributes(LogicalName='new_code')"
         )
         cast = base + "/Microsoft.Dynamics.CRM.StringAttributeMetadata"
         with requests_mock.Mocker() as m:
@@ -273,9 +288,9 @@ class TestUpdateAttributeFormat:
 
     def test_datetime_rejects_string_format_value_client_side(self, backend):
         from crm.core import metadata_update as mu
+
         base = backend.url_for(
-            "EntityDefinitions(LogicalName='new_project')"
-            "/Attributes(LogicalName='new_due')"
+            "EntityDefinitions(LogicalName='new_project')/Attributes(LogicalName='new_due')"
         )
         cast = base + "/Microsoft.Dynamics.CRM.DateTimeAttributeMetadata"
         with requests_mock.Mocker() as m:
@@ -287,9 +302,9 @@ class TestUpdateAttributeFormat:
 
     def test_max_length_on_datetime_rejected_client_side(self, backend):
         from crm.core import metadata_update as mu
+
         base = backend.url_for(
-            "EntityDefinitions(LogicalName='new_project')"
-            "/Attributes(LogicalName='new_due')"
+            "EntityDefinitions(LogicalName='new_project')/Attributes(LogicalName='new_due')"
         )
         cast = base + "/Microsoft.Dynamics.CRM.DateTimeAttributeMetadata"
         with requests_mock.Mocker() as m:
@@ -320,13 +335,13 @@ class TestUpdateAttributeBehavior:
 
     def _paths(self, backend):
         base = backend.url_for(
-            "EntityDefinitions(LogicalName='new_project')"
-            "/Attributes(LogicalName='new_due')"
+            "EntityDefinitions(LogicalName='new_project')/Attributes(LogicalName='new_due')"
         )
         return base, base + "/Microsoft.Dynamics.CRM.DateTimeAttributeMetadata"
 
     def test_dateonly_from_userlocal_puts_behavior_and_autoformat(self, backend):
         from crm.core import metadata_update as mu
+
         base, cast = self._paths(backend)
         with requests_mock.Mocker() as m:
             m.get(base, json=_FULL_DATETIME_ATTR_USERLOCAL)
@@ -345,13 +360,15 @@ class TestUpdateAttributeBehavior:
 
     def test_tzi_from_userlocal_leaves_format(self, backend):
         from crm.core import metadata_update as mu
+
         base, cast = self._paths(backend)
         with requests_mock.Mocker() as m:
             m.get(base, json=_FULL_DATETIME_ATTR_USERLOCAL)
             m.get(cast, json=_FULL_DATETIME_ATTR_USERLOCAL)
             m.put(cast, status_code=204)
-            mu.update_attribute(backend, "new_project", "new_due",
-                                behavior_name="TimeZoneIndependent")
+            mu.update_attribute(
+                backend, "new_project", "new_due", behavior_name="TimeZoneIndependent"
+            )
         body = m.request_history[-1].json()
         assert body["DateTimeBehavior"] == {"Value": "TimeZoneIndependent"}
         # TimeZoneIndependent needs no format change.
@@ -359,6 +376,7 @@ class TestUpdateAttributeBehavior:
 
     def test_rejected_when_source_not_userlocal(self, backend):
         from crm.core import metadata_update as mu
+
         base, cast = self._paths(backend)
         attr = {**_FULL_DATETIME_ATTR_USERLOCAL, "DateTimeBehavior": {"Value": "DateOnly"}}
         with requests_mock.Mocker() as m:
@@ -366,59 +384,64 @@ class TestUpdateAttributeBehavior:
             m.get(cast, json=attr)
             put = m.put(cast, status_code=204)
             with pytest.raises(D365Error, match="UserLocal"):
-                mu.update_attribute(backend, "new_project", "new_due",
-                                    behavior_name="TimeZoneIndependent")
+                mu.update_attribute(
+                    backend, "new_project", "new_due", behavior_name="TimeZoneIndependent"
+                )
             assert put.call_count == 0
 
     def test_rejected_when_cannot_change(self, backend):
         from crm.core import metadata_update as mu
+
         base, cast = self._paths(backend)
-        attr = {**_FULL_DATETIME_ATTR_USERLOCAL,
-                "CanChangeDateTimeBehavior": {"Value": False}}
+        attr = {**_FULL_DATETIME_ATTR_USERLOCAL, "CanChangeDateTimeBehavior": {"Value": False}}
         with requests_mock.Mocker() as m:
             m.get(base, json=attr)
             m.get(cast, json=attr)
             put = m.put(cast, status_code=204)
             with pytest.raises(D365Error, match="CanChangeDateTimeBehavior"):
-                mu.update_attribute(backend, "new_project", "new_due",
-                                    behavior_name="DateOnly")
+                mu.update_attribute(backend, "new_project", "new_due", behavior_name="DateOnly")
             assert put.call_count == 0
 
     def test_userlocal_target_rejected_no_put(self, backend):
         from crm.core import metadata_update as mu
+
         base, cast = self._paths(backend)
         with requests_mock.Mocker() as m:
             m.get(base, json=_FULL_DATETIME_ATTR_USERLOCAL)
             put = m.put(cast, status_code=204)
             with pytest.raises(D365Error, match="UserLocal"):
-                mu.update_attribute(backend, "new_project", "new_due",
-                                    behavior_name="UserLocal")
+                mu.update_attribute(backend, "new_project", "new_due", behavior_name="UserLocal")
             assert put.call_count == 0
 
     def test_behavior_on_non_datetime_rejected_no_put(self, backend):
         from crm.core import metadata_update as mu
+
         base = backend.url_for(
-            "EntityDefinitions(LogicalName='new_project')"
-            "/Attributes(LogicalName='new_code')"
+            "EntityDefinitions(LogicalName='new_project')/Attributes(LogicalName='new_code')"
         )
         cast = base + "/Microsoft.Dynamics.CRM.StringAttributeMetadata"
         with requests_mock.Mocker() as m:
             m.get(base, json=_FULL_STRING_ATTR)
             put = m.put(cast, status_code=204)
             with pytest.raises(D365Error, match="datetime"):
-                mu.update_attribute(backend, "new_project", "new_code",
-                                    behavior_name="DateOnly")
+                mu.update_attribute(backend, "new_project", "new_code", behavior_name="DateOnly")
             assert put.call_count == 0
 
     def test_dateonly_with_conflicting_format_rejected_no_put(self, backend):
         from crm.core import metadata_update as mu
+
         base, cast = self._paths(backend)
         with requests_mock.Mocker() as m:
             m.get(base, json=_FULL_DATETIME_ATTR_USERLOCAL)
             put = m.put(cast, status_code=204)
             with pytest.raises(D365Error, match="DateOnly"):
-                mu.update_attribute(backend, "new_project", "new_due",
-                                    behavior_name="DateOnly", format_name="DateAndTime")
+                mu.update_attribute(
+                    backend,
+                    "new_project",
+                    "new_due",
+                    behavior_name="DateOnly",
+                    format_name="DateAndTime",
+                )
             assert put.call_count == 0
 
 
@@ -443,25 +466,26 @@ _FULL_PICKLIST_ATTR = {
 class TestUpdateAttributeOptionSetCarveOut:
     def test_display_update_leaves_optionset_block_untouched(self, backend):
         from crm.core import metadata_update as mu
+
         base = backend.url_for(
-            "EntityDefinitions(LogicalName='new_project')"
-            "/Attributes(LogicalName='new_stage')"
+            "EntityDefinitions(LogicalName='new_project')/Attributes(LogicalName='new_stage')"
         )
         cast = base + "/Microsoft.Dynamics.CRM.PicklistAttributeMetadata"
         with requests_mock.Mocker() as m:
             m.get(base, json=_FULL_PICKLIST_ATTR)
             m.get(cast, json=_FULL_PICKLIST_ATTR)
             m.put(cast, status_code=204)
-            mu.update_attribute(backend, "new_project", "new_stage",
-                                display_name="Phase")
+            mu.update_attribute(backend, "new_project", "new_stage", display_name="Phase")
         body = m.request_history[-1].json()
         assert body["DisplayName"]["LocalizedLabels"][0]["Label"] == "Phase"
         # OptionSet block is byte-for-byte the retrieved one (no option edits).
         assert body["OptionSet"] == _FULL_PICKLIST_ATTR["OptionSet"]
 
     def test_update_attribute_does_not_accept_option_edits(self):
-        from crm.core import metadata_update as mu
         import inspect
+
+        from crm.core import metadata_update as mu
+
         params = inspect.signature(mu.update_attribute).parameters
         for forbidden in ("options", "optionset_name", "insert", "delete"):
             assert forbidden not in params
@@ -494,9 +518,8 @@ _FULL_ONE_TO_MANY = {
 class TestUpdateRelationship:
     def test_changing_one_cascade_preserves_the_rest(self, backend):
         from crm.core import metadata_update as mu
-        resolve = backend.url_for(
-            "RelationshipDefinitions(SchemaName='new_account_new_project')"
-        )
+
+        resolve = backend.url_for("RelationshipDefinitions(SchemaName='new_account_new_project')")
         # Merge base is read from the typed cast path (only the cast carries the
         # full CascadeConfiguration/AssociatedMenuConfiguration), but the PUT
         # must target the UN-cast entity-set path — Dataverse rejects a PUT to
@@ -507,16 +530,20 @@ class TestUpdateRelationship:
         )
         uncast = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
         with requests_mock.Mocker() as m:
-            m.get(resolve, json={
-                "@odata.type": "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
-                "MetadataId": _REL_ID,
-                "SchemaName": "new_account_new_project",
-                "RelationshipType": "OneToManyRelationship",
-            })
+            m.get(
+                resolve,
+                json={
+                    "@odata.type": "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
+                    "MetadataId": _REL_ID,
+                    "SchemaName": "new_account_new_project",
+                    "RelationshipType": "OneToManyRelationship",
+                },
+            )
             m.get(cast, json=_FULL_ONE_TO_MANY)
             m.put(uncast, status_code=204)
             mu.update_relationship(
-                backend, "new_account_new_project",
+                backend,
+                "new_account_new_project",
                 cascade={"Delete": "Restrict"},
             )
         put_req = m.request_history[-1]
@@ -525,8 +552,7 @@ class TestUpdateRelationship:
         body = put_req.json()
         # The polymorphic RelationshipDefinitions set needs the @odata.type
         # discriminator in the PUT body to know which derived type to replace.
-        assert body["@odata.type"] == \
-            "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
+        assert body["@odata.type"] == "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
         cc = body["CascadeConfiguration"]
         assert cc["Delete"] == "Restrict"
         # All other cascade members preserved.
@@ -536,30 +562,34 @@ class TestUpdateRelationship:
         assert cc["Unshare"] == "NoCascade"
         assert cc["Merge"] == "NoCascade"
         # AssociatedMenuConfiguration preserved.
-        assert body["AssociatedMenuConfiguration"] == \
-            _FULL_ONE_TO_MANY["AssociatedMenuConfiguration"]
+        assert (
+            body["AssociatedMenuConfiguration"] == _FULL_ONE_TO_MANY["AssociatedMenuConfiguration"]
+        )
 
     def test_hierarchical_change_merges_into_put_preserving_rest(self, backend):
         from crm.core import metadata_update as mu
-        resolve = backend.url_for(
-            "RelationshipDefinitions(SchemaName='new_account_new_account')"
-        )
+
+        resolve = backend.url_for("RelationshipDefinitions(SchemaName='new_account_new_account')")
         cast = backend.url_for(
             f"RelationshipDefinitions({_REL_ID})"
             "/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
         )
         uncast = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
         with requests_mock.Mocker() as m:
-            m.get(resolve, json={
-                "@odata.type": "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
-                "MetadataId": _REL_ID,
-                "SchemaName": "new_account_new_account",
-                "RelationshipType": "OneToManyRelationship",
-            })
+            m.get(
+                resolve,
+                json={
+                    "@odata.type": "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
+                    "MetadataId": _REL_ID,
+                    "SchemaName": "new_account_new_account",
+                    "RelationshipType": "OneToManyRelationship",
+                },
+            )
             m.get(cast, json={**_FULL_ONE_TO_MANY, "IsHierarchical": False})
             m.put(uncast, status_code=204)
             mu.update_relationship(
-                backend, "new_account_new_account",
+                backend,
+                "new_account_new_account",
                 is_hierarchical=True,
             )
         body = m.request_history[-1].json()
@@ -574,33 +604,33 @@ class TestUpdateRelationship:
         # type to replace. The fix injects it from the resolved cast so the PUT
         # body is never missing it.
         from crm.core import metadata_update as mu
-        resolve = backend.url_for(
-            "RelationshipDefinitions(SchemaName='new_account_new_project')"
-        )
+
+        resolve = backend.url_for("RelationshipDefinitions(SchemaName='new_account_new_project')")
         cast = backend.url_for(
             f"RelationshipDefinitions({_REL_ID})"
             "/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
         )
         uncast = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
-        cast_get_no_type = {
-            k: v for k, v in _FULL_ONE_TO_MANY.items() if k != "@odata.type"
-        }
+        cast_get_no_type = {k: v for k, v in _FULL_ONE_TO_MANY.items() if k != "@odata.type"}
         with requests_mock.Mocker() as m:
-            m.get(resolve, json={
-                "@odata.type": "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
-                "MetadataId": _REL_ID,
-                "SchemaName": "new_account_new_project",
-                "RelationshipType": "OneToManyRelationship",
-            })
+            m.get(
+                resolve,
+                json={
+                    "@odata.type": "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
+                    "MetadataId": _REL_ID,
+                    "SchemaName": "new_account_new_project",
+                    "RelationshipType": "OneToManyRelationship",
+                },
+            )
             m.get(cast, json=cast_get_no_type)
             m.put(uncast, status_code=204)
             mu.update_relationship(
-                backend, "new_account_new_project",
+                backend,
+                "new_account_new_project",
                 cascade={"Delete": "Restrict"},
             )
         body = m.request_history[-1].json()
-        assert body["@odata.type"] == \
-            "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
+        assert body["@odata.type"] == "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
         # The change still landed and siblings survived.
         assert body["CascadeConfiguration"]["Delete"] == "Restrict"
         assert body["CascadeConfiguration"]["Assign"] == "NoCascade"
@@ -608,34 +638,41 @@ class TestUpdateRelationship:
 
 def _mock_resolve_n_n(m, backend):
     """Register the N:N relationship resolve GET. Returns the resolve URL."""
-    resolve = backend.url_for(
-        "RelationshipDefinitions(SchemaName='new_account_new_project_n_n')"
+    resolve = backend.url_for("RelationshipDefinitions(SchemaName='new_account_new_project_n_n')")
+    m.get(
+        resolve,
+        json={
+            "@odata.type": "#Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata",
+            "MetadataId": _REL_ID,
+            "SchemaName": "new_account_new_project_n_n",
+            "RelationshipType": "ManyToManyRelationship",
+        },
     )
-    m.get(resolve, json={
-        "@odata.type": "#Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata",
-        "MetadataId": _REL_ID,
-        "SchemaName": "new_account_new_project_n_n",
-        "RelationshipType": "ManyToManyRelationship",
-    })
     return resolve
 
 
 class TestUpdateRelationshipManyToManyGuards:
     # cascade / menu_behavior / is_hierarchical are one-to-many-only knobs; each on
     # an N:N relationship hits the same client-side guard and never issues a PUT.
-    @pytest.mark.parametrize("kwargs", [
-        {"cascade": {"Delete": "Restrict"}},
-        {"menu_behavior": "UseLabel"},
-        {"is_hierarchical": True},
-    ])
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"cascade": {"Delete": "Restrict"}},
+            {"menu_behavior": "UseLabel"},
+            {"is_hierarchical": True},
+        ],
+    )
     def test_one_to_many_only_knob_on_n_n_raises_client_side_no_put(self, backend, kwargs):
         from crm.core import metadata_update as mu
+
         with requests_mock.Mocker() as m:
             _mock_resolve_n_n(m, backend)
             put = m.put(requests_mock.ANY, status_code=204)
             with pytest.raises(D365Error, match="one-to-many"):
                 mu.update_relationship(
-                    backend, "new_account_new_project_n_n", **kwargs,
+                    backend,
+                    "new_account_new_project_n_n",
+                    **kwargs,
                 )
             assert put.call_count == 0
 
@@ -643,11 +680,13 @@ class TestUpdateRelationshipManyToManyGuards:
 class TestUpdateRelationshipCascadeKey:
     def test_bad_cascade_key_raises_client_side_no_put(self, backend):
         from crm.core import metadata_update as mu
+
         with requests_mock.Mocker() as m:
             put = m.put(requests_mock.ANY, status_code=204)
             with pytest.raises(D365Error, match="cascade"):
                 mu.update_relationship(
-                    backend, "new_account_new_project",
+                    backend,
+                    "new_account_new_project",
                     cascade={"Delte": "Restrict"},
                 )
             # Bad key is caught before resolving/PUT.
@@ -678,9 +717,9 @@ _FULL_MONEY_ATTR = {
 class TestUpdateAttributePrecisionRange:
     def test_decimal_precision_over_max_raises_client_side_no_put(self, backend):
         from crm.core import metadata_update as mu
+
         base = backend.url_for(
-            "EntityDefinitions(LogicalName='new_project')"
-            "/Attributes(LogicalName='new_amount')"
+            "EntityDefinitions(LogicalName='new_project')/Attributes(LogicalName='new_amount')"
         )
         cast = base + "/Microsoft.Dynamics.CRM.DecimalAttributeMetadata"
         with requests_mock.Mocker() as m:
@@ -692,9 +731,9 @@ class TestUpdateAttributePrecisionRange:
 
     def test_money_precision_over_max_raises_client_side_no_put(self, backend):
         from crm.core import metadata_update as mu
+
         base = backend.url_for(
-            "EntityDefinitions(LogicalName='new_project')"
-            "/Attributes(LogicalName='new_cost')"
+            "EntityDefinitions(LogicalName='new_project')/Attributes(LogicalName='new_cost')"
         )
         cast = base + "/Microsoft.Dynamics.CRM.MoneyAttributeMetadata"
         with requests_mock.Mocker() as m:
@@ -706,9 +745,9 @@ class TestUpdateAttributePrecisionRange:
 
     def test_decimal_precision_in_range_puts(self, backend):
         from crm.core import metadata_update as mu
+
         base = backend.url_for(
-            "EntityDefinitions(LogicalName='new_project')"
-            "/Attributes(LogicalName='new_amount')"
+            "EntityDefinitions(LogicalName='new_project')/Attributes(LogicalName='new_amount')"
         )
         cast = base + "/Microsoft.Dynamics.CRM.DecimalAttributeMetadata"
         with requests_mock.Mocker() as m:
@@ -723,12 +762,12 @@ class TestUpdateAttributePrecisionRange:
 class TestDryRun:
     def test_dry_run_does_not_put_and_returns_merged_body_and_diff(self, dry_backend):
         from crm.core import metadata_update as mu
+
         path = dry_backend.url_for("EntityDefinitions(LogicalName='new_project')")
         with requests_mock.Mocker() as m:
             getter = m.get(path, json=_FULL_ENTITY)
             put = m.put(path, status_code=204)
-            out = mu.update_entity(dry_backend, "new_project",
-                                   display_name="Engagement")
+            out = mu.update_entity(dry_backend, "new_project", display_name="Engagement")
             assert getter.call_count == 1
             assert put.call_count == 0
         assert out["_dry_run"] is True
@@ -739,17 +778,12 @@ class TestDryRun:
         # Diff: changed key old -> new.
         assert "DisplayName" in out["diff"]
         assert out["diff"]["DisplayName"]["old"] == _FULL_ENTITY["DisplayName"]
-        assert out["diff"]["DisplayName"]["new"]["LocalizedLabels"][0]["Label"] == \
-            "Engagement"
+        assert out["diff"]["DisplayName"]["new"]["LocalizedLabels"][0]["Label"] == "Engagement"
 
-    def test_dry_run_attribute_gets_no_put_returns_merged_body_and_diff(
-        self, dry_backend
-    ):
+    def test_dry_run_attribute_gets_no_put_returns_merged_body_and_diff(self, dry_backend):
         from crm.core import metadata_update as mu
-        base_rel = (
-            "EntityDefinitions(LogicalName='new_project')"
-            "/Attributes(LogicalName='new_code')"
-        )
+
+        base_rel = "EntityDefinitions(LogicalName='new_project')/Attributes(LogicalName='new_code')"
         cast_rel = base_rel + "/Microsoft.Dynamics.CRM.StringAttributeMetadata"
         base = dry_backend.url_for(base_rel)
         cast = dry_backend.url_for(cast_rel)
@@ -757,8 +791,9 @@ class TestDryRun:
             base_get = m.get(base, json=_FULL_STRING_ATTR)
             cast_get = m.get(cast, json=_FULL_STRING_ATTR)
             put = m.put(cast, status_code=204)
-            out = mu.update_attribute(dry_backend, "new_project", "new_code",
-                                      required="ApplicationRequired")
+            out = mu.update_attribute(
+                dry_backend, "new_project", "new_code", required="ApplicationRequired"
+            )
             # The un-cast base GET fires to learn @odata.type; the cast GET then
             # fetches the full typed definition used as the merge base. No PUT is
             # sent in dry-run.
@@ -773,12 +808,12 @@ class TestDryRun:
         assert out["body"]["MaxLength"] == 100
         assert out["body"]["FormatName"] == {"Value": "Text"}
         # Diff: changed key old -> new.
-        assert out["diff"]["RequiredLevel"]["old"] == \
-            _FULL_STRING_ATTR["RequiredLevel"]
+        assert out["diff"]["RequiredLevel"]["old"] == _FULL_STRING_ATTR["RequiredLevel"]
         assert out["diff"]["RequiredLevel"]["new"]["Value"] == "ApplicationRequired"
 
     def test_dry_run_relationship_resolves_id_gets_no_put(self, dry_backend):
         from crm.core import metadata_update as mu
+
         resolve = dry_backend.url_for(
             "RelationshipDefinitions(SchemaName='new_account_new_project')"
         )
@@ -790,16 +825,20 @@ class TestDryRun:
         cast = dry_backend.url_for(cast_rel)
         uncast = dry_backend.url_for(uncast_rel)
         with requests_mock.Mocker() as m:
-            resolve_get = m.get(resolve, json={
-                "@odata.type": "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
-                "MetadataId": _REL_ID,
-                "SchemaName": "new_account_new_project",
-                "RelationshipType": "OneToManyRelationship",
-            })
+            resolve_get = m.get(
+                resolve,
+                json={
+                    "@odata.type": "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
+                    "MetadataId": _REL_ID,
+                    "SchemaName": "new_account_new_project",
+                    "RelationshipType": "OneToManyRelationship",
+                },
+            )
             cast_get = m.get(cast, json=_FULL_ONE_TO_MANY)
             put = m.put(uncast, status_code=204)
             out = mu.update_relationship(
-                dry_backend, "new_account_new_project",
+                dry_backend,
+                "new_account_new_project",
                 cascade={"Delete": "Restrict"},
             )
             # MetadataId is resolved first, then the cast definition is fetched
@@ -811,8 +850,7 @@ class TestDryRun:
         assert out["method"] == "PUT"
         # Dry-run preview reflects the un-cast PUT target, not the cast read path.
         assert out["path"] == uncast_rel
-        assert out["body"]["@odata.type"] == \
-            "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
+        assert out["body"]["@odata.type"] == "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
         # Merged body: changed cascade member + preserved siblings.
         cc = out["body"]["CascadeConfiguration"]
         assert cc["Delete"] == "Restrict"
@@ -824,27 +862,27 @@ class TestDryRun:
 class TestPublishGating:
     def test_publish_true_posts_publishallxml(self, backend):
         from crm.core import metadata_update as mu
+
         path = backend.url_for("EntityDefinitions(LogicalName='new_project')")
         pub = backend.url_for("PublishAllXml")
         with requests_mock.Mocker() as m:
             m.get(path, json=_FULL_ENTITY)
             m.put(path, status_code=204)
             publish_mock = m.post(pub, status_code=204)
-            out = mu.update_entity(backend, "new_project",
-                                   display_name="X", publish=True)
+            out = mu.update_entity(backend, "new_project", display_name="X", publish=True)
         assert publish_mock.call_count == 1
         assert out["published"] is True
 
     def test_publish_false_does_not_post_publishallxml(self, backend):
         from crm.core import metadata_update as mu
+
         path = backend.url_for("EntityDefinitions(LogicalName='new_project')")
         pub = backend.url_for("PublishAllXml")
         with requests_mock.Mocker() as m:
             m.get(path, json=_FULL_ENTITY)
             m.put(path, status_code=204)
             publish_mock = m.post(pub, status_code=204)
-            mu.update_entity(backend, "new_project",
-                             display_name="X", publish=False)
+            mu.update_entity(backend, "new_project", display_name="X", publish=False)
         assert publish_mock.call_count == 0
 
 
@@ -853,6 +891,7 @@ class TestBuildEntityChanges:
 
     def _put(self, backend, **kwargs):
         from crm.core import metadata_update as mu
+
         path = backend.url_for("EntityDefinitions(LogicalName='new_project')")
         with requests_mock.Mocker() as m:
             m.get(path, json=_FULL_ENTITY)
@@ -886,12 +925,14 @@ class TestBuildEntityChanges:
 
     def test_solution_header_sent(self, backend):
         from crm.core import metadata_update as mu
+
         path = backend.url_for("EntityDefinitions(LogicalName='new_project')")
         with requests_mock.Mocker() as m:
             m.get(path, json=_FULL_ENTITY)
             m.put(path, status_code=204)
-            mu.update_entity(backend, "new_project", display_name="X",
-                             solution="MySol", publish=False)
+            mu.update_entity(
+                backend, "new_project", display_name="X", solution="MySol", publish=False
+            )
         put_req = m.request_history[-1]
         assert put_req.headers.get("MSCRM.SolutionUniqueName") == "MySol"
 
@@ -931,13 +972,20 @@ class TestBuildAttributeChanges:
 
     def _call(self, **kwargs):
         from crm.core.metadata_update import _build_attribute_changes
+
         return _build_attribute_changes(**kwargs)
 
     def _base(self, odata_type="Microsoft.Dynamics.CRM.StringAttributeMetadata"):
         return dict(
-            odata_type=odata_type, display_name=None, description=None,
-            required=None, max_length=None, precision=None,
-            min_value=None, max_value=None, format_name=None,
+            odata_type=odata_type,
+            display_name=None,
+            description=None,
+            required=None,
+            max_length=None,
+            precision=None,
+            min_value=None,
+            max_value=None,
+            format_name=None,
         )
 
     def test_description_included(self):
@@ -950,56 +998,63 @@ class TestBuildAttributeChanges:
 
     def test_max_length_on_memo_accepted(self):
         out = self._call(
-            **{**self._base("Microsoft.Dynamics.CRM.MemoAttributeMetadata"),
-               "max_length": 4000})
+            **{**self._base("Microsoft.Dynamics.CRM.MemoAttributeMetadata"), "max_length": 4000}
+        )
         assert out["MaxLength"] == 4000
 
     def test_max_length_on_non_string_raises(self):
         with pytest.raises(D365Error, match="max-length"):
             self._call(
-                **{**self._base("Microsoft.Dynamics.CRM.IntegerAttributeMetadata"),
-                   "max_length": 10})
+                **{
+                    **self._base("Microsoft.Dynamics.CRM.IntegerAttributeMetadata"),
+                    "max_length": 10,
+                }
+            )
 
     def test_precision_on_decimal_accepted(self):
         out = self._call(
-            **{**self._base("Microsoft.Dynamics.CRM.DecimalAttributeMetadata"),
-               "precision": 4})
+            **{**self._base("Microsoft.Dynamics.CRM.DecimalAttributeMetadata"), "precision": 4}
+        )
         assert out["Precision"] == 4
 
     def test_precision_on_money_accepted(self):
         out = self._call(
-            **{**self._base("Microsoft.Dynamics.CRM.MoneyAttributeMetadata"),
-               "precision": 2})
+            **{**self._base("Microsoft.Dynamics.CRM.MoneyAttributeMetadata"), "precision": 2}
+        )
         assert out["Precision"] == 2
 
     def test_precision_on_non_numeric_raises(self):
         with pytest.raises(D365Error, match="precision"):
             self._call(
-                **{**self._base("Microsoft.Dynamics.CRM.StringAttributeMetadata"),
-                   "precision": 2})
+                **{**self._base("Microsoft.Dynamics.CRM.StringAttributeMetadata"), "precision": 2}
+            )
 
     def test_min_value_on_decimal_accepted(self):
         out = self._call(
-            **{**self._base("Microsoft.Dynamics.CRM.DecimalAttributeMetadata"),
-               "min_value": 0.0})
+            **{**self._base("Microsoft.Dynamics.CRM.DecimalAttributeMetadata"), "min_value": 0.0}
+        )
         assert out["MinValue"] == 0.0
 
     def test_min_value_on_non_numeric_raises(self):
         with pytest.raises(D365Error, match="--min"):
             self._call(
-                **{**self._base("Microsoft.Dynamics.CRM.StringAttributeMetadata"),
-                   "min_value": 0.0})
+                **{**self._base("Microsoft.Dynamics.CRM.StringAttributeMetadata"), "min_value": 0.0}
+            )
 
     def test_max_value_on_decimal_accepted(self):
         out = self._call(
-            **{**self._base("Microsoft.Dynamics.CRM.DecimalAttributeMetadata"),
-               "max_value": 100.0})
+            **{**self._base("Microsoft.Dynamics.CRM.DecimalAttributeMetadata"), "max_value": 100.0}
+        )
         assert out["MaxValue"] == 100.0
 
     def test_bigint_bounds_coerced_to_int(self):
         out = self._call(
-            **{**self._base("Microsoft.Dynamics.CRM.BigIntAttributeMetadata"),
-               "min_value": 1.0, "max_value": 100.0})
+            **{
+                **self._base("Microsoft.Dynamics.CRM.BigIntAttributeMetadata"),
+                "min_value": 1.0,
+                "max_value": 100.0,
+            }
+        )
         assert isinstance(out["MinValue"], int)
         assert isinstance(out["MaxValue"], int)
         assert out["MinValue"] == 1
@@ -1008,20 +1063,29 @@ class TestBuildAttributeChanges:
     def test_bigint_fractional_bound_rejected(self):
         with pytest.raises(D365Error, match="integer or bigint"):
             self._call(
-                **{**self._base("Microsoft.Dynamics.CRM.BigIntAttributeMetadata"),
-                   "max_value": 100.5})
+                **{
+                    **self._base("Microsoft.Dynamics.CRM.BigIntAttributeMetadata"),
+                    "max_value": 100.5,
+                }
+            )
 
     def test_max_value_on_non_numeric_raises(self):
         with pytest.raises(D365Error, match="--max"):
             self._call(
-                **{**self._base("Microsoft.Dynamics.CRM.StringAttributeMetadata"),
-                   "max_value": 100.0})
+                **{
+                    **self._base("Microsoft.Dynamics.CRM.StringAttributeMetadata"),
+                    "max_value": 100.0,
+                }
+            )
 
     def test_format_on_non_string_non_datetime_raises(self):
         with pytest.raises(D365Error, match="string or datetime"):
             self._call(
-                **{**self._base("Microsoft.Dynamics.CRM.IntegerAttributeMetadata"),
-                   "format_name": "Text"})
+                **{
+                    **self._base("Microsoft.Dynamics.CRM.IntegerAttributeMetadata"),
+                    "format_name": "Text",
+                }
+            )
 
     _DATETIME = "Microsoft.Dynamics.CRM.DateTimeAttributeMetadata"
 
@@ -1031,16 +1095,18 @@ class TestBuildAttributeChanges:
         assert out["Format"] == "DateOnly"
 
     def test_behavior_tzi_leaves_format_unset(self):
-        out = self._call(
-            **{**self._base(self._DATETIME), "behavior_name": "TimeZoneIndependent"})
+        out = self._call(**{**self._base(self._DATETIME), "behavior_name": "TimeZoneIndependent"})
         assert out["DateTimeBehavior"] == {"Value": "TimeZoneIndependent"}
         assert "Format" not in out
 
     def test_behavior_on_non_datetime_raises(self):
         with pytest.raises(D365Error, match="datetime"):
             self._call(
-                **{**self._base("Microsoft.Dynamics.CRM.StringAttributeMetadata"),
-                   "behavior_name": "DateOnly"})
+                **{
+                    **self._base("Microsoft.Dynamics.CRM.StringAttributeMetadata"),
+                    "behavior_name": "DateOnly",
+                }
+            )
 
     def test_behavior_userlocal_target_raises(self):
         with pytest.raises(D365Error, match="UserLocal"):
@@ -1048,11 +1114,17 @@ class TestBuildAttributeChanges:
 
     def test_behavior_dateonly_conflicting_explicit_format_raises(self):
         with pytest.raises(D365Error, match="DateOnly"):
-            self._call(**{**self._base(self._DATETIME),
-                          "behavior_name": "DateOnly", "format_name": "DateAndTime"})
+            self._call(
+                **{
+                    **self._base(self._DATETIME),
+                    "behavior_name": "DateOnly",
+                    "format_name": "DateAndTime",
+                }
+            )
 
     def test_behavior_dateonly_with_explicit_dateonly_format_ok(self):
-        out = self._call(**{**self._base(self._DATETIME),
-                            "behavior_name": "DateOnly", "format_name": "DateOnly"})
+        out = self._call(
+            **{**self._base(self._DATETIME), "behavior_name": "DateOnly", "format_name": "DateOnly"}
+        )
         assert out["Format"] == "DateOnly"
         assert out["DateTimeBehavior"] == {"Value": "DateOnly"}

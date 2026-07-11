@@ -5,6 +5,7 @@ PyInstaller installs can swap their own bundle from the R2 release layout
 `pip install -U crm` and never modify the filesystem. `--check` reports the
 running vs. latest version in either case without changing anything.
 """
+
 # pyright: basic
 from __future__ import annotations
 
@@ -34,14 +35,22 @@ def _refresh_skills(target_version: str, src_dir: Path | None) -> list[dict[str,
     """Re-sync recorded skills, never raising — a skill failure must not fail the
     binary update. A missing source tree → no refresh. A genuine failure (e.g. an
     unreadable registry) is surfaced as an error entry in `data.skills` rather than
-    silently dropped, so the reported outcome never falsely reads as 'nothing to do'."""
+    silently dropped, so the reported outcome never falsely reads as 'nothing to do'.
+    """
     if src_dir is None or not (src_dir / "SKILL.md").exists():
         return []
     try:
         return skill_registry.refresh_skills(target_version, src_dir)
     except Exception as exc:
-        return [{"dest": None, "from_version": None, "to_version": target_version,
-                 "status": "error", "error": str(exc)}]
+        return [
+            {
+                "dest": None,
+                "from_version": None,
+                "to_version": target_version,
+                "status": "error",
+                "error": str(exc),
+            }
+        ]
 
 
 def _emit_skills(ctx: CLIContext, skills: list[dict[str, Any]]) -> None:
@@ -64,7 +73,8 @@ def _refresh_completion(
     """Re-sync a CLI-installed completion script, never raising — a completion
     failure must not fail the binary update. No marker → ``None`` (nothing to do).
     A render/write failure is surfaced as an ``error`` status (mirrors
-    `_refresh_skills`) rather than aborting the command or being silently dropped."""
+    `_refresh_skills`) rather than aborting the command or being silently dropped.
+    """
     try:
         return completion_registry.refresh_completion(target_version, generate_fn)
     except Exception as exc:
@@ -75,9 +85,14 @@ def _refresh_completion(
             marker = completion_registry.read_marker() or {}
         except Exception:
             marker = {}
-        return {"shell": marker.get("shell"), "script_path": marker.get("script_path"),
-                "from_version": marker.get("installed_version"), "to_version": target_version,
-                "status": "error", "error": str(exc)}
+        return {
+            "shell": marker.get("shell"),
+            "script_path": marker.get("script_path"),
+            "from_version": marker.get("installed_version"),
+            "to_version": target_version,
+            "status": "error",
+            "error": str(exc),
+        }
 
 
 def _emit_completion(ctx: CLIContext, comp: dict[str, Any] | None) -> None:
@@ -97,8 +112,12 @@ def _emit_completion(ctx: CLIContext, comp: dict[str, Any] | None) -> None:
 
 
 @click.command("self-update")
-@click.option("--check", "check_only", is_flag=True,
-              help="Report current vs latest version and exit without modifying anything.")
+@click.option(
+    "--check",
+    "check_only",
+    is_flag=True,
+    help="Report current vs latest version and exit without modifying anything.",
+)
 @pass_ctx
 def self_update_cmd(ctx: CLIContext, check_only: bool) -> None:
     """Update the crm CLI in place (frozen builds) or report available updates."""
@@ -114,9 +133,7 @@ def self_update_cmd(ctx: CLIContext, check_only: bool) -> None:
     if not update_mod.is_frozen():
         # pip/uv: the binary is not touched, but the running wheel may already be
         # newer than the last `skill install` — re-sync from the running package.
-        skills = _refresh_skills(
-            update_mod.current_version(), skill_registry.bundled_skill_dir()
-        )
+        skills = _refresh_skills(update_mod.current_version(), skill_registry.bundled_skill_dir())
         # In-process render is correct here: pip never swaps the binary, so the
         # running code IS the current install.
         completion = _refresh_completion(

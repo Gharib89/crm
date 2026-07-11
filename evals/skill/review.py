@@ -22,6 +22,7 @@ emitted into the run dir (gitignored), and ``review --record`` appends the org-a
 trend to the tracked ``efficacy.md`` — but only through :func:`guard_org_agnostic`, which
 fails loudly on any GUID or the org MAC fingerprint so a trace leak can't reach a commit.
 """
+
 from __future__ import annotations
 
 import json
@@ -100,9 +101,7 @@ def read_skill_text(skills_dir: str | Path = SKILLS_DIR) -> str:
             f"no skill content found under {skills_dir} (SKILL.md / reference/*.md) — "
             f"refusing to review against an empty skill"
         )
-    parts = [
-        f"### {f.relative_to(skills_dir)}\n{f.read_text(encoding='utf-8')}" for f in files
-    ]
+    parts = [f"### {f.relative_to(skills_dir)}\n{f.read_text(encoding='utf-8')}" for f in files]
     return "\n\n".join(parts)
 
 
@@ -173,7 +172,8 @@ def build_review_prompt(
 
 def _extract_json(text: str) -> Any:
     """The JSON object spanning the first ``{`` to the last ``}`` (handles a ```json
-    fence or leading/trailing prose), or ``None`` if that span doesn't parse."""
+    fence or leading/trailing prose), or ``None`` if that span doesn't parse.
+    """
     start, end = text.find("{"), text.rfind("}")
     if start == -1 or end <= start:
         return None
@@ -256,7 +256,9 @@ def review_records(
         if failed_only and rec.correctness_verdict.get("status") == "pass":
             continue
         prompt = build_review_prompt(
-            rec=rec, skill_text=skill_text, counterfactual=counterfactuals.get((rec.task_id, rec.target))
+            rec=rec,
+            skill_text=skill_text,
+            counterfactual=counterfactuals.get((rec.task_id, rec.target)),
         )
         raw = reviewer(prompt)
         try:
@@ -297,10 +299,7 @@ def build_report(records: list[TaskRunRecord]) -> str:
             f"{_grade(rec, 'command_economy')} | {_grade(rec, 'skill_adherence')} |"
         )
     lines += ["", "## Skill-fix suggestions", ""]
-    fixes = [
-        (rec.task_id, (rec.efficacy_review or {}).get("skill_fix"))
-        for rec in records
-    ]
+    fixes = [(rec.task_id, (rec.efficacy_review or {}).get("skill_fix")) for rec in records]
     real = [(tid, fix) for tid, fix in fixes if fix and str(fix).strip().lower() != "none"]
     if real:
         lines += [f"- **{tid}**: {fix}" for tid, fix in real]
@@ -337,7 +336,9 @@ def build_efficacy_block(records: list[TaskRunRecord], *, date: str) -> str:
     for axis in _AXES:
         tally = {g: sum(1 for r in parsed if _grade(r, axis) == g) for g in ("good", "weak", "bad")}
         lines.append(f"- {axis}: good={tally['good']} weak={tally['weak']} bad={tally['bad']}")
-    lift_tally = {lv: sum(1 for r in parsed if _lift(r) == lv) for lv in ("helped", "neutral", "hindered")}
+    lift_tally = {
+        lv: sum(1 for r in parsed if _lift(r) == lv) for lv in ("helped", "neutral", "hindered")
+    }
     lines.append(
         f"- skill_lift: helped={lift_tally['helped']} neutral={lift_tally['neutral']} "
         f"hindered={lift_tally['hindered']}"
@@ -383,7 +384,9 @@ def run_review_cmd(
     """
     target = Path(run_dir) if run_dir is not None else latest_run_dir(runs_root)
     if target is None or not Path(target).is_dir():
-        print(f"no run dir to review (looked under {runs_root}); run `python -m evals.skill run` first")
+        print(
+            f"no run dir to review (looked under {runs_root}); run `python -m evals.skill run` first"
+        )
         return 1
     target = Path(target)
 

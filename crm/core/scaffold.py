@@ -87,9 +87,7 @@ def _parse_opts(raw_opts: str, column_label: str) -> dict[str, Any]:
                 )
             result[key] = int_val
         elif key == "required":
-            mc.validate_required(
-                value, subject=f"column {column_label!r}: required", echo=True
-            )
+            mc.validate_required(value, subject=f"column {column_label!r}: required", echo=True)
             result[key] = value
         else:
             result[key] = value
@@ -124,9 +122,7 @@ def _build_attribute(
 
     if kind == "lookup":
         if not opts.get("target_entity"):
-            raise D365Error(
-                f"lookup column {display!r} requires target_entity=<logical_name>."
-            )
+            raise D365Error(f"lookup column {display!r} requires target_entity=<logical_name>.")
         attr["target_entity"] = opts["target_entity"]
     elif "target_entity" in opts:
         raise D365Error(
@@ -162,14 +158,11 @@ def _parse_column(raw: str, prefix: str) -> dict[str, Any]:
         raise D365Error(f"column shorthand {raw!r}: display name must not be empty.")
 
     if len(parts) < 2 or not parts[1].strip():
-        raise D365Error(
-            f"column {display!r}: kind is required (format: DISPLAY:KIND[:opts])."
-        )
+        raise D365Error(f"column {display!r}: kind is required (format: DISPLAY:KIND[:opts]).")
     kind = parts[1].strip()
     if kind not in ATTRIBUTE_KINDS:
         raise D365Error(
-            f"column {display!r}: unknown kind {kind!r}; "
-            f"valid kinds: {sorted(ATTRIBUTE_KINDS)}."
+            f"column {display!r}: unknown kind {kind!r}; valid kinds: {sorted(ATTRIBUTE_KINDS)}."
         )
 
     opts: dict[str, Any] = {}
@@ -209,9 +202,7 @@ def build_table_spec(
     mc.validate_ownership(ownership, echo=True)
 
     ent_schema = (
-        schema_name
-        if schema_name is not None
-        else _derive_schema(prefix, display_name, "entity")
+        schema_name if schema_name is not None else _derive_schema(prefix, display_name, "entity")
     )
 
     attributes = [_parse_column(col, prefix) for col in columns]

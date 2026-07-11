@@ -21,6 +21,7 @@ Inputs come from the environment (set by the workflow):
   PR_BODY    - the pull request body (scanned for a BREAKING CHANGE footer)
   PR_LABELS  - the PR's labels, comma / whitespace / newline separated
 """
+
 import os
 import re
 import sys
@@ -35,7 +36,8 @@ _BREAKING_RE = re.compile(r"^BREAKING[ -]CHANGE:", re.MULTILINE)
 def required_label(title: str, body: str = "") -> Optional[str]:
     """The label this PR must carry: ``"major"`` for a breaking change, or
     ``None`` otherwise (``feat:`` minor and patch-level bumps are not gated).
-    Raises ``ValueError`` if the title is not a valid Conventional Commit."""
+    Raises ``ValueError`` if the title is not a valid Conventional Commit.
+    """
     m = _TITLE_RE.match(title.strip())
     if not m:
         raise ValueError(f"title {title!r} is not a valid Conventional Commit")

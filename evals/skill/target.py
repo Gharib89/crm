@@ -6,6 +6,7 @@ their real ``CRM_HOME``; its creds are read read-only and re-seeded into the
 throwaway ``CRM_HOME`` the isolated agent uses, so the real profile store is never
 mutated. The ``D365_E2E_ALLOW_HOST`` prod-host guard is honored identically.
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -164,7 +165,9 @@ def probe_reachable(name: str | None = None) -> bool:
 
     # retry_max=0 → a single shot, so a downed host skips fast instead of paying the
     # full retry/backoff budget; set via the public profile field, as the e2e conftest does.
-    probe = D365Backend(dataclasses.replace(resolved.profile, retry_max=0), resolved.password, dry_run=False)
+    probe = D365Backend(
+        dataclasses.replace(resolved.profile, retry_max=0), resolved.password, dry_run=False
+    )
     try:
         probe.get("", timeout=_PROBE_TIMEOUT)
     except D365Error as exc:

@@ -1,30 +1,34 @@
 """REPL command."""
+
 # pyright: basic
 from __future__ import annotations
+
 import shlex
 import time
 from collections.abc import Callable
+
 import click
-from crm.core import session as session_mod
+from prompt_toolkit.completion import Completer, Completion
+
 from crm.core import metadata_cache as mc_mod
+from crm.core import session as session_mod
 from crm.core.metadata import list_attributes, list_entity_definitions
 from crm.utils.d365_backend import D365Error
-from prompt_toolkit.completion import Completer, Completion
 
 # Slot table: (group, verb) -> (token_index, name_type)
 # name_type "logical" = LogicalName (account); "set" = EntitySetName (accounts)
 _ENTITY_SLOTS: dict[tuple[str, str], tuple[int, str]] = {
-    ("entity",   "get"):        (2, "set"),
-    ("entity",   "create"):     (2, "set"),
-    ("entity",   "update"):     (2, "set"),
-    ("entity",   "upsert"):     (2, "set"),
-    ("entity",   "delete"):     (2, "set"),
-    ("query",    "odata"):      (2, "set"),
-    ("query",    "fetchxml"):   (2, "set"),
-    ("query",    "saved"):      (2, "set"),
-    ("query",    "user"):       (2, "set"),
-    ("query",    "count"):      (2, "logical"),
-    ("metadata", "entity"):     (2, "logical"),
+    ("entity", "get"): (2, "set"),
+    ("entity", "create"): (2, "set"),
+    ("entity", "update"): (2, "set"),
+    ("entity", "upsert"): (2, "set"),
+    ("entity", "delete"): (2, "set"),
+    ("query", "odata"): (2, "set"),
+    ("query", "fetchxml"): (2, "set"),
+    ("query", "saved"): (2, "set"),
+    ("query", "user"): (2, "set"),
+    ("query", "count"): (2, "logical"),
+    ("metadata", "entity"): (2, "logical"),
     ("metadata", "attributes"): (2, "logical"),
 }
 
@@ -58,7 +62,8 @@ def _strip_repl_prefix(argv: list[str]) -> list[str] | None:
 
 class MetadataCache:
     """Entity-name cache for the REPL session; reads from / writes to the
-    persistent on-disk cache when constructed with ``use_cache=True``."""
+    persistent on-disk cache when constructed with ``use_cache=True``.
+    """
 
     def __init__(self, *, use_cache: bool = False, refresh: bool = False) -> None:
         self._logical: list[str] | None = None
@@ -113,7 +118,8 @@ class MetadataCache:
 
     def _resolve_logical(self, entity_token: str) -> str | None:
         """Map an on-line entity token (set *or* logical name) to its logical
-        name using the loaded definition lists, or ``None`` if unknown."""
+        name using the loaded definition lists, or ``None`` if unknown.
+        """
         if self._logical and entity_token in self._logical:
             return entity_token
         if self._set_names and entity_token in self._set_names:
@@ -127,7 +133,8 @@ class MetadataCache:
         then fetches the entity's attributes with one metadata GET, memoizing
         the result for the session. An unresolvable token is treated as a
         logical name directly (best effort) so a freshly-created entity not yet
-        in the def lists still completes."""
+        in the def lists still completes.
+        """
         self._ensure(backend)
         logical = self._resolve_logical(entity_token) or entity_token
         cached = self._attributes.get(logical)
@@ -176,7 +183,8 @@ def _entity_token_on_line(completed: list[str]) -> str | None:
     recognized entity-slot command or the slot isn't filled with a name yet.
 
     Reuses ``_ENTITY_SLOTS`` so attribute completion keys off exactly the same
-    entity positions the entity-name completion already understands."""
+    entity positions the entity-name completion already understands.
+    """
     if len(completed) < 2:
         return None
     slot = _ENTITY_SLOTS.get((completed[0], completed[1]))
@@ -207,8 +215,10 @@ def _resolve_command_chain(tokens: list[str]) -> click.Command | None:
     group. Returns the deepest resolved Group/Command only if every token was
     consumed as a subcommand name; ``None`` if a token is flag-shaped, doesn't
     resolve, or there's nothing left to descend into (imports the specific
-    command module for each resolved token, same cost as running it)."""
+    command module for each resolved token, same cost as running it).
+    """
     from crm.cli import cli
+
     current: click.Command = cli
     for tok in tokens:
         if tok.startswith("-") or not isinstance(current, click.Group):
@@ -233,7 +243,8 @@ def _option_strings(cmd: click.Command) -> list[str]:
 
 def _choice_values(cmd: click.Command, opt_token: str) -> list[str] | None:
     """Choice values for the option named ``opt_token`` on ``cmd``, or ``None``
-    if ``opt_token`` isn't a recognized Choice-typed option of ``cmd``."""
+    if ``opt_token`` isn't a recognized Choice-typed option of ``cmd``.
+    """
     for param in cmd.params:
         if isinstance(param, click.Option) and opt_token in (*param.opts, *param.secondary_opts):
             if isinstance(param.type, click.Choice):
@@ -308,7 +319,8 @@ def complete_repl_line(
 class _ReplCompleter(Completer):
     """prompt_toolkit completer for the REPL: command/group names, flags (incl.
     ``--no-*`` forms), Choice flag values, profile names after ``--profile``,
-    and entity names at their existing slots (``complete_entity_token``)."""
+    and entity names at their existing slots (``complete_entity_token``).
+    """
 
     def __init__(self, materialized_backend_getter, cache: MetadataCache):
         self._get_backend = materialized_backend_getter
@@ -356,10 +368,13 @@ class _ReplCompleter(Completer):
 def repl(click_ctx: click.Context):
     """Interactive REPL (default when no subcommand is provided)."""
     from crm.cli import CLIContext, cli
+
     ctx = click_ctx.ensure_object(CLIContext)
     ctx.skin.print_banner()
     ctx.skin.info(f"Session: {ctx.session_name}  |  Type 'help' for commands, 'quit' to exit.")
-    cache = MetadataCache(use_cache=ctx.cache_metadata or ctx.refresh_metadata, refresh=ctx.refresh_metadata)
+    cache = MetadataCache(
+        use_cache=ctx.cache_metadata or ctx.refresh_metadata, refresh=ctx.refresh_metadata
+    )
     completer = _ReplCompleter(ctx.materialized_backend, cache)
     pt_session = ctx.skin.create_prompt_session(completer=completer)
     state = session_mod.load_session(ctx.session_name)
@@ -368,7 +383,8 @@ def repl(click_ctx: click.Context):
         try:
             profile_label = state.get("active_profile") or "<no profile>"
             line = ctx.skin.get_input(
-                pt_session, project_name=profile_label,
+                pt_session,
+                project_name=profile_label,
                 modified=bool(state.get("last_query")),
             )
         except (EOFError, KeyboardInterrupt):
@@ -421,30 +437,32 @@ def repl(click_ctx: click.Context):
 
 
 def _repl_help(ctx):
-    ctx.skin.help({
-        "profile add": "Create a profile, verify with WhoAmI, and activate it",
-        "profile use": "Switch the active profile",
-        "profile list": "List saved profiles",
-        "connection status": "Show active session/profile",
-        "connection whoami": "Issue WhoAmI() against the server",
-        "entity get <set> <id>": "GET a record",
-        "entity create <set> --data '{...}'": "POST a new record",
-        "entity update <set> <id> --data '{...}'": "PATCH a record",
-        "entity delete <set> <id>": "DELETE a record",
-        "query odata <set> [--filter ...] [--top N]": "OData query",
-        "query fetchxml <set> --xml '<fetch>...</fetch>'": "FetchXML query",
-        "query count <entity>": "RetrieveTotalRecordCount via cached server-side count",
-        "metadata entities": "List entity definitions",
-        "metadata attributes <entity>": "List attributes",
-        "metadata add-attribute <entity> --kind <k>": "Add a column to an entity",
-        "metadata create-entity / delete-entity": "Custom entity lifecycle",
-        "metadata create-one-to-many / create-many-to-many": "Relationships",
-        "metadata list-optionsets / create-optionset / update-optionset / delete-optionset": "Global option sets",
-        "metadata list-actions": "List OData actions (POST verbs)",
-        "metadata list-functions": "List OData functions (GET verbs)",
-        "solution list / info / export / import": "Solution lifecycle",
-        "data export <set> -o file.csv": "Bulk export",
-        "action function/invoke <name>": "Call OData function/action",
-        "session info / clear / history": "Local session state",
-        "help / quit": "REPL controls",
-    })
+    ctx.skin.help(
+        {
+            "profile add": "Create a profile, verify with WhoAmI, and activate it",
+            "profile use": "Switch the active profile",
+            "profile list": "List saved profiles",
+            "connection status": "Show active session/profile",
+            "connection whoami": "Issue WhoAmI() against the server",
+            "entity get <set> <id>": "GET a record",
+            "entity create <set> --data '{...}'": "POST a new record",
+            "entity update <set> <id> --data '{...}'": "PATCH a record",
+            "entity delete <set> <id>": "DELETE a record",
+            "query odata <set> [--filter ...] [--top N]": "OData query",
+            "query fetchxml <set> --xml '<fetch>...</fetch>'": "FetchXML query",
+            "query count <entity>": "RetrieveTotalRecordCount via cached server-side count",
+            "metadata entities": "List entity definitions",
+            "metadata attributes <entity>": "List attributes",
+            "metadata add-attribute <entity> --kind <k>": "Add a column to an entity",
+            "metadata create-entity / delete-entity": "Custom entity lifecycle",
+            "metadata create-one-to-many / create-many-to-many": "Relationships",
+            "metadata list-optionsets / create-optionset / update-optionset / delete-optionset": "Global option sets",
+            "metadata list-actions": "List OData actions (POST verbs)",
+            "metadata list-functions": "List OData functions (GET verbs)",
+            "solution list / info / export / import": "Solution lifecycle",
+            "data export <set> -o file.csv": "Bulk export",
+            "action function/invoke <name>": "Call OData function/action",
+            "session info / clear / history": "Local session state",
+            "help / quit": "REPL controls",
+        }
+    )

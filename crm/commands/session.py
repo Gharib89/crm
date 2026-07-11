@@ -1,9 +1,12 @@
 """Session state commands."""
+
 # pyright: basic
 from __future__ import annotations
+
 import click
-from crm.core import session as session_mod
+
 from crm.cli import CLIContext, pass_ctx
+from crm.core import session as session_mod
 
 
 @click.group("session")
@@ -45,10 +48,15 @@ def session_history(ctx: CLIContext):
 
 
 @session_group.command("audit")
-@click.option("--tail", type=click.IntRange(min=1), default=None,
-              help="Only the last N entries (N >= 1).")
-@click.option("--session", "session_override", default=None,
-              help="Read another session's journal (default: current --session).")
+@click.option(
+    "--tail", type=click.IntRange(min=1), default=None, help="Only the last N entries (N >= 1)."
+)
+@click.option(
+    "--session",
+    "session_override",
+    default=None,
+    help="Read another session's journal (default: current --session).",
+)
 @pass_ctx
 def session_audit(ctx: CLIContext, tail, session_override):
     """Show this session's LOCAL mutation journal (client-side).
@@ -57,6 +65,7 @@ def session_audit(ctx: CLIContext, tail, session_override):
     session — it is NOT the Dataverse server-side audit log.
     """
     from crm.core import audit
+
     name = session_override or ctx.session_name
     rows = audit.read(name, tail=tail)
     if ctx.json_mode:
@@ -72,5 +81,7 @@ def session_audit(ctx: CLIContext, tail, session_override):
         if r.get("staged"):
             flags.append("staged")
         suffix = f" [{', '.join(flags)}]" if flags else ""
-        click.echo(f"  {r.get('ts', '')}  {r.get('command', '')}  "
-                   f"{r.get('target') or ''}  {r.get('result_id') or ''}{suffix}")
+        click.echo(
+            f"  {r.get('ts', '')}  {r.get('command', '')}  "
+            f"{r.get('target') or ''}  {r.get('result_id') or ''}{suffix}"
+        )

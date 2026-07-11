@@ -1,5 +1,6 @@
 # pyright: basic
 """E2E tests for form verbs: list / export / clone."""
+
 from __future__ import annotations
 
 import json
@@ -8,7 +9,6 @@ import pytest
 
 from crm.tests.e2e.coverage import covers
 
-
 # ── form list ─────────────────────────────────────────────────────────────────
 
 
@@ -16,9 +16,7 @@ from crm.tests.e2e.coverage import covers
 def test_form_list_account(cli):
     """Every D365 org ships at least one Main form for 'account'; assert non-empty."""
     result = cli(["--json", "form", "list", "account"])
-    assert result.returncode == 0, (
-        f"form list failed:\n{result.stderr}\nstdout: {result.stdout}"
-    )
+    assert result.returncode == 0, f"form list failed:\n{result.stderr}\nstdout: {result.stdout}"
     env = json.loads(result.stdout)
     assert env["ok"], env
     items = env["data"]
@@ -33,7 +31,8 @@ def test_form_list_account(cli):
 def test_form_list_type_and_all(cli):
     """`--all` lists a superset of the default main-only set; `--type quickcreate`
     filters to type 7 only (issue #360). Both assertions are org-independent — they
-    don't assume the org carries any particular non-main form type."""
+    don't assume the org carries any particular non-main form type.
+    """
     main_only = json.loads(cli(["--json", "form", "list", "account"]).stdout)["data"]
     all_forms = cli(["--json", "form", "list", "account", "--all"])
     assert all_forms.returncode == 0, all_forms.stderr
@@ -54,8 +53,7 @@ def test_form_list_type_and_all(cli):
     )
 
     # --type and --all together is a usage error (Click UsageError → exit 2).
-    both = cli(["--json", "form", "list", "account", "--all", "--type", "main"],
-               check=False)
+    both = cli(["--json", "form", "list", "account", "--all", "--type", "main"], check=False)
     assert both.returncode == 2, f"expected --all + --type rejected with exit 2: {both}"
     assert "mutually exclusive" in (both.stderr + both.stdout).lower()
 
@@ -66,7 +64,8 @@ def test_form_list_type_and_all(cli):
 @covers("form export")
 def test_form_export_account(cli, tmp_path):
     """List account forms, pick the first, export its formxml to a file; assert
-    the file is written and contains XML (starts with '<')."""
+    the file is written and contains XML (starts with '<').
+    """
     # Resolve the first account form name.
     r_list = cli(["--json", "form", "list", "account"])
     assert r_list.returncode == 0, r_list.stderr
@@ -75,13 +74,18 @@ def test_form_export_account(cli, tmp_path):
     form_name = forms[0]["name"]
 
     out_file = tmp_path / "account_form.xml"
-    result = cli([
-        "--json", "form", "export", "account", form_name,
-        "--output", str(out_file),
-    ])
-    assert result.returncode == 0, (
-        f"form export failed:\n{result.stderr}\nstdout: {result.stdout}"
+    result = cli(
+        [
+            "--json",
+            "form",
+            "export",
+            "account",
+            form_name,
+            "--output",
+            str(out_file),
+        ]
     )
+    assert result.returncode == 0, f"form export failed:\n{result.stderr}\nstdout: {result.stdout}"
     env = json.loads(result.stdout)
     assert env["ok"], env
     assert env["data"].get("entity") == "account"
@@ -151,23 +155,27 @@ def test_form_clone_account_to_ephemeral(cli, backend, ephemeral_entity, ephemer
     clone_formids: list[str] = []
     try:
         for attempt in (1, 2):
-            result = cli([
-                "--json", "form", "clone",
-                "account", form_name,
-                "--to", ephemeral_entity,
-                "--no-publish",
-                "--solution", ephemeral_solution,
-            ])
+            result = cli(
+                [
+                    "--json",
+                    "form",
+                    "clone",
+                    "account",
+                    form_name,
+                    "--to",
+                    ephemeral_entity,
+                    "--no-publish",
+                    "--solution",
+                    ephemeral_solution,
+                ]
+            )
             assert result.returncode == 0, (
-                f"form clone #{attempt} failed:\n{result.stderr}\n"
-                f"stdout: {result.stdout}"
+                f"form clone #{attempt} failed:\n{result.stderr}\nstdout: {result.stdout}"
             )
             env = json.loads(result.stdout)
             assert env["ok"], env
             data = env["data"]
-            assert data.get("created") is True, (
-                f"clone #{attempt} expected created=True: {data}"
-            )
+            assert data.get("created") is True, f"clone #{attempt} expected created=True: {data}"
             formid = data.get("formid")
             assert formid, f"formid missing from clone #{attempt} response: {data}"
             assert data.get("objecttypecode") == ephemeral_entity, (
@@ -175,8 +183,7 @@ def test_form_clone_account_to_ephemeral(cli, backend, ephemeral_entity, ephemer
             )
             clone_formids.append(formid)
         assert clone_formids[0] != clone_formids[1], (
-            f"repeat clones of the same source reused a formid (#268 regression): "
-            f"{clone_formids}"
+            f"repeat clones of the same source reused a formid (#268 regression): {clone_formids}"
         )
     finally:
         for formid in clone_formids:
@@ -215,13 +222,24 @@ def _export_formxml(cli, entity, form_name, tmp_path):
 def test_form_add_field_roundtrip(cli, ephemeral_entity, tmp_path, ephemeral_solution):
     """Add `createdon` to the entity's Main form (publishing the change); assert the
     DateTime classid was resolved from live metadata and the control round-trips via
-    a re-export. Removes it again so the shared session form is left clean."""
+    a re-export. Removes it again so the shared session form is left clean.
+    """
     forms = json.loads(cli(["--json", "form", "list", ephemeral_entity]).stdout)["data"]
     assert forms, "ephemeral entity has no Main form"
     form_name = forms[0]["name"]
     try:
-        r = cli(["--json", "form", "add-field", ephemeral_entity, "createdon",
-                 "--publish", "--solution", ephemeral_solution])
+        r = cli(
+            [
+                "--json",
+                "form",
+                "add-field",
+                ephemeral_entity,
+                "createdon",
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
         assert r.returncode == 0, f"add-field failed:\n{r.stderr}\n{r.stdout}"
         data = json.loads(r.stdout)["data"]
         assert data["updated"] is True, data
@@ -230,21 +248,53 @@ def test_form_add_field_roundtrip(cli, ephemeral_entity, tmp_path, ephemeral_sol
         assert 'datafieldname="createdon"' in xml, "added control not in exported form"
         assert _DATETIME_CLASSID.lower() in xml.lower(), "classid not in exported form"
     finally:
-        cli(["--json", "form", "remove-field", ephemeral_entity, "createdon",
-             "--publish", "--solution", ephemeral_solution], check=False)
+        cli(
+            [
+                "--json",
+                "form",
+                "remove-field",
+                ephemeral_entity,
+                "createdon",
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ],
+            check=False,
+        )
 
 
 @covers("form remove-field")
 @pytest.mark.slow
 def test_form_remove_field_roundtrip(cli, ephemeral_entity, tmp_path, ephemeral_solution):
     """Add then remove `createdon` (publishing each); assert it is gone from the
-    re-exported form."""
+    re-exported form.
+    """
     forms = json.loads(cli(["--json", "form", "list", ephemeral_entity]).stdout)["data"]
     form_name = forms[0]["name"]
-    cli(["--json", "form", "add-field", ephemeral_entity, "createdon", "--publish",
-         "--solution", ephemeral_solution])
-    r = cli(["--json", "form", "remove-field", ephemeral_entity, "createdon",
-             "--publish", "--solution", ephemeral_solution])
+    cli(
+        [
+            "--json",
+            "form",
+            "add-field",
+            ephemeral_entity,
+            "createdon",
+            "--publish",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
+    r = cli(
+        [
+            "--json",
+            "form",
+            "remove-field",
+            ephemeral_entity,
+            "createdon",
+            "--publish",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert r.returncode == 0, f"remove-field failed:\n{r.stderr}\n{r.stdout}"
     xml = _export_formxml(cli, ephemeral_entity, form_name, tmp_path)
     assert 'datafieldname="createdon"' not in xml, "control still present after remove"
@@ -271,40 +321,96 @@ def test_form_remove_field_roundtrip(cli, ephemeral_entity, tmp_path, ephemeral_
 def test_form_tab_editors_roundtrip(cli, ephemeral_entity, tmp_path, ephemeral_solution):
     """Add two tabs (the second placed `--after` the first), rename the first,
     reorder the second to the front, then remove both — asserting presence on
-    re-export at each step and absence after removal (T3)."""
+    re-export at each step and absence after removal (T3).
+    """
     forms = json.loads(cli(["--json", "form", "list", ephemeral_entity]).stdout)["data"]
     assert forms, "ephemeral entity has no Main form"
     form_name = forms[0]["name"]
     tab_a, tab_b = "cwx_e2e_tab_a", "cwx_e2e_tab_b"
     try:
-        r = cli(["--json", "form", "add-tab", ephemeral_entity, tab_a, "--publish",
-                 "--solution", ephemeral_solution])
+        r = cli(
+            [
+                "--json",
+                "form",
+                "add-tab",
+                ephemeral_entity,
+                tab_a,
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
         assert r.returncode == 0, f"add-tab failed:\n{r.stderr}\n{r.stdout}"
         xml = _export_formxml(cli, ephemeral_entity, form_name, tmp_path)
         assert f'name="{tab_a}"' in xml, "added tab not on re-exported form"
 
-        r = cli(["--json", "form", "add-tab", ephemeral_entity, tab_b,
-                 "--after", tab_a, "--publish", "--solution", ephemeral_solution])
+        r = cli(
+            [
+                "--json",
+                "form",
+                "add-tab",
+                ephemeral_entity,
+                tab_b,
+                "--after",
+                tab_a,
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
         assert r.returncode == 0, f"add-tab --after failed:\n{r.stderr}\n{r.stdout}"
-        assert f'name="{tab_b}"' in _export_formxml(
-            cli, ephemeral_entity, form_name, tmp_path)
+        assert f'name="{tab_b}"' in _export_formxml(cli, ephemeral_entity, form_name, tmp_path)
 
-        r = cli(["--json", "form", "rename-tab", ephemeral_entity, tab_a,
-                 "--label", "E2E Renamed", "--publish", "--solution", ephemeral_solution])
+        r = cli(
+            [
+                "--json",
+                "form",
+                "rename-tab",
+                ephemeral_entity,
+                tab_a,
+                "--label",
+                "E2E Renamed",
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
         assert r.returncode == 0, f"rename-tab failed:\n{r.stderr}\n{r.stdout}"
-        assert "E2E Renamed" in _export_formxml(
-            cli, ephemeral_entity, form_name, tmp_path)
+        assert "E2E Renamed" in _export_formxml(cli, ephemeral_entity, form_name, tmp_path)
 
-        r = cli(["--json", "form", "move-tab", ephemeral_entity, tab_b, "--publish",
-                 "--solution", ephemeral_solution])
+        r = cli(
+            [
+                "--json",
+                "form",
+                "move-tab",
+                ephemeral_entity,
+                tab_b,
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
         assert r.returncode == 0, f"move-tab failed:\n{r.stderr}\n{r.stdout}"
     finally:
         for tab in (tab_a, tab_b):
-            cli(["--json", "form", "remove-tab", ephemeral_entity, tab, "--force",
-                 "--publish", "--solution", ephemeral_solution], check=False)
+            cli(
+                [
+                    "--json",
+                    "form",
+                    "remove-tab",
+                    ephemeral_entity,
+                    tab,
+                    "--force",
+                    "--publish",
+                    "--solution",
+                    ephemeral_solution,
+                ],
+                check=False,
+            )
     xml = _export_formxml(cli, ephemeral_entity, form_name, tmp_path)
     assert f'name="{tab_a}"' not in xml and f'name="{tab_b}"' not in xml, (
-        "removed tabs still present on re-export")
+        "removed tabs still present on re-export"
+    )
 
 
 # ── form section editors: add/remove/rename/move-section (#460) ──────────────────
@@ -322,47 +428,128 @@ def test_form_tab_editors_roundtrip(cli, ephemeral_entity, tmp_path, ephemeral_s
 def test_form_section_editors_roundtrip(cli, ephemeral_entity, tmp_path, ephemeral_solution):
     """Within a throwaway tab, add two sections (the second `--after` the first),
     rename the first, reorder the second, then remove one — asserting presence on
-    re-export and absence after removal (T3)."""
+    re-export and absence after removal (T3).
+    """
     forms = json.loads(cli(["--json", "form", "list", ephemeral_entity]).stdout)["data"]
     form_name = forms[0]["name"]
     host_tab = "cwx_e2e_stab"
     sec_a, sec_b = "cwx_e2e_sec_a", "cwx_e2e_sec_b"
     try:
-        cli(["--json", "form", "add-tab", ephemeral_entity, host_tab, "--publish",
-             "--solution", ephemeral_solution])
+        cli(
+            [
+                "--json",
+                "form",
+                "add-tab",
+                ephemeral_entity,
+                host_tab,
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
 
-        r = cli(["--json", "form", "add-section", ephemeral_entity, sec_a,
-                 "--tab", host_tab, "--publish", "--solution", ephemeral_solution])
+        r = cli(
+            [
+                "--json",
+                "form",
+                "add-section",
+                ephemeral_entity,
+                sec_a,
+                "--tab",
+                host_tab,
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
         assert r.returncode == 0, f"add-section failed:\n{r.stderr}\n{r.stdout}"
-        assert f'name="{sec_a}"' in _export_formxml(
-            cli, ephemeral_entity, form_name, tmp_path)
+        assert f'name="{sec_a}"' in _export_formxml(cli, ephemeral_entity, form_name, tmp_path)
 
-        r = cli(["--json", "form", "add-section", ephemeral_entity, sec_b,
-                 "--tab", host_tab, "--after", sec_a, "--publish",
-                 "--solution", ephemeral_solution])
+        r = cli(
+            [
+                "--json",
+                "form",
+                "add-section",
+                ephemeral_entity,
+                sec_b,
+                "--tab",
+                host_tab,
+                "--after",
+                sec_a,
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
         assert r.returncode == 0, f"add-section --after failed:\n{r.stderr}\n{r.stdout}"
-        assert f'name="{sec_b}"' in _export_formxml(
-            cli, ephemeral_entity, form_name, tmp_path)
+        assert f'name="{sec_b}"' in _export_formxml(cli, ephemeral_entity, form_name, tmp_path)
 
-        r = cli(["--json", "form", "rename-section", ephemeral_entity, sec_a,
-                 "--tab", host_tab, "--label", "E2E Section", "--publish",
-                 "--solution", ephemeral_solution])
+        r = cli(
+            [
+                "--json",
+                "form",
+                "rename-section",
+                ephemeral_entity,
+                sec_a,
+                "--tab",
+                host_tab,
+                "--label",
+                "E2E Section",
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
         assert r.returncode == 0, f"rename-section failed:\n{r.stderr}\n{r.stdout}"
-        assert "E2E Section" in _export_formxml(
-            cli, ephemeral_entity, form_name, tmp_path)
+        assert "E2E Section" in _export_formxml(cli, ephemeral_entity, form_name, tmp_path)
 
-        r = cli(["--json", "form", "move-section", ephemeral_entity, sec_b,
-                 "--tab", host_tab, "--publish", "--solution", ephemeral_solution])
+        r = cli(
+            [
+                "--json",
+                "form",
+                "move-section",
+                ephemeral_entity,
+                sec_b,
+                "--tab",
+                host_tab,
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
         assert r.returncode == 0, f"move-section failed:\n{r.stderr}\n{r.stdout}"
 
-        r = cli(["--json", "form", "remove-section", ephemeral_entity, sec_a,
-                 "--tab", host_tab, "--publish", "--solution", ephemeral_solution])
+        r = cli(
+            [
+                "--json",
+                "form",
+                "remove-section",
+                ephemeral_entity,
+                sec_a,
+                "--tab",
+                host_tab,
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
         assert r.returncode == 0, f"remove-section failed:\n{r.stderr}\n{r.stdout}"
-        assert f'name="{sec_a}"' not in _export_formxml(
-            cli, ephemeral_entity, form_name, tmp_path)
+        assert f'name="{sec_a}"' not in _export_formxml(cli, ephemeral_entity, form_name, tmp_path)
     finally:
-        cli(["--json", "form", "remove-tab", ephemeral_entity, host_tab, "--force",
-             "--publish", "--solution", ephemeral_solution], check=False)
+        cli(
+            [
+                "--json",
+                "form",
+                "remove-tab",
+                ephemeral_entity,
+                host_tab,
+                "--force",
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ],
+            check=False,
+        )
 
 
 @covers("form set-field")
@@ -373,25 +560,59 @@ def test_form_set_field_roundtrip(cli, ephemeral_entity, tmp_path, ephemeral_sol
     still present exactly once. (Cross-section relocation is covered by the offline
     unit tests; a fresh form has a single section, so this exercises the live
     read→detach→re-append→publish→round-trip path.) Removes it to leave the form
-    clean."""
+    clean.
+    """
     import re as _re
+
     forms = json.loads(cli(["--json", "form", "list", ephemeral_entity]).stdout)["data"]
     form_name = forms[0]["name"]
     try:
-        cli(["--json", "form", "add-field", ephemeral_entity, "createdon", "--publish",
-             "--solution", ephemeral_solution])
+        cli(
+            [
+                "--json",
+                "form",
+                "add-field",
+                ephemeral_entity,
+                "createdon",
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
         xml = _export_formxml(cli, ephemeral_entity, form_name, tmp_path)
         section_ids = _re.findall(r'<section\b[^>]*\bid="(\{[^"]+\})"', xml)
         assert section_ids, "no section id on the form to target"
-        r = cli(["--json", "form", "set-field", ephemeral_entity, "createdon",
-                 "--section", section_ids[0], "--publish",
-                 "--solution", ephemeral_solution])
+        r = cli(
+            [
+                "--json",
+                "form",
+                "set-field",
+                ephemeral_entity,
+                "createdon",
+                "--section",
+                section_ids[0],
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
         assert r.returncode == 0, f"set-field failed:\n{r.stderr}\n{r.stdout}"
         xml2 = _export_formxml(cli, ephemeral_entity, form_name, tmp_path)
         assert xml2.count('datafieldname="createdon"') == 1, "field not present once"
     finally:
-        cli(["--json", "form", "remove-field", ephemeral_entity, "createdon",
-             "--publish", "--solution", ephemeral_solution], check=False)
+        cli(
+            [
+                "--json",
+                "form",
+                "remove-field",
+                ephemeral_entity,
+                "createdon",
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ],
+            check=False,
+        )
 
 
 @covers("form set-field-props")
@@ -401,16 +622,41 @@ def test_form_set_field_props_roundtrip(cli, ephemeral_entity, tmp_path, ephemer
     (publishing), then assert each flag landed on the right cell/control in the
     re-exported, published FormXml: disabled on the <control>, and
     locklevel/showlabel/visible on its <cell>. Removes the field to leave the
-    form clean."""
+    form clean.
+    """
     import re as _re
+
     forms = json.loads(cli(["--json", "form", "list", ephemeral_entity]).stdout)["data"]
     form_name = forms[0]["name"]
     try:
-        cli(["--json", "form", "add-field", ephemeral_entity, "createdon", "--publish",
-             "--solution", ephemeral_solution])
-        r = cli(["--json", "form", "set-field-props", ephemeral_entity, "createdon",
-                 "--disabled", "--hidden", "--locked", "--no-show-label", "--publish",
-                 "--solution", ephemeral_solution])
+        cli(
+            [
+                "--json",
+                "form",
+                "add-field",
+                ephemeral_entity,
+                "createdon",
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
+        r = cli(
+            [
+                "--json",
+                "form",
+                "set-field-props",
+                ephemeral_entity,
+                "createdon",
+                "--disabled",
+                "--hidden",
+                "--locked",
+                "--no-show-label",
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
         assert r.returncode == 0, f"set-field-props failed:\n{r.stderr}\n{r.stdout}"
         data = json.loads(r.stdout)["data"]
         assert data["updated"] is True, data
@@ -422,16 +668,28 @@ def test_form_set_field_props_roundtrip(cli, ephemeral_entity, tmp_path, ephemer
         assert 'disabled="true"' in ctrl.group(0), ctrl.group(0)
         # locklevel / showlabel / visible are <cell> attributes (the schema rejects
         # `visible` on a <control>); locklevel is an integer flag, the rest booleans.
-        cell = _re.search(r'(<cell\b[^>]*>)(?:(?!</cell>).)*?datafieldname="createdon"',
-                          xml, _re.DOTALL)
+        cell = _re.search(
+            r'(<cell\b[^>]*>)(?:(?!</cell>).)*?datafieldname="createdon"', xml, _re.DOTALL
+        )
         assert cell, "createdon cell missing from exported form"
         cell_tag = cell.group(1)  # the cell's opening tag, captured above
         assert 'locklevel="1"' in cell_tag, cell_tag
         assert 'showlabel="false"' in cell_tag, cell_tag
         assert 'visible="false"' in cell_tag, cell_tag
     finally:
-        cli(["--json", "form", "remove-field", ephemeral_entity, "createdon",
-             "--publish", "--solution", ephemeral_solution], check=False)
+        cli(
+            [
+                "--json",
+                "form",
+                "remove-field",
+                ephemeral_entity,
+                "createdon",
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ],
+            check=False,
+        )
 
 
 # ── event-handler & library wiring (issue #459) ─────────────────────────────────
@@ -443,68 +701,171 @@ def test_form_set_field_props_roundtrip(cli, ephemeral_entity, tmp_path, ephemer
 # test creates a throwaway one and deletes it in teardown.
 
 
-@covers("form add-library", "form add-handler", "form remove-handler",
-        "form list-handlers")
+@covers("form add-library", "form add-handler", "form remove-handler", "form list-handlers")
 @pytest.mark.slow
 def test_form_handler_wiring_roundtrip(cli, ephemeral_entity, tmp_path, unique, ephemeral_solution):
     """add-library → add-handler (onload + onchange) → list-handlers → remove-handler,
     publishing each step and verifying via re-export that the handler lands under
-    <Handlers> (not <InternalHandlers>) and is gone after removal."""
+    <Handlers> (not <InternalHandlers>) and is gone after removal.
+    """
     forms = json.loads(cli(["--json", "form", "list", ephemeral_entity]).stdout)["data"]
     form_name = forms[0]["name"]
     wr_name = f"new_e2e_lib_{unique}.js"
     src = tmp_path / f"{unique}.js"
     src.write_bytes(b"// e2e handler-wiring test")
-    create = cli(["--json", "webresource", "create", "--name", wr_name,
-                  "--file", str(src), "--display-name", f"E2E lib {unique}",
-                  "--solution", ephemeral_solution])
+    create = cli(
+        [
+            "--json",
+            "webresource",
+            "create",
+            "--name",
+            wr_name,
+            "--file",
+            str(src),
+            "--display-name",
+            f"E2E lib {unique}",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert create.returncode == 0, f"wr create failed:\n{create.stderr}\n{create.stdout}"
     try:
         # add-library (idempotent register)
-        r = cli(["--json", "form", "add-library", ephemeral_entity,
-                 "--library", wr_name, "--publish", "--solution", ephemeral_solution])
+        r = cli(
+            [
+                "--json",
+                "form",
+                "add-library",
+                ephemeral_entity,
+                "--library",
+                wr_name,
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
         assert r.returncode == 0, f"add-library failed:\n{r.stderr}\n{r.stdout}"
         xml = _export_formxml(cli, ephemeral_entity, form_name, tmp_path)
         assert f'name="{wr_name}"' in xml, "library not registered in published form"
 
         # add-handler onload
-        r = cli(["--json", "form", "add-handler", ephemeral_entity,
-                 "--event", "onload", "--library", wr_name,
-                 "--function", "App.onLoad", "--publish", "--solution", ephemeral_solution])
+        r = cli(
+            [
+                "--json",
+                "form",
+                "add-handler",
+                ephemeral_entity,
+                "--event",
+                "onload",
+                "--library",
+                wr_name,
+                "--function",
+                "App.onLoad",
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
         assert r.returncode == 0, f"add-handler failed:\n{r.stderr}\n{r.stdout}"
         xml = _export_formxml(cli, ephemeral_entity, form_name, tmp_path)
         assert 'functionName="App.onLoad"' in xml, "handler not in published form"
         # the wired handler must sit under <Handlers>, never <InternalHandlers>
         import re as _re
+
         onload_m = _re.search(r'<event name="onload".*?</event>', xml, _re.S)
         assert onload_m is not None, "onload event missing from published form"
         assert "App.onLoad" in onload_m.group(0).split("<Handlers>", 1)[1]
 
         # add-handler onchange on a field that is on the form
-        cli(["--json", "form", "add-field", ephemeral_entity, "createdon", "--publish",
-             "--solution", ephemeral_solution])
-        r = cli(["--json", "form", "add-handler", ephemeral_entity,
-                 "--event", "onchange", "--field", "createdon", "--library", wr_name,
-                 "--function", "App.onChange", "--publish", "--solution", ephemeral_solution])
+        cli(
+            [
+                "--json",
+                "form",
+                "add-field",
+                ephemeral_entity,
+                "createdon",
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
+        r = cli(
+            [
+                "--json",
+                "form",
+                "add-handler",
+                ephemeral_entity,
+                "--event",
+                "onchange",
+                "--field",
+                "createdon",
+                "--library",
+                wr_name,
+                "--function",
+                "App.onChange",
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
         assert r.returncode == 0, f"onchange add-handler failed:\n{r.stderr}\n{r.stdout}"
 
         # list-handlers reflects what was wired
-        listed = json.loads(cli(["--json", "form", "list-handlers",
-                                 ephemeral_entity]).stdout)["data"]
+        listed = json.loads(cli(["--json", "form", "list-handlers", ephemeral_entity]).stdout)[
+            "data"
+        ]
         fns = {h["function"] for h in listed}
         assert {"App.onLoad", "App.onChange"} <= fns, f"list-handlers missing wiring: {listed}"
 
         # remove-handler, then assert absent on read-back
-        r = cli(["--json", "form", "remove-handler", ephemeral_entity,
-                 "--event", "onload", "--function", "App.onLoad", "--publish",
-                 "--solution", ephemeral_solution])
+        r = cli(
+            [
+                "--json",
+                "form",
+                "remove-handler",
+                ephemeral_entity,
+                "--event",
+                "onload",
+                "--function",
+                "App.onLoad",
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ]
+        )
         assert r.returncode == 0, f"remove-handler failed:\n{r.stderr}\n{r.stdout}"
         xml = _export_formxml(cli, ephemeral_entity, form_name, tmp_path)
         assert 'functionName="App.onLoad"' not in xml, "handler still present after remove"
     finally:
-        cli(["--json", "form", "remove-handler", ephemeral_entity, "--event",
-             "onchange", "--field", "createdon", "--function", "App.onChange",
-             "--publish", "--solution", ephemeral_solution], check=False)
-        cli(["--json", "form", "remove-field", ephemeral_entity, "createdon",
-             "--publish", "--solution", ephemeral_solution], check=False)
+        cli(
+            [
+                "--json",
+                "form",
+                "remove-handler",
+                ephemeral_entity,
+                "--event",
+                "onchange",
+                "--field",
+                "createdon",
+                "--function",
+                "App.onChange",
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ],
+            check=False,
+        )
+        cli(
+            [
+                "--json",
+                "form",
+                "remove-field",
+                ephemeral_entity,
+                "createdon",
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ],
+            check=False,
+        )
         cli(["--json", "webresource", "delete", wr_name, "--yes"], check=False)

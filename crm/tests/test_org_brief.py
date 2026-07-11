@@ -20,7 +20,6 @@ from click.testing import CliRunner
 
 from crm.cli import CLIContext, cli
 
-
 # ── Canned org: small but non-empty in every section ────────────────────────
 _WHOAMI = {
     "UserId": "11111111-1111-1111-1111-111111111111",
@@ -34,31 +33,42 @@ _VERSION = {"Version": "9.2.24091.00196"}
 # unmanaged page (names + `@odata.count`). Dispatch on the `$filter` querystring.
 _SOLUTIONS_MANAGED = 1
 _SOLUTIONS_UNMANAGED = ["Default", "Active", "AcmeCore", "AcmeExt"]
-_PUBLISHERS = {"value": [
-    {"uniquename": "acme", "friendlyname": "Acme", "customizationprefix": "acme"},
-    {"uniquename": "new", "friendlyname": "Default Publisher", "customizationprefix": "new"},
-]}
-_CUSTOM_ENTITIES = {"value": [
-    {"LogicalName": "acme_widget", "EntitySetName": "acme_widgets"},
-    {"LogicalName": "acme_gadget", "EntitySetName": "acme_gadgets"},
-]}
-_OPTIONSETS = {"value": [
-    {"Name": "acme_color", "IsCustomOptionSet": True},
-    {"Name": "acme_size", "IsCustomOptionSet": True},
-    {"Name": "statuscode_shared", "IsCustomOptionSet": False},
-]}
-_APPS = {"@odata.count": 2, "value": [
-    {"name": "Sales Hub", "uniquename": "acme_saleshub"},
-    {"name": "Acme Ops", "uniquename": "acme_ops"},
-]}
+_PUBLISHERS = {
+    "value": [
+        {"uniquename": "acme", "friendlyname": "Acme", "customizationprefix": "acme"},
+        {"uniquename": "new", "friendlyname": "Default Publisher", "customizationprefix": "new"},
+    ]
+}
+_CUSTOM_ENTITIES = {
+    "value": [
+        {"LogicalName": "acme_widget", "EntitySetName": "acme_widgets"},
+        {"LogicalName": "acme_gadget", "EntitySetName": "acme_gadgets"},
+    ]
+}
+_OPTIONSETS = {
+    "value": [
+        {"Name": "acme_color", "IsCustomOptionSet": True},
+        {"Name": "acme_size", "IsCustomOptionSet": True},
+        {"Name": "statuscode_shared", "IsCustomOptionSet": False},
+    ]
+}
+_APPS = {
+    "@odata.count": 2,
+    "value": [
+        {"name": "Sales Hub", "uniquename": "acme_saleshub"},
+        {"name": "Acme Ops", "uniquename": "acme_ops"},
+    ],
+}
 # workflows: type=1 definitions across categories/states.
-_WORKFLOWS = {"value": [
-    {"category": 0, "statecode": 1},   # workflow, activated
-    {"category": 0, "statecode": 0},   # workflow, draft
-    {"category": 2, "statecode": 1},   # business_rule, activated
-    {"category": 4, "statecode": 1},   # bpf, activated
-    {"category": 5, "statecode": 0},   # modern_flow, draft
-]}
+_WORKFLOWS = {
+    "value": [
+        {"category": 0, "statecode": 1},  # workflow, activated
+        {"category": 0, "statecode": 0},  # workflow, draft
+        {"category": 2, "statecode": 1},  # business_rule, activated
+        {"category": 4, "statecode": 1},  # bpf, activated
+        {"category": 5, "statecode": 0},  # modern_flow, draft
+    ]
+}
 
 # webresourceset is hit once for the total and once per notable type; roles and
 # the plain counts each return an @odata.count envelope.
@@ -82,8 +92,10 @@ def _register(m: requests_mock.Mocker, backend) -> None:
         flt = request.qs.get("$filter", [""])[0]
         if "ismanaged eq true" in flt:
             return {"@odata.count": _SOLUTIONS_MANAGED, "value": [{"uniquename": "msdynce_Sales"}]}
-        return {"@odata.count": len(_SOLUTIONS_UNMANAGED),
-                "value": [{"uniquename": n} for n in _SOLUTIONS_UNMANAGED]}
+        return {
+            "@odata.count": len(_SOLUTIONS_UNMANAGED),
+            "value": [{"uniquename": n} for n in _SOLUTIONS_UNMANAGED],
+        }
 
     m.get(u("solutions"), json=_solutions)
     m.get(u("publishers"), json={**_PUBLISHERS, "@odata.count": 2})
@@ -159,7 +171,8 @@ class TestComposer:
     def test_request_count_is_bounded(self, backend):
         """The bounded request budget IS the feature. Pin it so a regression that
         reintroduces a fat per-row sweep (making the count scale with org size)
-        fails loudly. requests_mock counts every HTTP call the composer makes."""
+        fails loudly. requests_mock counts every HTTP call the composer makes.
+        """
         from crm.core import org
 
         with requests_mock.Mocker() as m:
@@ -197,8 +210,15 @@ class TestCli:
         env = json.loads(r.output)
         assert env["ok"]
         data = env["data"]
-        for section in ("identity", "solutions", "publishers", "schema", "apps",
-                        "automation", "components"):
+        for section in (
+            "identity",
+            "solutions",
+            "publishers",
+            "schema",
+            "apps",
+            "automation",
+            "components",
+        ):
             assert section in data
         # Self-identifying envelope (#624): meta carries profile + url.
         assert env["meta"]["profile"] == backend.profile.name

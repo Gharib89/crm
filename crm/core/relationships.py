@@ -12,13 +12,13 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
-from crm.core.metadata import label, label_text, maybe_publish, target_exists
 from crm.core import dependencies as dep_mod
-from crm.core import metadata_cache
 from crm.core import metadata as _meta_mod
+from crm.core import metadata_cache
 from crm.core import metadata_constraints as mc
 from crm.core import references as ref_mod
+from crm.core.metadata import label, label_text, maybe_publish, target_exists
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 
 
 def list_relationships(backend: D365Backend, logical_name: str) -> dict[str, Any]:
@@ -104,18 +104,14 @@ def can_relate(
     """
     cfg = _RELATE_ROLES.get(role)
     if cfg is None:
-        raise D365Error(
-            f"role must be one of {sorted(_RELATE_ROLES)}; got {role!r}."
-        )
+        raise D365Error(f"role must be one of {sorted(_RELATE_ROLES)}; got {role!r}.")
     if not entity:
         raise D365Error("entity is required.")
 
     if valid_partners:
         fn = cfg["partners_fn"]
         param = cfg["partners_param"]
-        path = (
-            f"{fn}({param}={odata_literal(entity)})" if param else fn
-        )
+        path = f"{fn}({param}={odata_literal(entity)})" if param else fn
         resp = as_dict(backend.get(path))
         names = cast("list[str]", resp.get("EntityNames") or [])
         return {
@@ -210,16 +206,18 @@ def read_entity_relationships(
 
     Returns ``[]`` when the entity has no custom 1:N relationships.
     """
-    raw = as_dict(backend.get(
-        f"EntityDefinitions(LogicalName={odata_literal(entity_logical_name)})/OneToManyRelationships",
-        params={
-            "$select": (
-                "SchemaName,ReferencedEntity,ReferencingEntity,"
-                "ReferencingAttribute,IsCustomRelationship,IsHierarchical,"
-                "CascadeConfiguration,AssociatedMenuConfiguration"
-            )
-        },
-    ))
+    raw = as_dict(
+        backend.get(
+            f"EntityDefinitions(LogicalName={odata_literal(entity_logical_name)})/OneToManyRelationships",
+            params={
+                "$select": (
+                    "SchemaName,ReferencedEntity,ReferencingEntity,"
+                    "ReferencingAttribute,IsCustomRelationship,IsHierarchical,"
+                    "CascadeConfiguration,AssociatedMenuConfiguration"
+                )
+            },
+        )
+    )
     rows: list[dict[str, Any]] = raw.get("value", [])
 
     result: list[dict[str, Any]] = []
@@ -243,9 +241,7 @@ def read_entity_relationships(
         lookup_description: str | None = None
         if referencing_entity and referencing_attr:
             try:
-                attr_info = _meta_mod.attribute_info(
-                    backend, referencing_entity, referencing_attr
-                )
+                attr_info = _meta_mod.attribute_info(backend, referencing_entity, referencing_attr)
                 schema = attr_info.get("SchemaName")
                 if isinstance(schema, str) and schema:
                     lookup_schema = schema
@@ -312,9 +308,12 @@ def delete_relationship(
     if not schema_name:
         raise D365Error("schema_name is required.")
     path = f"RelationshipDefinitions(SchemaName='{schema_name}')"
-    rb = as_dict(backend.get(
-        path, params={"$select": "IsCustomRelationship,IsManaged,MetadataId"},
-    ))
+    rb = as_dict(
+        backend.get(
+            path,
+            params={"$select": "IsCustomRelationship,IsManaged,MetadataId"},
+        )
+    )
     if rb.get("IsCustomRelationship") is False:
         raise D365Error(
             f"{schema_name!r} is not a custom relationship; refusing to delete.",
@@ -392,9 +391,12 @@ def create_one_to_many(
     mc.validate_schema_name(lookup_schema, subject="lookup_schema")
     mc.validate_required(lookup_required, subject="lookup_required")
     for name, value in (
-        ("cascade_assign", cascade_assign), ("cascade_delete", cascade_delete),
-        ("cascade_reparent", cascade_reparent), ("cascade_share", cascade_share),
-        ("cascade_unshare", cascade_unshare), ("cascade_merge", cascade_merge),
+        ("cascade_assign", cascade_assign),
+        ("cascade_delete", cascade_delete),
+        ("cascade_reparent", cascade_reparent),
+        ("cascade_share", cascade_share),
+        ("cascade_unshare", cascade_unshare),
+        ("cascade_merge", cascade_merge),
     ):
         mc.validate_cascade(value, subject=name)
     mc.validate_menu_behavior(menu_behavior)
@@ -404,9 +406,7 @@ def create_one_to_many(
             "custom-label associated menu without a label."
         )
 
-    exists = target_exists(
-        backend, f"RelationshipDefinitions(SchemaName='{schema_name}')"
-    )
+    exists = target_exists(backend, f"RelationshipDefinitions(SchemaName='{schema_name}')")
     if exists and not backend.dry_run:
         if if_exists == "error":
             raise D365Error(
@@ -464,11 +464,13 @@ def create_one_to_many(
     if is_hierarchical:
         body["IsHierarchical"] = True
 
-    result = as_dict(backend.post(
-        "RelationshipDefinitions",
-        json_body=body,
-        solution=solution,
-    ))
+    result = as_dict(
+        backend.post(
+            "RelationshipDefinitions",
+            json_body=body,
+            solution=solution,
+        )
+    )
     if result.get("_dry_run"):
         result["_exists"] = exists
         result["would_skip"] = exists and if_exists == "skip"
@@ -476,11 +478,15 @@ def create_one_to_many(
         # a pre-flight finding instead of a server fault at real write (#281).
         result["references"] = [
             ref_mod.make_reference(
-                "referenced_entity", referenced_entity,
-                ref_mod.entity_exists(backend, referenced_entity)),
+                "referenced_entity",
+                referenced_entity,
+                ref_mod.entity_exists(backend, referenced_entity),
+            ),
             ref_mod.make_reference(
-                "referencing_entity", referencing_entity,
-                ref_mod.entity_exists(backend, referencing_entity)),
+                "referencing_entity",
+                referencing_entity,
+                ref_mod.entity_exists(backend, referencing_entity),
+            ),
         ]
         return result
 
@@ -490,18 +496,18 @@ def create_one_to_many(
     referencing_attr: str | None = None
     lookup_error: str | None = None
     if not relationship_id:
-        lookup_error = (
-            f"Could not parse RelationshipId from response: {entity_id_url!r}"
-        )
+        lookup_error = f"Could not parse RelationshipId from response: {entity_id_url!r}"
     else:
         try:
             # Cast to the 1:N subtype — ReferencingAttribute is not on the
             # RelationshipMetadataBase type returned by the uncast endpoint.
-            rb = as_dict(backend.get(
-                f"RelationshipDefinitions({relationship_id})"
-                "/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
-                params={"$select": "SchemaName,ReferencingAttribute"},
-            ))
+            rb = as_dict(
+                backend.get(
+                    f"RelationshipDefinitions({relationship_id})"
+                    "/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
+                    params={"$select": "SchemaName,ReferencingAttribute"},
+                )
+            )
             schema_readback = rb.get("SchemaName")
             referencing_attr = rb.get("ReferencingAttribute")
         except D365Error as exc:
@@ -563,8 +569,7 @@ def create_customer_relationships(
     if exists and not backend.dry_run:
         if if_exists == "error":
             raise D365Error(
-                f"Attribute {lookup_logical!r} already exists on entity "
-                f"{referencing_entity!r}.",
+                f"Attribute {lookup_logical!r} already exists on entity {referencing_entity!r}.",
                 code="AlreadyExists",
             )
         return {
@@ -605,11 +610,13 @@ def create_customer_relationships(
         ],
     }
 
-    result = as_dict(backend.post(
-        "CreateCustomerRelationships",
-        json_body=body,
-        solution=solution,
-    ))
+    result = as_dict(
+        backend.post(
+            "CreateCustomerRelationships",
+            json_body=body,
+            solution=solution,
+        )
+    )
     if result.get("_dry_run"):
         result["_exists"] = exists
         result["would_skip"] = exists and if_exists == "skip"
@@ -673,9 +680,7 @@ def create_many_to_many(
                 "custom-label associated menu without a label."
             )
 
-    exists = target_exists(
-        backend, f"RelationshipDefinitions(SchemaName='{schema_name}')"
-    )
+    exists = target_exists(backend, f"RelationshipDefinitions(SchemaName='{schema_name}')")
     if exists and not backend.dry_run:
         if if_exists == "error":
             raise D365Error(
@@ -713,11 +718,13 @@ def create_many_to_many(
         "Entity2AssociatedMenuConfiguration": entity2_menu,
     }
 
-    result = as_dict(backend.post(
-        "RelationshipDefinitions",
-        json_body=body,
-        solution=solution,
-    ))
+    result = as_dict(
+        backend.post(
+            "RelationshipDefinitions",
+            json_body=body,
+            solution=solution,
+        )
+    )
     if result.get("_dry_run"):
         result["_exists"] = exists
         result["would_skip"] = exists and if_exists == "skip"
@@ -729,18 +736,18 @@ def create_many_to_many(
     intersect_readback: str | None = None
     lookup_error: str | None = None
     if not relationship_id:
-        lookup_error = (
-            f"Could not parse RelationshipId from response: {entity_id_url!r}"
-        )
+        lookup_error = f"Could not parse RelationshipId from response: {entity_id_url!r}"
     else:
         try:
             # Cast to the N:N subtype — IntersectEntityName is not on the
             # RelationshipMetadataBase type returned by the uncast endpoint.
-            rb = as_dict(backend.get(
-                f"RelationshipDefinitions({relationship_id})"
-                "/Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata",
-                params={"$select": "SchemaName,IntersectEntityName"},
-            ))
+            rb = as_dict(
+                backend.get(
+                    f"RelationshipDefinitions({relationship_id})"
+                    "/Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata",
+                    params={"$select": "SchemaName,IntersectEntityName"},
+                )
+            )
             schema_readback = rb.get("SchemaName")
             intersect_readback = rb.get("IntersectEntityName")
         except D365Error as exc:

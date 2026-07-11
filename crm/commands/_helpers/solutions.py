@@ -1,30 +1,35 @@
 """Solution / publish / schema-name resolution helpers."""
+
 # pyright: basic
 from __future__ import annotations
+
 import re
 from typing import TYPE_CHECKING
+
 import click
+
 from crm.core import session as session_mod
+
 if TYPE_CHECKING:
     from crm.cli import CLIContext
     from crm.utils.d365_backend import ConnectionProfile
 
 
 _EXPORT_SETTING_KEYS: dict[str, str] = {
-    "autonumbering":       "export_autonumbering",
-    "calendar":            "export_calendar",
-    "customizations":      "export_customizations",
-    "email-tracking":      "export_email_tracking",
-    "general":             "export_general",
-    "isv-config":          "export_isv_config",
-    "marketing":           "export_marketing",
-    "outlook-sync":        "export_outlook_sync",
-    "relationship-roles":  "export_relationship_roles",
-    "sales":               "export_sales",
+    "autonumbering": "export_autonumbering",
+    "calendar": "export_calendar",
+    "customizations": "export_customizations",
+    "email-tracking": "export_email_tracking",
+    "general": "export_general",
+    "isv-config": "export_isv_config",
+    "marketing": "export_marketing",
+    "outlook-sync": "export_outlook_sync",
+    "relationship-roles": "export_relationship_roles",
+    "sales": "export_sales",
 }
 
 
-def _resolve_publish(ctx: "CLIContext", publish: bool) -> bool:
+def _resolve_publish(ctx: CLIContext, publish: bool) -> bool:
     """Derive the effective publish value, honoring the global --stage-only flag.
 
     When `ctx.stage_only` is set, every metadata-mutating command behaves as
@@ -37,6 +42,7 @@ def _resolve_publish(ctx: "CLIContext", publish: bool) -> bool:
     # stubs only export ParameterSource there; `click.ParameterSource` / `from click
     # import ParameterSource` fail strict type-checking even though both work at runtime.
     from click.core import ParameterSource
+
     source = click.get_current_context().get_parameter_source("publish")
     if source == ParameterSource.COMMANDLINE and publish:
         raise click.UsageError("--publish cannot be combined with --stage-only")
@@ -51,13 +57,14 @@ def _publish_option(f):
     across all sites (it was inconsistent / absent before #294).
     """
     return click.option(
-        "--publish/--no-publish", default=False,
+        "--publish/--no-publish",
+        default=False,
         help="Run PublishAllXml after the change. Default: stage (no publish); "
-             "run `solution publish-all` when your set is done.",
+        "run `solution publish-all` when your set is done.",
     )(f)
 
 
-def _active_profile(ctx: "CLIContext") -> ConnectionProfile | None:
+def _active_profile(ctx: CLIContext) -> ConnectionProfile | None:
     """Load the active connection profile, or None if none is resolvable."""
     name = ctx.profile_name
     if not name:
@@ -80,10 +87,11 @@ def _solution_option(f):
     Default-Solution-only write.
     """
     return click.option(
-        "--solution", default=None,
+        "--solution",
+        default=None,
         help="Target unmanaged solution uniquename (MSCRM.SolutionUniqueName). "
-             "Required for customization writes; pass --solution Default for a "
-             "deliberate Default-Solution-only write.",
+        "Required for customization writes; pass --solution Default for a "
+        "deliberate Default-Solution-only write.",
     )(f)
 
 
@@ -96,13 +104,14 @@ def _optional_solution_option(f):
     passthrough, forwarded to the backend when given (no `_resolve_solution`).
     """
     return click.option(
-        "--solution", default=None,
+        "--solution",
+        default=None,
         help="Optional. Forwarded as MSCRM.SolutionUniqueName; a hard delete "
-             "removes the component globally, so this does not scope the delete.",
+        "removes the component globally, so this does not scope the delete.",
     )(f)
 
 
-def _resolve_solution(ctx: "CLIContext", explicit: str | None) -> str:
+def _resolve_solution(ctx: CLIContext, explicit: str | None) -> str:
     """Resolve the target unmanaged solution for a customization write (#636).
 
     An explicit `--solution` is mandatory: a component filed without a named
@@ -121,7 +130,10 @@ def _resolve_solution(ctx: "CLIContext", explicit: str | None) -> str:
 
 
 def _resolve_schema_name(
-    ctx: "CLIContext", schema_name: str | None, token: str | None, flag: str,
+    ctx: CLIContext,
+    schema_name: str | None,
+    token: str | None,
+    flag: str,
 ) -> str:
     """Resolve a create command's schema name from an explicit value or prefix.
 
@@ -135,17 +147,14 @@ def _resolve_schema_name(
     prefix = profile.publisher_prefix if profile else None
     if not prefix:
         raise click.UsageError(
-            f"{flag} is required (no publisher_prefix on the active profile to "
-            "default from)."
+            f"{flag} is required (no publisher_prefix on the active profile to default from)."
         )
     if not token:
         raise click.UsageError(f"{flag} is required to default the schema name.")
     # PascalCase across word boundaries and drop non-alphanumerics so a
     # multi-word display like "Project Task" -> "ProjectTask", not the invalid
     # "Project Task". Preserve casing of the rest of each word (don't lower it).
-    pascal = "".join(
-        w[:1].upper() + w[1:] for w in re.split(r"[^0-9A-Za-z]+", token) if w
-    )
+    pascal = "".join(w[:1].upper() + w[1:] for w in re.split(r"[^0-9A-Za-z]+", token) if w)
     if not pascal:
         raise click.UsageError(
             f"{flag} could not be defaulted from {token!r} (no alphanumeric "
