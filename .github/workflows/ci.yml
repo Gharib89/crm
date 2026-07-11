@@ -53,6 +53,19 @@ jobs:
           "$RUNNER_TEMP/semgrep-venv/bin/pip" install --quiet semgrep==1.169.0
           "$RUNNER_TEMP/semgrep-venv/bin/semgrep" scan \
             --config ci/semgrep-rules.yml --error --metrics off
+      # Lint workflow YAML + the inline bash in `run:` blocks (shellcheck-backed).
+      # Download the pinned release binary rather than a marketplace action so
+      # nothing new needs auditing; the SHA256 pins the exact bytes (a version
+      # tag alone is mutable). Version is kept in lockstep with the actionlint
+      # pre-commit hook rev — bump the version, URL, and checksum together.
+      # actionlint auto-discovers .github/workflows.
+      - name: Lint workflows (actionlint)
+        run: |
+          curl -fsSL -o actionlint.tar.gz \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  actionlint.tar.gz" | sha256sum -c -
+          tar -xzf actionlint.tar.gz actionlint
+          ./actionlint -color
 
   test:
     permissions:
@@ -73,8 +86,20 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
+      # Coverage is REPORT-ONLY: no --cov-fail-under, no threshold gate, no
+      # Codecov (map #819). --cov stays out of addopts so local `pytest` runs
+      # fast; CI passes the flags explicitly and uploads the report as an artifact.
       - name: Run unit tests
-        run: pytest -q
+        run: pytest -q --cov=crm --cov-report=xml --cov-report=html
+      - name: Upload coverage report
+        # One artifact from Linux is enough for a report-only signal.
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: |
+            coverage.xml
+            htmlcov/
       # The solution pack/extract verbs are offline local-file transforms (they
       # shell out to the Power Platform CLI, never to a D365 org), so their live
       # e2e runs here on every push with no org/creds/VPN — unlike the secret-gated
@@ -134,6 +159,9 @@ jobs:
           ./dist/crm/crm --json --fields name profile list
       - name: Smoke test (Windows)
         if: runner.os == 'Windows'
+        # PowerShell (backslash paths) — declare it so actionlint doesn't lint the
+        # block as bash (shellcheck reads `.\crm.exe` escapes as SC1001).
+        shell: pwsh
         run: |
           .\dist\crm\crm.exe --version
           .\dist\crm\crm.exe --help

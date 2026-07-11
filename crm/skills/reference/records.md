@@ -127,7 +127,7 @@ shell quoting and command-line length limits.
 `_entity_id_url`) on `create`, `update`, `delete`, `clone`, and `entity get`** — one
 entity-agnostic key, no need to know the per-entity primary-key attribute
 (`accountid` vs `activityid`). The leading underscore marks it CLI-synthesized; the
-genuine PK attribute still appears in a create/get's full record. List rows are
+genuine PK attribute still appears in a create/get full record. List rows are
 **not** given `_entity_id` (each row carries its own PK). `@odata.*` protocol keys
 are stripped from every curated `data` payload.
 

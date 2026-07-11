@@ -25,3 +25,8 @@ evals/skill/runs/
 
 # Local e2e run logs (scripts/e2e_all.py)
 /logs/
+
+# Coverage report artifacts (CI generates these report-only; never tracked)
+coverage.xml
+htmlcov/
+.coverage

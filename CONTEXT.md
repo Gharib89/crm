@@ -138,7 +138,7 @@ _Avoid_: OData envelope, `data.value`, result wrapper.
 holding the affected record's GUID across the write verbs and single-record
 reads, so chaining needs no per-entity primary-key knowledge. Leading underscore
 marks it synthetic, distinct from the genuine PK attribute (`accountid`, …) that
-still appears in a create/get's full record. Present on: create (alongside the
+still appears in a create/get full record. Present on: create (alongside the
 full record), update, delete (`{deleted: true, _entity_id, _entity_id_url}`), and
 `entity get`. **Not** injected per-row in list payloads — each list row carries
 its own PK attribute.
