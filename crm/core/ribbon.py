@@ -793,13 +793,17 @@ def _rewrite_customizations(
 ) -> None:
     """Copy every member of ``src_zip`` to ``dst_zip``, applying ``mutate`` to the
     parsed customizations.xml root before writing it back."""
-    with zipfile.ZipFile(src_zip) as zin:
-        members = {name: zin.read(name) for name in zin.namelist()}
     try:
+        with zipfile.ZipFile(src_zip) as zin:
+            members = {name: zin.read(name) for name in zin.namelist()}
         cust_root = safe_xml.fromstring(members["customizations.xml"])
-    except ET.ParseError as exc:
+    except (zipfile.BadZipFile, KeyError, ET.ParseError) as exc:
+        # This sits on the org boundary (the exported solution zip); keep a
+        # corrupt/incomplete export behind the D365Error seam rather than let it
+        # escape as a raw traceback (d365_errors catches only D365Error), matching
+        # load_solution_ribbon_diff.
         raise D365Error(
-            f"exported customizations.xml is not valid XML: {exc}") from exc
+            f"exported customizations.xml could not be read: {exc}") from exc
     mutate(cust_root)
     members["customizations.xml"] = ET.tostring(cust_root, encoding="utf-8")
     with zipfile.ZipFile(dst_zip, "w", zipfile.ZIP_DEFLATED) as zout:
