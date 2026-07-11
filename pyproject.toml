@@ -35,9 +35,12 @@ target-version = "py39"
 # D2xx/D4xx docstring FORMAT only — deliberately no D1xx (missing-docstring),
 # S (bandit), C90 (complexity), or ANN (pyright owns typing).
 select = ["E", "W", "F", "I", "B", "UP", "D2", "D4"]
-# D205 (blank line between summary and description) is adoption debt, not a
-# rule rejection: ~560 pre-existing docstrings violate it, and hand-editing
-# them would swamp the adoption diff. Tracked as a follow-up issue.
+# D205 (blank line between summary and description) is permanently excluded, not
+# adoption debt: it counts only physical line 1 as the summary, so it forces every
+# multi-line summary onto one line — which then trips E501 as breakable prose (>100
+# chars, unlike the exempt URL/box-rule lines). 482 of 569 sites cannot satisfy
+# D205 + E501 without rewording, and the descriptive-first-line convention here is
+# deliberate. See #843.
 ignore = ["D205"]
 
 [tool.ruff.lint.per-file-ignores]
