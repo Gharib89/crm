@@ -73,7 +73,7 @@ pip install -e .
 crm --version
 ```
 
-Requires Python ≥ 3.9. See the README for the full per-platform walkthrough.
+Requires Python ≥ 3.13. See the README for the full per-platform walkthrough.
 
 ## Verify
 

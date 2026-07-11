@@ -1,7 +1,7 @@
 {
   "include": ["crm"],
   "exclude": ["**/__pycache__", "build", "dist"],
-  "pythonVersion": "3.9",
+  "pythonVersion": "3.13",
   "typeCheckingMode": "strict",
   "reportMissingTypeStubs": false,
   "extraPaths": ["."]
