@@ -101,14 +101,13 @@ def _skills_discoverable_via_manifest(manifest: dict) -> set[str]:
 
 def test_plugin_manifest_valid():
     """The root plugin manifest exists and declares the crm skill by a
-    tool-valid relative path (must start with './')."""
+    tool-valid relative path (must start with './').
+    """
     assert PLUGIN_MANIFEST.is_file(), ".claude-plugin/plugin.json is missing"
     manifest = json.loads(PLUGIN_MANIFEST.read_text(encoding="utf-8"))
     assert manifest.get("name") == "crm", "plugin manifest name must be 'crm'"
     skills = manifest.get("skills")
-    assert isinstance(skills, list) and skills, (
-        "manifest must declare a non-empty 'skills' array"
-    )
+    assert isinstance(skills, list) and skills, "manifest must declare a non-empty 'skills' array"
     for entry in skills:
         assert isinstance(entry, str) and entry.startswith("./"), (
             f"skills entry {entry!r} must be a relative path starting with './'"
