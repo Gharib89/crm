@@ -108,6 +108,9 @@ def test_plugin_manifest_valid():
     assert manifest.get("name") == "crm", "plugin manifest name must be 'crm'"
     skills = manifest.get("skills")
     assert isinstance(skills, list) and skills, "manifest must declare a non-empty 'skills' array"
+    assert "./crm/skills" in skills, (
+        "manifest must point at the canonical ./crm/skills container (single source of truth)"
+    )
     for entry in skills:
         assert isinstance(entry, str) and entry.startswith("./"), (
             f"skills entry {entry!r} must be a relative path starting with './'"
