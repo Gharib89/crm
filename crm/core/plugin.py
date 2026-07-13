@@ -237,6 +237,7 @@ def register_type(
     assembly: str,
     type_name: str,
     friendly_name: str | None = None,
+    name: str | None = None,
     solution: str | None = None,
 ) -> dict[str, Any]:
     """Register one plug-in type (`plugintypes`) under an existing assembly.
@@ -250,8 +251,12 @@ def register_type(
     `register_step --plugin-type <type_name>` resolves it.
 
     `friendly_name` defaults to `type_name` (friendlyname is SystemRequired on
-    the API). version/culture/publickeytoken are read-only — server-derived from
-    the bound assembly — and are never sent. The assembly name->id resolution is
+    the API). `name` also defaults to `type_name`, mirroring the Plug-in
+    Registration Tool: the `name` column (RequiredLevel None) is what the classic
+    workflow designer uses as the Add-Step label for a workflow activity, so a
+    null `name` yields an empty, unusable label (issue #866). version/culture/
+    publickeytoken are read-only — server-derived from the bound assembly — and
+    are never sent. The assembly name->id resolution is
     a GET and runs live even under dry-run (mirrors register_assembly's
     force-read); the POST is short-circuited to a {_dry_run, would_create}
     preview.
@@ -267,6 +272,7 @@ def register_type(
     body: dict[str, Any] = {
         "typename": type_name,
         "friendlyname": friendly_name or type_name,
+        "name": name or type_name,
         "pluginassemblyid@odata.bind": f"/pluginassemblies({pid})",
     }
     result = as_dict(backend.post("plugintypes", json_body=body, solution=solution))
@@ -280,6 +286,7 @@ def register_type(
         "plugintypeid": tid,
         "typename": type_name,
         "friendlyname": friendly_name or type_name,
+        "name": name or type_name,
         "assembly": assembly,
         "pluginassemblyid": pid,
         "solution": solution,

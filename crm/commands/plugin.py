@@ -105,9 +105,19 @@ def register_assembly_cmd(
     default=None,
     help="Display name (friendlyname); defaults to the type name.",
 )
+@click.option(
+    "--name",
+    "name",
+    default=None,
+    help=(
+        "Designer label (plugintype name); defaults to the type name. Workflow "
+        "activities use this as the classic-designer Add-Step label — a null "
+        "name shows an empty, unusable label."
+    ),
+)
 @_solution_option
 @pass_ctx
-def register_type_cmd(ctx: CLIContext, assembly, type_name, friendly_name, solution):
+def register_type_cmd(ctx: CLIContext, assembly, type_name, friendly_name, name, solution):
     """Register a plug-in type (plugintypes) under an existing assembly.
 
     A content-only register-assembly does not create plugintype rows, so name
@@ -120,6 +130,7 @@ def register_type_cmd(ctx: CLIContext, assembly, type_name, friendly_name, solut
             assembly=assembly,
             type_name=type_name,
             friendly_name=friendly_name,
+            name=name,
             solution=solution,
         )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
