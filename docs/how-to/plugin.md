@@ -43,10 +43,18 @@ crm --json plugin register-type \
     --solution cwx_contoso
 ```
 
-`--friendly-name` defaults to the type name. `version`/`culture`/`publickeytoken`
-are read-only (server-derived from the bound assembly) and are never sent in the
-request body. After this, `list-types` shows the row and `register-step
---plugin-type <typename>` resolves it.
+`--friendly-name` and `--name` both default to the type name.
+`version`/`culture`/`publickeytoken` are read-only (server-derived from the
+bound assembly) and are never sent in the request body. After this,
+`list-types` shows the row and `register-step --plugin-type <typename>`
+resolves it.
+
+The `name` column (distinct from `friendlyname`) is what the **classic**
+workflow designer shows as the Add-Step label for a workflow activity
+(`isworkflowactivity: true`) — this is why it defaults to the fully qualified
+type name (mirroring the Plug-in Registration Tool) rather than being left
+null, which previously produced an empty, unusable label there. Pass
+`--name` to give the label a different value instead.
 
 Dry-run preview (no write): `crm --dry-run --json plugin register-type ...
 --solution cwx_contoso` returns `{_dry_run, would_create: true}`. The assembly

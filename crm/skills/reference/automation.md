@@ -25,6 +25,9 @@ crm --json plugin register-assembly ./bin/Contoso.Plugins.dll --update --solutio
 
 # register-type: create one plugintypes row per IPlugin class. The CLI does NOT
 # reflect the assembly — plugintype rows are never auto-created via the Web API.
+# For a workflow activity (isworkflowactivity: true), the type's `name` column
+# is what the CLASSIC workflow designer shows as the Add-Step label — a blank
+# name there is the empty-label bug this default exists to avoid.
 crm --json plugin register-type --assembly Contoso.Plugins \
     --type Contoso.Plugins.AccountPostUpdate --solution ContosoCore
 

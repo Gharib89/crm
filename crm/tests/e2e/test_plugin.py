@@ -278,17 +278,22 @@ def test_assembly_register_step_unregister_lifecycle(
     assert type_data["ok"] is True, f"register-type not ok: {type_data}"
     assert type_data["data"]["created"] is True
     assert type_data["data"]["plugintypeid"], f"no plugintypeid parsed: {type_data}"
-    # friendlyname defaults to the type name when --friendly-name is omitted.
+    # friendlyname and name both default to the type name when their flags are
+    # omitted. A null name yields an empty classic-designer label (issue #866).
     assert type_data["data"]["friendlyname"] == asm.type_name
+    assert type_data["data"]["name"] == asm.type_name
 
     # Confirm it is queryable before register-step resolves it by name (guards a
     # read-after-write lag, which would otherwise surface as register-step 404ing).
     type_filter = f"typename eq '{asm.type_name}' and _pluginassemblyid_value eq {assembly_id}"
     for _ in range(10):
-        if backend.get(
+        rows = backend.get(
             "plugintypes",
-            params={"$filter": type_filter, "$select": "plugintypeid"},
-        ).get("value", []):
+            params={"$filter": type_filter, "$select": "plugintypeid,name"},
+        ).get("value", [])
+        if rows:
+            # the persisted row carries the defaulted name, not null (issue #866)
+            assert rows[0]["name"] == asm.type_name
             break
         time.sleep(2)
     else:

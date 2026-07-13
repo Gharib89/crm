@@ -382,6 +382,10 @@ class TestRegisterType:
         assert body["typename"] == "Contoso.Plugins.PreCreateAccount"
         # friendlyname defaults to the type name
         assert body["friendlyname"] == "Contoso.Plugins.PreCreateAccount"
+        # name defaults to the type name (PRT parity; classic workflow designer
+        # label). A null name yields an empty Add-Step label — see issue #866.
+        assert body["name"] == "Contoso.Plugins.PreCreateAccount"
+        assert out["name"] == "Contoso.Plugins.PreCreateAccount"
         # bound to the resolved assembly id (navprop = pluginassemblyid)
         assert body["pluginassemblyid@odata.bind"] == (f"/pluginassemblies({_PA_ID})")
         # read-only / server-derived identity is never sent
@@ -409,6 +413,29 @@ class TestRegisterType:
         body = _posts(m)[0].json()
         assert body["friendlyname"] == "Pre-create account"
         assert out["friendlyname"] == "Pre-create account"
+
+    def test_name_override(self, backend):
+        from crm.core import plugin
+
+        pt_url = backend.url_for(f"plugintypes({_PT_ID})")
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("pluginassemblies"), json={"value": [{"pluginassemblyid": _PA_ID}]}
+            )
+            m.post(
+                backend.url_for("plugintypes"), status_code=204, headers={"OData-EntityId": pt_url}
+            )
+            out = plugin.register_type(
+                backend,
+                assembly="Contoso.Plugins",
+                type_name="Contoso.Plugins.PreCreateAccount",
+                name="Custom Designer Label",
+            )
+        body = _posts(m)[0].json()
+        # explicit name overrides the type-name default; friendlyname untouched
+        assert body["name"] == "Custom Designer Label"
+        assert out["name"] == "Custom Designer Label"
+        assert body["friendlyname"] == "Contoso.Plugins.PreCreateAccount"
 
     def test_solution_header_routed(self, backend):
         from crm.core import plugin
@@ -464,6 +491,8 @@ class TestRegisterType:
             out = plugin.register_type(dry, assembly="Contoso.Plugins", type_name="X.Y")
         assert out["_dry_run"] is True
         assert out["would_create"] is True
+        # the echoed POST body carries the defaulted name (issue #866)
+        assert out["body"]["name"] == "X.Y"
         assert not _posts(m)
 
 
@@ -2142,6 +2171,8 @@ class TestPluginCommands:
                 "Contoso.Plugins.PreCreateAccount",
                 "--friendly-name",
                 "Pre-create account",
+                "--name",
+                "Designer Label",
                 "--solution",
                 "cwx_sol",
             ],
@@ -2150,6 +2181,7 @@ class TestPluginCommands:
         assert captured["assembly"] == "Contoso.Plugins"
         assert captured["type_name"] == "Contoso.Plugins.PreCreateAccount"
         assert captured["friendly_name"] == "Pre-create account"
+        assert captured["name"] == "Designer Label"
         env = json.loads(result.output)
         assert env["ok"] is True
         assert env["data"]["plugintypeid"] == _PT_ID
