@@ -9,6 +9,21 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.69.4 (2026-07-13)
+
+### Bug Fixes
+
+- **plugin**: Default plugintypes.name to type name so workflow activities get a designer label
+  ([#867](https://github.com/Gharib89/crm/pull/867),
+  [`ee80d50`](https://github.com/Gharib89/crm/commit/ee80d50bdc763e67e01efc1c4e0ba8f5331f022e))
+
+### Chores
+
+- Adopt zizmor Actions security auditor + fix workflow hygiene
+  ([#865](https://github.com/Gharib89/crm/pull/865),
+  [`ba028f2`](https://github.com/Gharib89/crm/commit/ba028f218bb1888a4ce1972e302784c6cd45ea3e))
+
+
 ## v1.69.3 (2026-07-11)
 
 ### Bug Fixes
