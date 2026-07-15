@@ -6,6 +6,8 @@ description: >-
   user wants to ship an issue or take an issue through to a PR; also invoked by
   the cloud ship routine.
 argument-hint: "[issue-number]"
+metadata:
+  internal: true
 ---
 
 # ship

@@ -1,6 +1,8 @@
 ---
 name: blindspot
 description: Map the user's unknown-unknowns before work starts — a read-only blindspot pass over an unfamiliar codebase area, domain, or tool. Use when the user says "blindspot pass" or "unknown unknowns", discloses that the area is new or unfamiliar to them, or asks to be taught a domain so they can prompt better.
+metadata:
+  internal: true
 ---
 
 # blindspot

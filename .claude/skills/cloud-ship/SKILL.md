@@ -6,6 +6,8 @@ description: >-
   Composes `ship`. Use only when running the scheduled cloud ship routine for
   Gharib89/crm (the routine prompt invokes this skill by name); not for an
   interactive `/ship`.
+metadata:
+  internal: true
 ---
 
 # cloud-ship

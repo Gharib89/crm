@@ -1,6 +1,9 @@
 # crm/tests/test_skill_bundle.py
 # pyright: basic
-"""Structural guards for the shipped agent-skill bundle (crm/skills/)."""
+"""Structural guards for the shipped agent-skill bundle (crm/skills/), its
+plugin-manifest discoverability, and the internal-only marking of the repo's
+dev skills (.claude/skills/).
+"""
 
 from __future__ import annotations
 
@@ -13,6 +16,7 @@ REFERENCE_DIR = SKILLS_DIR / "reference"
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 PLUGIN_MANIFEST = REPO_ROOT / ".claude-plugin" / "plugin.json"
+INTERNAL_SKILLS_DIR = REPO_ROOT / ".claude" / "skills"
 
 EXPECTED_REFERENCES = {
     "setup.md",
@@ -73,6 +77,23 @@ def _frontmatter_name(skill_md: Path) -> str | None:
     return None
 
 
+def _frontmatter_has_internal_flag(skill_md: Path) -> bool:
+    """True if the SKILL.md frontmatter carries `metadata.internal: true`."""
+    lines = skill_md.read_text(encoding="utf-8").splitlines()
+    if not lines or lines[0].strip() != "---":
+        return False
+    in_metadata = False
+    for line in lines[1:]:
+        if line.strip() == "---":
+            break
+        if line.strip() and line[:1] not in (" ", "\t"):  # top-level key
+            in_metadata = line.split(":", 1)[0].strip() == "metadata"
+            continue
+        if in_metadata and line.strip() == "internal: true":
+            return True
+    return False
+
+
 def _skills_discoverable_via_manifest(manifest: dict) -> set[str]:
     """Skill names the `vercel-labs/skills` tool would discover from this
     manifest's `skills` array.
@@ -129,6 +150,18 @@ def test_plugin_manifest_makes_crm_skill_discoverable():
         f"crm skill not discoverable via plugin.json skills={manifest.get('skills')!r}; "
         f"discoverable={sorted(discoverable)}"
     )
+
+
+def test_internal_dev_skills_marked_internal():
+    """#868: every dev skill under .claude/skills must carry
+    metadata.internal: true so a bare `npx skills add Gharib89/crm` hides them
+    from end users (revealed only with INSTALL_INTERNAL_SKILLS=1). Vendored
+    copies have the flag re-stamped by scripts/sync-skills.py on each sync.
+    """
+    skills = sorted(INTERNAL_SKILLS_DIR.glob("*/SKILL.md"))
+    assert skills, f"no skills found under {INTERNAL_SKILLS_DIR}"
+    missing = [p.parent.name for p in skills if not _frontmatter_has_internal_flag(p)]
+    assert not missing, f".claude/skills entries missing metadata.internal: true: {missing}"
 
 
 def test_router_is_thin():

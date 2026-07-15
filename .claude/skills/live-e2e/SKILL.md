@@ -1,6 +1,8 @@
 ---
 name: live-e2e
 description: Run the live e2e suite or verify a change against a live D365 org. Use when running `pytest -m e2e` / `D365_E2E=1`, picking a live target or profile (agent-cloud, agent-on-prem, agent-cs-trial), or exercising worktree code against a live org.
+metadata:
+  internal: true
 ---
 
 # Live e2e runs

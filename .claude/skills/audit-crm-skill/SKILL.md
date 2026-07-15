@@ -2,6 +2,8 @@
 name: audit-crm-skill
 description: Audit the shipped crm skill (crm/skills/) against the live CLI surface, the repo's skill house rules, and Microsoft D365 best practices — then apply the surviving findings as one docs PR.
 disable-model-invocation: true
+metadata:
+  internal: true
 ---
 
 # audit-crm-skill
