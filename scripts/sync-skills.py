@@ -176,11 +176,17 @@ def stamp_internal_flag(skill_md: Path) -> bool:
         lines.insert(end, "metadata:\n  internal: true\n")
         skill_md.write_text("".join(lines), encoding="utf-8")
         return True
-    # metadata block exists — bail if `internal: true` is already nested under it.
+    # metadata block exists — find an existing `internal:` child, if any, so we
+    # never leave a duplicate key: normalize a wrong value, keep a correct one.
     j = meta_idx + 1
     while j < end and (not lines[j].strip() or lines[j][:1] in (" ", "\t")):
-        if lines[j].strip() == "internal: true":
-            return False
+        if lines[j].split(":", 1)[0].strip() == "internal":
+            if lines[j].strip() == "internal: true":
+                return False
+            indent = lines[j][: len(lines[j]) - len(lines[j].lstrip())]
+            lines[j] = f"{indent}internal: true\n"
+            skill_md.write_text("".join(lines), encoding="utf-8")
+            return True
         j += 1
     lines.insert(meta_idx + 1, "  internal: true\n")
     skill_md.write_text("".join(lines), encoding="utf-8")
