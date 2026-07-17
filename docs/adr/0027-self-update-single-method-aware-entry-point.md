@@ -43,8 +43,11 @@ command owns all method logic and the notice can never drift from it.
 - **`--json` contract** — the non-frozen payload carries `install_method`,
   `current`, `latest`, `update_available`, `command`, `executed`, and either
   `exit_status` (executed) or `reason` (`up-to-date`, `manual-install-method`,
-  `no-tty-without-yes`, `declined`, `tool-not-on-path`). `install_method` joins the
-  CLI contract vocabulary (`CONTEXT.md`). `--check` is unchanged and method-agnostic.
+  `no-tty-without-yes`, `declined`, `tool-not-on-path`). If an attempted uv/pipx
+  upgrade command exits non-zero, the command emits the standard `ok:false` error
+  envelope (no success `data`) so scripts get a non-zero process exit on a failed
+  upgrade. `install_method` joins the CLI contract vocabulary (`CONTEXT.md`).
+  `--check` is unchanged and method-agnostic.
 - **Post-upgrade skill/completion refresh** — after a successful uv/pipx reinstall,
   the running process is the pre-reinstall package (stale, sometimes already
   removed), so the freshly installed `crm` is re-invoked via a guarded internal

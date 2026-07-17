@@ -51,6 +51,12 @@ Under `--json`, a non-frozen `self-update` emits these `data` fields:
 - `reason` — why nothing ran (present when `executed` is false): `up-to-date`,
   `manual-install-method`, `no-tty-without-yes`, `declined`, or `tool-not-on-path`.
 
+If an attempted uv/pipx upgrade command itself exits non-zero, `self-update`
+instead emits the standard `ok:false` error envelope (exit 1, no `data` payload)
+with the failing status and command in `error` — so a script sees a non-zero
+process exit on a failed upgrade. The `data` fields above describe the success
+and no-op (`executed:false` + `reason`) cases.
+
 `--check` is unchanged and method-agnostic (`data.current`, `data.latest`,
 `data.update_available`).
 

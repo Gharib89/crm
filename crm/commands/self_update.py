@@ -166,10 +166,16 @@ def _post_upgrade_refresh() -> dict[str, Any] | None:
             text=True,
             timeout=60,
         )
+        if out.returncode != 0:
+            return None
         payload = json.loads(out.stdout)
     except Exception:
         return None
-    data = payload.get("data") if isinstance(payload, dict) else None
+    # Only a genuine ok:true envelope carries a trustworthy refresh payload; a
+    # non-zero exit or a non-ok body (or empty stdout) degrades to None.
+    if not (isinstance(payload, dict) and payload.get("ok") is True):
+        return None
+    data = payload.get("data")
     return data if isinstance(data, dict) else None
 
 

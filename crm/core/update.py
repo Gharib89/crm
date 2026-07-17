@@ -266,7 +266,11 @@ def detect_install_method() -> str:
         dir_info = direct.get("dir_info")
         if isinstance(dir_info, dict) and cast("dict[str, Any]", dir_info).get("editable"):
             return "editable"
-        if "vcs_info" in direct:
+        vcs_info = direct.get("vcs_info")
+        # Only a git VCS install maps to `pip-git` — the constructed upgrade command
+        # is a `git+…` URL, so a non-git VCS (hg/bzr/svn) would get wrong guidance.
+        # It falls through to `unknown` (generic guidance, no wrong auto-action).
+        if isinstance(vcs_info, dict) and cast("dict[str, Any]", vcs_info).get("vcs") == "git":
             return "pip-git"
     return "unknown"
 

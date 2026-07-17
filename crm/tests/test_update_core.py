@@ -387,6 +387,16 @@ class TestDetectInstallMethod:
         )
         assert detect_install_method() == "pip-git"
 
+    def test_non_git_vcs_is_unknown_not_pip_git(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # A non-git VCS install must not be labeled pip-git (the upgrade command is a
+        # git+ URL); it degrades to unknown rather than emit wrong git guidance.
+        monkeypatch.setattr(update_mod, "is_frozen", lambda: False)
+        monkeypatch.setattr(update_mod.sys, "prefix", str(tmp_path))
+        monkeypatch.setattr(update_mod, "_read_direct_url", lambda: {"vcs_info": {"vcs": "hg"}})
+        assert detect_install_method() == "unknown"
+
     def test_unknown_when_no_signal(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.setattr(update_mod, "is_frozen", lambda: False)
         monkeypatch.setattr(update_mod.sys, "prefix", str(tmp_path))
