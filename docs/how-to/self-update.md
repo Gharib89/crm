@@ -13,19 +13,52 @@ is available — without modifying anything. Works on every install type. Under
 `data.update_available`); if the release server is unreachable it returns a clean
 error envelope rather than hanging or crashing.
 
-## Upgrade a frozen binary in place
+## Upgrade (install-method-aware)
 
 ```bash
 crm self-update
 ```
-For a binary installed via the install script, this downloads the platform
-archive, verifies it against the published `SHA256SUMS` (the same integrity check
-the install script uses), and swaps the bundle in place — the `crm` launcher on
-your PATH keeps working. A checksum mismatch or download failure leaves the
-existing install untouched and exits non-zero.
+`self-update` detects how `crm` was installed and upgrades it the right way:
 
-For `pip` / `uv` / source installs, `self-update` does not touch the binary and
-points you at `pip install -U crm` (or re-running `uv tool install`).
+- **Install-script binary (frozen)** — downloads the platform archive, verifies
+  it against the published `SHA256SUMS` (the same integrity check the install
+  script uses), and swaps the bundle in place — the `crm` launcher on your PATH
+  keeps working. A checksum mismatch or download failure leaves the existing
+  install untouched and exits non-zero.
+- **uv tool / pipx** — force-reinstalls from the latest release tag
+  (`uv tool install --force git+https://github.com/Gharib89/crm@vX.Y.Z`, or the
+  pipx equivalent). `--force` is used because uv/pipx pin the git commit and a
+  plain upgrade can silently no-op. On a terminal it prints the command and asks
+  `Proceed? [y/N]` (default No); non-interactively it runs only with `--yes`.
+  If `uv`/`pipx` isn't on your PATH, it falls back to printing the command.
+- **editable / `pip install git+…` / unknown** — prints the correct git-based
+  upgrade command and never runs anything.
+
+```bash
+crm self-update --yes     # run the uv/pipx reinstall without the prompt (scripts/CI)
+```
+
+## The `--json` contract
+
+Under `--json`, a non-frozen `self-update` emits these `data` fields:
+
+- `install_method` — `frozen` \| `uv-tool` \| `pipx` \| `editable` \| `pip-git` \|
+  `unknown`.
+- `current`, `latest`, `update_available` — the version comparison.
+- `command` — the exact upgrade command string for this install method.
+- `executed` — whether `self-update` ran that command.
+- `exit_status` — the command's exit code (present only when `executed` is true).
+- `reason` — why nothing ran (present when `executed` is false): `up-to-date`,
+  `manual-install-method`, `no-tty-without-yes`, `declined`, or `tool-not-on-path`.
+
+If an attempted uv/pipx upgrade command itself exits non-zero, `self-update`
+emits an `ok:false` envelope (exit 1) — so a script sees a non-zero process exit
+on a failed upgrade — while still carrying the same `data` fields
+(`install_method`, `command`, `executed:true`, `exit_status`) alongside the
+`error` message, so you can inspect what ran.
+
+`--check` is unchanged and method-agnostic (`data.current`, `data.latest`,
+`data.update_available`).
 
 ## Keeping installed skills in sync
 

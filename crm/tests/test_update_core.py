@@ -9,12 +9,15 @@ import pytest
 
 import crm.core.update as update_mod
 from crm.core.update import (
+    INSTALL_METHODS,
     UpdateError,
     check_for_update,
     cleanup_stale_updates,
     compare_versions,
+    detect_install_method,
     emit_pending_notice,
     fetch_latest_version,
+    is_auto_run_method,
     is_check_enabled,
     parse_sha256sums,
     pending_notice,
@@ -25,6 +28,8 @@ from crm.core.update import (
     run_background_check,
     should_refresh,
     swap_bundle,
+    upgrade_argv,
+    upgrade_command,
     verify_sha256,
     write_cache,
 )
@@ -193,17 +198,14 @@ class TestPendingNotice:
         write_cache("v2.9.0", now=1.0)
         assert pending_notice(current="2.9.0") is None
 
-    def test_message_when_newer_frozen(self, crm_home: Path) -> None:
+    def test_message_is_method_agnostic(self, crm_home: Path) -> None:
+        # The notice always points at `crm self-update` — no per-method branch, so
+        # it can never drift from what the command actually does (issue #872).
         write_cache("v3.0.0", now=1.0)
-        msg = pending_notice(current="2.9.0", frozen=True)
+        msg = pending_notice(current="2.9.0")
         assert msg is not None
-        assert "3.0.0" in msg and "self-update" in msg
-
-    def test_message_when_newer_pip(self, crm_home: Path) -> None:
-        write_cache("v3.0.0", now=1.0)
-        msg = pending_notice(current="2.9.0", frozen=False)
-        assert msg is not None
-        assert "pip install -U" in msg
+        assert "3.0.0" in msg and "crm self-update" in msg
+        assert "pip install" not in msg
 
     def test_malformed_cached_latest_no_crash(self, crm_home: Path) -> None:
         # A partial write / manual edit / cached junk must not raise (fail-silent).
@@ -332,6 +334,151 @@ class TestCheckForUpdate:
         monkeypatch.setattr(update_mod, "fetch_latest_version", lambda *a, **k: None)
         with pytest.raises(UpdateError):
             check_for_update()
+
+
+class TestDetectInstallMethod:
+    """Path/marker sniffing → the fixed INSTALL_METHODS vocabulary (issue #872)."""
+
+    def test_frozen_wins(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(update_mod, "is_frozen", lambda: True)
+        assert detect_install_method() == "frozen"
+
+    def test_uv_tool_by_path(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setattr(update_mod, "is_frozen", lambda: False)
+        prefix = tmp_path / "share" / "uv" / "tools" / "crm"
+        prefix.mkdir(parents=True)
+        monkeypatch.setattr(update_mod.sys, "prefix", str(prefix))
+        assert detect_install_method() == "uv-tool"
+
+    def test_uv_tool_by_receipt_marker(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setattr(update_mod, "is_frozen", lambda: False)
+        (tmp_path / "uv-receipt.toml").write_text("", encoding="utf-8")
+        monkeypatch.setattr(update_mod.sys, "prefix", str(tmp_path))
+        assert detect_install_method() == "uv-tool"
+
+    def test_pipx_by_path(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setattr(update_mod, "is_frozen", lambda: False)
+        prefix = tmp_path / "pipx" / "venvs" / "crm"
+        prefix.mkdir(parents=True)
+        monkeypatch.setattr(update_mod.sys, "prefix", str(prefix))
+        assert detect_install_method() == "pipx"
+
+    def test_pipx_by_metadata_marker(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setattr(update_mod, "is_frozen", lambda: False)
+        (tmp_path / "pipx_metadata.json").write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(update_mod.sys, "prefix", str(tmp_path))
+        assert detect_install_method() == "pipx"
+
+    def test_editable_via_direct_url(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setattr(update_mod, "is_frozen", lambda: False)
+        monkeypatch.setattr(update_mod.sys, "prefix", str(tmp_path))  # no uv/pipx marker
+        monkeypatch.setattr(
+            update_mod, "_read_direct_url", lambda: {"dir_info": {"editable": True}}
+        )
+        assert detect_install_method() == "editable"
+
+    def test_pip_git_via_direct_url(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setattr(update_mod, "is_frozen", lambda: False)
+        monkeypatch.setattr(update_mod.sys, "prefix", str(tmp_path))
+        monkeypatch.setattr(
+            update_mod, "_read_direct_url", lambda: {"vcs_info": {"vcs": "git"}, "url": "git+..."}
+        )
+        assert detect_install_method() == "pip-git"
+
+    def test_non_git_vcs_is_unknown_not_pip_git(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # A non-git VCS install must not be labeled pip-git (the upgrade command is a
+        # git+ URL); it degrades to unknown rather than emit wrong git guidance.
+        monkeypatch.setattr(update_mod, "is_frozen", lambda: False)
+        monkeypatch.setattr(update_mod.sys, "prefix", str(tmp_path))
+        monkeypatch.setattr(update_mod, "_read_direct_url", lambda: {"vcs_info": {"vcs": "hg"}})
+        assert detect_install_method() == "unknown"
+
+    def test_unknown_when_no_signal(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setattr(update_mod, "is_frozen", lambda: False)
+        monkeypatch.setattr(update_mod.sys, "prefix", str(tmp_path))
+        monkeypatch.setattr(update_mod, "_read_direct_url", lambda: None)
+        assert detect_install_method() == "unknown"
+
+    def test_result_is_always_in_vocabulary(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setattr(update_mod, "is_frozen", lambda: False)
+        monkeypatch.setattr(update_mod.sys, "prefix", str(tmp_path))
+        assert detect_install_method() in INSTALL_METHODS
+
+
+class TestUpgradeCommand:
+    """Command/argv construction: git tag pinned, argv only for auto-run methods."""
+
+    def test_uv_tool_force_reinstall_pinned_to_tag(self) -> None:
+        cmd = upgrade_command("uv-tool", "v3.1.0")
+        assert cmd == "uv tool install --force git+https://github.com/Gharib89/crm@v3.1.0"
+
+    def test_pipx_force_reinstall_pinned_to_tag(self) -> None:
+        cmd = upgrade_command("pipx", "3.1.0")  # bare version normalizes to a v-tag
+        assert cmd == "pipx install --force git+https://github.com/Gharib89/crm@v3.1.0"
+
+    def test_pip_git_upgrade(self) -> None:
+        assert upgrade_command("pip-git", "v3.1.0") == (
+            "pip install -U git+https://github.com/Gharib89/crm@v3.1.0"
+        )
+
+    def test_editable_gets_checkout_guidance(self) -> None:
+        assert upgrade_command("editable", "v3.1.0") == "git pull && pip install -e ."
+
+    def test_unknown_gets_git_based_pip_command(self) -> None:
+        assert upgrade_command("unknown", "v3.1.0") == (
+            "pip install -U git+https://github.com/Gharib89/crm@v3.1.0"
+        )
+
+    @pytest.mark.parametrize("method", ["uv-tool", "pipx"])
+    def test_argv_matches_command_for_auto_methods(self, method: str) -> None:
+        argv = upgrade_argv(method, "v3.1.0")
+        assert argv is not None
+        assert " ".join(argv) == upgrade_command(method, "v3.1.0")
+
+    @pytest.mark.parametrize("method", ["editable", "pip-git", "unknown"])
+    def test_argv_none_for_non_auto_methods(self, method: str) -> None:
+        assert upgrade_argv(method, "v3.1.0") is None
+        assert is_auto_run_method(method) is False
+
+    @pytest.mark.parametrize("method", ["uv-tool", "pipx"])
+    def test_is_auto_run_method_true_for_isolated_envs(self, method: str) -> None:
+        assert is_auto_run_method(method) is True
+
+
+class TestRunUpgrade:
+    """run_upgrade shells out and returns the exit status; missing tool raises."""
+
+    def test_returns_subprocess_status(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import subprocess
+
+        class _Completed:
+            returncode = 0
+
+        seen: dict[str, object] = {}
+
+        def fake_run(argv, **kw):
+            seen["argv"] = argv
+            return _Completed()
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        assert update_mod.run_upgrade(["uv", "tool", "install", "--force", "x"]) == 0
+        assert seen["argv"] == ["uv", "tool", "install", "--force", "x"]
+
+    def test_missing_tool_raises_filenotfound(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import subprocess
+
+        def boom(argv, **kw):
+            raise FileNotFoundError(argv[0])
+
+        monkeypatch.setattr(subprocess, "run", boom)
+        with pytest.raises(FileNotFoundError):
+            update_mod.run_upgrade(["pipx", "install", "--force", "x"])
 
 
 class TestSwapBundle:

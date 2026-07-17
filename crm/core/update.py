@@ -21,7 +21,7 @@ import time
 import zipfile
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import IO, Any
+from typing import IO, Any, cast
 
 # requests is imported lazily inside the network functions below so that merely
 # importing this module (e.g. when `crm --help` imports the self-update command
@@ -202,6 +202,129 @@ def install_dir() -> Path:
     return Path(sys.executable).resolve().parent
 
 
+# ── Install-method detection + upgrade-command construction ──────────────
+
+# The git source `crm` is installed from (it is not published to PyPI, so every
+# non-frozen upgrade path is git-based). Shared by every constructed command.
+_GITHUB_REPO = "https://github.com/Gharib89/crm"
+
+# The fixed install-method vocabulary reported by `detect_install_method` and
+# surfaced as `data.install_method` in `--json` (part of the CLI contract).
+INSTALL_METHODS = ("frozen", "uv-tool", "pipx", "editable", "pip-git", "unknown")
+
+# Methods `self-update` may auto-run for: isolated, force-reinstallable envs only.
+_AUTO_RUN_METHODS = ("uv-tool", "pipx")
+
+
+def _path_contains(path: Path, *segments: str) -> bool:
+    """True if `segments` appear as consecutive components anywhere in `path`
+    (case-insensitive, so it works for both posix and Windows layouts).
+    """
+    parts = [p.lower() for p in path.parts]
+    seg = [s.lower() for s in segments]
+    return any(parts[i : i + len(seg)] == seg for i in range(len(parts) - len(seg) + 1))
+
+
+def _read_direct_url() -> dict[str, Any] | None:
+    """The `crm` dist's PEP 610 ``direct_url.json`` (editable/vcs marker), or None.
+
+    Best-effort: any failure (package not found via importlib.metadata, missing
+    file, malformed JSON) degrades to None so detection falls back to `unknown`.
+    """
+    try:
+        from importlib import metadata
+
+        text = metadata.distribution("crm").read_text("direct_url.json")
+    except Exception:
+        return None
+    if not text:
+        return None
+    try:
+        parsed = json.loads(text)
+    except ValueError:
+        return None
+    return cast("dict[str, Any]", parsed) if isinstance(parsed, dict) else None
+
+
+def detect_install_method() -> str:
+    """Best-effort detection of how `crm` was installed (one of INSTALL_METHODS).
+
+    Path/marker sniffing only — no shelling out, no install-time stamp. An
+    unknown or ambiguous signal degrades to ``"unknown"`` (printed guidance,
+    never a wrong auto-action). `is_frozen()` stays the authoritative frozen
+    signal; the rest keys off `sys.prefix` layout and PEP 610 metadata.
+    """
+    if is_frozen():
+        return "frozen"
+    prefix = Path(sys.prefix)
+    if (prefix / "uv-receipt.toml").exists() or _path_contains(prefix, "uv", "tools"):
+        return "uv-tool"
+    if (prefix / "pipx_metadata.json").exists() or _path_contains(prefix, "pipx", "venvs"):
+        return "pipx"
+    direct = _read_direct_url()
+    if direct is not None:
+        dir_info = direct.get("dir_info")
+        if isinstance(dir_info, dict) and cast("dict[str, Any]", dir_info).get("editable"):
+            return "editable"
+        vcs_info = direct.get("vcs_info")
+        # Only a git VCS install maps to `pip-git` — the constructed upgrade command
+        # is a `git+…` URL, so a non-git VCS (hg/bzr/svn) would get wrong guidance.
+        # It falls through to `unknown` (generic guidance, no wrong auto-action).
+        if isinstance(vcs_info, dict) and cast("dict[str, Any]", vcs_info).get("vcs") == "git":
+            return "pip-git"
+    return "unknown"
+
+
+def is_auto_run_method(method: str) -> bool:
+    """True for methods `self-update` may auto-run (uv-tool / pipx)."""
+    return method in _AUTO_RUN_METHODS
+
+
+def upgrade_command(method: str, latest: str) -> str:
+    """The exact upgrade command string shown to the user / emitted as ``data.command``.
+
+    All non-frozen methods converge on the latest release tag ``@vX.Y.Z`` — the
+    same value the frozen path reads from R2 ``latest/VERSION`` — so "latest"
+    means one thing everywhere. `editable` gets checkout guidance; `pip-git` and
+    `unknown` get the git-based pip upgrade (the most general correct command).
+    """
+    tag = f"v{latest.lstrip('vV')}"
+    spec = f"git+{_GITHUB_REPO}@{tag}"
+    if method == "uv-tool":
+        # --force (not `uv tool upgrade`): uv pins the git commit SHA, so a plain
+        # upgrade can silently no-op; a forced reinstall reliably fetches the tag.
+        return f"uv tool install --force {spec}"
+    if method == "pipx":
+        return f"pipx install --force {spec}"
+    if method == "editable":
+        return "git pull && pip install -e ."
+    return f"pip install -U {spec}"
+
+
+def upgrade_argv(method: str, latest: str) -> list[str] | None:
+    """The argv for an auto-runnable upgrade (uv-tool / pipx), or None otherwise.
+
+    Kept in lockstep with `upgrade_command` by splitting its output, so the argv
+    handed to `run_upgrade` and the string shown to the user never drift.
+    """
+    if not is_auto_run_method(method):
+        return None
+    import shlex
+
+    return shlex.split(upgrade_command(method, latest))
+
+
+def run_upgrade(argv: list[str]) -> int:
+    """Run the upgrade subprocess and return its exit status (injectable seam).
+
+    Raises ``FileNotFoundError`` when the tool binary (uv/pipx) is not on PATH —
+    the command layer catches it and falls back to printing the command.
+    """
+    import subprocess
+
+    return subprocess.run(argv).returncode
+
+
 # ── Passive update notice ───────────────────────────────────────────────
 
 
@@ -231,12 +354,17 @@ def refresh_cache(now: float, base_url: str | None = None) -> None:
         pass
 
 
-def pending_notice(current: str, *, frozen: bool = False, now: float | None = None) -> str | None:
+def pending_notice(current: str, *, now: float | None = None) -> str | None:
     """One-line notice from the cache (no network) if a newer version is known.
 
     Read-only and fail-silent: a malformed cached `latest` never raises, and the
     notice is gated to once per `_CHECK_INTERVAL` via the cached `notified_at`
     stamp so a new process per command does not reprint on every invocation.
+
+    The upgrade instruction is unified across every install method — the notice
+    always points at ``crm self-update``, which owns all method-specific logic
+    (frozen swap, uv/pipx reinstall, printed guidance). The notice never restates
+    a method-specific command, so it cannot drift from what the command does.
     """
     cache = read_cache()
     if cache is None:
@@ -254,8 +382,9 @@ def pending_notice(current: str, *, frozen: bool = False, now: float | None = No
         ref = time.time() if now is None else now
         if (ref - notified_at) < _CHECK_INTERVAL:
             return None
-    how = "crm self-update" if frozen else "pip install -U crm"
-    return f"A new crm release is available: {current} → {latest}. Run `{how}` to upgrade."
+    return (
+        f"A new crm release is available: {current} → {latest}. Run `crm self-update` to upgrade."
+    )
 
 
 # ── cli.py orchestrators (guarded, at most once per process) ─────────────
@@ -305,7 +434,7 @@ def emit_pending_notice(
     if not is_check_enabled(json_mode=json_mode, stderr_isatty=stderr_isatty, env=env):
         return False
     ref = time.time() if now is None else now
-    message = pending_notice(current_version(), frozen=is_frozen(), now=ref)
+    message = pending_notice(current_version(), now=ref)
     if message is None:
         return False
     _notified = True
