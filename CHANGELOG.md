@@ -9,6 +9,37 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.70.0 (2026-07-17)
+
+### Bug Fixes
+
+- Harden self-update per review ([#873](https://github.com/Gharib89/crm/pull/873),
+  [`7384b70`](https://github.com/Gharib89/crm/commit/7384b70aaf281eaa170f3f443001876c3d8c72c5))
+
+- Preserve payload on failed upgrade; surface refresh failures
+  ([#873](https://github.com/Gharib89/crm/pull/873),
+  [`7384b70`](https://github.com/Gharib89/crm/commit/7384b70aaf281eaa170f3f443001876c3d8c72c5))
+
+### Documentation
+
+- Document method-aware self-update; type + guard fixes
+  ([#873](https://github.com/Gharib89/crm/pull/873),
+  [`7384b70`](https://github.com/Gharib89/crm/commit/7384b70aaf281eaa170f3f443001876c3d8c72c5))
+
+- Qualify self-update skill-refresh guarantee (failed upgrade leaves skills untouched)
+  ([#873](https://github.com/Gharib89/crm/pull/873),
+  [`7384b70`](https://github.com/Gharib89/crm/commit/7384b70aaf281eaa170f3f443001876c3d8c72c5))
+
+### Features
+
+- Make self-update install-method-aware ([#873](https://github.com/Gharib89/crm/pull/873),
+  [`7384b70`](https://github.com/Gharib89/crm/commit/7384b70aaf281eaa170f3f443001876c3d8c72c5))
+
+- Make self-update install-method-aware (uv/pipx upgrade, fix broken pip hint)
+  ([#873](https://github.com/Gharib89/crm/pull/873),
+  [`7384b70`](https://github.com/Gharib89/crm/commit/7384b70aaf281eaa170f3f443001876c3d8c72c5))
+
+
 ## v1.69.5 (2026-07-17)
 
 ### Bug Fixes
