@@ -3,6 +3,8 @@ name: merge-gate
 description: Review inbound agent-shipped PRs at the merge gate — drift checklist, targeted live e2e, fix-in-place, review-bot iteration (Copilot + CodeRabbit) — leaving each PR merge-confident (gate-passed) or explicitly failed (gate-failed).
 argument-hint: "[pr-number]"
 disable-model-invocation: true
+metadata:
+  internal: true
 ---
 
 # merge-gate

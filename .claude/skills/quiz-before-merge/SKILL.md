@@ -3,6 +3,8 @@ name: quiz-before-merge
 description: Context report + quiz on a change (PR, branch, or session) that the maintainer must pass before merging.
 disable-model-invocation: true
 argument-hint: "[pr-number | branch | session]"
+metadata:
+  internal: true
 ---
 
 # quiz-before-merge

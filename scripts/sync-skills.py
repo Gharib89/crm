@@ -41,6 +41,8 @@ from typing import TypedDict
 SRC = Path("~/.claude/skills").expanduser()
 DST = Path(__file__).resolve().parent.parent / ".claude" / "skills"
 
+_SKILL_FILE = "SKILL.md"
+
 
 class SkillEntry(TypedDict):
     name: str
@@ -141,6 +143,73 @@ def strip_model_invocation_flag(skill_md: Path) -> bool:
     return False
 
 
+def stamp_internal_flag(skill_md: Path) -> bool:
+    """Add `metadata.internal: true` to the YAML frontmatter if absent.
+
+    The `vercel-labs/skills` installer hides a skill from normal discovery when
+    its frontmatter carries `metadata.internal: true` (revealed only with
+    `INSTALL_INTERNAL_SKILLS=1`). These vendored copies are dev tooling, not
+    end-user skills, so every synced copy must carry the flag — and since the
+    upstream source lacks it, the flag has to be re-stamped on each sync (a plain
+    hand-edit is wiped by the rmtree+copytree in main). Idempotent; touches only
+    the frontmatter, never the body. Returns True if a line was added.
+    """
+    lines = skill_md.read_text(encoding="utf-8").splitlines(keepends=True)
+    if not lines or lines[0].strip() != "---":
+        return False
+    end = next((i for i in range(1, len(lines)) if lines[i].strip() == "---"), None)
+    if end is None:
+        return False
+    # A top-level `metadata:` key inside the frontmatter, if one already exists.
+    meta_idx = next(
+        (
+            i
+            for i in range(1, end)
+            if lines[i][:1] not in (" ", "\t") and lines[i].split(":", 1)[0].strip() == "metadata"
+        ),
+        None,
+    )
+    if meta_idx is None:
+        # No metadata block — append one just before the closing `---`.
+        if not lines[end - 1].endswith("\n"):
+            lines[end - 1] += "\n"
+        lines.insert(end, "metadata:\n  internal: true\n")
+        skill_md.write_text("".join(lines), encoding="utf-8")
+        return True
+    # metadata block exists — find an existing `internal:` child, if any, so we
+    # never leave a duplicate key: normalize a wrong value, keep a correct one.
+    j = meta_idx + 1
+    while j < end and (not lines[j].strip() or lines[j][:1] in (" ", "\t")):
+        if lines[j].split(":", 1)[0].strip() == "internal":
+            if lines[j].strip() == "internal: true":
+                return False
+            indent = lines[j][: len(lines[j]) - len(lines[j].lstrip())]
+            lines[j] = f"{indent}internal: true\n"
+            skill_md.write_text("".join(lines), encoding="utf-8")
+            return True
+        j += 1
+    lines.insert(meta_idx + 1, "  internal: true\n")
+    skill_md.write_text("".join(lines), encoding="utf-8")
+    return True
+
+
+def _apply_flags(src: Path, dst: Path, force_invokable: bool, is_dep: bool) -> str:
+    """Re-apply the project-owned frontmatter divergences to a freshly copied
+    vendored skill; return a human-readable tag describing what changed.
+    """
+    tag = " [dep]" if is_dep else ""
+    if force_invokable:
+        stripped = strip_model_invocation_flag(dst / _SKILL_FILE)
+        stripped |= strip_model_invocation_flag(src / _SKILL_FILE)
+        if stripped:
+            tag += " (stripped disable-model-invocation)"
+    # Every vendored copy is internal dev tooling — hide it from end-user
+    # `npx skills add` discovery (stamped on the tracked copy only, never SRC).
+    if stamp_internal_flag(dst / _SKILL_FILE):
+        tag += " (marked internal)"
+    return tag
+
+
 def main() -> int:
     if not SRC.is_dir():
         print(f"error: source skills dir not found: {SRC}", file=sys.stderr)
@@ -171,13 +240,7 @@ def main() -> int:
         if dst.exists():
             shutil.rmtree(dst)
         shutil.copytree(src, dst)
-        tag = " [dep]" if name in auto else ""
-        if wanted[name]:
-            stripped_dst = strip_model_invocation_flag(dst / "SKILL.md")
-            stripped_src = strip_model_invocation_flag(src / "SKILL.md")
-            if stripped_dst or stripped_src:
-                tag += " (stripped disable-model-invocation)"
-        print(f"synced {name}{tag}")
+        print(f"synced {name}{_apply_flags(src, dst, wanted[name], name in auto)}")
 
     if missing:
         print(f"\nerror: not found under {SRC}: {', '.join(missing)}", file=sys.stderr)
