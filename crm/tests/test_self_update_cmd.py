@@ -66,7 +66,8 @@ def _force_method(monkeypatch, method, *, current="2.9.0", latest="v3.0.0", avai
 
 class TestMethodAwareUpdate:
     """Non-frozen `self-update` is install-method-aware (issue #872): auto-run for
-    uv/pipx (consent-gated), printed guidance for editable/pip-git/unknown."""
+    uv/pipx (consent-gated), printed guidance for editable/pip-git/unknown.
+    """
 
     def test_editable_prints_guidance_never_runs(self, monkeypatch):
         _force_method(monkeypatch, "editable")
@@ -113,7 +114,8 @@ class TestMethodAwareUpdate:
 
         monkeypatch.setattr(update_mod, "run_upgrade", fake_run)
         monkeypatch.setattr(
-            "crm.commands.self_update._post_upgrade_refresh", lambda: {"skills": [], "completion": None}
+            "crm.commands.self_update._post_upgrade_refresh",
+            lambda: {"skills": [], "completion": None},
         )
         result = CliRunner().invoke(cli, ["--json", "self-update", "--yes"])
         assert result.exit_code == 0
@@ -121,7 +123,11 @@ class TestMethodAwareUpdate:
         assert data["executed"] is True
         assert data["exit_status"] == 0
         assert seen["argv"] == [
-            "uv", "tool", "install", "--force", "git+https://github.com/Gharib89/crm@v3.0.0",
+            "uv",
+            "tool",
+            "install",
+            "--force",
+            "git+https://github.com/Gharib89/crm@v3.0.0",
         ]
 
     def test_pipx_autoruns_with_yes(self, monkeypatch):
@@ -205,8 +211,10 @@ class TestMethodAwareUpdate:
         called = {"n": 0}
         monkeypatch.setattr(
             "crm.commands.self_update._post_upgrade_refresh",
-            lambda: called.__setitem__("n", called["n"] + 1)
-            or {"skills": [{"status": "refreshed"}], "completion": None},
+            lambda: (
+                called.__setitem__("n", called["n"] + 1)
+                or {"skills": [{"status": "refreshed"}], "completion": None}
+            ),
         )
         result = CliRunner().invoke(cli, ["--json", "self-update", "--yes"])
         assert result.exit_code == 0

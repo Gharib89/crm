@@ -365,25 +365,21 @@ class TestDetectInstallMethod:
         monkeypatch.setattr(update_mod.sys, "prefix", str(prefix))
         assert detect_install_method() == "pipx"
 
-    def test_pipx_by_metadata_marker(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
+    def test_pipx_by_metadata_marker(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.setattr(update_mod, "is_frozen", lambda: False)
         (tmp_path / "pipx_metadata.json").write_text("{}", encoding="utf-8")
         monkeypatch.setattr(update_mod.sys, "prefix", str(tmp_path))
         assert detect_install_method() == "pipx"
 
-    def test_editable_via_direct_url(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
+    def test_editable_via_direct_url(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.setattr(update_mod, "is_frozen", lambda: False)
         monkeypatch.setattr(update_mod.sys, "prefix", str(tmp_path))  # no uv/pipx marker
-        monkeypatch.setattr(update_mod, "_read_direct_url", lambda: {"dir_info": {"editable": True}})
+        monkeypatch.setattr(
+            update_mod, "_read_direct_url", lambda: {"dir_info": {"editable": True}}
+        )
         assert detect_install_method() == "editable"
 
-    def test_pip_git_via_direct_url(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
+    def test_pip_git_via_direct_url(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.setattr(update_mod, "is_frozen", lambda: False)
         monkeypatch.setattr(update_mod.sys, "prefix", str(tmp_path))
         monkeypatch.setattr(
@@ -391,9 +387,7 @@ class TestDetectInstallMethod:
         )
         assert detect_install_method() == "pip-git"
 
-    def test_unknown_when_no_signal(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
+    def test_unknown_when_no_signal(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.setattr(update_mod, "is_frozen", lambda: False)
         monkeypatch.setattr(update_mod.sys, "prefix", str(tmp_path))
         monkeypatch.setattr(update_mod, "_read_direct_url", lambda: None)

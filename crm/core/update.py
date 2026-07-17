@@ -21,7 +21,7 @@ import time
 import zipfile
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import IO, Any
+from typing import IO, Any, cast
 
 # requests is imported lazily inside the network functions below so that merely
 # importing this module (e.g. when `crm --help` imports the self-update command
@@ -218,7 +218,8 @@ _AUTO_RUN_METHODS = ("uv-tool", "pipx")
 
 def _path_contains(path: Path, *segments: str) -> bool:
     """True if `segments` appear as consecutive components anywhere in `path`
-    (case-insensitive, so it works for both posix and Windows layouts)."""
+    (case-insensitive, so it works for both posix and Windows layouts).
+    """
     parts = [p.lower() for p in path.parts]
     seg = [s.lower() for s in segments]
     return any(parts[i : i + len(seg)] == seg for i in range(len(parts) - len(seg) + 1))
@@ -242,7 +243,7 @@ def _read_direct_url() -> dict[str, Any] | None:
         parsed = json.loads(text)
     except ValueError:
         return None
-    return parsed if isinstance(parsed, dict) else None
+    return cast("dict[str, Any]", parsed) if isinstance(parsed, dict) else None
 
 
 def detect_install_method() -> str:
@@ -263,7 +264,7 @@ def detect_install_method() -> str:
     direct = _read_direct_url()
     if direct is not None:
         dir_info = direct.get("dir_info")
-        if isinstance(dir_info, dict) and dir_info.get("editable"):
+        if isinstance(dir_info, dict) and cast("dict[str, Any]", dir_info).get("editable"):
             return "editable"
         if "vcs_info" in direct:
             return "pip-git"
@@ -377,7 +378,9 @@ def pending_notice(current: str, *, now: float | None = None) -> str | None:
         ref = time.time() if now is None else now
         if (ref - notified_at) < _CHECK_INTERVAL:
             return None
-    return f"A new crm release is available: {current} → {latest}. Run `crm self-update` to upgrade."
+    return (
+        f"A new crm release is available: {current} → {latest}. Run `crm self-update` to upgrade."
+    )
 
 
 # ── cli.py orchestrators (guarded, at most once per process) ─────────────

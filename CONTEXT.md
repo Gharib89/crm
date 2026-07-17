@@ -177,6 +177,17 @@ columns. Formalized in
 _Avoid_: filter (that's a query `--filter`), `--select` (that's server-side field
 selection in the request; shaping is client-side, post-response).
 
+**Install method**:
+How `crm` was installed, detected by `self-update` and surfaced as
+`data.install_method` — a fixed vocabulary: `frozen` (PyInstaller binary),
+`uv-tool`, `pipx`, `editable` (`pip install -e`), `pip-git` (`pip install git+…`),
+`unknown`. It decides `self-update`'s action: swap-in-place (`frozen`),
+consent-gated force-reinstall (`uv-tool`/`pipx`), or printed git guidance
+(`editable`/`pip-git`/`unknown`). Detection is best-effort path/marker sniffing
+([ADR 0027](docs/adr/0027-self-update-single-method-aware-entry-point.md)); an
+ambiguous signal degrades to `unknown` (guidance, never a wrong auto-action).
+_Avoid_: install type, install channel (the contract term is "install method").
+
 ### Invocation & options
 
 **Global option**:

@@ -11,21 +11,38 @@ crm self-update --check
 Reports your running version, the latest published version, and whether an update is
 available — without changing anything. Works on every install type.
 
-## Upgrade in place
+## Upgrade
 
 ```bash
 crm self-update
 ```
 
-For a binary installed via the install script, this downloads the platform archive,
-verifies it against the published `SHA256SUMS`, and swaps the bundle in place. A
-checksum mismatch or download failure leaves your install untouched.
+`self-update` is the single, install-method-aware upgrade entry point. It detects
+how `crm` was installed and does the right thing:
 
-For `pip` / `uv` / source installs, `self-update` doesn't touch the binary — it
-points you at `pip install -U crm` (or re-running `uv tool install`).
+- **Install-script binary (frozen)** — downloads the platform archive, verifies it
+  against the published `SHA256SUMS`, and swaps the bundle in place. A checksum
+  mismatch or download failure leaves your install untouched.
+- **uv tool / pipx** — force-reinstalls from the latest release tag
+  (`uv tool install --force git+https://github.com/Gharib89/crm@vX.Y.Z`, or the
+  pipx equivalent). Because `crm` is a git source, a forced reinstall is what
+  reliably fetches the new version — a plain `uv tool upgrade` can no-op on the
+  pinned commit. On a terminal `self-update` prints the exact command and asks
+  before running it; non-interactively (`--json` or no TTY) it runs only with
+  `--yes`, otherwise it prints the command and does nothing.
+- **editable / `pip install git+…` / unknown** — prints the correct git-based
+  upgrade command (`git pull && pip install -e .`, or
+  `pip install -U git+…@vX.Y.Z`) and never mutates the environment, since we don't
+  own or safely know it.
+
+All non-frozen methods converge on the **latest release tag**, the same version
+the frozen path reads from the release server, so "latest" means one thing
+everywhere.
 
 A non-`--check` update also re-syncs any agent skills you installed (see
-[Install the skill](skill.md)), so the shipped skill never lags the CLI.
+[Install the skill](skill.md)), so the shipped skill never lags the CLI. After a
+uv/pipx reinstall the refresh runs via the freshly installed `crm`, so the skill
+matches the version you just installed.
 
 ## The passive update notice
 

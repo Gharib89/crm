@@ -126,7 +126,9 @@ def _emit_completion(ctx: CLIContext, comp: dict[str, Any] | None) -> None:
         ctx.skin.status(f"  completion {name}", f"{frm} → {to} ({comp.get('status', '?')})")
 
 
-def _inprocess_refresh(ctx: CLIContext, data: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+def _inprocess_refresh(
+    ctx: CLIContext, data: dict[str, Any]
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
     """Re-sync recorded skills/completion from the RUNNING package.
 
     Correct whenever no bundle swap happened — the running code IS the current
@@ -204,7 +206,8 @@ def _frozen_update(ctx: CLIContext) -> None:
 
 def _finish_without_upgrade(ctx: CLIContext, data: dict[str, Any]) -> None:
     """Emit a non-executing outcome (up-to-date / manual method / declined) and
-    re-sync skills from the running package (which is the current install)."""
+    re-sync skills from the running package (which is the current install).
+    """
     skills, completion = _inprocess_refresh(ctx, data)
     ctx.emit(True, data=data)
     if ctx.json_mode:
@@ -219,7 +222,8 @@ def _finish_without_upgrade(ctx: CLIContext, data: dict[str, Any]) -> None:
 
 def _method_aware_update(ctx: CLIContext, method: str, yes: bool) -> None:
     """Non-frozen upgrade: build the git-based command for `method`, auto-run it
-    for uv/pipx (consent-gated), print guidance for the rest."""
+    for uv/pipx (consent-gated), print guidance for the rest.
+    """
     try:
         info = update_mod.check_for_update()
     except update_mod.UpdateError as exc:
@@ -320,14 +324,11 @@ def self_update_cmd(ctx: CLIContext, check_only: bool, yes: bool, refresh_only: 
 
     method = update_mod.detect_install_method()
 
-    if method == "frozen":
-        _frozen_update(ctx)
-        return
-
     if refresh_only:
         # Guarded internal entry: the post-upgrade re-invocation runs the freshly
         # installed binary here to re-sync skills/completion, never re-entering the
-        # upgrade path (no reinstall loop).
+        # upgrade path (no reinstall loop). Checked before any method dispatch so it
+        # can never trigger an upgrade, whatever `method` resolves to.
         data: dict[str, Any] = {
             "refreshed": True,
             "install_method": method,
@@ -338,6 +339,10 @@ def self_update_cmd(ctx: CLIContext, check_only: bool, yes: bool, refresh_only: 
         if not ctx.json_mode:
             _emit_skills(ctx, skills)
             _emit_completion(ctx, completion)
+        return
+
+    if method == "frozen":
+        _frozen_update(ctx)
         return
 
     _method_aware_update(ctx, method, yes)

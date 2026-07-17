@@ -160,18 +160,26 @@ runs in the background against the release server, never blocks the command, and
 is silent under `--json`, when stderr is not a terminal, when `CI` is set, or when
 `CRM_NO_UPDATE_CHECK` is set.
 
-For binaries installed via the install script (Option 1), upgrade in place:
+`crm self-update` is the single upgrade entry point for **every** install
+method — it detects how `crm` was installed and does the right thing:
 
 ```bash
-crm self-update           # download, checksum-verify, and swap the binary
+crm self-update           # upgrade this install (method-aware — see below)
 crm self-update --check   # report current vs latest version, change nothing
+crm self-update --yes     # run the upgrade non-interactively (uv/pipx installs)
 ```
 
-`pip`/`uv`/source installs aren't modified by `self-update` — it points you at
-`pip install -U crm` (or re-running `uv tool install`) instead. Either way,
-`self-update` also re-syncs any agent skills you installed with `crm skill
-install`, and any shell completion you installed with `crm completion install`
-(below), so both stay current with the CLI.
+- **Install-script binary** (Option 1) — downloads, checksum-verifies, and swaps
+  the bundle in place.
+- **uv tool / pipx** (Option 2) — force-reinstalls from the latest release tag
+  (`uv tool install --force git+…@vX.Y.Z`). On a terminal it shows the exact
+  command and asks before running; non-interactively it runs only with `--yes`.
+- **editable / `pip install git+…` / unknown** (Option 3) — prints the correct
+  git-based upgrade command and never mutates your environment.
+
+Every non-`--check` run also re-syncs any agent skills you installed with `crm
+skill install`, and any shell completion you installed with `crm completion
+install` (below), so both stay current with the CLI.
 
 ### Shell completion
 
@@ -502,7 +510,7 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | `audit`      | Retrieve server-side D365 audit change history (`audit history` / `audit detail`) — distinct from the local `session audit` journal |
 | `session`    | Local session state, command history, and audit journal    |
 | `completion` | Print or install shell completion (bash/zsh/fish/powershell); install caches the script + prints the rc line to source |
-| `self-update` | Upgrade a frozen (install-script) binary in place and re-sync installed agent skills + shell completion; `--check` reports current vs latest |
+| `self-update` | Method-aware upgrade (frozen binary in place; uv/pipx force-reinstall; git guidance for editable/pip) and re-sync installed agent skills + shell completion; `--check` reports current vs latest |
 
 For a continuous redeploy loop during front-end development, pipe `entr` (or `watchexec`) into `webresource push`:
 
