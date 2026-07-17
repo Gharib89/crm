@@ -9,6 +9,48 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.69.5 (2026-07-17)
+
+### Bug Fixes
+
+- **skill**: Hide internal dev skills from bare npx skills add
+  ([#869](https://github.com/Gharib89/crm/pull/869),
+  [`8bbb323`](https://github.com/Gharib89/crm/commit/8bbb32395273ecf0a05ae0b88b35ef64650babe1))
+
+- **skill**: Make npx skills install banner actually install the crm skill
+  ([#869](https://github.com/Gharib89/crm/pull/869),
+  [`8bbb323`](https://github.com/Gharib89/crm/commit/8bbb32395273ecf0a05ae0b88b35ef64650babe1))
+
+- **skill**: Make the npx skills install banner actually install the crm skill
+  ([#869](https://github.com/Gharib89/crm/pull/869),
+  [`8bbb323`](https://github.com/Gharib89/crm/commit/8bbb32395273ecf0a05ae0b88b35ef64650babe1))
+
+- **skill**: Normalize any existing metadata.internal instead of duplicating
+  ([#869](https://github.com/Gharib89/crm/pull/869),
+  [`8bbb323`](https://github.com/Gharib89/crm/commit/8bbb32395273ecf0a05ae0b88b35ef64650babe1))
+
+### Chores
+
+- Share Claude skills with Codex
+  ([`0ce22f7`](https://github.com/Gharib89/crm/commit/0ce22f7a3e447ef09494445287adad4ea0c9999e))
+
+### Code Style
+
+- Ruff format the plugin-manifest regression test ([#869](https://github.com/Gharib89/crm/pull/869),
+  [`8bbb323`](https://github.com/Gharib89/crm/commit/8bbb32395273ecf0a05ae0b88b35ef64650babe1))
+
+### Documentation
+
+- **triage**: Record MCP server as out-of-scope ([#610](https://github.com/Gharib89/crm/pull/610),
+  [`26dea69`](https://github.com/Gharib89/crm/commit/26dea691cf3b7ee541f4564422e8fc50dc6c2853))
+
+### Testing
+
+- **skill**: Assert manifest points at canonical ./crm/skills
+  ([#869](https://github.com/Gharib89/crm/pull/869),
+  [`8bbb323`](https://github.com/Gharib89/crm/commit/8bbb32395273ecf0a05ae0b88b35ef64650babe1))
+
+
 ## v1.69.4 (2026-07-13)
 
 ### Bug Fixes
