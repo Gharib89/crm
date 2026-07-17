@@ -177,9 +177,11 @@ crm self-update --yes     # run the upgrade non-interactively (uv/pipx installs)
 - **editable / `pip install git+…` / unknown** (Option 3) — prints the correct
   git-based upgrade command and never mutates your environment.
 
-Every non-`--check` run also re-syncs any agent skills you installed with `crm
-skill install`, and any shell completion you installed with `crm completion
-install` (below), so both stay current with the CLI.
+After a successful upgrade — or on any run that doesn't upgrade (already current,
+or a printed-guidance / declined install) — `self-update` also re-syncs any agent
+skills you installed with `crm skill install`, and any shell completion you
+installed with `crm completion install` (below), so both stay current with the
+CLI. (A failed upgrade leaves them untouched.)
 
 ### Shell completion
 

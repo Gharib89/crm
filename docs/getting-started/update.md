@@ -39,10 +39,12 @@ All non-frozen methods converge on the **latest release tag**, the same version
 the frozen path reads from the release server, so "latest" means one thing
 everywhere.
 
-A non-`--check` update also re-syncs any agent skills you installed (see
-[Install the skill](skill.md)), so the shipped skill never lags the CLI. After a
-uv/pipx reinstall the refresh runs via the freshly installed `crm`, so the skill
-matches the version you just installed.
+After a successful upgrade — or on any run that doesn't upgrade (already current,
+or a printed-guidance / declined install) — `self-update` re-syncs any agent
+skills you installed (see [Install the skill](skill.md)), so the shipped skill
+never lags the CLI. After a uv/pipx reinstall the refresh runs via the freshly
+installed `crm`, so the skill matches the version you just installed. (A failed
+upgrade leaves the skills untouched.)
 
 ## The passive update notice
 
