@@ -1,8 +1,11 @@
 ---
-status: accepted
+status: superseded
 ---
 
 # Skill-efficacy review: persist the run, judge it afterwards
+
+> **Superseded by [ADR 0028](0028-skill-eval-paired-behavioral-plus-static-lint.md) (map #874).**
+> The persist-then-analyze efficacy review here was built on ADR 0015's Machine B, whose behavioral design ADR 0028 replaces. The core change: ADR 0028 makes the **counterfactual (bare) leg canonical** rather than the opt-in this ADR made it, so lift is a first-class output of every full run. Storage moves from `evals/skill/runs/` + a human-gated `efficacy.md` to `evals/results/<run-id>/` (`run.json` + `trials.jsonl`) with a computed `reportable` stamp and a derived `matrix.md`. Read this ADR only as design history.
 
 ## Context
 

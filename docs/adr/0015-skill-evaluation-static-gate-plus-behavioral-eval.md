@@ -1,8 +1,11 @@
 ---
-status: proposed
+status: partially superseded
 ---
 
 # Evaluating the `crm` skill: a static coverage gate plus a behavioral effectiveness eval
+
+> **Partially superseded by [ADR 0028](0028-skill-eval-paired-behavioral-plus-static-lint.md) (map #874).**
+> **Machine A** (the static skill-coverage gate, `crm/tests/skill_coverage.py`) **stands** — ADR 0028 keeps it and adds a static lint beside it. **Machine B** (below) is **replaced**: ADR 0028 makes paired with/without-skill conditions *canonical* (reversing the dropped-A/B decision here), sources ~30 tasks from real public demand instead of the trial plan, runs against one target per run instead of both unioned, and drops the periodic scheduled (out-of-band) run this ADR added, keeping only discretionary on-demand runs. Read Machine B here only as design history.
 
 ## Context
 
