@@ -54,21 +54,181 @@ class TestCheck:
         assert json.loads(result.output)["ok"] is False
 
 
-class TestPipInstall:
-    """Non-frozen install must not touch the filesystem; points at pip."""
+def _force_method(monkeypatch, method, *, current="2.9.0", latest="v3.0.0", available=True):
+    """Force a non-frozen install method + a canned latest-version check (no network)."""
+    monkeypatch.setattr(update_mod, "detect_install_method", lambda: method)
+    monkeypatch.setattr(
+        update_mod,
+        "check_for_update",
+        lambda *a, **k: {"current": current, "latest": latest, "update_available": available},
+    )
 
-    def test_directs_to_pip(self, monkeypatch):
-        monkeypatch.setattr(update_mod, "is_frozen", lambda: False)
-        called = {"perform": 0}
-        monkeypatch.setattr(
-            update_mod,
-            "perform_update",
-            lambda *a, **k: called.__setitem__("perform", called["perform"] + 1),
-        )
-        result = CliRunner().invoke(cli, ["self-update"])
+
+class TestMethodAwareUpdate:
+    """Non-frozen `self-update` is install-method-aware (issue #872): auto-run for
+    uv/pipx (consent-gated), printed guidance for editable/pip-git/unknown."""
+
+    def test_editable_prints_guidance_never_runs(self, monkeypatch):
+        _force_method(monkeypatch, "editable")
+        ran = {"n": 0}
+        monkeypatch.setattr(update_mod, "run_upgrade", lambda *a, **k: ran.__setitem__("n", 1))
+        result = CliRunner().invoke(cli, ["--json", "self-update"])
         assert result.exit_code == 0
-        assert "pip install -U" in result.output
-        assert called["perform"] == 0
+        data = json.loads(result.output)["data"]
+        assert data["install_method"] == "editable"
+        assert data["executed"] is False
+        assert data["reason"] == "manual-install-method"
+        assert data["command"] == "git pull && pip install -e ."
+        assert ran["n"] == 0
+
+    def test_unknown_never_executes(self, monkeypatch):
+        _force_method(monkeypatch, "unknown")
+        ran = {"n": 0}
+        monkeypatch.setattr(update_mod, "run_upgrade", lambda *a, **k: ran.__setitem__("n", 1))
+        result = CliRunner().invoke(cli, ["--json", "self-update"])
+        data = json.loads(result.output)["data"]
+        assert data["executed"] is False
+        assert ran["n"] == 0
+        assert "git+https://github.com/Gharib89/crm@v3.0.0" in data["command"]
+
+    def test_json_no_tty_without_yes_prints_but_does_not_execute(self, monkeypatch):
+        _force_method(monkeypatch, "uv-tool")
+        ran = {"n": 0}
+        monkeypatch.setattr(update_mod, "run_upgrade", lambda *a, **k: ran.__setitem__("n", 1))
+        result = CliRunner().invoke(cli, ["--json", "self-update"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)["data"]
+        assert data["executed"] is False
+        assert data["reason"] == "no-tty-without-yes"
+        assert data["command"].startswith("uv tool install --force ")
+        assert ran["n"] == 0
+
+    def test_uv_tool_autoruns_with_yes(self, monkeypatch):
+        _force_method(monkeypatch, "uv-tool")
+        seen = {}
+
+        def fake_run(argv):
+            seen["argv"] = argv
+            return 0
+
+        monkeypatch.setattr(update_mod, "run_upgrade", fake_run)
+        monkeypatch.setattr(
+            "crm.commands.self_update._post_upgrade_refresh", lambda: {"skills": [], "completion": None}
+        )
+        result = CliRunner().invoke(cli, ["--json", "self-update", "--yes"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)["data"]
+        assert data["executed"] is True
+        assert data["exit_status"] == 0
+        assert seen["argv"] == [
+            "uv", "tool", "install", "--force", "git+https://github.com/Gharib89/crm@v3.0.0",
+        ]
+
+    def test_pipx_autoruns_with_yes(self, monkeypatch):
+        _force_method(monkeypatch, "pipx")
+        seen = {}
+
+        def fake_run(argv):
+            seen["argv"] = argv
+            return 0
+
+        monkeypatch.setattr(update_mod, "run_upgrade", fake_run)
+        monkeypatch.setattr("crm.commands.self_update._post_upgrade_refresh", lambda: None)
+        result = CliRunner().invoke(cli, ["--json", "self-update", "--yes"])
+        assert result.exit_code == 0
+        assert seen["argv"][0:2] == ["pipx", "install"]
+
+    def test_tty_prompt_yes_runs(self, monkeypatch):
+        _force_method(monkeypatch, "uv-tool")
+        monkeypatch.setattr("crm.commands.self_update._stdin_is_tty", lambda: True)
+        ran = {"n": 0}
+        monkeypatch.setattr(update_mod, "run_upgrade", lambda argv: ran.__setitem__("n", 1) or 0)
+        monkeypatch.setattr("crm.commands.self_update._post_upgrade_refresh", lambda: None)
+        result = CliRunner().invoke(cli, ["self-update"], input="y\n")
+        assert result.exit_code == 0
+        assert ran["n"] == 1
+
+    def test_tty_prompt_no_declines(self, monkeypatch):
+        _force_method(monkeypatch, "uv-tool")
+        monkeypatch.setattr("crm.commands.self_update._stdin_is_tty", lambda: True)
+        ran = {"n": 0}
+        monkeypatch.setattr(update_mod, "run_upgrade", lambda argv: ran.__setitem__("n", 1) or 0)
+        result = CliRunner().invoke(cli, ["--json", "self-update"], input="n\n")
+        # --json disables the interactive prompt entirely → no-tty-without-yes.
+        assert json.loads(result.output)["data"]["reason"] == "no-tty-without-yes"
+        assert ran["n"] == 0
+
+    def test_tool_not_on_path_falls_back_to_print(self, monkeypatch):
+        _force_method(monkeypatch, "uv-tool")
+
+        def boom(argv):
+            raise FileNotFoundError("uv")
+
+        monkeypatch.setattr(update_mod, "run_upgrade", boom)
+        result = CliRunner().invoke(cli, ["--json", "self-update", "--yes"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)["data"]
+        assert data["executed"] is False
+        assert data["reason"] == "tool-not-on-path"
+
+    def test_up_to_date_makes_no_change(self, monkeypatch):
+        _force_method(monkeypatch, "uv-tool", available=False, latest="v2.9.0")
+        ran = {"n": 0}
+        monkeypatch.setattr(update_mod, "run_upgrade", lambda *a, **k: ran.__setitem__("n", 1))
+        result = CliRunner().invoke(cli, ["--json", "self-update", "--yes"])
+        data = json.loads(result.output)["data"]
+        assert data["update_available"] is False
+        assert data["reason"] == "up-to-date"
+        assert ran["n"] == 0
+
+    def test_nonzero_exit_is_clean_error(self, monkeypatch):
+        _force_method(monkeypatch, "uv-tool")
+        monkeypatch.setattr(update_mod, "run_upgrade", lambda argv: 1)
+        result = CliRunner().invoke(cli, ["--json", "self-update", "--yes"])
+        assert result.exit_code == 1
+        assert json.loads(result.output)["ok"] is False
+
+    def test_network_failure_is_clean_error(self, monkeypatch):
+        monkeypatch.setattr(update_mod, "detect_install_method", lambda: "uv-tool")
+
+        def boom(*a, **k):
+            raise update_mod.UpdateError("network unreachable")
+
+        monkeypatch.setattr(update_mod, "check_for_update", boom)
+        result = CliRunner().invoke(cli, ["--json", "self-update"])
+        assert result.exit_code == 1
+        assert json.loads(result.output)["ok"] is False
+
+    def test_post_upgrade_refresh_invoked_after_success(self, monkeypatch):
+        _force_method(monkeypatch, "uv-tool")
+        monkeypatch.setattr(update_mod, "run_upgrade", lambda argv: 0)
+        called = {"n": 0}
+        monkeypatch.setattr(
+            "crm.commands.self_update._post_upgrade_refresh",
+            lambda: called.__setitem__("n", called["n"] + 1)
+            or {"skills": [{"status": "refreshed"}], "completion": None},
+        )
+        result = CliRunner().invoke(cli, ["--json", "self-update", "--yes"])
+        assert result.exit_code == 0
+        assert called["n"] == 1
+        assert json.loads(result.output)["data"]["skills"] == [{"status": "refreshed"}]
+
+
+class TestRefreshOnlyEntry:
+    """The hidden `--refresh-only` entry re-syncs skills without upgrading."""
+
+    def test_refresh_only_does_not_upgrade(self, monkeypatch):
+        monkeypatch.setattr(update_mod, "detect_install_method", lambda: "uv-tool")
+        ran = {"check": 0, "run": 0}
+        monkeypatch.setattr(
+            update_mod, "check_for_update", lambda *a, **k: ran.__setitem__("check", 1)
+        )
+        monkeypatch.setattr(update_mod, "run_upgrade", lambda *a, **k: ran.__setitem__("run", 1))
+        result = CliRunner().invoke(cli, ["--json", "self-update", "--refresh-only"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)["data"]
+        assert data["refreshed"] is True
+        assert ran == {"check": 0, "run": 0}  # never re-enters upgrade → no reinstall loop
 
 
 class TestEligibilityIsFailSilent:
@@ -104,8 +264,7 @@ class TestNoticeSuppressedForSelfUpdate:
         return calls
 
     def test_self_update_does_not_emit_notice(self, monkeypatch, _force_eligible):
-        monkeypatch.setattr(update_mod, "is_frozen", lambda: False)
-        monkeypatch.setattr(update_mod, "perform_update", lambda *a, **k: None)
+        _force_method(monkeypatch, "editable")
         result = CliRunner().invoke(cli, ["self-update"])
         assert result.exit_code == 0
         assert _force_eligible == []
@@ -122,7 +281,7 @@ class TestSkillRefresh:
     def test_pip_path_refreshes_recorded_skill(self, tmp_path, monkeypatch):
         from crm.commands import skill_registry as reg
 
-        monkeypatch.setattr(update_mod, "is_frozen", lambda: False)
+        _force_method(monkeypatch, "editable")
         dest = tmp_path / "claude-skill"
         dest.mkdir()
         reg.record_install("claude", str(dest), "0.0.1")  # stale → must refresh
@@ -139,7 +298,7 @@ class TestSkillRefresh:
         # An unexpected refresh failure (e.g. unreadable registry) must surface in
         # data.skills as an error, not be silently dropped — and must not fail the
         # command (the binary side already succeeded).
-        monkeypatch.setattr(update_mod, "is_frozen", lambda: False)
+        _force_method(monkeypatch, "editable")
 
         def boom(*a, **k):
             raise PermissionError("registry unreadable")
@@ -235,7 +394,7 @@ class TestCompletionRefresh:
     def test_pip_path_refreshes_recorded_completion(self, monkeypatch):
         from crm.commands import completion_registry as creg
 
-        monkeypatch.setattr(update_mod, "is_frozen", lambda: False)
+        _force_method(monkeypatch, "editable")
         path = self._seed_marker(version="0.0.1")  # stale → must refresh
 
         result = CliRunner().invoke(cli, ["--json", "self-update"])
@@ -249,14 +408,14 @@ class TestCompletionRefresh:
     def test_no_marker_leaves_completion_untouched(self, monkeypatch):
         from crm.commands import completion_registry as creg
 
-        monkeypatch.setattr(update_mod, "is_frozen", lambda: False)
+        _force_method(monkeypatch, "editable")
         result = CliRunner().invoke(cli, ["--json", "self-update"])
         assert result.exit_code == 0
         assert "completion" not in json.loads(result.output)["data"]
         assert creg.read_marker() is None
 
     def test_refresh_failure_does_not_fail_update(self, monkeypatch):
-        monkeypatch.setattr(update_mod, "is_frozen", lambda: False)
+        _force_method(monkeypatch, "editable")
         self._seed_marker(version="0.0.1")
 
         def boom(*a, **k):
@@ -304,7 +463,7 @@ class TestCompletionRefresh:
         # human-mode status emit and break self-update's never-raise guarantee.
         from crm.commands import completion_registry as creg
 
-        monkeypatch.setattr(update_mod, "is_frozen", lambda: False)
+        _force_method(monkeypatch, "editable")
         creg.marker_path().write_text(
             json.dumps({"shell": "zsh", "script_path": 123, "installed_version": "0.0.1"}),
             encoding="utf-8",
