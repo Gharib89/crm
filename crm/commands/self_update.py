@@ -164,6 +164,8 @@ def _post_upgrade_refresh() -> dict[str, Any] | None:
             [binary, "--json", "self-update", "--refresh-only"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=60,
         )
         if out.returncode != 0:
@@ -284,15 +286,26 @@ def _method_aware_update(ctx: CLIContext, method: str, yes: bool) -> None:
     data["executed"] = True
     data["exit_status"] = status
     if status != 0:
-        ctx.emit(False, error=f"Upgrade command exited with status {status}: {command}")
+        # Keep the full execution payload on the error envelope so a scripter still
+        # sees install_method/command/executed/exit_status; ok:false + exit 1 signal
+        # the failed upgrade to CI.
+        ctx.emit(False, data=data, error=f"Upgrade command exited with status {status}: {command}")
         return
     refresh = _post_upgrade_refresh()
+    warnings: list[str] = []
     if refresh is not None:
         if "skills" in refresh:
             data["skills"] = refresh["skills"]
         if "completion" in refresh:
             data["completion"] = refresh["completion"]
-    ctx.emit(True, data=data)
+    else:
+        # The reinstall succeeded but the new binary couldn't refresh recorded
+        # skills/completion — surface it so a stale skill tree isn't silent.
+        warnings.append(
+            "Upgraded, but could not refresh installed agent skills/completion via the "
+            "new binary. Run `crm self-update --refresh-only` to retry."
+        )
+    ctx.emit(True, data=data, warnings=warnings or None)
     if not ctx.json_mode:
         ctx.skin.success(f"Upgraded crm to {latest} via {method}.")
 

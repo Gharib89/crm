@@ -52,10 +52,10 @@ Under `--json`, a non-frozen `self-update` emits these `data` fields:
   `manual-install-method`, `no-tty-without-yes`, `declined`, or `tool-not-on-path`.
 
 If an attempted uv/pipx upgrade command itself exits non-zero, `self-update`
-instead emits the standard `ok:false` error envelope (exit 1, no `data` payload)
-with the failing status and command in `error` — so a script sees a non-zero
-process exit on a failed upgrade. The `data` fields above describe the success
-and no-op (`executed:false` + `reason`) cases.
+emits an `ok:false` envelope (exit 1) — so a script sees a non-zero process exit
+on a failed upgrade — while still carrying the same `data` fields
+(`install_method`, `command`, `executed:true`, `exit_status`) alongside the
+`error` message, so you can inspect what ran.
 
 `--check` is unchanged and method-agnostic (`data.current`, `data.latest`,
 `data.update_available`).

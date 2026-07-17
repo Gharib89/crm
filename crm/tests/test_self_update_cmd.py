@@ -155,14 +155,16 @@ class TestMethodAwareUpdate:
         assert ran["n"] == 1
 
     def test_tty_prompt_no_declines(self, monkeypatch):
+        # Interactive decline (human mode, stdin is a TTY, user answers "n"): the
+        # upgrade must not run, and the command prints the manual upgrade guidance.
         _force_method(monkeypatch, "uv-tool")
         monkeypatch.setattr("crm.commands.self_update._stdin_is_tty", lambda: True)
         ran = {"n": 0}
         monkeypatch.setattr(update_mod, "run_upgrade", lambda argv: ran.__setitem__("n", 1) or 0)
-        result = CliRunner().invoke(cli, ["--json", "self-update"], input="n\n")
-        # --json disables the interactive prompt entirely → no-tty-without-yes.
-        assert json.loads(result.output)["data"]["reason"] == "no-tty-without-yes"
+        result = CliRunner().invoke(cli, ["self-update"], input="n\n")
+        assert result.exit_code == 0
         assert ran["n"] == 0
+        assert "To upgrade, run:" in result.output
 
     def test_tool_not_on_path_falls_back_to_print(self, monkeypatch):
         _force_method(monkeypatch, "uv-tool")
@@ -187,12 +189,28 @@ class TestMethodAwareUpdate:
         assert data["reason"] == "up-to-date"
         assert ran["n"] == 0
 
-    def test_nonzero_exit_is_clean_error(self, monkeypatch):
+    def test_nonzero_exit_is_clean_error_with_payload(self, monkeypatch):
         _force_method(monkeypatch, "uv-tool")
         monkeypatch.setattr(update_mod, "run_upgrade", lambda argv: 1)
         result = CliRunner().invoke(cli, ["--json", "self-update", "--yes"])
         assert result.exit_code == 1
-        assert json.loads(result.output)["ok"] is False
+        payload = json.loads(result.output)
+        assert payload["ok"] is False
+        # The error envelope still carries the execution details for scripters.
+        assert payload["data"]["executed"] is True
+        assert payload["data"]["exit_status"] == 1
+        assert payload["data"]["install_method"] == "uv-tool"
+
+    def test_refresh_unavailable_after_upgrade_warns(self, monkeypatch):
+        _force_method(monkeypatch, "uv-tool")
+        monkeypatch.setattr(update_mod, "run_upgrade", lambda argv: 0)
+        monkeypatch.setattr("crm.commands.self_update._post_upgrade_refresh", lambda: None)
+        result = CliRunner().invoke(cli, ["--json", "self-update", "--yes"])
+        assert result.exit_code == 0
+        payload = json.loads(result.output)
+        assert payload["ok"] is True
+        # A failed post-upgrade refresh surfaces as a structured warning, not silence.
+        assert any("refresh" in w.lower() for w in payload["meta"]["warnings"])
 
     def test_network_failure_is_clean_error(self, monkeypatch):
         monkeypatch.setattr(update_mod, "detect_install_method", lambda: "uv-tool")
