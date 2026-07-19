@@ -42,7 +42,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from evals.skill import analyze, isolation, target
+from evals.skill import analyze, isolation, sandbox, target
 from evals.skill.taskspec import TaskSpec, evaluate_expect, parse_task_file
 
 
@@ -250,6 +250,13 @@ def run_task(
             agent = sandbox_wrap(agent)
         resolved_analyze = analyze.resolve_analyze_cmd(analyze_cmd) if analyze_pass else None
         profile = target.seed_target(iso.crm_home, spec.target)
+        # Under sudo the sandbox (HOME/creds/skill + CRM_HOME/profile) was built as root, but
+        # the network sandbox drops the agent to the invoking uid; hand the tree over — after
+        # seeding, before launch — so the de-privileged agent can read its creds and profile.
+        # None (not sudo-elevated) → the builder is already the agent's user, so no chown.
+        drop_ids = sandbox.invoking_user_ids()
+        if drop_ids is not None:
+            sandbox.chown_tree(iso.sandbox, drop_ids)
         transcript, capped = _run_agent(
             spec.prompt, agent, cwd=str(iso.work), env=iso.env, wall_clock_s=wall_clock_s
         )

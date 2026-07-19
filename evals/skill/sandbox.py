@@ -110,6 +110,21 @@ def invoking_user_ids() -> tuple[int, int] | None:
     return (int(sudo_uid), int(sudo_gid)) if sudo_uid and sudo_gid else None
 
 
+def chown_tree(path: Path, ids: tuple[int, int]) -> None:
+    """Recursively chown ``path`` to ``ids`` — hand a root-built tree to the de-privileged agent.
+
+    The root sandbox parent builds the agent's HOME (credentials + installed skill) and
+    CRM_HOME (profile secret) as root; once :func:`wrap_agent_cmd` drops the agent to the
+    invoking uid it could not otherwise *read* them. Best-effort: a failure leaves a
+    root-owned file the agent can't read, which surfaces as an auth/permission error in the
+    transcript rather than a silent wrong result.
+    """
+    uid, gid = ids
+    for p in (path, *path.rglob("*")):
+        with contextlib.suppress(OSError):
+            os.chown(p, uid, gid)
+
+
 def wrap_agent_cmd(
     agent_cmd: list[str], netns: str, *, drop_to: tuple[int, int] | None = None
 ) -> list[str]:

@@ -69,16 +69,36 @@ def _crm_bin() -> str:
     return found
 
 
+def _invoking_user_home() -> Path:
+    """The real home of the user who invoked us, resolving *through* ``sudo``.
+
+    Under the ADR-compliant root sandbox the parent runs as root (``sudo``), so
+    :func:`Path.home` would read root's home and miss the maintainer's credentials. When
+    ``SUDO_UID`` is set, resolve the invoking user's home from the passwd database instead
+    (``pwd`` is Unix-only and imported lazily so this module still imports on Windows CI).
+    """
+    sudo_uid = os.environ.get("SUDO_UID")
+    if sudo_uid:
+        try:
+            import pwd
+
+            return Path(pwd.getpwuid(int(sudo_uid)).pw_dir)
+        except (ImportError, KeyError, ValueError):
+            pass
+    return Path.home()
+
+
 def _real_claude_config_dir() -> Path:
     """The maintainer's *real* Claude Code config dir, read from the unscrubbed
-    environment (``CLAUDE_CONFIG_DIR`` if set, else ``$HOME/.claude``). This is where
-    Claude Code keeps the subscription credentials we pass through — resolved before
-    the sandbox repoints ``HOME``.
+    environment (``CLAUDE_CONFIG_DIR`` if set, else ``<invoking-user-home>/.claude``).
+    This is where Claude Code keeps the subscription credentials we pass through —
+    resolved before the sandbox repoints ``HOME``, and through ``sudo`` to the invoking
+    user so the root sandbox parent still finds the maintainer's credentials.
     """
     override = os.environ.get("CLAUDE_CONFIG_DIR")
     if override:
         return Path(override).expanduser()
-    return Path.home() / ".claude"
+    return _invoking_user_home() / ".claude"
 
 
 def _passthrough_claude_auth(sandbox_home: Path) -> Path | None:
