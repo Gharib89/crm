@@ -124,7 +124,7 @@ def test_agent_argv_survives_shlex_roundtrip_with_spaced_bin():
 def test_resolve_agent_bin_honors_override_env(monkeypatch, tmp_path):
     # Mirrors runner's CRM_EVAL_AGENT_CMD knob — an explicit executable path always wins.
     fake = tmp_path / "claude"
-    fake.write_text("#!/bin/sh\n")
+    fake.write_text("#!/bin/sh\n", encoding="utf-8")
     fake.chmod(0o755)
     monkeypatch.setenv("CRM_EVAL_CLAUDE_BIN", str(fake))
     assert resolve_agent_bin() == str(fake)
@@ -160,7 +160,7 @@ def test_chown_results_hands_back_to_invoker(monkeypatch, tmp_path, capsys):
     # Under sudo the root parent wrote run_dir as root; every path is chowned to the invoking
     # uid so the maintainer isn't left with a root-owned tree.
     (tmp_path / "transcripts").mkdir()
-    (tmp_path / "transcripts" / "t.txt").write_text("x")
+    (tmp_path / "transcripts" / "t.txt").write_text("x", encoding="utf-8")
     monkeypatch.setenv("SUDO_UID", "1000")
     monkeypatch.setenv("SUDO_GID", "1000")
     chowned: list[tuple[str, int, int]] = []
