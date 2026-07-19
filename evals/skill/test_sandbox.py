@@ -38,8 +38,22 @@ def test_resolve_allow_ips_dedups_and_sorts():
 def test_resolve_allow_ips_raises_on_empty():
     import pytest
 
-    with pytest.raises(ValueError, match="resolved to no addresses"):
+    with pytest.raises(ValueError, match="resolved to no IPv4 addresses"):
         resolve_allow_ips("org.example.com", resolver=lambda host: [])
+
+
+def test_resolve_allow_ips_drops_ipv6():
+    import socket
+
+    def fake_resolver(host: str):
+        return [
+            (socket.AF_INET, 1, 6, "", ("203.0.113.1", 443)),
+            (socket.AF_INET6, 1, 6, "", ("2001:db8::1", 443, 0, 0)),  # AAAA — dropped
+        ]
+
+    # nft_ruleset() emits only ip (v4) rules; an AAAA address reaching it would make
+    # `nft -f` reject the whole allowlist, so IPv6 results are filtered out here.
+    assert resolve_allow_ips("org.example.com", resolver=fake_resolver) == ["203.0.113.1"]
 
 
 def test_nft_ruleset_is_default_drop_with_org_allowlist():

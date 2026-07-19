@@ -28,6 +28,7 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -56,12 +57,13 @@ def resolve_allow_ips(host: str, *, resolver: Resolver | None = None) -> list[st
     needs DNS. ``resolver`` defaults to :func:`socket.getaddrinfo` and is injectable for
     tests. Raises :class:`ValueError` when the host resolves to nothing (a mis-seeded
     target must fail loudly, not silently produce an empty — i.e. block-everything —
-    allowlist).
+    allowlist). IPv6 (AAAA) results are dropped: :func:`nft_ruleset` emits only ``ip``
+    (v4) family rules, so an IPv6 address would make ``nft -f`` reject the whole ruleset.
     """
     resolve = resolver or (lambda h: socket.getaddrinfo(h, 443, proto=socket.IPPROTO_TCP))
-    addrs = {str(info[4][0]) for info in resolve(host)}
+    addrs = {str(info[4][0]) for info in resolve(host) if info[0] == socket.AF_INET}
     if not addrs:
-        raise ValueError(f"host {host!r} resolved to no addresses")
+        raise ValueError(f"host {host!r} resolved to no IPv4 addresses")
     return sorted(addrs)
 
 
@@ -125,14 +127,22 @@ def _run(argv: list[str], *, input_text: str | None = None) -> None:
         )
 
 
+def _sysctl_get(key: str) -> str | None:
+    """Read a sysctl value (``None`` if unavailable), so it can be restored on teardown."""
+    proc = subprocess.run(
+        ["sysctl", "-n", key], capture_output=True, text=True, encoding="utf-8", errors="replace"
+    )
+    return proc.stdout.strip() if proc.returncode == 0 else None
+
+
 def _require_root_and_tools() -> None:
     if os.geteuid() != 0:
         raise SandboxError(
             "network sandbox needs root (root nftables + netns per ADR 0028) — "
             "re-run the live paired eval under sudo"
         )
-    for tool in ("ip", "nft"):
-        if subprocess.run(["which", tool], capture_output=True).returncode != 0:
+    for tool in ("ip", "nft", "sysctl"):
+        if shutil.which(tool) is None:
             raise SandboxError(f"required tool {tool!r} not on PATH")
 
 
@@ -150,12 +160,17 @@ def network_sandbox(
     allow_ips = resolve_allow_ips(host, resolver=resolver)
     netns = f"crmeval-{run_id}"
     table = f"crmeval_{run_id}".replace("-", "_")
-    veth_h, veth_c = f"vh-{run_id}"[:15], f"vc-{run_id}"[:15]
+    # veth names cap at 15 chars: derive from run_id's random suffix (its unique part), not a
+    # truncated timestamp prefix — else two runs in the same second collide and `ip link add`
+    # fails. token_hex(2) tails are 4 chars, so vh-/vc- + suffix stays well under the cap.
+    sfx = run_id.rsplit("-", 1)[-1][:12]
+    veth_h, veth_c = f"vh-{sfx}", f"vc-{sfx}"
     etc_dir = Path("/etc/netns") / netns
 
     etc_dir.mkdir(parents=True, exist_ok=True)
     (etc_dir / "hosts").write_text(netns_hosts_file(host, allow_ips), encoding="utf-8")
     (etc_dir / "resolv.conf").write_text("", encoding="utf-8")  # no DNS egress
+    fwd_prev = _sysctl_get("net.ipv4.ip_forward")
     try:
         _run(["ip", "netns", "add", netns])
         _run(["ip", "link", "add", veth_h, "type", "veth", "peer", "name", veth_c])
@@ -187,13 +202,20 @@ def network_sandbox(
         yield NetnsSandbox(netns=netns, table=table, veth_host=veth_h, etc_dir=etc_dir)
     finally:
         # Best-effort teardown: never mask the body's outcome, remove every artifact.
-        for argv in (
+        teardown = [
             ["nft", "delete", "table", "ip", table],
             ["ip", "link", "del", veth_h],
             ["ip", "netns", "del", netns],
-        ):
+        ]
+        # Restore the host's prior ip_forward: leaving it on is a global change to the
+        # maintainer's machine's network posture that outlives the eval.
+        if fwd_prev is not None:
+            teardown.append(["sysctl", "-w", f"net.ipv4.ip_forward={fwd_prev}"])
+        for argv in teardown:
             with contextlib.suppress(Exception):
-                subprocess.run(argv, capture_output=True)
+                subprocess.run(
+                    argv, capture_output=True, text=True, encoding="utf-8", errors="replace"
+                )
         with contextlib.suppress(Exception):
             for f in ("hosts", "resolv.conf"):
                 (etc_dir / f).unlink(missing_ok=True)

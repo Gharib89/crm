@@ -29,11 +29,13 @@ On-demand invocation:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import dataclasses
 import json
 import os
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 from collections.abc import Callable
@@ -121,23 +123,31 @@ def _run_agent(
     the pass/fail gate) so a crashed or misconfigured agent is diagnosable, not a silent
     failure.
     """
+    # start_new_session=True makes the agent its own process-group leader so a wall-clock
+    # cap-hit can kill the *whole* group. subprocess.run's timeout only kills the direct
+    # child, leaving Bash/tool grandchildren alive to mutate the live org after the leg is
+    # scored — which would leak into the next leg's reset and confound the pair.
+    proc = subprocess.Popen(
+        agent_cmd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        cwd=cwd,
+        env=env,
+        start_new_session=True,
+    )
     try:
-        proc = subprocess.run(
-            agent_cmd,
-            input=prompt,
-            capture_output=True,
-            text=True,
-            cwd=cwd,
-            env=env,
-            timeout=wall_clock_s,
-        )
-    except subprocess.TimeoutExpired as exc:
-        partial = exc.stdout or ""
-        if isinstance(partial, bytes):
-            partial = partial.decode("utf-8", "replace")
-        return f"[agent cap-hit: wall-clock {wall_clock_s}s exceeded]\n{partial}", True
+        out, err = proc.communicate(input=prompt, timeout=wall_clock_s)
+    except subprocess.TimeoutExpired:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
+        partial, _ = proc.communicate()
+        return f"[agent cap-hit: wall-clock {wall_clock_s}s exceeded]\n{partial or ''}", True
     header = f"[agent exit {proc.returncode}]\n"
-    return header + proc.stdout + (f"\n[stderr]\n{proc.stderr}" if proc.stderr else ""), False
+    return header + out + (f"\n[stderr]\n{err}" if err else ""), False
 
 
 def cleanup_org(spec: TaskSpec, env: dict[str, str], profile: str, crm_bin: str, cwd: str) -> None:

@@ -23,8 +23,10 @@ real ``claude -p`` against the live org — the maintainer's hand-back run.
 from __future__ import annotations
 
 import argparse
+import atexit
 import os
 import secrets
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -172,6 +174,10 @@ def build_reset_org(
     """
     spec = parse_task_file(task_file)
     reset_home = Path(tempfile.mkdtemp(prefix="crm-eval-reset-"))
+    # reset_home holds the target profile's plaintext secret (seed_target writes it); unlike
+    # `session` it isn't rmtree'd in main()'s finally, so register cleanup here to never leave
+    # a credential-bearing dir behind — even if the reset closure is never called.
+    atexit.register(shutil.rmtree, reset_home, ignore_errors=True)
     profile = target_mod.seed_target(reset_home, spec.target)
     env = {**os.environ, "CRM_HOME": str(reset_home)}
 
@@ -265,8 +271,6 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
         _print_summary(run_id, run_dir, aggregates)
         return 0 if all(a.pass_skill_rate > 0 for a in aggregates) else 1
     finally:
-        import shutil
-
         shutil.rmtree(session, ignore_errors=True)
 
 
