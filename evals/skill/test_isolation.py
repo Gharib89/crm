@@ -11,9 +11,52 @@ skill-absent sandbox needs no ``crm`` binary at all.
 
 from __future__ import annotations
 
+import sys
+import types
+from pathlib import Path
+
 import pytest
 
 from evals.skill import isolation
+
+
+def test_invoking_user_home_resolves_through_sudo(monkeypatch):
+    # Under sudo the parent is root; the invoking user's home must be resolved from the
+    # passwd db (via SUDO_UID), not root's, so credential passthrough finds the real creds.
+    fake_pwd = types.SimpleNamespace(
+        getpwuid=lambda uid: types.SimpleNamespace(pw_dir=f"/home/user{uid}")
+    )
+    monkeypatch.setitem(sys.modules, "pwd", fake_pwd)
+    monkeypatch.setenv("SUDO_UID", "1000")
+    assert isolation._invoking_user_home() == Path("/home/user1000")
+
+
+def test_invoking_user_home_falls_back_without_sudo(monkeypatch):
+    monkeypatch.delenv("SUDO_UID", raising=False)
+    assert isolation._invoking_user_home() == Path.home()
+
+
+def test_invoking_user_home_fails_closed_on_bad_sudo_uid(monkeypatch):
+    # SUDO_UID set but unresolvable → None, never root's home: copying root's credentials
+    # into the sandbox would be a privacy leak, so fail closed and skip the passthrough.
+    def _boom(uid):
+        raise KeyError(uid)
+
+    monkeypatch.setitem(sys.modules, "pwd", types.SimpleNamespace(getpwuid=_boom))
+    monkeypatch.setenv("SUDO_UID", "999999")
+    assert isolation._invoking_user_home() is None
+    assert isolation._real_claude_config_dir() is None
+
+
+def test_real_claude_config_dir_follows_sudo_user(monkeypatch):
+    monkeypatch.setitem(
+        sys.modules,
+        "pwd",
+        types.SimpleNamespace(getpwuid=lambda uid: types.SimpleNamespace(pw_dir="/home/maint")),
+    )
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    monkeypatch.setenv("SUDO_UID", "1000")
+    assert isolation._real_claude_config_dir() == Path("/home/maint/.claude")
 
 
 def test_provision_skips_install_for_absent_leg():

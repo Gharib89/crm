@@ -12,7 +12,10 @@ removes any need for DNS egress, and the ``ip netns exec`` command wrapper.
 
 from __future__ import annotations
 
+from evals.skill import sandbox as sandbox_mod
 from evals.skill.sandbox import (
+    chown_tree,
+    invoking_user_ids,
     netns_hosts_file,
     nft_ruleset,
     resolve_allow_ips,
@@ -100,3 +103,56 @@ def test_wrap_agent_cmd_prefixes_ip_netns_exec():
         "--model",
         "sonnet",
     ]
+
+
+def test_wrap_agent_cmd_drops_privilege_with_setpriv():
+    # Under sudo the whole process tree is root, but `claude --dangerously-skip-permissions`
+    # refuses to run as root; setpriv drops the exec'd agent back to the invoking uid *inside*
+    # the root-built netns (preserving env verbatim, unlike runuser), so the agent isn't root
+    # yet stays trapped in the root-built namespace.
+    assert wrap_agent_cmd(["claude", "-p"], "crmeval-run1", drop_to=(1000, 1000)) == [
+        "ip",
+        "netns",
+        "exec",
+        "crmeval-run1",
+        "setpriv",
+        "--reuid",
+        "1000",
+        "--regid",
+        "1000",
+        "--init-groups",
+        "claude",
+        "-p",
+    ]
+
+
+def test_wrap_agent_cmd_no_drop_is_plain_netns_wrap():
+    # drop_to=None → the existing root-runs-the-agent wrap, unchanged.
+    assert wrap_agent_cmd(["claude"], "ns", drop_to=None) == ["ip", "netns", "exec", "ns", "claude"]
+
+
+def test_invoking_user_ids_reads_sudo_env(monkeypatch):
+    # sudo exports the caller's ids; both the netns de-priv and the results chown key off them.
+    monkeypatch.setenv("SUDO_UID", "1000")
+    monkeypatch.setenv("SUDO_GID", "1000")
+    assert invoking_user_ids() == (1000, 1000)
+
+
+def test_invoking_user_ids_none_without_sudo(monkeypatch):
+    # not sudo-elevated → None, so the agent runs as-is and the chown is a no-op.
+    monkeypatch.delenv("SUDO_UID", raising=False)
+    monkeypatch.delenv("SUDO_GID", raising=False)
+    assert invoking_user_ids() is None
+
+
+def test_chown_tree_recurses_to_ids(monkeypatch, tmp_path):
+    # The root-built sandbox tree is handed to the de-privileged agent: every path chowned.
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "creds").write_text("x", encoding="utf-8")
+    calls: list[tuple[str, int, int]] = []
+    monkeypatch.setattr(sandbox_mod.os, "chown", lambda p, u, g: calls.append((str(p), u, g)))
+    chown_tree(tmp_path, (1000, 1000))
+    paths = {c[0] for c in calls}
+    assert str(tmp_path) in paths
+    assert str(tmp_path / "sub" / "creds") in paths
+    assert all((u, g) == (1000, 1000) for _, u, g in calls)

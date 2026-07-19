@@ -406,12 +406,21 @@ What it adds over the single-condition runner:
 
 ```bash
 # Live run (root, live-e2e-style gate). agent-cloud is the default target.
-D365_E2E=1 D365_E2E_PROFILE=agent-cloud sudo -E \
-    $(command -v python) -m evals.skill.paired            # k=1, records-create-verify
+# `sudo -E env "PATH=$PATH"` is required, not plain `sudo -E`: sudo resets PATH to
+# secure_path (dropping ~/.local/bin), so a bare `claude`/`python` wouldn't be found —
+# `-E` preserves env *vars* but not PATH. The agent then runs de-privileged (setpriv) back
+# to your uid inside the root-built netns, because `claude --dangerously-skip-permissions`
+# refuses to run as root. (Alternative to re-exporting PATH: CRM_EVAL_CLAUDE_BIN=$(command -v claude).)
+D365_E2E=1 D365_E2E_PROFILE=agent-cloud sudo -E env "PATH=$PATH" \
+    python -m evals.skill.paired                          # k=1, records-create-verify
 
-D365_E2E=1 D365_E2E_PROFILE=agent-cloud sudo -E python -m evals.skill.paired --k 3
-python -m evals.skill.sandbox <org-host>                  # root smoke: org reachable, web blocked
+D365_E2E=1 D365_E2E_PROFILE=agent-cloud sudo -E env "PATH=$PATH" \
+    python -m evals.skill.paired --k 3
+sudo -E env "PATH=$PATH" python -m evals.skill.sandbox <org-host>  # root smoke: org reachable, web blocked
 ```
+
+`evals/results/<run-id>/` is chowned back to the invoking user on completion (the root parent
+otherwise leaves a root-owned tree); if a run dies mid-way, `sudo chown -R $USER evals/results`.
 
 Reportability follows ADR 0028: only a **full paired run at k≥3** is reportable (the
 walking-skeleton default k=1 is not). A reportable run is committed by explicitly

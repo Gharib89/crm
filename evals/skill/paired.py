@@ -17,7 +17,7 @@ Only :func:`run_pair` and :func:`agent_argv` are offline-testable (the legs and 
 injected); the front door builds a session venv, opens the network sandbox, and drives a
 real ``claude -p`` against the live org — the maintainer's hand-back run.
 
-    D365_E2E=1 D365_E2E_PROFILE=agent-cloud sudo -E python -m evals.skill.paired
+    D365_E2E=1 D365_E2E_PROFILE=agent-cloud sudo -E env "PATH=$PATH" python -m evals.skill.paired
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ import argparse
 import atexit
 import os
 import secrets
+import shlex
 import shutil
 import subprocess
 import sys
@@ -52,15 +53,48 @@ MAX_TURNS = 50
 WALL_CLOCK_S = 600
 
 
-def agent_argv(*, model: str = DEFAULT_MODEL, max_turns: int = MAX_TURNS) -> list[str]:
+def resolve_agent_bin() -> str:
+    """Resolve the ``claude`` binary once, in the harness, so a sudo run can find it.
+
+    ``sudo`` resets ``PATH`` to ``secure_path`` (dropping ``~/.local/bin``), so a bare
+    ``"claude"`` exec'd under sudo fails with ``No such file or directory`` even though
+    ``-E`` preserved the env *vars*. Resolve here — ``$CRM_EVAL_CLAUDE_BIN`` override (mirrors
+    runner's ``$CRM_EVAL_AGENT_CMD`` knob) then :func:`shutil.which` — and raise a legible
+    :class:`RunError` naming both escapes if unresolved, so it fails in a preflight (~1s)
+    rather than after a 60s venv build and two live org resets.
+    """
+    override = os.environ.get("CRM_EVAL_CLAUDE_BIN")
+    if override:
+        # Validate the explicit override in the preflight too — a typo'd path must fail in
+        # ~1s, not after the 60s venv build + org resets (which() already returns only an
+        # executable, so its result needs no re-check).
+        if not (Path(override).is_file() and os.access(override, os.X_OK)):
+            raise RunError(f"CRM_EVAL_CLAUDE_BIN={override!r} is not an executable file")
+        return override
+    agent_bin = shutil.which("claude")
+    if not agent_bin:
+        raise RunError(
+            "could not resolve the 'claude' binary — sudo resets PATH to secure_path and "
+            "drops ~/.local/bin, so a bare 'claude' isn't found. Either set "
+            "CRM_EVAL_CLAUDE_BIN=$(command -v claude) or re-run with "
+            'sudo -E env "PATH=$PATH" … so which() can find it.'
+        )
+    return agent_bin
+
+
+def agent_argv(
+    *, model: str = DEFAULT_MODEL, max_turns: int = MAX_TURNS, claude_bin: str = "claude"
+) -> list[str]:
     """The headless ``claude -p`` argv with the ADR-0028 guardrails baked in.
 
-    ``--allowedTools`` denies the web tools (only Bash/Read/Grep/Glob/Skill), ``--max-turns``
-    is the turn cap, and ``stream-json`` is the trace :mod:`trace` parses for the command
-    sequence + metrics. The wall-clock cap is enforced by the runner, not a flag.
+    ``claude_bin`` is argv[0] — the front door passes the :func:`resolve_agent_bin` absolute
+    path so a sudo run (reset PATH) still finds the binary. ``--allowedTools`` denies the web
+    tools (only Bash/Read/Grep/Glob/Skill), ``--max-turns`` is the turn cap, and
+    ``stream-json`` is the trace :mod:`trace` parses for the command sequence + metrics. The
+    wall-clock cap is enforced by the runner, not a flag.
     """
     return [
-        "claude",
+        claude_bin,
         "-p",
         "--dangerously-skip-permissions",
         "--output-format",
@@ -210,6 +244,10 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
             "live paired run requires D365_E2E=1 (live-e2e-style gate); never runs offline"
         )
 
+    # Preflight: resolve the agent binary before the slow venv build + org resets, so a
+    # missing 'claude' (the common sudo-PATH-reset failure) fails in ~1s with a clear cause.
+    agent_bin = resolve_agent_bin()
+
     repo_root = Path(__file__).resolve().parents[2]
     profile_name = target_mod.resolve_profile_name()
     host = target_mod.resolve_host(profile_name)
@@ -226,7 +264,10 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
         crm_bin = build_session_crm(repo_root, session)
         reset_org = build_reset_org(args.task, crm_bin)
         leg_kwargs: dict[str, object] = {
-            "agent_cmd": " ".join(agent_argv(model=args.model)),
+            # shlex.join (not " ".join): argv[0] is now a resolved path that may contain
+            # spaces, and runner._resolve_agent_cmd shlex.splits this back — a plain join
+            # would mis-split a spaced path and the agent wouldn't launch.
+            "agent_cmd": shlex.join(agent_argv(model=args.model, claude_bin=agent_bin)),
             "crm_bin": crm_bin,
             "wall_clock_s": WALL_CLOCK_S,
         }
@@ -268,10 +309,38 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
         write_results(
             args.results_dir, run_id=run_id, meta=meta, trials=trials, aggregates=aggregates
         )
+        _chown_results_to_invoker(run_dir)
         _print_summary(run_id, run_dir, aggregates)
         return 0 if all(a.pass_skill_rate > 0 for a in aggregates) else 1
     finally:
         shutil.rmtree(session, ignore_errors=True)
+
+
+def _chown_results_to_invoker(run_dir: Path) -> None:
+    """Hand ``run_dir`` back to the invoking user after a sudo run.
+
+    The root python parent writes ``evals/results/<run>/`` (and its transcripts) as root; a
+    no-op unless invoked under sudo, so the maintainer isn't left with a root-owned results
+    tree. A chown failure is surfaced (not swallowed) with the manual fallback, so the
+    "owned by the invoking user" acceptance is observably met-or-not — the same reason all
+    chowns share one cause, so warn once and stop.
+    """
+    from evals.skill.sandbox import invoking_user_ids
+
+    ids = invoking_user_ids()
+    if ids is None:
+        return
+    uid, gid = ids
+    for path in (run_dir, *run_dir.rglob("*")):
+        try:
+            os.chown(path, uid, gid)
+        except OSError as exc:
+            print(
+                f"[paired] warning: could not chown results to {uid}:{gid} ({exc}); "
+                f"run: sudo chown -R $USER {run_dir}",
+                file=sys.stderr,
+            )
+            return
 
 
 def _print_summary(run_id: str, run_dir: Path, aggregates: list) -> None:  # pragma: no cover - live
