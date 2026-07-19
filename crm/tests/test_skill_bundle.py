@@ -3,6 +3,12 @@
 """Structural guards for the shipped agent-skill bundle (crm/skills/), its
 plugin-manifest discoverability, and the internal-only marking of the repo's
 dev skills (.claude/skills/).
+
+The static-conformance rules (self-containment, internal link integrity, thinness
+budgets, frontmatter contract) live in the dedicated skill-lint gate
+(``skill_lint.py`` + ``test_skill_lint_gate.py``, #889 / ADR 0028); what remains
+here are the guards that gate has no view of: the plugin manifest, the internal
+marking of dev skills, the exact expected-reference set, and #183 content routing.
 """
 
 from __future__ import annotations
@@ -42,25 +48,6 @@ EXPECTED_REFERENCES = {
     "troubleshooting.md",
     "feedback.md",
 }
-
-# Repo-only paths an end user (skill installed without the repo) would not have.
-# A hosted docs URL (https://...) is fine; a local repo path is not.
-_FORBIDDEN_PATHS = [
-    "CONTEXT.md",
-    "docs/adr",
-    "docs/agents",
-    "docs/contributing",
-    "docs/how-to",
-    "docs/reference",
-    "](../",
-    "](docs/",
-]
-
-SKILL_MD_MAX_LINES = 250
-
-
-def _skill_files() -> list[Path]:
-    return [SKILL_MD, *sorted(REFERENCE_DIR.glob("*.md"))]
 
 
 def _frontmatter_name(skill_md: Path) -> str | None:
@@ -164,32 +151,12 @@ def test_internal_dev_skills_marked_internal():
     assert not missing, f".claude/skills entries missing metadata.internal: true: {missing}"
 
 
-def test_router_is_thin():
-    lines = SKILL_MD.read_text(encoding="utf-8").splitlines()
-    assert len(lines) <= SKILL_MD_MAX_LINES, (
-        f"SKILL.md is {len(lines)} lines (cap {SKILL_MD_MAX_LINES})"
-    )
-
-
 def test_expected_reference_files_present():
     present = {p.name for p in REFERENCE_DIR.glob("*.md")}
     assert present == EXPECTED_REFERENCES, (
         f"reference file mismatch — missing: {sorted(EXPECTED_REFERENCES - present)}, "
         f"extra: {sorted(present - EXPECTED_REFERENCES)}"
     )
-
-
-def test_every_reference_is_linked_from_router():
-    router = SKILL_MD.read_text(encoding="utf-8")
-    for name in sorted(EXPECTED_REFERENCES):
-        assert f"reference/{name}" in router, f"{name} not linked from SKILL.md"
-
-
-def test_no_repo_only_paths_in_shipped_skill():
-    for f in _skill_files():
-        text = f.read_text(encoding="utf-8")
-        for bad in _FORBIDDEN_PATHS:
-            assert bad not in text, f"{f.name} references repo-only path '{bad}'"
 
 
 def test_solutions_reference_covers_import_investigation():
