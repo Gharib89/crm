@@ -62,7 +62,15 @@ def resolve_agent_bin() -> str:
     :class:`RunError` naming both escapes if unresolved, so it fails in a preflight (~1s)
     rather than after a 60s venv build and two live org resets.
     """
-    agent_bin = os.environ.get("CRM_EVAL_CLAUDE_BIN") or shutil.which("claude")
+    override = os.environ.get("CRM_EVAL_CLAUDE_BIN")
+    if override:
+        # Validate the explicit override in the preflight too — a typo'd path must fail in
+        # ~1s, not after the 60s venv build + org resets (which() already returns only an
+        # executable, so its result needs no re-check).
+        if not (Path(override).is_file() and os.access(override, os.X_OK)):
+            raise RunError(f"CRM_EVAL_CLAUDE_BIN={override!r} is not an executable file")
+        return override
+    agent_bin = shutil.which("claude")
     if not agent_bin:
         raise RunError(
             "could not resolve the 'claude' binary — sudo resets PATH to secure_path and "
@@ -304,7 +312,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
         shutil.rmtree(session, ignore_errors=True)
 
 
-def _chown_results_to_invoker(run_dir: Path) -> None:  # pragma: no cover - live, root-only
+def _chown_results_to_invoker(run_dir: Path) -> None:
     """Hand ``run_dir`` back to the invoking user after a sudo run.
 
     The root python parent writes ``evals/results/<run>/`` (and its transcripts) as root; a

@@ -111,10 +111,22 @@ def test_agent_argv_defaults_bin_to_claude():
     assert agent_argv()[0] == "claude"
 
 
-def test_resolve_agent_bin_honors_override_env(monkeypatch):
-    # Mirrors runner's CRM_EVAL_AGENT_CMD knob — an explicit path always wins.
-    monkeypatch.setenv("CRM_EVAL_CLAUDE_BIN", "/opt/claude/bin/claude")
-    assert resolve_agent_bin() == "/opt/claude/bin/claude"
+def test_resolve_agent_bin_honors_override_env(monkeypatch, tmp_path):
+    # Mirrors runner's CRM_EVAL_AGENT_CMD knob — an explicit executable path always wins.
+    fake = tmp_path / "claude"
+    fake.write_text("#!/bin/sh\n")
+    fake.chmod(0o755)
+    monkeypatch.setenv("CRM_EVAL_CLAUDE_BIN", str(fake))
+    assert resolve_agent_bin() == str(fake)
+
+
+def test_resolve_agent_bin_rejects_non_executable_override(monkeypatch, tmp_path):
+    import pytest
+
+    # A typo'd override must fail in the ~1s preflight, not after the 60s venv build + resets.
+    monkeypatch.setenv("CRM_EVAL_CLAUDE_BIN", str(tmp_path / "nope"))
+    with pytest.raises(RunError, match="not an executable file"):
+        resolve_agent_bin()
 
 
 def test_resolve_agent_bin_falls_back_to_which(monkeypatch):
@@ -132,3 +144,46 @@ def test_resolve_agent_bin_raises_when_unresolved(monkeypatch):
     monkeypatch.setattr(paired_mod.shutil, "which", lambda name: None)
     with pytest.raises(RunError, match="CRM_EVAL_CLAUDE_BIN"):
         resolve_agent_bin()
+
+
+def test_chown_results_hands_back_to_invoker(monkeypatch, tmp_path, capsys):
+    # Under sudo the root parent wrote run_dir as root; every path is chowned to the invoking
+    # uid so the maintainer isn't left with a root-owned tree.
+    (tmp_path / "transcripts").mkdir()
+    (tmp_path / "transcripts" / "t.txt").write_text("x")
+    monkeypatch.setenv("SUDO_UID", "1000")
+    monkeypatch.setenv("SUDO_GID", "1000")
+    chowned: list[tuple[str, int, int]] = []
+    monkeypatch.setattr(paired_mod.os, "chown", lambda p, u, g: chowned.append((str(p), u, g)))
+    paired_mod._chown_results_to_invoker(tmp_path)
+    assert (str(tmp_path), 1000, 1000) in chowned
+    assert (str(tmp_path / "transcripts" / "t.txt"), 1000, 1000) in chowned
+    assert capsys.readouterr().err == ""  # clean run is silent
+
+
+def test_chown_results_noop_without_sudo(monkeypatch, tmp_path):
+    # Not sudo-elevated → the results are already the invoker's; chown is never called.
+    monkeypatch.delenv("SUDO_UID", raising=False)
+    monkeypatch.delenv("SUDO_GID", raising=False)
+
+    def _boom(*_args):
+        raise AssertionError("chown must not run without sudo")
+
+    monkeypatch.setattr(paired_mod.os, "chown", _boom)
+    paired_mod._chown_results_to_invoker(tmp_path)  # no raise
+
+
+def test_chown_results_surfaces_failure(monkeypatch, tmp_path, capsys):
+    # A chown failure is surfaced (not swallowed) with the manual fallback, so the
+    # "owned by the invoking user" acceptance is observably met-or-not.
+    monkeypatch.setenv("SUDO_UID", "1000")
+    monkeypatch.setenv("SUDO_GID", "1000")
+
+    def _deny(*_args):
+        raise OSError("EPERM")
+
+    monkeypatch.setattr(paired_mod.os, "chown", _deny)
+    paired_mod._chown_results_to_invoker(tmp_path)  # does not raise
+    err = capsys.readouterr().err
+    assert "could not chown results" in err
+    assert "sudo chown -R $USER" in err
