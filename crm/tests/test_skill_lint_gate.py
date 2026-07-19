@@ -65,14 +65,14 @@ def _lines(n: int) -> str:
 def test_self_containment_clean_passes(tmp_path):
     d = _make_tree(tmp_path, _CLEAN_ROUTER, _CLEAN_REFS)
     router, refs = skill_tree(d)
-    assert check_self_containment([router, *refs]) == []
+    assert check_self_containment(router, refs) == []
 
 
 def test_self_containment_flags_repo_path(tmp_path):
     refs = {**_CLEAN_REFS, "alpha.md": "# Alpha\n\nSee docs/adr/0001.md for details.\n"}
     d = _make_tree(tmp_path, _CLEAN_ROUTER, refs)
     router, files = skill_tree(d)
-    violations = check_self_containment([router, *files])
+    violations = check_self_containment(router, files)
     assert any("docs/adr" in v for v in violations)
 
 
@@ -80,7 +80,7 @@ def test_self_containment_flags_escaping_link(tmp_path):
     router = _CLEAN_ROUTER + "\nSee [context](../../CONTEXT.md).\n"
     d = _make_tree(tmp_path, router, _CLEAN_REFS)
     r, files = skill_tree(d)
-    violations = check_self_containment([r, *files])
+    violations = check_self_containment(r, files)
     assert any("not self-contained" in v for v in violations)
 
 
@@ -90,21 +90,21 @@ def test_self_containment_flags_unshipped_in_dir_link(tmp_path):
     router = _CLEAN_ROUTER + "\nSee [notes](notes/todo.md).\n"
     d = _make_tree(tmp_path, router, _CLEAN_REFS)
     r, files = skill_tree(d)
-    assert any("not self-contained" in v for v in check_self_containment([r, *files]))
+    assert any("not self-contained" in v for v in check_self_containment(r, files))
 
 
 def test_self_containment_allows_external_url(tmp_path):
     router = _CLEAN_ROUTER + "\nSee [tools](https://example.com/pkg).\n"
     d = _make_tree(tmp_path, router, _CLEAN_REFS)
     r, files = skill_tree(d)
-    assert check_self_containment([r, *files]) == []
+    assert check_self_containment(r, files) == []
 
 
 def test_self_containment_waiver(tmp_path):
     refs = {**_CLEAN_REFS, "alpha.md": "# Alpha\n\nSee docs/adr/0001.md.\n"}
     d = _make_tree(tmp_path, _CLEAN_ROUTER, refs)
     r, files = skill_tree(d)
-    assert check_self_containment([r, *files], waived={"alpha.md": "test waiver"}) == []
+    assert check_self_containment(r, files, waived={"alpha.md": "test waiver"}) == []
 
 
 # ── Rule 2: internal link integrity ──────────────────────────────────────────
@@ -224,7 +224,7 @@ def test_frontmatter_waiver(tmp_path):
 
 # ── The real shipped tree passes every rule ──────────────────────────────────
 def test_real_tree_self_contained():
-    assert check_self_containment([_ROUTER, *_REFERENCES]) == []
+    assert check_self_containment(_ROUTER, _REFERENCES) == []
 
 
 def test_real_tree_link_integrity():

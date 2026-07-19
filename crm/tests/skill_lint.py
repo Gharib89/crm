@@ -102,15 +102,19 @@ def _link_unsafe(target: str, source: Path, skills_dir: Path) -> bool:
     return not resolved.exists()  # inside the dir but not shipped → not self-contained
 
 
-def check_self_containment(files: list[Path], waived: dict[str, str] | None = None) -> list[str]:
+def check_self_containment(
+    router: Path, references: list[Path], waived: dict[str, str] | None = None
+) -> list[str]:
     """Flag repo-only path references and skill-dir-escaping markdown links.
 
+    Takes the same ``(router, references)`` shape as the other rules — the skill
+    directory is ``router.parent`` (explicit, not inferred from list order).
     Waiver key is a file name; waiving exempts that whole file.
     """
     waived = SELF_CONTAINMENT_WAIVERS if waived is None else waived
-    skills_dir = files[0].parent if files else Path()
+    skills_dir = router.parent
     violations: list[str] = []
-    for path in files:
+    for path in [router, *references]:
         if path.name in waived:
             continue
         text = path.read_text(encoding="utf-8")
