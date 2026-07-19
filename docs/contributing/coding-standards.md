@@ -122,6 +122,11 @@ House rules on top of the shape:
   JSON-only field on `ctx.json_mode` before adding it to `meta`.
 - When serializing a Click option for introspection (`crm describe`, docs generation), emit
   `opt.secondary_opts` (the `--no-*` forms) alongside `opt.opts`, not `opts` alone.
+- `crm.cli.cli` is a lazy group (`_LazyJsonAwareGroup`): subcommands are not loaded until
+  requested, so a naive `.commands` tree walk sees **0 leaves**. Any tooling/gate that
+  enumerates the command tree must walk via `list_commands(ctx)` + `get_command(ctx, name)`
+  **and** assert a sanity floor (e.g. `len(leaves) > 100`) so a lazy-loading regression can't
+  silently empty the set — the e2e coverage gate would otherwise pass while testing nothing.
 
 ## Error handling & exit codes
 

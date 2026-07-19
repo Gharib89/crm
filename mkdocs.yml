@@ -167,3 +167,4 @@ nav:
       - Coding standards: contributing/coding-standards.md
       - Skill & CLI sync: contributing/skill-and-cli.md
       - File-boundary encoding: contributing/encoding.md
+      - D365 Web API quirks: contributing/d365-web-api-quirks.md
