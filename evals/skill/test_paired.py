@@ -111,6 +111,16 @@ def test_agent_argv_defaults_bin_to_claude():
     assert agent_argv()[0] == "claude"
 
 
+def test_agent_argv_survives_shlex_roundtrip_with_spaced_bin():
+    import shlex
+
+    # The front door joins argv into a string that runner._resolve_agent_cmd shlex.splits
+    # back; now that argv[0] can be a resolved path, a space in it must survive the roundtrip
+    # (shlex.join, not " ".join) or the agent won't launch.
+    argv = agent_argv(claude_bin="/opt/my claude/claude")
+    assert shlex.split(shlex.join(argv)) == argv
+
+
 def test_resolve_agent_bin_honors_override_env(monkeypatch, tmp_path):
     # Mirrors runner's CRM_EVAL_AGENT_CMD knob — an explicit executable path always wins.
     fake = tmp_path / "claude"

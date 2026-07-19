@@ -26,6 +26,7 @@ import argparse
 import atexit
 import os
 import secrets
+import shlex
 import shutil
 import subprocess
 import sys
@@ -263,7 +264,10 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
         crm_bin = build_session_crm(repo_root, session)
         reset_org = build_reset_org(args.task, crm_bin)
         leg_kwargs: dict[str, object] = {
-            "agent_cmd": " ".join(agent_argv(model=args.model, claude_bin=agent_bin)),
+            # shlex.join (not " ".join): argv[0] is now a resolved path that may contain
+            # spaces, and runner._resolve_agent_cmd shlex.splits this back — a plain join
+            # would mis-split a spaced path and the agent wouldn't launch.
+            "agent_cmd": shlex.join(agent_argv(model=args.model, claude_bin=agent_bin)),
             "crm_bin": crm_bin,
             "wall_clock_s": WALL_CLOCK_S,
         }
