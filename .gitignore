@@ -20,6 +20,14 @@ data/
 # org machine fingerprint — never tracked. The trend lives in the guarded efficacy.md.
 evals/skill/runs/
 
+# paired-run results (#890, ADR 0028): per-run dirs carry live-org GUIDs + transcripts,
+# so the whole tree is ignored EXCEPT the derived cross-run matrix.md. A reportable full
+# run commits its named artifacts (run.json/trials.jsonl, and report.md once that
+# generator lands) by explicit `git add -f` (which overrides this) — transcripts/run.log
+# stay out only because they are never named.
+evals/results/*
+!evals/results/matrix.md
+
 # brainstorming visual companion (transient)
 .superpowers/
 
