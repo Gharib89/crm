@@ -11,8 +11,9 @@ cap-hit leg scores as a fail — with no agent and no org.
 
 from __future__ import annotations
 
-from evals.skill.paired import agent_argv, run_pair
-from evals.skill.runner import RunResult
+from evals.skill import paired as paired_mod
+from evals.skill.paired import agent_argv, resolve_agent_bin, run_pair
+from evals.skill.runner import RunError, RunResult
 
 
 def _fake_result(task_id: str, passed: bool, *, capped: bool = False) -> RunResult:
@@ -97,3 +98,37 @@ def test_agent_argv_pins_allowed_tools_and_turn_cap():
     assert "--model sonnet" in joined
     # stream-json trace is what trace.py parses for the command sequence + metrics.
     assert "stream-json" in joined
+
+
+def test_agent_argv_emits_resolved_bin():
+    # sudo resets PATH (drops ~/.local/bin), so a bare "claude" exec fails; the front door
+    # resolves the binary once and bakes the absolute path into argv[0].
+    argv = agent_argv(model="sonnet", claude_bin="/opt/claude/bin/claude")
+    assert argv[0] == "/opt/claude/bin/claude"
+
+
+def test_agent_argv_defaults_bin_to_claude():
+    assert agent_argv()[0] == "claude"
+
+
+def test_resolve_agent_bin_honors_override_env(monkeypatch):
+    # Mirrors runner's CRM_EVAL_AGENT_CMD knob — an explicit path always wins.
+    monkeypatch.setenv("CRM_EVAL_CLAUDE_BIN", "/opt/claude/bin/claude")
+    assert resolve_agent_bin() == "/opt/claude/bin/claude"
+
+
+def test_resolve_agent_bin_falls_back_to_which(monkeypatch):
+    monkeypatch.delenv("CRM_EVAL_CLAUDE_BIN", raising=False)
+    monkeypatch.setattr(paired_mod.shutil, "which", lambda name: "/usr/local/bin/claude")
+    assert resolve_agent_bin() == "/usr/local/bin/claude"
+
+
+def test_resolve_agent_bin_raises_when_unresolved(monkeypatch):
+    import pytest
+
+    # sudo drops ~/.local/bin from PATH → which() finds nothing; fail loudly and legibly
+    # (naming the escape hatch) before the ~60s venv build + live org resets.
+    monkeypatch.delenv("CRM_EVAL_CLAUDE_BIN", raising=False)
+    monkeypatch.setattr(paired_mod.shutil, "which", lambda name: None)
+    with pytest.raises(RunError, match="CRM_EVAL_CLAUDE_BIN"):
+        resolve_agent_bin()

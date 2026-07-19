@@ -99,9 +99,35 @@ def netns_hosts_file(host: str, allow_ips: list[str]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def wrap_agent_cmd(agent_cmd: list[str], netns: str) -> list[str]:
-    """Prefix ``agent_cmd`` so it runs inside the network namespace ``netns``."""
-    return ["ip", "netns", "exec", netns, *agent_cmd]
+def invoking_user_ids() -> tuple[int, int] | None:
+    """The ``(uid, gid)`` that invoked us under ``sudo``, or None when not sudo-elevated.
+
+    Both the netns de-privilege (drop the agent back to this uid — see :func:`wrap_agent_cmd`)
+    and the results chown key off the same ``SUDO_UID``/``SUDO_GID`` pair the sudo wrapper
+    exports, so the parse lives here once.
+    """
+    sudo_uid, sudo_gid = os.environ.get("SUDO_UID"), os.environ.get("SUDO_GID")
+    return (int(sudo_uid), int(sudo_gid)) if sudo_uid and sudo_gid else None
+
+
+def wrap_agent_cmd(
+    agent_cmd: list[str], netns: str, *, drop_to: tuple[int, int] | None = None
+) -> list[str]:
+    """Prefix ``agent_cmd`` so it runs inside the network namespace ``netns``.
+
+    Creating/entering the netns is a root op, but under ``sudo`` the whole process tree is
+    root and ``claude --dangerously-skip-permissions`` refuses to run as root. When
+    ``drop_to=(uid, gid)`` is given, insert a ``setpriv`` de-privilege step *after*
+    ``ip netns exec`` so the agent drops back to the invoking user — no longer root
+    (skip-permissions allowed), yet still trapped in the root-built namespace. ``setpriv``
+    (unlike ``runuser``) preserves the env verbatim, so ``HOME``/``PATH``/creds survive.
+    ``drop_to=None`` leaves the existing root-runs-the-agent wrap unchanged.
+    """
+    prefix = ["ip", "netns", "exec", netns]
+    if drop_to is not None:
+        uid, gid = drop_to
+        prefix += ["setpriv", "--reuid", str(uid), "--regid", str(gid), "--init-groups"]
+    return [*prefix, *agent_cmd]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -112,9 +138,12 @@ class NetnsSandbox:
     table: str
     veth_host: str
     etc_dir: Path
+    #: (uid, gid) the agent drops to inside the netns (from ``SUDO_UID``/``SUDO_GID``), or
+    #: None when the harness itself isn't root-via-sudo (the agent then runs as-is).
+    drop_to: tuple[int, int] | None = None
 
     def wrap(self, agent_cmd: list[str]) -> list[str]:
-        return wrap_agent_cmd(agent_cmd, self.netns)
+        return wrap_agent_cmd(agent_cmd, self.netns, drop_to=self.drop_to)
 
 
 def _run(argv: list[str], *, input_text: str | None = None) -> None:
@@ -141,7 +170,7 @@ def _require_root_and_tools() -> None:
             "network sandbox needs root (root nftables + netns per ADR 0028) — "
             "re-run the live paired eval under sudo"
         )
-    for tool in ("ip", "nft", "sysctl"):
+    for tool in ("ip", "nft", "sysctl", "setpriv"):
         if shutil.which(tool) is None:
             raise SandboxError(f"required tool {tool!r} not on PATH")
 
@@ -157,6 +186,9 @@ def network_sandbox(
     if the body raises. Exercised on the maintainer's live run, not the offline suite.
     """
     _require_root_and_tools()
+    # Under sudo the process tree is root; drop the agent back to the invoking user inside the
+    # netns (claude refuses root). None when root wasn't reached via sudo (the agent runs as-is).
+    drop_to = invoking_user_ids()
     allow_ips = resolve_allow_ips(host, resolver=resolver)
     netns = f"crmeval-{run_id}"
     table = f"crmeval_{run_id}".replace("-", "_")
@@ -202,7 +234,9 @@ def network_sandbox(
             ["nft", "-f", "-"],
             input_text=nft_ruleset(table=table, child_ip=_CHILD_IP, allow_ips=allow_ips),
         )
-        yield NetnsSandbox(netns=netns, table=table, veth_host=veth_h, etc_dir=etc_dir)
+        yield NetnsSandbox(
+            netns=netns, table=table, veth_host=veth_h, etc_dir=etc_dir, drop_to=drop_to
+        )
     finally:
         # Best-effort teardown: never mask the body's outcome, remove every artifact.
         teardown = [
