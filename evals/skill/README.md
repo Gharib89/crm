@@ -59,11 +59,28 @@ blocks CI. Run it on demand.
   through a GUID-shape guard (the efficacy counterpart of `baseline.md`, ADR 0016).
 - `runs/` — **gitignored** durable run dirs (`<UTC-ts>/<task-id>.json` + `report.md`); they
   carry live-org GUIDs and the org machine fingerprint, so they are never tracked (#588).
+- `paired.py` — the **paired walking skeleton** (#890, ADR 0028): `run_pair` runs one
+  do-task with-skill and bare against identical org state (resetting the org **between**
+  legs), and `agent_argv` bakes in the ADR guardrails (`--allowedTools`, `--max-turns`).
+  Its front door (`python -m evals.skill.paired`) builds a session venv, opens the network
+  sandbox, and emits a real skill-lift number. See "Paired walking skeleton" below.
+- `sandbox.py` — the **OS-level network block** (#890): a network namespace + an nftables
+  egress allowlist (root) that lets the agent reach only the org, so `curl <the-web>` fails
+  at the kernel, not the tool layer. Only the pure builders are offline-tested.
+- `results.py` — the **paired result model** (#890): `hake_gain`, the `reportable` stamp,
+  and the `evals/results/<run-id>/` layout (`run.json` + `trials.jsonl`, transcripts by ref).
+- `results/` — **gitignored** paired-run dirs (except the derived `matrix.md`); a reportable
+  full run commits `run.json`/`trials.jsonl` by explicit `git add -f` (ADR 0028). ADR 0028 also
+  specifies a committed `report.md` + derived `matrix.md` per reportable run; those generators
+  are not part of this walking skeleton (k=1 runs are never reportable) and land with the
+  full/reportable presets.
 - `test_runner_smoke.py` / `test_set_runner.py` / `test_target.py` / `test_both_runner.py` /
-  `test_trace.py` / `test_record.py` / `test_review.py` / `test_isolation.py` — offline smoke
-  tests (parse tasks, dry-run isolation, set-level gating/aggregation, reachability
-  classification, both-targets orchestration, trace parsing, run-record persistence, and the
-  review prompt/parse/guard — all via stubs, no agent, no org).
+  `test_trace.py` / `test_record.py` / `test_review.py` / `test_isolation.py` /
+  `test_results.py` / `test_sandbox.py` / `test_paired.py` / `test_runner_caps.py` — offline
+  smoke tests (parse tasks, dry-run isolation, set-level gating/aggregation, reachability
+  classification, both-targets orchestration, trace parsing, run-record persistence, the
+  review prompt/parse/guard, the Hake/results schema, the nftables ruleset builders, the
+  paired-leg orchestration, and the wall-clock cap — all via stubs, no agent, no org).
 
 ## Task set & domain coverage
 
@@ -357,3 +374,47 @@ skill-fix suggestions.
 ```bash
 python -m evals.skill review --record        # judge + append the org-agnostic trend
 ```
+
+## Paired walking skeleton — real skill lift in one run (`paired.py`, #890, ADR 0028)
+
+The counterfactual above measures lift **post-hoc**, one leg at a time, comparing two
+saved records. ADR 0028 makes the paired condition **canonical**: one do-task runs
+with-skill and bare in a single run against **identical org state**, and lift is emitted
+inline. `paired.py` is the end-to-end thin slice of that machine.
+
+What it adds over the single-condition runner:
+
+- **Paired legs** — `run_pair` runs the task with-skill (real `crm skill install`) and
+  bare (skill absent), forwarding *identical* env/flags to both; the treatment differs by
+  exactly the skill install.
+- **Org reset between legs** (the attribution keystone) — the org is reset to the task's
+  clean pre-state **before each leg** (via the task's `cleanup` steps), so leg B can never
+  inherit leg A's mutations.
+- **OS-level network block** (`sandbox.py`) — a network namespace + nftables egress
+  allowlist restricts the agent to the org's IPs only; the org host is pinned in a static
+  `/etc/netns/<ns>/hosts` so there is **no DNS egress**. `curl <the-web>` fails at the
+  kernel, identically on both legs. **Needs root** (run under `sudo -E`).
+- **Turn + wall-clock caps** — `--max-turns 50` and a 10-minute per-trial wall clock; a
+  cap-hit is a distinct outcome scored as a fail.
+- **Session wheel** — a **built** crm wheel installed non-editable into a per-run venv (not
+  a repo/editable install), so the eval exercises crm *as shipped*.
+- **Metrics + results dir** — pass-rate delta and **Hake normalized gain**
+  `g = (pass_skill − pass_bare) / (1 − pass_bare)` (N/A when `pass_bare == 1`), written to
+  `evals/results/<run-id>/` as `run.json` (metadata + aggregates + a computed `reportable`
+  stamp) and `trials.jsonl` (one line per leg-trial; transcripts by reference, never
+  inlined). A CLI summary prints on stdout, progress on stderr.
+
+```bash
+# Live run (root, live-e2e-style gate). agent-cloud is the default target.
+D365_E2E=1 D365_E2E_PROFILE=agent-cloud sudo -E \
+    $(command -v python) -m evals.skill.paired            # k=1, records-create-verify
+
+D365_E2E=1 D365_E2E_PROFILE=agent-cloud sudo -E python -m evals.skill.paired --k 3
+python -m evals.skill.sandbox <org-host>                  # root smoke: org reachable, web blocked
+```
+
+Reportability follows ADR 0028: only a **full paired run at k≥3** is reportable (the
+walking-skeleton default k=1 is not). A reportable run is committed by explicitly
+force-adding its artifact paths (`git add -f evals/results/<run-id>/{run.json,trials.jsonl}`);
+transcripts and logs stay untracked because they are never named. Like the rest of this
+tree, `paired.py` runs **on demand** and is never part of the offline `pytest` suite.

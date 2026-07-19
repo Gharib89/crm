@@ -29,13 +29,16 @@ On-demand invocation:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import dataclasses
 import json
 import os
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -57,6 +60,9 @@ class RunResult:
     passed: bool | None = None
     reason: str = ""
     transcript: str = ""
+    #: True when the trial hit the turn/wall-clock cap (ADR 0028) — a distinct outcome
+    #: forced to ``passed=False`` regardless of any partial org mutation.
+    capped: bool = False
     #: Claude's qualitative read, when the ``--analyze`` pass ran (else None). For a
     #: diagnostic task it carries the only score; for a predicate task it explains
     #: *why* the deterministic verdict came out as it did.
@@ -99,26 +105,52 @@ def _crm_json(args: list[str], env: dict[str, str], crm_bin: str, cwd: str) -> A
     return envelope.get("data")
 
 
-def _run_agent(prompt: str, agent_cmd: list[str], iso: isolation.Isolation) -> str:
-    """Feed the verbatim prompt to the agent in the isolated context; return transcript.
+def _run_agent(
+    prompt: str,
+    agent_cmd: list[str],
+    *,
+    cwd: str,
+    env: dict[str, str],
+    wall_clock_s: int | None = None,
+) -> tuple[str, bool]:
+    """Feed the verbatim prompt to the agent in ``cwd``/``env``; return ``(transcript, capped)``.
 
-    The agent's exit code is recorded in the transcript header (the deterministic
-    end-state predicate, not the exit code, is the pass/fail gate) so a crashed or
-    misconfigured agent is diagnosable rather than scored as a silent failure.
+    ``wall_clock_s`` is the per-trial wall-clock cap (ADR 0028): on overrun the subprocess
+    is killed and ``capped`` is True — a **distinct outcome that scores as a fail**, so the
+    caller forces the verdict to fail regardless of any partial org mutation. The turn cap
+    is the ``--max-turns`` flag on ``agent_cmd`` itself. The agent's exit code is recorded
+    in the transcript header (the deterministic end-state predicate, not the exit code, is
+    the pass/fail gate) so a crashed or misconfigured agent is diagnosable, not a silent
+    failure.
     """
-    proc = subprocess.run(
+    # start_new_session=True makes the agent its own process-group leader so a wall-clock
+    # cap-hit can kill the *whole* group. subprocess.run's timeout only kills the direct
+    # child, leaving Bash/tool grandchildren alive to mutate the live org after the leg is
+    # scored — which would leak into the next leg's reset and confound the pair.
+    proc = subprocess.Popen(
         agent_cmd,
-        input=prompt,
-        capture_output=True,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        cwd=str(iso.work),
-        env=iso.env,
+        encoding="utf-8",
+        errors="replace",
+        cwd=cwd,
+        env=env,
+        start_new_session=True,
     )
+    try:
+        out, err = proc.communicate(input=prompt, timeout=wall_clock_s)
+    except subprocess.TimeoutExpired:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
+        partial, _ = proc.communicate()
+        return f"[agent cap-hit: wall-clock {wall_clock_s}s exceeded]\n{partial or ''}", True
     header = f"[agent exit {proc.returncode}]\n"
-    return header + proc.stdout + (f"\n[stderr]\n{proc.stderr}" if proc.stderr else "")
+    return header + out + (f"\n[stderr]\n{err}" if err else ""), False
 
 
-def _cleanup_org(spec: TaskSpec, env: dict[str, str], profile: str, crm_bin: str, cwd: str) -> None:
+def cleanup_org(spec: TaskSpec, env: dict[str, str], profile: str, crm_bin: str, cwd: str) -> None:
     """Delete every record each cleanup step matches. Idempotent and best-effort:
     a per-step or per-record failure is logged and skipped so one failure can't
     strand the rest of the teardown (the org must be left as clean as possible).
@@ -171,6 +203,8 @@ def run_task(
     analyze_pass: bool = False,
     analyze_cmd: str | None = None,
     install_skill: bool = True,
+    wall_clock_s: int | None = None,
+    sandbox_wrap: Callable[[list[str]], list[str]] | None = None,
 ) -> RunResult:
     """Run one task end-to-end (or up to isolation, when ``dry_run``).
 
@@ -183,6 +217,11 @@ def run_task(
     ``--counterfactual`` measurement (#588): isolation is provisioned without the skill
     and verification asserts it is absent, so the agent runs the same task with nothing
     but the bare ``crm`` CLI — the comparison the review measures lift against.
+
+    ``wall_clock_s`` caps the agent trial (ADR 0028 / #890); a cap-hit forces the verdict
+    to fail. ``sandbox_wrap`` wraps the resolved agent argv to run it inside the network
+    sandbox (e.g. :meth:`sandbox.NetnsSandbox.wrap`) so outbound web is blocked at the OS
+    level; both are applied *identically* to the skill and bare legs of a pair.
     """
     spec = parse_task_file(task_file)
     if not dry_run and spec.is_diagnostic and not analyze_pass:
@@ -207,9 +246,13 @@ def run_task(
         if not resolved_bin:
             raise RunError("crm binary not on PATH")
         agent = _resolve_agent_cmd(agent_cmd)
+        if sandbox_wrap is not None:
+            agent = sandbox_wrap(agent)
         resolved_analyze = analyze.resolve_analyze_cmd(analyze_cmd) if analyze_pass else None
         profile = target.seed_target(iso.crm_home, spec.target)
-        transcript = _run_agent(spec.prompt, agent, iso)
+        transcript, capped = _run_agent(
+            spec.prompt, agent, cwd=str(iso.work), env=iso.env, wall_clock_s=wall_clock_s
+        )
         work = str(iso.work)
         try:
             # Fetch the final org state (the scoring payload, and what the analyzer
@@ -219,7 +262,14 @@ def run_task(
                 if spec.query
                 else None
             )
-            if spec.expect:
+            if capped:
+                # A cap-hit is a distinct outcome that scores as a fail (ADR 0028),
+                # whatever partial state the killed agent left — org state is not consulted.
+                passed, reason = (
+                    False,
+                    f"cap-hit: wall-clock {wall_clock_s}s exceeded (scored fail)",
+                )
+            elif spec.expect:
                 passed, reason = evaluate_expect(data, spec.expect)
             else:
                 passed, reason = (
@@ -246,7 +296,7 @@ def run_task(
                         else "diagnostic: analyzer returned no PASS/FAIL verdict"
                     )
         finally:
-            _cleanup_org(spec, iso.env, profile, resolved_bin, work)
+            cleanup_org(spec, iso.env, profile, resolved_bin, work)
         return RunResult(
             task_id=spec.id,
             dry_run=False,
@@ -254,6 +304,7 @@ def run_task(
             passed=passed,
             reason=reason,
             transcript=transcript,
+            capped=capped,
             analysis=analysis,
         )
     finally:
