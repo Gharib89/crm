@@ -2,6 +2,8 @@
 
 Python CLI for Microsoft Dynamics 365 Customer Engagement — on-prem v9.x (NTLM) **or** Dataverse online (OAuth client-credentials). Same commands hit both targets, over the Dataverse Web API (OData v4) / HTTPS. Single-package layout (`crm/`), pyright strict on `crm/core/*` and `crm/utils/d365_backend.py`, basic mode elsewhere.
 
+**On-prem is the priority target** — the maintainer's real, high-weight automation runs against on-prem. An on-prem-only capability (platform permits there, cloud blocks) is worth building on its on-prem value alone; don't down-rank it as niche because cloud/CI can't exercise it (precedent: ADR 0013).
+
 ## Credential model
 
 Setup is `crm profile add` (interactive wizard on a TTY; flag-driven for scripting) — infers auth from the URL, saves the secret (OS keyring → `0600` plaintext fallback on WSL/headless), tests via WhoAmI, and activates. Profile verbs: `crm profile add | use | list | edit | rm | set-password | delete-password`. Diagnostics only under `crm connection whoami | test | doctor | status`. **No `.env`, no credential env vars** (`D365_*`/`CRM_*`/`D365_AUTH`/`CRM_AUTH_SCHEME` are gone) — credentials come only from a saved profile or `--password` (per-run override); secret resolution is `--password` > stored plaintext > keyring > TTY prompt. The only retained env knob is `CRM_HOME` (state dir). A connection command with no profile auto-launches `crm profile add` on a TTY; under `--json`/no-TTY it errors with "run `crm profile add`".
