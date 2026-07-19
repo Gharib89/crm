@@ -167,11 +167,14 @@ def network_sandbox(
     veth_h, veth_c = f"vh-{sfx}", f"vc-{sfx}"
     etc_dir = Path("/etc/netns") / netns
 
-    etc_dir.mkdir(parents=True, exist_ok=True)
-    (etc_dir / "hosts").write_text(netns_hosts_file(host, allow_ips), encoding="utf-8")
-    (etc_dir / "resolv.conf").write_text("", encoding="utf-8")  # no DNS egress
-    fwd_prev = _sysctl_get("net.ipv4.ip_forward")
+    # All effectful setup lives inside the try so the finally tears down a *partial* build
+    # too — a failure between mkdir and the last _run must not orphan etc_dir or the netns.
+    fwd_prev: str | None = None
     try:
+        etc_dir.mkdir(parents=True, exist_ok=True)
+        (etc_dir / "hosts").write_text(netns_hosts_file(host, allow_ips), encoding="utf-8")
+        (etc_dir / "resolv.conf").write_text("", encoding="utf-8")  # no DNS egress
+        fwd_prev = _sysctl_get("net.ipv4.ip_forward")
         _run(["ip", "netns", "add", netns])
         _run(["ip", "link", "add", veth_h, "type", "veth", "peer", "name", veth_c])
         _run(["ip", "link", "set", veth_c, "netns", netns])
