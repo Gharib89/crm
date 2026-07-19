@@ -79,11 +79,11 @@ def skill_tree(skills_dir: Path | None = None) -> tuple[Path, list[Path]]:
 
 
 # ── Rule 1: self-containment ─────────────────────────────────────────────────
-def _link_escapes(target: str, source: Path, skills_dir: Path) -> bool:
-    """True if a markdown link ``target`` (from ``source``) points outside the
-    skill directory. External URLs, ``mailto:``/``tel:``, and in-page anchors are
-    self-contained; a local target is resolved relative to ``source`` and must
-    stay under ``skills_dir``.
+def _link_unsafe(target: str, source: Path, skills_dir: Path) -> bool:
+    """True if a markdown link ``target`` (from ``source``) is not self-contained:
+    it escapes the skill directory, or resolves inside it but names a file that
+    does not ship with the skill (a repo path or a dead link). External URLs,
+    ``mailto:``/``tel:``, and in-page anchors are always self-contained.
     """
     t = target.strip().split(" ", 1)[0]  # drop an optional "title"
     low = t.lower()
@@ -97,14 +97,12 @@ def _link_escapes(target: str, source: Path, skills_dir: Path) -> bool:
     resolved = (source.parent / local).resolve()
     try:
         resolved.relative_to(skills_dir.resolve())
-        return False
     except ValueError:
-        return True
+        return True  # escapes the skill dir
+    return not resolved.exists()  # inside the dir but not shipped → not self-contained
 
 
-def check_self_containment(
-    files: list[Path], waived: dict[str, str] | None = None
-) -> list[str]:
+def check_self_containment(files: list[Path], waived: dict[str, str] | None = None) -> list[str]:
     """Flag repo-only path references and skill-dir-escaping markdown links.
 
     Waiver key is a file name; waiving exempts that whole file.
@@ -120,8 +118,8 @@ def check_self_containment(
             if frag in text:
                 violations.append(f"{path.name}: repo-only path reference {frag!r}")
         for target in _MD_LINK.findall(text):
-            if _link_escapes(target, path, skills_dir):
-                violations.append(f"{path.name}: link target escapes skill dir: {target!r}")
+            if _link_unsafe(target, path, skills_dir):
+                violations.append(f"{path.name}: link target not self-contained: {target!r}")
     return violations
 
 
@@ -135,15 +133,16 @@ def check_link_integrity(
     """
     waived = LINK_WAIVERS if waived is None else waived
     ref_names = {r.name for r in references}
+    texts = {path: path.read_text(encoding="utf-8") for path in [router, *references]}
     violations: list[str] = []
 
-    cited_in_router = set(_REF_POINTER.findall(router.read_text(encoding="utf-8")))
+    cited_in_router = set(_REF_POINTER.findall(texts[router]))
     for name in sorted(ref_names):
         if name not in cited_in_router and name not in waived:
             violations.append(f"orphan reference not linked from {router.name}: reference/{name}")
 
-    for path in [router, *references]:
-        for name in sorted(set(_REF_POINTER.findall(path.read_text(encoding="utf-8")))):
+    for path, text in texts.items():
+        for name in sorted(set(_REF_POINTER.findall(text))):
             if name not in ref_names and name not in waived:
                 violations.append(f"{path.name}: dangling pointer to reference/{name}")
     return violations
@@ -225,7 +224,9 @@ def check_frontmatter(
     violations: list[str] = []
     name = data.get("name")
     if name != expected_name:
-        violations.append(f"{router.name}: frontmatter name is {name!r}, expected {expected_name!r}")
+        violations.append(
+            f"{router.name}: frontmatter name is {name!r}, expected {expected_name!r}"
+        )
     desc = data.get("description")
     if not isinstance(desc, str) or not desc.strip():
         violations.append(f"{router.name}: frontmatter description missing or empty")
@@ -247,7 +248,7 @@ FRONTMATTER_WAIVERS: dict[str, str] = {}
 # trimming them is skill-content work tracked separately (not a lint concern).
 THINNESS_WAIVERS: dict[str, str] = {
     "authoring.md": "form/view/sitemap authoring spans a broad UI-customization surface",
-    "solutions.md": "solution lifecycle + import-failure investigation (#183) is intentionally comprehensive",
+    "solutions.md": "solution lifecycle + import-failure investigation (#183); intentionally broad",
     "records.md": "core CRUD/query/relationships/actions — the most-used surface, kept whole",
     "automation.md": "plug-in and workflow registration cover two distinct subsystems",
     "metadata.md": "entity/attribute/relationship metadata browsing is a wide read surface",

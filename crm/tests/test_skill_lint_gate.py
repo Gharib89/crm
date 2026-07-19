@@ -81,7 +81,16 @@ def test_self_containment_flags_escaping_link(tmp_path):
     d = _make_tree(tmp_path, router, _CLEAN_REFS)
     r, files = skill_tree(d)
     violations = check_self_containment([r, *files])
-    assert any("escapes skill dir" in v for v in violations)
+    assert any("not self-contained" in v for v in violations)
+
+
+def test_self_containment_flags_unshipped_in_dir_link(tmp_path):
+    # A link that resolves inside the skill dir but names a file that doesn't
+    # ship (a repo path or dead link) is not self-contained either.
+    router = _CLEAN_ROUTER + "\nSee [notes](notes/todo.md).\n"
+    d = _make_tree(tmp_path, router, _CLEAN_REFS)
+    r, files = skill_tree(d)
+    assert any("not self-contained" in v for v in check_self_containment([r, *files]))
 
 
 def test_self_containment_allows_external_url(tmp_path):
@@ -244,3 +253,13 @@ def test_every_waiver_has_a_reason():
         FRONTMATTER_WAIVERS,
     ):
         assert all(reason.strip() for reason in waivers.values())
+
+
+def test_containment_and_frontmatter_waiver_keys_name_real_files():
+    # Guards the self-containment and frontmatter waiver dicts against stale/typo
+    # keys (both are keyed by a shipped file name). LINK_WAIVERS is excluded: a
+    # dangling-pointer waiver legitimately names an absent file.
+    real = {_ROUTER.name} | {r.name for r in _REFERENCES}
+    for waivers in (SELF_CONTAINMENT_WAIVERS, FRONTMATTER_WAIVERS):
+        unknown = {key for key in waivers if key not in real}
+        assert not unknown, f"waiver key(s) not naming a real skill file: {sorted(unknown)}"
