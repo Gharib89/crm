@@ -36,6 +36,18 @@ def test_invoking_user_home_falls_back_without_sudo(monkeypatch):
     assert isolation._invoking_user_home() == Path.home()
 
 
+def test_invoking_user_home_fails_closed_on_bad_sudo_uid(monkeypatch):
+    # SUDO_UID set but unresolvable → None, never root's home: copying root's credentials
+    # into the sandbox would be a privacy leak, so fail closed and skip the passthrough.
+    def _boom(uid):
+        raise KeyError(uid)
+
+    monkeypatch.setitem(sys.modules, "pwd", types.SimpleNamespace(getpwuid=_boom))
+    monkeypatch.setenv("SUDO_UID", "999999")
+    assert isolation._invoking_user_home() is None
+    assert isolation._real_claude_config_dir() is None
+
+
 def test_real_claude_config_dir_follows_sudo_user(monkeypatch):
     monkeypatch.setitem(
         sys.modules,
