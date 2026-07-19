@@ -23,6 +23,8 @@ unsandboxed) when bubblewrap/socat or unprivileged user namespaces are missing â
 fail-closed gate that replaces the old root check. ``allowUnsandboxedCommands: false``
 means the agent-under-test cannot self-bypass: the per-command ``dangerouslyDisableSandbox``
 escape hatch is ignored and writes to ``settings.json`` are denied at every scope.
+``allowManagedDomainsOnly: true`` pins egress to exactly the declared ``allowedDomains`` â€”
+no domain may be reached beyond the org host, and the allowlist is never widened dynamically.
 """
 
 from __future__ import annotations
@@ -75,7 +77,7 @@ def _selfcheck(host: str) -> int:  # pragma: no cover - live smoke helper, not o
         cfg = home / ".claude"
         cfg.mkdir(parents=True, exist_ok=True)
         (cfg / "settings.json").write_text(json.dumps(sandbox_settings(host)), encoding="utf-8")
-        isolation._passthrough_claude_auth(home)
+        isolation.passthrough_claude_auth(home)
         # Fresh HOME (so claude reads the throwaway config dir), no CLAUDE_CONFIG_DIR override.
         env = {k: v for k, v in os.environ.items() if k != "CLAUDE_CONFIG_DIR"}
         env["HOME"] = str(home)

@@ -81,7 +81,7 @@ def _real_claude_config_dir() -> Path:
     return Path(override).expanduser() if override else Path.home() / ".claude"
 
 
-def _passthrough_claude_auth(sandbox_home: Path) -> Path | None:
+def passthrough_claude_auth(sandbox_home: Path) -> Path | None:
     """Copy *only* the Claude Code credentials file into the sandbox ``HOME`` so an
     isolated ``claude -p`` authenticates via the maintainer's subscription without an
     ``ANTHROPIC_API_KEY``.
@@ -160,7 +160,7 @@ def provision_isolation(crm_bin: str | None = None, *, install_skill: bool = Tru
 
     # Pass the subscription credentials (only) into the fresh HOME so a headless
     # `claude -p` agent authenticates without an ANTHROPIC_API_KEY. No-op if absent.
-    _passthrough_claude_auth(home)
+    passthrough_claude_auth(home)
 
     # Install the skill the way a user does — from whatever `crm` is on PATH, so the
     # eval exercises the skill *as shipped* in that binary, not the repo's working
@@ -257,7 +257,7 @@ def verify_isolation(
 
     # 6 · The env must not carry CLAUDE_CONFIG_DIR pointing at the real config dir.
     # Auth is passed by copying *only* the credentials file into the fresh HOME (see
-    # `_passthrough_claude_auth`); CLAUDE_CONFIG_DIR is scrubbed because it would also
+    # `passthrough_claude_auth`); CLAUDE_CONFIG_DIR is scrubbed because it would also
     # relocate CLAUDE.md and memory back onto the real dir. Guard the leak so a future
     # change that stops scrubbing it (or points it elsewhere) fails loudly here: if
     # set, it must live inside the sandbox and expose no CLAUDE.md / memory.
