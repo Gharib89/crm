@@ -38,11 +38,10 @@ import shutil
 import signal
 import subprocess
 import sys
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from evals.skill import analyze, isolation, sandbox, target
+from evals.skill import analyze, isolation, target
 from evals.skill.taskspec import TaskSpec, evaluate_expect, parse_task_file
 
 
@@ -204,7 +203,7 @@ def run_task(
     analyze_cmd: str | None = None,
     install_skill: bool = True,
     wall_clock_s: int | None = None,
-    sandbox_wrap: Callable[[list[str]], list[str]] | None = None,
+    sandbox_settings: dict[str, Any] | None = None,
 ) -> RunResult:
     """Run one task end-to-end (or up to isolation, when ``dry_run``).
 
@@ -219,9 +218,10 @@ def run_task(
     but the bare ``crm`` CLI — the comparison the review measures lift against.
 
     ``wall_clock_s`` caps the agent trial (ADR 0028 / #890); a cap-hit forces the verdict
-    to fail. ``sandbox_wrap`` wraps the resolved agent argv to run it inside the network
-    sandbox (e.g. :meth:`sandbox.NetnsSandbox.wrap`) so outbound web is blocked at the OS
-    level; both are applied *identically* to the skill and bare legs of a pair.
+    to fail. ``sandbox_settings`` (from :func:`sandbox.sandbox_settings`) is written as
+    user-scope ``settings.json`` into the leg's fresh config dir so Claude Code's built-in
+    Bash sandbox blocks outbound web at the OS level; applied *identically* to the skill and
+    bare legs of a pair.
     """
     spec = parse_task_file(task_file)
     if not dry_run and spec.is_diagnostic and not analyze_pass:
@@ -246,17 +246,18 @@ def run_task(
         if not resolved_bin:
             raise RunError("crm binary not on PATH")
         agent = _resolve_agent_cmd(agent_cmd)
-        if sandbox_wrap is not None:
-            agent = sandbox_wrap(agent)
+        if sandbox_settings is not None:
+            # User-scope settings in the fresh HOME's config dir (alongside the passed-through
+            # credentials) so Claude Code's built-in Bash sandbox confines the agent's shell to
+            # the org host. The agent can't override it: the runner owns argv (no settings
+            # flags) and cwd (no project/local settings), and the sandbox denies settings writes.
+            cfg_dir = iso.home / ".claude"
+            cfg_dir.mkdir(parents=True, exist_ok=True)
+            (cfg_dir / "settings.json").write_text(
+                json.dumps(sandbox_settings, indent=2), encoding="utf-8"
+            )
         resolved_analyze = analyze.resolve_analyze_cmd(analyze_cmd) if analyze_pass else None
         profile = target.seed_target(iso.crm_home, spec.target)
-        # Under sudo the sandbox (HOME/creds/skill + CRM_HOME/profile) was built as root, but
-        # the network sandbox drops the agent to the invoking uid; hand the tree over — after
-        # seeding, before launch — so the de-privileged agent can read its creds and profile.
-        # None (not sudo-elevated) → the builder is already the agent's user, so no chown.
-        drop_ids = sandbox.invoking_user_ids()
-        if drop_ids is not None:
-            sandbox.chown_tree(iso.sandbox, drop_ids)
         transcript, capped = _run_agent(
             spec.prompt, agent, cwd=str(iso.work), env=iso.env, wall_clock_s=wall_clock_s
         )

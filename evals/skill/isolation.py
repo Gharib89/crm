@@ -69,43 +69,16 @@ def _crm_bin() -> str:
     return found
 
 
-def _invoking_user_home() -> Path | None:
-    """The real home of the user who invoked us, resolving *through* ``sudo``.
+def _real_claude_config_dir() -> Path:
+    """The maintainer's *real* Claude Code config dir, read from the unscrubbed environment
+    (``CLAUDE_CONFIG_DIR`` if set, else ``~/.claude``) before the sandbox repoints ``HOME``.
 
-    Under the ADR-compliant root sandbox the parent runs as root (``sudo``), so
-    :func:`Path.home` would read root's home and miss the maintainer's credentials. When
-    ``SUDO_UID`` is set, resolve the invoking user's home from the passwd database instead
-    (``pwd`` is Unix-only and imported lazily so this module still imports on Windows CI).
-
-    **Fails closed:** with ``SUDO_UID`` set but unresolvable (bad uid, ``pwd`` missing),
-    returns ``None`` rather than falling back to :func:`Path.home` — under sudo that would
-    be root's home, and copying *root's* credentials into the sandbox is a privacy leak.
-    Only the no-sudo case falls back to the real ``Path.home``.
-    """
-    sudo_uid = os.environ.get("SUDO_UID")
-    if not sudo_uid:
-        return Path.home()
-    try:
-        import pwd
-
-        return Path(pwd.getpwuid(int(sudo_uid)).pw_dir)
-    except (ImportError, KeyError, ValueError):
-        return None
-
-
-def _real_claude_config_dir() -> Path | None:
-    """The maintainer's *real* Claude Code config dir, read from the unscrubbed
-    environment (``CLAUDE_CONFIG_DIR`` if set, else ``<invoking-user-home>/.claude``).
-    This is where Claude Code keeps the subscription credentials we pass through —
-    resolved before the sandbox repoints ``HOME``, and through ``sudo`` to the invoking
-    user so the root sandbox parent still finds the maintainer's credentials. ``None`` when
-    the invoking user can't be resolved under sudo (see :func:`_invoking_user_home`).
+    This is where Claude Code keeps the subscription credentials we pass through. The eval
+    runs rootless (#906), so :func:`Path.home` is already the maintainer's home — no
+    sudo/SUDO_UID resolution needed.
     """
     override = os.environ.get("CLAUDE_CONFIG_DIR")
-    if override:
-        return Path(override).expanduser()
-    home = _invoking_user_home()
-    return home / ".claude" if home is not None else None
+    return Path(override).expanduser() if override else Path.home() / ".claude"
 
 
 def _passthrough_claude_auth(sandbox_home: Path) -> Path | None:
@@ -132,13 +105,6 @@ def _passthrough_claude_auth(sandbox_home: Path) -> Path | None:
     Fine for a minutes-long eval; revisit only if a run could outlive the access token.
     """
     cfg = _real_claude_config_dir()
-    if cfg is None:
-        print(
-            "[isolation] skipping credential passthrough: invoking user unresolved under sudo "
-            "(refusing to fall back to root's credentials)",
-            file=sys.stderr,
-        )
-        return None
     src = cfg / ".credentials.json"
     if not src.is_file():
         return None
