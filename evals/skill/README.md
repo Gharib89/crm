@@ -395,10 +395,12 @@ What it adds over the single-condition runner:
   clean pre-state **before each leg** (via the task's `cleanup` steps), so leg B can never
   inherit leg A's mutations.
 - **OS-level network block** (`sandbox.py`) — Claude Code's built-in Bash sandbox
-  (bubblewrap + socat, **no root**) confines each Bash command to the org host via
+  (bubblewrap + socat, **no root** to *run*) confines each Bash command to the org host via
   `network.allowedDomains`, written identically into both legs' config dirs, so `curl
   <the-web>` fails while the model driver still reaches `api.anthropic.com`.
-  `failIfUnavailable` fails the run closed if bubblewrap/socat/userns is missing.
+  `failIfUnavailable` fails the run closed if bubblewrap/socat/userns is missing. The
+  `--no-sandbox` flag (below) is the **only** way to run without the block — a deliberate
+  local-wiring escape hatch that is **unsafe and never reportable**.
 - **Turn + wall-clock caps** — `--max-turns 50` and a 10-minute per-trial wall clock; a
   cap-hit is a distinct outcome scored as a fail.
 - **Session wheel** — a **built** crm wheel installed non-editable into a per-run venv (not
@@ -410,10 +412,11 @@ What it adds over the single-condition runner:
   inlined). A CLI summary prints on stdout, progress on stderr.
 
 ```bash
-# Live run (rootless, live-e2e-style gate). agent-cloud is the default target.
-# Prereq: the built-in Bash sandbox needs `bubblewrap` and `socat` installed
-# (`apt install bubblewrap socat`) and unprivileged user namespaces enabled. A missing
-# prereq aborts the run loudly (failIfUnavailable), never runs unsandboxed.
+# Live run — the run itself is rootless (no sudo). agent-cloud is the default target.
+# One-time host setup (needs admin/sudo): install `bubblewrap` + `socat`
+# (`sudo apt install bubblewrap socat`) and enable unprivileged user namespaces. Once
+# present, the run needs no elevation; a missing prereq aborts loudly (failIfUnavailable),
+# never runs unsandboxed — except under the explicit `--no-sandbox` bypass (unsafe).
 D365_E2E=1 D365_E2E_PROFILE=agent-cloud \
     python -m evals.skill.paired                          # k=1, records-create-verify
 

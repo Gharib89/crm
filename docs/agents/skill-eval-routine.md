@@ -21,11 +21,16 @@ is a fraction that smooths run-to-run variance.
 
 ## Environment prerequisite
 
-Both cadences run **rootless** — no `sudo` anywhere. The paired behavioral eval
-(`python -m evals.skill.paired`, ADR 0028) blocks the agent's outbound web with Claude
-Code's built-in Bash sandbox, so its run host needs **`bubblewrap` and `socat`** installed
-(`apt install bubblewrap socat`) and unprivileged user namespaces enabled. A missing prereq
-aborts the run loudly (`failIfUnavailable`) rather than running unsandboxed (#906).
+The runs themselves are **rootless** — no `sudo` to invoke either command below.
+
+Note the outbound-web block is the **paired** eval's contract, not this routine's:
+`both_runner` (the scheduled command here) drives `claude -p` **without** the sandbox, so it
+establishes no fail-closed isolation. The paired behavioral eval (`python -m
+evals.skill.paired`, ADR 0028) is the one that blocks the agent's outbound web with Claude
+Code's built-in Bash sandbox — running it needs a **one-time host setup** (admin/sudo):
+install **`bubblewrap` and `socat`** (`sudo apt install bubblewrap socat`) and enable
+unprivileged user namespaces. Once present, the paired run itself needs no elevation and a
+missing prereq aborts it loudly (`failIfUnavailable`) rather than running unsandboxed (#906).
 
 ## Two cadences (pick by what reaches both targets)
 

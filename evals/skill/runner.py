@@ -252,10 +252,15 @@ def run_task(
             # the org host. The agent can't override it: the runner owns argv (no settings
             # flags) and cwd (no project/local settings), and the sandbox denies settings writes.
             cfg_dir = iso.home / ".claude"
-            cfg_dir.mkdir(parents=True, exist_ok=True)
-            (cfg_dir / "settings.json").write_text(
-                json.dumps(sandbox_settings, indent=2), encoding="utf-8"
-            )
+            try:
+                cfg_dir.mkdir(parents=True, exist_ok=True)
+                (cfg_dir / "settings.json").write_text(
+                    json.dumps(sandbox_settings, indent=2), encoding="utf-8"
+                )
+            except OSError as exc:
+                # A missing sandbox settings file would let the agent run unsandboxed; fail
+                # the leg loudly rather than silently drop the outbound-web block.
+                raise RunError(f"could not write sandbox settings to {cfg_dir}: {exc}") from exc
         resolved_analyze = analyze.resolve_analyze_cmd(analyze_cmd) if analyze_pass else None
         profile = target.seed_target(iso.crm_home, spec.target)
         transcript, capped = _run_agent(

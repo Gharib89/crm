@@ -87,23 +87,29 @@ def _selfcheck(host: str) -> int:  # pragma: no cover - live smoke helper, not o
             f"1. curl -sS -o /dev/null -w 'ORG_HTTP=%{{http_code}}' https://{host}\n"
             "2. curl -sS --max-time 5 https://example.com && echo WEB_OK || echo WEB_BLOCKED"
         )
-        proc = subprocess.run(
-            [
-                "claude",
-                "-p",
-                "--dangerously-skip-permissions",
-                "--allowedTools",
-                "Bash",
-                "--model",
-                "sonnet",
-                prompt,
-            ],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            env=env,
-        )
+        try:
+            proc = subprocess.run(
+                [
+                    "claude",
+                    "-p",
+                    "--dangerously-skip-permissions",
+                    "--allowedTools",
+                    "Bash",
+                    "--model",
+                    "sonnet",
+                    prompt,
+                ],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=env,
+                timeout=180,
+            )
+        except subprocess.TimeoutExpired:
+            # A login/API/model stall must not hang the smoke forever — a stalled check fails.
+            print(f"selfcheck for {host}: claude -p timed out (stalled)")
+            return 1
         out = proc.stdout + proc.stderr
         print(out)
         org_ok = "ORG_HTTP=" in out and "ORG_HTTP=000" not in out

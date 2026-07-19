@@ -16,9 +16,9 @@ from evals.skill.sandbox import sandbox_settings
 
 
 def test_sandbox_settings_allowlists_only_the_org_host():
-    settings = sandbox_settings("agent-cloud.crm.dynamics.com")
+    settings = sandbox_settings("contoso.crm.dynamics.com")
     # The one lever that varies by run: the agent's Bash may egress to the org host alone.
-    assert settings["sandbox"]["network"]["allowedDomains"] == ["agent-cloud.crm.dynamics.com"]
+    assert settings["sandbox"]["network"]["allowedDomains"] == ["contoso.crm.dynamics.com"]
 
 
 def test_sandbox_settings_is_fail_closed_and_unbypassable():
@@ -37,7 +37,7 @@ def test_sandbox_settings_is_fail_closed_and_unbypassable():
 def test_sandbox_settings_takes_a_hostname_verbatim():
     # Both eval targets resolve as hostnames (cloud .com, on-prem .local), so the allowlist
     # is the host string as-is — no scheme, no port, no bare-IP special-casing.
-    for host in ("agent-cloud.crm.dynamics.com", "server.contoso.local"):
+    for host in ("contoso.crm.dynamics.com", "server.contoso.local"):
         assert sandbox_settings(host)["sandbox"]["network"]["allowedDomains"] == [host]
 
 
