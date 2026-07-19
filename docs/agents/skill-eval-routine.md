@@ -19,6 +19,14 @@ each **reachable** target (`agent-cloud`, then `agent-on-prem`), unions the cove
 `evals/skill/README.md`). `--repeat 3` runs each task three times so the recorded pass-rate
 is a fraction that smooths run-to-run variance.
 
+## Environment prerequisite
+
+Both cadences run **rootless** — no `sudo` anywhere. The paired behavioral eval
+(`python -m evals.skill.paired`, ADR 0028) blocks the agent's outbound web with Claude
+Code's built-in Bash sandbox, so its run host needs **`bubblewrap` and `socat`** installed
+(`apt install bubblewrap socat`) and unprivileged user namespaces enabled. A missing prereq
+aborts the run loudly (`failIfUnavailable`) rather than running unsandboxed (#906).
+
 ## Two cadences (pick by what reaches both targets)
 
 On-prem is VPN-gated, so **only a host on the VPN sees both targets**:
