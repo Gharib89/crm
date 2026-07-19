@@ -9,6 +9,59 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.71.0 (2026-07-19)
+
+### Documentation
+
+- Address review round 1 — ADR front matter, wording, harden admin-merge guidance
+  ([#902](https://github.com/Gharib89/crm/pull/902),
+  [`b22ed41`](https://github.com/Gharib89/crm/commit/b22ed41f6eb492119df388e8631418be75d835af))
+
+- ADR for the crm skill evaluation system ([#874](https://github.com/Gharib89/crm/pull/874),
+  [`c40fb28`](https://github.com/Gharib89/crm/commit/c40fb28cec8bdecba5490a363f2825b96fd9d42e))
+
+- Promote agent-memory knowledge into ADRs and contributor docs
+  ([#902](https://github.com/Gharib89/crm/pull/902),
+  [`b22ed41`](https://github.com/Gharib89/crm/commit/b22ed41f6eb492119df388e8631418be75d835af))
+
+- Promote memory knowledge into repo — ADRs 0029/0030, CI traps, D365 Web API quirks
+  ([#902](https://github.com/Gharib89/crm/pull/902),
+  [`b22ed41`](https://github.com/Gharib89/crm/commit/b22ed41f6eb492119df388e8631418be75d835af))
+
+- Record on-prem-priority stance in CLAUDE.md
+  ([`f33bcbf`](https://github.com/Gharib89/crm/commit/f33bcbf666d5d213c20e1aac20eb551b636084e5))
+
+- **research**: Pilot task harvest — community sourcing validates demand-weighted corpus
+  ([#885](https://github.com/Gharib89/crm/pull/885),
+  [`9bf00b5`](https://github.com/Gharib89/crm/commit/9bf00b5ac9572156bc1f9927338359060201e175))
+
+- **skill sync**: Sync matt pocock skills
+  ([`450092b`](https://github.com/Gharib89/crm/commit/450092b2714468a8054aa32d66aa5574b266f317))
+
+### Features
+
+- Add static skill-lint gate (Machine A) ([#901](https://github.com/Gharib89/crm/pull/901),
+  [`f54dfb6`](https://github.com/Gharib89/crm/commit/f54dfb64adc0599a308b259e8bb06c1e4da1acef))
+
+### Refactoring
+
+- Give check_self_containment an explicit (router, references) signature
+  ([#901](https://github.com/Gharib89/crm/pull/901),
+  [`f54dfb6`](https://github.com/Gharib89/crm/commit/f54dfb64adc0599a308b259e8bb06c1e4da1acef))
+
+- Harden skill-lint self-review findings ([#901](https://github.com/Gharib89/crm/pull/901),
+  [`f54dfb6`](https://github.com/Gharib89/crm/commit/f54dfb64adc0599a308b259e8bb06c1e4da1acef))
+
+- Retire skill-bundle checks now owned by the lint gate
+  ([#901](https://github.com/Gharib89/crm/pull/901),
+  [`f54dfb6`](https://github.com/Gharib89/crm/commit/f54dfb64adc0599a308b259e8bb06c1e4da1acef))
+
+### Testing
+
+- Add static skill-lint gate (Machine A) ([#901](https://github.com/Gharib89/crm/pull/901),
+  [`f54dfb6`](https://github.com/Gharib89/crm/commit/f54dfb64adc0599a308b259e8bb06c1e4da1acef))
+
+
 ## v1.70.0 (2026-07-17)
 
 ### Bug Fixes
