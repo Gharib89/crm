@@ -1,3 +1,7 @@
+---
+status: accepted
+---
+
 # Promotion is human-in-the-loop; automated CI never talks to a live org
 
 No automated pipeline (hosted CI job, scheduled drift check, deploy workflow)

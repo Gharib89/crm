@@ -11,7 +11,8 @@ GitHub runs `pull_request` workflows only if they already exist on the
 **default branch**. Empirically here, even a *modified registered* workflow
 stayed silent when the PR touched only workflow files. So don't expect green
 CI on the introducing PR — validate workflow changes via the local gate
-(pytest / pyright / `mkdocs build --strict` / packaging smoke), merge, then
+(`actionlint` + `zizmor` — both run as pre-commit hooks on workflow edits —
+plus pytest / pyright / `mkdocs build --strict` / packaging smoke), merge, then
 exercise the workflow on the **first PR after it lands on main** (a throwaway
 empty-commit PR works: `git commit --allow-empty` → open PR → watch checks →
 close). Capture the exact matrix check-run names there (e.g.
@@ -26,19 +27,25 @@ A ruleset that requires PRs / blocks direct pushes to main will break
 bypass_mode: "always"}`) — `RELEASE_PAT` is admin-owned. Tag pushes
 (`refs/tags/v*`) are not covered by a branch ruleset, so only the commit push
 needs the bypass. The admin bypass also preserves the maintainer's
-small-docs-commits-to-main workflow. The active ruleset is "main: require PR +
-ci checks" (id 17752668).
+small-docs-commits-to-main workflow. The active ruleset is named
+**"main: require PR + ci checks"** — confirm its current id/config via
+`gh api repos/<o>/<r>/rulesets`.
 
 ## 3. Path-filtered checks as `required` can wedge a PR forever
 
 `ci.yml` and `docs.yml` are both path-filtered. A PR whose **HEAD commit**
-touches only paths outside the filters (docs / CLAUDE.md / `.claude/`) gets no
-required-check report on that SHA → combined status stays `pending` with zero
-contexts → `mergeStateStatus: UNSTABLE` → merge stuck forever, even though the
-same checks were green on earlier commits. Resolution:
-`gh pr merge --squash --admin --delete-branch` (safe when the checks passed on
-earlier commits and the delta is docs-only). Don't fake-trigger CI by touching
-`crm/**`.
+touches only paths outside **both** filters (e.g. CLAUDE.md / `.claude/`) gets
+no required-check report on that SHA → combined status stays `pending` with
+zero contexts → `mergeStateStatus: UNSTABLE` → merge stuck forever, even though
+the same checks were green on earlier commits. Escape hatch — a deliberate
+exception, not a default: `gh pr merge --squash --admin --delete-branch`, and
+only after (a) the required checks passed on earlier commits of the same PR,
+(b) the delta since is limited to paths no workflow builds (if it touches
+`docs/**`/`mkdocs.yml`, `docs.yml` runs — wait for it instead), and (c) you ran
+the matching local gate for the delta anyway (`mkdocs build --strict` for
+anything docs-adjacent). Don't fake-trigger CI by touching `crm/**`. The real
+fix would be dropping path-filtered checks from `required` (this trap's own
+rule); until then, this is the documented workaround.
 
 ## 4. `[skip ci]` in the release commit message is a trap
 

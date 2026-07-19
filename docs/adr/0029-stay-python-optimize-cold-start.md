@@ -1,3 +1,7 @@
+---
+status: accepted
+---
+
 # Stay in Python; per-invocation cold-start is the perf metric that matters
 
 `crm` stays a Python CLI. Performance work targets **per-invocation cold-start**
@@ -27,9 +31,9 @@ module-top transport imports. The #247 fix deferred transport to session
 construction, put the NTLM chain on the NTLM branch only, and moved
 typing-only imports under `TYPE_CHECKING`.
 
-Consequence for reviewers and refactors: a well-meaning "clean up the imports"
-change that makes these eager regresses the one metric that matters. The lazy
-shape is deliberate, not an accident to tidy.
+Consequence for reviewers and refactors: reintroducing eager imports — even via
+a well-meaning "clean up the imports" change — regresses cold-start, the one
+metric that matters. The lazy shape is deliberate, not an accident to tidy.
 
 ## Alternatives rejected
 
