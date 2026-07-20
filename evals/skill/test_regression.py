@@ -60,8 +60,7 @@ def test_macro_pass_rate_empty_is_zero():
 
 
 def test_macro_pass_rate_is_mean_over_tasks():
-    aggs = [_agg("a", k=2, passes_skill=2), _agg("b", k=2, passes_skill=1)]  # 1.0 and 0.5
-    assert macro_pass_rate([a.to_dict() for a in aggs]) == 0.75
+    assert macro_pass_rate([1.0, 0.5]) == 0.75
 
 
 # ── find_baseline ────────────────────────────────────────────────────────────

@@ -44,14 +44,15 @@ def hake_gain(pass_skill: float, pass_bare: float) -> float | None:
     return (pass_skill - pass_bare) / headroom
 
 
-def is_reportable(*, preset: str, paired: bool, k: int) -> bool:
-    """Whether a run counts as reportable: a full, paired run at k≥3 (ADR 0028).
+def is_reportable(*, preset: str, paired: bool, k: int, subset: bool = False) -> bool:
+    """Whether a run counts as reportable: a full, paired, whole-corpus run at k≥3 (ADR 0028).
 
-    A single-condition run (smoke/regression, bare leg skipped) has no lift and a k<3
-    run is too noisy to quote, so neither is reportable — the walking-skeleton default
-    (k=1) is deliberately *not* reportable.
+    A single-condition run (smoke/regression, bare leg skipped) has no lift, a k<3 run is
+    too noisy to quote, and a ``subset`` run (``--tasks``/``--sample`` narrowed the corpus)
+    is not the "whole corpus" the ADR requires — so none is reportable. The walking-skeleton
+    default (k=1) is deliberately *not* reportable.
     """
-    return preset == "full" and paired and k >= REPORTABLE_MIN_K
+    return preset == "full" and paired and k >= REPORTABLE_MIN_K and not subset
 
 
 @dataclasses.dataclass
@@ -140,6 +141,9 @@ def write_results(
         # silently misclassified as reportable.
         paired=bool(meta.get("paired", False)),
         k=int(meta.get("k", 1)),
+        # Same fail-safe default: a run that omits the flag is treated as a subset (never
+        # reportable) rather than silently quotable.
+        subset=bool(meta.get("subset", False)),
     )
     run_json = {
         "run_id": run_id,

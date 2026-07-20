@@ -328,6 +328,8 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
             "k": args.k,
             "preset": args.preset,
             "paired": preset.paired,
+            # A selection narrowed the corpus → not the "whole corpus" a reportable run needs.
+            "subset": only is not None or args.sample is not None,
             "skill_sha": record_mod.skill_sha(repo_root),
         }
         write_results(

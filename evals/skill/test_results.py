@@ -53,6 +53,11 @@ class TestReportable:
         # a bare-only smoke/regression run has no lift → never reportable.
         assert is_reportable(preset="smoke", paired=False, k=3) is False
 
+    def test_subset_full_run_not_reportable(self):
+        # a full paired k≥3 run narrowed by --tasks/--sample is not the whole corpus → not
+        # reportable, so it can't pollute the baseline pool (#892).
+        assert is_reportable(preset="full", paired=True, k=3, subset=True) is False
+
 
 class TestAggregateTask:
     def test_rates_and_gain_over_k_trials(self):

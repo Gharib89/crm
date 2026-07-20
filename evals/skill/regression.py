@@ -26,11 +26,11 @@ from evals.skill.results import TaskAggregate
 MACRO_DROP_PP = 5.0
 
 
-def macro_pass_rate(aggregates: list[dict[str, Any]]) -> float:
+def macro_pass_rate(pass_skill_rates: list[float]) -> float:
     """Mean with-skill pass rate across tasks (``0.0`` for an empty set)."""
-    if not aggregates:
+    if not pass_skill_rates:
         return 0.0
-    return sum(float(a["pass_skill_rate"]) for a in aggregates) / len(aggregates)
+    return sum(pass_skill_rates) / len(pass_skill_rates)
 
 
 def find_baseline(
@@ -80,9 +80,6 @@ class RegressionReport:
     flipped_tasks: list[str]
     flagged: bool
 
-    def to_dict(self) -> dict[str, Any]:
-        return dataclasses.asdict(self)
-
 
 def detect_regression(
     current: list[TaskAggregate],
@@ -98,7 +95,7 @@ def detect_regression(
     flipping ``k/k → 0/k`` (all-pass baseline → all-fail current) at the run's configured
     ``k``. With no baseline, nothing is flagged.
     """
-    current_macro = macro_pass_rate([a.to_dict() for a in current])
+    current_macro = macro_pass_rate([a.pass_skill_rate for a in current])
     if baseline is None:
         return RegressionReport(
             baseline_run_id=None,
@@ -110,16 +107,19 @@ def detect_regression(
             flagged=False,
         )
     baseline_aggs: list[dict[str, Any]] = baseline.get("aggregates", [])
-    baseline_macro = macro_pass_rate(baseline_aggs)
+    baseline_macro = macro_pass_rate([float(a["pass_skill_rate"]) for a in baseline_aggs])
     drop_pp_value = (baseline_macro - current_macro) * 100.0
     macro_flag = drop_pp_value > drop_pp
+    # A flip is a task that went all-pass → all-fail *at the run's configured k* (``k/k → 0/k``,
+    # not a fixed 3). ``find_baseline`` already matched the series on k, so the baseline's k
+    # equals this ``k`` — the all-pass threshold is therefore ``passes_skill == k``.
     base_by_id = {a["task_id"]: a for a in baseline_aggs}
     flipped = [
         a.task_id
         for a in current
         if a.task_id in base_by_id
-        and int(base_by_id[a.task_id]["k"]) > 0
-        and int(base_by_id[a.task_id]["passes_skill"]) == int(base_by_id[a.task_id]["k"])
+        and k > 0
+        and int(base_by_id[a.task_id]["passes_skill"]) == k
         and a.passes_skill == 0
     ]
     return RegressionReport(
