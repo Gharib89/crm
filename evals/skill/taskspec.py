@@ -149,7 +149,9 @@ def parse_task_file(path: str | Path) -> TaskSpec:
             )
         raw_key = require("answer_key")
         if not isinstance(raw_key, dict) or not raw_key:
-            raise ValueError(f"{path}: answer_key must be a non-empty mapping for a feasibility task")
+            raise ValueError(
+                f"{path}: answer_key must be a non-empty mapping for a feasibility task"
+            )
         for name, want in raw_key.items():
             values = want if isinstance(want, list) else [want]
             if not all(isinstance(v, str | int | float | bool) for v in values):
@@ -182,7 +184,11 @@ def parse_task_file(path: str | Path) -> TaskSpec:
             if not isinstance(end_state, dict):
                 raise ValueError(f"{path}: end_state must be a mapping")
             query = end_state.get("query")
-            if not isinstance(query, list) or not query or not all(isinstance(a, str) for a in query):
+            if (
+                not isinstance(query, list)
+                or not query
+                or not all(isinstance(a, str) for a in query)
+            ):
                 raise ValueError(
                     f"{path}: end_state.query must be a non-empty list of strings "
                     f"(omit end_state entirely for a diagnostic task that needs no org-state query)"
