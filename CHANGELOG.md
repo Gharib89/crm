@@ -9,6 +9,56 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.72.0 (2026-07-20)
+
+### Bug Fixes
+
+- **evals**: Harden feasibility grading — UnicodeDecodeError + strict bool match
+  ([#910](https://github.com/Gharib89/crm/pull/910),
+  [`d40a1cc`](https://github.com/Gharib89/crm/commit/d40a1cc4c782924af072a480825a96016159ff49))
+
+- **evals**: Tolerate a BOM in the feasibility answer file; fix task-file rationale
+  ([#910](https://github.com/Gharib89/crm/pull/910),
+  [`d40a1cc`](https://github.com/Gharib89/crm/commit/d40a1cc4c782924af072a480825a96016159ff49))
+
+### Chores
+
+- **evals**: Add feasibility task kind to the skill eval harness
+  ([#910](https://github.com/Gharib89/crm/pull/910),
+  [`d40a1cc`](https://github.com/Gharib89/crm/commit/d40a1cc4c782924af072a480825a96016159ff49))
+
+- **evals**: Launch the agent under the ADR-compliant root sandbox
+  ([#905](https://github.com/Gharib89/crm/pull/905),
+  [`d0e33b6`](https://github.com/Gharib89/crm/commit/d0e33b6db751640b0bc2a0ee76a3e07b424ada23))
+
+- **evals**: Paired skill-eval walking skeleton (Machine B)
+  ([#890](https://github.com/Gharib89/crm/pull/890),
+  [`5e358e1`](https://github.com/Gharib89/crm/commit/5e358e132f435ebdfaf296dbf08f95a055672e43))
+
+- **evals**: Swap paired eval to Claude Code's built-in Bash sandbox
+  ([#907](https://github.com/Gharib89/crm/pull/907),
+  [`fe1e8ce`](https://github.com/Gharib89/crm/commit/fe1e8ce889df6b1ae2b5b2dfaf0d988fd16111da))
+
+- **skills**: Harden scripts per review round 1 ([#909](https://github.com/Gharib89/crm/pull/909),
+  [`db66f9a`](https://github.com/Gharib89/crm/commit/db66f9a22ca2e4fdfec62f36f5a50e3036b8eb3f))
+
+- **skills**: Script the deterministic steps of ship and merge-gate
+  ([#909](https://github.com/Gharib89/crm/pull/909),
+  [`db66f9a`](https://github.com/Gharib89/crm/commit/db66f9a22ca2e4fdfec62f36f5a50e3036b8eb3f))
+
+### Code Style
+
+- **evals**: Rewrap two lines to satisfy ruff E501
+  ([#910](https://github.com/Gharib89/crm/pull/910),
+  [`d40a1cc`](https://github.com/Gharib89/crm/commit/d40a1cc4c782924af072a480825a96016159ff49))
+
+### Features
+
+- **evals**: Feasibility task kind for the skill eval harness
+  ([#910](https://github.com/Gharib89/crm/pull/910),
+  [`d40a1cc`](https://github.com/Gharib89/crm/commit/d40a1cc4c782924af072a480825a96016159ff49))
+
+
 ## v1.71.0 (2026-07-19)
 
 ### Documentation
