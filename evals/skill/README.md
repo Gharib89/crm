@@ -69,8 +69,13 @@ blocks CI. Run it on demand.
   sandbox (bubblewrap + socat, **no root**) confines each Bash command to the org host
   (`network.allowedDomains`) while the model driver keeps normal network, so `curl
   <the-web>` fails but the agent still reaches `api.anthropic.com`. `sandbox_settings(host)`
-  is the pure builder (offline-tested); `python -m evals.skill.sandbox <host>` is a live
-  selfcheck driving a real `claude -p`.
+  is the pure builder (offline-tested). `failIfUnavailable` only proves the sandbox
+  *binaries* exist, not that the proxy *enforces*, so the real fail-closed gate is a
+  **runtime preflight**: `probe_enforcement(host)` drives one sandboxed `claude -p` and
+  reports `(org_reachable, web_blocked)` (`parse_enforcement` is the offline-tested verdict);
+  the paired front door refuses to run unless both hold. `python -m evals.skill.sandbox
+  <host>` is the same probe as a live selfcheck. (The fresh `HOME` must also be a *trusted*
+  workspace or the sandbox runs degraded — `isolation.trust_workspace` handles that.)
 - `results.py` — the **paired result model** (#890): `hake_gain`, the `reportable` stamp,
   and the `evals/results/<run-id>/` layout (`run.json` + `trials.jsonl`, transcripts by ref).
 - `results/` — **gitignored** paired-run dirs (except the derived `matrix.md`); a reportable
@@ -398,9 +403,16 @@ What it adds over the single-condition runner:
   (bubblewrap + socat, **no root** to *run*) confines each Bash command to the org host via
   `network.allowedDomains`, written identically into both legs' config dirs, so `curl
   <the-web>` fails while the model driver still reaches `api.anthropic.com`.
-  `failIfUnavailable` fails the run closed if bubblewrap/socat/userns is missing. The
-  `--no-sandbox` flag (below) is the **only** way to run without the block — a deliberate
-  local-wiring escape hatch that is **unsafe and never reportable**.
+  `failIfUnavailable` aborts if the sandbox *binaries* are missing — but it does **not**
+  prove the proxy actually started and enforces, so the front door runs a **fail-closed
+  preflight** first: one sandboxed probe must show the org reachable **and** a non-org host
+  blocked, else the run aborts (a dead proxy → false `0%/0%` null; an up-but-leaky proxy →
+  inflated lift). The fresh `HOME` is also written as a *trusted* workspace, without which
+  the sandbox initializes degraded. **WSL2 caveat:** the sandbox proxy startup is unreliable
+  there — run the live paired eval on native Linux; the preflight makes a flaky host fail
+  loudly rather than measure garbage. The `--no-sandbox` flag (below) is the **only** way to
+  run without the block — a deliberate local-wiring escape hatch that is **unsafe and never
+  reportable**.
 - **Turn + wall-clock caps** — `--max-turns 50` and a 10-minute per-trial wall clock; a
   cap-hit is a distinct outcome scored as a fail.
 - **Session wheel** — a **built** crm wheel installed non-editable into a per-run venv (not
@@ -415,8 +427,10 @@ What it adds over the single-condition runner:
 # Live run — the run itself is rootless (no sudo). agent-cloud is the default target.
 # One-time host setup (needs admin/sudo): install `bubblewrap` + `socat`
 # (`sudo apt install bubblewrap socat`) and enable unprivileged user namespaces. Once
-# present, the run needs no elevation; a missing prereq aborts loudly (failIfUnavailable),
-# never runs unsandboxed — except under the explicit `--no-sandbox` bypass (unsafe).
+# present, the run needs no elevation; a missing prereq aborts (failIfUnavailable) and a
+# non-enforcing sandbox aborts at the fail-closed preflight — never runs unsandboxed except
+# under the explicit `--no-sandbox` bypass (unsafe). Run on native Linux: the built-in
+# network sandbox is unreliable on WSL2 (the preflight will abort there).
 D365_E2E=1 D365_E2E_PROFILE=agent-cloud \
     python -m evals.skill.paired                          # k=1, records-create-verify
 

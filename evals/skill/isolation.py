@@ -29,6 +29,7 @@ the *environment* exposes no repo, which is what the trial protocol relied on.
 from __future__ import annotations
 
 import dataclasses
+import json
 import os
 import shutil
 import subprocess
@@ -119,6 +120,33 @@ def passthrough_claude_auth(sandbox_home: Path) -> Path | None:
         return None
 
 
+def trust_workspace(sandbox_home: Path, work: Path) -> None:
+    """Mark the agent's throwaway working dir as a *trusted* Claude Code workspace.
+
+    Claude Code will not fully initialize an **untrusted** workspace: it runs the agent in
+    a degraded mode that still injects the built-in sandbox's proxy env
+    (``HTTP_PROXY=localhost:3128``) but never starts the proxy — so *every* sandboxed
+    request dies at the dead proxy, the org host included, reproducing the false
+    ``0% vs 0%`` null #906 exists to kill. The fresh ``HOME`` has never been through the
+    trust dialog, so we write the trust record ourselves, into ``$HOME/.claude.json``
+    (both the global flag and the per-project entry for ``work``, the agent's cwd).
+
+    Trust-only: the record carries no repo path, no ``CLAUDE.md``, no memory, so the
+    isolation invariants hold (and it is a *different* file from the ``.claude/`` config
+    dir that :func:`passthrough_claude_auth` writes). Best-effort — a write failure leaves
+    the agent to hit the untrusted degraded mode, which the runner's sandbox preflight then
+    catches loudly rather than measuring a silent null.
+    """
+    trust = {
+        "hasTrustDialogAccepted": True,
+        "projects": {str(work): {"hasTrustDialogAccepted": True}},
+    }
+    try:
+        (sandbox_home / ".claude.json").write_text(json.dumps(trust), encoding="utf-8")
+    except OSError as exc:
+        print(f"[isolation] could not write workspace trust record: {exc}", file=sys.stderr)
+
+
 def provision_isolation(crm_bin: str | None = None, *, install_skill: bool = True) -> Isolation:
     """Create a sandbox and install the skill into a fresh HOME via ``crm skill install``.
 
@@ -161,6 +189,11 @@ def provision_isolation(crm_bin: str | None = None, *, install_skill: bool = Tru
     # Pass the subscription credentials (only) into the fresh HOME so a headless
     # `claude -p` agent authenticates without an ANTHROPIC_API_KEY. No-op if absent.
     passthrough_claude_auth(home)
+
+    # Trust the throwaway workspace so Claude Code fully initializes the built-in Bash
+    # sandbox for the agent (an untrusted fresh HOME leaves the sandbox proxy unstarted —
+    # see trust_workspace).
+    trust_workspace(home, work)
 
     # Install the skill the way a user does — from whatever `crm` is on PATH, so the
     # eval exercises the skill *as shipped* in that binary, not the repo's working

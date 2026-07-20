@@ -42,7 +42,7 @@ from evals.skill import target as target_mod
 from evals.skill import trace
 from evals.skill.results import RESULTS_ROOT, TrialRecord, aggregate_task, write_results
 from evals.skill.runner import RunError, RunResult, cleanup_org, run_task
-from evals.skill.sandbox import sandbox_settings
+from evals.skill.sandbox import probe_enforcement, sandbox_settings
 from evals.skill.taskspec import parse_task_file
 
 #: The hand-written do-task the skeleton drives (a mutation-light, cloud do-task with a
@@ -262,6 +262,22 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
             # Written identically into both legs' config dirs; the built-in sandbox confines
             # each Bash command to the org host while the model driver keeps normal network.
             leg_kwargs["sandbox_settings"] = sandbox_settings(host)
+            # Fail-closed preflight: failIfUnavailable only proves the sandbox *binaries*
+            # exist, not that the proxy *enforces* (dead proxy → false 0%/0% null; proxy up
+            # but leaky → inflated lift — both seen on WSL2). Drive one sandboxed probe and
+            # refuse to run the pair unless the org is reachable AND a non-org host is blocked,
+            # so a broken sandbox aborts loudly instead of measuring garbage (#906).
+            _stderr("preflight: verifying sandbox network enforcement (one probe agent)…")
+            org_reachable, web_blocked, _probe_out = probe_enforcement(host, model=args.model)
+            if not (org_reachable and web_blocked):
+                raise RunError(
+                    f"sandbox preflight failed for {host} "
+                    f"(org_reachable={org_reachable}, web_blocked={web_blocked}): the built-in "
+                    f"Bash sandbox is not enforcing network isolation, so the pair would "
+                    f"measure a false null / inflated lift (#906). Run on a host where the "
+                    f"sandbox network proxy is reliable, or pass --no-sandbox for an "
+                    f"explicitly-unsandboxed wiring check."
+                )
         trials = _go()
 
         aggregates = [aggregate_task(t, trials) for t in dict.fromkeys(x.task_id for x in trials)]

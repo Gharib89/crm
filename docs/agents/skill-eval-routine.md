@@ -29,8 +29,13 @@ establishes no fail-closed isolation. The paired behavioral eval (`python -m
 evals.skill.paired`, ADR 0028) is the one that blocks the agent's outbound web with Claude
 Code's built-in Bash sandbox — running it needs a **one-time host setup** (admin/sudo):
 install **`bubblewrap` and `socat`** (`sudo apt install bubblewrap socat`) and enable
-unprivileged user namespaces. Once present, the paired run itself needs no elevation and a
-missing prereq aborts it loudly (`failIfUnavailable`) rather than running unsandboxed (#906).
+unprivileged user namespaces. Once present, the paired run itself needs no elevation. A
+missing prereq aborts it loudly (`failIfUnavailable`); and because that check only proves the
+binaries exist — not that the proxy actually enforces — the paired run also runs a
+**fail-closed preflight** (one sandboxed probe: org reachable **and** a non-org host blocked)
+and aborts if isolation isn't real, rather than running unsandboxed (#906). **Run the paired
+eval on native Linux** — the built-in network sandbox is unreliable on WSL2 (the preflight
+aborts there); the routine's own `both_runner` is unaffected since it does not sandbox.
 
 ## Two cadences (pick by what reaches both targets)
 
