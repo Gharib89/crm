@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from evals.skill import analyze, isolation, runner
-from evals.skill.taskspec import evaluate_expect, parse_task_file
+from evals.skill.taskspec import evaluate_expect, evaluate_feasibility, parse_task_file
 
 TASKS_DIR = Path(__file__).parent / "tasks"
 
@@ -35,9 +35,13 @@ def test_task_file_parses(task_file: Path):
     assert spec.id
     assert spec.prompt.strip()
     # Validate shape per task kind so a malformed task fails here, not at run time:
-    # a predicate task asserts an `expect` over a fetched payload (non-empty query);
-    # a diagnostic task (#572) has no `expect` and is scored by the analysis pass.
-    if spec.is_diagnostic:
+    # a feasibility task (#891) grades structured output against an evidenced answer key
+    # (no org-state query); a predicate `do`-task asserts an `expect` over a fetched
+    # payload (non-empty query); a diagnostic task (#572) has no `expect` and is scored
+    # by the analysis pass.
+    if spec.is_feasibility:
+        assert spec.answer_key and spec.evidence and spec.query == [] and spec.expect == {}
+    elif spec.is_diagnostic:
         assert spec.expect == {}
     else:
         assert spec.expect and spec.query
@@ -488,6 +492,138 @@ def test_parse_verdict():
     assert analyze.parse_verdict("VERDICT: FAIL\nactually:\nVERDICT: PASS") is True
     # an inline mention in prose is not a verdict (whole-line anchor)
     assert analyze.parse_verdict("the VERDICT: PASS or FAIL line should be last") is None
+
+
+# --- feasibility tasks: structured output + answer-key grading (#891) --------------
+
+
+def test_feasibility_task_shape():
+    spec = parse_task_file(TASKS_DIR / "feasibility-bulk-load-verify.md")
+    assert spec.is_feasibility
+    assert not spec.is_diagnostic
+    # graded against an evidenced answer key, not org state
+    assert spec.answer_key.get("cli_achievable") is True
+    assert "data import" in spec.answer_key["required_commands"]
+    assert spec.evidence  # answer-key provenance captured at authoring time
+    assert spec.query == [] and spec.expect == {}
+
+
+def test_feasibility_kind_defaults_to_do(tmp_path):
+    # An existing task without a `kind` field stays a do-task (backward compatible).
+    spec = parse_task_file(TASKS_DIR / "records-create-verify.md")
+    assert spec.kind == "do"
+    assert not spec.is_feasibility
+
+
+def test_evaluate_feasibility_scalar_exact_match():
+    # cli_achievable is an exact match — the binary hinges on it.
+    data = {"cli_achievable": True, "required_commands": ["data import", "query odata"]}
+    ok, _ = evaluate_feasibility(data, {"cli_achievable": True})
+    assert ok
+    ok, reason = evaluate_feasibility({"cli_achievable": False}, {"cli_achievable": True})
+    assert not ok and "cli_achievable" in reason
+
+
+def test_evaluate_feasibility_list_recall_all_present():
+    data = {"required_commands": ["crm data import accounts x.jsonl", "crm query odata accounts"]}
+    ok, _ = evaluate_feasibility(data, {"required_commands": ["data import", "query odata"]})
+    assert ok  # recall: each expected item found as a substring of an emitted item
+
+
+def test_evaluate_feasibility_list_recall_missing_one_fails():
+    # Missing a single required item fails the trial — the ADR-0028 "keep the binary clean" rule.
+    data = {"required_commands": ["crm data import accounts x.jsonl"]}
+    ok, reason = evaluate_feasibility(data, {"required_commands": ["data import", "query odata"]})
+    assert not ok and "query odata" in reason
+
+
+def test_evaluate_feasibility_rejects_non_object():
+    # A schema-invalid answer (not a JSON object) fails, never silently passes.
+    ok, reason = evaluate_feasibility(["not", "an", "object"], {"cli_achievable": True})
+    assert not ok and "object" in reason
+    ok, reason = evaluate_feasibility(None, {"cli_achievable": True})
+    assert not ok and "object" in reason
+
+
+def test_evaluate_feasibility_missing_field_fails():
+    # A graded field absent from the output is a schema-invalidity, scored as a fail.
+    ok, reason = evaluate_feasibility({"required_commands": []}, {"cli_achievable": True})
+    assert not ok and "cli_achievable" in reason
+
+
+def test_evaluate_feasibility_list_field_wrong_type_fails():
+    ok, reason = evaluate_feasibility(
+        {"required_commands": "data import"}, {"required_commands": ["data import"]}
+    )
+    assert not ok and "list" in reason
+
+
+def test_read_feasibility_answer_roundtrips(tmp_path):
+    (tmp_path / runner.FEASIBILITY_ANSWER_FILE).write_text(
+        '{"cli_achievable": true, "required_commands": ["data import"]}', encoding="utf-8"
+    )
+    data = runner._read_feasibility_answer(tmp_path)
+    assert data == {"cli_achievable": True, "required_commands": ["data import"]}
+
+
+def test_read_feasibility_answer_missing_or_invalid_is_none(tmp_path):
+    # No answer file, or a non-JSON one, yields None — graded as a schema-invalid fail.
+    assert runner._read_feasibility_answer(tmp_path) is None
+    (tmp_path / runner.FEASIBILITY_ANSWER_FILE).write_text("not json", encoding="utf-8")
+    assert runner._read_feasibility_answer(tmp_path) is None
+
+
+def test_feasibility_parse_rejects_end_state(tmp_path):
+    bad = tmp_path / "bad.md"
+    bad.write_text(
+        "---\nid: x\ndomain: d\ntarget: either\nkind: feasibility\n"
+        "answer_key: {cli_achievable: true}\nevidence: [somewhere]\n"
+        "end_state:\n  query: [query, odata, contacts]\n  expect: {count: 0}\n"
+        "cleanup: []\n---\nprompt\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="end_state"):
+        parse_task_file(bad)
+
+
+def test_feasibility_parse_requires_answer_key(tmp_path):
+    bad = tmp_path / "bad.md"
+    bad.write_text(
+        "---\nid: x\ndomain: d\ntarget: either\nkind: feasibility\n"
+        "evidence: [somewhere]\ncleanup: []\n---\nprompt\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="answer_key"):
+        parse_task_file(bad)
+
+
+def test_feasibility_parse_requires_evidence(tmp_path):
+    bad = tmp_path / "bad.md"
+    bad.write_text(
+        "---\nid: x\ndomain: d\ntarget: either\nkind: feasibility\n"
+        "answer_key: {cli_achievable: true}\ncleanup: []\n---\nprompt\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="evidence"):
+        parse_task_file(bad)
+
+
+def test_parse_rejects_unknown_kind(tmp_path):
+    bad = tmp_path / "bad.md"
+    bad.write_text(
+        "---\nid: x\ndomain: d\ntarget: either\nkind: bogus\ncleanup: []\n---\nprompt\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="kind"):
+        parse_task_file(bad)
+
+
+def test_feasibility_dry_run_proves_isolation():
+    # A dry run of a feasibility task proves isolation without an agent, like any task.
+    result = runner.run_task(TASKS_DIR / "feasibility-bulk-load-verify.md", dry_run=True)
+    assert result.dry_run is True
+    assert result.passed is None
+    assert result.isolation_checks.get("skill-installed")
 
 
 def test_build_analysis_prompt_requests_verdict_line():

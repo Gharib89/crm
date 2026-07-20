@@ -60,13 +60,16 @@ def _specs():
 
 
 def test_set_task_spec_count():
-    # AC1 allows ~12–15 specs; pin to the actual count so an accidental task removal
-    # fails CI instead of silently passing the lower end of the band. Diagnostic
-    # tasks (#572) are scored by the --analyze pass, not this deterministic set, so
-    # they don't count toward it — `trial-import-diagnosis` (#584) is diagnostic, so
-    # 14 predicate + 2 diagnostic (it + `diagnostic-data-quality`).
-    predicate = [s for s in _specs() if not s.is_diagnostic]
-    assert len(predicate) == 14, f"expected 14 predicate task specs, found {len(predicate)}"
+    # AC1 allows ~12–15 specs; pin the actual counts so an accidental task removal fails
+    # CI instead of silently passing the lower end of the band. Three deterministic-or-not
+    # kinds are counted apart: `do` predicate tasks scored on org state (14), `feasibility`
+    # tasks scored field-by-field on an answer key (#891, 1), and diagnostic tasks scored
+    # by the --analyze pass (#572, 2: `trial-import-diagnosis` + `diagnostic-data-quality`).
+    specs = _specs()
+    do_predicate = [s for s in specs if s.kind == "do" and not s.is_diagnostic]
+    feasibility = [s for s in specs if s.is_feasibility]
+    assert len(do_predicate) == 14, f"expected 14 do predicate specs, found {len(do_predicate)}"
+    assert len(feasibility) == 1, f"expected 1 feasibility spec, found {len(feasibility)}"
 
 
 def test_eight_trials_formalized():
