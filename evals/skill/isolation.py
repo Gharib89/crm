@@ -29,6 +29,7 @@ the *environment* exposes no repo, which is what the trial protocol relied on.
 from __future__ import annotations
 
 import dataclasses
+import json
 import os
 import shutil
 import subprocess
@@ -69,46 +70,19 @@ def _crm_bin() -> str:
     return found
 
 
-def _invoking_user_home() -> Path | None:
-    """The real home of the user who invoked us, resolving *through* ``sudo``.
+def _real_claude_config_dir() -> Path:
+    """The maintainer's *real* Claude Code config dir, read from the unscrubbed environment
+    (``CLAUDE_CONFIG_DIR`` if set, else ``~/.claude``) before the sandbox repoints ``HOME``.
 
-    Under the ADR-compliant root sandbox the parent runs as root (``sudo``), so
-    :func:`Path.home` would read root's home and miss the maintainer's credentials. When
-    ``SUDO_UID`` is set, resolve the invoking user's home from the passwd database instead
-    (``pwd`` is Unix-only and imported lazily so this module still imports on Windows CI).
-
-    **Fails closed:** with ``SUDO_UID`` set but unresolvable (bad uid, ``pwd`` missing),
-    returns ``None`` rather than falling back to :func:`Path.home` — under sudo that would
-    be root's home, and copying *root's* credentials into the sandbox is a privacy leak.
-    Only the no-sudo case falls back to the real ``Path.home``.
-    """
-    sudo_uid = os.environ.get("SUDO_UID")
-    if not sudo_uid:
-        return Path.home()
-    try:
-        import pwd
-
-        return Path(pwd.getpwuid(int(sudo_uid)).pw_dir)
-    except (ImportError, KeyError, ValueError):
-        return None
-
-
-def _real_claude_config_dir() -> Path | None:
-    """The maintainer's *real* Claude Code config dir, read from the unscrubbed
-    environment (``CLAUDE_CONFIG_DIR`` if set, else ``<invoking-user-home>/.claude``).
-    This is where Claude Code keeps the subscription credentials we pass through —
-    resolved before the sandbox repoints ``HOME``, and through ``sudo`` to the invoking
-    user so the root sandbox parent still finds the maintainer's credentials. ``None`` when
-    the invoking user can't be resolved under sudo (see :func:`_invoking_user_home`).
+    This is where Claude Code keeps the subscription credentials we pass through. The eval
+    runs rootless (#906), so :func:`Path.home` is already the maintainer's home — no
+    sudo/SUDO_UID resolution needed.
     """
     override = os.environ.get("CLAUDE_CONFIG_DIR")
-    if override:
-        return Path(override).expanduser()
-    home = _invoking_user_home()
-    return home / ".claude" if home is not None else None
+    return Path(override).expanduser() if override else Path.home() / ".claude"
 
 
-def _passthrough_claude_auth(sandbox_home: Path) -> Path | None:
+def passthrough_claude_auth(sandbox_home: Path) -> Path | None:
     """Copy *only* the Claude Code credentials file into the sandbox ``HOME`` so an
     isolated ``claude -p`` authenticates via the maintainer's subscription without an
     ``ANTHROPIC_API_KEY``.
@@ -132,13 +106,6 @@ def _passthrough_claude_auth(sandbox_home: Path) -> Path | None:
     Fine for a minutes-long eval; revisit only if a run could outlive the access token.
     """
     cfg = _real_claude_config_dir()
-    if cfg is None:
-        print(
-            "[isolation] skipping credential passthrough: invoking user unresolved under sudo "
-            "(refusing to fall back to root's credentials)",
-            file=sys.stderr,
-        )
-        return None
     src = cfg / ".credentials.json"
     if not src.is_file():
         return None
@@ -151,6 +118,38 @@ def _passthrough_claude_auth(sandbox_home: Path) -> Path | None:
     except OSError as exc:
         print(f"[isolation] could not pass through Claude credentials: {exc}", file=sys.stderr)
         return None
+
+
+def trust_workspace(sandbox_home: Path, work: Path) -> None:
+    """Mark the agent's throwaway working dir as a *trusted* Claude Code workspace.
+
+    Claude Code will not fully initialize an **untrusted** workspace: it runs the agent in
+    a degraded mode that still injects the built-in sandbox's proxy env
+    (``HTTP_PROXY=localhost:3128``) but never starts the proxy — so *every* sandboxed
+    request dies at the dead proxy, the org host included, reproducing the false
+    ``0% vs 0%`` null #906 exists to kill. The fresh ``HOME`` has never been through the
+    trust dialog, so we write the trust record ourselves, into ``$HOME/.claude.json``
+    (both the global flag and the per-project entry for ``work``, the agent's cwd).
+
+    Trust-only: the record carries no repo path, no ``CLAUDE.md``, no memory, so the
+    isolation invariants hold (and it is a *different* file from the ``.claude/`` config
+    dir that :func:`passthrough_claude_auth` writes). Fail-closed — if the record can't be
+    written, this raises :class:`IsolationError` rather than letting the agent launch into
+    the untrusted degraded mode (which would silently reproduce the #906 dead-proxy null;
+    the runner's preflight runs in a *separate* isolation and can't catch a per-leg trust
+    failure).
+    """
+    trust = {
+        "hasTrustDialogAccepted": True,
+        "projects": {str(work): {"hasTrustDialogAccepted": True}},
+    }
+    try:
+        (sandbox_home / ".claude.json").write_text(json.dumps(trust), encoding="utf-8")
+    except OSError as exc:
+        raise IsolationError(
+            f"could not write workspace trust record ({exc}); refusing to launch an "
+            f"untrusted workspace that would run the built-in sandbox degraded (#906)"
+        ) from exc
 
 
 def provision_isolation(crm_bin: str | None = None, *, install_skill: bool = True) -> Isolation:
@@ -194,7 +193,16 @@ def provision_isolation(crm_bin: str | None = None, *, install_skill: bool = Tru
 
     # Pass the subscription credentials (only) into the fresh HOME so a headless
     # `claude -p` agent authenticates without an ANTHROPIC_API_KEY. No-op if absent.
-    _passthrough_claude_auth(home)
+    passthrough_claude_auth(home)
+
+    # Trust the throwaway workspace so Claude Code fully initializes the built-in Bash
+    # sandbox for the agent (an untrusted fresh HOME leaves the sandbox proxy unstarted —
+    # see trust_workspace). Fail-closed: clean up and abort rather than launch degraded.
+    try:
+        trust_workspace(home, work)
+    except IsolationError:
+        shutil.rmtree(sandbox, ignore_errors=True)
+        raise
 
     # Install the skill the way a user does — from whatever `crm` is on PATH, so the
     # eval exercises the skill *as shipped* in that binary, not the repo's working
@@ -291,7 +299,7 @@ def verify_isolation(
 
     # 6 · The env must not carry CLAUDE_CONFIG_DIR pointing at the real config dir.
     # Auth is passed by copying *only* the credentials file into the fresh HOME (see
-    # `_passthrough_claude_auth`); CLAUDE_CONFIG_DIR is scrubbed because it would also
+    # `passthrough_claude_auth`); CLAUDE_CONFIG_DIR is scrubbed because it would also
     # relocate CLAUDE.md and memory back onto the real dir. Guard the leak so a future
     # change that stops scrubbing it (or points it elsewhere) fails loudly here: if
     # set, it must live inside the sandbox and expose no CLAUDE.md / memory.

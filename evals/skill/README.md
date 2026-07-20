@@ -62,11 +62,20 @@ blocks CI. Run it on demand.
 - `paired.py` — the **paired walking skeleton** (#890, ADR 0028): `run_pair` runs one
   do-task with-skill and bare against identical org state (resetting the org **between**
   legs), and `agent_argv` bakes in the ADR guardrails (`--allowedTools`, `--max-turns`).
-  Its front door (`python -m evals.skill.paired`) builds a session venv, opens the network
-  sandbox, and emits a real skill-lift number. See "Paired walking skeleton" below.
-- `sandbox.py` — the **OS-level network block** (#890): a network namespace + an nftables
-  egress allowlist (root) that lets the agent reach only the org, so `curl <the-web>` fails
-  at the kernel, not the tool layer. Only the pure builders are offline-tested.
+  Its front door (`python -m evals.skill.paired`) builds a session venv, writes the
+  built-in Bash-sandbox settings into each leg's config dir, and emits a real skill-lift
+  number. See "Paired walking skeleton" below.
+- `sandbox.py` — the **OS-level network block** (#890, #906): Claude Code's built-in Bash
+  sandbox (bubblewrap + socat, **no root**) confines each Bash command to the org host
+  (`network.allowedDomains`) while the model driver keeps normal network, so `curl
+  <the-web>` fails but the agent still reaches `api.anthropic.com`. `sandbox_settings(host)`
+  is the pure builder (offline-tested). `failIfUnavailable` only proves the sandbox
+  *binaries* exist, not that the proxy *enforces*, so the real fail-closed gate is a
+  **runtime preflight**: `probe_enforcement(host)` drives one sandboxed `claude -p` and
+  reports `(org_reachable, web_blocked)` (`parse_enforcement` is the offline-tested verdict);
+  the paired front door refuses to run unless both hold. `python -m evals.skill.sandbox
+  <host>` is the same probe as a live selfcheck. (The fresh `HOME` must also be a *trusted*
+  workspace or the sandbox runs degraded — `isolation.trust_workspace` handles that.)
 - `results.py` — the **paired result model** (#890): `hake_gain`, the `reportable` stamp,
   and the `evals/results/<run-id>/` layout (`run.json` + `trials.jsonl`, transcripts by ref).
 - `results/` — **gitignored** paired-run dirs (except the derived `matrix.md`); a reportable
@@ -79,7 +88,7 @@ blocks CI. Run it on demand.
   `test_results.py` / `test_sandbox.py` / `test_paired.py` / `test_runner_caps.py` — offline
   smoke tests (parse tasks, dry-run isolation, set-level gating/aggregation, reachability
   classification, both-targets orchestration, trace parsing, run-record persistence, the
-  review prompt/parse/guard, the Hake/results schema, the nftables ruleset builders, the
+  review prompt/parse/guard, the Hake/results schema, the sandbox settings builder, the
   paired-leg orchestration, and the wall-clock cap — all via stubs, no agent, no org).
 
 ## Task set & domain coverage
@@ -390,10 +399,20 @@ What it adds over the single-condition runner:
 - **Org reset between legs** (the attribution keystone) — the org is reset to the task's
   clean pre-state **before each leg** (via the task's `cleanup` steps), so leg B can never
   inherit leg A's mutations.
-- **OS-level network block** (`sandbox.py`) — a network namespace + nftables egress
-  allowlist restricts the agent to the org's IPs only; the org host is pinned in a static
-  `/etc/netns/<ns>/hosts` so there is **no DNS egress**. `curl <the-web>` fails at the
-  kernel, identically on both legs. **Needs root** (run under `sudo -E`).
+- **OS-level network block** (`sandbox.py`) — Claude Code's built-in Bash sandbox
+  (bubblewrap + socat, **no root** to *run*) confines each Bash command to the org host via
+  `network.allowedDomains`, written identically into both legs' config dirs, so `curl
+  <the-web>` fails while the model driver still reaches `api.anthropic.com`.
+  `failIfUnavailable` aborts if the sandbox *binaries* are missing — but it does **not**
+  prove the proxy actually started and enforces, so the front door runs a **fail-closed
+  preflight** first: one sandboxed probe must show the org reachable **and** a non-org host
+  blocked, else the run aborts (a dead proxy → false `0%/0%` null; an up-but-leaky proxy →
+  inflated lift). The fresh `HOME` is also written as a *trusted* workspace, without which
+  the sandbox initializes degraded. **WSL2 caveat:** the sandbox proxy startup is unreliable
+  there — run the live paired eval on native Linux; the preflight makes a flaky host fail
+  loudly rather than measure garbage. The `--no-sandbox` flag (below) is the **only** way to
+  run without the block — a deliberate local-wiring escape hatch that is **unsafe and never
+  reportable**.
 - **Turn + wall-clock caps** — `--max-turns 50` and a 10-minute per-trial wall clock; a
   cap-hit is a distinct outcome scored as a fail.
 - **Session wheel** — a **built** crm wheel installed non-editable into a per-run venv (not
@@ -405,22 +424,23 @@ What it adds over the single-condition runner:
   inlined). A CLI summary prints on stdout, progress on stderr.
 
 ```bash
-# Live run (root, live-e2e-style gate). agent-cloud is the default target.
-# `sudo -E env "PATH=$PATH"` is required, not plain `sudo -E`: sudo resets PATH to
-# secure_path (dropping ~/.local/bin), so a bare `claude`/`python` wouldn't be found —
-# `-E` preserves env *vars* but not PATH. The agent then runs de-privileged (setpriv) back
-# to your uid inside the root-built netns, because `claude --dangerously-skip-permissions`
-# refuses to run as root. (Alternative to re-exporting PATH: CRM_EVAL_CLAUDE_BIN=$(command -v claude).)
-D365_E2E=1 D365_E2E_PROFILE=agent-cloud sudo -E env "PATH=$PATH" \
+# Live run — the run itself is rootless (no sudo). agent-cloud is the default target.
+# One-time host setup (needs admin/sudo): install `bubblewrap` + `socat`
+# (`sudo apt install bubblewrap socat`) and enable unprivileged user namespaces. Once
+# present, the run needs no elevation; a missing prereq aborts (failIfUnavailable) and a
+# non-enforcing sandbox aborts at the fail-closed preflight — never runs unsandboxed except
+# under the explicit `--no-sandbox` bypass (unsafe). Run on native Linux: the built-in
+# network sandbox is unreliable on WSL2 (the preflight will abort there).
+D365_E2E=1 D365_E2E_PROFILE=agent-cloud \
     python -m evals.skill.paired                          # k=1, records-create-verify
 
-D365_E2E=1 D365_E2E_PROFILE=agent-cloud sudo -E env "PATH=$PATH" \
+D365_E2E=1 D365_E2E_PROFILE=agent-cloud \
     python -m evals.skill.paired --k 3
-sudo -E env "PATH=$PATH" python -m evals.skill.sandbox <org-host>  # root smoke: org reachable, web blocked
+python -m evals.skill.sandbox <org-host>  # live smoke: org reachable, web blocked (real claude -p)
 ```
 
-`evals/results/<run-id>/` is chowned back to the invoking user on completion (the root parent
-otherwise leaves a root-owned tree); if a run dies mid-way, `sudo chown -R $USER evals/results`.
+`evals/results/<run-id>/` is written directly as the invoking user (the run is rootless), so
+there is no ownership hand-back to do.
 
 Reportability follows ADR 0028: only a **full paired run at k≥3** is reportable (the
 walking-skeleton default k=1 is not). A reportable run is committed by explicitly
