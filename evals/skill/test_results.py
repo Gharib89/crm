@@ -152,4 +152,5 @@ class TestWriteResults:
             trials=[],
             aggregates=[],
         )
-        assert json.loads((run_dir / "run.json").read_text())["reportable"] is False
+        report = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+        assert report["reportable"] is False
