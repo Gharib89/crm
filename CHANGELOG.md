@@ -9,6 +9,49 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.73.0 (2026-07-20)
+
+### Bug Fixes
+
+- **evals**: Baseline lookup before write; fail-safe subset default; skill-only summary
+  ([#911](https://github.com/Gharib89/crm/pull/911),
+  [`bcd77a9`](https://github.com/Gharib89/crm/commit/bcd77a95f6fe2c93a223146a702189560a21c34a))
+
+- **evals**: Exclude subset runs from reportability; tidy regression internals
+  ([#911](https://github.com/Gharib89/crm/pull/911),
+  [`bcd77a9`](https://github.com/Gharib89/crm/commit/bcd77a95f6fe2c93a223146a702189560a21c34a))
+
+### Chores
+
+- **evals**: Skill-eval run presets, k, task selection + advisory regression
+  ([#911](https://github.com/Gharib89/crm/pull/911),
+  [`bcd77a9`](https://github.com/Gharib89/crm/commit/bcd77a95f6fe2c93a223146a702189560a21c34a))
+
+### Code Style
+
+- **evals**: Satisfy ruff line-length and formatting
+  ([#911](https://github.com/Gharib89/crm/pull/911),
+  [`bcd77a9`](https://github.com/Gharib89/crm/commit/bcd77a95f6fe2c93a223146a702189560a21c34a))
+
+### Documentation
+
+- **evals**: Document presets, k, selection + advisory regression in eval README
+  ([#911](https://github.com/Gharib89/crm/pull/911),
+  [`bcd77a9`](https://github.com/Gharib89/crm/commit/bcd77a95f6fe2c93a223146a702189560a21c34a))
+
+### Features
+
+- **evals**: Skill-eval run presets, k, task selection + advisory regression
+  ([#911](https://github.com/Gharib89/crm/pull/911),
+  [`bcd77a9`](https://github.com/Gharib89/crm/commit/bcd77a95f6fe2c93a223146a702189560a21c34a))
+
+### Testing
+
+- **evals**: Pin utf-8 encoding on run.json read in subset test
+  ([#911](https://github.com/Gharib89/crm/pull/911),
+  [`bcd77a9`](https://github.com/Gharib89/crm/commit/bcd77a95f6fe2c93a223146a702189560a21c34a))
+
+
 ## v1.72.0 (2026-07-20)
 
 ### Bug Fixes
