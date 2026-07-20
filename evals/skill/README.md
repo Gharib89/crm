@@ -63,12 +63,23 @@ blocks CI. Run it on demand.
   through a GUID-shape guard (the efficacy counterpart of `baseline.md`, ADR 0016).
 - `runs/` — **gitignored** durable run dirs (`<UTC-ts>/<task-id>.json` + `report.md`); they
   carry live-org GUIDs and the org machine fingerprint, so they are never tracked (#588).
-- `paired.py` — the **paired walking skeleton** (#890, ADR 0028): `run_pair` runs one
-  do-task with-skill and bare against identical org state (resetting the org **between**
-  legs), and `agent_argv` bakes in the ADR guardrails (`--allowedTools`, `--max-turns`).
-  Its front door (`python -m evals.skill.paired`) builds a session venv, writes the
-  built-in Bash-sandbox settings into each leg's config dir, and emits a real skill-lift
-  number. See "Paired walking skeleton" below.
+- `paired.py` — the **paired behavioral eval** (#890, #892, ADR 0028): `run_pair` runs a
+  do-task with-skill and (when `paired`) bare against identical org state (resetting the
+  org **between** legs), and `agent_argv` bakes in the ADR guardrails (`--allowedTools`,
+  `--max-turns`). Its front door (`python -m evals.skill.paired`) selects a corpus via a
+  **preset** (`presets.py`), builds a session venv, writes the built-in Bash-sandbox
+  settings into each leg's config dir, emits a real skill-lift number, and prints an
+  advisory regression verdict (`regression.py`). See "Paired behavioral eval" below.
+- `presets.py` — the **run presets + task selection** (#892, ADR 0028 §Cadence): the
+  `PRESETS` registry (`full` = paired/whole corpus, `smoke` = skill-only/~8 tasks,
+  `regression-check` = skill-only/whole corpus) and `resolve_tasks`, which refines the
+  slice with a reproducible `--tasks <ids>` or a seeded `--sample N`. `k` is an
+  independent flag (default 1); `full`'s k≥3 is a *reportability* property, not a preset
+  override.
+- `regression.py` — **advisory regression detection** (#892, ADR 0028 §Regression):
+  `find_baseline` scans `run.json`s for the newest reportable run of the same series
+  (model × target × k), and `detect_regression` flags a >5 pp with-skill macro-pass-rate
+  drop or any task flipping `k/k → 0/k`. Advisory only — it never gates a run.
 - `sandbox.py` — the **OS-level network block** (#890, #906): Claude Code's built-in Bash
   sandbox (bubblewrap + socat, **no root**) confines each Bash command to the org host
   (`network.allowedDomains`) while the model driver keeps normal network, so `curl
@@ -85,15 +96,17 @@ blocks CI. Run it on demand.
 - `results/` — **gitignored** paired-run dirs (except the derived `matrix.md`); a reportable
   full run commits `run.json`/`trials.jsonl` by explicit `git add -f` (ADR 0028). ADR 0028 also
   specifies a committed `report.md` + derived `matrix.md` per reportable run; those generators
-  are not part of this walking skeleton (k=1 runs are never reportable) and land with the
-  full/reportable presets.
+  are not yet built (#886) — the run presets that produce reportable runs land in `presets.py`
+  (#892).
 - `test_runner_smoke.py` / `test_set_runner.py` / `test_target.py` / `test_both_runner.py` /
   `test_trace.py` / `test_record.py` / `test_review.py` / `test_isolation.py` /
-  `test_results.py` / `test_sandbox.py` / `test_paired.py` / `test_runner_caps.py` — offline
+  `test_results.py` / `test_sandbox.py` / `test_paired.py` / `test_runner_caps.py` /
+  `test_presets.py` / `test_regression.py` — offline
   smoke tests (parse tasks, dry-run isolation, set-level gating/aggregation, reachability
   classification, both-targets orchestration, trace parsing, run-record persistence, the
   review prompt/parse/guard, the Hake/results schema, the sandbox settings builder, the
-  paired-leg orchestration, and the wall-clock cap — all via stubs, no agent, no org).
+  paired-leg orchestration, the wall-clock cap, the preset/selection resolution, and the
+  baseline scan + advisory regression flags — all via stubs, no agent, no org).
 
 ## Task set & domain coverage
 
@@ -402,7 +415,7 @@ skill-fix suggestions.
 python -m evals.skill review --record        # judge + append the org-agnostic trend
 ```
 
-## Paired walking skeleton — real skill lift in one run (`paired.py`, #890, ADR 0028)
+## Paired behavioral eval — presets, k, selection, real skill lift (`paired.py`, #890, #892, ADR 0028)
 
 The counterfactual above measures lift **post-hoc**, one leg at a time, comparing two
 saved records. ADR 0028 makes the paired condition **canonical**: one do-task runs
@@ -411,9 +424,19 @@ inline. `paired.py` is the end-to-end thin slice of that machine.
 
 What it adds over the single-condition runner:
 
-- **Paired legs** — `run_pair` runs the task with-skill (real `crm skill install`) and
-  bare (skill absent), forwarding *identical* env/flags to both; the treatment differs by
-  exactly the skill install.
+- **Presets, k, and selection** (`presets.py`, #892) — a `--preset` fixes the conditions
+  and corpus slice: `full` (paired, whole corpus — the only *reportable* kind, and only at
+  `--k` ≥ 3), `smoke` (with-skill only, a seeded ~8-task slice, k=1), `regression-check`
+  (with-skill only, whole corpus). `--k` (default 1) is independent of the preset. Selection
+  refines the slice reproducibly: `--tasks <ids>` picks exactly those, `--sample N`
+  (+ `--seed`) takes a seeded subset; both override the preset's own slice.
+- **Paired legs** — `run_pair` runs the task with-skill (real `crm skill install`) and, on
+  a paired preset, bare (skill absent), forwarding *identical* env/flags to both; the
+  treatment differs by exactly the skill install. Skill-only presets skip the bare leg.
+- **Advisory regression** (`regression.py`, #892) — after the run, its with-skill numbers
+  are compared to the newest reportable baseline of the same series (model × target × k);
+  a >5 pp macro-pass-rate drop or any `k/k → 0/k` task flip is printed as a flag. It is
+  **advisory only** — it never changes the exit code.
 - **Org reset between legs** (the attribution keystone) — the org is reset to the task's
   clean pre-state **before each leg** (via the task's `cleanup` steps), so leg B can never
   inherit leg A's mutations.
@@ -450,10 +473,17 @@ What it adds over the single-condition runner:
 # under the explicit `--no-sandbox` bypass (unsafe). Run on native Linux: the built-in
 # network sandbox is unreliable on WSL2 (the preflight will abort there).
 D365_E2E=1 D365_E2E_PROFILE=agent-cloud \
-    python -m evals.skill.paired                          # k=1, records-create-verify
+    python -m evals.skill.paired --preset full --k 3      # reportable: whole corpus, paired, k=3
 
 D365_E2E=1 D365_E2E_PROFILE=agent-cloud \
-    python -m evals.skill.paired --k 3
+    python -m evals.skill.paired --preset smoke           # fast: seeded ~8 tasks, skill-only, k=1
+
+D365_E2E=1 D365_E2E_PROFILE=agent-cloud \
+    python -m evals.skill.paired --tasks records-create-verify   # one task (default preset: full)
+
+D365_E2E=1 D365_E2E_PROFILE=agent-cloud \
+    python -m evals.skill.paired --preset full --sample 5 --seed 7   # seeded 5-task subset
+
 python -m evals.skill.sandbox <org-host>  # live smoke: org reachable, web blocked (real claude -p)
 ```
 

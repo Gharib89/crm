@@ -40,14 +40,13 @@ from pathlib import Path
 from evals.skill import record as record_mod
 from evals.skill import target as target_mod
 from evals.skill import trace
+from evals.skill.presets import DEFAULT_SEED, PRESETS, resolve_tasks
+from evals.skill.regression import RegressionReport, detect_regression, find_baseline
 from evals.skill.results import RESULTS_ROOT, TrialRecord, aggregate_task, write_results
 from evals.skill.runner import RunError, RunResult, cleanup_org, run_task
 from evals.skill.sandbox import probe_enforcement, sandbox_settings
 from evals.skill.taskspec import parse_task_file
 
-#: The hand-written do-task the skeleton drives (a mutation-light, cloud do-task with a
-#: deterministic end-state + cleanup). Overridable with ``--task``.
-DEFAULT_TASK = Path(__file__).parent / "tasks" / "records-create-verify.md"
 DEFAULT_MODEL = "sonnet"
 #: Guardrails pinned by ADR 0028: the only tools the agent may use, and the turn cap.
 ALLOWED_TOOLS = "Bash,Read,Grep,Glob,Skill"
@@ -102,24 +101,28 @@ def run_pair(
     reset_org: Callable[[], None],
     run_one: Callable[..., RunResult] = run_task,
     k: int = 1,
+    paired: bool = True,
     transcripts_dir: Path | None = None,
     progress: Callable[[str], None] | None = None,
     **leg_kwargs: object,
 ) -> list[TrialRecord]:
-    """Run ``task_file`` with-skill and bare, k times each, resetting the org before each leg.
+    """Run ``task_file`` with-skill (and, when ``paired``, bare) k times each, resetting first.
 
     ``run_one`` (default :func:`runner.run_task`) is injectable so the orchestration is
     testable without a live org; ``reset_org`` is called **before every leg** so both legs
     start from identical, reseeded state (the attribution keystone). ``leg_kwargs`` (agent
     command, crm bin, wall-clock, sandbox wrap) are forwarded verbatim and identically to
-    both legs — the treatment differs by exactly the skill install. ``progress`` (if given)
-    is called with a human line as each leg starts/resolves — the front door routes it to
-    stderr so a long run (up to ``2·k`` agent trials) shows live movement. Returns the flat
-    list of per-leg :class:`~evals.skill.results.TrialRecord`s.
+    both legs — the treatment differs by exactly the skill install. When ``paired`` is
+    ``False`` (the smoke / regression-check presets) the **bare leg is skipped** — a
+    single-condition, with-skill-only run that has no lift to measure. ``progress`` (if
+    given) is called with a human line as each leg starts/resolves — the front door routes
+    it to stderr so a long run (up to ``2·k`` agent trials) shows live movement. Returns the
+    flat list of per-leg :class:`~evals.skill.results.TrialRecord`s.
     """
+    legs = (("skill", True), ("bare", False)) if paired else (("skill", True),)
     trials: list[TrialRecord] = []
     for trial in range(k):
-        for leg, install in (("skill", True), ("bare", False)):
+        for leg, install in legs:
             if progress is not None:
                 progress(f"trial {trial + 1}/{k} · {leg} leg · resetting org + running agent…")
             reset_org()
@@ -197,13 +200,39 @@ def build_reset_org(
 
 
 def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front door
-    parser = argparse.ArgumentParser(description="Paired skill-eval walking skeleton (#890).")
-    parser.add_argument("--task", default=str(DEFAULT_TASK), help="do-task spec to run")
+    parser = argparse.ArgumentParser(description="Paired skill-eval run: presets, k, selection.")
+    parser.add_argument(
+        "--preset",
+        choices=sorted(PRESETS),
+        default="full",
+        help="full (paired, whole corpus), smoke (skill-only, ~8 tasks), "
+        "regression-check (skill-only, whole corpus)",
+    )
     parser.add_argument(
         "--model", default=DEFAULT_MODEL, help=f"agent model (default {DEFAULT_MODEL})"
     )
-    parser.add_argument("--k", type=int, default=1, help="trials per leg (default 1)")
-    parser.add_argument("--preset", default="full", help="run preset stamped into run.json")
+    parser.add_argument(
+        "--k", type=int, default=1, help="trials per leg (default 1; a reportable full run is ≥3)"
+    )
+    parser.add_argument(
+        "--tasks",
+        default=None,
+        metavar="IDS",
+        help="comma-separated task ids to run (overrides the preset's corpus slice)",
+    )
+    parser.add_argument(
+        "--sample",
+        type=int,
+        default=None,
+        metavar="N",
+        help="run a seeded N-task subset (overrides the preset's corpus slice)",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=DEFAULT_SEED,
+        help=f"seed for --sample and the smoke slice (default {DEFAULT_SEED})",
+    )
     parser.add_argument(
         "--results-dir", default=str(RESULTS_ROOT), help="root under which <run-id>/ is written"
     )
@@ -213,6 +242,9 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
         help="don't write the sandbox settings (NOT ADR-compliant; for local wiring checks only)",
     )
     args = parser.parse_args(argv)
+    preset = PRESETS[args.preset]
+    only = [t.strip() for t in args.tasks.split(",")] if args.tasks else None
+    task_files = resolve_tasks(args.preset, only=only, sample=args.sample, seed=args.seed)
 
     if os.environ.get("D365_E2E") != "1":
         raise RunError(
@@ -225,15 +257,14 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
     active = target_mod.active_target()
     run_id = _make_run_id()
     print(
-        f"[paired] run {run_id}: task={Path(args.task).stem} model={args.model} "
-        f"target={active} host={host} k={args.k}",
+        f"[paired] run {run_id}: preset={args.preset} tasks={len(task_files)} model={args.model} "
+        f"target={active} host={host} k={args.k} paired={preset.paired}",
         file=sys.stderr,
     )
 
     session = Path(tempfile.mkdtemp(prefix="crm-eval-session-"))
     try:
         crm_bin = build_session_crm(repo_root, session)
-        reset_org = build_reset_org(args.task, crm_bin)
         leg_kwargs: dict[str, object] = {
             # shlex.join (not " ".join): runner._resolve_agent_cmd shlex.splits this back,
             # so join symmetrically to survive the roundtrip.
@@ -247,14 +278,23 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
             print(f"[paired] {msg}", file=sys.stderr, flush=True)
 
         def _go() -> list[TrialRecord]:
-            return run_pair(
-                args.task,
-                reset_org=reset_org,
-                k=args.k,
-                transcripts_dir=run_dir / "transcripts",
-                progress=_stderr,
-                **leg_kwargs,
-            )
+            # Each task carries its own cleanup, so its reset hook is built per task; both
+            # legs of a pair still share the one session venv + sandbox settings.
+            trials: list[TrialRecord] = []
+            for task_file in task_files:
+                _stderr(f"task {Path(task_file).stem}…")
+                trials.extend(
+                    run_pair(
+                        task_file,
+                        reset_org=build_reset_org(task_file, crm_bin),
+                        k=args.k,
+                        paired=preset.paired,
+                        transcripts_dir=run_dir / "transcripts",
+                        progress=_stderr,
+                        **leg_kwargs,
+                    )
+                )
+            return trials
 
         if args.no_sandbox:
             print("[paired] WARNING: --no-sandbox — outbound web is NOT blocked", file=sys.stderr)
@@ -287,27 +327,55 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
             "host": host,
             "k": args.k,
             "preset": args.preset,
-            "paired": True,
+            "paired": preset.paired,
+            # A selection narrowed the corpus → not the "whole corpus" a reportable run needs.
+            "subset": only is not None or args.sample is not None,
             "skill_sha": record_mod.skill_sha(repo_root),
         }
+        # Advisory regression: look up the baseline BEFORE this run's own result is written, so a
+        # reportable run can never select itself as its own baseline (series = model × target × k).
+        # Never gates — the exit code below stays purely the did-anything-pass signal.
+        baseline = find_baseline(args.results_dir, model=args.model, target=active, k=args.k)
         write_results(
             args.results_dir, run_id=run_id, meta=meta, trials=trials, aggregates=aggregates
         )
-        _print_summary(run_id, run_dir, aggregates)
+        _print_summary(run_id, run_dir, aggregates, paired=preset.paired)
+        _print_regression(detect_regression(aggregates, baseline, k=args.k))
         return 0 if all(a.pass_skill_rate > 0 for a in aggregates) else 1
     finally:
         shutil.rmtree(session, ignore_errors=True)
 
 
-def _print_summary(run_id: str, run_dir: Path, aggregates: list) -> None:  # pragma: no cover - live
-    print(f"\n=== paired skill-eval {run_id} ===")
+def _print_summary(
+    run_id: str, run_dir: Path, aggregates: list, *, paired: bool
+) -> None:  # pragma: no cover - live
+    print(f"\n=== skill-eval {run_id} ===")
     for a in aggregates:
-        gain = "N/A" if a.hake_gain is None else f"{a.hake_gain:+.2f}"
-        print(
-            f"  {a.task_id}: skill {a.pass_skill_rate:.0%} vs bare {a.pass_bare_rate:.0%}  "
-            f"→ lift {a.pass_skill_rate - a.pass_bare_rate:+.0%}  Hake gain {gain}"
-        )
+        if paired:
+            gain = "N/A" if a.hake_gain is None else f"{a.hake_gain:+.2f}"
+            print(
+                f"  {a.task_id}: skill {a.pass_skill_rate:.0%} vs bare {a.pass_bare_rate:.0%}  "
+                f"→ lift {a.pass_skill_rate - a.pass_bare_rate:+.0%}  Hake gain {gain}"
+            )
+        else:
+            # A single-condition (skill-only) run has no bare leg — no lift/Hake to report.
+            print(f"  {a.task_id}: skill {a.pass_skill_rate:.0%} ({a.passes_skill}/{a.k})")
     print(f"  results: {run_dir}/run.json")
+
+
+def _print_regression(report: RegressionReport) -> None:  # pragma: no cover - live
+    if report.baseline_run_id is None:
+        print("  regression: no reportable baseline for this series yet (advisory)")
+        return
+    verdict = "⚠ FLAGGED" if report.flagged else "ok"
+    drop = report.macro_drop_pp or 0.0
+    base = report.baseline_macro or 0.0
+    print(
+        f"  regression vs {report.baseline_run_id} [{verdict}, advisory]: with-skill macro "
+        f"{report.current_macro:.0%} vs baseline {base:.0%} (drop {drop:+.1f} pp)"
+    )
+    if report.flipped_tasks:
+        print(f"    all-pass→all-fail flips: {', '.join(report.flipped_tasks)}")
 
 
 if __name__ == "__main__":  # pragma: no cover

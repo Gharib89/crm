@@ -53,6 +53,11 @@ class TestReportable:
         # a bare-only smoke/regression run has no lift → never reportable.
         assert is_reportable(preset="smoke", paired=False, k=3) is False
 
+    def test_subset_full_run_not_reportable(self):
+        # a full paired k≥3 run narrowed by --tasks/--sample is not the whole corpus → not
+        # reportable, so it can't pollute the baseline pool (#892).
+        assert is_reportable(preset="full", paired=True, k=3, subset=True) is False
+
 
 class TestAggregateTask:
     def test_rates_and_gain_over_k_trials(self):
@@ -136,3 +141,16 @@ class TestWriteResults:
             aggregates=[],
         )
         assert json.loads((run_dir / "run.json").read_text())["reportable"] is False
+
+    def test_reportable_defaults_false_when_subset_flag_omitted(self, tmp_path):
+        # Same fail-safe: a full paired k=3 run whose meta forgets `subset` is treated as a
+        # subset (non-reportable) rather than silently quotable (#892).
+        run_dir = write_results(
+            tmp_path,
+            run_id="r1",
+            meta={"preset": "full", "paired": True, "k": 3},  # no "subset" key
+            trials=[],
+            aggregates=[],
+        )
+        report = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+        assert report["reportable"] is False

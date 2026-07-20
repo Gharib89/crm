@@ -59,6 +59,24 @@ def test_run_pair_k_produces_k_trials_per_leg():
     assert sorted(t.trial for t in trials if t.leg == "skill") == [0, 1, 2]
 
 
+def test_run_pair_skips_bare_leg_when_not_paired():
+    events: list[str] = []
+
+    def fake_run_one(task_file, *, install_skill, **kw):
+        events.append("skill" if install_skill else "bare")
+        return _fake_result("t1", passed=True)
+
+    def fake_reset():
+        events.append("reset")
+
+    # smoke / regression-check presets run with-skill only — the bare leg is skipped, so
+    # only the skill leg is reset + run (a single-condition run has no lift to measure).
+    trials = run_pair("t1.md", run_one=fake_run_one, reset_org=fake_reset, k=2, paired=False)
+    assert events == ["reset", "skill", "reset", "skill"]
+    assert {t.leg for t in trials} == {"skill"}
+    assert len(trials) == 2
+
+
 def test_run_pair_marks_capped_leg():
     def fake_run_one(task_file, *, install_skill, **kw):
         # skill leg overruns the wall clock; bare leg completes.
