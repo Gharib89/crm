@@ -120,7 +120,10 @@ def _read_feasibility_answer(work_dir: Path) -> Any:
     gradeable answer.
     """
     try:
-        return json.loads((work_dir / FEASIBILITY_ANSWER_FILE).read_text(encoding="utf-8"))
+        # utf-8-sig: the agent (an external writer) authors this file, so tolerate a BOM
+        # rather than misgrade a BOM-prefixed answer as schema-invalid (coding-standards
+        # §Encoding — utf-8-sig for externally-authored reads).
+        return json.loads((work_dir / FEASIBILITY_ANSWER_FILE).read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError):
         return None
 

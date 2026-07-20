@@ -508,7 +508,7 @@ def test_feasibility_task_shape():
     assert spec.query == [] and spec.expect == {}
 
 
-def test_feasibility_kind_defaults_to_do(tmp_path):
+def test_feasibility_kind_defaults_to_do():
     # An existing task without a `kind` field stays a do-task (backward compatible).
     spec = parse_task_file(TASKS_DIR / "records-create-verify.md")
     assert spec.kind == "do"

@@ -3,8 +3,8 @@ id: feasibility-bulk-load-verify
 domain: bulk
 # Feasibility task (#891): the agent is NOT asked to mutate the org — it judges whether
 # the request is achievable with the `crm` CLI and emits a structured JSON answer, which
-# is graded field-by-field against `answer_key`. Host-agnostic: bulk load + read-back
-# works on both targets (cloud CreateMultiple / on-prem `$batch`), so `either`.
+# is graded field-by-field against `answer_key`. Host-agnostic: `crm data import` routes
+# bulk writes through the `$batch` endpoint on both cloud and on-prem, so `either`.
 target: either
 kind: feasibility
 # The graded answer key. `cli_achievable` is an exact match (the binary hinges on it);
