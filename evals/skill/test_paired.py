@@ -71,9 +71,7 @@ def test_run_pair_skips_bare_leg_when_not_paired():
 
     # smoke / regression-check presets run with-skill only — the bare leg is skipped, so
     # only the skill leg is reset + run (a single-condition run has no lift to measure).
-    trials = run_pair(
-        "t1.md", run_one=fake_run_one, reset_org=fake_reset, k=2, paired=False
-    )
+    trials = run_pair("t1.md", run_one=fake_run_one, reset_org=fake_reset, k=2, paired=False)
     assert events == ["reset", "skill", "reset", "skill"]
     assert {t.leg for t in trials} == {"skill"}
     assert len(trials) == 2

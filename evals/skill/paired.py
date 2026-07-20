@@ -200,7 +200,7 @@ def build_reset_org(
 
 
 def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front door
-    parser = argparse.ArgumentParser(description="Paired skill-eval run: presets, k, selection (#892).")
+    parser = argparse.ArgumentParser(description="Paired skill-eval run: presets, k, selection.")
     parser.add_argument(
         "--preset",
         choices=sorted(PRESETS),

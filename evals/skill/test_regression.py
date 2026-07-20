@@ -105,7 +105,9 @@ def test_no_baseline_flags_nothing(tmp_path):
 
 def test_macro_drop_over_five_pp_flags(tmp_path):
     _write_run(
-        tmp_path, "20260101T000000Z-base", reportable=True,
+        tmp_path,
+        "20260101T000000Z-base",
+        reportable=True,
         aggregates=[_agg("a", k=3, passes_skill=3), _agg("b", k=3, passes_skill=3)],  # 100%
     )
     baseline = find_baseline(tmp_path, model="sonnet", target="cloud", k=3)
@@ -119,7 +121,9 @@ def test_macro_drop_over_five_pp_flags(tmp_path):
 def test_macro_drop_within_five_pp_does_not_flag(tmp_path):
     # baseline 100% (3 tasks), current one task 2/3 → macro 88.9%, drop 11pp... build a small drop:
     _write_run(
-        tmp_path, "20260101T000000Z-base", reportable=True,
+        tmp_path,
+        "20260101T000000Z-base",
+        reportable=True,
         aggregates=[_agg(f"t{i}", k=20, passes_skill=20) for i in range(10)],  # 100%
     )
     baseline = find_baseline(tmp_path, model="sonnet", target="cloud", k=20)
@@ -134,7 +138,9 @@ def test_macro_drop_within_five_pp_does_not_flag(tmp_path):
 
 def test_all_pass_to_all_fail_flip_flags(tmp_path):
     _write_run(
-        tmp_path, "20260101T000000Z-base", reportable=True,
+        tmp_path,
+        "20260101T000000Z-base",
+        reportable=True,
         aggregates=[_agg("a", k=3, passes_skill=3), _agg("b", k=3, passes_skill=3)],
     )
     baseline = find_baseline(tmp_path, model="sonnet", target="cloud", k=3)
@@ -147,7 +153,9 @@ def test_all_pass_to_all_fail_flip_flags(tmp_path):
 
 def test_partial_drop_is_not_a_flip(tmp_path):
     _write_run(
-        tmp_path, "20260101T000000Z-base", reportable=True,
+        tmp_path,
+        "20260101T000000Z-base",
+        reportable=True,
         aggregates=[_agg("a", k=3, passes_skill=3)],
     )
     baseline = find_baseline(tmp_path, model="sonnet", target="cloud", k=3)
@@ -158,11 +166,13 @@ def test_partial_drop_is_not_a_flip(tmp_path):
 
 def test_flip_ignores_tasks_absent_from_baseline(tmp_path):
     _write_run(
-        tmp_path, "20260101T000000Z-base", reportable=True,
+        tmp_path,
+        "20260101T000000Z-base",
+        reportable=True,
         aggregates=[_agg("a", k=3, passes_skill=3)],
     )
     baseline = find_baseline(tmp_path, model="sonnet", target="cloud", k=3)
-    current = [_agg("a", k=3, passes_skill=3), _agg("new", k=3, passes_skill=0)]  # "new" not in base
+    current = [_agg("a", k=3, passes_skill=3), _agg("new", k=3, passes_skill=0)]  # "new": no base
     report = detect_regression(current, baseline, k=3)
     # "new" is all-fail but has no baseline all-pass to flip *from* → never a flip. (The macro
     # rate still drops from the extra failing task; that is the macro flag's job, not the flip's.)
