@@ -22,8 +22,16 @@ second gate: it assumes nothing the author agent claimed, and re-verifies.
 ## Invocation
 
 - `/merge-gate <n>` — gate one PR.
-- `/merge-gate` — **sweep**: every open, non-draft PR carrying neither
-  `gate-passed` nor `gate-failed`, oldest first, one consolidated report at the end.
+- `/merge-gate` — **sweep**: `scripts/sweep-list.sh` prints the queue (every
+  open, non-draft PR carrying neither `gate-passed` nor `gate-failed`, oldest
+  first); work it in order, one consolidated report at the end.
+
+## Scripts
+
+`scripts/` holds the gate's deterministic steps; each prints a one-screen
+summary and its exit code is the completion criterion. When a step names a
+script, run it instead of re-deriving the calls it wraps — scripts gather
+evidence and encode the traps; **judging** the evidence stays with you.
 
 Every comment posted to the PR starts with:
 
@@ -35,15 +43,18 @@ Every comment posted to the PR starts with:
 
 ### 1 · Preflight
 
-- Skip drafts and PRs whose head received a push in the last ~15 minutes (the
-  author agent may still be working); note the skip.
-- Read the PR: body, comments (including the author agent's merge summary and its
-  per-reviewer dispositions — Copilot and CodeRabbit), linked issue + brief,
-  diff stat, labels. A CodeRabbit thread with **no disposition** (neither a fix
-  nor a decline-with-evidence reply) is a gap the author agent left — treat it
-  as a review finding for step 3.
-- Read CI (`gh pr view <n> --json statusCheckRollup,mergeable`). **Red CI or a
-  merge conflict is fix item #1**, not a blocker — the gate fixes in place.
+- Run `scripts/gate-preflight.sh <n>` — one JSON blob: PR meta + body, labels,
+  linked issues, CI check runs, a `pushed_last_15min` flag, and the CodeRabbit
+  threads left with **no disposition** (neither a fix nor a
+  decline-with-evidence reply).
+- Skip drafts and PRs with `pushed_last_15min: true` (the author agent may
+  still be working); note the skip.
+- Read the PR comments yourself: the author agent's merge summary and its
+  per-reviewer dispositions (Copilot and CodeRabbit), plus the linked issue +
+  brief. Each undispositioned CodeRabbit thread the script surfaced is a gap
+  the author agent left — treat it as a review finding for step 3.
+- **Red CI or a merge conflict is fix item #1**, not a blocker — the gate fixes
+  in place.
 
 ### 2 · Checkout
 
@@ -73,11 +84,12 @@ evidence. Every finding gets a one-line disposition for the verdict comment.
 ### 4 · Integration test
 
 - **D365-touching change** → follow the `live-e2e` skill: run the PR's new/changed
-  e2e tests plus the existing e2e tests for the touched command groups. Select by
-  the group's test **files** (`D365_E2E=1 pytest -m e2e crm/tests/e2e/test_<group>*.py`,
-  worktree-code recipe) — `@covers(...)` stamps are a coverage registry, not
-  pytest markers, so `-k`/`-m` cannot select on them; confirm the touched verbs
-  appear in the selected files' `@covers` strings before trusting the run. Run on
+  e2e tests plus the existing e2e tests for the touched command groups.
+  `scripts/select-e2e.sh` maps the diff to the group test **files** and prints
+  their `@covers` strings (`@covers(...)` stamps are a coverage registry, not
+  pytest markers, so `-k`/`-m` cannot select on them) — confirm the touched
+  verbs appear in those strings, then run
+  `D365_E2E=1 pytest -m e2e <files>` (worktree-code recipe). Run on
   **every live target the touched commands support** — a single-target green has guessed the
   wrong capability gate before. Pin `--profile`, confirm the org via
   `crm connection whoami`, and quote both in the verdict. A target unreachable
@@ -91,8 +103,9 @@ evidence. Every finding gets a one-line disposition for the verdict comment.
 
 Fix **scoped** items directly on the PR branch: CI red, drift-checklist failures,
 valid review findings, missing docs-sync artifacts (use the project's docs-sync
-subagent for those). Re-run the project's local gate (the checks CI runs — tests,
-type-check, docs build, secret scan) green before every push.
+subagent for those). Re-run the project's local gate green before every push —
+the `ship` skill's `scripts/local-gate.sh` (sibling skill dir) runs the full
+CI-mirrored set and prints only the failing lines.
 
 A **design-level** problem — wrong approach, contract change the issue never
 asked for, a diff that needs re-scoping — is a **finding, not a fix**: record it,
@@ -117,20 +130,13 @@ bulk-resolved via `@coderabbitai resolve` before the verdict):
    **exactly one** Copilot re-request, and only when it **significantly rewrote**
    the PR (a scoped lint/format/typo fix does not qualify). Otherwise Copilot's
    round-1 threads are dispositioned once, as in the ship flow. The exception is
-   **one per PR, not per gate run** — before spending it, confirm no prior gate
-   re-request already exists (`gh pr view <n> --json reviews` / a prior gate
-   verdict): a re-run or sweep must not re-enter this branch. To spend it,
-   re-request via REST (the `gh pr edit --add-reviewer copilot` path
-   fails on this repo):
-
-   ```bash
-   echo '{"reviewers":["copilot-pull-request-reviewer[bot]"]}' | \
-     gh api -X POST repos/Gharib89/crm/pulls/<n>/requested_reviewers --input -
-   ```
-
-   Then verify `requested_reviewers` actually populated — a bare HTTP 201 can
-   silently no-op (passing the display name `"Copilot"` instead of the bot login
-   is the classic trap).
+   **one per PR, not per gate run**. Spend it via
+   `scripts/rerequest-copilot.sh <n>` — it refuses when the re-request was
+   already spent or is still pending (so a re-run or sweep can't re-enter this
+   branch), uses the REST path with the exact bot login (the
+   `gh pr edit --add-reviewer` path and the display name `"Copilot"` both fail
+   on this repo), and verifies `requested_reviewers` actually populated — a
+   bare HTTP 201 can silently no-op.
 3. **Converged = CodeRabbit quiet on the latest push + every Copilot thread
    dispositioned** (declined-with-evidence counts as dispositioned). CodeRabbit's
    auto-rounds are free — drive them to quiet. If CodeRabbit stays substantive
@@ -167,10 +173,13 @@ consolidated report: per-PR verdict line + the combined issues list.
 
 ## Model tiers
 
-Same rule as `ship`: judgment on the strong tier, mechanics on the cheap one.
-Poll loops and file mapping → haiku; running gates/tests and mechanical fixes →
-sonnet; finding triage and the drift checklist → opus (or nearest available).
-Tag every subagent explicitly.
+Same rule as `ship`: judgment on the strong tier, mechanics on the cheap one —
+and no model at all where a script covers the step. Scripts gather the evidence
+(preflight, genericity scan, e2e selection); judge their output **inline** on
+the strong tier — an evidence-gathering subagent adds relay loss for nothing.
+File-mapping sweeps → haiku; running live tests and mechanical fixes → sonnet;
+finding triage and the drift checklist → opus (or nearest available). Tag every
+subagent explicitly.
 
 ## Reference files
 

@@ -24,7 +24,9 @@ In rough order of impact:
   should.
 - **Project every `gh` / CLI / API call.** Pipe `gh … --json <only-the-fields>
   --jq '…'`. A bare `gh pr view --json` serializes the entire PR object (repo
-  metadata twice, every URL field) — kilobytes of noise from one call.
+  metadata twice, every URL field) — kilobytes of noise from one call. The
+  `scripts/` wrappers already project theirs — prefer them where a phase names
+  one.
 - **Investigate inside the worktree from the start** (phase 0 first), so you never
   read a file in the main checkout and then re-read it in the worktree to edit it.
 - **Trust Edit/Write — don't verify-Read after a successful edit.** The tool
@@ -32,12 +34,13 @@ In rough order of impact:
   to "confirm" the change is pure cost.
 - **Targeted test nodes during the loop; full suite only at the local gate.** Name
   the nodes you touched; re-running the whole suite every cycle is slow noise.
-- **Delegate the noisy verification *runs*, not just reads.** The full local gate
-  (phase 5), live integration tests (phase 3), and CI polling (phase 8) each dump
-  volumes of output. Run them in a cheap-tier subagent (model-tier table in
-  SKILL.md) that returns a pass/fail summary plus only the failing lines — never
-  let raw suite / build / CI logs land in the main thread. (A single targeted
-  test node's output is already small — run it inline.)
+- **Delegate the noisy verification *runs*, not just reads.** Live integration
+  tests (phase 3) dump volumes of output — run them in a cheap-tier subagent
+  (model-tier table in SKILL.md) that returns a pass/fail summary plus only the
+  failing lines. The local gate (phase 5) and CI polling (phases 7/8) are
+  already scripts that project their own output — run those inline, no
+  subagent. (A single targeted test node's output is already small — run it
+  inline too.)
 - **One scratch file for the design/plan** (it survives a mid-run context
   summary); don't restate the same summary across turns.
 

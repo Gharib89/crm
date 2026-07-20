@@ -26,6 +26,30 @@ refer back to this class by name.
 
 When in doubt between `code` and `docs`, treat it as `code` and write the test.
 
+## Phase 2 — delegate execution, keep judgment
+
+Phase 2 fuses two kinds of work. **Judgment** — the classification above, the
+lane keys, spec interpretation, external-claim probes, design choices — stays in
+the main thread on the judgment tier. **Execution** — writing the failing test,
+making it green, refactoring, all from a plan the main thread already set — is
+mechanical-tier work: delegate it to ONE sonnet subagent when the plan is
+settled and the change is bounded (small lane, sharp-brief fixes). Keep it
+inline when the plan itself is still uncertain — a plan/implement feedback loop
+across a subagent boundary loses too much. The phase-4 Standards review (opus,
+full diff) is the safety net either way.
+
+Hand the subagent: the worktree path, the plan, the test command, and the repo
+conventions the edit needs. Require back: a diff summary, the test nodes
+added/updated, and a **structured deviations list** — it lands verbatim in the
+PR body, and a subagent that fixes-and-forgets loses it. Two tripwires in its
+prompt:
+
+- Every Edit/Write path carries the **worktree prefix** — an absolute
+  main-checkout path silently edits the wrong tree. After its first edit,
+  `git -C <main-checkout> status` must be clean.
+- It runs only the **targeted test nodes**; the phase-5 gate stays with the
+  orchestrator.
+
 ## Verify the spec's external-system claims before building on them
 
 If the issue asserts a *causal mechanism* about something outside the code — an
