@@ -3,7 +3,7 @@
 # nor gate-failed, oldest first. Prints JSON [{number, title, created_at, author}].
 #
 #   scripts/sweep-list.sh
-set -u
+set -uo pipefail
 
 api() { gh api "$@" || { sleep 2; gh api "$@"; }; }
 

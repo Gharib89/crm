@@ -6,14 +6,14 @@
 # (a bare HTTP 201 can silently no-op).
 #
 #   scripts/rerequest-copilot.sh <pr>
-set -u
+set -uo pipefail
 PR="${1:?usage: rerequest-copilot.sh <pr>}"
 BOT="copilot-pull-request-reviewer[bot]"
 
 api() { gh api "$@" || { sleep 2; gh api "$@"; }; }
 
 COUNT=$(api "repos/{owner}/{repo}/pulls/$PR/reviews" --paginate \
-  | jq -s --arg b "$BOT" '[add[]? | select(.user.login == $b)] | length')
+  | jq -s --arg b "$BOT" '[add[]? | select(.user.login == $b)] | length') || exit 1
 if [ "$COUNT" -ge 2 ]; then
   echo "refused: $COUNT Copilot reviews exist — the one gate re-request was already spent" >&2
   exit 1

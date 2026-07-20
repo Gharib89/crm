@@ -14,7 +14,7 @@
 # or mergeable_state=dirty (conflicted — merge-ref checks will never start, so
 # waiting is pointless; resolve the conflict instead).
 # done=false (exit 3): the window closed first — re-run to keep waiting.
-set -u
+set -uo pipefail
 PR="${1:?usage: poll-pr.sh <pr> [--timeout s] [--interval s] [--await-review login]}"
 shift
 TIMEOUT=480; INTERVAL=20; AWAIT=""
@@ -35,8 +35,8 @@ while :; do
   SHA=$(jq -r .head.sha <<<"$PRJ")
   MSTATE=$(jq -r '.mergeable_state // "unknown"' <<<"$PRJ")
   CHECKS=$(api "repos/{owner}/{repo}/commits/$SHA/check-runs" --paginate \
-    | jq -s '[.[].check_runs[] | {name, status, conclusion}]')
-  ALL_REVIEWS=$(api "repos/{owner}/{repo}/pulls/$PR/reviews" --paginate | jq -s 'add // []')
+    | jq -s '[.[].check_runs[] | {name, status, conclusion}]') || exit 1
+  ALL_REVIEWS=$(api "repos/{owner}/{repo}/pulls/$PR/reviews" --paginate | jq -s 'add // []') || exit 1
   REVIEWS=$(jq --arg sha "$SHA" \
     '[.[] | select(.commit_id == $sha) | {login: .user.login, state}]' <<<"$ALL_REVIEWS")
 

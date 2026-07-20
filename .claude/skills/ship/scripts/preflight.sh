@@ -6,7 +6,7 @@
 #   scripts/preflight.sh <issue>
 #
 # Prints JSON {actionable, reasons: []}. Exit 0 = actionable, 1 = stop and report.
-set -u
+set -uo pipefail
 N="${1:?usage: preflight.sh <issue>}"
 
 api() { gh api "$@" || { sleep 2; gh api "$@"; }; }
@@ -24,12 +24,12 @@ PRS=$(api "repos/{owner}/{repo}/issues/$N/timeline" --paginate \
   | jq -s '[.[][] | select(.event == "cross-referenced")
             | .source.issue | select(.pull_request != null)
             | {number, state, merged: (.pull_request.merged_at != null)}]
-           | unique_by(.number)')
+           | unique_by(.number)') || exit 1
 LIVE=$(jq -c '[.[] | select(.state == "open" or .merged) | .number]' <<<"$PRS")
 [ "$LIVE" != "[]" ] && REASONS+=("existing open/merged PR(s): $LIVE")
 
 # Remote branch already pushed for this issue (…-<issue> naming convention).
-BR=$(git ls-remote --heads origin "*-$N" | awk '{print $2}' | sed 's|refs/heads/||' | paste -sd, -)
+BR=$(git ls-remote --heads origin "*-$N" | awk '{print $2}' | sed 's|refs/heads/||' | paste -sd, -) || exit 1
 [ -n "$BR" ] && REASONS+=("remote branch exists: $BR")
 
 if [ "${#REASONS[@]}" -eq 0 ]; then

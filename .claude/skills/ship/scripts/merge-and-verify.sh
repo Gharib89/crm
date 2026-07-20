@@ -8,7 +8,7 @@
 #
 # The squash subject is "<PR title> (#<pr>)" — release tooling reads it, so the
 # PR title must already be the Conventional-Commit line.
-set -u
+set -uo pipefail
 PR="${1:?usage: merge-and-verify.sh <pr> [issue]}"
 ISSUE="${2:-}"
 
@@ -27,7 +27,9 @@ MERGED=$(api "repos/{owner}/{repo}/pulls/$PR" | jq -r .merged)
 [ "$MERGED" = "true" ] \
   || { echo '{"merged": false, "error": "post-merge verify failed: PR not merged"}'; exit 1; }
 
-api -X DELETE "repos/{owner}/{repo}/git/refs/heads/$BRANCH" >/dev/null 2>&1 || true
+# May legitimately 422 if GitHub's auto-delete already removed the branch.
+BRANCH_DELETED=true
+api -X DELETE "repos/{owner}/{repo}/git/refs/heads/$BRANCH" >/dev/null 2>&1 || BRANCH_DELETED=false
 
 ISSUE_STATE=null
 if [ -n "$ISSUE" ]; then
@@ -41,5 +43,7 @@ if [ -n "$ISSUE" ]; then
   ISSUE_STATE="\"$STATE\""
 fi
 
-jq -n --arg subject "$TITLE (#$PR)" --arg branch "$BRANCH" --argjson issue_state "$ISSUE_STATE" \
-  '{merged: true, squash_subject: $subject, remote_branch_deleted: $branch, issue_state: $issue_state}'
+jq -n --arg subject "$TITLE (#$PR)" --arg branch "$BRANCH" \
+  --argjson deleted "$BRANCH_DELETED" --argjson issue_state "$ISSUE_STATE" \
+  '{merged: true, squash_subject: $subject, branch: $branch,
+    remote_branch_deleted: $deleted, issue_state: $issue_state}'

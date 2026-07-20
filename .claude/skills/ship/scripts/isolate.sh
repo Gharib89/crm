@@ -10,7 +10,10 @@ N="${3:?usage: isolate.sh <type> <slug> <issue>}"
 BRANCH="$TYPE/$SLUG-$N"
 
 ROOT=$(git rev-parse --show-toplevel) || exit 1
-git -C "$ROOT" fetch origin --quiet
+git -C "$ROOT" fetch origin --quiet || {
+  echo "git fetch failed — refusing to branch off a possibly-stale default" >&2
+  exit 1
+}
 DEFAULT=$(git -C "$ROOT" symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)
 
 git -C "$ROOT" rev-parse --verify -q "refs/heads/$BRANCH" >/dev/null && {
@@ -19,5 +22,6 @@ git -C "$ROOT" rev-parse --verify -q "refs/heads/$BRANCH" >/dev/null && {
 }
 
 WT="$ROOT/.claude/worktrees/$SLUG-$N"
+mkdir -p "$ROOT/.claude/worktrees"
 git -C "$ROOT" worktree add -b "$BRANCH" "$WT" "$DEFAULT" >/dev/null || exit 1
 echo "$WT"

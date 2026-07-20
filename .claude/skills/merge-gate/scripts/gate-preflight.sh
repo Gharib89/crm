@@ -8,22 +8,22 @@
 #
 # reviewThreads is GraphQL-only; gh's GraphQL can flake 401 once mid-session,
 # so every call retries once.
-set -u
+set -uo pipefail
 PR="${1:?usage: gate-preflight.sh <pr>}"
 
 api() { gh api "$@" || { sleep 2; gh api "$@"; }; }
 
 PRJ=$(api "repos/{owner}/{repo}/pulls/$PR") || exit 1
 SHA=$(jq -r .head.sha <<<"$PRJ")
-REPO=$(api "repos/{owner}/{repo}" | jq -r .full_name)
+REPO=$(api "repos/{owner}/{repo}" | jq -r .full_name) || exit 1
 OWNER=${REPO%/*}; NAME=${REPO#*/}
 
-HEAD_DATE=$(api "repos/{owner}/{repo}/commits/$SHA" | jq -r .commit.committer.date)
+HEAD_DATE=$(api "repos/{owner}/{repo}/commits/$SHA" | jq -r .commit.committer.date) || exit 1
 NOW=$(date -u +%s); PUSHED=$(date -d "$HEAD_DATE" +%s)
 RECENT=$((NOW - PUSHED < 900))
 
 CHECKS=$(api "repos/{owner}/{repo}/commits/$SHA/check-runs" --paginate \
-  | jq -s '[.[].check_runs[] | {name, status, conclusion}]')
+  | jq -s '[.[].check_runs[] | {name, status, conclusion}]') || exit 1
 
 # shellcheck disable=SC2016  # the $vars are GraphQL variables, not shell
 THREADS=$(api graphql -f query='
@@ -37,7 +37,7 @@ THREADS=$(api graphql -f query='
     | select(.isResolved | not)
     | select(.comments.nodes[0].author.login == "coderabbitai")
     | select([.comments.nodes[1:][] | .author.login] | any(. != "coderabbitai") | not)
-    | {path, excerpt: (.comments.nodes[0].body | split("\n")[0][0:120])}]')
+    | {path, excerpt: (.comments.nodes[0].body | split("\n")[0][0:120])}]') || exit 1
 
 jq -n \
   --argjson pr "$(jq '{number, title, draft, mergeable_state,
