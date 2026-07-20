@@ -318,7 +318,10 @@ def evaluate_feasibility(data: Any, answer_key: dict[str, Any]) -> tuple[bool, s
                 needle = str(item).lower()
                 if not any(needle in entry for entry in emitted):
                     return False, f"{key}: missing required item {item!r} (recall)"
-        elif got != want:
+        # Exact match on scalars — and a strict one: Python's ``bool ⊆ int`` makes
+        # ``True == 1``, so guard the type too, else an agent emitting ``"cli_achievable": 1``
+        # would pass a field the design calls an exact match (the one the binary pivots on).
+        elif isinstance(want, bool) != isinstance(got, bool) or got != want:
             return False, f"{key}: expected {want!r}, got {got!r}"
 
     return True, "all answer-key fields matched"

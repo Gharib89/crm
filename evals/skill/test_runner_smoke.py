@@ -524,6 +524,13 @@ def test_evaluate_feasibility_scalar_exact_match():
     assert not ok and "cli_achievable" in reason
 
 
+def test_evaluate_feasibility_bool_is_type_strict():
+    # Python's `bool ⊆ int` makes `True == 1`; the pivot field must not accept `1` for
+    # `true`, or the "exact match" binary is loose exactly where it matters.
+    ok, reason = evaluate_feasibility({"cli_achievable": 1}, {"cli_achievable": True})
+    assert not ok and "cli_achievable" in reason
+
+
 def test_evaluate_feasibility_list_recall_all_present():
     data = {"required_commands": ["crm data import accounts x.jsonl", "crm query odata accounts"]}
     ok, _ = evaluate_feasibility(data, {"required_commands": ["data import", "query odata"]})

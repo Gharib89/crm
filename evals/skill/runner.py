@@ -124,7 +124,10 @@ def _read_feasibility_answer(work_dir: Path) -> Any:
         # rather than misgrade a BOM-prefixed answer as schema-invalid (coding-standards
         # §Encoding — utf-8-sig for externally-authored reads).
         return json.loads((work_dir / FEASIBILITY_ANSWER_FILE).read_text(encoding="utf-8-sig"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        # UnicodeDecodeError (a ValueError, not an OSError) covers an agent-authored file
+        # with invalid UTF-8 bytes — an untrusted external writer, so grade it schema-invalid
+        # rather than crash run_task.
         return None
 
 

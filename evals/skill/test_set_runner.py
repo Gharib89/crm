@@ -60,9 +60,8 @@ def _specs():
 
 
 def test_set_task_spec_count():
-    # AC1 allows ~12–15 specs; pin the actual counts so an accidental task removal fails
-    # CI instead of silently passing the lower end of the band. Three deterministic-or-not
-    # kinds are counted apart: `do` predicate tasks scored on org state (14), `feasibility`
+    # Pin the actual counts so an accidental task removal fails CI. 17 specs total, three
+    # kinds counted apart: `do` predicate tasks scored on org state (14), `feasibility`
     # tasks scored field-by-field on an answer key (#891, 1), and diagnostic tasks scored
     # by the --analyze pass (#572, 2: `trial-import-diagnosis` + `diagnostic-data-quality`).
     specs = _specs()
