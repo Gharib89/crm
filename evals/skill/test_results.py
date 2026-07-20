@@ -141,3 +141,15 @@ class TestWriteResults:
             aggregates=[],
         )
         assert json.loads((run_dir / "run.json").read_text())["reportable"] is False
+
+    def test_reportable_defaults_false_when_subset_flag_omitted(self, tmp_path):
+        # Same fail-safe: a full paired k=3 run whose meta forgets `subset` is treated as a
+        # subset (non-reportable) rather than silently quotable (#892).
+        run_dir = write_results(
+            tmp_path,
+            run_id="r1",
+            meta={"preset": "full", "paired": True, "k": 3},  # no "subset" key
+            trials=[],
+            aggregates=[],
+        )
+        assert json.loads((run_dir / "run.json").read_text())["reportable"] is False

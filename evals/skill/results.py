@@ -143,7 +143,7 @@ def write_results(
         k=int(meta.get("k", 1)),
         # Same fail-safe default: a run that omits the flag is treated as a subset (never
         # reportable) rather than silently quotable.
-        subset=bool(meta.get("subset", False)),
+        subset=bool(meta.get("subset", True)),
     )
     run_json = {
         "run_id": run_id,

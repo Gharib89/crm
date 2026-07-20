@@ -332,28 +332,34 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
             "subset": only is not None or args.sample is not None,
             "skill_sha": record_mod.skill_sha(repo_root),
         }
+        # Advisory regression: look up the baseline BEFORE this run's own result is written, so a
+        # reportable run can never select itself as its own baseline (series = model × target × k).
+        # Never gates — the exit code below stays purely the did-anything-pass signal.
+        baseline = find_baseline(args.results_dir, model=args.model, target=active, k=args.k)
         write_results(
             args.results_dir, run_id=run_id, meta=meta, trials=trials, aggregates=aggregates
         )
-        _print_summary(run_id, run_dir, aggregates)
-        # Advisory regression: compare with-skill numbers to the newest reportable baseline of
-        # the same series (model × target × k). Never gates — the exit code stays purely the
-        # did-anything-pass signal below.
-        baseline = find_baseline(args.results_dir, model=args.model, target=active, k=args.k)
+        _print_summary(run_id, run_dir, aggregates, paired=preset.paired)
         _print_regression(detect_regression(aggregates, baseline, k=args.k))
         return 0 if all(a.pass_skill_rate > 0 for a in aggregates) else 1
     finally:
         shutil.rmtree(session, ignore_errors=True)
 
 
-def _print_summary(run_id: str, run_dir: Path, aggregates: list) -> None:  # pragma: no cover - live
-    print(f"\n=== paired skill-eval {run_id} ===")
+def _print_summary(
+    run_id: str, run_dir: Path, aggregates: list, *, paired: bool
+) -> None:  # pragma: no cover - live
+    print(f"\n=== skill-eval {run_id} ===")
     for a in aggregates:
-        gain = "N/A" if a.hake_gain is None else f"{a.hake_gain:+.2f}"
-        print(
-            f"  {a.task_id}: skill {a.pass_skill_rate:.0%} vs bare {a.pass_bare_rate:.0%}  "
-            f"→ lift {a.pass_skill_rate - a.pass_bare_rate:+.0%}  Hake gain {gain}"
-        )
+        if paired:
+            gain = "N/A" if a.hake_gain is None else f"{a.hake_gain:+.2f}"
+            print(
+                f"  {a.task_id}: skill {a.pass_skill_rate:.0%} vs bare {a.pass_bare_rate:.0%}  "
+                f"→ lift {a.pass_skill_rate - a.pass_bare_rate:+.0%}  Hake gain {gain}"
+            )
+        else:
+            # A single-condition (skill-only) run has no bare leg — no lift/Hake to report.
+            print(f"  {a.task_id}: skill {a.pass_skill_rate:.0%} ({a.passes_skill}/{a.k})")
     print(f"  results: {run_dir}/run.json")
 
 
