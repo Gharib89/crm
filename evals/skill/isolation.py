@@ -133,9 +133,11 @@ def trust_workspace(sandbox_home: Path, work: Path) -> None:
 
     Trust-only: the record carries no repo path, no ``CLAUDE.md``, no memory, so the
     isolation invariants hold (and it is a *different* file from the ``.claude/`` config
-    dir that :func:`passthrough_claude_auth` writes). Best-effort — a write failure leaves
-    the agent to hit the untrusted degraded mode, which the runner's sandbox preflight then
-    catches loudly rather than measuring a silent null.
+    dir that :func:`passthrough_claude_auth` writes). Fail-closed — if the record can't be
+    written, this raises :class:`IsolationError` rather than letting the agent launch into
+    the untrusted degraded mode (which would silently reproduce the #906 dead-proxy null;
+    the runner's preflight runs in a *separate* isolation and can't catch a per-leg trust
+    failure).
     """
     trust = {
         "hasTrustDialogAccepted": True,
@@ -144,7 +146,10 @@ def trust_workspace(sandbox_home: Path, work: Path) -> None:
     try:
         (sandbox_home / ".claude.json").write_text(json.dumps(trust), encoding="utf-8")
     except OSError as exc:
-        print(f"[isolation] could not write workspace trust record: {exc}", file=sys.stderr)
+        raise IsolationError(
+            f"could not write workspace trust record ({exc}); refusing to launch an "
+            f"untrusted workspace that would run the built-in sandbox degraded (#906)"
+        ) from exc
 
 
 def provision_isolation(crm_bin: str | None = None, *, install_skill: bool = True) -> Isolation:
@@ -192,8 +197,12 @@ def provision_isolation(crm_bin: str | None = None, *, install_skill: bool = Tru
 
     # Trust the throwaway workspace so Claude Code fully initializes the built-in Bash
     # sandbox for the agent (an untrusted fresh HOME leaves the sandbox proxy unstarted —
-    # see trust_workspace).
-    trust_workspace(home, work)
+    # see trust_workspace). Fail-closed: clean up and abort rather than launch degraded.
+    try:
+        trust_workspace(home, work)
+    except IsolationError:
+        shutil.rmtree(sandbox, ignore_errors=True)
+        raise
 
     # Install the skill the way a user does — from whatever `crm` is on PATH, so the
     # eval exercises the skill *as shipped* in that binary, not the repo's working
