@@ -23,7 +23,30 @@ what the phases below need; if any is missing, surface the gap — don't guess: 
 **test command** (run from a worktree), **integrated/live-test** targets + creds,
 the **full local-gate set CI runs** (not a fixed triad), **docs-sync rules**, the
 **commit-subject convention**, and **whether a review bot exists** — its round-1
-vs push-triggered role and how each is triggered.
+vs push-triggered role and how each is triggered. This copy also ships the
+repo-specific deterministic steps as executables — see *Scripts* below.
+
+## Scripts — deterministic steps are encoded, not prose
+
+`scripts/` holds each deterministic step as an executable: it prints a
+one-screen summary (JSON, or pass/fail lines plus only the failing output), and
+its exit code is the step's completion criterion. When a phase names a script,
+run it instead of re-deriving the calls it wraps — the script is the single
+source of truth for that step's mechanics (REST-over-GraphQL, the one-retry on
+gh's 401 flake, output projection).
+
+| Script | Phase | GitHub API |
+|---|---|---|
+| `scripts/preflight.sh <issue>` | 0 pre-flight | yes |
+| `scripts/isolate.sh <type> <slug> <issue>` | 0 worktree (when `EnterWorktree` is absent) | no |
+| `scripts/claim.sh <issue>` | 1 claim | yes |
+| `scripts/local-gate.sh [--small <node>]` | 5 local gate | no |
+| `scripts/poll-pr.sh <pr> [--await-review <login>]` | 7/8 poll | yes |
+| `scripts/merge-and-verify.sh <pr> [issue]` | 9 on approval | yes |
+
+The GitHub-API scripts assume direct `api.github.com` access via `gh`. In a
+sandbox that gates it (the cloud-ship fire), skip them and use the caller's MCP
+mapping; the local-only scripts still apply.
 
 ## The autonomy contract
 
@@ -70,15 +93,17 @@ subagent and the poll loop with a model explicitly — never default-inherit.
 
 | Work | Model |
 |------|-------|
-| Investigation / mapping, poll loops (review + CI) | haiku |
-| Mechanical edits & fixes, docs-sync helper, running the gates/tests, `code-review` skill's **Spec** axis | sonnet |
-| Triage judgment (phases 4 & 7), `code-review` skill's **Standards / code** axis | opus |
+| Investigation / mapping | haiku |
+| Phase-2 **execution** from a settled plan (split in [reference/implement.md](reference/implement.md)) | sonnet |
+| Mechanical edits & fixes, docs-sync helper, `code-review` skill's **Spec** axis | sonnet |
+| Triage judgment (phases 4 & 7), phase-2 **judgment** (classification, plan, design), `code-review` skill's **Standards / code** axis | opus |
 
 Triage and code review are judgment — running them on the cheap tier under-reads
-diffs. Poll loops, file-mapping, and running the gates are mechanical — running them
-on the strong tier burns budget for nothing. When you invoke the `code-review`
-skill, tier its two axes yourself (Standards = opus, Spec = sonnet — rows above).
-Fall back to the nearest available tier rather than running everything on one model.
+diffs. Poll loops and gate runs are **scripts** (see *Scripts*) — no model at
+all; a subagent there burns budget to relay what an exit code already says. When
+you invoke the `code-review` skill, tier its two axes yourself (Standards =
+opus, Spec = sonnet — rows above). Fall back to the nearest available tier
+rather than running everything on one model.
 
 ## The lanes
 
@@ -114,13 +139,15 @@ their logic. Set the `code-review` skill's per-axis tiers yourself when you invo
 (opus code / sonnet spec, table above); run finding-**triage** at the judgment tier,
 mechanical helpers at the cheap tier (table above).
 
-**0 · Isolate.** **Pre-flight:** confirm the issue is actionable and not already in
-flight — if it's closed, already has an open or merged PR, or a branch already
-exists for it, **stop and report** instead of opening a duplicate. (A picker-based
-runner like the cloud routine relies on the phase-1 `agent-working` claim to block
-concurrent re-picks; this guard catches a *manual* re-run or an already-shipped
-issue, where there is no picker.) Then create an isolated workspace on a fresh
-branch off the default branch — `EnterWorktree`, or `git worktree add`. Name the
+**0 · Isolate.** **Pre-flight:** run `scripts/preflight.sh <issue>` — if it
+reports not actionable (closed, existing open/merged PR, existing branch,
+already claimed), **stop and report** its reasons instead of opening a
+duplicate. (A picker-based runner like the cloud routine relies on the phase-1
+`agent-working` claim to block concurrent re-picks; this guard catches a
+*manual* re-run or an already-shipped issue, where there is no picker.) Then
+create an isolated workspace on a fresh branch off the default branch —
+`EnterWorktree`, or `scripts/isolate.sh <type> <slug> <issue>` when that tool is
+absent. Name the
 branch `<type>/<slug>-<issue>` where `<type>` matches the issue (feat/fix/…). All
 work, commits, and the PR happen from this branch; clean it up after merge.
 **Commit as you go** — intermediate messages don't matter, but the PR needs real
@@ -133,9 +160,9 @@ or `docs:`. The squash subject, not the branch, drives release tooling.)
 like. A later authoritative comment can supersede the issue body — **spec
 precedence**, detailed in [reference/implement.md](reference/implement.md). **If
 it's too vague to plan, stop and ask** (the ambiguity rail).
-**Claim it before implementing** — mark the issue in-progress per the project's
-claim convention so a concurrent run can't double-pick it (idempotent; skip if
-there's no issue or no documented convention). Don't claim if you stopped on the
+**Claim it before implementing** — `scripts/claim.sh <issue>` (idempotent) marks
+the issue in-progress so a concurrent run can't double-pick it; skip if
+there's no issue or no documented claim convention. Don't claim if you stopped on the
 ambiguity rail; if you claim then stop blocked, hand the issue back.
 
 **2 · Implement.** Classify the change as `docs` / `code` / `infra`, announce the
@@ -143,7 +170,8 @@ class and the skip path it implies — **and whether it passes the three lane ke
 (if so, announce that and follow
 [reference/small-lane.md](reference/small-lane.md)) — then implement
 test-first per class —
-**full detail (classes, TDD override, external-claim verification) in
+**full detail (classes, TDD override, external-claim verification, and the
+judgment/execution split that puts execution on a sonnet subagent) in
 [reference/implement.md](reference/implement.md).** **Stay surgical** — implement
 only what the issue asks; every changed line should trace to it. An adjacent bug or
 cleanup you spot is **out of scope**: file a `needs-triage` issue for it and move
@@ -187,12 +215,13 @@ the valid ones; record a one-line disposition per finding for the merge summary.
 **5 · Local gate.** *Precondition:* phase 3 passed **or** the class is `docs` — if
 neither holds, you skipped a verification; stop and go back.
 
-Run the project's full verification green before opening the PR, **mirroring the
-checks CI actually runs** (per project instructions) — not a fixed triad: tests,
-lint, type-check, docs build (which now covers the phase-4 docs-sync edits), **and
-any secret/security scan the repo gates on** (cheap to pre-empt locally, expensive
-to discover after the PR is open). If you can't run a check locally, at least
-*anticipate* it. **Small lane:** reduced gate per
+Run `scripts/local-gate.sh` green before opening the PR — it mirrors the checks
+CI actually runs (tests, lint, format, type-check, security scan, docs build —
+which now covers the phase-4 docs-sync edits — plus the workflow linters when
+workflows changed) and prints per-check pass/fail with only the failing lines.
+Run it inline: it projects its own output, so a subagent adds nothing. If a
+check exists in CI that the script can't run locally, at least *anticipate* it.
+**Small lane:** `scripts/local-gate.sh --small <node>` per
 [reference/small-lane.md](reference/small-lane.md).
 
 **6 · Open PR.** Open a **ready** (non-draft) PR — drafts may not trigger the
@@ -223,8 +252,8 @@ reviewer → round-1 threads dispositioned + green CI). Mechanics,
 disposition rules, and traps: **[reference/copilot-loop.md](reference/copilot-loop.md).**
 
 **8 · CI.** CI usually runs concurrently from PR-open, so phases 7 and 8 overlap.
-**First confirm the PR isn't conflicted with the base branch** — `gh pr view <n>
---json mergeable,mergeStateStatus` (`CONFLICTING` / `DIRTY` = conflict). A
+`scripts/poll-pr.sh <pr>` covers this phase: it reports the check conclusions
+and surfaces a conflict immediately (`mergeable_state: dirty`). A
 conflicted PR has no merge ref, so merge-commit checks never start and CI sits
 **pending forever** — don't wait on it. Resolve: fetch the latest default branch,
 rebase (or merge) it in, fix conflicts, **re-run the local gate (phase 5)**, and

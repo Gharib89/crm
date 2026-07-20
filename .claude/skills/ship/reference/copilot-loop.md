@@ -56,14 +56,13 @@ problem more rounds won't fix — stop and report, don't loop forever.
 
 ## Poll mechanics
 
-Reviews take minutes. For a single PR, **poll directly** with a short bounded loop
-(`gh pr view <n> --json reviews,statusCheckRollup`, a `sleep`, repeat to a cap),
-then act. If you delegate polling to a subagent to keep context clean, it **must
-block and return ONE final summary** — never a detached background monitor that
-emits partial "still waiting" notifications. Tell it explicitly: poll in a bounded
-loop, return only when the review lands (or the cap hits), and report review state
-+ comments + final check conclusions in one message. Keep the poll loop on the
-**cheap tier**; auto-triage on the **judgment tier** (model-tier table in SKILL.md).
+Reviews take minutes. Run `scripts/poll-pr.sh <n> [--await-review <login>]`
+inline — a bounded foreground loop that returns ONE JSON summary: check
+conclusions, reviews keyed to the current head sha, `mergeable_state`.
+`done: false` means the window closed first — re-run to extend; never a
+detached background monitor. No subagent: the script already projects its
+output. Auto-triage what it returns on the **judgment tier** (model-tier table
+in SKILL.md).
 
 ## Infra flakes — don't wait forever
 
@@ -75,8 +74,5 @@ loop, return only when the review lands (or the cap hits), and report review sta
 - A re-review that simply never lands (silence, no error) is flakiness, not a
   missed poll. Bounded wait (~one poll window), then proceed — don't loop forever.
 
-## Cleanup
-
-Stop the poller **surgically** (its recorded PID / task handle), never a broad
-pattern-kill that could match — and silently drop — the command you run next.
-After any merge command, re-verify PR state before declaring done.
+After any merge command, re-verify PR state before declaring done
+(`scripts/merge-and-verify.sh` does).

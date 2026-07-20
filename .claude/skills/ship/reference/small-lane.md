@@ -12,17 +12,17 @@ test). On top of that:
 - **Skip the phase-4 self-review *iff* the repo has an auto-review bot** — its
   automatic round-1 (phase 7) is the review gate. No bot → keep the self-review
   pass, else the change gets no review.
-- **Local gate (phase 5) = the secret/security scan + the one regression test
-  node** (run that node locally for red→green proof). Lean on CI for the rest of
-  the suite, lint, and type-check — CI re-runs them, and a red CI on a small
-  change is a cheap round-trip.
+- **Local gate (phase 5) = `scripts/local-gate.sh --small <node>`** — the
+  security scan + the one regression test node (red→green proof). Lean on CI for
+  the rest of the suite, lint, and type-check — CI re-runs them, and a red CI on
+  a small change is a cheap round-trip.
 - **Round-1 review is the whole review gate** — disposition it once and go; the
   iterating reviewer (if any) still owns its free push-rounds. See
   [copilot-loop.md](copilot-loop.md).
 - **Subagents: usually none of your own.** You can already point at the file (no
   mapper), and the proving test node's output is short (run it inline); the
-  `code-review` skill and the poll loop bring their own. The delegation rule is in
-  [context-discipline.md](context-discipline.md).
+  `code-review` skill brings its own, and polling is a script. The delegation
+  rule is in [context-discipline.md](context-discipline.md).
 
 ## The floor — never collapses
 

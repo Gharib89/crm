@@ -58,11 +58,12 @@ New or changed command output honors the CLI contract (`CONTEXT.md`):
 
 ## 6 · Genericity
 
-Public repo. On the diff: `git grep -ni moce` on changed files, plus a broad
-GUID-shape scan — and **classify every hit** (platform-constant FormXml classids
-are legal and stay; org-fingerprint GUIDs, real hostnames, or tenant IDs are a
-fail). Placeholders are Contoso-style. Credential-key names follow the named-
-constant convention that keeps secret scanners quiet.
+Public repo. Run `scripts/genericity-scan.sh` (the `moce` grep + a broad
+GUID-shape scan over the changed files) and **classify every hit**
+(platform-constant FormXml classids are legal and stay; org-fingerprint GUIDs,
+real hostnames, or tenant IDs are a fail). Placeholders are Contoso-style.
+Credential-key names follow the named-constant convention that keeps secret
+scanners quiet.
 
 ## 7 · Scope discipline
 

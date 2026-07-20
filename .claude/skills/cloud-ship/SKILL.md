@@ -120,8 +120,15 @@ carries the open PR, so later fires skip it until the merge closes it.
   gate**.
 - **Subagent tools are absent too.** `ship`'s delegation rule and model-tier
   table are inert in a fire — run everything inline in the main thread (the
-  `code-review` skill's two axes included), and compensate by projecting every
-  GitHub / CLI call harder, since nothing can be offloaded.
+  `code-review` skill's two axes and its phase-2 execution subagent included),
+  and compensate by projecting every GitHub / CLI call harder, since nothing
+  can be offloaded.
+- **`ship`'s GitHub-API scripts are dead in a fire.** `scripts/preflight.sh`,
+  `claim.sh`, `poll-pr.sh`, and `merge-and-verify.sh` all run `gh` against
+  `api.github.com` — the same 403 as below; use the MCP mappings instead. The
+  local-only scripts still work and stay preferred: `scripts/local-gate.sh` is
+  the phase-5 gate in a fire too (`isolate.sh` is moot — the branch is the
+  isolation).
 
 ## GitHub access in a fire
 
