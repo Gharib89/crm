@@ -20,6 +20,11 @@ import yaml
 #: Allowed values for a task's ``target`` gate.
 TARGETS = ("cloud", "onprem", "either")
 
+#: Allowed values for a task's ``kind`` — the second half of the ADR-0028 double tag.
+#: ``do`` mutates the org and is graded on org state; ``feasibility`` mutates nothing
+#: and is graded field-by-field against an evidenced answer key (#891).
+KINDS = ("do", "feasibility")
+
 
 @dataclasses.dataclass(frozen=True)
 class CleanupStep:
@@ -52,19 +57,35 @@ class TaskSpec:
     #: programmatic predicate, scored instead by the optional ``--analyze`` pass (#572).
     expect: dict[str, Any]
     cleanup: list[CleanupStep]
+    #: ``"do"`` (default) or ``"feasibility"`` (#891). A feasibility task grades the
+    #: agent's structured output against ``answer_key`` instead of fetching org state.
+    kind: str = "do"
+    #: For a ``feasibility`` task: the evidenced answer key the agent's structured output
+    #: is graded against (see :func:`evaluate_feasibility`). Empty for a ``do``-task.
+    answer_key: dict[str, Any] = dataclasses.field(default_factory=dict)
+    #: For a ``feasibility`` task: the authored provenance for each answer-key claim
+    #: (a docs ref, a live-org read, a forum thread) — captured at authoring time so a
+    #: wrong key is auditable, per ADR 0028's verifier-quality leg. Empty for a ``do``-task.
+    evidence: list[str] = dataclasses.field(default_factory=list)
     #: When true, the run step always measures this task's skill **lift** by also
     #: running a skill-absent (counterfactual) leg (#588) — the per-task "always
     #: measure this one" knob, equivalent to passing ``run --counterfactual``.
     counterfactual: bool = False
 
     @property
+    def is_feasibility(self) -> bool:
+        """True when the task grades structured output against an answer key (#891)."""
+        return self.kind == "feasibility"
+
+    @property
     def is_diagnostic(self) -> bool:
-        """True when the task has no programmatic predicate (no ``expect``).
+        """True when the task has no programmatic predicate (a ``do``-task with no ``expect``).
 
         A diagnostic task can only be scored by the ``--analyze`` pass; the runner
-        refuses to run one without it.
+        refuses to run one without it. A ``feasibility`` task is never diagnostic — its
+        answer-key match *is* its programmatic predicate.
         """
-        return not self.expect
+        return not self.is_feasibility and not self.expect
 
 
 def _split_frontmatter(text: str) -> tuple[str, str]:
@@ -108,34 +129,79 @@ def parse_task_file(path: str | Path) -> TaskSpec:
     if target not in TARGETS:
         raise ValueError(f"{path}: target {target!r} not one of {TARGETS}")
 
-    # ``end_state`` is optional: a diagnostic task (#572) omits the programmatic
-    # predicate and is scored by the ``--analyze`` pass instead. When present, a
-    # non-empty ``query`` is required (it fetches the org state — used for scoring
-    # and/or fed to the analyzer); ``expect`` is optional, and its absence marks the
-    # task diagnostic (org state still flows to the analyzer, just nothing asserted).
-    # A diagnostic task that needs no org-state query omits ``end_state`` entirely —
-    # an empty query is rejected so it can't silently degrade scoring to NoneType.
+    kind = meta.get("kind", "do")
+    if kind not in KINDS:
+        raise ValueError(f"{path}: kind {kind!r} not one of {KINDS}")
+
     query: list[str] = []
     expect: dict[str, Any] = {}
-    end_state = meta.get("end_state")
-    if end_state is not None:
-        if not isinstance(end_state, dict):
-            raise ValueError(f"{path}: end_state must be a mapping")
-        query = end_state.get("query")
-        if not isinstance(query, list) or not query or not all(isinstance(a, str) for a in query):
+    answer_key: dict[str, Any] = {}
+    evidence: list[str] = []
+
+    if kind == "feasibility":
+        # A feasibility task (#891) grades structured output, not org state: it must not
+        # declare ``end_state`` (there is nothing to mutate or read back) and instead
+        # carries an ``answer_key`` (the graded fields) plus ``evidence`` (their provenance).
+        if "end_state" in meta:
             raise ValueError(
-                f"{path}: end_state.query must be a non-empty list of strings "
-                f"(omit end_state entirely for a diagnostic task that needs no org-state query)"
+                f"{path}: a feasibility task grades the agent's structured output, not org "
+                f"state — remove end_state (declare answer_key instead)"
             )
-        expect = end_state.get("expect") or {}
-        if not isinstance(expect, dict):
-            raise ValueError(f"{path}: end_state.expect must be a mapping")
-        if "count" in expect and not isinstance(expect["count"], int):
-            raise ValueError(f"{path}: end_state.expect.count must be an integer")
-        if "row" in expect and not isinstance(expect["row"], dict):
-            raise ValueError(f"{path}: end_state.expect.row must be a mapping")
-        if "row_suffix" in expect and not isinstance(expect["row_suffix"], dict):
-            raise ValueError(f"{path}: end_state.expect.row_suffix must be a mapping")
+        raw_key = require("answer_key")
+        if not isinstance(raw_key, dict) or not raw_key:
+            raise ValueError(
+                f"{path}: answer_key must be a non-empty mapping for a feasibility task"
+            )
+        for name, want in raw_key.items():
+            values = want if isinstance(want, list) else [want]
+            if not all(isinstance(v, str | int | float | bool) for v in values):
+                raise ValueError(
+                    f"{path}: answer_key.{name} must be a scalar or a list of scalars "
+                    f"(scalar → exact match, list → recall)"
+                )
+        answer_key = raw_key
+        raw_evidence = require("evidence")
+        if (
+            not isinstance(raw_evidence, list)
+            or not raw_evidence
+            or not all(isinstance(e, str) and e.strip() for e in raw_evidence)
+        ):
+            raise ValueError(
+                f"{path}: evidence must be a non-empty list of non-empty strings "
+                f"(the answer key's provenance, captured at authoring time)"
+            )
+        evidence = raw_evidence
+    else:
+        # ``end_state`` is optional: a diagnostic task (#572) omits the programmatic
+        # predicate and is scored by the ``--analyze`` pass instead. When present, a
+        # non-empty ``query`` is required (it fetches the org state — used for scoring
+        # and/or fed to the analyzer); ``expect`` is optional, and its absence marks the
+        # task diagnostic (org state still flows to the analyzer, just nothing asserted).
+        # A diagnostic task that needs no org-state query omits ``end_state`` entirely —
+        # an empty query is rejected so it can't silently degrade scoring to NoneType.
+        end_state = meta.get("end_state")
+        if end_state is not None:
+            if not isinstance(end_state, dict):
+                raise ValueError(f"{path}: end_state must be a mapping")
+            query = end_state.get("query")
+            if (
+                not isinstance(query, list)
+                or not query
+                or not all(isinstance(a, str) for a in query)
+            ):
+                raise ValueError(
+                    f"{path}: end_state.query must be a non-empty list of strings "
+                    f"(omit end_state entirely for a diagnostic task that needs no org-state query)"
+                )
+            expect = end_state.get("expect") or {}
+            if not isinstance(expect, dict):
+                raise ValueError(f"{path}: end_state.expect must be a mapping")
+            if "count" in expect and not isinstance(expect["count"], int):
+                raise ValueError(f"{path}: end_state.expect.count must be an integer")
+            if "row" in expect and not isinstance(expect["row"], dict):
+                raise ValueError(f"{path}: end_state.expect.row must be a mapping")
+            if "row_suffix" in expect and not isinstance(expect["row_suffix"], dict):
+                raise ValueError(f"{path}: end_state.expect.row_suffix must be a mapping")
 
     raw_cleanup = require("cleanup") or []
     if not isinstance(raw_cleanup, list):
@@ -161,6 +227,9 @@ def parse_task_file(path: str | Path) -> TaskSpec:
         query=query,
         expect=expect,
         cleanup=cleanup,
+        kind=kind,
+        answer_key=answer_key,
+        evidence=evidence,
         counterfactual=bool(meta.get("counterfactual", False)),
     )
 
@@ -212,3 +281,47 @@ def evaluate_expect(data: Any, expect: dict[str, Any]) -> tuple[bool, str]:
             return False, f"row_suffix: no row matched {want_suffix!r}"
 
     return True, "all expectations met"
+
+
+def evaluate_feasibility(data: Any, answer_key: dict[str, Any]) -> tuple[bool, str]:
+    """Score a feasibility task's structured output ``data`` against its ``answer_key`` (#891).
+
+    ``data`` is the JSON object the agent emitted (no org state — a feasibility task
+    mutates nothing). It is graded **field-by-field** against the answer key, keeping the
+    per-trial verdict a clean binary (ADR 0028):
+
+    - the output must be a JSON **object** — anything else (a list, a scalar, ``None`` from
+      a missing/invalid answer file) is schema-invalid and fails;
+    - every ``answer_key`` field must be **present** in the output — an absent graded field
+      is a schema-invalidity, not a pass;
+    - a **scalar** answer-key value (e.g. ``cli_achievable``) is an **exact match**;
+    - a **list** answer-key value is scored by **recall** — every expected item must appear
+      (case-insensitive substring of some emitted list entry, so ``"data import"`` matches
+      the agent's ``"crm data import accounts x.jsonl"``). Missing a single item fails the
+      trial; extra emitted items are not penalised.
+
+    Returns ``(passed, reason)``; ``reason`` names the first failing field so a failed run
+    is self-describing.
+    """
+    if not isinstance(data, dict):
+        return False, f"expected a JSON object, got {type(data).__name__}"
+
+    for key, want in answer_key.items():
+        if key not in data:
+            return False, f"{key}: missing from the agent's output"
+        got = data[key]
+        if isinstance(want, list):
+            if not isinstance(got, list):
+                return False, f"{key}: expected a list, got {type(got).__name__}"
+            emitted = [str(g).lower() for g in got]
+            for item in want:
+                needle = str(item).lower()
+                if not any(needle in entry for entry in emitted):
+                    return False, f"{key}: missing required item {item!r} (recall)"
+        # Exact match on scalars — and a strict one: Python's ``bool ⊆ int`` makes
+        # ``True == 1``, so guard the type too, else an agent emitting ``"cli_achievable": 1``
+        # would pass a field the design calls an exact match (the one the binary pivots on).
+        elif isinstance(want, bool) != isinstance(got, bool) or got != want:
+            return False, f"{key}: expected {want!r}, got {got!r}"
+
+    return True, "all answer-key fields matched"

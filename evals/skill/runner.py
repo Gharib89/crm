@@ -42,7 +42,13 @@ from pathlib import Path
 from typing import Any
 
 from evals.skill import analyze, isolation, target
-from evals.skill.taskspec import TaskSpec, evaluate_expect, parse_task_file
+from evals.skill.taskspec import TaskSpec, evaluate_expect, evaluate_feasibility, parse_task_file
+
+#: Filename a feasibility task's agent writes its structured answer to, in its sandbox cwd
+#: (#891). The task prompt instructs the agent to emit its schema-conforming JSON here; the
+#: runner reads it back in place of the org-state query a ``do``-task runs. A file (not a
+#: transcript scrape) keeps the read deterministic and mutation-free.
+FEASIBILITY_ANSWER_FILE = "feasibility.json"
 
 
 class RunError(RuntimeError):
@@ -102,6 +108,27 @@ def _crm_json(args: list[str], env: dict[str, str], crm_bin: str, cwd: str) -> A
     except json.JSONDecodeError as exc:
         raise RunError(f"crm {' '.join(args)} returned non-JSON: {proc.stdout[:200]!r}") from exc
     return envelope.get("data")
+
+
+def _read_feasibility_answer(work_dir: Path) -> Any:
+    """Read the agent's structured answer JSON from ``work_dir/feasibility.json`` (#891).
+
+    A feasibility task grades the agent's own structured output (no org state): the prompt
+    tells the agent to write its schema-conforming JSON to :data:`FEASIBILITY_ANSWER_FILE`
+    in its cwd. A missing or non-JSON file yields ``None`` — scored as a schema-invalid fail
+    by :func:`~evals.skill.taskspec.evaluate_feasibility`, since the agent produced no
+    gradeable answer.
+    """
+    try:
+        # utf-8-sig: the agent (an external writer) authors this file, so tolerate a BOM
+        # rather than misgrade a BOM-prefixed answer as schema-invalid (coding-standards
+        # §Encoding — utf-8-sig for externally-authored reads).
+        return json.loads((work_dir / FEASIBILITY_ANSWER_FILE).read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        # UnicodeDecodeError (a ValueError, not an OSError) covers an agent-authored file
+        # with invalid UTF-8 bytes — an untrusted external writer, so grade it schema-invalid
+        # rather than crash run_task.
+        return None
 
 
 def _run_agent(
@@ -268,13 +295,18 @@ def run_task(
         )
         work = str(iso.work)
         try:
-            # Fetch the final org state (the scoring payload, and what the analyzer
-            # reads). A diagnostic task may still declare a query for state alone.
-            data = (
-                _crm_json(["--profile", profile, *spec.query], iso.env, resolved_bin, work)
-                if spec.query
-                else None
-            )
+            # Fetch the scoring payload the analyzer also reads. A ``do``-task reads final
+            # org state via its query (a diagnostic task may declare a query for state
+            # alone); a feasibility task instead reads the agent's own structured answer
+            # file — it mutates no org (#891).
+            if spec.is_feasibility:
+                data = _read_feasibility_answer(iso.work)
+            else:
+                data = (
+                    _crm_json(["--profile", profile, *spec.query], iso.env, resolved_bin, work)
+                    if spec.query
+                    else None
+                )
             if capped:
                 # A cap-hit is a distinct outcome that scores as a fail (ADR 0028),
                 # whatever partial state the killed agent left — org state is not consulted.
@@ -282,6 +314,8 @@ def run_task(
                     False,
                     f"cap-hit: wall-clock {wall_clock_s}s exceeded (scored fail)",
                 )
+            elif spec.is_feasibility:
+                passed, reason = evaluate_feasibility(data, spec.answer_key)
             elif spec.expect:
                 passed, reason = evaluate_expect(data, spec.expect)
             else:

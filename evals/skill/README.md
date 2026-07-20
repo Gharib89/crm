@@ -26,8 +26,12 @@ blocks CI. Run it on demand.
 - `tasks/*.md` — one task per file: YAML frontmatter (`id`, `domain`, `target`,
   `end_state`, `cleanup`) plus a markdown body that is the **verbatim prompt** fed to
   the agent. `end_state` is optional: a **diagnostic** task omits the `expect`
-  predicate and is scored by the `--analyze` pass instead (see below).
-- `taskspec.py` — task parsing and the pure end-state predicate (`evaluate_expect`).
+  predicate and is scored by the `--analyze` pass instead (see below). A task's `kind`
+  (default `do`) selects how it is graded: a `do`-task mutates the org and is scored on
+  its `end_state`; a **`feasibility`** task (`kind: feasibility`) mutates nothing and is
+  scored field-by-field against an `answer_key` (see below).
+- `taskspec.py` — task parsing and the pure grading predicates (`evaluate_expect` for
+  `do`-tasks, `evaluate_feasibility` for feasibility tasks).
 - `isolation.py` — provisions and **verifies** the isolated agent context.
 - `target.py` — live-target selection, reusing the e2e `D365_E2E_PROFILE` mechanism
   and the `D365_E2E_ALLOW_HOST` prod-host guard; plus `probe_reachable`, the
@@ -300,6 +304,20 @@ or one that emits no verdict, is surfaced rather than silently passing). Running
 diagnostic task without `--analyze` is refused up front (nothing to score). A
 diagnostic task may still declare an `end_state.query` so its final org state is
 fetched and fed to the analyzer.
+
+**Feasibility tasks** (`kind: feasibility`, #891, see
+`tasks/feasibility-bulk-load-verify.md`) grade the agent's own **structured output**
+rather than org state — the agent is asked *whether* a task is achievable with the `crm`
+CLI, not to perform it, so nothing is mutated. The prompt instructs the agent to write a
+schema-conforming JSON object to `feasibility.json` in its working dir; the runner reads
+that file back (in place of the `do`-task's org query) and `evaluate_feasibility` grades
+it field-by-field against the frontmatter `answer_key`: **scalar** fields (e.g.
+`cli_achievable`) are an **exact match**, **list** fields are scored by **recall** (every
+expected item must appear — missing one fails the trial, keeping the binary clean). A
+feasibility task declares no `end_state`; it carries `answer_key` (the graded fields) plus
+`evidence` (the provenance for each answer-key claim, captured at authoring time so a wrong
+key is auditable). It shares the same paired pipeline and `trials.jsonl`/`run.json` records
+as the `do`-task path.
 
 ## Skill-efficacy review (persist-then-analyze, #588, ADR 0016)
 
