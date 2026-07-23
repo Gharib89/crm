@@ -41,18 +41,15 @@ crm --json solution add-component --solution ContosoCore --type webresource --id
 crm --json solution remove-component --solution ContosoCore --type 61 --id <guid> --yes
 ```
 
-**Batching (#914):** repeat `--id` (all repeats share one `--type`) and/or pass
-`--components-file <path>` — a JSON list of rows, merged with any repeated `--id`
-rows. Two or more components run as one transactional `$batch` changeset: a
-mid-batch failure rolls every row back, so a batch either lands whole or not at
-all. A single `--id` alone is unaffected — same one-call envelope as before.
-`--type` is required with `--id` but rejected (usage error) when no `--id` is
-given, since a `--components-file` row supplies its own type. `add-component`
-rows are `{"type", "id"[, "no_add_required", "no_subcomponents"]}` (the two
-booleans override the command-level `--no-add-required`/`--no-subcomponents`
-default per row); `remove-component` rows are `{"type", "id"}` only. Any other
-key — including a `behavior` key, since neither action takes a
-`RootComponentBehavior` parameter — is rejected outright, not silently dropped.
+**Batching (#914):** repeat `--id` and/or pass `--components-file <path>` (a JSON
+list of rows) — the two sources merge. Two or more components run as one
+transactional `$batch` changeset: a mid-batch failure rolls every row back, so a
+batch either lands whole or not at all. A single `--id` alone is unaffected — same
+one-call envelope as before. File rows are `{"type", "id"}`, plus optional
+`"no_add_required"`/`"no_subcomponents"` for `add-component` (overriding the
+command-level defaults per row). Any other key — including a `behavior` key, since
+neither action takes a `RootComponentBehavior` parameter — is rejected outright,
+not silently dropped.
 
 On full success the batch `--json` `data` is `{solution, added|removed: [{type,
 id, ok, status, error}], count, succeeded, failed, rolled_back}` (all rows `ok`,

@@ -154,7 +154,14 @@ cat > components.json <<'EOF'
 EOF
 crm --json solution add-component --solution CRMWorx --components-file components.json
 
-crm --json solution remove-component --solution CRMWorx --components-file components.json --yes
+# remove rows take only {type, id} — no per-row flags, so use a clean file
+cat > remove.json <<'EOF'
+[
+  {"type": "webresource", "id": "<guid-1>"},
+  {"type": "entity", "id": "<guid-2>"}
+]
+EOF
+crm --json solution remove-component --solution CRMWorx --components-file remove.json --yes
 ```
 
 `--type` is now optional at the command level — required only when using `--id`

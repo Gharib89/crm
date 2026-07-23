@@ -579,6 +579,19 @@ def _collect_add_components(
     return components
 
 
+def _collect_remove_components(component_ids, type_, components_file):
+    """Build the resolved component list for a batch remove (file rows + --id rows)."""
+    components: list[dict] = []
+    if components_file:
+        components.extend(sol_mod.parse_components_file(components_file, for_add=False))
+    if component_ids:
+        component_type = sol_mod.resolve_component_type(type_)
+        components.extend(
+            {"component_id": cid, "component_type": component_type} for cid in component_ids
+        )
+    return components
+
+
 @solution_group.command("add-component")
 @click.option("--solution", required=True, help="Target unmanaged solution unique name.")
 @click.option(
@@ -722,13 +735,7 @@ def solution_remove_component(
         _journal(ctx, solution, info)
         return
     with d365_errors(ctx):
-        if components_file:
-            components = sol_mod.parse_components_file(components_file, for_add=False)
-        else:
-            component_type = sol_mod.resolve_component_type(type_)
-            components = [
-                {"component_id": cid, "component_type": component_type} for cid in component_ids
-            ]
+        components = _collect_remove_components(component_ids, type_, components_file)
         n = len(components)
         _confirm_destructive(
             ctx,

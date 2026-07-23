@@ -846,6 +846,41 @@ class TestBatchComponentCommands:
         assert result.exit_code == 0, result.output
         assert len(captured["components"]) == 2
 
+    def test_remove_merges_file_and_id_rows(self, monkeypatch, tmp_path):
+        # --components-file AND --id together must merge, not drop --id (mirrors add).
+        p = tmp_path / "comps.json"
+        p.write_text(json.dumps([{"type": "entity", "id": _GUID}]))
+        captured = {}
+        monkeypatch.setattr(
+            "crm.core.solution.remove_solution_components",
+            lambda backend, **kw: (
+                captured.update(kw)
+                or {"solution": kw["solution"], "removed": [], "count": 2, "failed": 0}
+            ),
+        )
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "solution",
+                "remove-component",
+                "--solution",
+                "CRMWorx",
+                "--components-file",
+                str(p),
+                "--type",
+                "webresource",
+                "--id",
+                _COMP_ID_2,
+                "--yes",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        comps = captured["components"]
+        assert [c["component_type"] for c in comps] == [1, 61]
+        assert [c["component_id"] for c in comps] == [_GUID, _COMP_ID_2]
+
     def test_single_id_still_uses_singular_core(self, monkeypatch):
         # The single-`--id` path must not route through the batch core.
         singular = {"hit": False}

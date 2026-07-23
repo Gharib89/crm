@@ -111,10 +111,10 @@ def test_batch_add_remove_and_rollback(
     then prove a mid-batch failure rolls the whole transaction back.
 
     Component 1 is the session entity (type=1); component 2 is one of its
-    attributes (type=2). The add uses a --components-file, the remove uses
-    repeated --id, exercising both batch input modes live. The rollback case
-    adds [valid entity, bogus attribute guid]; the changeset must fail atomically,
-    leaving the entity absent.
+    attributes (type=2). The add uses a --components-file; the remove mixes a
+    --components-file row with a --type/--id row, exercising both input modes and
+    the merge path together. The rollback case adds [valid entity, bogus attribute
+    guid]; the changeset must fail atomically, leaving the entity absent.
     """
     import json as _json
 
@@ -177,16 +177,11 @@ def test_batch_add_remove_and_rollback(
     assert entity_id.lower() in present, f"entity missing after batch add: {present}"
     assert attr_id.lower() in present, f"attribute missing after batch add: {present}"
 
-    # --- BATCH REMOVE (via --components-file; mixed types need per-row type) ---
+    # --- BATCH REMOVE (mix --components-file + --type/--id, exercising the merge) ---
+    # The attribute (type 2) comes from a file row; the entity (type 1) comes from
+    # a --type/--id row — both must land in one changeset.
     remove_file = tmp_path / "remove.json"
-    remove_file.write_text(
-        _json.dumps(
-            [
-                {"type": "attribute", "id": attr_id},
-                {"type": "entity", "id": entity_id},
-            ]
-        )
-    )
+    remove_file.write_text(_json.dumps([{"type": "attribute", "id": attr_id}]))
     result = cli(
         [
             "--json",
@@ -196,6 +191,10 @@ def test_batch_add_remove_and_rollback(
             ephemeral_solution,
             "--components-file",
             str(remove_file),
+            "--type",
+            "entity",
+            "--id",
+            entity_id,
             "--yes",
         ]
     )
