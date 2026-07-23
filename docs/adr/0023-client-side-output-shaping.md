@@ -39,8 +39,10 @@ This ADR records the whole shaping decision. It is delivered in slices:
     e.g. `metadata relationships`'
     `{"OneToMany": [...], "ManyToOne": [...], "ManyToMany": [...]}`) → project
     inside each array value, preserving the grouping; a top-level projection would
-    match only the group names and silently return `{}` (#912). A dict that is not
-    all row-lists (a scalar value, or a list carrying scalars) stays single-object.
+    match only the group names and silently return `{}` (#912). This descent is
+    scoped to the broken case: it applies only when **no** requested field names a
+    top-level key, so a dict whose keys the caller *is* projecting (e.g. `describe`'s
+    `{"commands": [...], "root_options": [...]}`) stays single-object.
   - **Non-object payload** (a scalar, a formxml string, a list carrying no
     dicts) → passed through unchanged with a `meta.warnings` advisory; there is
     nothing to project.

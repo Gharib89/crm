@@ -131,15 +131,16 @@ class TestDictProjection:
 
 class TestDictOfArraysProjection:
     """Dict-of-arrays payloads (e.g. `metadata relationships`) project inside each
-    array value, preserving the grouping, instead of matching only top-level keys (#912)."""
+    array value, preserving the grouping, instead of matching only top-level keys (#912).
+    """
 
     def _relationships(self) -> dict:
         return {
             "OneToMany": [
-                {"SchemaName": "a_b", "ReferencingEntity": "b", "ReferencedEntity": "a", "extra": 1},
+                {"SchemaName": "a_b", "ReferencingEntity": "b", "ReferencedEntity": "a"},
             ],
             "ManyToOne": [
-                {"SchemaName": "c_d", "ReferencingEntity": "c", "ReferencedEntity": "d", "extra": 2},
+                {"SchemaName": "c_d", "ReferencingEntity": "c", "ReferencedEntity": "d"},
             ],
             "ManyToMany": [
                 {"SchemaName": "e_f", "Entity1LogicalName": "e", "Entity2LogicalName": "f"},
@@ -147,9 +148,7 @@ class TestDictOfArraysProjection:
         }
 
     def test_projects_into_each_array_preserving_grouping(self):
-        env = _emit_json(
-            fields=["SchemaName", "ReferencingEntity"], data=self._relationships()
-        )
+        env = _emit_json(fields=["SchemaName", "ReferencingEntity"], data=self._relationships())
         assert env["data"] == {
             "OneToMany": [{"SchemaName": "a_b", "ReferencingEntity": "b"}],
             "ManyToOne": [{"SchemaName": "c_d", "ReferencingEntity": "c"}],
@@ -157,9 +156,7 @@ class TestDictOfArraysProjection:
         }
 
     def test_field_order_follows_flag(self):
-        env = _emit_json(
-            fields=["ReferencedEntity", "SchemaName"], data=self._relationships()
-        )
+        env = _emit_json(fields=["ReferencedEntity", "SchemaName"], data=self._relationships())
         assert list(env["data"]["OneToMany"][0].keys()) == ["ReferencedEntity", "SchemaName"]
 
     def test_partial_match_no_warning(self):
@@ -185,14 +182,23 @@ class TestDictOfArraysProjection:
         )
         assert env["data"] == {"name": "A", "roles": [{"x": 1}]}
 
+    def test_top_level_key_match_wins_over_descent(self):
+        # `describe`-style payload is structurally a dict-of-arrays too, but the
+        # caller projects its *top-level* section keys — a requested field that
+        # names a top-level key keeps single-object projection rather than
+        # descending into the arrays (#912).
+        env = _emit_json(
+            fields=["commands"],
+            data={"commands": [{"name": "get"}], "root_options": [{"name": "--json"}]},
+        )
+        assert env["data"] == {"commands": [{"name": "get"}]}
+
     def test_all_list_valued_record_stays_single_object(self):
         # Every value is a list but they carry scalars, not row-dicts — this is an
         # ordinary record, not a relationships-style collection, so single-object
         # projection still applies (the requested key is kept whole). Guards the
         # AC2 "single-dict projection unchanged" contract (#912).
-        env = _emit_json(
-            fields=["roles"], data={"roles": ["x", "y"], "groups": ["a"]}
-        )
+        env = _emit_json(fields=["roles"], data={"roles": ["x", "y"], "groups": ["a"]})
         assert env["data"] == {"roles": ["x", "y"]}
 
 
