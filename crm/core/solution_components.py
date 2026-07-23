@@ -267,6 +267,8 @@ def layer_conflicts(
 # required-by graph is fetched by the caller (a live-only step); this classifier
 # is pure so the bucketing/summary logic is unit-testable in isolation.
 
+# The `entity` componenttype is the cascade vector this feature reasons about.
+_ENTITY_TYPE = SOLUTION_COMPONENT_TYPES["entity"]
 _WHOLE_ENTITY_BEHAVIOR = 0
 _SHELL_BEHAVIORS = (1, 2)
 
@@ -316,8 +318,9 @@ def build_audit(
     for c in components:
         ctype = c["componenttype"]
         oid = c["objectid"]
-        by_type[component_type_name(ctype)] = by_type.get(component_type_name(ctype), 0) + 1
-        if ctype != 1:
+        type_name = component_type_name(ctype)
+        by_type[type_name] = by_type.get(type_name, 0) + 1
+        if ctype != _ENTITY_TYPE:
             continue
         entity_count += 1
         behavior = c["rootcomponentbehavior"]

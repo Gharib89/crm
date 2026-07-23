@@ -876,6 +876,9 @@ def _safe_get_by_id(backend: D365Backend, path: str, select: str) -> dict[str, A
 
 # ── solution audit + add-time cascade preview (#916) ─────────────────────────
 
+# The `entity` componenttype (1) is the cascade vector this feature reasons about.
+_ENTITY_TYPE = SOLUTION_COMPONENT_TYPES["entity"]
+
 
 def _extract_required(result: dict[str, Any]) -> list[dict[str, Any]]:
     """Pull required ``(componenttype, objectid)`` keys from a
@@ -931,7 +934,7 @@ def _required_edges(
         ops: list[BatchOperation] = [
             {
                 "method": "GET",
-                "url": dependencies.build_dependency_path(oid, 1, for_="required"),
+                "url": dependencies.build_dependency_path(oid, _ENTITY_TYPE, for_="required"),
             }
             for oid in ids
         ]
@@ -943,7 +946,7 @@ def _required_edges(
     required_by: dict[tuple[int, str], list[str]] = {}
     for self_key, reqs in zip(self_keys, required_lists, strict=True):
         for req in reqs:
-            rkey = (req["componenttype"], req["objectid"])
+            rkey = component_key(req["componenttype"], req["objectid"])
             if rkey == self_key:  # a component requiring itself is not a cascade
                 continue
             required_by.setdefault(rkey, []).append(self_key[1])
@@ -955,7 +958,7 @@ def _safe_required(backend: D365Backend, object_id: str) -> list[dict[str, Any]]
     per-item fallback is best-effort, like `_safe_get_by_id`).
     """
     try:
-        return required_component_ids(backend, object_id, 1)
+        return required_component_ids(backend, object_id, _ENTITY_TYPE)
     except D365Error:
         return []
 
@@ -968,10 +971,12 @@ def audit_solution(backend: D365Backend, unique_name: str) -> dict[str, Any]:
     :func:`build_audit`. Returns the ``build_audit`` report plus ``"solution"``.
     """
     components = normalize_components(solution_components(backend, unique_name))
-    entities = [c for c in components if c["componenttype"] == 1]
+    entities = [c for c in components if c["componenttype"] == _ENTITY_TYPE]
     required_by_ids = _required_edges(backend, entities)
     names = resolve_component_names(backend, components)
-    name_by_oid = {oid: (info.get("name") or oid) for (t, oid), info in names.items() if t == 1}
+    name_by_oid = {
+        oid: (info.get("name") or oid) for (t, oid), info in names.items() if t == _ENTITY_TYPE
+    }
     required_by = {
         key: [name_by_oid.get(r, r) for r in requirers]
         for key, requirers in required_by_ids.items()
@@ -991,11 +996,11 @@ def preview_required_components(
     requested components — the components themselves are excluded. Each component's
     directly-required set is one ``RetrieveRequiredComponents`` GET.
     """
-    requested = {(int(ct), str(cid).lower()) for cid, ct in components}
+    requested = {component_key(ct, cid) for cid, ct in components}
     seen: dict[tuple[int, str], dict[str, Any]] = {}
     for component_id, component_type in components:
         for req in required_component_ids(backend, component_id, component_type):
-            key = (req["componenttype"], req["objectid"])
+            key = component_key(req["componenttype"], req["objectid"])
             if key in requested or key in seen:
                 continue
             seen[key] = {
