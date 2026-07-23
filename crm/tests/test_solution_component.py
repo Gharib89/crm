@@ -605,6 +605,28 @@ class TestParseComponentsFile:
         rows = sol_mod.parse_components_file(p, for_add=False)
         assert rows == [{"component_id": _COMP_ID, "component_type": 61}]
 
+    def test_cli_flag_defaults_apply_to_rows_without_override(self, tmp_path):
+        # The command-level --no-add-required/--no-subcomponents are the batch-wide
+        # default; a row that carries no override inherits them (#914 spec).
+        p = tmp_path / "comps.json"
+        p.write_text(
+            json.dumps(
+                [
+                    {"type": "entity", "id": _COMP_ID},  # no override → inherits defaults
+                    {"type": 61, "id": _COMP_ID_2, "no_add_required": False},  # overrides
+                ]
+            )
+        )
+        rows = sol_mod.parse_components_file(
+            p, for_add=True, default_no_add_required=True, default_no_subcomponents=True
+        )
+        # Row 0 inherits the flag defaults.
+        assert rows[0]["add_required_components"] is False
+        assert rows[0]["do_not_include_subcomponents"] is True
+        # Row 1's explicit key wins over the default.
+        assert rows[1]["add_required_components"] is True
+        assert rows[1]["do_not_include_subcomponents"] is True  # inherited
+
     def test_unknown_key_rejected(self, tmp_path):
         # The issue example carried a `behavior` key; the core has no
         # RootComponentBehavior parameter, so it is rejected, not silently dropped.
@@ -693,6 +715,37 @@ class TestBatchComponentCommands:
         assert result.exit_code == 0, result.output
         comps = captured["components"]
         assert [c["component_type"] for c in comps] == [1, 61]
+
+    def test_components_file_inherits_cli_flags(self, monkeypatch, tmp_path):
+        # `add-component --components-file f --no-add-required` must apply the flag
+        # to file rows that carry no per-row override (#914 spec).
+        p = tmp_path / "comps.json"
+        p.write_text(json.dumps([{"type": "entity", "id": _GUID}]))
+        captured = {}
+        monkeypatch.setattr(
+            "crm.core.solution.add_solution_components",
+            lambda backend, **kw: captured.update(kw)
+            or {"solution": kw["solution"], "added": [], "count": 1, "failed": 0},
+        )
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "solution",
+                "add-component",
+                "--solution",
+                "CRMWorx",
+                "--components-file",
+                str(p),
+                "--no-add-required",
+                "--no-subcomponents",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        row = captured["components"][0]
+        assert row["add_required_components"] is False
+        assert row["do_not_include_subcomponents"] is True
 
     def test_add_no_id_no_file_usage_error(self, monkeypatch):
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())

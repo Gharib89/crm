@@ -526,7 +526,13 @@ def remove_solution_component(
     }
 
 
-def parse_components_file(path: str | Path, *, for_add: bool) -> list[dict[str, Any]]:
+def parse_components_file(
+    path: str | Path,
+    *,
+    for_add: bool,
+    default_no_add_required: bool = False,
+    default_no_subcomponents: bool = False,
+) -> list[dict[str, Any]]:
     """Load a batch-component JSON file into resolved core-component dicts (#914).
 
     The file is a JSON list of ``{"type": <int|name>, "id": <guid>}`` rows; an
@@ -536,10 +542,14 @@ def parse_components_file(path: str | Path, *, for_add: bool) -> list[dict[str, 
     has no RootComponentBehavior parameter on the actions, so it errors here. Each
     row's ``type`` is resolved through :func:`resolve_component_type`. Returns the
     same dict shape the add/remove batch cores consume.
+
+    For an add file, ``default_no_add_required`` / ``default_no_subcomponents``
+    are the batch-wide defaults (the command-level ``--no-add-required`` /
+    ``--no-subcomponents`` flags); a row's own boolean key overrides its default.
     """
     p = Path(path)
     try:
-        text = p.read_text(encoding="utf-8")
+        text = p.read_text(encoding="utf-8-sig")
     except OSError as exc:
         raise D365Error(f"Could not read {p}: {exc}") from exc
     try:
@@ -575,15 +585,19 @@ def parse_components_file(path: str | Path, *, for_add: bool) -> list[dict[str, 
             "component_type": resolve_component_type(row["type"]),
         }
         if for_add:
-            component["add_required_components"] = not _row_bool(p, i, row, "no_add_required")
-            component["do_not_include_subcomponents"] = _row_bool(p, i, row, "no_subcomponents")
+            component["add_required_components"] = not _row_bool(
+                p, i, row, "no_add_required", default_no_add_required
+            )
+            component["do_not_include_subcomponents"] = _row_bool(
+                p, i, row, "no_subcomponents", default_no_subcomponents
+            )
         out.append(component)
     return out
 
 
-def _row_bool(path: Path, i: int, row: dict[str, Any], key: str) -> bool:
-    """Read an optional boolean row flag, defaulting to False; reject non-bools."""
-    val = row.get(key, False)
+def _row_bool(path: Path, i: int, row: dict[str, Any], key: str, default: bool) -> bool:
+    """Read an optional boolean row flag, falling back to `default`; reject non-bools."""
+    val = row.get(key, default)
     if not isinstance(val, bool):
         raise D365Error(f"{path} row #{i}: {key!r} must be a boolean, got {type(val).__name__}")
     return val

@@ -532,11 +532,37 @@ def _validate_component_selection(component_ids, type_, components_file):
         )
 
 
+def _emit_batch(ctx, solution, info, verb):
+    """Emit a batch add/remove result: ok unless a row failed, journal on success."""
+    failed = info.get("failed", 0)
+    ok = failed == 0
+    error = None
+    if not ok:
+        error = (
+            f"{failed} of {info['count']} component(s) failed; "
+            f"transaction rolled back (no components {verb})."
+        )
+    ctx.emit(ok, data=info, error=error)
+    if ok:
+        _journal(ctx, solution, info)
+
+
 def _collect_add_components(component_ids, type_, components_file, no_add_required, no_subcomponents):
-    """Build the resolved component list for a batch add (file rows + --id rows)."""
+    """Build the resolved component list for a batch add (file rows + --id rows).
+
+    The command-level ``--no-add-required`` / ``--no-subcomponents`` flags are the
+    batch-wide default; a --components-file row can override them per row.
+    """
     components: list[dict] = []
     if components_file:
-        components.extend(sol_mod.parse_components_file(components_file, for_add=True))
+        components.extend(
+            sol_mod.parse_components_file(
+                components_file,
+                for_add=True,
+                default_no_add_required=no_add_required,
+                default_no_subcomponents=no_subcomponents,
+            )
+        )
     if component_ids:
         component_type = sol_mod.resolve_component_type(type_)
         components.extend(
@@ -627,14 +653,7 @@ def solution_add_component(
         info = sol_mod.add_solution_components(
             ctx.backend(), solution=solution, components=components
         )
-    failed = info.get("failed", 0)
-    ok = failed == 0
-    error = None
-    if not ok:
-        error = f"{failed} of {info['count']} component(s) failed; transaction rolled back (no components added)."
-    ctx.emit(ok, data=info, error=error)
-    if ok:
-        _journal(ctx, solution, info)
+    _emit_batch(ctx, solution, info, "added")
 
 
 @solution_group.command("remove-component")
@@ -709,14 +728,7 @@ def solution_remove_component(ctx: CLIContext, solution, type_, component_ids, c
         info = sol_mod.remove_solution_components(
             ctx.backend(), solution=solution, components=components
         )
-    failed = info.get("failed", 0)
-    ok = failed == 0
-    error = None
-    if not ok:
-        error = f"{failed} of {info['count']} component(s) failed; transaction rolled back (no components removed)."
-    ctx.emit(ok, data=info, error=error)
-    if ok:
-        _journal(ctx, solution, info)
+    _emit_batch(ctx, solution, info, "removed")
 
 
 @solution_group.command("clone-as-patch")
