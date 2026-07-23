@@ -15,6 +15,7 @@ import json
 from evals.skill.regression import RegressionReport
 from evals.skill.report import (
     ARTIFACT_NAMES,
+    InvocationSplit,
     artifact_paths,
     build_matrix,
     build_report,
@@ -72,20 +73,14 @@ def _no_baseline() -> RegressionReport:
 def test_invocation_split_counts_skill_leg_only():
     split = invocation_split(_trials())
     # only the skill leg counts; bare has no skill to invoke.
-    assert split == {
-        "invoked_passed": 2,
-        "invoked_failed": 0,
-        "not_invoked_passed": 0,
-        "not_invoked_failed": 1,
-        "not_captured": 0,
-    }
+    assert split == InvocationSplit(invoked_passed=2, not_invoked_failed=1)
 
 
 def test_invocation_split_counts_uncaptured():
     trials = [
         TrialRecord("t1", leg="skill", trial=0, passed=True, reason="", capped=False, invoked=None),
     ]
-    assert invocation_split(trials)["not_captured"] == 1
+    assert invocation_split(trials).not_captured == 1
 
 
 # ── build_report ─────────────────────────────────────────────────────────────

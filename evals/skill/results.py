@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Literal
 
@@ -53,6 +54,34 @@ def is_reportable(*, preset: str, paired: bool, k: int, subset: bool = False) ->
     default (k=1) is deliberately *not* reportable.
     """
     return preset == "full" and paired and k >= REPORTABLE_MIN_K and not subset
+
+
+def series_key(meta: dict[str, Any]) -> tuple[str, str, int]:
+    """A run's *series* identity — ``(model, target, k)``.
+
+    The unit baselines and the matrix group by (ADR 0028: per-target/per-model/per-k series
+    are never merged).
+    """
+    return (str(meta.get("model")), str(meta.get("target")), int(meta.get("k", 0)))
+
+
+def iter_run_records(results_root: str | Path) -> Iterator[dict[str, Any]]:
+    """Yield each parsed ``<results_root>/*/run.json`` record; skip an unreadable/malformed one.
+
+    The single reader of the on-disk run layout — baseline lookup (:mod:`regression`) and the
+    matrix (:mod:`report`) both derive from this, so the ``run.json`` shape is scanned in one
+    place. Nothing is yielded when the root is absent.
+    """
+    root = Path(results_root)
+    if not root.is_dir():
+        return
+    for run_json in root.glob("*/run.json"):
+        try:
+            data = json.loads(run_json.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(data, dict):
+            yield data
 
 
 @dataclasses.dataclass

@@ -22,12 +22,11 @@ they are never named (ADR 0028's explicit-path rule).
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from evals.skill.regression import RegressionReport, macro_pass_rate
-from evals.skill.results import TaskAggregate, TrialRecord
+from evals.skill.results import TaskAggregate, TrialRecord, iter_run_records, series_key
 
 #: The only files a reportable run commits (force-added over ``.gitignore``). Transcripts
 #: and ``run.log`` are absent by construction, so ``git add -f`` can never stage them.
@@ -57,30 +56,36 @@ def _leg_verdicts(trials: list[TrialRecord], task_id: str, leg: str) -> str:
     return "".join(_verdict(t) for t in ordered) or "—"
 
 
-def invocation_split(trials: list[TrialRecord]) -> dict[str, int]:
+class InvocationSplit(NamedTuple):
+    """The skill leg's (invoked?) × (passed?) contingency table, plus uncaptured trials."""
+
+    invoked_passed: int = 0
+    invoked_failed: int = 0
+    not_invoked_passed: int = 0
+    not_invoked_failed: int = 0
+    not_captured: int = 0
+
+
+def invocation_split(trials: list[TrialRecord]) -> InvocationSplit:
     """Split the **skill-leg** trials by (invoked?) × (passed?) — the ADR-0028 decoupling.
 
     Only the skill leg can invoke the skill (the bare leg has none installed), so only it is
     counted. A trial whose ``invoked`` is ``None`` (signal not captured) lands in
     ``not_captured`` rather than being guessed either way.
     """
-    counts = {
-        "invoked_passed": 0,
-        "invoked_failed": 0,
-        "not_invoked_passed": 0,
-        "not_invoked_failed": 0,
-        "not_captured": 0,
-    }
+    inv_pass = inv_fail = noinv_pass = noinv_fail = uncaptured = 0
     for t in trials:
         if t.leg != "skill":
             continue
         if t.invoked is None:
-            counts["not_captured"] += 1
+            uncaptured += 1
         elif t.invoked:
-            counts["invoked_passed" if t.passed else "invoked_failed"] += 1
+            inv_pass += t.passed
+            inv_fail += not t.passed
         else:
-            counts["not_invoked_passed" if t.passed else "not_invoked_failed"] += 1
-    return counts
+            noinv_pass += t.passed
+            noinv_fail += not t.passed
+    return InvocationSplit(inv_pass, inv_fail, noinv_pass, noinv_fail, uncaptured)
 
 
 def _mean_hake(gains: list[float | None]) -> float | None:
@@ -97,7 +102,9 @@ def build_report(
     regression: RegressionReport,
 ) -> str:
     """Render the per-run ``report.md`` (all ADR-0028 sections). Pure: no disk, no org."""
-    skill_macro = macro_pass_rate([a.pass_skill_rate for a in aggregates])
+    # ``regression.current_macro`` is this run's with-skill macro (mean of pass_skill_rate);
+    # reuse it so the Macro and Regression sections can never disagree.
+    skill_macro = regression.current_macro
     bare_macro = macro_pass_rate([a.pass_bare_rate for a in aggregates])
     mean_gain = _mean_hake([a.hake_gain for a in aggregates])
     split = invocation_split(trials)
@@ -145,12 +152,12 @@ def build_report(
         "",
         "| | passed | failed |",
         "| --- | --- | --- |",
-        f"| invoked | {split['invoked_passed']} | {split['invoked_failed']} |",
-        f"| not invoked | {split['not_invoked_passed']} | {split['not_invoked_failed']} |",
+        f"| invoked | {split.invoked_passed} | {split.invoked_failed} |",
+        f"| not invoked | {split.not_invoked_passed} | {split.not_invoked_failed} |",
     ]
-    if split["not_captured"]:
+    if split.not_captured:
         lines.append(
-            f"\nInvocation signal not captured for {split['not_captured']} skill-leg trial(s)."
+            f"\nInvocation signal not captured for {split.not_captured} skill-leg trial(s)."
         )
     lines.append("")
 
@@ -181,28 +188,14 @@ def build_report(
 # ── matrix.md — derived purely from committed run.json records ──────────────────
 
 
-def _series_key(meta: dict[str, Any]) -> tuple[str, str, int]:
-    return (str(meta.get("model")), str(meta.get("target")), int(meta.get("k", 0)))
-
-
 def collect_reportable(results_root: str | Path) -> list[dict[str, Any]]:
-    """Every committed ``run.json`` stamped ``reportable`` under ``results_root`` (newest first).
+    """Every committed run record stamped ``reportable`` under ``results_root`` (newest first).
 
-    Reads only the committed records (never transcripts); a malformed/unreadable ``run.json``
-    is skipped. Returns ``[]`` when the root is absent.
+    Reads only the committed records via :func:`evals.skill.results.iter_run_records` (never
+    the transcripts); a malformed/unreadable ``run.json`` is skipped. ``[]`` if the root is absent.
     """
-    root = Path(results_root)
-    if not root.is_dir():
-        return []
-    runs: list[dict[str, Any]] = []
-    for run_json in root.glob("*/run.json"):
-        try:
-            data = json.loads(run_json.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if data.get("reportable"):
-            runs.append(data)
-    return sorted(runs, key=lambda d: str(d.get("run_id", "")), reverse=True)
+    reportable = (d for d in iter_run_records(results_root) if d.get("reportable"))
+    return sorted(reportable, key=lambda d: str(d.get("run_id", "")), reverse=True)
 
 
 def latest_reportable_by_series(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -215,7 +208,7 @@ def latest_reportable_by_series(runs: list[dict[str, Any]]) -> list[dict[str, An
     for run in runs:
         if not run.get("reportable"):
             continue
-        key = _series_key(run.get("meta", {}))
+        key = series_key(run.get("meta", {}))
         cur = newest.get(key)
         if cur is None or str(run.get("run_id", "")) > str(cur.get("run_id", "")):
             newest[key] = run

@@ -143,6 +143,17 @@ def run_pair(
                 if transcripts_dir is not None
                 else ""
             )
+            metrics = trace.parse_metrics(result.transcript)
+            # Invocation: True if the skill was loaded; False only when the run *completed*
+            # (a terminal result event → non-empty metrics) without loading it; None when the
+            # transcript never completed (crash/truncation), so "did not invoke" is unknown
+            # rather than falsely asserted.
+            if trace.parse_invoked(result.transcript):
+                invoked: bool | None = True
+            elif metrics:
+                invoked = False
+            else:
+                invoked = None
             trials.append(
                 TrialRecord(
                     task_id=result.task_id,
@@ -151,9 +162,9 @@ def run_pair(
                     passed=bool(result.passed),
                     reason=result.reason,
                     capped=result.capped,
-                    metrics=trace.parse_metrics(result.transcript),
+                    metrics=metrics,
                     transcript_ref=ref,
-                    invoked=trace.parse_invoked(result.transcript),
+                    invoked=invoked,
                 )
             )
     return trials
@@ -391,9 +402,18 @@ def _finalize_reporting(
     )
 
     artifacts = [str(p) for p in report_mod.artifact_paths(run_dir)]
-    subprocess.run(["git", "-C", str(repo_root), "add", "-f", *artifacts], check=False)
-    subprocess.run(["git", "-C", str(repo_root), "add", str(matrix_path)], check=False)
-    print(f"  staged for commit: {', '.join(report_mod.ARTIFACT_NAMES)}, {report_mod.MATRIX_NAME}")
+    add_named = subprocess.run(["git", "-C", str(repo_root), "add", "-f", *artifacts], check=False)
+    add_matrix = subprocess.run(["git", "-C", str(repo_root), "add", str(matrix_path)], check=False)
+    if add_named.returncode == 0 and add_matrix.returncode == 0:
+        print(
+            f"  staged for commit: {', '.join(report_mod.ARTIFACT_NAMES)}, {report_mod.MATRIX_NAME}"
+        )
+    else:
+        print(
+            f"  WARNING: git add failed (rc {add_named.returncode}/{add_matrix.returncode}); "
+            f"artifacts written to {run_dir} but NOT staged — stage them manually",
+            file=sys.stderr,
+        )
 
 
 def _print_summary(
