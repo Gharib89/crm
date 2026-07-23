@@ -129,6 +129,63 @@ class TestDictProjection:
         assert json.loads(result.output)["data"] == {"name": "Contoso Ltd"}
 
 
+class TestDictOfArraysProjection:
+    """Dict-of-arrays payloads (e.g. `metadata relationships`) project inside each
+    array value, preserving the grouping, instead of matching only top-level keys (#912)."""
+
+    def _relationships(self) -> dict:
+        return {
+            "OneToMany": [
+                {"SchemaName": "a_b", "ReferencingEntity": "b", "ReferencedEntity": "a", "extra": 1},
+            ],
+            "ManyToOne": [
+                {"SchemaName": "c_d", "ReferencingEntity": "c", "ReferencedEntity": "d", "extra": 2},
+            ],
+            "ManyToMany": [
+                {"SchemaName": "e_f", "Entity1LogicalName": "e", "Entity2LogicalName": "f"},
+            ],
+        }
+
+    def test_projects_into_each_array_preserving_grouping(self):
+        env = _emit_json(
+            fields=["SchemaName", "ReferencingEntity"], data=self._relationships()
+        )
+        assert env["data"] == {
+            "OneToMany": [{"SchemaName": "a_b", "ReferencingEntity": "b"}],
+            "ManyToOne": [{"SchemaName": "c_d", "ReferencingEntity": "c"}],
+            "ManyToMany": [{"SchemaName": "e_f"}],  # key absent in this array → omitted
+        }
+
+    def test_field_order_follows_flag(self):
+        env = _emit_json(
+            fields=["ReferencedEntity", "SchemaName"], data=self._relationships()
+        )
+        assert list(env["data"]["OneToMany"][0].keys()) == ["ReferencedEntity", "SchemaName"]
+
+    def test_partial_match_no_warning(self):
+        # SchemaName matches every array; no unmatched-key warning.
+        env = _emit_json(fields=["SchemaName"], data=self._relationships())
+        assert "meta" not in env or "warnings" not in env.get("meta", {})
+
+    def test_wholly_unmatched_field_warns(self):
+        env = _emit_json(fields=["typo"], data=self._relationships())
+        assert any("typo" in w for w in env["meta"]["warnings"])
+
+    def test_all_empty_arrays_no_warning(self):
+        env = _emit_json(fields=["SchemaName"], data={"OneToMany": [], "ManyToMany": []})
+        assert env["data"] == {"OneToMany": [], "ManyToMany": []}
+        assert "meta" not in env or "warnings" not in env.get("meta", {})
+
+    def test_single_record_with_list_field_unchanged(self):
+        # Not every value is a list, so this stays single-object projection —
+        # the list-valued key is projected as a whole, not descended into.
+        env = _emit_json(
+            fields=["name", "roles"],
+            data={"name": "A", "roles": [{"x": 1}], "drop": 2},
+        )
+        assert env["data"] == {"name": "A", "roles": [{"x": 1}]}
+
+
 class TestZeroMatchWarning:
     def test_unmatched_field_warns(self):
         env = _emit_json(fields=["name", "typo"], data=[{"name": "A"}])
