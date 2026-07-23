@@ -700,7 +700,7 @@ def _run_component_batch(
     results = run_batched(backend, ops, transactional=True, continue_on_error=False)
     rows: list[dict[str, Any]] = []
     failed = 0
-    for c, r in zip(components, results):
+    for c, r in zip(components, results, strict=True):
         status = int(r.get("status") or 0)
         ok = 200 <= status < 300
         if not ok:

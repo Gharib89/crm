@@ -547,7 +547,9 @@ def _emit_batch(ctx, solution, info, verb):
         _journal(ctx, solution, info)
 
 
-def _collect_add_components(component_ids, type_, components_file, no_add_required, no_subcomponents):
+def _collect_add_components(
+    component_ids, type_, components_file, no_add_required, no_subcomponents
+):
     """Build the resolved component list for a batch add (file rows + --id rows).
 
     The command-level ``--no-add-required`` / ``--no-subcomponents`` flags are the
@@ -614,7 +616,13 @@ def _collect_add_components(component_ids, type_, components_file, no_add_requir
 )
 @pass_ctx
 def solution_add_component(
-    ctx: CLIContext, solution, type_, component_ids, components_file, no_add_required, no_subcomponents
+    ctx: CLIContext,
+    solution,
+    type_,
+    component_ids,
+    components_file,
+    no_add_required,
+    no_subcomponents,
 ):
     """Add one or more existing components to an unmanaged solution (AddSolutionComponent).
 
@@ -681,7 +689,9 @@ def solution_add_component(
 )
 @_destructive_option
 @pass_ctx
-def solution_remove_component(ctx: CLIContext, solution, type_, component_ids, components_file, yes):
+def solution_remove_component(
+    ctx: CLIContext, solution, type_, component_ids, components_file, yes
+):
     """Remove one or more components from an unmanaged solution (RemoveSolutionComponent).
 
     A single --id behaves exactly as before. Repeated --id (sharing --type) and/or
@@ -696,7 +706,9 @@ def solution_remove_component(ctx: CLIContext, solution, type_, component_ids, c
             "component",
             f"{component_ids[0]} from solution {solution!r}",
             yes,
-            message=(f"Removing component {component_ids[0]} from solution {solution!r}. Continue?"),
+            message=(
+                f"Removing component {component_ids[0]} from solution {solution!r}. Continue?"
+            ),
         )
         with d365_errors(ctx):
             component_type = sol_mod.resolve_component_type(type_)

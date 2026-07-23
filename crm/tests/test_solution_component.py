@@ -665,8 +665,10 @@ class TestBatchComponentCommands:
         captured = {}
         monkeypatch.setattr(
             "crm.core.solution.add_solution_components",
-            lambda backend, **kw: captured.update(kw)
-            or {"solution": kw["solution"], "added": [], "count": 2, "failed": 0},
+            lambda backend, **kw: (
+                captured.update(kw)
+                or {"solution": kw["solution"], "added": [], "count": 2, "failed": 0}
+            ),
         )
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = CliRunner().invoke(
@@ -696,8 +698,10 @@ class TestBatchComponentCommands:
         captured = {}
         monkeypatch.setattr(
             "crm.core.solution.add_solution_components",
-            lambda backend, **kw: captured.update(kw)
-            or {"solution": kw["solution"], "added": [], "count": 2, "failed": 0},
+            lambda backend, **kw: (
+                captured.update(kw)
+                or {"solution": kw["solution"], "added": [], "count": 2, "failed": 0}
+            ),
         )
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = CliRunner().invoke(
@@ -724,8 +728,10 @@ class TestBatchComponentCommands:
         captured = {}
         monkeypatch.setattr(
             "crm.core.solution.add_solution_components",
-            lambda backend, **kw: captured.update(kw)
-            or {"solution": kw["solution"], "added": [], "count": 1, "failed": 0},
+            lambda backend, **kw: (
+                captured.update(kw)
+                or {"solution": kw["solution"], "added": [], "count": 1, "failed": 0}
+            ),
         )
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = CliRunner().invoke(
@@ -814,8 +820,10 @@ class TestBatchComponentCommands:
         captured = {}
         monkeypatch.setattr(
             "crm.core.solution.remove_solution_components",
-            lambda backend, **kw: captured.update(kw)
-            or {"solution": kw["solution"], "removed": [], "count": 2, "failed": 0},
+            lambda backend, **kw: (
+                captured.update(kw)
+                or {"solution": kw["solution"], "removed": [], "count": 2, "failed": 0}
+            ),
         )
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = CliRunner().invoke(
