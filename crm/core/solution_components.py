@@ -181,6 +181,14 @@ def root_behavior_name(behavior: int | None) -> str | None:
 # pull rather than through this table.
 
 
+def component_key(componenttype: Any, objectid: Any) -> tuple[int, str]:
+    """Normalized ``(componenttype, objectid)`` key for matching a resolved name
+    back to its row. Kept in one place so the store side (resolution) and the
+    lookup side (display) can never drift in how they coerce/normalize.
+    """
+    return (int(componenttype or 0), str(objectid or "").strip().lower())
+
+
 class _ResolveSpec(NamedTuple):
     path: str
     select: str

@@ -207,7 +207,7 @@ def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path, 
             resolved = sol_mod.resolve_component_names(ctx.backend(), items)
 
         def _enrich(it):
-            r = resolved.get((it.get("componenttype", 0), str(it.get("objectid", "")).lower()), {})
+            r = resolved.get(sol_mod.component_key(it.get("componenttype"), it.get("objectid")), {})
             row = {
                 **it,
                 "componenttypename": sol_mod.component_type_name(it.get("componenttype", 0)),

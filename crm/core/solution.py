@@ -37,6 +37,9 @@ from crm.core.solution_components import (
     SOLUTION_COMPONENT_TYPES as SOLUTION_COMPONENT_TYPES,
 )
 from crm.core.solution_components import (
+    component_key as component_key,
+)
+from crm.core.solution_components import (
     component_type_name as component_type_name,
 )
 from crm.core.solution_components import (
@@ -575,13 +578,18 @@ def _resolve_attribute_names(
     for start in range(0, len(ids), 20):
         chunk = ids[start : start + 20]
         flt = " or ".join(f"MetadataId eq {g}" for g in chunk)
-        rows = backend.get_collection(
-            "EntityDefinitions",
-            params={
-                "$select": "LogicalName",
-                "$expand": f"Attributes($select=LogicalName;$filter={flt})",
-            },
-        )
+        try:
+            rows = backend.get_collection(
+                "EntityDefinitions",
+                params={
+                    "$select": "LogicalName",
+                    "$expand": f"Attributes($select=LogicalName;$filter={flt})",
+                },
+            )
+        except D365Error:
+            # Graceful fallback (matches the by-id path): a failed chunk leaves
+            # its attributes unresolved (raw GUID) rather than aborting --resolve.
+            continue
         for ent in rows:
             entity_name = ent.get("LogicalName")
             attrs = cast("list[dict[str, Any]]", ent.get("Attributes") or [])
@@ -640,7 +648,7 @@ def resolve_component_names(
                 res.get("body") if not res.get("error") else None
                 for res in run_batched(backend, ops, continue_on_error=True)
             ]
-        for (componenttype, oid_lower, spec), body in zip(op_keys, bodies, strict=False):
+        for (componenttype, oid_lower, spec), body in zip(op_keys, bodies, strict=True):
             if not isinstance(body, dict):
                 continue
             entry: dict[str, Any] = {"name": body.get(spec.name_field)}
@@ -648,10 +656,10 @@ def resolve_component_names(
                 parent = body.get(spec.entity_field)
                 if parent:
                     entry["entity"] = parent
-            resolved[(componenttype, oid_lower)] = entry
+            resolved[component_key(componenttype, oid_lower)] = entry
 
     for mid, entry in _resolve_attribute_names(backend, attr_ids).items():
-        resolved[(2, mid)] = entry
+        resolved[component_key(2, mid)] = entry
 
     return resolved
 

@@ -410,6 +410,14 @@ OData rows including `componenttypename` (the friendly string for the integer
 `componenttype`, e.g. `"entity"`, `"webresource"`, `"sla"`) — so agent code does not
 need to maintain its own type-code map.
 
+Add `--resolve` (opt-in; not valid with `--save`/`--diff`) to turn raw `objectid`
+GUIDs into names in one pass instead of a lookup per row: each row gains `name` (the
+resolved logical/schema name, `null` when the id can't be resolved — never an error),
+`rootcomponentbehaviorname` (decodes the `rootcomponentbehavior` int), and, for
+entity-scoped types, an `entity` naming the parent table. It costs extra reads (a
+batched by-id fan-out plus a bulk attribute-metadata pull), which is why it is off by
+default and the bare listing stays byte-for-byte unchanged.
+
 ## Unmanaged-layer conflicts — `layer-conflicts`
 
 Find managed components that *also* carry unmanaged-layer customizations (the

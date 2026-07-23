@@ -123,6 +123,15 @@ class TestResolveComponentNames:
             resolved = sol_mod.resolve_component_names(backend, items)
         assert resolved[(2, _A)] == {"name": "new_score", "entity": "account"}
 
+    def test_attribute_bulk_failure_falls_back_gracefully(self, backend):
+        # A failed metadata pull must not abort --resolve — the attribute just
+        # stays unresolved. 500 fails fast (backend retries only 502/503/504).
+        items = [{"componenttype": 2, "objectid": _A, "rootcomponentbehavior": None}]
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("EntityDefinitions"), status_code=500, json={"error": {}})
+            resolved = sol_mod.resolve_component_names(backend, items)
+        assert (2, _A) not in resolved
+
 
 # ── CLI wiring ───────────────────────────────────────────────────────────────
 

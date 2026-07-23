@@ -70,6 +70,16 @@ crm --json solution components CRMWorx --diff components.json
 
 The two flags are mutually exclusive; bare `components <name>` is unchanged. The round-trip `--save` then `--diff` against the same org reports no drift ([#82](https://github.com/Gharib89/crm/issues/82)).
 
+## Resolve component GUIDs to friendly names (`--resolve`)
+
+```bash
+crm --json solution components CRMWorx --resolve
+```
+
+By default each row identifies a component only by its raw `objectid` GUID. `--resolve` enriches every row with a human-readable **`name`** (the entity/form/view/role/… logical or schema name) and a **`rootcomponentbehaviorname`** label decoding the `rootcomponentbehavior` optionset — `0` → `"whole-entity (all subcomponents)"`, `1` → `"shell (no subcomponents)"`, `2` → `"shell + metadata"`. Entity-scoped components (forms, views, attributes, workflows) additionally carry an **`entity`** field naming their parent table. Resolution covers entities, attributes, relationships, roles, views, workflows, forms, web resources, plug-in assemblies, and SDK steps; a component whose `objectid` can't be resolved falls back to the raw GUID with `name: null`, never an error.
+
+Resolution is **opt-in** because it does extra reads — directly-resolvable types are fetched in one `$batch` of by-id GETs and attributes via a bulk metadata pull. Without `--resolve` the output is byte-for-byte unchanged. `--resolve` enriches both the `--json` payload and the human table, and is **not valid with `--save` or `--diff`** (those operate on the raw three-key rows — combining them is a usage error) ([#913](https://github.com/Gharib89/crm/issues/913)).
+
 ## Check what an exported solution needs before importing
 
 Run this read-only check against the **import target** org before importing — an

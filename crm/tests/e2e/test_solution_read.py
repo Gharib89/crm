@@ -45,6 +45,61 @@ def test_solution_components_ephemeral(cli, ephemeral_solution):
     # The throwaway solution may be empty; that is fine — structure is the contract.
 
 
+@covers("solution components")
+def test_solution_components_resolve(cli, backend, ephemeral_solution, ephemeral_entity):
+    """`components --resolve` enriches each row with a friendly name + behavior label.
+
+    Add the session entity (type 1) to the throwaway solution, resolve, and assert
+    the entity's row carries the resolved LogicalName plus the enrichment keys, then
+    remove the component again so the shared module solution stays empty for the
+    other read tests. Exercises the live objectid → name batch-resolution path.
+    """
+    from crm.core import metadata as meta_mod
+    from crm.core import solution as sol_mod
+
+    try:
+        info = meta_mod.entity_info(backend, ephemeral_entity)
+    except Exception as exc:
+        pytest.skip(f"could not resolve entity MetadataId: {exc}")
+    metadata_id = info.get("MetadataId")
+    if not isinstance(metadata_id, str):
+        pytest.skip("entity MetadataId not returned; cannot add component")
+
+    sol_mod.add_solution_component(
+        backend,
+        solution=ephemeral_solution,
+        component_type=1,
+        component_id=metadata_id,
+        add_required_components=False,
+    )
+    try:
+        result = cli(["--json", "solution", "components", ephemeral_solution, "--resolve"])
+        assert result.returncode == 0, result.stderr
+        env = json.loads(result.stdout)
+        assert env["ok"], env
+        assert isinstance(env["data"], list)
+        row = next(
+            (
+                r
+                for r in env["data"]
+                if r.get("componenttype") == 1
+                and str(r.get("objectid", "")).lower() == metadata_id.lower()
+            ),
+            None,
+        )
+        assert row is not None, f"entity component not found in resolved output: {env['data']}"
+        # Every enriched row carries these keys; the entity resolves to its LogicalName.
+        assert "rootcomponentbehaviorname" in row, row
+        assert row.get("name") == ephemeral_entity, row
+    finally:
+        sol_mod.remove_solution_component(
+            backend,
+            solution=ephemeral_solution,
+            component_type=1,
+            component_id=metadata_id,
+        )
+
+
 @covers("solution dependencies")
 def test_solution_dependencies_ephemeral(cli, ephemeral_solution):
     """Dependencies for the throwaway solution — assert ok + list structure."""
