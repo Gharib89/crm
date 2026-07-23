@@ -38,6 +38,9 @@ from crm.core.solution_components import (
     SOLUTION_COMPONENT_TYPES as SOLUTION_COMPONENT_TYPES,
 )
 from crm.core.solution_components import (
+    build_audit as build_audit,
+)
+from crm.core.solution_components import (
     component_key as component_key,
 )
 from crm.core.solution_components import (
@@ -869,6 +872,138 @@ def _safe_get_by_id(backend: D365Backend, path: str, select: str) -> dict[str, A
         return as_dict(backend.get(path, params={"$select": select}))
     except D365Error:
         return None
+
+
+# ── solution audit + add-time cascade preview (#916) ─────────────────────────
+
+
+def _extract_required(result: dict[str, Any]) -> list[dict[str, Any]]:
+    """Pull required ``(componenttype, objectid)`` keys from a
+    ``RetrieveRequiredComponents`` response. Objectids are lowercased for stable
+    matching; a record missing either field is skipped.
+    """
+    records = cast("list[dict[str, Any]]", result.get("value") or [])
+    out: list[dict[str, Any]] = []
+    for r in records:
+        rtype = r.get("requiredcomponenttype")
+        rid = r.get("requiredcomponentobjectid")
+        if rtype is None or not rid:
+            continue
+        out.append({"componenttype": int(rtype), "objectid": str(rid).lower()})
+    return out
+
+
+def required_component_ids(
+    backend: D365Backend, component_id: str, component_type: int
+) -> list[dict[str, Any]]:
+    """Directly-required components of ``(component_id, component_type)``.
+
+    One ``RetrieveRequiredComponents`` GET (fires under --dry-run — reads-execute).
+    Returns ``[{"componenttype": int, "objectid": str}]`` (objectids lowercased);
+    an empty list means the component requires nothing.
+    """
+    path = dependencies.build_dependency_path(component_id, component_type, for_="required")
+    return _extract_required(as_dict(backend.get(path)))
+
+
+def _required_edges(
+    backend: D365Backend, entities: list[dict[str, Any]]
+) -> dict[tuple[int, str], list[str]]:
+    """Map each in-solution component to the entities that require it (#916).
+
+    For every entity ``E`` in ``entities`` (the cascade vector) fetch what ``E``
+    directly requires and record ``E``'s objectid against each required key,
+    excluding a self-requirement. Returns
+    ``{(componenttype, objectid): [requirer_objectid, ...]}`` with each requirer
+    list de-duplicated and sorted.
+
+    Fans the per-entity ``RetrieveRequiredComponents`` GETs into one ``$batch``;
+    under --dry-run / read-only ``$batch`` is refused, so it falls back to per-item
+    GETs (reads still run) — mirrors :func:`resolve_component_names`.
+    """
+    ids = [str(e.get("objectid") or "") for e in entities]
+    self_keys = [component_key(e.get("componenttype"), e.get("objectid")) for e in entities]
+    if not ids:
+        return {}
+    if backend.dry_run or backend.read_only:
+        required_lists = [_safe_required(backend, oid) for oid in ids]
+    else:
+        ops: list[BatchOperation] = [
+            {
+                "method": "GET",
+                "url": dependencies.build_dependency_path(oid, 1, for_="required"),
+            }
+            for oid in ids
+        ]
+        required_lists: list[list[dict[str, Any]]] = []
+        for res in run_batched(backend, ops, continue_on_error=True):
+            body = res.get("body")
+            required_lists.append(_extract_required(body if isinstance(body, dict) else {}))
+
+    required_by: dict[tuple[int, str], list[str]] = {}
+    for self_key, reqs in zip(self_keys, required_lists, strict=True):
+        for req in reqs:
+            rkey = (req["componenttype"], req["objectid"])
+            if rkey == self_key:  # a component requiring itself is not a cascade
+                continue
+            required_by.setdefault(rkey, []).append(self_key[1])
+    return {k: sorted(set(v)) for k, v in required_by.items()}
+
+
+def _safe_required(backend: D365Backend, object_id: str) -> list[dict[str, Any]]:
+    """`required_component_ids` for an entity, swallowing errors to ``[]`` (the
+    per-item fallback is best-effort, like `_safe_get_by_id`).
+    """
+    try:
+        return required_component_ids(backend, object_id, 1)
+    except D365Error:
+        return []
+
+
+def audit_solution(backend: D365Backend, unique_name: str) -> dict[str, Any]:
+    """Audit a solution for AddRequiredComponents cascade / whole-entity drift (#916).
+
+    Fetches the component inventory, builds the required-by graph over its entity
+    components (the cascade vector), resolves friendly names, and classifies via
+    :func:`build_audit`. Returns the ``build_audit`` report plus ``"solution"``.
+    """
+    components = normalize_components(solution_components(backend, unique_name))
+    entities = [c for c in components if c["componenttype"] == 1]
+    required_by_ids = _required_edges(backend, entities)
+    names = resolve_component_names(backend, components)
+    name_by_oid = {oid: (info.get("name") or oid) for (t, oid), info in names.items() if t == 1}
+    required_by = {
+        key: [name_by_oid.get(r, r) for r in requirers]
+        for key, requirers in required_by_ids.items()
+    }
+    report = build_audit(components, required_by=required_by, names=names)
+    return {"solution": unique_name, **report}
+
+
+def preview_required_components(
+    backend: D365Backend, components: list[tuple[str, int]]
+) -> list[dict[str, Any]]:
+    """Aggregate the components an add-time cascade would pull in (#916).
+
+    ``components`` is ``[(component_id, component_type), ...]`` that will cascade
+    (AddRequiredComponents on). Returns a de-duplicated, sorted list of
+    ``{"componenttype", "type_name", "objectid"}`` the server may add beyond the
+    requested components — the components themselves are excluded. Each component's
+    directly-required set is one ``RetrieveRequiredComponents`` GET.
+    """
+    requested = {(int(ct), str(cid).lower()) for cid, ct in components}
+    seen: dict[tuple[int, str], dict[str, Any]] = {}
+    for component_id, component_type in components:
+        for req in required_component_ids(backend, component_id, component_type):
+            key = (req["componenttype"], req["objectid"])
+            if key in requested or key in seen:
+                continue
+            seen[key] = {
+                "componenttype": req["componenttype"],
+                "type_name": component_type_name(req["componenttype"]),
+                "objectid": req["objectid"],
+            }
+    return sorted(seen.values(), key=lambda r: (r["componenttype"], r["objectid"]))
 
 
 def retrieve_missing_components(backend: D365Backend, solution_file: str | Path) -> dict[str, Any]:

@@ -261,6 +261,46 @@ def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path, 
     ctx.emit(True, table={"headers": headers, "rows": rows}, meta={"count": len(items)})
 
 
+@solution_group.command("audit")
+@click.argument("unique_name")
+@pass_ctx
+def solution_audit_cmd(ctx: CLIContext, unique_name):
+    """Audit a solution for AddRequiredComponents cascade / whole-entity drift.
+
+    Surfaces two hygiene problems (#916): entities carried as whole-entity
+    (rootcomponentbehavior 0 — where accidental bloat hides) vs shells, and
+    components that appear only because another component in the SAME solution
+    requires them (cascade candidates, not authored here — classified via the
+    RetrieveRequiredComponents dependency graph over the solution's entities).
+    Read-only; reports drift, never fixes it.
+    """
+    with d365_errors(ctx):
+        report = sol_mod.audit_solution(ctx.backend(), unique_name)
+
+    if ctx.json_mode:
+        ctx.emit(True, data=report)
+        return
+
+    s = report["summary"]
+    click.echo(
+        f"{report['solution']}: {s['total_components']} components, "
+        f"{s['entity_count']} entities "
+        f"({s['whole_entity_count']} whole-entity, {s['shell_count']} shell), "
+        f"{s['required_only_count']} required-only candidate(s)."
+    )
+    whole = report["whole_entities"]
+    if whole:
+        click.echo("\nWhole-entity components (accidental-bloat risk):")
+        for e in whole:
+            click.echo(f"  - {e['name'] or e['objectid']}  [{e['behavior_label']}]")
+    cands = report["required_only_candidates"]
+    if cands:
+        click.echo("\nRequired-only candidates (pulled in by another component's cascade):")
+        for c in cands:
+            req = ", ".join(c["required_by"])
+            click.echo(f"  - {c['type_name']} {c['name'] or c['objectid']}  (required by: {req})")
+
+
 @solution_group.command("export-spec")
 @click.argument("unique_name")
 @_output_option(
@@ -579,6 +619,33 @@ def _collect_add_components(
     return components
 
 
+_CASCADE_PREVIEW_LIMIT = 10
+
+
+def _cascade_gate(ctx, cascading, yes):
+    """Interactive-only pre-flight for an AddRequiredComponents cascade (#916).
+
+    ``cascading`` is ``[(component_id, component_type), ...]`` that will cascade
+    (AddRequiredComponents on). When those pull in required components, list them
+    and require confirmation. Fires ONLY in an interactive TTY — under ``--json``,
+    a non-TTY, or ``--dry-run`` it returns silently so scripted / ``--json`` callers
+    keep the historical no-prompt behavior. ``--yes`` skips it. On decline emits the
+    ``aborted by user`` envelope (Exit 1), so control never returns to the caller.
+    """
+    if yes or ctx.json_mode or ctx.dry_run or not _stdin_is_tty() or not cascading:
+        return
+    required = sol_mod.preview_required_components(ctx.backend(), cascading)
+    if not required:
+        return
+    click.echo(f"This will also add {len(required)} required component(s):")
+    for r in required[:_CASCADE_PREVIEW_LIMIT]:
+        click.echo(f"  - {r['type_name']} {r['objectid']}")
+    if len(required) > _CASCADE_PREVIEW_LIMIT:
+        click.echo(f"  … and {len(required) - _CASCADE_PREVIEW_LIMIT} more")
+    if not click.confirm("Proceed?", default=False):
+        ctx.emit(False, error="aborted by user")
+
+
 def _collect_remove_components(component_ids, type_, components_file):
     """Build the resolved component list for a batch remove (file rows + --id rows)."""
     components: list[dict] = []
@@ -627,6 +694,7 @@ def _collect_remove_components(component_ids, type_, components_file):
     help="Exclude subcomponents (DoNotIncludeSubcomponents: true). "
     "Batch default; a --components-file row can override it.",
 )
+@_destructive_option
 @pass_ctx
 def solution_add_component(
     ctx: CLIContext,
@@ -636,18 +704,24 @@ def solution_add_component(
     components_file,
     no_add_required,
     no_subcomponents,
+    yes,
 ):
     """Add one or more existing components to an unmanaged solution (AddSolutionComponent).
 
     A single --id behaves exactly as before. Repeated --id (sharing --type) and/or
     a --components-file run as one transactional $batch — a mid-batch failure rolls
     all rows back — with a per-row ok/error summary under --json.
+
+    When a cascade would pull in required components (AddRequiredComponents, i.e.
+    --no-add-required absent) an interactive run lists them and asks to confirm
+    (--yes skips). Under --json / a non-TTY the prompt is skipped (cascade proceeds).
     """
     _validate_component_selection(component_ids, type_, components_file)
     single = components_file is None and len(component_ids) == 1
     with d365_errors(ctx):
         if single:
             component_type = sol_mod.resolve_component_type(type_)
+            _cascade_gate(ctx, [] if no_add_required else [(component_ids[0], component_type)], yes)
             info = sol_mod.add_solution_component(
                 ctx.backend(),
                 solution=solution,
@@ -671,6 +745,12 @@ def solution_add_component(
         components = _collect_add_components(
             component_ids, type_, components_file, no_add_required, no_subcomponents
         )
+        cascading = [
+            (c["component_id"], c["component_type"])
+            for c in components
+            if c.get("add_required_components")
+        ]
+        _cascade_gate(ctx, cascading, yes)
         info = sol_mod.add_solution_components(
             ctx.backend(), solution=solution, components=components
         )
