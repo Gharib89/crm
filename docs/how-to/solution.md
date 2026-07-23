@@ -80,6 +80,16 @@ By default each row identifies a component only by its raw `objectid` GUID. `--r
 
 Resolution is **opt-in** because it does extra reads — directly-resolvable types are fetched in one `$batch` of by-id GETs and attributes via a bulk metadata pull. Without `--resolve` the output is byte-for-byte unchanged. `--resolve` enriches both the `--json` payload and the human table, and is **not valid with `--save` or `--diff`** (those operate on the raw three-key rows — combining them is a usage error) ([#913](https://github.com/Gharib89/crm/issues/913)).
 
+## Audit a solution for cascade / whole-entity drift
+
+```bash
+crm --json solution audit CRMWorx
+```
+
+Read-only. Fetches the solution's component inventory and classifies it into two hygiene signals: **whole-entity vs shell entities** (`rootcomponentbehavior` `0` — "whole-entity (all subcomponents)" — is where accidental bloat hides; `1`/`2` are shells) and **required-only candidates** — components that appear only because another component in the *same* solution requires them, per `RetrieveRequiredComponents` (a cascade candidate, not something authored there directly).
+
+`--json` returns `{solution, summary:{total_components, entity_count, whole_entity_count, shell_count, required_only_count, by_type}, whole_entities:[...], shell_entities:[...], required_only_candidates:[...]}`. Each entity-bucket row carries `objectid`, `name`, `rootcomponentbehavior`, `behavior_label`; each `required_only_candidates` row additionally carries `componenttype`, `type_name`, and `required_by` (the names of the in-solution components that require it). Human mode prints a one-line summary plus the whole-entity and required-only-candidate lists. This reports drift — it never fixes it ([#916](https://github.com/Gharib89/crm/issues/916)).
+
 ## Check what an exported solution needs before importing
 
 Run this read-only check against the **import target** org before importing — an
@@ -128,6 +138,8 @@ crm --json solution remove-component --solution CRMWorx --type 61 --id <guid> --
 Wrap the `AddSolutionComponent` / `RemoveSolutionComponent` actions. `--type` takes a `componenttype` integer **or** a friendly name (`entity`, `attribute`, `relationship`, `optionset`, `webresource`, …; names are case- and separator-insensitive — `WebResource`, `web resource`, `web-resource` all resolve to `61`). Pass a raw integer for any type not in the name map. Both refuse a **managed** solution client-side (a managed solution can't be edited). Note the canonical split: `relationship` is `3` (base relationship) and `entityrelationship` is `10` — not interchangeable.
 
 `add-component` is non-destructive. `AddRequiredComponents` defaults on (`--no-add-required` turns it off) and subcomponents are included by default (`--no-subcomponents` sets `DoNotIncludeSubcomponents: true`). Adding an **entity** with `AddRequiredComponents` on emits an informational `meta.note`: the server may silently add required components beyond the requested entity, and the response does not report them ([#181](https://github.com/Gharib89/crm/issues/181)).
+
+When `AddRequiredComponents` is on, an **interactive** run previews the cascade before adding: one `RetrieveRequiredComponents` lookup per component being added, and if that would pull in anything beyond what was requested, it lists "This will also add N required component(s): …" and asks to confirm (decline aborts with the standard `ok:false` envelope). `--yes` skips the prompt. Under `--json`, a non-TTY, or `--dry-run` the prompt is skipped and the add proceeds as before — this is the historical no-prompt behavior, not a new requirement for scripted callers ([#916](https://github.com/Gharib89/crm/issues/916)).
 
 `remove-component` is **destructive**: it prompts for confirmation unless `--yes`; in a non-TTY context it fails fast (exit 1) with an error that names `--yes` — the standard `ok:false` envelope under `--json`, a human-formatted error otherwise. The agent-side PreToolUse hook also blocks it without `--yes` ([#71](https://github.com/Gharib89/crm/issues/71)).
 

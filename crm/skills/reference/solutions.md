@@ -33,8 +33,14 @@ integer or a friendly name (case- and separator-insensitive: `entity`=1, `attrib
 `relationship`=3, `optionset`=9, `entityrelationship`=10, `role`=20, `webresource`=61, …; raw int
 for anything else). Both refuse managed targets. `remove-component` is destructive
 (`--yes` required). Gotcha: `add-component --type entity` with required-components on
-(the default) may silently pull required components into the solution beyond the one
-you asked for — the server does not report them (the CLI emits a `meta.note` reminder):
+(the default) may pull required components into the solution beyond the one you asked
+for — the server does not report them in its response (the CLI emits a `meta.note`
+reminder). Interactively this cascade is previewed before it happens: if it would pull
+in anything, you're shown the list and asked to confirm (`--yes` skips it, same as the
+destructive gate above); under `--json` or a non-TTY the prompt is skipped and the
+add proceeds, unchanged from before this preview existed — so scripted/agent callers
+see no new prompt to handle. Audit an existing solution for this drift after the fact
+with `solution audit` (below).
 
 ```bash
 crm --json solution add-component --solution ContosoCore --type webresource --id <guid>
@@ -438,6 +444,34 @@ resolved logical/schema name, `null` when the id can't be resolved — never an 
 entity-scoped types, an `entity` naming the parent table. It costs extra reads (a
 batched by-id fan-out plus a bulk attribute-metadata pull), which is why it is off by
 default and the bare listing stays byte-for-byte unchanged.
+
+## Cascade / whole-entity drift audit — `audit`
+
+Read-only. Answers "did an `AddRequiredComponents` cascade quietly bloat this
+solution?" after the fact — the counterpart to the add-time preview above.
+
+```bash
+crm --json solution audit ContosoCore
+# {"ok": true, "data": {"solution": "ContosoCore",
+#   "summary": {"total_components": 42, "entity_count": 5, "whole_entity_count": 2,
+#               "shell_count": 3, "required_only_count": 1, "by_type": {"entity": 5, "webresource": 3}},
+#   "whole_entities": [{"objectid": "…", "name": "contoso_document", "rootcomponentbehavior": 0,
+#                        "behavior_label": "whole-entity (all subcomponents)"}],
+#   "shell_entities": [...],
+#   "required_only_candidates": [{"componenttype": 1, "type_name": "entity", "objectid": "…",
+#                                  "name": "contoso_requesttype", "rootcomponentbehavior": 0,
+#                                  "required_by": ["contoso_document"]}]}}
+```
+
+Two independent hygiene signals, both scoped to what's already in the solution:
+**whole-entity vs shell** buckets `componenttype == 1` rows by
+`rootcomponentbehavior` (`0` = whole-entity, where accidental bloat hides; `1`/`2`
+= shell) — a hub entity you meant to ship as a shell landing in `whole_entities`
+is the tell. **`required_only_candidates`** are components required by another
+component in the *same* solution (via `RetrieveRequiredComponents` over the
+solution's entities) — `required_by` names the in-solution requirer(s), so you
+can tell a cascade-pulled row from one you added on purpose. Human mode prints the
+summary line plus both lists; this only reports drift, it never removes anything.
 
 ## Unmanaged-layer conflicts — `layer-conflicts`
 
