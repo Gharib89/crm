@@ -12,6 +12,7 @@ keep resolving for every X that existed before the split.
 from __future__ import annotations
 
 import base64
+import json
 import re
 import urllib.parse
 from pathlib import Path
@@ -522,6 +523,204 @@ def remove_solution_component(
         "solution": solution,
         "component_id": component_id,
         "component_type": component_type,
+    }
+
+
+def parse_components_file(
+    path: str | Path,
+    *,
+    for_add: bool,
+    default_no_add_required: bool = False,
+    default_no_subcomponents: bool = False,
+) -> list[dict[str, Any]]:
+    """Load a batch-component JSON file into resolved core-component dicts (#914).
+
+    The file is a JSON list of ``{"type": <int|name>, "id": <guid>}`` rows; an
+    add file may additionally carry per-row ``"no_add_required"`` /
+    ``"no_subcomponents"`` booleans (remove has no such flags). Unknown keys are
+    rejected rather than silently dropped — the issue example's ``behavior`` key
+    has no RootComponentBehavior parameter on the actions, so it errors here. Each
+    row's ``type`` is resolved through :func:`resolve_component_type`. Returns the
+    same dict shape the add/remove batch cores consume.
+
+    For an add file, ``default_no_add_required`` / ``default_no_subcomponents``
+    are the batch-wide defaults (the command-level ``--no-add-required`` /
+    ``--no-subcomponents`` flags); a row's own boolean key overrides its default.
+    """
+    p = Path(path)
+    try:
+        text = p.read_text(encoding="utf-8-sig")
+    except OSError as exc:
+        raise D365Error(f"Could not read {p}: {exc}") from exc
+    try:
+        data: Any = json.loads(text)
+    except ValueError as exc:
+        raise D365Error(f"Could not parse {p}: {exc}") from exc
+    if not isinstance(data, list):
+        raise D365Error(f"{p}: expected a JSON list at root, got {type(data).__name__}")
+    raw_rows = cast(list[Any], data)
+    if not raw_rows:
+        raise D365Error(f"{p}: component list is empty")
+
+    allowed = {"type", "id"}
+    if for_add:
+        allowed |= {"no_add_required", "no_subcomponents"}
+    out: list[dict[str, Any]] = []
+    for i, raw in enumerate(raw_rows):
+        if not isinstance(raw, dict):
+            raise D365Error(f"{p} row #{i}: expected an object, got {type(raw).__name__}")
+        row = cast(dict[str, Any], raw)
+        extra = set(row) - allowed
+        if extra:
+            raise D365Error(
+                f"{p} row #{i}: unknown key(s) {sorted(extra)}; allowed: {sorted(allowed)}"
+            )
+        if "type" not in row or "id" not in row:
+            raise D365Error(f"{p} row #{i}: 'type' and 'id' are required")
+        cid = row["id"]
+        if not isinstance(cid, str) or not cid:
+            raise D365Error(f"{p} row #{i}: 'id' must be a non-empty string")
+        component: dict[str, Any] = {
+            "component_id": cid,
+            "component_type": resolve_component_type(row["type"]),
+        }
+        if for_add:
+            component["add_required_components"] = not _row_bool(
+                p, i, row, "no_add_required", default_no_add_required
+            )
+            component["do_not_include_subcomponents"] = _row_bool(
+                p, i, row, "no_subcomponents", default_no_subcomponents
+            )
+        out.append(component)
+    return out
+
+
+def _row_bool(path: Path, i: int, row: dict[str, Any], key: str, default: bool) -> bool:
+    """Read an optional boolean row flag, falling back to `default`; reject non-bools."""
+    val = row.get(key, default)
+    if not isinstance(val, bool):
+        raise D365Error(f"{path} row #{i}: {key!r} must be a boolean, got {type(val).__name__}")
+    return val
+
+
+def add_solution_components(
+    backend: D365Backend,
+    *,
+    solution: str,
+    components: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Batch AddSolutionComponent for many components in one transactional $batch.
+
+    Each entry in `components` is a dict of
+    ``{component_id, component_type[, add_required_components,
+    do_not_include_subcomponents]}`` (the per-row flags default to on/off). The
+    whole batch runs as one changeset — a mid-batch failure rolls every row back.
+    See :func:`_run_component_batch` for the returned per-row summary shape.
+    """
+    _require_unmanaged_solution(backend, solution, verb="added to")
+    ops: list[BatchOperation] = [
+        {
+            "method": "POST",
+            "url": "AddSolutionComponent",
+            "body": {
+                "ComponentId": c["component_id"],
+                "ComponentType": c["component_type"],
+                "SolutionUniqueName": solution,
+                "AddRequiredComponents": c.get("add_required_components", True),
+                "DoNotIncludeSubcomponents": c.get("do_not_include_subcomponents", False),
+            },
+        }
+        for c in components
+    ]
+    return _run_component_batch(
+        backend, solution=solution, components=components, ops=ops, verb="add"
+    )
+
+
+def remove_solution_components(
+    backend: D365Backend,
+    *,
+    solution: str,
+    components: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Batch RemoveSolutionComponent for many components in one transactional $batch.
+
+    Each entry in `components` is ``{component_id, component_type}``. Like the
+    singular core, each row uses the SolutionComponent entity reference (#181).
+    Runs as one changeset — a mid-batch failure rolls every row back.
+    """
+    _require_unmanaged_solution(backend, solution, verb="removed from")
+    ops: list[BatchOperation] = [
+        {
+            "method": "POST",
+            "url": "RemoveSolutionComponent",
+            "body": {
+                "SolutionComponent": {
+                    "solutioncomponentid": c["component_id"],
+                    "@odata.type": "Microsoft.Dynamics.CRM.solutioncomponent",
+                },
+                "ComponentType": c["component_type"],
+                "SolutionUniqueName": solution,
+            },
+        }
+        for c in components
+    ]
+    return _run_component_batch(
+        backend, solution=solution, components=components, ops=ops, verb="remove"
+    )
+
+
+def _run_component_batch(
+    backend: D365Backend,
+    *,
+    solution: str,
+    components: list[dict[str, Any]],
+    ops: list[BatchOperation],
+    verb: str,
+) -> dict[str, Any]:
+    """Run component `ops` as one transactional $batch and summarise per row.
+
+    Under `--dry-run` the $batch is short-circuited (the pre-flight solution GET
+    still ran) and a `would_add`/`would_remove` preview is returned. On a real
+    run, returns ``{solution, added|removed: [{type, id, ok, status, error}],
+    count, succeeded, failed, rolled_back}``. `rolled_back` is true whenever any
+    row failed, because the changeset is atomic — the offending row carries the
+    server error; its siblings surface as not-applied.
+    """
+    key = "added" if verb == "add" else "removed"
+    if backend.dry_run:
+        return {
+            "_dry_run": True,
+            "solution": solution,
+            f"would_{verb}": [
+                {"type": c["component_type"], "id": c["component_id"]} for c in components
+            ],
+            "count": len(components),
+        }
+    results = run_batched(backend, ops, transactional=True, continue_on_error=False)
+    rows: list[dict[str, Any]] = []
+    failed = 0
+    for c, r in zip(components, results, strict=True):
+        status = int(r.get("status") or 0)
+        ok = 200 <= status < 300
+        if not ok:
+            failed += 1
+        rows.append(
+            {
+                "type": c["component_type"],
+                "id": c["component_id"],
+                "ok": ok,
+                "status": status,
+                "error": None if ok else r.get("error"),
+            }
+        )
+    return {
+        "solution": solution,
+        key: rows,
+        "count": len(rows),
+        "succeeded": len(rows) - failed,
+        "failed": failed,
+        "rolled_back": failed > 0,
     }
 
 

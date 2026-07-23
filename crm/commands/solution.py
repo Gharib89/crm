@@ -516,53 +516,165 @@ def solution_set_version(ctx: CLIContext, unique_name, version, friendly_name, d
     _journal(ctx, unique_name, info)
 
 
+def _validate_component_selection(component_ids, type_, components_file):
+    """Reject bad --id/--type/--components-file combinations (usage errors, exit 2).
+
+    Fires before any backend call. Type-name/file-content errors are left to the
+    d365_errors path (exit 1) to match the single-component command's behavior.
+    """
+    if not component_ids and not components_file:
+        raise click.UsageError("provide --id (with --type) and/or --components-file.")
+    if component_ids and not type_:
+        raise click.UsageError("--type is required with --id.")
+    if type_ and not component_ids:
+        raise click.UsageError(
+            "--type applies to --id; with --components-file the type is per row."
+        )
+
+
+def _emit_batch(ctx, solution, info, verb):
+    """Emit a batch add/remove result: ok unless a row failed, journal on success."""
+    failed = info.get("failed", 0)
+    ok = failed == 0
+    error = None
+    if not ok:
+        error = (
+            f"{failed} of {info['count']} component(s) failed; "
+            f"transaction rolled back (no components {verb})."
+        )
+    ctx.emit(ok, data=info, error=error)
+    if ok:
+        _journal(ctx, solution, info)
+
+
+def _collect_add_components(
+    component_ids, type_, components_file, no_add_required, no_subcomponents
+):
+    """Build the resolved component list for a batch add (file rows + --id rows).
+
+    The command-level ``--no-add-required`` / ``--no-subcomponents`` flags are the
+    batch-wide default; a --components-file row can override them per row.
+    """
+    components: list[dict] = []
+    if components_file:
+        components.extend(
+            sol_mod.parse_components_file(
+                components_file,
+                for_add=True,
+                default_no_add_required=no_add_required,
+                default_no_subcomponents=no_subcomponents,
+            )
+        )
+    if component_ids:
+        component_type = sol_mod.resolve_component_type(type_)
+        components.extend(
+            {
+                "component_id": cid,
+                "component_type": component_type,
+                "add_required_components": not no_add_required,
+                "do_not_include_subcomponents": no_subcomponents,
+            }
+            for cid in component_ids
+        )
+    return components
+
+
+def _collect_remove_components(component_ids, type_, components_file):
+    """Build the resolved component list for a batch remove (file rows + --id rows)."""
+    components: list[dict] = []
+    if components_file:
+        components.extend(sol_mod.parse_components_file(components_file, for_add=False))
+    if component_ids:
+        component_type = sol_mod.resolve_component_type(type_)
+        components.extend(
+            {"component_id": cid, "component_type": component_type} for cid in component_ids
+        )
+    return components
+
+
 @solution_group.command("add-component")
 @click.option("--solution", required=True, help="Target unmanaged solution unique name.")
 @click.option(
     "--type",
     "type_",
-    required=True,
-    help="Component type: integer or friendly name (e.g. 61 or webresource).",
+    default=None,
+    help="Component type: integer or friendly name (e.g. 61 or webresource). "
+    "Required with --id; ignored with --components-file (type is per row).",
 )
 @click.option(
-    "--id", "component_id", required=True, metavar="GUID", help="Component GUID (objectid) to add."
+    "--id",
+    "component_ids",
+    multiple=True,
+    metavar="GUID",
+    help="Component GUID (objectid) to add. Repeat to batch multiple (all share --type).",
+)
+@click.option(
+    "--components-file",
+    "components_file",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help='JSON list of {"type", "id"[, "no_add_required", "no_subcomponents"]} rows to batch.',
 )
 @click.option(
     "--no-add-required",
     is_flag=True,
-    help="Do not also add required components (AddRequiredComponents: false).",
+    help="Do not also add required components (AddRequiredComponents: false). "
+    "Batch default; a --components-file row can override it.",
 )
 @click.option(
     "--no-subcomponents",
     is_flag=True,
-    help="Exclude subcomponents (DoNotIncludeSubcomponents: true).",
+    help="Exclude subcomponents (DoNotIncludeSubcomponents: true). "
+    "Batch default; a --components-file row can override it.",
 )
 @pass_ctx
 def solution_add_component(
-    ctx: CLIContext, solution, type_, component_id, no_add_required, no_subcomponents
+    ctx: CLIContext,
+    solution,
+    type_,
+    component_ids,
+    components_file,
+    no_add_required,
+    no_subcomponents,
 ):
-    """Add an existing component to an unmanaged solution (AddSolutionComponent)."""
+    """Add one or more existing components to an unmanaged solution (AddSolutionComponent).
+
+    A single --id behaves exactly as before. Repeated --id (sharing --type) and/or
+    a --components-file run as one transactional $batch — a mid-batch failure rolls
+    all rows back — with a per-row ok/error summary under --json.
+    """
+    _validate_component_selection(component_ids, type_, components_file)
+    single = components_file is None and len(component_ids) == 1
     with d365_errors(ctx):
-        component_type = sol_mod.resolve_component_type(type_)
-        info = sol_mod.add_solution_component(
-            ctx.backend(),
-            solution=solution,
-            component_id=component_id,
-            component_type=component_type,
-            add_required_components=not no_add_required,
-            do_not_include_subcomponents=no_subcomponents,
-        )
-    meta = None
-    if component_type == 1 and not no_add_required:  # entity + AddRequiredComponents
-        meta = {
-            "note": (
-                "AddRequiredComponents was enabled: the server may have "
-                "silently added required components beyond the requested "
-                "entity; the response does not report them."
+        if single:
+            component_type = sol_mod.resolve_component_type(type_)
+            info = sol_mod.add_solution_component(
+                ctx.backend(),
+                solution=solution,
+                component_id=component_ids[0],
+                component_type=component_type,
+                add_required_components=not no_add_required,
+                do_not_include_subcomponents=no_subcomponents,
             )
-        }
-    ctx.emit(True, data=info, meta=meta)
-    _journal(ctx, solution, info)
+            meta = None
+            if component_type == 1 and not no_add_required:  # entity + AddRequiredComponents
+                meta = {
+                    "note": (
+                        "AddRequiredComponents was enabled: the server may have "
+                        "silently added required components beyond the requested "
+                        "entity; the response does not report them."
+                    )
+                }
+            ctx.emit(True, data=info, meta=meta)
+            _journal(ctx, solution, info)
+            return
+        components = _collect_add_components(
+            component_ids, type_, components_file, no_add_required, no_subcomponents
+        )
+        info = sol_mod.add_solution_components(
+            ctx.backend(), solution=solution, components=components
+        )
+    _emit_batch(ctx, solution, info, "added")
 
 
 @solution_group.command("remove-component")
@@ -570,37 +682,72 @@ def solution_add_component(
 @click.option(
     "--type",
     "type_",
-    required=True,
-    help="Component type: integer or friendly name (e.g. 61 or webresource).",
+    default=None,
+    help="Component type: integer or friendly name (e.g. 61 or webresource). "
+    "Required with --id; ignored with --components-file (type is per row).",
 )
 @click.option(
     "--id",
-    "component_id",
-    required=True,
+    "component_ids",
+    multiple=True,
     metavar="GUID",
-    help="Component GUID (objectid) to remove.",
+    help="Component GUID (objectid) to remove. Repeat to batch multiple (all share --type).",
+)
+@click.option(
+    "--components-file",
+    "components_file",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help='JSON list of {"type", "id"} rows to batch.',
 )
 @_destructive_option
 @pass_ctx
-def solution_remove_component(ctx: CLIContext, solution, type_, component_id, yes):
-    """Remove a component from an unmanaged solution (RemoveSolutionComponent)."""
-    _confirm_destructive(
-        ctx,
-        "component",
-        f"{component_id} from solution {solution!r}",
-        yes,
-        message=(f"Removing component {component_id} from solution {solution!r}. Continue?"),
-    )
-    with d365_errors(ctx):
-        component_type = sol_mod.resolve_component_type(type_)
-        info = sol_mod.remove_solution_component(
-            ctx.backend(),
-            solution=solution,
-            component_id=component_id,
-            component_type=component_type,
+def solution_remove_component(
+    ctx: CLIContext, solution, type_, component_ids, components_file, yes
+):
+    """Remove one or more components from an unmanaged solution (RemoveSolutionComponent).
+
+    A single --id behaves exactly as before. Repeated --id (sharing --type) and/or
+    a --components-file run as one transactional $batch — a mid-batch failure rolls
+    all rows back — with a per-row ok/error summary under --json.
+    """
+    _validate_component_selection(component_ids, type_, components_file)
+    single = components_file is None and len(component_ids) == 1
+    if single:
+        _confirm_destructive(
+            ctx,
+            "component",
+            f"{component_ids[0]} from solution {solution!r}",
+            yes,
+            message=(
+                f"Removing component {component_ids[0]} from solution {solution!r}. Continue?"
+            ),
         )
-    ctx.emit(True, data=info)
-    _journal(ctx, solution, info)
+        with d365_errors(ctx):
+            component_type = sol_mod.resolve_component_type(type_)
+            info = sol_mod.remove_solution_component(
+                ctx.backend(),
+                solution=solution,
+                component_id=component_ids[0],
+                component_type=component_type,
+            )
+        ctx.emit(True, data=info)
+        _journal(ctx, solution, info)
+        return
+    with d365_errors(ctx):
+        components = _collect_remove_components(component_ids, type_, components_file)
+        n = len(components)
+        _confirm_destructive(
+            ctx,
+            "components",
+            f"{n} component(s) from solution {solution!r}",
+            yes,
+            message=(f"Removing {n} component(s) from solution {solution!r}. Continue?"),
+        )
+        info = sol_mod.remove_solution_components(
+            ctx.backend(), solution=solution, components=components
+        )
+    _emit_batch(ctx, solution, info, "removed")
 
 
 @solution_group.command("clone-as-patch")

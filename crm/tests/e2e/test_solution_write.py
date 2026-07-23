@@ -100,6 +100,155 @@ def test_add_and_remove_component_lifecycle(cli, backend, ephemeral_solution, ep
     )
 
 
+# ── batch add-component / remove-component (issue #914) ──────────────────────
+
+
+@covers("solution add-component", "solution remove-component")
+def test_batch_add_remove_and_rollback(
+    cli, backend, ephemeral_solution, ephemeral_entity, tmp_path
+):
+    """Batch add two components in one transactional $batch, batch remove them,
+    then prove a mid-batch failure rolls the whole transaction back.
+
+    Component 1 is the session entity (type=1); component 2 is one of its
+    attributes (type=2). The add uses a --components-file; the remove mixes a
+    --components-file row with a --type/--id row, exercising both input modes and
+    the merge path together. The rollback case adds [valid entity, bogus attribute
+    guid]; the changeset must fail atomically, leaving the entity absent.
+    """
+    import json as _json
+
+    from crm.core import metadata as meta_mod
+    from crm.core import solution as sol_mod
+
+    try:
+        info = meta_mod.entity_info(backend, ephemeral_entity)
+        attrs = meta_mod.list_attributes(backend, ephemeral_entity)
+    except Exception as exc:
+        pytest.skip(f"could not resolve entity/attribute metadata: {exc}")
+
+    entity_id = info.get("MetadataId")
+    if not entity_id:
+        pytest.skip("entity MetadataId not returned; cannot batch components")
+    attr_id = next((a.get("MetadataId") for a in attrs if a.get("MetadataId")), None)
+    if not attr_id:
+        pytest.skip("attribute MetadataId not returned; cannot batch components")
+
+    # --- BATCH ADD (via --components-file) ---
+    # Add the entity as a SHELL (no subcomponents / no required) plus one explicit
+    # attribute — the issue's real "reduce to shell, re-add the delta" workflow.
+    # Without the shell flags the entity add folds its attributes in, so the
+    # explicit attribute would return 204 yet create no distinct component row.
+    # The per-row flags here also exercise the components-file override path.
+    comp_file = tmp_path / "comps.json"
+    comp_file.write_text(
+        _json.dumps(
+            [
+                {
+                    "type": "entity",
+                    "id": entity_id,
+                    "no_add_required": True,
+                    "no_subcomponents": True,
+                },
+                {"type": "attribute", "id": attr_id},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    result = cli(
+        [
+            "--json",
+            "solution",
+            "add-component",
+            "--solution",
+            ephemeral_solution,
+            "--components-file",
+            str(comp_file),
+        ]
+    )
+    assert result.returncode == 0, f"batch add-component failed:\n{result.stderr}"
+    env = _json.loads(result.stdout)
+    assert env["ok"], env
+    assert env["data"]["count"] == 2
+    assert env["data"]["failed"] == 0
+    assert all(r["ok"] for r in env["data"]["added"])
+
+    comps = sol_mod.solution_components(backend, ephemeral_solution)
+    present = {c["objectid"].lower() for c in comps}
+    assert entity_id.lower() in present, f"entity missing after batch add: {present}"
+    assert attr_id.lower() in present, f"attribute missing after batch add: {present}"
+
+    # --- BATCH REMOVE (mix --components-file + --type/--id, exercising the merge) ---
+    # The attribute (type 2) comes from a file row; the entity (type 1) comes from
+    # a --type/--id row — both must land in one changeset.
+    remove_file = tmp_path / "remove.json"
+    remove_file.write_text(_json.dumps([{"type": "attribute", "id": attr_id}]), encoding="utf-8")
+    result = cli(
+        [
+            "--json",
+            "solution",
+            "remove-component",
+            "--solution",
+            ephemeral_solution,
+            "--components-file",
+            str(remove_file),
+            "--type",
+            "entity",
+            "--id",
+            entity_id,
+            "--yes",
+        ]
+    )
+    assert result.returncode == 0, f"batch remove-component failed:\n{result.stderr}"
+    env = _json.loads(result.stdout)
+    assert env["ok"], env
+    comps_after = sol_mod.solution_components(backend, ephemeral_solution)
+    present_after = {c["objectid"].lower() for c in comps_after}
+    assert entity_id.lower() not in present_after, "entity still present after batch remove"
+    assert attr_id.lower() not in present_after, "attribute still present after batch remove"
+
+    # --- ROLLBACK: one bad row must roll the whole changeset back ---
+    bogus = "00000000-0000-0000-0000-0000000000ff"
+    rollback_file = tmp_path / "rollback.json"
+    rollback_file.write_text(
+        _json.dumps(
+            [
+                {"type": "entity", "id": entity_id},
+                {"type": "attribute", "id": bogus},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    result = cli(
+        [
+            "--json",
+            "solution",
+            "add-component",
+            "--solution",
+            ephemeral_solution,
+            "--components-file",
+            str(rollback_file),
+        ],
+        check=False,  # a rolled-back batch exits 1 by design
+    )
+    assert result.returncode == 1, f"expected rollback failure, got:\n{result.stdout}"
+    env = _json.loads(result.stdout)
+    assert env["ok"] is False
+    # A transactional changeset failure surfaces one of two ways depending on the
+    # server: the outer $batch returns non-2xx (a single raised error, no per-row
+    # data) OR HTTP 200 with the offending subrequest's error inside (per-row data
+    # with rolled_back=true). Accept either; the decisive proof of atomicity is the
+    # org state below.
+    if "data" in env and isinstance(env["data"], dict) and "rolled_back" in env["data"]:
+        assert env["data"]["rolled_back"] is True
+    # Atomic: the valid entity must NOT have been added.
+    comps_rb = sol_mod.solution_components(backend, ephemeral_solution)
+    present_rb = {c["objectid"].lower() for c in comps_rb}
+    assert entity_id.lower() not in present_rb, (
+        "transaction did not roll back — entity was added despite a failing sibling row"
+    )
+
+
 # ── set-version ───────────────────────────────────────────────────────────────
 
 
