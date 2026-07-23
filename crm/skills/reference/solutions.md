@@ -41,6 +41,30 @@ crm --json solution add-component --solution ContosoCore --type webresource --id
 crm --json solution remove-component --solution ContosoCore --type 61 --id <guid> --yes
 ```
 
+**Batching (#914):** repeat `--id` (all repeats share one `--type`) and/or pass
+`--components-file <path>` — a JSON list of rows, merged with any repeated `--id`
+rows. Two or more components run as one transactional `$batch` changeset: a
+mid-batch failure rolls every row back, so a batch either lands whole or not at
+all. A single `--id` alone is unaffected — same one-call envelope as before.
+`--type` is required with `--id` but rejected (usage error) when no `--id` is
+given, since a `--components-file` row supplies its own type. `add-component`
+rows are `{"type", "id"[, "no_add_required", "no_subcomponents"]}` (the two
+booleans override the command-level `--no-add-required`/`--no-subcomponents`
+default per row); `remove-component` rows are `{"type", "id"}` only. Any other
+key — including a `behavior` key, since neither action takes a
+`RootComponentBehavior` parameter — is rejected outright, not silently dropped.
+
+On full success the batch `--json` `data` is `{solution, added|removed: [{type,
+id, ok, status, error}], count, succeeded, failed, rolled_back}` (all rows `ok`,
+`failed: 0`). A rolled-back batch always exits 1 with `ok: false`, but the shape
+depends on how the server reports the atomic failure: either the same per-row
+`data` with `failed > 0` / `rolled_back: true` (pinpointing the rejected row), or
+— the common case — a single `error` like `"$batch failed: HTTP 400: <reason>"`
+with no `data`. Either way nothing was added/removed (the changeset is atomic).
+`--dry-run` short-circuits the `$batch` itself (the solution-managed pre-flight
+GET still runs) and returns `{_dry_run: true, solution, would_add|would_remove:
+[{type, id}], count}`.
+
 **Segment system tables; ship new tables whole.** When the solution extends a
 **system table** (account, contact, …) or a custom table that already exists in the
 target org, add the entity with `--no-subcomponents` and then add only the

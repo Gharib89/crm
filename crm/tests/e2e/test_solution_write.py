@@ -135,11 +135,21 @@ def test_batch_add_remove_and_rollback(
         pytest.skip("attribute MetadataId not returned; cannot batch components")
 
     # --- BATCH ADD (via --components-file) ---
+    # Add the entity as a SHELL (no subcomponents / no required) plus one explicit
+    # attribute — the issue's real "reduce to shell, re-add the delta" workflow.
+    # Without the shell flags the entity add folds its attributes in, so the
+    # explicit attribute would return 204 yet create no distinct component row.
+    # The per-row flags here also exercise the components-file override path.
     comp_file = tmp_path / "comps.json"
     comp_file.write_text(
         _json.dumps(
             [
-                {"type": "entity", "id": entity_id},
+                {
+                    "type": "entity",
+                    "id": entity_id,
+                    "no_add_required": True,
+                    "no_subcomponents": True,
+                },
                 {"type": "attribute", "id": attr_id},
             ]
         )
@@ -217,12 +227,19 @@ def test_batch_add_remove_and_rollback(
             ephemeral_solution,
             "--components-file",
             str(rollback_file),
-        ]
+        ],
+        check=False,  # a rolled-back batch exits 1 by design
     )
     assert result.returncode == 1, f"expected rollback failure, got:\n{result.stdout}"
     env = _json.loads(result.stdout)
     assert env["ok"] is False
-    assert env["data"]["rolled_back"] is True
+    # A transactional changeset failure surfaces one of two ways depending on the
+    # server: the outer $batch returns non-2xx (a single raised error, no per-row
+    # data) OR HTTP 200 with the offending subrequest's error inside (per-row data
+    # with rolled_back=true). Accept either; the decisive proof of atomicity is the
+    # org state below.
+    if "data" in env and isinstance(env["data"], dict) and "rolled_back" in env["data"]:
+        assert env["data"]["rolled_back"] is True
     # Atomic: the valid entity must NOT have been added.
     comps_rb = sol_mod.solution_components(backend, ephemeral_solution)
     present_rb = {c["objectid"].lower() for c in comps_rb}

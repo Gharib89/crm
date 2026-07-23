@@ -131,6 +131,45 @@ Wrap the `AddSolutionComponent` / `RemoveSolutionComponent` actions. `--type` ta
 
 `remove-component` is **destructive**: it prompts for confirmation unless `--yes`; in a non-TTY context it fails fast (exit 1) with an error that names `--yes` — the standard `ok:false` envelope under `--json`, a human-formatted error otherwise. The agent-side PreToolUse hook also blocks it without `--yes` ([#71](https://github.com/Gharib89/crm/issues/71)).
 
+### Batch several components in one call
+
+Repeat `--id` (all repeats share the single `--type`) and/or pass `--components-file`
+with a JSON list of per-row `{"type", "id"}` objects — the two sources merge. A single
+`--id` with no `--components-file` is unchanged (one `AddSolutionComponent`/
+`RemoveSolutionComponent` call, same envelope as before). Two or more components run as
+**one transactional `$batch`**: a mid-batch failure rolls the whole thing back, so either
+every component lands or none does.
+
+```bash
+# repeated --id, one shared --type
+crm --json solution add-component --solution CRMWorx --type webresource \
+    --id <guid-1> --id <guid-2> --id <guid-3>
+
+# --components-file: type is per row, add-only rows may override the batch defaults
+cat > components.json <<'EOF'
+[
+  {"type": "webresource", "id": "<guid-1>"},
+  {"type": "entity", "id": "<guid-2>", "no_subcomponents": true}
+]
+EOF
+crm --json solution add-component --solution CRMWorx --components-file components.json
+
+crm --json solution remove-component --solution CRMWorx --components-file components.json --yes
+```
+
+`--type` is now optional at the command level — required only when using `--id`
+(rejected as a usage error if given without `--id`, since a `--components-file` row
+carries its own `type`). `remove-component` rows take only `{"type", "id"}` — no
+per-row flags. An unknown key in a row (e.g. the issue's speculative `behavior`) is
+rejected: there is no `RootComponentBehavior` parameter on either action.
+
+On full success the `--json` envelope's `data` is `{solution, added|removed: [{type,
+id, ok, status, error}], count, succeeded, failed, rolled_back}`. A rolled-back batch
+exits 1 (`ok: false`) — surfaced either as that same per-row `data` with `rolled_back:
+true`, or (commonly) as a single `error` like `"$batch failed: HTTP 400: <reason>"`;
+either way nothing was added/removed. `--dry-run` skips the `$batch` and previews
+`{_dry_run: true, solution, would_add|would_remove: [{type, id}], count}`.
+
 ## Preview what blocks uninstalling a managed solution
 
 ```bash
