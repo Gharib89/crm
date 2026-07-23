@@ -126,8 +126,15 @@ def solution_dependencies_cmd(ctx: CLIContext, unique_name):
     type=click.Path(dir_okay=False),
     help="Write a normalized component inventory to this path as JSON.",
 )
+@click.option(
+    "--resolve",
+    is_flag=True,
+    default=False,
+    help="Enrich each component with a rootcomponentbehavior label and a resolved "
+    "name (entities, forms, views, attributes, workflows, and more).",
+)
 @pass_ctx
-def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path):
+def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path, resolve):
     """List solution components; with --save write a normalized inventory, with --diff
     compare live vs expected (non-zero exit on drift).
     """
@@ -135,6 +142,10 @@ def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path):
     # ADR 0001), not an operational failure — mirror entity update's pattern.
     if diff_path and save_path:
         raise click.UsageError("--diff and --save are mutually exclusive.")
+    # --resolve enriches the plain listing; --save/--diff operate on the raw
+    # three-key rows, so combining them is a caller mistake.
+    if resolve and (diff_path or save_path):
+        raise click.UsageError("--resolve is not valid with --save or --diff.")
 
     # Parse and validate the expected snapshot BEFORE any network call, so a
     # malformed --diff file fails fast without touching the org.
@@ -188,6 +199,45 @@ def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path):
         ctx.emit(True, data=result, meta={"matches": True})
         return
 
+    # --resolve enriches each row with a rootcomponentbehavior label and a
+    # resolved objectid → name (batched; entity-scoped types also carry the
+    # parent entity). Unresolvable ids fall back to the raw GUID (name None).
+    if resolve:
+        with d365_errors(ctx):
+            resolved = sol_mod.resolve_component_names(ctx.backend(), items)
+
+        def _enrich(it):
+            r = resolved.get((it.get("componenttype", 0), str(it.get("objectid", "")).lower()), {})
+            row = {
+                **it,
+                "componenttypename": sol_mod.component_type_name(it.get("componenttype", 0)),
+                "rootcomponentbehaviorname": sol_mod.root_behavior_name(
+                    it.get("rootcomponentbehavior")
+                ),
+                "name": r.get("name"),
+            }
+            if r.get("entity") is not None:
+                row["entity"] = r["entity"]
+            return row
+
+        enriched = [_enrich(it) for it in items]
+        if ctx.json_mode:
+            ctx.emit(True, data=enriched, meta={"count": len(enriched)})
+            return
+        headers = ["componenttype", "name", "entity", "rootcomponentbehavior", "objectid"]
+        rows = [
+            [
+                r["componenttypename"],
+                r.get("name") or "",
+                r.get("entity") or "",
+                r["rootcomponentbehaviorname"] or "",
+                r["objectid"],
+            ]
+            for r in enriched
+        ]
+        ctx.emit(True, table={"headers": headers, "rows": rows}, meta={"count": len(items)})
+        return
+
     if ctx.json_mode:
         # Surface the friendly component-type name alongside the raw integer so
         # JSON callers don't each maintain their own componenttype→name map
@@ -198,6 +248,7 @@ def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path):
         ]
         ctx.emit(True, data=enriched, meta={"count": len(enriched)})
         return
+
     headers = ["componenttype", "objectid", "rootcomponentbehavior"]
     rows = [
         [
