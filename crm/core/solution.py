@@ -583,7 +583,7 @@ def _resolve_attribute_names(
                 "EntityDefinitions",
                 params={
                     "$select": "LogicalName",
-                    "$expand": f"Attributes($select=LogicalName;$filter={flt})",
+                    "$expand": f"Attributes($select=LogicalName,MetadataId;$filter={flt})",
                 },
             )
         except D365Error:
