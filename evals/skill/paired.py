@@ -341,10 +341,13 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
         trials = _go()
 
         aggregates = [aggregate_task(t, trials) for t in dict.fromkeys(x.task_id for x in trials)]
+        # `host` is intentionally NOT persisted into meta: a reportable run commits run.json
+        # (and report.md) to a public repo, and the live org host (esp. on-prem/internal) is
+        # sensitive. The series identity is model × target × k; host is a live-run detail only
+        # (it stays in the stderr summary + transcripts, which are never committed).
         meta = {
             "model": args.model,
             "target": active,
-            "host": host,
             "k": args.k,
             "preset": args.preset,
             "paired": preset.paired,

@@ -110,6 +110,9 @@ def test_build_report_has_all_sections():
     assert "aseline" in md and "no reportable baseline" in md.lower()
     # flipped-task list
     assert "lipped" in md
+    # host is NOT rendered — report.md is committed to a public repo, so the live org host
+    # (esp. on-prem/internal) must never leak, even when present in meta.
+    assert "org.crm.dynamics.com" not in md
 
 
 def test_build_report_marks_capped_trial():

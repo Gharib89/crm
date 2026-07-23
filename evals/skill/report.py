@@ -112,7 +112,9 @@ def build_report(
     lines: list[str] = [f"# skill-eval report — {run_id}", ""]
 
     lines += ["## Metadata", ""]
-    for key in ("model", "target", "host", "k", "preset", "paired", "subset", "skill_sha"):
+    # `host` is deliberately excluded — report.md is committed to a public repo and the live
+    # org host (esp. on-prem/internal) is sensitive; the series identity is model × target × k.
+    for key in ("model", "target", "k", "preset", "paired", "subset", "skill_sha"):
         if key in meta:
             lines.append(f"- **{key}**: {meta[key]}")
     lines += ["- **reportable**: true", ""]
