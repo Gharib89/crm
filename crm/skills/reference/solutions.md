@@ -469,8 +469,9 @@ Two independent hygiene signals, both scoped to what's already in the solution:
 = shell) — a hub entity you meant to ship as a shell landing in `whole_entities`
 is the tell. **`required_only_candidates`** are components required by another
 component in the *same* solution (via `RetrieveRequiredComponents` over the
-solution's entities) — `required_by` names the in-solution requirer(s), so you
-can tell a cascade-pulled row from one you added on purpose. Human mode prints the
+solution's entities) — `required_by` names the in-solution requirer(s): a strong
+signal a row rode in via a cascade rather than being added on purpose, though not
+proof of it. Human mode prints the
 summary line plus both lists; this only reports drift, it never removes anything.
 
 ## Unmanaged-layer conflicts — `layer-conflicts`

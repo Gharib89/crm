@@ -547,8 +547,8 @@ def test_solution_audit(cli, backend, ephemeral_solution, ephemeral_entity):
 
     Verifies `solution audit --json` returns the classifier shape (summary +
     whole/shell entity buckets + required-only candidates) and that the added
-    entity lands in one of the entity buckets. Run on the reported target
-    (on-prem) via the standard e2e profile wiring.
+    entity lands in one of the entity buckets. Runs against whichever live
+    target the e2e profile wiring selects (platform-neutral Web API).
     """
     from crm.core import metadata as meta_mod
 

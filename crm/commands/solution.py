@@ -28,6 +28,7 @@ from crm.core import session as session_mod
 from crm.core import solution as sol_mod
 from crm.core import solution_validate as sv_mod
 from crm.core import solutionpackager as sp_mod
+from crm.utils.d365_backend import D365Error
 
 
 @click.group("solution")
@@ -634,7 +635,13 @@ def _cascade_gate(ctx, cascading, yes):
     """
     if yes or ctx.json_mode or ctx.dry_run or not _stdin_is_tty() or not cascading:
         return
-    required = sol_mod.preview_required_components(ctx.backend(), cascading)
+    try:
+        required = sol_mod.preview_required_components(ctx.backend(), cascading)
+    except D365Error:
+        # Preview is best-effort: a RetrieveRequiredComponents failure (transient
+        # 5xx, permissions) must not block an add-component that would otherwise
+        # succeed — fall through to the historical no-preview behavior.
+        return
     if not required:
         return
     click.echo(f"This will also add {len(required)} required component(s):")

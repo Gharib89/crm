@@ -279,6 +279,24 @@ class TestAddComponentCascadeGate:
         assert result.exit_code == 0, result.output
         assert called["add"] is True
 
+    def test_preview_failure_falls_through(self, monkeypatch):
+        """A RetrieveRequiredComponents failure must not block the add — the
+        preview is best-effort; the gate swallows D365Error and proceeds.
+        """
+        from crm.utils.d365_backend import D365Error
+
+        called = {"add": False}
+        self._stub_add(monkeypatch, called)
+
+        def boom(backend, comps):
+            raise D365Error("transient 503")
+
+        monkeypatch.setattr("crm.core.solution.preview_required_components", boom)
+        monkeypatch.setattr("crm.commands.solution._stdin_is_tty", lambda: True)
+        result = CliRunner().invoke(cli, _cascade_argv("--type", "entity", "--id", _HUB))
+        assert result.exit_code == 0, result.output
+        assert called["add"] is True
+
     def test_yes_skips_prompt_and_preview(self, monkeypatch):
         called = {"add": False}
         self._stub_add(monkeypatch, called)
