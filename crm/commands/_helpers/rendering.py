@@ -138,6 +138,15 @@ def _project_fields(data: Any, fields: list[str]) -> tuple[Any, list[str]]:
       order named; a key missing from a row is omitted from that row (not nulled).
       Non-dict rows are left untouched (a mixed list keeps its scalars).
     - **Single object** → the same projection on the record.
+    - **Dict of arrays of rows** (every value is a list and every element is a dict,
+      e.g. `metadata relationships`
+      ``{"OneToMany": [...], "ManyToOne": [...], "ManyToMany": [...]}``) → project
+      inside each array value, preserving the grouping; a top-level projection would
+      match only the group names and silently return `{}` (#912). Scoped to the
+      broken case: it applies only when **no** requested field names a top-level
+      key, so a dict whose keys the caller *is* projecting (e.g. `describe`'s
+      ``{"commands": [...], "root_options": [...]}``) and any record with a scalar
+      value or scalar-carrying list stay single-object projection.
     - **Non-object** (scalar, string like a formxml blob, or a list carrying no
       dicts) → passed through unchanged with a warning; there is nothing to project.
 
@@ -149,15 +158,40 @@ def _project_fields(data: Any, fields: list[str]) -> tuple[Any, list[str]]:
     def _project_one(record: dict[str, Any]) -> dict[str, Any]:
         return {f: record[f] for f in fields if f in record}
 
+    def _project_rows(rows: list[Any]) -> tuple[list[Any], set[str]]:
+        shaped = [_project_one(row) if isinstance(row, dict) else row for row in rows]
+        matched = {f for row in rows if isinstance(row, dict) for f in fields if f in row}
+        return shaped, matched
+
     if isinstance(data, list):
         if not data:
             return data, []  # empty result set — nothing to project, not a typo
         if not any(isinstance(row, dict) for row in data):
             return data, [_NON_OBJECT_WARNING]
-        shaped = [_project_one(row) if isinstance(row, dict) else row for row in data]
-        matched = {f for row in data if isinstance(row, dict) for f in fields if f in row}
+        shaped, matched = _project_rows(data)
         return shaped, _unmatched_warning(fields, matched)
     if isinstance(data, dict):
+        values = list(data.values())
+        # Descend into a dict-of-arrays *collection* — every value a list, every
+        # element a dict — only when no requested field names a top-level key. A
+        # dict whose keys the caller *is* projecting (e.g. `describe`'s
+        # ``{"commands": [...], "root_options": [...]}``) stays single-object; the
+        # descent is scoped to the broken case where inner field names such as
+        # `SchemaName` match no top-level key and would otherwise return `{}` (#912).
+        no_top_level_match = not any(f in data for f in fields)
+        if (
+            no_top_level_match
+            and values
+            and all(isinstance(v, list) and all(isinstance(r, dict) for r in v) for v in values)
+        ):
+            grouped: dict[str, Any] = {}
+            matched = set()
+            for key, rows in data.items():
+                grouped[key], m = _project_rows(rows)
+                matched |= m
+            # No rows anywhere (every array empty) is not a typo — mirror the empty list.
+            has_rows = any(values)
+            return grouped, _unmatched_warning(fields, matched) if has_rows else []
         matched = {f for f in fields if f in data}
         return _project_one(data), _unmatched_warning(fields, matched)
     return data, [_NON_OBJECT_WARNING]
