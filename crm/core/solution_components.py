@@ -8,7 +8,7 @@ via `crm.core.solution.<name>` keep working unchanged).
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, NamedTuple
 
 # ── Solution component type codes (#71) ──────────────────────────────────────
 #
@@ -143,6 +143,71 @@ def component_type_name(componenttype: int) -> str:
     form when the type is not in SOLUTION_COMPONENT_TYPES.
     """
     return _COMPONENT_TYPE_NAMES.get(componenttype, str(componenttype))
+
+
+# ── rootcomponentbehavior labels (#913, shared with #916) ────────────────────
+#
+# The `rootcomponentbehavior` optionset on a solution component says how much of
+# a root component's sub-tree the solution carries. Labels verified against the
+# Dataverse SolutionComponent reference.
+
+ROOT_COMPONENT_BEHAVIORS: dict[int, str] = {
+    0: "whole-entity (all subcomponents)",
+    1: "shell (no subcomponents)",
+    2: "shell + metadata",
+}
+
+
+def root_behavior_name(behavior: int | None) -> str | None:
+    """Friendly label for a ``rootcomponentbehavior`` value.
+
+    Returns ``None`` when ``behavior`` is ``None`` (the field is absent for
+    non-root components), the raw int as a string for an unknown value, and the
+    mapped label otherwise.
+    """
+    if behavior is None:
+        return None
+    return ROOT_COMPONENT_BEHAVIORS.get(behavior, str(behavior))
+
+
+# ── objectid → name resolution specs (#913) ──────────────────────────────────
+#
+# Per component type, how to resolve a bare ``objectid`` to a friendly name via a
+# single by-id GET (batchable). ``path`` is a ``{id}``-templated relative URL,
+# ``select`` its ``$select``, ``name_field`` the response field to read as the
+# name, and ``entity_field`` the parent-entity field (or ``None`` when the
+# component is not entity-scoped). Attributes (type 2) are entity-scoped and have
+# no top-level by-id path, so they are resolved separately via a bulk metadata
+# pull rather than through this table.
+
+
+def component_key(componenttype: Any, objectid: Any) -> tuple[int, str]:
+    """Normalized ``(componenttype, objectid)`` key for matching a resolved name
+    back to its row. Kept in one place so the store side (resolution) and the
+    lookup side (display) can never drift in how they coerce/normalize.
+    """
+    return (int(componenttype or 0), str(objectid or "").strip().lower())
+
+
+class _ResolveSpec(NamedTuple):
+    path: str
+    select: str
+    name_field: str
+    entity_field: str | None
+
+
+RESOLVE_SPECS: dict[int, _ResolveSpec] = {
+    1: _ResolveSpec("EntityDefinitions({id})", "LogicalName", "LogicalName", None),
+    3: _ResolveSpec("RelationshipDefinitions({id})", "SchemaName", "SchemaName", None),
+    10: _ResolveSpec("RelationshipDefinitions({id})", "SchemaName", "SchemaName", None),
+    20: _ResolveSpec("roles({id})", "name", "name", None),
+    26: _ResolveSpec("savedqueries({id})", "name,returnedtypecode", "name", "returnedtypecode"),
+    29: _ResolveSpec("workflows({id})", "name,primaryentity", "name", "primaryentity"),
+    60: _ResolveSpec("systemforms({id})", "name,objecttypecode", "name", "objecttypecode"),
+    61: _ResolveSpec("webresourceset({id})", "name", "name", None),
+    91: _ResolveSpec("pluginassemblies({id})", "name", "name", None),
+    92: _ResolveSpec("sdkmessageprocessingsteps({id})", "name", "name", None),
+}
 
 
 def layer_conflicts(

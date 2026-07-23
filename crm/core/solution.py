@@ -15,9 +15,16 @@ import base64
 import re
 import urllib.parse
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from crm.core import dependencies, entity, metadata_cache
+from crm.core.batch import run_batched
+from crm.core.solution_components import (
+    RESOLVE_SPECS as RESOLVE_SPECS,
+)
+from crm.core.solution_components import (
+    ROOT_COMPONENT_BEHAVIORS as ROOT_COMPONENT_BEHAVIORS,
+)
 
 # ── Backward-compat re-exports ───────────────────────────────────────────────
 #
@@ -30,6 +37,9 @@ from crm.core.solution_components import (
     SOLUTION_COMPONENT_TYPES as SOLUTION_COMPONENT_TYPES,
 )
 from crm.core.solution_components import (
+    component_key as component_key,
+)
+from crm.core.solution_components import (
     component_type_name as component_type_name,
 )
 from crm.core.solution_components import (
@@ -40,6 +50,9 @@ from crm.core.solution_components import (
 )
 from crm.core.solution_components import (
     normalize_components as normalize_components,
+)
+from crm.core.solution_components import (
+    root_behavior_name as root_behavior_name,
 )
 from crm.core.solution_transfer import (
     export_solution as export_solution,
@@ -54,6 +67,7 @@ from crm.core.solution_transfer import (
     parse_import_job_data as parse_import_job_data,
 )
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
+from crm.utils.d365_types import BatchOperation
 
 # ── Create publisher / solution ─────────────────────────────────────────────
 #
@@ -543,6 +557,119 @@ def solution_components(backend: D365Backend, unique_name: str) -> list[dict[str
     # large solution's inventory at the server page ceiling. get_collection
     # follows the cursor to exhaustion instead.
     return backend.get_collection("solutioncomponents", params=params)
+
+
+def _resolve_attribute_names(
+    backend: D365Backend, objectids: list[str]
+) -> dict[str, dict[str, Any]]:
+    """Resolve attribute ``objectid`` (MetadataId) → ``{"name", "entity"}``.
+
+    An attribute has no top-level by-id path — the Web API only exposes it under
+    its owning entity (``EntityDefinitions(..)/Attributes(..)``). So rather than
+    one request per attribute, pull them in a single metadata query per chunk,
+    filtering the expanded ``Attributes`` down to the wanted ``MetadataId`` set
+    (metadata rows always carry ``MetadataId`` even when unselected). Entities
+    with no matching attribute come back with an empty ``Attributes`` and are
+    skipped.
+    """
+    wanted = {oid for oid in objectids if oid}
+    out: dict[str, dict[str, Any]] = {}
+    ids = sorted(wanted)
+    for start in range(0, len(ids), 20):
+        chunk = ids[start : start + 20]
+        flt = " or ".join(f"MetadataId eq {g}" for g in chunk)
+        try:
+            rows = backend.get_collection(
+                "EntityDefinitions",
+                params={
+                    "$select": "LogicalName",
+                    "$expand": f"Attributes($select=LogicalName,MetadataId;$filter={flt})",
+                },
+            )
+        except D365Error:
+            # Graceful fallback (matches the by-id path): a failed chunk leaves
+            # its attributes unresolved (raw GUID) rather than aborting --resolve.
+            continue
+        for ent in rows:
+            entity_name = ent.get("LogicalName")
+            attrs = cast("list[dict[str, Any]]", ent.get("Attributes") or [])
+            for attr in attrs:
+                mid = str(attr.get("MetadataId", "")).lower()
+                if mid in wanted:
+                    out[mid] = {"name": attr.get("LogicalName"), "entity": entity_name}
+    return out
+
+
+def resolve_component_names(
+    backend: D365Backend, items: list[dict[str, Any]]
+) -> dict[tuple[int, str], dict[str, Any]]:
+    """Resolve each component's ``objectid`` to a friendly name.
+
+    Returns a map keyed by ``(componenttype, objectid.lower())`` whose values are
+    ``{"name": str|None}`` plus an ``"entity"`` key for entity-scoped components
+    (forms, views, attributes, workflows). Directly-resolvable types go through a
+    single ``$batch`` of by-id GETs; attributes go through
+    :func:`_resolve_attribute_names`. A component whose type is unknown or whose
+    lookup errors is simply absent from the map — the caller falls back to the
+    raw GUID, so an unresolvable id never raises.
+    """
+    ops: list[BatchOperation] = []
+    op_keys: list[tuple[int, str, Any]] = []
+    attr_ids: list[str] = []
+    for it in items:
+        objectid = str(it.get("objectid") or "").strip()
+        if not objectid:
+            continue
+        componenttype = int(it.get("componenttype") or 0)
+        oid_lower = objectid.lower()
+        if componenttype == 2:  # attribute — entity-scoped, resolved in bulk
+            attr_ids.append(oid_lower)
+            continue
+        spec = RESOLVE_SPECS.get(componenttype)
+        if spec is None:
+            continue
+        url = f"{spec.path.format(id=objectid)}?$select={spec.select}"
+        ops.append({"method": "GET", "url": url})
+        op_keys.append((componenttype, oid_lower, spec))
+
+    resolved: dict[tuple[int, str], dict[str, Any]] = {}
+
+    if ops:
+        # $batch is refused under read-only and short-circuited under --dry-run;
+        # fall back to per-item GETs there (reads still run live). Elsewhere the
+        # whole fan-out collapses into ceil(N/100) round trips.
+        if backend.dry_run or backend.read_only:
+            bodies = [
+                _safe_get_by_id(backend, spec.path.format(id=oid), spec.select)
+                for _, oid, spec in op_keys
+            ]
+        else:
+            bodies = [
+                res.get("body") if not res.get("error") else None
+                for res in run_batched(backend, ops, continue_on_error=True)
+            ]
+        for (componenttype, oid_lower, spec), body in zip(op_keys, bodies, strict=True):
+            if not isinstance(body, dict):
+                continue
+            entry: dict[str, Any] = {"name": body.get(spec.name_field)}
+            if spec.entity_field:
+                parent = body.get(spec.entity_field)
+                if parent:
+                    entry["entity"] = parent
+            resolved[component_key(componenttype, oid_lower)] = entry
+
+    for mid, entry in _resolve_attribute_names(backend, attr_ids).items():
+        resolved[component_key(2, mid)] = entry
+
+    return resolved
+
+
+def _safe_get_by_id(backend: D365Backend, path: str, select: str) -> dict[str, Any] | None:
+    """One by-id GET for the read-only / dry-run fallback; ``None`` on any error."""
+    try:
+        return as_dict(backend.get(path, params={"$select": select}))
+    except D365Error:
+        return None
 
 
 def retrieve_missing_components(backend: D365Backend, solution_file: str | Path) -> dict[str, Any]:
