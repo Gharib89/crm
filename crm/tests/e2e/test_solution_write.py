@@ -152,7 +152,8 @@ def test_batch_add_remove_and_rollback(
                 },
                 {"type": "attribute", "id": attr_id},
             ]
-        )
+        ),
+        encoding="utf-8",
     )
     result = cli(
         [
@@ -181,7 +182,7 @@ def test_batch_add_remove_and_rollback(
     # The attribute (type 2) comes from a file row; the entity (type 1) comes from
     # a --type/--id row — both must land in one changeset.
     remove_file = tmp_path / "remove.json"
-    remove_file.write_text(_json.dumps([{"type": "attribute", "id": attr_id}]))
+    remove_file.write_text(_json.dumps([{"type": "attribute", "id": attr_id}]), encoding="utf-8")
     result = cli(
         [
             "--json",
@@ -215,7 +216,8 @@ def test_batch_add_remove_and_rollback(
                 {"type": "entity", "id": entity_id},
                 {"type": "attribute", "id": bogus},
             ]
-        )
+        ),
+        encoding="utf-8",
     )
     result = cli(
         [

@@ -587,7 +587,8 @@ class TestParseComponentsFile:
                     {"type": "entity", "id": _COMP_ID, "no_add_required": True},
                     {"type": 61, "id": _COMP_ID_2},
                 ]
-            )
+            ),
+            encoding="utf-8",
         )
         rows = sol_mod.parse_components_file(p, for_add=True)
         assert rows[0] == {
@@ -601,7 +602,7 @@ class TestParseComponentsFile:
 
     def test_valid_remove_file(self, tmp_path):
         p = tmp_path / "comps.json"
-        p.write_text(json.dumps([{"type": "webresource", "id": _COMP_ID}]))
+        p.write_text(json.dumps([{"type": "webresource", "id": _COMP_ID}]), encoding="utf-8")
         rows = sol_mod.parse_components_file(p, for_add=False)
         assert rows == [{"component_id": _COMP_ID, "component_type": 61}]
 
@@ -615,7 +616,8 @@ class TestParseComponentsFile:
                     {"type": "entity", "id": _COMP_ID},  # no override → inherits defaults
                     {"type": 61, "id": _COMP_ID_2, "no_add_required": False},  # overrides
                 ]
-            )
+            ),
+            encoding="utf-8",
         )
         rows = sol_mod.parse_components_file(
             p, for_add=True, default_no_add_required=True, default_no_subcomponents=True
@@ -631,31 +633,36 @@ class TestParseComponentsFile:
         # The issue example carried a `behavior` key; the core has no
         # RootComponentBehavior parameter, so it is rejected, not silently dropped.
         p = tmp_path / "comps.json"
-        p.write_text(json.dumps([{"type": "entity", "id": _COMP_ID, "behavior": 1}]))
+        p.write_text(
+            json.dumps([{"type": "entity", "id": _COMP_ID, "behavior": 1}]), encoding="utf-8"
+        )
         with pytest.raises(D365Error, match="behavior"):
             sol_mod.parse_components_file(p, for_add=True)
 
     def test_flag_keys_rejected_on_remove(self, tmp_path):
         p = tmp_path / "comps.json"
-        p.write_text(json.dumps([{"type": "entity", "id": _COMP_ID, "no_add_required": True}]))
+        p.write_text(
+            json.dumps([{"type": "entity", "id": _COMP_ID, "no_add_required": True}]),
+            encoding="utf-8",
+        )
         with pytest.raises(D365Error, match="no_add_required"):
             sol_mod.parse_components_file(p, for_add=False)
 
     def test_missing_id_rejected(self, tmp_path):
         p = tmp_path / "comps.json"
-        p.write_text(json.dumps([{"type": "entity"}]))
+        p.write_text(json.dumps([{"type": "entity"}]), encoding="utf-8")
         with pytest.raises(D365Error):
             sol_mod.parse_components_file(p, for_add=True)
 
     def test_non_list_root_rejected(self, tmp_path):
         p = tmp_path / "comps.json"
-        p.write_text(json.dumps({"type": "entity", "id": _COMP_ID}))
+        p.write_text(json.dumps({"type": "entity", "id": _COMP_ID}), encoding="utf-8")
         with pytest.raises(D365Error, match="list"):
             sol_mod.parse_components_file(p, for_add=True)
 
     def test_empty_list_rejected(self, tmp_path):
         p = tmp_path / "comps.json"
-        p.write_text(json.dumps([]))
+        p.write_text(json.dumps([]), encoding="utf-8")
         with pytest.raises(D365Error):
             sol_mod.parse_components_file(p, for_add=True)
 
@@ -694,7 +701,10 @@ class TestBatchComponentCommands:
 
     def test_add_components_file_batches(self, monkeypatch, tmp_path):
         p = tmp_path / "comps.json"
-        p.write_text(json.dumps([{"type": "entity", "id": _GUID}, {"type": 61, "id": _COMP_ID_2}]))
+        p.write_text(
+            json.dumps([{"type": "entity", "id": _GUID}, {"type": 61, "id": _COMP_ID_2}]),
+            encoding="utf-8",
+        )
         captured = {}
         monkeypatch.setattr(
             "crm.core.solution.add_solution_components",
@@ -724,7 +734,7 @@ class TestBatchComponentCommands:
         # `add-component --components-file f --no-add-required` must apply the flag
         # to file rows that carry no per-row override (#914 spec).
         p = tmp_path / "comps.json"
-        p.write_text(json.dumps([{"type": "entity", "id": _GUID}]))
+        p.write_text(json.dumps([{"type": "entity", "id": _GUID}]), encoding="utf-8")
         captured = {}
         monkeypatch.setattr(
             "crm.core.solution.add_solution_components",
@@ -764,7 +774,7 @@ class TestBatchComponentCommands:
     def test_add_type_without_id_usage_error(self, monkeypatch, tmp_path):
         # --type is meaningless alongside --components-file (rows carry their own).
         p = tmp_path / "comps.json"
-        p.write_text(json.dumps([{"type": "entity", "id": _GUID}]))
+        p.write_text(json.dumps([{"type": "entity", "id": _GUID}]), encoding="utf-8")
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = CliRunner().invoke(
             cli,
@@ -849,7 +859,7 @@ class TestBatchComponentCommands:
     def test_remove_merges_file_and_id_rows(self, monkeypatch, tmp_path):
         # --components-file AND --id together must merge, not drop --id (mirrors add).
         p = tmp_path / "comps.json"
-        p.write_text(json.dumps([{"type": "entity", "id": _GUID}]))
+        p.write_text(json.dumps([{"type": "entity", "id": _GUID}]), encoding="utf-8")
         captured = {}
         monkeypatch.setattr(
             "crm.core.solution.remove_solution_components",
