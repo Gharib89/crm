@@ -9,6 +9,34 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.74.0 (2026-07-23)
+
+### Bug Fixes
+
+- Explicitly $select MetadataId in attribute expand
+  ([#918](https://github.com/Gharib89/crm/pull/918),
+  [`59a857d`](https://github.com/Gharib89/crm/commit/59a857d90b0ac29baea3dd088662d4198a82ff38))
+
+- Treat componenttype None like missing in resolve loop
+  ([#918](https://github.com/Gharib89/crm/pull/918),
+  [`59a857d`](https://github.com/Gharib89/crm/commit/59a857d90b0ac29baea3dd088662d4198a82ff38))
+
+### Features
+
+- Solution components --resolve (friendly names + behavior labels)
+  ([#918](https://github.com/Gharib89/crm/pull/918),
+  [`59a857d`](https://github.com/Gharib89/crm/commit/59a857d90b0ac29baea3dd088662d4198a82ff38))
+
+- Solution components --resolve (friendly names + component-type + behavior labels)
+  ([#918](https://github.com/Gharib89/crm/pull/918),
+  [`59a857d`](https://github.com/Gharib89/crm/commit/59a857d90b0ac29baea3dd088662d4198a82ff38))
+
+### Refactoring
+
+- Harden --resolve per self-review + docs sync ([#918](https://github.com/Gharib89/crm/pull/918),
+  [`59a857d`](https://github.com/Gharib89/crm/commit/59a857d90b0ac29baea3dd088662d4198a82ff38))
+
+
 ## v1.73.1 (2026-07-23)
 
 ### Bug Fixes
