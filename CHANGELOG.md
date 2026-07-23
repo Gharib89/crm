@@ -9,6 +9,35 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.73.1 (2026-07-23)
+
+### Bug Fixes
+
+- Keep single-object projection when a --fields key matches a top-level key
+  ([#917](https://github.com/Gharib89/crm/pull/917),
+  [`5ba3d94`](https://github.com/Gharib89/crm/commit/5ba3d9433ce12953e408e2130aa9bd4792d62c30))
+
+- Only descend into dict-of-arrays when every element is a row
+  ([#917](https://github.com/Gharib89/crm/pull/917),
+  [`5ba3d94`](https://github.com/Gharib89/crm/commit/5ba3d9433ce12953e408e2130aa9bd4792d62c30))
+
+- Project --fields inside dict-of-arrays payloads ([#917](https://github.com/Gharib89/crm/pull/917),
+  [`5ba3d94`](https://github.com/Gharib89/crm/commit/5ba3d9433ce12953e408e2130aa9bd4792d62c30))
+
+- Project --fields inside dict-of-arrays payloads (e.g. metadata relationships)
+  ([#917](https://github.com/Gharib89/crm/pull/917),
+  [`5ba3d94`](https://github.com/Gharib89/crm/commit/5ba3d9433ce12953e408e2130aa9bd4792d62c30))
+
+### Documentation
+
+- Document dict-of-arrays --fields projection ([#917](https://github.com/Gharib89/crm/pull/917),
+  [`5ba3d94`](https://github.com/Gharib89/crm/commit/5ba3d9433ce12953e408e2130aa9bd4792d62c30))
+
+- State both descent conditions; drop stray apostrophe
+  ([#917](https://github.com/Gharib89/crm/pull/917),
+  [`5ba3d94`](https://github.com/Gharib89/crm/commit/5ba3d9433ce12953e408e2130aa9bd4792d62c30))
+
+
 ## v1.73.0 (2026-07-20)
 
 ### Bug Fixes
