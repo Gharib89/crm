@@ -109,6 +109,29 @@ def test_parse_metrics_empty_when_no_result_event():
     assert trace.parse_metrics(raw) == {}
 
 
+def test_parse_invoked_true_when_crm_skill_tool_used():
+    # The skill leg invokes the crm skill via the `Skill` tool — the invocation signal the
+    # report's invocation-vs-success split reads (ADR 0028: invocation measured separately).
+    raw = "\n".join(
+        [
+            _line(_assistant_tool_use("Bash", {"command": "crm whoami"})),
+            _line(_assistant_tool_use("Skill", {"skill": "crm", "args": ""})),
+        ]
+    )
+    assert trace.parse_invoked(raw) is True
+
+
+def test_parse_invoked_false_when_skill_never_used():
+    # A trial that ran crm commands but never invoked the skill (e.g. the bare leg, or a
+    # skill-leg agent that ignored it) — success without invocation is the split's whole point.
+    assert trace.parse_invoked(SAMPLE) is False
+
+
+def test_parse_invoked_ignores_other_skills():
+    raw = _line(_assistant_tool_use("Skill", {"skill": "tdd"}))
+    assert trace.parse_invoked(raw) is False
+
+
 def test_parse_commands_matches_bare_and_terminal_crm():
     # A bare `crm` (default help) or a `crm` at the end of a compound line has no trailing
     # whitespace; it must still be counted, or command-economy is undercounted.

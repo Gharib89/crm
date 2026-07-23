@@ -93,20 +93,31 @@ blocks CI. Run it on demand.
   workspace or the sandbox runs degraded — `isolation.trust_workspace` handles that.)
 - `results.py` — the **paired result model** (#890): `hake_gain`, the `reportable` stamp,
   and the `evals/results/<run-id>/` layout (`run.json` + `trials.jsonl`, transcripts by ref).
+  Each `TrialRecord` also carries the ADR-0028 `invoked` signal (did the agent load the
+  skill?, `None` = not captured), measured separately from `passed` (parsed by
+  `trace.parse_invoked`).
+- `report.py` — the **reporting surfaces** (#893, ADR 0028): `build_report` renders the
+  per-run `report.md` (metadata, per-task table with per-trial verdicts, macro pass rates +
+  Hake gain, invocation-vs-success split, same-series baseline comparison, flipped-task
+  list); `build_matrix` renders the derived `matrix.md` (latest reportable run per series
+  model × target × k, carrying lift-over-own-baseline as the cross-harness-comparable
+  metric) purely from the committed `run.json` records (`collect_reportable`). `ARTIFACT_NAMES`
+  / `artifact_paths` are the commit allow-list — the only paths a reportable run force-adds,
+  so transcripts and `run.log` stay untracked because they are never named.
 - `results/` — **gitignored** paired-run dirs (except the derived `matrix.md`); a reportable
-  full run commits `run.json`/`trials.jsonl` by explicit `git add -f` (ADR 0028). ADR 0028 also
-  specifies a committed `report.md` + derived `matrix.md` per reportable run; those generators
-  are not yet built (#886) — the run presets that produce reportable runs land in `presets.py`
-  (#892).
+  full run commits `run.json`/`trials.jsonl`/`report.md` by explicit `git add -f` (ADR 0028),
+  and (re)derives the tracked `matrix.md` from all committed reportable records. Non-reportable
+  runs commit nothing.
 - `test_runner_smoke.py` / `test_set_runner.py` / `test_target.py` / `test_both_runner.py` /
   `test_trace.py` / `test_record.py` / `test_review.py` / `test_isolation.py` /
   `test_results.py` / `test_sandbox.py` / `test_paired.py` / `test_runner_caps.py` /
-  `test_presets.py` / `test_regression.py` — offline
+  `test_presets.py` / `test_regression.py` / `test_report.py` — offline
   smoke tests (parse tasks, dry-run isolation, set-level gating/aggregation, reachability
   classification, both-targets orchestration, trace parsing, run-record persistence, the
   review prompt/parse/guard, the Hake/results schema, the sandbox settings builder, the
-  paired-leg orchestration, the wall-clock cap, the preset/selection resolution, and the
-  baseline scan + advisory regression flags — all via stubs, no agent, no org).
+  paired-leg orchestration, the wall-clock cap, the preset/selection resolution, the
+  baseline scan + advisory regression flags, and the report.md/matrix.md renderers + commit
+  allow-list — all via stubs, no agent, no org).
 
 ## Task set & domain coverage
 
@@ -491,7 +502,11 @@ python -m evals.skill.sandbox <org-host>  # live smoke: org reachable, web block
 there is no ownership hand-back to do.
 
 Reportability follows ADR 0028: only a **full paired run at k≥3** is reportable (the
-walking-skeleton default k=1 is not). A reportable run is committed by explicitly
-force-adding its artifact paths (`git add -f evals/results/<run-id>/{run.json,trials.jsonl}`);
-transcripts and logs stay untracked because they are never named. Like the rest of this
-tree, `paired.py` runs **on demand** and is never part of the offline `pytest` suite.
+walking-skeleton default k=1 is not). A reportable run automatically writes a committed
+`report.md` (metadata, per-task per-trial verdicts, macro pass rates + Hake gain,
+invocation-vs-success split, baseline comparison, flipped tasks), (re)derives the tracked
+`matrix.md` from all committed reportable records, and force-adds its artifact paths
+(`git add -f evals/results/<run-id>/{run.json,trials.jsonl,report.md}` + `git add
+evals/results/matrix.md`); transcripts and logs stay untracked because they are never
+named. A non-reportable run commits nothing. Like the rest of this tree, `paired.py` runs
+**on demand** and is never part of the offline `pytest` suite.

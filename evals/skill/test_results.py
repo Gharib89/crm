@@ -130,6 +130,23 @@ class TestWriteResults:
         # the transcript body itself is referenced, never inlined into the record.
         assert "raw_trace" not in first and "transcript" not in first
 
+    def test_invoked_round_trips_and_defaults_none(self, tmp_path):
+        # The invocation signal (ADR 0028's runner contract: "invocation-signal-or-null")
+        # rides in the trial record; it defaults to None (not captured) so a pre-invocation
+        # record is never silently read as "did not invoke".
+        trials = [
+            TrialRecord(
+                "t1", leg="skill", trial=0, passed=True, reason="", capped=False, invoked=True
+            ),
+            TrialRecord("t1", leg="bare", trial=0, passed=False, reason="", capped=False),
+        ]
+        run_dir = write_results(
+            tmp_path, run_id="r1", meta={"preset": "full"}, trials=trials, aggregates=[]
+        )
+        rows = [json.loads(x) for x in (run_dir / "trials.jsonl").read_text().splitlines()]
+        assert rows[0]["invoked"] is True
+        assert rows[1]["invoked"] is None
+
     def test_reportable_defaults_false_when_paired_flag_omitted(self, tmp_path):
         # A full k=3 run whose meta forgets `paired` must NOT be misclassified reportable —
         # the conservative default protects a future single-condition caller.

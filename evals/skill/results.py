@@ -61,7 +61,10 @@ class TrialRecord:
 
     ``capped`` marks a turn/wall-clock cap-hit — a distinct outcome that scores as a
     fail (``passed`` is also False). ``transcript_ref`` is a run-dir-relative path to the
-    captured transcript, never the transcript body (it carries live-org GUIDs).
+    captured transcript, never the transcript body (it carries live-org GUIDs). ``invoked``
+    is the ADR-0028 invocation signal (did the agent load the ``crm`` skill?), measured
+    separately from ``passed``; ``None`` means *not captured* (never conflated with "did
+    not invoke"), so a pre-invocation record reads honestly.
     """
 
     task_id: str
@@ -72,6 +75,7 @@ class TrialRecord:
     capped: bool
     metrics: dict[str, Any] = dataclasses.field(default_factory=dict)
     transcript_ref: str = ""
+    invoked: bool | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
