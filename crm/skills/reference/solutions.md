@@ -39,7 +39,10 @@ reminder). Interactively this cascade is previewed before it happens: if it woul
 in anything, you're shown the list and asked to confirm (`--yes` skips it, same as the
 destructive gate above); under `--json` or a non-TTY the prompt is skipped and the
 add proceeds, unchanged from before this preview existed — so scripted/agent callers
-see no new prompt to handle. Audit an existing solution for this drift after the fact
+see no new prompt to handle. The preview is best-effort: if the required-components
+lookup itself fails (transient error, permissions), the add proceeds with no preview
+or confirmation — the absence of a prompt means "no candidates *or* preview
+unavailable", not a guarantee of zero cascade. Audit an existing solution for this drift after the fact
 with `solution audit` (below).
 
 ```bash
