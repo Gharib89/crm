@@ -45,7 +45,8 @@ crm --json --fields uniquename,version solution list
 
 Semantics: a list payload projects each row to the named keys (in flag order,
 missing keys omitted per row); a single-record payload projects that record; a
-dict-of-arrays payload (e.g. `metadata relationships`'
+dict-of-arrays payload (every value a list of row-dicts and no requested field
+naming a top-level key, e.g. `metadata relationships`
 `{"OneToMany": [...], "ManyToOne": [...], "ManyToMany": [...]}`) projects inside
 each array, preserving the grouping; a non-object payload (e.g. a `form export`
 formxml string) passes through unchanged with a `meta.warnings` advisory. A field

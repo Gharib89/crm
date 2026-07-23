@@ -139,7 +139,7 @@ def _project_fields(data: Any, fields: list[str]) -> tuple[Any, list[str]]:
       Non-dict rows are left untouched (a mixed list keeps its scalars).
     - **Single object** → the same projection on the record.
     - **Dict of arrays of rows** (every value is a list and every element is a dict,
-      e.g. `metadata relationships`'
+      e.g. `metadata relationships`
       ``{"OneToMany": [...], "ManyToOne": [...], "ManyToMany": [...]}``) → project
       inside each array value, preserving the grouping; a top-level projection would
       match only the group names and silently return `{}` (#912). Scoped to the

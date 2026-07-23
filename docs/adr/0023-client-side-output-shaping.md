@@ -36,7 +36,7 @@ This ADR records the whole shaping decision. It is delivered in slices:
     key missing from a row is omitted from that row (not nulled).
   - **Single object** → the same projection on the record.
   - **Dict of arrays of rows** (every value is a list and every element a dict,
-    e.g. `metadata relationships`'
+    e.g. `metadata relationships`
     `{"OneToMany": [...], "ManyToOne": [...], "ManyToMany": [...]}`) → project
     inside each array value, preserving the grouping; a top-level projection would
     match only the group names and silently return `{}` (#912). This descent is
