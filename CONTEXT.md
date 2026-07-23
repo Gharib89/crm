@@ -158,7 +158,9 @@ _Avoid_: verbose dump, minimal mode (name the specific knob: `--minimal` / `--fu
 **Shaped payload**:
 The `data` payload after a client-side output shaper has run at the emit seam —
 either the global `--fields KEY[,KEY...]` flag, which projects `data` down to the
-named top-level keys (list rows or a single record), or the global `--jq PROGRAM`
+named top-level keys (list rows, a single record, or — for a dict whose values
+are all arrays, e.g. `metadata relationships` — inside each array, preserving the
+grouping), or the global `--jq PROGRAM`
 flag, which runs a jq program over `data` and puts its result back (a scalar like
 `length`, or a `group_by`/`map` summary) — so an agent can fit a fat verb inside
 its context budget. The two are **mutually exclusive** (using both is a usage
