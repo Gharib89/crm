@@ -185,6 +185,16 @@ class TestDictOfArraysProjection:
         )
         assert env["data"] == {"name": "A", "roles": [{"x": 1}]}
 
+    def test_all_list_valued_record_stays_single_object(self):
+        # Every value is a list but they carry scalars, not row-dicts — this is an
+        # ordinary record, not a relationships-style collection, so single-object
+        # projection still applies (the requested key is kept whole). Guards the
+        # AC2 "single-dict projection unchanged" contract (#912).
+        env = _emit_json(
+            fields=["roles"], data={"roles": ["x", "y"], "groups": ["a"]}
+        )
+        assert env["data"] == {"roles": ["x", "y"]}
+
 
 class TestZeroMatchWarning:
     def test_unmatched_field_warns(self):

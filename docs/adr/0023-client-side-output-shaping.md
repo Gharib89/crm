@@ -35,10 +35,12 @@ This ADR records the whole shaping decision. It is delivered in slices:
   - **List of objects** → each row projected to the named keys in flag order; a
     key missing from a row is omitted from that row (not nulled).
   - **Single object** → the same projection on the record.
-  - **Dict of arrays** (every value is a list, e.g. `metadata relationships`'
+  - **Dict of arrays of rows** (every value is a list and every element a dict,
+    e.g. `metadata relationships`'
     `{"OneToMany": [...], "ManyToOne": [...], "ManyToMany": [...]}`) → project
     inside each array value, preserving the grouping; a top-level projection would
-    match only the group names and silently return `{}` (#912).
+    match only the group names and silently return `{}` (#912). A dict that is not
+    all row-lists (a scalar value, or a list carrying scalars) stays single-object.
   - **Non-object payload** (a scalar, a formxml string, a list carrying no
     dicts) → passed through unchanged with a `meta.warnings` advisory; there is
     nothing to project.

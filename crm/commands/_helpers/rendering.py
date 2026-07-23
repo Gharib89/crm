@@ -138,10 +138,13 @@ def _project_fields(data: Any, fields: list[str]) -> tuple[Any, list[str]]:
       order named; a key missing from a row is omitted from that row (not nulled).
       Non-dict rows are left untouched (a mixed list keeps its scalars).
     - **Single object** → the same projection on the record.
-    - **Dict of arrays** (every value is a list, e.g. `metadata relationships`'
+    - **Dict of arrays of rows** (every value is a list and every element is a dict,
+      e.g. `metadata relationships`'
       ``{"OneToMany": [...], "ManyToOne": [...], "ManyToMany": [...]}``) → project
       inside each array value, preserving the grouping; a top-level projection would
-      match only the group names and silently return `{}` (#912).
+      match only the group names and silently return `{}` (#912). A dict whose
+      values are not *all* row-lists (a scalar value, or a list carrying scalars)
+      stays single-object projection, so an ordinary record is unaffected.
     - **Non-object** (scalar, string like a formxml blob, or a list carrying no
       dicts) → passed through unchanged with a warning; there is nothing to project.
 
@@ -166,20 +169,21 @@ def _project_fields(data: Any, fields: list[str]) -> tuple[Any, list[str]]:
         shaped, matched = _project_rows(data)
         return shaped, _unmatched_warning(fields, matched)
     if isinstance(data, dict):
-        if data and all(isinstance(v, list) for v in data.values()):
+        values = list(data.values())
+        # A dict-of-arrays *collection* — every value a list, every element a dict —
+        # descends into each array; a record with a scalar value or a scalar-carrying
+        # list is not a collection and stays single-object projection (#912).
+        if values and all(
+            isinstance(v, list) and all(isinstance(r, dict) for r in v) for v in values
+        ):
             grouped: dict[str, Any] = {}
             matched = set()
-            saw_dict = saw_scalar = False
             for key, rows in data.items():
                 grouped[key], m = _project_rows(rows)
                 matched |= m
-                saw_dict = saw_dict or any(isinstance(r, dict) for r in rows)
-                saw_scalar = saw_scalar or any(not isinstance(r, dict) for r in rows)
-            if saw_dict:
-                return grouped, _unmatched_warning(fields, matched)
-            if saw_scalar:  # arrays carry only scalars — nothing to project
-                return grouped, [_NON_OBJECT_WARNING]
-            return grouped, []  # every array empty — not a typo, mirror the empty-list case
+            # No rows anywhere (every array empty) is not a typo — mirror the empty list.
+            has_rows = any(values)
+            return grouped, _unmatched_warning(fields, matched) if has_rows else []
         matched = {f for f in fields if f in data}
         return _project_one(data), _unmatched_warning(fields, matched)
     return data, [_NON_OBJECT_WARNING]
