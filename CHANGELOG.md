@@ -9,6 +9,26 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.75.0 (2026-07-23)
+
+### Code Style
+
+- Wrap long signatures, zip strict=, ruff format ([#919](https://github.com/Gharib89/crm/pull/919),
+  [`196c370`](https://github.com/Gharib89/crm/commit/196c37035c68fb290fa45de492ae8653bacab11d))
+
+### Features
+
+- Batch solution add-component / remove-component (repeated --id + --components-file, transactional
+  $batch) ([#919](https://github.com/Gharib89/crm/pull/919),
+  [`196c370`](https://github.com/Gharib89/crm/commit/196c37035c68fb290fa45de492ae8653bacab11d))
+
+### Testing
+
+- Pin UTF-8 encoding on components-file fixture writes
+  ([#919](https://github.com/Gharib89/crm/pull/919),
+  [`196c370`](https://github.com/Gharib89/crm/commit/196c37035c68fb290fa45de492ae8653bacab11d))
+
+
 ## v1.74.0 (2026-07-23)
 
 ### Bug Fixes
