@@ -620,7 +620,7 @@ def resolve_component_names(
         objectid = str(it.get("objectid") or "").strip()
         if not objectid:
             continue
-        componenttype = int(it.get("componenttype", 0))
+        componenttype = int(it.get("componenttype") or 0)
         oid_lower = objectid.lower()
         if componenttype == 2:  # attribute — entity-scoped, resolved in bulk
             attr_ids.append(oid_lower)
