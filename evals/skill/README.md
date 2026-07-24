@@ -33,6 +33,10 @@ blocks CI. Run it on demand.
   metadata** (ADR 0028, #895), validated when present but never read by the runner:
   `tier` (`1` single-command / `2` workflow / `3` trap — the demand-weighting knob) and
   `source` (`{type: so|forum|reddit|repo|firsthand, url}` — the real-demand provenance).
+  The corpus skews to tier 2/3 by design: a tier-1 task the bare baseline already passes
+  3/3 is the calibration filter's drop target (ADR 0028), so authoring leans away from it
+  — the live baseline-3/3 / skill-0/3 calibration itself runs on paired-run results, not
+  at authoring time.
 - `taskspec.py` — task parsing and the pure grading predicates (`evaluate_expect` for
   `do`-tasks, `evaluate_feasibility` for feasibility tasks).
 - `isolation.py` — provisions and **verifies** the isolated agent context.

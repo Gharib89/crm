@@ -151,7 +151,10 @@ def parse_task_file(path: str | Path) -> TaskSpec:
     # fails the smoke test rather than silently sitting in the corpus. The runner ignores
     # both — they drive authoring-time slot allocation and source auditing only.
     tier = meta.get("tier")
-    if tier is not None and tier not in (1, 2, 3):
+    # ``isinstance(tier, bool)`` guard: Python's ``bool ⊆ int`` makes ``True in (1, 2, 3)``
+    # true, so ``tier: true`` in YAML would silently pass as tier 1 without it — the same
+    # trap evaluate_feasibility guards for scalar answer keys.
+    if tier is not None and (isinstance(tier, bool) or tier not in (1, 2, 3)):
         raise ValueError(f"{path}: tier {tier!r} must be 1, 2, or 3 (or omitted)")
 
     raw_source = meta.get("source")

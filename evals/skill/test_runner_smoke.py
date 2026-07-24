@@ -689,6 +689,19 @@ def test_parse_rejects_bad_tier(tmp_path):
         parse_task_file(f)
 
 
+def test_parse_rejects_bool_tier(tmp_path):
+    # bool ⊆ int, so `tier: true` would otherwise pass as tier 1 (True in (1,2,3)).
+    f = tmp_path / "t.md"
+    f.write_text(
+        "---\nid: x\ndomain: bulk\ntarget: either\ntier: true\n"
+        "end_state:\n  query: [query, odata, accounts]\n  expect: {count: 0}\n"
+        "cleanup: []\n---\nprompt\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="tier"):
+        parse_task_file(f)
+
+
 def test_parse_rejects_bad_source_type(tmp_path):
     f = tmp_path / "t.md"
     f.write_text(
