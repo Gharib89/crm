@@ -153,7 +153,7 @@ is a multi-command workflow with a deterministic end-state predicate and cleanup
 | customizations | `customizations-view-edit`, `trial-customization-workflow`, `trial-webresource-iterate` | cloud, onprem, onprem |
 | solutions | `trial-customization-workflow` (export), `trial-import-diagnosis` | onprem, onprem |
 | automation | `trial-process-state` | onprem |
-| security | `security-role-create` | cloud |
+| security | `security-role-create`, `security-assign-role-team` | cloud, either |
 | dup | `dup-rule-create` | cloud |
 | connectionrole | `connectionrole-create` | cloud |
 | fieldsec | `fieldsec-profile-create` | cloud |
