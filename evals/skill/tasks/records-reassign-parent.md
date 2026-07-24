@@ -24,7 +24,9 @@ kind: do
 # old one) and a partial reassignment (<5). Reassigning is state-identical to creating five
 # fresh contacts directly under the new parent, which no final-state check can distinguish
 # (ADR 0028's L1-proves-state-not-path limitation); a cooperative agent following the prompt
-# does the move, and whether it batched the reassignment efficiently is the advisory L2 judge's call.
+# does the move, and whether it batched the reassignment efficiently is the advisory L2 judge's
+# call. The authoring-time calibration proxy is the tier (T2, not a baseline-trivial T1); the
+# live baseline-3/3 / skill-0/3 filter runs post-hoc on paired-run results, not here.
 end_state:
   query:
     - query
