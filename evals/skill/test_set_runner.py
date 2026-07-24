@@ -64,7 +64,8 @@ def test_set_task_spec_count():
     # kinds counted apart: `do` predicate tasks scored on org state (17 — +3 bulk cluster
     # #895: update-delta, delete-population, delete-from-list), `feasibility` tasks scored
     # field-by-field on an answer key (#891, 2 — +1 bulk dedupe-merge #895), and diagnostic
-    # tasks scored by the --analyze pass (#572, 2: `trial-import-diagnosis` + `diagnostic-data-quality`).
+    # tasks scored by the --analyze pass (#572, 2: `trial-import-diagnosis` +
+    # `diagnostic-data-quality`).
     specs = _specs()
     do_predicate = [s for s in specs if s.kind == "do" and not s.is_diagnostic]
     feasibility = [s for s in specs if s.is_feasibility]
