@@ -80,6 +80,14 @@ blocks CI. Run it on demand.
   `find_baseline` scans `run.json`s for the newest reportable run of the same series
   (model × target × k), and `detect_regression` flags a >5 pp with-skill macro-pass-rate
   drop or any task flipping `k/k → 0/k`. Advisory only — it never gates a run.
+- `judge.py` — the **advisory blind L2 judge** (#894, ADR 0028): scores dimensions the
+  deterministic L1 can't reach (`clarification_quality`, `elegance`) from `(task_prompt,
+  transcript)` — **blind to the leg**, which is never passed — and stamps each verdict with
+  a pinned `RUBRIC_VERSION` and the resolved judge model. `make_judge` is the seam
+  (offline-tested with a fake invoker; the live default is a `claude -p --model opus`
+  subprocess resolved from `$CRM_EVAL_JUDGE_CMD` / `--judge-cmd`). It is **advisory only** —
+  a malformed verdict is recorded as an error rather than failing the trial, and the verdict
+  lands on `TrialRecord.judge`, a field the aggregation/Hake/regression code never reads.
 - `sandbox.py` — the **OS-level network block** (#890, #906): Claude Code's built-in Bash
   sandbox (bubblewrap + socat, **no root**) confines each Bash command to the org host
   (`network.allowedDomains`) while the model driver keeps normal network, so `curl
@@ -95,7 +103,8 @@ blocks CI. Run it on demand.
   and the `evals/results/<run-id>/` layout (`run.json` + `trials.jsonl`, transcripts by ref).
   Each `TrialRecord` also carries the ADR-0028 `invoked` signal (did the agent load the
   skill?, `None` = not captured), measured separately from `passed` (parsed by
-  `trace.parse_invoked`).
+  `trace.parse_invoked`), and an optional `judge` verdict (the advisory L2 read; `None`
+  when no judge ran), recorded alongside `passed` but never mixed into it.
 - `report.py` — the **reporting surfaces** (#893, ADR 0028): `build_report` renders the
   per-run `report.md` (metadata, per-task table with per-trial verdicts, macro pass rates +
   Hake gain, invocation-vs-success split, same-series baseline comparison, flipped-task
@@ -111,13 +120,14 @@ blocks CI. Run it on demand.
 - `test_runner_smoke.py` / `test_set_runner.py` / `test_target.py` / `test_both_runner.py` /
   `test_trace.py` / `test_record.py` / `test_review.py` / `test_isolation.py` /
   `test_results.py` / `test_sandbox.py` / `test_paired.py` / `test_runner_caps.py` /
-  `test_presets.py` / `test_regression.py` / `test_report.py` — offline
+  `test_presets.py` / `test_regression.py` / `test_report.py` / `test_judge.py` — offline
   smoke tests (parse tasks, dry-run isolation, set-level gating/aggregation, reachability
   classification, both-targets orchestration, trace parsing, run-record persistence, the
   review prompt/parse/guard, the Hake/results schema, the sandbox settings builder, the
   paired-leg orchestration, the wall-clock cap, the preset/selection resolution, the
-  baseline scan + advisory regression flags, and the report.md/matrix.md renderers + commit
-  allow-list — all via stubs, no agent, no org).
+  baseline scan + advisory regression flags, the report.md/matrix.md renderers + commit
+  allow-list, and the blind L2 judge prompt/parse/isolation — all via stubs, no agent, no
+  org).
 
 ## Task set & domain coverage
 
@@ -448,6 +458,13 @@ What it adds over the single-condition runner:
   are compared to the newest reportable baseline of the same series (model × target × k);
   a >5 pp macro-pass-rate drop or any `k/k → 0/k` task flip is printed as a flag. It is
   **advisory only** — it never changes the exit code.
+- **Advisory blind L2 judge** (`judge.py`, #894) — opt-in with `--judge` (`--judge-cmd` /
+  `$CRM_EVAL_JUDGE_CMD` overrides the default `claude -p --model opus`). Per trial it scores
+  `clarification_quality` and `elegance` from the transcript **blind to the leg**, recording
+  the verdict (with `RUBRIC_VERSION` + judge model) on `TrialRecord.judge`. Off by default
+  (extra model calls); like regression it **never gates and never enters lift stats** — the
+  aggregation/Hake/regression code never reads the field, so a full run's numbers are
+  identical with or without it.
 - **Org reset between legs** (the attribution keystone) — the org is reset to the task's
   clean pre-state **before each leg** (via the task's `cleanup` steps), so leg B can never
   inherit leg A's mutations.
@@ -494,6 +511,9 @@ D365_E2E=1 D365_E2E_PROFILE=agent-cloud \
 
 D365_E2E=1 D365_E2E_PROFILE=agent-cloud \
     python -m evals.skill.paired --preset full --sample 5 --seed 7   # seeded 5-task subset
+
+D365_E2E=1 D365_E2E_PROFILE=agent-cloud \
+    python -m evals.skill.paired --preset full --k 3 --judge   # + advisory L2 judge (recorded, never gates)
 
 python -m evals.skill.sandbox <org-host>  # live smoke: org reachable, web blocked (real claude -p)
 ```

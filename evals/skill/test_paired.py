@@ -11,8 +11,15 @@ cap-hit leg scores as a fail — with no agent and no org.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from evals.skill.paired import agent_argv, run_pair
+from evals.skill.results import aggregate_task
 from evals.skill.runner import RunResult
+
+#: A real corpus task — the judge path parses the task file for its prompt, so this must
+#: exist on disk (the fake-run_one path below still never executes it).
+_REAL_TASK = Path(__file__).parent / "tasks" / "records-create-verify.md"
 
 
 def _fake_result(task_id: str, passed: bool, *, capped: bool = False) -> RunResult:
@@ -104,6 +111,56 @@ def test_run_pair_emits_stderr_progress_per_leg():
     assert any("skill leg" in line for line in lines)
     assert any("bare leg" in line for line in lines)
     assert any("pass" in line for line in lines)
+
+
+def test_run_pair_attaches_blind_judgment_per_trial():
+    calls: list[tuple[str, str]] = []
+
+    def fake_judge(prompt: str, transcript: str) -> dict:
+        calls.append((prompt, transcript))
+        return {"rubric_version": "1", "model": "opus", "scores": {"elegance": {"score": 4}}}
+
+    def fake_run_one(task_file, *, install_skill, **kw):
+        return _fake_result("records-create-verify", passed=install_skill)
+
+    trials = run_pair(
+        _REAL_TASK, run_one=fake_run_one, reset_org=lambda: None, k=1, judge=fake_judge
+    )
+    # every leg-trial carries a judge verdict, isolated from its L1 `passed`
+    assert all(t.judge is not None for t in trials)
+    assert all(t.judge["rubric_version"] == "1" for t in trials)
+    # judge fires once per leg; it only ever receives (prompt, transcript) — never the leg,
+    # so it is blind to condition by construction. Both legs get the SAME prompt.
+    assert len(calls) == 2
+    assert {p for p, _ in calls} == {calls[0][0]}
+
+
+def test_run_pair_no_judge_leaves_field_none():
+    def fake_run_one(task_file, *, install_skill, **kw):
+        return _fake_result("t1", passed=install_skill)
+
+    trials = run_pair("t1.md", run_one=fake_run_one, reset_org=lambda: None, k=1)
+    assert all(t.judge is None for t in trials)
+
+
+def test_judge_output_never_affects_aggregates():
+    # Criterion 3 (issue #894): lift stats are provably unaffected by the judge. Run the
+    # same task twice — once with a judge, once without — and prove the aggregate (pass
+    # rates + Hake gain) is byte-identical either way.
+    def fake_run_one(task_file, *, install_skill, **kw):
+        return _fake_result("records-create-verify", passed=install_skill)
+
+    def loud_judge(prompt: str, transcript: str) -> dict:
+        # A judge that "hindered" everything must not move any number.
+        return {"rubric_version": "1", "model": "opus", "scores": {"elegance": {"score": 1}}}
+
+    judged = run_pair(
+        _REAL_TASK, run_one=fake_run_one, reset_org=lambda: None, k=2, judge=loud_judge
+    )
+    plain = run_pair(_REAL_TASK, run_one=fake_run_one, reset_org=lambda: None, k=2)
+    agg_judged = aggregate_task("records-create-verify", judged).to_dict()
+    agg_plain = aggregate_task("records-create-verify", plain).to_dict()
+    assert agg_judged == agg_plain
 
 
 def test_agent_argv_pins_allowed_tools_and_turn_cap():
