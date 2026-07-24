@@ -192,7 +192,9 @@ def build_report(
         lines.append("- none")
     lines.append("")
 
-    judged = sorted((t for t in trials if t.judge), key=lambda t: (t.task_id, t.leg, t.trial))
+    judged = sorted(
+        (t for t in trials if t.judge is not None), key=lambda t: (t.task_id, t.leg, t.trial)
+    )
     if judged:
         lines += [
             "## Advisory judge (L2)",
