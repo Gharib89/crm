@@ -61,22 +61,23 @@ def _specs():
 
 def test_set_task_spec_count():
     # Pin the actual counts so an accidental task removal fails CI. 33 specs total, three
-    # kinds counted apart: `do` predicate tasks scored on org state (21 — +3 bulk cluster
+    # kinds counted apart: `do` predicate tasks scored on org state (20 — +3 bulk cluster
     # #895: update-delta, delete-population, delete-from-list; +2 records cluster #896:
-    # note-attach, reassign-parent; +1 security cluster #898: assign-role-team; +1 metadata
-    # cluster #899: autonumber-refcode), `feasibility` tasks scored field-by-field on an answer
-    # key (#891, 10 — +1 bulk dedupe-merge #895, +1 records paging-count #896, +3 solutions-ALM
-    # cluster #897: missing-dependency, managed-component-delete, unmanaged-to-managed; +2
-    # security cluster #898: privilege-toggle, uncovered-impersonation; +2 metadata cluster #899:
-    # field-type-change, optionset-read), and diagnostic tasks scored by the --analyze pass (#572,
-    # 2: `trial-import-diagnosis` + `diagnostic-data-quality`).
+    # note-attach, reassign-parent; +1 security cluster #898: assign-role-team), `feasibility`
+    # tasks scored field-by-field on an answer key (#891, 11 — +1 bulk dedupe-merge #895, +1
+    # records paging-count #896, +3 solutions-ALM cluster #897: missing-dependency,
+    # managed-component-delete, unmanaged-to-managed; +2 security cluster #898: privilege-toggle,
+    # uncovered-impersonation; +3 metadata cluster #899: field-type-change, optionset-read,
+    # autonumber — all feasibility because metadata mutations are only existence/type verifiable,
+    # not final-state, so the discriminators are knowledge-based), and diagnostic tasks scored by
+    # the --analyze pass (#572, 2: `trial-import-diagnosis` + `diagnostic-data-quality`).
     specs = _specs()
     do_predicate = [s for s in specs if s.kind == "do" and not s.is_diagnostic]
     feasibility = [s for s in specs if s.is_feasibility]
     diagnostic = [s for s in specs if s.is_diagnostic]
     assert len(specs) == 33, f"expected 33 total specs, found {len(specs)}"
-    assert len(do_predicate) == 21, f"expected 21 do predicate specs, found {len(do_predicate)}"
-    assert len(feasibility) == 10, f"expected 10 feasibility specs, found {len(feasibility)}"
+    assert len(do_predicate) == 20, f"expected 20 do predicate specs, found {len(do_predicate)}"
+    assert len(feasibility) == 11, f"expected 11 feasibility specs, found {len(feasibility)}"
     assert len(diagnostic) == 2, f"expected 2 diagnostic specs, found {len(diagnostic)}"
 
 

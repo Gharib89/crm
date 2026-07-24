@@ -26,6 +26,7 @@ answer_key:
   cli_achievable: true
   required_commands:
     - metadata add-attribute
+    - entity update
     - metadata delete-attribute
 evidence:
   - "reference/metadata-writes.md + `crm metadata update-attribute --help`: update-attribute edits display/description/required/max-length/precision/min/max/format/behavior/audit only — there is NO option to change a column's type (AttributeType is immutable in Dataverse once the attribute is created). Verified live: the type/--kind flag is absent from update-attribute, present only on add-attribute."
