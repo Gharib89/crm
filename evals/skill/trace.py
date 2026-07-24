@@ -78,6 +78,32 @@ def parse_commands(raw_trace: str) -> list[str]:
     return commands
 
 
+def parse_invoked(raw_trace: str) -> bool:
+    """Whether the agent invoked the ``crm`` skill via the ``Skill`` tool.
+
+    ADR 0028 measures invocation *separately* from success — a skill-leg trial can pass
+    without ever loading the skill (found the path another way), or invoke it and still
+    fail; the report's invocation-vs-success split needs that signal. Walks ``assistant``
+    events for a ``Skill`` ``tool_use`` whose input names ``crm`` (the skill install slug),
+    ignoring other skills. The bare leg has no skill installed, so this is ``False`` there.
+    """
+    for event in iter_events(raw_trace):
+        if event.get("type") != "assistant":
+            continue
+        content = (event.get("message") or {}).get("content") or []
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if not isinstance(block, dict) or block.get("type") != "tool_use":
+                continue
+            if block.get("name") != "Skill":
+                continue
+            skill = (block.get("input") or {}).get("skill")
+            if isinstance(skill, str) and skill.strip().lower() == "crm":
+                return True
+    return False
+
+
 def parse_metrics(raw_trace: str) -> dict[str, Any]:
     """The run metrics from the terminal ``result`` event (empty dict if none).
 

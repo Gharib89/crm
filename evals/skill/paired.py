@@ -38,11 +38,19 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from evals.skill import record as record_mod
+from evals.skill import report as report_mod
 from evals.skill import target as target_mod
 from evals.skill import trace
 from evals.skill.presets import DEFAULT_SEED, PRESETS, resolve_tasks
 from evals.skill.regression import RegressionReport, detect_regression, find_baseline
-from evals.skill.results import RESULTS_ROOT, TrialRecord, aggregate_task, write_results
+from evals.skill.results import (
+    RESULTS_ROOT,
+    TaskAggregate,
+    TrialRecord,
+    aggregate_task,
+    is_reportable,
+    write_results,
+)
 from evals.skill.runner import RunError, RunResult, cleanup_org, run_task
 from evals.skill.sandbox import probe_enforcement, sandbox_settings
 from evals.skill.taskspec import parse_task_file
@@ -135,6 +143,17 @@ def run_pair(
                 if transcripts_dir is not None
                 else ""
             )
+            metrics = trace.parse_metrics(result.transcript)
+            # Invocation: True if the skill was loaded; False only when the run *completed*
+            # (a terminal result event → non-empty metrics) without loading it; None when the
+            # transcript never completed (crash/truncation), so "did not invoke" is unknown
+            # rather than falsely asserted.
+            if trace.parse_invoked(result.transcript):
+                invoked: bool | None = True
+            elif metrics:
+                invoked = False
+            else:
+                invoked = None
             trials.append(
                 TrialRecord(
                     task_id=result.task_id,
@@ -143,8 +162,9 @@ def run_pair(
                     passed=bool(result.passed),
                     reason=result.reason,
                     capped=result.capped,
-                    metrics=trace.parse_metrics(result.transcript),
+                    metrics=metrics,
                     transcript_ref=ref,
+                    invoked=invoked,
                 )
             )
     return trials
@@ -321,10 +341,13 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
         trials = _go()
 
         aggregates = [aggregate_task(t, trials) for t in dict.fromkeys(x.task_id for x in trials)]
+        # `host` is intentionally NOT persisted into meta: a reportable run commits run.json
+        # (and report.md) to a public repo, and the live org host (esp. on-prem/internal) is
+        # sensitive. The series identity is model × target × k; host is a live-run detail only
+        # (it stays in the stderr summary + transcripts, which are never committed).
         meta = {
             "model": args.model,
             "target": active,
-            "host": host,
             "k": args.k,
             "preset": args.preset,
             "paired": preset.paired,
@@ -339,11 +362,61 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
         write_results(
             args.results_dir, run_id=run_id, meta=meta, trials=trials, aggregates=aggregates
         )
+        regression = detect_regression(aggregates, baseline, k=args.k)
         _print_summary(run_id, run_dir, aggregates, paired=preset.paired)
-        _print_regression(detect_regression(aggregates, baseline, k=args.k))
+        _print_regression(regression)
+        # Reporting + commit policy (ADR 0028): only a reportable run writes report.md,
+        # (re)derives matrix.md from the committed records, and force-adds its named
+        # artifacts — transcripts/run.log stay untracked because they are never named.
+        if is_reportable(preset=args.preset, paired=preset.paired, k=args.k, subset=meta["subset"]):
+            _finalize_reporting(
+                repo_root, args.results_dir, run_dir, run_id, meta, aggregates, trials, regression
+            )
         return 0 if all(a.pass_skill_rate > 0 for a in aggregates) else 1
     finally:
         shutil.rmtree(session, ignore_errors=True)
+
+
+def _finalize_reporting(
+    repo_root: Path,
+    results_dir: str,
+    run_dir: Path,
+    run_id: str,
+    meta: dict[str, object],
+    aggregates: list[TaskAggregate],
+    trials: list[TrialRecord],
+    regression: RegressionReport,
+) -> None:  # pragma: no cover - live front door (git + disk side effects)
+    """Write ``report.md``, (re)derive ``matrix.md``, and force-add the named artifacts.
+
+    Called only for a reportable run. ``matrix.md`` is rebuilt from the committed
+    ``run.json`` records (which now include this run's), so it always reflects the newest
+    reportable run per series. The commit stages **only** the ADR-0028 named paths — the
+    transcripts and ``run.log`` are never staged because they are never named.
+    """
+    report_md = report_mod.build_report(
+        run_id=run_id, meta=meta, aggregates=aggregates, trials=trials, regression=regression
+    )
+    (run_dir / "report.md").write_text(report_md, encoding="utf-8")
+
+    matrix_path = Path(results_dir) / report_mod.MATRIX_NAME
+    matrix_path.write_text(
+        report_mod.build_matrix(report_mod.collect_reportable(results_dir)), encoding="utf-8"
+    )
+
+    artifacts = [str(p) for p in report_mod.artifact_paths(run_dir)]
+    add_named = subprocess.run(["git", "-C", str(repo_root), "add", "-f", *artifacts], check=False)
+    add_matrix = subprocess.run(["git", "-C", str(repo_root), "add", str(matrix_path)], check=False)
+    if add_named.returncode == 0 and add_matrix.returncode == 0:
+        print(
+            f"  staged for commit: {', '.join(report_mod.ARTIFACT_NAMES)}, {report_mod.MATRIX_NAME}"
+        )
+    else:
+        print(
+            f"  WARNING: git add failed (rc {add_named.returncode}/{add_matrix.returncode}); "
+            f"artifacts written to {run_dir} but NOT staged — stage them manually",
+            file=sys.stderr,
+        )
 
 
 def _print_summary(

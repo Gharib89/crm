@@ -16,11 +16,10 @@ aggregates), so the whole regression path is unit-testable without a live org.
 from __future__ import annotations
 
 import dataclasses
-import json
 from pathlib import Path
 from typing import Any
 
-from evals.skill.results import TaskAggregate
+from evals.skill.results import TaskAggregate, iter_run_records, series_key
 
 #: A with-skill macro pass-rate drop larger than this many percentage points is flagged.
 MACRO_DROP_PP = 5.0
@@ -38,29 +37,19 @@ def find_baseline(
 ) -> dict[str, Any] | None:
     """Newest reportable ``run.json`` of the same series (model × target × k), or ``None``.
 
-    Scans ``<results_root>/*/run.json``, keeps only runs stamped ``reportable`` whose
-    ``meta`` matches the series exactly, and returns the newest by ``run_id`` — the id's
-    UTC-timestamp prefix sorts lexicographically. A subset or k<3 run is not reportable, so
-    it is excluded here for free; a malformed/unreadable ``run.json`` is skipped. Returns
-    the parsed dict, or ``None`` when the series has no reportable history yet.
+    Scans the committed run records (:func:`evals.skill.results.iter_run_records`), keeps
+    only runs stamped ``reportable`` whose ``meta`` matches the series exactly, and returns
+    the newest by ``run_id`` — the id's UTC-timestamp prefix sorts lexicographically. A
+    subset or k<3 run is not reportable, so it is excluded here for free. Returns the parsed
+    dict, or ``None`` when the series has no reportable history yet.
     """
-    root = Path(results_root)
-    if not root.is_dir():
-        return None
-    matches: list[dict[str, Any]] = []
-    for run_json in root.glob("*/run.json"):
-        try:
-            data = json.loads(run_json.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if not data.get("reportable"):
-            continue
-        meta = data.get("meta", {})
-        if meta.get("model") == model and meta.get("target") == target and meta.get("k") == k:
-            matches.append(data)
-    if not matches:
-        return None
-    return max(matches, key=lambda d: str(d.get("run_id", "")))
+    want = (model, target, k)
+    matches = [
+        d
+        for d in iter_run_records(results_root)
+        if d.get("reportable") and series_key(d.get("meta", {})) == want
+    ]
+    return max(matches, key=lambda d: str(d.get("run_id", "")), default=None)
 
 
 @dataclasses.dataclass
