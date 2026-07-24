@@ -9,6 +9,33 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.76.0 (2026-07-24)
+
+### Bug Fixes
+
+- **evals**: Don't commit the live org host into public run.json/report.md
+  ([#921](https://github.com/Gharib89/crm/pull/921),
+  [`0627dd5`](https://github.com/Gharib89/crm/commit/0627dd56e159a733725a15521c529d0ac9fddde3))
+
+### Chores
+
+- **evals**: Skill-eval reporting — report.md, matrix.md, invocation signal, commit policy
+  ([#921](https://github.com/Gharib89/crm/pull/921),
+  [`0627dd5`](https://github.com/Gharib89/crm/commit/0627dd56e159a733725a15521c529d0ac9fddde3))
+
+### Features
+
+- **evals**: Skill-eval reporting — report.md, matrix.md, invocation signal, commit policy
+  ([#921](https://github.com/Gharib89/crm/pull/921),
+  [`0627dd5`](https://github.com/Gharib89/crm/commit/0627dd56e159a733725a15521c529d0ac9fddde3))
+
+### Refactoring
+
+- **evals**: Self-review fixes — dedup run scanner, reuse macro, typed split, honest staging
+  ([#921](https://github.com/Gharib89/crm/pull/921),
+  [`0627dd5`](https://github.com/Gharib89/crm/commit/0627dd56e159a733725a15521c529d0ac9fddde3))
+
+
 ## v1.75.0 (2026-07-23)
 
 ### Code Style
