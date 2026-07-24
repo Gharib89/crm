@@ -19,16 +19,18 @@ target: either
 kind: feasibility
 answer_key:
   cli_achievable: true
-  # Group-level tokens on purpose: there are TWO valid ribbon verbs for the icon (`set-icon` on an
-  # existing button, `add-button --modern-image` at creation), so requiring a specific verb would
-  # false-fail a correct answer that chose the other. `webresource` + `ribbon` is the invariant any
-  # correct composition names, and still discriminates against a "no, needs the maker UI" answer.
+  # Concrete verbs, scoped to the stated scenario (existing custom buttons): `webresource create`
+  # is the single-file upload verb for the icon (`push` walks a whole directory — not what a lone
+  # icon needs), and `ribbon set-icon` is the verb for an EXISTING button (`add-button` CREATES a
+  # button, a different operation). evaluate_feasibility recall has no OR-matching, so each needle
+  # names the one verb this scenario requires; the create-time alternative (`add-button
+  # --modern-image`) is documented in the evidence but is not the ask.
   required_commands:
-    - webresource
-    - ribbon
+    - webresource create
+    - ribbon set-icon
 evidence:
-  - "The icon must first exist as a web resource: `crm webresource create` (or `push`) uploads an image (SVG for ModernImage, or 16/32 raster) as a web resource — verified live via `crm webresource --help` ('Create and manage web resources (HTML/JS/CSS/images)', with a `create` subcommand)."
-  - "`crm ribbon set-icon --button-id <id> --modern-image <wr>` sets a custom button's icon on an existing button — verified live via `--help` ('Set a custom command-bar button's icon on an existing button ... ModernImage / Image16by16 / Image32by32 ... written as a $webresource: directive'). `crm ribbon add-button --modern-image/--image16/--image32` sets the icon at button-creation time instead. Either references the web resource, so the icon is fully CLI-driven."
+  - "The icon must first exist as a web resource: `crm webresource create` uploads a single image (SVG for ModernImage, or 16/32 raster) as a web resource — verified live via `crm webresource --help` (a `create` subcommand: 'Create a web resource'). (`webresource push` is the bulk directory-walk variant, not needed for one icon.)"
+  - "`crm ribbon set-icon --button-id <id> --modern-image <wr>` sets a custom button's icon on an EXISTING button — verified live via `--help` ('Set a custom command-bar button's icon on an existing button ... ModernImage / Image16by16 / Image32by32 ... written as a $webresource: directive'). This is the verb for the stated scenario (the Approve/Reject/Send buttons already exist); `crm ribbon add-button --modern-image/--image16/--image32` is the alternative that sets an icon at button-creation time."
   - "crm#871 requested this as a NEW upload-icon feature and was closed `wontfix` because it is already achievable by composing an image web resource with the ribbon icon flags. So cli_achievable is TRUE: the discriminator is recognising the composition, not the (declined) dedicated feature."
 cleanup: []
 ---
@@ -37,10 +39,10 @@ You are assessing whether a task is achievable with the `crm` CLI. **Do not perf
 mutate the org.** Investigate the available commands (the `crm` skill, and `crm --help` /
 `crm describe` as needed), then decide.
 
-Task under assessment: *"A user wants a custom icon shown next to their custom command-bar buttons
-(Approve, Reject, Send Update Request). Can we set a custom icon on a command-bar button with the
-`crm` CLI, or does this require the maker UI / a feature the CLI doesn't have? If it's achievable,
-which commands does it take?"*
+Task under assessment: *"A user wants a custom icon shown next to their existing custom command-bar
+buttons (Approve, Reject, Send Update Request). Can we set a custom icon on an existing command-bar
+button with the `crm` CLI, or does this require the maker UI / a feature the CLI doesn't have? If
+it's achievable, which commands does it take?"*
 
 Write your answer as a single JSON object to a file named `feasibility.json` in your current
 working directory, matching exactly this schema (no extra prose in the file):

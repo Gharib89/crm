@@ -25,10 +25,15 @@ answer_key:
   required_commands:
     - app create
     - set-sitemap
+    # The read-back the task asks for: there is no `app get`/`app list` verb, so the app is
+    # verified back with `crm query odata appmodules` — required so an answer that creates but
+    # never reads back does not get full command credit (the end-to-end ask, per the T3 trap).
+    - query
 evidence:
   - "`crm app create --name <n> --unique-name <prefix_x>` creates a model-driven app (appmodule) — verified live via `--help` ('Create a model-driven app'). So the app itself is scriptable, not maker-portal-only."
   - "`crm app set-sitemap <name> --xml-file <f> --unique-name <app>` attaches a SiteMapXml to the app (`app build-sitemap` is the companion that constructs the XML from areas/groups/subareas) — verified live via `--help` ('Create a sitemap from a SiteMapXml file'). A model-driven app needs a sitemap to be a usable, publishable app."
-  - "Read-back gotcha (why T3): a Web-API-created appmodule is Unpublished, and both the by-id retrieve and the plain `appmodules` collection GET return published apps only, so a naive verification read reports the just-created app as 'Does Not Exist' (DISCOVERED_BUGS #5 / crm#809, live-confirmed both targets; MS Learn 'Create, manage, and publish model-driven apps using code'). The fix reads through RetrieveUnpublishedMultiple and binds the sitemap via AddAppComponents so an app-scoped publish makes it GET-visible — so the round-trip is achievable, but only once the sitemap is bound and published."
+  - "Read-back: the `app` group has no `get`/`list` verb (verified via `crm app --help`: only add-components/build-sitemap/create/delete/remove-components/set-sitemap), so the app is verified back with `crm query odata appmodules --filter \"uniquename eq '<name>'\"`. crm's appmodule reads go through RetrieveUnpublishedMultiple + $filter, so this returns the app regardless of publish state (the DISCOVERED_BUGS #5 / crm#809 fix)."
+  - "Read-back gotcha (why T3): a Web-API-created appmodule is Unpublished, and a RAW by-id retrieve / plain `appmodules` collection GET returns published apps only, so a naive verification read reports the just-created app as 'Does Not Exist' (DISCOVERED_BUGS #5 / crm#809, live-confirmed both targets; MS Learn 'Create, manage, and publish model-driven apps using code'). The fix binds the sitemap via AddAppComponents so an app-scoped publish makes it GET-visible in the published collection too — so the round-trip is achievable, but the read path and publish step are what make it work."
 cleanup: []
 ---
 
