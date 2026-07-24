@@ -14,9 +14,16 @@ source:
 # MSCRMCallerID, or CallerObjectId (grep returns nothing), so a skill-equipped agent has no
 # in-skill pointer to it either. This probes whether the agent, sent to investigate the CLI
 # surface (`crm --help` / `crm describe`), discovers the flag rather than concluding impersonation
-# needs a dedicated service account or is UI/SDK-only. Same shape as feasibility-bulk-dedupe-merge:
-# an uncovered blind-spot feasibility probe (domain: uncovered). Host-agnostic — --as-user works on
-# both cloud and on-prem; --as-user-object-id is the cloud/Entra variant — -> either.
+# needs a dedicated service account or is UI/SDK-only. A do-task was ruled out: it is not
+# deterministically verifiable. Self-impersonating the profile's own connected user leaves createdby
+# equal to that user with OR without --as-user, so a createdby read-back cannot distinguish
+# impersonation from a plain write (did-nothing passes); impersonating a DIFFERENT user needs a
+# second provisioned (licensed) systemuser GUID the harness cannot self-seed and no static predicate
+# can pin at authoring time (the same limitation row 12 / security-role-create hit for user
+# assignment). The discriminating signal is therefore knowledge of the flag, graded as feasibility —
+# same shape as feasibility-bulk-dedupe-merge, an uncovered blind-spot probe (domain: uncovered).
+# Host-agnostic — --as-user works on both cloud and on-prem; --as-user-object-id is the cloud/Entra
+# variant — -> either.
 target: either
 kind: feasibility
 answer_key:
