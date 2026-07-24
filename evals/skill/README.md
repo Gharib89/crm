@@ -147,7 +147,7 @@ is a multi-command workflow with a deterministic end-state predicate and cleanup
 
 | reference domain | task(s) | target |
 |---|---|---|
-| records | `records-create-verify`, `records-validate-write`, `trial-bulk-load` | cloud, cloud, onprem |
+| records | `records-create-verify`, `records-validate-write`, `trial-bulk-load`, `records-note-attach`, `records-reassign-parent` | cloud, cloud, onprem, either, either |
 | bulk | `bulk-update-delta`, `bulk-delete-population`, `bulk-delete-from-list` | either, either, either |
 | metadata | `trial-global-optionset` | onprem |
 | customizations | `customizations-view-edit`, `trial-customization-workflow`, `trial-webresource-iterate` | cloud, onprem, onprem |
