@@ -13,26 +13,27 @@ source:
 # Host-agnostic — annotations and the objectid lookup exist on cloud and on-prem v9.1 — so `either`.
 target: either
 kind: do
-# The verifier proves the note landed AND is attached to a contact: count:1 rules out
-# did-nothing (0 rows) and an accidental duplicate note (2 rows); the row pins the exact body
-# text, and objecttypecode 'contact' proves the note was RELATED to a contact rather than left
-# floating (an unbound annotation carries a null objecttypecode, which never matches 'contact').
-# The distinctive subject scopes the annotations query to just this task's note.
+# The verifier proves the note landed AND is filed against THIS task's contact: the filter pins
+# the distinctive subject AND the parent contact by marker, traversing the annotation's
+# `objectid_contact` single-valued navigation property (objectid_contact/lastname) — so a note
+# left floating (null objectid, no parent) or bound to some other contact never matches, which
+# a bare objecttypecode='contact' check could not distinguish (it proves "some contact", not
+# this one). count:1 rules out did-nothing (0 rows) and a duplicate note (2 rows); the row pins
+# the exact body text.
 end_state:
   query:
     - query
     - odata
     - annotations
     - --filter
-    - "subject eq 'EvalRec896 Onboarding Note'"
+    - "subject eq 'EvalRec896 Onboarding Note' and objectid_contact/lastname eq 'EvalRec896Note'"
     - --select
-    - subject,notetext,objecttypecode
+    - subject,notetext
   expect:
     count: 1
     row:
       subject: EvalRec896 Onboarding Note
       notetext: Follow up on the signed onboarding paperwork.
-      objecttypecode: contact
 cleanup:
   - entity: annotations
     id_field: annotationid
