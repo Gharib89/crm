@@ -41,6 +41,7 @@ from evals.skill import record as record_mod
 from evals.skill import report as report_mod
 from evals.skill import target as target_mod
 from evals.skill import trace
+from evals.skill.judge import Judge, make_judge
 from evals.skill.presets import DEFAULT_SEED, PRESETS, resolve_tasks
 from evals.skill.regression import RegressionReport, detect_regression, find_baseline
 from evals.skill.results import (
@@ -112,6 +113,7 @@ def run_pair(
     paired: bool = True,
     transcripts_dir: Path | None = None,
     progress: Callable[[str], None] | None = None,
+    judge: Judge | None = None,
     **leg_kwargs: object,
 ) -> list[TrialRecord]:
     """Run ``task_file`` with-skill (and, when ``paired``, bare) k times each, resetting first.
@@ -124,9 +126,17 @@ def run_pair(
     ``False`` (the smoke / regression-check presets) the **bare leg is skipped** — a
     single-condition, with-skill-only run that has no lift to measure. ``progress`` (if
     given) is called with a human line as each leg starts/resolves — the front door routes
-    it to stderr so a long run (up to ``2·k`` agent trials) shows live movement. Returns the
-    flat list of per-leg :class:`~evals.skill.results.TrialRecord`s.
+    it to stderr so a long run (up to ``2·k`` agent trials) shows live movement.
+
+    ``judge`` (if given) is the advisory L2 judge (:mod:`evals.skill.judge`): after each leg
+    it scores the transcript on ``(task_prompt, transcript)`` — **blind to the leg**, which
+    is never passed — and the verdict lands on that leg's ``TrialRecord.judge``, alongside
+    the L1 ``passed`` it never touches. Returns the flat list of per-leg
+    :class:`~evals.skill.results.TrialRecord`s.
     """
+    # The judge needs the task's prompt; parse it once (only when judging) so the non-judge
+    # path stays free of a file read and the existing fake-file tests need no real corpus.
+    judge_prompt = parse_task_file(task_file).prompt if judge is not None else ""
     legs = (("skill", True), ("bare", False)) if paired else (("skill", True),)
     trials: list[TrialRecord] = []
     for trial in range(k):
@@ -154,6 +164,9 @@ def run_pair(
                 invoked = False
             else:
                 invoked = None
+            # Advisory L2: score the transcript blind to the leg (only prompt + transcript
+            # are handed over). Never touches `passed` — see TrialRecord.judge.
+            verdict = judge(judge_prompt, result.transcript) if judge is not None else None
             trials.append(
                 TrialRecord(
                     task_id=result.task_id,
@@ -165,6 +178,7 @@ def run_pair(
                     metrics=metrics,
                     transcript_ref=ref,
                     invoked=invoked,
+                    judge=verdict,
                 )
             )
     return trials
@@ -261,6 +275,18 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
         action="store_true",
         help="don't write the sandbox settings (NOT ADR-compliant; for local wiring checks only)",
     )
+    parser.add_argument(
+        "--judge",
+        action="store_true",
+        help="run the advisory blind L2 judge per trial (extra model calls; never gates, "
+        "never enters lift/regression — recorded on the trial for human reading)",
+    )
+    parser.add_argument(
+        "--judge-cmd",
+        default=None,
+        metavar="CMD",
+        help="judge command (default: $CRM_EVAL_JUDGE_CMD, else 'claude -p --model opus')",
+    )
     args = parser.parse_args(argv)
     preset = PRESETS[args.preset]
     only = [t.strip() for t in args.tasks.split(",")] if args.tasks else None
@@ -297,6 +323,12 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
         def _stderr(msg: str) -> None:
             print(f"[paired] {msg}", file=sys.stderr, flush=True)
 
+        # Built once (resolves the judge command up front so a bad --judge-cmd fails before
+        # any live trial); None when --judge is off, so run_pair skips it entirely.
+        judge = make_judge(args.judge_cmd) if args.judge else None
+        if judge is not None:
+            _stderr("advisory L2 judge ON (per-trial; never gates, never enters lift stats)")
+
         def _go() -> list[TrialRecord]:
             # Each task carries its own cleanup, so its reset hook is built per task; both
             # legs of a pair still share the one session venv + sandbox settings.
@@ -311,6 +343,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
                         paired=preset.paired,
                         transcripts_dir=run_dir / "transcripts",
                         progress=_stderr,
+                        judge=judge,
                         **leg_kwargs,
                     )
                 )

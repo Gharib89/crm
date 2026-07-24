@@ -94,6 +94,12 @@ class TrialRecord:
     is the ADR-0028 invocation signal (did the agent load the ``crm`` skill?), measured
     separately from ``passed``; ``None`` means *not captured* (never conflated with "did
     not invoke"), so a pre-invocation record reads honestly.
+
+    ``judge`` is the **advisory L2** verdict (:mod:`evals.skill.judge`) — a blind qualitative
+    read (clarification quality, elegance) recorded *alongside* L1, never mixed into it;
+    ``None`` when no judge ran. It is deliberately **never read** by :func:`aggregate_task`,
+    :func:`hake_gain`, :func:`is_reportable`, or the regression code, so lift stats and
+    regression verdicts are provably unaffected by it (ADR 0028: the judge never gates).
     """
 
     task_id: str
@@ -105,6 +111,7 @@ class TrialRecord:
     metrics: dict[str, Any] = dataclasses.field(default_factory=dict)
     transcript_ref: str = ""
     invoked: bool | None = None
+    judge: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
