@@ -10,20 +10,23 @@ source:
 # to a real recurring forum ask. This is a T3 trap because the naive answer is FALSE
 # ("managed components are locked, you can't"): `remove-component` genuinely refuses managed
 # targets AND a patch/clone-as-patch does NOT delete anything. cli_achievable is TRUE only
-# via the non-obvious managed-UPGRADE path (re-export the source as managed, stage-and-upgrade
-# → DeleteAndPromote removes components dropped from the new version). A bare agent that
-# answers `false`, or that reaches for `remove-component`/`clone-as-patch`, is the
-# skill-lift discriminator.
+# via the non-obvious managed-UPGRADE path: drop the component from the SOURCE unmanaged
+# solution (`remove-component`), re-export it as managed, then ship it as an upgrade
+# (stage-and-upgrade → DeleteAndPromote removes components dropped from the new version).
+# A bare agent that answers `false`, that runs `remove-component` against the MANAGED
+# solution (which refuses), or that reaches for `clone-as-patch` (a patch never deletes),
+# is the skill-lift discriminator.
 target: either
 kind: feasibility
 answer_key:
   cli_achievable: true
   required_commands:
+    - solution remove-component
     - solution export
     - solution stage-and-upgrade
 evidence:
-  - "reference/solutions.md (add/remove-component): both `add-component` and `remove-component` 'refuse managed targets' — you cannot edit an installed managed solution in place, so in-place deletion is genuinely blocked (the managed lock)."
-  - "reference/solutions.md (Managed-solution upgrade lifecycle): the supported removal path is to drop the component from the SOURCE unmanaged solution, re-export as managed (`crm solution export --managed`, verified via `crm solution export --help` `--managed` flag), then ship it as an upgrade — `crm solution stage-and-upgrade <zip> --promote --solution <name>` (or stage then `apply-upgrade`), which fires DeleteAndPromote and 'replaces the base solution + its patches', deleting components absent from the new version. Verified via `crm solution stage-and-upgrade --help`."
+  - "reference/solutions.md (add/remove-component): both `add-component` and `remove-component` 'refuse managed targets' — you cannot edit an installed managed solution in place, so in-place deletion is genuinely blocked (the managed lock). `remove-component` DOES operate on the SOURCE unmanaged solution, which is the actual first step of the supported path."
+  - "reference/solutions.md (Managed-solution upgrade lifecycle): the supported removal path is `crm solution remove-component --solution <source> ...` to drop the component from the SOURCE unmanaged solution, then re-export as managed (`crm solution export --managed`, `--managed` flag verified via `crm solution export --help`), then ship it as an upgrade — `crm solution stage-and-upgrade <zip> --promote --solution <name>` (or stage then `apply-upgrade`), which fires DeleteAndPromote and 'replaces the base solution + its patches', deleting components absent from the new version. Verified via `crm solution stage-and-upgrade --help`."
   - "A patch does NOT delete: reference/solutions.md `clone-as-patch` clones a hotfix from a parent and only adds/updates — so the component-removal goal is achievable via the upgrade path, not a patch. cli_achievable holds, but only through the upgrade lifecycle."
 cleanup: []
 ---

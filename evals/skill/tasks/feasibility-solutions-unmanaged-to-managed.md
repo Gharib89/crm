@@ -20,7 +20,7 @@ answer_key:
     - solution import
     - solution export
 evidence:
-  - "reference/solutions.md (Export a solution): `crm solution export <name> -o <zip>` takes a `--managed` flag (verified via `crm solution export --help`) — managed-vs-unmanaged is decided at EXPORT time from a solution living in an org, there is no zip-to-zip conversion command."
+  - "`crm solution export <name> -o <zip> --managed` exports a managed zip — the `--managed` flag is verified via `crm solution export --help`; reference/solutions.md (Export a solution) documents the export command and shows `managed` in its output envelope. Managed-vs-unmanaged is decided at EXPORT time from a solution living in an org, so there is no zip-to-zip conversion command."
   - "reference/solutions.md (Import a solution): the supplier's unmanaged zip must first be imported into a dev org with `crm solution import <zip>`; only then does the solution exist in an org to re-export. Verified via `crm solution import --help`."
   - "Therefore the achievable path is import-then-export-managed (`solution import` the unmanaged zip into a dev org, then `solution export --managed`); managed export is one-way (a managed solution cannot be re-exported unmanaged), which is why 'converting' the zip directly is not a thing. cli_achievable holds via the round-trip."
 cleanup: []

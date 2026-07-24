@@ -22,7 +22,7 @@ answer_key:
 evidence:
   - "reference/solutions.md (`missing-components`): `crm solution missing-components <zip>` runs against the import-target org and lists exactly the components the org is missing before importing — read-only, the purpose-built pre-import dependency check. Verified via `crm solution missing-components --help` ('List components an exported solution needs that this org is missing')."
   - "reference/solutions.md (Investigating a failed import, step 3): `crm solution import-result <import_job_id>` re-fetches the ImportJob and parses per-component pass/fail outcomes — the post-mortem for an import that started but failed. Verified via `crm solution import-result --help`."
-  - "reference/solutions.md notes the on-prem synchronous path fails a DECLARED missing dependency loudly (fault 0x80048033) and that `import-result` 404s on a pre-execution rejection — so the reliable diagnosis pairs the pre-import `missing-components` gate with the post-import `import-result` parse, both CLI-native. cli_achievable therefore holds."
+  - "reference/solutions.md (Investigating a failed import) notes that `import-result` 404s when the import is rejected before an ImportJob exists (a declared missing dependency that fires at entry) — so the reliable diagnosis pairs the pre-import `missing-components` gate with the post-import `import-result` parse, both CLI-native. cli_achievable therefore holds."
 cleanup: []
 ---
 
