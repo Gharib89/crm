@@ -536,3 +536,65 @@ def test_uninstall_throwaway_solution(cli, backend):
                 backend.delete(f"publishers({pub_id})")
             except Exception:
                 pass
+
+
+# ── audit (issue #916) ───────────────────────────────────────────────────────
+
+
+@covers("solution audit")
+def test_solution_audit(cli, backend, ephemeral_solution, ephemeral_entity):
+    """Add the session entity to the solution, then audit it.
+
+    Verifies `solution audit --json` returns the classifier shape (summary +
+    whole/shell entity buckets + required-only candidates) and that the added
+    entity lands in one of the entity buckets. Runs against whichever live
+    target the e2e profile wiring selects (platform-neutral Web API).
+    """
+    from crm.core import metadata as meta_mod
+
+    try:
+        info = meta_mod.entity_info(backend, ephemeral_entity)
+    except Exception as exc:
+        pytest.skip(f"could not resolve entity MetadataId: {exc}")
+    metadata_id = info.get("MetadataId")
+    if not metadata_id:
+        pytest.skip("entity MetadataId not returned; cannot add component")
+
+    # Add the entity (no cascade, so the audit setup stays deterministic).
+    result = cli(
+        [
+            "--json",
+            "solution",
+            "add-component",
+            "--solution",
+            ephemeral_solution,
+            "--type",
+            "entity",
+            "--id",
+            metadata_id,
+            "--no-add-required",
+        ]
+    )
+    assert result.returncode == 0, f"add-component failed:\n{result.stderr}"
+
+    result = cli(["--json", "solution", "audit", ephemeral_solution])
+    assert result.returncode == 0, f"audit failed:\n{result.stderr}"
+    env = json.loads(result.stdout)
+    assert env["ok"], env
+    report = env["data"]
+    assert report["solution"] == ephemeral_solution
+    summary = report["summary"]
+    for key in (
+        "total_components",
+        "entity_count",
+        "whole_entity_count",
+        "shell_count",
+        "required_only_count",
+        "by_type",
+    ):
+        assert key in summary, f"missing summary key {key!r}: {summary}"
+    assert summary["entity_count"] >= 1
+    bucketed = {e["objectid"].lower() for e in report["whole_entities"] + report["shell_entities"]}
+    assert metadata_id.lower() in bucketed, (
+        f"added entity {metadata_id} not classified into an entity bucket: {bucketed}"
+    )

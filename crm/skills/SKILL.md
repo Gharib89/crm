@@ -208,7 +208,7 @@ For per-domain detail:
 | metadata (read): browse schema, picklists, dependencies, export-spec, clone-entity, write-readiness brief, entity-def cache, incremental sync (`metadata changes`), relationship eligibility (`can-relate`) | `reference/metadata.md` |
 | metadata write gotchas: datetime behavior, auto-number strings, rollup/calculated columns, status/state option writes, field mappings, hierarchical & virtual tables | `reference/metadata-writes.md` |
 | schema authoring: `apply -f`, `scaffold table`, option sets, views, stage-then-publish | `reference/authoring.md` |
-| solutions: create/export/import, investigate a failed import, async job polling/cancel (`async` group), packager extract/pack, validate, component drift, label translation export/import, `export-spec` (org-to-org drift recipe) | `reference/solutions.md` |
+| solutions: create/export/import, investigate a failed import, async job polling/cancel (`async` group), packager extract/pack, validate, component drift, cascade/whole-entity audit, label translation export/import, `export-spec` (org-to-org drift recipe) | `reference/solutions.md` |
 | model-driven apps + sitemap: create an app, add components, generate or live-edit the navigation tree (add-area / add-group / add-subarea / move-node / remove-node / set-title / set-description) | `reference/apps-sitemap.md` |
 | forms: add/remove/move fields, presentation props, JS event handlers, tab/section skeleton, manual FormXml splice | `reference/forms.md` |
 | web resources (upload, bulk push, continuous redeploy) and ribbon / command-bar buttons | `reference/webresource-ribbon.md` |

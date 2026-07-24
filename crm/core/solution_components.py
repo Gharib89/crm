@@ -256,3 +256,112 @@ def layer_conflicts(
         )
     conflicts.sort(key=lambda c: (c["componenttype"], c["objectid"]))
     return conflicts
+
+
+# ── solution audit (#916) ────────────────────────────────────────────────────
+#
+# Classify a solution's inventory to surface AddRequiredComponents cascade drift:
+# which entities are carried whole (behavior 0, where accidental bloat hides) vs
+# as shells, and which components are only present because another component in
+# the same solution requires them (cascade candidates, not authored here). The
+# required-by graph is fetched by the caller (a live-only step); this classifier
+# is pure so the bucketing/summary logic is unit-testable in isolation.
+
+# The `entity` componenttype is the cascade vector this feature reasons about.
+_ENTITY_TYPE = SOLUTION_COMPONENT_TYPES["entity"]
+_WHOLE_ENTITY_BEHAVIOR = 0
+_SHELL_BEHAVIORS = (1, 2)
+
+
+def build_audit(
+    components: list[dict[str, Any]],
+    *,
+    required_by: dict[tuple[int, str], list[str]],
+    names: dict[tuple[int, str], dict[str, Any]],
+) -> dict[str, Any]:
+    """Classify a normalized component list into an audit report.
+
+    Args:
+        components: rows from :func:`normalize_components`
+            (``componenttype`` / ``objectid`` / ``rootcomponentbehavior``).
+        required_by: ``{(componenttype, objectid): [requirer_label, ...]}`` — the
+            in-solution components that another in-solution component directly
+            requires (built from ``RetrieveRequiredComponents`` by the caller).
+            A key present here is a cascade candidate.
+        names: ``{(componenttype, objectid): {"name": str|None, "entity"?: str}}``
+            resolved friendly names (best-effort; a missing key leaves ``name``
+            ``None``).
+
+    Returns::
+
+        {
+            "summary": {"total_components", "entity_count", "whole_entity_count",
+                        "shell_count", "required_only_count", "by_type": {name: n}},
+            "whole_entities": [{objectid, name, rootcomponentbehavior, behavior_label}],
+            "shell_entities": [{objectid, name, rootcomponentbehavior, behavior_label}],
+            "required_only_candidates": [{componenttype, type_name, objectid, name,
+                                          rootcomponentbehavior, required_by}],
+        }
+
+    Entity buckets cover ``componenttype == 1`` only; an entity with a
+    ``rootcomponentbehavior`` outside ``{0, 1, 2}`` (unexpected) lands in neither
+    list but still counts toward ``entity_count``.
+    """
+
+    def _name(componenttype: int, objectid: str) -> str | None:
+        return names.get(component_key(componenttype, objectid), {}).get("name")
+
+    whole_entities: list[dict[str, Any]] = []
+    shell_entities: list[dict[str, Any]] = []
+    by_type: dict[str, int] = {}
+    entity_count = 0
+    for c in components:
+        ctype = c["componenttype"]
+        oid = c["objectid"]
+        type_name = component_type_name(ctype)
+        by_type[type_name] = by_type.get(type_name, 0) + 1
+        if ctype != _ENTITY_TYPE:
+            continue
+        entity_count += 1
+        behavior = c["rootcomponentbehavior"]
+        entry = {
+            "objectid": oid,
+            "name": _name(ctype, oid),
+            "rootcomponentbehavior": behavior,
+            "behavior_label": root_behavior_name(behavior),
+        }
+        if behavior == _WHOLE_ENTITY_BEHAVIOR:
+            whole_entities.append(entry)
+        elif behavior in _SHELL_BEHAVIORS:
+            shell_entities.append(entry)
+
+    candidates: list[dict[str, Any]] = []
+    for c in components:
+        key = component_key(c["componenttype"], c["objectid"])
+        requirers = required_by.get(key)
+        if not requirers:
+            continue
+        candidates.append(
+            {
+                "componenttype": c["componenttype"],
+                "type_name": component_type_name(c["componenttype"]),
+                "objectid": c["objectid"],
+                "name": _name(c["componenttype"], c["objectid"]),
+                "rootcomponentbehavior": c["rootcomponentbehavior"],
+                "required_by": requirers,
+            }
+        )
+
+    return {
+        "summary": {
+            "total_components": len(components),
+            "entity_count": entity_count,
+            "whole_entity_count": len(whole_entities),
+            "shell_count": len(shell_entities),
+            "required_only_count": len(candidates),
+            "by_type": by_type,
+        },
+        "whole_entities": whole_entities,
+        "shell_entities": shell_entities,
+        "required_only_candidates": candidates,
+    }
