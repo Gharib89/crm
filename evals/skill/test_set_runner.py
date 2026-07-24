@@ -69,8 +69,11 @@ def test_set_task_spec_count():
     specs = _specs()
     do_predicate = [s for s in specs if s.kind == "do" and not s.is_diagnostic]
     feasibility = [s for s in specs if s.is_feasibility]
+    diagnostic = [s for s in specs if s.is_diagnostic]
+    assert len(specs) == 21, f"expected 21 total specs, found {len(specs)}"
     assert len(do_predicate) == 17, f"expected 17 do predicate specs, found {len(do_predicate)}"
     assert len(feasibility) == 2, f"expected 2 feasibility specs, found {len(feasibility)}"
+    assert len(diagnostic) == 2, f"expected 2 diagnostic specs, found {len(diagnostic)}"
 
 
 def test_eight_trials_formalized():

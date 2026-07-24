@@ -702,6 +702,44 @@ def test_parse_rejects_bool_tier(tmp_path):
         parse_task_file(f)
 
 
+def test_parse_rejects_float_tier(tmp_path):
+    # bool ⊆ int is guarded above; this guards the float sibling — `2.0 in (1,2,3)` is true.
+    f = tmp_path / "t.md"
+    f.write_text(
+        "---\nid: x\ndomain: bulk\ntarget: either\ntier: 2.0\n"
+        "end_state:\n  query: [query, odata, accounts]\n  expect: {count: 0}\n"
+        "cleanup: []\n---\nprompt\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="tier"):
+        parse_task_file(f)
+
+
+def test_parse_rejects_non_string_url(tmp_path):
+    # A non-firsthand source must cite a real URL string, not `url: 123` / `url: null`.
+    f = tmp_path / "t.md"
+    f.write_text(
+        "---\nid: x\ndomain: bulk\ntarget: either\nsource: {type: so, url: 123}\n"
+        "end_state:\n  query: [query, odata, accounts]\n  expect: {count: 0}\n"
+        "cleanup: []\n---\nprompt\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="url"):
+        parse_task_file(f)
+
+
+def test_parse_rejects_null_url_for_non_firsthand(tmp_path):
+    f = tmp_path / "t.md"
+    f.write_text(
+        "---\nid: x\ndomain: bulk\ntarget: either\nsource: {type: forum, url: null}\n"
+        "end_state:\n  query: [query, odata, accounts]\n  expect: {count: 0}\n"
+        "cleanup: []\n---\nprompt\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="url"):
+        parse_task_file(f)
+
+
 def test_parse_rejects_bad_source_type(tmp_path):
     f = tmp_path / "t.md"
     f.write_text(

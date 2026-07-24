@@ -11,17 +11,19 @@ source:
 # on-prem — so `either`.
 target: either
 kind: do
-# End state: only the Keeper survives among the EvalBulk895 accounts. count:1 plus the
+# End state: only the Keeper survives among this task's two record names. count:1 plus the
 # Keeper row rules out did-nothing (0 rows, no Keeper), create-without-delete (16 rows),
 # and deleting-the-Keeper-too (0 rows). The Keeper carries a distinctive phone so a stray
-# same-named record can't satisfy the row match by accident.
+# same-named record can't satisfy the row match by accident. The filter names the two
+# records explicitly rather than `startswith(name,'EvalBulk895')` so a sibling bulk task's
+# leftover (Delta/List Co) from a partially-failed cleanup can't leak into the count.
 end_state:
   query:
     - query
     - odata
     - accounts
     - --filter
-    - "startswith(name,'EvalBulk895')"
+    - "name eq 'EvalBulk895 Purge Co' or name eq 'EvalBulk895 Keeper Co'"
     - --select
     - name,telephone1
   expect:

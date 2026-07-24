@@ -151,11 +151,14 @@ def parse_task_file(path: str | Path) -> TaskSpec:
     # fails the smoke test rather than silently sitting in the corpus. The runner ignores
     # both — they drive authoring-time slot allocation and source auditing only.
     tier = meta.get("tier")
-    # ``isinstance(tier, bool)`` guard: Python's ``bool ⊆ int`` makes ``True in (1, 2, 3)``
-    # true, so ``tier: true`` in YAML would silently pass as tier 1 without it — the same
-    # trap evaluate_feasibility guards for scalar answer keys.
-    if tier is not None and (isinstance(tier, bool) or tier not in (1, 2, 3)):
-        raise ValueError(f"{path}: tier {tier!r} must be 1, 2, or 3 (or omitted)")
+    # Require a real ``int`` in (1, 2, 3): ``not isinstance(tier, int)`` rejects ``tier: 2.0``,
+    # and the explicit ``bool`` guard rejects ``tier: true`` — Python's ``bool ⊆ int`` makes
+    # both ``True in (1, 2, 3)`` and ``2.0 in (1, 2, 3)`` true, so without these a non-int
+    # would silently pass (the same trap evaluate_feasibility guards for scalar answer keys).
+    if tier is not None and (
+        not isinstance(tier, int) or isinstance(tier, bool) or tier not in (1, 2, 3)
+    ):
+        raise ValueError(f"{path}: tier {tier!r} must be the integer 1, 2, or 3 (or omitted)")
 
     raw_source = meta.get("source")
     source: dict[str, Any] = {}
@@ -167,6 +170,19 @@ def parse_task_file(path: str | Path) -> TaskSpec:
             raise ValueError(f"{path}: source.type {stype!r} not one of {SOURCE_TYPES}")
         if "url" not in raw_source:
             raise ValueError(f"{path}: source must carry a 'url' key (null for firsthand)")
+        # A non-``firsthand`` source must cite a non-empty URL string; ``firsthand`` (a
+        # traceable secondary — this repo's issues) may leave it null. Validated so a
+        # curation tag can't carry a meaningless ``url: 123`` / ``url: null`` provenance.
+        url = raw_source["url"]
+        if stype == "firsthand":
+            if url is not None and not (isinstance(url, str) and url.strip()):
+                raise ValueError(
+                    f"{path}: source.url for firsthand must be null or a non-empty string"
+                )
+        elif not (isinstance(url, str) and url.strip()):
+            raise ValueError(
+                f"{path}: source.url must be a non-empty string (null only for firsthand)"
+            )
         source = raw_source
 
     query: list[str] = []
