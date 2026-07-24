@@ -142,8 +142,10 @@ blocks CI. Run it on demand.
 
 The set samples **executability** — does a skill-only agent carry each multi-command
 workflow to its declared end state? — across the skill's reference domains. (Skill
-*discoverability* is Machine A's job, #569, not re-proven here.) Each `tasks/*.md`
-is a multi-command workflow with a deterministic end-state predicate and cleanup.
+*discoverability* is Machine A's job, #569, not re-proven here.) The table below lists the
+**`do`-tasks** — multi-command workflows with a deterministic end-state predicate and cleanup;
+the `feasibility` and diagnostic tasks (which carry no `end_state`) are described separately
+below.
 
 | reference domain | task(s) | target |
 |---|---|---|

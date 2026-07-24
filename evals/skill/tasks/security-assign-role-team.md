@@ -27,6 +27,14 @@ source:
 # solution-scoping requirement) + owner-team create (business-unit + administrator binds) +
 # assign-role is a real multi-step workflow. The authoring-time calibration proxy is the tier;
 # the live baseline-3/3 / skill-0/3 filter runs post-hoc on paired-run results, not here.
+# Scored vs advisory (the deterministic floor, like security-role-create's): the predicate scores
+# that a team of the marker name carries a role of the marker name. Three prompt requirements are
+# NOT independently scored — (1) the role's org-level account-read PRIVILEGE, because the
+# role<->privilege intersect is not queryable (roleprivileges 404s, above); (2) that the team is an
+# OWNER team specifically, a minor detail (any team type inherits roles); (3) the business-unit
+# match, which is nonetheless IMPLICITLY proven — assign-role 403s ("forbidden") on a role/principal
+# BU mismatch (reference/security.md), so a successful association guarantees the BUs matched. A
+# skill-equipped agent demonstrates all three; the advisory L2 judge assesses privilege correctness.
 target: either
 kind: do
 end_state:
