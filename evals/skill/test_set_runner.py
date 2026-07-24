@@ -60,15 +60,20 @@ def _specs():
 
 
 def test_set_task_spec_count():
-    # Pin the actual counts so an accidental task removal fails CI. 17 specs total, three
-    # kinds counted apart: `do` predicate tasks scored on org state (14), `feasibility`
-    # tasks scored field-by-field on an answer key (#891, 1), and diagnostic tasks scored
-    # by the --analyze pass (#572, 2: `trial-import-diagnosis` + `diagnostic-data-quality`).
+    # Pin the actual counts so an accidental task removal fails CI. 21 specs total, three
+    # kinds counted apart: `do` predicate tasks scored on org state (17 — +3 bulk cluster
+    # #895: update-delta, delete-population, delete-from-list), `feasibility` tasks scored
+    # field-by-field on an answer key (#891, 2 — +1 bulk dedupe-merge #895), and diagnostic
+    # tasks scored by the --analyze pass (#572, 2: `trial-import-diagnosis` +
+    # `diagnostic-data-quality`).
     specs = _specs()
     do_predicate = [s for s in specs if s.kind == "do" and not s.is_diagnostic]
     feasibility = [s for s in specs if s.is_feasibility]
-    assert len(do_predicate) == 14, f"expected 14 do predicate specs, found {len(do_predicate)}"
-    assert len(feasibility) == 1, f"expected 1 feasibility spec, found {len(feasibility)}"
+    diagnostic = [s for s in specs if s.is_diagnostic]
+    assert len(specs) == 21, f"expected 21 total specs, found {len(specs)}"
+    assert len(do_predicate) == 17, f"expected 17 do predicate specs, found {len(do_predicate)}"
+    assert len(feasibility) == 2, f"expected 2 feasibility specs, found {len(feasibility)}"
+    assert len(diagnostic) == 2, f"expected 2 diagnostic specs, found {len(diagnostic)}"
 
 
 def test_eight_trials_formalized():

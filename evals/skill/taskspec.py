@@ -25,6 +25,11 @@ TARGETS = ("cloud", "onprem", "either")
 #: and is graded field-by-field against an evidenced answer key (#891).
 KINDS = ("do", "feasibility")
 
+#: Allowed ``source.type`` values — the channel a corpus task was harvested from
+#: (ADR 0028 real-demand sourcing). ``firsthand`` is a traceable secondary (this
+#: repo's issues / DISCOVERED_BUGS) and may carry a null ``url``.
+SOURCE_TYPES = ("so", "forum", "reddit", "repo", "firsthand")
+
 
 @dataclasses.dataclass(frozen=True)
 class CleanupStep:
@@ -71,6 +76,15 @@ class TaskSpec:
     #: running a skill-absent (counterfactual) leg (#588) — the per-task "always
     #: measure this one" knob, equivalent to passing ``run --counterfactual``.
     counterfactual: bool = False
+    #: Curation metadata (ADR 0028, #895), never read by the runner. ``tier`` is the
+    #: discrimination weight — 1 single-command, 2 workflow, 3 trap — used at authoring
+    #: time for demand-weighted slot allocation (the corpus skews to 2/3). ``None`` when
+    #: the task predates the tag.
+    tier: int | None = None
+    #: Provenance of the real-demand ask this task encodes: ``{"type": <SOURCE_TYPES>,
+    #: "url": <str|None>}``. Recorded so the corpus is auditable against its sources and
+    #: can't silently drift into teaching-to-the-test. Empty when the task predates the tag.
+    source: dict[str, Any] = dataclasses.field(default_factory=dict)
 
     @property
     def is_feasibility(self) -> bool:
@@ -132,6 +146,44 @@ def parse_task_file(path: str | Path) -> TaskSpec:
     kind = meta.get("kind", "do")
     if kind not in KINDS:
         raise ValueError(f"{path}: kind {kind!r} not one of {KINDS}")
+
+    # Curation metadata (#895): optional, but validated when present so a malformed tag
+    # fails the smoke test rather than silently sitting in the corpus. The runner ignores
+    # both — they drive authoring-time slot allocation and source auditing only.
+    tier = meta.get("tier")
+    # Require a real ``int`` in (1, 2, 3): ``not isinstance(tier, int)`` rejects ``tier: 2.0``,
+    # and the explicit ``bool`` guard rejects ``tier: true`` — Python's ``bool ⊆ int`` makes
+    # both ``True in (1, 2, 3)`` and ``2.0 in (1, 2, 3)`` true, so without these a non-int
+    # would silently pass (the same trap evaluate_feasibility guards for scalar answer keys).
+    if tier is not None and (
+        not isinstance(tier, int) or isinstance(tier, bool) or tier not in (1, 2, 3)
+    ):
+        raise ValueError(f"{path}: tier {tier!r} must be the integer 1, 2, or 3 (or omitted)")
+
+    raw_source = meta.get("source")
+    source: dict[str, Any] = {}
+    if raw_source is not None:
+        if not isinstance(raw_source, dict):
+            raise ValueError(f"{path}: source must be a mapping of 'type' and 'url'")
+        stype = raw_source.get("type")
+        if stype not in SOURCE_TYPES:
+            raise ValueError(f"{path}: source.type {stype!r} not one of {SOURCE_TYPES}")
+        if "url" not in raw_source:
+            raise ValueError(f"{path}: source must carry a 'url' key (null for firsthand)")
+        # A non-``firsthand`` source must cite a non-empty URL string; ``firsthand`` (a
+        # traceable secondary — this repo's issues) may leave it null. Validated so a
+        # curation tag can't carry a meaningless ``url: 123`` / ``url: null`` provenance.
+        url = raw_source["url"]
+        if stype == "firsthand":
+            if url is not None and not (isinstance(url, str) and url.strip()):
+                raise ValueError(
+                    f"{path}: source.url for firsthand must be null or a non-empty string"
+                )
+        elif not (isinstance(url, str) and url.strip()):
+            raise ValueError(
+                f"{path}: source.url must be a non-empty string (null only for firsthand)"
+            )
+        source = raw_source
 
     query: list[str] = []
     expect: dict[str, Any] = {}
@@ -231,6 +283,8 @@ def parse_task_file(path: str | Path) -> TaskSpec:
         answer_key=answer_key,
         evidence=evidence,
         counterfactual=bool(meta.get("counterfactual", False)),
+        tier=tier,
+        source=source,
     )
 
 

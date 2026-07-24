@@ -641,3 +641,139 @@ def test_build_analysis_prompt_requests_verdict_line():
         verdict={"passed": None, "reason": "d"},
     )
     assert "VERDICT: PASS" in prompt and "VERDICT: FAIL" in prompt
+
+
+# --- Corpus curation metadata: tier + source (#895) ---------------------------
+# tier (1/2/3) and source ({type, url}) are authoring/curation metadata — the runner
+# never reads them; they record demand-weighting and provenance so the corpus doubles
+# as a coverage map (ADR 0028). Optional per task, but validated when present so a
+# malformed tag fails the smoke test, not silently sits in the corpus.
+
+
+def test_parse_accepts_tier_and_source(tmp_path):
+    f = tmp_path / "t.md"
+    f.write_text(
+        "---\nid: x\ndomain: bulk\ntarget: either\ntier: 2\n"
+        "source: {type: so, url: 'https://stackoverflow.com/questions/1'}\n"
+        "end_state:\n  query: [query, odata, accounts]\n  expect: {count: 0}\n"
+        "cleanup: []\n---\nprompt\n",
+        encoding="utf-8",
+    )
+    spec = parse_task_file(f)
+    assert spec.tier == 2
+    assert spec.source == {"type": "so", "url": "https://stackoverflow.com/questions/1"}
+
+
+def test_tier_and_source_optional(tmp_path):
+    f = tmp_path / "t.md"
+    f.write_text(
+        "---\nid: x\ndomain: bulk\ntarget: either\n"
+        "end_state:\n  query: [query, odata, accounts]\n  expect: {count: 0}\n"
+        "cleanup: []\n---\nprompt\n",
+        encoding="utf-8",
+    )
+    spec = parse_task_file(f)
+    assert spec.tier is None
+    assert spec.source == {}
+
+
+def test_parse_rejects_bad_tier(tmp_path):
+    f = tmp_path / "t.md"
+    f.write_text(
+        "---\nid: x\ndomain: bulk\ntarget: either\ntier: 4\n"
+        "end_state:\n  query: [query, odata, accounts]\n  expect: {count: 0}\n"
+        "cleanup: []\n---\nprompt\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="tier"):
+        parse_task_file(f)
+
+
+def test_parse_rejects_bool_tier(tmp_path):
+    # bool ⊆ int, so `tier: true` would otherwise pass as tier 1 (True in (1,2,3)).
+    f = tmp_path / "t.md"
+    f.write_text(
+        "---\nid: x\ndomain: bulk\ntarget: either\ntier: true\n"
+        "end_state:\n  query: [query, odata, accounts]\n  expect: {count: 0}\n"
+        "cleanup: []\n---\nprompt\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="tier"):
+        parse_task_file(f)
+
+
+def test_parse_rejects_float_tier(tmp_path):
+    # bool ⊆ int is guarded above; this guards the float sibling — `2.0 in (1,2,3)` is true.
+    f = tmp_path / "t.md"
+    f.write_text(
+        "---\nid: x\ndomain: bulk\ntarget: either\ntier: 2.0\n"
+        "end_state:\n  query: [query, odata, accounts]\n  expect: {count: 0}\n"
+        "cleanup: []\n---\nprompt\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="tier"):
+        parse_task_file(f)
+
+
+def test_parse_rejects_non_string_url(tmp_path):
+    # A non-firsthand source must cite a real URL string, not `url: 123` / `url: null`.
+    f = tmp_path / "t.md"
+    f.write_text(
+        "---\nid: x\ndomain: bulk\ntarget: either\nsource: {type: so, url: 123}\n"
+        "end_state:\n  query: [query, odata, accounts]\n  expect: {count: 0}\n"
+        "cleanup: []\n---\nprompt\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="url"):
+        parse_task_file(f)
+
+
+def test_parse_rejects_null_url_for_non_firsthand(tmp_path):
+    f = tmp_path / "t.md"
+    f.write_text(
+        "---\nid: x\ndomain: bulk\ntarget: either\nsource: {type: forum, url: null}\n"
+        "end_state:\n  query: [query, odata, accounts]\n  expect: {count: 0}\n"
+        "cleanup: []\n---\nprompt\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="url"):
+        parse_task_file(f)
+
+
+def test_parse_rejects_bad_source_type(tmp_path):
+    f = tmp_path / "t.md"
+    f.write_text(
+        "---\nid: x\ndomain: bulk\ntarget: either\n"
+        "source: {type: blog, url: 'https://example.com'}\n"
+        "end_state:\n  query: [query, odata, accounts]\n  expect: {count: 0}\n"
+        "cleanup: []\n---\nprompt\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="source.type"):
+        parse_task_file(f)
+
+
+def test_parse_rejects_source_without_url(tmp_path):
+    f = tmp_path / "t.md"
+    f.write_text(
+        "---\nid: x\ndomain: bulk\ntarget: either\nsource: {type: firsthand}\n"
+        "end_state:\n  query: [query, odata, accounts]\n  expect: {count: 0}\n"
+        "cleanup: []\n---\nprompt\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="url"):
+        parse_task_file(f)
+
+
+def test_source_url_may_be_null(tmp_path):
+    # A firsthand source has no external URL — the key must be present, value null.
+    f = tmp_path / "t.md"
+    f.write_text(
+        "---\nid: x\ndomain: bulk\ntarget: either\n"
+        "source: {type: firsthand, url: null}\n"
+        "end_state:\n  query: [query, odata, accounts]\n  expect: {count: 0}\n"
+        "cleanup: []\n---\nprompt\n",
+        encoding="utf-8",
+    )
+    spec = parse_task_file(f)
+    assert spec.source == {"type": "firsthand", "url": None}

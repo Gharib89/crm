@@ -29,7 +29,16 @@ blocks CI. Run it on demand.
   predicate and is scored by the `--analyze` pass instead (see below). A task's `kind`
   (default `do`) selects how it is graded: a `do`-task mutates the org and is scored on
   its `end_state`; a **`feasibility`** task (`kind: feasibility`) mutates nothing and is
-  scored field-by-field against an `answer_key` (see below).
+  scored field-by-field against an `answer_key` (see below). Optional **curation
+  metadata** (ADR 0028, #895), validated when present but never read by the runner:
+  `tier` (`1` single-command / `2` workflow / `3` trap — the demand-weighting knob) and
+  `source` (`{type: so|forum|reddit|repo|firsthand, url}` — the real-demand provenance;
+  `url` must be a non-empty string except for `firsthand`, a traceable secondary that may
+  leave it `null`).
+  The corpus skews to tier 2/3 by design: a tier-1 task the bare baseline already passes
+  3/3 is the calibration filter's drop target (ADR 0028), so authoring leans away from it
+  — the live baseline-3/3 / skill-0/3 calibration itself runs on paired-run results, not
+  at authoring time.
 - `taskspec.py` — task parsing and the pure grading predicates (`evaluate_expect` for
   `do`-tasks, `evaluate_feasibility` for feasibility tasks).
 - `isolation.py` — provisions and **verifies** the isolated agent context.
@@ -139,6 +148,7 @@ is a multi-command workflow with a deterministic end-state predicate and cleanup
 | reference domain | task(s) | target |
 |---|---|---|
 | records | `records-create-verify`, `records-validate-write`, `trial-bulk-load` | cloud, cloud, onprem |
+| bulk | `bulk-update-delta`, `bulk-delete-population`, `bulk-delete-from-list` | either, either, either |
 | metadata | `trial-global-optionset` | onprem |
 | customizations | `customizations-view-edit`, `trial-customization-workflow`, `trial-webresource-iterate` | cloud, onprem, onprem |
 | solutions | `trial-customization-workflow` (export), `trial-import-diagnosis` | onprem, onprem |
@@ -351,7 +361,11 @@ expected item must appear — missing one fails the trial, keeping the binary cl
 feasibility task declares no `end_state`; it carries `answer_key` (the graded fields) plus
 `evidence` (the provenance for each answer-key claim, captured at authoring time so a wrong
 key is auditable). It shares the same paired pipeline and `trials.jsonl`/`run.json` records
-as the `do`-task path.
+as the `do`-task path. `feasibility-bulk-dedupe-merge` (#895, harvest row 23) is tagged
+`domain: uncovered` — a deliberate blind-spot probe: record merge is CLI-achievable (`crm
+dup` detection + the `Merge` message via `crm action invoke`) yet no reference module
+documents it, so the answer key rewards recognising an achievable path the skill never
+points at.
 
 ## Skill-efficacy review (persist-then-analyze, #588, ADR 0016)
 
