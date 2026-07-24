@@ -9,6 +9,41 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.77.0 (2026-07-24)
+
+### Bug Fixes
+
+- Best-effort cascade preview + soften audit-doc overclaims
+  ([#920](https://github.com/Gharib89/crm/pull/920),
+  [`ac1ca85`](https://github.com/Gharib89/crm/commit/ac1ca8550c46b6405139411d43262694c00b8a2b))
+
+### Documentation
+
+- Note best-effort cascade preview fallback in skill
+  ([#920](https://github.com/Gharib89/crm/pull/920),
+  [`ac1ca85`](https://github.com/Gharib89/crm/commit/ac1ca8550c46b6405139411d43262694c00b8a2b))
+
+- Solution audit + add-component cascade confirmation
+  ([#920](https://github.com/Gharib89/crm/pull/920),
+  [`ac1ca85`](https://github.com/Gharib89/crm/commit/ac1ca8550c46b6405139411d43262694c00b8a2b))
+
+### Features
+
+- Solution audit for cascade / whole-entity drift + add-component cascade confirm
+  ([#920](https://github.com/Gharib89/crm/pull/920),
+  [`ac1ca85`](https://github.com/Gharib89/crm/commit/ac1ca8550c46b6405139411d43262694c00b8a2b))
+
+- Solution audit for cascade / whole-entity drift + add-component cascade confirm (#916)
+  ([#920](https://github.com/Gharib89/crm/pull/920),
+  [`ac1ca85`](https://github.com/Gharib89/crm/commit/ac1ca8550c46b6405139411d43262694c00b8a2b))
+
+### Refactoring
+
+- Route #916 cascade keys through component_key + _ENTITY_TYPE
+  ([#920](https://github.com/Gharib89/crm/pull/920),
+  [`ac1ca85`](https://github.com/Gharib89/crm/commit/ac1ca8550c46b6405139411d43262694c00b8a2b))
+
+
 ## v1.76.0 (2026-07-24)
 
 ### Bug Fixes
