@@ -10,6 +10,7 @@ out) and the matrix is derived purely from committed ``run.json`` files.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 
 from evals.skill.regression import RegressionReport
@@ -130,6 +131,63 @@ def test_build_report_marks_capped_trial():
         regression=_no_baseline(),
     )
     assert "⊘" in md  # a cap-hit is a distinct verdict, not a plain fail
+
+
+def _judge_ok() -> dict:
+    return {
+        "rubric_version": "r1.0",
+        "model": "claude-judge",
+        "scores": {
+            "clarification_quality": {"score": 4, "note": "clear"},
+            "elegance": {"score": 5, "note": "tidy"},
+        },
+    }
+
+
+def test_build_report_renders_advisory_judge_when_a_trial_is_judged():
+    trials = _trials()
+    trials[0] = dataclasses.replace(trials[0], judge=_judge_ok())
+    md = build_report(
+        run_id="rj",
+        meta=_META,
+        aggregates=[aggregate_task("t1", trials)],
+        trials=trials,
+        regression=_no_baseline(),
+    )
+    assert "Advisory judge (L2)" in md
+    assert "clarification" in md.lower() and "elegance" in md.lower()
+    assert "4" in md and "5" in md  # the two dimension scores
+    assert "claude-judge" in md and "r1.0" in md  # model + rubric_version
+    # advisory: never conflated with pass/fail or lift.
+    assert "advisory" in md.lower()
+
+
+def test_build_report_omits_advisory_judge_when_no_trial_judged():
+    md = build_report(
+        run_id="rn",
+        meta=_META,
+        aggregates=[aggregate_task("t1", _trials())],
+        trials=_trials(),
+        regression=_no_baseline(),
+    )
+    assert "Advisory judge" not in md
+
+
+def test_build_report_renders_judge_error_without_crashing():
+    trials = _trials()
+    trials[0] = dataclasses.replace(
+        trials[0],
+        judge={"rubric_version": "r1.0", "model": "claude-judge", "error": "timed out"},
+    )
+    md = build_report(
+        run_id="re",
+        meta=_META,
+        aggregates=[aggregate_task("t1", trials)],
+        trials=trials,
+        regression=_no_baseline(),
+    )
+    assert "judge errored" in md
+    assert "timed out" in md
 
 
 def test_build_report_renders_baseline_and_flips():

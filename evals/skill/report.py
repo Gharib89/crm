@@ -6,7 +6,8 @@ Two committed markdown artifacts derived from the ``evals/results/`` records tha
 - :func:`build_report` — the per-run ``report.md`` for a *reportable* run: metadata, a
   per-task table with per-trial verdicts, the macro pass rates + Hake gain, the
   invocation-vs-success split (ADR 0028 measures invocation separately from success), the
-  comparison against the same-series baseline, and the flipped-task list.
+  comparison against the same-series baseline, the flipped-task list, and — only when the
+  run was judged — an **advisory** L2 judge section (isolated from pass/fail and lift per ADR 0028).
 - :func:`build_matrix` — the derived ``matrix.md``: the **latest reportable run per series**
   (model × target × k). Absolute pass rates are only comparable *within* a model/target;
   the cross-series (cross-harness) comparable number is the **lift over the run's own bare
@@ -86,6 +87,13 @@ def invocation_split(trials: list[TrialRecord]) -> InvocationSplit:
             noinv_pass += t.passed
             noinv_fail += not t.passed
     return InvocationSplit(inv_pass, inv_fail, noinv_pass, noinv_fail, uncaptured)
+
+
+def _judge_score(verdict: dict[str, Any], dimension: str) -> str:
+    """The 1–5 score for ``dimension`` from a judge verdict, or ``—`` if absent."""
+    entry = (verdict.get("scores") or {}).get(dimension) or {}
+    score = entry.get("score")
+    return "—" if score is None else str(score)
 
 
 def _mean_hake(gains: list[float | None]) -> float | None:
@@ -183,6 +191,37 @@ def build_report(
     else:
         lines.append("- none")
     lines.append("")
+
+    judged = sorted((t for t in trials if t.judge), key=lambda t: (t.task_id, t.leg, t.trial))
+    if judged:
+        lines += [
+            "## Advisory judge (L2)",
+            "",
+            "Blind qualitative read — clarification quality + elegance (1–5). "
+            "**[advisory]**: recorded alongside L1, never mixed into pass/fail, lift, or "
+            "regression (ADR 0028).",
+            "",
+            "| task | leg | trial | clarification | elegance | model | rubric |",
+            "| --- | --- | --- | --- | --- | --- | --- |",
+        ]
+        errors: list[str] = []
+        for t in judged:
+            v = t.judge or {}
+            model = v.get("model", "—")
+            rubric = v.get("rubric_version", "—")
+            if "scores" not in v and "error" in v:
+                clarification = elegance = "errored"
+                errors.append(f"- {t.task_id} ({t.leg} #{t.trial}) judge errored: {v['error']}")
+            else:
+                clarification = _judge_score(v, "clarification_quality")
+                elegance = _judge_score(v, "elegance")
+            lines.append(
+                f"| {t.task_id} | {t.leg} | {t.trial} | {clarification} | {elegance} "
+                f"| {model} | {rubric} |"
+            )
+        if errors:
+            lines += ["", *errors]
+        lines.append("")
 
     return "\n".join(lines)
 
