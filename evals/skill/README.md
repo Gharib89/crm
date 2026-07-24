@@ -152,6 +152,7 @@ below.
 | records | `records-create-verify`, `records-validate-write`, `trial-bulk-load`, `records-note-attach`, `records-reassign-parent` | cloud, cloud, onprem, either, either |
 | bulk | `bulk-update-delta`, `bulk-delete-population`, `bulk-delete-from-list` | either, either, either |
 | metadata | `trial-global-optionset` | onprem |
+| metadata-writes | `metadata-autonumber-refcode` | either |
 | customizations | `customizations-view-edit`, `trial-customization-workflow`, `trial-webresource-iterate` | cloud, onprem, onprem |
 | solutions | `trial-customization-workflow` (export), `trial-import-diagnosis` | onprem, onprem |
 | automation | `trial-process-state` | onprem |
@@ -177,14 +178,14 @@ it; `customization-lifecycle` (publish/managed lifecycle) is exercised by the ex
 and publish steps inside the customization trials; `workflow-xaml` is automation-
 adjacent and on-prem-heavy, sampled indirectly by `trial-process-state`.
 
-**Known cleanup limitation.** Two on-prem metadata trials
-(`trial-customization-workflow`, `trial-global-optionset`) create a custom table /
-global option set. The cleanup model deletes *records* by a filter, but a metadata
-*definition* must be removed by its logical name via `metadata delete-entity` /
-`delete-optionset` — and that name is chosen by the agent at run time, so it cannot be
-expressed as a static cleanup step. Those two tasks therefore leave definition residue
-that a maintainer clears out of band; widening the cleanup model to cover agent-named
-metadata is deliberately left out of this slice.
+**Known cleanup limitation.** Three metadata tasks
+(`trial-customization-workflow`, `trial-global-optionset`, `metadata-autonumber-refcode`)
+create a custom table / global option set / custom attribute. The cleanup model deletes
+*records* by a filter, but a metadata *definition* must be removed by its logical name via
+`metadata delete-entity` / `delete-optionset` / `delete-attribute` — and that name is chosen
+by the agent at run time, so it cannot be expressed as a static cleanup step. Those tasks
+therefore leave definition residue that a maintainer clears out of band; widening the cleanup
+model to cover agent-named metadata is deliberately left out of this slice.
 
 ## Easiest invocation — `python -m evals.skill run` (#585)
 
