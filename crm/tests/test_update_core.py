@@ -306,6 +306,17 @@ def _make_targz(files: dict[str, bytes]) -> bytes:
     return buf.getvalue()
 
 
+def _make_zip(files: dict[str, bytes]) -> bytes:
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, mode="w") as zf:
+        for name, data in files.items():
+            zf.writestr(name, data)
+    return buf.getvalue()
+
+
 class TestCheckForUpdate:
     """`--check` data: current, latest, update_available — no fs change."""
 
@@ -678,6 +689,27 @@ class TestPerformUpdate:
         assert any("Downloading" in m for m in messages)
         assert any("Verifying" in m for m in messages)
         assert any("Installing" in m for m in messages)
+
+    def test_windows_happy_path_swaps_onedir_bundle(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The whole Windows chain: zip archive → onedir layout → in-place swap."""
+        import hashlib
+
+        archive = _make_zip({"crm.exe": b"NEW-EXE", "_internal/python313.dll": b"NEW-DLL"})
+        sums = {"crm-windows-x86_64.zip": hashlib.sha256(archive).hexdigest()}
+        self._wire(monkeypatch, archive, sums)
+        monkeypatch.setattr(update_mod.sys, "platform", "win32")
+
+        install = _bundle(tmp_path / "crm", "OLD")
+        result = perform_update(install_dir=install)
+
+        assert result["updated"] is True
+        assert (install / "crm.exe").read_bytes() == b"NEW-EXE"
+        assert (install / "_internal" / "python313.dll").read_bytes() == b"NEW-DLL"
+        # old bundle parked for the next run; no staging dir left behind
+        assert len(list(tmp_path.glob("crm.old-*"))) == 1
+        assert not list(tmp_path.glob("*.new*"))
 
     def test_checksum_mismatch_leaves_install_intact(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
