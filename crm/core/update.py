@@ -584,8 +584,10 @@ def _windows_swap(install_dir: Path, staged: Path, old: Path) -> None:
             raise UpdateError(
                 f"Could not replace the installed files in {install_dir} ({exc}), "
                 f"and restoring the previous install then failed ({undo_exc}). "
-                f"Part of it is in {old} — re-run the Windows installer "
-                "(install.ps1) to get a working install back."
+                f"Part of it is in {old}, which holds the only copy of those "
+                "files — keep it (a later self-update reaps parked directories), "
+                "then re-run the Windows installer (install.ps1) to get a working "
+                "install back."
             ) from undo_exc
         shutil.rmtree(old, ignore_errors=True)
         raise UpdateError(
