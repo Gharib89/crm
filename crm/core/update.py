@@ -533,17 +533,68 @@ def _extract(archive: str, data: bytes, dest: Path) -> None:
             tar.extractall(dest, filter="data")
 
 
+def _windows_swap(install_dir: Path, staged: Path, old: Path) -> None:
+    """Swap a frozen bundle whose own running executable lives inside it.
+
+    Windows fails the rename of a directory that contains an open file with
+    STATUS_ACCESS_DENIED (`WinError 5`) — see MS-FSA 2.1.5.15.12,
+    `FileRenameInformation`. The process performing the swap *is* `crm.exe`
+    inside `install_dir`, with its DLLs loaded from `_internal`, so renaming
+    `install_dir` aside can never succeed there (#932). That check is
+    directory-only: renaming an open *file* is permitted, because the loader
+    opens images with `FILE_SHARE_DELETE`. So the files leave one at a time, and
+    `install_dir` itself is never renamed — it keeps its identity (and its place
+    on `PATH`) while its contents are replaced.
+
+    Every rename is recorded so a failure at any point can be undone in reverse,
+    leaving the existing install working. The evacuated tree stays parked for
+    `cleanup_stale_updates` to reap on a later run: the images are still loaded
+    now, so they cannot be deleted yet.
+    """
+    done: list[tuple[Path, Path]] = []
+    try:
+        for src in sorted(p for p in install_dir.rglob("*") if not p.is_dir()):
+            dest = old / src.relative_to(install_dir)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            src.rename(dest)
+            done.append((src, dest))
+        # Nothing but the emptied directory skeleton is left; the payload cannot be
+        # moved in on top of it (Windows rejects a rename onto an existing name),
+        # and an empty directory has no open handles to block its removal.
+        for leftover in install_dir.iterdir():
+            shutil.rmtree(leftover)
+        for src in sorted(staged.iterdir()):
+            dest = install_dir / src.name
+            src.rename(dest)
+            done.append((src, dest))
+        staged.rmdir()
+    except OSError as exc:
+        for src, dest in reversed(done):
+            src.parent.mkdir(parents=True, exist_ok=True)
+            dest.rename(src)
+        shutil.rmtree(old, ignore_errors=True)
+        raise UpdateError(
+            f"Could not replace the installed files in {install_dir}: {exc}. "
+            "The existing install is intact and still works — re-run the Windows "
+            "installer (install.ps1) to update."
+        ) from exc
+
+
 def swap_bundle(install_dir: Path, staged: Path, *, windows: bool) -> None:
     """Replace `install_dir`'s contents with `staged`, in place.
 
     Posix: rename the old dir aside, promote the staged dir, delete the old.
-    Windows: the running executable is locked, so the old dir cannot be deleted
-    now — it is renamed aside and cleaned up on a later run (`cleanup_stale_updates`).
+    Windows: `install_dir` cannot be renamed at all while the running executable
+    sits inside it, so its files are evacuated one by one instead — see
+    `_windows_swap`.
     """
     parent = install_dir.parent
     old = parent / f"{install_dir.name}.old-{os.getpid()}"
     if old.exists():
         shutil.rmtree(old, ignore_errors=True)
+    if windows:
+        _windows_swap(install_dir, staged, old)
+        return
     install_dir.rename(old)
     try:
         staged.rename(install_dir)
@@ -551,8 +602,6 @@ def swap_bundle(install_dir: Path, staged: Path, *, windows: bool) -> None:
         # Promotion failed — restore the original so the install stays working.
         old.rename(install_dir)
         raise
-    if windows:
-        return  # leave `old` parked; a locked exe inside blocks deletion now
     shutil.rmtree(old, ignore_errors=True)
 
 

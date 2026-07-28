@@ -481,8 +481,16 @@ class TestRunUpgrade:
             update_mod.run_upgrade(["pipx", "install", "--force", "x"])
 
 
+def _bundle(root: Path, marker: str) -> Path:
+    """A minimal PyInstaller onedir layout: a launcher plus an `_internal` subtree."""
+    (root / "_internal").mkdir(parents=True)
+    (root / "crm.exe").write_text(marker, encoding="utf-8")
+    (root / "_internal" / "python313.dll").write_text(marker, encoding="utf-8")
+    return root
+
+
 class TestSwapBundle:
-    """Atomic in-place dir replacement; old bundle removed (posix) or parked (win)."""
+    """In-place dir replacement; old bundle removed (posix) or parked (win)."""
 
     def test_posix_swap_replaces_contents(self, tmp_path: Path) -> None:
         install = tmp_path / "crm"
@@ -513,10 +521,93 @@ class TestSwapBundle:
         parked = list(tmp_path.glob("crm.old*"))
         assert len(parked) == 1  # running bundle parked, cleaned next run
 
+    def test_windows_swap_keeps_the_install_dir_itself(self, tmp_path: Path) -> None:
+        """The running `crm.exe` and its loaded DLLs live inside `install_dir`, and
+        Windows fails a rename of a directory that contains an open file
+        (STATUS_ACCESS_DENIED). So the swap must replace the *contents* and leave
+        the directory itself in place — same directory, new payload (#932).
+        """
+        install = _bundle(tmp_path / "crm", "OLD")
+        new = _bundle(tmp_path / "staged", "NEW")
+        before = install.stat().st_ino
+
+        swap_bundle(install, new, windows=True)
+
+        assert install.stat().st_ino == before
+        assert (install / "crm.exe").read_text(encoding="utf-8") == "NEW"
+        assert (install / "_internal" / "python313.dll").read_text(encoding="utf-8") == "NEW"
+        assert not new.exists()
+
+    def test_windows_swap_parks_the_whole_old_tree(self, tmp_path: Path) -> None:
+        install = _bundle(tmp_path / "crm", "OLD")
+        new = _bundle(tmp_path / "staged", "NEW")
+
+        swap_bundle(install, new, windows=True)
+
+        parked = list(tmp_path.glob("crm.old-*"))
+        assert len(parked) == 1  # running bundle parked, cleaned next run
+        assert (parked[0] / "crm.exe").read_text(encoding="utf-8") == "OLD"
+        assert (parked[0] / "_internal" / "python313.dll").read_text(encoding="utf-8") == "OLD"
+
+    def test_windows_swap_restores_install_when_a_file_cannot_be_moved(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A file we cannot evacuate (say an AV handle without share-delete) must
+        leave the install exactly as it was, and say what to do about it.
+        """
+        install = _bundle(tmp_path / "crm", "OLD")
+        new = _bundle(tmp_path / "staged", "NEW")
+        real_rename = Path.rename
+
+        def deny_dll(self: Path, target: Path) -> Path:
+            if self.name == "python313.dll":
+                raise PermissionError(13, "Permission denied")
+            return real_rename(self, target)
+
+        monkeypatch.setattr(Path, "rename", deny_dll)
+
+        with pytest.raises(UpdateError, match="install.ps1"):
+            swap_bundle(install, new, windows=True)
+
+        assert (install / "crm.exe").read_text(encoding="utf-8") == "OLD"
+        assert (install / "_internal" / "python313.dll").read_text(encoding="utf-8") == "OLD"
+        assert list(tmp_path.glob("crm.old-*")) == []
+
+    def test_windows_swap_restores_install_when_promotion_fails(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Failing *after* the old files are evacuated must still put every one of
+        them back — the emptied directory skeleton included.
+        """
+        install = _bundle(tmp_path / "crm", "OLD")
+        new = _bundle(tmp_path / "staged", "NEW")
+        real_rename = Path.rename
+
+        def deny_promotion(self: Path, target: Path) -> Path:
+            if self.parent == new:
+                raise PermissionError(13, "Permission denied")
+            return real_rename(self, target)
+
+        monkeypatch.setattr(Path, "rename", deny_promotion)
+
+        with pytest.raises(UpdateError, match="install.ps1"):
+            swap_bundle(install, new, windows=True)
+
+        assert (install / "crm.exe").read_text(encoding="utf-8") == "OLD"
+        assert (install / "_internal" / "python313.dll").read_text(encoding="utf-8") == "OLD"
+        assert list(tmp_path.glob("crm.old-*")) == []
+
     def test_cleanup_removes_parked(self, tmp_path: Path) -> None:
         install = tmp_path / "crm"
         install.mkdir()
         (tmp_path / "crm.old-123").mkdir()
+        cleanup_stale_updates(install)
+        assert list(tmp_path.glob("crm.old*")) == []
+
+    def test_cleanup_removes_parked_tree_with_files(self, tmp_path: Path) -> None:
+        install = tmp_path / "crm"
+        install.mkdir()
+        _bundle(tmp_path / "crm.old-123", "OLD")
         cleanup_stale_updates(install)
         assert list(tmp_path.glob("crm.old*")) == []
 
