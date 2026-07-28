@@ -553,7 +553,9 @@ def _windows_swap(install_dir: Path, staged: Path, old: Path) -> None:
     """
     done: list[tuple[Path, Path]] = []
     try:
-        for src in sorted(p for p in install_dir.rglob("*") if not p.is_dir()):
+        # Symlinks move as links; only real directories are skipped, so that
+        # `rmtree` below never meets one (it refuses to follow a link).
+        for src in sorted(p for p in install_dir.rglob("*") if p.is_symlink() or not p.is_dir()):
             dest = old / src.relative_to(install_dir)
             dest.parent.mkdir(parents=True, exist_ok=True)
             src.rename(dest)
@@ -569,9 +571,22 @@ def _windows_swap(install_dir: Path, staged: Path, old: Path) -> None:
             done.append((src, dest))
         staged.rmdir()
     except OSError as exc:
-        for src, dest in reversed(done):
-            src.parent.mkdir(parents=True, exist_ok=True)
-            dest.rename(src)
+        try:
+            for src, dest in reversed(done):
+                # Recreates any skeleton directory removed above; on Windows these
+                # inherit their ACL from the install's parent, as the originals did.
+                src.parent.mkdir(parents=True, exist_ok=True)
+                dest.rename(src)
+        except OSError as undo_exc:
+            # Undoing failed too, so the install is now split across both trees.
+            # Leave `old` in place — it holds the only copy of what moved — and say
+            # where it is, rather than claiming an intact install.
+            raise UpdateError(
+                f"Could not replace the installed files in {install_dir} ({exc}), "
+                f"and restoring the previous install then failed ({undo_exc}). "
+                f"Part of it is in {old} — re-run the Windows installer "
+                "(install.ps1) to get a working install back."
+            ) from undo_exc
         shutil.rmtree(old, ignore_errors=True)
         raise UpdateError(
             f"Could not replace the installed files in {install_dir}: {exc}. "
@@ -652,9 +667,11 @@ def perform_update(
     except UpdateError:
         raise
     except Exception as exc:
-        # Unexpected filesystem error (rename/permission/AV lock). swap_bundle
-        # restores the original install before re-raising, so the install stays
-        # intact; surface it as UpdateError for a clean command-layer envelope.
+        # Unexpected filesystem error (rename/permission/AV lock) from the posix
+        # swap, which restores the original install before re-raising, so the
+        # install stays intact; surface it as UpdateError for a clean
+        # command-layer envelope. The windows swap reports its own outcome —
+        # including a failed restore — as UpdateError, re-raised untouched above.
         raise UpdateError(f"Update failed during install: {exc}") from exc
     finally:
         if staged.exists():

@@ -493,10 +493,11 @@ class TestRunUpgrade:
 
 
 def _bundle(root: Path, marker: str) -> Path:
-    """A minimal PyInstaller onedir layout: a launcher plus an `_internal` subtree."""
-    (root / "_internal").mkdir(parents=True)
+    """A minimal PyInstaller onedir layout: a launcher plus a nested `_internal` tree."""
+    (root / "_internal" / "tcl").mkdir(parents=True)
     (root / "crm.exe").write_text(marker, encoding="utf-8")
     (root / "_internal" / "python313.dll").write_text(marker, encoding="utf-8")
+    (root / "_internal" / "tcl" / "init.tcl").write_text(marker, encoding="utf-8")
     return root
 
 
@@ -541,12 +542,14 @@ class TestSwapBundle:
         install = _bundle(tmp_path / "crm", "OLD")
         new = _bundle(tmp_path / "staged", "NEW")
         before = install.stat().st_ino
+        assert before != 0, "st_ino unusable on this filesystem; identity check is vacuous"
 
         swap_bundle(install, new, windows=True)
 
         assert install.stat().st_ino == before
         assert (install / "crm.exe").read_text(encoding="utf-8") == "NEW"
         assert (install / "_internal" / "python313.dll").read_text(encoding="utf-8") == "NEW"
+        assert (install / "_internal" / "tcl" / "init.tcl").read_text(encoding="utf-8") == "NEW"
         assert not new.exists()
 
     def test_windows_swap_parks_the_whole_old_tree(self, tmp_path: Path) -> None:
@@ -559,30 +562,62 @@ class TestSwapBundle:
         assert len(parked) == 1  # running bundle parked, cleaned next run
         assert (parked[0] / "crm.exe").read_text(encoding="utf-8") == "OLD"
         assert (parked[0] / "_internal" / "python313.dll").read_text(encoding="utf-8") == "OLD"
+        assert (parked[0] / "_internal" / "tcl" / "init.tcl").read_text(encoding="utf-8") == "OLD"
 
     def test_windows_swap_restores_install_when_a_file_cannot_be_moved(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A file we cannot evacuate (say an AV handle without share-delete) must
         leave the install exactly as it was, and say what to do about it.
+
+        `crm.exe` sorts last, so the `_internal` files have already moved by the
+        time it is refused — the undo has real work to do.
         """
         install = _bundle(tmp_path / "crm", "OLD")
         new = _bundle(tmp_path / "staged", "NEW")
         real_rename = Path.rename
 
-        def deny_dll(self: Path, target: Path) -> Path:
-            if self.name == "python313.dll":
+        def deny_exe(self: Path, target: Path) -> Path:
+            if self.name == "crm.exe":
                 raise PermissionError(13, "Permission denied")
             return real_rename(self, target)
 
-        monkeypatch.setattr(Path, "rename", deny_dll)
+        monkeypatch.setattr(Path, "rename", deny_exe)
 
         with pytest.raises(UpdateError, match="install.ps1"):
             swap_bundle(install, new, windows=True)
 
         assert (install / "crm.exe").read_text(encoding="utf-8") == "OLD"
         assert (install / "_internal" / "python313.dll").read_text(encoding="utf-8") == "OLD"
+        assert (install / "_internal" / "tcl" / "init.tcl").read_text(encoding="utf-8") == "OLD"
         assert list(tmp_path.glob("crm.old-*")) == []
+
+    def test_windows_swap_keeps_the_parked_copy_when_the_undo_also_fails(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """If restoring fails too, the install is split across both trees. The parked
+        tree holds the only copy of what moved, so it must survive — and the error
+        must say where it is instead of claiming an intact install.
+        """
+        install = _bundle(tmp_path / "crm", "OLD")
+        new = _bundle(tmp_path / "staged", "NEW")
+        real_rename = Path.rename
+
+        def deny_exe_and_undo(self: Path, target: Path) -> Path:
+            if self.name == "crm.exe":  # evacuation stops part-way...
+                raise PermissionError(13, "Permission denied")
+            if install in target.parents:  # ...and putting the moved files back fails
+                raise PermissionError(13, "Permission denied")
+            return real_rename(self, target)
+
+        monkeypatch.setattr(Path, "rename", deny_exe_and_undo)
+
+        with pytest.raises(UpdateError, match="restoring the previous install then failed"):
+            swap_bundle(install, new, windows=True)
+
+        parked = list(tmp_path.glob("crm.old-*"))
+        assert len(parked) == 1
+        assert (parked[0] / "_internal" / "python313.dll").read_text(encoding="utf-8") == "OLD"
 
     def test_windows_swap_restores_install_when_promotion_fails(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
