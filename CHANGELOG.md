@@ -9,6 +9,23 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.77.3 (2026-07-29)
+
+### Bug Fixes
+
+- **self-update**: Mark retry exhaustion at the source, not by error code
+  ([#936](https://github.com/Gharib89/crm/pull/936),
+  [`fa1c946`](https://github.com/Gharib89/crm/commit/fa1c9462d21f420ea7b7e0ce530a07847f977bb5))
+
+- **self-update**: Retry a transient sharing violation during the Windows swap
+  ([#936](https://github.com/Gharib89/crm/pull/936),
+  [`fa1c946`](https://github.com/Gharib89/crm/commit/fa1c9462d21f420ea7b7e0ce530a07847f977bb5))
+
+- **self-update**: Retry every mutating step of the Windows swap, not just renames
+  ([#936](https://github.com/Gharib89/crm/pull/936),
+  [`fa1c946`](https://github.com/Gharib89/crm/commit/fa1c9462d21f420ea7b7e0ce530a07847f977bb5))
+
+
 ## v1.77.2 (2026-07-29)
 
 ### Bug Fixes
