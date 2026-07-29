@@ -38,6 +38,20 @@ crm self-update
 crm self-update --yes     # run the uv/pipx reinstall without the prompt (scripts/CI)
 ```
 
+On the Windows binary install, the running `crm.exe` and its `_internal\*.dll`
+images are open files inside the install directory, so `self-update` replaces
+the bundle's files in place rather than renaming the directory. The previous
+bundle is parked alongside it as `crm.old-<pid>` and is cleaned up automatically
+on a later `self-update` run, once those files are no longer in use. If the swap
+can't complete, the files that had moved are put back, so the existing install is
+left working, and the error points you at `install.ps1` as the fallback.
+
+Rarely, putting them back can fail too — a file locked in the meantime, say. The
+error says so explicitly, and names the `crm.old-<pid>` directory: with the
+install then split across the two, that directory holds the only copy of the
+files that moved. **Keep it** — copy it somewhere safe before you re-run
+`install.ps1`, because a later `self-update` reaps parked directories.
+
 ## The `--json` contract
 
 Under `--json`, a non-frozen `self-update` emits these `data` fields:

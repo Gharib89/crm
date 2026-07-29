@@ -306,6 +306,17 @@ def _make_targz(files: dict[str, bytes]) -> bytes:
     return buf.getvalue()
 
 
+def _make_zip(files: dict[str, bytes]) -> bytes:
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, mode="w") as zf:
+        for name, data in files.items():
+            zf.writestr(name, data)
+    return buf.getvalue()
+
+
 class TestCheckForUpdate:
     """`--check` data: current, latest, update_available — no fs change."""
 
@@ -481,8 +492,17 @@ class TestRunUpgrade:
             update_mod.run_upgrade(["pipx", "install", "--force", "x"])
 
 
+def _bundle(root: Path, marker: str) -> Path:
+    """A minimal PyInstaller onedir layout: a launcher plus a nested `_internal` tree."""
+    (root / "_internal" / "tcl").mkdir(parents=True)
+    (root / "crm.exe").write_text(marker, encoding="utf-8")
+    (root / "_internal" / "python313.dll").write_text(marker, encoding="utf-8")
+    (root / "_internal" / "tcl" / "init.tcl").write_text(marker, encoding="utf-8")
+    return root
+
+
 class TestSwapBundle:
-    """Atomic in-place dir replacement; old bundle removed (posix) or parked (win)."""
+    """In-place dir replacement; old bundle removed (posix) or parked (win)."""
 
     def test_posix_swap_replaces_contents(self, tmp_path: Path) -> None:
         install = tmp_path / "crm"
@@ -513,10 +533,127 @@ class TestSwapBundle:
         parked = list(tmp_path.glob("crm.old*"))
         assert len(parked) == 1  # running bundle parked, cleaned next run
 
+    def test_windows_swap_keeps_the_install_dir_itself(self, tmp_path: Path) -> None:
+        """The running `crm.exe` and its loaded DLLs live inside `install_dir`, and
+        Windows fails a rename of a directory that contains an open file
+        (STATUS_ACCESS_DENIED). So the swap must replace the *contents* and leave
+        the directory itself in place — same directory, new payload (#932).
+        """
+        install = _bundle(tmp_path / "crm", "OLD")
+        new = _bundle(tmp_path / "staged", "NEW")
+        before = install.stat().st_ino
+        assert before != 0, "st_ino unusable on this filesystem; identity check is vacuous"
+
+        swap_bundle(install, new, windows=True)
+
+        assert install.stat().st_ino == before
+        assert (install / "crm.exe").read_text(encoding="utf-8") == "NEW"
+        assert (install / "_internal" / "python313.dll").read_text(encoding="utf-8") == "NEW"
+        assert (install / "_internal" / "tcl" / "init.tcl").read_text(encoding="utf-8") == "NEW"
+        assert not new.exists()
+
+    def test_windows_swap_parks_the_whole_old_tree(self, tmp_path: Path) -> None:
+        install = _bundle(tmp_path / "crm", "OLD")
+        new = _bundle(tmp_path / "staged", "NEW")
+
+        swap_bundle(install, new, windows=True)
+
+        parked = list(tmp_path.glob("crm.old-*"))
+        assert len(parked) == 1  # running bundle parked, cleaned next run
+        assert (parked[0] / "crm.exe").read_text(encoding="utf-8") == "OLD"
+        assert (parked[0] / "_internal" / "python313.dll").read_text(encoding="utf-8") == "OLD"
+        assert (parked[0] / "_internal" / "tcl" / "init.tcl").read_text(encoding="utf-8") == "OLD"
+
+    def test_windows_swap_restores_install_when_a_file_cannot_be_moved(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A file we cannot evacuate (say an AV handle without share-delete) must
+        leave the install exactly as it was, and say what to do about it.
+
+        `crm.exe` sorts last, so the `_internal` files have already moved by the
+        time it is refused — the undo has real work to do.
+        """
+        install = _bundle(tmp_path / "crm", "OLD")
+        new = _bundle(tmp_path / "staged", "NEW")
+        real_rename = Path.rename
+
+        def deny_exe(self: Path, target: Path) -> Path:
+            if self.name == "crm.exe":
+                raise PermissionError(13, "Permission denied")
+            return real_rename(self, target)
+
+        monkeypatch.setattr(Path, "rename", deny_exe)
+
+        with pytest.raises(UpdateError, match="install.ps1"):
+            swap_bundle(install, new, windows=True)
+
+        assert (install / "crm.exe").read_text(encoding="utf-8") == "OLD"
+        assert (install / "_internal" / "python313.dll").read_text(encoding="utf-8") == "OLD"
+        assert (install / "_internal" / "tcl" / "init.tcl").read_text(encoding="utf-8") == "OLD"
+        assert list(tmp_path.glob("crm.old-*")) == []
+
+    def test_windows_swap_keeps_the_parked_copy_when_the_undo_also_fails(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """If restoring fails too, the install is split across both trees. The parked
+        tree holds the only copy of what moved, so it must survive — and the error
+        must say where it is instead of claiming an intact install.
+        """
+        install = _bundle(tmp_path / "crm", "OLD")
+        new = _bundle(tmp_path / "staged", "NEW")
+        real_rename = Path.rename
+
+        def deny_exe_and_undo(self: Path, target: Path) -> Path:
+            if self.name == "crm.exe":  # evacuation stops part-way...
+                raise PermissionError(13, "Permission denied")
+            if install in target.parents:  # ...and putting the moved files back fails
+                raise PermissionError(13, "Permission denied")
+            return real_rename(self, target)
+
+        monkeypatch.setattr(Path, "rename", deny_exe_and_undo)
+
+        with pytest.raises(UpdateError, match="restoring the previous install then failed"):
+            swap_bundle(install, new, windows=True)
+
+        parked = list(tmp_path.glob("crm.old-*"))
+        assert len(parked) == 1
+        assert (parked[0] / "_internal" / "python313.dll").read_text(encoding="utf-8") == "OLD"
+
+    def test_windows_swap_restores_install_when_promotion_fails(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Failing *after* the old files are evacuated must still put every one of
+        them back — the emptied directory skeleton included.
+        """
+        install = _bundle(tmp_path / "crm", "OLD")
+        new = _bundle(tmp_path / "staged", "NEW")
+        real_rename = Path.rename
+
+        def deny_promotion(self: Path, target: Path) -> Path:
+            if self.parent == new:
+                raise PermissionError(13, "Permission denied")
+            return real_rename(self, target)
+
+        monkeypatch.setattr(Path, "rename", deny_promotion)
+
+        with pytest.raises(UpdateError, match="install.ps1"):
+            swap_bundle(install, new, windows=True)
+
+        assert (install / "crm.exe").read_text(encoding="utf-8") == "OLD"
+        assert (install / "_internal" / "python313.dll").read_text(encoding="utf-8") == "OLD"
+        assert list(tmp_path.glob("crm.old-*")) == []
+
     def test_cleanup_removes_parked(self, tmp_path: Path) -> None:
         install = tmp_path / "crm"
         install.mkdir()
         (tmp_path / "crm.old-123").mkdir()
+        cleanup_stale_updates(install)
+        assert list(tmp_path.glob("crm.old*")) == []
+
+    def test_cleanup_removes_parked_tree_with_files(self, tmp_path: Path) -> None:
+        install = tmp_path / "crm"
+        install.mkdir()
+        _bundle(tmp_path / "crm.old-123", "OLD")
         cleanup_stale_updates(install)
         assert list(tmp_path.glob("crm.old*")) == []
 
@@ -587,6 +724,27 @@ class TestPerformUpdate:
         assert any("Downloading" in m for m in messages)
         assert any("Verifying" in m for m in messages)
         assert any("Installing" in m for m in messages)
+
+    def test_windows_happy_path_swaps_onedir_bundle(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The whole Windows chain: zip archive → onedir layout → in-place swap."""
+        import hashlib
+
+        archive = _make_zip({"crm.exe": b"NEW-EXE", "_internal/python313.dll": b"NEW-DLL"})
+        sums = {"crm-windows-x86_64.zip": hashlib.sha256(archive).hexdigest()}
+        self._wire(monkeypatch, archive, sums)
+        monkeypatch.setattr(update_mod.sys, "platform", "win32")
+
+        install = _bundle(tmp_path / "crm", "OLD")
+        result = perform_update(install_dir=install)
+
+        assert result["updated"] is True
+        assert (install / "crm.exe").read_bytes() == b"NEW-EXE"
+        assert (install / "_internal" / "python313.dll").read_bytes() == b"NEW-DLL"
+        # old bundle parked for the next run; no staging dir left behind
+        assert len(list(tmp_path.glob("crm.old-*"))) == 1
+        assert not list(tmp_path.glob("*.new*"))
 
     def test_checksum_mismatch_leaves_install_intact(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
