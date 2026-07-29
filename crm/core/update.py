@@ -533,6 +533,42 @@ def _extract(archive: str, data: bytes, dest: Path) -> None:
             tar.extractall(dest, filter="data")
 
 
+# Windows raises ERROR_SHARING_VIOLATION when another process holds a file open
+# without delete-sharing. A virus scanner or the search indexer is the usual cause,
+# and both react *to* writes inside a program directory, so the swap races the very
+# scan it provokes. That handle lives only as long as the scan, so a move waits the
+# lock out across this ladder (~2.5s in total) before it counts as terminal (#935).
+_MOVE_RETRY_DELAYS = (0.05, 0.1, 0.2, 0.4, 0.8, 1.0)
+
+# ERROR_SHARING_VIOLATION and ERROR_LOCK_VIOLATION. Matched on `winerror` rather
+# than `errno` because Windows maps ERROR_ACCESS_DENIED to EACCES as well, and a
+# genuine ACL denial must fail at once instead of stalling through the whole ladder.
+_TRANSIENT_LOCK_WINERRORS = (32, 33)
+
+
+def _is_transient_lock(exc: OSError) -> bool:
+    """True when `exc` is another process's momentary handle, so worth retrying."""
+    return getattr(exc, "winerror", None) in _TRANSIENT_LOCK_WINERRORS
+
+
+def _rename_with_retry(src: Path, dest: Path) -> None:
+    """`src.rename(dest)`, waiting out a transient lock on `src`.
+
+    `_MOVE_RETRY_DELAYS` is read at call time, so a test can shorten the ladder.
+    The final attempt is deliberately outside the loop: its error propagates, which
+    keeps an exhausted retry indistinguishable from a plain failure to the caller.
+    """
+    for delay in _MOVE_RETRY_DELAYS:
+        try:
+            src.rename(dest)
+            return
+        except OSError as exc:
+            if not _is_transient_lock(exc):
+                raise
+        time.sleep(delay)
+    src.rename(dest)
+
+
 def _windows_swap(install_dir: Path, staged: Path, old: Path) -> None:
     """Swap a frozen bundle whose own running executable lives inside it.
 
@@ -558,7 +594,7 @@ def _windows_swap(install_dir: Path, staged: Path, old: Path) -> None:
         for src in sorted(p for p in install_dir.rglob("*") if p.is_symlink() or not p.is_dir()):
             dest = old / src.relative_to(install_dir)
             dest.parent.mkdir(parents=True, exist_ok=True)
-            src.rename(dest)
+            _rename_with_retry(src, dest)
             done.append((src, dest))
         # Nothing but the emptied directory skeleton is left; the payload cannot be
         # moved in on top of it (Windows rejects a rename onto an existing name),
@@ -567,7 +603,7 @@ def _windows_swap(install_dir: Path, staged: Path, old: Path) -> None:
             shutil.rmtree(leftover)
         for src in sorted(staged.iterdir()):
             dest = install_dir / src.name
-            src.rename(dest)
+            _rename_with_retry(src, dest)
             done.append((src, dest))
         staged.rmdir()
     except OSError as exc:
@@ -576,7 +612,10 @@ def _windows_swap(install_dir: Path, staged: Path, old: Path) -> None:
                 # Recreates any skeleton directory removed above; on Windows these
                 # inherit their ACL from the install's parent, as the originals did.
                 src.parent.mkdir(parents=True, exist_ok=True)
-                dest.rename(src)
+                # Retried like the moves out: losing this race is what would leave
+                # the install split across two trees, so it is the worst place to
+                # treat a momentary scanner handle as fatal.
+                _rename_with_retry(dest, src)
         except OSError as undo_exc:
             # Undoing failed too, so the install is now split across both trees.
             # Leave `old` in place — it holds the only copy of what moved — and say
@@ -590,8 +629,17 @@ def _windows_swap(install_dir: Path, staged: Path, old: Path) -> None:
                 "install back."
             ) from undo_exc
         shutil.rmtree(old, ignore_errors=True)
+        # Say so when the retries ran out, rather than only naming the raw error:
+        # a lock that survives the whole ladder is held persistently, which is a
+        # different cause (and a different fix) from the scan this retries for.
+        stuck = (
+            " That lock outlived the retry window, so a process is holding the file "
+            "open persistently rather than for the moment a scan takes."
+            if _is_transient_lock(exc)
+            else ""
+        )
         raise UpdateError(
-            f"Could not replace the installed files in {install_dir}: {exc}. "
+            f"Could not replace the installed files in {install_dir}: {exc}.{stuck} "
             "The existing install is intact and still works — re-run the Windows "
             "installer (install.ps1) to update."
         ) from exc
