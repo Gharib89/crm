@@ -9,6 +9,134 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.77.1 (2026-07-29)
+
+### Bug Fixes
+
+- **self-update**: Evacuate files instead of renaming the live install dir on Windows
+  ([#933](https://github.com/Gharib89/crm/pull/933),
+  [`2ced455`](https://github.com/Gharib89/crm/commit/2ced455e24e2a957e25fd39f0a8793413561f763))
+
+- **self-update**: Replace the Windows bundle in place instead of renaming the live install dir
+  ([#933](https://github.com/Gharib89/crm/pull/933),
+  [`2ced455`](https://github.com/Gharib89/crm/commit/2ced455e24e2a957e25fd39f0a8793413561f763))
+
+- **self-update**: Report a failed restore instead of losing the parked bundle
+  ([#933](https://github.com/Gharib89/crm/pull/933),
+  [`2ced455`](https://github.com/Gharib89/crm/commit/2ced455e24e2a957e25fd39f0a8793413561f763))
+
+### Chores
+
+- Sync matt pocock skills
+  ([`a73ca09`](https://github.com/Gharib89/crm/commit/a73ca09182bd1003164efa946bb985d258ec37d9))
+
+- **evals**: Address review — align solutions-ALM answer keys/evidence
+  ([#927](https://github.com/Gharib89/crm/pull/927),
+  [`828456f`](https://github.com/Gharib89/crm/commit/828456f79eb8aff3426775a90b16ec31c23563b0))
+
+- **evals**: Advisory blind L2 LLM judge ([#894](https://github.com/Gharib89/crm/pull/894),
+  [`e7dbc3d`](https://github.com/Gharib89/crm/commit/e7dbc3df3340c138ac126e34f57881657e86bbf4))
+
+- **evals**: Bind note-attach verifier to the task's contact
+  ([#926](https://github.com/Gharib89/crm/pull/926),
+  [`7f33e9c`](https://github.com/Gharib89/crm/commit/7f33e9c2f8c0559eb92adc6e326a49d5771429c5))
+
+- **evals**: Bulk cluster corpus tasks + tier/source curation metadata
+  ([#924](https://github.com/Gharib89/crm/pull/924),
+  [`21a8019`](https://github.com/Gharib89/crm/commit/21a8019fcfdd1fa310befec28f68e8b0862a222d))
+
+- **evals**: Guard tier bool-leak + note calibration filter rationale
+  ([#924](https://github.com/Gharib89/crm/pull/924),
+  [`21a8019`](https://github.com/Gharib89/crm/commit/21a8019fcfdd1fa310befec28f68e8b0862a222d))
+
+- **evals**: Match judge sentinel with explicit is-not-None check
+  ([#931](https://github.com/Gharib89/crm/pull/931),
+  [`68b04ad`](https://github.com/Gharib89/crm/commit/68b04ade903acb479062b40aaf1eb26ead50e19e))
+
+- **evals**: Records demand cluster corpus tasks ([#926](https://github.com/Gharib89/crm/pull/926),
+  [`7f33e9c`](https://github.com/Gharib89/crm/commit/7f33e9c2f8c0559eb92adc6e326a49d5771429c5))
+
+- **evals**: Records demand cluster corpus tasks (#896)
+  ([#926](https://github.com/Gharib89/crm/pull/926),
+  [`7f33e9c`](https://github.com/Gharib89/crm/commit/7f33e9c2f8c0559eb92adc6e326a49d5771429c5))
+
+- **evals**: Security demand cluster corpus tasks (#898)
+  ([#928](https://github.com/Gharib89/crm/pull/928),
+  [`0c9dabc`](https://github.com/Gharib89/crm/commit/0c9dabca6e00cdca6dd173d95e16cd4ea0915919))
+
+- **evals**: Solutions-ALM demand cluster corpus tasks
+  ([#927](https://github.com/Gharib89/crm/pull/927),
+  [`828456f`](https://github.com/Gharib89/crm/commit/828456f79eb8aff3426775a90b16ec31c23563b0))
+
+- **evals**: Solutions-ALM demand cluster corpus tasks (#897)
+  ([#927](https://github.com/Gharib89/crm/pull/927),
+  [`828456f`](https://github.com/Gharib89/crm/commit/828456f79eb8aff3426775a90b16ec31c23563b0))
+
+- **evals**: Surface advisory L2 judge scores in report.md
+  ([#931](https://github.com/Gharib89/crm/pull/931),
+  [`68b04ad`](https://github.com/Gharib89/crm/commit/68b04ade903acb479062b40aaf1eb26ead50e19e))
+
+- **evals**: Tie reassign-parent tier to post-hoc calibration filter
+  ([#926](https://github.com/Gharib89/crm/pull/926),
+  [`7f33e9c`](https://github.com/Gharib89/crm/commit/7f33e9c2f8c0559eb92adc6e326a49d5771429c5))
+
+- **evals**: Tighten tier/source validation + harden bulk verifiers (review round 1)
+  ([#924](https://github.com/Gharib89/crm/pull/924),
+  [`21a8019`](https://github.com/Gharib89/crm/commit/21a8019fcfdd1fa310befec28f68e8b0862a222d))
+
+- **evals**: Wrap over-long comment (ruff E501) ([#924](https://github.com/Gharib89/crm/pull/924),
+  [`21a8019`](https://github.com/Gharib89/crm/commit/21a8019fcfdd1fa310befec28f68e8b0862a222d))
+
+### Documentation
+
+- **adr**: Reconcile ADR-0028 to self-seeding corpus canon
+  ([#925](https://github.com/Gharib89/crm/pull/925),
+  [`da5236a`](https://github.com/Gharib89/crm/commit/da5236a271deed9d04bf0ed2446b8f6d96344403))
+
+- **evals**: Document tier/source curation metadata + bulk cluster coverage
+  ([#924](https://github.com/Gharib89/crm/pull/924),
+  [`21a8019`](https://github.com/Gharib89/crm/commit/21a8019fcfdd1fa310befec28f68e8b0862a222d))
+
+- **self-update**: Distinguish a successful restore from a failed one
+  ([#933](https://github.com/Gharib89/crm/pull/933),
+  [`2ced455`](https://github.com/Gharib89/crm/commit/2ced455e24e2a957e25fd39f0a8793413561f763))
+
+- **self-update**: Document the windows in-place bundle swap
+  ([#933](https://github.com/Gharib89/crm/pull/933),
+  [`2ced455`](https://github.com/Gharib89/crm/commit/2ced455e24e2a957e25fd39f0a8793413561f763))
+
+### Testing
+
+- **evals**: Disclose scored-vs-advisory + scope README table to do-tasks
+  ([#928](https://github.com/Gharib89/crm/pull/928),
+  [`0c9dabc`](https://github.com/Gharib89/crm/commit/0c9dabca6e00cdca6dd173d95e16cd4ea0915919))
+
+- **evals**: Disclose why impersonation is feasibility not do
+  ([#928](https://github.com/Gharib89/crm/pull/928),
+  [`0c9dabc`](https://github.com/Gharib89/crm/commit/0c9dabca6e00cdca6dd173d95e16cd4ea0915919))
+
+- **evals**: Firsthand feasibility corpus batch ([#930](https://github.com/Gharib89/crm/pull/930),
+  [`b4a19e4`](https://github.com/Gharib89/crm/commit/b4a19e4fbc5b5c319ac4905b68a99fdb295a777b))
+
+- **evals**: Firsthand feasibility corpus batch (#900)
+  ([#930](https://github.com/Gharib89/crm/pull/930),
+  [`b4a19e4`](https://github.com/Gharib89/crm/commit/b4a19e4fbc5b5c319ac4905b68a99fdb295a777b))
+
+- **evals**: Metadata demand cluster corpus tasks ([#899](https://github.com/Gharib89/crm/pull/899),
+  [`1fa45bc`](https://github.com/Gharib89/crm/commit/1fa45bc56689389dbf8713a505075e63be38d3f7))
+
+- **evals**: Security demand cluster corpus tasks ([#928](https://github.com/Gharib89/crm/pull/928),
+  [`0c9dabc`](https://github.com/Gharib89/crm/commit/0c9dabca6e00cdca6dd173d95e16cd4ea0915919))
+
+- **evals**: Tighten apps + ribbon feasibility answer keys (CodeRabbit)
+  ([#930](https://github.com/Gharib89/crm/pull/930),
+  [`b4a19e4`](https://github.com/Gharib89/crm/commit/b4a19e4fbc5b5c319ac4905b68a99fdb295a777b))
+
+- **self-update**: Cover the full windows zip-to-onedir swap chain
+  ([#933](https://github.com/Gharib89/crm/pull/933),
+  [`2ced455`](https://github.com/Gharib89/crm/commit/2ced455e24e2a957e25fd39f0a8793413561f763))
+
+
 ## v1.77.0 (2026-07-24)
 
 ### Bug Fixes
