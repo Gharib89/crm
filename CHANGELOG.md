@@ -9,6 +9,25 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.77.2 (2026-07-29)
+
+### Bug Fixes
+
+- **self-update**: Confirm the frozen upgrade outcome in human output
+  ([#934](https://github.com/Gharib89/crm/pull/934),
+  [`d9307aa`](https://github.com/Gharib89/crm/commit/d9307aae61810b40b55f78d2739cd56910443281))
+
+- **self-update**: Confirm the upgrade outcome in human output
+  ([#934](https://github.com/Gharib89/crm/pull/934),
+  [`d9307aa`](https://github.com/Gharib89/crm/commit/d9307aae61810b40b55f78d2739cd56910443281))
+
+### Documentation
+
+- **self-update**: Note the upgrade confirmation line
+  ([#934](https://github.com/Gharib89/crm/pull/934),
+  [`d9307aa`](https://github.com/Gharib89/crm/commit/d9307aae61810b40b55f78d2739cd56910443281))
+
+
 ## v1.77.1 (2026-07-29)
 
 ### Bug Fixes
