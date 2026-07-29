@@ -536,9 +536,9 @@ def _extract(archive: str, data: bytes, dest: Path) -> None:
 # Windows raises ERROR_SHARING_VIOLATION when another process holds a file open
 # without delete-sharing. A virus scanner or the search indexer is the usual cause,
 # and both react *to* writes inside a program directory, so the swap races the very
-# scan it provokes. That handle lives only as long as the scan, so a move waits the
-# lock out across this ladder (~2.5s in total) before it counts as terminal (#935).
-_MOVE_RETRY_DELAYS = (0.05, 0.1, 0.2, 0.4, 0.8, 1.0)
+# scan it provokes. That handle lives only as long as the scan, so each step waits
+# the lock out across this ladder (~2.5s in total) before it counts as terminal (#935).
+_LOCK_RETRY_DELAYS = (0.05, 0.1, 0.2, 0.4, 0.8, 1.0)
 
 # ERROR_SHARING_VIOLATION and ERROR_LOCK_VIOLATION. Matched on `winerror` rather
 # than `errno` because Windows maps ERROR_ACCESS_DENIED to EACCES as well, and a
@@ -546,27 +546,28 @@ _MOVE_RETRY_DELAYS = (0.05, 0.1, 0.2, 0.4, 0.8, 1.0)
 _TRANSIENT_LOCK_WINERRORS = (32, 33)
 
 
-def _is_transient_lock(exc: OSError) -> bool:
+def _is_transient_windows_lock(exc: OSError) -> bool:
     """True when `exc` is another process's momentary handle, so worth retrying."""
     return getattr(exc, "winerror", None) in _TRANSIENT_LOCK_WINERRORS
 
 
-def _rename_with_retry(src: Path, dest: Path) -> None:
-    """`src.rename(dest)`, waiting out a transient lock on `src`.
+def _through_transient_lock(action: Callable[..., object], *args: Any, **kwargs: Any) -> None:
+    """Run `action(*args, **kwargs)`, waiting out a transient lock on what it touches.
 
-    `_MOVE_RETRY_DELAYS` is read at call time, so a test can shorten the ladder.
-    The final attempt is deliberately outside the loop: its error propagates, which
-    keeps an exhausted retry indistinguishable from a plain failure to the caller.
+    `_LOCK_RETRY_DELAYS` is read at call time, so a test can shorten the ladder. The
+    final attempt is deliberately outside the loop so its error propagates unwrapped
+    — the caller distinguishes an exhausted ladder by the fact that *every* mutating
+    step of the swap goes through here, not by re-reading the error code.
     """
-    for delay in _MOVE_RETRY_DELAYS:
+    for delay in _LOCK_RETRY_DELAYS:
         try:
-            src.rename(dest)
+            action(*args, **kwargs)
             return
         except OSError as exc:
-            if not _is_transient_lock(exc):
+            if not _is_transient_windows_lock(exc):
                 raise
         time.sleep(delay)
-    src.rename(dest)
+    action(*args, **kwargs)
 
 
 def _windows_swap(install_dir: Path, staged: Path, old: Path) -> None:
@@ -586,6 +587,10 @@ def _windows_swap(install_dir: Path, staged: Path, old: Path) -> None:
     leaving the existing install working. The evacuated tree stays parked for
     `cleanup_stale_updates` to reap on a later run: the images are still loaded
     now, so they cannot be deleted yet.
+
+    Every step that mutates the filesystem goes through `_through_transient_lock`,
+    so reaching the handler below means a lock outlived the retry ladder — that is
+    what lets the error name a persistent holder rather than a passing scan.
     """
     done: list[tuple[Path, Path]] = []
     try:
@@ -593,29 +598,29 @@ def _windows_swap(install_dir: Path, staged: Path, old: Path) -> None:
         # `rmtree` below never meets one (it refuses to follow a link).
         for src in sorted(p for p in install_dir.rglob("*") if p.is_symlink() or not p.is_dir()):
             dest = old / src.relative_to(install_dir)
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            _rename_with_retry(src, dest)
+            _through_transient_lock(dest.parent.mkdir, parents=True, exist_ok=True)
+            _through_transient_lock(src.rename, dest)
             done.append((src, dest))
         # Nothing but the emptied directory skeleton is left; the payload cannot be
         # moved in on top of it (Windows rejects a rename onto an existing name),
         # and an empty directory has no open handles to block its removal.
         for leftover in install_dir.iterdir():
-            shutil.rmtree(leftover)
+            _through_transient_lock(shutil.rmtree, leftover)
         for src in sorted(staged.iterdir()):
             dest = install_dir / src.name
-            _rename_with_retry(src, dest)
+            _through_transient_lock(src.rename, dest)
             done.append((src, dest))
-        staged.rmdir()
+        _through_transient_lock(staged.rmdir)
     except OSError as exc:
         try:
             for src, dest in reversed(done):
                 # Recreates any skeleton directory removed above; on Windows these
                 # inherit their ACL from the install's parent, as the originals did.
-                src.parent.mkdir(parents=True, exist_ok=True)
                 # Retried like the moves out: losing this race is what would leave
                 # the install split across two trees, so it is the worst place to
                 # treat a momentary scanner handle as fatal.
-                _rename_with_retry(dest, src)
+                _through_transient_lock(src.parent.mkdir, parents=True, exist_ok=True)
+                _through_transient_lock(dest.rename, src)
         except OSError as undo_exc:
             # Undoing failed too, so the install is now split across both trees.
             # Leave `old` in place — it holds the only copy of what moved — and say
@@ -635,7 +640,7 @@ def _windows_swap(install_dir: Path, staged: Path, old: Path) -> None:
         stuck = (
             " That lock outlived the retry window, so a process is holding the file "
             "open persistently rather than for the moment a scan takes."
-            if _is_transient_lock(exc)
+            if _is_transient_windows_lock(exc)
             else ""
         )
         raise UpdateError(

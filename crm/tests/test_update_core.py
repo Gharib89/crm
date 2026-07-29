@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -492,15 +493,19 @@ class TestRunUpgrade:
             update_mod.run_upgrade(["pipx", "install", "--force", "x"])
 
 
-def _sharing_violation() -> PermissionError:
+def _sharing_violation(locked: Path | None = None) -> PermissionError:
     """The Windows `ERROR_SHARING_VIOLATION` a scanner's handle produces.
 
     Built by hand because `winerror` only exists on Windows builds of CPython, and
     the errno alone cannot stand in for it: Windows maps both
-    `ERROR_SHARING_VIOLATION` and `ERROR_ACCESS_DENIED` to `EACCES`.
+    `ERROR_SHARING_VIOLATION` and `ERROR_ACCESS_DENIED` to `EACCES`. `locked` fills
+    in the `filename` a real `Path.rename` failure carries, so a test can check the
+    error reaches the user naming the file that would not move.
     """
     exc = PermissionError(13, "The process cannot access the file")
     exc.winerror = 32  # pyright: ignore[reportAttributeAccessIssue]
+    if locked is not None:
+        exc.filename = str(locked)
     return exc
 
 
@@ -664,12 +669,13 @@ class TestSwapBundle:
         install = _bundle(tmp_path / "crm", "OLD")
         new = _bundle(tmp_path / "staged", "NEW")
         real_rename = Path.rename
+        monkeypatch.setattr(update_mod, "_LOCK_RETRY_DELAYS", (0.0, 0.0))
         remaining = {"crm.exe": 2}
 
         def lock_then_release(self: Path, target: Path) -> Path:
             if remaining.get(self.name):
                 remaining[self.name] -= 1
-                raise _sharing_violation()
+                raise _sharing_violation(self)
             return real_rename(self, target)
 
         monkeypatch.setattr(Path, "rename", lock_then_release)
@@ -690,11 +696,11 @@ class TestSwapBundle:
         install = _bundle(tmp_path / "crm", "OLD")
         new = _bundle(tmp_path / "staged", "NEW")
         real_rename = Path.rename
-        monkeypatch.setattr(update_mod, "_MOVE_RETRY_DELAYS", (0.0, 0.0))
+        monkeypatch.setattr(update_mod, "_LOCK_RETRY_DELAYS", (0.0, 0.0))
 
         def lock_exe_forever(self: Path, target: Path) -> Path:
             if self.name == "crm.exe":
-                raise _sharing_violation()
+                raise _sharing_violation(self)
             return real_rename(self, target)
 
         monkeypatch.setattr(Path, "rename", lock_exe_forever)
@@ -703,6 +709,8 @@ class TestSwapBundle:
             swap_bundle(install, new, windows=True)
 
         assert "install.ps1" in str(excinfo.value)
+        # The user has to know *which* file would not move to act on this at all.
+        assert str(install / "crm.exe") in str(excinfo.value)
         assert (install / "crm.exe").read_text(encoding="utf-8") == "OLD"
         assert (install / "_internal" / "python313.dll").read_text(encoding="utf-8") == "OLD"
         assert list(tmp_path.glob("crm.old-*")) == []
@@ -742,15 +750,15 @@ class TestSwapBundle:
         install = _bundle(tmp_path / "crm", "OLD")
         new = _bundle(tmp_path / "staged", "NEW")
         real_rename = Path.rename
-        monkeypatch.setattr(update_mod, "_MOVE_RETRY_DELAYS", (0.0, 0.0))
+        monkeypatch.setattr(update_mod, "_LOCK_RETRY_DELAYS", (0.0, 0.0))
         locked_undo = {"python313.dll": 1}
 
         def lock_exe_and_first_undo(self: Path, target: Path) -> Path:
             if self.name == "crm.exe":  # evacuation stops part-way...
-                raise _sharing_violation()
+                raise _sharing_violation(self)
             if install in target.parents and locked_undo.get(self.name):
                 locked_undo[self.name] -= 1  # ...and the first undo attempt is locked
-                raise _sharing_violation()
+                raise _sharing_violation(self)
             return real_rename(self, target)
 
         monkeypatch.setattr(Path, "rename", lock_exe_and_first_undo)
@@ -760,6 +768,37 @@ class TestSwapBundle:
 
         assert (install / "_internal" / "python313.dll").read_text(encoding="utf-8") == "OLD"
         assert list(tmp_path.glob("crm.old-*")) == []
+
+    def test_windows_swap_retries_the_skeleton_removal(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Clearing the emptied directory skeleton races the same scanner the moves
+        do, so it is retried as well — otherwise a lock there both fails an update
+        that would have succeeded and makes the "outlived the retry window" wording
+        a lie, since no ladder would have run.
+        """
+        install = _bundle(tmp_path / "crm", "OLD")
+        new = _bundle(tmp_path / "staged", "NEW")
+        real_rmtree = update_mod.shutil.rmtree
+        monkeypatch.setattr(update_mod, "_LOCK_RETRY_DELAYS", (0.0, 0.0))
+        remaining = {"count": 1}
+
+        # Forwards *args/**kwargs verbatim: this patch catches every `rmtree` in the
+        # module, and the parked-tree cleanup on the failure path passes
+        # `ignore_errors=True`. A stub that dropped it would fail this test with a
+        # TypeError instead of the behavior under test.
+        def lock_then_release(path: Any, *args: Any, **kwargs: Any) -> None:
+            if remaining["count"]:
+                remaining["count"] -= 1
+                raise _sharing_violation(Path(path))
+            real_rmtree(path, *args, **kwargs)
+
+        monkeypatch.setattr(update_mod.shutil, "rmtree", lock_then_release)
+
+        swap_bundle(install, new, windows=True)
+
+        assert (install / "crm.exe").read_text(encoding="utf-8") == "NEW"
+        assert (install / "_internal" / "python313.dll").read_text(encoding="utf-8") == "NEW"
 
     def test_cleanup_removes_parked(self, tmp_path: Path) -> None:
         install = tmp_path / "crm"
