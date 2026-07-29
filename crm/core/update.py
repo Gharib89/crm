@@ -9,6 +9,7 @@ is never polluted.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import io
 import json
@@ -81,12 +82,16 @@ def fetch_latest_version(base_url: str, timeout: float = _NETWORK_TIMEOUT) -> st
 _CHECK_INTERVAL = 86400.0  # 24h
 
 
-def _cache_path() -> Path:
+def _state_dir() -> Path:
     # Resolve CRM_HOME directly (mirrors crm/core/audit.py) rather than importing
     # session's private root helper.
     root = Path(os.environ.get("CRM_HOME", str(Path.home() / ".crm"))).expanduser()
     root.mkdir(parents=True, exist_ok=True)
-    return root / "update-check.json"
+    return root
+
+
+def _cache_path() -> Path:
+    return _state_dir() / "update-check.json"
 
 
 def read_cache() -> dict[str, Any] | None:
@@ -586,29 +591,51 @@ def _through_transient_lock(action: Callable[..., object], *args: Any, **kwargs:
         raise
 
 
-def _windows_swap(install_dir: Path, staged: Path, old: Path) -> None:
-    """Swap a frozen bundle whose own running executable lives inside it.
+def _clear_contents(directory: Path) -> None:
+    """Empty `directory` without removing it, waiting out a transient lock on each
+    entry. Files and links go with `unlink`, real directories with `rmtree`, which
+    refuses to follow a link.
+    """
+    for entry in directory.iterdir():
+        if entry.is_dir() and not entry.is_symlink():
+            _through_transient_lock(shutil.rmtree, entry)
+        else:
+            _through_transient_lock(entry.unlink)
+
+
+def _windows_swap(install_dir: Path, source: Path, old: Path) -> None:
+    """Replace `install_dir`'s contents with `source`'s, one file at a time.
 
     Windows fails the rename of a directory that contains an open file with
     STATUS_ACCESS_DENIED (`WinError 5`) — see MS-FSA 2.1.5.15.12,
-    `FileRenameInformation`. The process performing the swap *is* `crm.exe`
-    inside `install_dir`, with its DLLs loaded from `_internal`, so renaming
-    `install_dir` aside can never succeed there (#932). That check is
-    directory-only: renaming an open *file* is permitted, because the loader
-    opens images with `FILE_SHARE_DELETE`. So the files leave one at a time, and
-    `install_dir` itself is never renamed — it keeps its identity (and its place
-    on `PATH`) while its contents are replaced.
+    `FileRenameInformation`. That check is directory-only: renaming an open *file*
+    is permitted. So the old files leave one at a time and `install_dir` is never
+    renamed — it keeps its identity (and its place on `PATH`) while its contents
+    are replaced. Per-file also survives what a whole-directory rename would not:
+    a second `crm` running from this install holds files open, and those files
+    still move.
 
-    Every rename is recorded so a failure at any point can be undone in reverse,
-    leaving the existing install working. The evacuated tree stays parked for
-    `cleanup_stale_updates` to reap on a later run: the images are still loaded
-    now, so they cannot be deleted yet.
+    `source` is **copied**, not moved. This runs in the detached finisher, which
+    executes from `source` — PyInstaller's bootloader holds a descriptor on
+    `source/_internal/base_library.zip` for the process's whole life, so moving
+    that file (or its directory) is refused with the same sharing violation the
+    detached design exists to escape (#937). Copying leaves `source` intact, which
+    is also the better recovery position; `cleanup_stale_updates` reaps it later.
+
+    Every evacuating rename is recorded so a failure at any point can be undone in
+    reverse, leaving the existing install working. The evacuated tree is deleted
+    once the payload is in: the process that had those images loaded is the one
+    that exited to let this run.
 
     Every step that mutates the filesystem goes through `_through_transient_lock`,
     so reaching the handler below means a lock outlived the retry ladder — that is
-    what lets the error name a persistent holder rather than a passing scan.
+    what lets the error name a persistent holder rather than a passing scan. The
+    copy is the exception: `shutil.copytree` reports a per-file failure as
+    `shutil.Error`, which carries no `winerror`, so there is nothing there for the
+    ladder to recognise.
     """
     done: list[tuple[Path, Path]] = []
+    evacuated = False
     try:
         # Symlinks move as links; only real directories are skipped, so that
         # `rmtree` below never meets one (it refuses to follow a link).
@@ -617,18 +644,23 @@ def _windows_swap(install_dir: Path, staged: Path, old: Path) -> None:
             _through_transient_lock(dest.parent.mkdir, parents=True, exist_ok=True)
             _through_transient_lock(src.rename, dest)
             done.append((src, dest))
-        # Nothing but the emptied directory skeleton is left; the payload cannot be
-        # moved in on top of it (Windows rejects a rename onto an existing name),
-        # and an empty directory has no open handles to block its removal.
-        for leftover in install_dir.iterdir():
-            _through_transient_lock(shutil.rmtree, leftover)
-        for src in sorted(staged.iterdir()):
-            dest = install_dir / src.name
-            _through_transient_lock(src.rename, dest)
-            done.append((src, dest))
-        _through_transient_lock(staged.rmdir)
+        evacuated = True
+        # Nothing but the emptied directory skeleton is left, and an empty directory
+        # has no open handles to block its removal. It has to go: the copy below
+        # would otherwise merge the new payload into leftover old directories.
+        _clear_contents(install_dir)
+        shutil.copytree(source, install_dir, dirs_exist_ok=True)
     except OSError as exc:
         try:
+            if evacuated:
+                # Whatever the copy wrote occupies names the originals need back
+                # (Windows refuses a rename onto an existing name). Guarded by
+                # `evacuated` because before that point `install_dir` still holds
+                # files that were never moved — clearing then would destroy the only
+                # copy of them. Best-effort: a leftover that cannot be removed makes
+                # the rename below fail, which is the honest place to report it.
+                with contextlib.suppress(OSError):
+                    _clear_contents(install_dir)
             for src, dest in reversed(done):
                 # Recreates any skeleton directory removed above; on Windows these
                 # inherit their ACL from the install's parent, as the originals did.
@@ -665,14 +697,18 @@ def _windows_swap(install_dir: Path, staged: Path, old: Path) -> None:
             "The existing install is intact and still works — re-run the Windows "
             "installer (install.ps1) to update."
         ) from exc
+    # Only reached on success (every path above re-raises). Best-effort: a second
+    # `crm` still holding one of the evacuated images keeps it undeletable, and
+    # `cleanup_stale_updates` reaps whatever survives on a later run.
+    shutil.rmtree(old, ignore_errors=True)
 
 
 def swap_bundle(install_dir: Path, staged: Path, *, windows: bool) -> None:
     """Replace `install_dir`'s contents with `staged`, in place.
 
     Posix: rename the old dir aside, promote the staged dir, delete the old.
-    Windows: `install_dir` cannot be renamed at all while the running executable
-    sits inside it, so its files are evacuated one by one instead — see
+    Windows: `install_dir` cannot be renamed while a `crm` runs from inside it, so
+    its files are evacuated one by one and `staged` is copied in — see
     `_windows_swap`.
     """
     parent = install_dir.parent
@@ -693,9 +729,279 @@ def swap_bundle(install_dir: Path, staged: Path, *, windows: bool) -> None:
 
 
 def cleanup_stale_updates(install_dir: Path) -> None:
-    """Remove parked `<name>.old-*` dirs left by a prior Windows swap."""
+    """Remove the trees a prior Windows swap left beside the install.
+
+    Two kinds: the evacuated `<name>.old-*`, and the `<name>.new-*` payload the
+    detached finisher ran from and therefore could not delete itself (#937). A
+    payload named by a handoff that is still on disk is skipped — that handoff
+    outlives its finisher by nothing, so its presence is the signal that a swap may
+    still be reading from that tree, and reaping it mid-copy would corrupt the very
+    bundle being installed.
+    """
+    live = _payloads_in_use()
     for leftover in install_dir.parent.glob(f"{install_dir.name}.old-*"):
         shutil.rmtree(leftover, ignore_errors=True)
+    for leftover in install_dir.parent.glob(f"{install_dir.name}.new-*"):
+        if str(leftover) not in live:
+            shutil.rmtree(leftover, ignore_errors=True)
+
+
+# ── deferred swap: the detached finisher (Windows) ───────────────────────
+
+# A frozen bundle cannot replace itself on Windows. PyInstaller's C bootloader
+# opens `_internal/base_library.zip` before any Python runs and holds that
+# descriptor for the process's whole life, without delete-sharing — so renaming
+# it is refused (`WinError 32`), writing over it is refused, and renaming the
+# directory that contains it is refused (`WinError 5`). No retry helps: the handle
+# is released only when the process exits (#937).
+#
+# So Windows stages the payload, hands off to a detached copy of the *new* binary,
+# and exits. The finisher waits for us to go, performs the swap, and records the
+# outcome for the next `crm` run to report. Posix needs none of this — an open
+# file there can be replaced outright — and keeps swapping in-process.
+
+_HANDOFF_STEM = "update-handoff"
+_RESULT_NAME = "update-result.json"
+
+# How long the finisher waits for the process that spawned it. That process exits
+# within milliseconds of the spawn, so this only has to outlast a slow interpreter
+# teardown; giving up is safe, because nothing has been touched yet.
+_PARENT_EXIT_TIMEOUT = 60.0
+_PARENT_POLL_INTERVAL = 0.05
+
+
+def result_path() -> Path:
+    """Where the finisher records the outcome for the next `crm` run to report."""
+    return _state_dir() / _RESULT_NAME
+
+
+def _payloads_in_use() -> set[str]:
+    """Payload dirs a finisher may still be copying from, per the handoffs on disk."""
+    live: set[str] = set()
+    for handoff in _state_dir().glob(f"{_HANDOFF_STEM}-*.json"):
+        try:
+            parsed = json.loads(handoff.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue  # unreadable handoff protects nothing; the payload can go
+        if not isinstance(parsed, dict):
+            continue
+        payload = cast("dict[str, Any]", parsed).get("payload")
+        if isinstance(payload, str):
+            live.add(payload)
+    return live
+
+
+def write_handoff(*, install_dir: Path, payload: Path, from_version: str, to_version: str) -> Path:
+    """Record what the finisher needs to know, and return the file's path."""
+    path = _state_dir() / f"{_HANDOFF_STEM}-{os.getpid()}.json"
+    path.write_text(
+        json.dumps(
+            {
+                "parent_pid": os.getpid(),
+                "install_dir": str(install_dir),
+                "payload": str(payload),
+                "from_version": from_version,
+                "to_version": to_version,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def _load_kernel32() -> Any:
+    """`ctypes.windll.kernel32`, behind a typed boundary.
+
+    `ctypes.windll` exists only on Windows builds of CPython, so it is absent from
+    the type stubs and everything reached through it reads as unknown. Declaring
+    `Any` here confines that to one line instead of leaking through every call.
+    """
+    import ctypes
+
+    return ctypes.windll.kernel32  # pyright: ignore
+
+
+def _win_process_alive(pid: int) -> bool:
+    """Windows liveness, via a handle on the process."""
+    _SYNCHRONIZE = 0x00100000
+    _WAIT_OBJECT_0 = 0x0
+    kernel32 = _load_kernel32()
+    handle = kernel32.OpenProcess(_SYNCHRONIZE, False, pid)
+    if not handle:
+        return False  # gone, or never ours to open
+    try:
+        # A handle can outlive the process it names, so liveness is the wait result,
+        # not whether OpenProcess succeeded.
+        return bool(kernel32.WaitForSingleObject(handle, 0) != _WAIT_OBJECT_0)
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def process_alive(pid: int) -> bool:
+    """True while `pid` is still running."""
+    if sys.platform.startswith("win"):
+        return _win_process_alive(pid)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # alive, just not ours to signal
+    return True
+
+
+def wait_for_process_exit(pid: int, timeout: float = _PARENT_EXIT_TIMEOUT) -> bool:
+    """Block until `pid` exits; False if it is still there when `timeout` runs out.
+
+    Polled rather than blocking on a handle so both platforms share one shape. The
+    interval is short because the wait is normally single-digit milliseconds.
+    """
+    deadline = time.monotonic() + timeout
+    while process_alive(pid):
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(_PARENT_POLL_INTERVAL)
+    return True
+
+
+def spawn_finisher(payload: Path, handoff: Path) -> int:
+    """Launch the staged binary detached, to finish the swap once we exit.
+
+    Fully detached: no console, no inherited stdio, its own process group (a Ctrl-C
+    in the terminal that started us must not kill a swap already under way), and a
+    working directory outside both the install and the payload — a process's
+    working directory is itself a handle that would keep that directory
+    undeletable on Windows.
+    """
+    import subprocess
+    import tempfile
+
+    windows = sys.platform.startswith("win")
+    exe = payload / ("crm.exe" if windows else "crm")
+    # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP. Spelled numerically because the
+    # `subprocess` constants exist only on Windows builds.
+    proc = subprocess.Popen(
+        [str(exe), "self-update", "--finish-update", str(handoff)],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        cwd=tempfile.gettempdir(),
+        close_fds=True,
+        creationflags=(0x00000008 | 0x00000200) if windows else 0,
+        start_new_session=not windows,
+    )
+    return proc.pid
+
+
+def _write_result(record: dict[str, Any]) -> None:
+    path = result_path()
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(record), encoding="utf-8")
+    tmp.replace(path)
+
+
+def finish_deferred_swap(
+    handoff_file: Path,
+    *,
+    refresh: Callable[[str, Path], list[str]] | None = None,
+    now: float | None = None,
+) -> dict[str, Any]:
+    """The detached finisher's whole body: wait for the parent, swap, record.
+
+    Never raises. This process has nowhere to print — no console, stdio on
+    devnull — so every outcome, a refused wait and a failed swap included, is
+    written to `result_path()` for the next `crm` run to report. `refresh` re-syncs
+    recorded skills/completion once the new bundle is in place and returns the
+    warnings that run should print; it lives in the command layer, which owns the
+    registries. Returns the record it wrote.
+    """
+    record: dict[str, Any] = {
+        "ok": False,
+        "at": time.time() if now is None else now,
+        "error": None,
+        "warnings": [],
+    }
+    try:
+        handoff = json.loads(handoff_file.read_text(encoding="utf-8"))
+        install = Path(handoff["install_dir"])
+        payload = Path(handoff["payload"])
+        record["from_version"] = handoff.get("from_version")
+        record["to_version"] = handoff.get("to_version")
+        record["install_dir"] = str(install)
+        if not wait_for_process_exit(int(handoff["parent_pid"])):
+            raise UpdateError(
+                "The crm process that started the update was still running after "
+                f"{_PARENT_EXIT_TIMEOUT:.0f}s, so its files could not be replaced."
+            )
+        swap_bundle(install, payload, windows=True)
+    except Exception as exc:
+        record["error"] = str(exc)
+    else:
+        record["ok"] = True
+        if refresh is not None:
+            # Only after a successful swap: refreshing earlier would leave a new
+            # skill tree beside an old binary. Suppressed because the finisher must
+            # never die with the record unwritten — the swap already landed.
+            with contextlib.suppress(Exception):
+                record["warnings"] = refresh(str(record["to_version"] or ""), install)
+    _write_result(record)
+    # The handoff's absence is what marks the payload reapable — so it goes last,
+    # after the record is durable.
+    with contextlib.suppress(OSError):
+        handoff_file.unlink()
+    return record
+
+
+def take_update_result() -> dict[str, Any] | None:
+    """Read the finisher's record and delete it, so it is reported exactly once."""
+    path = result_path()
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        # Missing (the common case), unreadable, or malformed by a partial write.
+        # Remove it either way, so junk cannot suppress the next real record.
+        with contextlib.suppress(OSError):
+            path.unlink()
+        return None
+    with contextlib.suppress(OSError):
+        path.unlink()
+    return cast("dict[str, Any]", record) if isinstance(record, dict) else None
+
+
+def update_result_lines(record: Mapping[str, Any]) -> list[str]:
+    """What the next run prints about a deferred swap: the outcome, then warnings."""
+    to_version = record.get("to_version") or "?"
+    if record.get("ok"):
+        lines = [f"crm was updated to {to_version}."]
+    else:
+        lines = [
+            f"The last crm update to {to_version} could not be applied: "
+            f"{record.get('error') or 'unknown error'} "
+            f"Your install is unchanged (still {record.get('from_version') or '?'})."
+        ]
+    warnings = record.get("warnings")
+    if isinstance(warnings, list):
+        lines.extend(str(w) for w in cast("list[Any]", warnings))
+    return lines
+
+
+def emit_update_result_notice(
+    *, json_mode: bool, stderr_isatty: bool, stream: IO[str] | None = None
+) -> bool:
+    """Report a deferred swap's outcome once, after the next command. Printed?
+
+    Human TTY only. Under `--json` the record is left for a later run rather than
+    polluting the envelope; with no TTY there is no one reading, and consuming the
+    record would throw the only report of a failed update away.
+    """
+    if json_mode or not stderr_isatty:
+        return False
+    record = take_update_result()
+    if record is None:
+        return False
+    for line in update_result_lines(record):
+        print(line, file=stream if stream is not None else sys.stderr)
+    return True
 
 
 def perform_update(
@@ -733,9 +1039,23 @@ def perform_update(
         shutil.rmtree(staged, ignore_errors=True)
     if progress:
         progress("Installing...")
+    to_version = latest.lstrip("vV")
+    windows = sys.platform.startswith("win")
+    deferred = False
     try:
         _extract(archive, data, staged)
-        swap_bundle(install_dir, staged, windows=sys.platform.startswith("win"))
+        if windows:
+            # This process cannot replace its own bundle — see the finisher section.
+            handoff = write_handoff(
+                install_dir=install_dir,
+                payload=staged,
+                from_version=current,
+                to_version=to_version,
+            )
+            spawn_finisher(staged, handoff)
+            deferred = True
+        else:
+            swap_bundle(install_dir, staged, windows=False)
     except UpdateError:
         raise
     except Exception as exc:
@@ -746,7 +1066,19 @@ def perform_update(
         # including a failed restore — as UpdateError, re-raised untouched above.
         raise UpdateError(f"Update failed during install: {exc}") from exc
     finally:
-        if staged.exists():
+        # A deferred payload is the finisher's own program — deleting it would kill
+        # the swap. `cleanup_stale_updates` reaps it on a later run.
+        if not deferred and staged.exists():
             shutil.rmtree(staged, ignore_errors=True)
-    to_version = latest.lstrip("vV")
+    if deferred:
+        # `updated` stays false: nothing has been replaced yet, and a scripter must
+        # not read a staged payload as a completed upgrade. The finisher's record,
+        # surfaced on the next run, is what reports the outcome.
+        return {
+            "updated": False,
+            "pending": True,
+            "reason": "swap-deferred",
+            "from_version": current,
+            "to_version": to_version,
+        }
     return {"updated": True, "from_version": current, "to_version": to_version}

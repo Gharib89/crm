@@ -1159,16 +1159,48 @@ def _maybe_update_check(json_mode: bool) -> None:
     )
 
 
+def _deferred_result_eligible(json_mode: bool) -> bool:
+    """Gate for reporting a detached finisher's outcome: human TTY only.
+
+    Deliberately not `_update_check_eligible`: opting out of update *checks*
+    (`CRM_NO_UPDATE_CHECK`, `CI`) must not silence the news that an update failed.
+    """
+    if json_mode:
+        return False
+    try:
+        return sys.stderr.isatty()
+    except Exception:
+        return False
+
+
+def _deferred_update_recorded() -> bool:
+    """Whether a detached finisher left an outcome to report (#937).
+
+    The filename is repeated from `crm.core.update.result_path` rather than read
+    from it: this runs after *every* command, and importing the update module for a
+    file that is almost never there would put that cost on all of them.
+    """
+    root = os.path.expanduser(os.environ.get("CRM_HOME", os.path.join("~", ".crm")))
+    return os.path.exists(os.path.join(root, "update-result.json"))
+
+
 @cli.result_callback()
 def _emit_update_notice(result: Any, **_kwargs: Any) -> None:
     """Print the one-line update notice (from cache) after a command completes."""
     ctx = click.get_current_context()
+    json_mode = bool(getattr(ctx.obj, "json_mode", False))
+    # A Windows swap is applied by a detached finisher after the `crm self-update`
+    # that staged it has exited, so the outcome can only be reported by a later
+    # command — this one.
+    if _deferred_result_eligible(json_mode) and _deferred_update_recorded():
+        from crm.core import update as update_mod
+
+        update_mod.emit_update_result_notice(json_mode=False, stderr_isatty=True)
     # self-update owns its own update messaging; the running process still reports the
     # pre-update version, so the cached-version comparison would re-print the upgrade
     # notice right after a successful upgrade.
     if ctx.invoked_subcommand == "self-update":
         return
-    json_mode = bool(getattr(ctx.obj, "json_mode", False))
     if not _update_check_eligible(json_mode):
         return
     from crm.core import update as update_mod
