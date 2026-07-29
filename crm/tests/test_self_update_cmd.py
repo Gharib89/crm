@@ -532,6 +532,64 @@ class TestFrozenUpdate:
         assert result.exit_code == 0
         assert "3.0.0" in result.output
 
+    def test_human_mode_confirms_the_upgrade(self, monkeypatch):
+        """The upgrade landing is the point of the command — say so in a sentence,
+        the way the up-to-date path already does, not only as raw payload fields.
+        """
+        monkeypatch.setattr(update_mod, "is_frozen", lambda: True)
+        monkeypatch.setattr(
+            update_mod, "install_dir", lambda: __import__("pathlib").Path("/tmp/crm")
+        )
+        monkeypatch.setattr(update_mod, "cleanup_stale_updates", lambda *a, **k: None)
+        monkeypatch.setattr(
+            update_mod,
+            "perform_update",
+            lambda *a, **k: {"updated": True, "from_version": "2.9.0", "to_version": "3.0.0"},
+        )
+        result = CliRunner().invoke(cli, ["self-update"])
+        assert result.exit_code == 0
+        assert "Updated crm 2.9.0 -> 3.0.0" in result.stdout
+
+    def test_human_mode_reports_already_current(self, monkeypatch):
+        monkeypatch.setattr(update_mod, "is_frozen", lambda: True)
+        monkeypatch.setattr(
+            update_mod, "install_dir", lambda: __import__("pathlib").Path("/tmp/crm")
+        )
+        monkeypatch.setattr(update_mod, "cleanup_stale_updates", lambda *a, **k: None)
+        monkeypatch.setattr(
+            update_mod,
+            "perform_update",
+            lambda *a, **k: {
+                "updated": False,
+                "current": "3.0.0",
+                "latest": "v3.0.0",
+                "reason": "up-to-date",
+            },
+        )
+        result = CliRunner().invoke(cli, ["self-update"])
+        assert result.exit_code == 0
+        assert "crm is up to date (3.0.0)." in result.stdout
+
+    def test_json_mode_payload_is_unchanged(self, monkeypatch):
+        """The confirmation is human-mode only; the --json contract keeps its shape."""
+        monkeypatch.setattr(update_mod, "is_frozen", lambda: True)
+        monkeypatch.setattr(
+            update_mod, "install_dir", lambda: __import__("pathlib").Path("/tmp/crm")
+        )
+        monkeypatch.setattr(update_mod, "cleanup_stale_updates", lambda *a, **k: None)
+        monkeypatch.setattr(
+            update_mod,
+            "perform_update",
+            lambda *a, **k: {"updated": True, "from_version": "2.9.0", "to_version": "3.0.0"},
+        )
+        result = CliRunner().invoke(cli, ["--json", "self-update"])
+        assert result.exit_code == 0
+        data = json.loads(result.stdout)["data"]
+        assert data["updated"] is True
+        assert data["from_version"] == "2.9.0"
+        assert data["to_version"] == "3.0.0"
+        assert "Updated crm" not in result.stdout
+
     def test_progress_shown_in_human_mode(self, monkeypatch):
         monkeypatch.setattr(update_mod, "is_frozen", lambda: True)
         monkeypatch.setattr(

@@ -208,6 +208,16 @@ def _frozen_update(ctx: CLIContext) -> None:
             result["completion"] = completion
     ctx.emit(True, data=result)
     if not ctx.json_mode:
+        # Confirm the outcome in a sentence, as the non-frozen paths do — the raw
+        # payload fields alone leave the landing of an upgrade unannounced. The
+        # arrow is ASCII as a belt-and-braces: `force_utf8_output` already
+        # reconfigures stdout, but it deliberately no-ops on a stream with no
+        # working `reconfigure`, and this line prints once the bundle has already
+        # been replaced — the worst moment to risk an encode error.
+        if result.get("updated"):
+            ctx.skin.success(f"Updated crm {result['from_version']} -> {result['to_version']}.")
+        else:
+            ctx.skin.success(f"crm is up to date ({result['current']}).")
         _emit_skills(ctx, skills)
         _emit_completion(ctx, completion)
 
