@@ -48,6 +48,14 @@ on a later `self-update` run, once those files are no longer in use. If the swap
 can't complete, the files that had moved are put back, so the existing install is
 left working, and the error points you at `install.ps1` as the fallback.
 
+Writing inside a program directory tends to wake a virus scanner or the search
+indexer, and while one of those holds a file open the move is refused. Each step of
+the swap is therefore retried — for up to a couple of seconds *per step*, so a
+`self-update` on Windows may pause, and a heavily-scanned install can pause for
+longer than that overall. If a lock survives a step's whole window,
+something is holding the file open persistently rather than for the length of a
+scan — the error says so, to distinguish that from the transient case.
+
 Rarely, putting them back can fail too — a file locked in the meantime, say. The
 error says so explicitly, and names the `crm.old-<pid>` directory: with the
 install then split across the two, that directory holds the only copy of the

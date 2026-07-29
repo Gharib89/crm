@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -492,6 +493,22 @@ class TestRunUpgrade:
             update_mod.run_upgrade(["pipx", "install", "--force", "x"])
 
 
+def _sharing_violation(locked: Path | None = None) -> PermissionError:
+    """The Windows `ERROR_SHARING_VIOLATION` a scanner's handle produces.
+
+    Built by hand because `winerror` only exists on Windows builds of CPython, and
+    the errno alone cannot stand in for it: Windows maps both
+    `ERROR_SHARING_VIOLATION` and `ERROR_ACCESS_DENIED` to `EACCES`. `locked` fills
+    in the `filename` a real `Path.rename` failure carries, so a test can check the
+    error reaches the user naming the file that would not move.
+    """
+    exc = PermissionError(13, "The process cannot access the file")
+    exc.winerror = 32  # pyright: ignore[reportAttributeAccessIssue]
+    if locked is not None:
+        exc.filename = str(locked)
+    return exc
+
+
 def _bundle(root: Path, marker: str) -> Path:
     """A minimal PyInstaller onedir layout: a launcher plus a nested `_internal` tree."""
     (root / "_internal" / "tcl").mkdir(parents=True)
@@ -642,6 +659,175 @@ class TestSwapBundle:
         assert (install / "crm.exe").read_text(encoding="utf-8") == "OLD"
         assert (install / "_internal" / "python313.dll").read_text(encoding="utf-8") == "OLD"
         assert list(tmp_path.glob("crm.old-*")) == []
+
+    def test_windows_swap_retries_a_lock_that_clears(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A scanner holding a file open releases it a moment later, so a sharing
+        violation must be retried rather than treated as terminal (#935).
+        """
+        install = _bundle(tmp_path / "crm", "OLD")
+        new = _bundle(tmp_path / "staged", "NEW")
+        real_rename = Path.rename
+        monkeypatch.setattr(update_mod, "_LOCK_RETRY_DELAYS", (0.0, 0.0))
+        remaining = {"crm.exe": 2}
+
+        def lock_then_release(self: Path, target: Path) -> Path:
+            if remaining.get(self.name):
+                remaining[self.name] -= 1
+                raise _sharing_violation(self)
+            return real_rename(self, target)
+
+        monkeypatch.setattr(Path, "rename", lock_then_release)
+
+        swap_bundle(install, new, windows=True)
+
+        assert (install / "crm.exe").read_text(encoding="utf-8") == "NEW"
+        assert (install / "_internal" / "python313.dll").read_text(encoding="utf-8") == "NEW"
+        assert not new.exists()
+
+    def test_windows_swap_gives_up_on_a_lock_that_never_clears(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An exhausted retry ladder means the handle is persistent, not momentary.
+        The install still has to come back intact, and the message has to say the
+        lock outlived the window — that is what distinguishes the two causes.
+        """
+        install = _bundle(tmp_path / "crm", "OLD")
+        new = _bundle(tmp_path / "staged", "NEW")
+        real_rename = Path.rename
+        monkeypatch.setattr(update_mod, "_LOCK_RETRY_DELAYS", (0.0, 0.0))
+
+        def lock_exe_forever(self: Path, target: Path) -> Path:
+            if self.name == "crm.exe":
+                raise _sharing_violation(self)
+            return real_rename(self, target)
+
+        monkeypatch.setattr(Path, "rename", lock_exe_forever)
+
+        with pytest.raises(UpdateError, match="outlived the retry window") as excinfo:
+            swap_bundle(install, new, windows=True)
+
+        assert "install.ps1" in str(excinfo.value)
+        # The user has to know *which* file would not move to act on this at all.
+        # Matched on the basename, not the full path: with `winerror` set,
+        # `OSError.__str__` formats the filename with `%R`, so on Windows the
+        # message carries the repr — backslashes doubled — and never contains
+        # `str(path)` verbatim.
+        assert "crm.exe" in str(excinfo.value)
+        assert (install / "crm.exe").read_text(encoding="utf-8") == "OLD"
+        assert (install / "_internal" / "python313.dll").read_text(encoding="utf-8") == "OLD"
+        assert list(tmp_path.glob("crm.old-*")) == []
+
+    def test_windows_swap_does_not_retry_a_permission_denial(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A genuine ACL denial is not a race, so it must fail on the first raise
+        rather than stalling through the ladder. Windows maps it to the same errno
+        as a sharing violation, so only `winerror` can tell them apart.
+        """
+        install = _bundle(tmp_path / "crm", "OLD")
+        new = _bundle(tmp_path / "staged", "NEW")
+        real_rename = Path.rename
+        attempts = {"crm.exe": 0}
+
+        def deny_exe(self: Path, target: Path) -> Path:
+            if self.name == "crm.exe":
+                attempts[self.name] += 1
+                raise PermissionError(13, "Permission denied")
+            return real_rename(self, target)
+
+        monkeypatch.setattr(Path, "rename", deny_exe)
+
+        with pytest.raises(UpdateError, match="install.ps1") as excinfo:
+            swap_bundle(install, new, windows=True)
+
+        assert attempts["crm.exe"] == 1
+        assert "outlived the retry window" not in str(excinfo.value)
+
+    def test_windows_swap_retries_the_rollback_too(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Losing the race while putting files back is what would split the install
+        across two trees, so the undo waits a lock out as well.
+        """
+        install = _bundle(tmp_path / "crm", "OLD")
+        new = _bundle(tmp_path / "staged", "NEW")
+        real_rename = Path.rename
+        monkeypatch.setattr(update_mod, "_LOCK_RETRY_DELAYS", (0.0, 0.0))
+        locked_undo = {"python313.dll": 1}
+
+        def lock_exe_and_first_undo(self: Path, target: Path) -> Path:
+            if self.name == "crm.exe":  # evacuation stops part-way...
+                raise _sharing_violation(self)
+            if install in target.parents and locked_undo.get(self.name):
+                locked_undo[self.name] -= 1  # ...and the first undo attempt is locked
+                raise _sharing_violation(self)
+            return real_rename(self, target)
+
+        monkeypatch.setattr(Path, "rename", lock_exe_and_first_undo)
+
+        with pytest.raises(UpdateError, match="intact and still works"):
+            swap_bundle(install, new, windows=True)
+
+        assert (install / "_internal" / "python313.dll").read_text(encoding="utf-8") == "OLD"
+        assert list(tmp_path.glob("crm.old-*")) == []
+
+    def test_windows_swap_retries_the_skeleton_removal(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Clearing the emptied directory skeleton races the same scanner the moves
+        do, so it is retried as well — otherwise a lock there both fails an update
+        that would have succeeded and makes the "outlived the retry window" wording
+        a lie, since no ladder would have run.
+        """
+        install = _bundle(tmp_path / "crm", "OLD")
+        new = _bundle(tmp_path / "staged", "NEW")
+        real_rmtree = update_mod.shutil.rmtree
+        monkeypatch.setattr(update_mod, "_LOCK_RETRY_DELAYS", (0.0, 0.0))
+        remaining = {"count": 1}
+
+        # Forwards *args/**kwargs verbatim: this patch catches every `rmtree` in the
+        # module, and the parked-tree cleanup on the failure path passes
+        # `ignore_errors=True`. A stub that dropped it would fail this test with a
+        # TypeError instead of the behavior under test.
+        def lock_then_release(path: Any, *args: Any, **kwargs: Any) -> None:
+            if remaining["count"]:
+                remaining["count"] -= 1
+                raise _sharing_violation(Path(path))
+            real_rmtree(path, *args, **kwargs)
+
+        monkeypatch.setattr(update_mod.shutil, "rmtree", lock_then_release)
+
+        swap_bundle(install, new, windows=True)
+
+        assert (install / "crm.exe").read_text(encoding="utf-8") == "NEW"
+        assert (install / "_internal" / "python313.dll").read_text(encoding="utf-8") == "NEW"
+
+    def test_windows_swap_does_not_claim_a_retry_window_it_never_used(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The swap walks directories as well as moving files, and an enumeration is
+        not retried — there is no single call to repeat. A sharing violation from one
+        must therefore NOT be reported as having outlived the retry window, or the
+        message sends the user after a persistent holder that was never established.
+        """
+        install = _bundle(tmp_path / "crm", "OLD")
+        new = _bundle(tmp_path / "staged", "NEW")
+        real_iterdir = Path.iterdir
+
+        def lock_the_walk(self: Path) -> Any:
+            if self == install:  # the skeleton walk, after evacuation succeeded
+                raise _sharing_violation(self)
+            return real_iterdir(self)
+
+        monkeypatch.setattr(Path, "iterdir", lock_the_walk)
+
+        with pytest.raises(UpdateError, match="intact and still works") as excinfo:
+            swap_bundle(install, new, windows=True)
+
+        assert "outlived the retry window" not in str(excinfo.value)
+        assert (install / "crm.exe").read_text(encoding="utf-8") == "OLD"
 
     def test_cleanup_removes_parked(self, tmp_path: Path) -> None:
         install = tmp_path / "crm"
