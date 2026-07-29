@@ -9,6 +9,37 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.77.4 (2026-07-29)
+
+### Bug Fixes
+
+- **self-update**: Apply the Windows swap from a detached finisher
+  ([#938](https://github.com/Gharib89/crm/pull/938),
+  [`71e9d68`](https://github.com/Gharib89/crm/commit/71e9d689825661b4388ab3102eb46798f8320ba8))
+
+- **self-update**: Apply the Windows swap from a detached finisher (#937)
+  ([#938](https://github.com/Gharib89/crm/pull/938),
+  [`71e9d68`](https://github.com/Gharib89/crm/commit/71e9d689825661b4388ab3102eb46798f8320ba8))
+
+- **self-update**: Log every deferred swap outcome durably
+  ([#938](https://github.com/Gharib89/crm/pull/938),
+  [`71e9d68`](https://github.com/Gharib89/crm/commit/71e9d689825661b4388ab3102eb46798f8320ba8))
+
+- **self-update**: Refuse a second stage while one swap is pending
+  ([#938](https://github.com/Gharib89/crm/pull/938),
+  [`71e9d68`](https://github.com/Gharib89/crm/commit/71e9d689825661b4388ab3102eb46798f8320ba8))
+
+- **self-update**: Review round 1 — guard live swaps and stay honest on failure
+  ([#938](https://github.com/Gharib89/crm/pull/938),
+  [`71e9d68`](https://github.com/Gharib89/crm/commit/71e9d689825661b4388ab3102eb46798f8320ba8))
+
+### Documentation
+
+- **self-update**: Document the deferred Windows swap
+  ([#938](https://github.com/Gharib89/crm/pull/938),
+  [`71e9d68`](https://github.com/Gharib89/crm/commit/71e9d689825661b4388ab3102eb46798f8320ba8))
+
+
 ## v1.77.3 (2026-07-29)
 
 ### Bug Fixes
