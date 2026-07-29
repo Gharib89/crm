@@ -765,6 +765,25 @@ class TestFrozenUpdateDeferred:
         assert result.exit_code == 0
         assert called == []
 
+    def test_says_an_earlier_run_already_staged_it(self, monkeypatch):
+        """Saying "Staged crm 3.0.0" here would read as "this run did it" — but this run
+        declined to stage, and pointing at the earlier run is what explains the silence.
+        """
+        monkeypatch.setattr(
+            update_mod,
+            "perform_update",
+            lambda *a, **k: {
+                "updated": False,
+                "pending": True,
+                "reason": "swap-already-staged",
+                "from_version": "2.9.0",
+                "to_version": "3.0.0",
+            },
+        )
+        result = CliRunner().invoke(cli, ["self-update"])
+        assert result.exit_code == 0
+        assert "already staged by an earlier run" in result.stdout
+
 
 class TestFinisherEntry:
     """`--finish-update` — the hidden entry the detached finisher runs itself as."""

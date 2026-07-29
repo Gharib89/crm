@@ -218,10 +218,16 @@ def _frozen_update(ctx: CLIContext) -> None:
         # confirm — the finisher does both, and the next run reports them.
         ctx.emit(True, data=result)
         if not ctx.json_mode:
-            ctx.skin.info(
-                f"Staged crm {result['to_version']}. It is applied as crm exits; "
-                "the next run reports the outcome."
-            )
+            if result.get("reason") == "swap-already-staged":
+                ctx.skin.info(
+                    f"crm {result['to_version']} is already staged by an earlier run and is "
+                    "applied as that crm exits; the next run reports the outcome."
+                )
+            else:
+                ctx.skin.info(
+                    f"Staged crm {result['to_version']}. It is applied as crm exits; "
+                    "the next run reports the outcome."
+                )
         return
     # After the bundle swap the new skill tree is on disk under the install dir;
     # the running process is still the old version, so refresh to `to_version`.

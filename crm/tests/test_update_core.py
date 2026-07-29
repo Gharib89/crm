@@ -885,6 +885,26 @@ class TestSwapBundle:
         assert (payload / "crm.exe").read_text(encoding="utf-8") == "NEW"
         assert not stale.exists()  # no handoff names it, so it is fair game
 
+    def test_cleanup_drops_a_handoff_whose_finisher_never_reported(
+        self, tmp_path: Path, crm_home: Path
+    ) -> None:
+        """A finisher deletes its own handoff when it finishes, so one this old lost its
+        process — and a pending handoff blocks further updates (`pending_handoff`).
+        """
+        install = tmp_path / "crm"
+        install.mkdir()
+        fresh = crm_home / "update-handoff-1.json"
+        fresh.write_text(json.dumps({"payload": str(tmp_path / "crm.new-1")}), encoding="utf-8")
+        dead = crm_home / "update-handoff-2.json"
+        dead.write_text(json.dumps({"payload": str(tmp_path / "crm.new-2")}), encoding="utf-8")
+        aged = time.time() - update_mod._HANDOFF_STALE_AFTER - 1
+        os.utime(dead, (aged, aged))
+
+        cleanup_stale_updates(install)
+
+        assert fresh.exists()
+        assert not dead.exists()
+
 
 def _reaped_pid() -> int:
     """A pid that has certainly exited — the finisher's wait must return at once."""
@@ -1292,6 +1312,55 @@ class TestPerformUpdate:
 
         assert not list(tmp_path.glob("crm.new-*"))
         assert (install / "crm.exe").read_text(encoding="utf-8") == "OLD"
+
+    def test_windows_refuses_to_stage_a_second_update_over_a_pending_one(
+        self, tmp_path: Path, crm_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Running `self-update` twice is what a user does when the first run looks like
+        it did nothing. Two finishers would evacuate the same install into two parked
+        trees and copy over each other, so the second run must not stage — and must not
+        spend a bundle-sized download finding that out.
+        """
+
+        def no_download(*a: object, **k: object) -> bytes:
+            raise AssertionError("downloaded despite a pending swap")
+
+        self._wire(monkeypatch, b"", {})
+        monkeypatch.setattr(update_mod.sys, "platform", "win32")
+        monkeypatch.setattr(update_mod, "_download_archive", no_download)
+
+        install = _bundle(tmp_path / "crm", "OLD")
+        _handoff(crm_home, install, tmp_path / "crm.new-1", parent_pid=os.getpid())
+
+        result = perform_update(install_dir=install)
+
+        assert result["updated"] is False
+        assert result["pending"] is True
+        assert result["reason"] == "swap-already-staged"
+        assert result["to_version"] == "3.0.0"
+
+    def test_windows_updates_again_once_a_handoff_has_gone_stale(
+        self, tmp_path: Path, crm_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A finisher that died mid-job leaves its handoff behind forever. If that
+        blocked updates permanently the only exit would be deleting a file by hand.
+        """
+        import hashlib
+
+        archive = _make_zip({"crm.exe": b"NEW-EXE"})
+        sums = {"crm-windows-x86_64.zip": hashlib.sha256(archive).hexdigest()}
+        self._wire(monkeypatch, archive, sums)
+        monkeypatch.setattr(update_mod.sys, "platform", "win32")
+        monkeypatch.setattr(update_mod, "spawn_finisher", lambda payload, handoff: 4321)
+
+        install = _bundle(tmp_path / "crm", "OLD")
+        handoff = _handoff(crm_home, install, tmp_path / "crm.new-1", parent_pid=os.getpid())
+        aged = time.time() - update_mod._HANDOFF_STALE_AFTER - 1
+        os.utime(handoff, (aged, aged))
+
+        result = perform_update(install_dir=install)
+
+        assert result["reason"] == "swap-deferred"
 
     def test_checksum_mismatch_leaves_install_intact(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

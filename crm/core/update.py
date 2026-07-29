@@ -733,12 +733,14 @@ def cleanup_stale_updates(install_dir: Path) -> None:
 
     Two kinds: the evacuated `<name>.old-*`, and the `<name>.new-*` payload the
     detached finisher ran from and therefore could not delete itself (#937). A
-    payload named by a handoff that is still on disk is skipped — that handoff
-    outlives its finisher by nothing, so its presence is the signal that a swap may
-    still be reading from that tree, and reaping it mid-copy would corrupt the very
-    bundle being installed.
+    payload named by a live handoff is skipped — that handoff is deleted as the
+    finisher's last act, so its presence is the signal that a swap may still be
+    reading from that tree, and reaping it mid-copy would corrupt the very bundle
+    being installed.
     """
     live = _payloads_in_use()
+    for handoff in _handoffs()[1]:
+        handoff.unlink(missing_ok=True)
     for leftover in install_dir.parent.glob(f"{install_dir.name}.old-*"):
         shutil.rmtree(leftover, ignore_errors=True)
     for leftover in install_dir.parent.glob(f"{install_dir.name}.new-*"):
@@ -769,16 +771,47 @@ _RESULT_NAME = "update-result.json"
 _PARENT_EXIT_TIMEOUT = 60.0
 _PARENT_POLL_INTERVAL = 0.05
 
+# When a handoff stops counting as a finisher that may still be working. The whole
+# job is a wait of milliseconds plus a bundle-sized copy, so anything this old lost
+# its process — and a crashed finisher must not block updates for good.
+_HANDOFF_STALE_AFTER = 300.0
+
 
 def result_path() -> Path:
     """Where the finisher records the outcome for the next `crm` run to report."""
     return _state_dir() / _RESULT_NAME
 
 
+def _handoffs(now: float | None = None) -> tuple[list[Path], list[Path]]:
+    """The handoff files on disk, as (live, stale) — see `_HANDOFF_STALE_AFTER`."""
+    ref = time.time() if now is None else now
+    live: list[Path] = []
+    stale: list[Path] = []
+    for handoff in sorted(_state_dir().glob(f"{_HANDOFF_STEM}-*.json")):
+        try:
+            age = ref - handoff.stat().st_mtime
+        except OSError:
+            continue
+        (live if age < _HANDOFF_STALE_AFTER else stale).append(handoff)
+    return live, stale
+
+
+def pending_handoff(now: float | None = None) -> Path | None:
+    """A handoff whose finisher has not reported yet, if there is one.
+
+    Two finishers running at once would evacuate the same install into two separate
+    parked trees and copy over each other's work, so a second `self-update` must not
+    stage while one is pending — and two `self-update` runs in quick succession is
+    exactly what a user does when the first one appears to have done nothing.
+    """
+    live, _ = _handoffs(now)
+    return live[0] if live else None
+
+
 def _payloads_in_use() -> set[str]:
     """Payload dirs a finisher may still be copying from, per the handoffs on disk."""
     live: set[str] = set()
-    for handoff in _state_dir().glob(f"{_HANDOFF_STEM}-*.json"):
+    for handoff in _handoffs()[0]:
         try:
             parsed = json.loads(handoff.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -1023,6 +1056,19 @@ def perform_update(
     if outdated:
         return {"updated": False, "current": current, "latest": latest, "reason": "up-to-date"}
 
+    to_version = latest.lstrip("vV")
+    windows = sys.platform.startswith("win")
+    if windows and pending_handoff() is not None:
+        # Refuse before the download: a second finisher would fight the first one for
+        # the same install (see `pending_handoff`), and the fetch would be wasted.
+        return {
+            "updated": False,
+            "pending": True,
+            "reason": "swap-already-staged",
+            "from_version": current,
+            "to_version": to_version,
+        }
+
     archive = platform_archive()
     if progress:
         progress(f"Downloading crm {latest}...")
@@ -1039,8 +1085,6 @@ def perform_update(
         shutil.rmtree(staged, ignore_errors=True)
     if progress:
         progress("Installing...")
-    to_version = latest.lstrip("vV")
-    windows = sys.platform.startswith("win")
     deferred = False
     try:
         _extract(archive, data, staged)
