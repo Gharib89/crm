@@ -22,7 +22,7 @@ import time
 import zipfile
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import IO, Any, cast
+from typing import IO, Any, NamedTuple, cast
 
 # requests is imported lazily inside the network functions below so that merely
 # importing this module (e.g. when `crm --help` imports the self-update command
@@ -738,8 +738,9 @@ def cleanup_stale_updates(install_dir: Path) -> None:
     reading from that tree, and reaping it mid-copy would corrupt the very bundle
     being installed.
     """
-    live = _payloads_in_use()
-    for handoff in _handoffs()[1]:
+    handoffs = _handoffs()
+    live = _payloads_in_use(handoffs.live)
+    for handoff in handoffs.stale:
         handoff.unlink(missing_ok=True)
     for leftover in install_dir.parent.glob(f"{install_dir.name}.old-*"):
         shutil.rmtree(leftover, ignore_errors=True)
@@ -764,6 +765,7 @@ def cleanup_stale_updates(install_dir: Path) -> None:
 
 _HANDOFF_STEM = "update-handoff"
 _RESULT_NAME = "update-result.json"
+_LOG_NAME = "update.log"
 
 # How long the finisher waits for the process that spawned it. That process exits
 # within milliseconds of the spawn, so this only has to outlast a slow interpreter
@@ -782,18 +784,35 @@ def result_path() -> Path:
     return _state_dir() / _RESULT_NAME
 
 
-def _handoffs(now: float | None = None) -> tuple[list[Path], list[Path]]:
-    """The handoff files on disk, as (live, stale) — see `_HANDOFF_STALE_AFTER`."""
+def log_path() -> Path:
+    """The finisher's append-only log — the record survives being reported.
+
+    `result_path()` is consumed by the run that reports it, so it is gone the moment
+    anyone reads the notice. This keeps one line per attempt, so a failure the user
+    scrolled past (or that happened under `--json`, where the notice never prints)
+    is still there to inspect. The failure notice names this file.
+    """
+    return _state_dir() / _LOG_NAME
+
+
+class _Handoffs(NamedTuple):
+    live: list[Path]
+    stale: list[Path]
+
+
+def _handoffs(now: float | None = None) -> _Handoffs:
+    """The handoff files on disk, split by whether their finisher may still be at
+    work — see `_HANDOFF_STALE_AFTER`.
+    """
     ref = time.time() if now is None else now
-    live: list[Path] = []
-    stale: list[Path] = []
+    found = _Handoffs(live=[], stale=[])
     for handoff in sorted(_state_dir().glob(f"{_HANDOFF_STEM}-*.json")):
         try:
             age = ref - handoff.stat().st_mtime
         except OSError:
             continue
-        (live if age < _HANDOFF_STALE_AFTER else stale).append(handoff)
-    return live, stale
+        (found.live if age < _HANDOFF_STALE_AFTER else found.stale).append(handoff)
+    return found
 
 
 def pending_handoff(now: float | None = None) -> Path | None:
@@ -804,14 +823,14 @@ def pending_handoff(now: float | None = None) -> Path | None:
     stage while one is pending — and two `self-update` runs in quick succession is
     exactly what a user does when the first one appears to have done nothing.
     """
-    live, _ = _handoffs(now)
+    live = _handoffs(now).live
     return live[0] if live else None
 
 
-def _payloads_in_use() -> set[str]:
-    """Payload dirs a finisher may still be copying from, per the handoffs on disk."""
+def _payloads_in_use(handoffs: list[Path]) -> set[str]:
+    """The payload dirs those handoffs name — trees a finisher may still be reading."""
     live: set[str] = set()
-    for handoff in _handoffs()[0]:
+    for handoff in handoffs:
         try:
             parsed = json.loads(handoff.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -933,6 +952,23 @@ def _write_result(record: dict[str, Any]) -> None:
     tmp.replace(path)
 
 
+def _append_log(record: Mapping[str, Any]) -> None:
+    """Append one line for this attempt. Suppressed: the report is what matters."""
+    stamp = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(float(record["at"])))
+    outcome = (
+        f"ok {record.get('from_version')} -> {record.get('to_version')}"
+        if record.get("ok")
+        else f"FAILED {record.get('from_version')} -> {record.get('to_version')}: "
+        f"{record.get('error')}"
+    )
+    warnings = cast("list[Any]", record.get("warnings") or [])
+    entries = [f"{stamp} {outcome}"]
+    entries.extend(f"{stamp} warning: {w}" for w in warnings)
+    with contextlib.suppress(OSError):
+        with log_path().open("a", encoding="utf-8") as fh:
+            fh.write("\n".join(entries) + "\n")
+
+
 def finish_deferred_swap(
     handoff_file: Path,
     *,
@@ -977,6 +1013,7 @@ def finish_deferred_swap(
             # never die with the record unwritten — the swap already landed.
             with contextlib.suppress(Exception):
                 record["warnings"] = refresh(str(record["to_version"] or ""), install)
+    _append_log(record)
     _write_result(record)
     # The handoff's absence is what marks the payload reapable — so it goes last,
     # after the record is durable.
@@ -1005,12 +1042,13 @@ def update_result_lines(record: Mapping[str, Any]) -> list[str]:
     """What the next run prints about a deferred swap: the outcome, then warnings."""
     to_version = record.get("to_version") or "?"
     if record.get("ok"):
-        lines = [f"crm was updated to {to_version}."]
+        lines = [f"Finished updating crm to {to_version}."]
     else:
         lines = [
             f"The last crm update to {to_version} could not be applied: "
             f"{record.get('error') or 'unknown error'} "
-            f"Your install is unchanged (still {record.get('from_version') or '?'})."
+            f"Your install is unchanged (still {record.get('from_version') or '?'}). "
+            f"Details: {log_path()}"
         ]
     warnings = record.get("warnings")
     if isinstance(warnings, list):

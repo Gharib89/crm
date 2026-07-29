@@ -220,8 +220,8 @@ def _frozen_update(ctx: CLIContext) -> None:
         if not ctx.json_mode:
             if result.get("reason") == "swap-already-staged":
                 ctx.skin.info(
-                    f"crm {result['to_version']} is already staged by an earlier run and is "
-                    "applied as that crm exits; the next run reports the outcome."
+                    f"Update to crm {result['to_version']} is already staged by an earlier run "
+                    "and is applied as that crm exits; the next run reports the outcome."
                 )
             else:
                 ctx.skin.info(

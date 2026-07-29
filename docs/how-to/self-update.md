@@ -59,8 +59,8 @@ to report (below). Running `self-update` again before that finishes reports the
 same staged version instead of starting a second swap:
 
 ```
-crm 1.2.4 is already staged by an earlier run and is applied as that crm exits;
-the next run reports the outcome.
+Update to crm 1.2.4 is already staged by an earlier run and is applied as
+that crm exits; the next run reports the outcome.
 ```
 
 The previous bundle is parked alongside the install as `crm.old-<pid>`, and the
@@ -92,14 +92,14 @@ command — any command, not just `self-update` — prints a one-off notice once
 finisher has recorded an outcome:
 
 ```
-crm was updated to 1.2.4.
+Finished updating crm to 1.2.4.
 ```
 
 or, if the swap could not complete:
 
 ```
 The last crm update to 1.2.4 could not be applied: <reason>. Your install is
-unchanged (still 1.2.3).
+unchanged (still 1.2.3). Details: C:\Users\you\.crm\update.log
 ```
 
 A skill/completion refresh warning from the finisher, if any, follows on its own
@@ -109,6 +109,17 @@ the record. It is **not** gated by `CRM_NO_UPDATE_CHECK` or `CI`: those opt out 
 the passive *update-available* check, not the outcome of an update you already
 ran. For the same reason it is not suppressed on a `self-update` run either — a
 second `self-update` is exactly where you would look for the first one's outcome.
+
+Because that notice is single-shot, the finisher also appends one line per attempt
+to `${CRM_HOME:-~/.crm}/update.log` — the file the failure notice names. That is
+where to look if you scrolled past the notice, or if the update ran under `--json`
+or a non-terminal stderr, where no notice is printed at all:
+
+```
+2026-07-28T09:14:02 ok 1.2.3 -> 1.2.4
+2026-07-29T11:02:55 FAILED 1.2.4 -> 1.2.5: Could not replace the installed files
+in C:\Users\you\AppData\Local\Programs\crm: [WinError 32] ...
+```
 
 ## The `--json` contract
 

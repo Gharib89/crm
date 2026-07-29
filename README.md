@@ -171,7 +171,9 @@ crm self-update --yes     # run the upgrade non-interactively (uv/pipx installs)
 ```
 
 - **Install-script binary** (Option 1) — downloads, checksum-verifies, and swaps
-  the bundle in place.
+  the bundle in place. On Windows a running bundle cannot replace itself, so the
+  swap is applied by a detached helper as `crm` exits and the *next* `crm` command
+  reports the outcome — see [how-to/self-update](docs/how-to/self-update.md).
 - **uv tool / pipx** (Option 2) — force-reinstalls from the latest release tag
   (`uv tool install --force git+…@vX.Y.Z`). On a terminal it shows the exact
   command and asks before running; non-interactively it runs only with `--yes`.
@@ -513,7 +515,7 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | `audit`      | Retrieve server-side D365 audit change history (`audit history` / `audit detail`) — distinct from the local `session audit` journal |
 | `session`    | Local session state, command history, and audit journal    |
 | `completion` | Print or install shell completion (bash/zsh/fish/powershell); install caches the script + prints the rc line to source |
-| `self-update` | Method-aware upgrade (frozen binary in place; uv/pipx force-reinstall; git guidance for editable/pip) and re-sync installed agent skills + shell completion; `--check` reports current vs latest |
+| `self-update` | Method-aware upgrade (frozen binary in place — deferred to a helper on Windows; uv/pipx force-reinstall; git guidance for editable/pip) and re-sync installed agent skills + shell completion; `--check` reports current vs latest |
 
 For a continuous redeploy loop during front-end development, pipe `entr` (or `watchexec`) into `webresource push`:
 

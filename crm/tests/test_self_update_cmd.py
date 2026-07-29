@@ -283,6 +283,7 @@ class TestDeferredResultSurfacedOnTheNextRun:
 
     def _record(self, ok: bool = True, **fields) -> None:
         import os
+        from pathlib import Path
 
         record = {
             "ok": ok,
@@ -293,9 +294,21 @@ class TestDeferredResultSurfacedOnTheNextRun:
             "to_version": "3.0.0",
         }
         record.update(fields)
-        root = __import__("pathlib").Path(os.environ["CRM_HOME"])
+        root = Path(os.environ["CRM_HOME"])
         root.mkdir(parents=True, exist_ok=True)
         (root / "update-result.json").write_text(json.dumps(record), encoding="utf-8")
+
+    def test_the_file_cli_probes_for_is_the_one_the_finisher_writes(self):
+        """`crm.cli._deferred_update_recorded` repeats the record's filename rather than
+        importing the update module (a cost every command would pay). Nothing else pins
+        the two together, so a rename would silence the notice with a green suite.
+        """
+        import crm.cli as cli_mod
+
+        assert cli_mod._deferred_update_recorded() is False
+        update_mod.result_path().parent.mkdir(parents=True, exist_ok=True)
+        update_mod.result_path().write_text("{}", encoding="utf-8")
+        assert cli_mod._deferred_update_recorded() is True
 
     def test_an_unrelated_command_reports_the_failure(self, monkeypatch):
         """`CRM_NO_UPDATE_CHECK` is set by this module's autouse fixture: opting out of

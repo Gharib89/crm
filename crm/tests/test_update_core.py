@@ -1013,6 +1013,43 @@ class TestDeferredFinisher:
         assert not handoff.exists()
         assert json.loads(update_mod.result_path().read_text(encoding="utf-8"))["ok"] is True
 
+    def test_logs_every_attempt_so_a_failure_outlives_the_notice(
+        self, tmp_path: Path, crm_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The record is deleted by the run that reports it, and under `--json` nothing
+        reports it at all — so the log is the only durable account of a failed swap.
+        """
+        install = _bundle(tmp_path / "crm", "OLD")
+        payload = _bundle(tmp_path / "crm.new-1", "NEW")
+
+        def boom(*a: object, **k: object) -> None:
+            raise UpdateError("the install directory would not budge")
+
+        monkeypatch.setattr(update_mod, "swap_bundle", boom)
+        handoff = _handoff(crm_home, install, payload, parent_pid=_reaped_pid())
+        update_mod.finish_deferred_swap(handoff)
+
+        entries = update_mod.log_path().read_text(encoding="utf-8").splitlines()
+        assert len(entries) == 1
+        assert "FAILED 2.9.0 -> 3.0.0: the install directory would not budge" in entries[0]
+
+    def test_the_log_accumulates_rather_than_replacing(
+        self, tmp_path: Path, crm_home: Path
+    ) -> None:
+        """One update's outcome must not erase the previous one's — a user reading the
+        log after a failed update is looking for the history, not the latest line.
+        """
+        install = _bundle(tmp_path / "crm", "OLD")
+        for n in (1, 2):
+            payload = _bundle(tmp_path / f"crm.new-{n}", "NEW")
+            handoff = _handoff(
+                crm_home, install, payload, parent_pid=_reaped_pid(), to_version=f"3.0.{n}"
+            )
+            update_mod.finish_deferred_swap(handoff)
+
+        entries = update_mod.log_path().read_text(encoding="utf-8").splitlines()
+        assert [e.split()[-1] for e in entries] == ["3.0.1", "3.0.2"]
+
     def test_refreshes_only_after_a_successful_swap(
         self, tmp_path: Path, crm_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -1123,7 +1160,7 @@ class TestUpdateResultNotice:
         assert update_mod.emit_update_result_notice(
             json_mode=False, stderr_isatty=True, stream=stream
         )
-        assert "crm was updated to 3.0.0." in stream.getvalue()
+        assert "Finished updating crm to 3.0.0." in stream.getvalue()
         # Consumed: a second command must not repeat it.
         assert not update_mod.emit_update_result_notice(
             json_mode=False, stderr_isatty=True, stream=io.StringIO()
@@ -1141,6 +1178,8 @@ class TestUpdateResultNotice:
         assert "could not be applied" in out
         assert "Could not replace the installed files." in out
         assert "still 2.9.0" in out
+        # The notice is single-shot; the log is where the user can still read it after.
+        assert str(update_mod.log_path()) in out
 
     def test_passes_on_the_finishers_warnings(self, crm_home: Path) -> None:
         import io

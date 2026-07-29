@@ -1192,6 +1192,10 @@ def _emit_update_notice(result: Any, **_kwargs: Any) -> None:
     # A Windows swap is applied by a detached finisher after the `crm self-update`
     # that staged it has exited, so the outcome can only be reported by a later
     # command — this one.
+    # The two checks here are a cheap pre-gate, not the authority: they answer "is it
+    # worth importing the update module at all" without touching it. `emit_…` re-proves
+    # both conditions for its own callers, so passing what this gate already established
+    # is a formality.
     if _deferred_result_eligible(json_mode) and _deferred_update_recorded():
         from crm.core import update as update_mod
 
