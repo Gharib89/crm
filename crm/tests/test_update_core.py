@@ -710,7 +710,11 @@ class TestSwapBundle:
 
         assert "install.ps1" in str(excinfo.value)
         # The user has to know *which* file would not move to act on this at all.
-        assert str(install / "crm.exe") in str(excinfo.value)
+        # Matched on the basename, not the full path: with `winerror` set,
+        # `OSError.__str__` formats the filename with `%R`, so on Windows the
+        # message carries the repr — backslashes doubled — and never contains
+        # `str(path)` verbatim.
+        assert "crm.exe" in str(excinfo.value)
         assert (install / "crm.exe").read_text(encoding="utf-8") == "OLD"
         assert (install / "_internal" / "python313.dll").read_text(encoding="utf-8") == "OLD"
         assert list(tmp_path.glob("crm.old-*")) == []
@@ -799,6 +803,31 @@ class TestSwapBundle:
 
         assert (install / "crm.exe").read_text(encoding="utf-8") == "NEW"
         assert (install / "_internal" / "python313.dll").read_text(encoding="utf-8") == "NEW"
+
+    def test_windows_swap_does_not_claim_a_retry_window_it_never_used(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The swap walks directories as well as moving files, and an enumeration is
+        not retried — there is no single call to repeat. A sharing violation from one
+        must therefore NOT be reported as having outlived the retry window, or the
+        message sends the user after a persistent holder that was never established.
+        """
+        install = _bundle(tmp_path / "crm", "OLD")
+        new = _bundle(tmp_path / "staged", "NEW")
+        real_iterdir = Path.iterdir
+
+        def lock_the_walk(self: Path) -> Any:
+            if self == install:  # the skeleton walk, after evacuation succeeded
+                raise _sharing_violation(self)
+            return real_iterdir(self)
+
+        monkeypatch.setattr(Path, "iterdir", lock_the_walk)
+
+        with pytest.raises(UpdateError, match="intact and still works") as excinfo:
+            swap_bundle(install, new, windows=True)
+
+        assert "outlived the retry window" not in str(excinfo.value)
+        assert (install / "crm.exe").read_text(encoding="utf-8") == "OLD"
 
     def test_cleanup_removes_parked(self, tmp_path: Path) -> None:
         install = tmp_path / "crm"

@@ -546,6 +546,18 @@ _LOCK_RETRY_DELAYS = (0.05, 0.1, 0.2, 0.4, 0.8, 1.0)
 _TRANSIENT_LOCK_WINERRORS = (32, 33)
 
 
+class _LockPersisted(OSError):
+    """A step hit a transient lock on every attempt of the retry ladder.
+
+    Subclasses OSError so the swap's handler catches it alongside any other
+    filesystem failure. The *type* is what records that the ladder ran out, because
+    the error code cannot: steps that are not retried — the directory enumerations
+    the swap walks, say — raise the very same sharing violation, and inferring
+    exhaustion from the code alone would blame a persistent holder for what was
+    only ever one un-retried attempt.
+    """
+
+
 def _is_transient_windows_lock(exc: OSError) -> bool:
     """True when `exc` is another process's momentary handle, so worth retrying."""
     return getattr(exc, "winerror", None) in _TRANSIENT_LOCK_WINERRORS
@@ -554,10 +566,9 @@ def _is_transient_windows_lock(exc: OSError) -> bool:
 def _through_transient_lock(action: Callable[..., object], *args: Any, **kwargs: Any) -> None:
     """Run `action(*args, **kwargs)`, waiting out a transient lock on what it touches.
 
-    `_LOCK_RETRY_DELAYS` is read at call time, so a test can shorten the ladder. The
-    final attempt is deliberately outside the loop so its error propagates unwrapped
-    — the caller distinguishes an exhausted ladder by the fact that *every* mutating
-    step of the swap goes through here, not by re-reading the error code.
+    `_LOCK_RETRY_DELAYS` is read at call time, so a test can shorten the ladder. A
+    lock still held after the last attempt is re-raised as `_LockPersisted`, carrying
+    the original message; anything else propagates untouched.
     """
     for delay in _LOCK_RETRY_DELAYS:
         try:
@@ -567,7 +578,12 @@ def _through_transient_lock(action: Callable[..., object], *args: Any, **kwargs:
             if not _is_transient_windows_lock(exc):
                 raise
         time.sleep(delay)
-    action(*args, **kwargs)
+    try:
+        action(*args, **kwargs)
+    except OSError as exc:
+        if _is_transient_windows_lock(exc):
+            raise _LockPersisted(str(exc)) from exc
+        raise
 
 
 def _windows_swap(install_dir: Path, staged: Path, old: Path) -> None:
@@ -637,10 +653,11 @@ def _windows_swap(install_dir: Path, staged: Path, old: Path) -> None:
         # Say so when the retries ran out, rather than only naming the raw error:
         # a lock that survives the whole ladder is held persistently, which is a
         # different cause (and a different fix) from the scan this retries for.
+        # Keyed on the type, not the error code — see `_LockPersisted`.
         stuck = (
             " That lock outlived the retry window, so a process is holding the file "
             "open persistently rather than for the moment a scan takes."
-            if _is_transient_windows_lock(exc)
+            if isinstance(exc, _LockPersisted)
             else ""
         )
         raise UpdateError(
