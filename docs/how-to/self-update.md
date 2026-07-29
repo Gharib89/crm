@@ -23,10 +23,11 @@ crm self-update
 - **Install-script binary (frozen)** — downloads the platform archive, verifies
   it against the published `SHA256SUMS` (the same integrity check the install
   script uses), and swaps the bundle in place — the `crm` launcher on your PATH
-  keeps working. It confirms the outcome on the last line — `Updated crm 1.2.3 ->
-  1.2.4.`, or an already-up-to-date note naming the current version when there was
-  nothing to do. A checksum mismatch or download failure leaves the existing install
-  untouched and exits non-zero.
+  keeps working. On Linux it confirms the outcome on the last line — `Updated crm
+  1.2.3 -> 1.2.4.`, or an already-up-to-date note naming the current version when
+  there was nothing to do. A checksum mismatch or download failure leaves the
+  existing install untouched and exits non-zero. **On Windows the swap itself is
+  deferred** — see below.
 - **uv tool / pipx** — force-reinstalls from the latest release tag
   (`uv tool install --force git+https://github.com/Gharib89/crm@vX.Y.Z`, or the
   pipx equivalent). `--force` is used because uv/pipx pin the git commit and a
@@ -40,13 +41,34 @@ crm self-update
 crm self-update --yes     # run the uv/pipx reinstall without the prompt (scripts/CI)
 ```
 
-On the Windows binary install, the running `crm.exe` and its `_internal\*.dll`
-images are open files inside the install directory, so `self-update` replaces
-the bundle's files in place rather than renaming the directory. The previous
-bundle is parked alongside it as `crm.old-<pid>` and is cleaned up automatically
-on a later `self-update` run, once those files are no longer in use. If the swap
-can't complete, the files that had moved are put back, so the existing install is
-left working, and the error points you at `install.ps1` as the fallback.
+On the Windows binary install, PyInstaller's bootloader holds a file inside the
+running bundle open for the whole life of the process, so `crm.exe` can never
+replace its own install while it is the one running `self-update`. So the new
+bundle is staged beside the install and a detached copy of the *staged* `crm.exe`
+is launched to finish the job; the command you ran then exits, prints:
+
+```
+Staged crm 1.2.4. It is applied as crm exits; the next run reports the outcome.
+```
+
+and the finisher takes over: once it sees the parent process gone, it replaces
+the bundle's files in place (one file at a time, not by renaming the directory,
+because the running `crm.exe`'s images are open files inside it), re-syncs
+installed skills/completion, and records the outcome for the *next* `crm` command
+to report (below). Running `self-update` again before that finishes reports the
+same staged version instead of starting a second swap:
+
+```
+crm 1.2.4 is already staged by an earlier run and is applied as that crm exits;
+the next run reports the outcome.
+```
+
+The previous bundle is parked alongside the install as `crm.old-<pid>`, and the
+staged payload the finisher ran from is parked as `crm.new-<pid>`; both are
+cleaned up automatically on a later `self-update` run, once they are no longer in
+use. If the swap can't complete, the files that had moved are put back, so the
+existing install is left working, and the error points you at `install.ps1` as
+the fallback.
 
 Writing inside a program directory tends to wake a virus scanner or the search
 indexer, and while one of those holds a file open the move is refused. Each step of
@@ -61,6 +83,32 @@ error says so explicitly, and names the `crm.old-<pid>` directory: with the
 install then split across the two, that directory holds the only copy of the
 files that moved. **Keep it** — copy it somewhere safe before you re-run
 `install.ps1`, because a later `self-update` reaps parked directories.
+
+### The next run reports a Windows swap's outcome
+
+Because the finisher runs after `self-update` has already exited, no command is
+still open to print a confirmation or a failure. Instead, the **next** `crm`
+command — any command, not just `self-update` — prints a one-off notice once the
+finisher has recorded an outcome:
+
+```
+crm was updated to 1.2.4.
+```
+
+or, if the swap could not complete:
+
+```
+The last crm update to 1.2.4 could not be applied: <reason>. Your install is
+unchanged (still 1.2.3).
+```
+
+A skill/completion refresh warning from the finisher, if any, follows on its own
+line. The notice prints on a human terminal only (never under `--json`, and never
+when stderr isn't a terminal) and is reported exactly once — reading it deletes
+the record. It is **not** gated by `CRM_NO_UPDATE_CHECK` or `CI`: those opt out of
+the passive *update-available* check, not the outcome of an update you already
+ran. For the same reason it is not suppressed on a `self-update` run either — a
+second `self-update` is exactly where you would look for the first one's outcome.
 
 ## The `--json` contract
 
@@ -84,6 +132,15 @@ on a failed upgrade — while still carrying the same `data` fields
 `--check` is unchanged and method-agnostic (`data.current`, `data.latest`,
 `data.update_available`).
 
+On the frozen path, a normal in-process swap emits `updated: true` with
+`from_version`/`to_version`. A **deferred Windows swap** (above) emits
+`updated: false`, `pending: true`, `reason: "swap-deferred"` (freshly staged) or
+`reason: "swap-already-staged"` (one was already pending), and the same
+`from_version`/`to_version` — a scripter keying off `updated` will not mistake a
+staged-but-not-yet-applied payload for a completed upgrade. The outcome itself
+only ever shows up in the next command's *human* notice (above); under `--json`
+it is never mixed into an unrelated command's envelope.
+
 ## Keeping installed skills in sync
 
 Every non-`--check` `self-update` re-syncs the agent skills you installed with
@@ -106,6 +163,11 @@ pruned | error`):
 
 A skill-refresh failure never aborts the binary update — the command still
 reports `ok:true` when the upgrade itself succeeded.
+
+On a **deferred Windows swap** the finisher does this work instead, after the new
+bundle is in place — refreshing earlier would leave a new skill tree beside the
+old binary. So the deferred envelope carries no `data.skills`, and a refresh
+failure shows up as an extra line under the next run's outcome notice (above).
 
 ## The passive update notice
 
