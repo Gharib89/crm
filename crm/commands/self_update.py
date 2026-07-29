@@ -181,6 +181,26 @@ def _post_upgrade_refresh() -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
+def _finisher_refresh(to_version: str, install: Path) -> list[str]:
+    """Re-sync recorded skills/completion from the just-installed bundle (#937).
+
+    Runs in the detached finisher, which is the NEW build — so completion renders
+    in-process rather than by shelling out to a binary, and the skill tree is read
+    off the install it has just put in place. Returns the warnings the next `crm`
+    run should print; an empty list means everything re-synced cleanly.
+    """
+    warnings: list[str] = []
+    for entry in _refresh_skills(to_version, _frozen_skill_src(install)):
+        if entry.get("status") == "error":
+            warnings.append(
+                f"Could not refresh the installed crm agent skill: {entry.get('error')}"
+            )
+    completion = _refresh_completion(to_version, completion_registry.generate_source)
+    if completion is not None and completion.get("status") == "error":
+        warnings.append(f"Could not refresh shell completion: {completion.get('error')}")
+    return warnings
+
+
 def _frozen_update(ctx: CLIContext) -> None:
     """Frozen (PyInstaller) install: download → verify → swap the bundle in place."""
     progress_cb = (lambda msg: click.echo(msg)) if not ctx.json_mode else None
@@ -190,6 +210,24 @@ def _frozen_update(ctx: CLIContext) -> None:
         result = update_mod.perform_update(install_dir=target, progress=progress_cb)
     except update_mod.UpdateError as exc:
         ctx.emit(False, error=str(exc))
+        return
+    if result.get("pending"):
+        # Windows: the swap happens in a detached finisher once this process exits,
+        # because a running bundle cannot replace itself (#937). Nothing is installed
+        # yet, so there is no new skill tree to refresh from and no outcome to
+        # confirm — the finisher does both, and the next run reports them.
+        ctx.emit(True, data=result)
+        if not ctx.json_mode:
+            if result.get("reason") == "swap-already-staged":
+                ctx.skin.info(
+                    f"Update to crm {result['to_version']} is already staged by an earlier run "
+                    "and is applied as that crm exits; the next run reports the outcome."
+                )
+            else:
+                ctx.skin.info(
+                    f"Staged crm {result['to_version']}. It is applied as crm exits; "
+                    "the next run reports the outcome."
+                )
         return
     # After the bundle swap the new skill tree is on disk under the install dir;
     # the running process is still the old version, so refresh to `to_version`.
@@ -339,9 +377,33 @@ def _method_aware_update(ctx: CLIContext, method: str, yes: bool) -> None:
     hidden=True,
     help="Internal: re-sync recorded skills/completion from the running package (no upgrade).",
 )
+@click.option(
+    "--finish-update",
+    "finish_update",
+    type=click.Path(dir_okay=False, path_type=Path),
+    hidden=True,
+    help="Internal: apply a staged update described by a handoff file, then exit.",
+)
 @pass_ctx
-def self_update_cmd(ctx: CLIContext, check_only: bool, yes: bool, refresh_only: bool) -> None:
+def self_update_cmd(
+    ctx: CLIContext,
+    check_only: bool,
+    yes: bool,
+    refresh_only: bool,
+    finish_update: Path | None,
+) -> None:
     """Update the crm CLI (method-aware) or report available updates."""
+    if finish_update is not None:
+        # The detached finisher: this process is the staged build, launched by the
+        # `crm` being replaced so the swap happens after that one exits (#937).
+        # Checked first, and never touching the upgrade path, so it cannot recurse.
+        record = update_mod.finish_deferred_swap(finish_update, refresh=_finisher_refresh)
+        if record.get("ok"):
+            ctx.emit(True, data=record)
+        else:
+            ctx.emit(False, data=record, error=str(record.get("error") or "unknown error"))
+        return
+
     if check_only:
         try:
             result = update_mod.check_for_update()

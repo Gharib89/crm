@@ -8,8 +8,10 @@ import json
 import pytest
 from click.testing import CliRunner
 
+import crm.commands.self_update as self_update_mod
 import crm.core.update as update_mod
 from crm.cli import cli
+from crm.commands import completion_registry, skill_registry
 
 
 @pytest.fixture(autouse=True)
@@ -272,6 +274,85 @@ class TestEligibilityIsFailSilent:
         monkeypatch.setattr(sys, "stderr", _BadStderr())
         # Must not raise; a stderr that can't report TTY-ness → skip the check.
         assert _update_check_eligible(json_mode=False) is False
+
+
+class TestDeferredResultSurfacedOnTheNextRun:
+    """The finisher applies the swap after `self-update` has exited, so the outcome can
+    only be reported by a later command (#937).
+    """
+
+    def _record(self, ok: bool = True, **fields) -> None:
+        import os
+        from pathlib import Path
+
+        record = {
+            "ok": ok,
+            "at": 1.0,
+            "error": None if ok else "Could not replace the installed files.",
+            "warnings": [],
+            "from_version": "2.9.0",
+            "to_version": "3.0.0",
+        }
+        record.update(fields)
+        root = Path(os.environ["CRM_HOME"])
+        root.mkdir(parents=True, exist_ok=True)
+        (root / "update-result.json").write_text(json.dumps(record), encoding="utf-8")
+
+    def test_the_file_cli_probes_for_is_the_one_the_finisher_writes(self):
+        """`crm.cli._deferred_update_recorded` repeats the record's filename rather than
+        importing the update module (a cost every command would pay). Nothing else pins
+        the two together, so a rename would silence the notice with a green suite.
+        """
+        import crm.cli as cli_mod
+
+        assert cli_mod._deferred_update_recorded() is False
+        update_mod.result_path().parent.mkdir(parents=True, exist_ok=True)
+        update_mod.result_path().write_text("{}", encoding="utf-8")
+        assert cli_mod._deferred_update_recorded() is True
+
+    def test_an_unrelated_command_reports_the_failure(self, monkeypatch):
+        """`CRM_NO_UPDATE_CHECK` is set by this module's autouse fixture: opting out of
+        update *checks* must not silence the news that an update failed.
+        """
+        import crm.cli as cli_mod
+
+        self._record(ok=False)
+        # CliRunner's streams are never TTYs, so the gate itself is unit-tested in
+        # test_update_core; this asserts the wiring behind it.
+        monkeypatch.setattr(cli_mod, "_deferred_result_eligible", lambda json_mode: not json_mode)
+
+        result = CliRunner().invoke(cli, ["describe", "profile"])
+
+        assert result.exit_code == 0
+        assert "could not be applied" in result.stderr
+        assert "still 2.9.0" in result.stderr
+
+    def test_json_mode_keeps_the_envelope_clean_and_the_record_intact(self, monkeypatch):
+        import os
+
+        import crm.cli as cli_mod
+
+        self._record(ok=False)
+        # CliRunner's streams are never TTYs, so the gate itself is unit-tested in
+        # test_update_core; this asserts the wiring behind it.
+        monkeypatch.setattr(cli_mod, "_deferred_result_eligible", lambda json_mode: not json_mode)
+
+        result = CliRunner().invoke(cli, ["--json", "describe", "profile"])
+
+        assert result.exit_code == 0
+        assert "could not be applied" not in result.stderr
+        json.loads(result.stdout)  # a valid envelope, unpolluted
+        assert (__import__("pathlib").Path(os.environ["CRM_HOME"]) / "update-result.json").exists()
+
+    def test_nothing_recorded_means_nothing_printed(self, monkeypatch):
+        import crm.cli as cli_mod
+
+        monkeypatch.setattr(cli_mod, "_deferred_result_eligible", lambda json_mode: not json_mode)
+
+        result = CliRunner().invoke(cli, ["describe", "profile"])
+
+        assert result.exit_code == 0
+        assert "could not be applied" not in result.stderr
 
 
 class TestNoticeSuppressedForSelfUpdate:
@@ -640,3 +721,159 @@ class TestFrozenUpdate:
         result = CliRunner().invoke(cli, ["--json", "self-update"])
         assert result.exit_code == 1
         assert json.loads(result.output)["ok"] is False
+
+
+class TestFrozenUpdateDeferred:
+    """Windows stages the payload and hands the swap to a detached finisher (#937)."""
+
+    @pytest.fixture(autouse=True)
+    def _frozen_pending(self, monkeypatch):
+        monkeypatch.setattr(update_mod, "is_frozen", lambda: True)
+        monkeypatch.setattr(
+            update_mod, "install_dir", lambda: __import__("pathlib").Path("/tmp/crm")
+        )
+        monkeypatch.setattr(update_mod, "cleanup_stale_updates", lambda *a, **k: None)
+        monkeypatch.setattr(
+            update_mod,
+            "perform_update",
+            lambda *a, **k: {
+                "updated": False,
+                "pending": True,
+                "reason": "swap-deferred",
+                "from_version": "2.9.0",
+                "to_version": "3.0.0",
+            },
+        )
+
+    def test_human_mode_says_the_update_is_staged_not_done(self):
+        """Claiming "Updated crm ..." here would be a lie — nothing has been replaced
+        when this line prints.
+        """
+        result = CliRunner().invoke(cli, ["self-update"])
+        assert result.exit_code == 0
+        assert "Staged crm 3.0.0" in result.stdout
+        assert "Updated crm" not in result.stdout
+
+    def test_json_reports_pending_without_claiming_an_update(self):
+        """A scripter keying off `updated` must not read a staged payload as done."""
+        result = CliRunner().invoke(cli, ["--json", "self-update"])
+        assert result.exit_code == 0
+        data = json.loads(result.stdout)["data"]
+        assert data["updated"] is False
+        assert data["pending"] is True
+        assert data["reason"] == "swap-deferred"
+        assert data["to_version"] == "3.0.0"
+
+    def test_does_not_refresh_skills_from_an_install_that_has_not_changed(
+        self, monkeypatch
+    ) -> None:
+        """The new bundle is not in place yet, so refreshing now would copy the OLD
+        skill tree over the recorded one. The finisher does it after the swap.
+        """
+        called: list[object] = []
+        monkeypatch.setattr(
+            skill_registry, "refresh_skills", lambda *a, **k: called.append(a) or []
+        )
+        result = CliRunner().invoke(cli, ["self-update"])
+        assert result.exit_code == 0
+        assert called == []
+
+    def test_says_an_earlier_run_already_staged_it(self, monkeypatch):
+        """Saying "Staged crm 3.0.0" here would read as "this run did it" — but this run
+        declined to stage, and pointing at the earlier run is what explains the silence.
+        """
+        monkeypatch.setattr(
+            update_mod,
+            "perform_update",
+            lambda *a, **k: {
+                "updated": False,
+                "pending": True,
+                "reason": "swap-already-staged",
+                "from_version": "2.9.0",
+                "to_version": "3.0.0",
+            },
+        )
+        result = CliRunner().invoke(cli, ["self-update"])
+        assert result.exit_code == 0
+        assert "already staged by an earlier run" in result.stdout
+
+
+class TestFinisherEntry:
+    """`--finish-update` — the hidden entry the detached finisher runs itself as."""
+
+    def test_applies_the_handoff_and_reports_the_record(self, monkeypatch, tmp_path):
+        handoff = tmp_path / "handoff.json"
+        handoff.write_text("{}", encoding="utf-8")
+        seen: list[tuple[object, object]] = []
+
+        def fake_finish(path, *, refresh=None):
+            seen.append((path, refresh))
+            return {"ok": True, "to_version": "3.0.0", "warnings": []}
+
+        monkeypatch.setattr(update_mod, "finish_deferred_swap", fake_finish)
+
+        result = CliRunner().invoke(cli, ["--json", "self-update", "--finish-update", str(handoff)])
+
+        assert result.exit_code == 0
+        assert json.loads(result.stdout)["data"]["to_version"] == "3.0.0"
+        path, refresh = seen[0]
+        assert path == handoff
+        assert refresh is not None, "the finisher must re-sync skills/completion after the swap"
+
+    def test_a_failed_swap_exits_nonzero(self, monkeypatch, tmp_path):
+        handoff = tmp_path / "handoff.json"
+        handoff.write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(
+            update_mod,
+            "finish_deferred_swap",
+            lambda path, **k: {"ok": False, "error": "locked", "warnings": []},
+        )
+
+        result = CliRunner().invoke(cli, ["--json", "self-update", "--finish-update", str(handoff)])
+
+        assert result.exit_code == 1
+        payload = json.loads(result.stdout)
+        assert payload["ok"] is False
+        assert "locked" in payload["error"]
+
+    def test_never_reaches_the_upgrade_path(self, monkeypatch, tmp_path):
+        """It runs as the staged build; re-entering the upgrade would download again."""
+        handoff = tmp_path / "handoff.json"
+        handoff.write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(
+            update_mod, "finish_deferred_swap", lambda path, **k: {"ok": True, "warnings": []}
+        )
+
+        def unreachable(*a, **k):
+            raise AssertionError("the finisher must not run an update")
+
+        monkeypatch.setattr(update_mod, "perform_update", unreachable)
+        monkeypatch.setattr(update_mod, "check_for_update", unreachable)
+
+        result = CliRunner().invoke(cli, ["--json", "self-update", "--finish-update", str(handoff)])
+        assert result.exit_code == 0
+
+
+class TestFinisherRefresh:
+    """What the finisher re-syncs once the new bundle is in place."""
+
+    def test_reports_a_skill_refresh_failure_as_a_warning(self, monkeypatch, tmp_path):
+        """A silent stale skill tree is what this guards against — the finisher has no
+        console, so the failure has to travel to the next run as text.
+        """
+        skills = tmp_path / "crm" / "skills"
+        skills.mkdir(parents=True)
+        (skills / "SKILL.md").write_text("x", encoding="utf-8")
+        monkeypatch.setattr(
+            skill_registry, "refresh_skills", lambda *a, **k: [{"status": "error", "error": "nope"}]
+        )
+        monkeypatch.setattr(completion_registry, "refresh_completion", lambda *a, **k: None)
+
+        warnings = self_update_mod._finisher_refresh("3.0.0", tmp_path)
+
+        assert warnings == ["Could not refresh the installed crm agent skill: nope"]
+
+    def test_clean_refresh_reports_nothing(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(completion_registry, "refresh_completion", lambda *a, **k: None)
+
+        assert self_update_mod._finisher_refresh("3.0.0", tmp_path) == []

@@ -3,6 +3,11 @@
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
+import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -536,19 +541,32 @@ class TestSwapBundle:
         assert not new.exists()
         assert list(tmp_path.glob("*.old*")) == []
 
-    def test_windows_swap_parks_old_for_later(self, tmp_path: Path) -> None:
-        install = tmp_path / "crm"
-        install.mkdir()
-        (install / "crm.exe").write_text("OLD", encoding="utf-8")
-        new = tmp_path / "staged"
-        new.mkdir()
-        (new / "crm.exe").write_text("NEW", encoding="utf-8")
+    def test_windows_swap_copies_the_payload_in_and_leaves_it(self, tmp_path: Path) -> None:
+        """The swap now runs in the detached finisher, which executes FROM the payload
+        — so its own bundle files are open, and moving the payload in would hit the
+        very sharing violation the detached design exists to avoid (#937). The
+        payload is copied instead, and survives for `cleanup_stale_updates` to reap.
+        """
+        install = _bundle(tmp_path / "crm", "OLD")
+        payload = _bundle(tmp_path / "crm.new-1", "NEW")
 
-        swap_bundle(install, new, windows=True)
+        swap_bundle(install, payload, windows=True)
 
         assert (install / "crm.exe").read_text(encoding="utf-8") == "NEW"
-        parked = list(tmp_path.glob("crm.old*"))
-        assert len(parked) == 1  # running bundle parked, cleaned next run
+        assert (install / "_internal" / "tcl" / "init.tcl").read_text(encoding="utf-8") == "NEW"
+        assert (payload / "crm.exe").read_text(encoding="utf-8") == "NEW"
+
+    def test_windows_swap_removes_the_old_tree_once_the_payload_is_in(self, tmp_path: Path) -> None:
+        """Nothing holds the evacuated files open any more — the process that did
+        was the one that exited to let the finisher run — so the old tree goes now
+        rather than waiting for a later run to reap it (#937).
+        """
+        install = _bundle(tmp_path / "crm", "OLD")
+        payload = _bundle(tmp_path / "crm.new-1", "NEW")
+
+        swap_bundle(install, payload, windows=True)
+
+        assert list(tmp_path.glob("crm.old-*")) == []
 
     def test_windows_swap_keeps_the_install_dir_itself(self, tmp_path: Path) -> None:
         """The running `crm.exe` and its loaded DLLs live inside `install_dir`, and
@@ -567,19 +585,6 @@ class TestSwapBundle:
         assert (install / "crm.exe").read_text(encoding="utf-8") == "NEW"
         assert (install / "_internal" / "python313.dll").read_text(encoding="utf-8") == "NEW"
         assert (install / "_internal" / "tcl" / "init.tcl").read_text(encoding="utf-8") == "NEW"
-        assert not new.exists()
-
-    def test_windows_swap_parks_the_whole_old_tree(self, tmp_path: Path) -> None:
-        install = _bundle(tmp_path / "crm", "OLD")
-        new = _bundle(tmp_path / "staged", "NEW")
-
-        swap_bundle(install, new, windows=True)
-
-        parked = list(tmp_path.glob("crm.old-*"))
-        assert len(parked) == 1  # running bundle parked, cleaned next run
-        assert (parked[0] / "crm.exe").read_text(encoding="utf-8") == "OLD"
-        assert (parked[0] / "_internal" / "python313.dll").read_text(encoding="utf-8") == "OLD"
-        assert (parked[0] / "_internal" / "tcl" / "init.tcl").read_text(encoding="utf-8") == "OLD"
 
     def test_windows_swap_restores_install_when_a_file_cannot_be_moved(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -629,35 +634,41 @@ class TestSwapBundle:
 
         monkeypatch.setattr(Path, "rename", deny_exe_and_undo)
 
-        with pytest.raises(UpdateError, match="restoring the previous install then failed"):
+        with pytest.raises(UpdateError, match="restoring the previous install then failed") as exc:
             swap_bundle(install, new, windows=True)
 
         parked = list(tmp_path.glob("crm.old-*"))
         assert len(parked) == 1
         assert (parked[0] / "_internal" / "python313.dll").read_text(encoding="utf-8") == "OLD"
+        # The flag the failure notice keys "your install is unchanged" on.
+        assert exc.value.install_intact is False
 
-    def test_windows_swap_restores_install_when_promotion_fails(
+    def test_windows_swap_restores_install_when_the_copy_fails(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Failing *after* the old files are evacuated must still put every one of
-        them back — the emptied directory skeleton included.
+        them back — the emptied directory skeleton included, and whatever the
+        half-finished copy already wrote over those names.
         """
         install = _bundle(tmp_path / "crm", "OLD")
-        new = _bundle(tmp_path / "staged", "NEW")
-        real_rename = Path.rename
+        payload = _bundle(tmp_path / "crm.new-1", "NEW")
+        real_copytree = update_mod.shutil.copytree
 
-        def deny_promotion(self: Path, target: Path) -> Path:
-            if self.parent == new:
-                raise PermissionError(13, "Permission denied")
-            return real_rename(self, target)
+        def half_copy(src: Path, dst: Path, **kwargs: Any) -> None:
+            # One file lands before the failure, so the undo has to remove it to free
+            # the name the original needs back.
+            (Path(dst) / "crm.exe").write_text("NEW", encoding="utf-8")
+            raise PermissionError(13, "Permission denied")
 
-        monkeypatch.setattr(Path, "rename", deny_promotion)
+        monkeypatch.setattr(update_mod.shutil, "copytree", half_copy)
+        assert real_copytree is not half_copy
 
         with pytest.raises(UpdateError, match="install.ps1"):
-            swap_bundle(install, new, windows=True)
+            swap_bundle(install, payload, windows=True)
 
         assert (install / "crm.exe").read_text(encoding="utf-8") == "OLD"
         assert (install / "_internal" / "python313.dll").read_text(encoding="utf-8") == "OLD"
+        assert (install / "_internal" / "tcl" / "init.tcl").read_text(encoding="utf-8") == "OLD"
         assert list(tmp_path.glob("crm.old-*")) == []
 
     def test_windows_swap_retries_a_lock_that_clears(
@@ -684,7 +695,6 @@ class TestSwapBundle:
 
         assert (install / "crm.exe").read_text(encoding="utf-8") == "NEW"
         assert (install / "_internal" / "python313.dll").read_text(encoding="utf-8") == "NEW"
-        assert not new.exists()
 
     def test_windows_swap_gives_up_on_a_lock_that_never_clears(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -829,19 +839,468 @@ class TestSwapBundle:
         assert "outlived the retry window" not in str(excinfo.value)
         assert (install / "crm.exe").read_text(encoding="utf-8") == "OLD"
 
-    def test_cleanup_removes_parked(self, tmp_path: Path) -> None:
+    def test_cleanup_removes_parked(self, tmp_path: Path, crm_home: Path) -> None:
         install = tmp_path / "crm"
         install.mkdir()
         (tmp_path / "crm.old-123").mkdir()
         cleanup_stale_updates(install)
         assert list(tmp_path.glob("crm.old*")) == []
 
-    def test_cleanup_removes_parked_tree_with_files(self, tmp_path: Path) -> None:
+    def test_cleanup_removes_parked_tree_with_files(self, tmp_path: Path, crm_home: Path) -> None:
         install = tmp_path / "crm"
         install.mkdir()
         _bundle(tmp_path / "crm.old-123", "OLD")
         cleanup_stale_updates(install)
         assert list(tmp_path.glob("crm.old*")) == []
+
+    def test_cleanup_reaps_a_finished_finishers_payload(
+        self, tmp_path: Path, crm_home: Path
+    ) -> None:
+        """The finisher runs from the payload, so it cannot delete it on the way out
+        — a later run has to (#937), or every update leaks a whole bundle.
+        """
+        install = tmp_path / "crm"
+        install.mkdir()
+        _bundle(tmp_path / "crm.new-123", "NEW")
+
+        cleanup_stale_updates(install)
+
+        assert list(tmp_path.glob("crm.new*")) == []
+
+    def test_cleanup_spares_a_payload_a_finisher_is_still_reading(
+        self, tmp_path: Path, crm_home: Path
+    ) -> None:
+        """Two `self-update` runs in a row would otherwise have the second delete the
+        first's payload mid-copy — destroying the bundle being installed while the
+        install directory sits evacuated. A handoff on disk marks that tree in use.
+        """
+        install = tmp_path / "crm"
+        install.mkdir()
+        payload = _bundle(tmp_path / "crm.new-123", "NEW")
+        stale = _bundle(tmp_path / "crm.new-456", "OLDER")
+        (crm_home / "update-handoff-123.json").write_text(
+            json.dumps({"payload": str(payload)}), encoding="utf-8"
+        )
+
+        cleanup_stale_updates(install)
+
+        assert (payload / "crm.exe").read_text(encoding="utf-8") == "NEW"
+        assert not stale.exists()  # no handoff names it, so it is fair game
+
+    def test_cleanup_spares_the_evacuated_tree_while_a_finisher_is_mid_swap(
+        self, tmp_path: Path, crm_home: Path
+    ) -> None:
+        """Between evacuation and the end of the copy, `crm.old-<pid>` holds the only
+        copy of the install — reaping it would leave the finisher's rollback with
+        nothing to restore. A live handoff marks exactly that window.
+        """
+        install = tmp_path / "crm"
+        install.mkdir()
+        evacuated = _bundle(tmp_path / "crm.old-123", "OLD")
+        (crm_home / "update-handoff-123.json").write_text(
+            json.dumps({"payload": str(tmp_path / "crm.new-123")}), encoding="utf-8"
+        )
+
+        cleanup_stale_updates(install)
+
+        assert (evacuated / "crm.exe").read_text(encoding="utf-8") == "OLD"
+
+    def test_cleanup_drops_a_handoff_whose_finisher_never_reported(
+        self, tmp_path: Path, crm_home: Path
+    ) -> None:
+        """A finisher deletes its own handoff when it finishes, so one this old lost its
+        process — and a pending handoff blocks further updates (`pending_handoff`).
+        """
+        install = tmp_path / "crm"
+        install.mkdir()
+        fresh = crm_home / "update-handoff-1.json"
+        fresh.write_text(json.dumps({"payload": str(tmp_path / "crm.new-1")}), encoding="utf-8")
+        dead = crm_home / "update-handoff-2.json"
+        dead.write_text(json.dumps({"payload": str(tmp_path / "crm.new-2")}), encoding="utf-8")
+        aged = time.time() - update_mod._HANDOFF_STALE_AFTER - 1
+        os.utime(dead, (aged, aged))
+
+        cleanup_stale_updates(install)
+
+        assert fresh.exists()
+        assert not dead.exists()
+
+
+def _reaped_pid() -> int:
+    """A pid that has certainly exited — the finisher's wait must return at once."""
+    proc = subprocess.Popen([sys.executable, "-c", ""])
+    proc.wait()
+    return proc.pid
+
+
+def _handoff(
+    crm_home: Path, install: Path, payload: Path, *, parent_pid: int, to_version: str = "3.0.0"
+) -> Path:
+    path = crm_home / "update-handoff-1.json"
+    path.write_text(
+        json.dumps(
+            {
+                "parent_pid": parent_pid,
+                "install_dir": str(install),
+                "payload": str(payload),
+                "from_version": "2.9.0",
+                "to_version": to_version,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+class TestDeferredFinisher:
+    """The detached process that applies a staged Windows update (#937)."""
+
+    def test_applies_the_update_once_the_parent_is_gone(
+        self, tmp_path: Path, crm_home: Path
+    ) -> None:
+        install = _bundle(tmp_path / "crm", "OLD")
+        payload = _bundle(tmp_path / "crm.new-1", "NEW")
+        handoff = _handoff(crm_home, install, payload, parent_pid=_reaped_pid())
+
+        record = update_mod.finish_deferred_swap(handoff)
+
+        assert record["ok"] is True
+        assert record["error"] is None
+        assert record["to_version"] == "3.0.0"
+        assert (install / "crm.exe").read_text(encoding="utf-8") == "NEW"
+        assert (install / "_internal" / "tcl" / "init.tcl").read_text(encoding="utf-8") == "NEW"
+
+    def test_gives_up_untouched_when_the_parent_will_not_exit(
+        self, tmp_path: Path, crm_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Swapping while the old process still holds its bundle open is the failure
+        this whole design exists to avoid, so a wait that runs out must not proceed.
+        """
+        install = _bundle(tmp_path / "crm", "OLD")
+        payload = _bundle(tmp_path / "crm.new-1", "NEW")
+        handoff = _handoff(crm_home, install, payload, parent_pid=os.getpid())
+        monkeypatch.setattr(update_mod, "wait_for_process_exit", lambda pid, **kw: False)
+
+        record = update_mod.finish_deferred_swap(handoff)
+
+        assert record["ok"] is False
+        assert "still running" in str(record["error"])
+        assert (install / "crm.exe").read_text(encoding="utf-8") == "OLD"
+
+    def test_records_a_failed_swap_and_leaves_the_install_working(
+        self, tmp_path: Path, crm_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        install = _bundle(tmp_path / "crm", "OLD")
+        payload = _bundle(tmp_path / "crm.new-1", "NEW")
+        handoff = _handoff(crm_home, install, payload, parent_pid=_reaped_pid())
+        real_rename = Path.rename
+
+        def deny_exe(self: Path, target: Path) -> Path:
+            if self.name == "crm.exe":
+                raise PermissionError(13, "Permission denied")
+            return real_rename(self, target)
+
+        monkeypatch.setattr(Path, "rename", deny_exe)
+
+        record = update_mod.finish_deferred_swap(handoff)
+
+        assert record["ok"] is False
+        assert "install.ps1" in str(record["error"])
+        assert (install / "crm.exe").read_text(encoding="utf-8") == "OLD"
+        assert (install / "_internal" / "python313.dll").read_text(encoding="utf-8") == "OLD"
+
+    def test_never_raises_at_its_caller(self, tmp_path: Path, crm_home: Path) -> None:
+        """There is no console to print a traceback to, and an unhandled exception
+        would lose the only report of what happened.
+        """
+        record = update_mod.finish_deferred_swap(crm_home / "not-written.json")
+
+        assert record["ok"] is False
+        assert record["error"]
+
+    def test_writes_the_record_and_then_drops_the_handoff(
+        self, tmp_path: Path, crm_home: Path
+    ) -> None:
+        """The handoff's absence is what lets a later run reap the payload, so it must
+        outlive the record it guards.
+        """
+        install = _bundle(tmp_path / "crm", "OLD")
+        payload = _bundle(tmp_path / "crm.new-1", "NEW")
+        handoff = _handoff(crm_home, install, payload, parent_pid=_reaped_pid())
+
+        update_mod.finish_deferred_swap(handoff)
+
+        assert not handoff.exists()
+        assert json.loads(update_mod.result_path().read_text(encoding="utf-8"))["ok"] is True
+
+    def test_logs_every_attempt_so_a_failure_outlives_the_notice(
+        self, tmp_path: Path, crm_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The record is deleted by the run that reports it, and under `--json` nothing
+        reports it at all — so the log is the only durable account of a failed swap.
+        """
+        install = _bundle(tmp_path / "crm", "OLD")
+        payload = _bundle(tmp_path / "crm.new-1", "NEW")
+
+        def boom(*a: object, **k: object) -> None:
+            raise UpdateError("the install directory would not budge")
+
+        monkeypatch.setattr(update_mod, "swap_bundle", boom)
+        handoff = _handoff(crm_home, install, payload, parent_pid=_reaped_pid())
+        update_mod.finish_deferred_swap(handoff)
+
+        entries = update_mod.log_path().read_text(encoding="utf-8").splitlines()
+        assert len(entries) == 1
+        assert "FAILED 2.9.0 -> 3.0.0: the install directory would not budge" in entries[0]
+
+    def test_the_log_accumulates_rather_than_replacing(
+        self, tmp_path: Path, crm_home: Path
+    ) -> None:
+        """One update's outcome must not erase the previous one's — a user reading the
+        log after a failed update is looking for the history, not the latest line.
+        """
+        install = _bundle(tmp_path / "crm", "OLD")
+        for n in (1, 2):
+            payload = _bundle(tmp_path / f"crm.new-{n}", "NEW")
+            handoff = _handoff(
+                crm_home, install, payload, parent_pid=_reaped_pid(), to_version=f"3.0.{n}"
+            )
+            update_mod.finish_deferred_swap(handoff)
+
+        entries = update_mod.log_path().read_text(encoding="utf-8").splitlines()
+        assert [e.split()[-1] for e in entries] == ["3.0.1", "3.0.2"]
+
+    def test_never_raises_even_when_the_record_cannot_be_written(
+        self, tmp_path: Path, crm_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The finisher has no console: an unwritable state dir must not kill it with
+        a traceback nobody sees, and the handoff must still be released so the
+        payload does not stay pinned until it ages out.
+        """
+        install = _bundle(tmp_path / "crm", "OLD")
+        payload = _bundle(tmp_path / "crm.new-1", "NEW")
+        handoff = _handoff(crm_home, install, payload, parent_pid=_reaped_pid())
+        monkeypatch.setattr(
+            update_mod, "result_path", lambda: tmp_path / "missing" / "update-result.json"
+        )
+
+        record = update_mod.finish_deferred_swap(handoff)
+
+        assert record["ok"] is True
+        assert not handoff.exists()
+
+    def test_records_a_split_install_so_the_notice_will_not_claim_unchanged(
+        self, tmp_path: Path, crm_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        install = _bundle(tmp_path / "crm", "OLD")
+        payload = _bundle(tmp_path / "crm.new-1", "NEW")
+
+        def split(*a: object, **k: object) -> None:
+            err = UpdateError("part of it is parked")
+            err.install_intact = False
+            raise err
+
+        monkeypatch.setattr(update_mod, "swap_bundle", split)
+        handoff = _handoff(crm_home, install, payload, parent_pid=_reaped_pid())
+
+        record = update_mod.finish_deferred_swap(handoff)
+
+        assert record["ok"] is False
+        assert record["install_intact"] is False
+
+    def test_refreshes_only_after_a_successful_swap(
+        self, tmp_path: Path, crm_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A new skill tree beside an old binary is worse than a stale one, so the
+        re-sync waits for the bundle to actually land.
+        """
+        install = _bundle(tmp_path / "crm", "OLD")
+        payload = _bundle(tmp_path / "crm.new-1", "NEW")
+        calls: list[tuple[str, Path]] = []
+
+        def refresh(to_version: str, target: Path) -> list[str]:
+            calls.append((to_version, target))
+            return ["Could not refresh shell completion: nope"]
+
+        handoff = _handoff(crm_home, install, payload, parent_pid=_reaped_pid())
+        record = update_mod.finish_deferred_swap(handoff, refresh=refresh)
+        assert calls == [("3.0.0", install)]
+        assert record["warnings"] == ["Could not refresh shell completion: nope"]
+
+        calls.clear()
+        monkeypatch.setattr(update_mod, "wait_for_process_exit", lambda pid, **kw: False)
+        handoff = _handoff(crm_home, install, payload, parent_pid=os.getpid())
+        update_mod.finish_deferred_swap(handoff, refresh=refresh)
+        assert calls == []
+
+    def test_a_refresh_that_blows_up_still_records_the_landed_swap(
+        self, tmp_path: Path, crm_home: Path
+    ) -> None:
+        install = _bundle(tmp_path / "crm", "OLD")
+        payload = _bundle(tmp_path / "crm.new-1", "NEW")
+        handoff = _handoff(crm_home, install, payload, parent_pid=_reaped_pid())
+
+        def boom(to_version: str, target: Path) -> list[str]:
+            raise RuntimeError("registry unreadable")
+
+        record = update_mod.finish_deferred_swap(handoff, refresh=boom)
+
+        assert record["ok"] is True
+        assert (install / "crm.exe").read_text(encoding="utf-8") == "NEW"
+
+    @pytest.mark.slow
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason="the launcher stub is a shell script; the real Windows path is verified "
+        "against a released build by hand",
+    )
+    def test_a_really_spawned_finisher_applies_the_update(
+        self, tmp_path: Path, crm_home: Path
+    ) -> None:
+        """`spawn_finisher` for real — the one test that exercises process creation
+        rather than stubbing it, so the detached flow is proven end to end: a process
+        that outlives this call waits for a pid, swaps, and leaves a record.
+        """
+        install = _bundle(tmp_path / "crm", "OLD")
+        payload = _bundle(tmp_path / "crm.new-1", "NEW")
+        launcher = payload / "crm"
+        launcher.write_text(f'#!/bin/sh\nexec "{sys.executable}" -m crm "$@"\n', encoding="utf-8")
+        launcher.chmod(0o755)
+        handoff = _handoff(crm_home, install, payload, parent_pid=_reaped_pid())
+
+        update_mod.spawn_finisher(payload, handoff)
+
+        deadline = time.monotonic() + 60
+        while not update_mod.result_path().exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert update_mod.result_path().exists(), "the finisher never recorded an outcome"
+        record = json.loads(update_mod.result_path().read_text(encoding="utf-8"))
+        assert record["ok"] is True, record
+        assert (install / "crm.exe").read_text(encoding="utf-8") == "NEW"
+        assert not handoff.exists()
+
+
+class TestProcessLiveness:
+    """The wait the finisher does before touching anything."""
+
+    def test_alive_for_this_process_and_not_for_a_reaped_one(self) -> None:
+        assert update_mod.process_alive(os.getpid()) is True
+        assert update_mod.process_alive(_reaped_pid()) is False
+
+    def test_wait_returns_when_the_timeout_runs_out(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(update_mod, "process_alive", lambda pid: True)
+        assert update_mod.wait_for_process_exit(os.getpid(), timeout=0.0) is False
+
+    def test_wait_returns_true_once_the_process_goes(self) -> None:
+        assert update_mod.wait_for_process_exit(_reaped_pid(), timeout=5.0) is True
+
+
+class TestUpdateResultNotice:
+    """Reporting a deferred swap's outcome on the next run."""
+
+    def _record(self, crm_home: Path, **fields: Any) -> None:
+        base: dict[str, Any] = {
+            "ok": True,
+            "at": 1.0,
+            "error": None,
+            "warnings": [],
+            "from_version": "2.9.0",
+            "to_version": "3.0.0",
+        }
+        base.update(fields)
+        (crm_home / "update-result.json").write_text(json.dumps(base), encoding="utf-8")
+
+    def test_reports_a_landed_update_once(self, crm_home: Path) -> None:
+        import io
+
+        self._record(crm_home)
+        stream = io.StringIO()
+
+        assert update_mod.emit_update_result_notice(
+            json_mode=False, stderr_isatty=True, stream=stream
+        )
+        assert "Finished updating crm to 3.0.0." in stream.getvalue()
+        # Consumed: a second command must not repeat it.
+        assert not update_mod.emit_update_result_notice(
+            json_mode=False, stderr_isatty=True, stream=io.StringIO()
+        )
+
+    def test_reports_a_failed_swap_with_the_version_still_installed(self, crm_home: Path) -> None:
+        import io
+
+        self._record(crm_home, ok=False, error="Could not replace the installed files.")
+        stream = io.StringIO()
+
+        update_mod.emit_update_result_notice(json_mode=False, stderr_isatty=True, stream=stream)
+
+        out = stream.getvalue()
+        assert "could not be applied" in out
+        assert "Could not replace the installed files." in out
+        assert "still 2.9.0" in out
+        # The notice is single-shot; the log is where the user can still read it after.
+        assert str(update_mod.log_path()) in out
+
+    def test_a_split_install_failure_does_not_claim_the_install_is_unchanged(
+        self, crm_home: Path
+    ) -> None:
+        """When the finisher's rollback also failed, the error names the parked tree
+        holding the only copy — reassuring "your install is unchanged" right after
+        it would be a lie.
+        """
+        import io
+
+        self._record(
+            crm_home,
+            ok=False,
+            error="Part of it is in crm.old-42, which holds the only copy.",
+            install_intact=False,
+        )
+        stream = io.StringIO()
+
+        update_mod.emit_update_result_notice(json_mode=False, stderr_isatty=True, stream=stream)
+
+        out = stream.getvalue()
+        assert "could not be applied" in out
+        assert "unchanged" not in out
+        assert str(update_mod.log_path()) in out
+
+    def test_passes_on_the_finishers_warnings(self, crm_home: Path) -> None:
+        import io
+
+        self._record(crm_home, warnings=["Could not refresh shell completion: nope"])
+        stream = io.StringIO()
+
+        update_mod.emit_update_result_notice(json_mode=False, stderr_isatty=True, stream=stream)
+
+        assert "Could not refresh shell completion: nope" in stream.getvalue()
+
+    @pytest.mark.parametrize("json_mode,isatty", [(True, True), (False, False)])
+    def test_keeps_the_record_when_no_one_would_read_it(
+        self, crm_home: Path, json_mode: bool, isatty: bool
+    ) -> None:
+        """Under `--json` the notice would corrupt the envelope, and with no TTY there
+        is no reader — but consuming the record either way would throw away the only
+        report a failed update ever gets.
+        """
+        import io
+
+        self._record(crm_home, ok=False, error="nope")
+
+        assert not update_mod.emit_update_result_notice(
+            json_mode=json_mode, stderr_isatty=isatty, stream=io.StringIO()
+        )
+        assert update_mod.result_path().exists()
+
+    def test_junk_record_is_discarded_silently(self, crm_home: Path) -> None:
+        """A partial write must not suppress the next real record forever."""
+        import io
+
+        update_mod.result_path().write_text("{not json", encoding="utf-8")
+
+        assert not update_mod.emit_update_result_notice(
+            json_mode=False, stderr_isatty=True, stream=io.StringIO()
+        )
+        assert not update_mod.result_path().exists()
 
 
 class TestExtractRejectsLinks:
@@ -911,26 +1370,122 @@ class TestPerformUpdate:
         assert any("Verifying" in m for m in messages)
         assert any("Installing" in m for m in messages)
 
-    def test_windows_happy_path_swaps_onedir_bundle(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    def test_windows_hands_the_swap_to_a_detached_finisher(
+        self, tmp_path: Path, crm_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The whole Windows chain: zip archive → onedir layout → in-place swap."""
+        """The whole Windows chain: zip archive → onedir payload → handoff → spawn.
+
+        Nothing is replaced in this process. A running bundle cannot replace itself
+        on Windows at all (#937), so `perform_update` stages the payload, launches
+        the staged binary to do the swap once we exit, and says so.
+        """
         import hashlib
 
         archive = _make_zip({"crm.exe": b"NEW-EXE", "_internal/python313.dll": b"NEW-DLL"})
         sums = {"crm-windows-x86_64.zip": hashlib.sha256(archive).hexdigest()}
         self._wire(monkeypatch, archive, sums)
         monkeypatch.setattr(update_mod.sys, "platform", "win32")
+        spawned: list[tuple[Path, Path]] = []
+        monkeypatch.setattr(
+            update_mod,
+            "spawn_finisher",
+            lambda payload, handoff: spawned.append((payload, handoff)),
+        )
 
         install = _bundle(tmp_path / "crm", "OLD")
         result = perform_update(install_dir=install)
 
-        assert result["updated"] is True
-        assert (install / "crm.exe").read_bytes() == b"NEW-EXE"
-        assert (install / "_internal" / "python313.dll").read_bytes() == b"NEW-DLL"
-        # old bundle parked for the next run; no staging dir left behind
-        assert len(list(tmp_path.glob("crm.old-*"))) == 1
-        assert not list(tmp_path.glob("*.new*"))
+        assert result["updated"] is False  # nothing has been replaced yet
+        assert result["pending"] is True
+        assert result["reason"] == "swap-deferred"
+        assert result["to_version"] == "3.0.0"
+        assert (install / "crm.exe").read_text(encoding="utf-8") == "OLD"
+
+        payload, handoff = spawned[0]
+        # The payload must outlive this process: it is the finisher's own program.
+        assert (payload / "crm.exe").read_bytes() == b"NEW-EXE"
+        assert (payload / "_internal" / "python313.dll").read_bytes() == b"NEW-DLL"
+        recorded = json.loads(handoff.read_text(encoding="utf-8"))
+        assert recorded["install_dir"] == str(install)
+        assert recorded["payload"] == str(payload)
+        assert recorded["parent_pid"] == os.getpid()
+
+    def test_windows_cleans_up_the_payload_when_the_handoff_never_happens(
+        self, tmp_path: Path, crm_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A payload only earns its stay of execution once a finisher is launched to
+        read it; a spawn that fails must not leave a bundle-sized directory behind.
+        """
+        import hashlib
+
+        archive = _make_zip({"crm.exe": b"NEW-EXE"})
+        sums = {"crm-windows-x86_64.zip": hashlib.sha256(archive).hexdigest()}
+        self._wire(monkeypatch, archive, sums)
+        monkeypatch.setattr(update_mod.sys, "platform", "win32")
+
+        def no_spawn(payload: Path, handoff: Path) -> int:
+            raise OSError("no such file or directory")
+
+        monkeypatch.setattr(update_mod, "spawn_finisher", no_spawn)
+
+        install = _bundle(tmp_path / "crm", "OLD")
+        with pytest.raises(UpdateError, match="Update failed during install"):
+            perform_update(install_dir=install)
+
+        assert not list(tmp_path.glob("crm.new-*"))
+        assert (install / "crm.exe").read_text(encoding="utf-8") == "OLD"
+        # The handoff must go with it: alive, it would refuse the next update as
+        # already-staged for `_HANDOFF_STALE_AFTER` — pointing at a deleted payload.
+        assert update_mod.pending_handoff() is None
+
+    def test_windows_refuses_to_stage_a_second_update_over_a_pending_one(
+        self, tmp_path: Path, crm_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Running `self-update` twice is what a user does when the first run looks like
+        it did nothing. Two finishers would evacuate the same install into two parked
+        trees and copy over each other, so the second run must not stage — and must not
+        spend a bundle-sized download finding that out.
+        """
+
+        def no_download(*a: object, **k: object) -> bytes:
+            raise AssertionError("downloaded despite a pending swap")
+
+        self._wire(monkeypatch, b"", {})
+        monkeypatch.setattr(update_mod.sys, "platform", "win32")
+        monkeypatch.setattr(update_mod, "_download_archive", no_download)
+
+        install = _bundle(tmp_path / "crm", "OLD")
+        _handoff(crm_home, install, tmp_path / "crm.new-1", parent_pid=os.getpid())
+
+        result = perform_update(install_dir=install)
+
+        assert result["updated"] is False
+        assert result["pending"] is True
+        assert result["reason"] == "swap-already-staged"
+        assert result["to_version"] == "3.0.0"
+
+    def test_windows_updates_again_once_a_handoff_has_gone_stale(
+        self, tmp_path: Path, crm_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A finisher that died mid-job leaves its handoff behind forever. If that
+        blocked updates permanently the only exit would be deleting a file by hand.
+        """
+        import hashlib
+
+        archive = _make_zip({"crm.exe": b"NEW-EXE"})
+        sums = {"crm-windows-x86_64.zip": hashlib.sha256(archive).hexdigest()}
+        self._wire(monkeypatch, archive, sums)
+        monkeypatch.setattr(update_mod.sys, "platform", "win32")
+        monkeypatch.setattr(update_mod, "spawn_finisher", lambda payload, handoff: 4321)
+
+        install = _bundle(tmp_path / "crm", "OLD")
+        handoff = _handoff(crm_home, install, tmp_path / "crm.new-1", parent_pid=os.getpid())
+        aged = time.time() - update_mod._HANDOFF_STALE_AFTER - 1
+        os.utime(handoff, (aged, aged))
+
+        result = perform_update(install_dir=install)
+
+        assert result["reason"] == "swap-deferred"
 
     def test_checksum_mismatch_leaves_install_intact(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
