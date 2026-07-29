@@ -23,8 +23,10 @@ crm self-update
 - **Install-script binary (frozen)** — downloads the platform archive, verifies
   it against the published `SHA256SUMS` (the same integrity check the install
   script uses), and swaps the bundle in place — the `crm` launcher on your PATH
-  keeps working. A checksum mismatch or download failure leaves the existing
-  install untouched and exits non-zero.
+  keeps working. It confirms the outcome on the last line — `Updated crm 1.2.3 ->
+  1.2.4.`, or an already-up-to-date note naming the current version when there was
+  nothing to do. A checksum mismatch or download failure leaves the existing install
+  untouched and exits non-zero.
 - **uv tool / pipx** — force-reinstalls from the latest release tag
   (`uv tool install --force git+https://github.com/Gharib89/crm@vX.Y.Z`, or the
   pipx equivalent). `--force` is used because uv/pipx pin the git commit and a

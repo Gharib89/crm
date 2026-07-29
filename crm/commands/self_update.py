@@ -210,9 +210,10 @@ def _frozen_update(ctx: CLIContext) -> None:
     if not ctx.json_mode:
         # Confirm the outcome in a sentence, as the non-frozen paths do — the raw
         # payload fields alone leave the landing of an upgrade unannounced. The
-        # arrow is ASCII on purpose: this prints right after the bundle swap, and
-        # a redirected stdout on Windows decodes as cp1252, where a UnicodeEncodeError
-        # here would fail the command after the install was already replaced.
+        # arrow is ASCII as a belt-and-braces: `force_utf8_output` already
+        # reconfigures stdout, but it deliberately no-ops on a stream with no
+        # working `reconfigure`, and this line prints once the bundle has already
+        # been replaced — the worst moment to risk an encode error.
         if result.get("updated"):
             ctx.skin.success(f"Updated crm {result['from_version']} -> {result['to_version']}.")
         else:
