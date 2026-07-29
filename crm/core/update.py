@@ -31,7 +31,14 @@ from crm import __version__
 
 
 class UpdateError(Exception):
-    """A self-update could not be completed; the existing install is untouched."""
+    """A self-update could not be completed; the existing install is untouched.
+
+    `install_intact` is False for the one exception to that promise: a Windows
+    swap whose rollback also failed, leaving the install split across two trees.
+    The failure notice keys its "your install is unchanged" reassurance on it.
+    """
+
+    install_intact: bool = True
 
 
 # Env var to opt out of the passive update notice entirely.
@@ -673,14 +680,16 @@ def _windows_swap(install_dir: Path, source: Path, old: Path) -> None:
             # Undoing failed too, so the install is now split across both trees.
             # Leave `old` in place — it holds the only copy of what moved — and say
             # where it is, rather than claiming an intact install.
-            raise UpdateError(
+            split = UpdateError(
                 f"Could not replace the installed files in {install_dir} ({exc}), "
                 f"and restoring the previous install then failed ({undo_exc}). "
                 f"Part of it is in {old}, which holds the only copy of those "
                 "files — keep it (a later self-update reaps parked directories), "
                 "then re-run the Windows installer (install.ps1) to get a working "
                 "install back."
-            ) from undo_exc
+            )
+            split.install_intact = False
+            raise split from undo_exc
         shutil.rmtree(old, ignore_errors=True)
         # Say so when the retries ran out, rather than only naming the raw error:
         # a lock that survives the whole ladder is held persistently, which is a
@@ -742,8 +751,12 @@ def cleanup_stale_updates(install_dir: Path) -> None:
     live = _payloads_in_use(handoffs.live)
     for handoff in handoffs.stale:
         handoff.unlink(missing_ok=True)
-    for leftover in install_dir.parent.glob(f"{install_dir.name}.old-*"):
-        shutil.rmtree(leftover, ignore_errors=True)
+    if not handoffs.live:
+        # While a finisher is mid-swap, `<name>.old-<pid>` can hold the only copy
+        # of the evacuated install — reaping it would leave that swap's rollback
+        # with nothing to restore. Live handoffs mark exactly that window.
+        for leftover in install_dir.parent.glob(f"{install_dir.name}.old-*"):
+            shutil.rmtree(leftover, ignore_errors=True)
     for leftover in install_dir.parent.glob(f"{install_dir.name}.new-*"):
         if str(leftover) not in live:
             shutil.rmtree(leftover, ignore_errors=True)
@@ -946,10 +959,14 @@ def spawn_finisher(payload: Path, handoff: Path) -> int:
 
 
 def _write_result(record: dict[str, Any]) -> None:
+    # Suppressed: `finish_deferred_swap` promises never to raise, and the finisher
+    # has nowhere to report a failed write anyway — the log line (appended first)
+    # is the durable account when this one cannot land.
     path = result_path()
     tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(record), encoding="utf-8")
-    tmp.replace(path)
+    with contextlib.suppress(OSError):
+        tmp.write_text(json.dumps(record), encoding="utf-8")
+        tmp.replace(path)
 
 
 def _append_log(record: Mapping[str, Any]) -> None:
@@ -1005,6 +1022,7 @@ def finish_deferred_swap(
         swap_bundle(install, payload, windows=True)
     except Exception as exc:
         record["error"] = str(exc)
+        record["install_intact"] = bool(getattr(exc, "install_intact", True))
     else:
         record["ok"] = True
         if refresh is not None:
@@ -1044,10 +1062,18 @@ def update_result_lines(record: Mapping[str, Any]) -> list[str]:
     if record.get("ok"):
         lines = [f"Finished updating crm to {to_version}."]
     else:
+        # "Unchanged" is a promise, not a platitude — a swap whose rollback also
+        # failed leaves the install split, and the error text (which explains the
+        # recovery) must not be contradicted by a reassurance right after it.
+        unchanged = (
+            f"Your install is unchanged (still {record.get('from_version') or '?'}). "
+            if record.get("install_intact", True)
+            else ""
+        )
         lines = [
             f"The last crm update to {to_version} could not be applied: "
             f"{record.get('error') or 'unknown error'} "
-            f"Your install is unchanged (still {record.get('from_version') or '?'}). "
+            f"{unchanged}"
             f"Details: {log_path()}"
         ]
     warnings = record.get("warnings")
@@ -1124,6 +1150,7 @@ def perform_update(
     if progress:
         progress("Installing...")
     deferred = False
+    handoff: Path | None = None
     try:
         _extract(archive, data, staged)
         if windows:
@@ -1152,6 +1179,12 @@ def perform_update(
         # the swap. `cleanup_stale_updates` reaps it on a later run.
         if not deferred and staged.exists():
             shutil.rmtree(staged, ignore_errors=True)
+        if not deferred and handoff is not None:
+            # No finisher was launched, so this handoff guards nothing — left in
+            # place it would refuse the next update as already-staged (pointing
+            # at the payload just deleted) until it aged out.
+            with contextlib.suppress(OSError):
+                handoff.unlink(missing_ok=True)
     if deferred:
         # `updated` stays false: nothing has been replaced yet, and a scripter must
         # not read a staged payload as a completed upgrade. The finisher's record,

@@ -47,7 +47,7 @@ replace its own install while it is the one running `self-update`. So the new
 bundle is staged beside the install and a detached copy of the *staged* `crm.exe`
 is launched to finish the job; the command you ran then exits, prints:
 
-```
+```text
 Staged crm 1.2.4. It is applied as crm exits; the next run reports the outcome.
 ```
 
@@ -58,7 +58,7 @@ installed skills/completion, and records the outcome for the *next* `crm` comman
 to report (below). Running `self-update` again before that finishes reports the
 same staged version instead of starting a second swap:
 
-```
+```text
 Update to crm 1.2.4 is already staged by an earlier run and is applied as
 that crm exits; the next run reports the outcome.
 ```
@@ -91,16 +91,21 @@ still open to print a confirmation or a failure. Instead, the **next** `crm`
 command — any command, not just `self-update` — prints a one-off notice once the
 finisher has recorded an outcome:
 
-```
+```text
 Finished updating crm to 1.2.4.
 ```
 
 or, if the swap could not complete:
 
-```
+```text
 The last crm update to 1.2.4 could not be applied: <reason>. Your install is
 unchanged (still 1.2.3). Details: C:\Users\you\.crm\update.log
 ```
+
+The "unchanged" line appears only when the rollback put everything back. In the
+rare split-install case above — rollback itself failed — the notice omits it, and
+the `<reason>` text is the one naming the `crm.old-<pid>` directory to keep and
+the `install.ps1` recovery.
 
 A skill/completion refresh warning from the finisher, if any, follows on its own
 line. The notice prints on a human terminal only (never under `--json`, and never
@@ -115,7 +120,7 @@ to `${CRM_HOME:-~/.crm}/update.log` — the file the failure notice names. That 
 where to look if you scrolled past the notice, or if the update ran under `--json`
 or a non-terminal stderr, where no notice is printed at all:
 
-```
+```text
 2026-07-28T09:14:02 ok 1.2.3 -> 1.2.4
 2026-07-29T11:02:55 FAILED 1.2.4 -> 1.2.5: Could not replace the installed files
 in C:\Users\you\AppData\Local\Programs\crm: [WinError 32] ...

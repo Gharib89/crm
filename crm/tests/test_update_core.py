@@ -634,12 +634,14 @@ class TestSwapBundle:
 
         monkeypatch.setattr(Path, "rename", deny_exe_and_undo)
 
-        with pytest.raises(UpdateError, match="restoring the previous install then failed"):
+        with pytest.raises(UpdateError, match="restoring the previous install then failed") as exc:
             swap_bundle(install, new, windows=True)
 
         parked = list(tmp_path.glob("crm.old-*"))
         assert len(parked) == 1
         assert (parked[0] / "_internal" / "python313.dll").read_text(encoding="utf-8") == "OLD"
+        # The flag the failure notice keys "your install is unchanged" on.
+        assert exc.value.install_intact is False
 
     def test_windows_swap_restores_install_when_the_copy_fails(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -885,6 +887,24 @@ class TestSwapBundle:
         assert (payload / "crm.exe").read_text(encoding="utf-8") == "NEW"
         assert not stale.exists()  # no handoff names it, so it is fair game
 
+    def test_cleanup_spares_the_evacuated_tree_while_a_finisher_is_mid_swap(
+        self, tmp_path: Path, crm_home: Path
+    ) -> None:
+        """Between evacuation and the end of the copy, `crm.old-<pid>` holds the only
+        copy of the install — reaping it would leave the finisher's rollback with
+        nothing to restore. A live handoff marks exactly that window.
+        """
+        install = tmp_path / "crm"
+        install.mkdir()
+        evacuated = _bundle(tmp_path / "crm.old-123", "OLD")
+        (crm_home / "update-handoff-123.json").write_text(
+            json.dumps({"payload": str(tmp_path / "crm.new-123")}), encoding="utf-8"
+        )
+
+        cleanup_stale_updates(install)
+
+        assert (evacuated / "crm.exe").read_text(encoding="utf-8") == "OLD"
+
     def test_cleanup_drops_a_handoff_whose_finisher_never_reported(
         self, tmp_path: Path, crm_home: Path
     ) -> None:
@@ -1050,6 +1070,44 @@ class TestDeferredFinisher:
         entries = update_mod.log_path().read_text(encoding="utf-8").splitlines()
         assert [e.split()[-1] for e in entries] == ["3.0.1", "3.0.2"]
 
+    def test_never_raises_even_when_the_record_cannot_be_written(
+        self, tmp_path: Path, crm_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The finisher has no console: an unwritable state dir must not kill it with
+        a traceback nobody sees, and the handoff must still be released so the
+        payload does not stay pinned until it ages out.
+        """
+        install = _bundle(tmp_path / "crm", "OLD")
+        payload = _bundle(tmp_path / "crm.new-1", "NEW")
+        handoff = _handoff(crm_home, install, payload, parent_pid=_reaped_pid())
+        monkeypatch.setattr(
+            update_mod, "result_path", lambda: tmp_path / "missing" / "update-result.json"
+        )
+
+        record = update_mod.finish_deferred_swap(handoff)
+
+        assert record["ok"] is True
+        assert not handoff.exists()
+
+    def test_records_a_split_install_so_the_notice_will_not_claim_unchanged(
+        self, tmp_path: Path, crm_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        install = _bundle(tmp_path / "crm", "OLD")
+        payload = _bundle(tmp_path / "crm.new-1", "NEW")
+
+        def split(*a: object, **k: object) -> None:
+            err = UpdateError("part of it is parked")
+            err.install_intact = False
+            raise err
+
+        monkeypatch.setattr(update_mod, "swap_bundle", split)
+        handoff = _handoff(crm_home, install, payload, parent_pid=_reaped_pid())
+
+        record = update_mod.finish_deferred_swap(handoff)
+
+        assert record["ok"] is False
+        assert record["install_intact"] is False
+
     def test_refreshes_only_after_a_successful_swap(
         self, tmp_path: Path, crm_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -1090,6 +1148,7 @@ class TestDeferredFinisher:
         assert record["ok"] is True
         assert (install / "crm.exe").read_text(encoding="utf-8") == "NEW"
 
+    @pytest.mark.slow
     @pytest.mark.skipif(
         sys.platform.startswith("win"),
         reason="the launcher stub is a shell script; the real Windows path is verified "
@@ -1179,6 +1238,30 @@ class TestUpdateResultNotice:
         assert "Could not replace the installed files." in out
         assert "still 2.9.0" in out
         # The notice is single-shot; the log is where the user can still read it after.
+        assert str(update_mod.log_path()) in out
+
+    def test_a_split_install_failure_does_not_claim_the_install_is_unchanged(
+        self, crm_home: Path
+    ) -> None:
+        """When the finisher's rollback also failed, the error names the parked tree
+        holding the only copy — reassuring "your install is unchanged" right after
+        it would be a lie.
+        """
+        import io
+
+        self._record(
+            crm_home,
+            ok=False,
+            error="Part of it is in crm.old-42, which holds the only copy.",
+            install_intact=False,
+        )
+        stream = io.StringIO()
+
+        update_mod.emit_update_result_notice(json_mode=False, stderr_isatty=True, stream=stream)
+
+        out = stream.getvalue()
+        assert "could not be applied" in out
+        assert "unchanged" not in out
         assert str(update_mod.log_path()) in out
 
     def test_passes_on_the_finishers_warnings(self, crm_home: Path) -> None:
@@ -1351,6 +1434,9 @@ class TestPerformUpdate:
 
         assert not list(tmp_path.glob("crm.new-*"))
         assert (install / "crm.exe").read_text(encoding="utf-8") == "OLD"
+        # The handoff must go with it: alive, it would refuse the next update as
+        # already-staged for `_HANDOFF_STALE_AFTER` — pointing at a deleted payload.
+        assert update_mod.pending_handoff() is None
 
     def test_windows_refuses_to_stage_a_second_update_over_a_pending_one(
         self, tmp_path: Path, crm_home: Path, monkeypatch: pytest.MonkeyPatch
