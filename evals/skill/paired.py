@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import json
 import os
 import secrets
 import shlex
@@ -49,7 +50,12 @@ from evals.skill.results import (
     TaskAggregate,
     TrialRecord,
     aggregate_task,
+    append_trials,
+    complete_task_ids,
     is_reportable,
+    load_trials,
+    rewrite_trials,
+    stamp_run_start,
     write_results,
 )
 from evals.skill.runner import RunError, RunResult, cleanup_org, run_task
@@ -326,6 +332,14 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
         metavar="CMD",
         help="judge command (default: $CRM_EVAL_JUDGE_CMD, else 'claude -p --model opus')",
     )
+    parser.add_argument(
+        "--resume",
+        default=None,
+        metavar="RUN_ID",
+        help="continue an interrupted run: tasks already complete in its trials.jsonl are "
+        "kept and skipped; a partially-run task reruns whole (flags must match the run's "
+        "stamped meta)",
+    )
     args = parser.parse_args(argv)
     preset = PRESETS[args.preset]
     only = [t.strip() for t in args.tasks.split(",")] if args.tasks else None
@@ -341,10 +355,52 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
     host = target_mod.resolve_host(profile_name)
     active = target_mod.active_target()
     task_files, gated_out = gate_tasks(task_files, active)
-    run_id = _make_run_id()
+    # `host` is intentionally NOT persisted into meta: a reportable run commits run.json
+    # (and report.md) to a public repo, and the live org host (esp. on-prem/internal) is
+    # sensitive. The series identity is model × target × k; host is a live-run detail only
+    # (it stays in the stderr summary + transcripts, which are never committed).
+    # A selection narrowed the corpus → not the "whole corpus" a reportable run needs.
+    subset = only is not None or args.sample is not None
+    meta: dict[str, object] = {
+        "model": args.model,
+        "target": active,
+        "k": args.k,
+        "preset": args.preset,
+        "paired": preset.paired,
+        "subset": subset,
+        "skill_sha": record_mod.skill_sha(repo_root),
+    }
+
+    prior_trials: list[TrialRecord] = []
+    done_tasks: set[str] = set()
+    if args.resume:
+        run_id = args.resume
+        run_dir = Path(args.results_dir) / run_id
+        stamp_path = run_dir / "run.json"
+        if not stamp_path.exists():
+            raise RunError(f"--resume {run_id}: no run.json under {run_dir} — not a resumable run")
+        stamped = json.loads(stamp_path.read_text(encoding="utf-8")).get("meta", {})
+        # The resume contract: same series + corpus config, or the mixed rows would be
+        # meaningless (skill_sha excluded deliberately — resuming across a skill edit is
+        # legitimate only if you accept the mix, and the stamp records the original).
+        for key in ("model", "target", "k", "preset", "paired", "subset"):
+            if stamped.get(key) != meta[key]:
+                raise RunError(
+                    f"--resume {run_id}: {key} mismatch (run was {stamped.get(key)!r}, "
+                    f"flags say {meta[key]!r}) — rerun with the original flags"
+                )
+        prior_trials = load_trials(run_dir)
+        done_tasks = complete_task_ids(prior_trials, k=args.k, paired=preset.paired)
+        # Keep only whole per-task blocks: an interrupted task reruns from scratch, so its
+        # partial rows must not survive to double-count in the final aggregate.
+        prior_trials = [t for t in prior_trials if t.task_id in done_tasks]
+        rewrite_trials(run_dir, prior_trials)
+    else:
+        run_id = _make_run_id()
     print(
         f"[paired] run {run_id}: preset={args.preset} tasks={len(task_files)} model={args.model} "
-        f"target={active} host={host} k={args.k} paired={preset.paired}",
+        f"target={active} host={host} k={args.k} paired={preset.paired}"
+        + (f" resume(complete={len(done_tasks)})" if args.resume else ""),
         file=sys.stderr,
     )
     for task_file, why in gated_out:
@@ -373,21 +429,36 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
 
         def _go() -> list[TrialRecord]:
             # Each task carries its own cleanup, so its reset hook is built per task; both
-            # legs of a pair still share the one session venv + sandbox settings.
-            trials: list[TrialRecord] = []
-            for task_file in task_files:
-                _stderr(f"task {Path(task_file).stem}…")
-                trials.extend(
-                    run_pair(
-                        task_file,
-                        reset_org=build_reset_org(task_file, crm_bin),
-                        k=args.k,
-                        paired=preset.paired,
-                        transcripts_dir=run_dir / "transcripts",
-                        progress=_stderr,
-                        judge=judge,
-                        **leg_kwargs,
-                    )
+            # legs of a pair still share the one session venv + sandbox settings. Each
+            # task's rows are appended to trials.jsonl the moment its legs finish, so an
+            # interruption (limit, crash, kill) loses at most the in-flight task and
+            # `--resume <run-id>` continues from the next one.
+            trials: list[TrialRecord] = list(prior_trials)
+            total = len(task_files)
+            per_task = args.k * (2 if preset.paired else 1)
+            goal = total * per_task
+            for pos, task_file in enumerate(task_files, 1):
+                task_id = task_file.stem
+                if task_id in done_tasks:
+                    _stderr(f"task {pos}/{total} {task_id}: already complete — skipped (resume)")
+                    continue
+                _stderr(f"task {pos}/{total} {task_id}… [{len(trials)}/{goal} trials done]")
+                records = run_pair(
+                    task_file,
+                    reset_org=build_reset_org(task_file, crm_bin),
+                    k=args.k,
+                    paired=preset.paired,
+                    transcripts_dir=run_dir / "transcripts",
+                    progress=_stderr,
+                    judge=judge,
+                    **leg_kwargs,
+                )
+                trials.extend(records)
+                append_trials(run_dir, records)
+                passed = sum(1 for r in records if r.passed)
+                _stderr(
+                    f"task {pos}/{total} {task_id} done: {passed}/{len(records)} legs passed "
+                    f"[{len(trials)}/{goal} trials, {len(trials) * 100 // goal}%]"
                 )
             return trials
 
@@ -417,23 +488,14 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
                     f"sandbox network proxy is reliable, or pass --no-sandbox for an "
                     f"explicitly-unsandboxed wiring check."
                 )
+        # Stamp the in-progress run.json before the first trial: an interrupted run then
+        # leaves a valid, never-reportable record carrying the meta the resume validates.
+        # On resume the stamp already exists with identical meta (validated above).
+        if not args.resume:
+            stamp_run_start(args.results_dir, run_id=run_id, meta=meta)
         trials = _go()
 
         aggregates = [aggregate_task(t, trials) for t in dict.fromkeys(x.task_id for x in trials)]
-        # `host` is intentionally NOT persisted into meta: a reportable run commits run.json
-        # (and report.md) to a public repo, and the live org host (esp. on-prem/internal) is
-        # sensitive. The series identity is model × target × k; host is a live-run detail only
-        # (it stays in the stderr summary + transcripts, which are never committed).
-        meta = {
-            "model": args.model,
-            "target": active,
-            "k": args.k,
-            "preset": args.preset,
-            "paired": preset.paired,
-            # A selection narrowed the corpus → not the "whole corpus" a reportable run needs.
-            "subset": only is not None or args.sample is not None,
-            "skill_sha": record_mod.skill_sha(repo_root),
-        }
         # Advisory regression: look up the baseline BEFORE this run's own result is written, so a
         # reportable run can never select itself as its own baseline (series = model × target × k).
         # Never gates — the exit code below stays purely the did-anything-pass signal.
@@ -447,7 +509,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
         # Reporting + commit policy (ADR 0028): only a reportable run writes report.md,
         # (re)derives matrix.md from the committed records, and force-adds its named
         # artifacts — transcripts/run.log stay untracked because they are never named.
-        if is_reportable(preset=args.preset, paired=preset.paired, k=args.k, subset=meta["subset"]):
+        if is_reportable(preset=args.preset, paired=preset.paired, k=args.k, subset=subset):
             _finalize_reporting(
                 repo_root, args.results_dir, run_dir, run_id, meta, aggregates, trials, regression
             )
