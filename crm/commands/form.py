@@ -862,17 +862,28 @@ def form_labels(ctx: CLIContext, formid: str, solution: str) -> None:
     languages = info["languages"]
     headers = ["element", "source"] + [str(lc) for lc in languages]
 
+    def _identity(node: dict) -> str:
+        """A display name for a node: its logical name, else its first label text,
+        else its label object id — so auto-generated tabs/sections (which carry no
+        ``name``) still read meaningfully rather than as ``None``.
+        """
+        name = node.get("name")
+        if name:
+            return str(name)
+        labels = node.get("labels") or {}
+        return next(iter(labels.values()), None) or node.get("label_object_id") or "(unnamed)"
+
     def _row(label: str, node: dict) -> list[str]:
         labels = node["labels"]
         return [label, node["source"]] + [labels.get(str(lc), "") for lc in languages]
 
     rows: list[list[str]] = []
     for tab in info["elements"]:
-        rows.append(_row(f"tab: {tab['name']}", tab))
+        rows.append(_row(f"tab: {_identity(tab)}", tab))
         for section in tab.get("sections", []):
-            rows.append(_row(f"  section: {section['name']}", section))
+            rows.append(_row(f"  section: {_identity(section)}", section))
             for cell in section.get("cells", []):
-                name = cell.get("datafieldname") or cell.get("name") or ""
+                name = cell.get("datafieldname") or _identity(cell)
                 rows.append(_row(f"    {name}", cell))
     ctx.emit(True, data=info, table={"headers": headers, "rows": rows})
 

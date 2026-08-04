@@ -2183,16 +2183,24 @@ _LABELS_BY_ID = {
 }
 
 
-def _find_node(tree, node_type):
-    """Depth-first search for the first node of ``node_type`` in a label tree."""
-    for node in tree:
-        if node["type"] == node_type:
-            return node
-        for key in ("sections", "cells"):
-            hit = _find_node(node.get(key, []), node_type)
-            if hit is not None:
-                return hit
-    return None
+def _find_node(tree, node_type) -> dict:
+    """The first node of ``node_type`` in a label tree (depth-first); asserts one
+    exists so callers can subscript the result directly.
+    """
+
+    def _search(nodes):
+        for node in nodes:
+            if node["type"] == node_type:
+                return node
+            for key in ("sections", "cells"):
+                hit = _search(node.get(key, []))
+                if hit is not None:
+                    return hit
+        return None
+
+    node = _search(tree)
+    assert node is not None, f"no {node_type!r} node found in {tree}"
+    return node
 
 
 class TestFormLabelTree:
@@ -2308,7 +2316,7 @@ class TestFormLabels:
                 forms.form_labels(backend, _FORM_BY_ID_ROW["formid"], solution="CRMWorx")
 
 
-def _labels_zip_for(by_id: dict[str, dict[int, str]]) -> bytes:
+def _labels_zip_for(by_id: dict[str, dict[str, str]]) -> bytes:
     """A CrmTranslations.xml zip whose Localized Labels sheet carries ``by_id``
     as bilingual (1033 + 1036) displayname rows — for exercising the join.
     """
@@ -2410,14 +2418,22 @@ class TestFormLabelsCommand:
         monkeypatch.setattr(
             form_cmd.forms_mod,
             "form_labels",
-            lambda backend, formid, **kw: (captured.update(formid=formid, **kw) or _LABELS_ENVELOPE),
+            lambda backend, formid, **kw: captured.update(formid=formid, **kw) or _LABELS_ENVELOPE,
         )
         from crm.cli import cli
 
         result = CliRunner().invoke(
             cli,
-            ["--profile", "t", "--json", "form", "labels", _LABELS_ENVELOPE["formid"],
-             "--solution", "CRMWorx"],
+            [
+                "--profile",
+                "t",
+                "--json",
+                "form",
+                "labels",
+                _LABELS_ENVELOPE["formid"],
+                "--solution",
+                "CRMWorx",
+            ],
         )
         assert result.exit_code == 0, result.output
         import json
@@ -2439,7 +2455,15 @@ class TestFormLabelsCommand:
 
         result = CliRunner().invoke(
             cli,
-            ["--profile", "t", "form", "labels", _LABELS_ENVELOPE["formid"], "--solution", "CRMWorx"],
+            [
+                "--profile",
+                "t",
+                "form",
+                "labels",
+                _LABELS_ENVELOPE["formid"],
+                "--solution",
+                "CRMWorx",
+            ],
         )
         assert result.exit_code == 0, result.output
         assert "Général" in result.output

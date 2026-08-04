@@ -869,3 +869,82 @@ def test_form_handler_wiring_roundtrip(cli, ephemeral_entity, tmp_path, unique, 
             check=False,
         )
         cli(["--json", "webresource", "delete", wr_name, "--yes"], check=False)
+
+
+# ── form labels: multi-language label dump (issue #942) ──────────────────────
+
+
+@covers("form labels")
+def test_form_labels_joins_solution_translations(cli, ephemeral_entity, ephemeral_solution):
+    """`form labels` joins a form's structure to the solution's translation export.
+
+    A solution-scoped, published write registers the ephemeral entity's Main form
+    as a component of the ephemeral solution, so its labels become part of that
+    solution's translation export and the join finds them. Org-agnostic: asserts
+    the envelope shape, a non-empty language set, the tab→section tree, that the
+    join produced at least one ``translation``-sourced label, and that the tab we
+    added round-trips into the tree with its label text. Monolingual orgs are fine
+    — a single-language map is still a valid join.
+    """
+    forms = json.loads(cli(["--json", "form", "list", ephemeral_entity]).stdout)["data"]
+    assert forms, "ephemeral entity has no forms"
+    formid = forms[0]["formid"]
+
+    tab_label = "E2E Labels Tab"
+    add = cli(
+        [
+            "--json",
+            "form",
+            "add-tab",
+            ephemeral_entity,
+            "e2e_labels_tab",
+            "--label",
+            tab_label,
+            "--publish",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
+    assert add.returncode == 0, f"add-tab setup failed:\n{add.stderr}\n{add.stdout}"
+
+    try:
+        result = cli(["--json", "form", "labels", formid, "--solution", ephemeral_solution])
+        assert result.returncode == 0, f"form labels failed:\n{result.stderr}\n{result.stdout}"
+        env = json.loads(result.stdout)
+        assert env["ok"], env
+        data = env["data"]
+        assert data["formid"] == formid
+        assert isinstance(data["languages"], list) and data["languages"], data
+
+        tabs = data["elements"]
+        assert tabs and all(t["type"] == "tab" for t in tabs), data
+
+        def _sources(nodes):
+            for node in nodes:
+                yield node["source"]
+                yield from _sources(node.get("sections", []))
+                yield from _sources(node.get("cells", []))
+
+        assert "translation" in set(_sources(tabs)), (
+            f"expected at least one translation-sourced label; got {data}"
+        )
+
+        added = next((t for t in tabs if t.get("name") == "e2e_labels_tab"), None)
+        assert added is not None, f"added tab missing from label tree: {tabs}"
+        # its label text is surfaced regardless of which source matched it
+        assert tab_label in added["labels"].values(), added
+    finally:
+        cli(
+            [
+                "--json",
+                "form",
+                "remove-tab",
+                ephemeral_entity,
+                "e2e_labels_tab",
+                "--force",
+                "--publish",
+                "--solution",
+                ephemeral_solution,
+            ],
+            check=False,
+        )

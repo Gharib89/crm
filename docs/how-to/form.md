@@ -453,3 +453,32 @@ non-1033 caller is warned even on a plain `add-field`. To set labels in another
 language, use `crm translation export`/`import` rather than editing formxml —
 those labels appear in `CrmTranslations.xml` as lowercase `displayname` rows
 keyed by `LabelId`.
+
+## Dump a form's labels across all provisioned languages
+
+`form labels` shows what `export` cannot: every element's label in **every**
+provisioned language, read from the label store instead of the caller-language
+projection.
+
+```bash
+crm form labels 98ae5881-b152-4eb9-916d-539c83ff69c7 --solution cwx_crmworx
+crm --json form labels 98ae5881-b152-4eb9-916d-539c83ff69c7 --solution cwx_crmworx
+```
+
+The first argument is the **systemform id** (from `form list`). It reads the
+form's `formxml` for structure (the tab → section → cell tree survives the
+projection, so structure is complete regardless of your UI language) and joins
+it to the solution's translation export — parsed in memory, no files written —
+keying each element by its `labelid`, or its `id` when no `labelid` is present.
+
+Each node carries a `labels` map of `languagecode → text` covering every
+language present in the export. An element with no matching translation row
+(e.g. a bound field whose label comes from the attribute) falls back to the
+formxml projection and is flagged `source: formxml-projection`, so a partial
+join is visible rather than silent. Human mode renders a tab → section → cell
+tree with one column per language; `--json` emits the structured envelope.
+
+`--solution` is **required** and explicit — the form must be a component of that
+solution. If the form's labels are not in the given solution's translations, the
+command errors naming the form and solution rather than returning an empty
+result. Like `export`, `labels` is read-only.

@@ -244,7 +244,10 @@ class TestParseLocalizedLabels:
 
         _, by_id = translation.parse_localized_labels(_labels_zip_bytes())
         # keyed by lowercased, brace-stripped object id
-        assert by_id["aaaa1111-0000-0000-0000-000000000001"] == {"1033": "General", "1036": "Général"}
+        assert by_id["aaaa1111-0000-0000-0000-000000000001"] == {
+            "1033": "General",
+            "1036": "Général",
+        }
 
     def test_empty_language_cell_omitted_not_stored_blank(self):
         from crm.core import translation

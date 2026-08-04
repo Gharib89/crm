@@ -1330,8 +1330,8 @@ def form_labels(backend: D365Backend, formid: str, *, solution: str) -> dict[str
     )
     if not matched:
         raise D365Error(
-            f"Form {form_row['name']!r} ({formid}) has no labels in solution "
-            f"{solution!r}'s translations — is the form a component of that solution?"
+            f"Form {form_row['name']!r} ({formid}) has no labels in the translations "
+            f"for solution {solution!r} — is the form a component of that solution?"
         )
     return {
         "formid": form_row["formid"],

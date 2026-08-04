@@ -169,7 +169,10 @@ def _localized_labels_rows(zip_bytes: bytes) -> list[ET.Element]:
         raise D365Error("ExportTranslation zip has no CrmTranslations.xml.") from exc
     root = safe_xml.fromstring(xml)
     for sheet in root.iter():
-        if _local_name(sheet.tag) == "Worksheet" and _ss_attr(sheet, "Name") == _LOCALIZED_LABELS_SHEET:
+        if (
+            _local_name(sheet.tag) == "Worksheet"
+            and _ss_attr(sheet, "Name") == _LOCALIZED_LABELS_SHEET
+        ):
             return [r for r in sheet.iter() if _local_name(r.tag) == "Row"]
     raise D365Error(
         f"CrmTranslations.xml has no {_LOCALIZED_LABELS_SHEET!r} worksheet; "

@@ -4,7 +4,8 @@ Edit entity forms headlessly: fields, presentation properties, JS event handlers
 and the tab/section skeleton. Group: `form`. Flags/choices: `crm form --help`.
 Every mutating form verb is solution-scoped and stages by default (see the
 SKILL.md agent contract); `list` and `export` are read-only and take no
-`--solution`.
+`--solution`. `labels` is read-only too but **requires** `--solution` (it reads
+that solution's translation export — see the projection section below).
 
 ```bash
 crm --json form list contoso_ticket                                 # main forms only (the default)
@@ -159,6 +160,20 @@ a per-language label store and serves/accepts `formxml` **projected to the calle
 To set labels in another language, use `crm translation export`/`import`, **not**
 formxml: there they appear as lowercase `displayname` rows keyed by `LabelId` (not
 the capitalized attribute `DisplayName` rows).
+
+To **see** every language without unzipping a translation export by hand, use
+`form labels <formid> --solution SOL` — it joins the form's structure to that
+solution's translation export (parsed in memory) and emits a per-element tree
+with a `languagecode → text` map per tab/section/cell. Join key is the element's
+`labelid`, else its `id`. Elements with no translation row (e.g. a bound field
+labelled from its attribute) fall back to the projection, flagged
+`source: formxml-projection`. Errors if the form is not a component of `SOL`.
+
+```bash
+crm --json form labels 98ae5881-b152-4eb9-916d-539c83ff69c7 --solution ContosoCore
+# → data: {formid, form, solution, languages: [1033, 1036],
+#          elements: [{type: tab, name, source, labels: {"1033": …, "1036": …}, sections: […]}]}
+```
 
 ## Manual splice — fallback for unmapped control types
 
