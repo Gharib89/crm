@@ -60,6 +60,17 @@ command-level defaults per row). Any other key — including a `behavior` key, s
 neither action takes a `RootComponentBehavior` parameter — is rejected outright,
 not silently dropped.
 
+**`--no-subcomponents` is entity-only.** The platform accepts
+`DoNotIncludeSubcomponents: true` only on Entity (type 1) roots — sent for any
+other type it returns `HTTP 500 … can not be set to true on non Entity root` and
+rolls the whole `$batch` back. So the command-level `--no-subcomponents` is an
+*entity-scoped* batch default: applied to entity rows, filtered off for every
+non-entity row. A realistic mixed-type file (entities + attributes + forms + BPFs)
+with `--no-subcomponents --no-add-required` therefore just works — no per-row
+guarding needed. Asking for it *explicitly* on a non-entity (a per-row
+`"no_subcomponents": true`, or `--id`/`--type` on a non-entity with the flag) is
+rejected client-side before any request, naming the offending rows (#941).
+
 On full success the batch `--json` `data` is `{solution, added|removed: [{type,
 id, ok, status, error}], count, succeeded, failed, rolled_back}` (all rows `ok`,
 `failed: 0`). A rolled-back batch always exits 1 with `ok: false`, but the shape

@@ -698,8 +698,10 @@ def _collect_remove_components(component_ids, type_, components_file):
 @click.option(
     "--no-subcomponents",
     is_flag=True,
-    help="Exclude subcomponents (DoNotIncludeSubcomponents: true). "
-    "Batch default; a --components-file row can override it.",
+    help="Exclude subcomponents (DoNotIncludeSubcomponents: true). Only valid for "
+    "entity components: as a batch default it applies to entity rows only, and "
+    "requesting it for a non-entity component (per-row or via --id/--type) is "
+    "rejected client-side. A --components-file row can override the default.",
 )
 @_destructive_option
 @pass_ctx
@@ -728,6 +730,18 @@ def solution_add_component(
     with d365_errors(ctx):
         if single:
             component_type = sol_mod.resolve_component_type(type_)
+            # Reject the entity-only --no-subcomponents restriction here, before
+            # _cascade_gate can touch the backend — validate untrusted flag input
+            # before any request (#941). The core repeats this as a safety net.
+            sol_mod.reject_non_entity_no_subcomponents(
+                [
+                    {
+                        "component_id": component_ids[0],
+                        "component_type": component_type,
+                        "do_not_include_subcomponents": no_subcomponents,
+                    }
+                ]
+            )
             _cascade_gate(ctx, [] if no_add_required else [(component_ids[0], component_type)], yes)
             info = sol_mod.add_solution_component(
                 ctx.backend(),
@@ -752,6 +766,8 @@ def solution_add_component(
         components = _collect_add_components(
             component_ids, type_, components_file, no_add_required, no_subcomponents
         )
+        # Same entity-only check before _cascade_gate's backend call (#941).
+        sol_mod.reject_non_entity_no_subcomponents(components)
         cascading = [
             (c["component_id"], c["component_type"])
             for c in components

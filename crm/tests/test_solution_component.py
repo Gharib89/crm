@@ -114,13 +114,30 @@ class TestAddSolutionComponent:
                 backend,
                 solution="CRMWorx",
                 component_id=_COMP_ID,
-                component_type=61,
+                component_type=1,  # entity — the one type --no-subcomponents is legal on
                 add_required_components=False,
                 do_not_include_subcomponents=True,
             )
         body = _posts(m)[0].json()
         assert body["AddRequiredComponents"] is False
         assert body["DoNotIncludeSubcomponents"] is True
+
+    def test_no_subcomponents_rejected_on_non_entity(self, backend):
+        # DoNotIncludeSubcomponents is accepted by the platform only on Entity
+        # (type 1) roots; requesting it for a non-entity component is rejected
+        # client-side, before any HTTP (#941).
+        with requests_mock.Mocker() as m:
+            _mock_solution(m, backend, managed=False)
+            m.post(backend.url_for("AddSolutionComponent"), status_code=204)
+            with pytest.raises(D365Error, match="entity"):
+                sol_mod.add_solution_component(
+                    backend,
+                    solution="CRMWorx",
+                    component_id=_COMP_ID,
+                    component_type=61,
+                    do_not_include_subcomponents=True,
+                )
+            assert m.request_history == []
 
     def test_refuses_managed_no_post(self, backend):
         with requests_mock.Mocker() as m:
@@ -228,6 +245,87 @@ class TestComponentCommands:
             lambda backend, **kw: captured.update(kw) or {"added": True},
         )
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        # --type 1 (entity, given as an int) is the one type for which
+        # --no-subcomponents is legal (#941), so it exercises both flag flips.
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "solution",
+                "add-component",
+                "--solution",
+                "CRMWorx",
+                "--type",
+                "1",
+                "--id",
+                _GUID,
+                "--no-add-required",
+                "--no-subcomponents",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert captured["component_type"] == 1
+        assert captured["add_required_components"] is False
+        assert captured["do_not_include_subcomponents"] is True
+
+    def test_add_component_no_subcomponents_non_entity_singular_errors(self, monkeypatch):
+        # Singular --type <non-entity> --no-subcomponents fails client-side (no
+        # core mock → the real guard runs), before any request (#941).
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "solution",
+                "add-component",
+                "--solution",
+                "CRMWorx",
+                "--type",
+                "webresource",
+                "--id",
+                _GUID,
+                "--no-subcomponents",
+            ],
+        )
+        assert result.exit_code == 1, result.output
+        payload = json.loads(result.output)
+        assert payload["ok"] is False
+        assert "entity" in payload["error"].lower()
+
+    def test_add_component_no_subcomponents_non_entity_validates_before_backend(self, monkeypatch):
+        # Interactive singular non-entity --no-subcomponents (cascade path active,
+        # no --json/--yes) must be rejected before _cascade_gate touches the
+        # backend — validate untrusted flag input before ctx.backend() (#941).
+        calls = {"backend": 0}
+
+        def _backend(self):
+            calls["backend"] += 1
+            return object()
+
+        monkeypatch.setattr("crm.cli.CLIContext.backend", _backend)
+        monkeypatch.setattr("crm.commands.solution._stdin_is_tty", lambda: True)
+        result = CliRunner().invoke(
+            cli,
+            [
+                "solution",
+                "add-component",
+                "--solution",
+                "CRMWorx",
+                "--type",
+                "webresource",
+                "--id",
+                _GUID,
+                "--no-subcomponents",
+            ],
+        )
+        assert result.exit_code != 0, result.output
+        assert "entity" in result.output.lower()
+        assert calls["backend"] == 0, "backend was called before client-side validation"
+
+    def test_add_component_no_subcomponents_non_entity_multi_id_errors(self, monkeypatch):
+        # Repeated --id (a batch) sharing a non-entity --type with --no-subcomponents
+        # is rejected by the batch core guard, before the $batch is issued (#941).
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = CliRunner().invoke(
             cli,
             [
@@ -240,14 +338,20 @@ class TestComponentCommands:
                 "61",
                 "--id",
                 _GUID,
-                "--no-add-required",
+                "--id",
+                _COMP_ID_2,
                 "--no-subcomponents",
             ],
         )
-        assert result.exit_code == 0, result.output
-        assert captured["component_type"] == 61
-        assert captured["add_required_components"] is False
-        assert captured["do_not_include_subcomponents"] is True
+        assert result.exit_code == 1, result.output
+        assert "entity" in result.output.lower()
+
+    def test_add_component_help_documents_entity_only_no_subcomponents(self):
+        # The --no-subcomponents help text names the entity-only restriction (#941);
+        # "entity" appears in the add-component help only because of that note.
+        result = CliRunner().invoke(cli, ["solution", "add-component", "--help"])
+        assert result.exit_code == 0
+        assert "entity" in result.output.lower()
 
     def test_add_component_entity_emits_required_components_note(self, monkeypatch):
         monkeypatch.setattr(
@@ -536,6 +640,31 @@ class TestAddSolutionComponentsBatch:
         # The second row keeps the defaults.
         assert '"AddRequiredComponents": true' in text
 
+    def test_no_subcomponents_rejected_on_non_entity_row(self, backend):
+        # A DoNotIncludeSubcomponents:true on a non-entity row is rejected before
+        # the transactional $batch is issued — the platform would otherwise 500
+        # and roll the whole batch back. The error names every offending row (#941).
+        with requests_mock.Mocker() as m:
+            _mock_solution(m, backend, managed=False)
+            with pytest.raises(D365Error, match="type 61"):
+                sol_mod.add_solution_components(
+                    backend,
+                    solution="CRMWorx",
+                    components=[
+                        {
+                            "component_id": _COMP_ID,
+                            "component_type": 1,  # entity — legal
+                            "do_not_include_subcomponents": True,
+                        },
+                        {
+                            "component_id": _COMP_ID_2,
+                            "component_type": 61,  # webresource — illegal
+                            "do_not_include_subcomponents": True,
+                        },
+                    ],
+                )
+            assert m.request_history == []
+
 
 class TestRemoveSolutionComponentsBatch:
     def test_posts_one_transactional_batch(self, backend):
@@ -622,12 +751,46 @@ class TestParseComponentsFile:
         rows = sol_mod.parse_components_file(
             p, for_add=True, default_no_add_required=True, default_no_subcomponents=True
         )
-        # Row 0 inherits the flag defaults.
+        # Row 0 is an entity → inherits the no_subcomponents default as-is.
         assert rows[0]["add_required_components"] is False
         assert rows[0]["do_not_include_subcomponents"] is True
-        # Row 1's explicit key wins over the default.
+        # Row 1's explicit key wins over the default; the inherited
+        # no_subcomponents default is filtered off because it is a non-entity row
+        # (DoNotIncludeSubcomponents is entity-only, #941).
         assert rows[1]["add_required_components"] is True
-        assert rows[1]["do_not_include_subcomponents"] is True  # inherited
+        assert rows[1]["do_not_include_subcomponents"] is False
+
+    def test_batch_default_no_subcomponents_filters_to_entity_rows(self, tmp_path):
+        # The batch-wide --no-subcomponents default applies DoNotIncludeSubcomponents
+        # only to entity (type 1) rows; every non-entity row gets False, because the
+        # platform 500s if it is sent for a non-entity root (#941).
+        p = tmp_path / "comps.json"
+        p.write_text(
+            json.dumps(
+                [
+                    {"type": "entity", "id": _COMP_ID},
+                    {"type": 61, "id": _COMP_ID_2},  # webresource
+                    {"type": 29, "id": _GUID},  # workflow (BPF) — non-entity
+                ]
+            ),
+            encoding="utf-8",
+        )
+        rows = sol_mod.parse_components_file(p, for_add=True, default_no_subcomponents=True)
+        assert rows[0]["do_not_include_subcomponents"] is True  # entity
+        assert rows[1]["do_not_include_subcomponents"] is False  # non-entity, filtered
+        assert rows[2]["do_not_include_subcomponents"] is False  # non-entity, filtered
+
+    def test_explicit_no_subcomponents_on_non_entity_row_flows_through(self, tmp_path):
+        # An explicit per-row no_subcomponents:true on a non-entity is NOT silently
+        # dropped at parse time (that would hide the platform restriction); it keeps
+        # True here and the add core rejects it client-side (#941).
+        p = tmp_path / "comps.json"
+        p.write_text(
+            json.dumps([{"type": 61, "id": _COMP_ID, "no_subcomponents": True}]),
+            encoding="utf-8",
+        )
+        rows = sol_mod.parse_components_file(p, for_add=True)
+        assert rows[0]["do_not_include_subcomponents"] is True
 
     def test_unknown_key_rejected(self, tmp_path):
         # The issue example carried a `behavior` key; the core has no
