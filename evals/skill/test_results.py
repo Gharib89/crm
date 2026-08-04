@@ -16,8 +16,13 @@ import pytest
 from evals.skill.results import (
     TrialRecord,
     aggregate_task,
+    append_trials,
+    complete_task_ids,
     hake_gain,
     is_reportable,
+    load_trials,
+    rewrite_trials,
+    stamp_run_start,
     write_results,
 )
 
@@ -57,6 +62,11 @@ class TestReportable:
         # a full paired k≥3 run narrowed by --tasks/--sample is not the whole corpus → not
         # reportable, so it can't pollute the baseline pool (#892).
         assert is_reportable(preset="full", paired=True, k=3, subset=True) is False
+
+    def test_unsandboxed_run_not_reportable(self):
+        # --no-sandbox is a wiring check with unrestricted agent egress — a full paired
+        # k≥3 run under it must never be quotable or become a baseline.
+        assert is_reportable(preset="full", paired=True, k=3, sandbox=False) is False
 
 
 class TestAggregateTask:
@@ -171,3 +181,107 @@ class TestWriteResults:
         )
         report = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
         assert report["reportable"] is False
+
+    def test_reportable_defaults_false_when_sandbox_flag_omitted(self, tmp_path):
+        # Same fail-safe: a run whose meta does not positively record it was sandboxed is
+        # treated as unsandboxed (non-reportable) rather than silently quotable.
+        run_dir = write_results(
+            tmp_path,
+            run_id="r1",
+            meta={"preset": "full", "paired": True, "k": 3, "subset": False},  # no "sandbox"
+            trials=[],
+            aggregates=[],
+        )
+        report = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+        assert report["reportable"] is False
+
+    def test_reportable_true_with_full_sandboxed_meta(self, tmp_path):
+        run_dir = write_results(
+            tmp_path,
+            run_id="r1",
+            meta={"preset": "full", "paired": True, "k": 3, "subset": False, "sandbox": True},
+            trials=[],
+            aggregates=[],
+        )
+        report = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+        assert report["reportable"] is True
+
+
+def _trial(task_id: str, leg: str, trial: int, passed: bool = True) -> TrialRecord:
+    return TrialRecord(
+        task_id=task_id, leg=leg, trial=trial, passed=passed, reason="", capped=False
+    )
+
+
+class TestIncrementalSaveAndResume:
+    def test_append_then_load_round_trips(self, tmp_path):
+        first = [_trial("a", "skill", 0), _trial("a", "bare", 0)]
+        second = [_trial("b", "skill", 0, passed=False)]
+        append_trials(tmp_path, first)
+        append_trials(tmp_path, second)
+        loaded = load_trials(tmp_path)
+        assert loaded == first + second
+
+    def test_load_missing_file_is_empty(self, tmp_path):
+        assert load_trials(tmp_path) == []
+
+    def test_load_skips_a_truncated_tail_line(self, tmp_path):
+        # A mid-write crash can leave the final line truncated; load must skip it (the
+        # task's block is then incomplete and reruns whole) rather than crash --resume.
+        good = [_trial("a", "skill", 0)]
+        append_trials(tmp_path, good)
+        with (tmp_path / "trials.jsonl").open("a", encoding="utf-8") as fh:
+            fh.write('{"task_id": "b", "leg": "sk')
+        assert load_trials(tmp_path) == good
+
+    def test_rewrite_prunes_to_exactly_the_given_rows(self, tmp_path):
+        append_trials(tmp_path, [_trial("a", "skill", 0), _trial("b", "skill", 0)])
+        kept = [_trial("a", "skill", 0)]
+        rewrite_trials(tmp_path, kept)
+        assert load_trials(tmp_path) == kept
+        # atomic swap: the temp file must not survive
+        assert not (tmp_path / "trials.jsonl.tmp").exists()
+
+    def test_complete_task_ids_requires_full_blocks_both_legs(self):
+        trials = [
+            # a: complete at k=2 (2 skill + 2 bare)
+            _trial("a", "skill", 0),
+            _trial("a", "skill", 1),
+            _trial("a", "bare", 0),
+            _trial("a", "bare", 1),
+            # b: interrupted mid-legs (2 skill, 1 bare) — must rerun whole
+            _trial("b", "skill", 0),
+            _trial("b", "skill", 1),
+            _trial("b", "bare", 0),
+        ]
+        assert complete_task_ids(trials, k=2, paired=True) == {"a"}
+
+    def test_complete_task_ids_unpaired_counts_skill_only(self):
+        trials = [_trial("a", "skill", 0), _trial("a", "skill", 1)]
+        assert complete_task_ids(trials, k=2, paired=False) == {"a"}
+        assert complete_task_ids(trials, k=3, paired=False) == set()
+
+    def test_failed_trials_still_count_toward_completeness(self):
+        # Completeness is about block shape, not verdicts — a task that failed all its
+        # trials is done and must NOT rerun on resume (that would be silent best-of-N).
+        trials = [_trial("a", "skill", 0, passed=False), _trial("a", "bare", 0, passed=False)]
+        assert complete_task_ids(trials, k=1, paired=True) == {"a"}
+
+    def test_stamp_run_start_is_never_reportable_and_marks_in_progress(self, tmp_path):
+        meta = {"model": "sonnet", "target": "cloud", "k": 3, "preset": "full", "paired": True}
+        run_dir = stamp_run_start(tmp_path, run_id="r1", meta=meta)
+        stamped = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+        # Hard-False even though the meta shape (full/paired/k=3) would be reportable:
+        # an interrupted run must never enter the matrix or be picked as a baseline.
+        assert stamped["reportable"] is False
+        assert stamped["in_progress"] is True
+        assert stamped["meta"]["k"] == 3
+        assert (run_dir / "trials.jsonl").exists()
+
+    def test_stamp_run_start_leaves_existing_trials_alone(self, tmp_path):
+        rows = [_trial("a", "skill", 0)]
+        run_dir = tmp_path / "r1"
+        run_dir.mkdir()
+        append_trials(run_dir, rows)
+        stamp_run_start(tmp_path, run_id="r1", meta={})
+        assert load_trials(run_dir) == rows

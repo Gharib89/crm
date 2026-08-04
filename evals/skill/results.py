@@ -45,15 +45,19 @@ def hake_gain(pass_skill: float, pass_bare: float) -> float | None:
     return (pass_skill - pass_bare) / headroom
 
 
-def is_reportable(*, preset: str, paired: bool, k: int, subset: bool = False) -> bool:
+def is_reportable(
+    *, preset: str, paired: bool, k: int, subset: bool = False, sandbox: bool = True
+) -> bool:
     """Whether a run counts as reportable: a full, paired, whole-corpus run at k≥3 (ADR 0028).
 
     A single-condition run (smoke/regression, bare leg skipped) has no lift, a k<3 run is
     too noisy to quote, and a ``subset`` run (``--tasks``/``--sample`` narrowed the corpus)
     is not the "whole corpus" the ADR requires — so none is reportable. The walking-skeleton
-    default (k=1) is deliberately *not* reportable.
+    default (k=1) is deliberately *not* reportable. ``sandbox=False`` (an explicit
+    ``--no-sandbox`` run) is a wiring check with unrestricted agent egress — never
+    reportable and never a baseline.
     """
-    return preset == "full" and paired and k >= REPORTABLE_MIN_K and not subset
+    return preset == "full" and paired and k >= REPORTABLE_MIN_K and not subset and sandbox
 
 
 def series_key(meta: dict[str, Any]) -> tuple[str, str, int]:
@@ -157,6 +161,96 @@ def aggregate_task(task_id: str, trials: list[TrialRecord]) -> TaskAggregate:
     )
 
 
+def stamp_run_start(results_root: str | Path, *, run_id: str, meta: dict[str, Any]) -> Path:
+    """Create the run dir and stamp an **in-progress** ``run.json``; return the run dir.
+
+    Written before the first trial so an interrupted run leaves a valid record:
+    ``reportable`` is hard-``False`` (an in-progress/aborted run must never enter the
+    matrix or be picked as a baseline — only the final :func:`write_results` computes the
+    real stamp), ``in_progress: true`` marks it, and ``meta`` is the resume contract —
+    ``--resume`` validates its flags against the stamp so two configurations can never
+    silently mix in one run dir. An empty ``trials.jsonl`` is created for fresh runs but
+    an existing one is left alone (the resume path prunes it instead).
+    """
+    run_dir = Path(results_root) / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    run_json = {
+        "run_id": run_id,
+        "meta": meta,
+        "reportable": False,
+        "in_progress": True,
+        "aggregates": [],
+    }
+    (run_dir / "run.json").write_text(json.dumps(run_json, indent=2), encoding="utf-8")
+    (run_dir / "trials.jsonl").touch()
+    return run_dir
+
+
+def load_trials(run_dir: str | Path) -> list[TrialRecord]:
+    """Read ``<run_dir>/trials.jsonl`` back into records (empty list if absent).
+
+    The read half of the incremental-save loop: a resumed run loads the durable rows,
+    decides which tasks are already complete (:func:`complete_task_ids`), and keeps only
+    those tasks' rows. Rows are written by ``to_dict`` so they round-trip by field name.
+    A line truncated by a mid-write crash is skipped rather than raising — its task then
+    has an incomplete block and reruns whole, which is exactly the resume contract.
+    """
+    path = Path(run_dir) / "trials.jsonl"
+    if not path.exists():
+        return []
+    records: list[TrialRecord] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            records.append(TrialRecord(**json.loads(line)))
+        except (ValueError, TypeError):
+            continue
+    return records
+
+
+def append_trials(run_dir: str | Path, records: list[TrialRecord]) -> None:
+    """Append ``records`` to ``<run_dir>/trials.jsonl`` — the per-task durable save.
+
+    Called after each task finishes **all** its legs/trials, so the file only ever
+    contains whole per-task blocks plus (at worst) the crash-interrupted tail of the
+    final task — which :func:`complete_task_ids` filters out on resume.
+    """
+    with (Path(run_dir) / "trials.jsonl").open("a", encoding="utf-8") as fh:
+        for t in records:
+            fh.write(json.dumps(t.to_dict()) + "\n")
+
+
+def rewrite_trials(run_dir: str | Path, records: list[TrialRecord]) -> None:
+    """Replace ``<run_dir>/trials.jsonl`` with exactly ``records`` (the resume prune).
+
+    Written to a sibling temp file and atomically swapped in, so a crash mid-prune can
+    never lose the completed rows being kept (truncate-then-append would).
+    """
+    path = Path(run_dir) / "trials.jsonl"
+    tmp = path.with_suffix(".jsonl.tmp")
+    with tmp.open("w", encoding="utf-8") as fh:
+        for t in records:
+            fh.write(json.dumps(t.to_dict()) + "\n")
+    tmp.replace(path)
+
+
+def complete_task_ids(trials: list[TrialRecord], *, k: int, paired: bool) -> set[str]:
+    """Task ids with a **complete** trial block: k skill trials (+ k bare when paired).
+
+    The resume gate: a task interrupted mid-legs has an asymmetric block (e.g. 3 skill /
+    1 bare) that would bias its aggregate, so it is *not* complete and reruns whole —
+    resume granularity is the task, matching the per-task :func:`append_trials` save.
+    """
+    complete: set[str] = set()
+    for task_id in {t.task_id for t in trials}:
+        skill = sum(1 for t in trials if t.task_id == task_id and t.leg == "skill")
+        bare = sum(1 for t in trials if t.task_id == task_id and t.leg == "bare")
+        if skill >= k and (not paired or bare >= k):
+            complete.add(task_id)
+    return complete
+
+
 def write_results(
     results_root: str | Path,
     *,
@@ -184,6 +278,9 @@ def write_results(
         # Same fail-safe default: a run that omits the flag is treated as a subset (never
         # reportable) rather than silently quotable.
         subset=bool(meta.get("subset", True)),
+        # And again: a run that does not positively record it was sandboxed is treated as
+        # unsandboxed (never reportable) rather than silently quotable.
+        sandbox=bool(meta.get("sandbox", False)),
     )
     run_json = {
         "run_id": run_id,

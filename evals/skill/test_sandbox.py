@@ -29,10 +29,13 @@ def test_sandbox_settings_is_fail_closed_and_unbypassable():
     assert settings["failIfUnavailable"] is True
     # the agent-under-test cannot self-bypass: with unsandboxed commands disallowed, the
     # per-command dangerouslyDisableSandbox escape hatch is ignored and settings writes denied.
-    # This closed escape hatch is what makes allowedDomains deny-by-default (a non-allowed
-    # host can't fall back to an unsandboxed retry); allowManagedDomainsOnly is a
-    # managed-settings-only lock and a no-op in this user-scope block, so it is not set.
     assert settings["allowUnsandboxedCommands"] is False
+    # strictAllowlist is what makes allowedDomains deny-by-default: since Claude Code
+    # 2.1.219 an unlisted host otherwise *prompts*, and the headless agent's
+    # --dangerously-skip-permissions auto-allows it (a silent leak). The closed escape
+    # hatch then guarantees no unsandboxed retry; allowManagedDomainsOnly is a
+    # managed-settings-only lock and a no-op in this user-scope block, so it is not set.
+    assert settings["network"]["strictAllowlist"] is True
     assert "allowManagedDomainsOnly" not in settings
 
 
@@ -59,23 +62,58 @@ def test_sandbox_settings_is_pure():
 
 def test_parse_enforcement_clean_green():
     # org returned an HTTP status and the non-org host was blocked → the only runnable state.
-    out = "ORG_HTTP=302\ncurl: (7) Failed to connect ...\nEX=000\nWEB_BLOCKED"
+    out = "VERDICT org=302 web=SEALED"
     assert parse_enforcement(out) == (True, True)
 
 
 def test_parse_enforcement_dead_proxy_fails_org():
-    # Proxy dead → org never connected (ORG_HTTP=000) → not runnable even though web "blocked".
-    out = "curl: (7) Failed to connect to localhost port 3128\nORG_HTTP=000\nWEB_BLOCKED"
+    # Proxy dead → org never connected (org=000) → not runnable even though web "blocked".
+    out = "curl: (7) Failed to connect to localhost port 3128\nVERDICT org=000 web=SEALED"
     assert parse_enforcement(out) == (False, True)
 
 
 def test_parse_enforcement_leaky_proxy_fails_web():
-    # Proxy up but not enforcing → a non-org host egressed (WEB_OK) → not runnable (inflated lift).
-    out = "ORG_HTTP=302\n<html>Example Domain</html>\nWEB_OK"
+    # Proxy up but not enforcing → a non-org host egressed (web=OPEN) → not runnable
+    # (would inflate lift).
+    out = "VERDICT org=302 web=OPEN"
     assert parse_enforcement(out) == (True, False)
 
 
-def test_parse_enforcement_no_isolation_at_all():
-    # Neither marker of a block: org reachable and web reachable → the unsandboxed disaster case.
-    out = "ORG_HTTP=200\nWEB_OK"
-    assert parse_enforcement(out) == (True, False)
+def test_parse_enforcement_no_verdict_fails_closed():
+    # A stalled/derailed agent that never prints the verdict line must not read as runnable.
+    out = "I was unable to run the command because ..."
+    assert parse_enforcement(out) == (False, False)
+
+
+def test_parse_enforcement_ignores_echoed_command_text():
+    # Agents quote the command verbatim in their reply. The command text contains only the
+    # run-time pieces (`W=OPEN`, `web=$W`), never an assembled verdict — a quoted command
+    # plus the real output line must parse from the output line alone.
+    out = (
+        "I ran: ORG=$(curl -sS -o /dev/null -w '%{http_code}' https://org.example.com); "
+        "curl -sS --max-time 5 -o /dev/null https://example.com && W=OPEN || W=SEALED; "
+        'echo "VERDICT org=$ORG web=$W"\n'
+        "It printed:\nVERDICT org=302 web=SEALED"
+    )
+    assert parse_enforcement(out) == (True, True)
+
+
+def test_parse_enforcement_takes_the_last_verdict():
+    # If the transcript repeats the line (echoed output + a final summary), the last one wins.
+    out = "VERDICT org=302 web=OPEN\n...retrying...\nVERDICT org=302 web=SEALED"
+    assert parse_enforcement(out) == (True, True)
+
+
+def test_sandbox_settings_widens_to_auth_hosts_only_when_asked():
+    # The cloud target's OAuth flow needs AAD; a strict allowlist without it kills every
+    # crm call ("OAuth setup failed … login.microsoftonline.com … Max retries exceeded").
+    # The widening is explicit and additive — the default stays org-host-only (on-prem).
+    from evals.skill.sandbox import AAD_LOGIN_HOST
+
+    cloud = sandbox_settings("contoso.crm.dynamics.com", auth_hosts=(AAD_LOGIN_HOST,))
+    assert cloud["sandbox"]["network"]["allowedDomains"] == [
+        "contoso.crm.dynamics.com",
+        "login.microsoftonline.com",
+    ]
+    onprem = sandbox_settings("server.contoso.local")
+    assert onprem["sandbox"]["network"]["allowedDomains"] == ["server.contoso.local"]

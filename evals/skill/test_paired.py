@@ -11,9 +11,10 @@ cap-hit leg scores as a fail — with no agent and no org.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
-from evals.skill.paired import agent_argv, run_pair
+from evals.skill.paired import agent_argv, gate_tasks, run_pair
 from evals.skill.results import aggregate_task
 from evals.skill.runner import RunResult
 
@@ -191,3 +192,98 @@ def test_agent_argv_survives_shlex_roundtrip_with_spaced_bin():
     # back; a space in argv[0] must survive the roundtrip (shlex.join, not " ".join).
     argv = agent_argv(claude_bin="/opt/my claude/claude")
     assert shlex.split(shlex.join(argv)) == argv
+
+
+def _api_error_result(task_id: str) -> RunResult:
+    # The driver died on an API error (e.g. 529 Overloaded): agent exit 1 and a terminal
+    # result event flagged is_error — the shape run_pair must retry, not score (#943).
+    return RunResult(
+        task_id=task_id,
+        dry_run=False,
+        isolation_checks={},
+        passed=False,
+        reason="agent error",
+        transcript='[agent exit 1]\n{"type": "result", "is_error": true, "num_turns": 1}\n',
+        capped=False,
+    )
+
+
+def test_run_pair_retries_leg_on_agent_api_error():
+    events: list[str] = []
+
+    def fake_run_one(task_file, *, install_skill, **kw):
+        leg = "skill" if install_skill else "bare"
+        events.append(leg)
+        # first skill-leg attempt dies driver-side; the retry (and the bare leg) complete.
+        if leg == "skill" and events.count("skill") == 1:
+            return _api_error_result("t1")
+        return _fake_result("t1", passed=True)
+
+    def fake_reset():
+        events.append("reset")
+
+    trials = run_pair("t1.md", run_one=fake_run_one, reset_org=fake_reset, k=1)
+    # The retry replaces the poisoned attempt — still exactly one trial per leg, and the
+    # org is reset before the retry so it can't inherit the dead attempt's mutations.
+    assert events == ["reset", "skill", "reset", "skill", "reset", "bare"]
+    assert [t.leg for t in trials] == ["skill", "bare"]
+    assert all(t.passed for t in trials)
+
+
+def test_run_pair_persistent_api_error_scores_fail_after_bounded_retries():
+    calls = {"n": 0}
+
+    def fake_run_one(task_file, *, install_skill, **kw):
+        calls["n"] += 1
+        return _api_error_result("t1")
+
+    trials = run_pair("t1.md", run_one=fake_run_one, reset_org=lambda: None, k=1, paired=False)
+    # initial attempt + the bounded retries, then the outage lands as a recorded fail —
+    # bounded so a persistent outage can't loop a 10-hour run forever.
+    assert calls["n"] == 3
+    assert len(trials) == 1 and trials[0].passed is False
+
+
+def test_gate_tasks_skips_offtarget_and_diagnostic(tmp_path):
+    # The paired path must gate the corpus like the set runner: an off-target task
+    # (seed_target raises) or a diagnostic one (run_task refuses without --analyze)
+    # would otherwise crash the run at that task — after hours of finished trials,
+    # none of them yet written (results land only at the end).
+    def _write(name: str, target: str, body: str = "") -> Path:
+        p = tmp_path / f"{name}.md"
+        p.write_text(
+            f"---\nid: {name}\ndomain: d\ntarget: {target}\ncleanup: []\n{body}---\n"
+            "Do the thing.\n",
+            encoding="utf-8",
+        )
+        return p
+
+    expect = "end_state:\n  query: [query, odata, accounts]\n  expect: {count: 1}\n"
+    cloud_ok = _write("cloud-ok", "cloud", expect)
+    either_ok = _write("either-ok", "either", expect)
+    onprem = _write("onprem-only", "onprem", expect)
+    diagnostic = _write("diag", "cloud")  # no end_state.expect → diagnostic
+
+    runnable, skipped = gate_tasks([cloud_ok, either_ok, onprem, diagnostic], "cloud")
+    assert runnable == [cloud_ok, either_ok]
+    assert [p.stem for p, _ in skipped] == ["onprem-only", "diag"]
+    assert "target" in skipped[0][1]
+    assert "diagnostic" in skipped[1][1]
+
+
+def test_run_pair_verdict_lines_carry_color_and_duration():
+    lines: list[str] = []
+
+    def fake_run_one(task_file, *, install_skill, **kw):
+        return _fake_result("t1", passed=install_skill)
+
+    run_pair("t1.md", run_one=fake_run_one, reset_org=lambda: None, k=1, progress=lines.append)
+    verdicts = [ln for ln in lines if "(" in ln and "leg ·" in ln]
+    assert len(verdicts) == 2  # one resolve line per leg
+    skill_line = next(ln for ln in verdicts if "skill leg" in ln)
+    bare_line = next(ln for ln in verdicts if "bare leg" in ln)
+    # green pass / red fail, and a wall-time suffix per leg — the live skill-vs-bare
+    # timing read the maintainer watches during a long run.
+    assert "\033[32mpass\033[0m" in skill_line
+    assert "\033[31mfail\033[0m" in bare_line
+    assert re.search(r"\((\d+m)?\d{1,2}s\)", skill_line)

@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import json
 import os
 import secrets
 import shlex
@@ -33,6 +34,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -49,17 +51,44 @@ from evals.skill.results import (
     TaskAggregate,
     TrialRecord,
     aggregate_task,
+    append_trials,
+    complete_task_ids,
     is_reportable,
+    load_trials,
+    rewrite_trials,
+    stamp_run_start,
     write_results,
 )
 from evals.skill.runner import RunError, RunResult, cleanup_org, run_task
-from evals.skill.sandbox import probe_enforcement, sandbox_settings
+from evals.skill.sandbox import AAD_LOGIN_HOST, probe_enforcement, sandbox_settings
+from evals.skill.set_runner import should_skip
 from evals.skill.taskspec import parse_task_file
 
 DEFAULT_MODEL = "sonnet"
 #: Guardrails pinned by ADR 0028: the only tools the agent may use, and the turn cap.
 ALLOWED_TOOLS = "Bash,Read,Grep,Glob,Skill"
 MAX_TURNS = 50
+#: Bounded per-leg retries when the agent *driver* dies on an API error (e.g. 529
+#: Overloaded) before working the task — infrastructure, never task behavior (#943).
+_API_ERROR_RETRIES = 2
+
+#: ANSI colors for the progress stream (always emitted: the run log is watched via
+#: tail/tmux, where escapes render; the scoring stdout JSON is untouched).
+_ANSI = {"pass": "\033[32m", "fail": "\033[31m", "capped": "\033[31m"}
+_ANSI_RESET = "\033[0m"
+
+
+def _colored(verdict: str) -> str:
+    """The verdict word wrapped in its ANSI color (green pass, red fail/capped)."""
+    return f"{_ANSI.get(verdict, '')}{verdict}{_ANSI_RESET}"
+
+
+def _fmt_duration(seconds: float) -> str:
+    """``93.4 → '1m33s'`` — the per-leg wall time shown beside each verdict."""
+    m, s = divmod(int(seconds), 60)
+    return f"{m}m{s:02d}s" if m else f"{s}s"
+
+
 #: Per-trial wall-clock cap (seconds) — 10 minutes; a cap-hit scores as a fail.
 WALL_CLOCK_S = 600
 
@@ -104,6 +133,31 @@ def _transcript_ref(transcripts_dir: Path, task_id: str, leg: str, trial: int, b
     return f"transcripts/{name}"
 
 
+def gate_tasks(
+    task_files: list[Path], active_target: str
+) -> tuple[list[Path], list[tuple[Path, str]]]:
+    """Split the corpus into ``(runnable, skipped)`` for ``active_target``.
+
+    The set/both runners gate each task before scoring; the paired path must do the
+    same or the run *crashes* mid-corpus (``seed_target`` raises on a target mismatch,
+    ``run_task`` refuses a diagnostic task) — and paired results are only written at
+    the end, so one ungated task destroys every finished trial. Skips are returned
+    with their reason so the front door can report them; a skip is not a ``--tasks``/
+    ``--sample`` subset and never affects reportability (mirrors the set runner).
+    """
+    runnable: list[Path] = []
+    skipped: list[tuple[Path, str]] = []
+    for task_file in task_files:
+        spec = parse_task_file(task_file)
+        if spec.is_diagnostic:
+            skipped.append((task_file, "diagnostic (scored by --analyze, not paired)"))
+        elif should_skip(spec.target, active_target):
+            skipped.append((task_file, f"pinned target={spec.target!r}, active={active_target!r}"))
+        else:
+            runnable.append(task_file)
+    return runnable, skipped
+
+
 def run_pair(
     task_file: str | Path,
     *,
@@ -143,11 +197,23 @@ def run_pair(
         for leg, install in legs:
             if progress is not None:
                 progress(f"trial {trial + 1}/{k} · {leg} leg · resetting org + running agent…")
+            leg_started = time.monotonic()
             reset_org()
             result = run_one(task_file, install_skill=install, dry_run=False, **leg_kwargs)
+            # An agent-level API death (e.g. 529 Overloaded) is infrastructure, not task
+            # behavior — scoring it a fail poisons the run (#943). Retry the leg from a
+            # fresh org reset, bounded; a persistent outage still lands as a fail.
+            for _ in range(_API_ERROR_RETRIES):
+                if not trace.parse_api_error(result.transcript):
+                    break
+                if progress is not None:
+                    progress(f"trial {trial + 1}/{k} · {leg} leg · agent API error — retrying")
+                reset_org()
+                result = run_one(task_file, install_skill=install, dry_run=False, **leg_kwargs)
             if progress is not None:
                 verdict = "capped" if result.capped else ("pass" if result.passed else "fail")
-                progress(f"trial {trial + 1}/{k} · {leg} leg · {verdict}")
+                elapsed = _fmt_duration(time.monotonic() - leg_started)
+                progress(f"trial {trial + 1}/{k} · {leg} leg · {_colored(verdict)} ({elapsed})")
             ref = (
                 _transcript_ref(transcripts_dir, result.task_id, leg, trial, result.transcript)
                 if transcripts_dir is not None
@@ -287,6 +353,14 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
         metavar="CMD",
         help="judge command (default: $CRM_EVAL_JUDGE_CMD, else 'claude -p --model opus')",
     )
+    parser.add_argument(
+        "--resume",
+        default=None,
+        metavar="RUN_ID",
+        help="continue an interrupted run: tasks already complete in its trials.jsonl are "
+        "kept and skipped; a partially-run task reruns whole (flags must match the run's "
+        "stamped meta)",
+    )
     args = parser.parse_args(argv)
     preset = PRESETS[args.preset]
     only = [t.strip() for t in args.tasks.split(",")] if args.tasks else None
@@ -301,12 +375,63 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
     profile_name = target_mod.resolve_profile_name()
     host = target_mod.resolve_host(profile_name)
     active = target_mod.active_target()
-    run_id = _make_run_id()
+    task_files, gated_out = gate_tasks(task_files, active)
+    # `host` is intentionally NOT persisted into meta: a reportable run commits run.json
+    # (and report.md) to a public repo, and the live org host (esp. on-prem/internal) is
+    # sensitive. The series identity is model × target × k; host is a live-run detail only
+    # (it stays in the stderr summary + transcripts, which are never committed).
+    # A selection narrowed the corpus → not the "whole corpus" a reportable run needs.
+    subset = only is not None or args.sample is not None
+    meta: dict[str, object] = {
+        "model": args.model,
+        "target": active,
+        "k": args.k,
+        "preset": args.preset,
+        "paired": preset.paired,
+        "subset": subset,
+        # An unsandboxed (--no-sandbox) run is a wiring check with unrestricted agent
+        # egress — recorded so is_reportable can hard-exclude it (and any baseline pick).
+        "sandbox": not args.no_sandbox,
+        # The resolved (post-gating) corpus identity: --resume validates it so rows from
+        # two different task selections (or a corpus edit between attempts) can never mix.
+        "tasks": sorted(f.stem for f in task_files),
+        "skill_sha": record_mod.skill_sha(repo_root),
+    }
+
+    prior_trials: list[TrialRecord] = []
+    done_tasks: set[str] = set()
+    if args.resume:
+        run_id = args.resume
+        run_dir = Path(args.results_dir) / run_id
+        stamp_path = run_dir / "run.json"
+        if not stamp_path.exists():
+            raise RunError(f"--resume {run_id}: no run.json under {run_dir} — not a resumable run")
+        stamped = json.loads(stamp_path.read_text(encoding="utf-8")).get("meta", {})
+        # The resume contract: same series + corpus config, or the mixed rows would be
+        # meaningless (skill_sha excluded deliberately — resuming across a skill edit is
+        # legitimate only if you accept the mix, and the stamp records the original).
+        for key in ("model", "target", "k", "preset", "paired", "subset", "sandbox", "tasks"):
+            if stamped.get(key) != meta[key]:
+                raise RunError(
+                    f"--resume {run_id}: {key} mismatch (run was {stamped.get(key)!r}, "
+                    f"flags say {meta[key]!r}) — rerun with the original flags"
+                )
+        prior_trials = load_trials(run_dir)
+        done_tasks = complete_task_ids(prior_trials, k=args.k, paired=preset.paired)
+        # Keep only whole per-task blocks: an interrupted task reruns from scratch, so its
+        # partial rows must not survive to double-count in the final aggregate.
+        prior_trials = [t for t in prior_trials if t.task_id in done_tasks]
+        rewrite_trials(run_dir, prior_trials)
+    else:
+        run_id = _make_run_id()
     print(
         f"[paired] run {run_id}: preset={args.preset} tasks={len(task_files)} model={args.model} "
-        f"target={active} host={host} k={args.k} paired={preset.paired}",
+        f"target={active} host={host} k={args.k} paired={preset.paired}"
+        + (f" resume(complete={len(done_tasks)})" if args.resume else ""),
         file=sys.stderr,
     )
+    for task_file, why in gated_out:
+        print(f"[paired] skip {task_file.stem}: {why}", file=sys.stderr)
 
     session = Path(tempfile.mkdtemp(prefix="crm-eval-session-"))
     try:
@@ -331,21 +456,38 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
 
         def _go() -> list[TrialRecord]:
             # Each task carries its own cleanup, so its reset hook is built per task; both
-            # legs of a pair still share the one session venv + sandbox settings.
-            trials: list[TrialRecord] = []
-            for task_file in task_files:
-                _stderr(f"task {Path(task_file).stem}…")
-                trials.extend(
-                    run_pair(
-                        task_file,
-                        reset_org=build_reset_org(task_file, crm_bin),
-                        k=args.k,
-                        paired=preset.paired,
-                        transcripts_dir=run_dir / "transcripts",
-                        progress=_stderr,
-                        judge=judge,
-                        **leg_kwargs,
-                    )
+            # legs of a pair still share the one session venv + sandbox settings. Each
+            # task's rows are appended to trials.jsonl the moment its legs finish, so an
+            # interruption (limit, crash, kill) loses at most the in-flight task and
+            # `--resume <run-id>` continues from the next one.
+            trials: list[TrialRecord] = list(prior_trials)
+            total = len(task_files)
+            per_task = args.k * (2 if preset.paired else 1)
+            goal = total * per_task
+            for pos, task_file in enumerate(task_files, 1):
+                task_id = task_file.stem
+                if task_id in done_tasks:
+                    _stderr(f"task {pos}/{total} {task_id}: already complete — skipped (resume)")
+                    continue
+                _stderr(f"task {pos}/{total} {task_id}… [{len(trials)}/{goal} trials done]")
+                records = run_pair(
+                    task_file,
+                    reset_org=build_reset_org(task_file, crm_bin),
+                    k=args.k,
+                    paired=preset.paired,
+                    transcripts_dir=run_dir / "transcripts",
+                    progress=_stderr,
+                    judge=judge,
+                    **leg_kwargs,
+                )
+                trials.extend(records)
+                append_trials(run_dir, records)
+                passed = sum(1 for r in records if r.passed)
+                color = _ANSI["pass"] if passed == len(records) else _ANSI["fail"]
+                _stderr(
+                    f"task {pos}/{total} {task_id} done: "
+                    f"{color}{passed}/{len(records)} legs passed{_ANSI_RESET} "
+                    f"[{len(trials)}/{goal} trials, {len(trials) * 100 // goal}%]"
                 )
             return trials
 
@@ -354,7 +496,11 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
         else:
             # Written identically into both legs' config dirs; the built-in sandbox confines
             # each Bash command to the org host while the model driver keeps normal network.
-            leg_kwargs["sandbox_settings"] = sandbox_settings(host)
+            # The cloud target's OAuth client-credentials flow must reach AAD for its
+            # token; on-prem NTLM authenticates against the org host itself (no widening).
+            leg_kwargs["sandbox_settings"] = sandbox_settings(
+                host, auth_hosts=(AAD_LOGIN_HOST,) if active == "cloud" else ()
+            )
             # Fail-closed preflight: failIfUnavailable only proves the sandbox *binaries*
             # exist, not that the proxy *enforces* (dead proxy → false 0%/0% null; proxy up
             # but leaky → inflated lift — both seen on WSL2). Drive one sandboxed probe and
@@ -371,23 +517,14 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
                     f"sandbox network proxy is reliable, or pass --no-sandbox for an "
                     f"explicitly-unsandboxed wiring check."
                 )
+        # Stamp the in-progress run.json before the first trial: an interrupted run then
+        # leaves a valid, never-reportable record carrying the meta the resume validates.
+        # On resume the stamp already exists with identical meta (validated above).
+        if not args.resume:
+            stamp_run_start(args.results_dir, run_id=run_id, meta=meta)
         trials = _go()
 
         aggregates = [aggregate_task(t, trials) for t in dict.fromkeys(x.task_id for x in trials)]
-        # `host` is intentionally NOT persisted into meta: a reportable run commits run.json
-        # (and report.md) to a public repo, and the live org host (esp. on-prem/internal) is
-        # sensitive. The series identity is model × target × k; host is a live-run detail only
-        # (it stays in the stderr summary + transcripts, which are never committed).
-        meta = {
-            "model": args.model,
-            "target": active,
-            "k": args.k,
-            "preset": args.preset,
-            "paired": preset.paired,
-            # A selection narrowed the corpus → not the "whole corpus" a reportable run needs.
-            "subset": only is not None or args.sample is not None,
-            "skill_sha": record_mod.skill_sha(repo_root),
-        }
         # Advisory regression: look up the baseline BEFORE this run's own result is written, so a
         # reportable run can never select itself as its own baseline (series = model × target × k).
         # Never gates — the exit code below stays purely the did-anything-pass signal.
@@ -401,7 +538,13 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
         # Reporting + commit policy (ADR 0028): only a reportable run writes report.md,
         # (re)derives matrix.md from the committed records, and force-adds its named
         # artifacts — transcripts/run.log stay untracked because they are never named.
-        if is_reportable(preset=args.preset, paired=preset.paired, k=args.k, subset=meta["subset"]):
+        if is_reportable(
+            preset=args.preset,
+            paired=preset.paired,
+            k=args.k,
+            subset=subset,
+            sandbox=not args.no_sandbox,
+        ):
             _finalize_reporting(
                 repo_root, args.results_dir, run_dir, run_id, meta, aggregates, trials, regression
             )

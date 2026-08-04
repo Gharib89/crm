@@ -23,8 +23,10 @@ offline. ``failIfUnavailable`` makes ``claude`` abort when bubblewrap/socat or u
 user namespaces are missing. ``allowUnsandboxedCommands: false`` means the agent-under-test
 cannot self-bypass: the per-command ``dangerouslyDisableSandbox`` escape hatch is ignored
 and writes to ``settings.json`` are denied at every scope. Egress is pinned to exactly the
-declared ``allowedDomains`` (the org host) — with the escape hatch closed, every other host
-is blocked by the out-of-sandbox proxy and the allowlist is never widened dynamically.
+declared ``allowedDomains`` (the org host) by ``strictAllowlist`` — since Claude Code
+2.1.219 ``allowedDomains`` alone only *pre-approves* (an unlisted host prompts, which
+``--dangerously-skip-permissions`` turns into an allow); ``strictAllowlist`` restores the
+hard deny, and with the escape hatch closed the allowlist is never widened dynamically.
 
 **``failIfUnavailable`` is necessary but not sufficient** — it only checks that the sandbox
 *binaries* exist, not that the network proxy actually *started* and enforces. A host where
@@ -39,12 +41,18 @@ paired front door refuses to run the pair unless both hold.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from typing import Any
 
+#: The AAD endpoint the cloud target's OAuth client-credentials flow must reach (openid
+#: discovery + token). On-prem/NTLM authenticates against the org host itself and needs
+#: no extra egress.
+AAD_LOGIN_HOST = "login.microsoftonline.com"
 
-def sandbox_settings(host: str) -> dict[str, Any]:
+
+def sandbox_settings(host: str, *, auth_hosts: tuple[str, ...] = ()) -> dict[str, Any]:
     """The Claude Code ``settings.json`` block confining the agent's Bash to ``host``.
 
     A pure builder (the deleted ``nft_ruleset`` / ``netns_hosts_file`` / ``resolve_allow_ips``
@@ -52,38 +60,54 @@ def sandbox_settings(host: str) -> dict[str, Any]:
     — only the ``crm skill install`` differs between legs — so the block never confounds the
     with-skill vs bare comparison. ``host`` is both eval targets' hostname (cloud ``.com``,
     on-prem ``.local``), taken verbatim: the built-in sandbox matches on hostname, so no
-    scheme/port/bare-IP special-casing is needed.
+    scheme/port/bare-IP special-casing is needed. ``auth_hosts`` widens the allowlist to the
+    target's *auth* endpoints only — the cloud target's OAuth flow dies inside a strict
+    allowlist without :data:`AAD_LOGIN_HOST` (the leaky pre-2.1.219 sandbox masked this).
     """
     return {
         "sandbox": {
             "enabled": True,
             "failIfUnavailable": True,
             "allowUnsandboxedCommands": False,
-            "network": {"allowedDomains": [host]},
+            # strictAllowlist (Claude Code ≥ 2.1.219): without it, allowedDomains only
+            # pre-approves — an unlisted host *prompts*, and the headless agent's
+            # --dangerously-skip-permissions turns that prompt into an allow (a silent
+            # leak the enforcement preflight caught). With it, unlisted hosts are denied.
+            "network": {"allowedDomains": [host, *auth_hosts], "strictAllowlist": True},
         }
     }
 
 
 #: The probe prompt: the org host must return an HTTP status; a non-org host must be blocked.
+#: One command, one output line. The verdict markers (``VERDICT org=<code> web=OPEN|SEALED``)
+#: are assembled at *run time* from shell variables, so they can never appear literally in
+#: the command text — an agent quoting the command verbatim in its reply (they do) must not
+#: be able to fake or mask a marker (the old ``WEB_OK``/``WEB_BLOCKED`` sentinels appeared
+#: in the echoed command line and false-failed the parse).
 _PROBE_PROMPT = (
-    "Use the Bash tool to run these two commands and report each command's exit "
-    "code and full output verbatim:\n"
-    "1. curl -sS -o /dev/null -w 'ORG_HTTP=%{{http_code}}' https://{host}\n"
-    "2. curl -sS --max-time 5 https://example.com && echo WEB_OK || echo WEB_BLOCKED"
+    "Use the Bash tool to run exactly this one command, then reply with only the "
+    "single line it prints, no commentary:\n"
+    "ORG=$(curl -sS -o /dev/null -w '%{{http_code}}' https://{host}); "
+    "curl -sS --max-time 5 -o /dev/null https://example.com && W=OPEN || W=SEALED; "
+    'echo "VERDICT org=$ORG web=$W"'
 )
 
 
 def parse_enforcement(out: str) -> tuple[bool, bool]:
     """``(org_reachable, web_blocked)`` parsed from a :data:`_PROBE_PROMPT` transcript.
 
-    ``org_reachable``: the org ``curl`` printed an HTTP status that is not ``000`` (``000``
-    is curl's "never connected" — e.g. the sandbox proxy is dead). ``web_blocked``: the
-    non-org ``curl`` failed, so the ``|| echo WEB_BLOCKED`` branch fired and ``WEB_OK`` did
-    not. Pure so the fail-closed verdict is unit-tested without a live agent.
+    Matches the run-time-assembled ``VERDICT org=<code> web=OPEN|SEALED`` line (the last
+    one, if the transcript repeats it). ``org_reachable``: the org ``curl`` printed an HTTP
+    status that is not ``000`` (``000`` is curl's "never connected" — e.g. the sandbox proxy
+    is dead). ``web_blocked``: the non-org ``curl`` failed, so ``web=SEALED``. No verdict
+    line at all parses ``(False, False)`` — fail closed. Pure so the verdict is unit-tested
+    without a live agent.
     """
-    org_reachable = "ORG_HTTP=" in out and "ORG_HTTP=000" not in out
-    web_blocked = "WEB_BLOCKED" in out and "WEB_OK" not in out
-    return org_reachable, web_blocked
+    matches = re.findall(r"VERDICT org=(\d{3}) web=(OPEN|SEALED)", out)
+    if not matches:
+        return False, False
+    code, web = matches[-1]
+    return code != "000", web == "SEALED"
 
 
 def probe_enforcement(

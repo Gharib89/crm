@@ -506,7 +506,18 @@ What it adds over the single-condition runner:
   `g = (pass_skill − pass_bare) / (1 − pass_bare)` (N/A when `pass_bare == 1`), written to
   `evals/results/<run-id>/` as `run.json` (metadata + aggregates + a computed `reportable`
   stamp) and `trials.jsonl` (one line per leg-trial; transcripts by reference, never
-  inlined). A CLI summary prints on stdout, progress on stderr.
+  inlined). A CLI summary prints on stdout, progress on stderr — per-task position
+  (`task 3/31 <id>… [12/186 trials done]`), per-trial leg verdicts colorized (pass green,
+  fail/cap red) with per-leg wall time.
+- **Incremental saves + `--resume`** — the run dir is stamped **before** the first trial
+  (`run.json` with `in_progress: true` and `reportable` hard-`False`), and each task's
+  trial block is appended to `trials.jsonl` as soon as all its legs finish. An interrupted
+  run (token expiry, crash, Ctrl-C) therefore keeps every completed task;
+  `--resume <run-id>` validates the stamped meta (`model`/`target`/`k`/`preset`/`paired`/
+  `subset` must match, so two configurations can never mix in one run dir), prunes any
+  half-finished trial block, and reruns only the incomplete tasks. Resume granularity is
+  the **task**: a block is complete only with k skill (+ k bare when paired) trials —
+  failed trials count (no silent best-of-N), asymmetric blocks rerun whole.
 
 ```bash
 # Live run — the run itself is rootless (no sudo). agent-cloud is the default target.
@@ -530,6 +541,9 @@ D365_E2E=1 D365_E2E_PROFILE=agent-cloud \
 
 D365_E2E=1 D365_E2E_PROFILE=agent-cloud \
     python -m evals.skill.paired --preset full --k 3 --judge   # + advisory L2 judge (recorded, never gates)
+
+D365_E2E=1 D365_E2E_PROFILE=agent-cloud \
+    python -m evals.skill.paired --preset full --k 3 --resume <run-id>   # continue an interrupted run
 
 python -m evals.skill.sandbox <org-host>  # live smoke: org reachable, web blocked (real claude -p)
 ```
