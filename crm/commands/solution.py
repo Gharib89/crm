@@ -698,8 +698,10 @@ def _collect_remove_components(component_ids, type_, components_file):
 @click.option(
     "--no-subcomponents",
     is_flag=True,
-    help="Exclude subcomponents (DoNotIncludeSubcomponents: true). "
-    "Batch default; a --components-file row can override it.",
+    help="Exclude subcomponents (DoNotIncludeSubcomponents: true). Only valid for "
+    "entity components: as a batch default it applies to entity rows only, and "
+    "requesting it for a non-entity component (per-row or via --id/--type) is "
+    "rejected client-side. A --components-file row can override the default.",
 )
 @_destructive_option
 @pass_ctx

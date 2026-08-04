@@ -437,6 +437,36 @@ def resolve_component_type(value: str | int) -> int:
         ) from None
 
 
+# The `entity` componenttype (1) is the only root for which the platform accepts
+# DoNotIncludeSubcomponents:true — and the cascade vector the #916 audit reasons
+# about.
+_ENTITY_TYPE = SOLUTION_COMPONENT_TYPES["entity"]
+
+
+def _reject_non_entity_no_subcomponents(components: list[dict[str, Any]]) -> None:
+    """Reject any component asking to exclude subcomponents on a non-entity root.
+
+    AddSolutionComponent's ``DoNotIncludeSubcomponents:true`` is accepted by the
+    platform only on Entity (type 1) roots; sent for any other type it returns
+    ``HTTP 500: DoNotIncludeSubcomponents can not be set to true on non Entity
+    root <id> of type <n>`` and rolls the whole transactional ``$batch`` back
+    (#941). Catch that client-side, before any request, naming every offending
+    row so a mixed-type add fails fast instead of surfacing as a misleadingly
+    retryable server 500.
+    """
+    offending = [
+        (c["component_type"], c["component_id"])
+        for c in components
+        if c.get("do_not_include_subcomponents") and c["component_type"] != _ENTITY_TYPE
+    ]
+    if offending:
+        rows = ", ".join(f"type {t} id {i}" for t, i in offending)
+        raise D365Error(
+            "--no-subcomponents (DoNotIncludeSubcomponents) is only valid for "
+            f"entity components; offending row(s): {rows}."
+        )
+
+
 def _require_unmanaged_solution(backend: D365Backend, solution: str, *, verb: str) -> None:
     """Forced-real solution_info pre-flight (works under dry-run too); raise if the
     target is managed. `verb` is the action phrase, e.g. 'added to'.
@@ -465,6 +495,15 @@ def add_solution_component(
     managed target — AddSolutionComponent is unmanaged-only. Returns
     `{added, solution, component_id, component_type}` on a real run.
     """
+    _reject_non_entity_no_subcomponents(
+        [
+            {
+                "component_id": component_id,
+                "component_type": component_type,
+                "do_not_include_subcomponents": do_not_include_subcomponents,
+            }
+        ]
+    )
     _require_unmanaged_solution(backend, solution, verb="added to")
 
     body: dict[str, Any] = {
@@ -591,9 +630,17 @@ def parse_components_file(
             component["add_required_components"] = not _row_bool(
                 p, i, row, "no_add_required", default_no_add_required
             )
-            component["do_not_include_subcomponents"] = _row_bool(
-                p, i, row, "no_subcomponents", default_no_subcomponents
-            )
+            no_sub = _row_bool(p, i, row, "no_subcomponents", default_no_subcomponents)
+            # DoNotIncludeSubcomponents is entity-only (#941). As a batch-wide
+            # *default* it applies to entity rows only — a non-entity row silently
+            # gets False rather than 500ing the whole batch. An *explicit* per-row
+            # "no_subcomponents":true on a non-entity flows through unchanged; the
+            # add core rejects it client-side, so the explicit request is surfaced,
+            # not silently dropped.
+            from_default = "no_subcomponents" not in row
+            if no_sub and from_default and component["component_type"] != _ENTITY_TYPE:
+                no_sub = False
+            component["do_not_include_subcomponents"] = no_sub
         out.append(component)
     return out
 
@@ -620,6 +667,7 @@ def add_solution_components(
     whole batch runs as one changeset — a mid-batch failure rolls every row back.
     See :func:`_run_component_batch` for the returned per-row summary shape.
     """
+    _reject_non_entity_no_subcomponents(components)
     _require_unmanaged_solution(backend, solution, verb="added to")
     ops: list[BatchOperation] = [
         {
@@ -875,9 +923,6 @@ def _safe_get_by_id(backend: D365Backend, path: str, select: str) -> dict[str, A
 
 
 # ── solution audit + add-time cascade preview (#916) ─────────────────────────
-
-# The `entity` componenttype (1) is the cascade vector this feature reasons about.
-_ENTITY_TYPE = SOLUTION_COMPONENT_TYPES["entity"]
 
 
 def _extract_required(result: dict[str, Any]) -> list[dict[str, Any]]:

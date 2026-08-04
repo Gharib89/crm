@@ -249,6 +249,77 @@ def test_batch_add_remove_and_rollback(
     )
 
 
+@covers("solution add-component")
+def test_batch_wide_no_subcomponents_mixed_types(
+    cli, backend, ephemeral_solution, ephemeral_entity, tmp_path
+):
+    """A mixed-type --components-file with the batch-wide --no-subcomponents flag
+    must succeed (#941 regression).
+
+    Before the fix, DoNotIncludeSubcomponents:true was emitted for every row; the
+    platform accepts it only on Entity roots, so a mixed entity+attribute file
+    combined with the batch-wide flag returned `HTTP 500: DoNotIncludeSubcomponents
+    can not be set to true on non Entity root <id> of type 2` and rolled the whole
+    $batch back. The flag is now entity-scoped as a batch default: the entity row
+    keeps it, the attribute row is filtered to false, and the add succeeds.
+    """
+    import json as _json
+
+    from crm.core import metadata as meta_mod
+    from crm.core import solution as sol_mod
+
+    try:
+        info = meta_mod.entity_info(backend, ephemeral_entity)
+        attrs = meta_mod.list_attributes(backend, ephemeral_entity)
+    except Exception as exc:
+        pytest.skip(f"could not resolve entity/attribute metadata: {exc}")
+
+    entity_id = info.get("MetadataId")
+    if not entity_id:
+        pytest.skip("entity MetadataId not returned; cannot batch components")
+    attr_id = next((a.get("MetadataId") for a in attrs if a.get("MetadataId")), None)
+    if not attr_id:
+        pytest.skip("attribute MetadataId not returned; cannot batch components")
+
+    # Mixed-type file with NO per-row flags — the entity-only restriction is driven
+    # entirely by the batch-wide --no-subcomponents/--no-add-required flags. This is
+    # the exact shape that 500s pre-fix.
+    comp_file = tmp_path / "comps.json"
+    comp_file.write_text(
+        _json.dumps(
+            [
+                {"type": "entity", "id": entity_id},
+                {"type": "attribute", "id": attr_id},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    result = cli(
+        [
+            "--json",
+            "solution",
+            "add-component",
+            "--solution",
+            ephemeral_solution,
+            "--components-file",
+            str(comp_file),
+            "--no-subcomponents",
+            "--no-add-required",
+        ]
+    )
+    assert result.returncode == 0, f"batch-wide --no-subcomponents add failed:\n{result.stderr}"
+    env = _json.loads(result.stdout)
+    assert env["ok"], env
+    assert env["data"]["count"] == 2
+    assert env["data"]["failed"] == 0
+    assert all(r["ok"] for r in env["data"]["added"])
+
+    comps = sol_mod.solution_components(backend, ephemeral_solution)
+    present = {c["objectid"].lower() for c in comps}
+    assert entity_id.lower() in present, f"entity missing after batch add: {present}"
+    assert attr_id.lower() in present, f"attribute missing after batch add: {present}"
+
+
 # ── set-version ───────────────────────────────────────────────────────────────
 
 
