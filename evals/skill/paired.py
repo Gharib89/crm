@@ -53,7 +53,7 @@ from evals.skill.results import (
     write_results,
 )
 from evals.skill.runner import RunError, RunResult, cleanup_org, run_task
-from evals.skill.sandbox import probe_enforcement, sandbox_settings
+from evals.skill.sandbox import AAD_LOGIN_HOST, probe_enforcement, sandbox_settings
 from evals.skill.taskspec import parse_task_file
 
 DEFAULT_MODEL = "sonnet"
@@ -367,7 +367,11 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
         else:
             # Written identically into both legs' config dirs; the built-in sandbox confines
             # each Bash command to the org host while the model driver keeps normal network.
-            leg_kwargs["sandbox_settings"] = sandbox_settings(host)
+            # The cloud target's OAuth client-credentials flow must reach AAD for its
+            # token; on-prem NTLM authenticates against the org host itself (no widening).
+            leg_kwargs["sandbox_settings"] = sandbox_settings(
+                host, auth_hosts=(AAD_LOGIN_HOST,) if active == "cloud" else ()
+            )
             # Fail-closed preflight: failIfUnavailable only proves the sandbox *binaries*
             # exist, not that the proxy *enforces* (dead proxy → false 0%/0% null; proxy up
             # but leaky → inflated lift — both seen on WSL2). Drive one sandboxed probe and

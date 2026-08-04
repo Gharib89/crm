@@ -102,3 +102,18 @@ def test_parse_enforcement_takes_the_last_verdict():
     # If the transcript repeats the line (echoed output + a final summary), the last one wins.
     out = "VERDICT org=302 web=OPEN\n...retrying...\nVERDICT org=302 web=SEALED"
     assert parse_enforcement(out) == (True, True)
+
+
+def test_sandbox_settings_widens_to_auth_hosts_only_when_asked():
+    # The cloud target's OAuth flow needs AAD; a strict allowlist without it kills every
+    # crm call ("OAuth setup failed … login.microsoftonline.com … Max retries exceeded").
+    # The widening is explicit and additive — the default stays org-host-only (on-prem).
+    from evals.skill.sandbox import AAD_LOGIN_HOST
+
+    cloud = sandbox_settings("contoso.crm.dynamics.com", auth_hosts=(AAD_LOGIN_HOST,))
+    assert cloud["sandbox"]["network"]["allowedDomains"] == [
+        "contoso.crm.dynamics.com",
+        "login.microsoftonline.com",
+    ]
+    onprem = sandbox_settings("server.contoso.local")
+    assert onprem["sandbox"]["network"]["allowedDomains"] == ["server.contoso.local"]

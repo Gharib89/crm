@@ -46,8 +46,13 @@ import subprocess
 import sys
 from typing import Any
 
+#: The AAD endpoint the cloud target's OAuth client-credentials flow must reach (openid
+#: discovery + token). On-prem/NTLM authenticates against the org host itself and needs
+#: no extra egress.
+AAD_LOGIN_HOST = "login.microsoftonline.com"
 
-def sandbox_settings(host: str) -> dict[str, Any]:
+
+def sandbox_settings(host: str, *, auth_hosts: tuple[str, ...] = ()) -> dict[str, Any]:
     """The Claude Code ``settings.json`` block confining the agent's Bash to ``host``.
 
     A pure builder (the deleted ``nft_ruleset`` / ``netns_hosts_file`` / ``resolve_allow_ips``
@@ -55,7 +60,9 @@ def sandbox_settings(host: str) -> dict[str, Any]:
     — only the ``crm skill install`` differs between legs — so the block never confounds the
     with-skill vs bare comparison. ``host`` is both eval targets' hostname (cloud ``.com``,
     on-prem ``.local``), taken verbatim: the built-in sandbox matches on hostname, so no
-    scheme/port/bare-IP special-casing is needed.
+    scheme/port/bare-IP special-casing is needed. ``auth_hosts`` widens the allowlist to the
+    target's *auth* endpoints only — the cloud target's OAuth flow dies inside a strict
+    allowlist without :data:`AAD_LOGIN_HOST` (the leaky pre-2.1.219 sandbox masked this).
     """
     return {
         "sandbox": {
@@ -66,7 +73,7 @@ def sandbox_settings(host: str) -> dict[str, Any]:
             # pre-approves — an unlisted host *prompts*, and the headless agent's
             # --dangerously-skip-permissions turns that prompt into an allow (a silent
             # leak the enforcement preflight caught). With it, unlisted hosts are denied.
-            "network": {"allowedDomains": [host], "strictAllowlist": True},
+            "network": {"allowedDomains": [host, *auth_hosts], "strictAllowlist": True},
         }
     }
 
