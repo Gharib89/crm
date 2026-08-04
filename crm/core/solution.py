@@ -462,8 +462,9 @@ def _reject_non_entity_no_subcomponents(components: list[dict[str, Any]]) -> Non
     if offending:
         rows = ", ".join(f"type {t} id {i}" for t, i in offending)
         raise D365Error(
-            "--no-subcomponents (DoNotIncludeSubcomponents) is only valid for "
-            f"entity components; offending row(s): {rows}."
+            "DoNotIncludeSubcomponents (--no-subcomponents, or a per-row "
+            '"no_subcomponents": true) is only valid for entity components; '
+            f"offending row(s): {rows}."
         )
 
 
