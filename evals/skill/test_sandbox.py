@@ -62,23 +62,43 @@ def test_sandbox_settings_is_pure():
 
 def test_parse_enforcement_clean_green():
     # org returned an HTTP status and the non-org host was blocked → the only runnable state.
-    out = "ORG_HTTP=302\ncurl: (7) Failed to connect ...\nEX=000\nWEB_BLOCKED"
+    out = "VERDICT org=302 web=SEALED"
     assert parse_enforcement(out) == (True, True)
 
 
 def test_parse_enforcement_dead_proxy_fails_org():
-    # Proxy dead → org never connected (ORG_HTTP=000) → not runnable even though web "blocked".
-    out = "curl: (7) Failed to connect to localhost port 3128\nORG_HTTP=000\nWEB_BLOCKED"
+    # Proxy dead → org never connected (org=000) → not runnable even though web "blocked".
+    out = "curl: (7) Failed to connect to localhost port 3128\nVERDICT org=000 web=SEALED"
     assert parse_enforcement(out) == (False, True)
 
 
 def test_parse_enforcement_leaky_proxy_fails_web():
-    # Proxy up but not enforcing → a non-org host egressed (WEB_OK) → not runnable (inflated lift).
-    out = "ORG_HTTP=302\n<html>Example Domain</html>\nWEB_OK"
+    # Proxy up but not enforcing → a non-org host egressed (web=OPEN) → not runnable
+    # (would inflate lift).
+    out = "VERDICT org=302 web=OPEN"
     assert parse_enforcement(out) == (True, False)
 
 
-def test_parse_enforcement_no_isolation_at_all():
-    # Neither marker of a block: org reachable and web reachable → the unsandboxed disaster case.
-    out = "ORG_HTTP=200\nWEB_OK"
-    assert parse_enforcement(out) == (True, False)
+def test_parse_enforcement_no_verdict_fails_closed():
+    # A stalled/derailed agent that never prints the verdict line must not read as runnable.
+    out = "I was unable to run the command because ..."
+    assert parse_enforcement(out) == (False, False)
+
+
+def test_parse_enforcement_ignores_echoed_command_text():
+    # Agents quote the command verbatim in their reply. The command text contains only the
+    # run-time pieces (`W=OPEN`, `web=$W`), never an assembled verdict — a quoted command
+    # plus the real output line must parse from the output line alone.
+    out = (
+        "I ran: ORG=$(curl -sS -o /dev/null -w '%{http_code}' https://org.example.com); "
+        "curl -sS --max-time 5 -o /dev/null https://example.com && W=OPEN || W=SEALED; "
+        'echo "VERDICT org=$ORG web=$W"\n'
+        "It printed:\nVERDICT org=302 web=SEALED"
+    )
+    assert parse_enforcement(out) == (True, True)
+
+
+def test_parse_enforcement_takes_the_last_verdict():
+    # If the transcript repeats the line (echoed output + a final summary), the last one wins.
+    out = "VERDICT org=302 web=OPEN\n...retrying...\nVERDICT org=302 web=SEALED"
+    assert parse_enforcement(out) == (True, True)

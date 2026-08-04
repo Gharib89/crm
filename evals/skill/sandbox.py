@@ -41,6 +41,7 @@ paired front door refuses to run the pair unless both hold.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from typing import Any
@@ -71,25 +72,35 @@ def sandbox_settings(host: str) -> dict[str, Any]:
 
 
 #: The probe prompt: the org host must return an HTTP status; a non-org host must be blocked.
+#: One command, one output line. The verdict markers (``VERDICT org=<code> web=OPEN|SEALED``)
+#: are assembled at *run time* from shell variables, so they can never appear literally in
+#: the command text — an agent quoting the command verbatim in its reply (they do) must not
+#: be able to fake or mask a marker (the old ``WEB_OK``/``WEB_BLOCKED`` sentinels appeared
+#: in the echoed command line and false-failed the parse).
 _PROBE_PROMPT = (
-    "Use the Bash tool to run these two commands and report each command's exit "
-    "code and full output verbatim:\n"
-    "1. curl -sS -o /dev/null -w 'ORG_HTTP=%{{http_code}}' https://{host}\n"
-    "2. curl -sS --max-time 5 https://example.com && echo WEB_OK || echo WEB_BLOCKED"
+    "Use the Bash tool to run exactly this one command, then reply with only the "
+    "single line it prints, no commentary:\n"
+    "ORG=$(curl -sS -o /dev/null -w '%{{http_code}}' https://{host}); "
+    "curl -sS --max-time 5 -o /dev/null https://example.com && W=OPEN || W=SEALED; "
+    'echo "VERDICT org=$ORG web=$W"'
 )
 
 
 def parse_enforcement(out: str) -> tuple[bool, bool]:
     """``(org_reachable, web_blocked)`` parsed from a :data:`_PROBE_PROMPT` transcript.
 
-    ``org_reachable``: the org ``curl`` printed an HTTP status that is not ``000`` (``000``
-    is curl's "never connected" — e.g. the sandbox proxy is dead). ``web_blocked``: the
-    non-org ``curl`` failed, so the ``|| echo WEB_BLOCKED`` branch fired and ``WEB_OK`` did
-    not. Pure so the fail-closed verdict is unit-tested without a live agent.
+    Matches the run-time-assembled ``VERDICT org=<code> web=OPEN|SEALED`` line (the last
+    one, if the transcript repeats it). ``org_reachable``: the org ``curl`` printed an HTTP
+    status that is not ``000`` (``000`` is curl's "never connected" — e.g. the sandbox proxy
+    is dead). ``web_blocked``: the non-org ``curl`` failed, so ``web=SEALED``. No verdict
+    line at all parses ``(False, False)`` — fail closed. Pure so the verdict is unit-tested
+    without a live agent.
     """
-    org_reachable = "ORG_HTTP=" in out and "ORG_HTTP=000" not in out
-    web_blocked = "WEB_BLOCKED" in out and "WEB_OK" not in out
-    return org_reachable, web_blocked
+    matches = re.findall(r"VERDICT org=(\d{3}) web=(OPEN|SEALED)", out)
+    if not matches:
+        return False, False
+    code, web = matches[-1]
+    return code != "000", web == "SEALED"
 
 
 def probe_enforcement(
