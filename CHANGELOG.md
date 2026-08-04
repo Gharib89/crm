@@ -9,6 +9,19 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.77.7 (2026-08-04)
+
+### Bug Fixes
+
+- Select a Python >=3.13 in cloud-ship bootstrap instead of trusting the default
+  ([#945](https://github.com/Gharib89/crm/pull/945),
+  [`09fbc4b`](https://github.com/Gharib89/crm/commit/09fbc4b071dc0f7c07ef6975e80700706cdd02aa))
+
+- Validate CLOUD_SHIP_PYTHON override and pin crm calls to the selected interpreter
+  ([#945](https://github.com/Gharib89/crm/pull/945),
+  [`09fbc4b`](https://github.com/Gharib89/crm/commit/09fbc4b071dc0f7c07ef6975e80700706cdd02aa))
+
+
 ## v1.77.6 (2026-08-04)
 
 ### Bug Fixes
