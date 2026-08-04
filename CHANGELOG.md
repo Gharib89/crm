@@ -9,6 +9,59 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.79.0 (2026-08-04)
+
+### Bug Fixes
+
+- **evals**: Allow the AAD login host through the cloud sandbox allowlist
+  ([#949](https://github.com/Gharib89/crm/pull/949),
+  [`891ea0e`](https://github.com/Gharib89/crm/commit/891ea0e32ef39d68a4bbe80de42314725670cec3))
+
+- **evals**: Collision-proof the enforcement probe verdict markers
+  ([#949](https://github.com/Gharib89/crm/pull/949),
+  [`891ea0e`](https://github.com/Gharib89/crm/commit/891ea0e32ef39d68a4bbe80de42314725670cec3))
+
+- **evals**: Gate off-target and diagnostic tasks out of the paired corpus
+  ([#949](https://github.com/Gharib89/crm/pull/949),
+  [`891ea0e`](https://github.com/Gharib89/crm/commit/891ea0e32ef39d68a4bbe80de42314725670cec3))
+
+- **evals**: Harden reportability and resume integrity (review round 1)
+  ([#949](https://github.com/Gharib89/crm/pull/949),
+  [`891ea0e`](https://github.com/Gharib89/crm/commit/891ea0e32ef39d68a4bbe80de42314725670cec3))
+
+- **evals**: Harden the paired skill-eval harness + first reportable run
+  ([#949](https://github.com/Gharib89/crm/pull/949),
+  [`891ea0e`](https://github.com/Gharib89/crm/commit/891ea0e32ef39d68a4bbe80de42314725670cec3))
+
+- **evals**: Per-leg wall time and colorized verdicts in the progress stream
+  ([#949](https://github.com/Gharib89/crm/pull/949),
+  [`891ea0e`](https://github.com/Gharib89/crm/commit/891ea0e32ef39d68a4bbe80de42314725670cec3))
+
+- **evals**: Pin sandbox egress with strictAllowlist (Claude Code >= 2.1.219)
+  ([#949](https://github.com/Gharib89/crm/pull/949),
+  [`891ea0e`](https://github.com/Gharib89/crm/commit/891ea0e32ef39d68a4bbe80de42314725670cec3))
+
+- **evals**: Put the crm binary under test first on the agent's PATH
+  ([#949](https://github.com/Gharib89/crm/pull/949),
+  [`891ea0e`](https://github.com/Gharib89/crm/commit/891ea0e32ef39d68a4bbe80de42314725670cec3))
+
+- **evals**: Retry a leg when the agent driver dies on an API error
+  ([#949](https://github.com/Gharib89/crm/pull/949),
+  [`891ea0e`](https://github.com/Gharib89/crm/commit/891ea0e32ef39d68a4bbe80de42314725670cec3))
+
+### Documentation
+
+- **evals**: Commit first reportable paired run + document saves/resume
+  ([#949](https://github.com/Gharib89/crm/pull/949),
+  [`891ea0e`](https://github.com/Gharib89/crm/commit/891ea0e32ef39d68a4bbe80de42314725670cec3))
+
+### Features
+
+- **evals**: Per-task durable saves, resume, and real progress for paired runs
+  ([#949](https://github.com/Gharib89/crm/pull/949),
+  [`891ea0e`](https://github.com/Gharib89/crm/commit/891ea0e32ef39d68a4bbe80de42314725670cec3))
+
+
 ## v1.78.0 (2026-08-04)
 
 ### Bug Fixes
