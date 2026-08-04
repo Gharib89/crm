@@ -9,6 +9,19 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.79.1 (2026-08-04)
+
+### Bug Fixes
+
+- **evals**: Abort paired run on persistent agent infra failure
+  ([#950](https://github.com/Gharib89/crm/pull/950),
+  [`d18b294`](https://github.com/Gharib89/crm/commit/d18b294185faa9b13adae65d59d06ffb93a6c4c1))
+
+- **evals**: Return exit 1 (not 2) on paired infra abort
+  ([#950](https://github.com/Gharib89/crm/pull/950),
+  [`d18b294`](https://github.com/Gharib89/crm/commit/d18b294185faa9b13adae65d59d06ffb93a6c4c1))
+
+
 ## v1.79.0 (2026-08-04)
 
 ### Bug Fixes
