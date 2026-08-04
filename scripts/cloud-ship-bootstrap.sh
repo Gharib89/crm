@@ -24,24 +24,26 @@ set -euo pipefail
 # crm requires Python >= 3.13. The sandbox image's default `python`/`pip` can lag
 # behind that floor (observed: default `python` = 3.11 with a usable 3.13 present at
 # /usr/bin/python3.13), which makes the editable install below abort on the version
-# pin before the profile is ever built. Don't trust the ambient default — resolve an
-# interpreter that satisfies the floor and drive every install through it, so the
-# bootstrap is immune to whatever `python`/`pip` happen to map to.
-PY="${CLOUD_SHIP_PYTHON:-}"
+# pin before the profile is ever built. Don't trust the ambient default — pick the
+# first interpreter that actually satisfies the floor and drive every install *and*
+# the crm CLI itself through it (`"$PY" -m …`), so the whole bootstrap is pinned to
+# one interpreter regardless of what `python`/`pip`/`crm` resolve to on PATH. A
+# CLOUD_SHIP_PYTHON override is tried first but validated the same way, so a stale
+# value (missing, or < 3.13) just falls through to auto-detection instead of
+# reintroducing the original install failure.
+PY=""
+for cand in ${CLOUD_SHIP_PYTHON:+"$CLOUD_SHIP_PYTHON"} python3.13 python3 python; do
+  if command -v "$cand" >/dev/null 2>&1 \
+     && "$cand" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 13) else 1)'; then
+    PY="$(command -v "$cand")"
+    break
+  fi
+done
 if [ -z "$PY" ]; then
-  for cand in python3.13 python3 python; do
-    if command -v "$cand" >/dev/null 2>&1 \
-       && "$cand" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 13) else 1)'; then
-      PY="$(command -v "$cand")"
-      break
-    fi
-  done
-fi
-if [ -z "$PY" ]; then
-  echo "cloud-ship-bootstrap: no Python >= 3.13 on PATH (crm requires >=3.13); the sandbox image lacks a compatible interpreter" >&2
+  echo "cloud-ship-bootstrap: no Python >= 3.13 found (crm requires >=3.13); checked ${CLOUD_SHIP_PYTHON:+$CLOUD_SHIP_PYTHON, }python3.13, python3, python — the sandbox image lacks a compatible interpreter" >&2
   exit 1
 fi
-echo "cloud-ship-bootstrap: installing crm with $("$PY" --version) ($PY)"
+echo "cloud-ship-bootstrap: using $("$PY" --version) ($PY)"
 
 # crm CLI from source (not published to PyPI)
 "$PY" -m pip install -e ".[dev,docs]"
@@ -60,7 +62,7 @@ echo "cloud-ship-bootstrap: installing crm with $("$PY" --version) ($PY)"
 # is blocked or the secret is wrong. --yes skips the overwrite-confirm so an
 # in-session re-run (e.g. retry after a transient pip failure) overwrites cleanly
 # instead of aborting on the no-TTY prompt.
-crm profile add \
+"$PY" -m crm profile add \
   --name agent-cloud \
   --url "$D365_URL" \
   --auth-scheme oauth \
@@ -73,4 +75,4 @@ crm profile add \
   --yes
 
 # Sanity: confirm the cloud org is reachable before /ship starts
-crm --profile agent-cloud connection whoami
+"$PY" -m crm --profile agent-cloud connection whoami
