@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from evals.skill.paired import agent_argv, run_pair
+from evals.skill.paired import agent_argv, gate_tasks, run_pair
 from evals.skill.results import aggregate_task
 from evals.skill.runner import RunResult
 
@@ -241,3 +241,30 @@ def test_run_pair_persistent_api_error_scores_fail_after_bounded_retries():
     # bounded so a persistent outage can't loop a 10-hour run forever.
     assert calls["n"] == 3
     assert len(trials) == 1 and trials[0].passed is False
+
+
+def test_gate_tasks_skips_offtarget_and_diagnostic(tmp_path):
+    # The paired path must gate the corpus like the set runner: an off-target task
+    # (seed_target raises) or a diagnostic one (run_task refuses without --analyze)
+    # would otherwise crash the run at that task — after hours of finished trials,
+    # none of them yet written (results land only at the end).
+    def _write(name: str, target: str, body: str = "") -> Path:
+        p = tmp_path / f"{name}.md"
+        p.write_text(
+            f"---\nid: {name}\ndomain: d\ntarget: {target}\ncleanup: []\n{body}---\n"
+            "Do the thing.\n",
+            encoding="utf-8",
+        )
+        return p
+
+    expect = "end_state:\n  query: [query, odata, accounts]\n  expect: {count: 1}\n"
+    cloud_ok = _write("cloud-ok", "cloud", expect)
+    either_ok = _write("either-ok", "either", expect)
+    onprem = _write("onprem-only", "onprem", expect)
+    diagnostic = _write("diag", "cloud")  # no end_state.expect → diagnostic
+
+    runnable, skipped = gate_tasks([cloud_ok, either_ok, onprem, diagnostic], "cloud")
+    assert runnable == [cloud_ok, either_ok]
+    assert [p.stem for p, _ in skipped] == ["onprem-only", "diag"]
+    assert "target" in skipped[0][1]
+    assert "diagnostic" in skipped[1][1]

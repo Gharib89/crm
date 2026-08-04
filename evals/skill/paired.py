@@ -54,6 +54,7 @@ from evals.skill.results import (
 )
 from evals.skill.runner import RunError, RunResult, cleanup_org, run_task
 from evals.skill.sandbox import AAD_LOGIN_HOST, probe_enforcement, sandbox_settings
+from evals.skill.set_runner import should_skip
 from evals.skill.taskspec import parse_task_file
 
 DEFAULT_MODEL = "sonnet"
@@ -105,6 +106,31 @@ def _transcript_ref(transcripts_dir: Path, task_id: str, leg: str, trial: int, b
     name = f"{task_id}.{leg}.{trial}.txt"
     (transcripts_dir / name).write_text(body, encoding="utf-8")
     return f"transcripts/{name}"
+
+
+def gate_tasks(
+    task_files: list[Path], active_target: str
+) -> tuple[list[Path], list[tuple[Path, str]]]:
+    """Split the corpus into ``(runnable, skipped)`` for ``active_target``.
+
+    The set/both runners gate each task before scoring; the paired path must do the
+    same or the run *crashes* mid-corpus (``seed_target`` raises on a target mismatch,
+    ``run_task`` refuses a diagnostic task) — and paired results are only written at
+    the end, so one ungated task destroys every finished trial. Skips are returned
+    with their reason so the front door can report them; a skip is not a ``--tasks``/
+    ``--sample`` subset and never affects reportability (mirrors the set runner).
+    """
+    runnable: list[Path] = []
+    skipped: list[tuple[Path, str]] = []
+    for task_file in task_files:
+        spec = parse_task_file(task_file)
+        if spec.is_diagnostic:
+            skipped.append((task_file, "diagnostic (scored by --analyze, not paired)"))
+        elif should_skip(spec.target, active_target):
+            skipped.append((task_file, f"pinned target={spec.target!r}, active={active_target!r}"))
+        else:
+            runnable.append(task_file)
+    return runnable, skipped
 
 
 def run_pair(
@@ -314,12 +340,15 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
     profile_name = target_mod.resolve_profile_name()
     host = target_mod.resolve_host(profile_name)
     active = target_mod.active_target()
+    task_files, gated_out = gate_tasks(task_files, active)
     run_id = _make_run_id()
     print(
         f"[paired] run {run_id}: preset={args.preset} tasks={len(task_files)} model={args.model} "
         f"target={active} host={host} k={args.k} paired={preset.paired}",
         file=sys.stderr,
     )
+    for task_file, why in gated_out:
+        print(f"[paired] skip {task_file.stem}: {why}", file=sys.stderr)
 
     session = Path(tempfile.mkdtemp(prefix="crm-eval-session-"))
     try:
