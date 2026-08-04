@@ -162,3 +162,34 @@ def test_parse_api_error_false_without_result_event():
     # never read as an API error (which would trigger a retry and re-burn the wall clock).
     raw = "[agent exit -9]\n" + _line({"type": "system", "subtype": "init"})
     assert trace.parse_api_error(raw) is False
+
+
+def test_parse_api_error_detail_extracts_subtype_and_message():
+    # When the run aborts on persistent infra failure, the abort message names the cause
+    # as far as the transcript reveals it (#943): the terminal result event's subtype and
+    # its human message, joined for the operator.
+    raw = _line(
+        {
+            "type": "result",
+            "is_error": True,
+            "subtype": "error_during_execution",
+            "result": "Claude AI usage limit reached",
+            "num_turns": 1,
+        }
+    )
+    assert (
+        trace.parse_api_error_detail(raw) == "error_during_execution; Claude AI usage limit reached"
+    )
+
+
+def test_parse_api_error_detail_none_on_clean_result():
+    # A clean terminal result is not an infra failure — no cause to report.
+    raw = _line({"type": "result", "num_turns": 12, "total_cost_usd": 0.5})
+    assert trace.parse_api_error_detail(raw) is None
+
+
+def test_parse_api_error_detail_survives_missing_fields():
+    # The abort must not depend on classifying the cause — an is_error result with no
+    # subtype/message still aborts; the detail is simply None (best-effort).
+    raw = _line({"type": "result", "is_error": True, "num_turns": 1})
+    assert trace.parse_api_error_detail(raw) is None

@@ -78,6 +78,31 @@ _ANSI = {"pass": "\033[32m", "fail": "\033[31m", "capped": "\033[31m"}
 _ANSI_RESET = "\033[0m"
 
 
+class PairedRunAborted(RunError):
+    """A leg exhausted its API-error retries — the run aborts instead of scoring the trial.
+
+    Exhausting the bounded per-leg retries (:data:`_API_ERROR_RETRIES`) means the failure
+    is *persistent* infrastructure — a usage-limit window that stays exhausted, an expired
+    token, a sustained model-API outage — not task behavior. Recording that trial a fail
+    would poison the run (every following trial burns its retries in seconds and false-fails
+    the same way), so run_pair raises this instead (#943). The aborting task's trial block is
+    never produced, so it stays incomplete and ``--resume`` reruns it from a fresh org reset.
+
+    Carries ``task_id`` / ``leg`` and the best-effort ``cause`` parsed from the transcript;
+    the front door (which owns the run id and the original flags) builds the resume hint.
+    """
+
+    def __init__(self, task_id: str, leg: str, cause: str | None) -> None:
+        self.task_id = task_id
+        self.leg = leg
+        self.cause = cause
+        detail = f": {cause}" if cause else ""
+        super().__init__(
+            f"agent infrastructure failure persisted through {_API_ERROR_RETRIES} "
+            f"retries on task {task_id!r} ({leg} leg){detail}"
+        )
+
+
 def _colored(verdict: str) -> str:
     """The verdict word wrapped in its ANSI color (green pass, red fail/capped)."""
     return f"{_ANSI.get(verdict, '')}{verdict}{_ANSI_RESET}"
@@ -210,6 +235,14 @@ def run_pair(
                     progress(f"trial {trial + 1}/{k} · {leg} leg · agent API error — retrying")
                 reset_org()
                 result = run_one(task_file, install_skill=install, dry_run=False, **leg_kwargs)
+            # Retries exhausted and still a driver-side API death → persistent infrastructure
+            # failure. Abort the run rather than record a poisoned fail (#943): raise before
+            # this trial is appended so the task stays incomplete for --resume. Callers above
+            # this frame have already durably saved every completed task block.
+            if trace.parse_api_error(result.transcript):
+                raise PairedRunAborted(
+                    result.task_id, leg, trace.parse_api_error_detail(result.transcript)
+                )
             if progress is not None:
                 verdict = "capped" if result.capped else ("pass" if result.passed else "fail")
                 elapsed = _fmt_duration(time.monotonic() - leg_started)
@@ -297,6 +330,64 @@ def build_reset_org(
         cleanup_org(spec, env, profile, crm_bin, str(reset_home))
 
     return _reset
+
+
+def _resume_command(run_id: str, args: argparse.Namespace) -> str:
+    """The exact ``--resume`` invocation to continue an aborted run, from its own flags.
+
+    ``--resume`` re-reads the stamped ``run.json`` and refuses any flag that would change
+    the series/corpus identity (model, k, preset, subset, sandbox, tasks), so the abort
+    hint must replay the flags the run was launched with — only the ones that were actually
+    set, to keep the line minimal (#943).
+    """
+    parts = [
+        "D365_E2E=1",
+        "python",
+        "-m",
+        "evals.skill.paired",
+        "--resume",
+        run_id,
+        "--preset",
+        args.preset,
+        "--model",
+        args.model,
+        "--k",
+        str(args.k),
+    ]
+    if args.tasks:
+        parts += ["--tasks", args.tasks]
+    if args.sample is not None:
+        parts += ["--sample", str(args.sample)]
+    if args.seed != DEFAULT_SEED:
+        parts += ["--seed", str(args.seed)]
+    if args.no_sandbox:
+        parts.append("--no-sandbox")
+    if args.judge:
+        parts.append("--judge")
+    if args.judge_cmd:
+        parts += ["--judge-cmd", args.judge_cmd]
+    if args.results_dir != str(RESULTS_ROOT):
+        parts += ["--results-dir", args.results_dir]
+    return shlex.join(parts)
+
+
+def _print_abort(
+    abort: PairedRunAborted, run_id: str, args: argparse.Namespace
+) -> None:  # pragma: no cover - live front door
+    """Loud, actionable stderr on a run-level infra abort: cause, run id, resume command."""
+    print(
+        f"\n[paired] ABORTED — {abort}\n"
+        f"[paired]   The per-leg API-error retry budget was exhausted, so this is a "
+        f"persistent infrastructure failure (usage-limit window exhausted, auth/token "
+        f"expiry, or a sustained model-API outage), NOT a task result. The run was not "
+        f"scored and stays never-reportable; every completed task is preserved in the run "
+        f"dir.\n"
+        f"[paired]   run id: {run_id}\n"
+        f"[paired]   resume once the environment recovers:\n"
+        f"[paired]     {_resume_command(run_id, args)}",
+        file=sys.stderr,
+        flush=True,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front door
@@ -522,7 +613,14 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
         # On resume the stamp already exists with identical meta (validated above).
         if not args.resume:
             stamp_run_start(args.results_dir, run_id=run_id, meta=meta)
-        trials = _go()
+        try:
+            trials = _go()
+        except PairedRunAborted as abort:
+            # A leg's infrastructure retries were exhausted mid-corpus. The run dir already
+            # holds every completed task block (appended per task) and the in-progress,
+            # never-reportable stamp; do NOT aggregate/score/finalize a poisoned partial run.
+            _print_abort(abort, run_id, args)
+            return 2
 
         aggregates = [aggregate_task(t, trials) for t in dict.fromkeys(x.task_id for x in trials)]
         # Advisory regression: look up the baseline BEFORE this run's own result is written, so a
