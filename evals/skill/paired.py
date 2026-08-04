@@ -619,8 +619,11 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
             # A leg's infrastructure retries were exhausted mid-corpus. The run dir already
             # holds every completed task block (appended per task) and the in-progress,
             # never-reportable stamp; do NOT aggregate/score/finalize a poisoned partial run.
+            # Exit 1 (a run-level failure, like the did-nothing-pass path below) — never 2,
+            # which argparse reserves for malformed-invocation errors a caller must not
+            # confuse this operational abort with.
             _print_abort(abort, run_id, args)
-            return 2
+            return 1
 
         aggregates = [aggregate_task(t, trials) for t in dict.fromkeys(x.task_id for x in trials)]
         # Advisory regression: look up the baseline BEFORE this run's own result is written, so a
