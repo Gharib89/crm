@@ -146,6 +146,122 @@ class TestImportTranslation:
         assert info["import_job_id"]
 
 
+# ── ExportTranslation bytes + CrmTranslations.xml parsing (issue #942) ────────
+
+# A CrmTranslations.xml "Localized Labels" worksheet mirroring the real
+# SpreadsheetML ExportTranslation emits: header row `Entity name | Object ID |
+# Object Column Name | <LCID>...`, then one row per (object, column) with a text
+# cell per language column. Form element labels are the lowercase `displayname`
+# rows; attribute labels use capital `DisplayName`. Bilingual here (1033 + 1036)
+# to prove the per-language map. Structure captured from a live agent-cloud export.
+_LOCALIZED_LABELS_XML = """<?xml version="1.0"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+          xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+ <Worksheet ss:Name="Information"><Table>
+  <Row><Cell><Data ss:Type="String">Base language ID:</Data></Cell>
+       <Cell><Data ss:Type="Number">1033</Data></Cell></Row>
+ </Table></Worksheet>
+ <Worksheet ss:Name="Localized Labels"><Table>
+  <Row>
+   <Cell><Data ss:Type="String">Entity name</Data></Cell>
+   <Cell><Data ss:Type="String">Object ID</Data></Cell>
+   <Cell><Data ss:Type="String">Object Column Name</Data></Cell>
+   <Cell><Data ss:Type="Number">1033</Data></Cell>
+   <Cell><Data ss:Type="Number">1036</Data></Cell>
+  </Row>
+  <Row>
+   <Cell><Data ss:Type="String">new_project</Data></Cell>
+   <Cell><Data ss:Type="String">aaaa1111-0000-0000-0000-000000000001</Data></Cell>
+   <Cell><Data ss:Type="String">displayname</Data></Cell>
+   <Cell><Data ss:Type="String">General</Data></Cell>
+   <Cell><Data ss:Type="String">Général</Data></Cell>
+  </Row>
+  <Row>
+   <Cell><Data ss:Type="String">new_project</Data></Cell>
+   <Cell><Data ss:Type="String">bbbb2222-0000-0000-0000-000000000002</Data></Cell>
+   <Cell><Data ss:Type="String">displayname</Data></Cell>
+   <Cell><Data ss:Type="String">Details</Data></Cell>
+   <Cell><Data ss:Type="String"></Data></Cell>
+  </Row>
+  <Row>
+   <Cell><Data ss:Type="String">new_project</Data></Cell>
+   <Cell><Data ss:Type="String">cccc3333-0000-0000-0000-000000000003</Data></Cell>
+   <Cell><Data ss:Type="String">DisplayName</Data></Cell>
+   <Cell><Data ss:Type="String">Name</Data></Cell>
+   <Cell><Data ss:Type="String">Nom</Data></Cell>
+  </Row>
+ </Table></Worksheet>
+</Workbook>"""
+
+
+def _labels_zip_bytes(xml: str = _LOCALIZED_LABELS_XML) -> bytes:
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("CrmTranslations.xml", xml)
+        zf.writestr("[Content_Types].xml", "<Types/>")
+    return buf.getvalue()
+
+
+class TestExportTranslationBytes:
+    def test_returns_decoded_zip_without_writing(self, backend):
+        from crm.core import translation
+
+        encoded = base64.b64encode(_ZIP_BYTES).decode("ascii")
+        with requests_mock.Mocker() as m:
+            m.post(
+                backend.url_for("solutions/Microsoft.Dynamics.CRM.ExportTranslation"),
+                json={"ExportTranslationFile": encoded},
+            )
+            data = translation.export_translation_bytes(backend, "CRMWorx")
+            body = m.request_history[0].json()
+        assert body == {"SolutionName": "CRMWorx"}
+        assert data == _ZIP_BYTES
+
+    def test_missing_payload_raises(self, backend):
+        from crm.core import translation
+
+        with requests_mock.Mocker() as m:
+            m.post(
+                backend.url_for("solutions/Microsoft.Dynamics.CRM.ExportTranslation"),
+                json={},
+            )
+            with pytest.raises(D365Error, match="ExportTranslationFile"):
+                translation.export_translation_bytes(backend, "CRMWorx")
+
+
+class TestParseLocalizedLabels:
+    def test_language_codes_from_header(self):
+        from crm.core import translation
+
+        languages, _ = translation.parse_localized_labels(_labels_zip_bytes())
+        assert languages == [1033, 1036]
+
+    def test_maps_displayname_rows_by_object_id_across_languages(self):
+        from crm.core import translation
+
+        _, by_id = translation.parse_localized_labels(_labels_zip_bytes())
+        # keyed by lowercased, brace-stripped object id
+        assert by_id["aaaa1111-0000-0000-0000-000000000001"] == {"1033": "General", "1036": "Général"}
+
+    def test_empty_language_cell_omitted_not_stored_blank(self):
+        from crm.core import translation
+
+        _, by_id = translation.parse_localized_labels(_labels_zip_bytes())
+        # 'Details' has no French text → 1036 absent, not stored as ""
+        assert by_id["bbbb2222-0000-0000-0000-000000000002"] == {"1033": "Details"}
+
+    def test_capital_displayname_attribute_rows_also_captured(self):
+        from crm.core import translation
+
+        # case-insensitive on the column name, so attribute DisplayName rows are
+        # captured too; their object ids never collide with form-label ids.
+        _, by_id = translation.parse_localized_labels(_labels_zip_bytes())
+        assert by_id["cccc3333-0000-0000-0000-000000000003"] == {"1033": "Name", "1036": "Nom"}
+
+
 # ── CLI commands ────────────────────────────────────────────────────────────
 
 from click.testing import CliRunner  # noqa: E402

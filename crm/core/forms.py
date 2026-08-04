@@ -1149,6 +1149,199 @@ def read_entity_forms(
     return result
 
 
+def read_form_by_id(backend: D365Backend, formid: str) -> dict[str, Any]:
+    """Read a single systemform by its id, as a projection dict.
+
+    The by-id counterpart to :func:`read_entity_forms` (which reads by entity);
+    ``form labels`` (#942) targets a form directly. Raises ``D365Error`` if no
+    form with that id exists.
+    """
+    row = as_dict(backend.get(f"systemforms({formid})", params={"$select": _FORM_SELECT}))
+    if not row.get("formid"):
+        raise D365Error(f"No form with id {formid!r} found.")
+    return {
+        "formid": row.get("formid"),
+        "name": row.get("name", ""),
+        "objecttypecode": row.get("objecttypecode"),
+        "type": row.get("type"),
+        "formxml": row.get("formxml") or "",
+        "description": row.get("description"),
+        "isdefault": bool(row.get("isdefault", False)),
+    }
+
+
+# --- form label dump across all provisioned languages (issue #942) --------------
+#
+# formxml is a caller-language projection: a read shows at most one label text per
+# element (#940). To surface every provisioned language, we join the form's
+# *structure* (from formxml — complete regardless of caller language, since every
+# element and its label object id survive the projection) to the *label store*,
+# obtained via the solution's translation export (CrmTranslations.xml). Per
+# Microsoft's documented rule the join key is the element's ``labelid`` when
+# present, else its ``id`` — live-verified against a stock form's translation rows.
+
+
+def _label_object_id(element: ET.Element) -> str:
+    """The element's label object id for the translation join.
+
+    ``labelid`` when present, else the element's ``id`` — both lowercased and
+    brace-stripped to match the export's Object ID column. Empty when neither.
+    """
+    raw = element.get("labelid") or element.get("id") or ""
+    return raw.strip().strip("{}").lower()
+
+
+def _formxml_label_text(element: ET.Element, caller_language_id: int | None) -> str | None:
+    """The element's own ``<label>`` description, projected to the caller's language.
+
+    Prefers the label whose ``languagecode`` matches the caller, else the first
+    label. Returns ``None`` when the element carries no ``<labels>``.
+    """
+    labels = element.find("labels")
+    if labels is None:
+        return None
+    label_els = labels.findall("label")
+    if not label_els:
+        return None
+    if caller_language_id is not None:
+        match = next(
+            (lab for lab in label_els if lab.get("languagecode") == str(caller_language_id)), None
+        )
+        if match is not None:
+            return match.get("description")
+    return label_els[0].get("description")
+
+
+def _label_node(
+    element: ET.Element,
+    node_type: str,
+    *,
+    name: str | None,
+    by_object_id: dict[str, dict[str, str]],
+    caller_language_id: int | None,
+) -> tuple[dict[str, Any], bool]:
+    """Build one label node, joining ``element`` to its translation row.
+
+    Returns ``(node, matched)``: ``matched`` is ``True`` when a translation row
+    exists for the element's label object id (``source: "translation"``);
+    otherwise the node falls back to the caller-language formxml label
+    (``source: "formxml-projection"``) so a partial join is visible, not silent.
+    """
+    object_id = _label_object_id(element)
+    translated = by_object_id.get(object_id)
+    node: dict[str, Any] = {
+        "type": node_type,
+        "name": name,
+        "label_object_id": object_id or None,
+    }
+    if translated:
+        node["source"] = "translation"
+        node["labels"] = dict(translated)
+        return node, True
+    node["source"] = "formxml-projection"
+    projected = _formxml_label_text(element, caller_language_id)
+    node["labels"] = (
+        {str(caller_language_id): projected}
+        if projected is not None and caller_language_id is not None
+        else {}
+    )
+    return node, False
+
+
+def form_label_tree(
+    formxml: str,
+    by_object_id: dict[str, dict[str, str]],
+    *,
+    caller_language_id: int | None,
+) -> tuple[list[dict[str, Any]], bool]:
+    """Join a form's element structure to a translation label map.
+
+    Walks the formxml tab → section → field-cell tree; for each element, looks up
+    its label object id (labelid, else id) in ``by_object_id`` (built from the
+    solution's translation export) and attaches a ``{languagecode: text}`` map.
+    Field cells are those carrying a ``<control>``; structural spacer cells are
+    skipped. Elements with no matching row fall back to the caller-language
+    formxml label, flagged ``source: "formxml-projection"``. Returns
+    ``(elements, matched_any)`` — ``matched_any`` is ``False`` when the form
+    contributed nothing to the join (e.g. it is not a component of the export).
+    """
+    root = _parse_formxml(formxml)
+    matched_any = False
+    tabs_out: list[dict[str, Any]] = []
+    for tab in root.findall("./tabs/tab"):
+        tab_node, tab_matched = _label_node(
+            tab,
+            "tab",
+            name=tab.get("name"),
+            by_object_id=by_object_id,
+            caller_language_id=caller_language_id,
+        )
+        matched_any = matched_any or tab_matched
+        sections_out: list[dict[str, Any]] = []
+        for section in tab.findall("./columns/column/sections/section"):
+            sec_node, sec_matched = _label_node(
+                section,
+                "section",
+                name=section.get("name"),
+                by_object_id=by_object_id,
+                caller_language_id=caller_language_id,
+            )
+            matched_any = matched_any or sec_matched
+            cells_out: list[dict[str, Any]] = []
+            for cell in section.findall("./rows/row/cell"):
+                control = cell.find("control")
+                if control is None:  # spacer / unbound cell — no field label to show
+                    continue
+                datafieldname = control.get("datafieldname")
+                cell_node, cell_matched = _label_node(
+                    cell,
+                    "cell",
+                    name=datafieldname or control.get("id"),
+                    by_object_id=by_object_id,
+                    caller_language_id=caller_language_id,
+                )
+                cell_node["datafieldname"] = datafieldname
+                matched_any = matched_any or cell_matched
+                cells_out.append(cell_node)
+            sec_node["cells"] = cells_out
+            sections_out.append(sec_node)
+        tab_node["sections"] = sections_out
+        tabs_out.append(tab_node)
+    return tabs_out, matched_any
+
+
+def form_labels(backend: D365Backend, formid: str, *, solution: str) -> dict[str, Any]:
+    """Dump every form element's labels across all provisioned languages (#942).
+
+    Reads the form's structure from its formxml and joins it to the solution's
+    translation export (the label store), so labels surface in every provisioned
+    language — not just the caller's UI-language projection. Raises ``D365Error``
+    when the form does not exist, or none of its labels are present in the
+    solution's translations (the form is likely not a component of that solution).
+    """
+    from crm.core import connection, translation
+
+    form_row = read_form_by_id(backend, formid)
+    zip_bytes = translation.export_translation_bytes(backend, solution)
+    languages, by_object_id = translation.parse_localized_labels(zip_bytes)
+    caller_language_id = connection.caller_ui_language_id(backend)
+    elements, matched = form_label_tree(
+        form_row["formxml"], by_object_id, caller_language_id=caller_language_id
+    )
+    if not matched:
+        raise D365Error(
+            f"Form {form_row['name']!r} ({formid}) has no labels in solution "
+            f"{solution!r}'s translations — is the form a component of that solution?"
+        )
+    return {
+        "formid": form_row["formid"],
+        "form": form_row["name"],
+        "solution": solution,
+        "languages": languages,
+        "elements": elements,
+    }
+
+
 def _select_form(forms_list: list[dict[str, Any]], form: str | None) -> dict[str, Any]:
     """Pick exactly one form by ``--form`` name/id, or the entity's primary form.
 

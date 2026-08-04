@@ -841,6 +841,42 @@ def form_move_section(
     _journal(ctx, section, info, solution=solution)
 
 
+@form_group.command("labels")
+@click.argument("formid")
+@click.option(
+    "--solution",
+    required=True,
+    help="Unique name of the solution whose translations (the label store) to read.",
+)
+@pass_ctx
+def form_labels(ctx: CLIContext, formid: str, solution: str) -> None:
+    """Dump a form's element labels across all provisioned languages.
+
+    FORMID is the systemform id. Reads the label store via the solution's
+    translation export — not the caller-language formxml projection — so labels
+    surface in every provisioned language. Elements with no translation row fall
+    back to the formxml projection, flagged ``source: formxml-projection``.
+    """
+    with d365_errors(ctx):
+        info = forms_mod.form_labels(ctx.backend(), formid, solution=solution)
+    languages = info["languages"]
+    headers = ["element", "source"] + [str(lc) for lc in languages]
+
+    def _row(label: str, node: dict) -> list[str]:
+        labels = node["labels"]
+        return [label, node["source"]] + [labels.get(str(lc), "") for lc in languages]
+
+    rows: list[list[str]] = []
+    for tab in info["elements"]:
+        rows.append(_row(f"tab: {tab['name']}", tab))
+        for section in tab.get("sections", []):
+            rows.append(_row(f"  section: {section['name']}", section))
+            for cell in section.get("cells", []):
+                name = cell.get("datafieldname") or cell.get("name") or ""
+                rows.append(_row(f"    {name}", cell))
+    ctx.emit(True, data=info, table={"headers": headers, "rows": rows})
+
+
 @form_group.command("export")
 @click.argument("entity")
 @click.argument("form_name")
