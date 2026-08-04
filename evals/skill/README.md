@@ -518,6 +518,17 @@ What it adds over the single-condition runner:
   half-finished trial block, and reruns only the incomplete tasks. Resume granularity is
   the **task**: a block is complete only with k skill (+ k bare when paired) trials —
   failed trials count (no silent best-of-N), asymmetric blocks rerun whole.
+- **Fail-closed on persistent infra failure** (#943) — when the agent *driver* dies on an
+  API error (usage-limit window exhausted, auth/token expiry, a 529 overload), the leg is
+  retried a bounded number of times from a fresh org reset. If the failure survives the
+  retry budget it is **persistent** infrastructure, not task behavior — recording it a
+  `passed=False` would poison the run (every following trial burns its retries in seconds
+  and false-fails the same way, and a full k≥3 corpus run then stamps itself reportable off
+  the poisoned trials). So the run **aborts** instead: the offending task's trial block is
+  never written (it stays incomplete), the run keeps its never-reportable in-progress stamp,
+  and a loud stderr message names the cause, the run id, and the exact `--resume` command to
+  continue once the environment recovers. A transient blip that recovers within the retry
+  budget still scores normally; wall-clock cap kills and genuine task fails are untouched.
 
 ```bash
 # Live run — the run itself is rootless (no sudo). agent-cloud is the default target.

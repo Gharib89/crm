@@ -120,6 +120,32 @@ def parse_api_error(raw_trace: str) -> bool:
     return error
 
 
+def parse_api_error_detail(raw_trace: str) -> str | None:
+    """A short human descriptor of the terminal API failure, or ``None`` when clean.
+
+    Best-effort context for the run-abort message when the per-leg API-error retries are
+    exhausted (#943): the terminal ``result`` event's ``subtype`` (e.g.
+    ``error_during_execution``) and its ``result`` message (e.g. a usage-limit line),
+    joined. Returns ``None`` when the last ``result`` event is not an error, or when it is
+    an error but carries neither field — the abort fires on retry *exhaustion*, never on
+    the ability to classify the cause, so a missing descriptor is fine.
+    """
+    detail: str | None = None
+    for event in iter_events(raw_trace):
+        if event.get("type") != "result":
+            continue
+        if not event.get("is_error"):
+            detail = None
+            continue
+        parts: list[str] = []
+        for key in ("subtype", "result"):
+            value = event.get(key)
+            if isinstance(value, str) and value.strip():
+                parts.append(value.strip())
+        detail = "; ".join(parts) if parts else None
+    return detail
+
+
 def parse_metrics(raw_trace: str) -> dict[str, Any]:
     """The run metrics from the terminal ``result`` event (empty dict if none).
 

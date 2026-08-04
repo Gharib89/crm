@@ -14,7 +14,9 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from evals.skill.paired import agent_argv, gate_tasks, run_pair
+import pytest
+
+from evals.skill.paired import PairedRunAborted, agent_argv, gate_tasks, run_pair
 from evals.skill.results import aggregate_task
 from evals.skill.runner import RunResult
 
@@ -230,18 +232,115 @@ def test_run_pair_retries_leg_on_agent_api_error():
     assert all(t.passed for t in trials)
 
 
-def test_run_pair_persistent_api_error_scores_fail_after_bounded_retries():
+def test_run_pair_persistent_api_error_aborts_after_bounded_retries():
     calls = {"n": 0}
 
     def fake_run_one(task_file, *, install_skill, **kw):
         calls["n"] += 1
         return _api_error_result("t1")
 
-    trials = run_pair("t1.md", run_one=fake_run_one, reset_org=lambda: None, k=1, paired=False)
-    # initial attempt + the bounded retries, then the outage lands as a recorded fail —
-    # bounded so a persistent outage can't loop a 10-hour run forever.
+    # A persistent infra failure (usage-limit window, auth expiry, outage) survives the
+    # bounded per-leg retries; scoring it a fail would poison every following trial (#943),
+    # so run_pair aborts the whole run instead of recording a trial for this task.
+    with pytest.raises(PairedRunAborted) as excinfo:
+        run_pair("t1.md", run_one=fake_run_one, reset_org=lambda: None, k=1, paired=False)
+    # initial attempt + the bounded retries, then the abort — still bounded, no infinite loop.
     assert calls["n"] == 3
-    assert len(trials) == 1 and trials[0].passed is False
+    # the aborting task is named so the operator's resume targets it.
+    assert excinfo.value.task_id == "t1"
+
+
+def test_run_pair_abort_carries_infra_cause_from_transcript():
+    def fake_run_one(task_file, *, install_skill, **kw):
+        return RunResult(
+            task_id="t1",
+            dry_run=False,
+            isolation_checks={},
+            passed=False,
+            reason="agent error",
+            transcript=(
+                '{"type": "result", "is_error": true, '
+                '"subtype": "error_during_execution", '
+                '"result": "Claude AI usage limit reached", "num_turns": 1}\n'
+            ),
+            capped=False,
+        )
+
+    with pytest.raises(PairedRunAborted) as excinfo:
+        run_pair("t1.md", run_one=fake_run_one, reset_org=lambda: None, k=1, paired=False)
+    # the transcript's cause is surfaced (as far as it reveals it) so the abort is actionable.
+    assert "usage limit reached" in str(excinfo.value)
+
+
+def test_run_pair_abort_writes_no_trial_for_aborting_task():
+    # Criterion: no trial record for the aborting task is produced — run_pair raises before
+    # returning, so the front door never appends a poisoned block for it (the task stays
+    # incomplete and --resume reruns it).
+    def fake_run_one(task_file, *, install_skill, **kw):
+        return _api_error_result("t1")
+
+    captured: list = []
+    try:
+        captured = run_pair(
+            "t1.md", run_one=fake_run_one, reset_org=lambda: None, k=1, paired=False
+        )
+    except PairedRunAborted:
+        pass
+    assert captured == []
+
+
+def _resume_args(**overrides):
+    import argparse
+
+    from evals.skill.presets import DEFAULT_SEED
+    from evals.skill.results import RESULTS_ROOT
+
+    base = dict(
+        preset="full",
+        model="sonnet",
+        k=3,
+        tasks=None,
+        sample=None,
+        seed=DEFAULT_SEED,
+        no_sandbox=False,
+        judge=False,
+        judge_cmd=None,
+        results_dir=str(RESULTS_ROOT),
+    )
+    base.update(overrides)
+    return argparse.Namespace(**base)
+
+
+def test_resume_command_reconstructs_the_originating_flags():
+    from evals.skill.paired import _resume_command
+
+    cmd = _resume_command("20260804T101010Z-abcd", _resume_args())
+    # A resumable run re-reads run.json and validates model/target/k/preset/subset — the
+    # printed command must therefore replay the flags the run was started with (#943).
+    assert "--resume 20260804T101010Z-abcd" in cmd
+    assert "--preset full" in cmd
+    assert "--model sonnet" in cmd
+    assert "--k 3" in cmd
+    assert "D365_E2E=1" in cmd
+    # non-default knobs are omitted when unset so the hint stays minimal.
+    assert "--sample" not in cmd
+    assert "--no-sandbox" not in cmd
+    assert "--judge" not in cmd
+
+
+def test_resume_command_carries_subset_and_sandbox_selectors():
+    from evals.skill.paired import _resume_command
+
+    cmd = _resume_command(
+        "run-2", _resume_args(tasks="a,b", no_sandbox=True, judge=True, sample=5, seed=7)
+    )
+    # subset + sandbox selectors change the stamped meta resume validates, so they must
+    # survive into the hint verbatim.
+    assert "--tasks a,b" in cmd
+    assert "--sample 5" in cmd
+    assert "--seed 7" in cmd
+    assert "--no-sandbox" in cmd
+    assert "--judge" in cmd
 
 
 def test_gate_tasks_skips_offtarget_and_diagnostic(tmp_path):
