@@ -24,7 +24,9 @@ answer_key:
   cli_achievable: true
   required_commands:
     - app create
-    - set-sitemap
+    # `sitemap` (not `set-sitemap`, #948): substring recall then accepts both complete paths —
+    # `app set-sitemap` and `app build-sitemap --unique-name <app>`.
+    - sitemap
     # The read-back the task asks for: there is no `app get`/`app list` verb, so the app is
     # verified back with `crm query odata appmodules` — required so an answer that creates but
     # never reads back does not get full command credit (the end-to-end ask, per the T3 trap).
