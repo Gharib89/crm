@@ -34,6 +34,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -70,6 +71,24 @@ MAX_TURNS = 50
 #: Bounded per-leg retries when the agent *driver* dies on an API error (e.g. 529
 #: Overloaded) before working the task — infrastructure, never task behavior (#943).
 _API_ERROR_RETRIES = 2
+
+#: ANSI colors for the progress stream (always emitted: the run log is watched via
+#: tail/tmux, where escapes render; the scoring stdout JSON is untouched).
+_ANSI = {"pass": "\033[32m", "fail": "\033[31m", "capped": "\033[31m"}
+_ANSI_RESET = "\033[0m"
+
+
+def _colored(verdict: str) -> str:
+    """The verdict word wrapped in its ANSI color (green pass, red fail/capped)."""
+    return f"{_ANSI.get(verdict, '')}{verdict}{_ANSI_RESET}"
+
+
+def _fmt_duration(seconds: float) -> str:
+    """``93.4 → '1m33s'`` — the per-leg wall time shown beside each verdict."""
+    m, s = divmod(int(seconds), 60)
+    return f"{m}m{s:02d}s" if m else f"{s}s"
+
+
 #: Per-trial wall-clock cap (seconds) — 10 minutes; a cap-hit scores as a fail.
 WALL_CLOCK_S = 600
 
@@ -178,6 +197,7 @@ def run_pair(
         for leg, install in legs:
             if progress is not None:
                 progress(f"trial {trial + 1}/{k} · {leg} leg · resetting org + running agent…")
+            leg_started = time.monotonic()
             reset_org()
             result = run_one(task_file, install_skill=install, dry_run=False, **leg_kwargs)
             # An agent-level API death (e.g. 529 Overloaded) is infrastructure, not task
@@ -192,7 +212,8 @@ def run_pair(
                 result = run_one(task_file, install_skill=install, dry_run=False, **leg_kwargs)
             if progress is not None:
                 verdict = "capped" if result.capped else ("pass" if result.passed else "fail")
-                progress(f"trial {trial + 1}/{k} · {leg} leg · {verdict}")
+                elapsed = _fmt_duration(time.monotonic() - leg_started)
+                progress(f"trial {trial + 1}/{k} · {leg} leg · {_colored(verdict)} ({elapsed})")
             ref = (
                 _transcript_ref(transcripts_dir, result.task_id, leg, trial, result.transcript)
                 if transcripts_dir is not None
@@ -456,8 +477,10 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
                 trials.extend(records)
                 append_trials(run_dir, records)
                 passed = sum(1 for r in records if r.passed)
+                color = _ANSI["pass"] if passed == len(records) else _ANSI["fail"]
                 _stderr(
-                    f"task {pos}/{total} {task_id} done: {passed}/{len(records)} legs passed "
+                    f"task {pos}/{total} {task_id} done: "
+                    f"{color}{passed}/{len(records)} legs passed{_ANSI_RESET} "
                     f"[{len(trials)}/{goal} trials, {len(trials) * 100 // goal}%]"
                 )
             return trials

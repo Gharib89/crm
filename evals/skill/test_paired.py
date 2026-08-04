@@ -11,6 +11,7 @@ cap-hit leg scores as a fail — with no agent and no org.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from evals.skill.paired import agent_argv, gate_tasks, run_pair
@@ -268,3 +269,21 @@ def test_gate_tasks_skips_offtarget_and_diagnostic(tmp_path):
     assert [p.stem for p, _ in skipped] == ["onprem-only", "diag"]
     assert "target" in skipped[0][1]
     assert "diagnostic" in skipped[1][1]
+
+
+def test_run_pair_verdict_lines_carry_color_and_duration():
+    lines: list[str] = []
+
+    def fake_run_one(task_file, *, install_skill, **kw):
+        return _fake_result("t1", passed=install_skill)
+
+    run_pair("t1.md", run_one=fake_run_one, reset_org=lambda: None, k=1, progress=lines.append)
+    verdicts = [ln for ln in lines if "(" in ln and "leg ·" in ln]
+    assert len(verdicts) == 2  # one resolve line per leg
+    skill_line = next(ln for ln in verdicts if "skill leg" in ln)
+    bare_line = next(ln for ln in verdicts if "bare leg" in ln)
+    # green pass / red fail, and a wall-time suffix per leg — the live skill-vs-bare
+    # timing read the maintainer watches during a long run.
+    assert "\033[32mpass\033[0m" in skill_line
+    assert "\033[31mfail\033[0m" in bare_line
+    assert re.search(r"\((\d+m)?\d{1,2}s\)", skill_line)
