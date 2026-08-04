@@ -32,7 +32,7 @@ _VERSION = {"Version": "9.2.24091.00196"}
 # The composer reads solutions in two single-page GETs: a managed `$count`, and an
 # unmanaged page (names + `@odata.count`). Dispatch on the `$filter` querystring.
 _SOLUTIONS_MANAGED = 1
-_SOLUTIONS_UNMANAGED = ["Default", "Active", "AcmeCore", "AcmeExt"]
+_SOLUTIONS_UNMANAGED = ["Default", "Active", "Basic", "AcmeCore", "AcmeExt"]
 _PUBLISHERS = {
     "value": [
         {"uniquename": "acme", "friendlyname": "Acme", "customizationprefix": "acme"},
@@ -138,8 +138,8 @@ class TestComposer:
 
         sol = brief["solutions"]
         assert sol["managed"] == 1
-        assert sol["unmanaged"] == 4  # Default, Active, AcmeCore, AcmeExt
-        # Default/Active are excluded from the candidate --solution target list.
+        assert sol["unmanaged"] == 5  # Default, Active, Basic, AcmeCore, AcmeExt
+        # Default/Active/Basic are excluded from the candidate --solution target list.
         assert set(sol["unmanaged_names"]) == {"AcmeCore", "AcmeExt"}
 
         assert {p["prefix"] for p in brief["publishers"]["items"]} == {"acme", "new"}

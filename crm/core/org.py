@@ -30,9 +30,11 @@ from crm.utils.d365_backend import D365Backend, as_dict
 # size.
 _NAME_CAP = 200
 
-# System solutions that are never valid `--solution` customization targets, so
-# they are excluded from the candidate list (but still counted).
-_SYSTEM_SOLUTIONS = frozenset({"Default", "Active"})
+# System solutions excluded from the `--solution` candidate list (but still
+# counted). Candidate hygiene, not server rejection: the server rejects `Active`
+# and `Basic` as component-add targets (0x80040203) but accepts `Default` — it is
+# excluded anyway because customizations belong in a real unmanaged solution.
+_SYSTEM_SOLUTIONS = frozenset({"Default", "Active", "Basic"})
 
 # workflow.category id -> stable brief key. Mirrors crm.core.workflow's CATEGORY_*.
 _WORKFLOW_CATEGORIES: dict[int, str] = {
@@ -151,7 +153,7 @@ def _solutions(backend: D365Backend) -> dict[str, Any]:
         if r.get("uniquename") and r.get("uniquename") not in _SYSTEM_SOLUTIONS
     ]
     # `unmanaged` (from @odata.count) is the true total; `unmanaged_names` is the
-    # capped, Default/Active-excluded candidate list. Unmanaged solutions number in
+    # capped, system-solution-excluded candidate list. Unmanaged solutions number in
     # the low dozens even on large orgs, so the cap effectively never truncates.
     return {
         "managed": managed,
