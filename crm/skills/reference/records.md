@@ -329,10 +329,11 @@ crm --json entity create annotations --data \
   '{"subject":"Call notes","notetext":"…","objectid_account@odata.bind":"accounts(<guid>)"}'
 ```
 
-**Polymorphic `bind_key` gotcha:** for a polymorphic lookup, `metadata describe`
-reports only *one* arbitrary target's nav name as `bind_key` — wrong for every
-other target. Confirm the per-target nav via
-`crm metadata relationships <target-entity>` instead.
+**Polymorphic `bind_key`:** a polymorphic lookup (`objectid`, `customerid`,
+`ownerid`, …) has no single top-level `bind_key` — `metadata describe` reports one
+per target under `targets[].bind_key`. Pick the entry whose `logical` matches the
+record you're binding to (e.g. `objectid_contact@odata.bind` for a note on a
+contact).
 
 ### Round-tripping a READ-shape lookup (no hand-`@odata.bind`)
 
