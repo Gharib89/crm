@@ -13,6 +13,7 @@ import socket
 import urllib.parse
 from dataclasses import dataclass
 from typing import Any
+from weakref import WeakKeyDictionary
 
 from crm.core import keyring_store
 from crm.core import session as session_mod
@@ -126,6 +127,45 @@ def whoami(backend: D365Backend) -> dict[str, Any]:
     from crm.utils.d365_backend import as_dict
 
     return as_dict(backend.get("WhoAmI"))
+
+
+# Cache the calling user's UI language per backend so a single command touching
+# formxml resolves it at most once (#940). WeakKeyDictionary lets a finished backend
+# be collected; under `crm repl` the same backend persists, so one lookup serves the
+# whole session.
+_CALLER_UI_LANGUAGE_CACHE: WeakKeyDictionary[D365Backend, int | None] = WeakKeyDictionary()
+
+
+def caller_ui_language_id(backend: D365Backend) -> int | None:
+    """The calling user's UI language LCID (``usersettings.uilanguageid``), or None.
+
+    Resolved via WhoAmI ``UserId`` → ``usersettingscollection(<id>)`` and cached per
+    backend. Best-effort and non-fatal: any lookup failure (unreachable, 404, missing
+    field) yields ``None``, and callers degrade to emitting no language warning/note.
+    Works on both on-prem (NTLM) and cloud (OAuth) targets — usersettings is a standard
+    table on both.
+    """
+    try:
+        return _CALLER_UI_LANGUAGE_CACHE[backend]
+    except KeyError:
+        pass
+    language = _resolve_caller_ui_language(backend)
+    _CALLER_UI_LANGUAGE_CACHE[backend] = language
+    return language
+
+
+def _resolve_caller_ui_language(backend: D365Backend) -> int | None:
+    from crm.utils.d365_backend import as_dict
+
+    try:
+        user_id = whoami(backend).get("UserId")
+        if not user_id:
+            return None
+        record = as_dict(backend.get(f"usersettingscollection({user_id})?$select=uilanguageid"))
+    except D365Error:
+        return None
+    language = record.get("uilanguageid")
+    return language if isinstance(language, int) else None
 
 
 def _org_friendly_name(backend: D365Backend, org_id: str | None) -> str | None:

@@ -12,6 +12,10 @@ from click.testing import CliRunner
 from crm.cli import cli
 from crm.utils.d365_backend import D365Backend
 
+# Default the #940 caller-UI-language lookup to None for this module (see conftest);
+# the #940 advisory tests below override it with a concrete language.
+pytestmark = pytest.mark.usefixtures("neutralize_caller_language")
+
 # Form rows used across tests
 _FORM_A = {
     "formid": "aaaaaaaa-0000-0000-0000-000000000001",
@@ -1411,3 +1415,102 @@ def test_tab_section_verb_dry_run_does_not_write(dry_backend, monkeypatch, args,
     assert result.exit_code == 0, result.output
     assert patched.call_count == 0  # zero HTTP write under dry-run
     assert json.loads(result.output)["data"][flag] is True
+
+
+class TestFormLabelLanguageAdvisory:
+    """The #940 caller-UI-language advisories surface through meta.warnings (JSON)
+    and the skin warning channel (human, stderr).
+    """
+
+    def test_export_json_carries_projection_note(self, backend, monkeypatch):
+        from crm.core import connection
+
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        monkeypatch.setattr(connection, "caller_ui_language_id", lambda b: 1025)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": [_FORM_A]})
+            result = CliRunner().invoke(
+                cli, ["--json", "form", "export", "new_project", "Information"]
+            )
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert any("1025" in w for w in data["meta"]["warnings"])
+
+    def test_export_human_note_on_stderr_not_stdout(self, backend, monkeypatch):
+        from crm.core import connection
+
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        monkeypatch.setattr(connection, "caller_ui_language_id", lambda b: 1025)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": [_FORM_A]})
+            result = CliRunner().invoke(cli, ["form", "export", "new_project", "Information"])
+        assert result.exit_code == 0, result.output
+        assert "<form>" in result.stdout  # raw formxml on stdout, uncorrupted
+        assert "1025" not in result.stdout  # the note does not pollute stdout
+        assert "1025" in result.stderr  # the note rides the skin warning channel
+
+    def test_add_field_warns_on_foreign_label_language(self, backend, monkeypatch):
+        from crm.core import connection
+
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        monkeypatch.setattr(connection, "caller_ui_language_id", lambda b: 1025)
+        with rm_module.Mocker() as m:
+            m.get(
+                _attr_url(backend, "new_project", "new_owner"),
+                json={
+                    "AttributeType": "Lookup",
+                    "DisplayName": {"UserLocalizedLabel": {"Label": "Owner"}},
+                },
+            )
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
+            m.patch(_form_pk_url(backend), status_code=204)
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "form",
+                    "add-field",
+                    "new_project",
+                    "new_owner",
+                    "--solution",
+                    "TestSol",
+                    "--no-publish",
+                ],
+            )
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert any("1033" in w for w in data["meta"]["warnings"])
+        # the advisory is not leaked as a data field
+        assert "_warnings" not in data["data"]
+
+    def test_add_field_silent_when_caller_language_matches(self, backend, monkeypatch):
+        from crm.core import connection
+
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        monkeypatch.setattr(connection, "caller_ui_language_id", lambda b: 1033)
+        with rm_module.Mocker() as m:
+            m.get(
+                _attr_url(backend, "new_project", "new_owner"),
+                json={
+                    "AttributeType": "Lookup",
+                    "DisplayName": {"UserLocalizedLabel": {"Label": "Owner"}},
+                },
+            )
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
+            m.patch(_form_pk_url(backend), status_code=204)
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "--json",
+                    "form",
+                    "add-field",
+                    "new_project",
+                    "new_owner",
+                    "--solution",
+                    "TestSol",
+                    "--no-publish",
+                ],
+            )
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert "warnings" not in data.get("meta", {})

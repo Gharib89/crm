@@ -792,6 +792,68 @@ def _set_label(element: ET.Element, label: str) -> None:
     target.set("description", label)
 
 
+def label_languages_in_formxml(formxml: str) -> set[int]:
+    """The distinct ``languagecode`` values on ``<label>`` elements in ``formxml``.
+
+    Labels with an absent or non-numeric ``languagecode`` are ignored. Returns an
+    empty set for empty or unparseable formxml — best-effort, since the write path
+    has already validated the XML upstream.
+    """
+    if not formxml:
+        return set()
+    try:
+        root = _parse_formxml(formxml)
+    except D365Error:
+        return set()
+    codes: set[int] = set()
+    for label in root.iter("label"):
+        code = label.get("languagecode")
+        if code is not None and code.isdigit():
+            codes.add(int(code))
+    return codes
+
+
+def label_language_warning(new_formxml: str, caller_language_id: int | None) -> str | None:
+    """Advisory when ``new_formxml`` carries ``<label>`` languages the platform drops.
+
+    On-prem D365 (and Dataverse) store tab/section/cell labels per language and
+    serve/accept formxml projected to the caller's ``uilanguageid``; a PATCH silently
+    discards any ``<label>`` whose ``languagecode`` differs from the caller's UI
+    language (#940). If the outgoing formxml contains such labels, return an advisory
+    naming them; return ``None`` when the caller language is unknown or every label is
+    already in it.
+    """
+    if caller_language_id is None:
+        return None
+    foreign = sorted(c for c in label_languages_in_formxml(new_formxml) if c != caller_language_id)
+    if not foreign:
+        return None
+    codes = ", ".join(str(c) for c in foreign)
+    return (
+        f"formxml label language(s) {codes} differ from your UI language "
+        f"({caller_language_id}); D365 serves and accepts formxml projected to the "
+        f"caller's language, so the platform will silently discard those labels on "
+        f"write. Use 'crm translation import' to set labels in other languages."
+    )
+
+
+def label_projection_note(caller_language_id: int | None) -> str | None:
+    """Read-side note that formxml labels are projected to the caller's UI language.
+
+    ``form export`` (and any read that emits formxml) shows labels in one language —
+    the caller's ``uilanguageid`` — even when the label store holds more. Returns the
+    note, or ``None`` when the caller language could not be resolved (#940).
+    """
+    if caller_language_id is None:
+        return None
+    return (
+        f"formxml labels are projected in language {caller_language_id} (your "
+        f"uilanguageid); D365 stores tab/section/cell labels per language and other "
+        f"provisioned languages live in the label store. Use 'crm translation export' "
+        f"to see them."
+    )
+
+
 def _element_guids(element: ET.Element) -> set[str]:
     """Every GUID under ``element`` (lowercased) — the ids an add/remove changes."""
     return xml_edit.guid_set(xml_edit.serialize_xml(element))
@@ -1176,6 +1238,13 @@ def _commit_form_change(
     }
     if extra:
         out.update({k: v for k, v in extra.items() if v is not None})
+    # Warn (never block) when the outgoing formxml carries labels in a language the
+    # platform will discard because it differs from the caller's UI language (#940).
+    from crm.core.connection import caller_ui_language_id
+
+    label_warning = label_language_warning(new_formxml, caller_ui_language_id(backend))
+    if label_warning:
+        out.setdefault("_warnings", []).append(label_warning)
     return xml_edit.commit_xml_patch(
         backend,
         entity_set="systemforms",

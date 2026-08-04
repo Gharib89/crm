@@ -88,6 +88,22 @@ def dry_backend(profile: ConnectionProfile) -> D365Backend:
     return D365Backend(profile, password="pw", dry_run=True)
 
 
+@pytest.fixture
+def neutralize_caller_language(monkeypatch):
+    """Default the #940 caller-UI-language lookup to None.
+
+    Every ``crm form`` write and ``form export`` now resolves the caller's
+    ``uilanguageid`` (WhoAmI + usersettings) to decide whether to warn about labels
+    the platform will discard. Offline form/apply tests that don't assert that
+    advisory pull this fixture (module-level ``pytestmark``) so they need not mock the
+    two extra endpoints; tests that DO assert it override this with a concrete
+    language. Left off the live e2e suite so a live run sees the real lookup.
+    """
+    from crm.core import connection
+
+    monkeypatch.setattr(connection, "caller_ui_language_id", lambda backend: None)
+
+
 # --------------------------------------------------------------------------- #
 # Environment isolation
 # --------------------------------------------------------------------------- #
