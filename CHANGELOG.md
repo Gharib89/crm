@@ -9,6 +9,34 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.78.0 (2026-08-04)
+
+### Bug Fixes
+
+- Address CodeRabbit review on form labels ([#947](https://github.com/Gharib89/crm/pull/947),
+  [`28df22a`](https://github.com/Gharib89/crm/commit/28df22a00ab20ff66771bde25f88c2f63229de33))
+
+- Harden form labels — dry-run preview, safe zip/XML parse
+  ([#947](https://github.com/Gharib89/crm/pull/947),
+  [`28df22a`](https://github.com/Gharib89/crm/commit/28df22a00ab20ff66771bde25f88c2f63229de33))
+
+### Documentation
+
+- Document form labels; add live e2e; refine human rendering
+  ([#947](https://github.com/Gharib89/crm/pull/947),
+  [`28df22a`](https://github.com/Gharib89/crm/commit/28df22a00ab20ff66771bde25f88c2f63229de33))
+
+### Features
+
+- Add crm form labels to dump element labels across all provisioned languages
+  ([#947](https://github.com/Gharib89/crm/pull/947),
+  [`28df22a`](https://github.com/Gharib89/crm/commit/28df22a00ab20ff66771bde25f88c2f63229de33))
+
+- Add crm form labels to dump form element labels across all provisioned languages
+  ([#947](https://github.com/Gharib89/crm/pull/947),
+  [`28df22a`](https://github.com/Gharib89/crm/commit/28df22a00ab20ff66771bde25f88c2f63229de33))
+
+
 ## v1.77.8 (2026-08-04)
 
 ### Bug Fixes
