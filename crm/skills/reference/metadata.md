@@ -208,7 +208,8 @@ primary entity is the source, including managed ones (no "is custom" filter avai
 Actions, BPFs, dialogs, and modern flows are skipped (reported under
 `skipped_workflows`) — read each entry's `reason` rather than treating the bucket
 as a dead end: for Actions and BPFs it names the working path (`solution
-export`/`import`; see `reference/automation.md`). On Unified Interface a cloned form may need adding to the
+export`/`import` redeploys the original process — it does not retarget it to the
+clone; see `reference/automation.md`). On Unified Interface a cloned form may need adding to the
 model-driven app's form list to be visible.
 
 ## Preview dependencies before deleting a metadata component

@@ -133,8 +133,9 @@ are stripped from every curated `data` payload.
 
 **Impersonation.** Writes can be issued *as another user* — `--as-user
 <systemuser-guid>` on `create`/`update`/`delete`/`upsert` (cloud alternative:
-`--as-user-object-id`); the written record's `createdby`/`modifiedby` is the
-impersonated user.
+`--as-user-object-id`). The write is attributed to the impersonated user — a
+create's `createdby`, an update's `modifiedby` — while the authenticated caller
+is recorded in `createdonbehalfby`/`modifiedonbehalfby`.
 
 ## FetchXML query
 

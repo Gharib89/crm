@@ -51,11 +51,13 @@ caps a job at **5,000**). It writes *data*, not customizations, so it takes **no
 `--solution`**. Needs the entity duplicate-detection-enabled with published rules.
 
 **Merging the duplicates detection finds.** There is no `dup merge` verb — merge
-via the Dataverse `Merge` action, which is **unbound**: `crm action invoke Merge
---body-file merge.json` (supported on accounts, contacts, leads, and incidents).
-The parameter is `Subordinate` (not the SDK's `SubordinateId`), and each entity
-parameter needs an `@odata.type` annotation; the subordinate is deactivated and
-its data folds into the target per `UpdateContent`:
+via the Dataverse `Merge` action, which is **unbound**: `crm --json action invoke
+Merge --body-file merge.json` (supported on accounts, contacts, leads, and
+incidents). The parameter is `Subordinate` (not the SDK's `SubordinateId`), and
+each entity parameter needs an `@odata.type` annotation. **Merge is destructive
+and `action invoke` has no confirmation gate** — the subordinate is deactivated
+and its data folds into the target per `UpdateContent`; preview the POST with
+`--dry-run` and get explicit confirmation before running it for real:
 
 ```json
 {"Target": {"@odata.type": "Microsoft.Dynamics.CRM.account", "accountid": "<keep>"},

@@ -28,7 +28,8 @@ empty results, not an error. Query the full metadata instead:
 
 ```bash
 crm --json query odata "EntityDefinitions(LogicalName='account')/Attributes" \
-  --filter "IsSecured eq true" --select LogicalName,CanBeSecuredForRead,CanBeSecuredForUpdate
+  --filter "IsSecured eq true" \
+  --select LogicalName,CanBeSecuredForRead,CanBeSecuredForCreate,CanBeSecuredForUpdate
 ```
 
 **Check the grant direction before `add-permission`.** `IsSecured = true` does not

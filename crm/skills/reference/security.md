@@ -107,8 +107,13 @@ guarantee placement in a solution, the role must be newly created in the same ca
 
 **Disabling one named privilege IS scriptable.** Run `--replace` with the full
 desired set minus that privilege, then verify by subset (above). The surgical
-alternative is the raw Web API action: `crm action invoke RemovePrivilegeRole`
-bound to the role, which removes exactly one privilege without touching the rest.
+alternative is the raw Web API action, bound to the role, which removes exactly
+one privilege without touching the rest:
+
+```bash
+crm --json action invoke RemovePrivilegeRole --bind-set roles --bind-id <role-guid> \
+    --body '{"PrivilegeId":"<privilege-guid>"}'
+```
 
 **Privilege counts are org-specific and resolved live.** Never hardcode how many privileges an `--all-entities` call will produce — the count varies by org.
 
