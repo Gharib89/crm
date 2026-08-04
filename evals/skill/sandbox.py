@@ -23,8 +23,10 @@ offline. ``failIfUnavailable`` makes ``claude`` abort when bubblewrap/socat or u
 user namespaces are missing. ``allowUnsandboxedCommands: false`` means the agent-under-test
 cannot self-bypass: the per-command ``dangerouslyDisableSandbox`` escape hatch is ignored
 and writes to ``settings.json`` are denied at every scope. Egress is pinned to exactly the
-declared ``allowedDomains`` (the org host) — with the escape hatch closed, every other host
-is blocked by the out-of-sandbox proxy and the allowlist is never widened dynamically.
+declared ``allowedDomains`` (the org host) by ``strictAllowlist`` — since Claude Code
+2.1.219 ``allowedDomains`` alone only *pre-approves* (an unlisted host prompts, which
+``--dangerously-skip-permissions`` turns into an allow); ``strictAllowlist`` restores the
+hard deny, and with the escape hatch closed the allowlist is never widened dynamically.
 
 **``failIfUnavailable`` is necessary but not sufficient** — it only checks that the sandbox
 *binaries* exist, not that the network proxy actually *started* and enforces. A host where
@@ -59,7 +61,11 @@ def sandbox_settings(host: str) -> dict[str, Any]:
             "enabled": True,
             "failIfUnavailable": True,
             "allowUnsandboxedCommands": False,
-            "network": {"allowedDomains": [host]},
+            # strictAllowlist (Claude Code ≥ 2.1.219): without it, allowedDomains only
+            # pre-approves — an unlisted host *prompts*, and the headless agent's
+            # --dangerously-skip-permissions turns that prompt into an allow (a silent
+            # leak the enforcement preflight caught). With it, unlisted hosts are denied.
+            "network": {"allowedDomains": [host], "strictAllowlist": True},
         }
     }
 

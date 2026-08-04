@@ -29,10 +29,13 @@ def test_sandbox_settings_is_fail_closed_and_unbypassable():
     assert settings["failIfUnavailable"] is True
     # the agent-under-test cannot self-bypass: with unsandboxed commands disallowed, the
     # per-command dangerouslyDisableSandbox escape hatch is ignored and settings writes denied.
-    # This closed escape hatch is what makes allowedDomains deny-by-default (a non-allowed
-    # host can't fall back to an unsandboxed retry); allowManagedDomainsOnly is a
-    # managed-settings-only lock and a no-op in this user-scope block, so it is not set.
     assert settings["allowUnsandboxedCommands"] is False
+    # strictAllowlist is what makes allowedDomains deny-by-default: since Claude Code
+    # 2.1.219 an unlisted host otherwise *prompts*, and the headless agent's
+    # --dangerously-skip-permissions auto-allows it (a silent leak). The closed escape
+    # hatch then guarantees no unsandboxed retry; allowManagedDomainsOnly is a
+    # managed-settings-only lock and a no-op in this user-scope block, so it is not set.
+    assert settings["network"]["strictAllowlist"] is True
     assert "allowManagedDomainsOnly" not in settings
 
 
