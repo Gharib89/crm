@@ -3,11 +3,14 @@
 # pyright: basic
 from __future__ import annotations
 
+import base64
 import re
 import uuid
 
 import pytest
 import requests_mock
+
+from crm.utils.d365_backend import D365Error
 
 # Default the #940 caller-UI-language lookup to None for this module (see conftest);
 # the #940 tests below override it with a concrete language.
@@ -2146,3 +2149,366 @@ class TestCommitFormChangeLabelWarning:
             self._mock_add_field(m, backend)
             result = forms.add_form_field(backend, "new_project", "new_owner")
         assert "_warnings" not in result
+
+
+# ── form labels: multi-language label dump (issue #942) ──────────────────────
+
+# A form with three label-bearing elements: a tab keyed by an explicit `labelid`
+# (so the join must prefer it over `id`), a section keyed by `id` only (labelid
+# absent → fallback), and a field cell whose label has no translation row (→
+# formxml-projection fallback). Element ids double as the object-id join keys.
+_LABELS_FORMXML = (
+    "<form><tabs>"
+    "<tab id='{TAB000-0000-0000-0000-000000000000}' name='general' "
+    "labelid='{LBL000-0000-0000-0000-000000000000}'>"
+    "<labels><label description='General' languagecode='1033'/></labels>"
+    "<columns><column><sections>"
+    "<section id='{SEC000-0000-0000-0000-000000000000}' name='details'>"
+    "<labels><label description='Details' languagecode='1033'/></labels>"
+    "<rows><row><cell id='{CEL000-0000-0000-0000-000000000000}'>"
+    "<labels><label description='Owner' languagecode='1033'/></labels>"
+    "<control id='new_owner' datafieldname='new_owner'/>"
+    "</cell></row></rows>"
+    "</section>"
+    "</sections></column></columns>"
+    "</tab>"
+    "</tabs></form>"
+)
+
+# Translation rows keyed by the tab's labelid and the section's id (both lowercased,
+# brace-stripped), bilingual; the cell's id is deliberately absent.
+_LABELS_BY_ID = {
+    "lbl000-0000-0000-0000-000000000000": {"1033": "General", "1036": "Général"},
+    "sec000-0000-0000-0000-000000000000": {"1033": "Details", "1036": "Détails"},
+}
+
+
+def _find_node(tree, node_type) -> dict:
+    """The first node of ``node_type`` in a label tree (depth-first); asserts one
+    exists so callers can subscript the result directly.
+    """
+
+    def _search(nodes):
+        for node in nodes:
+            if node["type"] == node_type:
+                return node
+            for key in ("sections", "cells"):
+                hit = _search(node.get(key, []))
+                if hit is not None:
+                    return hit
+        return None
+
+    node = _search(tree)
+    assert node is not None, f"no {node_type!r} node found in {tree}"
+    return node
+
+
+class TestFormLabelTree:
+    def test_tab_joined_by_labelid_not_id(self):
+        from crm.core import forms
+
+        tree, matched = forms.form_label_tree(
+            _LABELS_FORMXML, _LABELS_BY_ID, caller_language_id=1033
+        )
+        assert matched is True
+        tab = _find_node(tree, "tab")
+        assert tab["name"] == "general"
+        assert tab["source"] == "translation"
+        assert tab["labels"] == {"1033": "General", "1036": "Général"}
+
+    def test_section_joined_by_id_when_labelid_absent(self):
+        from crm.core import forms
+
+        tree, _ = forms.form_label_tree(_LABELS_FORMXML, _LABELS_BY_ID, caller_language_id=1033)
+        section = _find_node(tree, "section")
+        assert section["source"] == "translation"
+        assert section["labels"] == {"1033": "Details", "1036": "Détails"}
+
+    def test_unmatched_cell_falls_back_to_formxml_projection(self):
+        from crm.core import forms
+
+        tree, _ = forms.form_label_tree(_LABELS_FORMXML, _LABELS_BY_ID, caller_language_id=1033)
+        cell = _find_node(tree, "cell")
+        assert cell["datafieldname"] == "new_owner"
+        assert cell["source"] == "formxml-projection"
+        # the projected label text is surfaced under the caller's language
+        assert cell["labels"] == {"1033": "Owner"}
+
+    def test_nesting_is_tab_section_cell(self):
+        from crm.core import forms
+
+        tree, _ = forms.form_label_tree(_LABELS_FORMXML, _LABELS_BY_ID, caller_language_id=1033)
+        assert [n["type"] for n in tree] == ["tab"]
+        assert [n["type"] for n in tree[0]["sections"]] == ["section"]
+        assert [n["type"] for n in tree[0]["sections"][0]["cells"]] == ["cell"]
+
+    def test_no_matches_reports_matched_false(self):
+        from crm.core import forms
+
+        tree, matched = forms.form_label_tree(_LABELS_FORMXML, {}, caller_language_id=1033)
+        assert matched is False
+        # every node still present, all projection-sourced
+        assert _find_node(tree, "tab")["source"] == "formxml-projection"
+
+    def test_projection_preserved_when_caller_language_unknown(self):
+        # caller_ui_language_id can be None; the projected label must survive,
+        # keyed by the label's own languagecode rather than being dropped.
+        from crm.core import forms
+
+        tree, _ = forms.form_label_tree(_LABELS_FORMXML, {}, caller_language_id=None)
+        tab = _find_node(tree, "tab")
+        assert tab["source"] == "formxml-projection"
+        assert tab["labels"] == {"1033": "General"}
+
+
+_FORM_BY_ID_ROW = {
+    "formid": "deadbeef-0000-0000-0000-000000000942",
+    "name": "Information",
+    "objecttypecode": "new_project",
+    "type": 2,
+    "formxml": _LABELS_FORMXML,
+    "description": None,
+    "isdefault": False,
+}
+
+
+class TestReadFormById:
+    def test_reads_single_form(self, backend):
+        from crm.core import forms
+
+        fid = _FORM_BY_ID_ROW["formid"]
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(f"systemforms({fid})"), json=_FORM_BY_ID_ROW)
+            row = forms.read_form_by_id(backend, fid)
+        assert row["formid"] == fid
+        assert row["name"] == "Information"
+        assert "<form>" in row["formxml"]
+
+    def test_missing_form_raises(self, backend):
+        from crm.core import forms
+
+        fid = "00000000-0000-0000-0000-000000000000"
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(f"systemforms({fid})"), status_code=404, json={})
+            with pytest.raises(D365Error):
+                forms.read_form_by_id(backend, fid)
+
+
+class TestFormLabels:
+    def _mock(self, m, backend, *, zip_bytes):
+        fid = _FORM_BY_ID_ROW["formid"]
+        m.get(backend.url_for(f"systemforms({fid})"), json=_FORM_BY_ID_ROW)
+        m.post(
+            backend.url_for("solutions/Microsoft.Dynamics.CRM.ExportTranslation"),
+            json={"ExportTranslationFile": base64.b64encode(zip_bytes).decode("ascii")},
+        )
+
+    def test_returns_envelope_with_languages_and_tree(self, backend, monkeypatch):
+        from crm.core import connection, forms
+
+        monkeypatch.setattr(connection, "caller_ui_language_id", lambda b: 1033)
+        with requests_mock.Mocker() as m:
+            self._mock(m, backend, zip_bytes=_labels_zip_for(_LABELS_BY_ID))
+            info = forms.form_labels(backend, _FORM_BY_ID_ROW["formid"], solution="CRMWorx")
+        assert info["form"] == "Information"
+        assert info["solution"] == "CRMWorx"
+        assert info["languages"] == [1033, 1036]
+        assert _find_node(info["elements"], "tab")["labels"]["1036"] == "Général"
+
+    def test_form_not_in_solution_raises_component_hint(self, backend, monkeypatch):
+        from crm.core import connection, forms
+
+        monkeypatch.setattr(connection, "caller_ui_language_id", lambda b: 1033)
+        with requests_mock.Mocker() as m:
+            # translations that match none of the form's element ids
+            self._mock(m, backend, zip_bytes=_labels_zip_for({}))
+            with pytest.raises(D365Error, match="component of that solution"):
+                forms.form_labels(backend, _FORM_BY_ID_ROW["formid"], solution="CRMWorx")
+
+    def test_dry_run_previews_without_http(self):
+        # form labels reads via the ExportTranslation POST action, which --dry-run
+        # gates; it must return a clean dry-run preview, not attempt the call.
+        from crm.core import forms
+        from crm.utils.d365_backend import ConnectionProfile, D365Backend
+
+        profile = ConnectionProfile(
+            name="t", url="https://crm.contoso.local/contoso", domain="CONTOSO", username="alice"
+        )
+        dry = D365Backend(profile, password="pw", dry_run=True)
+        with requests_mock.Mocker() as m:
+            info = forms.form_labels(dry, "some-form-id", solution="CRMWorx")
+        assert info["_dry_run"] is True
+        assert info["action"] == "form labels"
+        assert info["solution"] == "CRMWorx"
+        assert m.request_history == []
+
+
+def _labels_zip_for(by_id: dict[str, dict[str, str]]) -> bytes:
+    """A CrmTranslations.xml zip whose Localized Labels sheet carries ``by_id``
+    as bilingual (1033 + 1036) displayname rows — for exercising the join.
+    """
+    import io
+    import zipfile
+
+    rows = []
+    for object_id, langs in by_id.items():
+        rows.append(
+            "<Row>"
+            "<Cell><Data ss:Type='String'>new_project</Data></Cell>"
+            f"<Cell><Data ss:Type='String'>{object_id}</Data></Cell>"
+            "<Cell><Data ss:Type='String'>displayname</Data></Cell>"
+            f"<Cell><Data ss:Type='String'>{langs.get('1033', '')}</Data></Cell>"
+            f"<Cell><Data ss:Type='String'>{langs.get('1036', '')}</Data></Cell>"
+            "</Row>"
+        )
+    xml = (
+        "<?xml version='1.0'?>"
+        "<Workbook xmlns='urn:schemas-microsoft-com:office:spreadsheet' "
+        "xmlns:ss='urn:schemas-microsoft-com:office:spreadsheet'>"
+        "<Worksheet ss:Name='Localized Labels'><Table>"
+        "<Row><Cell><Data ss:Type='String'>Entity name</Data></Cell>"
+        "<Cell><Data ss:Type='String'>Object ID</Data></Cell>"
+        "<Cell><Data ss:Type='String'>Object Column Name</Data></Cell>"
+        "<Cell><Data ss:Type='Number'>1033</Data></Cell>"
+        "<Cell><Data ss:Type='Number'>1036</Data></Cell></Row>"
+        + "".join(rows)
+        + "</Table></Worksheet></Workbook>"
+    )
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("CrmTranslations.xml", xml)
+        zf.writestr("[Content_Types].xml", "<Types/>")
+    return buf.getvalue()
+
+
+# ── form labels CLI command (issue #942) ─────────────────────────────────────
+
+from click.testing import CliRunner  # noqa: E402
+
+from crm.utils.d365_backend import ConnectionProfile  # noqa: E402
+
+_LABELS_ENVELOPE = {
+    "formid": "deadbeef-0000-0000-0000-000000000942",
+    "form": "Information",
+    "solution": "CRMWorx",
+    "languages": [1033, 1036],
+    "elements": [
+        {
+            "type": "tab",
+            "name": "general",
+            "label_object_id": "lbl000-0000-0000-0000-000000000000",
+            "source": "translation",
+            "labels": {"1033": "General", "1036": "Général"},
+            "sections": [
+                {
+                    "type": "section",
+                    "name": "details",
+                    "label_object_id": "sec000-0000-0000-0000-000000000000",
+                    "source": "translation",
+                    "labels": {"1033": "Details", "1036": "Détails"},
+                    "cells": [
+                        {
+                            "type": "cell",
+                            "name": "new_owner",
+                            "datafieldname": "new_owner",
+                            "label_object_id": None,
+                            "source": "formxml-projection",
+                            "labels": {"1033": "Owner"},
+                        }
+                    ],
+                }
+            ],
+        }
+    ],
+}
+
+
+def _seed_form_profile(tmp_path, monkeypatch):
+    monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
+    from crm.core import session as session_mod
+
+    session_mod.save_profile(
+        ConnectionProfile(
+            name="t", url="https://crm.contoso.local/contoso", domain="CONTOSO", username="alice"
+        )
+    )
+    session_mod.save_profile_secret_plaintext("t", "pw")
+
+
+class TestFormLabelsCommand:
+    def test_json_emits_tree_and_passes_args(self, monkeypatch, tmp_path):
+        _seed_form_profile(tmp_path, monkeypatch)
+        from crm.commands import form as form_cmd
+
+        captured = {}
+        monkeypatch.setattr(
+            form_cmd.forms_mod,
+            "form_labels",
+            lambda backend, formid, **kw: captured.update(formid=formid, **kw) or _LABELS_ENVELOPE,
+        )
+        from crm.cli import cli
+
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--profile",
+                "t",
+                "--json",
+                "form",
+                "labels",
+                _LABELS_ENVELOPE["formid"],
+                "--solution",
+                "CRMWorx",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        import json
+
+        envelope = json.loads(result.stdout)
+        assert captured["formid"] == _LABELS_ENVELOPE["formid"]
+        assert captured["solution"] == "CRMWorx"
+        assert envelope["data"]["languages"] == [1033, 1036]
+        assert envelope["data"]["elements"][0]["labels"]["1036"] == "Général"
+
+    def test_human_renders_labels(self, monkeypatch, tmp_path):
+        _seed_form_profile(tmp_path, monkeypatch)
+        from crm.commands import form as form_cmd
+
+        monkeypatch.setattr(
+            form_cmd.forms_mod, "form_labels", lambda backend, formid, **kw: _LABELS_ENVELOPE
+        )
+        from crm.cli import cli
+
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--profile",
+                "t",
+                "form",
+                "labels",
+                _LABELS_ENVELOPE["formid"],
+                "--solution",
+                "CRMWorx",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert "Général" in result.output
+        assert "new_owner" in result.output
+
+    def test_rejects_non_guid_formid_before_backend(self, monkeypatch, tmp_path):
+        # A non-GUID FORMID must fail as a usage error (exit 2) before the core
+        # call / any backend connection (coding-standards.md).
+        _seed_form_profile(tmp_path, monkeypatch)
+        from crm.commands import form as form_cmd
+
+        called = {"n": 0}
+        monkeypatch.setattr(
+            form_cmd.forms_mod, "form_labels", lambda *a, **k: called.__setitem__("n", 1)
+        )
+        from crm.cli import cli
+
+        result = CliRunner().invoke(
+            cli, ["--profile", "t", "form", "labels", "not-a-guid", "--solution", "CRMWorx"]
+        )
+        assert result.exit_code == 2, result.output
+        assert called["n"] == 0

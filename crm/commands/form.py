@@ -3,6 +3,7 @@
 # pyright: basic
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import click
@@ -20,6 +21,12 @@ from crm.commands._helpers import (
 )
 from crm.core import connection as connection_mod
 from crm.core import forms as forms_mod
+
+# A bare GUID (braces tolerated by the caller), for validating a systemform id
+# as a usage error before a backend connection is built (coding-standards.md).
+_GUID_RE = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+)
 
 _form_option = click.option(
     "--form",
@@ -839,6 +846,63 @@ def form_move_section(
         )
     _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, section, info, solution=solution)
+
+
+@form_group.command("labels")
+@click.argument("formid")
+@click.option(
+    "--solution",
+    required=True,
+    help="Unique name of the solution whose translations (the label store) to read.",
+)
+@pass_ctx
+def form_labels(ctx: CLIContext, formid: str, solution: str) -> None:
+    """Dump a form's element labels across all provisioned languages.
+
+    FORMID is the systemform id. Reads the label store via the solution's
+    translation export — not the caller-language formxml projection — so labels
+    surface in every provisioned language. Elements with no translation row fall
+    back to the formxml projection, flagged ``source: formxml-projection``.
+    """
+    # Validate untrusted input before building a backend (coding-standards.md): a
+    # bad id/solution fails as a usage error (exit 2) without resolving credentials.
+    formid = formid.strip().strip("{}")
+    if not _GUID_RE.fullmatch(formid):
+        raise click.BadParameter("FORMID must be a systemform GUID.", param_hint="'FORMID'")
+    if not solution.strip():
+        raise click.BadParameter("must not be empty.", param_hint="'--solution'")
+    with d365_errors(ctx):
+        info = forms_mod.form_labels(ctx.backend(), formid, solution=solution)
+    if info.get("_dry_run"):  # read-only verb has nothing to preview under --dry-run
+        ctx.emit(True, data=info)
+        return
+    languages = info["languages"]
+    headers = ["element", "source"] + [str(lc) for lc in languages]
+
+    def _identity(node: dict) -> str:
+        """A display name for a node: its logical name, else its first label text,
+        else its label object id — so auto-generated tabs/sections (which carry no
+        ``name``) still read meaningfully rather than as ``None``.
+        """
+        name = node.get("name")
+        if name:
+            return str(name)
+        labels = node.get("labels") or {}
+        return next(iter(labels.values()), None) or node.get("label_object_id") or "(unnamed)"
+
+    def _row(label: str, node: dict) -> list[str]:
+        labels = node["labels"]
+        return [label, node["source"]] + [labels.get(str(lc), "") for lc in languages]
+
+    rows: list[list[str]] = []
+    for tab in info["elements"]:
+        rows.append(_row(f"tab: {_identity(tab)}", tab))
+        for section in tab.get("sections", []):
+            rows.append(_row(f"  section: {_identity(section)}", section))
+            for cell in section.get("cells", []):
+                name = cell.get("datafieldname") or _identity(cell)
+                rows.append(_row(f"    {name}", cell))
+    ctx.emit(True, data=info, table={"headers": headers, "rows": rows})
 
 
 @form_group.command("export")
