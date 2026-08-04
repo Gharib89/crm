@@ -89,7 +89,7 @@ def dry_backend(profile: ConnectionProfile) -> D365Backend:
 
 
 @pytest.fixture
-def neutralize_caller_language(monkeypatch):
+def neutralize_caller_language(monkeypatch: pytest.MonkeyPatch) -> None:
     """Default the #940 caller-UI-language lookup to None.
 
     Every ``crm form`` write and ``form export`` now resolves the caller's
@@ -101,7 +101,10 @@ def neutralize_caller_language(monkeypatch):
     """
     from crm.core import connection
 
-    monkeypatch.setattr(connection, "caller_ui_language_id", lambda backend: None)
+    def _none(_backend: D365Backend) -> None:
+        return None
+
+    monkeypatch.setattr(connection, "caller_ui_language_id", _none)
 
 
 # --------------------------------------------------------------------------- #
