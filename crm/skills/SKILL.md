@@ -184,8 +184,9 @@ on context and safe to run first (reads execute even under `--dry-run`). Section
 - **solutions** — managed/unmanaged counts + the unmanaged non-default names: your
   starting candidates for a customization write's `--solution` target. Candidates,
   not guarantees — if the server rejects one with `0x80040203` ("solution name is
-  not valid", an org-specific template solution), fall back to `Default` or another
-  custom unmanaged solution rather than guessing further names.
+  not valid", an org-specific template solution), fall back to another custom
+  unmanaged solution — or `Default`, which the server accepts — rather than
+  guessing further names.
 - **publishers** — each publisher's **customization prefix**: what a new component's
   schema name must start with. Pick the prefix here *before* authoring schema.
 - **schema** — custom entity count + logical names, and the global option-set count.

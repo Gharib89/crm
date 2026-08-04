@@ -131,10 +131,10 @@ genuine PK attribute still appears in a create/get full record. List rows are
 **not** given `_entity_id` (each row carries its own PK). `@odata.*` protocol keys
 are stripped from every curated `data` payload.
 
-**Impersonation.** Write verbs (`create`/`update`/`delete`/`upsert`) accept
-`--as-user <systemuser-guid>` (sends the `MSCRMCallerID` header) or
-`--as-user-object-id <entra-object-id>` (cloud only), mutually exclusive; the
-written record's `createdby`/`modifiedby` is the impersonated user.
+**Impersonation.** Writes can be issued *as another user* — `--as-user
+<systemuser-guid>` on `create`/`update`/`delete`/`upsert` (cloud alternative:
+`--as-user-object-id`); the written record's `createdby`/`modifiedby` is the
+impersonated user.
 
 ## FetchXML query
 
@@ -419,15 +419,14 @@ crm --json action function RetrieveCurrentOrganization \
 ```
 
 `action function` issues a **GET** (read-only); `action invoke` issues a **POST**
-(state change, journalled). Both run unbound by default. Binding differs:
-`action function` binds to a collection (`--bind-set` alone) or a single record
-(`--bind-set` + `--bind-id`); `action invoke` binds only to a single record —
-`--bind-set` and `--bind-id` are required *together*, so a collection-only bind is
-inexpressible and collection-bound actions (`CreateMultiple`, `UpdateMultiple`,
-`DeleteMultiple`) are unreachable through it — hand-author those via `crm batch`
-(see `reference/bulk.md`). Pick `function` vs `invoke` by the operation's OData
-kind, not by whether it binds. **Discover** what's callable with
-`crm --json metadata list-actions` / `crm --json metadata list-functions`.
+(state change, journalled). Both run unbound by default; `action function` can
+bind to a collection or a single record, while **`action invoke` binds only to a
+single record** — a collection-only bind is inexpressible, so collection-bound
+actions (`CreateMultiple`, `UpdateMultiple`, `DeleteMultiple`) are unreachable
+through it; hand-author those via `crm batch` (see `reference/bulk.md`). Pick
+`function` vs `invoke` by the operation's OData kind, not by whether it binds.
+Run `crm describe action` for the exact bind flags. **Discover** what's
+callable with `crm --json metadata list-actions` / `crm --json metadata list-functions`.
 
 To pass a **record-reference** param to a function (e.g. `Target` on
 `RetrievePrincipalAccess`/`CalculateRollupField`), give the value as a JSON object
