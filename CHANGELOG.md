@@ -9,6 +9,23 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.77.8 (2026-08-04)
+
+### Bug Fixes
+
+- **solution**: Name both flag and per-row key in no-subcomponents error
+  ([#946](https://github.com/Gharib89/crm/pull/946),
+  [`3e2ce97`](https://github.com/Gharib89/crm/commit/3e2ce975932088ae14d8cb4da3b67939d6502ff5))
+
+- **solution**: Scope add-component --no-subcomponents to entity roots
+  ([#946](https://github.com/Gharib89/crm/pull/946),
+  [`3e2ce97`](https://github.com/Gharib89/crm/commit/3e2ce975932088ae14d8cb4da3b67939d6502ff5))
+
+- **solution**: Validate no-subcomponents before the cascade backend call
+  ([#946](https://github.com/Gharib89/crm/pull/946),
+  [`3e2ce97`](https://github.com/Gharib89/crm/commit/3e2ce975932088ae14d8cb4da3b67939d6502ff5))
+
+
 ## v1.77.7 (2026-08-04)
 
 ### Bug Fixes
