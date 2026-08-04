@@ -231,6 +231,19 @@ class TestExportTranslationBytes:
             with pytest.raises(D365Error, match="ExportTranslationFile"):
                 translation.export_translation_bytes(backend, "CRMWorx")
 
+    def test_non_string_payload_raises_d365error(self, backend):
+        # A non-str/bytes payload makes base64.b64decode raise TypeError; it must
+        # still surface as the typed envelope, not an uncaught traceback.
+        from crm.core import translation
+
+        with requests_mock.Mocker() as m:
+            m.post(
+                backend.url_for("solutions/Microsoft.Dynamics.CRM.ExportTranslation"),
+                json={"ExportTranslationFile": 12345},
+            )
+            with pytest.raises(D365Error, match="not valid base64"):
+                translation.export_translation_bytes(backend, "CRMWorx")
+
 
 class TestParseLocalizedLabels:
     def test_language_codes_from_header(self):

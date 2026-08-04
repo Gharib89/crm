@@ -170,7 +170,7 @@ labelled from its attribute) fall back to the projection, flagged
 `source: formxml-projection`. Errors if the form is not a component of `SOL`.
 
 ```bash
-crm --json form labels 98ae5881-b152-4eb9-916d-539c83ff69c7 --solution ContosoCore
+crm --json form labels deadbeef-0000-0000-0000-000000000942 --solution ContosoCore
 # → data: {formid, form, solution, languages: [1033, 1036],
 #          elements: [{type: tab, name, source, labels: {"1033": …, "1036": …}, sections: […]}]}
 ```

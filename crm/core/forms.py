@@ -1191,11 +1191,15 @@ def _label_object_id(element: ET.Element) -> str:
     return raw.strip().strip("{}").lower()
 
 
-def _formxml_label_text(element: ET.Element, caller_language_id: int | None) -> str | None:
-    """The element's own ``<label>`` description, projected to the caller's language.
+def _projected_label(element: ET.Element, caller_language_id: int | None) -> tuple[str, str] | None:
+    """The element's own ``<label>`` projection as ``(languagecode, description)``.
 
     Prefers the label whose ``languagecode`` matches the caller, else the first
-    label. Returns ``None`` when the element carries no ``<labels>``.
+    label. The key is the *chosen* label's own ``languagecode`` (falling back to
+    the caller's when the label carries none), so the text is preserved even when
+    the caller's UI language could not be resolved (#942 — otherwise the fallback
+    text was silently dropped). Returns ``None`` when the element carries no
+    usable ``<label>`` (no ``<labels>``, no description, or no resolvable key).
     """
     labels = element.find("labels")
     if labels is None:
@@ -1203,13 +1207,22 @@ def _formxml_label_text(element: ET.Element, caller_language_id: int | None) -> 
     label_els = labels.findall("label")
     if not label_els:
         return None
+    chosen = None
     if caller_language_id is not None:
-        match = next(
+        chosen = next(
             (lab for lab in label_els if lab.get("languagecode") == str(caller_language_id)), None
         )
-        if match is not None:
-            return match.get("description")
-    return label_els[0].get("description")
+    if chosen is None:
+        chosen = label_els[0]
+    description = chosen.get("description")
+    if description is None:
+        return None
+    key = chosen.get("languagecode") or (
+        str(caller_language_id) if caller_language_id is not None else None
+    )
+    if key is None:
+        return None
+    return key, description
 
 
 def _label_node(
@@ -1239,12 +1252,8 @@ def _label_node(
         node["labels"] = dict(translated)
         return node, True
     node["source"] = "formxml-projection"
-    projected = _formxml_label_text(element, caller_language_id)
-    node["labels"] = (
-        {str(caller_language_id): projected}
-        if projected is not None and caller_language_id is not None
-        else {}
-    )
+    projected = _projected_label(element, caller_language_id)
+    node["labels"] = {projected[0]: projected[1]} if projected is not None else {}
     return node, False
 
 

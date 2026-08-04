@@ -51,7 +51,7 @@ def _decode_translation_file(resp: dict[str, Any]) -> bytes:
         raise D365Error("ExportTranslation returned no ExportTranslationFile payload.")
     try:
         return base64.b64decode(encoded, validate=True)
-    except ValueError as exc:  # binascii.Error subclasses ValueError
+    except (ValueError, TypeError) as exc:  # binascii.Error ⊂ ValueError; TypeError = non-str/bytes
         raise D365Error(f"ExportTranslationFile is not valid base64: {exc}") from exc
 
 

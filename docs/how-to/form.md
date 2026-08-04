@@ -461,8 +461,8 @@ provisioned language, read from the label store instead of the caller-language
 projection.
 
 ```bash
-crm form labels 98ae5881-b152-4eb9-916d-539c83ff69c7 --solution cwx_crmworx
-crm --json form labels 98ae5881-b152-4eb9-916d-539c83ff69c7 --solution cwx_crmworx
+crm form labels deadbeef-0000-0000-0000-000000000942 --solution cwx_crmworx
+crm --json form labels deadbeef-0000-0000-0000-000000000942 --solution cwx_crmworx
 ```
 
 The first argument is the **systemform id** (from `form list`). It reads the

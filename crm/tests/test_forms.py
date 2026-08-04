@@ -2250,9 +2250,19 @@ class TestFormLabelTree:
         # every node still present, all projection-sourced
         assert _find_node(tree, "tab")["source"] == "formxml-projection"
 
+    def test_projection_preserved_when_caller_language_unknown(self):
+        # caller_ui_language_id can be None; the projected label must survive,
+        # keyed by the label's own languagecode rather than being dropped.
+        from crm.core import forms
+
+        tree, _ = forms.form_label_tree(_LABELS_FORMXML, {}, caller_language_id=None)
+        tab = _find_node(tree, "tab")
+        assert tab["source"] == "formxml-projection"
+        assert tab["labels"] == {"1033": "General"}
+
 
 _FORM_BY_ID_ROW = {
-    "formid": "98ae5881-b152-4eb9-916d-539c83ff69c7",
+    "formid": "deadbeef-0000-0000-0000-000000000942",
     "name": "Information",
     "objecttypecode": "new_project",
     "type": 2,
@@ -2378,7 +2388,7 @@ from click.testing import CliRunner  # noqa: E402
 from crm.utils.d365_backend import ConnectionProfile  # noqa: E402
 
 _LABELS_ENVELOPE = {
-    "formid": "98ae5881-b152-4eb9-916d-539c83ff69c7",
+    "formid": "deadbeef-0000-0000-0000-000000000942",
     "form": "Information",
     "solution": "CRMWorx",
     "languages": [1033, 1036],
@@ -2415,7 +2425,6 @@ _LABELS_ENVELOPE = {
 
 def _seed_form_profile(tmp_path, monkeypatch):
     monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
-    monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
     from crm.core import session as session_mod
 
     session_mod.save_profile(
@@ -2485,3 +2494,21 @@ class TestFormLabelsCommand:
         assert result.exit_code == 0, result.output
         assert "Général" in result.output
         assert "new_owner" in result.output
+
+    def test_rejects_non_guid_formid_before_backend(self, monkeypatch, tmp_path):
+        # A non-GUID FORMID must fail as a usage error (exit 2) before the core
+        # call / any backend connection (coding-standards.md).
+        _seed_form_profile(tmp_path, monkeypatch)
+        from crm.commands import form as form_cmd
+
+        called = {"n": 0}
+        monkeypatch.setattr(
+            form_cmd.forms_mod, "form_labels", lambda *a, **k: called.__setitem__("n", 1)
+        )
+        from crm.cli import cli
+
+        result = CliRunner().invoke(
+            cli, ["--profile", "t", "form", "labels", "not-a-guid", "--solution", "CRMWorx"]
+        )
+        assert result.exit_code == 2, result.output
+        assert called["n"] == 0

@@ -3,6 +3,7 @@
 # pyright: basic
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import click
@@ -20,6 +21,12 @@ from crm.commands._helpers import (
 )
 from crm.core import connection as connection_mod
 from crm.core import forms as forms_mod
+
+# A bare GUID (braces tolerated by the caller), for validating a systemform id
+# as a usage error before a backend connection is built (coding-standards.md).
+_GUID_RE = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+)
 
 _form_option = click.option(
     "--form",
@@ -857,6 +864,13 @@ def form_labels(ctx: CLIContext, formid: str, solution: str) -> None:
     surface in every provisioned language. Elements with no translation row fall
     back to the formxml projection, flagged ``source: formxml-projection``.
     """
+    # Validate untrusted input before building a backend (coding-standards.md): a
+    # bad id/solution fails as a usage error (exit 2) without resolving credentials.
+    formid = formid.strip().strip("{}")
+    if not _GUID_RE.fullmatch(formid):
+        raise click.BadParameter("FORMID must be a systemform GUID.", param_hint="'FORMID'")
+    if not solution.strip():
+        raise click.BadParameter("must not be empty.", param_hint="'--solution'")
     with d365_errors(ctx):
         info = forms_mod.form_labels(ctx.backend(), formid, solution=solution)
     if info.get("_dry_run"):  # read-only verb has nothing to preview under --dry-run
