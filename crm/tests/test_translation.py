@@ -264,6 +264,32 @@ class TestParseLocalizedLabels:
         _, by_id = translation.parse_localized_labels(_labels_zip_bytes())
         assert by_id["cccc3333-0000-0000-0000-000000000003"] == {"1033": "Name", "1036": "Nom"}
 
+    def test_not_a_zip_raises_d365error(self):
+        from crm.core import translation
+
+        with pytest.raises(D365Error, match="not a valid zip"):
+            translation.parse_localized_labels(b"this is not a zip")
+
+    def test_missing_member_raises_d365error(self):
+        import io
+        import zipfile
+
+        from crm.core import translation
+
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("[Content_Types].xml", "<Types/>")
+        with pytest.raises(D365Error, match="no CrmTranslations.xml"):
+            translation.parse_localized_labels(buf.getvalue())
+
+    def test_malformed_xml_raises_d365error_not_parseerror(self):
+        # A malformed CrmTranslations.xml must surface as the typed envelope, not a
+        # raw ElementTree.ParseError (which d365_errors would not absorb).
+        from crm.core import translation
+
+        with pytest.raises(D365Error, match="Could not parse CrmTranslations.xml"):
+            translation.parse_localized_labels(_labels_zip_bytes("<Workbook><unclosed>"))
+
 
 # ── CLI commands ────────────────────────────────────────────────────────────
 

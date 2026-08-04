@@ -859,6 +859,9 @@ def form_labels(ctx: CLIContext, formid: str, solution: str) -> None:
     """
     with d365_errors(ctx):
         info = forms_mod.form_labels(ctx.backend(), formid, solution=solution)
+    if info.get("_dry_run"):  # read-only verb has nothing to preview under --dry-run
+        ctx.emit(True, data=info)
+        return
     languages = info["languages"]
     headers = ["element", "source"] + [str(lc) for lc in languages]
 

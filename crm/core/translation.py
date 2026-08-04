@@ -157,17 +157,23 @@ def _row_cells(row: ET.Element) -> dict[int, str]:
 def _localized_labels_rows(zip_bytes: bytes) -> list[ET.Element]:
     """The ``<Row>`` elements of the CrmTranslations.xml 'Localized Labels' sheet.
 
-    Raises D365Error if the zip lacks CrmTranslations.xml or that worksheet.
+    Raises D365Error if the zip lacks CrmTranslations.xml, that worksheet, or the
+    XML is malformed — the CLI's standard error envelope, never a raw traceback.
     """
     try:
-        archive = zipfile.ZipFile(io.BytesIO(zip_bytes))
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
+            raw = archive.read("CrmTranslations.xml")
     except zipfile.BadZipFile as exc:
         raise D365Error(f"ExportTranslation payload is not a valid zip: {exc}") from exc
-    try:
-        xml = archive.read("CrmTranslations.xml").decode("utf-8")
     except KeyError as exc:
         raise D365Error("ExportTranslation zip has no CrmTranslations.xml.") from exc
-    root = safe_xml.fromstring(xml)
+    # safe_xml.fromstring parses bytes directly (no encoding assumption) and
+    # raises ET.ParseError for malformed XML — turn that into the typed envelope
+    # since d365_errors only absorbs D365Error.
+    try:
+        root = safe_xml.fromstring(raw)
+    except ET.ParseError as exc:
+        raise D365Error(f"Could not parse CrmTranslations.xml: {exc}") from exc
     for sheet in root.iter():
         if (
             _local_name(sheet.tag) == "Worksheet"

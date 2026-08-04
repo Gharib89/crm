@@ -2315,6 +2315,23 @@ class TestFormLabels:
             with pytest.raises(D365Error, match="component of that solution"):
                 forms.form_labels(backend, _FORM_BY_ID_ROW["formid"], solution="CRMWorx")
 
+    def test_dry_run_previews_without_http(self):
+        # form labels reads via the ExportTranslation POST action, which --dry-run
+        # gates; it must return a clean dry-run preview, not attempt the call.
+        from crm.core import forms
+        from crm.utils.d365_backend import ConnectionProfile, D365Backend
+
+        profile = ConnectionProfile(
+            name="t", url="https://crm.contoso.local/contoso", domain="CONTOSO", username="alice"
+        )
+        dry = D365Backend(profile, password="pw", dry_run=True)
+        with requests_mock.Mocker() as m:
+            info = forms.form_labels(dry, "some-form-id", solution="CRMWorx")
+        assert info["_dry_run"] is True
+        assert info["action"] == "form labels"
+        assert info["solution"] == "CRMWorx"
+        assert m.request_history == []
+
 
 def _labels_zip_for(by_id: dict[str, dict[str, str]]) -> bytes:
     """A CrmTranslations.xml zip whose Localized Labels sheet carries ``by_id``
