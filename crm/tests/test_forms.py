@@ -2037,6 +2037,21 @@ class TestLabelLanguageScan:
         xml = '<form><tab><labels><label description="x" languagecode="en" /></labels></tab></form>'
         assert forms.label_languages_in_formxml(xml) == set()
 
+    def test_ignores_oversized_digit_languagecode(self):
+        """A digit-only languagecode over Python's int_max_str_digits passes
+        ``isdigit()`` but raises ``ValueError`` in ``int()`` — skip it, don't crash.
+        """
+        import sys
+
+        from crm.core import forms
+
+        big = "1" * (sys.get_int_max_str_digits() + 1)
+        xml = (
+            f'<form><tab><labels><label description="x" languagecode="{big}" />'
+            "</labels></tab></form>"
+        )
+        assert forms.label_languages_in_formxml(xml) == set()
+
 
 class TestLabelLanguageWarning:
     def test_warns_naming_foreign_codes(self):

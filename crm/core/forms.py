@@ -809,7 +809,12 @@ def label_languages_in_formxml(formxml: str) -> set[int]:
     for label in root.iter("label"):
         code = label.get("languagecode")
         if code is not None and code.isdigit():
-            codes.add(int(code))
+            try:
+                codes.add(int(code))
+            except ValueError:
+                # A digit-only string over Python's int_max_str_digits limit — skip
+                # it rather than crash the write path (best-effort, like bad XML).
+                continue
     return codes
 
 
