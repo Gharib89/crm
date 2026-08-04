@@ -190,6 +190,12 @@ def provision_isolation(crm_bin: str | None = None, *, install_skill: bool = Tru
     }
     env["HOME"] = str(home)
     env["CRM_HOME"] = str(crm_home)
+    # The agent invokes bare `crm`, so the binary under test must lead its PATH — the
+    # launcher's PATH can't be relied on (no global crm → the agent hunts the filesystem
+    # and can find the repo checkout's editable install; a global crm → the agent silently
+    # tests the wrong binary instead of the session wheel the paired run built).
+    if crm_bin:
+        env["PATH"] = f"{Path(crm_bin).resolve().parent}{os.pathsep}{env.get('PATH', '')}"
 
     # Pass the subscription credentials (only) into the fresh HOME so a headless
     # `claude -p` agent authenticates without an ANTHROPIC_API_KEY. No-op if absent.
