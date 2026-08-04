@@ -40,6 +40,18 @@ Assigning a role whose BU differs from the principal's BU fails with a
 `forbidden` (403). Pick a role from the same business unit as the target
 user/team (see the `forbidden` row in `reference/troubleshooting.md`).
 
+**Need a team to assign to? Teams are plain entity records** — there is no
+`security` verb for creating one:
+
+```bash
+crm --json entity create teams --data '{"name":"Support Escalation","teamtype":0}'
+```
+
+`teamtype` `0` is an owner team (the kind that holds roles — confirm values via
+`crm metadata picklist team teamtype`). The team lands in the caller's business
+unit unless you set `businessunitid@odata.bind` (`"businessunits(<guid>)"`) —
+mind the BU-match rule above when picking the role.
+
 **`user-privileges` is the only way to get a user's *effective* privileges** —
 the resolved privilege set from the user's own roles **plus** team-inherited
 ones (collapsed per privilege to its highest depth). The `list-*-roles` verbs
@@ -92,6 +104,11 @@ skip`, it is reused unchanged — solution membership is not applied retroactive
 guarantee placement in a solution, the role must be newly created in the same call.
 
 **`--replace` is destructive — but cannot produce exact set-equality.** It wipes every *removable* privilege not in the resolved set; every role also carries an immovable baseline (the SharePoint document-management set: `prvReadSharePointData`/`prvWriteSharePointData`/`prvCreateSharePointData`/`prvReadSharePointDocument`) that `ReplacePrivilegesRole` silently keeps. Consequences: a strict "role has exactly these privileges" reconcile never converges (the baseline always reads back as drift), and a removal-only change that targets a baseline privilege is a no-op — check for *subset* satisfaction (every declared privilege present at its declared depth) instead. Use `--add` when layering; reserve `--replace` for a full reset (e.g. freshly created roles).
+
+**Disabling one named privilege IS scriptable.** Run `--replace` with the full
+desired set minus that privilege, then verify by subset (above). The surgical
+alternative is the raw Web API action: `crm action invoke RemovePrivilegeRole`
+bound to the role, which removes exactly one privilege without touching the rest.
 
 **Privilege counts are org-specific and resolved live.** Never hardcode how many privileges an `--all-entities` call will produce — the count varies by org.
 

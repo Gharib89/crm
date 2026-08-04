@@ -194,7 +194,9 @@ crm --json metadata clone-entity new_project contoso_TicketClone \
 **Not cloned (Web API limits):**
 
 - **Ribbon** — `RibbonDiffXml` has no Web API write path (solution import only). The
-  result carries a `ribbon_note` confirming this.
+  result carries a `ribbon_note` confirming this. The clone's ribbon is still
+  *recreatable*: `ribbon export` on the source to inspect its buttons, then
+  `ribbon add-button` on the target (see `reference/webresource-ribbon.md`).
 - **N:N relationships**, and 1:N where the source is the *parent* (referenced) side —
   cloning those would add lookups on *other* tables.
 - **Polymorphic / Customer lookups** — only single-target lookups come across.
@@ -204,7 +206,9 @@ crm --json metadata clone-entity new_project contoso_TicketClone \
 `--with-workflows` copies every classic workflow/business rule (`type=1`) whose
 primary entity is the source, including managed ones (no "is custom" filter available).
 Actions, BPFs, dialogs, and modern flows are skipped (reported under
-`skipped_workflows`). On Unified Interface a cloned form may need adding to the
+`skipped_workflows`) — read each entry's `reason` rather than treating the bucket
+as a dead end: for Actions and BPFs it names the working path (`solution
+export`/`import`; see `reference/automation.md`). On Unified Interface a cloned form may need adding to the
 model-driven app's form list to be visible.
 
 ## Preview dependencies before deleting a metadata component

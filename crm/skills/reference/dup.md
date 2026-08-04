@@ -50,6 +50,20 @@ table (or the `--fetchxml`/`--fetchxml-file` scope, whose `<entity>` must be
 caps a job at **5,000**). It writes *data*, not customizations, so it takes **no
 `--solution`**. Needs the entity duplicate-detection-enabled with published rules.
 
+**Merging the duplicates detection finds.** There is no `dup merge` verb — merge
+via the Dataverse `Merge` action, which is **unbound**: `crm action invoke Merge
+--body-file merge.json` (supported on accounts, contacts, leads, and incidents).
+The parameter is `Subordinate` (not the SDK's `SubordinateId`), and each entity
+parameter needs an `@odata.type` annotation; the subordinate is deactivated and
+its data folds into the target per `UpdateContent`:
+
+```json
+{"Target": {"@odata.type": "Microsoft.Dynamics.CRM.account", "accountid": "<keep>"},
+ "Subordinate": {"@odata.type": "Microsoft.Dynamics.CRM.account", "accountid": "<merge-away>"},
+ "UpdateContent": {"@odata.type": "Microsoft.Dynamics.CRM.account", "telephone1": "…"},
+ "PerformParentingChecks": false}
+```
+
 **`<rule>` is a name *or* id** everywhere (`add-condition`, `publish`,
 `unpublish`, `get`) — a name is resolved by exact match, or pass the
 `duplicateruleid` GUID directly.

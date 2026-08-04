@@ -235,6 +235,12 @@ crm solution pack --zipfile dist/built.zip --folder src/MyCustomSolution
 # envelope: {action, exit_code, folder, zipfile, stdout_tail}
 ```
 
+**No zip-to-zip managed conversion.** Managed-vs-unmanaged is fixed at *export*
+time — `pack`'s package-type option only selects which flavor to rebuild from a
+tree that was extracted from that flavor; it cannot synthesize a managed build
+from an unmanaged export. The path to a managed zip is the round-trip: import the
+unmanaged zip into a dev org, then `solution export --managed` from there.
+
 ## Validate a solution zip before import (CI gate)
 
 Offline static analysis — no connection or profile needed:

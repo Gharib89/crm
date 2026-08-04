@@ -28,6 +28,15 @@ solution-scoped (SKILL.md).
 **`--dry-run` on writes.** The previewed write returns `data._dry_run: true`
 with a `would_*` flag; name lookups still run live.
 
+**Verifying a role's scope.** Query the intersect table positionally — there is
+no `--entity` flag on `query odata`, and the entity-type field is
+`associatedobjecttypecode` (not `objecttypecode`, which does not exist):
+
+```bash
+crm --json query odata connectionroleobjecttypecodes \
+    --filter "_connectionroleid_value eq <roleid>" --select associatedobjecttypecode
+```
+
 ## JSON contract
 
 **`create`** → `data` carries `created`, `connectionroleid`, and `name`:

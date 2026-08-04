@@ -30,6 +30,15 @@ crm --json chart create contact --name "By Method" \
     --data-description c.data.xml --presentation-description c.pres.xml --solution ContosoCore
 ```
 
+These pipes need a standalone `jq` binary — absent on many hosts (exit 127), and
+the CLI's `--jq` flag is no substitute here (it re-wraps the result as JSON; `-r`
+raw output is the point). Portable fallback:
+
+```bash
+crm --json chart get <id> | python3 -c \
+  'import json,sys; print(json.load(sys.stdin)["data"]["datadescription"])' > c.data.xml
+```
+
 **Two mutually exclusive create modes.** XML mode needs **both**
 `--data-description` and `--presentation-description`; web-resource mode is
 `--web-resource <name|GUID>` (resolved to its `webresourceid`). Passing both modes,
@@ -42,7 +51,10 @@ doubt, start from a known-good chart captured via `chart get`.
 
 **Dry-run shapes.** `create` returns `{_dry_run, would_create: {entity_set, body}}`
 with the resolved body (a `--web-resource` name is resolved live first); `delete`
-returns `{_dry_run, would_delete: true, <id>}`. To take a chart *out* of a solution
+returns `{_dry_run, would_delete: true, <id>}`. **Dry-run does not validate
+`--solution` here** — a green `chart create --dry-run` can still 400 on the real
+write when the solution name is rejected (e.g. `0x80040203`); verify the target
+against `org brief`'s candidates first. To take a chart *out* of a solution
 without deleting it, use `solution remove-component`.
 
 ### Chart editors — `update`, `set-fetch`, `add-series`, `remove-series`, `set-groupby`

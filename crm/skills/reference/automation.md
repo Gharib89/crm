@@ -230,7 +230,11 @@ Category values: `0`=Workflow, `1`=Dialog, `2`=BusinessRule, `3`=Action, `4`=BPF
 `5`=ModernFlow. `--category` also accepts friendly names (`workflow`, `dialog`,
 `businessrule`, `action`, `bpf`, `flow`), case-insensitive. **Clone supports only `0` and `2`** — action/BPF/dialog/modern-flow
 fail loudly. (This is the same constraint the entity-clone `--with-workflows` flag
-hits; see `reference/metadata.md`.)
+hits; see `reference/metadata.md`.) For an Action (`3`) or BPF (`4`) the refusal
+is "not *yet*" and names the working path: **`solution export`/`import` moves them
+today** (add the source workflow's entity to a solution, export, import where
+needed). Dialog (`1`) and ModernFlow (`5`) are genuine dead ends — deprecated and
+Power-Automate-owned respectively.
 
 On on-prem v9.1, a published business rule (category `2`) cannot be deactivated
 via the Web API — `deactivate` returns `0x80045002` (`Cannot update a published
