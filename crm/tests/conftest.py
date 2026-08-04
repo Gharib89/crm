@@ -101,7 +101,7 @@ def neutralize_caller_language(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     from crm.core import connection
 
-    def _none(_backend: D365Backend) -> None:
+    def _none(_backend: D365Backend) -> int | None:
         return None
 
     monkeypatch.setattr(connection, "caller_ui_language_id", _none)

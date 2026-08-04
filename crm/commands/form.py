@@ -848,8 +848,8 @@ def form_move_section(
 @pass_ctx
 def form_export(ctx: CLIContext, entity: str, form_name: str, output: str | None) -> None:
     """Export a form's formxml."""
-    backend = ctx.backend()
     with d365_errors(ctx):
+        backend = ctx.backend()
         forms = forms_mod.read_entity_forms(backend, entity)
     form = _resolve_single_form(ctx, forms, form_name)
     if form is None:
