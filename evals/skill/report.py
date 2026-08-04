@@ -122,7 +122,9 @@ def build_report(
     lines += ["## Metadata", ""]
     # `host` is deliberately excluded — report.md is committed to a public repo and the live
     # org host (esp. on-prem/internal) is sensitive; the series identity is model × target × k.
-    for key in ("model", "target", "k", "preset", "paired", "subset", "skill_sha"):
+    # `tasks` (the resolved corpus id list) is also excluded — it is resume-contract
+    # plumbing; the per-task table below already names every task.
+    for key in ("model", "target", "k", "preset", "paired", "subset", "sandbox", "skill_sha"):
         if key in meta:
             lines.append(f"- **{key}**: {meta[key]}")
     lines += ["- **reportable**: true", ""]

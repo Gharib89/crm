@@ -45,15 +45,19 @@ def hake_gain(pass_skill: float, pass_bare: float) -> float | None:
     return (pass_skill - pass_bare) / headroom
 
 
-def is_reportable(*, preset: str, paired: bool, k: int, subset: bool = False) -> bool:
+def is_reportable(
+    *, preset: str, paired: bool, k: int, subset: bool = False, sandbox: bool = True
+) -> bool:
     """Whether a run counts as reportable: a full, paired, whole-corpus run at k≥3 (ADR 0028).
 
     A single-condition run (smoke/regression, bare leg skipped) has no lift, a k<3 run is
     too noisy to quote, and a ``subset`` run (``--tasks``/``--sample`` narrowed the corpus)
     is not the "whole corpus" the ADR requires — so none is reportable. The walking-skeleton
-    default (k=1) is deliberately *not* reportable.
+    default (k=1) is deliberately *not* reportable. ``sandbox=False`` (an explicit
+    ``--no-sandbox`` run) is a wiring check with unrestricted agent egress — never
+    reportable and never a baseline.
     """
-    return preset == "full" and paired and k >= REPORTABLE_MIN_K and not subset
+    return preset == "full" and paired and k >= REPORTABLE_MIN_K and not subset and sandbox
 
 
 def series_key(meta: dict[str, Any]) -> tuple[str, str, int]:
@@ -188,15 +192,21 @@ def load_trials(run_dir: str | Path) -> list[TrialRecord]:
     The read half of the incremental-save loop: a resumed run loads the durable rows,
     decides which tasks are already complete (:func:`complete_task_ids`), and keeps only
     those tasks' rows. Rows are written by ``to_dict`` so they round-trip by field name.
+    A line truncated by a mid-write crash is skipped rather than raising — its task then
+    has an incomplete block and reruns whole, which is exactly the resume contract.
     """
     path = Path(run_dir) / "trials.jsonl"
     if not path.exists():
         return []
-    return [
-        TrialRecord(**json.loads(line))
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+    records: list[TrialRecord] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            records.append(TrialRecord(**json.loads(line)))
+        except (ValueError, TypeError):
+            continue
+    return records
 
 
 def append_trials(run_dir: str | Path, records: list[TrialRecord]) -> None:
@@ -212,10 +222,17 @@ def append_trials(run_dir: str | Path, records: list[TrialRecord]) -> None:
 
 
 def rewrite_trials(run_dir: str | Path, records: list[TrialRecord]) -> None:
-    """Replace ``<run_dir>/trials.jsonl`` with exactly ``records`` (the resume prune)."""
+    """Replace ``<run_dir>/trials.jsonl`` with exactly ``records`` (the resume prune).
+
+    Written to a sibling temp file and atomically swapped in, so a crash mid-prune can
+    never lose the completed rows being kept (truncate-then-append would).
+    """
     path = Path(run_dir) / "trials.jsonl"
-    path.write_text("", encoding="utf-8")
-    append_trials(run_dir, records)
+    tmp = path.with_suffix(".jsonl.tmp")
+    with tmp.open("w", encoding="utf-8") as fh:
+        for t in records:
+            fh.write(json.dumps(t.to_dict()) + "\n")
+    tmp.replace(path)
 
 
 def complete_task_ids(trials: list[TrialRecord], *, k: int, paired: bool) -> set[str]:
@@ -261,6 +278,9 @@ def write_results(
         # Same fail-safe default: a run that omits the flag is treated as a subset (never
         # reportable) rather than silently quotable.
         subset=bool(meta.get("subset", True)),
+        # And again: a run that does not positively record it was sandboxed is treated as
+        # unsandboxed (never reportable) rather than silently quotable.
+        sandbox=bool(meta.get("sandbox", False)),
     )
     run_json = {
         "run_id": run_id,

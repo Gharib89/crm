@@ -389,6 +389,12 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
         "preset": args.preset,
         "paired": preset.paired,
         "subset": subset,
+        # An unsandboxed (--no-sandbox) run is a wiring check with unrestricted agent
+        # egress — recorded so is_reportable can hard-exclude it (and any baseline pick).
+        "sandbox": not args.no_sandbox,
+        # The resolved (post-gating) corpus identity: --resume validates it so rows from
+        # two different task selections (or a corpus edit between attempts) can never mix.
+        "tasks": sorted(f.stem for f in task_files),
         "skill_sha": record_mod.skill_sha(repo_root),
     }
 
@@ -404,7 +410,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
         # The resume contract: same series + corpus config, or the mixed rows would be
         # meaningless (skill_sha excluded deliberately — resuming across a skill edit is
         # legitimate only if you accept the mix, and the stamp records the original).
-        for key in ("model", "target", "k", "preset", "paired", "subset"):
+        for key in ("model", "target", "k", "preset", "paired", "subset", "sandbox", "tasks"):
             if stamped.get(key) != meta[key]:
                 raise RunError(
                     f"--resume {run_id}: {key} mismatch (run was {stamped.get(key)!r}, "
@@ -532,7 +538,13 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
         # Reporting + commit policy (ADR 0028): only a reportable run writes report.md,
         # (re)derives matrix.md from the committed records, and force-adds its named
         # artifacts — transcripts/run.log stay untracked because they are never named.
-        if is_reportable(preset=args.preset, paired=preset.paired, k=args.k, subset=subset):
+        if is_reportable(
+            preset=args.preset,
+            paired=preset.paired,
+            k=args.k,
+            subset=subset,
+            sandbox=not args.no_sandbox,
+        ):
             _finalize_reporting(
                 repo_root, args.results_dir, run_dir, run_id, meta, aggregates, trials, regression
             )

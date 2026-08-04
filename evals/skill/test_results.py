@@ -63,6 +63,11 @@ class TestReportable:
         # reportable, so it can't pollute the baseline pool (#892).
         assert is_reportable(preset="full", paired=True, k=3, subset=True) is False
 
+    def test_unsandboxed_run_not_reportable(self):
+        # --no-sandbox is a wiring check with unrestricted agent egress — a full paired
+        # k≥3 run under it must never be quotable or become a baseline.
+        assert is_reportable(preset="full", paired=True, k=3, sandbox=False) is False
+
 
 class TestAggregateTask:
     def test_rates_and_gain_over_k_trials(self):
@@ -177,6 +182,30 @@ class TestWriteResults:
         report = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
         assert report["reportable"] is False
 
+    def test_reportable_defaults_false_when_sandbox_flag_omitted(self, tmp_path):
+        # Same fail-safe: a run whose meta does not positively record it was sandboxed is
+        # treated as unsandboxed (non-reportable) rather than silently quotable.
+        run_dir = write_results(
+            tmp_path,
+            run_id="r1",
+            meta={"preset": "full", "paired": True, "k": 3, "subset": False},  # no "sandbox"
+            trials=[],
+            aggregates=[],
+        )
+        report = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+        assert report["reportable"] is False
+
+    def test_reportable_true_with_full_sandboxed_meta(self, tmp_path):
+        run_dir = write_results(
+            tmp_path,
+            run_id="r1",
+            meta={"preset": "full", "paired": True, "k": 3, "subset": False, "sandbox": True},
+            trials=[],
+            aggregates=[],
+        )
+        report = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+        assert report["reportable"] is True
+
 
 def _trial(task_id: str, leg: str, trial: int, passed: bool = True) -> TrialRecord:
     return TrialRecord(
@@ -196,11 +225,22 @@ class TestIncrementalSaveAndResume:
     def test_load_missing_file_is_empty(self, tmp_path):
         assert load_trials(tmp_path) == []
 
+    def test_load_skips_a_truncated_tail_line(self, tmp_path):
+        # A mid-write crash can leave the final line truncated; load must skip it (the
+        # task's block is then incomplete and reruns whole) rather than crash --resume.
+        good = [_trial("a", "skill", 0)]
+        append_trials(tmp_path, good)
+        with (tmp_path / "trials.jsonl").open("a", encoding="utf-8") as fh:
+            fh.write('{"task_id": "b", "leg": "sk')
+        assert load_trials(tmp_path) == good
+
     def test_rewrite_prunes_to_exactly_the_given_rows(self, tmp_path):
         append_trials(tmp_path, [_trial("a", "skill", 0), _trial("b", "skill", 0)])
         kept = [_trial("a", "skill", 0)]
         rewrite_trials(tmp_path, kept)
         assert load_trials(tmp_path) == kept
+        # atomic swap: the temp file must not survive
+        assert not (tmp_path / "trials.jsonl.tmp").exists()
 
     def test_complete_task_ids_requires_full_blocks_both_legs(self):
         trials = [
