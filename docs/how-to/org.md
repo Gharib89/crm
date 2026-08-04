@@ -59,8 +59,9 @@ crm --json org brief
 - **identity** — org name, version, and the serving `profile` / `url`, so the
   brief is self-identifying without GUID-matching.
 - **solutions** — managed / unmanaged counts, plus the unmanaged **non-default**
-  names in `unmanaged_names` (the `Default` and `Active` system solutions are
-  excluded). These are your candidate `--solution` targets for a customization write.
+  names in `unmanaged_names` (the `Default`, `Active`, and `Basic` system
+  solutions are excluded). These are your candidate `--solution` targets for a
+  customization write.
 - **publishers** — each publisher's **customization prefix**: what a new
   component's schema name must start with. Pick the prefix here before authoring.
 - **schema** — custom entity count + logical names, and the global option-set count.
