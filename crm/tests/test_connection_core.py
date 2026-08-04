@@ -130,7 +130,7 @@ class TestCallerUiLanguage:
     degrades to None on any lookup failure (#940).
     """
 
-    _UID = "20fdfe32-497b-f111-ab0e-7c1e528d4ca5"
+    _UID = "aaaa0000-1111-2222-3333-444444444444"
 
     def _mock(self, m, backend, *, who=None, settings=None, who_status=200, settings_status=200):
         import requests_mock  # noqa: F401  (ensure the dependency is present)
