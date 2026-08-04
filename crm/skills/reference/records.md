@@ -131,6 +131,12 @@ genuine PK attribute still appears in a create/get full record. List rows are
 **not** given `_entity_id` (each row carries its own PK). `@odata.*` protocol keys
 are stripped from every curated `data` payload.
 
+**Impersonation.** Writes can be issued *as another user* — `--as-user
+<systemuser-guid>` on `create`/`update`/`delete`/`upsert` (cloud alternative:
+`--as-user-object-id`). The write is attributed to the impersonated user — a
+create's `createdby`, an update's `modifiedby` — while the authenticated caller
+is recorded in `createdonbehalfby`/`modifiedonbehalfby`.
+
 ## FetchXML query
 
 `ENTITY_SET` is optional — omit it and the entity-set name is derived from
@@ -208,6 +214,15 @@ and `--non-empty` keeps them (unknown ≠ empty). The count uses `?$count=true&$
 "no property '_x_value' on type 'Edm.Int32'". M:N counts and delete-impact analysis are
 out of scope.
 
+**M:N related rows are still reachable** — through the N:N navigation property
+rather than `entity children`: find the relationship's `SchemaName` in
+`crm metadata relationships <entity>` (the `ManyToMany` block), then query it as a
+collection path:
+
+```bash
+crm --json query odata "systemusers(<guid>)/systemuserroles_association" --select name
+```
+
 ## Clone a record (`entity clone`)
 
 ```bash
@@ -284,8 +299,10 @@ and the `global_optionset_id` per global-bound picklist — see `reference/metad
 Add `--validate` to `entity create`/`entity update` to field-name-check the payload
 before the write. It runs 1-3 read-only metadata GETs and blocks unknown fields with
 `{ok:false, meta:{unknown_fields, did_you_mean}}`; valid `<nav>@odata.bind` keys are
-not flagged. It composes with `--dry-run`. Scope is field-**name** only — option-set
-values are not validated (look them up first; see `reference/metadata.md`).
+not flagged. **`--validate` alone still writes** — it only adds the pre-flight
+check; pair it with `--dry-run` to preview without writing. Scope is
+field-**name** only — option-set values are not validated (look them up first; see
+`reference/metadata.md`).
 
 On **`entity create`** only, `--validate` additionally warns when the payload contains
 the entity's primary id (e.g. `accountid`). The write still proceeds — explicit-GUID
@@ -300,6 +317,22 @@ Validate-first is the recommended default for unattended writes (SKILL.md); the
 raw server noise for an unknown field reads like `Does not support untyped value
 in non-open type` — the clean `unknown_fields`/`did_you_mean` envelope is what
 `--validate` buys.
+
+### Notes (annotations) — a polymorphic-lookup worked example
+
+A note attaches to its record through the polymorphic `objectid` lookup; the nav
+property is `objectid_<target-logical-name>` (singular logical name — the entity
+is `annotation`, the set is `annotations`):
+
+```bash
+crm --json entity create annotations --data \
+  '{"subject":"Call notes","notetext":"…","objectid_account@odata.bind":"accounts(<guid>)"}'
+```
+
+**Polymorphic `bind_key` gotcha:** for a polymorphic lookup, `metadata describe`
+reports only *one* arbitrary target's nav name as `bind_key` — wrong for every
+other target. Confirm the per-target nav via
+`crm metadata relationships <target-entity>` instead.
 
 ### Round-tripping a READ-shape lookup (no hand-`@odata.bind`)
 
@@ -387,10 +420,13 @@ crm --json action function RetrieveCurrentOrganization \
 ```
 
 `action function` issues a **GET** (read-only); `action invoke` issues a **POST**
-(state change, journalled). Both run unbound by default and can bind to a
-collection or a single record (e.g. a function bound to a `systemusers` record).
-Pick `function` vs `invoke` by the operation's OData kind, not by whether it
-binds. Run `crm describe action` for the exact bind flags. **Discover** what's
+(state change, journalled). Both run unbound by default; `action function` can
+bind to a collection or a single record, while **`action invoke` binds only to a
+single record** — a collection-only bind is inexpressible, so collection-bound
+actions (`CreateMultiple`, `UpdateMultiple`, `DeleteMultiple`) are unreachable
+through it; hand-author those via `crm batch` (see `reference/bulk.md`). Pick
+`function` vs `invoke` by the operation's OData kind, not by whether it binds.
+Run `crm describe action` for the exact bind flags. **Discover** what's
 callable with `crm --json metadata list-actions` / `crm --json metadata list-functions`.
 
 To pass a **record-reference** param to a function (e.g. `Target` on

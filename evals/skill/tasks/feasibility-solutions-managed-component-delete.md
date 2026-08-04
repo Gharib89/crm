@@ -15,13 +15,14 @@ source:
 # (stage-and-upgrade → DeleteAndPromote removes components dropped from the new version).
 # A bare agent that answers `false`, that runs `remove-component` against the MANAGED
 # solution (which refuses), or that reaches for `clone-as-patch` (a patch never deletes),
-# is the skill-lift discriminator.
+# is the skill-lift discriminator. `remove-component` is deliberately NOT a needle (#948):
+# the component can also be dropped from the source solution by other valid means (e.g. in
+# the dev org), so export + stage-and-upgrade are the real discriminators of the upgrade path.
 target: either
 kind: feasibility
 answer_key:
   cli_achievable: true
   required_commands:
-    - solution remove-component
     - solution export
     - solution stage-and-upgrade
 evidence:

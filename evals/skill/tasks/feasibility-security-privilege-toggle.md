@@ -16,7 +16,10 @@ source:
 # reaches for; (2) there is no --remove verb — "disabling" a privilege means re-running --replace
 # with the full desired set minus that privilege, and --replace silently keeps an immovable
 # SharePoint baseline, so exact set-equality never converges. An agent that answers "not possible
-# via the CLI" or reaches only for --access/--entities is the miss. Host-agnostic -> either.
+# via the CLI" or reaches only for --access/--entities is the miss. The prompt scopes the ask to
+# the CLI's dedicated security commands: `action invoke RemovePrivilegeRole` is an equally valid
+# raw-Web-API path (#948), and substring recall has no OR-match, so without the scoping a correct
+# answer via the action would miss the set-role-privileges needle. Host-agnostic -> either.
 target: either
 kind: feasibility
 answer_key:
@@ -37,8 +40,9 @@ mutate the org.** Investigate the available commands (the `crm` skill, and `crm 
 
 Task under assessment: *"For governance we need to turn off the 'Export to Excel' privilege
 (`prvExportToExcel`) on an existing security role, instead of clicking through the role editor in
-the maker portal. Can this be scripted end-to-end with the CLI — finding the role and changing
-that one privilege — and if so, which commands?"*
+the maker portal. Can this be scripted end-to-end with the CLI's dedicated security commands
+(not raw Web API actions) — finding the role and changing that one privilege — and if so, which
+commands?"*
 
 Write your answer as a single JSON object to a file named `feasibility.json` in your current
 working directory, matching exactly this schema (no extra prose in the file):

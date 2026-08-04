@@ -136,6 +136,11 @@ is submitted.
 **Gotcha — `match_count` is a snapshot.** It reflects the live row count when the job was
 submitted. The async job may encounter more or fewer rows as it runs (concurrent writes).
 
+**`--wait` duration is server-controlled.** The job runs on the org's async queue —
+the same delete can finish in seconds or minutes depending on tenant load. For
+time-bounded automation, submit without `--wait` and poll the job separately, or
+bound the wait with `--timeout`.
+
 ## Raw `$batch` — `crm batch`
 
 `crm batch <file.json>` runs a hand-authored `$batch` directly — the escape hatch for
@@ -166,6 +171,21 @@ EOF
 crm --json batch bulk-delete.json
 # -> data: [{...,"status":204},{...,"status":204}], meta: {total, success, failed}
 ```
+
+**Invoking the `*Multiple` actions (cloud).** `CreateMultiple`/`UpdateMultiple`/
+`DeleteMultiple` are bound to an entity *collection*, which `action invoke` cannot
+express (see `reference/records.md`) — hand-author them here instead, as a `POST`
+to the collection-bound path with a `Targets` array whose members each carry
+`@odata.type`:
+
+```json
+[{"method": "POST", "url": "contacts/Microsoft.Dynamics.CRM.CreateMultiple",
+  "body": {"Targets": [{"@odata.type": "Microsoft.Dynamics.CRM.contact", "firstname": "…"}]}}]
+```
+
+For most bulk jobs `data import --mode create`/`upsert` already delivers the
+one-round-trip behavior — reach for the raw `*Multiple` actions only when the task
+demands that specific message.
 
 Transaction grouping (default mode): each run of **consecutive writes**
 (`POST`/`PATCH`/`DELETE`) is wrapped in one atomic changeset (all-or-nothing rollback),

@@ -24,9 +24,11 @@ target: either
 kind: feasibility
 answer_key:
   cli_achievable: true
+  # `entity update` is deliberately NOT a needle (#948): the migrate-values step has several
+  # valid verbs (entity update per row, data export + data import, batch) and substring recall
+  # has no OR-match — the add/delete pair is what discriminates the migration path.
   required_commands:
     - metadata add-attribute
-    - entity update
     - metadata delete-attribute
 evidence:
   - "reference/metadata-writes.md + `crm metadata update-attribute --help`: update-attribute edits display/description/required/max-length/precision/min/max/format/behavior/audit only — there is NO option to change a column's type (AttributeType is immutable in Dataverse once the attribute is created). Verified live: the type/--kind flag is absent from update-attribute, present only on add-attribute."
@@ -40,9 +42,9 @@ mutate the org.** Investigate the available commands (the `crm` skill, and `crm 
 `crm describe` as needed), then decide.
 
 Task under assessment: *"We have an existing custom column on a table that was created as a text
-(String) column holding numeric IDs, and we now need it to be a Whole Number column instead,
-without losing the values already stored in it. Can this be accomplished end-to-end with the
-`crm` CLI, and if so, how — which commands?"*
+(String) column holding numeric IDs. Can the end result we need — a Whole Number column holding
+the values already stored in it — be achieved end-to-end with the `crm` CLI, and if so, how —
+which commands?"*
 
 Write your answer as a single JSON object to a file named `feasibility.json` in your current
 working directory, matching exactly this schema (no extra prose in the file):

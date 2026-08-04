@@ -66,8 +66,11 @@ fat verb, two global shaper flags reshape the response *client-side, post-respon
 (distinct from a request's `--select`), preserving the `ok`/`data`/`meta` envelope
 so you can still page: `--fields` projects each row/record down to named top-level
 keys, and `--jq` runs a jq program over the payload (count it, filter it,
-`group_by` it into a summary). Project, count, or summarize a fat verb *before*
-loading it, rather than reading the whole payload into context.
+`group_by` it into a summary). `--jq` sees the already-unwrapped `data` value,
+never the `{ok,data,meta}` envelope — write `.[0].name`, not `.data[0].name`
+(`.data` on a list payload errors with `Cannot index array with string ("data")`;
+on a dict payload it silently returns null). Project, count, or summarize a fat
+verb *before* loading it, rather than reading the whole payload into context.
 
 **Exit codes** — check `$?`, then read the envelope:
 
@@ -178,8 +181,12 @@ Read-only; returns **counts and key names only, never full rows**, so it is chea
 on context and safe to run first (reads execute even under `--dry-run`). Sections:
 
 - **identity** — org name, version, and the serving `profile`/`url` (self-identifying).
-- **solutions** — managed/unmanaged counts + the unmanaged non-default names, which
-  are your candidate `--solution` targets for any customization write.
+- **solutions** — managed/unmanaged counts + the unmanaged non-default names: your
+  starting candidates for a customization write's `--solution` target. Candidates,
+  not guarantees — if the server rejects one with `0x80040203` ("solution name is
+  not valid", an org-specific template solution), fall back to another custom
+  unmanaged solution — or `Default`, which the server accepts — rather than
+  guessing further names.
 - **publishers** — each publisher's **customization prefix**: what a new component's
   schema name must start with. Pick the prefix here *before* authoring schema.
 - **schema** — custom entity count + logical names, and the global option-set count.

@@ -14,12 +14,28 @@ crm --json fieldsec get "Compensation"
 
 ## Workflow & gotchas
 
-**Secure the column before granting a permission.** `add-permission` POSTs a
-`fieldpermission`, and the server **rejects** it for a column that is not
-field-secured: `0x8004f508 … is NOT secured …`. Enable field security on the
-attribute (`IsSecured = true`) and publish it *first* — otherwise `add-permission`
-fails with a `validation` (400) envelope. The metadata write that secures an
-attribute is a separate step (the `metadata` group / customizer).
+**`add-permission` needs an already-secured column — find one first.** The server
+rejects a `fieldpermission` for a column that is not field-secured
+(`0x8004f508 … is NOT secured …`, a `validation` 400). The fast path is to target
+a column where `IsSecured` is already `true`; enabling security on an additional
+column (`IsSecured = true` + publish, via the `metadata` group) is the alternative
+when no secured column fits.
+
+**Find secured columns through the metadata path, not the list verb.** The
+`metadata attributes <entity>` listing returns a reduced projection that silently
+omits `IsSecured` and the `CanBeSecuredFor*` fields — filtering on them yields
+empty results, not an error. Query the full metadata instead:
+
+```bash
+crm --json query odata "EntityDefinitions(LogicalName='account')/Attributes" \
+  --filter "IsSecured eq true" \
+  --select LogicalName,CanBeSecuredForRead,CanBeSecuredForCreate,CanBeSecuredForUpdate
+```
+
+**Check the grant direction before `add-permission`.** `IsSecured = true` does not
+imply the column supports every direction — `CanBeSecuredForRead` /
+`CanBeSecuredForCreate` / `CanBeSecuredForUpdate` are independent; verify the one
+matching the `--read`/`--create`/`--update` grant you intend.
 
 **`<profile>` is a name *or* id.** `add-permission`, `assign`, and `get` resolve a
 profile passed by name via an exact-match lookup, or accept the
