@@ -9,6 +9,40 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.79.2 (2026-08-04)
+
+### Bug Fixes
+
+- **evals**: Repair 4 feasibility answer keys and ship the #948 skill-enhancement batch
+  ([#952](https://github.com/Gharib89/crm/pull/952),
+  [`9245f8f`](https://github.com/Gharib89/crm/commit/9245f8f6fe71e87f22d1600594f7cc6cd24f45f2))
+
+- **evals**: Repair 4 feasibility answer keys that reject valid alternative paths
+  ([#952](https://github.com/Gharib89/crm/pull/952),
+  [`9245f8f`](https://github.com/Gharib89/crm/commit/9245f8f6fe71e87f22d1600594f7cc6cd24f45f2))
+
+- **org**: Exclude Basic from org brief solution candidates
+  ([#952](https://github.com/Gharib89/crm/pull/952),
+  [`9245f8f`](https://github.com/Gharib89/crm/commit/9245f8f6fe71e87f22d1600594f7cc6cd24f45f2))
+
+- **skills**: Address CodeRabbit round 1 ([#952](https://github.com/Gharib89/crm/pull/952),
+  [`9245f8f`](https://github.com/Gharib89/crm/commit/9245f8f6fe71e87f22d1600594f7cc6cd24f45f2))
+
+- **skills**: Ship the transcript-verified skill-enhancement batch from run 20260804T093635Z-5183
+  ([#952](https://github.com/Gharib89/crm/pull/952),
+  [`9245f8f`](https://github.com/Gharib89/crm/commit/9245f8f6fe71e87f22d1600594f7cc6cd24f45f2))
+
+- **skills**: Trim help-restating prose per self-review
+  ([#952](https://github.com/Gharib89/crm/pull/952),
+  [`9245f8f`](https://github.com/Gharib89/crm/commit/9245f8f6fe71e87f22d1600594f7cc6cd24f45f2))
+
+### Documentation
+
+- **org**: Name Basic in the excluded system-solution set
+  ([#952](https://github.com/Gharib89/crm/pull/952),
+  [`9245f8f`](https://github.com/Gharib89/crm/commit/9245f8f6fe71e87f22d1600594f7cc6cd24f45f2))
+
+
 ## v1.79.1 (2026-08-04)
 
 ### Bug Fixes
