@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.77.6 (2026-08-04)
+
+### Bug Fixes
+
+- Warn when form labels are in a non-caller language
+  ([#940](https://github.com/Gharib89/crm/pull/940),
+  [`bae4c3a`](https://github.com/Gharib89/crm/commit/bae4c3a9141e4ba99ca4a83ce5d13a7700e2db91))
+
+
 ## v1.77.4 (2026-07-29)
 
 ### Bug Fixes
