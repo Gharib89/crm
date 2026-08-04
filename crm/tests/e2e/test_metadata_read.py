@@ -76,6 +76,19 @@ def test_metadata_describe_polymorphic_bind_key(cli):
     contact = next(t for t in objectid["targets"] if t["logical"] == "contact")
     assert contact["bind_key"] == "objectid_contact@odata.bind"
 
+    # The other half of the contract: a monomorphic (single-target) lookup keeps
+    # its top-level bind_key, equal to its sole target's per-target key. Picked
+    # dynamically so no org-specific column is hard-coded (contact always has at
+    # least one single-target lookup, e.g. transactioncurrencyid).
+    r2 = cli(["--json", "metadata", "describe", "contact"])
+    assert r2.returncode == 0, r2.stderr
+    mono = next(
+        a
+        for a in json.loads(r2.stdout)["data"]["writable_attributes"]
+        if a["attribute_type"] == "Lookup" and len(a.get("targets", [])) == 1
+    )
+    assert mono["bind_key"] == mono["targets"][0]["bind_key"]
+
 
 @covers("metadata keys")
 def test_metadata_keys(cli):
