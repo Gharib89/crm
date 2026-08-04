@@ -143,3 +143,22 @@ def test_parse_commands_matches_bare_and_terminal_crm():
         ]
     )
     assert trace.parse_commands(raw) == ["crm", "cd /tmp && crm", "crm whoami; echo done"]
+
+
+def test_parse_api_error_true_on_driver_death():
+    # A terminal result event with is_error means the driver died (e.g. 529 Overloaded)
+    # before working the task — infrastructure, retried by run_pair, never a task fail (#943).
+    raw = _line({"type": "result", "is_error": True, "num_turns": 1})
+    assert trace.parse_api_error(raw) is True
+
+
+def test_parse_api_error_false_on_clean_result():
+    raw = _line({"type": "result", "num_turns": 12, "total_cost_usd": 0.5})
+    assert trace.parse_api_error(raw) is False
+
+
+def test_parse_api_error_false_without_result_event():
+    # A cap-kill leaves no result event at all; a cap is a real, scored outcome — it must
+    # never read as an API error (which would trigger a retry and re-burn the wall clock).
+    raw = "[agent exit -9]\n" + _line({"type": "system", "subtype": "init"})
+    assert trace.parse_api_error(raw) is False

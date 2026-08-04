@@ -104,6 +104,22 @@ def parse_invoked(raw_trace: str) -> bool:
     return False
 
 
+def parse_api_error(raw_trace: str) -> bool:
+    """True when the terminal ``result`` event is an agent-level API failure.
+
+    ``is_error`` on the result event means the *driver* died (e.g. a 529 Overloaded from
+    the model API) — the agent never got to work on the task, so scoring the trial as a
+    task fail would poison the run (issue #943). A cap-kill leaves **no** result event
+    (the process is killed), so this stays False for caps — a cap is a real, scored
+    outcome, never retried.
+    """
+    error = False
+    for event in iter_events(raw_trace):
+        if event.get("type") == "result":
+            error = bool(event.get("is_error"))
+    return error
+
+
 def parse_metrics(raw_trace: str) -> dict[str, Any]:
     """The run metrics from the terminal ``result`` event (empty dict if none).
 

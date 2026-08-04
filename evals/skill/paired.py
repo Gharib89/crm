@@ -60,6 +60,9 @@ DEFAULT_MODEL = "sonnet"
 #: Guardrails pinned by ADR 0028: the only tools the agent may use, and the turn cap.
 ALLOWED_TOOLS = "Bash,Read,Grep,Glob,Skill"
 MAX_TURNS = 50
+#: Bounded per-leg retries when the agent *driver* dies on an API error (e.g. 529
+#: Overloaded) before working the task — infrastructure, never task behavior (#943).
+_API_ERROR_RETRIES = 2
 #: Per-trial wall-clock cap (seconds) — 10 minutes; a cap-hit scores as a fail.
 WALL_CLOCK_S = 600
 
@@ -145,6 +148,16 @@ def run_pair(
                 progress(f"trial {trial + 1}/{k} · {leg} leg · resetting org + running agent…")
             reset_org()
             result = run_one(task_file, install_skill=install, dry_run=False, **leg_kwargs)
+            # An agent-level API death (e.g. 529 Overloaded) is infrastructure, not task
+            # behavior — scoring it a fail poisons the run (#943). Retry the leg from a
+            # fresh org reset, bounded; a persistent outage still lands as a fail.
+            for _ in range(_API_ERROR_RETRIES):
+                if not trace.parse_api_error(result.transcript):
+                    break
+                if progress is not None:
+                    progress(f"trial {trial + 1}/{k} · {leg} leg · agent API error — retrying")
+                reset_org()
+                result = run_one(task_file, install_skill=install, dry_run=False, **leg_kwargs)
             if progress is not None:
                 verdict = "capped" if result.capped else ("pass" if result.passed else "fail")
                 progress(f"trial {trial + 1}/{k} · {leg} leg · {verdict}")

@@ -191,3 +191,53 @@ def test_agent_argv_survives_shlex_roundtrip_with_spaced_bin():
     # back; a space in argv[0] must survive the roundtrip (shlex.join, not " ".join).
     argv = agent_argv(claude_bin="/opt/my claude/claude")
     assert shlex.split(shlex.join(argv)) == argv
+
+
+def _api_error_result(task_id: str) -> RunResult:
+    # The driver died on an API error (e.g. 529 Overloaded): agent exit 1 and a terminal
+    # result event flagged is_error — the shape run_pair must retry, not score (#943).
+    return RunResult(
+        task_id=task_id,
+        dry_run=False,
+        isolation_checks={},
+        passed=False,
+        reason="agent error",
+        transcript='[agent exit 1]\n{"type": "result", "is_error": true, "num_turns": 1}\n',
+        capped=False,
+    )
+
+
+def test_run_pair_retries_leg_on_agent_api_error():
+    events: list[str] = []
+
+    def fake_run_one(task_file, *, install_skill, **kw):
+        leg = "skill" if install_skill else "bare"
+        events.append(leg)
+        # first skill-leg attempt dies driver-side; the retry (and the bare leg) complete.
+        if leg == "skill" and events.count("skill") == 1:
+            return _api_error_result("t1")
+        return _fake_result("t1", passed=True)
+
+    def fake_reset():
+        events.append("reset")
+
+    trials = run_pair("t1.md", run_one=fake_run_one, reset_org=fake_reset, k=1)
+    # The retry replaces the poisoned attempt — still exactly one trial per leg, and the
+    # org is reset before the retry so it can't inherit the dead attempt's mutations.
+    assert events == ["reset", "skill", "reset", "skill", "reset", "bare"]
+    assert [t.leg for t in trials] == ["skill", "bare"]
+    assert all(t.passed for t in trials)
+
+
+def test_run_pair_persistent_api_error_scores_fail_after_bounded_retries():
+    calls = {"n": 0}
+
+    def fake_run_one(task_file, *, install_skill, **kw):
+        calls["n"] += 1
+        return _api_error_result("t1")
+
+    trials = run_pair("t1.md", run_one=fake_run_one, reset_org=lambda: None, k=1, paired=False)
+    # initial attempt + the bounded retries, then the outage lands as a recorded fail —
+    # bounded so a persistent outage can't loop a 10-hour run forever.
+    assert calls["n"] == 3
+    assert len(trials) == 1 and trials[0].passed is False
