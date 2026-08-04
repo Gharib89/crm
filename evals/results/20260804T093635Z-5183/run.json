@@ -1,0 +1,285 @@
+{
+  "run_id": "20260804T093635Z-5183",
+  "meta": {
+    "model": "sonnet",
+    "target": "cloud",
+    "k": 3,
+    "preset": "full",
+    "paired": true,
+    "subset": false,
+    "skill_sha": "8fe498bb2ca8d5f55f8d0809f506bc4dc90512a0"
+  },
+  "reportable": true,
+  "aggregates": [
+    {
+      "task_id": "authoring-chart-create",
+      "k": 3,
+      "passes_skill": 3,
+      "passes_bare": 3,
+      "pass_skill_rate": 1.0,
+      "pass_bare_rate": 1.0,
+      "hake_gain": null
+    },
+    {
+      "task_id": "bulk-delete-from-list",
+      "k": 3,
+      "passes_skill": 3,
+      "passes_bare": 3,
+      "pass_skill_rate": 1.0,
+      "pass_bare_rate": 1.0,
+      "hake_gain": null
+    },
+    {
+      "task_id": "bulk-delete-population",
+      "k": 3,
+      "passes_skill": 3,
+      "passes_bare": 3,
+      "pass_skill_rate": 1.0,
+      "pass_bare_rate": 1.0,
+      "hake_gain": null
+    },
+    {
+      "task_id": "bulk-update-delta",
+      "k": 3,
+      "passes_skill": 3,
+      "passes_bare": 3,
+      "pass_skill_rate": 1.0,
+      "pass_bare_rate": 1.0,
+      "hake_gain": null
+    },
+    {
+      "task_id": "connectionrole-create",
+      "k": 3,
+      "passes_skill": 3,
+      "passes_bare": 3,
+      "pass_skill_rate": 1.0,
+      "pass_bare_rate": 1.0,
+      "hake_gain": null
+    },
+    {
+      "task_id": "customizations-view-edit",
+      "k": 3,
+      "passes_skill": 3,
+      "passes_bare": 3,
+      "pass_skill_rate": 1.0,
+      "pass_bare_rate": 1.0,
+      "hake_gain": null
+    },
+    {
+      "task_id": "dup-rule-create",
+      "k": 3,
+      "passes_skill": 3,
+      "passes_bare": 3,
+      "pass_skill_rate": 1.0,
+      "pass_bare_rate": 1.0,
+      "hake_gain": null
+    },
+    {
+      "task_id": "feasibility-apps-scripted-app",
+      "k": 3,
+      "passes_skill": 1,
+      "passes_bare": 0,
+      "pass_skill_rate": 0.3333333333333333,
+      "pass_bare_rate": 0.0,
+      "hake_gain": 0.3333333333333333
+    },
+    {
+      "task_id": "feasibility-automation-workflow-activity",
+      "k": 3,
+      "passes_skill": 3,
+      "passes_bare": 3,
+      "pass_skill_rate": 1.0,
+      "pass_bare_rate": 1.0,
+      "hake_gain": null
+    },
+    {
+      "task_id": "feasibility-bulk-dedupe-merge",
+      "k": 3,
+      "passes_skill": 3,
+      "passes_bare": 3,
+      "pass_skill_rate": 1.0,
+      "pass_bare_rate": 1.0,
+      "hake_gain": null
+    },
+    {
+      "task_id": "feasibility-bulk-load-verify",
+      "k": 3,
+      "passes_skill": 3,
+      "passes_bare": 1,
+      "pass_skill_rate": 1.0,
+      "pass_bare_rate": 0.3333333333333333,
+      "hake_gain": 1.0
+    },
+    {
+      "task_id": "feasibility-forms-clone-cross-entity",
+      "k": 3,
+      "passes_skill": 3,
+      "passes_bare": 3,
+      "pass_skill_rate": 1.0,
+      "pass_bare_rate": 1.0,
+      "hake_gain": null
+    },
+    {
+      "task_id": "feasibility-metadata-autonumber",
+      "k": 3,
+      "passes_skill": 3,
+      "passes_bare": 3,
+      "pass_skill_rate": 1.0,
+      "pass_bare_rate": 1.0,
+      "hake_gain": null
+    },
+    {
+      "task_id": "feasibility-metadata-field-type-change",
+      "k": 3,
+      "passes_skill": 0,
+      "passes_bare": 0,
+      "pass_skill_rate": 0.0,
+      "pass_bare_rate": 0.0,
+      "hake_gain": 0.0
+    },
+    {
+      "task_id": "feasibility-metadata-optionset-read",
+      "k": 3,
+      "passes_skill": 3,
+      "passes_bare": 3,
+      "pass_skill_rate": 1.0,
+      "pass_bare_rate": 1.0,
+      "hake_gain": null
+    },
+    {
+      "task_id": "feasibility-records-paging-count",
+      "k": 3,
+      "passes_skill": 3,
+      "passes_bare": 3,
+      "pass_skill_rate": 1.0,
+      "pass_bare_rate": 1.0,
+      "hake_gain": null
+    },
+    {
+      "task_id": "feasibility-ribbon-custom-icon",
+      "k": 3,
+      "passes_skill": 3,
+      "passes_bare": 3,
+      "pass_skill_rate": 1.0,
+      "pass_bare_rate": 1.0,
+      "hake_gain": null
+    },
+    {
+      "task_id": "feasibility-security-privilege-toggle",
+      "k": 3,
+      "passes_skill": 0,
+      "passes_bare": 2,
+      "pass_skill_rate": 0.0,
+      "pass_bare_rate": 0.6666666666666666,
+      "hake_gain": -1.9999999999999998
+    },
+    {
+      "task_id": "feasibility-solutions-managed-component-delete",
+      "k": 3,
+      "passes_skill": 0,
+      "passes_bare": 1,
+      "pass_skill_rate": 0.0,
+      "pass_bare_rate": 0.3333333333333333,
+      "hake_gain": -0.49999999999999994
+    },
+    {
+      "task_id": "feasibility-solutions-missing-dependency",
+      "k": 3,
+      "passes_skill": 3,
+      "passes_bare": 3,
+      "pass_skill_rate": 1.0,
+      "pass_bare_rate": 1.0,
+      "hake_gain": null
+    },
+    {
+      "task_id": "feasibility-solutions-unmanaged-to-managed",
+      "k": 3,
+      "passes_skill": 3,
+      "passes_bare": 3,
+      "pass_skill_rate": 1.0,
+      "pass_bare_rate": 1.0,
+      "hake_gain": null
+    },
+    {
+      "task_id": "feasibility-uncovered-impersonation",
+      "k": 3,
+      "passes_skill": 3,
+      "passes_bare": 3,
+      "pass_skill_rate": 1.0,
+      "pass_bare_rate": 1.0,
+      "hake_gain": null
+    },
+    {
+      "task_id": "feedback-note-create",
+      "k": 3,
+      "passes_skill": 3,
+      "passes_bare": 3,
+      "pass_skill_rate": 1.0,
+      "pass_bare_rate": 1.0,
+      "hake_gain": null
+    },
+    {
+      "task_id": "fieldsec-profile-create",
+      "k": 3,
+      "passes_skill": 3,
+      "passes_bare": 3,
+      "pass_skill_rate": 1.0,
+      "pass_bare_rate": 1.0,
+      "hake_gain": null
+    },
+    {
+      "task_id": "records-create-verify",
+      "k": 3,
+      "passes_skill": 3,
+      "passes_bare": 3,
+      "pass_skill_rate": 1.0,
+      "pass_bare_rate": 1.0,
+      "hake_gain": null
+    },
+    {
+      "task_id": "records-note-attach",
+      "k": 3,
+      "passes_skill": 3,
+      "passes_bare": 3,
+      "pass_skill_rate": 1.0,
+      "pass_bare_rate": 1.0,
+      "hake_gain": null
+    },
+    {
+      "task_id": "records-reassign-parent",
+      "k": 3,
+      "passes_skill": 3,
+      "passes_bare": 3,
+      "pass_skill_rate": 1.0,
+      "pass_bare_rate": 1.0,
+      "hake_gain": null
+    },
+    {
+      "task_id": "records-validate-write",
+      "k": 3,
+      "passes_skill": 3,
+      "passes_bare": 3,
+      "pass_skill_rate": 1.0,
+      "pass_bare_rate": 1.0,
+      "hake_gain": null
+    },
+    {
+      "task_id": "security-assign-role-team",
+      "k": 3,
+      "passes_skill": 3,
+      "passes_bare": 3,
+      "pass_skill_rate": 1.0,
+      "pass_bare_rate": 1.0,
+      "hake_gain": null
+    },
+    {
+      "task_id": "security-role-create",
+      "k": 3,
+      "passes_skill": 3,
+      "passes_bare": 3,
+      "pass_skill_rate": 1.0,
+      "pass_bare_rate": 1.0,
+      "hake_gain": null
+    }
+  ]
+}
