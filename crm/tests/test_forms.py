@@ -9,6 +9,10 @@ import uuid
 import pytest
 import requests_mock
 
+# Default the #940 caller-UI-language lookup to None for this module (see conftest);
+# the #940 tests below override it with a concrete language.
+pytestmark = pytest.mark.usefixtures("neutralize_caller_language")
+
 _FORM_ROW = {
     "formid": "11112222-3333-4444-5555-666677778888",
     "name": "Information",
@@ -1999,3 +2003,146 @@ class TestApplyFormSpecReconcile:
         assert blk["kind"] == "form" and blk["name"] == "Ghost Form"
         assert "Ghost Form" in blk["reason"]
         assert not patched.called
+
+
+_BILINGUAL_XML = (
+    "<form><tabs>"
+    '<tab name="general" id="{aaaa1111-0000-0000-0000-000000000001}">'
+    "<labels>"
+    '<label description="General" languagecode="1033" />'
+    '<label description="عام" languagecode="1025" />'
+    "</labels>"
+    '<columns><column width="100%"><sections>'
+    '<section name="s" id="{bbbb2222-0000-0000-0000-000000000002}">'
+    '<labels><label description="Summary" languagecode="1033" /></labels>'
+    "<rows /></section></sections></column></columns></tab>"
+    "</tabs></form>"
+)
+
+
+class TestLabelLanguageScan:
+    def test_collects_distinct_languagecodes(self):
+        from crm.core import forms
+
+        assert forms.label_languages_in_formxml(_BILINGUAL_XML) == {1033, 1025}
+
+    def test_empty_formxml_yields_empty_set(self):
+        from crm.core import forms
+
+        assert forms.label_languages_in_formxml("") == set()
+
+    def test_ignores_non_numeric_languagecode(self):
+        from crm.core import forms
+
+        xml = '<form><tab><labels><label description="x" languagecode="en" /></labels></tab></form>'
+        assert forms.label_languages_in_formxml(xml) == set()
+
+    def test_ignores_oversized_digit_languagecode(self):
+        """A digit-only languagecode over Python's int_max_str_digits passes
+        ``isdigit()`` but raises ``ValueError`` in ``int()`` — skip it, don't crash.
+        """
+        import sys
+
+        from crm.core import forms
+
+        big = "1" * (sys.get_int_max_str_digits() + 1)
+        xml = (
+            f'<form><tab><labels><label description="x" languagecode="{big}" />'
+            "</labels></tab></form>"
+        )
+        assert forms.label_languages_in_formxml(xml) == set()
+
+
+class TestLabelLanguageWarning:
+    def test_warns_naming_foreign_codes(self):
+        from crm.core import forms
+
+        warning = forms.label_language_warning(_BILINGUAL_XML, 1025)
+        assert warning is not None
+        # The foreign-code list names 1033 (to be discarded), not the caller's own 1025.
+        assert "language(s) 1033 differ" in warning
+        assert "translation import" in warning
+
+    def test_silent_when_all_labels_match_caller(self):
+        from crm.core import forms
+
+        xml = (
+            '<form><tab><labels><label description="G" languagecode="1033" /></labels></tab></form>'
+        )
+        assert forms.label_language_warning(xml, 1033) is None
+
+    def test_silent_when_caller_language_unknown(self):
+        from crm.core import forms
+
+        assert forms.label_language_warning(_BILINGUAL_XML, None) is None
+
+
+class TestLabelProjectionNote:
+    def test_names_caller_language(self):
+        from crm.core import forms
+
+        note = forms.label_projection_note(1025)
+        assert note is not None
+        assert "1025" in note
+        assert "translation export" in note
+
+    def test_none_when_language_unknown(self):
+        from crm.core import forms
+
+        assert forms.label_projection_note(None) is None
+
+
+_MONO_1033_XML = (
+    "<form><tabs>"
+    '<tab name="general" id="{aaaa1111-0000-0000-0000-000000000001}">'
+    '<labels><label description="General" languagecode="1033" /></labels>'
+    '<columns><column width="100%"><sections>'
+    '<section name="s" id="{bbbb2222-0000-0000-0000-000000000002}">'
+    '<labels><label description="Summary" languagecode="1033" /></labels>'
+    "<rows /></section></sections></column></columns></tab>"
+    "</tabs></form>"
+)
+
+
+class TestCommitFormChangeLabelWarning:
+    """`_commit_form_change` stashes a `_warnings` advisory when the outgoing
+    formxml carries labels in a language other than the caller's (#940). Uses
+    add_form_field as the seam; the CLI authors labels in 1033.
+    """
+
+    _FORM = {
+        "formid": "11112222-3333-4444-5555-666677778888",
+        "name": "Information",
+        "objecttypecode": "new_project",
+        "type": 2,
+        "formxml": _MONO_1033_XML,
+        "description": "Main",
+        "isdefault": True,
+    }
+
+    def _mock_add_field(self, m, backend):
+        m.get(_forms_url(backend), json={"value": [self._FORM]})
+        m.get(
+            _attr_url(backend, "new_owner"),
+            json={"AttributeType": "Lookup", "LogicalName": "new_owner"},
+        )
+        m.patch(backend.url_for(f"systemforms({self._FORM['formid']})"), status_code=204)
+
+    def test_warns_when_caller_language_differs_from_authored_label(self, backend, monkeypatch):
+        from crm.core import connection, forms
+
+        monkeypatch.setattr(connection, "caller_ui_language_id", lambda b: 1025)
+        with requests_mock.Mocker() as m:
+            self._mock_add_field(m, backend)
+            result = forms.add_form_field(backend, "new_project", "new_owner")
+        assert "_warnings" in result
+        assert any("1033" in w for w in result["_warnings"])
+
+    def test_silent_when_caller_language_matches(self, backend, monkeypatch):
+        from crm.core import connection, forms
+
+        monkeypatch.setattr(connection, "caller_ui_language_id", lambda b: 1033)
+        with requests_mock.Mocker() as m:
+            self._mock_add_field(m, backend)
+            result = forms.add_form_field(backend, "new_project", "new_owner")
+        assert "_warnings" not in result

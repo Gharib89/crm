@@ -137,6 +137,29 @@ Gotchas the flags don't tell you:
   anyway; the orphaned field names come back in the response under `orphaned`.
 - Sections default to the **first tab** when `--tab` is omitted.
 
+## Labels are a single-language projection — silent loss on write
+
+Tab/section/cell labels are NOT stored in the formxml. The platform keeps them in
+a per-language label store and serves/accepts `formxml` **projected to the caller's
+`usersettings.uilanguageid`**. Consequences an agent must plan for:
+
+- `export` shows each label in **your** UI language only, even when the store holds
+  more. It emits a projection note (`--json` → `meta.warnings`; human → stderr, so
+  piped formxml stays clean).
+- Every `form` write **warns** (in `meta.warnings`) when the outgoing formxml carries
+  a `<label>` in a language other than yours, because the platform **silently
+  discards** it (204, no error) — then a read-back "passes" by re-projecting to your
+  language, so bilingual loss is invisible. The warning is advisory; the write still
+  proceeds.
+- CLI-authored labels are hardcoded `1033`, so a non-1033 caller is warned even on a
+  plain `add-field`.
+- The raw seam (`entity update systemforms … {formxml}` in the manual splice below,
+  and `crm batch` PATCH) is **unwarned** — the same discard still applies.
+
+To set labels in another language, use `crm translation export`/`import`, **not**
+formxml: there they appear as lowercase `displayname` rows keyed by `LabelId` (not
+the capitalized attribute `DisplayName` rows).
+
 ## Manual splice — fallback for unmapped control types
 
 Only needed when the attribute type has no mapped `classid` (see above):

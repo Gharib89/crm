@@ -244,3 +244,30 @@ live-confirmed on both targets; `duplicateid` is only the log row's own PK.
 `$select=_duplicaterecordid_value` is a valid select (doesn't 400) but returns
 null on bulk-job rows — canned mocks lie about population; confirm against a
 live raw GET.
+
+### 25. `systemform.formxml` is a caller-language projection of a per-language label store (#940)
+
+Tab/section/cell labels are NOT stored in the formxml — the platform keeps them
+in a per-language label store, and the `formxml` served over the Web API is a
+projection **filtered to the calling user's `usersettings.uilanguageid`**. On a
+bilingual org (e.g. 1033 + 1025) a caller whose UI language is 1025 sees each
+element serialize with a single `<label>` — 1025 where an Arabic label exists,
+otherwise 1033 — so the same form reads with an inconsistent, one-language shape
+depending on who asks. A `formxml` PATCH is projected the same way: the platform
+**silently discards** any `<label>` whose `languagecode` differs from the
+caller's UI language (204, no error), and a read-back "passes" because it
+re-projects to the caller's language. CLI-authored labels are hardcoded to
+`1033`, so even a plain `form add-field` run by a non-1033 caller writes a label
+the platform throws away. `crm form` write verbs warn when the outgoing formxml
+carries a foreign-language label, and `form export` notes the projection
+language (both via `meta.warnings`); the warning is advisory — the write still
+proceeds. The multi-language route for these labels is `translation
+export`/`import`, **not** formxml: in `CrmTranslations.xml` they appear as
+lowercase `displayname` rows keyed by `LabelId` (easily mistaken for the
+capitalized attribute `DisplayName` rows). Confirmation the store is not
+actually lossy: a `translation export` of the same solution lists both the
+`1033` and `1025` columns populated, including for tabs whose formxml emits a
+single language. Same mechanism on dashboards/ribbon (same 1033 hardcode,
+different surface); `entity get/update --select formxml` and `crm batch` PATCH
+payloads sit on the raw seam and stay **unwarned** — this entry is their
+warning.

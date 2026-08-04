@@ -285,6 +285,12 @@ def _emit_with_warning(
             if key.endswith("_lookup_error") and value:
                 warnings.append(str(value))
         warnings.extend(reference_warnings(data.get("references")))
+        # Internal channel: core commit paths stash pre-built advisories under
+        # `_warnings` (a list). Roll them into the structured channel and drop the
+        # key so it never surfaces as a data field (#940).
+        staged = data.pop("_warnings", None)
+        if isinstance(staged, list):
+            warnings.extend(str(w) for w in staged)
     ctx.emit(True, data=data, meta=meta, warnings=warnings or None)
 
 

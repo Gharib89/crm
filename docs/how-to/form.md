@@ -438,3 +438,18 @@ crm form export cwx_ticket "Ticket Main Form" --output ticket_main.xml
 be inspected directly or used as a reference when authoring customizations.
 `--output` writes the XML to the given path; omitting it prints to stdout,
 which is convenient for piping or quick inspection.
+
+### Labels are shown in one language only
+
+Tab/section/cell labels live in a per-language label store, and `formxml` is a
+projection **filtered to your `usersettings.uilanguageid`** — so `export` shows
+each label in your UI language only, even when the store holds more. `export`
+emits a note to that effect (in `--json` `meta.warnings`, and on stderr in human
+mode, so piped formxml stays clean). The same projection governs writes: every
+`crm form` write warns when the outgoing formxml carries a label in a language
+other than yours, because the platform **silently discards** it (the warning is
+advisory — the write still proceeds). CLI-authored labels are `1033`, so a
+non-1033 caller is warned even on a plain `add-field`. To set labels in another
+language, use `crm translation export`/`import` rather than editing formxml —
+those labels appear in `CrmTranslations.xml` as lowercase `displayname` rows
+keyed by `LabelId`.

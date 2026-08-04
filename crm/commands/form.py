@@ -18,6 +18,7 @@ from crm.commands._helpers import (
     _solution_option,
     d365_errors,
 )
+from crm.core import connection as connection_mod
 from crm.core import forms as forms_mod
 
 _form_option = click.option(
@@ -848,19 +849,25 @@ def form_move_section(
 def form_export(ctx: CLIContext, entity: str, form_name: str, output: str | None) -> None:
     """Export a form's formxml."""
     with d365_errors(ctx):
-        forms = forms_mod.read_entity_forms(ctx.backend(), entity)
+        backend = ctx.backend()
+        forms = forms_mod.read_entity_forms(backend, entity)
     form = _resolve_single_form(ctx, forms, form_name)
     if form is None:
         return
     formxml = form.get("formxml", "")
+    # The formxml just read shows labels only in the caller's UI language (#940);
+    # note that so callers know other provisioned languages live in the label store.
+    note = forms_mod.label_projection_note(connection_mod.caller_ui_language_id(backend))
     if output:
         try:
             Path(output).write_text(formxml, encoding="utf-8")
         except OSError as exc:
             ctx.emit(False, error=f"Could not write {output!r}: {exc}")
             return
-        ctx.emit(True, data={"entity": entity, "form": form_name, "output": output})
+        _emit_with_warning(ctx, {"entity": entity, "form": form_name, "output": output}, note)
     elif ctx.json_mode:
-        ctx.emit(True, data={"entity": entity, "form": form_name, "formxml": formxml})
+        _emit_with_warning(ctx, {"entity": entity, "form": form_name, "formxml": formxml}, note)
     else:
         click.echo(formxml)
+        if note:
+            ctx.skin.warning(note)

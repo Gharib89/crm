@@ -123,3 +123,53 @@ class TestSaveSecret:
         where = conn_mod.save_secret("contoso", "sekret", force_plaintext=True)
         assert where == "plaintext"
         assert session_mod.load_profile_secret("contoso") == "sekret"
+
+
+class TestCallerUiLanguage:
+    """caller_ui_language_id resolves the caller's uilanguageid, caches it, and
+    degrades to None on any lookup failure (#940).
+    """
+
+    _UID = "aaaa0000-1111-2222-3333-444444444444"
+
+    def _mock(self, m, backend, *, who=None, settings=None, who_status=200, settings_status=200):
+        import requests_mock  # noqa: F401  (ensure the dependency is present)
+
+        who_kw = {"json": who} if who is not None else {"status_code": who_status}
+        set_kw = {"json": settings} if settings is not None else {"status_code": settings_status}
+        who_matcher = m.get(backend.url_for("WhoAmI"), **who_kw)
+        set_matcher = m.get(backend.url_for(f"usersettingscollection({self._UID})"), **set_kw)
+        return who_matcher, set_matcher
+
+    def test_resolves_uilanguageid_from_usersettings(self, backend):
+        import requests_mock
+
+        with requests_mock.Mocker() as m:
+            self._mock(m, backend, who={"UserId": self._UID}, settings={"uilanguageid": 1025})
+            assert conn_mod.caller_ui_language_id(backend) == 1025
+
+    def test_caches_after_first_lookup(self, backend):
+        import requests_mock
+
+        with requests_mock.Mocker() as m:
+            who, sett = self._mock(
+                m, backend, who={"UserId": self._UID}, settings={"uilanguageid": 1033}
+            )
+            assert conn_mod.caller_ui_language_id(backend) == 1033
+            assert conn_mod.caller_ui_language_id(backend) == 1033
+        assert who.call_count == 1
+        assert sett.call_count == 1
+
+    def test_none_when_whoami_fails(self, backend):
+        import requests_mock
+
+        with requests_mock.Mocker() as m:
+            self._mock(m, backend, who_status=500)
+            assert conn_mod.caller_ui_language_id(backend) is None
+
+    def test_none_when_uilanguageid_absent(self, backend):
+        import requests_mock
+
+        with requests_mock.Mocker() as m:
+            self._mock(m, backend, who={"UserId": self._UID}, settings={"systemuserid": self._UID})
+            assert conn_mod.caller_ui_language_id(backend) is None

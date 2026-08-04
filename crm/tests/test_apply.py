@@ -24,6 +24,11 @@ from crm.core import appmodule as app_mod
 from crm.core import views as views_mod
 from crm.utils.d365_backend import D365Error
 
+# `apply -f` form convergence funnels through `_commit_form_change`, which resolves
+# the caller's UI language (#940); default it to None so these tests need not mock
+# WhoAmI + usersettings.
+pytestmark = pytest.mark.usefixtures("neutralize_caller_language")
+
 _GUID = "11111111-1111-1111-1111-111111111111"
 _GUID2 = "22222222-2222-2222-2222-222222222222"
 _ENT_ID = "33333333-3333-3333-3333-333333333333"
