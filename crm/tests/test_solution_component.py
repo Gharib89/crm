@@ -292,6 +292,36 @@ class TestComponentCommands:
         assert payload["ok"] is False
         assert "entity" in payload["error"].lower()
 
+    def test_add_component_no_subcomponents_non_entity_validates_before_backend(self, monkeypatch):
+        # Interactive singular non-entity --no-subcomponents (cascade path active,
+        # no --json/--yes) must be rejected before _cascade_gate touches the
+        # backend — validate untrusted flag input before ctx.backend() (#941).
+        calls = {"backend": 0}
+
+        def _backend(self):
+            calls["backend"] += 1
+            return object()
+
+        monkeypatch.setattr("crm.cli.CLIContext.backend", _backend)
+        monkeypatch.setattr("crm.commands.solution._stdin_is_tty", lambda: True)
+        result = CliRunner().invoke(
+            cli,
+            [
+                "solution",
+                "add-component",
+                "--solution",
+                "CRMWorx",
+                "--type",
+                "webresource",
+                "--id",
+                _GUID,
+                "--no-subcomponents",
+            ],
+        )
+        assert result.exit_code != 0, result.output
+        assert "entity" in result.output.lower()
+        assert calls["backend"] == 0, "backend was called before client-side validation"
+
     def test_add_component_no_subcomponents_non_entity_multi_id_errors(self, monkeypatch):
         # Repeated --id (a batch) sharing a non-entity --type with --no-subcomponents
         # is rejected by the batch core guard, before the $batch is issued (#941).

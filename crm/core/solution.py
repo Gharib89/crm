@@ -443,7 +443,7 @@ def resolve_component_type(value: str | int) -> int:
 _ENTITY_TYPE = SOLUTION_COMPONENT_TYPES["entity"]
 
 
-def _reject_non_entity_no_subcomponents(components: list[dict[str, Any]]) -> None:
+def reject_non_entity_no_subcomponents(components: list[dict[str, Any]]) -> None:
     """Reject any component asking to exclude subcomponents on a non-entity root.
 
     AddSolutionComponent's ``DoNotIncludeSubcomponents:true`` is accepted by the
@@ -496,7 +496,7 @@ def add_solution_component(
     managed target — AddSolutionComponent is unmanaged-only. Returns
     `{added, solution, component_id, component_type}` on a real run.
     """
-    _reject_non_entity_no_subcomponents(
+    reject_non_entity_no_subcomponents(
         [
             {
                 "component_id": component_id,
@@ -668,7 +668,7 @@ def add_solution_components(
     whole batch runs as one changeset — a mid-batch failure rolls every row back.
     See :func:`_run_component_batch` for the returned per-row summary shape.
     """
-    _reject_non_entity_no_subcomponents(components)
+    reject_non_entity_no_subcomponents(components)
     _require_unmanaged_solution(backend, solution, verb="added to")
     ops: list[BatchOperation] = [
         {
