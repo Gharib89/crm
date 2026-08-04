@@ -74,6 +74,10 @@ Configure a dedicated environment (e.g. `crm-ship`) and select it for the routin
 - **Setup script:** none required for GitHub — the fire drives GitHub through the
   MCP connector and `git` (both already available), so there is no `gh` to install.
   The per-fire `scripts/cloud-ship-bootstrap.sh` handles the rest (crm CLI, profile).
+  It needs a **Python >= 3.13** somewhere on `PATH` (crm's floor) — it selects one
+  itself rather than trusting the image's default `python` (which has shipped as an
+  older 3.x while a usable 3.13 was present); override with `CLOUD_SHIP_PYTHON` if
+  needed. If no 3.13 is found it fails fast before touching the profile.
 
 ## Permissions
 

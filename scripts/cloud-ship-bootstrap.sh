@@ -21,8 +21,30 @@ set -euo pipefail
 # push/fetch over github.com, so the Custom network policy must allow github.com
 # (see docs/agents/cloud-ship-routine.md).
 
+# crm requires Python >= 3.13. The sandbox image's default `python`/`pip` can lag
+# behind that floor (observed: default `python` = 3.11 with a usable 3.13 present at
+# /usr/bin/python3.13), which makes the editable install below abort on the version
+# pin before the profile is ever built. Don't trust the ambient default — resolve an
+# interpreter that satisfies the floor and drive every install through it, so the
+# bootstrap is immune to whatever `python`/`pip` happen to map to.
+PY="${CLOUD_SHIP_PYTHON:-}"
+if [ -z "$PY" ]; then
+  for cand in python3.13 python3 python; do
+    if command -v "$cand" >/dev/null 2>&1 \
+       && "$cand" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 13) else 1)'; then
+      PY="$(command -v "$cand")"
+      break
+    fi
+  done
+fi
+if [ -z "$PY" ]; then
+  echo "cloud-ship-bootstrap: no Python >= 3.13 on PATH (crm requires >=3.13); the sandbox image lacks a compatible interpreter" >&2
+  exit 1
+fi
+echo "cloud-ship-bootstrap: installing crm with $("$PY" --version) ($PY)"
+
 # crm CLI from source (not published to PyPI)
-pip install -e ".[dev,docs]"
+"$PY" -m pip install -e ".[dev,docs]"
 
 # Self-heal the sandbox image's cryptography backend before any test run. The
 # image's Debian-packaged cryptography can't load its CFFI runtime (_cffi_backend);
@@ -31,7 +53,7 @@ pip install -e ".[dev,docs]"
 # collection ("No module named '_cffi_backend'" / pyo3 PanicException), producing
 # ~900 spurious collection errors. Reinstalling cffi restores the backend. CI is
 # unaffected — GitHub Actions installs fresh PyPI cryptography wheels.
-python -m pip install --force-reinstall cffi
+"$PY" -m pip install --force-reinstall cffi
 
 # Build + activate the agent-cloud profile (non-interactive; plaintext store, no
 # OS keyring in the sandbox). WhoAmI-tests + activates; fails fast if cloud egress
