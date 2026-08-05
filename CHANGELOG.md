@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.79.4 (2026-08-05)
+
+### Bug Fixes
+
+- **skill**: Teach lean server-side metadata sweeps via query odata
+  ([#954](https://github.com/Gharib89/crm/pull/954),
+  [`09b6b2a`](https://github.com/Gharib89/crm/commit/09b6b2a7096f8978d02f032a95917f2f1b603927))
+
+
 ## v1.79.3 (2026-08-05)
 
 ### Bug Fixes
