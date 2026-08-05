@@ -264,3 +264,34 @@ crm --json query odata "EntityDefinitions(LogicalName='account')/ManyToOneRelati
 
 Metadata navigation paths (`/Keys`, `/ManyToOneRelationships`, `/Attributes`, …) are
 forwarded verbatim to the Web API.
+
+## Lean metadata sweeps (server-side `$select` on `EntityDefinitions`)
+
+The `metadata` group's read verbs fetch a fixed field set, and `--fields` projects
+client-side only (see [ADR 0023](../adr/0023-client-side-output-shaping.md)) — it
+shrinks what you *see*, not what crosses the wire. When the wire payload itself
+matters — a lean scan of all tables, or attributes across many entities — query the
+metadata entity set directly: `query odata`'s `--select` / `--filter` / `--expand`
+are server-side OData options.
+
+```bash
+# All tables, two scalars each — small payload, one call
+# (EntityDefinitions rejects $top server-side; slice client-side if needed)
+crm --json query odata EntityDefinitions --select LogicalName,MetadataId
+
+# Attributes for several entities in one GET — nested $select inside --expand
+crm --json query odata EntityDefinitions --select LogicalName \
+    --filter "LogicalName eq 'account' or LogicalName eq 'contact'" \
+    --expand 'Attributes($select=LogicalName,MetadataId,AttributeType)'
+
+# Address an entity by MetadataId (GUID unquoted in the path)
+crm --json query odata "EntityDefinitions(<metadata-id-guid>)" \
+    --select LogicalName,EntitySetName
+```
+
+A single GET also works under read-only profiles (which refuse `$batch`), so prefer
+this over batching per-entity `Attributes` reads. Rows come back as raw OData
+attribute metadata — `metadata attributes`' normalization (e.g. `RequiredLevel`
+flattening) does not apply. For change-driven sweeps, `metadata changes` with
+`--entity` and `--attributes` retrieves N entities' columns in one call with a
+delta cursor — see the [metadata how-to](metadata.md).
