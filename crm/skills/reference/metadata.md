@@ -29,6 +29,37 @@ crm --json metadata attribute account industrycode --expect AttributeType=Pickli
 only when the value is genuinely absent). `RequiredLevel` is flattened from the
 server's nested `{"Value": "..."}` object — use `item["RequiredLevel"]` directly.
 
+## Lean / wide metadata sweeps (server-side projection)
+
+`metadata entities` / `metadata attributes` fetch a fixed field set, and `--fields`
+trims **client-side only** — it never shrinks the wire payload. For wide sweeps
+where payload or latency matters (all ~1000 tables, attributes across N entities),
+go through `query odata` against `EntityDefinitions`: its `--select` / `--filter` /
+`--expand` are true server-side OData options.
+
+```bash
+# All tables, two scalars — small wire payload
+# (EntityDefinitions rejects $top server-side; slice client-side if needed)
+crm --json query odata EntityDefinitions --select LogicalName,MetadataId
+
+# Attributes for N entities in ONE GET — nested $select inside --expand
+crm --json query odata EntityDefinitions --select LogicalName \
+    --filter "LogicalName eq 'account' or LogicalName eq 'contact'" \
+    --expand 'Attributes($select=LogicalName,MetadataId,AttributeType)'
+
+# Address an entity by MetadataId (GUID unquoted in the path)
+crm --json query odata "EntityDefinitions(<metadata-id-guid>)" \
+    --select LogicalName,EntitySetName
+```
+
+A single GET also works under read-only profiles, which refuse `$batch` — prefer
+this shape over batching per-entity `Attributes` GETs. The rows are **raw OData
+attribute metadata**: none of `metadata attributes`' normalization applies (e.g.
+`RequiredLevel` stays a nested `{"Value": ...}` object here). For change-driven
+sweeps ("which columns changed since the last run?") prefer
+`metadata changes --entity <a> --entity <b> --attributes` — one call, N entities,
+delta cursor (see "Incremental metadata sync" below).
+
 ## Alternate keys (`metadata keys`)
 
 ```bash
