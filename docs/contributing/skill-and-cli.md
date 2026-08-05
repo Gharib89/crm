@@ -34,7 +34,7 @@ crm skill install --target claude --force
 
 ## When the CLI changes
 
-Use the **`writing-great-skills`** skill (`.claude/skills/writing-great-skills/`) as
+Use the **`writing-for-agents`** skill (`.claude/skills/writing-for-agents/`) as
 the authority for skill structure, progressive disclosure, and description-writing
 whenever you edit the skill — the two crm-specific rules above override it on conflict.
 

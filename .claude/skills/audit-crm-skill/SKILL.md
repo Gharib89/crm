@@ -15,7 +15,7 @@ teaches), **restatement** (prose that repeats what `--help` already says), and
 **stale** (claim contradicted by current code) — then fixes what survives
 verification.
 
-Invoke the **`writing-great-skills`** skill before editing anything: it supplies the
+Invoke the **`writing-for-agents`** skill before editing anything: it supplies the
 vocabulary (duplication, no-op, sediment, sprawl, progressive disclosure) the whole
 pass is judged with.
 

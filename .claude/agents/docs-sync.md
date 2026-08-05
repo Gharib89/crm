@@ -34,7 +34,7 @@ For every changed CLI command / flag / choice / default / behavior, verify each 
 
 ## Updating the skill
 
-When `crm/skills/` needs changes, **invoke the `writing-great-skills` skill** (via the Skill tool) and follow its principles — it is the single source of truth for skill structure, progressive disclosure, and the description-writing rules. Do not re-derive your own skill methodology.
+When `crm/skills/` needs changes, **invoke the `writing-for-agents` skill** (via the Skill tool) and follow its principles — it is the single source of truth for skill structure, progressive disclosure, and the description-writing rules. Do not re-derive your own skill methodology.
 
 Then layer these **crm-specific constraints** on top of that generic guidance (they override on conflict):
 
