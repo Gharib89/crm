@@ -27,7 +27,7 @@ the clone. So after seeding from SYNC, the tool transitively pulls every
 referenced skill in too. Auto-pulled deps keep their upstream flag.
 
 Skills NOT reachable from this list (ship, cloud-ship, merge-gate, live-e2e,
-...) are project-native and never touched.
+audit-crm-skill) are project-native and never touched.
 """
 
 from __future__ import annotations
@@ -87,7 +87,7 @@ EXCLUDE = {"setup-matt-pocock-skills"}
 # Hand-authored in this repo — `.claude/skills/` IS their source of truth. Never
 # vendor over these: a same-named personal skill (via SYNC or a dependency
 # reference) must never `rmtree` the tracked copy and destroy project edits.
-PROJECT_NATIVE = {"ship", "cloud-ship", "merge-gate", "live-e2e"}
+PROJECT_NATIVE = {"ship", "cloud-ship", "merge-gate", "live-e2e", "audit-crm-skill"}
 
 # A backticked `/name` or `name` token that matches a known skill directory.
 _REF = re.compile(r"`/?([a-z][a-z0-9-]+)`")

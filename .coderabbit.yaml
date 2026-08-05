@@ -99,7 +99,8 @@ reviews:
     - path: ".claude/skills/**"
       instructions: >-
         Two kinds of skill live here. Project-native ones (ship, cloud-ship,
-        merge-gate, live-e2e) are hand-edited in this repo — review normally.
+        merge-gate, live-e2e, audit-crm-skill) are hand-edited in this repo —
+        review normally.
         The rest are vendored copies synced verbatim by
         scripts/sync-skills.py and must never be hand-edited — do not request
         content changes on them; a sync PR replacing them wholesale is
