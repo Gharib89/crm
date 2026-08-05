@@ -18,15 +18,17 @@ One read-only call returns everything needed to build a valid create/update payl
   "writable_attributes": [
     {"logical_name": "cwx_name", "attribute_type": "String", "required_level": "ApplicationRequired"},
     {"logical_name": "cwx_slaid", "attribute_type": "Lookup", "required_level": "None",
-     "bind_key": "cwx_SLA@odata.bind", "targets": [{"logical": "cwx_sla", "set_name": "cwx_slas"}]},
+     "bind_key": "cwx_SLA@odata.bind",
+     "targets": [{"logical": "cwx_sla", "set_name": "cwx_slas", "bind_key": "cwx_SLA@odata.bind"}]},
     {"logical_name": "cwx_priority", "attribute_type": "Picklist", "required_level": "None",
      "options": [{"value": 1, "label": "Low"}, {"value": 2, "label": "High"}],
      "global_optionset_id": "8e9f…"}
   ]
 }
 ```
-- **`bind_key`** is the `<Nav>@odata.bind` key for a lookup — use it directly in an `entity create` payload with a value of `/<set_name>(<guid>)`.
+- **`bind_key`** is the `<Nav>@odata.bind` key for a lookup — use it directly in an `entity create` payload with a value of `/<set_name>(<guid>)`. It appears at the top level only for a single-target lookup; a **polymorphic** lookup has no single correct key, so read the per-target `targets[].bind_key` instead.
 - **`targets[].set_name`** is the entity set the lookup points at, so the bind value is ready to assemble.
+- **`targets[].bind_key`** is that target's own `<Nav>@odata.bind` key — for a polymorphic lookup each target binds through a different nav property, so pick the entry whose `logical` matches the record you're binding to.
 - **`options`** gives the inline `{value, label}` choices for picklist / state / status columns.
 - **`global_optionset_id`** appears only when a picklist is bound to a *global* option set; on-prem 9.1 needs that GUID to bind on create.
 

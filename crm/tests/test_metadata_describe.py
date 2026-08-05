@@ -153,7 +153,9 @@ class TestLookupBindEnrichment:
         # from the ManyToOne relationship joined on ReferencingAttribute. The
         # case is preserved exactly (server rejects a lower-cased nav name).
         assert lookup["bind_key"] == "new_AccountId@odata.bind"
-        assert lookup["targets"] == [{"logical": "account", "set_name": "accounts"}]
+        assert lookup["targets"] == [
+            {"logical": "account", "set_name": "accounts", "bind_key": "new_AccountId@odata.bind"}
+        ]
         # A non-lookup attribute carries neither enrichment key.
         assert "bind_key" not in by_name["new_name"]
         assert "targets" not in by_name["new_name"]
@@ -206,11 +208,65 @@ class TestLookupBindEnrichment:
         assert target_gets == []  # no per-target sequential reads
         by_name = {a["logical_name"]: a for a in brief["writable_attributes"]}
         assert by_name["new_accountid"]["targets"] == [
-            {"logical": "account", "set_name": "accounts"}
+            {"logical": "account", "set_name": "accounts", "bind_key": "new_AccountId@odata.bind"}
         ]
         assert by_name["new_contactid"]["targets"] == [
-            {"logical": "contact", "set_name": "contacts"}
+            {"logical": "contact", "set_name": "contacts", "bind_key": "new_ContactId@odata.bind"}
         ]
+
+    def test_polymorphic_lookup_carries_per_target_bind_key(self, backend):
+        # issue #951: a polymorphic lookup (one attribute, N ManyToOne targets)
+        # must surface EACH target's own nav property as a per-target bind_key —
+        # the pre-fix code kept only the first target's nav as a single top-level
+        # bind_key, wrong for every other target. The top-level bind_key is
+        # dropped for a polymorphic lookup (no single correct key); it stays only
+        # for the monomorphic case.
+        from crm.core import metadata as meta
+
+        attrs = {"value": [_attr("objectid", "Lookup")]}
+        # Each target's ReferencingEntityNavigationPropertyName is distinct
+        # (objectid_account vs objectid_contact) — asserting the wrong one fails.
+        m2o = {
+            "value": [
+                {
+                    "ReferencingAttribute": "objectid",
+                    "ReferencedEntity": "account",
+                    "ReferencingEntityNavigationPropertyName": "objectid_account",
+                    "ReferencedEntityNavigationPropertyName": "Account_Annotation",
+                },
+                {
+                    "ReferencingAttribute": "objectid",
+                    "ReferencedEntity": "contact",
+                    "ReferencingEntityNavigationPropertyName": "objectid_contact",
+                    "ReferencedEntityNavigationPropertyName": "Contact_Annotation",
+                },
+            ]
+        }
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_m2o_url(backend), json=m2o)
+            _mock_set_name_batch(
+                m, backend, [{"EntitySetName": "accounts"}, {"EntitySetName": "contacts"}]
+            )
+            brief = meta.describe_entity(backend, "new_project")
+
+        lookup = {a["logical_name"]: a for a in brief["writable_attributes"]}["objectid"]
+        assert lookup["targets"] == [
+            {
+                "logical": "account",
+                "set_name": "accounts",
+                "bind_key": "objectid_account@odata.bind",
+            },
+            {
+                "logical": "contact",
+                "set_name": "contacts",
+                "bind_key": "objectid_contact@odata.bind",
+            },
+        ]
+        # No single top-level bind_key for a polymorphic lookup — it would name
+        # one arbitrary target and mislead for the rest (the #951 bug).
+        assert "bind_key" not in lookup
 
     def test_read_only_profile_resolves_set_name_directly_not_batch(self, profile):
         # $batch is refused on a read-only profile; describe's set-name reads must
@@ -245,7 +301,9 @@ class TestLookupBindEnrichment:
         lookup = next(
             a for a in brief["writable_attributes"] if a["logical_name"] == "new_accountid"
         )
-        assert lookup["targets"] == [{"logical": "account", "set_name": "accounts"}]
+        assert lookup["targets"] == [
+            {"logical": "account", "set_name": "accounts", "bind_key": "new_AccountId@odata.bind"}
+        ]
 
     def test_describe_bind_key_round_trips_through_entity_validate(self, backend):
         """Describe's `bind_key` must be accepted by `entity create --validate`.

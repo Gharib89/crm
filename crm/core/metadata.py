@@ -371,7 +371,10 @@ def _enrich_lookups(
     `ReferencingEntityNavigationPropertyName` is the single-valued navigation
     property on THIS (referencing) entity — the case-sensitive name the server
     accepts in a `<Nav>@odata.bind` deep-link. Each target's `EntitySetName` is
-    resolved so the agent has a usable bind VALUE (`/<set_name>(<id>)`). No-op
+    resolved so the agent has a usable bind VALUE (`/<set_name>(<id>)`), and each
+    carries its own `bind_key` — a polymorphic lookup binds through a different
+    nav property per target (issue #951). The top-level `bind_key` is emitted
+    only for a monomorphic (single-target) lookup, where it is unambiguous. No-op
     when the entity has no lookup columns.
     """
     lookups = [a for a in writable if a["attribute_type"] == "Lookup"]
@@ -395,13 +398,23 @@ def _enrich_lookups(
         if not matched:
             continue
         attr["targets"] = [
-            {"logical": ref, "set_name": set_names.get(ref, "")} for ref, _ in matched
+            {
+                "logical": ref,
+                "set_name": set_names.get(ref, ""),
+                # Each target carries its OWN nav property: a polymorphic lookup
+                # binds to a different `<nav>@odata.bind` per target (issue #951).
+                **({"bind_key": f"{nav}@odata.bind"} if nav else {}),
+            }
+            for ref, nav in matched
         ]
-        # For the common single-target lookup there is exactly one relationship;
-        # a polymorphic lookup surfaces the first navigation property here.
-        nav = matched[0][1]
-        if nav:
-            attr["bind_key"] = f"{nav}@odata.bind"
+        # A monomorphic lookup has one unambiguous bind key, kept top-level for
+        # convenience; a polymorphic lookup has none (each target differs), so
+        # its callers read `targets[].bind_key` instead of a misleading top-level
+        # first-target key (issue #951).
+        if len(matched) == 1:
+            nav = matched[0][1]
+            if nav:
+                attr["bind_key"] = f"{nav}@odata.bind"
 
 
 def _set_name_via_get(backend: D365Backend, ref_logical: str) -> str:

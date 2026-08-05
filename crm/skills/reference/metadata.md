@@ -81,7 +81,7 @@ Unsupported types (Boolean, String, etc.) return `ok: false` with a clear error.
 crm --json metadata describe new_project
 # data: { entity_set_name, primary_id, primary_name, writable_attributes: [
 #   { logical_name, attribute_type, required_level,
-#     # lookups:                bind_key:"new_AccountId@odata.bind", targets:[{logical,set_name}]
+#     # lookups:                bind_key:"new_AccountId@odata.bind" (single-target only), targets:[{logical,set_name,bind_key}]
 #     # picklist/state/status:  options:[{value,label}]
 #     # global-bound picklist:  + global_optionset_id (GUID) } ] }
 ```

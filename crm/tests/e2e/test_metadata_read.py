@@ -58,6 +58,38 @@ def test_metadata_describe(cli):
     assert "writable_attributes" in data
 
 
+@covers("metadata describe")
+def test_metadata_describe_polymorphic_bind_key(cli):
+    # issue #951: a polymorphic lookup must surface each target's OWN nav
+    # property as targets[].bind_key, and must NOT emit a misleading top-level
+    # bind_key (which would name one arbitrary target). annotation.objectid is
+    # the canonical polymorphic lookup (regarding — many targets).
+    r = cli(["--json", "metadata", "describe", "annotation"])
+    assert r.returncode == 0, r.stderr
+    env = json.loads(r.stdout)
+    assert env["ok"]
+    objectid = next(
+        a for a in env["data"]["writable_attributes"] if a["logical_name"] == "objectid"
+    )
+    assert len(objectid["targets"]) > 1  # polymorphic
+    assert "bind_key" not in objectid  # no single top-level key for polymorphic
+    contact = next(t for t in objectid["targets"] if t["logical"] == "contact")
+    assert contact["bind_key"] == "objectid_contact@odata.bind"
+
+    # The other half of the contract: a monomorphic (single-target) lookup keeps
+    # its top-level bind_key, equal to its sole target's per-target key. Picked
+    # dynamically so no org-specific column is hard-coded (contact always has at
+    # least one single-target lookup, e.g. transactioncurrencyid).
+    r2 = cli(["--json", "metadata", "describe", "contact"])
+    assert r2.returncode == 0, r2.stderr
+    mono = next(
+        a
+        for a in json.loads(r2.stdout)["data"]["writable_attributes"]
+        if a["attribute_type"] == "Lookup" and len(a.get("targets", [])) == 1
+    )
+    assert mono["bind_key"] == mono["targets"][0]["bind_key"]
+
+
 @covers("metadata keys")
 def test_metadata_keys(cli):
     r = cli(["--json", "metadata", "keys", "account"])
