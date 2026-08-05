@@ -9,6 +9,21 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.79.3 (2026-08-05)
+
+### Bug Fixes
+
+- Report per-target bind_key for polymorphic lookups in metadata describe
+  ([#953](https://github.com/Gharib89/crm/pull/953),
+  [`6c8ab64`](https://github.com/Gharib89/crm/commit/6c8ab6411d6069dda65003c218351f9c81614911))
+
+### Testing
+
+- Assert monomorphic top-level bind_key in the describe e2e
+  ([#953](https://github.com/Gharib89/crm/pull/953),
+  [`6c8ab64`](https://github.com/Gharib89/crm/commit/6c8ab6411d6069dda65003c218351f9c81614911))
+
+
 ## v1.79.2 (2026-08-04)
 
 ### Bug Fixes
