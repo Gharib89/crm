@@ -16,7 +16,7 @@ committed copies are what ship to the cloud-ship sandbox, where personal skills
 are absent and these project copies are the ones that load.
 
 Rule of thumb: any skill the cloud-ship chain composes (ship -> tdd/code-review;
-docs-sync -> writing-great-skills) must be model-invokable, so mark it
+docs-sync -> writing-for-agents) must be model-invokable, so mark it
 `model_invokable: True`. A user-only skill (`disable-model-invocation: true`)
 cannot be invoked by the model or preloaded into a subagent, which would break
 the routine. Everything else keeps whatever flag it ships with upstream.
@@ -27,7 +27,7 @@ the clone. So after seeding from SYNC, the tool transitively pulls every
 referenced skill in too. Auto-pulled deps keep their upstream flag.
 
 Skills NOT reachable from this list (ship, cloud-ship, merge-gate, live-e2e,
-...) are project-native and never touched.
+audit-crm-skill) are project-native and never touched.
 """
 
 from __future__ import annotations
@@ -54,7 +54,6 @@ class SkillEntry(TypedDict):
 # are resolved and copied automatically; list a skill here only to seed the set
 # or to force its invocation flag.
 SYNC: list[SkillEntry] = [
-    {"name": "ask-matt", "model_invokable": False},
     {"name": "blindspot", "model_invokable": False},
     {"name": "codebase-design", "model_invokable": False},
     {"name": "code-review", "model_invokable": True},
@@ -63,7 +62,6 @@ SYNC: list[SkillEntry] = [
     {"name": "grill-with-docs", "model_invokable": False},
     {"name": "grilling", "model_invokable": False},
     {"name": "implement", "model_invokable": False},
-    {"name": "qa", "model_invokable": False},
     {"name": "quiz-before-merge", "model_invokable": False},
     {"name": "research", "model_invokable": False},
     {"name": "tdd", "model_invokable": True},
@@ -71,19 +69,25 @@ SYNC: list[SkillEntry] = [
     {"name": "to-tickets", "model_invokable": False},
     {"name": "triage", "model_invokable": False},
     {"name": "wayfinder", "model_invokable": False},
-    {"name": "writing-great-skills", "model_invokable": True},
+    {"name": "writing-for-agents", "model_invokable": True},
 ]
 
 # Skills that appear as references (footer/menu links) but are never a real
 # runtime dependency, so we don't vendor them. `setup-matt-pocock-skills` is an
 # installer meta-skill (runs `npx skills add …`) linked from many footers —
 # pointless and a footgun inside a repo clone.
+#
+# `ask-matt` is deliberately absent from SYNC for the same reason, one level up:
+# it is a *router* whose body is a menu over the whole upstream catalogue, so
+# seeding it made the closure pull every skill it lists (wizard, teach,
+# handoff, …) as a phantom dependency. None of them is composed by anything
+# here. Vendor a skill this repo actually uses, never the menu that names it.
 EXCLUDE = {"setup-matt-pocock-skills"}
 
 # Hand-authored in this repo — `.claude/skills/` IS their source of truth. Never
 # vendor over these: a same-named personal skill (via SYNC or a dependency
 # reference) must never `rmtree` the tracked copy and destroy project edits.
-PROJECT_NATIVE = {"ship", "cloud-ship", "merge-gate", "live-e2e"}
+PROJECT_NATIVE = {"ship", "cloud-ship", "merge-gate", "live-e2e", "audit-crm-skill"}
 
 # A backticked `/name` or `name` token that matches a known skill directory.
 _REF = re.compile(r"`/?([a-z][a-z0-9-]+)`")
@@ -122,7 +126,7 @@ def resolve_closure(seed: dict[str, bool], universe: set[str]) -> tuple[dict[str
 def strip_model_invocation_flag(skill_md: Path) -> bool:
     """Remove `disable-model-invocation` from the YAML frontmatter only.
 
-    The body must be left untouched — e.g. writing-great-skills' prose literally
+    The body must be left untouched — e.g. writing-for-agents' prose literally
     contains the string `disable-model-invocation: true`. Returns True if a line
     was removed.
     """
