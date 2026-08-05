@@ -54,7 +54,6 @@ class SkillEntry(TypedDict):
 # are resolved and copied automatically; list a skill here only to seed the set
 # or to force its invocation flag.
 SYNC: list[SkillEntry] = [
-    {"name": "ask-matt", "model_invokable": False},
     {"name": "blindspot", "model_invokable": False},
     {"name": "codebase-design", "model_invokable": False},
     {"name": "code-review", "model_invokable": True},
@@ -77,6 +76,12 @@ SYNC: list[SkillEntry] = [
 # runtime dependency, so we don't vendor them. `setup-matt-pocock-skills` is an
 # installer meta-skill (runs `npx skills add …`) linked from many footers —
 # pointless and a footgun inside a repo clone.
+#
+# `ask-matt` is deliberately absent from SYNC for the same reason, one level up:
+# it is a *router* whose body is a menu over the whole upstream catalogue, so
+# seeding it made the closure pull every skill it lists (wizard, teach,
+# handoff, …) as a phantom dependency. None of them is composed by anything
+# here. Vendor a skill this repo actually uses, never the menu that names it.
 EXCLUDE = {"setup-matt-pocock-skills"}
 
 # Hand-authored in this repo — `.claude/skills/` IS their source of truth. Never
