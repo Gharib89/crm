@@ -9,6 +9,52 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.79.5 (2026-08-31)
+
+### Bug Fixes
+
+- Pin --yes flag default False (click 8.5 Sentinel.UNSET); drop parse-time writable check on --out
+  ([#957](https://github.com/Gharib89/crm/pull/957),
+  [`7559155`](https://github.com/Gharib89/crm/commit/7559155e997fc877c589d715e61f04e508163949))
+
+- Review fixes — OSError envelope on --out write, data-shape output/bytes, restore round-trip e2e,
+  README row ([#957](https://github.com/Gharib89/crm/pull/957),
+  [`7559155`](https://github.com/Gharib89/crm/commit/7559155e997fc877c589d715e61f04e508163949))
+
+- Webresource get --out backup + modifiedon projection; steer skill away from per-change solution
+  export/import ([#957](https://github.com/Gharib89/crm/pull/957),
+  [`7559155`](https://github.com/Gharib89/crm/commit/7559155e997fc877c589d715e61f04e508163949))
+
+- Webresource get --out component-scoped backup + modifiedon projection
+  ([#957](https://github.com/Gharib89/crm/pull/957),
+  [`7559155`](https://github.com/Gharib89/crm/commit/7559155e997fc877c589d715e61f04e508163949))
+
+### Chores
+
+- **skills**: Resync vendored skills after upstream qa removal and rename
+  ([#955](https://github.com/Gharib89/crm/pull/955),
+  [`a6a9f86`](https://github.com/Gharib89/crm/commit/a6a9f861bfb4ddf8dbdd7c974486c57d75ac57ad))
+
+### Code Style
+
+- Ruff format test files ([#957](https://github.com/Gharib89/crm/pull/957),
+  [`7559155`](https://github.com/Gharib89/crm/commit/7559155e997fc877c589d715e61f04e508163949))
+
+### Documentation
+
+- How-to backup-before-update for webresource get --out
+  ([#957](https://github.com/Gharib89/crm/pull/957),
+  [`7559155`](https://github.com/Gharib89/crm/commit/7559155e997fc877c589d715e61f04e508163949))
+
+- Show full rollback command (--solution required, staged update publishes explicitly)
+  ([#957](https://github.com/Gharib89/crm/pull/957),
+  [`7559155`](https://github.com/Gharib89/crm/commit/7559155e997fc877c589d715e61f04e508163949))
+
+- Tighten skill counter-note per writing-for-agents (positive-first, single source of truth)
+  ([#957](https://github.com/Gharib89/crm/pull/957),
+  [`7559155`](https://github.com/Gharib89/crm/commit/7559155e997fc877c589d715e61f04e508163949))
+
+
 ## v1.79.4 (2026-08-05)
 
 ### Bug Fixes
