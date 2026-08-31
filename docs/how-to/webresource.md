@@ -51,7 +51,7 @@ crm --json webresource list --custom-only
 ```bash
 crm --json webresource get cwx_/scripts/ribbon.js --out ./ribbon.bak.js
 ```
-`--out <file>` fetches the live `content`, decodes it, and writes the bytes to `<file>` — a one-command, component-scoped backup of what's on the server right now, before you run `webresource update`. The record printed to stdout does not inline the content blob; `meta` reports `{"out": "<file>", "bytes": <n>}` instead. To roll back, run `webresource update` again with the backup file as `--file`.
+`--out <file>` fetches the live `content`, decodes it, and writes the bytes to `<file>` — a one-command, component-scoped backup of what's on the server right now, before you run `webresource update`. The record printed to stdout does not inline the content blob; the emitted record carries `"output"` (the file path) and `"bytes"` (the decoded size) instead. To roll back, run `webresource update` again with the backup file as `--file`.
 
 ## Use a web resource as an app icon
 

@@ -225,8 +225,12 @@ def webresource_get(ctx: CLIContext, name, out_path):
         return
     # Keep the base64 blob out of the emitted record; the file carries the bytes.
     raw = base64.b64decode(record.pop("content", None) or "")
-    Path(out_path).write_bytes(raw)
-    ctx.emit(True, data=record, meta={"out": out_path, "bytes": len(raw)})
+    try:
+        Path(out_path).write_bytes(raw)
+    except OSError as exc:
+        ctx.emit(False, error=f"Could not write {out_path}: {exc}")
+        return
+    ctx.emit(True, data={**record, "output": out_path, "bytes": len(raw)})
 
 
 @webresource_group.command("list")

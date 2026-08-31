@@ -903,8 +903,32 @@ class TestWebresourceCommands:
         assert env["ok"] is True
         # the base64 blob stays out of the envelope; the file path is reported
         assert "content" not in env["data"]
-        assert env["meta"]["out"] == str(out_file)
-        assert env["meta"]["bytes"] == len(b"function foo() {}\n")
+        assert env["data"]["output"] == str(out_file)
+        assert env["data"]["bytes"] == len(b"function foo() {}\n")
+
+    def test_get_out_unwritable_path_emits_clean_error(self, monkeypatch, tmp_path):
+        import json
+
+        from click.testing import CliRunner
+
+        from crm.cli import cli
+
+        row = {"webresourceid": _WR_ID, "name": "cwx_/foo.js", "content": _b64(b"x")}
+        monkeypatch.setattr(
+            "crm.core.webresource.get_webresource",
+            lambda backend, name, *, include_content=False: dict(row),
+        )
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        # a directory that doesn't exist → OSError on write, no traceback
+        out_file = tmp_path / "no-such-dir" / "backup.js"
+        result = CliRunner().invoke(
+            cli,
+            ["--json", "webresource", "get", "cwx_/foo.js", "--out", str(out_file)],
+        )
+        assert result.exit_code == 1
+        env = json.loads(result.output)
+        assert env["ok"] is False
+        assert "Could not write" in env["error"]
 
     def test_get_without_out_does_not_fetch_content(self, monkeypatch):
         import json
