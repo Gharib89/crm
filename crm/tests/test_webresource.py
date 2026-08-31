@@ -336,6 +336,33 @@ class TestGetWebresource:
             with pytest.raises(D365Error, match="not found"):
                 webresource.get_webresource(backend, "missing.js")
 
+    def test_get_selects_modifiedon_without_content(self, backend):
+        from crm.core import webresource
+
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("webresourceset"),
+                json={"value": [{"webresourceid": _WR_ID, "name": "new_x.js"}]},
+            )
+            webresource.get_webresource(backend, "new_x.js")
+        url = m.request_history[0].url
+        assert "modifiedon" in url
+        assert "content" not in url
+
+    def test_get_include_content_selects_content(self, backend):
+        from crm.core import webresource
+
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("webresourceset"),
+                json={
+                    "value": [{"webresourceid": _WR_ID, "name": "new_x.js", "content": _b64(b"hi")}]
+                },
+            )
+            out = webresource.get_webresource(backend, "new_x.js", include_content=True)
+        assert out["content"] == _b64(b"hi")
+        assert "content" in m.request_history[0].url
+
 
 class TestListWebresources:
     def test_list_returns_rows(self, backend):
@@ -819,7 +846,10 @@ class TestWebresourceCommands:
             "webresourcetype": 3,
             "ismanaged": False,
         }
-        monkeypatch.setattr("crm.core.webresource.get_webresource", lambda backend, name: row)
+        monkeypatch.setattr(
+            "crm.core.webresource.get_webresource",
+            lambda backend, name, *, include_content=False: row,
+        )
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = CliRunner().invoke(
             cli,
@@ -834,6 +864,107 @@ class TestWebresourceCommands:
         env = json.loads(result.output)
         assert env["ok"] is True
         assert env["data"]["webresourceid"] == _WR_ID
+
+    def test_get_out_writes_decoded_bytes(self, monkeypatch, tmp_path):
+        import json
+
+        from click.testing import CliRunner
+
+        from crm.cli import cli
+
+        row = {
+            "webresourceid": _WR_ID,
+            "name": "cwx_/foo.js",
+            "displayname": "Foo",
+            "webresourcetype": 3,
+            "ismanaged": False,
+            "modifiedon": "2026-08-30T10:00:00Z",
+            "content": _b64(b"function foo() {}\n"),
+        }
+        seen = {}
+
+        def fake_get(backend, name, *, include_content=False):
+            seen["include_content"] = include_content
+            return dict(row)
+
+        monkeypatch.setattr("crm.core.webresource.get_webresource", fake_get)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        out_file = tmp_path / "backup.js"
+        result = CliRunner().invoke(
+            cli,
+            ["--json", "webresource", "get", "cwx_/foo.js", "--out", str(out_file)],
+        )
+        assert result.exit_code == 0, result.output
+        assert seen["include_content"] is True
+        assert out_file.read_bytes() == b"function foo() {}\n"
+        env = json.loads(result.output)
+        assert env["ok"] is True
+        # the base64 blob stays out of the envelope; the file path is reported
+        assert "content" not in env["data"]
+        assert env["data"]["output"] == str(out_file)
+        assert env["data"]["bytes"] == len(b"function foo() {}\n")
+
+    def test_get_out_unwritable_path_emits_clean_error(self, monkeypatch, tmp_path):
+        import json
+
+        from click.testing import CliRunner
+
+        from crm.cli import cli
+
+        row = {"webresourceid": _WR_ID, "name": "cwx_/foo.js", "content": _b64(b"x")}
+        monkeypatch.setattr(
+            "crm.core.webresource.get_webresource",
+            lambda backend, name, *, include_content=False: dict(row),
+        )
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        # a directory that doesn't exist → OSError on write, no traceback
+        out_file = tmp_path / "no-such-dir" / "backup.js"
+        result = CliRunner().invoke(
+            cli,
+            ["--json", "webresource", "get", "cwx_/foo.js", "--out", str(out_file)],
+        )
+        assert result.exit_code == 1
+        env = json.loads(result.output)
+        assert env["ok"] is False
+        assert "Could not write" in env["error"]
+
+    def test_get_without_out_does_not_fetch_content(self, monkeypatch):
+        import json
+
+        from click.testing import CliRunner
+
+        from crm.cli import cli
+
+        seen = {}
+
+        def fake_get(backend, name, *, include_content=False):
+            seen["include_content"] = include_content
+            return {"webresourceid": _WR_ID, "name": "cwx_/foo.js"}
+
+        monkeypatch.setattr("crm.core.webresource.get_webresource", fake_get)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, ["--json", "webresource", "get", "cwx_/foo.js"])
+        assert result.exit_code == 0, result.output
+        assert seen["include_content"] is False
+        assert json.loads(result.output)["ok"] is True
+
+    def test_get_out_not_found_writes_no_file(self, monkeypatch, tmp_path):
+        from click.testing import CliRunner
+
+        from crm.cli import cli
+
+        def fake_get(backend, name, *, include_content=False):
+            raise D365Error("Web resource not found: missing.js", code="WebResourceNotFound")
+
+        monkeypatch.setattr("crm.core.webresource.get_webresource", fake_get)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        out_file = tmp_path / "backup.js"
+        result = CliRunner().invoke(
+            cli,
+            ["--json", "webresource", "get", "missing.js", "--out", str(out_file)],
+        )
+        assert result.exit_code == 1
+        assert not out_file.exists()
 
     def test_list_command_wires_core_json(self, monkeypatch):
         import json

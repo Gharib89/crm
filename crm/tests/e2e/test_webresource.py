@@ -148,6 +148,22 @@ def test_webresource_lifecycle(cli, tmp_path, unique, request, ephemeral_solutio
         f"webresourceid mismatch: get returned {record.get('webresourceid')!r}, "
         f"create returned {wid!r}"
     )
+    assert record.get("modifiedon"), f"modifiedon missing from get projection: {record}"
+    assert "content" not in record, f"content blob should not inline without --out: {record}"
+
+    # ── GET --out (backup of current bytes) ──────────────────────────────────
+    backup = tmp_path / "backup.js"
+    result = cli(["--json", "webresource", "get", name, "--out", str(backup)])
+    assert result.returncode == 0, (
+        f"webresource get --out failed:\n{result.stderr}\nstdout: {result.stdout}"
+    )
+    env = json.loads(result.stdout)
+    assert env["ok"], env
+    assert "content" not in env["data"], f"content blob should stay out of the envelope: {env}"
+    assert env["data"].get("output") == str(backup), f"data.output missing/wrong: {env['data']}"
+    assert backup.read_bytes() == content_v1, (
+        f"backup bytes mismatch: {backup.read_bytes()!r} != {content_v1!r}"
+    )
 
     # ── UPDATE ────────────────────────────────────────────────────────────────
     src_v2 = tmp_path / f"{unique}_v2.js"
@@ -176,6 +192,46 @@ def test_webresource_lifecycle(cli, tmp_path, unique, request, ephemeral_solutio
     assert upd.get("updated") is True, f"expected updated=True: {upd}"
     assert upd.get("webresourceid", "").lower() == wid.lower(), (
         f"update returned wrong webresourceid: {upd}"
+    )
+
+    # ── RESTORE from the --out backup (the rollback path the backup exists for) ─
+    result = cli(
+        [
+            "--json",
+            "webresource",
+            "update",
+            name,
+            "--file",
+            str(backup),
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
+    assert result.returncode == 0, (
+        f"restore from backup failed:\n{result.stderr}\nstdout: {result.stdout}"
+    )
+    restored = tmp_path / "restored.js"
+    result = cli(["--json", "webresource", "get", name, "--out", str(restored)])
+    assert result.returncode == 0, result.stdout
+    assert restored.read_bytes() == content_v1, (
+        f"restore round-trip mismatch: {restored.read_bytes()!r} != {content_v1!r}"
+    )
+
+    # Re-apply v2 so the LIST/display-name assertions below still see the update.
+    result = cli(
+        [
+            "--json",
+            "webresource",
+            "update",
+            name,
+            "--file",
+            str(src_v2),
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
+    assert result.returncode == 0, (
+        f"re-update after restore failed:\n{result.stderr}\nstdout: {result.stdout}"
     )
 
     # ── LIST ──────────────────────────────────────────────────────────────────

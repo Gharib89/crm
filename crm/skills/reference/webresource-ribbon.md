@@ -15,8 +15,11 @@ that **web resource to already exist** — create it first.
 crm --json webresource create --name contoso_/scripts/ribbon.js --file ./ribbon.js --solution ContosoCore
 
 # update <name>: plain PATCH of only the sent fields (content and/or display-name),
-# resolved by name — NOT retrieve-merge.
+# resolved by name — NOT retrieve-merge. To keep a rollback path, back up the
+# current bytes first (the component-scoped backup from the agent contract):
+crm --json webresource get contoso_/scripts/ribbon.js --out ./ribbon.bak.js
 crm --json webresource update contoso_/scripts/ribbon.js --file ./ribbon.js --solution ContosoCore
+# rollback = update again with the backup file
 
 # inspect
 crm --json webresource get contoso_/scripts/ribbon.js

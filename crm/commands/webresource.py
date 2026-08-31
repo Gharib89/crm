@@ -3,6 +3,7 @@
 # pyright: basic
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 
 import click
@@ -203,12 +204,33 @@ def webresource_push(ctx: CLIContext, directory, prefix, solution, publish):
 
 @webresource_group.command("get")
 @click.argument("name")
+@click.option(
+    "--out",
+    "out_path",
+    type=click.Path(dir_okay=False),
+    default=None,
+    help="Write the resource's current decoded bytes to this file (backup before an update).",
+)
 @pass_ctx
-def webresource_get(ctx: CLIContext, name):
-    """Resolve a web resource by name and print its record."""
+def webresource_get(ctx: CLIContext, name, out_path):
+    """Resolve a web resource by name and print its record.
+
+    With --out, also writes the live content (base64-decoded) to the given
+    file — a one-command backup of the current bytes before overwriting them.
+    """
     with d365_errors(ctx):
-        record = wr_mod.get_webresource(ctx.backend(), name)
-    ctx.emit(True, data=record)
+        record = wr_mod.get_webresource(ctx.backend(), name, include_content=out_path is not None)
+    if out_path is None:
+        ctx.emit(True, data=record)
+        return
+    # Keep the base64 blob out of the emitted record; the file carries the bytes.
+    raw = base64.b64decode(record.pop("content", None) or "")
+    try:
+        Path(out_path).write_bytes(raw)
+    except OSError as exc:
+        ctx.emit(False, error=f"Could not write {out_path}: {exc}")
+        return
+    ctx.emit(True, data={**record, "output": out_path, "bytes": len(raw)})
 
 
 @webresource_group.command("list")

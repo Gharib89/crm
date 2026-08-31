@@ -97,6 +97,9 @@ def _destructive_option(f):
     return click.option(
         "--yes",
         is_flag=True,
+        # Explicit: click 8.5 leaves an unset flag default as Sentinel.UNSET
+        # until parse; the --yes-off-by-default invariant is pinned by tests.
+        default=False,
         help="Skip interactive confirmation.",
     )(f)
 
