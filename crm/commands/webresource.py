@@ -207,7 +207,7 @@ def webresource_push(ctx: CLIContext, directory, prefix, solution, publish):
 @click.option(
     "--out",
     "out_path",
-    type=click.Path(dir_okay=False, writable=True),
+    type=click.Path(dir_okay=False),
     default=None,
     help="Write the resource's current decoded bytes to this file (backup before an update).",
 )
