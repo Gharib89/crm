@@ -271,13 +271,26 @@ def push_webresources(
     }
 
 
-def get_webresource(backend: D365Backend, name: str) -> dict[str, Any]:
-    """Resolve a web resource by name and return its record."""
+def get_webresource(
+    backend: D365Backend,
+    name: str,
+    *,
+    include_content: bool = False,
+) -> dict[str, Any]:
+    """Resolve a web resource by name and return its record.
+
+    `include_content` adds the base64 ``content`` column to the projection — off
+    by default so resolver callers (ribbon, forms, dashboard) and the plain `get`
+    verb don't drag the full body over the wire.
+    """
+    select = "webresourceid,name,displayname,webresourcetype,ismanaged,modifiedon"
+    if include_content:
+        select += ",content"
     rows = backend.get_collection(
         "webresourceset",
         params={
             "$filter": f"name eq {odata_literal(name)}",
-            "$select": "webresourceid,name,displayname,webresourcetype,ismanaged",
+            "$select": select,
         },
     )
     if not rows:

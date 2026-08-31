@@ -143,6 +143,16 @@ irreversible operations, capture a restorable copy when possible and report wher
 `solution import`, `data delete`, `metadata delete-entity`, and
 `solution apply-upgrade` / `solution stage-and-upgrade --promote`.
 
+That advice is for those destructive, solution-level operations only. **Routine
+customization is direct component writes** (`webresource update`, `form`/`view`/
+`metadata` verbs) followed by a publish — never an export/import cycle per change.
+A solution import as a rollback mechanism is itself a destructive operation: it
+re-imports every component in the solution and silently overwrites concurrent
+work in a shared dev org. Back up at component scope instead — `webresource get
+<name> --out <file>` captures current bytes before an update; `solution
+export-spec` / `metadata export-spec` snapshot declarative state — and take at
+most a one-time solution export at the start of a work session, not one per edit.
+
 ## Hard constraints
 
 - **NTLM (on-prem) or OAuth client-credentials (online).** IFD/Claims, certificate
