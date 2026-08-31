@@ -356,9 +356,7 @@ class TestGetWebresource:
             m.get(
                 backend.url_for("webresourceset"),
                 json={
-                    "value": [
-                        {"webresourceid": _WR_ID, "name": "new_x.js", "content": _b64(b"hi")}
-                    ]
+                    "value": [{"webresourceid": _WR_ID, "name": "new_x.js", "content": _b64(b"hi")}]
                 },
             )
             out = webresource.get_webresource(backend, "new_x.js", include_content=True)

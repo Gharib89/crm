@@ -196,7 +196,16 @@ def test_webresource_lifecycle(cli, tmp_path, unique, request, ephemeral_solutio
 
     # ── RESTORE from the --out backup (the rollback path the backup exists for) ─
     result = cli(
-        ["--json", "webresource", "update", name, "--file", str(backup), "--solution", ephemeral_solution]
+        [
+            "--json",
+            "webresource",
+            "update",
+            name,
+            "--file",
+            str(backup),
+            "--solution",
+            ephemeral_solution,
+        ]
     )
     assert result.returncode == 0, (
         f"restore from backup failed:\n{result.stderr}\nstdout: {result.stdout}"
@@ -210,7 +219,16 @@ def test_webresource_lifecycle(cli, tmp_path, unique, request, ephemeral_solutio
 
     # Re-apply v2 so the LIST/display-name assertions below still see the update.
     result = cli(
-        ["--json", "webresource", "update", name, "--file", str(src_v2), "--solution", ephemeral_solution]
+        [
+            "--json",
+            "webresource",
+            "update",
+            name,
+            "--file",
+            str(src_v2),
+            "--solution",
+            ephemeral_solution,
+        ]
     )
     assert result.returncode == 0, (
         f"re-update after restore failed:\n{result.stderr}\nstdout: {result.stdout}"
