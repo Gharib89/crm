@@ -24,8 +24,8 @@ When the target solution has more than 10 components, every live ribbon write
 `add-custom-rule`, `apply`) emits this same recommendation as a warning — a
 `⚠` line on stderr in text mode, or a `meta.warnings` entry under `--json`. The write
 still proceeds; the warning is advisory, not a block. The check is best-effort
-(a `$count` lookup against `solutioncomponents`) — it never fails or delays the
-write if the lookup itself errors. Offline `--diff-file` edits and `ribbon export`
+(a `$count` lookup against `solutioncomponents`) — a failed lookup is ignored and
+never aborts the write. Offline `--diff-file` edits and `ribbon export`
 / `ribbon list` never call it, so they stay zero-backend-call / read-only as before.
 
 ## Export the current ribbon
