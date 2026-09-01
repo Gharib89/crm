@@ -2367,3 +2367,144 @@ def test_ribbon_apply_dry_run_does_not_import(monkeypatch, tmp_path):
     )
     assert res.exit_code == 0, res.output
     assert imported == [] and published == []  # no writes under --dry-run
+
+
+# ── Solution-size pre-flight warning (#958) ────────────────────────────────
+
+
+def test_ribbon_add_button_live_surfaces_size_warning(monkeypatch):
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change", lambda *a, **k: {"status": "succeeded"})
+    monkeypatch.setattr(ribbon_mod, "resolve_webresource_id", lambda backend, name: "guid-1")
+    monkeypatch.setattr(
+        ribbon_mod, "solution_size_warning", lambda backend, solution, **kw: "solution too big"
+    )
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(
+        cli,
+        [
+            "--json",
+            "ribbon",
+            "add-button",
+            "cwx_ticket",
+            "--solution",
+            "MySol",
+            "--label",
+            "Validate",
+            "--location",
+            "form",
+            "--webresource",
+            "cwx_/scripts/x.js",
+            "--function",
+            "ns.fn",
+            "--param",
+            "PrimaryControl",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    data = json.loads(res.output)
+    assert "solution too big" in (data.get("meta", {}).get("warnings") or [])
+
+
+def test_ribbon_add_button_live_no_size_warning_when_none(monkeypatch):
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change", lambda *a, **k: {"status": "succeeded"})
+    monkeypatch.setattr(ribbon_mod, "resolve_webresource_id", lambda backend, name: "guid-1")
+    monkeypatch.setattr(ribbon_mod, "solution_size_warning", lambda backend, solution, **kw: None)
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(
+        cli,
+        [
+            "--json",
+            "ribbon",
+            "add-button",
+            "cwx_ticket",
+            "--solution",
+            "MySol",
+            "--label",
+            "Validate",
+            "--location",
+            "form",
+            "--webresource",
+            "cwx_/scripts/x.js",
+            "--function",
+            "ns.fn",
+            "--param",
+            "PrimaryControl",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    data = json.loads(res.output)
+    assert not (data.get("meta", {}).get("warnings") or [])
+
+
+def test_ribbon_set_rules_oob_and_size_warnings_both_present(monkeypatch):
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change", lambda *a, **k: {"status": "succeeded"})
+    monkeypatch.setattr(
+        ribbon_mod, "solution_size_warning", lambda backend, solution, **kw: "solution too big"
+    )
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(
+        cli,
+        [
+            "--json",
+            "ribbon",
+            "set-rules",
+            "cwx_ticket",
+            "--solution",
+            "MySol",
+            "--command-id",
+            "Mscrm.SavePrimary",
+            "--display-rule",
+            "Mscrm.HideOnModern",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    warnings = json.loads(res.output).get("meta", {}).get("warnings") or []
+    assert any("unsupported" in w.lower() for w in warnings)
+    assert "solution too big" in warnings
+
+
+def test_ribbon_add_button_diff_file_skips_size_check(monkeypatch, tmp_path):
+    _no_backend(monkeypatch)
+    f = _seed_diff_file(tmp_path)
+
+    def boom(backend, solution, **kw):
+        raise AssertionError("must not be called")
+
+    monkeypatch.setattr(ribbon_mod, "solution_size_warning", boom)
+    res = CliRunner().invoke(
+        cli,
+        [
+            "--json",
+            "ribbon",
+            "add-button",
+            "cwx_ticket",
+            "--diff-file",
+            str(f),
+            "--label",
+            "Validate",
+            "--location",
+            "form",
+            "--webresource",
+            "cwx_/x.js",
+            "--function",
+            "ns.fn",
+            "--param",
+            "PrimaryControl",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+
+
+def test_ribbon_apply_live_surfaces_size_warning(monkeypatch, tmp_path):
+    f = _seed_diff_file(tmp_path)
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change", lambda *a, **k: {"status": "succeeded"})
+    monkeypatch.setattr(
+        ribbon_mod, "solution_size_warning", lambda backend, solution, **kw: "solution too big"
+    )
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(
+        cli, ["--json", "ribbon", "apply", "cwx_ticket", "--solution", "MySol", "--from", str(f)]
+    )
+    assert res.exit_code == 0, res.output
+    data = json.loads(res.output)
+    assert "solution too big" in (data.get("meta", {}).get("warnings") or [])
