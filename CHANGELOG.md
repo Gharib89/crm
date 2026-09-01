@@ -9,6 +9,43 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.80.0 (2026-09-01)
+
+### Bug Fixes
+
+- **ribbon**: Run size check inside d365_errors after validation
+  ([#959](https://github.com/Gharib89/crm/pull/959),
+  [`ac0d6d7`](https://github.com/Gharib89/crm/commit/ac0d6d71fa44fdb15226286c01b8fc418265ebf3))
+
+- **ribbon**: Surface solution-size warning on live write verbs
+  ([#959](https://github.com/Gharib89/crm/pull/959),
+  [`ac0d6d7`](https://github.com/Gharib89/crm/commit/ac0d6d71fa44fdb15226286c01b8fc418265ebf3))
+
+- **ribbon**: Warn when the target solution is large enough to make ribbon writes slow
+  ([#959](https://github.com/Gharib89/crm/pull/959),
+  [`ac0d6d7`](https://github.com/Gharib89/crm/commit/ac0d6d71fa44fdb15226286c01b8fc418265ebf3))
+
+### Documentation
+
+- **ribbon**: Dedicated-solution guidance + size-warning docs
+  ([#959](https://github.com/Gharib89/crm/pull/959),
+  [`ac0d6d7`](https://github.com/Gharib89/crm/commit/ac0d6d71fa44fdb15226286c01b8fc418265ebf3))
+
+- **ribbon**: Describe text-mode warning rendering accurately
+  ([#959](https://github.com/Gharib89/crm/pull/959),
+  [`ac0d6d7`](https://github.com/Gharib89/crm/commit/ac0d6d71fa44fdb15226286c01b8fc418265ebf3))
+
+- **ribbon**: Drop the no-delay overclaim from the size-check note
+  ([#959](https://github.com/Gharib89/crm/pull/959),
+  [`ac0d6d7`](https://github.com/Gharib89/crm/commit/ac0d6d71fa44fdb15226286c01b8fc418265ebf3))
+
+### Features
+
+- **ribbon**: Add solution_size_warning pre-flight helper
+  ([#959](https://github.com/Gharib89/crm/pull/959),
+  [`ac0d6d7`](https://github.com/Gharib89/crm/commit/ac0d6d71fa44fdb15226286c01b8fc418265ebf3))
+
+
 ## v1.79.5 (2026-08-31)
 
 ### Bug Fixes
