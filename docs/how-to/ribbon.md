@@ -22,7 +22,7 @@ crm --json solution add-component --solution ContosoRibbon --type webresource \
 When the target solution has more than 10 components, every live ribbon write
 (`add-button`, `remove`, `set-label`, `set-icon`, `hide-button`, `set-rules`,
 `add-custom-rule`, `apply`) emits this same recommendation as a warning — a
-text-mode `Warning:` line, or a `meta.warnings` entry under `--json`. The write
+`⚠` line on stderr in text mode, or a `meta.warnings` entry under `--json`. The write
 still proceeds; the warning is advisory, not a block. The check is best-effort
 (a `$count` lookup against `solutioncomponents`) — it never fails or delays the
 write if the lookup itself errors. Offline `--diff-file` edits and `ribbon export`
