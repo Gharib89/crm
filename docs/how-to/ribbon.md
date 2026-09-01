@@ -2,6 +2,32 @@
 
 `crm ribbon` reads and edits an entity's command-bar (ribbon) buttons.
 
+## Scope writes to a dedicated solution
+
+Every mutating `ribbon` verb exports, imports, and re-imports the **entire**
+`--solution` target — not just the entity being edited. Against an 82-component
+master solution that is minutes per write and locks on-prem customization tables
+for the whole run; the same edit against a 2-component solution (the entity + its
+ribbon web resources) takes seconds. Create a small dedicated solution before doing
+ribbon work, rather than reusing whatever solution already owns the entity:
+
+```bash
+crm --json solution create --name ContosoRibbon --publisher contoso
+crm --json solution add-component --solution ContosoRibbon --type entity \
+    --id <entity-MetadataId>          # from `crm --json metadata entity <name>`
+crm --json solution add-component --solution ContosoRibbon --type webresource \
+    --id <webresource-id>             # from `crm --json webresource get <name>`
+```
+
+When the target solution has more than 10 components, every live ribbon write
+(`add-button`, `remove`, `set-label`, `set-icon`, `hide-button`, `set-rules`,
+`add-custom-rule`, `apply`) emits this same recommendation as a warning — a
+text-mode `Warning:` line, or a `meta.warnings` entry under `--json`. The write
+still proceeds; the warning is advisory, not a block. The check is best-effort
+(a `$count` lookup against `solutioncomponents`) — it never fails or delays the
+write if the lookup itself errors. Offline `--diff-file` edits and `ribbon export`
+/ `ribbon list` never call it, so they stay zero-backend-call / read-only as before.
+
 ## Export the current ribbon
 
 Export a single entity's composed ribbon, or the application-wide ribbon (commands
@@ -32,8 +58,9 @@ crm ribbon export cwx_ticket --solution MySolution --output ribbon_diff.xml
 The per-verb write commands each run a full solution export → import → publish
 round-trip, and — unlike forms/views — an **unpublished** `RibbonDiffXml` is not
 carried by the solution export (see the warning under *Add a JavaScript button*).
-To compose several edits with a **single** publish, edit a local working-copy file
-instead:
+Composing edits live pays that round-trip cost once **per edit**; the working-copy
+flow pays it once **per session**, so for two or more edits on the same entity it
+is the flow to reach for, not just an option:
 
 ```bash
 # 1. Export the entity's editable RibbonDiffXml fragment to a file

@@ -121,6 +121,26 @@ pipeline, `add-button` / `set-label` / `set-icon` / `remove` / `hide-button` /
 ticks. The command has not hung; **do not retry** a slow call (a second, parallel
 attempt races the first import). Confirm the outcome afterward with `ribbon list`.
 
+**Target a minimal dedicated solution — never the shared master.** The import cost
+above scales with the *target solution's* component count, not the size of your
+edit: an 82-component master solution runs ~4 minutes per write and locks on-prem
+customization tables for that whole span; the identical edit against a 2-component
+solution (the entity + its ribbon web resources) runs in ~10s. Create one before
+doing any ribbon work on an entity, rather than reusing whatever solution already
+holds the entity:
+
+```bash
+crm solution create --name ContosoRibbon --publisher contoso
+crm solution add-component --solution ContosoRibbon --type entity \
+    --id $(crm --json metadata entity cwx_ticket --jq .MetadataId)
+crm solution add-component --solution ContosoRibbon --type webresource \
+    --id $(crm --json webresource get cwx_/scripts/ribbon.js --jq .webresourceid)
+```
+
+Past 10 components in the target solution, every live ribbon write itself emits a
+`meta.warnings` entry recommending this move — treat that as confirmation you
+skipped this step, not as the first time to act on it.
+
 **Publish before you edit a staged button — live ribbon edits do NOT chain unpublished.**
 `add-button` **stages** by default (like every customization write). But unlike
 forms/views, an **unpublished `RibbonDiffXml` is not carried by the solution export**
@@ -131,7 +151,12 @@ run `crm solution publish-all` before the follow-up edit. (The error now says th
 it sees an empty diff.) To batch several edits without any inter-edit publish, use the
 **working-copy flow** below — that is the composition path.
 
-**Working-copy flow (`export --solution` → `--diff-file` → `apply`) composes offline.**
+**Working-copy flow (`export --solution` → `--diff-file` → `apply`) is REQUIRED for
+2+ edits in a session, not merely an option.** Composing edits live (each `--publish`
+paying its own full import) multiplies the cost above by every edit; the offline
+flow pays it exactly once regardless of edit count. Reach for `--diff-file` the
+moment a session's second ribbon edit on an entity is in view — do not default to
+the live per-verb path and only fall back to `--diff-file` after noticing the slowdown.
 `ribbon export ENTITY --solution S --output f.xml` writes the entity's editable
 `RibbonDiffXml` fragment (not the composed read-only ribbon). The write verbs
 `add-button` / `add-custom-rule` / `set-label` / `set-rules` / `remove` then accept
