@@ -1164,3 +1164,50 @@ def test_replace_ribbon_diff_full_replaces_not_merges():
     ribbon.replace_ribbon_diff(live, replacement)
     got = {b.button_id for b in ribbon.list_custom_buttons(live)}
     assert got == {new_ids.custom_action}  # old button gone, new one present
+
+
+def _stub_solution_lookup(monkeypatch, *, solutionid="sol-1", count):
+    monkeypatch.setattr(ribbon, "solution_info", lambda backend, name: {"solutionid": solutionid})
+    monkeypatch.setattr(
+        ribbon, "odata_query", lambda backend, entity_set, **kw: {"@odata.count": count}
+    )
+
+
+def test_solution_size_warning_over_threshold_names_count_and_solution(monkeypatch):
+    _stub_solution_lookup(monkeypatch, count=11)
+    msg = ribbon.solution_size_warning(object(), "MySol")  # type: ignore[arg-type]
+    assert msg is not None
+    assert "11" in msg
+    assert "MySol" in msg
+
+
+def test_solution_size_warning_at_or_under_threshold_returns_none(monkeypatch):
+    _stub_solution_lookup(monkeypatch, count=10)
+    assert ribbon.solution_size_warning(object(), "MySol") is None  # type: ignore[arg-type]
+
+    _stub_solution_lookup(monkeypatch, count=9)
+    assert ribbon.solution_size_warning(object(), "MySol") is None  # type: ignore[arg-type]
+
+
+def test_solution_size_warning_swallows_lookup_error(monkeypatch):
+    def raising_solution_info(backend, name):
+        raise D365Error("solution not found")
+
+    monkeypatch.setattr(ribbon, "solution_info", raising_solution_info)
+    assert ribbon.solution_size_warning(object(), "MySol") is None  # type: ignore[arg-type]
+
+
+def test_solution_size_warning_swallows_count_query_error(monkeypatch):
+    monkeypatch.setattr(ribbon, "solution_info", lambda backend, name: {"solutionid": "sol-1"})
+
+    def raising_odata_query(backend, entity_set, **kw):
+        raise D365Error("count query failed")
+
+    monkeypatch.setattr(ribbon, "odata_query", raising_odata_query)
+    assert ribbon.solution_size_warning(object(), "MySol") is None  # type: ignore[arg-type]
+
+
+def test_solution_size_warning_respects_threshold_override(monkeypatch):
+    _stub_solution_lookup(monkeypatch, count=3)
+    assert ribbon.solution_size_warning(object(), "MySol", threshold=2) is not None  # type: ignore[arg-type]
+    assert ribbon.solution_size_warning(object(), "MySol", threshold=3) is None  # type: ignore[arg-type]

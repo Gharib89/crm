@@ -19,7 +19,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from crm.core.solution import export_solution, import_solution, publish_all
+from crm.core.query import odata_query
+from crm.core.solution import export_solution, import_solution, publish_all, solution_info
 from crm.core.solution_validate import validate_solution
 from crm.core.webresource import (
     get_webresource,  # pyright: ignore[reportUnusedImport]; re-exported for the command layer
@@ -35,6 +36,46 @@ if TYPE_CHECKING:
     from crm.utils.d365_backend import D365Backend
 
 _RIBBON_MEMBER = "RibbonXml.xml"
+
+RIBBON_SOLUTION_COMPONENT_WARN_THRESHOLD = 10
+
+
+def solution_size_warning(
+    backend: D365Backend,
+    solution: str,
+    *,
+    threshold: int = RIBBON_SOLUTION_COMPONENT_WARN_THRESHOLD,
+) -> str | None:
+    """Best-effort pre-flight warning for a large target solution.
+
+    Every ribbon write exports, imports, and re-imports the WHOLE solution — on
+    a large one that is minutes per call. This is advisory only: any failure
+    resolving the solution or counting its components (network error, missing
+    solution, etc.) must NEVER block or fail the write, so it is swallowed and
+    treated as "nothing to warn about" (returns ``None``).
+    """
+    try:
+        sol = solution_info(backend, solution)
+        # One filtered $count=true/$top=1 query, not solution_components() —
+        # that call pages the full component list, which is the exact cost
+        # this pre-flight check exists to avoid paying on every write.
+        raw = odata_query(
+            backend,
+            "solutioncomponents",
+            filter_=f"_solutionid_value eq {sol['solutionid']}",
+            top=1,
+            count=True,
+        )
+        count = int(raw.get("@odata.count") or 0)
+    except Exception:
+        return None
+    if count <= threshold:
+        return None
+    return (
+        f"Solution '{solution}' has {count} components; every ribbon write exports "
+        "and re-imports the entire solution. Scope ribbon work to a small dedicated "
+        "solution, or batch edits offline with --diff-file and a single 'ribbon apply'."
+    )
 
 
 def decode_compressed_ribbon(compressed_b64: str) -> ET.Element:
