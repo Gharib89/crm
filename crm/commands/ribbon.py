@@ -112,6 +112,26 @@ def _check_offline_exclusive(diff_file: str | None) -> None:
         raise click.UsageError("--diff-file cannot be combined with --publish/--no-publish")
 
 
+def _apply_with_scale_warnings(
+    ctx: CLIContext, *, solution, entity, mutate, publish, extra_warnings=None
+):
+    """Pre-flight solution-size check + the live solution-zip apply, in one step.
+
+    The single check point for every live ribbon write verb; call it inside the
+    verb's `d365_errors(ctx)` block, after its own input validation. The size
+    check is best-effort (see `ribbon_mod.solution_size_warning`) — never raises,
+    never blocks the write. Returns ``(result, warnings)``.
+    """
+    warnings: list[str] = list(extra_warnings or [])
+    msg = ribbon_mod.solution_size_warning(ctx.backend(), solution)
+    if msg:
+        warnings.append(msg)
+    result = ribbon_mod.apply_ribbon_change(
+        ctx.backend(), solution=solution, entity=entity, mutate=mutate, publish=publish
+    )
+    return result, warnings
+
+
 @click.group("ribbon")
 def ribbon_group():
     """Read and edit entity command-bar (ribbon) buttons."""
@@ -341,11 +361,13 @@ def ribbon_add_button(
     with d365_errors(ctx):
         ribbon_mod.resolve_webresource_id(ctx.backend(), webresource)
         _validate_icons(ctx, modern_image, image16, image32)
-        result = ribbon_mod.apply_ribbon_change(
-            ctx.backend(), solution=solution, entity=entity, mutate=mutate, publish=publish
+        result, warnings = _apply_with_scale_warnings(
+            ctx, solution=solution, entity=entity, mutate=mutate, publish=publish
         )
     ctx.emit(
-        True, data={"button_id": ids.custom_action, "group": group, "result": result}, warnings=None
+        True,
+        data={"button_id": ids.custom_action, "group": group, "result": result},
+        warnings=warnings or None,
     )
     _journal(ctx, ids.custom_action, result, solution=solution)
 
@@ -386,10 +408,10 @@ def ribbon_remove(ctx, entity, button_id, yes, publish, solution, diff_file):
     solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
-        result = ribbon_mod.apply_ribbon_change(
-            ctx.backend(), solution=solution, entity=entity, mutate=mutate, publish=publish
+        result, warnings = _apply_with_scale_warnings(
+            ctx, solution=solution, entity=entity, mutate=mutate, publish=publish
         )
-    ctx.emit(True, data={"removed": button_id, "result": result}, warnings=None)
+    ctx.emit(True, data={"removed": button_id, "result": result}, warnings=warnings or None)
     _journal(ctx, button_id, result, solution=solution)
 
 
@@ -494,8 +516,8 @@ def ribbon_set_label(
             return
 
     with d365_errors(ctx):
-        result = ribbon_mod.apply_ribbon_change(
-            ctx.backend(), solution=solution, entity=entity, mutate=mutate, publish=publish
+        result, warnings = _apply_with_scale_warnings(
+            ctx, solution=solution, entity=entity, mutate=mutate, publish=publish
         )
     ctx.emit(
         True,
@@ -507,7 +529,7 @@ def ribbon_set_label(
             "lcid": lcid,
             "result": result,
         },
-        warnings=None,
+        warnings=warnings or None,
     )
     _journal(ctx, button_id, result, solution=solution)
 
@@ -552,8 +574,8 @@ def ribbon_set_icon(ctx, entity, button_id, modern_image, image16, image32, publ
                 image32=image32,
             )
 
-        result = ribbon_mod.apply_ribbon_change(
-            ctx.backend(), solution=solution, entity=entity, mutate=mutate, publish=publish
+        result, warnings = _apply_with_scale_warnings(
+            ctx, solution=solution, entity=entity, mutate=mutate, publish=publish
         )
     ctx.emit(
         True,
@@ -564,7 +586,7 @@ def ribbon_set_icon(ctx, entity, button_id, modern_image, image16, image32, publ
             "image32": image32,
             "result": result,
         },
-        warnings=None,
+        warnings=warnings or None,
     )
     _journal(ctx, button_id, result, solution=solution)
 
@@ -647,14 +669,18 @@ def ribbon_hide_button(ctx, entity, target_id, method, yes, publish, solution):
             ribbon_mod.hide_button_hide_action(diff, target_id)
 
     with d365_errors(ctx):
-        result = ribbon_mod.apply_ribbon_change(
-            ctx.backend(), solution=solution, entity=entity, mutate=mutate, publish=publish
+        result, warnings = _apply_with_scale_warnings(
+            ctx,
+            solution=solution,
+            entity=entity,
+            mutate=mutate,
+            publish=publish,
+            extra_warnings=[_OOB_REUSE_WARNING],
         )
-    warnings = [_OOB_REUSE_WARNING]
     ctx.emit(
         True,
         data={"hidden": target_id, "method": method, "command": command_id, "result": result},
-        warnings=warnings,
+        warnings=warnings or None,
     )
     _journal(ctx, target_id, result, solution=solution)
 
@@ -731,8 +757,13 @@ def ribbon_set_rules(
     solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
-        result = ribbon_mod.apply_ribbon_change(
-            ctx.backend(), solution=solution, entity=entity, mutate=mutate, publish=publish
+        result, warnings = _apply_with_scale_warnings(
+            ctx,
+            solution=solution,
+            entity=entity,
+            mutate=mutate,
+            publish=publish,
+            extra_warnings=warnings,
         )
     ctx.emit(
         True,
@@ -807,8 +838,13 @@ def ribbon_add_custom_rule(
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         ribbon_mod.resolve_webresource_id(ctx.backend(), webresource)
-        result = ribbon_mod.apply_ribbon_change(
-            ctx.backend(), solution=solution, entity=entity, mutate=mutate, publish=publish
+        result, warnings = _apply_with_scale_warnings(
+            ctx,
+            solution=solution,
+            entity=entity,
+            mutate=mutate,
+            publish=publish,
+            extra_warnings=warnings,
         )
     ctx.emit(
         True,
@@ -855,12 +891,12 @@ def ribbon_apply(ctx, entity, from_file, publish, solution):
         def mutate(diff):
             ribbon_mod.replace_ribbon_diff(diff, replacement)
 
-        result = ribbon_mod.apply_ribbon_change(
-            ctx.backend(), solution=solution, entity=entity, mutate=mutate, publish=publish
+        result, warnings = _apply_with_scale_warnings(
+            ctx, solution=solution, entity=entity, mutate=mutate, publish=publish
         )
     ctx.emit(
         True,
         data={"entity": entity, "solution": solution, "from": from_file, "result": result},
-        warnings=None,
+        warnings=warnings or None,
     )
     _journal(ctx, entity, result, solution=solution)
