@@ -2508,3 +2508,30 @@ def test_ribbon_apply_live_surfaces_size_warning(monkeypatch, tmp_path):
     assert res.exit_code == 0, res.output
     data = json.loads(res.output)
     assert "solution too big" in (data.get("meta", {}).get("warnings") or [])
+
+
+def test_ribbon_remove_backend_error_stays_in_error_envelope(monkeypatch):
+    # The size check is the first backend touch on a live write; a profile/creds
+    # failure there must ride the d365_errors envelope, not a raw traceback.
+    def raise_backend(self):
+        raise D365Error("Profile 'missing' not found.")
+
+    monkeypatch.setattr("crm.cli.CLIContext.backend", raise_backend)
+    res = CliRunner().invoke(
+        cli,
+        [
+            "--json",
+            "ribbon",
+            "remove",
+            "cwx_ticket",
+            "--button-id",
+            "b1",
+            "--solution",
+            "MySol",
+            "--yes",
+        ],
+    )
+    assert res.exit_code == 1, res.output
+    data = json.loads(res.output)
+    assert data["ok"] is False
+    assert "Profile 'missing' not found." in data["error"]
