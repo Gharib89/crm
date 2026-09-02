@@ -344,6 +344,105 @@ def _reconcile_app(
     return "updated", entry
 
 
+# ── prune eligibility (a per-kind adapter slot) ──────────────────────────────
+def _declared_top(
+    read: Callable[[dict[str, Any]], set[str]],
+) -> Callable[[dict[str, Any]], dict[str | None, set[str]]]:
+    """Wrap a top-level kind's declared-name reader into the ``{None: names}`` shape."""
+
+    def declared(spec: dict[str, Any]) -> dict[str | None, set[str]]:
+        return {None: read(spec)}
+
+    return declared
+
+
+def _declared_nested(
+    collection: str, name_key: str
+) -> Callable[[dict[str, Any]], dict[str | None, set[str]]]:
+    """Declared names of an entity-nested collection, keyed by owning entity.
+
+    An entity whose block omits ``collection`` is absent from the mapping: presence
+    of the key is what makes the spec authoritative over that collection, so an
+    entity with no ``attributes:`` / ``views:`` key never has its children pruned.
+    """
+
+    def declared(spec: dict[str, Any]) -> dict[str | None, set[str]]:
+        return {
+            ent["schema_name"].lower(): {
+                item[name_key].lower() for item in _as_list(ent.get(collection))
+            }
+            for ent in _as_list(spec.get("entities"))
+            if isinstance(ent.get(collection), list)
+        }
+
+    return declared
+
+
+def _live_prunable_attributes(backend: D365Backend, entity_logical: str) -> list[tuple[str, str]]:
+    """(MetadataId, logical name) of one entity's CUSTOM columns.
+
+    Only custom columns are prunable — a stock column that happens to be a solution
+    member is never an extra the spec should delete.
+    """
+    out: list[tuple[str, str]] = []
+    for attr in meta_mod.list_attributes(backend, entity_logical):
+        lname = attr.get("LogicalName")
+        if attr.get("IsCustomAttribute") and isinstance(lname, str):
+            out.append((str(attr.get("MetadataId") or "").lower(), lname))
+    return out
+
+
+def _live_prunable_views(backend: D365Backend, entity_logical: str) -> list[tuple[str, str]]:
+    """(savedqueryid, name) of one entity's live views."""
+    out: list[tuple[str, str]] = []
+    for view in views_mod.read_entity_views(backend, entity_logical):
+        name = view.get("name")
+        if isinstance(name, str) and name:
+            out.append((str(view.get("savedqueryid") or "").lower(), name))
+    return out
+
+
+@dataclass(frozen=True)
+class PruneSpec:
+    """One kind's prune eligibility, declared on its :class:`Adapter`.
+
+    A kind is prune-eligible iff its adapter carries one of these; `_prune_candidates`
+    iterates the registry and reads these slots, so there is no separate per-kind
+    prune table to keep in step with the registry.
+
+    A kind is *entity-scoped* iff it declares ``scoped_live`` — its names are unique
+    only within an owning entity, so it is diffed per declared entity rather than
+    globally; every other kind is *top-level* and resolved straight from a solution
+    objectid.
+
+    Fields:
+      component_type  the solution-component type whose members this kind owns.
+      declared        ``f(spec)`` → owning-entity schema name (lower-cased) → the set
+                      of lower-cased names the spec declares. A top-level kind returns
+                      ``{None: names}``; an entity-scoped kind returns one key per
+                      entity whose block declares the collection.
+      data_bearing    deleting a member destroys row data, so it needs the extra
+                      ``--allow-data-loss`` force.
+      ref_is_name     the candidate's ``ref`` (what the per-kind deleter takes) is the
+                      component's name rather than its id. A name-keyed ref of an
+                      entity-scoped kind is unique only within its owner, so such a
+                      candidate also carries the owning ``entity``.
+      ref_path        top-level only: record-path template keyed by objectid, used to
+                      resolve an in-solution id to its name.
+      name_attr       top-level only: the name column on that record.
+      scoped_live     entity-scoped only: ``f(backend, entity_logical)`` → the
+                      ``(id, name)`` pairs of that entity's live prunable members.
+    """
+
+    component_type: int
+    declared: Callable[[dict[str, Any]], dict[str | None, set[str]]]
+    data_bearing: bool = False
+    ref_is_name: bool = False
+    ref_path: str = ""
+    name_attr: str = ""
+    scoped_live: Callable[[D365Backend, str], list[tuple[str, str]]] | None = None
+
+
 # ── component-kind adapters ──────────────────────────────────────────────────
 @dataclass(frozen=True)
 class ReconcileCtx:
@@ -406,6 +505,8 @@ class Adapter:
                  reported under ``block_label``).
       extra_validate   optional cross-field block rule ``validate`` runs last.
       find_live / reconcile   the probe/diff callables (see the interface above).
+      prune      the kind's :class:`PruneSpec`, or ``None`` when the kind is not
+                 prune-eligible — declaring one IS the eligibility.
     """
 
     map: dict[str, str]
@@ -423,6 +524,7 @@ class Adapter:
     reconcile: (
         Callable[[D365Backend, dict[str, Any], Any, ReconcileCtx, Entry], _Verdict] | None
     ) = None
+    prune: PruneSpec | None = None
 
     @property
     def transform_targets(self) -> frozenset[str]:
@@ -1681,6 +1783,13 @@ REGISTRY: dict[str, Adapter] = {
         extra_validate=_validate_attribute_block,
         find_live=_find_live_attribute,
         reconcile=_reconcile_attribute,
+        prune=PruneSpec(
+            component_type=2,
+            declared=_declared_nested("attributes", "schema_name"),
+            data_bearing=True,
+            ref_is_name=True,
+            scoped_live=_live_prunable_attributes,
+        ),
     ),
     "relationship": Adapter(
         map={
@@ -1762,6 +1871,17 @@ REGISTRY: dict[str, Adapter] = {
         extra_validate=_validate_entity_block,
         find_live=_find_live_entity,
         reconcile=_reconcile_entity,
+        prune=PruneSpec(
+            component_type=1,
+            declared=_declared_top(
+                lambda s: {e["schema_name"].lower() for e in _as_list(s.get("entities"))}
+            ),
+            data_bearing=True,
+            # delete_entity takes the logical name, which IS the resolved name.
+            ref_is_name=True,
+            ref_path="EntityDefinitions({id})",
+            name_attr="LogicalName",
+        ),
     ),
     "view": Adapter(
         map={
@@ -1783,6 +1903,11 @@ REGISTRY: dict[str, Adapter] = {
         extra_validate=_validate_view_block,
         find_live=_find_live_view,
         reconcile=_reconcile_view,
+        prune=PruneSpec(
+            component_type=26,
+            declared=_declared_nested("views", "name"),
+            scoped_live=_live_prunable_views,
+        ),
     ),
     "optionset": Adapter(
         map={
@@ -1820,6 +1945,14 @@ REGISTRY: dict[str, Adapter] = {
         extra_validate=_validate_webresource_block,
         find_live=_find_live_webresource,
         reconcile=_reconcile_webresource,
+        prune=PruneSpec(
+            component_type=61,
+            declared=_declared_top(
+                lambda s: {w["name"].lower() for w in _as_list(s.get("webresources"))}
+            ),
+            ref_path="webresourceset({id})",
+            name_attr="name",
+        ),
     ),
     "security-role": Adapter(
         map={
@@ -1834,6 +1967,14 @@ REGISTRY: dict[str, Adapter] = {
         extra_validate=_validate_security_role_block,
         find_live=_find_live_security_role,
         reconcile=_reconcile_security_role,
+        prune=PruneSpec(
+            component_type=20,
+            declared=_declared_top(
+                lambda s: {r["name"].lower() for r in _as_list(s.get("security_roles"))}
+            ),
+            ref_path="roles({id})",
+            name_attr="name",
+        ),
     ),
     "plugin-assembly": Adapter(
         map={
@@ -1894,6 +2035,18 @@ REGISTRY: dict[str, Adapter] = {
         extra_validate=_validate_plugin_step_block,
         find_live=_find_live_plugin_step,
         reconcile=_reconcile_plugin_step,
+        prune=PruneSpec(
+            component_type=92,
+            declared=_declared_top(
+                lambda s: {
+                    st["name"].lower()
+                    for p in _as_list(s.get("plugins"))
+                    for st in _as_list(p.get("steps"))
+                }
+            ),
+            ref_path="sdkmessageprocessingsteps({id})",
+            name_attr="name",
+        ),
     ),
 }
 
@@ -2002,7 +2155,8 @@ def _expanded(row: dict[str, Any], nav: str, field: str) -> Any:
 # ── Prune (#553): solution-bounded detection + gated deletion ────────────────
 #
 # A prune-candidate is a component that is a MEMBER OF THE TARGET SOLUTION but is
-# not declared in the spec — limited to the six prune-eligible kinds below.
+# not declared in the spec — limited to the kinds whose adapter declares a
+# `PruneSpec` (entity, attribute, view, security role, web resource, plug-in step).
 # Solution membership bounds the blast radius: prune can never reach a component
 # outside the solution apply manages. Every other component type a solution can
 # hold (option sets, relationships, plug-in types/assemblies, forms, model-driven
@@ -2010,28 +2164,13 @@ def _expanded(row: dict[str, Any], nav: str, field: str) -> Any:
 # component, not an independently owned one, so neither is prune-eligible (ADR
 # 0024). Detection runs only under --prune or --dry-run (see apply_spec).
 
-# Top-level kinds resolved straight from a solution objectid:
-# componenttype -> (record-path template keyed by objectid, name column, kind).
-_PRUNE_TOPLEVEL: dict[int, tuple[str, str, str]] = {
-    1: ("EntityDefinitions({id})", "LogicalName", "entity"),
-    20: ("roles({id})", "name", "security-role"),
-    61: ("webresourceset({id})", "name", "webresource"),
-    92: ("sdkmessageprocessingsteps({id})", "name", "plugin-step"),
-}
-# Entity-scoped kinds — diffed per declared entity, not globally, because their
-# names are unique only within an owning entity.
-_PRUNE_ATTRIBUTE_TYPE = 2
-_PRUNE_VIEW_TYPE = 26
-# Deleting these destroys row data, so they need an extra --allow-data-loss force.
-_DATA_BEARING_PRUNE = {"entity", "attribute"}
-
 
 def _prune_candidates(
     backend: D365Backend,
     spec: dict[str, Any],
     solution_name: str,
 ) -> list[dict[str, Any]]:
-    """Solution members absent from the spec (the six prune-eligible kinds).
+    """Solution members absent from the spec (every kind that declares a `PruneSpec`).
 
     Returns internal candidate dicts ``{kind, name, ref, entity}`` where ``ref``
     is the id/logical name the per-kind deleter needs and ``entity`` is the owning
@@ -2044,34 +2183,33 @@ def _prune_candidates(
         if isinstance(ct, int) and isinstance(oid, str):
             by_type.setdefault(ct, set()).add(oid.lower())
 
+    # Prune-eligible kinds in solution-component-type order, so the batched name
+    # reads below are issued in an order that does not depend on registry layout.
+    prunable = sorted(
+        ((kind, adapter.prune) for kind, adapter in REGISTRY.items() if adapter.prune is not None),
+        key=lambda kp: kp[1].component_type,
+    )
+    # Names are matched case-INSENSITIVELY: the Web API's `name eq` is
+    # case-insensitive, so the create/reconcile phase would already have matched a
+    # differently-cased declared component — prune must use the same loose match or
+    # it would treat a *declared* component as an extra and delete it.
+    declared = {kind: ps.declared(spec) for kind, ps in prunable}
+
     out: list[dict[str, Any]] = []
 
-    # Top-level kinds: resolve each in-solution objectid to its name; keep the
-    # ones the spec does not declare. Names are matched case-INSENSITIVELY: the
-    # Web API's `name eq` is case-insensitive, so the create/reconcile phase would
-    # already have matched a differently-cased declared component — prune must use
-    # the same loose match or it would treat a *declared* component as an extra and
-    # delete it.
-    declared_top: dict[str, set[str]] = {
-        "entity": {e["schema_name"].lower() for e in _as_list(spec.get("entities"))},
-        "security-role": {r["name"].lower() for r in _as_list(spec.get("security_roles"))},
-        "webresource": {w["name"].lower() for w in _as_list(spec.get("webresources"))},
-        "plugin-step": {
-            s["name"].lower()
-            for p in _as_list(spec.get("plugins"))
-            for s in _as_list(p.get("steps"))
-        },
-    }
-    # Resolve every in-solution objectid's name in one $batch instead of one GET
-    # per candidate (issue #703). `top_specs` keeps (kind, name_col, oid) in the
+    # Top-level kinds: resolve each in-solution objectid to its name; keep the ones
+    # the spec does not declare. Resolve every name in one $batch instead of one GET
+    # per candidate (issue #703). `top_specs` keeps (kind, spec, oid) in the
     # deterministic order the reads are issued so each result maps back to its
     # candidate. $batch is short-circuited under --dry-run and refused on a
     # read-only profile, so in both cases the reads run directly (pure GETs).
-    top_specs: list[tuple[str, str, str, str]] = []  # (kind, name_col, oid, url)
-    for ct, (path_tmpl, name_col, kind) in _PRUNE_TOPLEVEL.items():
-        for oid in sorted(by_type.get(ct, set())):
+    top_specs: list[tuple[str, PruneSpec, str, str]] = []  # (kind, prune spec, oid, url)
+    for kind, ps in prunable:
+        if ps.scoped_live is not None:
+            continue
+        for oid in sorted(by_type.get(ps.component_type, set())):
             top_specs.append(
-                (kind, name_col, oid, f"{path_tmpl.format(id=oid)}?$select={name_col}")
+                (kind, ps, oid, f"{ps.ref_path.format(id=oid)}?$select={ps.name_attr}")
             )
 
     top_rows: list[dict[str, Any]] = []
@@ -2090,47 +2228,41 @@ def _prune_candidates(
             body = res.get("body")
             top_rows.append(body if isinstance(body, dict) else {})
 
-    for (kind, name_col, oid, _url), row in zip(top_specs, top_rows, strict=False):
-        name = row.get(name_col)
-        if isinstance(name, str) and name and name.lower() not in declared_top[kind]:
-            # The id-keyed deleters (role/webresource/step) take the objectid;
-            # delete_entity takes the logical name, which IS this name.
-            ref = name if kind == "entity" else oid
-            out.append({"kind": kind, "name": name, "ref": ref, "entity": None})
+    for (kind, ps, oid, _url), row in zip(top_specs, top_rows, strict=False):
+        name = row.get(ps.name_attr)
+        if isinstance(name, str) and name and name.lower() not in declared[kind][None]:
+            out.append(
+                {
+                    "kind": kind,
+                    "name": name,
+                    "ref": name if ps.ref_is_name else oid,
+                    "entity": None,
+                }
+            )
 
-    # Entity-scoped kinds: only entities the spec declares, and only collections
-    # it declares (presence of the key = the spec is authoritative over it, so an
-    # entity with no `attributes:`/`views:` key never has its children pruned).
-    attr_ids = by_type.get(_PRUNE_ATTRIBUTE_TYPE, set())
-    view_ids = by_type.get(_PRUNE_VIEW_TYPE, set())
+    # Entity-scoped kinds: only entities the spec declares, and only collections it
+    # declares — an entity absent from a kind's `declared` mapping omitted that key,
+    # so the spec is not authoritative over it and its children are never pruned.
+    scoped = [(kind, ps, ps.scoped_live) for kind, ps in prunable if ps.scoped_live is not None]
     for ent in _as_list(spec.get("entities")):
         logical = ent["schema_name"].lower()
-        if attr_ids and isinstance(ent.get("attributes"), list):
-            declared = {a["schema_name"].lower() for a in _as_list(ent.get("attributes"))}
-            for attr in meta_mod.list_attributes(backend, logical):
-                mid = str(attr.get("MetadataId") or "").lower()
-                lname = attr.get("LogicalName")
-                if (
-                    attr.get("IsCustomAttribute")
-                    and mid in attr_ids
-                    and isinstance(lname, str)
-                    and lname.lower() not in declared
-                ):
+        for kind, ps, list_live in scoped:
+            member_ids = by_type.get(ps.component_type, set())
+            names = declared[kind].get(logical)
+            if not member_ids or names is None:
+                continue
+            for cid, name in list_live(backend, logical):
+                if cid in member_ids and name.lower() not in names:
                     out.append(
-                        {"kind": "attribute", "name": lname, "ref": lname, "entity": logical}
+                        {
+                            "kind": kind,
+                            "name": name,
+                            "ref": name if ps.ref_is_name else cid,
+                            # A name-keyed ref is unique only within its owner, so
+                            # the deleter needs the owning entity alongside it.
+                            "entity": logical if ps.ref_is_name else None,
+                        }
                     )
-        if view_ids and isinstance(ent.get("views"), list):
-            declared = {v["name"].lower() for v in _as_list(ent.get("views"))}
-            for view in views_mod.read_entity_views(backend, logical):
-                vid = str(view.get("savedqueryid") or "").lower()
-                vname = view.get("name")
-                if (
-                    vid in view_ids
-                    and isinstance(vname, str)
-                    and vname
-                    and vname.lower() not in declared
-                ):
-                    out.append({"kind": "view", "name": vname, "ref": vid, "entity": None})
     return out
 
 
@@ -2149,7 +2281,7 @@ def _prune_delete(backend: D365Backend, cand: dict[str, Any]) -> None:
         backend.delete(f"savedqueries({cand['ref']})")
     elif kind == "security-role":
         backend.delete(f"roles({cand['ref']})")
-    else:  # pragma: no cover - kind comes from the closed _PRUNE_* tables
+    else:  # pragma: no cover - kind comes from a registry adapter's PruneSpec
         raise D365Error(f"prune: unsupported kind {kind!r}")
 
 
@@ -2951,7 +3083,8 @@ def apply_spec(
         suppressed = bool(failed or replace_blocked)
         for cand in _prune_candidates(backend, spec, solution_name):
             kind, name = cand["kind"], cand["name"]
-            data_bearing = kind in _DATA_BEARING_PRUNE
+            kind_prune = REGISTRY[kind].prune
+            data_bearing = kind_prune is not None and kind_prune.data_bearing
             would_delete = prune and (not data_bearing or allow_data_loss)
             if backend.dry_run:
                 entry: Entry = {"kind": kind, "name": name, "deleted": False}
