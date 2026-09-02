@@ -424,9 +424,10 @@ class PruneSpec:
       data_bearing    deleting a member destroys row data, so it needs the extra
                       ``--allow-data-loss`` force.
       ref_is_name     the candidate's ``ref`` (what the per-kind deleter takes) is the
-                      component's name rather than its id. A name-keyed ref of an
-                      entity-scoped kind is unique only within its owner, so such a
-                      candidate also carries the owning ``entity``.
+                      component's name rather than its id. An entity-scoped name is
+                      unique only within its owner, so a scoped candidate with this
+                      flag also carries the owning ``entity``; a top-level name is
+                      already global and carries none.
       ref_path        top-level only: record-path template keyed by objectid, used to
                       resolve an in-solution id to its name.
       name_attr       top-level only: the name column on that record.
@@ -2193,14 +2194,14 @@ def _prune_candidates(
     # case-insensitive, so the create/reconcile phase would already have matched a
     # differently-cased declared component — prune must use the same loose match or
     # it would treat a *declared* component as an extra and delete it.
-    declared = {kind: ps.declared(spec) for kind, ps in prunable}
+    declared_by_kind = {kind: ps.declared(spec) for kind, ps in prunable}
 
     out: list[dict[str, Any]] = []
 
     # Top-level kinds: resolve each in-solution objectid to its name; keep the ones
     # the spec does not declare. Resolve every name in one $batch instead of one GET
-    # per candidate (issue #703). `top_specs` keeps (kind, spec, oid) in the
-    # deterministic order the reads are issued so each result maps back to its
+    # per candidate (issue #703). `top_specs` keeps (kind, prune spec, oid, url) in
+    # the deterministic order the reads are issued so each result maps back to its
     # candidate. $batch is short-circuited under --dry-run and refused on a
     # read-only profile, so in both cases the reads run directly (pure GETs).
     top_specs: list[tuple[str, PruneSpec, str, str]] = []  # (kind, prune spec, oid, url)
@@ -2230,7 +2231,7 @@ def _prune_candidates(
 
     for (kind, ps, oid, _url), row in zip(top_specs, top_rows, strict=False):
         name = row.get(ps.name_attr)
-        if isinstance(name, str) and name and name.lower() not in declared[kind][None]:
+        if isinstance(name, str) and name and name.lower() not in declared_by_kind[kind][None]:
             out.append(
                 {
                     "kind": kind,
@@ -2248,7 +2249,7 @@ def _prune_candidates(
         logical = ent["schema_name"].lower()
         for kind, ps, list_live in scoped:
             member_ids = by_type.get(ps.component_type, set())
-            names = declared[kind].get(logical)
+            names = declared_by_kind[kind].get(logical)
             if not member_ids or names is None:
                 continue
             for cid, name in list_live(backend, logical):

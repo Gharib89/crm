@@ -5223,11 +5223,17 @@ def test_prune_eligibility_is_declared_on_the_adapter():
     assert declared == _PRUNE_ELIGIBLE
 
 
-@pytest.mark.parametrize("kind", sorted(_PRUNE_ELIGIBLE))
+@pytest.mark.parametrize(
+    "kind", sorted(k for k, a in apply_mod.REGISTRY.items() if a.prune is not None)
+)
 def test_prune_spec_shape_matches_its_scope(kind):
     """A top-level kind resolves an in-solution objectid to a name (`ref_path` +
     `name_attr`) and declares under the `None` key; an entity-scoped kind lists live
     members per owning entity and declares under entity keys instead.
+
+    The two shapes are exclusive — a `PruneSpec` carrying both (or neither) would
+    silently issue `…({id})?$select=` or scan nothing, so the scan's two branches
+    are pinned here rather than left to a runtime guard.
     """
     ps = apply_mod.REGISTRY[kind].prune
     assert ps is not None
@@ -5242,6 +5248,7 @@ def test_prune_spec_shape_matches_its_scope(kind):
         assert ps.ref_path and ps.name_attr
         assert keys == {None}
     else:
+        assert not ps.ref_path and not ps.name_attr
         assert keys == {"contoso_project"}
 
 
