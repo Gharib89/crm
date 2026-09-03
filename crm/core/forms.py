@@ -2374,54 +2374,55 @@ def converge_declared_form(
     return formxml, changes
 
 
-def apply_form_spec(
+def resolve_declared_form(
     backend: D365Backend,
     entity: str,
+    block: dict[str, Any],
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    """Resolve the main form a declared ``forms:`` block targets — apply's *resolve*
+    step (ADR 0024), one read.
+
+    Returns ``(form_row, blocked)``:
+
+    * ``(row, [])`` — the target main form (``block['name']``, else the entity's
+      primary main form);
+    * ``(None, [])`` — the entity has no main form yet (a greenfield entity not
+      published this run), which the caller reports as ``planned``;
+    * ``(None, [{kind, name, reason}])`` — ``block['name']`` resolves to no (or an
+      ambiguous) main form. The form-ownership stance is *converge an existing main
+      form*, so that is an identity/ownership divergence: refused with no write
+      (``replace_blocked``), never created from scratch or applied to the wrong form.
+
+    The resolution failure is *returned*, not raised, because it is a per-form
+    verdict the caller still reconciles siblings around — not a run-aborting error.
+    """
+    forms_list = read_entity_forms(backend, entity)
+    if not forms_list:
+        return None, []
+    try:
+        return _select_form(forms_list, block.get("name")), []
+    except D365Error as exc:
+        return None, [{"kind": "form", "name": block.get("name") or entity, "reason": str(exc)}]
+
+
+def commit_declared_form(
+    backend: D365Backend,
+    entity: str,
+    form_row: dict[str, Any],
     block: dict[str, Any],
     *,
     publish: bool,
     solution: str | None,
     dry_run: bool,
 ) -> dict[str, Any]:
-    """Converge one declared ``forms:`` block onto ``entity``'s main form.
+    """Converge a declared ``forms:`` block onto a resolved main form and commit —
+    apply's *converge → commit* steps (ADR 0024).
 
-    The single public entry point that `apply` drives (ADR 0024). Selects the
-    target main form (``block['name']``, else the entity's primary main form),
-    computes the convergence (additive + drift, :func:`converge_declared_form`),
-    and — on a real run with something to change — PATCHes it in one write. Reads
-    are forced-real, so a dry-run still reads live and reports the would-change set
-    without writing.
-
-    Returns ``{form, formid, components, committed, blocked}``. ``blocked`` is
-    non-empty when the block's ``name`` does not resolve to a single existing main
-    form: the form-ownership stance is *converge an existing main form*, so a name
-    that names no (or an ambiguous) main form is an identity/ownership divergence —
-    refused with no write (``replace_blocked``), never created from scratch or
-    applied to the wrong form. ``{unmaterialized: True}`` when the entity has no
-    main form yet (a greenfield entity not published this run), which the caller
-    reports as ``planned``.
+    Computes the convergence (additive + drift, :func:`converge_declared_form`) and,
+    on a real run with something to change, PATCHes it in ONE write. Reads are
+    forced-real, so a dry-run still reads live and reports the would-change set
+    without writing. Returns ``{form, formid, components, committed}``.
     """
-    forms_list = read_entity_forms(backend, entity)
-    if not forms_list:
-        return {
-            "form": block.get("name"),
-            "components": [],
-            "committed": False,
-            "blocked": [],
-            "unmaterialized": True,
-        }
-    try:
-        form_row = _select_form(forms_list, block.get("name"))
-    except D365Error as exc:
-        # Identity/ownership divergence: the spec names a form that is not a single
-        # existing main form. Refuse with no write and let the run continue (the
-        # caller routes this to `replace_blocked`, exit 1, siblings still reconcile).
-        return {
-            "form": block.get("name"),
-            "components": [],
-            "committed": False,
-            "blocked": [{"kind": "form", "name": block.get("name") or entity, "reason": str(exc)}],
-        }
     new_xml, changes = converge_declared_form(backend, entity, form_row, block)
     committed = bool(changes) and not dry_run
     if committed:
@@ -2433,6 +2434,52 @@ def apply_form_spec(
         "formid": form_row.get("formid"),
         "components": changes,
         "committed": committed,
+    }
+
+
+def apply_form_spec(
+    backend: D365Backend,
+    entity: str,
+    block: dict[str, Any],
+    *,
+    publish: bool,
+    solution: str | None,
+    dry_run: bool,
+) -> dict[str, Any]:
+    """Converge one declared ``forms:`` block onto ``entity``'s main form.
+
+    Internal to `apply` (ADR 0024): the one-call resolve → converge → commit
+    composition of :func:`resolve_declared_form` and :func:`commit_declared_form`.
+    The apply engine now drives those two steps separately, as its ``form``
+    adapter's ``find_live`` / ``reconcile`` pair, so nothing outside the tests that
+    pin this composition calls it; it is retained deliberately (#962) and may be
+    dropped once the adapter-seam tests fully cover both steps (#960 stage b).
+
+    Returns ``{form, formid, components, committed, blocked}``. ``blocked`` is
+    non-empty when the block's ``name`` does not resolve to a single existing main
+    form (see :func:`resolve_declared_form`); ``{unmaterialized: True}`` when the
+    entity has no main form yet, which the caller reports as ``planned``.
+    """
+    form_row, blocked = resolve_declared_form(backend, entity, block)
+    if blocked:
+        return {
+            "form": block.get("name"),
+            "components": [],
+            "committed": False,
+            "blocked": blocked,
+        }
+    if form_row is None:
+        return {
+            "form": block.get("name"),
+            "components": [],
+            "committed": False,
+            "blocked": [],
+            "unmaterialized": True,
+        }
+    return {
+        **commit_declared_form(
+            backend, entity, form_row, block, publish=publish, solution=solution, dry_run=dry_run
+        ),
         "blocked": [],
     }
 
