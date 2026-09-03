@@ -5196,6 +5196,62 @@ def test_adapter_targets_are_real_builder_params(kind):
     assert not bogus, f"{kind}: adapter targets non-existent builder kwargs {sorted(bogus)}"
 
 
+# ── prune eligibility is an adapter slot (#961) ───────────────────────────────
+# A `PruneSpec` on the adapter replaced the standalone prune tables, so these pin
+# the facts those tables held: which kinds are prune-eligible, which solution
+# component type holds their members, and which destroy row data when deleted.
+_PRUNE_ELIGIBLE = {
+    # kind: (solution component type, data_bearing)
+    "entity": (1, True),
+    "attribute": (2, True),
+    "security-role": (20, False),
+    "view": (26, False),
+    "webresource": (61, False),
+    "plugin-step": (92, False),
+}
+
+
+def test_prune_eligibility_is_declared_on_the_adapter():
+    """Eligibility IS "the adapter declares a PruneSpec" — no kind-name list. Forms,
+    apps, option sets, relationships and plug-in assemblies declare none (ADR 0024).
+    """
+    declared = {
+        kind: (adapter.prune.component_type, adapter.prune.data_bearing)
+        for kind, adapter in apply_mod.REGISTRY.items()
+        if adapter.prune is not None
+    }
+    assert declared == _PRUNE_ELIGIBLE
+
+
+@pytest.mark.parametrize(
+    "kind", sorted(k for k, a in apply_mod.REGISTRY.items() if a.prune is not None)
+)
+def test_prune_spec_shape_matches_its_scope(kind):
+    """A top-level kind resolves an in-solution objectid to a name (`ref_path` +
+    `name_attr`) and declares under the `None` key; an entity-scoped kind lists live
+    members per owning entity and declares under entity keys instead.
+
+    The two shapes are exclusive — a `PruneSpec` carrying both (or neither) would
+    silently issue `…({id})?$select=` or scan nothing, so the scan's two branches
+    are pinned here rather than left to a runtime guard.
+    """
+    ps = apply_mod.REGISTRY[kind].prune
+    assert ps is not None
+    spec = {
+        "entities": [{"schema_name": "contoso_Project", "attributes": [], "views": []}],
+        "security_roles": [],
+        "webresources": [],
+        "plugins": [],
+    }
+    keys = set(ps.declared(spec))
+    if ps.scoped_live is None:
+        assert ps.ref_path and ps.name_attr
+        assert keys == {None}
+    else:
+        assert not ps.ref_path and not ps.name_attr
+        assert keys == {"contoso_project"}
+
+
 # ── capability: previously-dropped builder kwargs now reach the builder (#596) ─
 # Before the adapter registry these kwargs were unreachable from a spec — they
 # silently fell to the builder default. Each test sets a NON-default value and
