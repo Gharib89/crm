@@ -206,6 +206,11 @@ EXPORTED_KEYS: dict[str, frozenset[str]] = {
     # contract to partition. The block's shape is validated and converged straight
     # off the block (ADR 0024), which this contract deliberately does not model.
     "form": frozenset(),
+    # An app IS projected (`build_app_spec`, with its sitemap nested), but its whole
+    # create path is one deep core call taking the block's nested structures — so,
+    # as for `form`, there is no `map`/`transforms` and an EMPTY adapter surface for
+    # this contract to partition.
+    "app": frozenset(),
 }
 
 # Per covered kind, adapter-surface spec keys deliberately NOT emitted → reason.
@@ -246,6 +251,7 @@ EXPORT_GAPS: dict[str, dict[str, str]] = {
     "webresource": {},
     "security-role": {},
     "form": {},
+    "app": {},
 }
 
 # Whole registry kinds the exporter cannot project from a live org → reason. The

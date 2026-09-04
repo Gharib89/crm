@@ -15,7 +15,7 @@ Shapes verified live against D365 CE on-prem 9.1 (walkthrough §11):
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from crm.core import metadata_constraints as mc
 from crm.core.batch import run_batched
@@ -161,6 +161,16 @@ def _norm_guid(guid: str) -> str:
     reporting spurious drift on a mere case difference.
     """
     return (normalize_guid(guid) or guid.strip()).lower()
+
+
+def _as_blocks(value: Any) -> list[dict[str, Any]]:
+    """Coerce a nested spec sub-collection to a list of dicts (empty when absent).
+
+    The sitemap block reaching :func:`sitemap_tuples` has already passed `apply`'s
+    up-front validation, so this only narrows the parsed-YAML `Any` for the type
+    checker rather than re-deciding shape.
+    """
+    return cast("list[dict[str, Any]]", value) if isinstance(value, list) else []
 
 
 # The component kinds an app's spec `components:` block may declare — the record-
@@ -705,19 +715,74 @@ def reconcile_app(
     suppressed — so a dry run yields the full drift classification with no write.
 
     Returns ``{appmoduleid, blocked?, component_changes?, sitemap_change?}``, or
-    ``{unreadable: True}`` when the app cannot be read back. The read goes through
+    ``{unreadable: True}`` when the app cannot be read back. With nothing to read,
+    there is nothing to converge, so the caller reports it ``skipped``.
+
+    Internal to `apply` (ADR 0024): the one-call resolve → converge composition of
+    :func:`resolve_app` and :func:`converge_app`. The apply engine drives those two
+    steps separately, as its ``app`` adapter's ``find_live`` / ``reconcile`` pair,
+    so nothing outside the tests that pin this composition calls it; it is retained
+    deliberately (#963) and may be dropped once the adapter-seam tests fully cover
+    both steps (#960 stage b).
+    """
+    row = resolve_app(backend, unique_name)
+    if row is None:
+        return {"unreadable": True}
+    return converge_app(
+        backend,
+        row=row,
+        unique_name=unique_name,
+        components=components,
+        sitemap_xml=sitemap_xml,
+        solution=solution,
+    )
+
+
+def resolve_app(backend: D365Backend, unique_name: str) -> dict[str, Any] | None:
+    """Resolve the live app row a declared ``apps:`` block converges against.
+
+    Apply's *resolve* step (ADR 0024), one read: the row when the app exists,
+    ``None`` when it genuinely does not. The read goes through
     ``_resolve_appmodule``, which reads the **unpublished** view
     (``RetrieveUnpublishedMultiple``) so a freshly Web-API-created — and therefore
-    still unpublished — app resolves regardless of publish state (#809);
-    ``unreadable`` now means the app genuinely does not exist. With nothing to read,
-    there is nothing to converge, so the caller reports it ``skipped``.
+    still unpublished — app resolves regardless of publish state (#809). A
+    resolution miss is *returned*, not raised: an app the create step reported
+    present but that no longer reads back is a ``skipped`` verdict the caller owns,
+    not a run-aborting error.
     """
     try:
-        row = _resolve_appmodule(backend, unique_name)
+        return _resolve_appmodule(backend, unique_name)
     except D365Error as exc:
         if exc.code == "AppNotFound":
-            return {"unreadable": True}
+            return None
         raise
+
+
+def converge_app(
+    backend: D365Backend,
+    *,
+    row: dict[str, Any],
+    unique_name: str,
+    components: list[tuple[str, str]],
+    sitemap_xml: str | None,
+    solution: str | None = None,
+) -> dict[str, Any]:
+    """Converge an already-resolved app's component set + sitemap — apply's
+    *converge → commit* step (ADR 0024).
+
+    ``row`` is :func:`resolve_app`'s result. Converges the two updatable surfaces:
+    the **component set** (add declared-but-absent, remove present-but-undeclared,
+    over the reconciled component types) and the **sitemap** (whole-document
+    replacement when the declared XML differs). A **managed** app is refused with no
+    write (``blocked``) — its components and sitemap are owned by its parent
+    solution, so `apply` never mutates it.
+
+    Honors ``backend.dry_run``: the reads run (the reads-execute rule) and the diff
+    is computed, but AddAppComponents / RemoveAppComponents / the sitemap write are
+    suppressed — so a dry run yields the full drift classification with no write.
+
+    Returns ``{appmoduleid, blocked?, component_changes?, sitemap_change?}``.
+    """
     out: dict[str, Any] = {"appmoduleid": str(row.get("appmoduleid") or "")}
     if row.get("ismanaged"):
         out["blocked"] = [
@@ -783,6 +848,114 @@ def reconcile_app(
             )
             out["sitemap_change"] = "converged"
     return out
+
+
+def sitemap_tuples(
+    sitemap: dict[str, Any],
+) -> tuple[
+    list[tuple[str, str]], list[tuple[str, str, str]], list[tuple[str, str, str, str | None]]
+]:
+    """Flatten a nested ``sitemap:`` block into :func:`build_sitemapxml`'s inputs.
+
+    Returns ``(areas, groups, subareas)`` where ``areas=[(id, title)]``,
+    ``groups=[(area_id, id, title)]`` and ``subareas=[(area_id, group_id, entity,
+    title_or_None)]`` — the exact shapes the builder consumes. It lives here, beside
+    the builder it feeds, rather than in `apply`: a sitemap is not a spec kind of its
+    own (ADR 0024 whole-document replacement), so its projection belongs to the app
+    module both the create and the reconcile path drive.
+    """
+    areas: list[tuple[str, str]] = []
+    groups: list[tuple[str, str, str]] = []
+    subareas: list[tuple[str, str, str, str | None]] = []
+    for area in _as_blocks(sitemap.get("areas")):
+        aid = str(area["id"])
+        areas.append((aid, str(area.get("title") or "")))
+        for group in _as_blocks(area.get("groups")):
+            gid = str(group["id"])
+            groups.append((aid, gid, str(group.get("title") or "")))
+            for sub in _as_blocks(group.get("subareas")):
+                title = sub.get("title")
+                subareas.append((aid, gid, str(sub["entity"]), str(title) if title else None))
+    return areas, groups, subareas
+
+
+def create_app_with_components(
+    backend: D365Backend,
+    *,
+    name: str,
+    unique_name: str,
+    description: str | None = None,
+    components: list[tuple[str, str]],
+    sitemap: dict[str, Any] | None = None,
+    solution: str | None = None,
+    if_exists: str = "error",
+    publish: bool = False,
+) -> dict[str, Any]:
+    """Create a model-driven app and bind everything its block declares — the whole
+    create path as ONE call (ADR 0024, #795/#809).
+
+    Creates the app (:func:`create_app`), then, only when this call actually created
+    it, binds the declared ``components``, builds the declared ``sitemap`` and binds
+    that sitemap as a component too — the last step being what makes the app pass
+    ValidateApp, since the ``sitemapnameunique`` link alone does not (#809).
+
+    Returns :func:`create_app`'s result, plus ``sitemapid`` when a sitemap was built.
+    A pre-existing app (``skipped`` / ``would_skip``) and a dry-run would-create
+    return that result untouched: there is nothing this run created to bind, and a
+    caller reconciles the former in place instead.
+
+    Raises ``D365Error`` when the created app's id cannot be resolved (an
+    unparseable OData-EntityId, or a publish-before-read miss — ``create_app``
+    records the reason in ``app_lookup_error``) while components or a sitemap are
+    declared. Reporting a silently incomplete app as created would leave its tables
+    unreachable, defeating the point of the block, so the caller's error path fails
+    the run instead.
+    """
+    result = create_app(
+        backend,
+        name=name,
+        unique_name=unique_name,
+        description=description,
+        solution=solution,
+        if_exists=if_exists,
+        publish=publish,
+    )
+    # Nothing was created: a pre-existing app (real skip, or the dry-run
+    # would-skip probe) or a dry-run would-create. Either way there is no new app
+    # to bind to — the caller reconciles or reports it.
+    if result.get("skipped") or result.get("would_skip") or result.get("_dry_run"):
+        return result
+    app_id = result.get("appmoduleid")
+    if not app_id and (components or sitemap):
+        raise D365Error(
+            result.get("app_lookup_error")
+            or "app created but its appmoduleid could not be "
+            "resolved; components/sitemap not bound."
+        )
+    if not app_id:
+        return result
+    if components:
+        add_app_components(backend, app_id=str(app_id), components=components)
+    if sitemap:
+        areas, groups, subareas = sitemap_tuples(sitemap)
+        sm_result = build_sitemap(
+            backend,
+            sitemap_name=unique_name,
+            areas=areas,
+            groups=groups,
+            subareas=subareas,
+            unique_name=unique_name,
+            solution=solution,
+            publish=False,
+        )
+        if sm_result.get("sitemapid"):
+            result["sitemapid"] = sm_result["sitemapid"]
+            add_app_components(
+                backend,
+                app_id=str(app_id),
+                components=[("sitemap", str(sm_result["sitemapid"]))],
+            )
+    return result
 
 
 def build_sitemapxml(
