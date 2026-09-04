@@ -936,6 +936,13 @@ def create_app_with_components(
     completed: list[str] = ["create-app"]
 
     def _attach_partial(exc: D365Error, stage: str) -> D365Error:
+        """Stamp how far the chain got onto *exc*, and hand it back.
+
+        Callers that already hold the live exception stamp it and re-`raise` bare,
+        so the original traceback survives and the exception is never made its own
+        ``__cause__``; the id-resolution case has no live exception to catch, so it
+        raises the stamped one this returns.
+        """
         exc.completed_steps = list(completed)
         exc.stage = stage
         return exc
@@ -956,7 +963,8 @@ def create_app_with_components(
         try:
             add_app_components(backend, app_id=str(app_id), components=components)
         except D365Error as exc:
-            raise _attach_partial(exc, "add-components") from exc
+            _attach_partial(exc, "add-components")
+            raise
         completed.append("add-components")
     if sitemap:
         areas, groups, subareas = sitemap_tuples(sitemap)
@@ -972,7 +980,8 @@ def create_app_with_components(
                 publish=False,
             )
         except D365Error as exc:
-            raise _attach_partial(exc, "build-sitemap") from exc
+            _attach_partial(exc, "build-sitemap")
+            raise
         completed.append("build-sitemap")
         if sm_result.get("sitemapid"):
             result["sitemapid"] = sm_result["sitemapid"]
@@ -983,7 +992,8 @@ def create_app_with_components(
                     components=[("sitemap", str(sm_result["sitemapid"]))],
                 )
             except D365Error as exc:
-                raise _attach_partial(exc, "bind-sitemap") from exc
+                _attach_partial(exc, "bind-sitemap")
+                raise
             completed.append("bind-sitemap")
     return result
 

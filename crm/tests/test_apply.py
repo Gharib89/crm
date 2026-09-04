@@ -7662,6 +7662,9 @@ def test_create_app_with_components_reports_the_stage_it_failed_at(backend):
             )
     assert exc.value.stage == "add-components"
     assert exc.value.completed_steps == ["create-app"]
+    # Stamped and re-raised bare, so the error is never its own `__cause__` — a
+    # self-referential chain renders as a confusing traceback.
+    assert exc.value.__cause__ is not exc.value
 
 
 def test_create_app_with_components_stages_an_unresolvable_app_id(backend):
