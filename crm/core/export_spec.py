@@ -201,6 +201,11 @@ EXPORTED_KEYS: dict[str, frozenset[str]] = {
     "optionset": frozenset({"name", "display_name", "description", "options"}),
     "webresource": frozenset({"name", "display_name"}),
     "security-role": frozenset({"name", "business_unit"}),
+    # A form IS projected (`project_entity_forms`), but its adapter is reconcile-only
+    # — no builder, so no `map`/`transforms` and an EMPTY adapter surface for this
+    # contract to partition. The block's shape is validated and converged straight
+    # off the block (ADR 0024), which this contract deliberately does not model.
+    "form": frozenset(),
 }
 
 # Per covered kind, adapter-surface spec keys deliberately NOT emitted → reason.
@@ -240,6 +245,7 @@ EXPORT_GAPS: dict[str, dict[str, str]] = {
     "optionset": {},
     "webresource": {},
     "security-role": {},
+    "form": {},
 }
 
 # Whole registry kinds the exporter cannot project from a live org → reason. The

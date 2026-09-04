@@ -2521,8 +2521,10 @@ class TestBehavioralRoundtrip:
         apply.validate_spec({"solution": {"unique_name": "testsln"}, "security_roles": [spec]})
 
     def test_every_covered_kind_has_a_roundtrip_test(self):
-        # Guard: if a 10th kind joins EXPORTED_KEYS, this list must grow a test for
-        # it — otherwise the new kind's declared keys go behaviorally unproven.
+        # Guard: if a kind joins EXPORTED_KEYS with keys to prove, this list must
+        # grow a test for it — otherwise its declared keys go behaviorally unproven.
+        # A kind declaring NO keys (a reconcile-only adapter, whose surface for the
+        # #787 contract is empty) has nothing to emit, hence nothing to prove.
         covered_here = {
             "attribute",
             "optionset",
@@ -2532,10 +2534,11 @@ class TestBehavioralRoundtrip:
             "webresource",
             "security-role",
         }
-        assert set(EXPORTED_KEYS) == covered_here, (
+        with_keys = {kind for kind, keys in EXPORTED_KEYS.items() if keys}
+        assert with_keys == covered_here, (
             "EXPORTED_KEYS kinds without a behavioral roundtrip test: "
-            f"{sorted(set(EXPORTED_KEYS) - covered_here)}; stale kinds listed here "
-            f"but no longer in EXPORTED_KEYS: {sorted(covered_here - set(EXPORTED_KEYS))}"
+            f"{sorted(with_keys - covered_here)}; stale kinds listed here "
+            f"but no longer in EXPORTED_KEYS: {sorted(covered_here - with_keys)}"
         )
 
 

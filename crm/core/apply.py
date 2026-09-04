@@ -158,8 +158,11 @@ def _validate_columns(value: Any, label: str) -> None:
 def _validate_form_block(block: Any, elabel: str) -> None:
     """Validate one entity-nested ``forms:`` block up front (ADR 0024).
 
-    A malformed declaration fails here — before any HTTP call — with a usage
-    error, mirroring the up-front authority every other spec block has.
+    The ``form`` adapter's ``extra_validate``: a malformed declaration fails here —
+    before any HTTP call — with a usage error, mirroring the up-front authority
+    every other spec block has. ``elabel`` is the entity-qualified label
+    ``validate_spec`` passes through ``Adapter.validate``, so every message stays
+    scoped to its owning entity (a form name is unique only within one).
     """
     if not isinstance(block, dict):
         raise D365Error(f"{elabel}: each forms entry must be a mapping.")
@@ -296,7 +299,7 @@ def _reconcile_app(
     components: list[tuple[str, str]],
     sitemap_xml: str | None,
     solution: str | None,
-) -> _Verdict:
+) -> _Verdicts:
     """Converge an existing app's component set + sitemap; classify the verdict.
 
     Delegates the read/diff/converge to ``appmodule.reconcile_app`` (ADR 0024, #796)
@@ -316,16 +319,16 @@ def _reconcile_app(
     if res.get("unreadable"):
         # The app exists (create reported it present) but is not GET-retrievable on
         # this org — nothing to converge, so skip rather than fail (see reconcile_app).
-        return "skipped", entry
+        return [("skipped", entry)]
     if res.get("appmoduleid"):
         entry["appmoduleid"] = res["appmoduleid"]
     blocked = cast("list[dict[str, Any]]", res.get("blocked") or [])
     if blocked:
-        return "replace_blocked", {**entry, "reason": blocked[0]["reason"]}
+        return [("replace_blocked", {**entry, "reason": blocked[0]["reason"]})]
     changes = cast("list[dict[str, Any]]", res.get("component_changes") or [])
     sitemap_change = res.get("sitemap_change")
     if not changes and not sitemap_change:
-        return "skipped", entry
+        return [("skipped", entry)]
     if changes:
         entry["components"] = changes
     if sitemap_change:
@@ -341,7 +344,7 @@ def _reconcile_app(
         if sitemap_change:
             fields.append(f"sitemap:{sitemap_change}")
         entry["diff"] = {"fields": sorted(fields)}
-    return "updated", entry
+    return [("updated", entry)]
 
 
 # ── prune eligibility (a per-kind adapter slot) ──────────────────────────────
@@ -472,17 +475,21 @@ class Adapter:
     exactly this object, so the set of spec keys a kind accepts *is* the adapter's
     ``map`` / ``transforms``. The four-slot interface a kind implements:
 
-      * ``validate(block)`` — the complete up-front authority for one block:
-        required keys (``required_block_keys``), constrained values routed through
-        the same :mod:`metadata_constraints` primitives the builder itself calls,
-        and any cross-field rule via ``extra_validate``. A malformed block fails in
-        the up-front pass instead of mid-apply (closing validate/apply drift).
+      * ``validate(block[, label])`` — the complete up-front authority for one
+        block: required keys (``required_block_keys``), constrained values routed
+        through the same :mod:`metadata_constraints` primitives the builder itself
+        calls, and any cross-field rule via ``extra_validate``. A malformed block
+        fails in the up-front pass instead of mid-apply (closing validate/apply
+        drift). ``label`` overrides the kind's static ``block_label`` in the error
+        text — a nested kind passes the entity-qualified label its errors carried
+        before the block reached an adapter.
       * ``to_kwargs(block)`` — the single generic projection onto the builder's
         keyword arguments.
       * ``find_live(backend, block, ctx)`` — read the live component this block
         reconciles against (``None`` when there is nothing to reconcile).
       * ``reconcile(backend, block, live, ctx, entry)`` — diff the block against
-        ``live`` into an ADR 0014 verdict (bucket + payload).
+        ``live`` into a LIST of ADR 0014 verdicts (bucket + payload), one per
+        component the block covers.
 
     Adapters are *data*: the contract test reads the same ``map`` / ``transforms``
     / ``required_block_keys`` the runtime uses, so a builder kwarg (or a required
@@ -503,8 +510,9 @@ class Adapter:
                  spec keys whose value ``validate`` checks through ``mc.*``.
       required_block_keys / block_label
                  keys ``validate`` requires present on the block (via ``_require``,
-                 reported under ``block_label``).
-      extra_validate   optional cross-field block rule ``validate`` runs last.
+                 reported under ``block_label`` unless the caller passes a label).
+      extra_validate   optional cross-field block rule ``validate`` runs last,
+                 called with the block and the resolved error label.
       find_live / reconcile   the probe/diff callables (see the interface above).
       prune      the kind's :class:`PruneSpec`, or ``None`` when the kind is not
                  prune-eligible — declaring one IS the eligibility.
@@ -520,10 +528,10 @@ class Adapter:
     menu_keys: tuple[str, ...] = ()
     required_block_keys: tuple[str, ...] = ()
     block_label: str = ""
-    extra_validate: Callable[[dict[str, Any]], None] | None = None
+    extra_validate: Callable[[dict[str, Any], str], None] | None = None
     find_live: Callable[[D365Backend, dict[str, Any], ReconcileCtx], Any] | None = None
     reconcile: (
-        Callable[[D365Backend, dict[str, Any], Any, ReconcileCtx, Entry], _Verdict] | None
+        Callable[[D365Backend, dict[str, Any], Any, ReconcileCtx, Entry], _Verdicts] | None
     ) = None
     prune: PruneSpec | None = None
 
@@ -548,16 +556,22 @@ class Adapter:
             out[param] = fn(block)
         return out
 
-    def validate(self, block: dict[str, Any]) -> None:
+    def validate(self, block: dict[str, Any], label: str | None = None) -> None:
         """The complete up-front authority for one block.
 
         Required keys first (matching the old ``_require`` call order), then the
         constrained values routed through the builders' own ``mc.*`` rules, then
         the kind's cross-field rule. A malformed block fails here rather than
         mid-apply.
+
+        ``label`` names the block in the error text, defaulting to the kind's static
+        ``block_label``. An entity-nested kind passes the entity-qualified label
+        (``"entity 'X' form …"``) so its messages are unchanged by the block moving
+        behind the adapter.
         """
+        label = label or self.block_label
         if self.required_block_keys:
-            _require(block, self.required_block_keys, self.block_label)
+            _require(block, self.required_block_keys, label)
         for key in self.schema_name_keys:
             if key in block:
                 mc.validate_schema_name(block[key], subject=key)
@@ -571,7 +585,7 @@ class Adapter:
             if key in block:
                 mc.validate_menu_behavior(block[key], subject=key)
         if self.extra_validate is not None:
-            self.extra_validate(block)
+            self.extra_validate(block, label)
 
 
 def validate_spec(spec: Any) -> None:
@@ -617,7 +631,9 @@ def validate_spec(spec: Any) -> None:
         for view in _as_list(ent.get("views")):
             REGISTRY["view"].validate(view)
         for form in _as_list(ent.get("forms")):
-            _validate_form_block(form, elabel)
+            # A form's identity is unique only within its owning entity, so the
+            # adapter validates under the entity-qualified label (ADR 0024).
+            REGISTRY["form"].validate(form, elabel)
     # optionset / web resource / security role each delegate their whole block to
     # the component-kind adapter (required keys, constrained values, option/privilege
     # shape) — the same up-front authority the entity subtree uses. A malformed block
@@ -719,10 +735,15 @@ def _call[T](entry: Entry, fn: Callable[[], T], failed: list[Entry]) -> T:
 # fields the platform allows — a retrieve-merge-write PUT or option-set action, not
 # HTTP PATCH), or `replace_blocked` (an immutable/destructive
 # divergence that would need a drop-and-recreate — reported, NO write). A reconcile
-# returns `(bucket, entry)`; a D365Error during the read/update is a hard failure
-# that aborts the run (same contract as `_call`). See ADR 0014.
+# returns a LIST of `(bucket, entry)` verdicts — uniformly, for every kind: most
+# kinds converge one component and return one verdict, but a kind whose block covers
+# several components (a `forms:` block, one `replace_blocked` per unresolvable named
+# form) needs more than one, and a single shape at the seam beats a
+# tuple-or-list union the router has to sniff. A D365Error during the read/update is
+# a hard failure that aborts the run (same contract as `_call`). See ADR 0014.
 
 _Verdict = tuple[str, Entry]
+_Verdicts = list[_Verdict]
 
 
 def _drift(desired: Any, live_label: Any) -> bool:
@@ -757,17 +778,18 @@ def _with_diff(entry: Entry, update_result: dict[str, Any]) -> Entry:
 
 def _reconcile(
     entry: Entry,
-    thunk: Callable[[], _Verdict],
+    thunk: Callable[[], _Verdicts],
     failed: list[Entry],
     routes: dict[str, list[Entry]],
 ) -> None:
-    """Run a reconcile thunk and route its verdict; D365Error → failed + abort."""
+    """Run a reconcile thunk and route each of its verdicts; D365Error → failed + abort."""
     try:
-        bucket, payload = thunk()
+        verdicts = thunk()
     except D365Error as exc:
         failed.append({**entry, "error": str(exc)})
         raise _Aborted from exc
-    routes[bucket].append(payload)
+    for bucket, payload in verdicts:
+        routes[bucket].append(payload)
 
 
 def _find_live_entity(
@@ -785,7 +807,7 @@ def _reconcile_entity(
     live: dict[str, Any],
     ctx: ReconcileCtx,
     entry: Entry,
-) -> _Verdict:
+) -> _Verdicts:
     """Diff an existing entity against the spec; update, skip, or block.
 
     Replace-blocked (immutable/destructive divergence, no write): an ownership
@@ -802,11 +824,16 @@ def _reconcile_entity(
     desired_ownership = ent.get("ownership")
     live_ownership = live.get("OwnershipType")
     if desired_ownership and live_ownership and desired_ownership != live_ownership:
-        return "replace_blocked", {
-            **entry,
-            "reason": f"ownership change {live_ownership!r} -> {desired_ownership!r} "
-            "requires a destructive drop-and-recreate; refusing (no write).",
-        }
+        return [
+            (
+                "replace_blocked",
+                {
+                    **entry,
+                    "reason": f"ownership change {live_ownership!r} -> {desired_ownership!r} "
+                    "requires a destructive drop-and-recreate; refusing (no write).",
+                },
+            )
+        ]
     desired_is_activity = ent.get("is_activity")
     live_is_activity = live.get("IsActivity")
     if (
@@ -814,12 +841,17 @@ def _reconcile_entity(
         and live_is_activity is not None
         and desired_is_activity != live_is_activity
     ):
-        return "replace_blocked", {
-            **entry,
-            "reason": f"is_activity change {live_is_activity!r} -> {desired_is_activity!r} "
-            "is an identity change (a table cannot be converted to/from an "
-            "activity table in place); refusing (no write).",
-        }
+        return [
+            (
+                "replace_blocked",
+                {
+                    **entry,
+                    "reason": f"is_activity change {live_is_activity!r} -> {desired_is_activity!r} "
+                    "is an identity change (a table cannot be converted to/from an "
+                    "activity table in place); refusing (no write).",
+                },
+            )
+        ]
     changes: dict[str, Any] = {}
     # has_notes / has_activities are enable-only: false->true is additive
     # (updatable), but the platform forbids disabling, so an explicit true->false
@@ -829,11 +861,16 @@ def _reconcile_entity(
         if desired is None or desired == live.get(live_key):
             continue
         if not desired:  # true -> false
-            return "replace_blocked", {
-                **entry,
-                "reason": f"{spec_key} cannot be disabled once enabled (enable-only "
-                "capability); refusing (no write).",
-            }
+            return [
+                (
+                    "replace_blocked",
+                    {
+                        **entry,
+                        "reason": f"{spec_key} cannot be disabled once enabled (enable-only "
+                        "capability); refusing (no write).",
+                    },
+                )
+            ]
         changes[spec_key] = True
     if _drift(ent.get("display_name"), live.get("DisplayName")):
         changes["display_name"] = ent["display_name"]
@@ -842,9 +879,9 @@ def _reconcile_entity(
     if _drift(ent.get("description"), live.get("Description")):
         changes["description"] = ent["description"]
     if not changes:
-        return "skipped", entry
+        return [("skipped", entry)]
     out = meta_update_mod.update_entity(backend, logical, solution=solution, **changes)
-    return "updated", _with_diff(entry, out)
+    return [("updated", _with_diff(entry, out))]
 
 
 def _find_live_attribute(
@@ -874,7 +911,7 @@ def _reconcile_attribute(
     live: dict[str, Any] | None,
     ctx: ReconcileCtx,
     entry: Entry,
-) -> _Verdict:
+) -> _Verdicts:
     """Diff an existing attribute against the spec; update, skip, or block.
 
     Replace-blocked: a data-type change (Dataverse cannot retype a column in place;
@@ -886,7 +923,7 @@ def _reconcile_attribute(
     kind = attr["kind"]
     info = mc.KINDS.get(kind)
     if info is None or kind in ("lookup", "customer") or live is None:
-        return "skipped", entry
+        return [("skipped", entry)]
     solution = ctx.solution
     entity_logical = ctx.entity_logical or ""
     attr_logical = attr["schema_name"].lower()
@@ -894,11 +931,16 @@ def _reconcile_attribute(
     live_type = base.get("@odata.type")
     live_cast = live_type.lstrip("#") if isinstance(live_type, str) else ""
     if live_cast and live_cast != info.cast:
-        return "replace_blocked", {
-            **entry,
-            "reason": f"data-type change {live_cast!r} -> {info.cast!r} requires a "
-            "destructive drop-and-recreate; refusing (no write).",
-        }
+        return [
+            (
+                "replace_blocked",
+                {
+                    **entry,
+                    "reason": f"data-type change {live_cast!r} -> {info.cast!r} requires a "
+                    "destructive drop-and-recreate; refusing (no write).",
+                },
+            )
+        ]
     changes: dict[str, Any] = {}
     if _drift(attr.get("display_name"), base.get("DisplayName")):
         changes["display_name"] = attr["display_name"]
@@ -924,11 +966,11 @@ def _reconcile_attribute(
         if isinstance(live_max, int) and desired_max > live_max:
             changes["max_length"] = desired_max
     if not changes:
-        return "skipped", entry
+        return [("skipped", entry)]
     out = meta_update_mod.update_attribute(
         backend, entity_logical, attr_logical, solution=solution, **changes
     )
-    return "updated", _with_diff(entry, out)
+    return [("updated", _with_diff(entry, out))]
 
 
 # Relationship adapter flat cascade key → CascadeConfiguration dimension.
@@ -970,7 +1012,7 @@ def _reconcile_relationship(
     base: dict[str, Any],
     ctx: ReconcileCtx,
     entry: Entry,
-) -> _Verdict:
+) -> _Verdicts:
     """Diff an existing 1:N relationship against the spec; update, skip, or block.
 
     Replace-blocked (identity divergence, no write): a relationship-type change
@@ -987,12 +1029,17 @@ def _reconcile_relationship(
     solution = ctx.solution
     schema = rel["schema_name"]
     if base.get("RelationshipType") != "OneToManyRelationship":
-        return "replace_blocked", {
-            **entry,
-            "reason": f"relationship type {base.get('RelationshipType')!r} is not "
-            "one-to-many; a type change requires a destructive "
-            "drop-and-recreate; refusing (no write).",
-        }
+        return [
+            (
+                "replace_blocked",
+                {
+                    **entry,
+                    "reason": f"relationship type {base.get('RelationshipType')!r} is not "
+                    "one-to-many; a type change requires a destructive "
+                    "drop-and-recreate; refusing (no write).",
+                },
+            )
+        ]
     # The 1:N cast is the only projection carrying Cascade/AssociatedMenu/the
     # referenced/referencing entities.
     live = as_dict(
@@ -1016,11 +1063,16 @@ def _reconcile_relationship(
         desired = rel.get(spec_key)
         current = live.get(live_key)
         if desired and current and str(desired).lower() != str(current).lower():
-            return "replace_blocked", {
-                **entry,
-                "reason": f"{spec_key} change {current!r} -> {desired!r} requires a "
-                "destructive drop-and-recreate; refusing (no write).",
-            }
+            return [
+                (
+                    "replace_blocked",
+                    {
+                        **entry,
+                        "reason": f"{spec_key} change {current!r} -> {desired!r} requires a "
+                        "destructive drop-and-recreate; refusing (no write).",
+                    },
+                )
+            ]
     # Relationship-level drift → update_relationship kwargs.
     rel_kwargs: dict[str, Any] = {}
     cascade_live = cast("dict[str, Any]", live.get("CascadeConfiguration") or {})
@@ -1059,7 +1111,7 @@ def _reconcile_relationship(
             if desired_required != live_required:
                 lookup_changes["required"] = desired_required
     if not rel_kwargs and not lookup_changes:
-        return "skipped", entry
+        return [("skipped", entry)]
     # Merge the relationship and lookup field-level diffs into one `updated` entry
     # (a real apply returns no diff; under --dry-run each carries its drift).
     diff: dict[str, Any] = {}
@@ -1071,7 +1123,7 @@ def _reconcile_relationship(
             backend, referencing, lookup_logical, solution=solution, **lookup_changes
         )
         diff.update(cast("dict[str, Any]", out.get("diff") or {}))
-    return "updated", ({**entry, "diff": diff} if diff else entry)
+    return [("updated", ({**entry, "diff": diff} if diff else entry))]
 
 
 def _find_live_view(
@@ -1107,7 +1159,7 @@ def _reconcile_view(
     rows: list[dict[str, Any]],
     ctx: ReconcileCtx,
     entry: Entry,
-) -> _Verdict:
+) -> _Verdicts:
     """Diff an existing saved view against the spec; update in place or skip.
 
     A drifted description / default / columns / sort / active-filter is reconciled
@@ -1128,17 +1180,22 @@ def _reconcile_view(
     name = view["name"]
     query_type = view.get("query_type") or "public"
     if len(rows) > 1:
-        return "skipped", {
-            **entry,
-            "reason": f"{len(rows)} {query_type} views named {name!r} on "
-            f"{entity_logical} share the (name, query_type) identity; "
-            "refusing to reconcile an arbitrary one (resolve the "
-            "duplicate, or edit by savedqueryid).",
-        }
+        return [
+            (
+                "skipped",
+                {
+                    **entry,
+                    "reason": f"{len(rows)} {query_type} views named {name!r} on "
+                    f"{entity_logical} share the (name, query_type) identity; "
+                    "refusing to reconcile an arbitrary one (resolve the "
+                    "duplicate, or edit by savedqueryid).",
+                },
+            )
+        ]
     if not rows:
         # No live match (the create path owns creation, and a rename creates a new
         # view); nothing to reconcile in place.
-        return "skipped", entry
+        return [("skipped", entry)]
     row = rows[0]
     sqid = str(row.get("savedqueryid"))
     # Live state first, so a field the spec omits can fall back to it.
@@ -1199,9 +1256,9 @@ def _reconcile_view(
             desired_order_desc,
         )
     if not changes:
-        return "skipped", entry
+        return [("skipped", entry)]
     views_mod.update_view(backend, savedqueryid=sqid, changes=changes, solution=solution)
-    return "updated", ({**entry, "diff": diff} if backend.dry_run else entry)
+    return [("updated", ({**entry, "diff": diff} if backend.dry_run else entry))]
 
 
 # ── per-kind cross-field validation (adapter.extra_validate) ─────────────────
@@ -1212,7 +1269,12 @@ def _reconcile_view(
 # only order change is entity ownership, which now validates after (not before)
 # the schema-name check — unobservable in practice, since each rule trips on its
 # own field and a block rarely violates two at once.
-def _validate_entity_block(ent: dict[str, Any]) -> None:
+#
+# Each takes the resolved error label as its second argument (the `extra_validate`
+# protocol). These nine derive their own labels from the block's identity fields, so
+# they ignore it (`_label`); the entity-nested `form` block, whose identity is only
+# unique within its owning entity, is the one kind that uses it.
+def _validate_entity_block(ent: dict[str, Any], _label: str) -> None:
     """Ownership vocabulary + the nested primary-attribute schema name."""
     elabel = f"entity {ent['schema_name']!r}"
     # Validate ownership up front so a typo fails cleanly here rather than being
@@ -1229,7 +1291,7 @@ def _validate_entity_block(ent: dict[str, Any]) -> None:
             mc.validate_schema_name(pa["schema_name"], subject="primary_attr_schema")
 
 
-def _validate_attribute_block(attr: dict[str, Any]) -> None:
+def _validate_attribute_block(attr: dict[str, Any], _label: str) -> None:
     """Kind vocabulary, kind-specific requirements, option shape, and the
     calculated/rollup source_type ↔ formula_definition cross-rules (#554).
     """
@@ -1280,7 +1342,7 @@ def _validate_attribute_block(attr: dict[str, Any]) -> None:
         )
 
 
-def _validate_relationship_block(rel: dict[str, Any]) -> None:
+def _validate_relationship_block(rel: dict[str, Any], _label: str) -> None:
     """The associated-menu UseLabel cross-field rule create_one_to_many enforces."""
     # An associated-menu label is mandatory under UseLabel. Mirror it up front so a
     # malformed menu config fails before the relationship phase writes (it runs
@@ -1291,7 +1353,7 @@ def _validate_relationship_block(rel: dict[str, Any]) -> None:
         )
 
 
-def _validate_view_block(view: dict[str, Any]) -> None:
+def _validate_view_block(view: dict[str, Any], _label: str) -> None:
     """query_type vocabulary and the non-empty, well-shaped columns list."""
     # query_type is spec-expressible; validate it against the same vocabulary
     # create_view checks so an unknown value fails up front rather than in the
@@ -1326,7 +1388,7 @@ def _reconcile_via_adapter(
     reconcile = adapter.reconcile
     assert find_live is not None and reconcile is not None  # populated for these kinds
 
-    def thunk() -> _Verdict:
+    def thunk() -> _Verdicts:
         live = find_live(backend, block, ctx)
         return reconcile(backend, block, live, ctx, entry)
 
@@ -1347,7 +1409,7 @@ def _find_live_optionset(
     return os_mod.get_optionset(backend, os_spec["name"])
 
 
-def _validate_optionset_block(os_spec: dict[str, Any]) -> None:
+def _validate_optionset_block(os_spec: dict[str, Any], _label: str) -> None:
     """A non-empty, well-shaped options list (create_optionset's own option rules)."""
     _require_list(os_spec, "options", f"optionset {os_spec['name']!r}")
     for opt in cast("list[Any]", os_spec.get("options") or []):
@@ -1360,7 +1422,7 @@ def _reconcile_optionset(
     live: dict[str, Any],
     ctx: ReconcileCtx,
     entry: Entry,
-) -> _Verdict:
+) -> _Verdicts:
     """Diff an existing global option set; insert spec-declared options it lacks.
 
     Only options with an explicit value are reconciled — an auto-valued option
@@ -1376,9 +1438,9 @@ def _reconcile_optionset(
         if isinstance(o.get("value"), int) and o["value"] not in live_values
     ]
     if not inserts:
-        return "skipped", entry
+        return [("skipped", entry)]
     out = os_mod.update_optionset(backend, os_spec["name"], insert=inserts, solution=ctx.solution)
-    return "updated", _with_diff(entry, out)
+    return [("updated", _with_diff(entry, out))]
 
 
 def _find_live_webresource(
@@ -1390,7 +1452,7 @@ def _find_live_webresource(
     return wr_mod.find_webresource(backend, wr["name"])
 
 
-def _validate_webresource_block(wr: dict[str, Any]) -> None:
+def _validate_webresource_block(wr: dict[str, Any], _label: str) -> None:
     """Body source (a `file` xor inline `content`), string-typed fields, and a
     resolvable web-resource type — the up-front rules create_webresource assumes.
     """
@@ -1426,7 +1488,7 @@ def _reconcile_webresource(
     live: dict[str, Any],
     ctx: ReconcileCtx,
     entry: Entry,
-) -> _Verdict:
+) -> _Verdicts:
     """Diff an existing web resource against the spec; update content/display or skip.
 
     The spec's body bytes — read here from the block + ``ctx.base_dir`` — are
@@ -1444,7 +1506,7 @@ def _reconcile_webresource(
     if desired_display is not None and desired_display != live.get("displayname"):
         changes["display_name"] = desired_display
     if not changes:
-        return "skipped", entry
+        return [("skipped", entry)]
     wr_mod.update_webresource(
         backend,
         wr["name"],
@@ -1453,7 +1515,7 @@ def _reconcile_webresource(
         solution=ctx.solution,
         publish=False,
     )
-    return "updated", {**entry, "diff": {"fields": sorted(changes)}}
+    return [("updated", {**entry, "diff": {"fields": sorted(changes)}})]
 
 
 def _find_live_security_role(
@@ -1467,7 +1529,7 @@ def _find_live_security_role(
     )
 
 
-def _validate_security_role_block(role: dict[str, Any]) -> None:
+def _validate_security_role_block(role: dict[str, Any], _label: str) -> None:
     """String-typed name / business_unit and the privilege-matrix shape (≥1 row,
     each row a well-formed set-role-privileges selector group).
     """
@@ -1508,7 +1570,7 @@ def _reconcile_security_role(
     role_id: str,
     ctx: ReconcileCtx,
     entry: Entry,
-) -> _Verdict:
+) -> _Verdicts:
     """Reconcile an existing role's privileges to the declared set.
 
     ``role_id`` is the ``find_live`` slot's value (the live role id). The role's
@@ -1538,10 +1600,10 @@ def _reconcile_security_role(
     live = sec_mod.get_role_privileges(backend, role_id)
     live_map = {p["privilegeid"]: p["depth"] for p in live}
     if all(live_map.get(p["privilegeid"]) == p["depth"] for p in desired):
-        return "skipped", entry
+        return [("skipped", entry)]
     diff = _privilege_diff(live, desired)
     sec_mod.replace_role_privileges(backend, role_id, desired)
-    return "updated", {**entry, "diff": diff}
+    return [("updated", {**entry, "diff": diff})]
 
 
 # ── plug-in assembly / plug-in step adapter functions ────────────────────────
@@ -1566,7 +1628,7 @@ def _find_live_plugin_assembly(
     return plugin_mod.find_assembly(backend, _assembly_name(plugin))
 
 
-def _validate_plugin_assembly_block(plugin: dict[str, Any]) -> None:
+def _validate_plugin_assembly_block(plugin: dict[str, Any], _label: str) -> None:
     """Assembly file/name rules plus the isolation_mode vocabulary.
 
     ``file`` is required (the DLL to register) but is not a builder param — the
@@ -1601,7 +1663,7 @@ def _reconcile_plugin_assembly(
     live: dict[str, Any],
     ctx: ReconcileCtx,
     entry: Entry,
-) -> _Verdict:
+) -> _Verdicts:
     """Diff an existing plug-in assembly against the rebuilt DLL; update or skip.
 
     The spec file's bytes — read here from the block's ``file`` against
@@ -1614,12 +1676,12 @@ def _reconcile_plugin_assembly(
     content = _read_file_bytes(ctx.base_dir, plugin["file"])
     desired_b64 = base64.b64encode(content).decode("ascii")
     if live.get("content") == desired_b64:
-        return "skipped", entry
+        return [("skipped", entry)]
     asm_path = os.path.join(ctx.base_dir or "", plugin["file"])
     plugin_mod.register_assembly(
         backend, path=asm_path, name=name, update=True, solution=ctx.solution
     )
-    return "updated", {**entry, "diff": {"fields": ["content"]}}
+    return [("updated", {**entry, "diff": {"fields": ["content"]}})]
 
 
 # Step string-typed fields: every one reaches the Web API as a string, so an
@@ -1645,7 +1707,7 @@ def _find_live_plugin_step(
     return plugin_mod.find_step(backend, step["name"])
 
 
-def _validate_plugin_step_block(step: dict[str, Any]) -> None:
+def _validate_plugin_step_block(step: dict[str, Any], _label: str) -> None:
     """Step binding requirements, field types, and the stage/mode vocabulary.
 
     ``name`` and ``plugin_type`` are required by apply (a step is keyed by its
@@ -1691,7 +1753,7 @@ def _reconcile_plugin_step(
     live: dict[str, Any],
     ctx: ReconcileCtx,
     entry: Entry,
-) -> _Verdict:
+) -> _Verdicts:
     """Diff an existing plug-in step against the spec; update, skip, or block.
 
     Replace-blocked: a binding change — the SDK message, the primary entity, or
@@ -1707,11 +1769,16 @@ def _reconcile_plugin_step(
         or step.get("entity") != _expanded(live, "sdkmessagefilterid", "primaryobjecttypecode")
         or step["plugin_type"] != _expanded(live, "plugintypeid", "typename")
     ):
-        return "replace_blocked", {
-            **entry,
-            "reason": "step binding change (message / entity / plug-in type) "
-            "requires a destructive delete-and-recreate; refusing (no write).",
-        }
+        return [
+            (
+                "replace_blocked",
+                {
+                    **entry,
+                    "reason": "step binding change (message / entity / plug-in type) "
+                    "requires a destructive delete-and-recreate; refusing (no write).",
+                },
+            )
+        ]
     changes: dict[str, Any] = {}
     if "stage" in step and plugin_mod.STAGE_VALUES.get(step["stage"]) != live.get("stage"):
         changes["stage"] = step["stage"]
@@ -1731,18 +1798,108 @@ def _reconcile_plugin_step(
     if "configuration" in step and step["configuration"] != live.get("configuration"):
         changes["configuration"] = step["configuration"]
     if not changes:
-        return "skipped", entry
+        return [("skipped", entry)]
     plugin_mod.update_step(
         backend, step_id=str(live["sdkmessageprocessingstepid"]), solution=ctx.solution, **changes
     )
-    return "updated", {**entry, "diff": {"fields": sorted(changes)}}
+    return [("updated", {**entry, "diff": {"fields": sorted(changes)}})]
+
+
+# ── form adapter functions (a reconcile-only kind) ───────────────────────────
+# The `form` kind has NO create path: the platform creates an entity's main form,
+# and apply's stance is *converge an existing main form*, never forge one (ADR
+# 0024). So its adapter carries no `map`/`transforms` (nothing projects onto a
+# builder) and everything happens in the reconcile — which is why `reconcile` owns
+# every verdict here, `planned` included, instead of the driver reading a result.
+def _find_live_form(
+    backend: D365Backend,
+    block: dict[str, Any],
+    ctx: ReconcileCtx,
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    """Resolve the main form this ``forms:`` block targets (apply's resolve step).
+
+    Returns ``forms.resolve_declared_form``'s ``(form_row, blocked)``: the row when
+    the target resolves, ``(None, [])`` when the entity has no main form yet, and
+    ``(None, [reason])`` when the block's ``name`` names no single existing main
+    form. An unresolvable name is *returned*, not raised, because it is this form's
+    own ``replace_blocked`` verdict — the run continues and its siblings reconcile.
+    """
+    return forms_mod.resolve_declared_form(backend, ctx.entity_logical or "", block)
+
+
+def _reconcile_form(
+    backend: D365Backend,
+    block: dict[str, Any],
+    live: tuple[dict[str, Any] | None, list[dict[str, Any]]],
+    ctx: ReconcileCtx,
+    entry: Entry,
+) -> _Verdicts:
+    """Converge a declared ``forms:`` block onto the resolved main form; classify.
+
+    Owns every verdict this kind can reach: one ``replace_blocked`` per unresolvable
+    named form (identity/ownership divergence, no write — the run exits 1 while
+    sibling forms and kinds still reconcile); ``planned`` when the entity's main
+    form is not materialized yet (a greenfield table not published this run, so a
+    second apply lands its form); ``skipped`` when the live form already satisfies
+    the declaration; ``updated`` when any declared component was drifted and
+    converged in place; and the create-path classification (``applied``, or
+    ``planned`` under dry-run) for a purely additive form.
+    """
+    form_row, blocked = live
+    if blocked:
+        return [
+            ("replace_blocked", {**entry, "name": b["name"], "reason": b["reason"]})
+            for b in blocked
+        ]
+    if form_row is None:
+        return [("planned", entry)]
+    result = forms_mod.commit_declared_form(
+        backend,
+        ctx.entity_logical or "",
+        form_row,
+        block,
+        # A form is publishable, but the commit defers it: the end-of-run
+        # PublishAllXml publishes the whole run once (and --stage-only skips it).
+        publish=False,
+        solution=ctx.solution,
+        dry_run=backend.dry_run,
+    )
+    # Report the resolved main-form identity, not the placeholder label.
+    if isinstance(result.get("form"), str):
+        entry["name"] = result["form"]
+    if result.get("formid"):
+        entry["formid"] = result["formid"]
+    changes = cast("list[dict[str, Any]]", result.get("components") or [])
+    if not changes:
+        return [("skipped", entry)]
+    entry["components"] = changes
+    converged = [c for c in changes if c.get("change") == "converged"]
+    if not converged:
+        return [("planned" if backend.dry_run else "applied", entry)]
+    if backend.dry_run:
+        # Key each converged component by its FULLY-QUALIFIED identity — a bare
+        # kind:name collides when the same name recurs under different parents (a
+        # section name is unique only within its tab; a handler function only within
+        # its event), which would silently drop entries from the drift report. The
+        # would-converge diff rides the dry-run entry, turning --dry-run into the
+        # drift report (mirrors _with_diff for the metadata kinds).
+        diff: dict[str, Any] = {}
+        for c in converged:
+            if not c.get("diff"):
+                continue
+            scope = c.get("tab") or c.get("event")
+            key = f"{c['kind']}:{scope}/{c['name']}" if scope else f"{c['kind']}:{c['name']}"
+            diff[key] = c["diff"]
+        if diff:
+            entry["diff"] = diff
+    return [("updated", entry)]
 
 
 # One component-kind adapter per component kind — the complete authority for its
-# kind (validate / to_kwargs / find_live / reconcile). All nine reconciled kinds
-# are registry-driven: the entity subtree (entity, attribute, relationship, view),
-# optionset, web resource, security role, and the compound plug-in (assembly +
-# step). Publisher and solution stay out of the registry permanently — they are
+# kind (validate / to_kwargs / find_live / reconcile). All ten reconciled kinds
+# are registry-driven: the entity subtree (entity, attribute, relationship, view,
+# form), optionset, web resource, security role, and the compound plug-in (assembly
+# + step). Publisher and solution stay out of the registry permanently — they are
 # the target preamble a customization write files into, not reconciled components.
 REGISTRY: dict[str, Adapter] = {
     "attribute": Adapter(
@@ -1909,6 +2066,24 @@ REGISTRY: dict[str, Adapter] = {
             declared=_declared_nested("views", "name"),
             scoped_live=_live_prunable_views,
         ),
+    ),
+    "form": Adapter(
+        # Reconcile-only (ADR 0024): the platform owns main-form creation, so there
+        # is no builder to project onto — the map/transforms/injected surface is
+        # empty and the whole kind lives in find_live + reconcile. Its identity
+        # (`name`) is optional: an omitted name targets the entity's primary main
+        # form, so there is no required block key either and the block's shape rules
+        # are all cross-field (extra_validate). Not prune-eligible: apply converges
+        # a form it did not create, so it never owns one to remove.
+        map={},
+        transforms={},
+        injected=frozenset(),
+        defaults={},
+        required_block_keys=(),
+        block_label="form",
+        extra_validate=_validate_form_block,
+        find_live=_find_live_form,
+        reconcile=_reconcile_form,
     ),
     "optionset": Adapter(
         map={
@@ -2330,11 +2505,15 @@ def apply_spec(
     replace_blocked: list[Entry] = []
     planned: list[Entry] = []
     failed: list[Entry] = []
-    # Reconcile verdicts ("updated"/"skipped"/"replace_blocked") route here.
+    # Reconcile verdicts route here. A create-then-reconcile kind only ever reaches
+    # the three reconcile buckets; a reconcile-ONLY kind (form) has no create path to
+    # classify, so its reconcile owns the create-path buckets too.
     routes: dict[str, list[Entry]] = {
+        "applied": applied,
         "updated": updated,
         "skipped": skipped,
         "replace_blocked": replace_blocked,
+        "planned": planned,
     }
     # Names of resources this run would create but that do not exist yet (dry-run
     # greenfield). Dependents of a planned resource are reported planned without
@@ -2356,7 +2535,10 @@ def apply_spec(
         # Phase: publisher.
         if pub:
             entry: Entry = {"kind": "publisher", "name": pub["unique_name"]}
-            result = _call(
+            # Annotated at its first assignment: every phase reuses this local for
+            # its core's result dict, and one declared type keeps the later
+            # `result.get(...)` reads typed rather than partially unknown.
+            result: dict[str, Any] = _call(
                 entry,
                 lambda: sol_mod.create_publisher(
                     backend,
@@ -2639,12 +2821,9 @@ def apply_spec(
 
         # Phase: forms (ADR 0024). Runs after attributes and web resources so a
         # declared field's attribute and a declared library's web resource already
-        # exist. Each block converges the entity's platform-generated main form:
-        # the create path adds the declared tabs/sections/fields/libraries/handlers
-        # that are absent (idempotent). A greenfield entity whose main form is not
-        # yet readable (or a dry-run would-create entity) is `planned`; a real run
-        # with additions is `applied` and defers publish to the end-of-run
-        # PublishAllXml; a form that already satisfies the declaration is `skipped`.
+        # exist. A reconcile-ONLY kind: the platform creates the main form, so there
+        # is no create branch here — the adapter's find_live resolves the target form
+        # and its reconcile converges, commits and classifies every verdict.
         for ent in _as_list(spec.get("entities")):
             forms_blocks = _as_list(ent.get("forms"))
             if not forms_blocks:
@@ -2658,71 +2837,15 @@ def apply_spec(
                     "kind": "form",
                     "name": fname if isinstance(fname, str) else f"{logical_f} main form",
                 }
+                # The owning table itself is only planned (dry-run greenfield), so
+                # its form cannot be read yet — report it planned without a probe.
                 if logical_f in planned_names:
                     planned.append(entry)
                     continue
-
-                def _converge(b: dict[str, Any] = block, lf: str = logical_f) -> dict[str, Any]:
-                    return forms_mod.apply_form_spec(
-                        backend,
-                        lf,
-                        b,
-                        publish=False,
-                        solution=solution_name,
-                        dry_run=backend.dry_run,
-                    )
-
-                result: dict[str, Any] = _call(entry, _converge, failed)
-                if result.get("unmaterialized"):
-                    planned.append(entry)
-                    continue
-                # Identity/ownership divergence (an unresolvable named form): refused
-                # with no write. Routed to replace_blocked so the run exits 1 while
-                # sibling forms/kinds still reconcile (no abort). ADR 0024 (#793).
-                blocked = cast("list[dict[str, Any]]", result.get("blocked") or [])
-                if blocked:
-                    for b in blocked:
-                        replace_blocked.append({**entry, "name": b["name"], "reason": b["reason"]})
-                    continue
-                # Report the resolved main-form identity, not the placeholder label.
-                if isinstance(result.get("form"), str):
-                    entry["name"] = result["form"]
-                if result.get("formid"):
-                    entry["formid"] = result["formid"]
-                changes = cast("list[dict[str, Any]]", result.get("components") or [])
-                if not changes:
-                    skipped.append(entry)
-                    continue
-                entry["components"] = changes
-                # A form carrying any converged (drifted-in-place) component is an
-                # in-place update → `updated`; a purely additive form keeps the
-                # create-path classification (`applied`, or `planned` under dry-run).
-                # The would-converge diff rides the dry-run entry, turning --dry-run
-                # into the drift report (mirrors _with_diff for the metadata kinds).
-                converged = [c for c in changes if c.get("change") == "converged"]
-                if converged:
-                    if backend.dry_run:
-                        # Key each converged component by its FULLY-QUALIFIED identity
-                        # — a bare kind:name collides when the same name recurs under
-                        # different parents (a section name is unique only within its
-                        # tab; a handler function only within its event), which would
-                        # silently drop entries from the drift report.
-                        diff = {}
-                        for c in converged:
-                            if not c.get("diff"):
-                                continue
-                            scope = c.get("tab") or c.get("event")
-                            key = (
-                                f"{c['kind']}:{scope}/{c['name']}"
-                                if scope
-                                else f"{c['kind']}:{c['name']}"
-                            )
-                            diff[key] = c["diff"]
-                        if diff:
-                            entry["diff"] = diff
-                    updated.append(entry)
-                else:
-                    (planned if backend.dry_run else applied).append(entry)
+                ctx = ReconcileCtx(
+                    solution=solution_name, base_dir=base_dir, entity_logical=logical_f
+                )
+                _reconcile_via_adapter(REGISTRY["form"], backend, block, ctx, entry, routes, failed)
 
         # Phase: security roles. Create (if_exists=skip) then reconcile privileges
         # to the declared set. A fresh role gets the declared set applied; an
@@ -2917,15 +3040,14 @@ def apply_spec(
                     # leaves its image subtree untouched), so drive the adapter's
                     # reconcile directly rather than through the routing wrapper.
                     try:
-                        verdict, payload = _reconcile_plugin_step(
-                            backend, step, live_step, ctx, s_entry
-                        )
+                        verdicts = _reconcile_plugin_step(backend, step, live_step, ctx, s_entry)
                     except D365Error as exc:
                         failed.append({**s_entry, "error": str(exc)})
                         raise _Aborted from exc
-                    routes[verdict].append(payload)
+                    for verdict, payload in verdicts:
+                        routes[verdict].append(payload)
                     step_id = str(live_step["sdkmessageprocessingstepid"])
-                    step_blocked = verdict == "replace_blocked"
+                    step_blocked = any(v == "replace_blocked" for v, _ in verdicts)
 
                 for img in _as_list(step.get("images")):
                     img_entry: Entry = {"kind": "plugin-image", "name": img["alias"]}

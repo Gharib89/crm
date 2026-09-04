@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import base64
 import json
+from typing import Any
 
 import pytest
 import requests_mock
@@ -4403,7 +4404,7 @@ def test_reconcile_entity_no_drift_returns_skipped(backend):
             "display_collection_name": "Projects",
         }
         live = adapter.find_live(backend, ent, ctx)
-        verdict, payload = adapter.reconcile(
+        [(verdict, payload)] = adapter.reconcile(
             backend, ent, live, ctx, {"kind": "entity", "name": "contoso_Project"}
         )
     assert verdict == "skipped"
@@ -4424,7 +4425,7 @@ def test_reconcile_attribute_lookup_kind_is_skipped(backend):
     ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None, entity_logical="contoso_project")
     with requests_mock.Mocker() as m:
         live = adapter.find_live(backend, attr, ctx)
-        verdict, payload = adapter.reconcile(backend, attr, live, ctx, entry)
+        [(verdict, payload)] = adapter.reconcile(backend, attr, live, ctx, entry)
     assert verdict == "skipped"
     assert live is None
     assert m.call_count == 0  # no network calls for lookup kind
@@ -4493,7 +4494,7 @@ def test_reconcile_plugin_step_unchanged_returns_skipped(backend):
     live = _step_row(message="Create", entity="account", stage=40, mode=0, rank=1)
     step = {"name": "S", "message": "Create", "plugin_type": _TYPE_NAME, "entity": "account"}
     ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None)
-    verdict, _ = _reconcile_plugin_step(
+    [(verdict, _)] = _reconcile_plugin_step(
         backend, step, live, ctx, {"kind": "plugin-step", "name": "S"}
     )
     assert verdict == "skipped"
@@ -4940,7 +4941,7 @@ def test_reconcile_attribute_required_drift_adds_to_changes(backend):
             status_code=204,
         )
         live = adapter.find_live(backend, attr, ctx)
-        verdict, _ = adapter.reconcile(backend, attr, live, ctx, entry)
+        [(verdict, _)] = adapter.reconcile(backend, attr, live, ctx, entry)
     assert verdict == "updated"
 
 
@@ -5102,7 +5103,7 @@ def test_reconcile_attribute_required_matches_no_drift(backend):
             required="ApplicationRequired",
         )
         live = adapter.find_live(backend, attr, ctx)
-        verdict, _ = adapter.reconcile(backend, attr, live, ctx, entry)
+        [(verdict, _)] = adapter.reconcile(backend, attr, live, ctx, entry)
     assert verdict == "skipped"
 
 
@@ -5679,12 +5680,26 @@ def test_adapter_validate_rejects_bad_block(kind, block, match):
         apply_mod.REGISTRY[kind].validate(block)
 
 
-def _reconcile_through_adapter(backend, kind, block, ctx, entry):
-    """Drive a kind's find_live + reconcile pair — the migrated walk's inner step."""
+def _reconcile_verdicts(backend, kind, block, ctx, entry):
+    """Drive a kind's find_live + reconcile pair — the migrated walk's inner step.
+
+    Returns the kind's full verdict LIST (a `forms:` block can carry more than one).
+    """
     adapter = apply_mod.REGISTRY[kind]
     assert adapter.find_live is not None and adapter.reconcile is not None
     live = adapter.find_live(backend, block, ctx)
     return adapter.reconcile(backend, block, live, ctx, entry)
+
+
+def _reconcile_through_adapter(backend, kind, block, ctx, entry):
+    """`_reconcile_verdicts` for a kind converging exactly one component — the sole
+    verdict, unwrapped. Asserting the length here is deliberate: a kind that grows a
+    second verdict must be re-read through `_reconcile_verdicts`, not silently
+    truncated to its first.
+    """
+    verdicts = _reconcile_verdicts(backend, kind, block, ctx, entry)
+    assert len(verdicts) == 1, f"{kind}: expected one verdict, got {verdicts}"
+    return verdicts[0]
 
 
 def test_adapter_reconcile_entity_updated(backend):
@@ -6762,6 +6777,149 @@ def test_apply_rejects_non_bool_handler_enabled(backend):
     }
     with pytest.raises(D365Error, match="'enabled' must be true or false"):
         apply_mod.apply_spec(backend, spec, stage_only=False)
+
+
+# ── the `form` adapter: a reconcile-only registry kind (#962) ────────────────
+# Forms cross the same seam as every other kind now. These drive the interface
+# directly (the interface IS the test surface): the slots the kind populates, the
+# entity-qualified label its validate reports under, and each verdict its reconcile
+# owns — including the create-path buckets no other kind's reconcile returns.
+
+
+def test_form_is_a_reconcile_only_registry_kind():
+    """`form` populates validate / find_live / reconcile and nothing else: no
+    builder to project onto (empty map / transforms / injected, no required block
+    key — an omitted `name` targets the entity's primary main form) and no prune
+    slot (apply converges a form it never created, so it owns none to remove).
+    """
+    adapter = apply_mod.REGISTRY["form"]
+    assert callable(adapter.find_live)
+    assert callable(adapter.reconcile)
+    assert callable(adapter.extra_validate)
+    assert adapter.map == {}
+    assert adapter.transforms == {}
+    assert adapter.injected == frozenset()
+    assert adapter.required_block_keys == ()
+    assert adapter.prune is None
+
+
+def test_form_adapter_validate_reports_the_entity_qualified_label():
+    """A nested kind's errors stay scoped to their owning entity: `validate` takes
+    the label `validate_spec` passes, so the message is byte-identical to the one
+    the free validator produced before the block reached an adapter.
+    """
+    with pytest.raises(D365Error) as exc:
+        apply_mod.REGISTRY["form"].validate(
+            {"tabs": [{"label": "no name"}]}, "entity 'contoso_Project'"
+        )
+    assert str(exc.value) == (
+        "entity 'contoso_Project' form '(default main form)' tab: missing required field 'name'."
+    )
+
+
+def test_form_adapter_validate_falls_back_to_its_static_block_label():
+    """Called without a label (no owning entity in scope), `validate` reports under
+    the adapter's own `block_label` rather than an empty prefix.
+    """
+    not_a_mapping: Any = "not a mapping"
+    with pytest.raises(D365Error, match="^form: each forms entry must be a mapping."):
+        apply_mod.REGISTRY["form"].validate(not_a_mapping)
+
+
+def test_adapter_reconcile_form_planned_when_main_form_unmaterialized(backend):
+    # The entity exists but has no main form yet (greenfield, not published this
+    # run): find_live resolves nothing and reconcile owns the `planned` verdict —
+    # the driver gets no special None rule.
+    ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None, entity_logical="contoso_project")
+    entry = {"kind": "form", "name": "contoso_project main form"}
+    with requests_mock.Mocker() as m:
+        m.get(backend.url_for("systemforms"), json={"value": []})
+        verdicts = _reconcile_verdicts(backend, "form", _forms_block(), ctx, entry)
+    assert verdicts == [("planned", entry)]
+
+
+def test_adapter_reconcile_form_skipped_when_declaration_satisfied(backend):
+    # The live main form already carries the declared tab and section → no change
+    # to converge, no write.
+    block = {"tabs": [{"name": "general", "label": "General", "sections": [{"name": "summary"}]}]}
+    ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None, entity_logical="contoso_project")
+    entry = {"kind": "form", "name": "contoso_project main form"}
+    with requests_mock.Mocker() as m:
+        m.get(backend.url_for("systemforms"), json={"value": [_FORM_ROW]})
+        patched = m.patch(backend.url_for(f"systemforms({_FORM_ROW['formid']})"), status_code=204)
+        verdict, payload = _reconcile_through_adapter(backend, "form", block, ctx, entry)
+    assert verdict == "skipped"
+    # The resolved main-form identity replaces the placeholder label either way.
+    assert payload["name"] == "Information"
+    assert not patched.called
+
+
+def test_adapter_reconcile_form_updated_on_converged_drift(backend):
+    # A declared tab label that diverges from the live one is converged in place →
+    # `updated`, committed in one PATCH.
+    block = {"tabs": [{"name": "general", "label": "Overview"}]}
+    ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None, entity_logical="contoso_project")
+    entry = {"kind": "form", "name": "contoso_project main form"}
+    with requests_mock.Mocker() as m:
+        m.get(backend.url_for("systemforms"), json={"value": [_FORM_ROW]})
+        patched = m.patch(backend.url_for(f"systemforms({_FORM_ROW['formid']})"), status_code=204)
+        verdict, payload = _reconcile_through_adapter(backend, "form", block, ctx, entry)
+    assert verdict == "updated"
+    assert payload["components"] == [
+        {
+            "kind": "tab",
+            "name": "general",
+            "change": "converged",
+            "diff": {"label": {"old": "General", "new": "Overview"}},
+        }
+    ]
+    assert patched.called
+
+
+def test_adapter_reconcile_form_replace_blocked_per_unresolvable_name(backend):
+    """An unresolvable named form is a per-form verdict, not a run-aborting error:
+    reconcile returns it as `replace_blocked` (no write) so the run exits 1 while
+    sibling forms and kinds still reconcile.
+
+    It comes back in the verdict LIST every reconcile now returns — the shape that
+    lets one block carry one `replace_blocked` per unresolvable name. Today's
+    resolve reports the first (a block names at most one form), so this list holds
+    one; `test_reconcile_routes_every_verdict_in_the_list` pins that the router
+    appends each of however many arrive.
+    """
+    block = {"name": "Ghost Form", "tabs": [{"name": "custom", "label": "Custom"}]}
+    ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None, entity_logical="contoso_project")
+    entry = {"kind": "form", "name": "Ghost Form"}
+    with requests_mock.Mocker() as m:
+        m.get(backend.url_for("systemforms"), json={"value": [_FORM_ROW]})
+        patched = m.patch(backend.url_for(f"systemforms({_FORM_ROW['formid']})"), status_code=204)
+        verdicts = _reconcile_verdicts(backend, "form", block, ctx, entry)
+    assert [bucket for bucket, _ in verdicts] == ["replace_blocked"]
+    assert verdicts[0][1]["name"] == "Ghost Form"
+    assert "Ghost Form" in verdicts[0][1]["reason"]
+    assert not patched.called
+
+
+def test_reconcile_routes_every_verdict_in_the_list():
+    """The routing wrapper appends EACH verdict a reconcile returns — a multi-verdict
+    kind must not lose all but its first (#962's verdict-list widening).
+    """
+    from crm.core.apply import _reconcile
+
+    routes = {"updated": [], "skipped": [], "replace_blocked": []}
+    entry = {"kind": "form", "name": "F"}
+    _reconcile(
+        entry,
+        lambda: [
+            ("replace_blocked", {**entry, "name": "A"}),
+            ("replace_blocked", {**entry, "name": "B"}),
+            ("skipped", {**entry, "name": "C"}),
+        ],
+        [],
+        routes,
+    )
+    assert [e["name"] for e in routes["replace_blocked"]] == ["A", "B"]
+    assert [e["name"] for e in routes["skipped"]] == ["C"]
 
 
 # ── Slice: apps phase (ADR 0024, #795) — create a model-driven app + sitemap ──
