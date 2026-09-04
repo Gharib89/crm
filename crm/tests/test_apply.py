@@ -7640,6 +7640,53 @@ def test_apply_apps_phase_component_bind_failure_is_only_failed(backend):
     assert _app_posts(m, backend, "sitemaps") == []
 
 
+def test_create_app_with_components_reports_the_stage_it_failed_at(backend):
+    """Being a multi-stage write, the create chain attaches `completed_steps` /
+    `stage` to whatever it raises, so a caller can tell the app row was already
+    created before the binding failed (coding-standards: error handling).
+    """
+    app_url = backend.url_for(f"appmodules({_APP_ID})")
+    with requests_mock.Mocker() as m:
+        m.get(backend.url_for("appmodules"), json={"value": []})
+        m.post(backend.url_for("appmodules"), status_code=204, headers={"OData-EntityId": app_url})
+        m.get(backend.url_for(_UNPUB_MULTIPLE), json={"value": [{"appmoduleid": _APP_ID}]})
+        m.post(backend.url_for("AddAppComponents"), status_code=500, json={"error": {}})
+        with pytest.raises(D365Error) as exc:
+            app_mod.create_app_with_components(
+                backend,
+                name="CRMWorx",
+                unique_name="cwx_crmworx",
+                components=[("view", _APP_COMPONENT_GUID)],
+                sitemap=None,
+                if_exists="skip",
+            )
+    assert exc.value.stage == "add-components"
+    assert exc.value.completed_steps == ["create-app"]
+
+
+def test_create_app_with_components_stages_an_unresolvable_app_id(backend):
+    """The id-unresolvable failure is stage-attributed too — the app row exists, so
+    a caller must not read the raised error as "nothing happened".
+    """
+    with requests_mock.Mocker() as m:
+        m.get(backend.url_for("appmodules"), json={"value": []})
+        # 204 create with NO OData-EntityId header → appmoduleid unresolvable.
+        m.post(backend.url_for("appmodules"), status_code=204)
+        with pytest.raises(D365Error) as exc:
+            app_mod.create_app_with_components(
+                backend,
+                name="CRMWorx",
+                unique_name="cwx_crmworx",
+                components=[("view", _APP_COMPONENT_GUID)],
+                sitemap=None,
+                if_exists="skip",
+            )
+    assert exc.value.stage == "resolve-appmoduleid"
+    assert exc.value.completed_steps == ["create-app"]
+    # `create_app`'s own diagnosis wins over the generic fallback, unchanged.
+    assert str(exc.value) == "Could not parse appmoduleid from response: ''"
+
+
 def test_apply_rejects_non_list_apps(backend):
     with pytest.raises(D365Error, match="apps must be a list"):
         apply_mod.apply_spec(backend, {"solution": _SOLUTION, "apps": {}}, stage_only=False)

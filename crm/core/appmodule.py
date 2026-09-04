@@ -169,6 +169,10 @@ def _as_blocks(value: Any) -> list[dict[str, Any]]:
     The sitemap block reaching :func:`sitemap_tuples` has already passed `apply`'s
     up-front validation, so this only narrows the parsed-YAML `Any` for the type
     checker rather than re-deciding shape.
+
+    Deliberately a local twin of `apply._as_list` rather than a shared import: the
+    dependency runs one way (`apply` imports the cores), so a core reaching back
+    into `apply` for a two-line coercion would make the seam circular.
     """
     return cast("list[dict[str, Any]]", value) if isinstance(value, list) else []
 
@@ -909,7 +913,9 @@ def create_app_with_components(
     records the reason in ``app_lookup_error``) while components or a sitemap are
     declared. Reporting a silently incomplete app as created would leave its tables
     unreachable, defeating the point of the block, so the caller's error path fails
-    the run instead.
+    the run instead. Being a multi-stage write, every error it raises carries
+    ``completed_steps`` / ``stage`` so a caller can tell how far the chain got — the
+    app row itself is already created by the time any later stage can fail.
     """
     result = create_app(
         backend,
@@ -920,41 +926,65 @@ def create_app_with_components(
         if_exists=if_exists,
         publish=publish,
     )
-    # Nothing was created: a pre-existing app (real skip, or the dry-run
-    # would-skip probe) or a dry-run would-create. Either way there is no new app
-    # to bind to — the caller reconciles or reports it.
-    if result.get("skipped") or result.get("would_skip") or result.get("_dry_run"):
+    # Nothing was created: a pre-existing app (real skip, or the dry-run would-skip
+    # probe) or a dry-run would-create — `created` is set only on the real create
+    # path. Either way there is no new app to bind to; the caller reconciles the
+    # existing one or reports the plan.
+    if not result.get("created"):
         return result
+
+    completed: list[str] = ["create-app"]
+
+    def _attach_partial(exc: D365Error, stage: str) -> D365Error:
+        exc.completed_steps = list(completed)
+        exc.stage = stage
+        return exc
+
     app_id = result.get("appmoduleid")
-    if not app_id and (components or sitemap):
-        raise D365Error(
-            result.get("app_lookup_error")
-            or "app created but its appmoduleid could not be "
-            "resolved; components/sitemap not bound."
-        )
     if not app_id:
+        if components or sitemap:
+            raise _attach_partial(
+                D365Error(
+                    result.get("app_lookup_error")
+                    or "app created but its appmoduleid could not be "
+                    "resolved; components/sitemap not bound."
+                ),
+                "resolve-appmoduleid",
+            )
         return result
     if components:
-        add_app_components(backend, app_id=str(app_id), components=components)
+        try:
+            add_app_components(backend, app_id=str(app_id), components=components)
+        except D365Error as exc:
+            raise _attach_partial(exc, "add-components") from exc
+        completed.append("add-components")
     if sitemap:
         areas, groups, subareas = sitemap_tuples(sitemap)
-        sm_result = build_sitemap(
-            backend,
-            sitemap_name=unique_name,
-            areas=areas,
-            groups=groups,
-            subareas=subareas,
-            unique_name=unique_name,
-            solution=solution,
-            publish=False,
-        )
+        try:
+            sm_result = build_sitemap(
+                backend,
+                sitemap_name=unique_name,
+                areas=areas,
+                groups=groups,
+                subareas=subareas,
+                unique_name=unique_name,
+                solution=solution,
+                publish=False,
+            )
+        except D365Error as exc:
+            raise _attach_partial(exc, "build-sitemap") from exc
+        completed.append("build-sitemap")
         if sm_result.get("sitemapid"):
             result["sitemapid"] = sm_result["sitemapid"]
-            add_app_components(
-                backend,
-                app_id=str(app_id),
-                components=[("sitemap", str(sm_result["sitemapid"]))],
-            )
+            try:
+                add_app_components(
+                    backend,
+                    app_id=str(app_id),
+                    components=[("sitemap", str(sm_result["sitemapid"]))],
+                )
+            except D365Error as exc:
+                raise _attach_partial(exc, "bind-sitemap") from exc
+            completed.append("bind-sitemap")
     return result
 
 

@@ -1839,7 +1839,12 @@ def _find_live_app(
     return app_mod.resolve_app(backend, block["unique_name"])
 
 
-def _declared_sitemap_xml(block: dict[str, Any]) -> str | None:
+def _app_components(block: dict[str, Any]) -> list[tuple[str, str]]:
+    """The ``(kind, id)`` pairs an app block's ``components:`` declares."""
+    return [(c["kind"], c["id"]) for c in _as_list(block.get("components"))]
+
+
+def _app_sitemap_xml(block: dict[str, Any]) -> str | None:
     """The SiteMapXml an app block's nested ``sitemap:`` declares, or None."""
     sitemap = block.get("sitemap")
     if not sitemap:
@@ -1871,8 +1876,8 @@ def _reconcile_app(
         backend,
         row=live,
         unique_name=block["unique_name"],
-        components=[(c["kind"], c["id"]) for c in _as_list(block.get("components"))],
-        sitemap_xml=_declared_sitemap_xml(block),
+        components=_app_components(block),
+        sitemap_xml=_app_sitemap_xml(block),
         solution=ctx.solution,
     )
     if res.get("appmoduleid"):
@@ -3138,7 +3143,7 @@ def apply_spec(
                     name=a["name"],
                     unique_name=a["unique_name"],
                     description=a.get("description"),
-                    components=[(c["kind"], c["id"]) for c in _as_list(a.get("components"))],
+                    components=_app_components(a),
                     sitemap=a.get("sitemap"),
                     solution=solution_name,
                     if_exists="skip",
