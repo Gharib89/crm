@@ -5197,6 +5197,50 @@ def test_adapter_targets_are_real_builder_params(kind):
     assert not bogus, f"{kind}: adapter targets non-existent builder kwargs {sorted(bogus)}"
 
 
+# ── spec layout ↔ registry contract (#964) ───────────────────────────────────
+# The spec layout (SPEC_LAYOUT / ENTITY_LAYOUT) is the only place that maps a spec
+# key to a component kind, so these tests enforce the invariant the `Adapter`
+# docstring states: the registry is apply's only per-kind seam. A kind wired into
+# one side and not the other turns them red.
+
+
+def _layout_kinds():
+    """Every kind reachable from the spec layout (top-level ∪ entity-nested)."""
+    return {slot.kind for slot in apply_mod.SPEC_LAYOUT.values()} | {
+        slot.kind for slot in apply_mod.ENTITY_LAYOUT.values()
+    }
+
+
+def test_every_layout_kind_is_a_registry_kind():
+    """A spec key cannot name a kind the registry does not define."""
+    unknown = _layout_kinds() - set(apply_mod.REGISTRY)
+    assert not unknown, f"layout names kinds absent from REGISTRY: {sorted(unknown)}"
+
+
+def test_every_registry_kind_is_reachable_or_declared_internal():
+    """Conversely, every registry kind is reachable from the layout or explicitly
+    declared engine-internal — a 12th kind wired into neither turns this red.
+    """
+    internal = set(apply_mod.ENGINE_INTERNAL_KINDS)
+    reachable = _layout_kinds()
+    assert reachable.isdisjoint(internal), (
+        f"kind(s) both layout-reachable and declared internal: {sorted(reachable & internal)}"
+    )
+    classified = reachable | internal
+    registry = set(apply_mod.REGISTRY)
+    assert classified == registry, (
+        "registry kinds reachable from no layout key and not declared internal: "
+        f"{sorted(registry - classified)}; stale classified kinds not in registry: "
+        f"{sorted(classified - registry)}"
+    )
+
+
+def test_engine_internal_kinds_carry_a_reason():
+    """Declaring a kind layout-unreachable is deliberate, so each carries why."""
+    for kind, reason in apply_mod.ENGINE_INTERNAL_KINDS.items():
+        assert reason and reason.strip(), f"{kind}: empty engine-internal reason"
+
+
 # ── prune eligibility is an adapter slot (#961) ───────────────────────────────
 # A `PruneSpec` on the adapter replaced the standalone prune tables, so these pin
 # the facts those tables held: which kinds are prune-eligible, which solution
