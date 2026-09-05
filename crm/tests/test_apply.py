@@ -5198,16 +5198,18 @@ def test_adapter_targets_are_real_builder_params(kind):
 
 
 # ── spec layout ↔ registry contract (#964) ───────────────────────────────────
-# The spec layout (SPEC_LAYOUT / ENTITY_LAYOUT) is the only place that maps a spec
-# key to a component kind, so these tests enforce the invariant the `Adapter`
-# docstring states: the registry is apply's only per-kind seam. A kind wired into
-# one side and not the other turns them red.
+# The spec layout is the only place a spec key names a component kind, so these
+# tests enforce the invariant the `Adapter` docstring states: the registry is
+# apply's only per-kind seam. A kind wired into one side and not the other turns
+# them red.
 
 
 def _layout_kinds():
-    """Every kind reachable from the spec layout (top-level ∪ entity-nested)."""
-    return {slot.kind for slot in apply_mod.SPEC_LAYOUT.values()} | {
-        slot.kind for slot in apply_mod.ENTITY_LAYOUT.values()
+    """Every kind reachable from the spec layout (top-level ∪ entity ∪ plug-in)."""
+    return {
+        slot.kind
+        for layout in (apply_mod.SPEC_LAYOUT, apply_mod.ENTITY_LAYOUT, apply_mod.PLUGIN_LAYOUT)
+        for slot in layout.values()
     }
 
 

@@ -396,9 +396,9 @@ class Adapter:
     """The registry is the only per-kind seam in apply, and this is one entry of it:
     the complete authority for one component kind behind a single interface.
 
-    Nothing outside :data:`REGISTRY` may know a kind by name — the spec layout
-    (:data:`SPEC_LAYOUT` / :data:`ENTITY_LAYOUT`) says which spec key carries which
-    kind, and a contract test holds the two sides equal.
+    No spec key names a kind directly: the spec layout (:data:`SPEC_LAYOUT`,
+    :data:`ENTITY_LAYOUT`, :data:`PLUGIN_LAYOUT`) maps each key to the kind that owns
+    its blocks, and a contract test holds the layout and the registry equal.
 
     A spec block (a dict from the parsed spec) reaches its create builder through
     exactly this object, so the set of spec keys a kind accepts *is* the adapter's
@@ -528,10 +528,10 @@ class SpecSlot:
                  rather than in a branch keeps the whole document one ordered walk,
                  so the layout's insertion order IS the validation order.
       qualified_label
-                 whether the block's errors are reported under its parent's label.
-                 A form's identity is unique only within its owning entity, so it
-                 validates under the entity-qualified label (ADR 0024); attributes,
-                 views and relationships may adopt it later (#960).
+                 whether the block's errors are reported under its parent's label,
+                 for a kind whose identity is unique only within its parent: a form
+                 is named per owning entity, so it validates under the
+                 entity-qualified label its errors have always carried (ADR 0024).
     """
 
     kind: str
@@ -563,29 +563,45 @@ def _validate_entity_subtree(ent: dict[str, Any]) -> None:
             REGISTRY[slot.kind].validate(block, elabel if slot.qualified_label else None)
 
 
+# The spec's plug-in subtree: plug-in-nested spec key → the kind that owns it. Only
+# `steps` carries a kind — a plug-in's `types` (like a step's `images`) are create-only
+# sub-rows with no adapter of their own, so their shape is a document-structure rule in
+# the pass below rather than a layout entry (#960 keeps them out of the registry).
+PLUGIN_LAYOUT: dict[str, SpecSlot] = {"steps": SpecSlot("plugin-step")}
+
+
+def _validate_step_images(step: dict[str, Any], slabel: str) -> None:
+    """Validate one plug-in step's images.
+
+    Images are create-only sub-rows with no adapter of their own, so their document
+    shape is checked here, under the step-qualified label their errors always carried.
+    """
+    _require_list(step, "images", slabel)
+    for img in _as_list(step.get("images")):
+        _require(img, ("alias", "image_type"), f"{slabel} image")
+        for key in ("alias", "image_type", "attributes", "name", "message_property_name"):
+            if img.get(key) is not None and not isinstance(img[key], str):
+                raise D365Error(f"{slabel}: image {key!r} must be a string.")
+
+
 def _validate_plugin_subtree(plugin: dict[str, Any]) -> None:
     """Validate the sub-collections one plug-in registration owns.
 
-    A plug-in is compound: its step blocks delegate their whole rules to the
-    plug-in step adapter, while plug-in types and a step's images are create-only
-    sub-rows with no adapter of their own, so their document shape stays here.
+    A plug-in is compound: its step blocks delegate their whole rules to the kind
+    the plug-in layout names, while its create-only sub-rows (`types` here, a step's
+    `images` below) have no adapter, so only their document shape is checked.
     """
     plabel = f"plug-in {plugin.get('assembly') or plugin['file']!r}"
-    for sub in ("types", "steps"):
+    for sub in ("types", *PLUGIN_LAYOUT):
         _require_list(plugin, sub, plabel)
     for typ in _as_list(plugin.get("types")):
         _require(typ, ("type_name",), f"{plabel} type")
         if not isinstance(typ["type_name"], str):
             raise D365Error(f"{plabel}: type type_name must be a string.")
-    for step in _as_list(plugin.get("steps")):
-        REGISTRY["plugin-step"].validate(step)
-        slabel = f"{plabel} step {step['name']!r}"
-        _require_list(step, "images", slabel)
-        for img in _as_list(step.get("images")):
-            _require(img, ("alias", "image_type"), f"{slabel} image")
-            for key in ("alias", "image_type", "attributes", "name", "message_property_name"):
-                if img.get(key) is not None and not isinstance(img[key], str):
-                    raise D365Error(f"{slabel}: image {key!r} must be a string.")
+    for sub, slot in PLUGIN_LAYOUT.items():
+        for step in _as_list(plugin.get(sub)):
+            REGISTRY[slot.kind].validate(step, plabel if slot.qualified_label else None)
+            _validate_step_images(step, f"{plabel} step {step['name']!r}")
 
 
 # The spec's top-level layout: spec key → the kind that owns it. Insertion order is
@@ -599,17 +615,11 @@ SPEC_LAYOUT: dict[str, SpecSlot] = {
     "apps": SpecSlot("app"),
 }
 
-# Registry kinds no layout key reaches, each with why. The layout is the only place
-# a spec key names a kind; a kind that is a sub-row of a compound block is reached
-# through its parent instead, and says so here so the contract test can tell a
-# deliberate exception from a kind wired up by nobody.
-ENGINE_INTERNAL_KINDS: dict[str, str] = {
-    "plugin-step": (
-        "sub-row of the plug-in registration compound — reached through the "
-        "`plugins:` block, which owns its own steps, not through a layout key "
-        "of its own (#960 keeps the compound one unit)"
-    ),
-}
+# Registry kinds no layout key reaches, each with why. Empty today — all eleven kinds
+# are reachable from a layout above — but declaring one is how a future engine-internal
+# kind stays honest: the contract test partitions the registry into layout-reachable
+# and declared-here, so a kind wired up by nobody cannot hide as an oversight.
+ENGINE_INTERNAL_KINDS: dict[str, str] = {}
 
 
 def validate_spec(spec: Any) -> None:
