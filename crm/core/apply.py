@@ -2988,8 +2988,8 @@ ORDER: tuple[str, ...] = (
 # nobody cannot hide as an oversight.
 NESTED_KINDS: dict[str, str] = {
     "plugin-step": (
-        "converged inside its plug-in's compound reconcile, which gates a step on "
-        "its assembly's verdict and its images on the step's"
+        "converged inside its plug-in's compound reconcile, which gates a step on its "
+        "assembly's verdict and a step's images on the step's own verdict"
     ),
 }
 
