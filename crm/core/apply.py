@@ -391,6 +391,102 @@ class ReconcileCtx:
     object_type_code: int | None = None
 
 
+class _Run:
+    """One `apply_spec` run: its inputs, its result buckets, and its run-scoped state.
+
+    The phase loop is generic, so what each hand-written phase block used to keep in
+    a local now lives here — one named object rather than a dozen values threaded
+    through the engine. The driver hands it to the three adapter slots that need
+    run-wide knowledge (`prepare`, `create`, `on_result`); everything else an
+    adapter sees is its block and the capped :class:`ReconcileCtx`.
+
+    State fields:
+      routes            bucket name → the list a verdict of that bucket lands in.
+      planned_names     names this run WOULD create but has not (dry-run greenfield);
+                        a block depending on one is reported planned without a call.
+      entity_logicals   entity schema name → live logical name, captured by the
+                        entity phase and read by every entity-scoped kind.
+      object_type_codes entity logical name → its ObjectTypeCode, filled by the view
+                        phase's `prepare` (one forced-real GET per entity).
+      optionsets_created  global option sets this run created (or would): the
+                        referenced-option-set ensure step skips them, since their
+                        create carried the solution header already.
+    """
+
+    def __init__(
+        self,
+        backend: D365Backend,
+        spec: dict[str, Any],
+        solution: str,
+        *,
+        base_dir: str | None = None,
+        stage_only: bool = False,
+        include_referenced_optionsets: bool = True,
+        prune: bool = False,
+        allow_data_loss: bool = False,
+    ) -> None:
+        self.backend = backend
+        self.spec = spec
+        self.solution = solution
+        self.base_dir = base_dir
+        self.stage_only = stage_only
+        self.include_referenced_optionsets = include_referenced_optionsets
+        self.prune = prune
+        self.allow_data_loss = allow_data_loss
+
+        self.applied: list[Entry] = []
+        self.updated: list[Entry] = []
+        self.skipped: list[Entry] = []
+        self.replace_blocked: list[Entry] = []
+        self.planned: list[Entry] = []
+        self.failed: list[Entry] = []
+        self.pruned: list[Entry] = []
+
+        self.planned_names: set[str] = set()
+        self.entity_logicals: dict[str, str] = {}
+        self.object_type_codes: dict[str, int | None] = {}
+        self.optionsets_created: set[str] = set()
+
+        # A create-then-reconcile kind only ever reaches the three reconcile buckets;
+        # a kind whose reconcile owns its create path (form, web resource, security
+        # role, the compound plug-in) reaches the create-path buckets through here
+        # too, and reports a sub-component's hard failure as a `failed` verdict.
+        self.routes: dict[str, list[Entry]] = {
+            "applied": self.applied,
+            "updated": self.updated,
+            "skipped": self.skipped,
+            "replace_blocked": self.replace_blocked,
+            "planned": self.planned,
+            "failed": self.failed,
+        }
+
+    def logical_of(self, parent: dict[str, Any] | None) -> str | None:
+        """The live logical name of the entity a block is scoped by (None: top-level).
+
+        Falls back to the lower-cased schema name until the entity phase has captured
+        the platform's answer — which is what the hand-written phases did with
+        ``entity_logicals.get(...) or schema_name.lower()``.
+        """
+        if parent is None:
+            return None
+        schema = str(parent["schema_name"])
+        return self.entity_logicals.get(schema) or schema.lower()
+
+    def ctx(self, parent: dict[str, Any] | None, prep: Any = None) -> ReconcileCtx:
+        """The capped per-block context for a block in ``parent``'s entity scope."""
+        return ReconcileCtx(
+            solution=self.solution,
+            base_dir=self.base_dir,
+            entity_logical=self.logical_of(parent),
+            object_type_code=prep if isinstance(prep, int) else None,
+        )
+
+
+# One `select` group: the entity block a run of blocks is scoped by (None for a
+# top-level kind), and those blocks in document order.
+_Group = tuple[dict[str, Any] | None, list[dict[str, Any]]]
+
+
 @dataclass(frozen=True)
 class Adapter:
     """The registry is the only per-kind seam in apply, and this is one entry of it:
@@ -402,7 +498,11 @@ class Adapter:
 
     A spec block (a dict from the parsed spec) reaches its create builder through
     exactly this object, so the set of spec keys a kind accepts *is* the adapter's
-    ``map`` / ``transforms``. The four-slot interface a kind implements:
+    ``map`` / ``transforms``. The engine drives every kind through one generic phase
+    (:func:`_run_phase`) that reads only these slots, so it holds no per-kind
+    knowledge at all.
+
+    The interface a kind implements:
 
       * ``validate(block[, label])`` — the complete up-front authority for one
         block: required keys (``required_block_keys``), constrained values routed
@@ -419,6 +519,29 @@ class Adapter:
       * ``reconcile(backend, block, live, ctx, entry)`` — diff the block against
         ``live`` into a LIST of ADR 0014 verdicts (bucket + payload), one per
         component the block covers.
+      * ``select(spec)`` — the kind's blocks, grouped by the entity block that
+        scopes them (``None`` for a top-level kind). Insertion order is phase order,
+        and an empty group is never yielded, so a `prepare` never fires for a parent
+        with nothing declared.
+      * ``identity(block, ctx)`` — the name the run's entry for this block carries.
+      * ``deps(block, ctx)`` — the names this block depends on; the driver reports it
+        ``planned`` without a call when any of them is only planned itself.
+      * ``prepare(run, parent)`` — per-parent pre-resolution before its blocks run
+        (today the view object-type-code lookup). A ``D365Error`` fails every block
+        in the group and aborts; ``None`` means the value is not available yet, so
+        every block in the group is reported ``planned``.
+      * ``create(run, block, ctx)`` — the create call for a kind whose builder
+        carries its own ``if_exists`` guard: the driver runs it, then reconciles when
+        the builder reports the component already present. A kind whose creation is
+        entangled with its convergence (a web resource has no ``if_exists``; a
+        security role seeds privileges; a plug-in registration is a whole compound;
+        a form is never created at all) leaves this ``None`` and owns the create
+        path inside ``reconcile``, which is then reached through ``find_live``.
+      * ``on_result(run, block, entry, result, bucket)`` — run-state capture after a
+        ``create``: the entity schema→logical map, the planned names dependents are
+        gated on, an app's ids for the publish tail. ``bucket`` is the create's
+        classification, or ``None`` when the component was already present (the
+        capture still runs; there is no bucket yet).
 
     Adapters are *data*: the contract test reads the same ``map`` / ``transforms``
     / ``required_block_keys`` the runtime uses, so a builder kwarg (or a required
@@ -443,6 +566,11 @@ class Adapter:
       extra_validate   optional cross-field block rule ``validate`` runs last,
                  called with the block and the resolved error label.
       find_live / reconcile   the probe/diff callables (see the interface above).
+      select / identity / deps / prepare / create / on_result
+                 the driver slots the generic phase reads (see the interface above).
+                 A kind the engine does not drive itself — one nested inside another
+                 kind's compound reconcile — leaves ``select`` ``None`` and is
+                 declared in :data:`NESTED_KINDS`.
       prune      the kind's :class:`PruneSpec`, or ``None`` when the kind is not
                  prune-eligible — declaring one IS the eligibility.
     """
@@ -462,6 +590,14 @@ class Adapter:
     reconcile: (
         Callable[[D365Backend, dict[str, Any], Any, ReconcileCtx, Entry], _Verdicts] | None
     ) = None
+    select: Callable[[dict[str, Any]], list[_Group]] | None = None
+    identity: Callable[[dict[str, Any], ReconcileCtx], str] | None = None
+    deps: Callable[[dict[str, Any], ReconcileCtx], set[str]] | None = None
+    prepare: Callable[[_Run, dict[str, Any] | None], Any] | None = None
+    create: Callable[[_Run, dict[str, Any], ReconcileCtx], dict[str, Any]] | None = None
+    on_result: Callable[[_Run, dict[str, Any], Entry, dict[str, Any], str | None], None] | None = (
+        None
+    )
     prune: PruneSpec | None = None
 
     @property
@@ -669,6 +805,18 @@ def _solution_exists(backend: D365Backend, name: str) -> bool:
     return bool(rows)
 
 
+def _bucket_of(result: dict[str, Any]) -> str:
+    """The bucket a create-builder's result belongs in, by its return keys.
+
+    Split out of :func:`_classify` so a kind whose ``reconcile`` owns its own create
+    path can classify a create the same way while returning a verdict instead of
+    appending to a bucket list.
+    """
+    if result.get("_dry_run"):
+        return "skipped" if result.get("would_skip") else "planned"
+    return "skipped" if result.get("skipped") else "applied"
+
+
 def _classify(
     result: dict[str, Any],
     entry: Entry,
@@ -677,17 +825,9 @@ def _classify(
     planned: list[Entry],
 ) -> str:
     """Sort a core result into the right bucket by its return keys; return the bucket."""
-    if result.get("_dry_run"):
-        if result.get("would_skip"):
-            skipped.append(entry)
-            return "skipped"
-        planned.append(entry)
-        return "planned"
-    if result.get("skipped"):
-        skipped.append(entry)
-        return "skipped"
-    applied.append(entry)
-    return "applied"
+    bucket = _bucket_of(result)
+    {"applied": applied, "skipped": skipped, "planned": planned}[bucket].append(entry)
+    return bucket
 
 
 def _present(result: dict[str, Any]) -> bool:
@@ -768,7 +908,15 @@ def _reconcile(
     failed: list[Entry],
     routes: dict[str, list[Entry]],
 ) -> None:
-    """Run a reconcile thunk and route each of its verdicts; D365Error → failed + abort."""
+    """Run a reconcile thunk and route each of its verdicts; D365Error → failed + abort.
+
+    A block covering ONE component signals a hard failure by raising, and the entry
+    the driver already built names it. A block covering SEVERAL (the compound plug-in
+    registration) cannot: the verdicts it already produced must still be routed, and
+    the failure belongs to one sub-component, not to the block. So it returns a
+    ``failed`` verdict carrying that sub-component's entry, and the run aborts here —
+    the same outcome, reported against the right component.
+    """
     try:
         verdicts = thunk()
     except D365Error as exc:
@@ -776,6 +924,8 @@ def _reconcile(
         raise _Aborted from exc
     for bucket, payload in verdicts:
         routes[bucket].append(payload)
+    if any(bucket == "failed" for bucket, _ in verdicts):
+        raise _Aborted
 
 
 def _find_live_entity(
@@ -1471,18 +1621,35 @@ def _validate_webresource_block(wr: dict[str, Any], _label: str) -> None:
 def _reconcile_webresource(
     backend: D365Backend,
     wr: dict[str, Any],
-    live: dict[str, Any],
+    live: dict[str, Any] | None,
     ctx: ReconcileCtx,
     entry: Entry,
 ) -> _Verdicts:
-    """Diff an existing web resource against the spec; update content/display or skip.
+    """Converge a declared web resource: create it when absent, else diff it.
 
-    The spec's body bytes — read here from the block + ``ctx.base_dir`` — are
-    base64-compared against the live `content` column; a declared `display_name`
+    ``create_webresource`` has no ``if_exists`` guard, so this kind owns its create
+    path rather than letting the driver probe with a create: ``find_live`` is the
+    single existence read (forced-real, dry-run safe) and an absent web resource is
+    created right here from the same body bytes the diff would compare.
+
+    On the diff side the spec's body bytes — read from the block + ``ctx.base_dir`` —
+    are base64-compared against the live `content` column; a declared `display_name`
     is compared too. There is no destructive divergence for a web resource, so this
-    never blocks. The update defers publishing (publish=False) — apply publishes
-    once at the end.
+    never blocks. Create and update both defer publishing (publish=False) — apply
+    publishes once at the end.
     """
+    if live is None:
+        result = wr_mod.create_webresource(
+            backend,
+            **REGISTRY["webresource"].to_kwargs(wr),
+            content=_webresource_content(ctx.base_dir, wr),
+            webresourcetype=wr_mod.resolve_webresourcetype(
+                wr.get("file") or "", wr.get("webresourcetype")
+            ),
+            solution=ctx.solution,
+            publish=False,
+        )
+        return [(_bucket_of(result), entry)]
     content = _webresource_content(ctx.base_dir, wr)
     desired_b64 = base64.b64encode(content).decode("ascii")
     changes: dict[str, Any] = {}
@@ -1553,13 +1720,21 @@ def _validate_security_role_block(role: dict[str, Any], _label: str) -> None:
 def _reconcile_security_role(
     backend: D365Backend,
     role_spec: dict[str, Any],
-    role_id: str,
+    role_id: str | None,
     ctx: ReconcileCtx,
     entry: Entry,
 ) -> _Verdicts:
-    """Reconcile an existing role's privileges to the declared set.
+    """Converge a declared security role: create it when absent, else its privileges.
 
-    ``role_id`` is the ``find_live`` slot's value (the live role id). The role's
+    ``role_id`` is the ``find_live`` slot's value — the live role id, or ``None``
+    when the role does not exist. This kind owns its create path (the driver runs no
+    ``create``) because creating a role is only half of it: a fresh role also needs
+    the declared privilege set applied, and a create that RACES a concurrent apply
+    lands back on the reconcile below rather than authoritatively replacing what the
+    other run just set. Under dry-run an absent role is reported ``planned`` — role
+    plus privileges would be created — with nothing written.
+
+    The role's
     live privileges (RetrieveRolePrivilegesRole) are compared to the declared
     matrix by (privilege id -> depth). When every declared privilege is already
     present at its declared depth it is a no-op; otherwise ReplacePrivilegesRole
@@ -1582,6 +1757,26 @@ def _reconcile_security_role(
     reconcile (the skip test passes). Unlisted privileges are dropped only when the
     replace fires because some declared privilege is missing or at the wrong depth.
     """
+    if role_id is None:
+        if backend.dry_run:
+            return [("planned", entry)]  # greenfield: role + privileges would be created
+        # Absent at probe time: create it (if_exists='skip' still guards the create
+        # race — a concurrent apply may have created it since the probe). On that
+        # race create_role reports `existed`, so fall back to reconciling its
+        # privileges (subset-satisfaction) rather than replacing them. Otherwise
+        # ReplacePrivilegesRole drops the removable default privileges and applies
+        # the declared ones; the platform's immovable baseline stays.
+        created = sec_mod.create_role(
+            backend,
+            **REGISTRY["security-role"].to_kwargs(role_spec),
+            if_exists="skip",
+            solution=ctx.solution,
+        )
+        role_id = str(created["roleid"])
+        if not created.get("existed"):
+            desired_new, _ = _desired_role_privileges(backend, role_spec)
+            sec_mod.replace_role_privileges(backend, role_id, desired_new)
+            return [("applied", entry)]
     desired, _ = _desired_role_privileges(backend, role_spec)
     live = sec_mod.get_role_privileges(backend, role_id)
     live_map = {p["privilegeid"]: p["depth"] for p in live}
@@ -1791,6 +1986,191 @@ def _reconcile_plugin_step(
     return [("updated", {**entry, "diff": {"fields": sorted(changes)}})]
 
 
+def _plugin_call[T](verdicts: _Verdicts, sub: Entry, fn: Callable[[], T]) -> T:
+    """Run one sub-call of the plug-in compound below.
+
+    On D365Error it emits that sub-row's ``failed`` verdict and stops the chain, so
+    the registration's failure names the type/step/image that failed rather than the
+    plug-in block — the compound's counterpart to :func:`_call`.
+    """
+    try:
+        return fn()
+    except D365Error as exc:
+        verdicts.append(("failed", {**sub, "error": str(exc)}))
+        raise _Aborted from exc
+
+
+def _reconcile_plugin(
+    backend: D365Backend,
+    plugin: dict[str, Any],
+    live: dict[str, Any] | None,
+    ctx: ReconcileCtx,
+    entry: Entry,
+) -> _Verdicts:
+    """Converge one whole plug-in registration: assembly, types, steps, images.
+
+    A plug-in is compound — a registration unit whose `types` and a step's `images`
+    are create-only sub-rows with no reconcile or prune of their own (#960 keeps them
+    out of the registry) — so the whole chain converges behind ONE slot instead of
+    four phases. That is also why this kind owns its create path: the assembly's
+    create is only the first link, and every link after it is gated on what the one
+    before it did.
+
+    The gating, unchanged from the hand-written phase: an assembly that is only
+    `planned` (dry-run greenfield) plans its whole subtree without a call; a
+    just-created assembly has no types to list, so each declared type is registered
+    directly; a `replace_blocked` step leaves its images alone until it is recreated;
+    and a step that would only be created under dry-run plans its images too.
+
+    Every sub-row gets its own verdict, so the run's buckets read exactly as they did
+    when this was thirteen lines of phase block. A failing sub-call stops the rest of
+    the registration and is reported as a ``failed`` verdict naming that sub-row —
+    which is what aborts the run (see :func:`_reconcile`), with the verdicts already
+    earned kept in their buckets.
+    """
+    verdicts: _Verdicts = []
+    name = _assembly_name(plugin)
+    try:
+        assembly_planned = False
+        assembly_created = False
+        if live is None:
+            # Annotated at its first assignment: every link of the chain reuses this
+            # local for its core's result dict, and one declared type keeps the later
+            # reads typed rather than partially unknown.
+            result: dict[str, Any] = _plugin_call(
+                verdicts,
+                entry,
+                lambda: plugin_mod.register_assembly(
+                    backend,
+                    **REGISTRY["plugin-assembly"].to_kwargs(plugin),
+                    path=os.path.join(ctx.base_dir or "", plugin["file"]),
+                    name=name,
+                    solution=ctx.solution,
+                    update=False,
+                ),
+            )
+            bucket = _bucket_of(result)
+            verdicts.append((bucket, entry))
+            assembly_planned = bucket == "planned"
+            assembly_created = bucket == "applied"
+        else:
+            verdicts.extend(
+                _plugin_call(
+                    verdicts,
+                    entry,
+                    lambda: _reconcile_plugin_assembly(backend, plugin, live, ctx, entry),
+                )
+            )
+
+        # Types (create-only, nested). A just-created assembly has none, so register
+        # each declared type directly; a pre-existing one is listed once to skip what
+        # it already has.
+        live_typenames: set[str] | None = None
+        for typ in _as_list(plugin.get("types")):
+            t_entry: Entry = {"kind": "plugin-type", "name": typ["type_name"]}
+            if assembly_planned:
+                verdicts.append(("planned", t_entry))
+                continue
+            if not assembly_created:
+                if live_typenames is None:
+                    listing = _plugin_call(
+                        verdicts, t_entry, lambda: plugin_mod.list_types(backend, assembly=name)
+                    )
+                    live_typenames = {str(r.get("typename")) for r in listing.get("value", [])}
+                if typ["type_name"] in live_typenames:
+                    verdicts.append(("skipped", t_entry))
+                    continue
+            result = _plugin_call(
+                verdicts,
+                t_entry,
+                lambda typ=typ: plugin_mod.register_type(
+                    backend,
+                    assembly=name,
+                    type_name=typ["type_name"],
+                    friendly_name=typ.get("friendly_name"),
+                    solution=ctx.solution,
+                ),
+            )
+            verdicts.append((_bucket_of(result), t_entry))
+
+        # Steps (their own registry kind, driven from here) with their images.
+        for step in _as_list(plugin.get("steps")):
+            s_entry: Entry = {"kind": "plugin-step", "name": step["name"]}
+            if assembly_planned:
+                verdicts.append(("planned", s_entry))
+                verdicts.extend(
+                    ("planned", {"kind": "plugin-image", "name": img["alias"]})
+                    for img in _as_list(step.get("images"))
+                )
+                continue
+            live_step = _plugin_call(
+                verdicts, s_entry, lambda step=step: _find_live_plugin_step(backend, step, ctx)
+            )
+            step_id: str | None = None
+            step_blocked = False
+            if live_step is None:
+                result = _plugin_call(
+                    verdicts,
+                    s_entry,
+                    lambda step=step: plugin_mod.register_step(
+                        backend,
+                        **REGISTRY["plugin-step"].to_kwargs(step),
+                        assembly=name,
+                        solution=ctx.solution,
+                    ),
+                )
+                verdicts.append((_bucket_of(result), s_entry))
+                created_id = result.get("sdkmessageprocessingstepid")  # None under dry-run
+                step_id = None if created_id is None else str(created_id)
+            else:
+                step_verdicts = _plugin_call(
+                    verdicts,
+                    s_entry,
+                    lambda step=step, live_step=live_step, s_entry=s_entry: _reconcile_plugin_step(
+                        backend, step, live_step, ctx, s_entry
+                    ),
+                )
+                verdicts.extend(step_verdicts)
+                step_id = str(live_step["sdkmessageprocessingstepid"])
+                step_blocked = any(b == "replace_blocked" for b, _ in step_verdicts)
+
+            for img in _as_list(step.get("images")):
+                img_entry: Entry = {"kind": "plugin-image", "name": img["alias"]}
+                if step_blocked:
+                    continue  # blocked step: leave its images until it is recreated
+                if step_id is None:
+                    verdicts.append(("planned", img_entry))  # dry-run: step, so image too
+                    continue
+                existing_img = _plugin_call(
+                    verdicts,
+                    img_entry,
+                    lambda img=img, step_id=step_id: plugin_mod.find_step_image(
+                        backend, step_id, img["alias"]
+                    ),
+                )
+                if existing_img is not None:
+                    verdicts.append(("skipped", img_entry))
+                    continue
+                result = _plugin_call(
+                    verdicts,
+                    img_entry,
+                    lambda img=img, step_id=step_id: plugin_mod.register_image(
+                        backend,
+                        step=step_id,
+                        image_type=img["image_type"],
+                        alias=img["alias"],
+                        attributes=img.get("attributes"),
+                        name=img.get("name"),
+                        message_property_name=img.get("message_property_name"),
+                        solution=ctx.solution,
+                    ),
+                )
+                verdicts.append((_bucket_of(result), img_entry))
+    except _Aborted:
+        pass
+    return verdicts
+
+
 # ── form adapter functions (a reconcile-only kind) ───────────────────────────
 # The `form` kind has NO create path: the platform creates an entity's main form,
 # and apply's stance is *converge an existing main form*, never forge one (ADR
@@ -1969,6 +2349,232 @@ def _reconcile_app(
     return [("updated", entry)]
 
 
+# ── driver slots: how the generic phase selects, names, gates and creates ────
+# Everything the engine used to know per kind, declared on the kind instead. Each
+# helper below is either a factory for the shape most kinds share (a top-level or
+# entity-nested `select`, an identity read off one spec key) or the one kind's rule
+# that does not fit a shape.
+def _select_top(key: str) -> Callable[[dict[str, Any]], list[_Group]]:
+    """A top-level kind's blocks: one unscoped group, empty when nothing is declared."""
+
+    def select(spec: dict[str, Any]) -> list[_Group]:
+        blocks = _as_list(spec.get(key))
+        return [(None, blocks)] if blocks else []
+
+    return select
+
+
+def _select_nested(key: str) -> Callable[[dict[str, Any]], list[_Group]]:
+    """An entity-nested kind's blocks: one group per entity that declares any.
+
+    An entity declaring none is left out entirely, so a kind whose `prepare` costs a
+    read (views) never spends one on an entity with nothing to apply.
+    """
+
+    def select(spec: dict[str, Any]) -> list[_Group]:
+        groups: list[_Group] = []
+        for ent in _as_list(spec.get("entities")):
+            blocks = _as_list(ent.get(key))
+            if blocks:
+                groups.append((ent, blocks))
+        return groups
+
+    return select
+
+
+def _select_entities(spec: dict[str, Any]) -> list[_Group]:
+    """The entity kind's blocks — each its own group AND its own scope.
+
+    An entity block defines the entity scope its nested kinds resolve in, and it
+    resolves in that same scope itself: its `find_live` reads the live definition by
+    the logical name the run captured for it, exactly as an attribute reads its
+    owner's. So an entity is its own parent here rather than a top-level block.
+    """
+    return [(ent, [ent]) for ent in _as_list(spec.get("entities"))]
+
+
+def _name_key(key: str) -> Callable[[dict[str, Any], ReconcileCtx], str]:
+    """A kind whose entry name is read straight off one spec key."""
+    return lambda block, _ctx: str(block[key])
+
+
+def _form_identity(block: dict[str, Any], ctx: ReconcileCtx) -> str:
+    """A form block's entry name: the declared `name`, else the entity's main form."""
+    name = block.get("name")
+    return name if isinstance(name, str) else f"{ctx.entity_logical} main form"
+
+
+def _scope(ctx: ReconcileCtx) -> str:
+    """The owning entity's logical name, for a kind that only exists inside one.
+
+    The driver always sets it for an entity-nested kind (`select` groups those blocks
+    by their owning entity), so the raise is unreachable — but it is a raise rather
+    than an assert because the frozen build can run optimized.
+    """
+    if ctx.entity_logical is None:
+        raise D365Error("apply: an entity-scoped block reached its kind with no entity scope.")
+    return ctx.entity_logical
+
+
+def _deps_attribute(attr: dict[str, Any], ctx: ReconcileCtx) -> set[str]:
+    """An attribute needs its table, its global option set, and a lookup's target."""
+    deps = {_scope(ctx)}
+    if attr.get("optionset_name"):
+        deps.add(attr["optionset_name"])
+    if attr["kind"] == "lookup" and attr.get("target_entity"):
+        deps.add(attr["target_entity"])
+    return deps
+
+
+def _deps_relationship(rel: dict[str, Any], _ctx: ReconcileCtx) -> set[str]:
+    """A relationship needs both of the tables it binds."""
+    return {rel["referenced_entity"], rel["referencing_entity"]}
+
+
+def _deps_owning_entity(_block: dict[str, Any], ctx: ReconcileCtx) -> set[str]:
+    """A form needs its table materialized — an unpublished one has no form to read."""
+    return {_scope(ctx)}
+
+
+def _prepare_view(run: _Run, parent: dict[str, Any] | None) -> int | None:
+    """Resolve (and cache) the owning entity's ObjectTypeCode before its views run.
+
+    ``None`` when the code is not readable yet (a brand-new custom table before this
+    run's publish), which reports that entity's views planned rather than failing
+    them; a second apply lands them.
+    """
+    logical = str(run.logical_of(parent))
+    if logical not in run.object_type_codes:
+        run.object_type_codes[logical] = _resolve_otc(run.backend, logical)
+    return run.object_type_codes[logical]
+
+
+def _create_entity(run: _Run, ent: dict[str, Any], _ctx: ReconcileCtx) -> dict[str, Any]:
+    """Create the declared table (skipping an existing one, which then reconciles)."""
+    return meta_mod.create_entity(
+        run.backend,
+        **REGISTRY["entity"].to_kwargs(ent),
+        solution=run.solution,
+        if_exists="skip",
+    )
+
+
+def _create_optionset(run: _Run, os_spec: dict[str, Any], _ctx: ReconcileCtx) -> dict[str, Any]:
+    """Create the declared global option set (before the attributes referencing it)."""
+    return os_mod.create_optionset(
+        run.backend,
+        **REGISTRY["optionset"].to_kwargs(os_spec),
+        is_global=True,
+        solution=run.solution,
+        if_exists="skip",
+    )
+
+
+def _create_attribute(run: _Run, attr: dict[str, Any], ctx: ReconcileCtx) -> dict[str, Any]:
+    """Add the declared column to its table (a lookup delegates to a relationship)."""
+    return attrs_mod.add_attribute(
+        run.backend,
+        **REGISTRY["attribute"].to_kwargs(attr),
+        entity=_scope(ctx),
+        solution=run.solution,
+        if_exists="skip",
+    )
+
+
+def _create_relationship(run: _Run, rel: dict[str, Any], _ctx: ReconcileCtx) -> dict[str, Any]:
+    """Create the declared one-to-many relationship (both tables exist by now)."""
+    return rel_mod.create_one_to_many(
+        run.backend,
+        **REGISTRY["relationship"].to_kwargs(rel),
+        solution=run.solution,
+        if_exists="skip",
+    )
+
+
+def _create_view(run: _Run, view: dict[str, Any], ctx: ReconcileCtx) -> dict[str, Any]:
+    """Create the declared view against the object type code `prepare` resolved."""
+    otc = ctx.object_type_code
+    if otc is None:
+        # Unreachable: `prepare` reports the whole group planned when the code is
+        # not readable yet, so no view block gets here without one.
+        raise D365Error(f"view {view['name']!r}: object type code was not resolved.")
+    return views_mod.create_view(
+        run.backend,
+        **REGISTRY["view"].to_kwargs(view),
+        entity=_scope(ctx),
+        object_type_code=otc,
+        solution=run.solution,
+        if_exists="skip",
+    )
+
+
+def _create_app(run: _Run, block: dict[str, Any], _ctx: ReconcileCtx) -> dict[str, Any]:
+    """The whole app create path as ONE core call (ADR 0024, #795/#809).
+
+    Creates the app, binds its declared components, builds its sitemap and binds that
+    too. A created app whose id cannot be resolved while components or a sitemap are
+    declared raises out of here, and the driver's error path records the failed entry
+    and aborts the run: an app whose sitemap never landed leaves its tables
+    unreachable, so it must never report as applied.
+    """
+    return app_mod.create_app_with_components(
+        run.backend,
+        name=block["name"],
+        unique_name=block["unique_name"],
+        description=block.get("description"),
+        components=_app_components(block),
+        sitemap=block.get("sitemap"),
+        solution=run.solution,
+        if_exists="skip",
+        publish=False,
+    )
+
+
+def _on_result_entity(
+    run: _Run, ent: dict[str, Any], _entry: Entry, result: dict[str, Any], bucket: str | None
+) -> None:
+    """Capture the platform's logical name for this table; gate its dependents.
+
+    Every entity-scoped kind resolves its scope through this map, so it is captured
+    whether the table was created or already existed.
+    """
+    logical = result.get("logical_name") or str(ent["schema_name"]).lower()
+    run.entity_logicals[str(ent["schema_name"])] = logical
+    if bucket == "planned":
+        run.planned_names.add(logical)
+
+
+def _on_result_optionset(
+    run: _Run, os_spec: dict[str, Any], _entry: Entry, _result: dict[str, Any], bucket: str | None
+) -> None:
+    """Gate dependents on a planned set, and record what this run's create covered.
+
+    A set created (or, under dry-run, would-be created) this run carries the solution
+    header already, so the referenced-option-set ensure step below skips it. A
+    PRE-EXISTING set is deliberately absent from that record — its membership is what
+    that step exists to add (#146e).
+    """
+    name = str(os_spec["name"])
+    if bucket == "planned":
+        run.planned_names.add(name)
+    if bucket in ("applied", "planned"):
+        run.optionsets_created.add(name)
+
+
+def _on_result_app(
+    run: _Run, _block: dict[str, Any], entry: Entry, result: dict[str, Any], bucket: str | None
+) -> None:
+    """Carry the ids the publish tail gates the app-scoped publish on (#809).
+
+    The entry is already in its bucket, so this mutates it in place.
+    """
+    if bucket != "applied":
+        return
+    entry["appmoduleid"] = result.get("appmoduleid")
+    if result.get("sitemapid"):
+        entry["sitemapid"] = result["sitemapid"]
+
+
 # One component-kind adapter per component kind — the complete authority for its
 # kind (validate / to_kwargs / find_live / reconcile). All eleven reconciled kinds
 # are registry-driven: the entity subtree (entity, attribute, relationship, view,
@@ -2017,6 +2623,10 @@ REGISTRY: dict[str, Adapter] = {
         extra_validate=_validate_attribute_block,
         find_live=_find_live_attribute,
         reconcile=_reconcile_attribute,
+        select=_select_nested("attributes"),
+        identity=_name_key("schema_name"),
+        deps=_deps_attribute,
+        create=_create_attribute,
         prune=PruneSpec(
             component_type=2,
             declared=_declared_nested("attributes", "schema_name"),
@@ -2071,6 +2681,10 @@ REGISTRY: dict[str, Adapter] = {
         extra_validate=_validate_relationship_block,
         find_live=_find_live_relationship,
         reconcile=_reconcile_relationship,
+        select=_select_nested("relationships"),
+        identity=_name_key("schema_name"),
+        deps=_deps_relationship,
+        create=_create_relationship,
     ),
     "entity": Adapter(
         map={
@@ -2105,6 +2719,10 @@ REGISTRY: dict[str, Adapter] = {
         extra_validate=_validate_entity_block,
         find_live=_find_live_entity,
         reconcile=_reconcile_entity,
+        select=_select_entities,
+        identity=_name_key("schema_name"),
+        create=_create_entity,
+        on_result=_on_result_entity,
         prune=PruneSpec(
             component_type=1,
             declared=_declared_top(
@@ -2137,6 +2755,10 @@ REGISTRY: dict[str, Adapter] = {
         extra_validate=_validate_view_block,
         find_live=_find_live_view,
         reconcile=_reconcile_view,
+        select=_select_nested("views"),
+        identity=_name_key("name"),
+        prepare=_prepare_view,
+        create=_create_view,
         prune=PruneSpec(
             component_type=26,
             declared=_declared_nested("views", "name"),
@@ -2160,6 +2782,9 @@ REGISTRY: dict[str, Adapter] = {
         extra_validate=_validate_form_block,
         find_live=_find_live_form,
         reconcile=_reconcile_form,
+        select=_select_nested("forms"),
+        identity=_form_identity,
+        deps=_deps_owning_entity,
     ),
     "app": Adapter(
         # The create path is ONE deep core call (`create_app_with_components`: create
@@ -2178,6 +2803,10 @@ REGISTRY: dict[str, Adapter] = {
         extra_validate=_validate_app_block,
         find_live=_find_live_app,
         reconcile=_reconcile_app,
+        select=_select_top("apps"),
+        identity=_name_key("unique_name"),
+        create=_create_app,
+        on_result=_on_result_app,
     ),
     "optionset": Adapter(
         map={
@@ -2198,6 +2827,10 @@ REGISTRY: dict[str, Adapter] = {
         extra_validate=_validate_optionset_block,
         find_live=_find_live_optionset,
         reconcile=_reconcile_optionset,
+        select=_select_top("optionsets"),
+        identity=_name_key("name"),
+        create=_create_optionset,
+        on_result=_on_result_optionset,
     ),
     "webresource": Adapter(
         map={
@@ -2215,6 +2848,8 @@ REGISTRY: dict[str, Adapter] = {
         extra_validate=_validate_webresource_block,
         find_live=_find_live_webresource,
         reconcile=_reconcile_webresource,
+        select=_select_top("webresources"),
+        identity=_name_key("name"),
         prune=PruneSpec(
             component_type=61,
             declared=_declared_top(
@@ -2237,6 +2872,8 @@ REGISTRY: dict[str, Adapter] = {
         extra_validate=_validate_security_role_block,
         find_live=_find_live_security_role,
         reconcile=_reconcile_security_role,
+        select=_select_top("security_roles"),
+        identity=_name_key("name"),
         prune=PruneSpec(
             component_type=20,
             declared=_declared_top(
@@ -2267,7 +2904,13 @@ REGISTRY: dict[str, Adapter] = {
         block_label="plug-in",
         extra_validate=_validate_plugin_assembly_block,
         find_live=_find_live_plugin_assembly,
-        reconcile=_reconcile_plugin_assembly,
+        # The compound: this kind's reconcile converges the whole registration —
+        # assembly, types, steps, images — so the engine drives a plug-in through one
+        # slot and holds no plug-in sequencing of its own. The assembly's own content
+        # diff is `_reconcile_plugin_assembly`, which it calls.
+        reconcile=_reconcile_plugin,
+        select=_select_top("plugins"),
+        identity=lambda block, _ctx: _assembly_name(block),
     ),
     "plugin-step": Adapter(
         map={
@@ -2319,6 +2962,100 @@ REGISTRY: dict[str, Adapter] = {
         ),
     ),
 }
+
+
+# The apply pipeline: every kind the engine drives, in dependency order. This tuple
+# IS the order components are applied and reported in — global option sets before
+# the attributes that reference them, forms after the columns and web resources they
+# lay out, apps last so every record-backed component they bind already exists.
+ORDER: tuple[str, ...] = (
+    "entity",
+    "optionset",
+    "attribute",
+    "relationship",
+    "view",
+    "webresource",
+    "form",
+    "security-role",
+    "plugin-assembly",
+    "app",
+)
+
+# Registry kinds the pipeline does not drive, each with why. A nested kind is
+# converged from inside its parent's compound reconcile, so it has an adapter (it
+# validates, probes and diffs like any kind) but no phase of its own; the contract
+# test partitions the registry into ORDER and this table, so a kind driven by
+# nobody cannot hide as an oversight.
+NESTED_KINDS: dict[str, str] = {
+    "plugin-step": (
+        "converged inside its plug-in's compound reconcile, which gates a step on "
+        "its assembly's verdict and its images on the step's"
+    ),
+}
+
+
+def _run_phase(run: _Run, kind: str) -> None:
+    """Apply one kind: the whole loop body, identical for every kind in `ORDER`.
+
+    The shape is probe → create or reconcile → classify, read entirely off the
+    adapter's slots. Its one structural branch is on adapter DATA, never on the kind:
+    an adapter with no ``create`` owns its create path inside ``reconcile`` (see
+    :class:`Adapter`), so the driver simply hands it its live read.
+    """
+    adapter = REGISTRY[kind]
+    select, identity, create = adapter.select, adapter.identity, adapter.create
+    if select is None or identity is None:
+        # Unreachable: a contract test holds ORDER and the driven slots together.
+        raise D365Error(f"apply: kind {kind!r} is in ORDER but declares no phase slots.")
+    backend = run.backend
+
+    for parent, blocks in select(run.spec):
+        prep: Any = None
+        prepare = adapter.prepare
+        if prepare is not None:
+            try:
+                prep = prepare(run, parent)
+            except D365Error as exc:
+                for block in blocks:
+                    name = identity(block, run.ctx(parent))
+                    run.failed.append({"kind": kind, "name": name, "error": str(exc)})
+                raise _Aborted from exc
+            if prep is None:
+                # The value the whole group needs is not available yet: report each
+                # block planned without a call, and a second apply lands them.
+                for block in blocks:
+                    run.planned.append({"kind": kind, "name": identity(block, run.ctx(parent))})
+                continue
+
+        for block in blocks:
+            ctx = run.ctx(parent, prep)
+            entry: Entry = {"kind": kind, "name": identity(block, ctx)}
+            if adapter.deps is not None and adapter.deps(block, ctx) & run.planned_names:
+                run.planned.append(entry)
+                continue
+            if create is None:
+                # The kind owns its create path: find_live is its existence read and
+                # reconcile returns every verdict, create-path buckets included.
+                _reconcile_via_adapter(adapter, backend, block, ctx, entry, run.routes, run.failed)
+                continue
+            result = _call(
+                entry,
+                lambda block=block, ctx=ctx, create=create: create(run, block, ctx),
+                run.failed,
+            )
+            if _present(result):
+                # Already live: capture what the result carries, then reconcile it
+                # against the spec. The context is rebuilt because that capture can
+                # refine the block's own scope (an entity's logical name).
+                if adapter.on_result is not None:
+                    adapter.on_result(run, block, entry, result, None)
+                _reconcile_via_adapter(
+                    adapter, backend, block, run.ctx(parent, prep), entry, run.routes, run.failed
+                )
+                continue
+            bucket = _classify(result, entry, run.applied, run.skipped, run.planned)
+            if adapter.on_result is not None:
+                adapter.on_result(run, block, entry, result, bucket)
 
 
 def _read_file_bytes(base_dir: str | None, file: str) -> bytes:
@@ -2555,6 +3292,226 @@ def _prune_delete(backend: D365Backend, cand: dict[str, Any]) -> None:
         raise D365Error(f"prune: unsupported kind {kind!r}")
 
 
+# ── named driver steps: the parts of a run that are not component kinds ──────
+# The publisher and the solution are the target a customization write files into,
+# not components apply reconciles (see REGISTRY above), so they open the run rather
+# than joining the pipeline. The option-set ensure, the prune scan and the publish
+# tail close over what the pipeline did.
+def _apply_publisher(run: _Run) -> str | None:
+    """Named driver step: the spec's publisher. Returns its id for the solution bind."""
+    pub = run.spec.get("publisher")
+    if not pub:
+        return None
+    entry: Entry = {"kind": "publisher", "name": pub["unique_name"]}
+    result = _call(
+        entry,
+        lambda: sol_mod.create_publisher(
+            run.backend,
+            name=pub["unique_name"],
+            friendly_name=pub.get("friendly_name"),
+            prefix=pub["prefix"],
+            option_value_prefix=pub["option_value_prefix"],
+            if_exists="skip",
+        ),
+        run.failed,
+    )
+    if _classify(result, entry, run.applied, run.skipped, run.planned) == "planned":
+        run.planned_names.add(pub["unique_name"])
+    return result.get("publisherid")
+
+
+def _apply_solution(run: _Run, pub_id: str | None) -> None:
+    """Named driver step: the target solution, bound to the publisher above."""
+    sol = run.spec["solution"]
+    pub = run.spec.get("publisher")
+    entry: Entry = {"kind": "solution", "name": sol["unique_name"]}
+    if pub and pub["unique_name"] in run.planned_names:
+        run.planned.append(entry)
+        return
+    if not pub and run.backend.dry_run:
+        # No publisher to build the bind: create_solution resolves a publisher
+        # before its dry-run short-circuit and would raise even when the solution
+        # already exists. Probe existence directly instead.
+        bucket = run.skipped if _solution_exists(run.backend, sol["unique_name"]) else run.planned
+        bucket.append(entry)
+        return
+    result = _call(
+        entry,
+        lambda: sol_mod.create_solution(
+            run.backend,
+            name=sol["unique_name"],
+            friendly_name=sol.get("friendly_name"),
+            version=sol.get("version", "1.0.0.0"),
+            publisher_id=pub_id,
+            publisher_unique_name=pub["unique_name"] if pub else None,
+            if_exists="skip",
+        ),
+        run.failed,
+    )
+    _classify(result, entry, run.applied, run.skipped, run.planned)
+
+
+def _ensure_referenced_optionsets(run: _Run) -> None:
+    """Named driver step: make every referenced global option set a solution component.
+
+    `create_optionset` adds a NEWLY created set to the solution via the
+    MSCRM.SolutionUniqueName POST header, but a pre-existing global it skips is never
+    made a member. Add each referenced set explicitly so a picklist's option set is
+    not silently absent from the built solution (#146e). Default ON.
+
+    Not a kind: it converges no component of its own — it files what the option-set
+    phase left over into the solution — and it is best-effort, so a membership-add
+    failure is recorded without aborting a run whose tables and columns already
+    landed. That "never aborts" is exactly why it cannot be a phase.
+    """
+    if not run.include_referenced_optionsets or not run.solution:
+        return
+    backend = run.backend
+    for os_spec in _as_list(run.spec.get("optionsets")):
+        os_name: str = os_spec["name"]
+        if os_name in run.optionsets_created:
+            continue  # created this run: MSCRM.SolutionUniqueName header handled it
+        entry: Entry = {"kind": "solution-component", "name": os_name}
+        if backend.dry_run:
+            run.planned.append(entry)
+            continue
+        try:
+            raw = as_dict(
+                backend.get(
+                    f"GlobalOptionSetDefinitions(Name='{os_name}')",
+                    params={"$select": "MetadataId"},
+                )
+            )
+            metadata_id = raw.get("MetadataId")
+            if not isinstance(metadata_id, str) or not metadata_id:
+                raise D365Error(
+                    f"option set {os_name!r} has no MetadataId; cannot add to solution."
+                )
+            sol_mod.add_solution_component(
+                backend,
+                solution=run.solution,
+                component_id=metadata_id,
+                component_type=sol_mod.SOLUTION_COMPONENT_TYPES["optionset"],
+            )
+            # Report as skipped (not applied): the optionset pre-existed so we
+            # cannot tell without an extra GET whether it was already a solution
+            # member. Reporting applied would trigger publish and show a change on
+            # every re-apply even when nothing changed.
+            run.skipped.append(entry)
+        except D365Error as exc:
+            # Best-effort: a membership-add failure must not abort an apply whose
+            # entities/attrs already landed. Record, do not raise.
+            run.failed.append({**entry, "error": str(exc)})
+
+
+# The one named driver step that runs INSIDE the pipeline, keyed by the phase it
+# follows: its entries must land between the option-set phase's and the next
+# phase's, so the driver runs it the moment that phase completes.
+_AFTER_PHASE: dict[str, Callable[[_Run], None]] = {"optionset": _ensure_referenced_optionsets}
+
+
+def _prune_phase(run: _Run) -> None:
+    """Named driver step: report — and, when asked, delete — the solution's extras.
+
+    Solution-bounded, opt-in, gated (#553). Detection (read-only) runs under --prune
+    or --dry-run; a plain apply skips it entirely. It needs the target solution to
+    already exist — a greenfield run (the solution is created this pass, or, under
+    dry-run, not at all) has no members to prune. Deletes are suppressed when the
+    convergence itself failed: a partial-failure run must not also start deleting
+    org-extras.
+
+    Not a kind, and not a phase: it is one scan across every prune-eligible kind at
+    once, reading each one's `PruneSpec` off the registry (#961).
+    """
+    if not run.solution or not (run.prune or run.backend.dry_run):
+        return
+    if not _solution_exists(run.backend, run.solution):
+        return
+    suppressed = bool(run.failed or run.replace_blocked)
+    for cand in _prune_candidates(run.backend, run.spec, run.solution):
+        kind, name = cand["kind"], cand["name"]
+        kind_prune = REGISTRY[kind].prune
+        data_bearing = kind_prune is not None and kind_prune.data_bearing
+        would_delete = run.prune and (not data_bearing or run.allow_data_loss)
+        if run.backend.dry_run:
+            entry: Entry = {"kind": kind, "name": name, "deleted": False}
+            # Mirror the real run exactly: it would delete only when not suppressed
+            # by a failed/replace-blocked convergence.
+            if would_delete and not suppressed:
+                entry["would_prune"] = True
+            elif run.prune and data_bearing and not run.allow_data_loss:
+                entry["reason"] = "data-bearing; pass --allow-data-loss to delete"
+            run.pruned.append(entry)
+        elif run.prune and data_bearing and not run.allow_data_loss:
+            run.pruned.append(
+                {
+                    "kind": kind,
+                    "name": name,
+                    "deleted": False,
+                    "reason": "data-bearing; pass --allow-data-loss to delete",
+                }
+            )
+        elif would_delete and not suppressed:
+            try:
+                _prune_delete(run.backend, cand)
+                run.pruned.append({"kind": kind, "name": name, "deleted": True})
+            except D365Error as exc:
+                run.failed.append({"kind": kind, "name": name, "error": str(exc)})
+        else:
+            run.pruned.append({"kind": kind, "name": name, "deleted": False})
+
+
+def _publish_tail(run: _Run) -> bool:
+    """Named driver step: publish ONCE at the end; returns whether the run staged.
+
+    The per-resource cores were all called with their default publish=False, so
+    nothing published mid-run. Skip when staging, on a dry run, on any failure (hard
+    error or replace-blocked divergence), or when nothing was actually written
+    (created or updated). Under --dry-run `applied` is always empty and `updated` is
+    a would-update preview (writes suppressed), so nothing was written — the run
+    never stages. Security roles and plug-in components are not publishable
+    customizations; a change to them writes but needs no PublishAllXml, so
+    publish/staged gate on the publishable writes only.
+    """
+    publishable = [e for e in run.applied + run.updated if e.get("kind") not in _NON_PUBLISHABLE]
+    wrote = bool(publishable) and not run.backend.dry_run
+    published = (
+        wrote
+        and not run.stage_only
+        and not run.failed
+        and not run.replace_blocked
+        and not run.backend.dry_run
+    )
+    if not published:
+        return wrote
+    sol_mod.publish_all(run.backend)
+    # PublishAllXml does NOT flip an appmodule to Published (#809), so an app stays
+    # invisible to the `appmodules` collection until an app-scoped publish. After the
+    # blanket publish, app-publish every app that has newly become publishable: a
+    # CREATED app with a sitemap bound, or an UPDATED app whose reconcile just added
+    # its first sitemap. (A bare app — no sitemap — can't pass ValidateApp, so it is
+    # skipped; an updated app whose sitemap merely changed was already published.)
+    # dry-run/stage-only never reach here.
+    newly_publishable = [
+        e
+        for e in run.applied
+        if e.get("kind") == "app" and e.get("appmoduleid") and e.get("sitemapid")
+    ] + [
+        e
+        for e in run.updated
+        if e.get("kind") == "app" and e.get("appmoduleid") and e.get("sitemap") == "added"
+    ]
+    for e in newly_publishable:
+        try:
+            app_mod.publish_app(run.backend, str(e["appmoduleid"]))
+        except D365Error as exc:
+            # Non-fatal: the app was created/updated; only its app-scoped publish
+            # failed (e.g. a validation error). Record it on the entry rather than
+            # throwing out of the clean apply envelope.
+            e["publish_error"] = str(exc)
+    return False
+
+
 def apply_spec(
     backend: D365Backend,
     spec: dict[str, Any],
@@ -2593,733 +3550,47 @@ def apply_spec(
     """
     validate_spec(spec)
 
-    applied: list[Entry] = []
-    updated: list[Entry] = []
-    skipped: list[Entry] = []
-    replace_blocked: list[Entry] = []
-    planned: list[Entry] = []
-    failed: list[Entry] = []
-    # Reconcile verdicts route here. A create-then-reconcile kind only ever reaches
-    # the three reconcile buckets; a reconcile-ONLY kind (form) has no create path to
-    # classify, so its reconcile owns the create-path buckets too.
-    routes: dict[str, list[Entry]] = {
-        "applied": applied,
-        "updated": updated,
-        "skipped": skipped,
-        "replace_blocked": replace_blocked,
-        "planned": planned,
-    }
-    # Names of resources this run would create but that do not exist yet (dry-run
-    # greenfield). Dependents of a planned resource are reported planned without
-    # calling their core, which would otherwise network-resolve the missing
-    # dependency and raise (publisher id for a solution, MetadataId for a picklist's
-    # option set). In a real apply nothing is ever planned, so this stays empty.
-    planned_names: set[str] = set()
-
     # validate_spec (above) guarantees a solution block with unique_name, so the
     # target is always explicit — customization writes never fall back to the
     # system Default Solution silently (#636). --prune is scoped to it.
-    sol = spec["solution"]
-    solution_name = sol["unique_name"]
-    pub = spec.get("publisher")
-    pub_id: str | None = None
-    entity_logicals: dict[str, str] = {}
+    run = _Run(
+        backend=backend,
+        spec=spec,
+        solution=spec["solution"]["unique_name"],
+        base_dir=base_dir,
+        stage_only=stage_only,
+        include_referenced_optionsets=include_referenced_optionsets,
+        prune=prune,
+        allow_data_loss=allow_data_loss,
+    )
 
+    # The run: the target preamble, then every kind's phase in dependency order —
+    # one generic loop body reading each kind's adapter slots, with no per-kind
+    # knowledge in the engine at all. A hard failure inside any phase records its
+    # entry and aborts the rest (metadata POSTs are not transactional), leaving what
+    # already landed staged-but-unpublished.
     try:
-        # Phase: publisher.
-        if pub:
-            entry: Entry = {"kind": "publisher", "name": pub["unique_name"]}
-            # Annotated at its first assignment: every phase reuses this local for
-            # its core's result dict, and one declared type keeps the later
-            # `result.get(...)` reads typed rather than partially unknown.
-            result: dict[str, Any] = _call(
-                entry,
-                lambda: sol_mod.create_publisher(
-                    backend,
-                    name=pub["unique_name"],
-                    friendly_name=pub.get("friendly_name"),
-                    prefix=pub["prefix"],
-                    option_value_prefix=pub["option_value_prefix"],
-                    if_exists="skip",
-                ),
-                failed,
-            )
-            pub_id = result.get("publisherid")
-            if _classify(result, entry, applied, skipped, planned) == "planned":
-                planned_names.add(pub["unique_name"])
-
-        # Phase: solution (bound to the publisher).
-        if sol:
-            entry = {"kind": "solution", "name": sol["unique_name"]}
-            if pub and pub["unique_name"] in planned_names:
-                planned.append(entry)
-            elif not pub and backend.dry_run:
-                # No publisher to build the bind: create_solution resolves a publisher
-                # before its dry-run short-circuit and would raise even when the
-                # solution already exists. Probe existence directly instead.
-                (skipped if _solution_exists(backend, sol["unique_name"]) else planned).append(
-                    entry
-                )
-            else:
-                result = _call(
-                    entry,
-                    lambda: sol_mod.create_solution(
-                        backend,
-                        name=sol["unique_name"],
-                        friendly_name=sol.get("friendly_name"),
-                        version=sol.get("version", "1.0.0.0"),
-                        publisher_id=pub_id,
-                        publisher_unique_name=pub["unique_name"] if pub else None,
-                        if_exists="skip",
-                    ),
-                    failed,
-                )
-                _classify(result, entry, applied, skipped, planned)
-
-        # Phase: entities. Capture each schema_name -> logical_name for later phases.
-        for ent in _as_list(spec.get("entities")):
-            entry = {"kind": "entity", "name": ent["schema_name"]}
-            result = _call(
-                entry,
-                lambda ent=ent: meta_mod.create_entity(
-                    backend,
-                    **REGISTRY["entity"].to_kwargs(ent),
-                    solution=solution_name,
-                    if_exists="skip",
-                ),
-                failed,
-            )
-            logical_name: str = result.get("logical_name") or ent["schema_name"].lower()
-            entity_logicals[ent["schema_name"]] = logical_name
-            if _present(result):
-                ctx = ReconcileCtx(
-                    solution=solution_name, base_dir=base_dir, entity_logical=logical_name
-                )
-                _reconcile_via_adapter(REGISTRY["entity"], backend, ent, ctx, entry, routes, failed)
-            elif _classify(result, entry, applied, skipped, planned) == "planned":
-                planned_names.add(logical_name)
-
-        # Phase: global option sets (before the attributes that reference them).
-        # Track names that were created (or planned in dry-run) to skip them in
-        # the solution-component phase below (they already carry the solution header).
-        os_created: set[str] = set()
-        for os_spec in _as_list(spec.get("optionsets")):
-            entry = {"kind": "optionset", "name": os_spec["name"]}
-            result = _call(
-                entry,
-                lambda os_spec=os_spec: os_mod.create_optionset(
-                    backend,
-                    **REGISTRY["optionset"].to_kwargs(os_spec),
-                    is_global=True,
-                    solution=solution_name,
-                    if_exists="skip",
-                ),
-                failed,
-            )
-            if _present(result):
-                # Pre-existing: reconcile (insert missing options). Left out of
-                # os_created so the solution-component phase still ensures membership.
-                ctx = ReconcileCtx(solution=solution_name, base_dir=base_dir)
-                _reconcile_via_adapter(
-                    REGISTRY["optionset"], backend, os_spec, ctx, entry, routes, failed
-                )
-                continue
-            bucket = _classify(result, entry, applied, skipped, planned)
-            if bucket == "planned":
-                planned_names.add(os_spec["name"])
-            if bucket in ("applied", "planned"):
-                os_created.add(os_spec["name"])
-
-        # Phase: ensure referenced global option sets are solution components (#146e).
-        # create_optionset adds a NEWLY created set to the solution via the
-        # MSCRM.SolutionUniqueName POST header, but a pre-existing global it skips
-        # is never made a member. Add each referenced set explicitly so a picklist's
-        # option set is not silently absent from the built solution. Default ON.
-        if include_referenced_optionsets and solution_name:
-            for os_spec in _as_list(spec.get("optionsets")):
-                os_name: str = os_spec["name"]
-                if os_name in os_created:
-                    continue  # created this run: MSCRM.SolutionUniqueName header handled it
-                comp_entry: dict[str, Any] = {"kind": "solution-component", "name": os_name}
-                if backend.dry_run:
-                    planned.append(comp_entry)
-                    continue
-                try:
-                    raw = as_dict(
-                        backend.get(
-                            f"GlobalOptionSetDefinitions(Name='{os_name}')",
-                            params={"$select": "MetadataId"},
-                        )
-                    )
-                    metadata_id = raw.get("MetadataId")
-                    if not isinstance(metadata_id, str) or not metadata_id:
-                        raise D365Error(
-                            f"option set {os_name!r} has no MetadataId; cannot add to solution."
-                        )
-                    sol_mod.add_solution_component(
-                        backend,
-                        solution=solution_name,
-                        component_id=metadata_id,
-                        component_type=sol_mod.SOLUTION_COMPONENT_TYPES["optionset"],
-                    )
-                    # Report as skipped (not applied): the optionset pre-existed so
-                    # we cannot tell without an extra GET whether it was already a
-                    # solution member. Reporting applied would trigger publish and
-                    # show a change on every re-apply even when nothing changed.
-                    skipped.append(comp_entry)
-                except D365Error as exc:
-                    # Best-effort: a membership-add failure must not abort an apply
-                    # whose entities/attrs already landed. Record, do not raise.
-                    failed.append({**comp_entry, "error": str(exc)})
-
-        # Phase: attributes (across all entities; lookups delegate to a relationship).
-        for ent in _as_list(spec.get("entities")):
-            logical: str = entity_logicals.get(ent["schema_name"]) or ent["schema_name"].lower()
-            for attr in _as_list(ent.get("attributes")):
-                entry = {"kind": "attribute", "name": attr["schema_name"]}
-                deps: set[str] = {logical}
-                if attr.get("optionset_name"):
-                    deps.add(attr["optionset_name"])
-                if attr["kind"] == "lookup" and attr.get("target_entity"):
-                    deps.add(attr["target_entity"])
-                if deps & planned_names:
-                    planned.append(entry)
-                    continue
-                result = _call(
-                    entry,
-                    lambda attr=attr, logical=logical: attrs_mod.add_attribute(
-                        backend,
-                        **REGISTRY["attribute"].to_kwargs(attr),
-                        entity=logical,
-                        solution=solution_name,
-                        if_exists="skip",
-                    ),
-                    failed,
-                )
-                if _present(result):
-                    ctx = ReconcileCtx(
-                        solution=solution_name, base_dir=base_dir, entity_logical=logical
-                    )
-                    _reconcile_via_adapter(
-                        REGISTRY["attribute"], backend, attr, ctx, entry, routes, failed
-                    )
-                else:
-                    _classify(result, entry, applied, skipped, planned)
-
-        # Phase: explicit relationships (both entities exist by now).
-        for ent in _as_list(spec.get("entities")):
-            for rel in _as_list(ent.get("relationships")):
-                entry = {"kind": "relationship", "name": rel["schema_name"]}
-                if {rel["referenced_entity"], rel["referencing_entity"]} & planned_names:
-                    planned.append(entry)
-                    continue
-                result = _call(
-                    entry,
-                    lambda rel=rel: rel_mod.create_one_to_many(
-                        backend,
-                        **REGISTRY["relationship"].to_kwargs(rel),
-                        solution=solution_name,
-                        if_exists="skip",
-                    ),
-                    failed,
-                )
-                if _present(result):
-                    ctx = ReconcileCtx(solution=solution_name, base_dir=base_dir)
-                    _reconcile_via_adapter(
-                        REGISTRY["relationship"], backend, rel, ctx, entry, routes, failed
-                    )
-                else:
-                    _classify(result, entry, applied, skipped, planned)
-
-        # Phase: views. ObjectTypeCode is resolved once per entity; when it is not
-        # yet readable (greenfield pre-publish) the views are planned, not failed.
-        for ent in _as_list(spec.get("entities")):
-            views = _as_list(ent.get("views"))
-            if not views:
-                continue
-            logical_v: str = entity_logicals.get(ent["schema_name"]) or ent["schema_name"].lower()
-            try:
-                otc = _resolve_otc(backend, logical_v)
-            except D365Error as exc:
-                for view in views:
-                    failed.append({"kind": "view", "name": view["name"], "error": str(exc)})
-                raise _Aborted from exc
-            for view in views:
-                entry = {"kind": "view", "name": view["name"]}
-                if otc is None:
-                    planned.append(entry)
-                    continue
-                result = _call(
-                    entry,
-                    lambda view=view, logical_v=logical_v, otc=otc: views_mod.create_view(
-                        backend,
-                        **REGISTRY["view"].to_kwargs(view),
-                        entity=logical_v,
-                        object_type_code=otc,
-                        solution=solution_name,
-                        if_exists="skip",
-                    ),
-                    failed,
-                )
-                if _present(result):
-                    ctx = ReconcileCtx(
-                        solution=solution_name,
-                        base_dir=base_dir,
-                        entity_logical=logical_v,
-                        object_type_code=otc,
-                    )
-                    _reconcile_via_adapter(
-                        REGISTRY["view"], backend, view, ctx, entry, routes, failed
-                    )
-                else:
-                    _classify(result, entry, applied, skipped, planned)
-
-        # Phase: web resources. No if_exists on the core, so the adapter's find_live
-        # probes existence directly (forced-real, dry-run safe): absent ⇒ create,
-        # present ⇒ reconcile the already-probed live (a single read — unlike the
-        # if_exists='skip' kinds, whose create probes and reconcile re-reads). Create
-        # and update defer publishing — the end-of-run PublishAllXml publishes once.
-        for wr in _as_list(spec.get("webresources")):
-            name: str = wr["name"]
-            entry = {"kind": "webresource", "name": name}
-            ctx = ReconcileCtx(solution=solution_name, base_dir=base_dir)
-            live_wr = _call(
-                entry, lambda wr=wr, ctx=ctx: _find_live_webresource(backend, wr, ctx), failed
-            )
-            if live_wr is None:
-                content = _call(entry, lambda wr=wr: _webresource_content(base_dir, wr), failed)
-                result = _call(
-                    entry,
-                    lambda wr=wr, content=content: wr_mod.create_webresource(
-                        backend,
-                        **REGISTRY["webresource"].to_kwargs(wr),
-                        content=content,
-                        webresourcetype=wr_mod.resolve_webresourcetype(
-                            wr.get("file") or "", wr.get("webresourcetype")
-                        ),
-                        solution=solution_name,
-                        publish=False,
-                    ),
-                    failed,
-                )
-                _classify(result, entry, applied, skipped, planned)
-            else:
-                _reconcile(
-                    entry,
-                    lambda wr=wr, live_wr=live_wr, ctx=ctx, entry=entry: _reconcile_webresource(
-                        backend, wr, live_wr, ctx, entry
-                    ),
-                    failed,
-                    routes,
-                )
-
-        # Phase: forms (ADR 0024). Runs after attributes and web resources so a
-        # declared field's attribute and a declared library's web resource already
-        # exist. A reconcile-ONLY kind: the platform creates the main form, so there
-        # is no create branch here — the adapter's find_live resolves the target form
-        # and its reconcile converges, commits and classifies every verdict.
-        for ent in _as_list(spec.get("entities")):
-            forms_blocks = _as_list(ent.get("forms"))
-            if not forms_blocks:
-                continue
-            logical_f: str = (
-                entity_logicals.get(ent["schema_name"]) or str(ent["schema_name"]).lower()
-            )
-            for block in forms_blocks:
-                fname = block.get("name")
-                entry = {
-                    "kind": "form",
-                    "name": fname if isinstance(fname, str) else f"{logical_f} main form",
-                }
-                # The owning table itself is only planned (dry-run greenfield), so
-                # its form cannot be read yet — report it planned without a probe.
-                if logical_f in planned_names:
-                    planned.append(entry)
-                    continue
-                ctx = ReconcileCtx(
-                    solution=solution_name, base_dir=base_dir, entity_logical=logical_f
-                )
-                _reconcile_via_adapter(REGISTRY["form"], backend, block, ctx, entry, routes, failed)
-
-        # Phase: security roles. Create (if_exists=skip) then reconcile privileges
-        # to the declared set. A fresh role gets the declared set applied; an
-        # existing role is reconciled by _reconcile_security_role (convergent subset
-        # satisfaction — a replace drops removable extras but the platform keeps an
-        # immovable baseline). Roles are not publishable, so they never trigger the
-        # end-of-run publish.
-        for role_spec in _as_list(spec.get("security_roles")):
-            entry = {"kind": "security-role", "name": role_spec["name"]}
-            ctx = ReconcileCtx(solution=solution_name, base_dir=base_dir)
-            # Uniform probe→create/reconcile: find_live reads the live role id.
-            # Present ⇒ reconcile its privileges to the declared set; absent ⇒ create
-            # the role (create_role only seeds it — it has no reconcile of its own)
-            # and apply the declared set. The probe is a read, so it runs under
-            # dry-run too; a greenfield role is then reported planned.
-            role_id = _call(
-                entry,
-                lambda role_spec=role_spec, ctx=ctx: _find_live_security_role(
-                    backend, role_spec, ctx
-                ),
-                failed,
-            )
-            if role_id is not None:
-                _reconcile(
-                    entry,
-                    lambda role_spec=role_spec, role_id=role_id, ctx=ctx, entry=entry: (
-                        _reconcile_security_role(backend, role_spec, role_id, ctx, entry)
-                    ),
-                    failed,
-                    routes,
-                )
-                continue
-            if backend.dry_run:
-                planned.append(entry)  # greenfield: role + privileges would be created
-                continue
-            # Absent at probe time: create the role (if_exists='skip' still guards a
-            # create race — a concurrent apply may have created it between the probe
-            # and this call). On that race create_role reports `existed`, so fall back
-            # to reconcile (subset-satisfaction) rather than authoritatively replacing
-            # its privileges, matching the present-branch semantics above. Otherwise
-            # ReplacePrivilegesRole drops the removable default privileges and applies
-            # the declared ones; the platform's immovable baseline stays.
-            result = _call(
-                entry,
-                lambda role_spec=role_spec: sec_mod.create_role(
-                    backend,
-                    **REGISTRY["security-role"].to_kwargs(role_spec),
-                    if_exists="skip",
-                    solution=solution_name,
-                ),
-                failed,
-            )
-            role_id = result["roleid"]
-            if result.get("existed"):
-                _reconcile(
-                    entry,
-                    lambda role_spec=role_spec, role_id=role_id, ctx=ctx, entry=entry: (
-                        _reconcile_security_role(backend, role_spec, role_id, ctx, entry)
-                    ),
-                    failed,
-                    routes,
-                )
-                continue
-            desired = _call(
-                entry,
-                lambda role_spec=role_spec: _desired_role_privileges(backend, role_spec)[0],
-                failed,
-            )
-            _call(
-                entry,
-                lambda role_id=role_id, desired=desired: sec_mod.replace_role_privileges(
-                    backend, role_id, desired
-                ),
-                failed,
-            )
-            applied.append(entry)
-
-        # Phase: plug-ins. A declared plug-in is compound: the assembly is the
-        # top-level block (registry-driven, probe→create/reconcile like a web
-        # resource — no if_exists on the core) and its steps nest under it
-        # (registry-driven, like attributes under an entity). Its plug-in types and
-        # a step's entity images are create-only sub-collections with no reconcile,
-        # so they stay inline sequencing rather than registry kinds. On-prem
-        # extensibility is provisioned from the spec (#552); apply orchestrates and
-        # diffs through the plugin core, it does not reimplement registration.
-        # Plug-in components are not publishable (see _NON_PUBLISHABLE below).
-        for plugin in _as_list(spec.get("plugins")):
-            name = _assembly_name(plugin)
-            asm_path = os.path.join(base_dir or "", plugin["file"])
-            asm_entry = {"kind": "plugin-assembly", "name": name}
-            ctx = ReconcileCtx(solution=solution_name, base_dir=base_dir)
-
-            # Assembly: probe → absent ⇒ register, present ⇒ reconcile content drift.
-            live_asm = _call(
-                asm_entry,
-                lambda plugin=plugin, ctx=ctx: _find_live_plugin_assembly(backend, plugin, ctx),
-                failed,
-            )
-            assembly_planned = False
-            assembly_created = False
-            if live_asm is None:
-                result = _call(
-                    asm_entry,
-                    lambda plugin=plugin, asm_path=asm_path, name=name: (
-                        plugin_mod.register_assembly(
-                            backend,
-                            **REGISTRY["plugin-assembly"].to_kwargs(plugin),
-                            path=asm_path,
-                            name=name,
-                            solution=solution_name,
-                            update=False,
-                        )
-                    ),
-                    failed,
-                )
-                bucket = _classify(result, asm_entry, applied, skipped, planned)
-                assembly_planned = bucket == "planned"
-                assembly_created = bucket == "applied"
-            else:
-                _reconcile(
-                    asm_entry,
-                    lambda plugin=plugin, live_asm=live_asm, ctx=ctx, asm_entry=asm_entry: (
-                        _reconcile_plugin_assembly(backend, plugin, live_asm, ctx, asm_entry)
-                    ),
-                    failed,
-                    routes,
-                )
-
-            # Types (create-only, nested). A just-created assembly has none, so
-            # register each declared type directly; a pre-existing one is listed
-            # once to skip what it already has.
-            live_typenames: set[str] | None = None
-            for typ in _as_list(plugin.get("types")):
-                t_entry: Entry = {"kind": "plugin-type", "name": typ["type_name"]}
-                if assembly_planned:
-                    planned.append(t_entry)
-                    continue
-                if not assembly_created:
-                    if live_typenames is None:
-                        listing = _call(
-                            t_entry,
-                            lambda name=name: plugin_mod.list_types(backend, assembly=name),
-                            failed,
-                        )
-                        live_typenames = {str(r.get("typename")) for r in listing.get("value", [])}
-                    if typ["type_name"] in live_typenames:
-                        skipped.append(t_entry)
-                        continue
-                result = _call(
-                    t_entry,
-                    lambda typ=typ, name=name: plugin_mod.register_type(
-                        backend,
-                        assembly=name,
-                        type_name=typ["type_name"],
-                        friendly_name=typ.get("friendly_name"),
-                        solution=solution_name,
-                    ),
-                    failed,
-                )
-                _classify(result, t_entry, applied, skipped, planned)
-
-            # Steps (registry-driven, nested) with their images (create-only).
-            for step in _as_list(plugin.get("steps")):
-                s_entry: Entry = {"kind": "plugin-step", "name": step["name"]}
-                if assembly_planned:
-                    planned.append(s_entry)
-                    for img in _as_list(step.get("images")):
-                        planned.append({"kind": "plugin-image", "name": img["alias"]})
-                    continue
-                live_step = _call(
-                    s_entry,
-                    lambda step=step, ctx=ctx: _find_live_plugin_step(backend, step, ctx),
-                    failed,
-                )
-                step_id: str | None = None
-                step_blocked = False
-                if live_step is None:
-                    result = _call(
-                        s_entry,
-                        lambda step=step, name=name: plugin_mod.register_step(
-                            backend,
-                            **REGISTRY["plugin-step"].to_kwargs(step),
-                            assembly=name,
-                            solution=solution_name,
-                        ),
-                        failed,
-                    )
-                    _classify(result, s_entry, applied, skipped, planned)
-                    step_id = result.get("sdkmessageprocessingstepid")  # None under dry-run
-                else:
-                    # A step reconcile needs its verdict here (a replace-blocked step
-                    # leaves its image subtree untouched), so drive the adapter's
-                    # reconcile directly rather than through the routing wrapper.
-                    try:
-                        verdicts = _reconcile_plugin_step(backend, step, live_step, ctx, s_entry)
-                    except D365Error as exc:
-                        failed.append({**s_entry, "error": str(exc)})
-                        raise _Aborted from exc
-                    for verdict, payload in verdicts:
-                        routes[verdict].append(payload)
-                    step_id = str(live_step["sdkmessageprocessingstepid"])
-                    step_blocked = any(v == "replace_blocked" for v, _ in verdicts)
-
-                for img in _as_list(step.get("images")):
-                    img_entry: Entry = {"kind": "plugin-image", "name": img["alias"]}
-                    if step_blocked:
-                        continue  # blocked step: leave its images until it is recreated
-                    if step_id is None:
-                        planned.append(img_entry)  # dry-run: step would be created → image too
-                        continue
-                    existing_img = _call(
-                        img_entry,
-                        lambda img=img, step_id=step_id: plugin_mod.find_step_image(
-                            backend, step_id, img["alias"]
-                        ),
-                        failed,
-                    )
-                    if existing_img is not None:
-                        skipped.append(img_entry)
-                        continue
-                    result = _call(
-                        img_entry,
-                        lambda img=img, step_id=step_id: plugin_mod.register_image(
-                            backend,
-                            step=step_id,
-                            image_type=img["image_type"],
-                            alias=img["alias"],
-                            attributes=img.get("attributes"),
-                            name=img.get("name"),
-                            message_property_name=img.get("message_property_name"),
-                            solution=solution_name,
-                        ),
-                        failed,
-                    )
-                    _classify(result, img_entry, applied, skipped, planned)
-
-        # Phase: model-driven apps (ADR 0024, #795/#796). Runs last so every record-
-        # backed component an app binds (views, forms, charts, …) already exists.
-        # An ABSENT app takes the CREATE path: created via the app-module + sitemap
-        # builders, its declared components bound, and its sitemap set from the
-        # declared areas/groups/subareas. An EXISTING app is RECONCILED (#796):
-        # `_reconcile_app` converges its component set and sitemap (whole-document
-        # replacement) to the declared block — `skipped` when it already matches,
-        # `updated` with a change list when it drifts, `replace_blocked` (no write,
-        # run exits 1) when the app is managed. Apps and sitemaps are publishable, so
-        # a created/updated app defers to the end-of-run PublishAllXml (and
-        # `--stage-only` records meta.staged). Under --dry-run an absent app reports
-        # `planned` with no write; an existing app reads live and reports its drift
-        # with the converge writes suppressed (reads-execute rule).
-        for app_spec in _as_list(spec.get("apps")):
-            entry = {"kind": "app", "name": app_spec["unique_name"]}
-            # The whole create path — create the app, bind its declared components,
-            # build its sitemap and bind that too — is one deep core call, so this
-            # phase is the same probe→create/reconcile shape as the entity phase.
-            # A created app whose id cannot be resolved while components or a sitemap
-            # are declared raises out of that call, and `_call`'s error path records
-            # the failed entry and aborts the run: an app whose sitemap never landed
-            # leaves its tables unreachable, so it must never report as applied.
-            result = _call(
-                entry,
-                lambda a=app_spec: app_mod.create_app_with_components(
-                    backend,
-                    name=a["name"],
-                    unique_name=a["unique_name"],
-                    description=a.get("description"),
-                    components=_app_components(a),
-                    sitemap=a.get("sitemap"),
-                    solution=solution_name,
-                    if_exists="skip",
-                    publish=False,
-                ),
-                failed,
-            )
-            if _present(result):
-                # Existing app (real skip, or dry-run would-skip): converge in place.
-                ctx = ReconcileCtx(solution=solution_name, base_dir=base_dir)
-                _reconcile_via_adapter(
-                    REGISTRY["app"], backend, app_spec, ctx, entry, routes, failed
-                )
-                continue
-            # Created (or, under dry-run, would-create → planned, which writes
-            # nothing further). Carry the ids the publish phase gates the app-scoped
-            # publish on; the entry is already in its bucket, so this mutates in place.
-            if _classify(result, entry, applied, skipped, planned) == "applied":
-                entry["appmoduleid"] = result.get("appmoduleid")
-                if result.get("sitemapid"):
-                    entry["sitemapid"] = result["sitemapid"]
+        pub_id = _apply_publisher(run)
+        _apply_solution(run, pub_id)
+        for kind in ORDER:
+            _run_phase(run, kind)
+            after = _AFTER_PHASE.get(kind)
+            if after is not None:
+                after(run)
     except _Aborted:
         pass
 
-    # Phase: prune (#553). Solution-bounded, opt-in, gated. Detection (read-only)
-    # runs under --prune or --dry-run; a plain apply skips it entirely. It needs
-    # the target solution to already exist — a greenfield run (the solution is
-    # created this pass, or, under dry-run, not at all) has no members to prune.
-    # Deletes are suppressed when the convergence itself failed — a partial-failure
-    # run must not also start deleting org-extras.
-    pruned: list[Entry] = []
-    if solution_name and (prune or backend.dry_run) and _solution_exists(backend, solution_name):
-        suppressed = bool(failed or replace_blocked)
-        for cand in _prune_candidates(backend, spec, solution_name):
-            kind, name = cand["kind"], cand["name"]
-            kind_prune = REGISTRY[kind].prune
-            data_bearing = kind_prune is not None and kind_prune.data_bearing
-            would_delete = prune and (not data_bearing or allow_data_loss)
-            if backend.dry_run:
-                entry: Entry = {"kind": kind, "name": name, "deleted": False}
-                # Mirror the real run exactly: it would delete only when not
-                # suppressed by a failed/replace-blocked convergence.
-                if would_delete and not suppressed:
-                    entry["would_prune"] = True
-                elif prune and data_bearing and not allow_data_loss:
-                    entry["reason"] = "data-bearing; pass --allow-data-loss to delete"
-                pruned.append(entry)
-            elif prune and data_bearing and not allow_data_loss:
-                pruned.append(
-                    {
-                        "kind": kind,
-                        "name": name,
-                        "deleted": False,
-                        "reason": "data-bearing; pass --allow-data-loss to delete",
-                    }
-                )
-            elif would_delete and not suppressed:
-                try:
-                    _prune_delete(backend, cand)
-                    pruned.append({"kind": kind, "name": name, "deleted": True})
-                except D365Error as exc:
-                    failed.append({"kind": kind, "name": name, "error": str(exc)})
-            else:
-                pruned.append({"kind": kind, "name": name, "deleted": False})
-
-    # Publish ONCE at the end. The per-resource cores were all called with their
-    # default publish=False, so nothing published mid-run. Skip when staging, on a
-    # dry run, on any failure (hard error or replace-blocked divergence), or when
-    # nothing was actually written (created or updated). Under --dry-run `applied`
-    # is always empty and `updated` is a would-update preview (writes suppressed),
-    # so nothing was written — `wrote` is false and the run never stages.
-    # Security roles and plug-in components are not publishable customizations; a
-    # change to them writes but needs no PublishAllXml. Gate publish/staged on the
-    # publishable writes only.
-    publishable = [e for e in applied + updated if e.get("kind") not in _NON_PUBLISHABLE]
-    wrote = bool(publishable) and not backend.dry_run
-    published = (
-        wrote and not stage_only and not failed and not replace_blocked and not backend.dry_run
-    )
-    if published:
-        sol_mod.publish_all(backend)
-        # PublishAllXml does NOT flip an appmodule to Published (#809), so an app
-        # stays invisible to the `appmodules` collection until an app-scoped publish.
-        # After the blanket publish, app-publish every app that has newly become
-        # publishable: a CREATED app with a sitemap bound, or an UPDATED app whose
-        # reconcile just added its first sitemap. (A bare app — no sitemap — can't
-        # pass ValidateApp, so it is skipped; an updated app whose sitemap merely
-        # changed was already published.) dry-run/stage-only never reach here.
-        newly_publishable = [
-            e
-            for e in applied
-            if e.get("kind") == "app" and e.get("appmoduleid") and e.get("sitemapid")
-        ] + [
-            e
-            for e in updated
-            if e.get("kind") == "app" and e.get("appmoduleid") and e.get("sitemap") == "added"
-        ]
-        for e in newly_publishable:
-            try:
-                app_mod.publish_app(backend, str(e["appmoduleid"]))
-            except D365Error as exc:
-                # Non-fatal: the app was created/updated; only its app-scoped publish
-                # failed (e.g. a validation error). Record it on the entry rather
-                # than throwing out of the clean apply envelope.
-                e["publish_error"] = str(exc)
+    _prune_phase(run)
+    staged = _publish_tail(run)
 
     return {
-        "ok": not failed and not replace_blocked,
-        "applied": applied,
-        "updated": updated,
-        "skipped": skipped,
-        "replace_blocked": replace_blocked,
-        "pruned": pruned,
-        "planned": planned,
-        "failed": failed,
-        "staged": wrote and not published,
+        "ok": not run.failed and not run.replace_blocked,
+        "applied": run.applied,
+        "updated": run.updated,
+        "skipped": run.skipped,
+        "replace_blocked": run.replace_blocked,
+        "pruned": run.pruned,
+        "planned": run.planned,
+        "failed": run.failed,
+        "staged": staged,
     }
