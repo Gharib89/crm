@@ -5027,6 +5027,28 @@ def test_apply_plugin_step_update_failure_lands_in_failed(backend, tmp_path):
     assert any(e.get("kind") == "plugin-step" and "error" in e for e in res["failed"])
 
 
+def test_apply_plugin_failure_keeps_the_verdicts_already_earned(backend, tmp_path):
+    """A whole plug-in registration converges behind one adapter slot (#965), so a
+    sub-row's failure must not swallow what the registration already reported: the
+    assembly's verdict stays in its bucket and the failure names the step, not the
+    plug-in block.
+    """
+    step = _step_spec(name="S", message="Update", entity="account", rank=5)
+    spec = {"solution": _SOLUTION, "plugins": [_plugin_spec(tmp_path, steps=[step])]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_create(m, backend, exists=True)
+        _mock_assembly_live(m, backend)  # identical bytes → the assembly skips
+        _mock_step_live(m, backend, _step_row(message="Update", entity="account", rank=1))
+        m.patch(
+            backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})"),
+            status_code=500,
+            json={"error": {"message": "update failed"}},
+        )
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert any(e.get("kind") == "plugin-assembly" for e in res["skipped"])
+    assert [e["kind"] for e in res["failed"]] == ["plugin-step"]
+
+
 # L876->874: malformed component (no objectid string) is silently skipped in loop.
 def test_prune_candidates_skips_malformed_component(backend):
     spec = {"solution": {"unique_name": "ContosoCore"}}
@@ -5241,6 +5263,61 @@ def test_engine_internal_kinds_carry_a_reason():
     """Declaring a kind layout-unreachable is deliberate, so each carries why."""
     for kind, reason in apply_mod.ENGINE_INTERNAL_KINDS.items():
         assert reason and reason.strip(), f"{kind}: empty engine-internal reason"
+
+
+# ── pipeline ↔ registry contract (#965) ──────────────────────────────────────
+# `apply_spec` is one loop over ORDER, so the same partition the layout gets holds
+# for the pipeline: a kind is either driven by a phase of its own or converged from
+# inside another kind's compound reconcile — never by nobody.
+def test_order_has_no_duplicates():
+    """A kind applied twice would report (and write) twice."""
+    assert len(apply_mod.ORDER) == len(set(apply_mod.ORDER)), (
+        f"ORDER repeats a kind: {apply_mod.ORDER}"
+    )
+
+
+def test_every_registry_kind_is_ordered_or_declared_nested():
+    """Every kind is in the pipeline or declared nested — a kind driven by nobody
+    (a phase deleted without its ORDER entry) turns this red.
+    """
+    ordered = set(apply_mod.ORDER)
+    nested = set(apply_mod.NESTED_KINDS)
+    assert ordered.isdisjoint(nested), (
+        f"kind(s) both in ORDER and declared nested: {sorted(ordered & nested)}"
+    )
+    registry = set(apply_mod.REGISTRY)
+    assert ordered | nested == registry, (
+        f"registry kinds driven by nobody: {sorted(registry - ordered - nested)}; "
+        f"stale driven kinds not in registry: {sorted(ordered | nested - registry)}"
+    )
+
+
+def test_nested_kinds_carry_a_reason():
+    """Declaring a kind phase-less is deliberate, so each carries why."""
+    for kind, reason in apply_mod.NESTED_KINDS.items():
+        assert reason and reason.strip(), f"{kind}: empty nested-kind reason"
+
+
+def test_every_ordered_kind_carries_the_driver_slots():
+    """The generic phase reads `select` and `identity` off every kind it drives, and
+    a kind with no `create` must own its create path in `find_live` + `reconcile`.
+    """
+    for kind in apply_mod.ORDER:
+        adapter = apply_mod.REGISTRY[kind]
+        assert adapter.select is not None, f"{kind}: ORDER kind with no select slot"
+        assert adapter.identity is not None, f"{kind}: ORDER kind with no identity slot"
+        if adapter.create is None:
+            assert adapter.find_live is not None and adapter.reconcile is not None, (
+                f"{kind}: no create slot, so its reconcile must own the create path"
+            )
+
+
+def test_nested_kinds_declare_no_phase_slots():
+    """A nested kind is driven by its parent, so it declares nothing the loop reads."""
+    for kind in apply_mod.NESTED_KINDS:
+        adapter = apply_mod.REGISTRY[kind]
+        assert adapter.select is None, f"{kind}: nested kind with a select slot"
+        assert adapter.create is None, f"{kind}: nested kind with a create slot"
 
 
 # ── prune eligibility is an adapter slot (#961) ───────────────────────────────
