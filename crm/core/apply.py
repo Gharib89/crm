@@ -237,16 +237,21 @@ def _validate_sitemap_block(sitemap: Any, applabel: str) -> None:
                 _require_str(sub, "title", slabel, optional=True)
 
 
-def _validate_app_block(block: Any) -> None:
+def _validate_app_block(block: Any, alabel: str) -> None:
     """Validate one top-level ``apps:`` block up front (ADR 0024, #795).
 
-    A malformed app/sitemap declaration fails here — before any HTTP call — with a
-    clean usage error, mirroring the up-front authority every other spec block has.
+    The ``app`` adapter's ``extra_validate``: a malformed app/sitemap declaration
+    fails here — before any HTTP call — with a clean usage error, mirroring the
+    up-front authority every other spec block has. ``alabel`` is the adapter's
+    static ``block_label``; an app's messages name it by its own identity, so the
+    label is a *prefix* the block's ``unique_name`` qualifies. The
+    not-a-mapping message is deliberately unlabelled — there is no identity to name
+    when the entry is not even a mapping.
     """
     if not isinstance(block, dict):
         raise D365Error("each apps entry must be a mapping.")
     block = cast("dict[str, Any]", block)
-    label = f"app {block.get('unique_name') or block.get('name')!r}"
+    label = f"{alabel} {block.get('unique_name') or block.get('name')!r}"
     _require_str(block, "name", label)
     _require_str(block, "unique_name", label)
     _require_str(block, "description", label, optional=True)
@@ -264,87 +269,6 @@ def _validate_app_block(block: Any) -> None:
             )
     if block.get("sitemap") is not None:
         _validate_sitemap_block(block["sitemap"], label)
-
-
-def _sitemap_tuples(
-    sitemap: dict[str, Any],
-) -> tuple[
-    list[tuple[str, str]], list[tuple[str, str, str]], list[tuple[str, str, str, str | None]]
-]:
-    """Flatten a nested ``sitemap:`` block into build_sitemapxml's tuple inputs.
-
-    Returns ``(areas, groups, subareas)`` where ``areas=[(id, title)]``,
-    ``groups=[(area_id, id, title)]`` and ``subareas=[(area_id, group_id, entity,
-    title_or_None)]`` — the exact shapes ``appmodule.build_sitemapxml`` consumes.
-    """
-    areas: list[tuple[str, str]] = []
-    groups: list[tuple[str, str, str]] = []
-    subareas: list[tuple[str, str, str, str | None]] = []
-    for area in _as_list(sitemap.get("areas")):
-        aid = str(area["id"])
-        areas.append((aid, str(area.get("title") or "")))
-        for group in _as_list(area.get("groups")):
-            gid = str(group["id"])
-            groups.append((aid, gid, str(group.get("title") or "")))
-            for sub in _as_list(group.get("subareas")):
-                title = sub.get("title")
-                subareas.append((aid, gid, str(sub["entity"]), str(title) if title else None))
-    return areas, groups, subareas
-
-
-def _reconcile_app(
-    backend: D365Backend,
-    app_spec: dict[str, Any],
-    entry: Entry,
-    components: list[tuple[str, str]],
-    sitemap_xml: str | None,
-    solution: str | None,
-) -> _Verdicts:
-    """Converge an existing app's component set + sitemap; classify the verdict.
-
-    Delegates the read/diff/converge to ``appmodule.reconcile_app`` (ADR 0024, #796)
-    and maps its result onto a reconcile bucket: a managed app is ``replace_blocked``
-    (identity/ownership divergence, no write); any component or sitemap change is
-    ``updated`` (the change list rides the entry as the drift report, in both real
-    and dry-run modes, mirroring the forms slice #793); an app that already matches
-    the declared block is ``skipped``.
-    """
-    res = app_mod.reconcile_app(
-        backend,
-        unique_name=app_spec["unique_name"],
-        components=components,
-        sitemap_xml=sitemap_xml,
-        solution=solution,
-    )
-    if res.get("unreadable"):
-        # The app exists (create reported it present) but is not GET-retrievable on
-        # this org — nothing to converge, so skip rather than fail (see reconcile_app).
-        return [("skipped", entry)]
-    if res.get("appmoduleid"):
-        entry["appmoduleid"] = res["appmoduleid"]
-    blocked = cast("list[dict[str, Any]]", res.get("blocked") or [])
-    if blocked:
-        return [("replace_blocked", {**entry, "reason": blocked[0]["reason"]})]
-    changes = cast("list[dict[str, Any]]", res.get("component_changes") or [])
-    sitemap_change = res.get("sitemap_change")
-    if not changes and not sitemap_change:
-        return [("skipped", entry)]
-    if changes:
-        entry["components"] = changes
-    if sitemap_change:
-        entry["sitemap"] = sitemap_change
-    # The changed-field set that identifies this app's action for the plan artifact
-    # and the divergence gate (ADR 0022): one token per component add/remove
-    # (`component:<change>:<kind>:<id>`) plus a `sitemap:<change>` token. Carried
-    # only under --dry-run — a plan is only ever built from a dry-run report —
-    # mirroring the forms slice. A live edit between plan and apply that resolves or
-    # alters one of these actions shifts the token set, so the plan reads stale.
-    if backend.dry_run:
-        fields = [f"component:{c['change']}:{c['kind']}:{c['id']}" for c in changes]
-        if sitemap_change:
-            fields.append(f"sitemap:{sitemap_change}")
-        entry["diff"] = {"fields": sorted(fields)}
-    return [("updated", entry)]
 
 
 # ── prune eligibility (a per-kind adapter slot) ──────────────────────────────
@@ -668,10 +592,10 @@ def validate_spec(spec: Any) -> None:
                     if img.get(key) is not None and not isinstance(img[key], str):
                         raise D365Error(f"{slabel}: image {key!r} must be a string.")
     # A top-level model-driven app (`apps:`) delegates its whole shape — the app
-    # identity plus its nested sitemap — to _validate_app_block, the same up-front
-    # authority every other spec block has (ADR 0024, #795).
+    # identity plus its nested sitemap — to its component-kind adapter, the same
+    # up-front authority every other spec block has (ADR 0024, #795).
     for app in _as_list(sp.get("apps")):
-        _validate_app_block(app)
+        REGISTRY["app"].validate(app)
 
 
 def _solution_exists(backend: D365Backend, name: str) -> bool:
@@ -1895,11 +1819,101 @@ def _reconcile_form(
     return [("updated", entry)]
 
 
+# ── app adapter functions (a create-then-reconcile kind) ─────────────────────
+# The `app` kind's create path is one deep core call
+# (`appmodule.create_app_with_components`), so — like every other create-then-
+# reconcile kind — the engine probes with that create and these two slots serve
+# only its present branch. Its sitemap is NOT a kind of its own: it is nested in
+# the block and converged as part of the app (ADR 0024 whole-document
+# replacement), so the declared-sitemap projection happens here, off the block.
+def _find_live_app(
+    backend: D365Backend,
+    block: dict[str, Any],
+    ctx: ReconcileCtx,
+) -> dict[str, Any] | None:
+    """Resolve the live app row this ``apps:`` block reconciles against.
+
+    ``None`` when the app is not readable — it exists (create reported it present)
+    but does not resolve on this org — which the reconcile owns as ``skipped``.
+    """
+    return app_mod.resolve_app(backend, block["unique_name"])
+
+
+def _app_components(block: dict[str, Any]) -> list[tuple[str, str]]:
+    """The ``(kind, id)`` pairs an app block's ``components:`` declares."""
+    return [(c["kind"], c["id"]) for c in _as_list(block.get("components"))]
+
+
+def _app_sitemap_xml(block: dict[str, Any]) -> str | None:
+    """The SiteMapXml an app block's nested ``sitemap:`` declares, or None."""
+    sitemap = block.get("sitemap")
+    if not sitemap:
+        return None
+    return app_mod.build_sitemapxml(*app_mod.sitemap_tuples(cast("dict[str, Any]", sitemap)))
+
+
+def _reconcile_app(
+    backend: D365Backend,
+    block: dict[str, Any],
+    live: dict[str, Any] | None,
+    ctx: ReconcileCtx,
+    entry: Entry,
+) -> _Verdicts:
+    """Converge an existing app's component set + sitemap; classify the verdict.
+
+    Delegates the diff/converge to ``appmodule.converge_app`` (ADR 0024, #796) and
+    maps its result onto a reconcile bucket: a managed app is ``replace_blocked``
+    (identity/ownership divergence, no write); any component or sitemap change is
+    ``updated`` (the change list rides the entry as the drift report, in both real
+    and dry-run modes, mirroring the forms slice #793); an app that already matches
+    the declared block — or one that does not read back at all — is ``skipped``.
+    """
+    if live is None:
+        # The app exists (create reported it present) but is not GET-retrievable on
+        # this org — nothing to converge, so skip rather than fail (see resolve_app).
+        return [("skipped", entry)]
+    res = app_mod.converge_app(
+        backend,
+        row=live,
+        unique_name=block["unique_name"],
+        components=_app_components(block),
+        sitemap_xml=_app_sitemap_xml(block),
+        solution=ctx.solution,
+    )
+    if res.get("appmoduleid"):
+        entry["appmoduleid"] = res["appmoduleid"]
+    blocked = cast("list[dict[str, Any]]", res.get("blocked") or [])
+    if blocked:
+        return [("replace_blocked", {**entry, "reason": blocked[0]["reason"]})]
+    changes = cast("list[dict[str, Any]]", res.get("component_changes") or [])
+    sitemap_change = res.get("sitemap_change")
+    if not changes and not sitemap_change:
+        return [("skipped", entry)]
+    if changes:
+        entry["components"] = changes
+    if sitemap_change:
+        entry["sitemap"] = sitemap_change
+    # The changed-field set that identifies this app's action for the plan artifact
+    # and the divergence gate (ADR 0022): one token per component add/remove
+    # (`component:<change>:<kind>:<id>`) plus a `sitemap:<change>` token. Carried
+    # only under --dry-run — a plan is only ever built from a dry-run report —
+    # mirroring the forms slice. A live edit between plan and apply that resolves or
+    # alters one of these actions shifts the token set, so the plan reads stale.
+    if backend.dry_run:
+        fields = [f"component:{c['change']}:{c['kind']}:{c['id']}" for c in changes]
+        if sitemap_change:
+            fields.append(f"sitemap:{sitemap_change}")
+        entry["diff"] = {"fields": sorted(fields)}
+    return [("updated", entry)]
+
+
 # One component-kind adapter per component kind — the complete authority for its
-# kind (validate / to_kwargs / find_live / reconcile). All ten reconciled kinds
+# kind (validate / to_kwargs / find_live / reconcile). All eleven reconciled kinds
 # are registry-driven: the entity subtree (entity, attribute, relationship, view,
-# form), optionset, web resource, security role, and the compound plug-in (assembly
-# + step). Publisher and solution stay out of the registry permanently — they are
+# form), optionset, web resource, security role, the compound plug-in (assembly
+# + step) and the model-driven app. A sitemap is deliberately NOT a kind: it is
+# nested in its app's block and replaced whole as part of the app's reconcile (ADR
+# 0024). Publisher and solution stay out of the registry permanently — they are
 # the target preamble a customization write files into, not reconciled components.
 REGISTRY: dict[str, Adapter] = {
     "attribute": Adapter(
@@ -2084,6 +2098,24 @@ REGISTRY: dict[str, Adapter] = {
         extra_validate=_validate_form_block,
         find_live=_find_live_form,
         reconcile=_reconcile_form,
+    ),
+    "app": Adapter(
+        # The create path is ONE deep core call (`create_app_with_components`: create
+        # → bind components → build sitemap → bind sitemap), which takes the block's
+        # nested `components:`/`sitemap:` structures rather than a flat kwarg set —
+        # so there is nothing for a generic `map`/`transforms` projection to carry
+        # and the surface is empty, as for `form`. The block's identity rules and its
+        # nested sitemap's shape are all cross-field (extra_validate). Not
+        # prune-eligible: an app is never removed by apply (ADR 0024).
+        map={},
+        transforms={},
+        injected=frozenset(),
+        defaults={},
+        required_block_keys=(),
+        block_label="app",
+        extra_validate=_validate_app_block,
+        find_live=_find_live_app,
+        reconcile=_reconcile_app,
     ),
     "optionset": Adapter(
         map={
@@ -3097,13 +3129,22 @@ def apply_spec(
         # with the converge writes suppressed (reads-execute rule).
         for app_spec in _as_list(spec.get("apps")):
             entry = {"kind": "app", "name": app_spec["unique_name"]}
+            # The whole create path — create the app, bind its declared components,
+            # build its sitemap and bind that too — is one deep core call, so this
+            # phase is the same probe→create/reconcile shape as the entity phase.
+            # A created app whose id cannot be resolved while components or a sitemap
+            # are declared raises out of that call, and `_call`'s error path records
+            # the failed entry and aborts the run: an app whose sitemap never landed
+            # leaves its tables unreachable, so it must never report as applied.
             result = _call(
                 entry,
-                lambda a=app_spec: app_mod.create_app(
+                lambda a=app_spec: app_mod.create_app_with_components(
                     backend,
                     name=a["name"],
                     unique_name=a["unique_name"],
                     description=a.get("description"),
+                    components=_app_components(a),
+                    sitemap=a.get("sitemap"),
                     solution=solution_name,
                     if_exists="skip",
                     publish=False,
@@ -3112,86 +3153,18 @@ def apply_spec(
             )
             if _present(result):
                 # Existing app (real skip, or dry-run would-skip): converge in place.
-                components = [(c["kind"], c["id"]) for c in _as_list(app_spec.get("components"))]
-                sitemap = app_spec.get("sitemap")
-                sitemap_xml = (
-                    app_mod.build_sitemapxml(*_sitemap_tuples(sitemap)) if sitemap else None
-                )
-                _reconcile(
-                    entry,
-                    lambda a=app_spec, e=entry, c=components, sx=sitemap_xml: _reconcile_app(
-                        backend, a, e, c, sx, solution_name
-                    ),
-                    failed,
-                    routes,
+                ctx = ReconcileCtx(solution=solution_name, base_dir=base_dir)
+                _reconcile_via_adapter(
+                    REGISTRY["app"], backend, app_spec, ctx, entry, routes, failed
                 )
                 continue
-            # Create path: bind components + sitemap only when this run actually
-            # created the app. A dry-run would-create (planned) writes nothing further.
-            if _classify(result, entry, applied, skipped, planned) != "applied":
-                continue
-            app_id = result.get("appmoduleid")
-            entry["appmoduleid"] = app_id
-            components = [(c["kind"], c["id"]) for c in _as_list(app_spec.get("components"))]
-            sitemap = app_spec.get("sitemap")
-            # The app row was created but its server id could not be resolved
-            # (an unparseable OData-EntityId, or a publish-before-read miss —
-            # create_app records the reason in app_lookup_error). Its declared
-            # components/sitemap can't be bound without that id, so surface a
-            # hard failure rather than report a silently incomplete app as
-            # applied: an app whose sitemap never landed leaves its tables
-            # unreachable, defeating the point of the block.
-            if not app_id and (components or sitemap):
-                applied.remove(entry)
-                failed.append(
-                    {
-                        **entry,
-                        "error": result.get("app_lookup_error")
-                        or "app created but its appmoduleid could not be "
-                        "resolved; components/sitemap not bound.",
-                    }
-                )
-                raise _Aborted
-            if components and app_id:
-                _call(
-                    entry,
-                    lambda app_id=app_id, components=components: app_mod.add_app_components(
-                        backend, app_id=app_id, components=components
-                    ),
-                    failed,
-                )
-            if sitemap and app_id:
-                areas, groups, subareas = _sitemap_tuples(sitemap)
-                sm_result = _call(
-                    entry,
-                    lambda a=app_spec, areas=areas, groups=groups, subareas=subareas: (
-                        app_mod.build_sitemap(
-                            backend,
-                            sitemap_name=a["unique_name"],
-                            areas=areas,
-                            groups=groups,
-                            subareas=subareas,
-                            unique_name=a["unique_name"],
-                            solution=solution_name,
-                            publish=False,
-                        )
-                    ),
-                    failed,
-                )
-                if sm_result.get("sitemapid"):
-                    entry["sitemapid"] = sm_result["sitemapid"]
-                    # Bind the sitemap to the app (component 62) so the app contains
-                    # a sitemap and the end-of-run app-publish passes ValidateApp —
-                    # the sitemapnameunique link alone does not (#809).
-                    _call(
-                        entry,
-                        lambda app_id=app_id, smid=sm_result["sitemapid"]: (
-                            app_mod.add_app_components(
-                                backend, app_id=app_id, components=[("sitemap", str(smid))]
-                            )
-                        ),
-                        failed,
-                    )
+            # Created (or, under dry-run, would-create → planned, which writes
+            # nothing further). Carry the ids the publish phase gates the app-scoped
+            # publish on; the entry is already in its bucket, so this mutates in place.
+            if _classify(result, entry, applied, skipped, planned) == "applied":
+                entry["appmoduleid"] = result.get("appmoduleid")
+                if result.get("sitemapid"):
+                    entry["sitemapid"] = result["sitemapid"]
     except _Aborted:
         pass
 

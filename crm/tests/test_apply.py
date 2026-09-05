@@ -7038,7 +7038,7 @@ _APP_ID_UNIQUE = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 def _declared_sitemap_xml(block=None):
     """The SiteMapXml the reconcile builds from an app block's declared sitemap."""
     sitemap = (block or _app_block())["sitemap"]
-    return app_mod.build_sitemapxml(*apply_mod._sitemap_tuples(sitemap))
+    return app_mod.build_sitemapxml(*app_mod.sitemap_tuples(sitemap))
 
 
 def _mock_app_reconcile(
@@ -7100,6 +7100,164 @@ def _remove_hits(m, backend):
 def _sitemap_patches(m, backend):
     target = backend.url_for(f"sitemaps({_SITEMAP_ID})")
     return [r for r in m.request_history if r.method == "PATCH" and r.url == target]
+
+
+# ── `app` is a registry kind (#963) ───────────────────────────────────────────
+# Apps used to route around the spec-adapter registry: a free validator the
+# validator called by name, a bespoke phase block, and a free reconcile helper the
+# block parsed the result of. These pin what the adapter now owns — its shape, the
+# identity-qualified label its validate reports under, and each verdict its
+# reconcile owns, driven through the same seam every other kind is tested at.
+
+
+def test_app_is_a_registry_kind():
+    """`app` populates validate / find_live / reconcile and nothing else: its whole
+    create path is one deep core call taking the block's nested structures, so there
+    is no generic projection to declare (empty map / transforms / injected, no
+    required block key — the identity rules are all cross-field), and no prune slot
+    (apply never removes an app).
+    """
+    adapter = apply_mod.REGISTRY["app"]
+    assert callable(adapter.find_live)
+    assert callable(adapter.reconcile)
+    assert callable(adapter.extra_validate)
+    assert adapter.map == {}
+    assert adapter.transforms == {}
+    assert adapter.injected == frozenset()
+    assert adapter.required_block_keys == ()
+    assert adapter.prune is None
+
+
+def test_app_adapter_validate_reports_the_identity_qualified_label():
+    """An app's errors name the app by its own `unique_name`: `validate` qualifies
+    the adapter's static `block_label` with it, so the message is byte-identical to
+    the one the free validator produced before the block reached an adapter.
+    """
+    with pytest.raises(D365Error) as exc:
+        apply_mod.REGISTRY["app"].validate({"unique_name": "cwx_crmworx"})
+    assert str(exc.value) == "app 'cwx_crmworx': missing required field 'name'."
+
+
+def test_app_adapter_validate_not_a_mapping_is_unlabelled():
+    """The not-a-mapping message stays bare — there is no identity to name when the
+    entry is not even a mapping, so it is NOT prefixed with the block label.
+    """
+    not_a_mapping: Any = "bad"
+    with pytest.raises(D365Error, match="^each apps entry must be a mapping.$"):
+        apply_mod.REGISTRY["app"].validate(not_a_mapping)
+
+
+def _app_ctx():
+    return apply_mod.ReconcileCtx(solution=None, base_dir=None)
+
+
+def test_adapter_reconcile_app_skipped_when_declaration_satisfied(backend):
+    # The live app already binds the declared component set and carries the declared
+    # sitemap → nothing to converge, no write.
+    entry = {"kind": "app", "name": "cwx_crmworx"}
+    with requests_mock.Mocker() as m:
+        _mock_app_reconcile(
+            m,
+            backend,
+            live_components=[(26, _APP_COMPONENT_GUID), (62, _SITEMAP_ID)],
+            live_sitemap_xml=_declared_sitemap_xml(),
+        )
+        verdict, payload = _reconcile_through_adapter(
+            backend, "app", _app_block(), _app_ctx(), entry
+        )
+    assert verdict == "skipped"
+    assert payload["appmoduleid"] == _APP_ID
+    assert _add_hits(m, backend) == [] and _remove_hits(m, backend) == []
+    assert _sitemap_patches(m, backend) == []
+
+
+def test_adapter_reconcile_app_updated_on_component_drift(backend):
+    # A declared component absent live is bound in place → `updated`, with the change
+    # list riding the entry as the drift report.
+    entry = {"kind": "app", "name": "cwx_crmworx"}
+    with requests_mock.Mocker() as m:
+        _mock_app_reconcile(
+            m,
+            backend,
+            live_components=[(62, _SITEMAP_ID)],
+            live_sitemap_xml=_declared_sitemap_xml(),
+        )
+        verdict, payload = _reconcile_through_adapter(
+            backend, "app", _app_block(), _app_ctx(), entry
+        )
+    assert verdict == "updated"
+    assert payload["components"] == [{"kind": "view", "id": _APP_COMPONENT_GUID, "change": "added"}]
+    assert "sitemap" not in payload
+    assert len(_add_hits(m, backend)) == 1
+
+
+def test_adapter_reconcile_app_updated_when_sitemap_added(backend):
+    # The app has no sitemap yet: the declared one is created AND bound as a
+    # component (#809) → `updated` with `sitemap: "added"`.
+    entry = {"kind": "app", "name": "cwx_crmworx"}
+    with requests_mock.Mocker() as m:
+        _mock_app_reconcile(
+            m, backend, live_components=[(26, _APP_COMPONENT_GUID)], live_sitemap_xml=None
+        )
+        verdict, payload = _reconcile_through_adapter(
+            backend, "app", _app_block(), _app_ctx(), entry
+        )
+    assert verdict == "updated"
+    assert payload["sitemap"] == "added"
+    # The new sitemap is bound to the app, else it would not pass ValidateApp.
+    assert [h.json()["Components"][0] for h in _add_hits(m, backend)] == [
+        {"sitemapid": _SITEMAP_ID, "@odata.type": "Microsoft.Dynamics.CRM.sitemap"}
+    ]
+
+
+def test_adapter_reconcile_app_updated_when_sitemap_changed(backend):
+    # A live sitemap whose XML differs from the declared document is replaced whole
+    # (ADR 0024) → `updated` with `sitemap: "converged"`, committed in one PATCH.
+    entry = {"kind": "app", "name": "cwx_crmworx"}
+    with requests_mock.Mocker() as m:
+        _mock_app_reconcile(
+            m,
+            backend,
+            live_components=[(26, _APP_COMPONENT_GUID), (62, _SITEMAP_ID)],
+            live_sitemap_xml="<SiteMap><Area Id='stale' /></SiteMap>",
+        )
+        verdict, payload = _reconcile_through_adapter(
+            backend, "app", _app_block(), _app_ctx(), entry
+        )
+    assert verdict == "updated"
+    assert payload["sitemap"] == "converged"
+    assert len(_sitemap_patches(m, backend)) == 1
+
+
+def test_adapter_reconcile_app_replace_blocked_when_managed(backend):
+    # A managed app's components and sitemap are owned by its parent solution:
+    # identity/ownership divergence, refused with NO write (the run exits 1 while
+    # sibling kinds still reconcile).
+    entry = {"kind": "app", "name": "cwx_crmworx"}
+    with requests_mock.Mocker() as m:
+        _mock_app_reconcile(m, backend, managed=True)
+        verdict, payload = _reconcile_through_adapter(
+            backend, "app", _app_block(), _app_ctx(), entry
+        )
+    assert verdict == "replace_blocked"
+    assert payload["reason"] == (
+        "app is managed; converge it through its parent solution, not apply."
+    )
+    assert _add_hits(m, backend) == [] and _remove_hits(m, backend) == []
+    assert _sitemap_patches(m, backend) == []
+
+
+def test_adapter_reconcile_app_skipped_when_unreadable(backend):
+    # The create probe reported the app present, but it does not resolve on this org:
+    # find_live returns None and reconcile owns the `skipped` verdict — the driver
+    # gets no special None rule.
+    entry = {"kind": "app", "name": "cwx_crmworx"}
+    with requests_mock.Mocker() as m:
+        m.get(backend.url_for(_UNPUB_MULTIPLE), json={"value": []})
+        verdict, payload = _reconcile_through_adapter(
+            backend, "app", _app_block(), _app_ctx(), entry
+        )
+    assert (verdict, payload) == ("skipped", entry)
 
 
 def test_apply_apps_reconcile_unchanged_skipped(backend):
@@ -7454,6 +7612,82 @@ def test_apply_apps_phase_unresolved_appmoduleid_fails_not_silent(backend):
     # The declared follow-up writes were never issued.
     assert _app_posts(m, backend, "AddAppComponents") == []
     assert _app_posts(m, backend, "sitemaps") == []
+
+
+def test_apply_apps_phase_component_bind_failure_is_only_failed(backend):
+    """A create whose component binding then fails reports the app ONCE, as failed.
+
+    The whole create path is one core call (#963), so a mid-chain failure raises
+    before the engine classifies the result — the app cannot land in `applied` and
+    `failed` at the same time, which is what the previous classify-then-bind order
+    allowed.
+    """
+    spec = {"solution": _SOLUTION, "apps": [_app_block()]}
+    app_url = backend.url_for(f"appmodules({_APP_ID})")
+    with requests_mock.Mocker() as m:
+        _mock_solution_create(m, backend, exists=True)
+        m.get(backend.url_for("appmodules"), json={"value": []})
+        m.post(backend.url_for("appmodules"), status_code=204, headers={"OData-EntityId": app_url})
+        m.get(backend.url_for(_UNPUB_MULTIPLE), json={"value": [{"appmoduleid": _APP_ID}]})
+        m.post(backend.url_for("AddAppComponents"), status_code=500, json={"error": {}})
+        m.post(backend.url_for("sitemaps"), status_code=204)
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert _kinds(res["failed"]) == ["app"]
+    assert "app" not in _kinds(res["applied"])
+    assert res["ok"] is False
+    # The sitemap never went up — the chain aborted at the component bind.
+    assert _app_posts(m, backend, "sitemaps") == []
+
+
+def test_create_app_with_components_reports_the_stage_it_failed_at(backend):
+    """Being a multi-stage write, the create chain attaches `completed_steps` /
+    `stage` to whatever it raises, so a caller can tell the app row was already
+    created before the binding failed (coding-standards: error handling).
+    """
+    app_url = backend.url_for(f"appmodules({_APP_ID})")
+    with requests_mock.Mocker() as m:
+        m.get(backend.url_for("appmodules"), json={"value": []})
+        m.post(backend.url_for("appmodules"), status_code=204, headers={"OData-EntityId": app_url})
+        m.get(backend.url_for(_UNPUB_MULTIPLE), json={"value": [{"appmoduleid": _APP_ID}]})
+        m.post(backend.url_for("AddAppComponents"), status_code=500, json={"error": {}})
+        with pytest.raises(D365Error) as exc:
+            app_mod.create_app_with_components(
+                backend,
+                name="CRMWorx",
+                unique_name="cwx_crmworx",
+                components=[("view", _APP_COMPONENT_GUID)],
+                sitemap=None,
+                if_exists="skip",
+            )
+    assert exc.value.stage == "add-components"
+    assert exc.value.completed_steps == ["create-app"]
+    # Stamped and re-raised bare, so the error is never its own `__cause__` — a
+    # self-referential chain renders as a confusing traceback.
+    assert exc.value.__cause__ is not exc.value
+
+
+def test_create_app_with_components_stages_an_unresolvable_app_id(backend):
+    """The id-unresolvable failure is stage-attributed too — the app row exists, so
+    a caller must not read the raised error as "nothing happened".
+    """
+    with requests_mock.Mocker() as m:
+        m.get(backend.url_for("appmodules"), json={"value": []})
+        # 204 create with NO OData-EntityId header → appmoduleid unresolvable.
+        m.post(backend.url_for("appmodules"), status_code=204)
+        with pytest.raises(D365Error) as exc:
+            app_mod.create_app_with_components(
+                backend,
+                name="CRMWorx",
+                unique_name="cwx_crmworx",
+                components=[("view", _APP_COMPONENT_GUID)],
+                sitemap=None,
+                if_exists="skip",
+            )
+    assert exc.value.stage == "resolve-appmoduleid"
+    assert exc.value.completed_steps == ["create-app"]
+    # `create_app`'s own diagnosis wins over the generic fallback, unchanged.
+    assert str(exc.value) == "Could not parse appmoduleid from response: ''"
 
 
 def test_apply_rejects_non_list_apps(backend):
