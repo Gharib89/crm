@@ -393,7 +393,12 @@ class ReconcileCtx:
 
 @dataclass(frozen=True)
 class Adapter:
-    """The complete authority for one component kind behind a single interface.
+    """The registry is the only per-kind seam in apply, and this is one entry of it:
+    the complete authority for one component kind behind a single interface.
+
+    No spec key names a kind directly: the spec layout (:data:`SPEC_LAYOUT`,
+    :data:`ENTITY_LAYOUT`, :data:`PLUGIN_LAYOUT`) maps each key to the kind that owns
+    its blocks, and a contract test holds the layout and the registry equal.
 
     A spec block (a dict from the parsed spec) reaches its create builder through
     exactly this object, so the set of spec keys a kind accepts *is* the adapter's
@@ -512,6 +517,111 @@ class Adapter:
             self.extra_validate(block, label)
 
 
+@dataclass(frozen=True)
+class SpecSlot:
+    """One spec key's place in the document: which component kind owns its blocks.
+
+    Fields:
+      kind       the :data:`REGISTRY` key whose adapter validates each block.
+      nested     the pass that validates the sub-collections this block owns, for
+                 the two compound keys (``entities``, ``plugins``). Holding it here
+                 rather than in a branch keeps the whole document one ordered walk,
+                 so the layout's insertion order IS the validation order.
+      qualified_label
+                 whether the block's errors are reported under its parent's label,
+                 for a kind whose identity is unique only within its parent: a form
+                 is named per owning entity, so it validates under the
+                 entity-qualified label its errors have always carried (ADR 0024).
+    """
+
+    kind: str
+    nested: Callable[[dict[str, Any]], None] | None = None
+    qualified_label: bool = False
+
+
+# The spec's entity subtree: entity-nested spec key → the kind that owns it.
+ENTITY_LAYOUT: dict[str, SpecSlot] = {
+    "attributes": SpecSlot("attribute"),
+    "relationships": SpecSlot("relationship"),
+    "views": SpecSlot("view"),
+    "forms": SpecSlot("form", qualified_label=True),
+}
+
+
+def _validate_entity_subtree(ent: dict[str, Any]) -> None:
+    """Validate the sub-collections one entity block owns.
+
+    Each block's own rules (required keys, constrained values, cross-field rules)
+    are its component-kind adapter's complete authority — this pass only walks the
+    layout and enforces that each sub-collection is a list.
+    """
+    elabel = f"entity {ent['schema_name']!r}"
+    for sub in ENTITY_LAYOUT:
+        _require_list(ent, sub, elabel)
+    for sub, slot in ENTITY_LAYOUT.items():
+        for block in _as_list(ent.get(sub)):
+            REGISTRY[slot.kind].validate(block, elabel if slot.qualified_label else None)
+
+
+# The spec's plug-in subtree: plug-in-nested spec key → the kind that owns it. Only
+# `steps` carries a kind — a plug-in's `types` (like a step's `images`) are create-only
+# sub-rows with no adapter of their own, so their shape is a document-structure rule in
+# the pass below rather than a layout entry (#960 keeps them out of the registry).
+PLUGIN_LAYOUT: dict[str, SpecSlot] = {"steps": SpecSlot("plugin-step")}
+
+
+def _validate_step_images(step: dict[str, Any], slabel: str) -> None:
+    """Validate one plug-in step's images.
+
+    Images are create-only sub-rows with no adapter of their own, so their document
+    shape is checked here, under the step-qualified label their errors always carried.
+    """
+    _require_list(step, "images", slabel)
+    for img in _as_list(step.get("images")):
+        _require(img, ("alias", "image_type"), f"{slabel} image")
+        for key in ("alias", "image_type", "attributes", "name", "message_property_name"):
+            if img.get(key) is not None and not isinstance(img[key], str):
+                raise D365Error(f"{slabel}: image {key!r} must be a string.")
+
+
+def _validate_plugin_subtree(plugin: dict[str, Any]) -> None:
+    """Validate the sub-collections one plug-in registration owns.
+
+    A plug-in is compound: its step blocks delegate their whole rules to the kind
+    the plug-in layout names, while its create-only sub-rows (`types` here, a step's
+    `images` below) have no adapter, so only their document shape is checked.
+    """
+    plabel = f"plug-in {plugin.get('assembly') or plugin['file']!r}"
+    for sub in ("types", *PLUGIN_LAYOUT):
+        _require_list(plugin, sub, plabel)
+    for typ in _as_list(plugin.get("types")):
+        _require(typ, ("type_name",), f"{plabel} type")
+        if not isinstance(typ["type_name"], str):
+            raise D365Error(f"{plabel}: type type_name must be a string.")
+    for sub, slot in PLUGIN_LAYOUT.items():
+        for step in _as_list(plugin.get(sub)):
+            REGISTRY[slot.kind].validate(step, plabel if slot.qualified_label else None)
+            _validate_step_images(step, f"{plabel} step {step['name']!r}")
+
+
+# The spec's top-level layout: spec key → the kind that owns it. Insertion order is
+# the order the document is validated in, so it is also the order errors surface in.
+SPEC_LAYOUT: dict[str, SpecSlot] = {
+    "entities": SpecSlot("entity", nested=_validate_entity_subtree),
+    "optionsets": SpecSlot("optionset"),
+    "webresources": SpecSlot("webresource"),
+    "security_roles": SpecSlot("security-role"),
+    "plugins": SpecSlot("plugin-assembly", nested=_validate_plugin_subtree),
+    "apps": SpecSlot("app"),
+}
+
+# Registry kinds no layout key reaches, each with why. Empty today — all eleven kinds
+# are reachable from a layout above — but declaring one is how a future engine-internal
+# kind stays honest: the contract test partitions the registry into layout-reachable
+# and declared-here, so a kind wired up by nobody cannot hide as an oversight.
+ENGINE_INTERNAL_KINDS: dict[str, str] = {}
+
+
 def validate_spec(spec: Any) -> None:
     """Validate spec shape up front so a malformed file fails before any HTTP call."""
     if not isinstance(spec, dict):
@@ -535,67 +645,19 @@ def validate_spec(spec: Any) -> None:
             "(re-export with `metadata export-spec --solution`)."
         )
     _require(sp["solution"], ("unique_name",), "solution")
-    for key in ("entities", "optionsets", "webresources", "security_roles", "plugins", "apps"):
+    for key in SPEC_LAYOUT:
         if key in sp and not isinstance(sp[key], list):
             raise D365Error(f"{key} must be a list.")
-    for ent in _as_list(sp.get("entities")):
-        # Each entity-subtree block's own rules (required keys, constrained values,
-        # cross-field rules) are its component-kind adapter's complete authority
-        # now — validate delegates the block to the adapter. Only document-structure
-        # rules (top-level shape, the mandatory solution block, sub-collections-are-
-        # lists) stay in this up-front pass.
-        REGISTRY["entity"].validate(ent)
-        elabel = f"entity {ent['schema_name']!r}"
-        for sub in ("attributes", "relationships", "views", "forms"):
-            _require_list(ent, sub, elabel)
-        for attr in _as_list(ent.get("attributes")):
-            REGISTRY["attribute"].validate(attr)
-        for rel in _as_list(ent.get("relationships")):
-            REGISTRY["relationship"].validate(rel)
-        for view in _as_list(ent.get("views")):
-            REGISTRY["view"].validate(view)
-        for form in _as_list(ent.get("forms")):
-            # A form's identity is unique only within its owning entity, so the
-            # adapter validates under the entity-qualified label (ADR 0024).
-            REGISTRY["form"].validate(form, elabel)
-    # optionset / web resource / security role each delegate their whole block to
-    # the component-kind adapter (required keys, constrained values, option/privilege
-    # shape) — the same up-front authority the entity subtree uses. A malformed block
-    # fails here, before any HTTP, instead of mid-apply.
-    for os_spec in _as_list(sp.get("optionsets")):
-        REGISTRY["optionset"].validate(os_spec)
-    for wr in _as_list(sp.get("webresources")):
-        REGISTRY["webresource"].validate(wr)
-    for role in _as_list(sp.get("security_roles")):
-        REGISTRY["security-role"].validate(role)
-    # A plug-in is compound: the assembly block and each step block delegate their
-    # whole rules to the component-kind adapter (required keys, field types, the
-    # isolation/stage/mode vocabularies) — the same up-front authority the entity
-    # subtree uses. Its plug-in types and a step's images are create-only
-    # sub-collections with no adapter, so their document shape stays here.
-    for plugin in _as_list(sp.get("plugins")):
-        REGISTRY["plugin-assembly"].validate(plugin)
-        plabel = f"plug-in {plugin.get('assembly') or plugin['file']!r}"
-        for sub in ("types", "steps"):
-            _require_list(plugin, sub, plabel)
-        for typ in _as_list(plugin.get("types")):
-            _require(typ, ("type_name",), f"{plabel} type")
-            if not isinstance(typ["type_name"], str):
-                raise D365Error(f"{plabel}: type type_name must be a string.")
-        for step in _as_list(plugin.get("steps")):
-            REGISTRY["plugin-step"].validate(step)
-            slabel = f"{plabel} step {step['name']!r}"
-            _require_list(step, "images", slabel)
-            for img in _as_list(step.get("images")):
-                _require(img, ("alias", "image_type"), f"{slabel} image")
-                for key in ("alias", "image_type", "attributes", "name", "message_property_name"):
-                    if img.get(key) is not None and not isinstance(img[key], str):
-                        raise D365Error(f"{slabel}: image {key!r} must be a string.")
-    # A top-level model-driven app (`apps:`) delegates its whole shape — the app
-    # identity plus its nested sitemap — to its component-kind adapter, the same
-    # up-front authority every other spec block has (ADR 0024, #795).
-    for app in _as_list(sp.get("apps")):
-        REGISTRY["app"].validate(app)
+    # Every block's own rules (required keys, constrained values, cross-field rules)
+    # are its component-kind adapter's complete authority — this pass walks the spec
+    # layout and delegates each block to the kind that owns it. Only document-structure
+    # rules (top-level shape, the mandatory solution block, sub-collections-are-lists)
+    # stay here, and a compound key's sub-collections go to its `nested` pass.
+    for key, slot in SPEC_LAYOUT.items():
+        for block in _as_list(sp.get(key)):
+            REGISTRY[slot.kind].validate(block)
+            if slot.nested is not None:
+                slot.nested(block)
 
 
 def _solution_exists(backend: D365Backend, name: str) -> bool:
