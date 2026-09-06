@@ -114,15 +114,20 @@ redesign someone else's PR.
 
 ### 6 · Review-bot iteration
 
-Only when the gate pushed commits (nothing pushed → nothing new to review; skip
-— but CodeRabbit threads found undispositioned in preflight must still be
-triaged (step 3), fixed where valid (step 5), replied to on-thread, and
-bulk-resolved via `@coderabbitai resolve` before the verdict):
+Run this step when the gate pushed commits — **or when the PR has had no
+CodeRabbit round at all.** Since CodeRabbit no longer auto-reviews, an inbound PR
+whose author never posted `@coderabbitai review` carries **zero** rounds, and
+"nothing pushed" would otherwise pass it on a vacuous bar. So: no qualifying
+round on the PR → **trigger the first one yourself**, even with nothing pushed.
+Only when the gate pushed nothing *and* a triggered round already stands is there
+nothing new to review — and even then, CodeRabbit threads found undispositioned
+in preflight must still be triaged (step 3), fixed where valid (step 5), replied
+to on-thread, and bulk-resolved via `@coderabbitai resolve` before the verdict:
 
 1. **CodeRabbit owns iteration — but the gate triggers every round.** It does not
    auto-review this repo (star-gated; `CLAUDE.md` → *Code review*), so **post
-   `@coderabbitai review` on the PR after each fix push** you want reviewed;
-   nothing happens if you don't. Poll bounded, auto-triage its returned comments
+   `@coderabbitai review` on the PR after each fix push** you want reviewed —
+   and once up front if the PR has no round yet; nothing happens if you don't. Poll bounded, auto-triage its returned comments
    (same rigor as step 3), fix valid ones, push — then trigger the next round the
    same way. The trigger only works **while the PR is open**; a decline (closed
    PR, quota, outage) is recorded in the verdict, never read as quiet. Reply on

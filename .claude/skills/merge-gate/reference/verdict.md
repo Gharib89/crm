@@ -10,10 +10,12 @@ Exactly one of:
   every Copilot round-1 thread is dispositioned. `gh pr list --label gate-passed`
   is the maintainer's merge queue.
 - **`gate-failed`** — unconverged (the latest triggered CodeRabbit round still
-  substantive, **no round was triggered at all** after the gate's pushes, or a
-  Copilot round-1 thread left undispositioned), a design-level finding, or a
-  checklist failure the gate can't fix in scope. The comment names the decision
-  the maintainer must make (send back to author agent, re-scope, close).
+  substantive, **no triggered round exists at all** — none on the PR, or none
+  after the gate's pushes — or a Copilot round-1 thread left undispositioned), a
+  design-level finding, or a checklist failure the gate can't fix in scope. The
+  comment names the decision the maintainer must make (send back to author agent,
+  re-scope, close). Never pass a PR on a vacuous bar: no round was triggered is
+  not the same as a round came back quiet.
 
 Remove the opposite label if a re-run flips the verdict.
 
