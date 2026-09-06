@@ -20,11 +20,14 @@ never does.
 3. **Fixes in place** — scoped gaps (CI red, checklist failures, valid findings)
    are committed straight onto the PR branch; design-level problems are escalated
    instead of rewritten.
-4. **Iterates the review bots** when it pushed fixes — CodeRabbit re-reviews each
-   push automatically and owns iteration; Copilot gets at most **one** re-request,
-   and only when the gate significantly rewrote the PR (the merge-gate exception to
-   the round-1-only lane). Converged = CodeRabbit quiet on the latest push and
-   every Copilot thread dispositioned.
+4. **Iterates the review bots** when it pushed fixes — CodeRabbit owns iteration,
+   but it does not auto-review this repo, so the gate posts `@coderabbitai review`
+   after each fix push to start a round (open PRs only); Copilot gets at most
+   **one** re-request, and only when the gate significantly rewrote the PR (the
+   merge-gate exception to the round-1-only lane). Converged = the most recent
+   *triggered* CodeRabbit round returned no new substantive threads (or CodeRabbit
+   declined to review and the verdict records it) and every Copilot round-1 thread
+   is dispositioned.
 5. **Posts a verdict** comment (checklist with evidence, fixes pushed, review
    dispositions) and sets `gate-passed` or `gate-failed`.
 6. **Reports follow-ups** to the maintainer in the session — issues the PR says
@@ -36,7 +39,7 @@ never does.
 | Label | Meaning |
 | ----- | ------- |
 | `gate-passed` | Merge-confident: checklist clean, live runs green, review converged. `gh pr list --label gate-passed` = the merge queue. |
-| `gate-failed` | Needs a maintainer decision: unconverged review, design-level finding, or an unfixable gap — the verdict comment names it. |
+| `gate-failed` | Needs a maintainer decision: unconverged review (latest triggered CodeRabbit round still substantive, or no round triggered after the gate's pushes), design-level finding, or an unfixable gap — the verdict comment names it. |
 
 Invocation: `/merge-gate <n>` for one PR, bare `/merge-gate` to sweep every open
 non-draft PR carrying neither label.

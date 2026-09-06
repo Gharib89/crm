@@ -5,12 +5,15 @@
 Exactly one of:
 
 - **`gate-passed`** — checklist all pass/n-a, live runs green where required,
-  review converged. `gh pr list --label gate-passed` is the maintainer's merge
-  queue.
-- **`gate-failed`** — unconverged (CodeRabbit still substantive, or a Copilot
-  thread left undispositioned), a design-level finding, or a checklist failure the
-  gate can't fix in scope. The comment names the decision the maintainer must make
-  (send back to author agent, re-scope, close).
+  review converged: the most recent *triggered* CodeRabbit round returned no new
+  substantive threads (or CodeRabbit declined and the verdict records it), and
+  every Copilot round-1 thread is dispositioned. `gh pr list --label gate-passed`
+  is the maintainer's merge queue.
+- **`gate-failed`** — unconverged (the latest triggered CodeRabbit round still
+  substantive, **no round was triggered at all** after the gate's pushes, or a
+  Copilot round-1 thread left undispositioned), a design-level finding, or a
+  checklist failure the gate can't fix in scope. The comment names the decision
+  the maintainer must make (send back to author agent, re-scope, close).
 
 Remove the opposite label if a re-run flips the verdict.
 
@@ -41,6 +44,7 @@ Review dispositions   (label each finding's source: gate review / Copilot / Code
   - <finding> → <fixed | declined: evidence>
 
 Copilot: round-1 threads <dispositioned m/total | none | review didn't run>  [· +1 gate re-request spent (significant rewrite): its threads <dispositioned k/total>]
+CodeRabbit: rounds triggered <n> (last after <sha>) → <no new substantive threads | declined: reason>
 CodeRabbit threads:  <dispositioned <m>/<total> · resolved <yes | pending> | none | skipped: no push, none pending>
 
 Issues surfaced (surface-only — the gate files nothing)

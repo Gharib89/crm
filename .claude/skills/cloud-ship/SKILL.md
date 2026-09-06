@@ -79,6 +79,13 @@ Then **invoke the `ship` skill on issue $NUM**. While it runs:
   **blocked** (step 4); never touch on-prem.
 - Put **`Closes #$NUM`** in the PR body so the squash-merge auto-closes the issue
   and drops it from the queue.
+- **Trigger every CodeRabbit round yourself** — it does not auto-review this repo
+  (star-gated; see `CLAUDE.md` → *Code review*). Post `@coderabbitai review` via
+  `mcp__github__add_issue_comment` on the PR **immediately after `ship` opens it
+  as ready**, and **again after each fix push** you want reviewed (one push per
+  round). The trigger only works **while the PR is open**; if CodeRabbit declines
+  (closed PR, quota, outage), that is the "declined" branch of the convergence
+  bar — record it in the step-5 summary, never treat it as quiet.
 - Follow the clone's `CLAUDE.md` for test / gate / docs-sync / commit rules, and
   the **working standards** below.
 
@@ -105,9 +112,13 @@ mcp__github__add_issue_comment  owner=Gharib89 repo=crm issue_number=$NUM
 gate and will try to **wait** for a human "merge." **Override it.** The moment the
 PR is merge-ready — CI green, Copilot's round-1 threads dispositioned (never
 re-requested), every CodeRabbit thread dispositioned (fixed or declined with
-evidence) and then resolved (`@coderabbitai resolve`), CodeRabbit quiet on the
-latest push, `mergeable` — **post the PR link + a
-per-reviewer disposition summary and END the fire.** Do
+evidence) and then resolved (`@coderabbitai resolve`), and **converged = the most
+recent *triggered* CodeRabbit round returned no new substantive threads (or
+CodeRabbit declined to review and that is recorded in the summary) + all Copilot
+round-1 threads dispositioned**, `mergeable` — **post the PR link + a
+per-reviewer disposition summary and END the fire.** A round you never triggered
+is not a quiet round: if you posted no `@coderabbitai review`, the bar is unmet.
+Do
 not wait, poll, or merge. A human merges out of band later; the squash
 `Closes #$NUM` closes the issue then. **Leave the issue `agent-working`** — it
 carries the open PR, so later fires skip it until the merge closes it.
@@ -160,11 +171,13 @@ mapping. Translate each command below to its MCP equivalent:
 | `gh pr create` / "open a ready PR" (ship phase 6) | `mcp__github__create_pull_request` (`draft` omitted) |
 | `gh pr view <n> --json mergeable,mergeStateStatus` (conflict check, ship phase 8) | `mcp__github__pull_request_read method=get` |
 | `gh pr view <n> --json reviews,statusCheckRollup` (poll, copilot-loop) | `pull_request_read` `method=get_reviews` + `get_check_runs` (or `get_status`) |
-| `@coderabbitai review` (lift an auto-pause) / `@coderabbitai resolve` | `mcp__github__add_issue_comment` on the PR |
+| `@coderabbitai review` — **required** to start each round (after PR open, after each fix push; open PRs only) / `@coderabbitai resolve` | `mcp__github__add_issue_comment` on the PR |
 
 Poll CI/reviews by re-calling `pull_request_read` (not `gh`) within the bounded
 poll window `ship`'s `reference/copilot-loop.md` already defines (Copilot is
-round-1-only, never re-requested; CodeRabbit owns iteration via push re-reviews) — a short delay between polls, a capped number of attempts; never a
+round-1-only, never re-requested; CodeRabbit owns iteration, but each of its
+rounds is **manually triggered** by a `@coderabbitai review` comment — never
+push-automatic here, and never accepted on a closed PR) — a short delay between polls, a capped number of attempts; never a
 detached/background monitor. Reaching the bound is **not** a licence to proceed:
 end at step 5 only when the PR is genuinely merge-ready (CI green, reviews
 addressed, `mergeable`). If the bound is hit while CI is red/incomplete or can't

@@ -22,6 +22,13 @@ reviews:
     # reviews (manual @coderabbitai review still works).
     # Agent-authored PRs are deliberately NOT filtered (no ignore_usernames) —
     # CodeRabbit owns iteration on them (#833 lanes), so they must be reviewed.
+    #
+    # NOTE (#971): `enabled: true` is currently INERT — automatic review is
+    # star-gated and this repo is under CodeRabbit's 10-star threshold (runs
+    # report `Plan: Team`, not OSS), so no round starts on its own. Every round
+    # must be triggered with a `@coderabbitai review` comment while the PR is
+    # open — after PR open, and after each fix push. Keep this key as-is: it
+    # takes effect again the moment the star gate clears.
     enabled: true
     drafts: false
   path_instructions:
