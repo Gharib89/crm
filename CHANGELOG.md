@@ -9,6 +9,57 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.80.1 (2026-09-06)
+
+### Bug Fixes
+
+- **optionsets**: Stop partial-write errors being their own __cause__
+  ([#974](https://github.com/Gharib89/crm/pull/974),
+  [`74113d4`](https://github.com/Gharib89/crm/commit/74113d4d08f7b3f95397ba8838e4df33da6200e8))
+
+### Refactoring
+
+- **apply**: Apps join the registry; app create becomes one core call
+  ([#968](https://github.com/Gharib89/crm/pull/968),
+  [`0df4879`](https://github.com/Gharib89/crm/commit/0df4879e7d7a40203a47fca9c848287ea87bec37))
+
+- **apply**: Complete the plugin-step nested-kind reason string
+  ([#973](https://github.com/Gharib89/crm/pull/973),
+  [`a6d885c`](https://github.com/Gharib89/crm/commit/a6d885cfcd9d0969df5568c3294873165a0b49c0))
+
+- **apply**: Declare prune eligibility on the kind's Adapter
+  ([#966](https://github.com/Gharib89/crm/pull/966),
+  [`5931943`](https://github.com/Gharib89/crm/commit/5931943fa8f3931beda12839b62375e25dda4519))
+
+- **apply**: Drive every kind through one phase loop over the registry
+  ([#973](https://github.com/Gharib89/crm/pull/973),
+  [`a6d885c`](https://github.com/Gharib89/crm/commit/a6d885cfcd9d0969df5568c3294873165a0b49c0))
+
+- **apply**: Forms join the registry as a reconcile-only kind
+  ([#967](https://github.com/Gharib89/crm/pull/967),
+  [`5086b94`](https://github.com/Gharib89/crm/commit/5086b9419cb7a155b9acb8eb88bd742dee02d5c2))
+
+- **apply**: Make the plug-in step a layout kind, not an internal one
+  ([#970](https://github.com/Gharib89/crm/pull/970),
+  [`807cc7c`](https://github.com/Gharib89/crm/commit/807cc7ca5e77c8d25c7964622dad91ccda807bba))
+
+- **apply**: Spec layout as data + registry↔layout contract test
+  ([#970](https://github.com/Gharib89/crm/pull/970),
+  [`807cc7c`](https://github.com/Gharib89/crm/commit/807cc7ca5e77c8d25c7964622dad91ccda807bba))
+
+- **apply**: Stage-attribute the app create chain; de-duplicate its helpers
+  ([#968](https://github.com/Gharib89/crm/pull/968),
+  [`0df4879`](https://github.com/Gharib89/crm/commit/0df4879e7d7a40203a47fca9c848287ea87bec37))
+
+- **apply**: Stamp the app chain's stage without a self-referential cause
+  ([#968](https://github.com/Gharib89/crm/pull/968),
+  [`0df4879`](https://github.com/Gharib89/crm/commit/0df4879e7d7a40203a47fca9c848287ea87bec37))
+
+- **apply**: Tighten PruneSpec naming and pin the two prune shapes
+  ([#966](https://github.com/Gharib89/crm/pull/966),
+  [`5931943`](https://github.com/Gharib89/crm/commit/5931943fa8f3931beda12839b62375e25dda4519))
+
+
 ## v1.80.0 (2026-09-01)
 
 ### Bug Fixes
