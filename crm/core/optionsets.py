@@ -286,10 +286,14 @@ def update_optionset(
 
     completed: list[str] = []
 
-    def _attach_partial(exc: D365Error, stage: str) -> D365Error:
+    def _attach_partial(exc: D365Error, stage: str) -> None:
+        """Stamp how far the chain got onto the live *exc*, in place.
+
+        Callers stamp and re-`raise` bare, so the original traceback survives and
+        the exception is never made its own ``__cause__`` (issue #969).
+        """
         exc.completed_steps = list(completed)
         exc.stage = stage
-        return exc
 
     if insert:
         for value, lbl in insert:
@@ -299,7 +303,8 @@ def update_optionset(
             try:
                 backend.post("InsertOptionValue", json_body=body, solution=solution)
             except D365Error as exc:
-                raise _attach_partial(exc, "insert") from exc
+                _attach_partial(exc, "insert")
+                raise
             completed.append(f"insert:{value if value is not None else 'auto'}")
 
     if update:
@@ -313,7 +318,8 @@ def update_optionset(
             try:
                 backend.post("UpdateOptionValue", json_body=body, solution=solution)
             except D365Error as exc:
-                raise _attach_partial(exc, "update") from exc
+                _attach_partial(exc, "update")
+                raise
             completed.append(f"update:{value}")
 
     if delete:
@@ -322,7 +328,8 @@ def update_optionset(
             try:
                 backend.post("DeleteOptionValue", json_body=body, solution=solution)
             except D365Error as exc:
-                raise _attach_partial(exc, "delete") from exc
+                _attach_partial(exc, "delete")
+                raise
             completed.append(f"delete:{value}")
 
     if reorder:
@@ -330,7 +337,8 @@ def update_optionset(
         try:
             backend.post("OrderOption", json_body=body, solution=solution)
         except D365Error as exc:
-            raise _attach_partial(exc, "reorder") from exc
+            _attach_partial(exc, "reorder")
+            raise
         completed.append("reorder")
 
     out: dict[str, Any] = {

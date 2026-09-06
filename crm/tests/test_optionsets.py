@@ -310,6 +310,9 @@ class TestUpdateOptionset:
             assert "value 99 not found" in str(exc_info.value)
             assert exc_info.value.completed_steps == ["insert:7"]
             assert exc_info.value.stage == "update"
+            # Stamped and re-raised bare, so the error is never its own `__cause__` —
+            # a self-referential cause renders as a confusing traceback (#969).
+            assert exc_info.value.__cause__ is not exc_info.value
 
     def test_empty_request_rejected(self, backend):
         from crm.core import optionsets as os_mod
