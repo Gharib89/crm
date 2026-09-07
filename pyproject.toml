@@ -35,6 +35,12 @@ target-version = "py313"
 # D2xx/D4xx docstring FORMAT only — deliberately no D1xx (missing-docstring),
 # S (bandit), C90 (complexity), or ANN (pyright owns typing).
 select = ["E", "W", "F", "I", "B", "UP", "D2", "D4"]
+# S101 is the one bandit rule selected (the rest of the S family stays off, above):
+# the standards doc forbids `assert` for a runtime invariant in shipped code, because
+# `assert` is stripped under `python -O` and the frozen PyInstaller build can run
+# optimized. Ruff can express the rule, so it gates here rather than in
+# `ci/semgrep-rules.yml` (which is for conventions ruff cannot express). See #972.
+extend-select = ["S101"]
 # D205 (blank line between summary and description) is permanently excluded, not
 # adoption debt: it counts only physical line 1 as the summary, so it forces every
 # multi-line summary onto one line — which then trips E501 as breakable prose (>100
@@ -46,7 +52,11 @@ ignore = ["D205"]
 [tool.ruff.lint.per-file-ignores]
 # Tests import mid-file deliberately (after env/path setup in conftest, or to
 # order fixtures); scoped ignore per the standards doc, never a global removal.
-"crm/tests/**" = ["E402"]
+# S101 is exempt wherever the code is not shipped — a test/eval/script `assert` is
+# never subject to `python -O`, and pytest's whole assertion model is built on it.
+"crm/tests/**" = ["E402", "S101"]
+"evals/**" = ["S101"]
+"scripts/**" = ["S101"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

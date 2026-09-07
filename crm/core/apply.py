@@ -1522,7 +1522,15 @@ def _reconcile_via_adapter(
     """
     find_live = adapter.find_live
     reconcile = adapter.reconcile
-    assert find_live is not None and reconcile is not None  # populated for these kinds
+    # Unreachable: a contract test holds every driven kind's slots together.
+    if find_live is None or reconcile is None:
+        missing = " and ".join(
+            slot for slot, fn in (("find_live", find_live), ("reconcile", reconcile)) if fn is None
+        )
+        raise D365Error(
+            f"apply: kind {entry['kind']!r} reconciles through its adapter "
+            f"but declares no {missing}."
+        )
 
     def thunk() -> _Verdicts:
         live = find_live(backend, block, ctx)

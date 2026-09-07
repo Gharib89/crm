@@ -144,7 +144,9 @@ House rules on top of the shape:
   raises if it names a reserved key.
 - Never `assert` for a runtime invariant in shipped code — `assert` is stripped under
   `python -O`, and the frozen PyInstaller build can run optimized. Raise `D365Error` (or the
-  appropriate domain error) even for a logically-unreachable check.
+  appropriate domain error) even for a logically-unreachable check. Enforced by ruff `S101`
+  (the one bandit rule selected); `crm/tests/**`, `evals/**` and `scripts/**` are exempt —
+  they never ship, and pytest's assertion model is built on `assert`.
 
 ## Output contract
 

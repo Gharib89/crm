@@ -1022,7 +1022,9 @@ def add_section_to_formxml(
                 f"after. Sections: {names}."
             )
         parent = _sections_parent(target_tab, anchor)
-        assert parent is not None  # anchor came from this tab's sections
+        # Unreachable: the anchor came from this tab's own sections.
+        if parent is None:
+            raise D365Error(f"Section {after!r} has no <sections> parent in its tab.")
         parent.insert(list(parent).index(anchor) + 1, new_section)
     out = xml_edit.serialize_xml(root)
     _assert_siblings_intact(formxml, out, changed=changed)
@@ -1049,7 +1051,9 @@ def remove_section_from_formxml(
             f"Pass --force to remove it and orphan them."
         )
     parent = _sections_parent(target_tab, target)
-    assert parent is not None  # target came from this tab's sections
+    # Unreachable: the target came from this tab's own sections.
+    if parent is None:
+        raise D365Error(f"Section {section!r} has no <sections> parent in its tab.")
     changed = _element_guids(target)
     parent.remove(target)
     out = xml_edit.serialize_xml(root)
@@ -1086,7 +1090,9 @@ def move_section_in_formxml(
     target_tab = _resolve_target_tab(root, tab)
     target = _resolve_target_section(root, tab, section)
     parent = _sections_parent(target_tab, target)
-    assert parent is not None  # target came from this tab's sections
+    # Unreachable: the target came from this tab's own sections.
+    if parent is None:
+        raise D365Error(f"Section {section!r} has no <sections> parent in its tab.")
     parent.remove(target)
     if after is None:
         parent.insert(0, target)
@@ -1103,7 +1109,9 @@ def move_section_in_formxml(
                 f"after. Sections: {names}."
             )
         anchor_parent = _sections_parent(target_tab, anchor)
-        assert anchor_parent is not None
+        # Unreachable: the anchor came from this tab's own sections.
+        if anchor_parent is None:
+            raise D365Error(f"Section {after!r} has no <sections> parent in its tab.")
         anchor_parent.insert(list(anchor_parent).index(anchor) + 1, target)
     out = xml_edit.serialize_xml(root)
     _assert_siblings_intact(formxml, out)

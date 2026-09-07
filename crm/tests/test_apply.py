@@ -5312,6 +5312,30 @@ def test_every_ordered_kind_carries_the_driver_slots():
             )
 
 
+@pytest.mark.parametrize(
+    ("slots", "missing"),
+    [
+        ({"reconcile": lambda *a: []}, "find_live"),
+        ({"find_live": lambda *a: None}, "reconcile"),
+        ({}, "find_live and reconcile"),
+    ],
+)
+def test_reconcile_via_adapter_names_a_missing_driver_slot(backend, slots, missing):
+    """The contract test above holds this invariant statically; the runtime guard is
+    the backstop, and it must survive `python -O` — which strips `assert` (#972). So a
+    mis-declared adapter raises a `D365Error` naming the kind and the empty slot(s),
+    not a `TypeError: 'NoneType' object is not callable`.
+    """
+    adapter = apply_mod.Adapter(map={}, injected=frozenset(), transforms={}, defaults={}, **slots)
+    ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None)
+    entry = {"kind": "webresource", "name": "contoso_script.js"}
+    with pytest.raises(D365Error) as exc:
+        apply_mod._reconcile_via_adapter(adapter, backend, {}, ctx, entry, {}, [])
+    assert str(exc.value) == (
+        f"apply: kind 'webresource' reconciles through its adapter but declares no {missing}."
+    )
+
+
 def test_nested_kinds_declare_no_phase_slots():
     """A nested kind is driven by its parent, so it declares nothing the loop reads."""
     for kind in apply_mod.NESTED_KINDS:

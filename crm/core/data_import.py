@@ -176,7 +176,9 @@ def _build_upsert_op(
         body = {k: v for k, v in record.items() if k not in key_values}
         url = entity_mod.build_alternate_key_path(entity_set, key_values)
         return BatchOperation(method="PATCH", url=url, body=body)
-    assert id_column is not None  # narrowed by import_records guard
+    # Unreachable: import_records requires one of id_column / alt_key for this mode.
+    if id_column is None:
+        raise D365Error(f"Upsert row {row_index}: id_column or alt_key is required")
     if id_column not in record:
         raise D365Error(f"Upsert row {row_index}: missing id_column {id_column!r} in record")
     body = {k: v for k, v in record.items() if k != id_column}
@@ -202,7 +204,9 @@ def _build_delete_op(
             key_values[attr] = record[attr]
         url = entity_mod.build_alternate_key_path(entity_set, key_values)
         return BatchOperation(method="DELETE", url=url)
-    assert id_column is not None  # narrowed by import_records guard
+    # Unreachable: import_records requires one of id_column / alt_key for this mode.
+    if id_column is None:
+        raise D365Error(f"Delete row {row_index}: id_column or alt_key is required")
     if id_column not in record:
         raise D365Error(f"Delete row {row_index}: missing id_column {id_column!r} in record")
     url = entity_mod.build_record_path(entity_set, str(record[id_column]))
@@ -358,7 +362,11 @@ def import_records(
             # Record the alternate-key segment for failure traceability.
             op_ids.append(entity_mod.format_alternate_key_segment({a: record[a] for a in alt_key}))
         else:
-            assert id_column is not None  # narrow type for pyright (guarded above)
+            # Unreachable: the up-front guard requires one of id_column / alt_key.
+            if id_column is None:
+                raise D365Error(
+                    f"Row {row_index}: id_column or alt_key is required when mode={mode!r}"
+                )
             op_ids.append(str(record[id_column]))
 
     # ── dispatch chunks ──────────────────────────────────────────────────────
