@@ -9,6 +9,25 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.80.3 (2026-09-07)
+
+### Bug Fixes
+
+- Replace shipped runtime-invariant asserts with domain errors and gate them with ruff S101
+  ([#977](https://github.com/Gharib89/crm/pull/977),
+  [`fe3b874`](https://github.com/Gharib89/crm/commit/fe3b8748e9250b05ee0c44a93aa4f8bec203a8b0))
+
+- **apply**: Normalize the unreachable-guard shape across all twelve sites
+  ([#977](https://github.com/Gharib89/crm/pull/977),
+  [`fe3b874`](https://github.com/Gharib89/crm/commit/fe3b8748e9250b05ee0c44a93aa4f8bec203a8b0))
+
+### Documentation
+
+- **agents**: Remove dated references from agent notes and skills
+  ([#976](https://github.com/Gharib89/crm/pull/976),
+  [`fc27615`](https://github.com/Gharib89/crm/commit/fc27615e171bd3ebaf9549213ab1bce1e7f064ca))
+
+
 ## v1.80.2 (2026-09-07)
 
 ### Bug Fixes
