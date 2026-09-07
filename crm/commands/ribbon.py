@@ -663,7 +663,9 @@ def ribbon_hide_button(ctx, entity, target_id, method, yes, publish, solution):
 
     def mutate(diff):
         if method == "display-rule":
-            assert command_id is not None  # guarded above
+            # Unreachable: the no-Command check above returns before this mutate is built.
+            if command_id is None:
+                raise D365Error(f"target-id {target_id!r} has no Command to override")
             ribbon_mod.hide_button_display_rule(diff, command_id)
         else:
             ribbon_mod.hide_button_hide_action(diff, target_id)

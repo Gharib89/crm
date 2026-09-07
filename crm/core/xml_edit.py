@@ -271,7 +271,9 @@ def commit_xml_patch(
     """
 
     def _read_back_one(cols: dict[str, str]) -> None:
-        assert read_back is not None  # rb is only wired when read_back is set
+        # Unreachable: rb is only wired below when read_back is set.
+        if read_back is None:
+            raise D365Error("commit_xml_patch: read-back ran with no read_back callback.")
         read_back(cols[column])
 
     rb = _read_back_one if read_back is not None else None
