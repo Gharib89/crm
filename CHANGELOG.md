@@ -9,6 +9,19 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.80.2 (2026-09-07)
+
+### Bug Fixes
+
+- **docs**: CodeRabbit reviews only on explicit trigger — re-document review lanes
+  ([#975](https://github.com/Gharib89/crm/pull/975),
+  [`af2398a`](https://github.com/Gharib89/crm/commit/af2398a772b4bc2beca517c29018d2dda4fc0673))
+
+- **docs**: Merge gate must trigger a first CodeRabbit round when none exists
+  ([#975](https://github.com/Gharib89/crm/pull/975),
+  [`af2398a`](https://github.com/Gharib89/crm/commit/af2398a772b4bc2beca517c29018d2dda4fc0673))
+
+
 ## v1.80.1 (2026-09-06)
 
 ### Bug Fixes
