@@ -1522,12 +1522,10 @@ def _reconcile_via_adapter(
     """
     find_live = adapter.find_live
     reconcile = adapter.reconcile
+    # Unreachable: a contract test holds every driven kind's slots together.
     if find_live is None or reconcile is None:
-        # Unreachable: a contract test holds every driven kind's slots together.
         missing = " and ".join(
-            slot
-            for slot, fn in (("find_live", find_live), ("reconcile", reconcile))
-            if fn is None
+            slot for slot, fn in (("find_live", find_live), ("reconcile", reconcile)) if fn is None
         )
         raise D365Error(
             f"apply: kind {entry['kind']!r} reconciles through its adapter "

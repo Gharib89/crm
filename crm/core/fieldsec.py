@@ -229,7 +229,7 @@ def assign(
     else:
         # Unreachable: the exactly-one guard above leaves team_id set on this branch.
         if team_id is None:
-            raise D365Error("assign: reached the team branch with no team_id.")
+            raise D365Error("fieldsec assign: reached the team branch with no team_id.")
         nav, related_set, related_id, ptype = (_TEAM_NAV, "teams", team_id, "team")
     result = entity_mod.associate(
         backend,

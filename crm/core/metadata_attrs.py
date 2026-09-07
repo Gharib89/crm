@@ -304,8 +304,8 @@ def _build_options_payload(
         return {"GlobalOptionSet@odata.bind": f"GlobalOptionSetDefinitions({key})"}
     seen: set[int] = set()
     option_list: list[dict[str, Any]] = []
+    # Unreachable: has_inline is truthy only for a non-empty options list.
     if options is None:
-        # Unreachable: has_inline is truthy only for a non-empty options list.
         raise D365Error("inline option set reached the option loop with no options.")
     for value, lbl in options:
         if value is not None:
