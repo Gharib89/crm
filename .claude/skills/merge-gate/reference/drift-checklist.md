@@ -22,9 +22,9 @@ No surface change → n-a, one line saying why.
 Every new or changed D365-touching command in the diff has a live e2e test
 stamped `@covers("<group> <verb>")` under `crm/tests/e2e/`, **or** an `E2E_SKIP`
 entry with a reason in `crm/tests/e2e/coverage.py`. For an `E2E_SKIP`, judge the
-reason itself: platform walls have been falsified before (a "cloud rejects this"
-claim that a clone-of-real-payload disproved) — a suspicious reason is a fail, not
-a pass.
+reason itself: a "the platform rejects this" claim is a hypothesis until a real
+payload confirms it (cloud accepts inputs that on-prem rejects, and vice versa) — a
+suspicious reason is a fail, not a pass.
 
 ## 3 · Test classification
 

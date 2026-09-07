@@ -50,7 +50,7 @@ crm --json solution add-component --solution ContosoCore --type webresource --id
 crm --json solution remove-component --solution ContosoCore --type 61 --id <guid> --yes
 ```
 
-**Batching (#914):** repeat `--id` and/or pass `--components-file <path>` (a JSON
+**Batching:** repeat `--id` and/or pass `--components-file <path>` (a JSON
 list of rows) — the two sources merge. Two or more components run as one
 transactional `$batch` changeset: a mid-batch failure rolls every row back, so a
 batch either lands whole or not at all. A single `--id` alone is unaffected — same
@@ -69,7 +69,7 @@ non-entity row. A realistic mixed-type file (entities + attributes + forms + BPF
 with `--no-subcomponents --no-add-required` therefore just works — no per-row
 guarding needed. Asking for it *explicitly* on a non-entity (a per-row
 `"no_subcomponents": true`, or `--id`/`--type` on a non-entity with the flag) is
-rejected client-side before any request, naming the offending rows (#941).
+rejected client-side before any request, naming the offending rows.
 
 On full success the batch `--json` `data` is `{solution, added|removed: [{type,
 id, ok, status, error}], count, succeeded, failed, rolled_back}` (all rows `ok`,

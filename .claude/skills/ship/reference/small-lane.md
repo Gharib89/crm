@@ -17,7 +17,7 @@ test). On top of that:
   the rest of the suite, lint, and type-check — CI re-runs them, and a red CI on
   a small change is a cheap round-trip.
 - **Round-1 review is the whole review gate** — disposition it once and go; the
-  iterating reviewer (if any) still owns its free push-rounds. See
+  iterating reviewer (if any) still owns its rounds. See
   [copilot-loop.md](copilot-loop.md).
 - **Subagents: usually none of your own.** You can already point at the file (no
   mapper), and the proving test node's output is short (run it inline); the

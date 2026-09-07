@@ -243,9 +243,11 @@ convention.
 (per project instructions — never an assumption). If not, skip: phase-4 self-review
 plus green CI is the review gate. Two reviewer roles, per project instructions: a
 **round-1 reviewer** whose auto-review on PR creation is **dispositioned once and
-never re-requested in the ship flow**, and a **push-triggered reviewer** (if the
-repo runs one) that **owns iteration** — its rounds are free, so batch fixes one
-push per round, disposition every thread, and drive it to quiet. Auto-triage every
+never re-requested in the ship flow**, and an **iterating reviewer** (if the
+repo runs one) that **owns iteration** — triggered per project instructions (on
+push, or by a trigger comment you post after each push); batch fixes one push
+per round, trigger a round on it if the project requires, disposition every
+thread, and drive it to quiet. Auto-triage every
 comment (phase 4's definition, judgment tier). **Converged = the iterating reviewer
 quiet on the latest push + all round-1 threads dispositioned** (no iterating
 reviewer → round-1 threads dispositioned + green CI). Mechanics,
@@ -259,8 +261,8 @@ conflicted PR has no merge ref, so merge-commit checks never start and CI sits
 rebase (or merge) it in, fix conflicts, **re-run the local gate (phase 5)**, and
 push — that recomputes the merge ref and lets CI run. Then land the checks green.
 If CI goes red **after** review converged, fix and push, then proceed on green —
-the push-triggered reviewer re-reviews the fix on its own; the round-1 reviewer is
-not re-requested (a lint/format/flake fix earns no review anyway).
+the iterating reviewer re-reviews the fix (trigger it if the project requires); the
+round-1 reviewer is not re-requested (a lint/format/flake fix earns no review anyway).
 
 **9 · Merge gate.** **Hard stop.** Post the summary and wait for the user's
 explicit "merge"; on approval, squash-merge, delete the branch, clean up the
