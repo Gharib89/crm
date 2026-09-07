@@ -10,9 +10,9 @@ Two reviewer roles, assigned by project instructions:
 - **Round-1 reviewer** — auto-reviews once on PR creation and is **dispositioned
   once**: address each thread, or decline with evidence. **Never re-requested in
   the ship flow** (a plain push does not re-trigger it; `review_on_push: false`).
-- **Iterating reviewer** — a push-triggered bot (if the repo runs one) that
-  **re-reviews automatically on every push** and **owns iteration**. Its rounds
-  are free; drive them to quiet.
+- **Iterating reviewer** — a bot (if the repo runs one) that **owns iteration**:
+  it re-reviews each push, either automatically or when you post the project's
+  trigger comment — project instructions say which. Drive its rounds to quiet.
 
 A repo may run one or both. If it runs neither, phase-4 self-review + green CI is
 the review gate — skip this phase.
@@ -38,10 +38,11 @@ If project instructions name a reviewer that re-reviews on push:
   the round-1 reviewer, it *reads replies* — reply **on each review thread**
   ("fixed in `<sha>`" / decline + evidence), and use its documented
   thread-resolution mechanism only once **every** thread carries a disposition.
-- **Batch fixes into one push per round** — every push spends its (usually
-  rate-limited) review quota and triggers one fresh round.
-- **Its rounds are free** — no re-request, no ceiling. Keep going until a push
-  comes back quiet.
+- **Batch fixes into one push per round** — each round spends (usually
+  rate-limited) review quota, so push once, then trigger the round if the
+  project's reviewer needs a trigger comment (a round you never triggered is not
+  a quiet round).
+- **No ceiling on rounds** — keep going until a round comes back quiet.
 
 ## Converged — the phase-7 exit
 

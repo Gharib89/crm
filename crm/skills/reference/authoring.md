@@ -91,7 +91,7 @@ expressible in the spec. **Reconciled on re-apply:**
   `sitemap` (`areas[] → groups[] → subareas[]`, subarea `entity` = logical name) set
   wholesale and auto-linked to the app by its `unique_name`. **Tables reach the app
   via a sitemap subarea, not `components[]`.** Dry-run on an absent app → `planned`.
-  An **existing** app is **reconciled** (#796): the declared `components[]` set is
+  An **existing** app is **reconciled**: the declared `components[]` set is
   converged against the live app's bound components (over view/chart/form/dashboard/bpf
   only — the sitemap and a table's implicit binding are never added/removed here) —
   a declared-but-unbound component is added, a bound-but-undeclared one is removed;

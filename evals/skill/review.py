@@ -145,7 +145,7 @@ def build_review_prompt(
         f"{_commands_block(rec.commands)}\n\n"
         "## Run metrics\n"
         f"{json.dumps(rec.metrics, default=str)}\n\n"
-        "## Correctness verdict (from the deterministic predicate / #572)\n"
+        "## Correctness verdict (from the deterministic predicate)\n"
         f"{json.dumps(rec.correctness_verdict, default=str)}\n"
         f"{cf_section}\n"
         "## The skill the agent had\n"

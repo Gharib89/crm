@@ -90,8 +90,9 @@ evidence. Every finding gets a one-line disposition for the verdict comment.
   pytest markers, so `-k`/`-m` cannot select on them) — confirm the touched
   verbs appear in those strings, then run
   `D365_E2E=1 pytest -m e2e <files>` (worktree-code recipe). Run on
-  **every live target the touched commands support** — a single-target green has guessed the
-  wrong capability gate before. Pin `--profile`, confirm the org via
+  **every live target the touched commands support** — cloud and on-prem gate
+  capabilities differently, so a single-target green can pass a test whose
+  capability gate is wrong for the other target. Pin `--profile`, confirm the org via
   `crm connection whoami`, and quote both in the verdict. A target unreachable
   (VPN down, trial expired) is an explicit skip with reason, never a silent pass.
   **Done = the full `test_<group>*.py` file(s) ran green on every supported
