@@ -114,18 +114,26 @@ redesign someone else's PR.
 
 ### 6 · Review-bot iteration
 
-Only when the gate pushed commits (nothing pushed → nothing new to review; skip
-— but CodeRabbit threads found undispositioned in preflight must still be
-triaged (step 3), fixed where valid (step 5), replied to on-thread, and
-bulk-resolved via `@coderabbitai resolve` before the verdict):
+Run this step when the gate pushed commits — **or when the PR has had no
+CodeRabbit round at all.** Since CodeRabbit no longer auto-reviews, an inbound PR
+whose author never posted `@coderabbitai review` carries **zero** rounds, and
+"nothing pushed" would otherwise pass it on a vacuous bar. So: no qualifying
+round on the PR → **trigger the first one yourself**, even with nothing pushed.
+Only when the gate pushed nothing *and* a triggered round already stands is there
+nothing new to review — and even then, CodeRabbit threads found undispositioned
+in preflight must still be triaged (step 3), fixed where valid (step 5), replied
+to on-thread, and bulk-resolved via `@coderabbitai resolve` before the verdict:
 
-1. **CodeRabbit owns iteration** — it re-reviews each push automatically, no
-   re-request needed (if it auto-paused, `@coderabbitai review` lifts the pause).
-   Poll bounded, auto-triage its returned comments (same rigor as step 3), fix
-   valid ones, push — the next round re-triggers on its own. Reply on each
-   CodeRabbit thread ("fixed in `<sha>`" / decline + evidence); once every thread
-   is dispositioned, `@coderabbitai resolve` closes them — never earlier (it
-   bulk-resolves).
+1. **CodeRabbit owns iteration — but the gate triggers every round.** It does not
+   auto-review this repo (star-gated; `CLAUDE.md` → *Code review*), so **post
+   `@coderabbitai review` on the PR after each fix push** you want reviewed —
+   and once up front if the PR has no round yet; nothing happens if you don't. Poll bounded, auto-triage its returned comments
+   (same rigor as step 3), fix valid ones, push — then trigger the next round the
+   same way. The trigger only works **while the PR is open**; a decline (closed
+   PR, quota, outage) is recorded in the verdict, never read as quiet. Reply on
+   each CodeRabbit thread ("fixed in `<sha>`" / decline + evidence); once every
+   thread is dispositioned, `@coderabbitai resolve` closes them — never earlier
+   (it bulk-resolves).
 2. **Copilot is round-1-only — with one gate exception.** The gate may spend
    **exactly one** Copilot re-request, and only when it **significantly rewrote**
    the PR (a scoped lint/format/typo fix does not qualify). Otherwise Copilot's
@@ -137,11 +145,13 @@ bulk-resolved via `@coderabbitai resolve` before the verdict):
    `gh pr edit --add-reviewer` path and the display name `"Copilot"` both fail
    on this repo), and verifies `requested_reviewers` actually populated — a
    bare HTTP 201 can silently no-op.
-3. **Converged = CodeRabbit quiet on the latest push + every Copilot thread
-   dispositioned** (declined-with-evidence counts as dispositioned). CodeRabbit's
-   auto-rounds are free — drive them to quiet. If CodeRabbit stays substantive
-   round after round, the PR has a shape problem more rounds won't fix → stop and
-   fail the gate.
+3. **Converged = the most recent *triggered* CodeRabbit round returned no new
+   substantive threads (or CodeRabbit declined to review and that is recorded in
+   the verdict) + every Copilot round-1 thread dispositioned**
+   (declined-with-evidence counts as dispositioned). A round costs only the
+   trigger comment — drive them to quiet, and never call a round you never
+   triggered "quiet". If CodeRabbit stays substantive round after round, the PR
+   has a shape problem more rounds won't fix → stop and fail the gate.
 
 ### 7 · Verdict
 
