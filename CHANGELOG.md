@@ -9,6 +9,37 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.80.6 (2026-09-25)
+
+### Bug Fixes
+
+- Keep install.ps1 going when the temp zip cannot be deleted
+  ([#984](https://github.com/Gharib89/crm/pull/984),
+  [`a83f6af`](https://github.com/Gharib89/crm/commit/a83f6af446726cc6e336e07ba4d53fbd3c118301))
+
+- Stop install.ps1 skipping PATH when $env:TEMP is an 8.3 short path
+  ([#984](https://github.com/Gharib89/crm/pull/984),
+  [`a83f6af`](https://github.com/Gharib89/crm/commit/a83f6af446726cc6e336e07ba4d53fbd3c118301))
+
+### Testing
+
+- Harden the install.ps1 harness for Windows PowerShell 5.1
+  ([#984](https://github.com/Gharib89/crm/pull/984),
+  [`a83f6af`](https://github.com/Gharib89/crm/commit/a83f6af446726cc6e336e07ba4d53fbd3c118301))
+
+- Skip the POSIX delete-failure leg when running as root
+  ([#984](https://github.com/Gharib89/crm/pull/984),
+  [`a83f6af`](https://github.com/Gharib89/crm/commit/a83f6af446726cc6e336e07ba4d53fbd3c118301))
+
+- Start Windows PowerShell 5.1 with its own module path
+  ([#984](https://github.com/Gharib89/crm/pull/984),
+  [`a83f6af`](https://github.com/Gharib89/crm/commit/a83f6af446726cc6e336e07ba4d53fbd3c118301))
+
+- Unset PSMODULEPATH under its upper-cased Windows key
+  ([#984](https://github.com/Gharib89/crm/pull/984),
+  [`a83f6af`](https://github.com/Gharib89/crm/commit/a83f6af446726cc6e336e07ba4d53fbd3c118301))
+
+
 ## v1.80.5 (2026-09-25)
 
 ### Bug Fixes
