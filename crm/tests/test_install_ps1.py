@@ -185,6 +185,8 @@ def test_temp_zip_delete_failure_warns_and_still_adds_path(tmp_path: Path, user_
     """A temp zip that cannot be deleted is a warning, never an abort: the PATH
     step and the version print still run (#979).
     """
+    if not WINDOWS and os.geteuid() == 0:
+        pytest.skip("root bypasses directory write permission, so the delete cannot be blocked")
     temp, local_app_data = _dirs(tmp_path)
     held = []
 
