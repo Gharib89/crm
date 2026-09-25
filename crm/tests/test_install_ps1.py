@@ -147,6 +147,11 @@ def _run_install(base_url: str, temp: Path, local_app_data: Path):
     env["CRM_VERSION"] = VERSION
     env.pop("CRM_SHA256", None)
     env["NO_COLOR"] = "1"  # plain pwsh error text in assertion messages
+    if WINDOWS:
+        # A pwsh 7 parent (CI's default Windows shell) exports its own module
+        # path; 5.1 would then fail to load Get-FileHash. Unset, 5.1 rebuilds
+        # its default, as a fresh Windows PowerShell console has.
+        env.pop("PSModulePath", None)
     return subprocess.run(
         [SHELL, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass"]
         + ["-File", str(INSTALL_PS1)],
