@@ -9,6 +9,25 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.80.4 (2026-09-25)
+
+### Bug Fixes
+
+- **ship**: Address review of the generic-ship migration
+  ([#981](https://github.com/Gharib89/crm/pull/981),
+  [`184c3fe`](https://github.com/Gharib89/crm/commit/184c3fe288e8423f8c4b7fb0ff1aa62ac7547e75))
+
+- **ship**: Resolve the gate's binaries from the venv in the cloud lane
+  ([#981](https://github.com/Gharib89/crm/pull/981),
+  [`184c3fe`](https://github.com/Gharib89/crm/commit/184c3fe288e8423f8c4b7fb0ff1aa62ac7547e75))
+
+### Chores
+
+- **ship**: Migrate to the generic ship skill from Gharib89/skills
+  ([#981](https://github.com/Gharib89/crm/pull/981),
+  [`184c3fe`](https://github.com/Gharib89/crm/commit/184c3fe288e8423f8c4b7fb0ff1aa62ac7547e75))
+
+
 ## v1.80.3 (2026-09-07)
 
 ### Bug Fixes
