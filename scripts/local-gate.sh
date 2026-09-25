@@ -57,13 +57,6 @@ mark() { gates[$1]=$2; }   # mark <name> deferred-to-ci|unavailable
 # the pac e2e; docs.yml runs `docs`). The windows-latest matrix halves of `test`
 # and `package` have no local mirror; CI proves them.
 
-# secrets: required in every lane.
-if command -v gitleaks >/dev/null; then
-  run secrets gitleaks detect --no-banner --redact --log-opts="$base..HEAD"
-else
-  mark secrets unavailable
-fi
-
 # deps: a sibling worktree has no .venv, and installing one there would repoint
 # the shared editable install, so use this checkout's .venv, else the main
 # checkout's (the parent of the common git dir), with PYTHONPATH on this tree.
@@ -74,6 +67,21 @@ for d in "$PWD/.venv" "$main/.venv"; do
 done
 py="$venv/bin/python"
 export PYTHONPATH=$PWD
+
+# tool <name>: from PATH, else the venv's (the cloud bootstrap installs gitleaks,
+# actionlint and uv there). Empty when neither has it.
+tool() { command -v "$1" || { [ -x "$venv/bin/$1" ] && echo "$venv/bin/$1"; }; }
+uvx=$(tool uvx)
+gitleaks=$(tool gitleaks)
+actionlint=$(tool actionlint)
+
+# secrets: required in every lane.
+if [ -n "$gitleaks" ]; then
+  run secrets "$gitleaks" detect --no-banner --redact --log-opts="$base..HEAD"
+else
+  mark secrets unavailable
+fi
+
 venv_gates=(ruff ruff-format pyright test docs)
 [ "$lane" = small ] && venv_gates=("$small_gate")
 if [ -z "$venv" ]; then
@@ -83,10 +91,6 @@ if [ -z "$venv" ]; then
 else
   run deps "$py" -c 'import crm, pytest, ruff, mkdocs'
 fi
-
-# uvx from PATH, else the venv's (the cloud bootstrap installs uv there).
-uvx=$(command -v uvx) || uvx="$venv/bin/uvx"
-[ -x "$uvx" ] || uvx=""
 
 # semgrep: house-convention rules, pinned like CI's lint job (kept out of the venv).
 if [ -n "$uvx" ]; then
@@ -125,7 +129,7 @@ else
   fi
   # Workflow linters only when .github/ changed (CI's lint job runs them always).
   if ! git diff --quiet "$base"...HEAD -- .github/ 2>/dev/null; then
-    if command -v actionlint >/dev/null; then run actionlint actionlint; else mark actionlint unavailable; fi
+    if [ -n "$actionlint" ]; then run actionlint "$actionlint"; else mark actionlint unavailable; fi
     if [ -n "$uvx" ]; then run zizmor "$uvx" zizmor==1.26.1 .; else mark zizmor unavailable; fi   # version lockstep with CI + pre-commit
   fi
   mark package deferred-to-ci             # PyInstaller build + smoke, ubuntu + windows

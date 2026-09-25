@@ -5,8 +5,8 @@
 # environment and never bakes them into a cached image. Never echoes the secret.
 # GitHub access is ship's own: `prepare` installs `gh` (`tooling --install`)
 # before this runs, and every mechanic calls GitHub REST through it with
-# GH_TOKEN, so nothing here calls the GitHub API (only the gitleaks download
-# below reaches github.com).
+# GH_TOKEN, so nothing here calls the GitHub API (only the gitleaks and actionlint
+# downloads below reach github.com).
 set -euo pipefail
 
 # Ship also runs the Bootstrap on a local `--unattended` run; everything below
@@ -44,24 +44,20 @@ echo "cloud-ship-bootstrap: using $("$PY" --version) ($PY)"
 "$PY" -m venv .venv
 .venv/bin/python -m pip install -e ".[dev,docs]" uv
 
-# Self-heal the sandbox image's cryptography backend before any test run. The
-# image's Debian-packaged cryptography can't load its CFFI runtime (_cffi_backend);
-# pip reports it "already satisfied" and never repairs it, so importing the NTLM
-# stack (requests_ntlm -> pyspnego -> cryptography ciphers) panics at pytest
-# collection ("No module named '_cffi_backend'" / pyo3 PanicException), producing
-# ~900 spurious collection errors. Reinstalling cffi restores the backend. CI is
-# unaffected — GitHub Actions installs fresh PyPI cryptography wheels.
-.venv/bin/python -m pip install --force-reinstall cffi
-
-# gitleaks for the gate's `secrets` check, pinned by version and checksum.
-GITLEAKS_VERSION=8.30.1
-GITLEAKS_SHA256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
-tgz=$(mktemp)
-curl -fsSL -o "$tgz" "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
-echo "$GITLEAKS_SHA256  $tgz" | sha256sum -c --quiet -
-mkdir -p "$HOME/.local/bin"
-tar -xzf "$tgz" -C "$HOME/.local/bin" gitleaks
-rm -f "$tgz"
+# gitleaks and actionlint for the gate, pinned by version and checksum, into
+# .venv/bin, where the gate looks when PATH has neither. actionlint's version is
+# in lockstep with .pre-commit-config.yaml and CI.
+fetch() {  # fetch <url> <sha256> <binary>
+  local tgz; tgz=$(mktemp)
+  curl -fsSL -o "$tgz" "$1"
+  echo "$2  $tgz" | sha256sum -c --quiet -
+  tar -xzf "$tgz" -C .venv/bin "$3"
+  rm -f "$tgz"
+}
+fetch https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz \
+  551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb gitleaks
+fetch https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
+  8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8 actionlint
 
 # All connection values come from the routine's cloud environment; nothing
 # org-specific is committed to this public repo. Without them there is no
