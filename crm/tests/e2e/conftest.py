@@ -288,9 +288,9 @@ def target(live_profile):
 
 @pytest.fixture
 def no_real_keyring():
-    # Overrides the unit suite's autouse keyring guard (#982) with a no-op: a
-    # live run reads the saved profile's secret from the real OS keyring.
-    return None
+    """No-op override of the unit suite's autouse keyring guard (#982): a live
+    run reads the saved profile's secret from the real OS keyring.
+    """
 
 
 @pytest.fixture(autouse=True)

@@ -2,7 +2,8 @@
 
 This is the parent conftest. ``crm/tests/e2e/conftest.py`` sits below it and
 its session-scoped ``backend`` / ``live_profile`` fixtures intentionally
-override the function-scoped ones here within ``e2e/``.
+override the function-scoped ones here within ``e2e/``, as its no-op
+``no_real_keyring`` overrides the autouse keyring guard.
 
 Two sanctioned ways to fake the backend, each at a real seam:
 

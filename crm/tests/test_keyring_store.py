@@ -3,6 +3,9 @@
 # pyright: basic
 from __future__ import annotations
 
+import os
+
+import keyring
 import pytest
 
 from crm.core import keyring_store
@@ -210,10 +213,7 @@ def test_suite_never_reaches_the_real_os_keyring():
     # the developer's real keyring, and the next run read it back. The autouse
     # conftest guard must hand every test (and any `crm` subprocess it spawns)
     # the null backend, so nothing a test does can reach a real keyring.
-    import os
-
-    import keyring
-
-    assert type(keyring.get_keyring()).__module__ == keyring_store._NULL_BACKEND_MODULE
-    assert os.environ.get("PYTHON_KEYRING_BACKEND") == "keyring.backends.fail.Keyring"
+    null_module = keyring_store._NULL_BACKEND_MODULE
+    assert type(keyring.get_keyring()).__module__ == null_module
+    assert os.environ.get("PYTHON_KEYRING_BACKEND") == f"{null_module}.Keyring"
     assert keyring_store.is_available() is False
