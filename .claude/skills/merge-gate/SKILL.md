@@ -45,13 +45,14 @@ Every comment posted to the PR starts with:
 
 - Run `scripts/gate-preflight.sh <n>` — one JSON blob: PR meta + body, labels,
   linked issues, CI check runs, a `pushed_last_15min` flag, and the CodeRabbit
-  threads left with **no disposition** (neither a fix nor a
+  and Claude (`claude[bot]`) threads left with **no disposition** (neither a fix nor a
   decline-with-evidence reply).
 - Skip drafts and PRs with `pushed_last_15min: true` (the author agent may
   still be working); note the skip.
 - Read the PR comments yourself: the author agent's merge summary and its
-  per-reviewer dispositions (Copilot and CodeRabbit), plus the linked issue +
-  brief. Each undispositioned CodeRabbit thread the script surfaced is a gap
+  per-reviewer dispositions (Copilot, plus the Claude fallback where it ran;
+  CodeRabbit is manual, driven by this gate in step 6), plus the linked issue +
+  brief. Each undispositioned thread the script surfaced is a gap
   the author agent left — treat it as a review finding for step 3.
 - **Red CI or a merge conflict is fix item #1**, not a blocker — the gate fixes
   in place.
@@ -104,9 +105,11 @@ evidence. Every finding gets a one-line disposition for the verdict comment.
 
 Fix **scoped** items directly on the PR branch: CI red, drift-checklist failures,
 valid review findings, missing docs-sync artifacts (use the project's docs-sync
-subagent for those). Re-run the project's local gate green before every push —
-the `ship` skill's `scripts/local-gate.sh` (sibling skill dir) runs the full
-CI-mirrored set and prints only the failing lines.
+subagent for those). Re-run the project's local gate green before every push:
+`scripts/local-gate.sh` (repo root) runs the full CI-mirrored set and prints one
+JSON verdict (`verdict` `pass|fail|unavailable`, per-gate statuses), with each
+failing gate's last 40 log lines on stderr. Green means `verdict: pass`, or only
+`deferred-to-ci` gates besides `pass`.
 
 A **design-level** problem — wrong approach, contract change the issue never
 asked for, a diff that needs re-scoping — is a **finding, not a fix**: record it,

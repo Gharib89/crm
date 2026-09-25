@@ -1,0 +1,189 @@
+name: Claude PR Review
+
+# On-request: one round per request, and the request is a PR comment carrying
+# `@claude`, which is what `Request: comment @claude` in the profile asks
+# for. There is deliberately no `pull_request` trigger: it would fire on every
+# push, and a reviewer that cannot be withheld cannot be a fallback. It also
+# keeps this workflow off the PR head, so it lands no check run and is not a
+# CI leg.
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: read
+  id-token: write
+
+jobs:
+  review:
+    # An issue_comment fires on issues too, so the PR test comes first. The
+    # commenter test keeps a drive-by on this public repo from spending the
+    # token; ship requests rounds as the repo owner, which passes it. An
+    # identity outside the list gets `never-queued`, named rather than silent.
+    # The PR-author test keeps fork PR text from reaching an app-token `gh api` (Gharib89/skills#303).
+    if: >-
+      github.event.issue.pull_request != null &&
+      contains(github.event.comment.body, '@claude') &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association) &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.issue.author_association)
+    runs-on: ubuntu-latest
+    steps:
+      # Not optional: the action runs `git diff ... HEAD` in the workspace
+      # before the prompt runs, and fails the whole job with "Not a git
+      # repository" when there is nothing checked out. An issue_comment
+      # checkout is the default branch rather than the PR head, and that is
+      # the right instructions file to review against: the canonical one, not
+      # the version the PR under review proposes. The PR head is not checked
+      # out; the reviewed diff comes from `gh pr diff`.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - id: review
+        uses: anthropics/claude-code-action@9171db3e57d6a3140a37ddc2ba92788584e0ead6  # v1.0.234
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.issue.number }}
+
+            You are reviewing this pull request.
+
+            1. Read `.github/copilot-instructions.md` with the Read tool. It is your brief: it names the
+               coding standards to review against and the things that are not
+               findings in this repo. Read the standards file it points at as well.
+            2. Run `gh pr view ${{ github.event.issue.number }} --json title,body,headRefOid`
+               and find the linked issue (Closes/Fixes/Resolves #N). If one exists,
+               run `gh issue view N` and treat it as the spec for this change.
+            3. Run `gh pr diff ${{ github.event.issue.number }}` once and review
+               only the changed lines it returned, against (a) the brief and the
+               standards it names and (b) the linked issue. Walking the changed
+               files one at a time instead spends the turn budget on navigation
+               and the round dies before it posts. A large diff comes back as a
+               preview and the path of the file it was saved to: page through
+               that file with the Read tool's offset and limit, or search it with
+               `grep`, and review every `diff --git` section in it. When a hunk's
+               context is too thin to settle a finding, read that file's copy at
+               the PR head with
+               `gh api 'repos/${{ github.repository }}/contents/<path>?ref=<headRefOid>' -H 'Accept: application/vnd.github.raw+json'`,
+               `<headRefOid>` being the one step 2 returned: the checkout is the
+               default branch, so a Read there is its copy, not the PR's.
+
+            Make every Bash call one command, with no `;`, `&&` or `>` redirect:
+            a redirect is refused even between allowed commands, and a chain
+            holding one refused command loses the whole call. Run `gh pr diff`
+            bare, since Claude Code saves a large diff for you, and work that
+            file as step 3 says, with `grep` and the Read tool rather than
+            `sed`, `awk` or `cat`; `awk` is refused. Take a file at the PR head
+            from the `gh api .../contents?ref=` call above rather than `git`:
+            the checkout is not the PR head, and a `git clone` or `git fetch`
+            to reach it is refused.
+
+            Report the round as ONE formal pull request review, submitted in a
+            single call, with every inline finding attached to it. Build it as
+            one `gh api` command whose every field is a typed `-F` flag:
+
+                gh api --method POST \
+                  repos/${{ github.repository }}/pulls/${{ github.event.issue.number }}/reviews \
+                  -F 'event=COMMENT' \
+                  -F 'body=<text of the round, or exactly no findings>' \
+                  -F 'comments[][path]=<file>' \
+                  -F 'comments[][line]=<line in the new file>' \
+                  -F 'comments[][side]=RIGHT' \
+                  -F 'comments[][body]=<one finding>'
+
+            Repeat the four `comments[][...]` flags, in that order, once per
+            finding; each new `path` starts the next comment. Single-quote every
+            value, writing an apostrophe inside one as '\''. Four traps:
+
+            - Use `-F` for every field, never `-f`: gh sends every `-f` field
+              ahead of every `-F` one, so mixing them detaches a `line` from its
+              comment.
+            - A value starting with `@` is read as a file path, so open each
+              value with a word: `the @types/node bump ...`, not
+              `@types/node bump ...`.
+            - gh fills in `{owner}`, `{repo}` and `{branch}` anywhere in a value,
+              so a finding quoting code that contains one writes it without the
+              braces (`repos/OWNER/REPO/pulls`).
+            - A value of exactly `true`, `false`, `null` or an integer is sent as
+              that JSON type: that is what makes `line` an integer, and a `body`
+              that is only a number or one of those words needs a word added.
+
+            The `-F` flags are the whole call: one command that starts with
+            `gh api` and reads nothing from stdin. That is the shape both gates
+            admit: Claude Code's Bash check refuses a heredoc of JSON before
+            `--allowedTools` is read, and `Bash(gh api:*)` below matches only a
+            command that starts with `gh api`, so piping from `echo` is refused
+            too. A refused call is a round that stops before the PR.
+
+            One entry in `comments` per finding tied to a line, each naming the
+            rule or issue requirement broken and the concrete fix. A finding you
+            cannot anchor to a line in the diff goes in `body` rather than
+            `comments`: GitHub rejects the entire call when one `comments` entry
+            names a line outside the diff, and a rejected call is a round the
+            run cannot see.
+
+            Submit exactly one review, even when you found nothing: a
+            reviewer that stays silent on a clean PR cannot be told apart from one
+            that failed, and the run waits out its whole poll window either way.
+            With nothing actionable, send `body` of exactly `no findings` and no
+            `comments` flags. Open `body` with the findings: the run reads
+            its first 2000 characters, and a summary of the diff or praise ahead
+            of them pushes them past that cut.
+          claude_args: |
+            --model opus
+            --max-turns 60
+            --allowedTools "Read,Grep,Glob,Bash(gh api:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh issue view:*),Bash(head:*),Bash(tail:*),Bash(wc:*),Bash(grep:*)"
+
+      # The action logs `permission_denials_count` and hides which calls were
+      # refused, so a round that spent turns on denied calls looks clean. This
+      # names each one in the run log, which REST can read, and warns once with
+      # the count. The input is model-written and can quote PR text: the
+      # `denied: ` prefix keeps a line from starting a `::` command, and every
+      # `#` is written as its JSON escape because the runner also honours a
+      # `##[` command anywhere in a line.
+      - name: Name the denied tool calls
+        if: always() && steps.review.outputs.execution_file != ''
+        env:
+          EXECUTION_FILE: ${{ steps.review.outputs.execution_file }}
+        run: |
+          set -uo pipefail
+          [ -f "$EXECUTION_FILE" ] || exit 0
+          if ! denials="$(jq -rs 'flatten | map(select(.type == "result")) | last
+                                 | .permission_denials // [] | .[]
+                                 | "\(.tool_name) \(.tool_input | tojson | .[0:300])"
+                                 | gsub("#"; "\\u0023")' "$EXECUTION_FILE")"; then
+            echo "::warning title=claude-review::the denied tool calls could not be read from the execution file"
+            exit 0
+          fi
+          [ -n "$denials" ] || exit 0
+          n=$(printf '%s\n' "$denials" | wc -l)
+          printf '%s\n' "$denials" | sed 's/^/denied: /'
+          echo "::warning title=claude-review::$n tool call(s) denied; this step's log names each on a denied: line"
+
+      # A failed round otherwise leaves nothing on the PR: no review, no comment.
+      # Ship grades it from the run read either way: the profile block driving
+      # this workflow carries `Workflow:`, so `poll-pr --reviewer` reads the
+      # failed run itself as `infra-error`. The step is what puts the run URL on
+      # the PR, with the failure subtype beside it where the action left one and
+      # `unknown` where it did not, so the human reading the PR has the reason or
+      # the link that carries it. Costs one comment per failed round.
+      - if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXECUTION_FILE: ${{ steps.review.outputs.execution_file }}
+        run: |
+          set -uo pipefail
+          reason=unknown
+          if [ -n "$EXECUTION_FILE" ] && [ -f "$EXECUTION_FILE" ]; then
+            reason="$(jq -rs 'flatten | map(select(.type == "result")) | last
+                              | .subtype // ""' "$EXECUTION_FILE" 2>/dev/null || echo "")"
+          fi
+          reason=$(printf '%s\n' "$reason" | head -n 1)
+          case $reason in ''|success) reason=unknown ;; esac
+          gh api --method POST \
+            "repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments" \
+            -f body="The Claude review job failed: \`$reason\`. Check the PR for a review from this round before reading the reviewer as silent. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

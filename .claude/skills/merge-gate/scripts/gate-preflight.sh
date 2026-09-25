@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Merge-gate step-1 evidence gather for one PR — ONE JSON blob: PR meta + body,
 # labels, linked issues, CI check runs, a pushed-last-15-min flag, and the
-# CodeRabbit threads left with NO disposition (unresolved + no non-CodeRabbit
-# reply). Judgment stays with the reader; this only gathers.
+# CodeRabbit and Claude threads left with NO disposition (unresolved, and no
+# reply from anyone but the bot that opened it). Judgment stays with the reader;
+# this only gathers.
 #
 #   scripts/gate-preflight.sh <pr>
 #
@@ -35,9 +36,10 @@ THREADS=$(api graphql -f query='
   -f owner="$OWNER" -f name="$NAME" -F pr="$PR" \
   | jq '[.data.repository.pullRequest.reviewThreads.nodes[]
     | select(.isResolved | not)
-    | select(.comments.nodes[0].author.login == "coderabbitai")
-    | select([.comments.nodes[1:][] | .author.login] | any(. != "coderabbitai") | not)
-    | {path, excerpt: (.comments.nodes[0].body | split("\n")[0][0:120])}]') || exit 1
+    | .comments.nodes[0].author.login as $bot
+    | select($bot == "coderabbitai" or $bot == "claude")
+    | select([.comments.nodes[1:][] | .author.login] | all(. == $bot))
+    | {reviewer: $bot, path, excerpt: (.comments.nodes[0].body | split("\n")[0][0:120])}]') || exit 1
 
 jq -n \
   --argjson pr "$(jq '{number, title, draft, mergeable_state,
@@ -47,5 +49,5 @@ jq -n \
   --argjson recent "$([ "$RECENT" -eq 1 ] && echo true || echo false)" \
   --argjson undispositioned "$THREADS" \
   '{pr: $pr, pushed_last_15min: $recent, checks: $checks,
-    coderabbit_undispositioned: $undispositioned,
+    undispositioned: $undispositioned,
     linked_issues: [$pr.body // "" | scan("(?i)closes #([0-9]+)") | .[0]]}'

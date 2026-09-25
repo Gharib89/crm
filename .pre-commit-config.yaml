@@ -26,7 +26,8 @@ repos:
   # `exclude` mirrors that config's `skip`: pre-commit passes explicit file paths,
   # which bypass codespell's own `skip` (a directory-traversal filter), so the
   # path exclusions must be repeated here. Both cover generated artifacts and the
-  # test suites' intentional-misspelling fixtures (did-you-mean tests).
+  # test suites' intentional-misspelling fixtures (did-you-mean tests). Beyond
+  # `skip`, it drops the skills-lock.json skill copies, which are never hand-edited.
   - repo: https://github.com/codespell-project/codespell
     rev: v2.4.2
     hooks:
@@ -38,5 +39,6 @@ repos:
             evals/|
             docs/research/.*\.(html|json)$|
             .*\.(svg|lock|min\.js)$|
-            CHANGELOG\.md$
+            CHANGELOG\.md$|
+            \.claude/skills/(cloud-ship|code-review|find-docs|setup-skills|ship|show-me|tdd|triage|writing-for-agents)/
           )

@@ -376,7 +376,8 @@ def _main_commit_reason(rest: list[str], repo_dir: str) -> str | None:
     return (
         f"BLOCKED: non-docs `git commit` on `main` in the shared MAIN checkout ({shown}). "
         "CLAUDE.md worktree discipline: develop in a git worktree on a fresh branch "
-        "(EnterWorktree) and PR from there; the shared checkout takes only small "
+        "(`git worktree add ../crm.worktrees/<slug> -b <type>/<topic> main`) and PR "
+        "from there; the shared checkout takes only small "
         "docs-only commits (*.md, docs/, mkdocs.yml)."
     )
 

@@ -15,23 +15,23 @@ Run locally after refreshing `~/.claude/skills`, then commit the resulting
 committed copies are what ship to the cloud-ship sandbox, where personal skills
 are absent and these project copies are the ones that load.
 
-Rule of thumb: any skill the cloud-ship chain composes (ship -> tdd/code-review;
-docs-sync -> writing-for-agents) must be model-invokable, so mark it
-`model_invokable: True`. A user-only skill (`disable-model-invocation: true`)
-cannot be invoked by the model or preloaded into a subagent, which would break
-the routine. Everything else keeps whatever flag it ships with upstream.
+Skills the skills CLI installed are recorded in `skills-lock.json` and refreshed
+by their install line, never by this tool: that is `ship`, `cloud-ship`,
+`setup-skills` and every skill ship composes. A lock-recorded name is off-limits
+here exactly like a project-native one, so a personal copy never shadows the
+derived copy ship expects.
 
 Dependency closure: a skill that composes another (referenced as `/other` or
 `` `other` `` in its SKILL.md) breaks at runtime if that sibling is absent from
 the clone. So after seeding from SYNC, the tool transitively pulls every
 referenced skill in too. Auto-pulled deps keep their upstream flag.
 
-Skills NOT reachable from this list (ship, cloud-ship, merge-gate, live-e2e,
-audit-crm-skill) are project-native and never touched.
+Skills NOT reachable from this list (PROJECT_NATIVE, LOCKED) are never touched.
 """
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import sys
@@ -40,6 +40,8 @@ from typing import TypedDict
 
 SRC = Path("~/.claude/skills").expanduser()
 DST = Path(__file__).resolve().parent.parent / ".claude" / "skills"
+LOCK = DST.parent.parent / "skills-lock.json"
+LOCKED: set[str] = set(json.loads(LOCK.read_text(encoding="utf-8"))["skills"])
 
 _SKILL_FILE = "SKILL.md"
 
@@ -56,7 +58,6 @@ class SkillEntry(TypedDict):
 SYNC: list[SkillEntry] = [
     {"name": "blindspot", "model_invokable": False},
     {"name": "codebase-design", "model_invokable": False},
-    {"name": "code-review", "model_invokable": True},
     {"name": "domain-modeling", "model_invokable": False},
     {"name": "grill-me", "model_invokable": False},
     {"name": "grill-with-docs", "model_invokable": False},
@@ -64,12 +65,9 @@ SYNC: list[SkillEntry] = [
     {"name": "implement", "model_invokable": False},
     {"name": "quiz-before-merge", "model_invokable": False},
     {"name": "research", "model_invokable": False},
-    {"name": "tdd", "model_invokable": True},
     {"name": "to-spec", "model_invokable": False},
     {"name": "to-tickets", "model_invokable": False},
-    {"name": "triage", "model_invokable": False},
     {"name": "wayfinder", "model_invokable": False},
-    {"name": "writing-for-agents", "model_invokable": True},
 ]
 
 # Skills that appear as references (footer/menu links) but are never a real
@@ -87,7 +85,7 @@ EXCLUDE = {"setup-matt-pocock-skills"}
 # Hand-authored in this repo — `.claude/skills/` IS their source of truth. Never
 # vendor over these: a same-named personal skill (via SYNC or a dependency
 # reference) must never `rmtree` the tracked copy and destroy project edits.
-PROJECT_NATIVE = {"ship", "cloud-ship", "merge-gate", "live-e2e", "audit-crm-skill"}
+PROJECT_NATIVE = {"merge-gate", "live-e2e", "audit-crm-skill"}
 
 # A backticked `/name` or `name` token that matches a known skill directory.
 _REF = re.compile(r"`/?([a-z][a-z0-9-]+)`")
@@ -116,7 +114,7 @@ def resolve_closure(seed: dict[str, bool], universe: set[str]) -> tuple[dict[str
         src = SRC / name
         if not src.is_dir():
             continue
-        for dep in find_refs(src, universe) - set(wanted) - EXCLUDE - PROJECT_NATIVE:
+        for dep in find_refs(src, universe) - set(wanted) - EXCLUDE - PROJECT_NATIVE - LOCKED:
             wanted[dep] = False
             auto.add(dep)
             stack.append(dep)
@@ -223,13 +221,14 @@ def main() -> int:
     seed = {e["name"]: e["model_invokable"] for e in SYNC}
     wanted, auto = resolve_closure(seed, universe)
 
-    # Hard guard: refuse to vendor over a project-native skill, even if one was
-    # named in SYNC. resolve_closure already skips them as deps; this catches a
-    # direct SYNC edit before any rmtree runs.
-    clash = PROJECT_NATIVE & set(wanted)
+    # Hard guard: refuse to vendor over a project-native or lock-recorded skill,
+    # even if one was named in SYNC. resolve_closure already skips them as deps;
+    # this catches a direct SYNC edit before any rmtree runs.
+    clash = (PROJECT_NATIVE | LOCKED) & set(wanted)
     if clash:
         print(
-            f"error: refusing to overwrite project-native skill(s): {', '.join(sorted(clash))}",
+            f"error: refusing to overwrite project-native or lock-recorded skill(s): "
+            f"{', '.join(sorted(clash))}",
             file=sys.stderr,
         )
         return 1

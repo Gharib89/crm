@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "skills": {
+    "cloud-ship": {
+      "source": "Gharib89/skills",
+      "sourceType": "github",
+      "skillPath": "skills/cloud-ship/SKILL.md",
+      "computedHash": "c1acfb119fe91ecfe4f1f1437b91cdaad6ce51c2e43f292e80a2d98bc2ab5a34"
+    },
+    "code-review": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/code-review/SKILL.md",
+      "computedHash": "caa9a086baaf9e0f7cd71f64edfa83da6821c05e826b083221f3d02e3d6a1905"
+    },
+    "find-docs": {
+      "source": "upstash/context7",
+      "sourceType": "github",
+      "skillPath": "skills/find-docs/SKILL.md",
+      "computedHash": "93ec2d2786d7e83973252383875c4f345a2ee7cbbd08a1ab38e5201b214640ee"
+    },
+    "setup-skills": {
+      "source": "Gharib89/skills",
+      "sourceType": "github",
+      "skillPath": "skills/setup-skills/SKILL.md",
+      "computedHash": "0a937219d50b25a8ad73bf3697abea4dfbf807aa3cc96de3889b9ff06ce31859"
+    },
+    "ship": {
+      "source": "Gharib89/skills",
+      "sourceType": "github",
+      "skillPath": "skills/ship/SKILL.md",
+      "computedHash": "d74a9f57c2b133cb214c4258cb39c4c00ff42c0db0dae46da8208e6d7f3fd441"
+    },
+    "show-me": {
+      "source": "humanlayer/skills",
+      "sourceType": "github",
+      "skillPath": "plugins/show-me/skills/show-me/SKILL.md",
+      "computedHash": "43766f53afe7eb9feba0bb7716590c35cbb8d39d4a91eddef50e9566a6f6ae19"
+    },
+    "tdd": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/tdd/SKILL.md",
+      "computedHash": "e753a5da75292bbe59d302d89566bc2c53d0e73944da2f0e944a7578883c07d0"
+    },
+    "triage": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/triage/SKILL.md",
+      "computedHash": "b954d74c219c805bf353d6642251a713c9b2e9cfdb11babfe588bcfe7dfd16d5"
+    },
+    "writing-for-agents": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/writing-for-agents/SKILL.md",
+      "computedHash": "95da47fc97af998e85b7d7e6d57b3ac76727c1e290cfe9ea09005aacb826959f"
+    }
+  }
+}

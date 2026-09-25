@@ -139,7 +139,7 @@ class TestMainCheckoutCommitGate:
         _git(crm_repo, "add", "code.py")
         code, err = _run_hook(_GATE_PATH, "git commit -m 'change'", str(crm_repo))
         assert code == 2
-        assert "worktree" in err
+        assert "git worktree add ../crm.worktrees/<slug> -b <type>/<topic> main" in err
 
     def test_docs_only_commit_on_main_allowed(self, crm_repo):
         (crm_repo / "NOTES.md").write_text("notes\n", encoding="utf-8")
