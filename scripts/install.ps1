@@ -70,7 +70,11 @@ New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
 Write-Host "Extracting to $InstallDir ..."
 Expand-Archive -Path $tmpZip -DestinationPath $InstallDir -Force
-Remove-Item $tmpZip -Force
+# [IO.File]::Delete, not Remove-Item: Windows PowerShell 5.1's provider rejects
+# an 8.3 short-form $env:TEMP (e.g. C:\Users\NANCY~1.EMA for a dotted username).
+# A leftover temp zip is only a warning; it must not abort the PATH step below.
+try { [System.IO.File]::Delete($tmpZip) }
+catch { Write-Warning "Could not delete temp file ${tmpZip}: $($_.Exception.Message)" }
 
 $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 if (($userPath -split ';') -notcontains $InstallDir) {
