@@ -104,9 +104,11 @@ evidence. Every finding gets a one-line disposition for the verdict comment.
 
 Fix **scoped** items directly on the PR branch: CI red, drift-checklist failures,
 valid review findings, missing docs-sync artifacts (use the project's docs-sync
-subagent for those). Re-run the project's local gate green before every push —
-the `ship` skill's `scripts/local-gate.sh` (sibling skill dir) runs the full
-CI-mirrored set and prints only the failing lines.
+subagent for those). Re-run the project's local gate green before every push:
+`scripts/local-gate.sh` (repo root) runs the full CI-mirrored set and prints one
+JSON verdict (`verdict` `pass|fail|unavailable`, per-gate statuses), with each
+failing gate's last 40 log lines on stderr. Green means `verdict: pass`, or only
+`deferred-to-ci` gates besides `pass`.
 
 A **design-level** problem — wrong approach, contract change the issue never
 asked for, a diff that needs re-scoping — is a **finding, not a fix**: record it,

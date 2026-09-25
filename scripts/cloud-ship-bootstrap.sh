@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
-# Per-session provisioning for the cloud ship routine. Invoked as the FIRST step
-# of the routine prompt (NOT the environment's cached setup-script slot) so it
-# always reads the current connection values from the environment and never bakes
-# them into a cached image. Never echoes the secret. GitHub reads/writes go
-# through the brokered GitHub MCP connector (see cloud-ship SKILL.md → "GitHub
-# access in a fire"); only `git` (push/fetch over github.com) hits GitHub
-# directly, so no `gh` install or `gh auth login` is needed here.
+# Per-session provisioning for the cloud ship routine. Run by ship's `prepare`
+# as the profile's `## Cloud lane` Bootstrap (NOT the environment's cached
+# setup-script slot) so it always reads the current connection values from the
+# environment and never bakes them into a cached image. Never echoes the secret.
+# GitHub access is ship's own: `prepare` installs `gh` (`tooling --install`)
+# before this runs, and every mechanic calls GitHub REST through it with
+# GH_TOKEN, so nothing here touches GitHub.
 set -euo pipefail
+
+# Ship also runs the Bootstrap on a local `--unattended` run; everything below
+# provisions a cloud sandbox, so a workstation skips it.
+[ "${CLAUDE_CODE_REMOTE:-}" = true ] || { echo "cloud-ship-bootstrap: not in a cloud sandbox; nothing to do"; exit 0; }
 
 # All connection values come from the routine's cloud environment — nothing
 # org-specific is committed to this public repo. Fail fast if any is missing.
@@ -14,12 +18,6 @@ set -euo pipefail
 : "${D365_CLIENT_ID:?set D365_CLIENT_ID in the routine cloud environment}"
 : "${D365_TENANT_ID:?set D365_TENANT_ID in the routine cloud environment}"
 : "${D365_CLIENT_SECRET:?set D365_CLIENT_SECRET in the routine cloud environment}"
-
-# GitHub API access (issue picker, PR create/read, review re-request) runs through
-# the GitHub MCP connector, brokered through Anthropic and exempt from the sandbox
-# network policy — no `gh` needed. The one direct-egress GitHub dependency is `git`
-# push/fetch over github.com, so the Custom network policy must allow github.com
-# (see docs/agents/cloud-ship-routine.md).
 
 # crm requires Python >= 3.13. The sandbox image's default `python`/`pip` can lag
 # behind that floor (observed: default `python` = 3.11 with a usable 3.13 present at

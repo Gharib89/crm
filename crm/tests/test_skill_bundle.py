@@ -23,6 +23,7 @@ REFERENCE_DIR = SKILLS_DIR / "reference"
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 PLUGIN_MANIFEST = REPO_ROOT / ".claude-plugin" / "plugin.json"
 INTERNAL_SKILLS_DIR = REPO_ROOT / ".claude" / "skills"
+SKILLS_LOCK = REPO_ROOT / "skills-lock.json"
 
 EXPECTED_REFERENCES = {
     "setup.md",
@@ -144,10 +145,17 @@ def test_internal_dev_skills_marked_internal():
     metadata.internal: true so a bare `npx skills add Gharib89/crm` hides them
     from end users (revealed only with INSTALL_INTERNAL_SKILLS=1). Vendored
     copies have the flag re-stamped by scripts/sync-skills.py on each sync.
+    Skills recorded in skills-lock.json are exempt: they are derived copies the
+    skills CLI installs verbatim, and stamping them would diverge from source.
     """
+    locked = set(json.loads(SKILLS_LOCK.read_text(encoding="utf-8"))["skills"])
     skills = sorted(INTERNAL_SKILLS_DIR.glob("*/SKILL.md"))
     assert skills, f"no skills found under {INTERNAL_SKILLS_DIR}"
-    missing = [p.parent.name for p in skills if not _frontmatter_has_internal_flag(p)]
+    missing = [
+        p.parent.name
+        for p in skills
+        if p.parent.name not in locked and not _frontmatter_has_internal_flag(p)
+    ]
     assert not missing, f".claude/skills entries missing metadata.internal: true: {missing}"
 
 

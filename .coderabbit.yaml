@@ -105,10 +105,13 @@ reviews:
         never real org names, hostnames, or GUIDs.
     - path: ".claude/skills/**"
       instructions: >-
-        Two kinds of skill live here. Project-native ones (ship, cloud-ship,
-        merge-gate, live-e2e, audit-crm-skill) are hand-edited in this repo —
-        review normally.
-        The rest are vendored copies synced verbatim by
-        scripts/sync-skills.py and must never be hand-edited — do not request
-        content changes on them; a sync PR replacing them wholesale is
-        expected and mechanical.
+        Three kinds of skill live here. Lock-recorded derived copies (every
+        skill named in skills-lock.json: ship, cloud-ship, setup-skills,
+        tdd, code-review, writing-for-agents, triage, find-docs, show-me)
+        are installed verbatim by the skills CLI and never hand-edited — do
+        not request content changes on them; a refresh replacing them
+        wholesale is expected and mechanical.
+        Vendored copies are synced verbatim by scripts/sync-skills.py and
+        are likewise never hand-edited; the same applies.
+        Project-native ones (merge-gate, live-e2e, audit-crm-skill) are
+        hand-edited in this repo — review normally.
