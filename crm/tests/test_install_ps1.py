@@ -150,8 +150,9 @@ def _run_install(base_url: str, temp: Path, local_app_data: Path):
     if WINDOWS:
         # A pwsh 7 parent (CI's default Windows shell) exports its own module
         # path; 5.1 would then fail to load Get-FileHash. Unset, 5.1 rebuilds
-        # its default, as a fresh Windows PowerShell console has.
-        env.pop("PSModulePath", None)
+        # its default, as a fresh Windows PowerShell console has. The copy of
+        # os.environ carries upper-cased keys on Windows, hence PSMODULEPATH.
+        env.pop("PSMODULEPATH", None)
     return subprocess.run(
         [SHELL, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass"]
         + ["-File", str(INSTALL_PS1)],
