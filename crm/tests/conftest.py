@@ -2,7 +2,8 @@
 
 This is the parent conftest. ``crm/tests/e2e/conftest.py`` sits below it and
 its session-scoped ``backend`` / ``live_profile`` fixtures intentionally
-override the function-scoped ones here within ``e2e/``.
+override the function-scoped ones here within ``e2e/``, as its no-op
+``no_real_keyring`` overrides the autouse keyring guard.
 
 Two sanctioned ways to fake the backend, each at a real seam:
 
@@ -133,6 +134,26 @@ def isolated_home(tmp_path: Path) -> Iterator[Path]:
     finally:
         os.environ.clear()
         os.environ.update(saved)
+
+
+@pytest.fixture(autouse=True)
+def no_real_keyring(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep every unit test off the developer's real OS keyring (#982).
+
+    Hands keyring its null backend, which is what CI already sees: saves fall
+    back to the plaintext store under the isolated ``CRM_HOME``. The env var
+    covers any ``crm`` subprocess; the backend swap covers this process, where
+    keyring caches its first-resolved backend and ignores the env var after.
+    ``_keyring_backend`` is that cache (private, but monkeypatch restores it).
+    Tests of keyring behaviour opt in by patching ``keyring_store`` themselves.
+    ``crm/tests/e2e/conftest.py`` overrides this with a no-op: live e2e reads the
+    saved profile's real secret.
+    """
+    import keyring.core
+    from keyring.backends import fail
+
+    monkeypatch.setenv("PYTHON_KEYRING_BACKEND", "keyring.backends.fail.Keyring")
+    monkeypatch.setattr(keyring.core, "_keyring_backend", fail.Keyring())
 
 
 # --------------------------------------------------------------------------- #
