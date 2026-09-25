@@ -39,14 +39,16 @@ pytestmark = pytest.mark.skipif(
 def _make_archive() -> bytes:
     """A zip whose root holds a `crm.exe` the script can run with --version.
 
-    Windows needs a real PE image, so it ships a copy of where.exe (it rejects
-    --version, which the script ignores: it prints whatever the binary says).
+    Windows needs a real PE image, so it ships a copy of the inbox curl.exe,
+    which answers --version on stdout and exits 0 (a stub writing stderr would
+    trip Windows PowerShell 5.1: captured native stderr becomes a
+    NativeCommandError, fatal under the script's ErrorActionPreference Stop).
     POSIX ships an executable shell stub.
     """
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
         if WINDOWS:
-            zf.write(Path(os.environ["SystemRoot"]) / "System32" / "where.exe", "crm.exe")
+            zf.write(Path(os.environ["SystemRoot"]) / "System32" / "curl.exe", "crm.exe")
         else:
             info = zipfile.ZipInfo("crm.exe")
             info.external_attr = (stat.S_IFREG | 0o755) << 16
@@ -151,7 +153,8 @@ def _run_install(base_url: str, temp: Path, local_app_data: Path):
         env=env,
         stdin=subprocess.DEVNULL,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=120,
     )
 
@@ -161,6 +164,14 @@ def _output(result) -> str:
     text at the console width, which can split a word across lines.
     """
     return "".join((result.stdout + result.stderr).split())
+
+
+def _dirs(tmp_path: Path) -> tuple[Path, Path]:
+    """A fresh $env:TEMP and $env:LOCALAPPDATA for one install run."""
+    temp, local_app_data = tmp_path / "temp", tmp_path / "local_app_data"
+    temp.mkdir()
+    local_app_data.mkdir()
+    return temp, local_app_data
 
 
 def _served(archive: bytes) -> dict[str, bytes]:
@@ -174,29 +185,26 @@ def test_temp_zip_delete_failure_warns_and_still_adds_path(tmp_path: Path, user_
     """A temp zip that cannot be deleted is a warning, never an abort: the PATH
     step and the version print still run (#979).
     """
-    temp = tmp_path / "temp"
-    temp.mkdir()
-    lad = tmp_path / "lad"
-    lad.mkdir()
+    temp, local_app_data = _dirs(tmp_path)
     held = []
 
     def block_delete(path: str):
         if not path.endswith("/SHA256SUMS"):
             return
         if WINDOWS:  # an open handle without FILE_SHARE_DELETE blocks deletion
-            held.extend(open(z, "rb") for z in temp.glob("crm-*.zip"))  # noqa: SIM115
+            held.extend(open(z, "rb") for z in temp.glob("crm-*.zip"))
         else:  # unlinking needs write permission on the directory
             temp.chmod(0o555)
 
     try:
         with _Server(_served(_make_archive()), on_get=block_delete) as server:
-            result = _run_install(server.base_url, temp, lad)
+            result = _run_install(server.base_url, temp, local_app_data)
     finally:
         for f in held:
             f.close()
         temp.chmod(0o755)
 
-    install_dir = lad / "Programs" / "crm"
+    install_dir = local_app_data / "Programs" / "crm"
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Couldnotdeletetempfile" in _output(result)
     assert "Installed:" in result.stdout
@@ -226,15 +234,15 @@ def test_short_form_temp_installs_and_adds_path(tmp_path: Path, user_path):
     long_temp = tmp_path / "Nancy.Emad"
     long_temp.mkdir()
     temp = _short_path(long_temp)
-    if "~" not in temp:
+    if "~" not in Path(temp).name:
         pytest.skip("8.3 short-name generation is disabled on this volume")
-    lad = tmp_path / "lad"
-    lad.mkdir()
+    local_app_data = tmp_path / "local_app_data"
+    local_app_data.mkdir()
 
     with _Server(_served(_make_archive())) as server:
-        result = _run_install(server.base_url, Path(temp), lad)
+        result = _run_install(server.base_url, Path(temp), local_app_data)
 
-    install_dir = lad / "Programs" / "crm"
+    install_dir = local_app_data / "Programs" / "crm"
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Couldnotdeletetempfile" not in _output(result)
     assert (install_dir / "crm.exe").exists()
@@ -245,22 +253,16 @@ def test_short_form_temp_installs_and_adds_path(tmp_path: Path, user_path):
 def test_checksum_mismatch_aborts_without_installing(tmp_path: Path, user_path):
     """SHA256SUMS hash != served archive -> throw, nothing installed, PATH untouched."""
     archive = _make_archive()
-    files = {
-        f"/{VERSION}/{ARCHIVE_NAME}": archive,
-        f"/{VERSION}/SHA256SUMS": f"{'0' * 64}  {ARCHIVE_NAME}\n".encode(),
-    }
-    temp = tmp_path / "temp"
-    temp.mkdir()
-    lad = tmp_path / "lad"
-    lad.mkdir()
+    files = {**_served(archive), f"/{VERSION}/SHA256SUMS": f"{'0' * 64}  {ARCHIVE_NAME}\n".encode()}
+    temp, local_app_data = _dirs(tmp_path)
     before = user_path()
 
     with _Server(files) as server:
-        result = _run_install(server.base_url, temp, lad)
+        result = _run_install(server.base_url, temp, local_app_data)
 
     assert result.returncode != 0
     assert "Checksummismatch" in _output(result)
-    assert not (lad / "Programs" / "crm").exists()
+    assert not (local_app_data / "Programs" / "crm").exists()
     assert not list(temp.glob("crm-*.zip"))
     assert user_path() == before
 
@@ -268,19 +270,16 @@ def test_checksum_mismatch_aborts_without_installing(tmp_path: Path, user_path):
 def test_missing_sha256sums_aborts_without_installing(tmp_path: Path, user_path):
     """SHA256SUMS 404 -> throw naming CRM_SHA256, nothing installed, PATH untouched."""
     files = {f"/{VERSION}/{ARCHIVE_NAME}": _make_archive()}
-    temp = tmp_path / "temp"
-    temp.mkdir()
-    lad = tmp_path / "lad"
-    lad.mkdir()
+    temp, local_app_data = _dirs(tmp_path)
     before = user_path()
 
     with _Server(files) as server:
-        result = _run_install(server.base_url, temp, lad)
+        result = _run_install(server.base_url, temp, local_app_data)
 
     out = _output(result)
     assert result.returncode != 0
     assert "CouldnotfetchSHA256SUMS" in out
     assert "CRM_SHA256" in out
-    assert not (lad / "Programs" / "crm").exists()
+    assert not (local_app_data / "Programs" / "crm").exists()
     assert not list(temp.glob("crm-*.zip"))
     assert user_path() == before
