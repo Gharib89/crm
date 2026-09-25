@@ -9,6 +9,24 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.80.5 (2026-09-25)
+
+### Bug Fixes
+
+- **tests**: Keep the unit suite off the developer's real OS keyring
+  ([#983](https://github.com/Gharib89/crm/pull/983),
+  [`50eb5c3`](https://github.com/Gharib89/crm/commit/50eb5c33aa6255ff0d4902acc7a3946e46dd3f97))
+
+### Testing
+
+- Address self-review nits on the keyring guard ([#983](https://github.com/Gharib89/crm/pull/983),
+  [`50eb5c3`](https://github.com/Gharib89/crm/commit/50eb5c33aa6255ff0d4902acc7a3946e46dd3f97))
+
+- Keep the unit suite off the developer's real OS keyring
+  ([#983](https://github.com/Gharib89/crm/pull/983),
+  [`50eb5c3`](https://github.com/Gharib89/crm/commit/50eb5c33aa6255ff0d4902acc7a3946e46dd3f97))
+
+
 ## v1.80.4 (2026-09-25)
 
 ### Bug Fixes
