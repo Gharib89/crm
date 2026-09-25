@@ -203,3 +203,17 @@ def test_is_available_false_for_null_backend(monkeypatch):
 
     monkeypatch.setattr(keyring_store, "_import_keyring", lambda: _Kr())
     assert keyring_store.is_available() is False
+
+
+def test_suite_never_reaches_the_real_os_keyring():
+    # Regression for #982: a test that saved a profile wrote `crm/contoso` into
+    # the developer's real keyring, and the next run read it back. The autouse
+    # conftest guard must hand every test (and any `crm` subprocess it spawns)
+    # the null backend, so nothing a test does can reach a real keyring.
+    import os
+
+    import keyring
+
+    assert type(keyring.get_keyring()).__module__ == keyring_store._NULL_BACKEND_MODULE
+    assert os.environ.get("PYTHON_KEYRING_BACKEND") == "keyring.backends.fail.Keyring"
+    assert keyring_store.is_available() is False

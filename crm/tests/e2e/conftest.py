@@ -286,6 +286,13 @@ def target(live_profile):
     return "cloud" if session_mod.load_profile(_LIVE_PROFILE).auth_scheme == "oauth" else "onprem"
 
 
+@pytest.fixture
+def no_real_keyring():
+    # Overrides the unit suite's autouse keyring guard (#982) with a no-op: a
+    # live run reads the saved profile's secret from the real OS keyring.
+    return None
+
+
 @pytest.fixture(autouse=True)
 def _enforce_capability(request):
     # Offline tests (e.g. the pac pack/extract roundtrip, #529) need only a local
