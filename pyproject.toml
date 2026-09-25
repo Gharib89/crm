@@ -76,12 +76,9 @@ skip = "./.git,./.venv,./site,./htmlcov,./dist,./build,CHANGELOG.md,*.lock,*.min
 #   bu = Business Unit · datas = PyInstaller .spec API · unsecure = D365 plug-in
 #   config term · pres = presentationdescription variable · nam/oce = D365
 #   datacenter region codes · shotcut = Shotcut editor (example app name) ·
-#   compatability = verbatim quote of the fetch.xsd enum comment · wit = the
-#   `az boards` work-item CLI group · clos = a regex stem in ship's closing-
-#   reference pattern (both in lock-recorded skill copies, never hand-edited).
-#   The hyphenated pre-*/re-* forms are the repo's consistent house style, not
-#   misspellings.
-ignore-words-list = "bu,datas,unsecure,pres,unparseable,appliable,invokable,nam,oce,shotcut,compatability,wit,clos,pre-emptively,pre-empted,pre-empt,pre-selected,re-use,re-uses,re-declare"
+#   compatability = verbatim quote of the fetch.xsd enum comment. The hyphenated
+#   pre-*/re-* forms are the repo's consistent house style, not misspellings.
+ignore-words-list = "bu,datas,unsecure,pres,unparseable,appliable,invokable,nam,oce,shotcut,compatability,pre-emptively,pre-empted,pre-empt,pre-selected,re-use,re-uses,re-declare"
 
 [tool.pytest.ini_options]
 testpaths = ["crm/tests"]

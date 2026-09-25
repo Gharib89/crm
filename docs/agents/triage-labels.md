@@ -33,8 +33,8 @@ What kind of change the issue asks for. Each label names the Conventional Commit
 | `bug` | `fix` | `d73a4a` | Something isn't working |
 | `enhancement` | `feat` | `a2eeef` | New feature or request |
 | `documentation` | `docs` | `0075ca` | Improvements or additions to documentation |
-| `refactor` | `refactor` | `8250df` | Behavior-preserving restructure, no functional change |
-| `chore` | `chore` | `fef2c0` | Tooling, deps or housekeeping, no behavior change |
+| `refactor` | `refactor` | `5319e7` | Behavior-preserving restructure: no functional change |
+| `chore` | `chore` | `cccccc` | Tooling, deps, or housekeeping: no behavior change |
 
 `refactor` is the right kind for a prefactor that makes a later change easy ("make the change easy, then make the easy change") — its acceptance bar is that no shipped behavior changes. `chore` covers release plumbing, dependency bumps, and CI/tooling that ships no product behavior.
 
@@ -45,10 +45,10 @@ How much of the codebase the change moves: the effort a maintainer weighs before
 | Label | Color | Description |
 | --- | --- | --- |
 | `XS` | `e4e4e7` | Trivial: one spot, minutes |
-| `S` | `b4b4bb` | Small: surgical, about one file |
+| `S` | `b4b4bb` | Small: surgical, ~1 file |
 | `M` | `71717a` | Medium: multi-file or new path |
-| `L` | `3f3f46` | Large: sweep or new module |
-| `XL` | `18181b` | Extra-large: new subsystem, design-gated |
+| `L` | `3f3f46` | Large: sweep / new module |
+| `XL` | `18181b` | Extra-large: new subsystem / design-gated |
 
 ### Priority
 
@@ -56,7 +56,7 @@ How much it costs to leave the issue undone.
 
 | Label | Color | Description |
 | --- | --- | --- |
-| `critical` | `b60205` | Production-breaking, no workaround |
+| `critical` | `b60205` | Production-breaking, both targets, no workaround |
 | `high` | `d93f0b` | Broken functionality or active exposure |
 | `med` | `fbca04` | Should do: value but not urgent |
 | `low` | `0e8a16` | Nice to have: no urgency |

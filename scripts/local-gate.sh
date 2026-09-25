@@ -34,7 +34,17 @@ if [ -z "$base" ]; then
     || { echo '{"error":"cannot resolve origin/HEAD; run git remote set-head origin -a or pass --base"}'; exit 2; }
   base=${base#refs/remotes/}
 fi
+git rev-parse --verify -q "$base^{commit}" >/dev/null || { printf '{"error":"base %s is not a commit"}\n' "$base"; exit 2; }
 lane=full; [ -z "$small" ] || lane=small
+# A small node is a pytest node, or a docs-class change's existing document.
+small_gate=""
+case $small in
+  '') ;;
+  *::*|*/test_*.py) small_gate="test" ;;
+  *.md|docs/*|mkdocs.yml) [ -e "$small" ] && small_gate=docs ;;
+esac
+[ -z "$small" ] || [ -n "$small_gate" ] \
+  || { printf '{"error":"--small %s is neither a pytest node nor a doc"}\n' "$small"; exit 2; }
 
 declare -A gates
 log=$(mktemp); trap 'rm -f "$log"' EXIT
@@ -64,9 +74,6 @@ for d in "$PWD/.venv" "$main/.venv"; do
 done
 py="$venv/bin/python"
 export PYTHONPATH=$PWD
-# A small node that is not a pytest node is a docs-class change's document.
-small_gate="test"
-case $small in ''|*::*|*/test_*.py) ;; *) small_gate=docs ;; esac
 venv_gates=(ruff ruff-format pyright test docs)
 [ "$lane" = small ] && venv_gates=("$small_gate")
 if [ -z "$venv" ]; then
@@ -77,8 +84,16 @@ else
   run deps "$py" -c 'import crm, pytest, ruff, mkdocs'
 fi
 
+# uvx from PATH, else the venv's (the cloud bootstrap installs uv there).
+uvx=$(command -v uvx) || uvx="$venv/bin/uvx"
+[ -x "$uvx" ] || uvx=""
+
 # semgrep: house-convention rules, pinned like CI's lint job (kept out of the venv).
-run semgrep uvx semgrep==1.169.0 scan --config ci/semgrep-rules.yml --error --metrics off
+if [ -n "$uvx" ]; then
+  run semgrep "$uvx" semgrep==1.169.0 scan --config ci/semgrep-rules.yml --error --metrics off
+else
+  mark semgrep unavailable
+fi
 
 if [ "$lane" = small ]; then
   if [ -n "$venv" ]; then
@@ -94,7 +109,11 @@ else
     pyver=$("$py" -c "import json; print(json.load(open('pyrightconfig.json'))['pythonVersion'])")
     run ruff        "$py" -m ruff check .
     run ruff-format "$py" -m ruff format --check .
-    run pyright     "$venv/bin/pyright" --pythonpath "$py" --pythonversion "$pyver"
+    if [ -x "$venv/bin/pyright" ]; then
+      run pyright   "$venv/bin/pyright" --pythonpath "$py" --pythonversion "$pyver"
+    else
+      mark pyright unavailable
+    fi
     run test        "$py" -m pytest -q
     run docs        "$py" -m mkdocs build --strict
   fi
@@ -107,7 +126,7 @@ else
   # Workflow linters only when .github/ changed (CI's lint job runs them always).
   if ! git diff --quiet "$base"...HEAD -- .github/ 2>/dev/null; then
     if command -v actionlint >/dev/null; then run actionlint actionlint; else mark actionlint unavailable; fi
-    run zizmor uvx zizmor==1.26.1 .       # version lockstep with CI + pre-commit
+    if [ -n "$uvx" ]; then run zizmor "$uvx" zizmor==1.26.1 .; else mark zizmor unavailable; fi   # version lockstep with CI + pre-commit
   fi
   mark package deferred-to-ci             # PyInstaller build + smoke, ubuntu + windows
   mark bump-guard deferred-to-ci          # reads the PR title, which exists only once the PR does

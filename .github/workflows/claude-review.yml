@@ -22,10 +22,12 @@ jobs:
     # commenter test keeps a drive-by on this public repo from spending the
     # token; ship requests rounds as the repo owner, which passes it. An
     # identity outside the list gets `never-queued`, named rather than silent.
+    # The PR-author test keeps fork PR text from reaching an app-token `gh api` (Gharib89/skills#303).
     if: >-
       github.event.issue.pull_request != null &&
       contains(github.event.comment.body, '@claude') &&
-      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association) &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.issue.author_association)
     runs-on: ubuntu-latest
     steps:
       # Not optional: the action runs `git diff ... HEAD` in the workspace

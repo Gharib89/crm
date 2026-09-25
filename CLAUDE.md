@@ -110,7 +110,7 @@ Canonical labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-hu
 `/ship`'s review loop runs the reviewers in `docs/agents/ship.md` `## Reviewers`: **Copilot** plus a **Claude Code fallback**. CodeRabbit is manual and merge-gate only.
 
 - **Copilot** reviews once, automatically, when a ready PR opens (ruleset *"Copilot auto review"*, `review_on_push: false`). Never re-request it in the ship flow; disposition its threads once (address, or decline with evidence). House rules live in `.github/copilot-instructions.md` (only the first 4000 chars are read). Review effort is set in the repo's Copilot settings, which an agent cannot read; recent reviews report **Lite**.
-- **Claude Code** (`.github/workflows/claude-review.yml`) runs only when ship requests it with an `@claude` PR comment, and ship requests it only when Copilot exits degraded (quota out, silent). Cap 2 rounds.
+- **Claude Code** (`.github/workflows/claude-review.yml`) runs on an `@claude` PR comment. Ship posts one when Copilot exits degraded for any reason (never-queued, blocked, silent, infra-error, cap-hit, unreachable). Any OWNER, MEMBER or COLLABORATOR `@claude` comment on a PR one of them authored also fires it. Cap 2 rounds.
 - **CodeRabbit** does not auto-review this repo (star-gated) and is not in the ship profile: it is comment-triggered with no workflow, which ship cannot express yet (Gharib89/skills#302). The **`merge-gate`** skill drives it: `@coderabbitai review` while the PR is open (a closed PR declines), after each fix push; `@coderabbitai resolve` only once every thread carries a disposition. Config in `.coderabbit.yaml`.
 
 ### PR merge gate
