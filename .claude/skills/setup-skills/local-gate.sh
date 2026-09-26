@@ -31,6 +31,10 @@ if [ -z "$base" ]; then
     || { echo '{"error":"cannot resolve origin/HEAD; run git remote set-head origin -a or pass --base"}'; exit 2; }
   base=${base#refs/remotes/}
 fi
+# gitleaks given a range it cannot resolve scans nothing and exits 0, so an
+# unresolvable base would read as a `secrets` pass.
+git rev-parse --verify -q "$base^{commit}" >/dev/null \
+  || { jq -cn --arg b "$base" '{error: "base \($b) is not a commit; fetch it or pass --base <ref>"}'; exit 2; }
 lane=full; [ -z "$small" ] || lane=small
 
 declare -A gates

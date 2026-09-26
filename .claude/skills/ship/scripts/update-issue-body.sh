@@ -4,7 +4,11 @@
 # side of `update-pr-body --section`, through the same surgery
 # (ship_body_replace_section) and the same body-file fence refusal.
 #
-#   update-issue-body <issue> --section <name> --body-file <path>
+#   update-issue-body <issue> [--repo <owner>/<repo>] --section <name> --body-file <path>
+#
+# --repo edits that GitHub repo's issue instead of the origin's, the source
+# repo's (ADR 0004). Its host is probed first, and every exit 1 under it, the
+# probe's or a refused write's, carries the command to run by hand as `command`.
 #
 # Section-only by design: no whole-body mode and no preamble, so two runs
 # editing different sections of one issue cannot clobber each other. Phase 9
@@ -21,18 +25,22 @@
 #
 # stdout: {issue, section, replaced, created, sections[]}
 #   sections[]: the `## ` headings of the body AFTER the write.
-# exit: 0 · 1 update failed or the body is not one ship edits, with the host's status where there was one
+#   {"error": "...", "command": "<invocation>"} on any exit 1 under --repo
+# exit: 0 · 1 update failed or the body is not one ship edits, with the host's status where there was one,
+#         or --repo unreachable
 #       · 2 usage, or the issue could not be read
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/_lib.sh" || { printf '{"error":"cannot source _lib.sh"}\n'; exit 2; }
-usage='usage: update-issue-body <issue> --section <name> --body-file <path>'
+usage='usage: update-issue-body <issue> [--repo <owner>/<repo>] --section <name> --body-file <path>'
 ship_help "$usage" "$@"
 [ -n "${1:-}" ] || ship_tooling "$usage"
+argv=("$@")
 issue=$1; shift
 case $issue in -*) ship_tooling "$usage" ;; esac
-section=""; file=""
+section=""; file=""; repo=""
 while [ $# -gt 0 ]; do
   case $1 in
+    --repo) ship_repo_arg "${2:-}" || ship_tooling "$usage"; repo=$2; shift 2 ;;
     --section) case ${2:-} in ""|-*) ship_tooling "$usage" ;; esac; section=$2; shift 2 ;;
     --body-file) case ${2:-} in ""|-*) ship_tooling "$usage" ;; esac; file=$2; shift 2 ;;
     *) ship_tooling "unknown flag: $1" ;;
@@ -42,7 +50,8 @@ done
 content=$(cat "$file") || ship_tooling "cannot read $file"
 unclosed=$(ship_fence_unclosed "$content")
 [ -z "$unclosed" ] || ship_tooling "body file ends inside an unclosed fence ($unclosed)"
-ship_load_host
+ship_load_host "$repo"
+[ -z "$repo" ] || ship_reach_repo "$repo" "$SHIP_SCRIPTS/update-issue-body.sh" "${argv[@]}"
 
 if ! answer=$(host_issue_body "$issue"); then
   reason=$(jq -r '.reason // empty' <<<"$answer" 2>/dev/null)

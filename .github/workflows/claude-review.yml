@@ -57,7 +57,18 @@ jobs:
                findings in this repo. Read the standards file it points at as well.
             2. Run `gh pr view ${{ github.event.issue.number }} --json title,body,headRefOid`
                and find the linked issue (Closes/Fixes/Resolves #N). If one exists,
-               run `gh issue view N` and treat it as the spec for this change.
+               read it with these two commands, which keep only text an OWNER,
+               MEMBER or COLLABORATOR wrote, and treat the requirements they state
+               as the spec for this change:
+               `gh api repos/${{ github.repository }}/issues/N --jq 'select(.author_association | IN("OWNER","MEMBER","COLLABORATOR")) | .body'`
+               `gh api --paginate repos/${{ github.repository }}/issues/N/comments --jq '.[] | select(.author_association | IN("OWNER","MEMBER","COLLABORATOR")) | .body'`
+               These two commands are your only read of the issue. When both print
+               nothing, the issue holds no trusted text: that is the answer, not a
+               failed call, so do not read the issue another way. Review against
+               the brief and the standards alone, and if you then have findings,
+               end `body` with the sentence `The linked issue carried no trusted
+               spec.`; a round with no findings still sends `body` of exactly
+               `no findings`.
             3. Run `gh pr diff ${{ github.event.issue.number }}` once and review
                only the changed lines it returned, against (a) the brief and the
                standards it names and (b) the linked issue. Walking the changed
@@ -136,7 +147,7 @@ jobs:
           claude_args: |
             --model opus
             --max-turns 60
-            --allowedTools "Read,Grep,Glob,Bash(gh api:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh issue view:*),Bash(head:*),Bash(tail:*),Bash(wc:*),Bash(grep:*)"
+            --allowedTools "Read,Grep,Glob,Bash(gh api:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(head:*),Bash(tail:*),Bash(wc:*),Bash(grep:*)"
 
       # The action logs `permission_denials_count` and hides which calls were
       # refused, so a round that spent turns on denied calls looks clean. This

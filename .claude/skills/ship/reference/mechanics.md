@@ -1,31 +1,32 @@
 # The mechanics: what all of them have in common
 
-## Contents
+`scripts/` holds one executable per deterministic step, and not every one
+touches the host: `run-file` writes the run's own record and nothing else.
+`SKILL.md` says what each phase decides; this file says which mechanic the phase
+runs and how every one of them answers.
 
-- [Which mechanic each phase runs](#which-mechanic-each-phase-runs)
-- [Ask the script what its flags are](#ask-the-script-what-its-flags-are)
-- [The exit codes](#the-exit-codes)
-- [What a failed write says](#what-a-failed-write-says)
-- [The vocabulary a read comes back in](#the-vocabulary-a-read-comes-back-in)
-- [Run them inline](#run-them-inline)
+## Which calls need a mechanic
 
-`scripts/` holds one executable per deterministic step, and a mechanic is the
-only way a ship run touches the host, though not every one does: `run-file`
-writes the run's own record and nothing else. `SKILL.md` says what each phase
-decides; this file says which mechanic the phase runs there and how every one of
-them answers, so both are read once rather than re-derived per call.
+Every host **write**, and every **gating read** (one a phase's `Done when:` or a
+stop row depends on: `preflight`, `poll-pr`, `ci-wait`, `base-fresh` and the
+like), goes through a mechanic, so create-then-verify, the host status on a
+failed write and the same verdict from the same host state all hold. One no
+mechanic performs is a Ship defect. An **informational read**, one no phase or
+stop branches on, may be made directly where no mechanic covers it: through the
+host's REST form (`gh api`, `az rest`), which the cloud sandbox admits where it
+refuses GitHub GraphQL, with one line in the Run file's `## Direct reads`
+naming the call and why. A read made directly in two runs is a candidate
+mechanic. Verification scaffolding, a scratch issue or scratch review thread a
+`Run:` line sets up by hand, sits outside the rule.
 
 ## Which mechanic each phase runs
 
-When a phase names a mechanic, run it instead of re-deriving what it wraps: it
-is the single source of truth for that step, including the host adapter it
-sources (`scripts/host/github.sh` or `scripts/host/ado.sh`, chosen from the
-`origin` remote).
-
-The table below maps mechanic to phase and carries no flags, because a table
-goes stale against the script and `--help` does not. Its one row that is not a
-mechanic, the repo's own local gate, keeps its flags: they come from the
-local-gate contract, and that script answers no `--help`.
+A phase that names a mechanic runs it rather than re-deriving what it wraps,
+the host adapter it sources (`scripts/host/github.sh` or `scripts/host/ado.sh`,
+chosen from the `origin` remote) included. The table carries no flags, because
+a table goes stale against the script and `--help` does not; the one row that
+is not a mechanic, the repo's own local gate, keeps its flags from the
+local-gate contract.
 
 | Mechanic | Phase |
 |---|---|
@@ -36,7 +37,7 @@ local-gate contract, and that script answers no `--help`.
 | `read-issue` | 0 |
 | `isolate` | 0 |
 | `manage-issue` | 1; any stop after the claim; 3, to close a scratch issue a verification created; 9 |
-| `file-issue` | 2, 4, 7 |
+| `file-issue` | 2, 4, 7; 9 with `--repo`, per Ship defect draft, on the human's word |
 | `base-fresh` | 5, and after every conflict resolution |
 | `<Location:>` from the profile `[--small <node>] [--base <ref>]` | 5 (the repo's own local gate) |
 | `open-pr` | 6 |
@@ -56,42 +57,31 @@ local-gate contract, and that script answers no `--help`.
 | `cleanup` | 9, after merge |
 | `list-prs` and `select` | unattended lane |
 
-## Ask the script what its flags are
+## Flags, exit codes and failed writes
 
-For a mechanic's flags, run `<base directory>/scripts/<mechanic>.sh --help`.
-Every mechanic answers it with its usage line on stdout, exit 0 and nothing on
-stderr, before it loads a host adapter and without reaching the host. Only the
-first argument is read, so
-`poll-pr.sh 42 --help` is a poll of PR 42 and not a help call.
-
-A mechanic acting for one reviewer, `poll-pr` and `request-review`, takes it as
-`--reviewer <name>`, the `### <name>` heading under the profile's
-`## Reviewers`, and reads the rest off that block: the login, the landing rule,
-the transport, the workflow run to await and the poll's default bound. The run
-passes the block's name, the one the merge summary uses.
-
-## The exit codes
+For a mechanic's flags, run `<base directory>/scripts/<mechanic>.sh --help`: its
+usage line on stdout, exit 0, before it loads a host adapter. Only the first
+argument is read, so `poll-pr.sh 42 --help` is a poll of PR 42. A mechanic
+acting for one reviewer (`poll-pr`, `request-review`) takes `--reviewer
+<name>`, the `### <name>` heading under `## Reviewers`, and reads the rest off
+that block.
 
 Each prints one JSON verdict on stdout, a failing step's last 40 log lines on
 stderr, and exits `0` ok, `1` the mechanic's own not-ok answer, `2` tooling. A
-malformed invocation is tooling, exit 2 rather than 1: a missing or empty
-positional, a flag where a positional belongs and a flag without its value all
-print `{"error": "<usage>"}` and exit 2, as an unknown flag does. A leading
-`--help` is the one exception, answered above before any of these guards runs.
+malformed invocation is tooling: it prints `{"error": "<usage>"}` and exits 2.
 Exit 1 is an answer, not always a fault: `nothing-ready` from `select`, a
 not-actionable `preflight` and a `poll-pr` window that closed are all exit 1 and
 none is red.
 
-## What a failed write says
-
-A failed write to an open PR's body or title, a comment on a PR or an issue,
-or a thread reply carries the host's `status` beside its `error`: a 5xx or a
-429 outlasted the mechanic's own backoff, so retrying is the fix; any other
-number is the request itself, so read the body you sent. `null` is neither: the
-call got no HTTP answer at all, so the host or the tooling between you and it is
-what to look at.
-`open-pr` and `file-issue` answer with the error alone, and their stderr carries
-the host's own message. Read the JSON, then decide.
+A failed write to a PR body or title, a comment or a thread reply carries the
+host's `status` beside its `error`: a 5xx or 429 outlasted the mechanic's own
+backoff, so retrying is the fix; any other number is the request itself, so read
+the body you sent; `null` is no HTTP answer at all, so look at the host or the
+tooling in between. `open-pr` and `file-issue` answer with the error alone, and
+their stderr carries the host's message. Under `--repo`, every exit 1 of `file-issue` and
+`update-issue-body`, an unreachable host's or a refused write's, carries a
+`command` beside the `error`: the shell-quoted invocation for the human to run
+where the write succeeds.
 
 ## The vocabulary a read comes back in
 
@@ -100,13 +90,9 @@ Reads come back in one vocabulary on both hosts: checks
 `approved|changes|comment`, and threads as `resolved: true|false` per thread, or
 the whole `threads` field as the string `"unavailable"` when the state could not
 be read. A thread's `id` is what `reply-thread` and `resolve-thread` take (on
-GitHub, the thread's root review comment id, as a string); an id no thread
-carries answers `no such thread`.
-
-## Run them inline
+GitHub, the thread's root review comment id, as a string).
 
 Run mechanics **inline**: they project their own output, so a subagent there
 burns budget to relay what an exit code already says. Poll loops are bounded and
-foreground; reaching the bound leaves the question open, so re-run to extend it
-rather than proceed, or pass a wider `--timeout` up front when the
-profile's `Legs:` names a leg you know is slower than the bound.
+foreground; reaching the bound leaves the question open, so re-run to extend it,
+or pass a wider `--timeout` up front for a leg you know is slower than the bound.

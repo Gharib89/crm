@@ -604,25 +604,6 @@ _gh_alias() { [ "$1" = "$(host_copilot_login)" ] && printf '%s' "$_gh_copilot_re
 _gh_recorded_def='def norm: ascii_downcase | sub("\\[bot\\]$"; "");
   def recorded: norm as $r | [$l, $alias | select(. != "") | norm] | index($r) != null;'
 
-# Whether a round is queued for the login since <since>: over $e, the PR's
-# review_requested events, and $p, the logins pending on it now. An event before
-# <since> answered an earlier request and counts for nothing. The pending list
-# counts whatever its age, since a reviewer drops off it once it submits: one
-# still on it has a round queued and unposted.
-_gh_queued_select="$_gh_recorded_def"'
-  any(($e[] | select(.created_at >= $s) | .login), $p[]; recorded)'
-
-# A quota-out Copilot leaves no trace but a PR-page banner no API exposes: in
-# every run observed since #266, its ruleset queued no request event for it and
-# posted no notice, so the host's own record of requests is the only thing that
-# tells a free round still coming from one that never will (#284).
-host_pr_review_queued() { # <pr> <login> <since-iso>
-  local e p
-  e=$(_gh_requested_events "$1") || return 1
-  p=$(api "$R/pulls/$1" --jq '[.requested_reviewers[].login]') || return 1
-  jq -n --argjson e "$e" --argjson p "$p" --arg l "$2" --arg alias "$(_gh_alias "$2")" --arg s "$3" "$_gh_queued_select"
-}
-
 # Request, then read the request back off the host's own record: the login you
 # request and the login you read back can differ (Copilot is requested as
 # copilot-pull-request-reviewer[bot] and recorded as `Copilot`, the

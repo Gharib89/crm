@@ -14,7 +14,7 @@ The first numbered schema. Profiles written before it carry no `Schema:` line.
 
 ## Schema 2
 
-The fallback reviewer: a reviewer that stands in for another one is on-request and conditional, driven only on the runs where its primary exits degraded. Only the reviewer block moves; the fourteen headings and every other `Label:` line are unchanged from Schema 1.
+The fallback reviewer: a reviewer that stands in for another one is on-request and conditional, driven only on the runs where its primary exits not reviewed. Only the reviewer block moves; the fourteen headings and every other `Label:` line are unchanged from Schema 1.
 
 - Each `### <reviewer>` block under `## Reviewers` gains a `Fallback-for:` line, between `Gating:` and `Instructions:`. It names the reviewer this one stands in for, or `None.` where it stands in for nobody, which is every reviewer a Schema 1 profile had. Migration writes `Fallback-for: None.` on every existing block.
 - `Request:` gains the value `comment <phrase>`, beside the existing mechanic name and `None.`: the transport that asks a comment-triggered reviewer for a round by posting `<phrase>` as a PR comment.
