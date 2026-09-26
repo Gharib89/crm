@@ -7,6 +7,58 @@ released version. See
 
 <!-- version list -->
 
+## v11.0.0 (2026-09-26)
+
+### Bug Fixes
+
+- **ship**: Move show-me to ca7c808 ([#319](https://github.com/Gharib89/skills/pull/319),
+  [`33061b2`](https://github.com/Gharib89/skills/commit/33061b21f99791ae686b005f3055995d174f2537))
+
+### Breaking Changes
+
+- **ship**: Preflight refuses a consumer whose show-me is still at 6ab9013; refresh it at ca7c808.
+
+
+## v10.0.0 (2026-09-26)
+
+### Features
+
+- **ship**: Pin composed skills and route Ship defects to the source repo
+  ([#316](https://github.com/Gharib89/skills/pull/316),
+  [`34c2c35`](https://github.com/Gharib89/skills/commit/34c2c35bb8f03e52a9ffbafb25734eea1f1df46e))
+
+### Breaking Changes
+
+- **ship**: Ship's metadata.composes entries are <owner>/<repo>#<sha>:<skill>; a consumer's composed
+  skills are refreshed at those pins.
+
+
+## v9.0.1 (2026-09-25)
+
+### Refactoring
+
+- **ship**: A prose deletion pass and the deletes-at-least-as-much rule
+  ([#311](https://github.com/Gharib89/skills/pull/311),
+  [`1794420`](https://github.com/Gharib89/skills/commit/1794420591f3d8cc41efd36d891771f5c51f7a65))
+
+
+## v9.0.0 (2026-09-25)
+
+### Features
+
+- **ship**: A narrower mechanic rule and a best-effort reviewer loop
+  ([#309](https://github.com/Gharib89/skills/pull/309),
+  [`38fcbc5`](https://github.com/Gharib89/skills/commit/38fcbc57869018b4602888a3f2be4cf991326189))
+
+### Breaking Changes
+
+- **ship**: Poll-pr drops --free-round, --review-on-push and the never_queued and degraded fields,
+  and gains not_reviewed.
+
+- The phase-7 exit vocabulary the Review line and cloud-ship relay changes from converged/degraded
+  to reviewed/not reviewed.
+
+
 ## v8.9.0 (2026-09-25)
 
 ### Features

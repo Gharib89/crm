@@ -2,8 +2,13 @@
 # File an adjacent find for triage and leave it alone, unless the tracker
 # already carries it.
 #
-#   file-issue --title "<title>" --body-file <path> --label <triage marker>
-#              [--distinct-from <n>[,<n>]]
+#   file-issue [--repo <owner>/<repo>] --title "<title>" --body-file <path>
+#              --label <triage marker> [--distinct-from <n>[,<n>]]
+#
+# --repo files at that GitHub repo instead of the origin's: a Ship defect, at
+# the source repo, on the human's word (ADR 0004). Its host is probed first,
+# and every exit 1 under it, the probe's or a refused write's, carries the
+# command to run by hand as `command`.
 #
 # Candidate check. Before creating, the mechanic lists the host's open issues
 # and compares titles: lowercased, punctuation as a separator, tokens under
@@ -20,15 +25,18 @@
 #
 # stdout: {"filed": true, "number": <n>, "url": "<url>"}
 #         {"filed": false, "candidates": [{number, title, url}]}
-# exit: 0 filed, or a candidate found · 1 list or create failed · 2 usage
+#         {"error": "...", "command": "<invocation>"} on any exit 1 under --repo
+# exit: 0 filed, or a candidate found · 1 list or create failed, or --repo unreachable · 2 usage
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/_lib.sh" || { printf '{"error":"cannot source _lib.sh"}\n'; exit 2; }
 
-usage='usage: file-issue --title "<title>" --body-file <path> --label <marker> [--distinct-from <n>[,<n>]]'
+usage='usage: file-issue [--repo <owner>/<repo>] --title "<title>" --body-file <path> --label <marker> [--distinct-from <n>[,<n>]]'
 ship_help "$usage" "$@"
-title=""; file=""; label=""; exclude="[]"
+argv=("$@")
+title=""; file=""; label=""; exclude="[]"; repo=""
 while [ $# -gt 0 ]; do
   case $1 in
+    --repo) ship_repo_arg "${2:-}" || ship_tooling "$usage"; repo=$2; shift 2 ;;
     --title) [ -n "${2:-}" ] || ship_tooling "$usage"; title=$2; shift 2 ;;
     --body-file) [ -n "${2:-}" ] || ship_tooling "$usage"; file=$2; shift 2 ;;
     --label) [ -n "${2:-}" ] || ship_tooling "$usage"; label=$2; shift 2 ;;
@@ -41,7 +49,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$title" ] && [ -f "$file" ] || ship_tooling "$usage"
-ship_load_host
+ship_load_host "$repo"
+[ -z "$repo" ] || ship_reach_repo "$repo" "$SHIP_SCRIPTS/file-issue.sh" "${argv[@]}"
 
 open=$(host_issues_open) || ship_fail "cannot list open issues"
 candidates=$(ship_title_candidates "$title" "$open" "$exclude") || ship_fail "candidate check failed"

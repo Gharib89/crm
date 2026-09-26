@@ -26,7 +26,7 @@ Closes #
 
 ## Review
 
-<!-- One line per reviewer the ship profile names, in the fixed shape `- <reviewer>: <exit word>, <n> rounds, <raised> findings: <accepted> accepted, <declined> declined, <filed> filed`, with one trailing clause only when the reader must know. A fallback whose primary converged takes the second form, `- <fallback>: not invoked: <primary> converged`, and states no counts, having none. Ship fills these. `None.` when the repo names no reviewer. -->
+<!-- One line per reviewer the ship profile names, in the fixed shape `- <reviewer>: <exit word>, <n> rounds, <raised> findings: <accepted> accepted, <declined> declined, <filed> filed`, with one trailing clause only when the reader must know. A fallback whose primary reviewed takes the second form, `- <fallback>: not invoked: <primary> reviewed`, and states no counts, having none. Ship fills these. `None.` when the repo names no reviewer. -->
 
 ## Type
 

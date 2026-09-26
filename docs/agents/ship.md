@@ -64,7 +64,7 @@ Gating: no
 Fallback-for: Copilot
 Instructions: .github/copilot-instructions.md
 
-Requested when Copilot exits degraded for any reason (never-queued, blocked, silent, infra-error, cap-hit, unreachable). Outside ship, any OWNER, MEMBER or COLLABORATOR `@claude` comment on a PR one of them authored also fires the workflow. CodeRabbit also reviews this repo on a `@coderabbitai review` comment, but it has no workflow for a round to be read off, which ship cannot express yet (Gharib89/skills#302), so it is not in this profile.
+Requested when Copilot exits not reviewed for any reason (never-queued, blocked, silent, infra-error, unreachable). Outside ship, any OWNER, MEMBER or COLLABORATOR `@claude` comment on a PR one of them authored also fires the workflow. CodeRabbit also reviews this repo on a `@coderabbitai review` comment, but it has no workflow for a round to be read off, which ship cannot express yet (Gharib89/skills#302), so it is not in this profile.
 
 ## Coding standards
 

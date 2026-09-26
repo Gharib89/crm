@@ -7,6 +7,23 @@ released version. See
 
 <!-- version list -->
 
+## v2.0.0 (2026-09-25)
+
+### Features
+
+- **ship**: A narrower mechanic rule and a best-effort reviewer loop
+  ([#309](https://github.com/Gharib89/skills/pull/309),
+  [`38fcbc5`](https://github.com/Gharib89/skills/commit/38fcbc57869018b4602888a3f2be4cf991326189))
+
+### Breaking Changes
+
+- **ship**: Poll-pr drops --free-round, --review-on-push and the never_queued and degraded fields,
+  and gains not_reviewed.
+
+- The phase-7 exit vocabulary the Review line and cloud-ship relay changes from converged/degraded
+  to reviewed/not reviewed.
+
+
 ## v1.1.0 (2026-09-21)
 
 ### Features

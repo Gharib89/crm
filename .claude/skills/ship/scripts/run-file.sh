@@ -26,6 +26,10 @@
 # `init` writes the ten items and returns them, one per harness task the run
 # then creates; `--rebuild` with `--state` is the recovery from a Run file a
 # subagent overwrote. A flip returns the `mirror` value for that phase's task.
+# Below the checklist it writes three sections the run fills by hand: `Design
+# and plan`, `Deviations log`, and `Direct reads`, one line per informational
+# read the run made straight through the host's REST form, no mechanic covering
+# it, so one that recurs across runs is visible as a mechanic to promote.
 #
 # Reaches no host and no repo file: the scratchpad path is the only thing it
 # writes.
@@ -52,7 +56,7 @@ checklist() { # checklist <tripwires> <verifications> <reviewers> <legs>
 4 · Docs-sync + self-review: sync docs first, then \`code-review\` on the diff, auto-triage
 5 · Local gate: base-fresh, then the repo's gate, all green
 6 · Open PR: non-draft, Conventional-Commit title, Closes, reflect on the issue
-7 · Reviewers: $3 to convergence
+7 · Reviewers: $3, one bounded pass each
 8 · CI: resolve any conflict, land $4 green
 9 · Merge gate: hard stop for human approval (unattended: summary as PR comment, return)
 ITEMS
@@ -137,10 +141,19 @@ parse_file() { # parse_file "$@": where every flip and timing reads the record
   # scratchpad reads which record the mechanic went looking for.
   [ -f "$file" ] || ship_fail "no Run file at $file"
 }
-# The row a flip acts on, or the refusal that it is not there.
+# The row a flip acts on, or the refusal that it is not there. A missing line
+# for one of the ten phases is the symptom of a Run file a subagent wrote over,
+# so that refusal carries the recovery rather than leaving it to prose a
+# compacted run may no longer hold; a number outside the ten is a typo, and
+# rebuilding would wipe an intact record.
 take_row() { # take_row <n>: sets line and lineno
   row=$(phase_row "$1")
-  [ -n "$row" ] || ship_fail "no phase $1 line in $file"
+  if [ -z "$row" ]; then
+    case $1 in
+      [0-9]) ship_fail "no phase $1 line in $file: a subagent overwrote the Run file; rebuild it with \`run-file init <issue> --scratchpad <dir> --rebuild\`, re-passing the --tripwires, --verifications, --reviewers and --legs the run began with and one --state per phase the transcript accounts for (open for the one that was running, no invented range), then log what was lost in the deviations log" ;;
+    esac
+    ship_fail "no phase $1 line in $file"
+  fi
   lineno=${row%%:*}
   line=${row#*:}
 }
@@ -209,6 +222,7 @@ EOSTATES
   { printf '# ship run · %s\n\n' "$id"
     printf '%s\n' "$items" | sed 's/^/- [ ] /'
     printf '\n## Design and plan\n\n(pending)\n\n## Deviations log\n\n(none yet)\n'
+    printf '\n## Direct reads\n\n(none yet)\n'
   } > "$file" || ship_tooling "cannot write $file"
   while IFS= read -r st; do
     [ -n "$st" ] || continue

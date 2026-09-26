@@ -5,11 +5,11 @@
 - [The summary](#the-summary)
 - [A tracker issue on Targets:](#a-tracker-issue-on-targets)
 - [Attended: post, then wait](#attended-post-then-wait)
+- [Filing a Ship defect](#filing-a-ship-defect)
 - [Unattended: post to the PR, then return](#unattended-post-to-the-pr-then-return)
 
-The one guaranteed human stop (`## The stops` in SKILL.md). Your job is
-to make the call a ten-second yes or no by laying out everything the human
-would want to check.
+The one guaranteed human stop. Your job is to make the call a ten-second yes or
+no by laying out everything the human would want to check.
 
 **Write it uncompressed.** A session-wide output style or personal brevity rule
 does **not** apply to this summary. It is the evidence a human approves an
@@ -44,11 +44,12 @@ Self-review (code-review skill, the review gate)
   ...
 
 Review                                         (one block per reviewer)
-  <name> (<trigger>, <n> rounds): <converged | converged, override needed | degraded: <reason> | not invoked: <primary> converged>[, <N> denied calls (run <url>[, run <url>…])]
+  <name> (<trigger>, <n> rounds): <reviewed | not reviewed: <reason> | not invoked: <primary> reviewed>[, <N> denied calls (run <url>[, run <url>…])]
     (the denied-calls clause as review-loop.md's Review line carries it, only where N > 0)
     - <finding> → <fixed in <sha> | declined: reason | filed: #<n>>
     ...                                        (or: clean, no findings)
-    (a fallback that ran opens with: fallback for <primary>: degraded: <reason>)
+    (a fallback that ran opens with: fallback for <primary>: not reviewed: <reason>)
+    (a Gating: yes reviewer's declined finding: override needed: <finding>, <evidence>)
 
 Local gate:  <derived from the gate's JSON: <gate> <✓ | ✗ | deferred-to-ci | unavailable> · ...>
 Docs-sync:   <ran: files | skipped: reason>
@@ -58,80 +59,61 @@ Tracker:     <none | one block per drafted section:>
   (unattended: the command a human runs after merging, per the tracker section)
 CI:          <leg> → <green | state> · ...     (from the profile's Legs:)
 Issues filed: <#n <title>, ... | none>  ·  linked: <#n <title>, ... | none>
-Ship defects: <none | one line per defect:>
-  - <missing operation or wrong prose> (phase <n>)
-Timing:      start→PR <m>m · PR→gate <m>m · per phase: 0 <m> · 1 <m> · 2 <m> · 3 <m> · 4 <m> · 5 <m> · 6 <m> · 7 <m> · 8 <m>
-             (from `run-file timing`: its `row` is this line verbatim, and a
-             field the mechanic could not compute reads `unverified` in place
-             of a number.)
+Ship defects: <none | one block per defect:>
+  - <missing write, missing gating read, or wrong prose> (phase <n>)
+    draft for Gharib89/skills: <title> · <draft path>
+Direct reads: <none | <call> · <why>, ...>     (from the Run file's ## Direct reads)
+Timing:      <`run-file timing`'s `row`, verbatim>
 
 Ready to merge. Reply "merge" to squash-merge, close the issue, and clean up.
+(with a Ship defect draft: Reply "file defects" to file the drafts at Gharib89/skills.)
 ```
 
-Every row is grounded in a result from this run: `Local gate:` is the gate's
-`gates` object verbatim, `CI:` is `ci-wait`'s output, `Issues filed` is the set
-of `file-issue` return values from this run in every lane, the numbers it filed
-on one side and the candidates it answered with instead on the other (not a
-recalled count; an implausible count is the human's signal), and `Verification`
-and test counts are read from the phase-3 and phase-2 results, not recalled. The
-empty case writes the same reason phase 6 wrote into the PR body's `##
-Verification` section, one of the three [pr-body.md](pr-body.md) names. On an
-`unexercised` row, `<what ran>` names the **subject that did not exist** rather
-than a command; the row is a record for the human to weigh, and it stays a
-record: a degraded exit, a hand-back and a `Ship defects:` row are all something
-else. A value you cannot point to a tool result for is written as `unverified`.
-`Ship defects:` lists every Ship defect the run met (a host operation no
-mechanic performs, prose that promised what a mechanic does not do), each with
-the phase it was met in and written to the Run file at that moment the way a
-deviation is, so the row is a record, not a recollection. The run files it to no
-other repo; the human carries the row upstream.
+**Every row is grounded in a result from this run**: `Local gate:` is the
+gate's `gates` object, `CI:` is `ci-wait`'s output, `Issues filed` is this
+run's `file-issue` return values (filed numbers on one side, the candidates it
+answered with instead on the other), and `Verification` and the test counts are
+the phase-3 and phase-2 results. The empty `Verification` case writes the
+reason phase 6 wrote into the PR body, one of the three
+[pr-body.md](pr-body.md) names. On an `unexercised` row, `<what ran>` names the
+**subject that did not exist** rather than a command. A value you cannot point
+to a tool result for is written `unverified`. `Ship defects:` lists every host
+write or gating read no mechanic performs, and prose that promised what a
+mechanic does not do; an informational read made directly goes on `Direct
+reads:` instead. Each defect carries a **drafted issue** for the source repo,
+`Gharib89/skills`, written to `<scratchpad>/ship-<issue>/defect-<k>.md` when it
+is met: a title, then a body naming Ship's version, the mechanic or prose at
+fault and what the run did instead, and no organization identifier, credential
+or client context, because the source repo is public. A gap in the ship profile
+rather than in Ship is a **profile defect**: an adjacent find of this repo,
+filed here through phase 2's dispositions and listed under `Issues filed`, not
+on this row. Where this repo is the source repo, a Ship defect is an adjacent
+find already (its profile's `## Triage`) and the row names its number instead of
+a draft.
 
-**This summary is the record; the PR body is the short form of it.** Four
-sections of the body have a counterpart block here ([pr-body.md](pr-body.md)),
-and each pair is written from one result so the two cannot disagree:
+**Counts are measurements; tallies are records.** A count that measures the
+tree, here or in the PR body, carries the command that produced it, run on the
+PR head, with a word counted by `grep -ow` so a longer word carrying it does not
+inflate the total. A **tally of the run's own work** has no command to
+reproduce it, so it is **written to the Run file at the moment it happens** and
+read back from there, which is what survives a compaction: a `file-issue`
+result when the call answers, a Ship defect when it is met, and a reviewer's
+round when it is dispositioned ([review-loop.md](review-loop.md)). The PR body's
+`## Review` line is entirely such a tally.
 
-- `Deviations from plan` is the phase-2 log **verbatim**; the body's `## Special
-  things to note` carries only the subset that changes how the reviewer reads
-  the diff, folded by the claim they share.
-- `Issues filed` and `Ship defects:` are the full set; the body's `## Needs
-  attention` is the same set, one line each.
-- Each `Review` block is one reviewer's per-finding outcomes; the body's `##
-  Review` line for that reviewer is the fixed counts line
-  [review-loop.md](review-loop.md) fixes, and it points here for the detail.
-- Each row of the `Verification` block and its line in the body's `##
-  Verification` section are the same phase-3 result in the same format. This
-  block is where the human reads them at the gate; the section is where they
-  outlive the run.
+**The body is the short form of this record** ([pr-body.md](pr-body.md)), each
+pair written from one result so the two cannot disagree: `Deviations from plan`
+is the phase-2 log verbatim, of which `## Special things to note` carries the
+folded subset; `Issues filed` and `Ship defects:` are the full set that `##
+Needs attention` lists one line each; each `Review` block is the per-finding
+detail behind that reviewer's `## Review` line; and each `Verification` row is
+the same phase-3 result as its line in `## Verification`. The `Self-review`
+block is read from the phase-4 Report files, one row per report; a row whose
+file is no longer on disk is `unverified`.
 
-The `Self-review` block is read from the phase-4 Report files
-[context-discipline.md](context-discipline.md) has each subagent write, one row
-per report naming the file its findings came from: both `code-review` axes, and
-the `writing-for-agents` pass where it fired. A row whose file is no longer on disk
-takes the `unverified` rule above rather than the transcript.
-
-**Every count in this summary and in the PR body that measures the tree is a
-measurement.** Write the number with the command that produced it beside it,
-run on the PR head, and count a word with `grep -ow` so a longer word carrying
-it as a substring does not inflate the total. A **tally of the run's own work**
-is the exception, and the only one: no command reproduces a round count, a
-finding outcome or a past round's run URL, so each is **written to the Run file
-at the moment it happens**, the way a deviation and a Ship defect already are.
-That is one rule over three records, each written by the phase that produces
-it: a `file-issue` result, filed number or linked candidate, when the call
-answers; a Ship defect when it is met; and a reviewer's round, with one line
-per finding and its disposition, and one carrying its numeric
-`reviewer_run.denied` and run URL where `poll-pr` returned one, when that round
-is dispositioned, which
-[review-loop.md](review-loop.md) carries at the bullet that does it. This
-paragraph is the **read-back** rule: each is read from the file here rather
-than recalled, which is what makes them survive a compaction. The PR body's fixed
-`## Review` line is entirely such a tally, which is why it carries no
-commands.
-
-**A wrong title is fixed before the merge, not after.** The merge freezes the
-PR title as the squash subject, so a subject that no longer matches what the
-run built is corrected with `update-pr-title <pr> --title "<subject>"` before
-the summary is posted, so the human reads the title that will land.
+**A wrong title is fixed before the merge**, with `update-pr-title`, before the
+summary is posted: the merge freezes the PR title as the squash subject, so the
+human should read the title that will land.
 
 ## A tracker issue on Targets:
 
@@ -150,64 +132,59 @@ section, because `update-issue-body` replaces nothing smaller.
 A drafted section is written after the merge and never before, so no issue
 records code that has not landed: once `merge` answers `merged: true`, and
 before `cleanup`, run `update-issue-body <n> --section "<section>" --body-file
-<draft>` per draft, `<section>` taken verbatim from the heading `read-issue`
-returned. Re-read the issue first: a section that no longer matches its base is
+<draft>` per tracker draft, `<section>` verbatim from the heading `read-issue` returned.
+Re-read the issue first: a section that no longer matches its base is
 redrafted, posted, and written on the human's explicit "yes". `created: true`
 for a section the draft meant to replace means the name missed: re-run with the
-heading `read-issue` returned, and name the stray section as a Ship defect. Exit
-1 (an Azure DevOps description ship did not write, a refused write) means
-nothing was written: a Ship defect for the summary, with the draft attached.
+returned heading, and name the stray section as a Ship defect. Exit 1 means
+nothing was written: a Ship defect for the summary, with the tracker draft attached.
 
-The unattended lane runs no merge, so ship writes no section: under each draft
-the summary gives the command a human runs after merging, from a file they save
-the draft to, `.claude/skills/ship/scripts/update-issue-body.sh <n> --section
-"<section>" --body-file <file>`, once they have checked the section has not
-changed since the draft.
+The unattended lane runs no merge, so under each draft the summary gives the
+command a human runs after merging, from a file they save the draft to,
+`.claude/skills/ship/scripts/update-issue-body.sh <n> --section "<section>"
+--body-file <file>`, once they have checked the section has not changed.
 
 ## Attended: post, then wait
 
 Post the summary in the conversation and **wait**. Merge only on an explicit
 "merge", and the word is exact: a typo, a synonym, or approval of some other
-part of the summary is asked back rather than read as the word, because merging
-is the step no later phase undoes. The word is the whole trigger, so never an
-auto-merge flag either: it can merge the instant CI is green, before a reviewer
-lands.
+part of the summary is asked back, because merging is the step no later phase
+undoes. Never an auto-merge flag either: it can merge the instant CI is green,
+before a reviewer lands.
 
 **On approval**, from the worktree, `merge <pr> <issue|none> [--worktree
-<path>]`. It reads the PR first and refuses `pr-closed: <state>` for one that is
-neither open nor already merged, merging nothing. Then it proves the branch has
-seen every commit on its base and refuses `stale-base: behind <n> on <base>` if
-not, merging nothing either; rebase, re-run the local gate, and come back to
-this gate. [merge](../scripts/merge.sh) carries what each refusal is protecting
-against. Then it squash-merges with the PR title as the squash subject, re-reads
-the PR to confirm the merge took, confirms the issue closed and closes it
-explicitly if the link did not fire, deletes the remote branch and proves the
-deletion, fast-forwards the local base branch from the checkout that holds it
-(reporting a diverged local base and leaving it alone, retrying a transient
-`index.lock` from a concurrent status and leaving it in place), and **releases
-the claim and strips `ready-for-agent`**, so a reopened issue goes back through
-triage instead of being refused forever. The two issue steps are the
-issue-backed run's: `merge <pr> none` has no issue to close and no claim to
-release, so it skips both and its JSON carries none of `issue_closed`,
-`claim_released` and `ready_for_agent_removed`. Then each drafted tracker
-section, per the section above. Then `cleanup <issue|none>`:
-removes the worktree and force-deletes the local branch (a squash-merged branch
-is not an ancestor of the default branch). Carried files stay in the worktree it
-removes. Any `false` in `merge`'s or `cleanup`'s JSON, or a nonzero exit: re-run
-the mechanic that owns the step before reporting done, and a step no mechanic
-re-does is a Ship defect for the summary. Done is `merge`, every
-`update-issue-body` (none where the run drafted none) and `cleanup` exited 0.
+<path>]`. Its header carries what it does and what each refusal protects
+against: `pr-closed: <state>` and `stale-base: behind <n> on <base>` merge
+nothing (for the second, rebase, re-run the local gate and come back to this
+gate); otherwise it squash-merges with the PR title as the subject, closes the
+issue, deletes the remote branch, fast-forwards the local base, and releases the
+claim and strips `ready-for-agent`, so a reopened issue goes back through
+triage. Then each drafted tracker section, then `cleanup <issue|none>`, which
+removes the worktree and force-deletes the local branch.
 
 **If the human says no or wants changes**, treat the note as the next round of
 work: apply it on the same branch, re-run the local gate, come back to this
 gate. Do not re-open the whole pipeline.
 
+## Filing a Ship defect
+
+A Ship defect draft reaches the source repo on the human's word alone ([ADR 0004](https://github.com/Gharib89/skills/blob/main/docs/adr/0004-cross-repo-writes-reach-the-source-repo-on-the-humans-word.md)),
+and "merge" is not that word: it approves the PR, not publishing the run's
+context to a public repo. On "file defects", or a word naming one draft, run
+`file-issue --repo Gharib89/skills --title "<title>" --body-file <draft> --label
+needs-triage` per Ship defect draft and put its answer on the row: the number filed, the
+candidates it answered with instead, each read the way phase 2 reads one, or,
+on exit 1 with a `command`, that command verbatim for the human to run where
+the write succeeds. Before or after the merge, either order holds.
+
 ## Unattended: post to the PR, then return
 
-`comment-pr <pr> --body-file` with the summary. Then **return** with the PR
+`comment-pr <pr> --body-file` with the summary, then **return** with the PR
 link. Do not wait, poll, or merge; the claim stays on the issue, which carries
-the open PR, so later fires skip it until a human merges. The line
-"Ready to merge. Reply ..." becomes "Ready to merge: a human merges from the
-PR." A drafted tracker section is not written: the summary carries the command
-for it ([A tracker issue on Targets:](#a-tracker-issue-on-targets)). Detail in
+the open PR, so later fires skip it until a human merges. The last line becomes
+"Ready to merge: a human merges from the PR." A Ship defect's draft is never
+filed from here, and the comment drops the "file defects" line: it carries each
+draft verbatim under the command a human runs from a file they save it to,
+`.claude/skills/ship/scripts/file-issue.sh --repo Gharib89/skills --title
+"<title>" --body-file <file> --label needs-triage`. Detail in
 [unattended.md](unattended.md).

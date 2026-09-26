@@ -412,11 +412,6 @@ host_workflow_runs() { return 1; } # <workflow-file> <since-iso>
 # With no awaited run there is no run whose denied calls to count.
 host_run_denials() { return 1; } # <run-url>
 
-# A reviewer on an Azure DevOps PR carries a vote and no time it was asked, so
-# there is no record to say a round was queued since an instant. Non-zero and
-# silent, as above, and `poll-pr` leaves its window to run.
-host_pr_review_queued() { return 1; } # <pr> <login> <since-iso>
-
 # Azure DevOps has no Copilot-review ruleset, so there is nothing to contradict
 # a profile with. Non-zero and silent is "not checked", the same answer the
 # GitHub adapter gives for a ruleset it cannot read, which is what lets preflight
