@@ -79,10 +79,10 @@ title=$(jq -r .title <<<"$prj"); branch=$(jq -r .head_ref <<<"$prj"); base=$(jq 
 if [ "$state" = merged ]; then merged=true
 else
   # The freshness check, in the checkout that holds the run's branch, before
-  # anything is squashed: attended, rebase, re-run the local gate and come back
-  # to the merge gate; unattended, hand back. A PR that is already merged stops
-  # short of it: its branch is behind a base its own squash advanced, and the
-  # run still owes the cleanup steps below.
+  # anything is squashed: attended, merge the base in, re-run the local gate and
+  # come back to the merge gate; unattended, hand back. A PR that is already
+  # merged stops short of it: its branch is behind a base its own squash
+  # advanced, and the run still owes the cleanup steps below.
   fresh=$(cd "${wt:-.}" && "$SHIP_SCRIPTS/base-fresh.sh" 2>/dev/null); rc=$?
   [ "$rc" -lt 2 ] || ship_tooling "cannot read base freshness: base-fresh exited $rc"
   stale=$(ship_stale_base_reason "$fresh")

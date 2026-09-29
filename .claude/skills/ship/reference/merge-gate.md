@@ -155,12 +155,12 @@ before a reviewer lands.
 **On approval**, from the worktree, `merge <pr> <issue|none> [--worktree
 <path>]`. Its header carries what it does and what each refusal protects
 against: `pr-closed: <state>` and `stale-base: behind <n> on <base>` merge
-nothing (for the second, rebase, re-run the local gate and come back to this
-gate); otherwise it squash-merges with the PR title as the subject, closes the
-issue, deletes the remote branch, fast-forwards the local base, and releases the
-claim and strips `ready-for-agent`, so a reopened issue goes back through
-triage. Then each drafted tracker section, then `cleanup <issue|none>`, which
-removes the worktree and force-deletes the local branch.
+nothing (for the second, merge the base in, re-run the local gate and come back
+to this gate); otherwise it squash-merges with the PR title as the subject,
+closes the issue, deletes the remote branch, fast-forwards the local base, and
+releases the claim and strips `ready-for-agent`, so a reopened issue goes back
+through triage. Then each drafted tracker section, then `cleanup <issue|none>`,
+which removes the worktree and force-deletes the local branch.
 
 **If the human says no or wants changes**, treat the note as the next round of
 work: apply it on the same branch, re-run the local gate, come back to this
@@ -168,7 +168,7 @@ gate. Do not re-open the whole pipeline.
 
 ## Filing a Ship defect
 
-A Ship defect draft reaches the source repo on the human's word alone ([ADR 0004](https://github.com/Gharib89/skills/blob/main/docs/adr/0004-cross-repo-writes-reach-the-source-repo-on-the-humans-word.md)),
+A Ship defect draft reaches the source repo on the human's word alone,
 and "merge" is not that word: it approves the PR, not publishing the run's
 context to a public repo. On "file defects", or a word naming one draft, run
 `file-issue --repo Gharib89/skills --title "<title>" --body-file <draft> --label

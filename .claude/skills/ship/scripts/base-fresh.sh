@@ -8,7 +8,11 @@
 #   base-fresh
 #
 # stdout: {fresh, base, behind, ahead, fetched}   behind commits listed on stderr
-# exit: 0 fresh · 1 behind (rebase, then re-run) · 2 the base could not be resolved
+# exit: 0 fresh · 1 behind (catch up, then re-run) · 2 the base could not be resolved
+#   Catching up is a rebase only while the branch is not on origin. Once it is,
+#   a rebase rewrites published commits and the plain push `open-pr` makes is
+#   refused, so the advice is to merge the base in; the squash merge lands one
+#   commit on the base either way.
 #   An unresolvable base fails: a check that could not ask its question must
 #   not answer "fresh". Offline is fine (the last-known ref still compares).
 set -uo pipefail
@@ -27,7 +31,14 @@ behind=$(git rev-list --count "HEAD..$base") || ship_tooling "cannot compare HEA
 ahead=$(git rev-list --count "$base..HEAD")
 fresh=true; [ "$behind" -eq 0 ] || fresh=false
 if ! $fresh; then
-  { echo "branch has not seen these commits on $base; rebase onto it and re-run:"; git log --oneline "HEAD..$base"; } >&2
+  # Rebase only a branch known not to be on origin, read off the remote-tracking
+  # ref the fetch above refreshed rather than ls-remote, so the answer holds
+  # offline. A detached HEAD takes the merge advice, which is never wrong.
+  advice="merge $base in, which keeps the next push a plain one, and re-run:"
+  if branch=$(git symbolic-ref -q --short HEAD) && ! git rev-parse --verify -q "refs/remotes/origin/$branch" >/dev/null; then
+    advice="rebase onto it and re-run:"
+  fi
+  { echo "branch has not seen these commits on $base; $advice"; git log --oneline "HEAD..$base"; } >&2
 fi
 jq -n --argjson f "$fresh" --arg b "$base" --argjson behind "$behind" --argjson ahead "$ahead" --argjson fe "$fetched" \
   '{fresh: $f, base: $b, behind: $behind, ahead: $ahead, fetched: $fe}'
