@@ -3,7 +3,12 @@
 # reviews and threads, then ONE JSON summary.
 #
 #   poll-pr <pr> [--reviewer <name> [--since <iso>]] [--brief, or --brief --full <id>[,<id>]]
-#           [--timeout <s>] [--interval <s>]
+#           [--sha <sha>] [--timeout <s>] [--interval <s>]
+#
+# The expected head is `--sha`, else the local HEAD of a checkout of the PR's head
+# branch: while the host shows another head the poll reads nothing on it, so a
+# round on the previous head never counts as one on this head, and a window that
+# closes first answers `done: false` carrying the host's head_sha.
 #
 # `--reviewer <name>` names the `### <name>` block under the profile's
 # `## Reviewers`, read before any host is reached; `ship_reviewer_derive` answers
@@ -37,8 +42,9 @@
 # Each review row carries the round's own `body` and the `id` the host knows it
 # by, clipped past 2000 characters and marked "...[truncated]" there: phase 7
 # triages from the body, and a round whose findings are in it rather than in
-# threads is invisible without it. `--brief --full` names the ids to return whole;
-# every other row stays clipped, and an id matching no row changes nothing.
+# threads is invisible without it. `--brief --full` names the round or thread
+# ids to return whole; every other row stays clipped, and an id matching no row
+# changes nothing.
 # `threads[]` rows carry the thread's first comment, which `reply-thread` answers,
 # and `replied`, true once this identity has answered in that thread.
 #
@@ -83,9 +89,13 @@
 #
 # `not_reviewed` is the cause this poll observed for the awaited reviewer
 # delivering no round, which the review loop reports as `not reviewed: <cause>`
-# rather than naming one of its own. Null without --reviewer and where a
-# conflict closed the window, which says nothing about the reviewer. Otherwise,
-# first match wins:
+# rather than naming one of its own. Null without --reviewer. Otherwise, first
+# match wins:
+#   unreachable   the window closed with the host still on another head than the
+#                 expected one and no round landed, so the reviewer was never
+#                 read on it; a round the since rule landed keeps its null
+#   (null)        a conflict closed the window, which says nothing about the
+#                 reviewer
 #   unreachable   `threads` is "unavailable" (on GitHub, GraphQL and the REST
 #                 routes a refusing proxy names both failed), a landed round's
 #                 included, since its threads can be neither read nor answered
@@ -104,14 +114,15 @@
 # (id, submitted_at, substantive, and the body cut to its finding items) and one
 # row per OPEN thread (id, path, lead, resolved, replied). `--full` names the
 # rows that come back whole, so `--brief --full <id>` is the summary with that
-# one round verbatim. Rounds come from `all[]` under the
-# --since rule and `on_head[]` under the head rule, the list that rule lands
-# from. Under `--reviewer` only the awaited reviewer's rows are kept, and the
-# run's own rows drop out: a thread reply of ours posts as a review
-# row of its own, and a round count that counts it reads its own voice as the
-# reviewer's. That drop needs the host identity, so `--brief` asks for it up
-# front and exits 2 when the host cannot answer, rather than returning a list it
-# cannot promise is the reviewer's alone. The full shape stays the default.
+# one round verbatim, or that one thread's first comment whole as its `lead`.
+# Rounds come from `all[]` under the --since rule and `on_head[]` under the head
+# rule, the list that rule lands from. Under `--reviewer` only the awaited
+# reviewer's rows are kept, and the run's own rows drop out: a thread reply of
+# ours posts as a review row of its own, and a round count that counts it reads
+# its own voice as the reviewer's. That drop needs the host identity, so
+# `--brief` asks for it up front and exits 2 when the host cannot answer, rather
+# than returning a list it cannot promise is the reviewer's alone. The full
+# shape stays the default.
 #
 # stdout: {head_sha, mergeable, checks[], reviews: {on_head[], all[], total},
 #          threads, reviewer, reviewer_blocked, reviewer_run, landed_by, refused_by, not_reviewed,
@@ -126,14 +137,14 @@ source "$(dirname "${BASH_SOURCE[0]}")/_lib.sh" || { printf '{"error":"cannot so
 # The hard bound on waiting a run out, written once: the usage line is where a
 # run reads it.
 ceiling=1800
-usage="usage: poll-pr <pr> [--reviewer <name> [--since <iso>], whose workflow run, under a comment transport, holds the window open past --timeout, to ${ceiling}s] [--brief, or --brief --full <id>[,<id>] to read those rounds whole] [--timeout <s>] [--interval <s>]"
+usage="usage: poll-pr <pr> [--reviewer <name> [--since <iso>], whose workflow run, under a comment transport, holds the window open past --timeout, to ${ceiling}s] [--brief, or --brief --full <id>[,<id>] to read those rounds or threads whole] [--sha <sha>, the head to wait for, default the local HEAD when on the PR head branch, else none; a window closing first is done: false] [--timeout <s>] [--interval <s>]"
 ship_help "$usage" "$@"
 [ -n "${1:-}" ] || ship_tooling "$usage"
 pr=$1; shift
 # A flag in the positional slot is a malformed invocation, not a PR id: without
 # this, `poll-pr --brief` reads "--brief" as the id and asks the host for it.
 case $pr in -*) ship_tooling "$usage" ;; esac
-timeout=""; interval=20; name=""; since=""; full='[]'; brief=false; after_run=0
+timeout=""; interval=20; name=""; since=""; full='[]'; brief=false; after_run=0; want=""
 while [ $# -gt 0 ]; do
   case $1 in
     --brief) brief=true; shift ;;
@@ -147,6 +158,7 @@ while [ $# -gt 0 ]; do
       shift 2 ;;
     --timeout) [ -n "${2:-}" ] || ship_tooling "$usage"; timeout=$2; shift 2 ;;
     --interval) [ -n "${2:-}" ] || ship_tooling "$usage"; interval=$2; shift 2 ;;
+    --sha) case ${2:-} in ''|-*) ship_tooling "$usage" ;; esac; want=$2; shift 2 ;;
     *) ship_tooling "unknown flag: $1" ;;
   esac
 done
@@ -200,8 +212,15 @@ start=$SECONDS
 while :; do
   prj=$(host_pr_get "$pr") || ship_tooling "cannot read PR $pr"
   sha=$(jq -r .head_sha <<<"$prj"); mergeable=$(jq -r .mergeable <<<"$prj")
+  stale=false
+  if ship_head_stale "$prj" "$want"; then
+    [ $((SECONDS - start)) -ge "$timeout" ] || { sleep "$interval"; continue; }
+    stale=true
+  fi
   checks=$(host_pr_checks "$pr" "$sha") || ship_tooling "cannot read checks"
   reviews=$(host_pr_reviews "$pr" "$sha" "$full") || ship_tooling "cannot read reviews"
+  # The previous head's rounds are on no head the run is waiting for.
+  ! $stale || reviews=$(jq -c '.on_head = []' <<<"$reviews")
   # Ship's grade (`SHIP_SUBSTANTIVE`), before the landing rule, the refusal
   # rule or the brief reads a row.
   reviews=$(jq -c "$SHIP_SUBSTANTIVE" <<<"$reviews") || ship_tooling "cannot grade reviews"
@@ -246,6 +265,8 @@ while :; do
   if [ "$mergeable" = conflict ]; then done=true
   elif [ "$pending" -eq 0 ] && [ "$landed" = true ]; then done=true
   fi
+  # A window that closed on the previous head answered nothing on this one.
+  ! $stale || done=false
   waited=$((SECONDS - start))
   run_status=$(jq -r 'if type == "object" then .status else "" end' <<<"$reviewer_run")
   # A run that ended any way but successfully ends the window with it, wherever
@@ -295,11 +316,13 @@ while :; do
     out=$(jq -n --arg sha "$sha" --arg m "$mergeable" --argjson c "$checks" --argjson r "$reviews" \
       --argjson t "$threads" --argjson rv "$reviewer" --argjson b "$blocked" --argjson rr "$reviewer_run" \
       --argjson lb "$landed_by" --argjson rf "$refused_by" --argjson d "$done" --argjson w "$waited" \
-      --arg aw "$await" \
+      --arg aw "$await" --argjson st "$stale" \
       '{head_sha: $sha, mergeable: $m, checks: $c, reviews: $r, threads: $t, reviewer: $rv, reviewer_blocked: ($b.line? // null),
         reviewer_run: $rr, landed_by: $lb, refused_by: $rf, done: $d, waited_s: $w}
        | .not_reviewed = (
-           if $aw == "" or $m == "conflict" then null
+           if $aw == "" then null
+           elif $st and $lb == null then "unreachable"
+           elif $m == "conflict" then null
            elif $t == "unavailable" then "unreachable"
            elif $lb != null then null
            elif $rr == "unavailable" then "unreachable"

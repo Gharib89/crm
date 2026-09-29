@@ -7,6 +7,88 @@ released version. See
 
 <!-- version list -->
 
+## v0.12.0 (2026-09-29)
+
+### Features
+
+- **ship**: Ci-wait and poll-pr grade the latest check run on the expected head
+  ([#397](https://github.com/Gharib89/skills/pull/397),
+  [`8f4c95d`](https://github.com/Gharib89/skills/commit/8f4c95d8f8188909172ae4774379b27317754329))
+
+
+## v0.11.6 (2026-09-29)
+
+### Bug Fixes
+
+- **ship**: Run-file open refuses a phase over an earlier one never flipped
+  ([#392](https://github.com/Gharib89/skills/pull/392),
+  [`4d9c292`](https://github.com/Gharib89/skills/commit/4d9c292d22749b4e445cb23344e11b506d855bbe))
+
+
+## v0.11.5 (2026-09-28)
+
+### Bug Fixes
+
+- **skills**: Keep every skill self-contained, and gate it
+  ([#380](https://github.com/Gharib89/skills/pull/380),
+  [`76934a4`](https://github.com/Gharib89/skills/commit/76934a4d031a8f63229b3c79ea93df4d762b016e))
+
+
+**The renumber to 0.x.** Every entry below predates it and keeps the number it was released under. `ship` was never publicly released, so on 2026-09-28 its version moved from 11.1.4 to 0.11.4: the old major is now the minor. The release run writes new entries above this note, counting on from 0.11.4. See [ADR 0005](https://github.com/Gharib89/skills/blob/main/docs/adr/0005-skills-stay-0x-until-public-release.md).
+
+## v11.1.4 (2026-09-26)
+
+### Bug Fixes
+
+- **skills**: Prompt-audit cleanup of ship and setup-skills prose
+  ([`9b84fb6`](https://github.com/Gharib89/skills/commit/9b84fb6742875c2fd9dda08f0010b31f200bb5ab))
+
+
+## v11.1.3 (2026-09-26)
+
+### Bug Fixes
+
+- **ship**: Merge the base in once the branch is pushed, not rebase
+  ([#332](https://github.com/Gharib89/skills/pull/332),
+  [`5a3ecc4`](https://github.com/Gharib89/skills/commit/5a3ecc44be5d8a65fb71a753ab2616e33a450c62))
+
+
+## v11.1.2 (2026-09-26)
+
+### Bug Fixes
+
+- **ship**: A multi-line thread lead ends in the truncation marker
+  ([#330](https://github.com/Gharib89/skills/pull/330),
+  [`90f2ad5`](https://github.com/Gharib89/skills/commit/90f2ad593da4bc8126e405e34b4941ea03719402))
+
+
+## v11.1.1 (2026-09-26)
+
+### Bug Fixes
+
+- **ship**: Poll-pr --brief --full lifts a clipped thread lead
+  ([#329](https://github.com/Gharib89/skills/pull/329),
+  [`5e05ffc`](https://github.com/Gharib89/skills/commit/5e05ffcb565b863cffd97629147acbd85aedcd04))
+
+
+## v11.1.0 (2026-09-26)
+
+### Features
+
+- **update-skills**: Dated branch, loop-safe installs, retired terms, readable PR body
+  ([#325](https://github.com/Gharib89/skills/pull/325),
+  [`ab84817`](https://github.com/Gharib89/skills/commit/ab84817eeee5d3ba3dec5c12c4f6f9eb27d66a30))
+
+
+## v11.0.1 (2026-09-26)
+
+### Bug Fixes
+
+- **ship**: Preflight prunes only a PR's own leftover worktree
+  ([#324](https://github.com/Gharib89/skills/pull/324),
+  [`6a6ba9b`](https://github.com/Gharib89/skills/commit/6a6ba9b545fb52e7e4b628a246fe6dd995f5d237))
+
+
 ## v11.0.0 (2026-09-26)
 
 ### Bug Fixes

@@ -64,7 +64,7 @@ observed where no round was admitted.
   cut to the lead line and finding items, and one row per OPEN thread, the run's
   own replies dropped.
 - **A body or `lead` ending `...[truncated]` has not been read.** Re-poll with
-  `--brief --full <id>` for that round before triage.
+  `--brief --full <id>` for that round or thread before triage.
 - **Findings live in the body as well as in threads**, and a reviewer's reply to
   one thread posts as a bodiless review row that looks like the next round
   arriving: only `substantive: true` counts.
@@ -74,6 +74,10 @@ observed where no round was admitted.
 - **A comment transport's window is its workflow run**, the one `Workflow:`
   names, held open while the run is going. Run no `update-pr-title` between that
   request and its poll: the run is matched by the PR's title.
+- **A poll waits for the expected head**, the worktree's `HEAD` on the PR's
+  branch or `--sha`. `not_reviewed: unreachable` with a `head_sha` that is not
+  that head means the host never showed the push: confirm it landed, then poll
+  again.
 
 ## Triage, fix, reply
 

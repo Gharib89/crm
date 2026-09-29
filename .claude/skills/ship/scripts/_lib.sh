@@ -69,7 +69,7 @@
 #                                           when it does.
 #   host_pr_create <head> <base> <title> <body-file> <issue> -> {number,url,created_at}
 #   host_pr_get <pr>                     -> {number,url,title,body,head_sha,head_ref,base_ref,state,mergeable}
-#   host_pr_for_branch <branch>          -> {number,state} of the newest PR with that head, or null
+#   host_pr_for_branch <branch>          -> {number,state,head_sha} of the newest PR whose head branch is <branch>, or null
 #   host_pr_checks <pr> <head_sha>       -> [{name,status}]
 #                                           status: pending | success | failure.
 #   host_pr_reviews <pr> <head_sha> [<full-ids-json>]
@@ -95,6 +95,8 @@
 #                                           unavailable. replied: this identity has a comment in the
 #                                           thread, which is how phase 7 skips a thread it already
 #                                           dispositioned in an earlier round.
+#                                           id: poll-pr --full names ids from here too, to read
+#                                           that thread's first comment whole under --brief.
 #                                           GitHub rows also carry comment_id, outdated and url,
 #                                           which no mechanic reads. comment_id is the thread's first
 #                                           review comment, the REST target GitHub's reply is keyed
@@ -838,6 +840,21 @@ ship_no_checks_expected() { # <profile-body>
   return 0
 }
 
+# ship_head_stale <pr-json> [<sha>]: true while the host shows a PR head other
+# than the expected one, so `ci-wait` and `poll-pr` wait inside their window
+# rather than grade the previous head: straight after a push the host can still
+# show it (#394). The expected head is `<sha>`, a prefix match against the host's
+# full one, else the local HEAD when the caller's checkout is on the PR's head
+# branch. With neither there is no expected head, and nothing is stale.
+ship_head_stale() { # <pr-json> [<sha>]
+  local want=${2:-}
+  if [ -z "$want" ]; then
+    [ "$(git symbolic-ref --quiet --short HEAD 2>/dev/null)" = "$(jq -r .head_ref <<<"$1")" ] || return 1
+    want=$(git rev-parse HEAD 2>/dev/null) || return 1
+  fi
+  case $(jq -r .head_sha <<<"$1") in "$want"*) return 1 ;; esac
+}
+
 # ship_reviewers <profile-body>: the `## Reviewers` section as one JSON row per
 # reviewer, in profile order, each
 # {name, login, trigger, request, workflow, cap, resolve, gating, fallback_for,
@@ -1153,7 +1170,12 @@ ship_pr_state_reason() { # ship_pr_state_reason <state>
 # each carrying the `path` its finding sits on and the `lead` line that states
 # it, cut at the same width: a run answers one thread off the brief, and a row
 # holding an id alone sent it back for the full shape to read what the finding
-# was. The string "unavailable" passes through as itself. `reviewer_run` passes
+# was. A lead that drops a later line with text carries the marker too (one
+# marker, even where the width cut also bit), so a finding below a short first
+# line is not read as the whole comment (#328). A CRLF blank line is blank.
+# A thread named by <full-ids-json> carries its whole first comment as
+# `lead`, so a clipped lead is lifted by the re-poll that lifts a clipped round
+# (#327). The string "unavailable" passes through as itself. `reviewer_run` passes
 # through whole, the string "unavailable" included: it is four fields, and a
 # loop reading rounds from the brief is the loop that has to tell a silent
 # reviewer from one whose run is still going.
@@ -1171,7 +1193,10 @@ ship_brief() {
       | if ($items | length) == 0 then clip
         elif $lines[0] == $items[0] then (($items | join("\n")) + $mark)
         else ((([$lines[0]] + $items) | join("\n")) + $mark) end;
-    def lead: [splits("\n") | select(test("^[ \t]*$") | not)] | (.[0] // "") | clip;
+    def lead: [splits("\n") | select(test("^[ \t\r]*$") | not)] as $lines
+      | ($lines[0] // "") as $first | ($first | clip) as $cut
+      | if ($lines | length) > 1 and $cut == $first
+        then $first + "\n...[truncated]" else $cut end;
     (.reviewer.login // "") as $await
     | {head_sha, mergeable, reviewer, landed_by, refused_by, not_reviewed, reviewer_blocked, reviewer_run,
      rounds: [.reviews[$key][] | select((mine | not) and awaited($await)) | . as $r
@@ -1180,6 +1205,9 @@ ship_brief() {
                         else ($r.body | finding_items) end)}],
      threads: (if (.threads | type) == "array"
                then [.threads[] | select(.resolved | not)
-                     | {id, path, lead: ((.body // "") | lead), resolved, replied}]
+                     | . as $t | {id, path,
+                                  lead: (if ($full | index($t.id | tostring)) then ($t.body // "")
+                                         else (($t.body // "") | lead) end),
+                                  resolved, replied}]
                else .threads end)}' <<<"$1"
 }

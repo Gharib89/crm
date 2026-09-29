@@ -196,7 +196,8 @@ host_pr_get() { azx repos pr show "${ORG[@]}" --id "$1" | _pr_norm "$(_pr_url "$
 host_pr_for_branch() {
   azx repos pr list "${PRJ[@]}" --repository "$SHIP_REPO" --source-branch "$1" --status all --top 1 \
     | jq 'first | if . == null then null else {number: .pullRequestId,
-        state: (if .status == "completed" then "merged" elif .status == "active" then "open" else "closed" end)} end'
+        state: (if .status == "completed" then "merged" elif .status == "active" then "open" else "closed" end),
+        head_sha: .lastMergeSourceCommit.commitId} end'
 }
 # Policy evaluations (build validation, required reviewers) plus PR statuses.
 host_pr_checks() { # <pr> <head_sha>

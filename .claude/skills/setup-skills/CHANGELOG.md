@@ -7,6 +7,52 @@ released version. See
 
 <!-- version list -->
 
+## v0.10.0 (2026-09-29)
+
+### Features
+
+- **setup-skills**: Pin the claude reviewer template's actions and drop checkout credentials
+  ([#405](https://github.com/Gharib89/skills/pull/405),
+  [`9b40b12`](https://github.com/Gharib89/skills/commit/9b40b12537d8a02cbbd3df9cb213305ca145d0f5))
+
+
+## v0.9.0 (2026-09-28)
+
+### Features
+
+- **setup-skills**: Local gate and cloud bootstrap over the harness
+  ([#384](https://github.com/Gharib89/skills/pull/384),
+  [`a0a8f9a`](https://github.com/Gharib89/skills/commit/a0a8f9ae146bfec29e0f84faa3f72f76fb84c303))
+
+
+## v0.8.2 (2026-09-28)
+
+### Bug Fixes
+
+- **skills**: Keep every skill self-contained, and gate it
+  ([#380](https://github.com/Gharib89/skills/pull/380),
+  [`76934a4`](https://github.com/Gharib89/skills/commit/76934a4d031a8f63229b3c79ea93df4d762b016e))
+
+
+**The renumber to 0.x.** Every entry below predates it and keeps the number it was released under. `setup-skills` was never publicly released, so on 2026-09-28 its version moved from 8.1.1 to 0.8.1: the old major is now the minor. The release run writes new entries above this note, counting on from 0.8.1. See [ADR 0005](https://github.com/Gharib89/skills/blob/main/docs/adr/0005-skills-stay-0x-until-public-release.md).
+
+## v8.1.1 (2026-09-26)
+
+### Bug Fixes
+
+- **skills**: Prompt-audit cleanup of ship and setup-skills prose
+  ([`9b84fb6`](https://github.com/Gharib89/skills/commit/9b84fb6742875c2fd9dda08f0010b31f200bb5ab))
+
+
+## v8.1.0 (2026-09-26)
+
+### Features
+
+- **setup-skills**: Ship block as a setup section, whole-file section re-run
+  ([#326](https://github.com/Gharib89/skills/pull/326),
+  [`874cca1`](https://github.com/Gharib89/skills/commit/874cca19fbe56ffc99be0d6cac1a31c09aa244ac))
+
+
 ## v8.0.0 (2026-09-26)
 
 ### Bug Fixes

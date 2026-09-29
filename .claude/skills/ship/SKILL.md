@@ -6,7 +6,7 @@ description: >-
   unattended lane.
 argument-hint: "[issue-number] [--unattended]"
 metadata:
-  version: 11.0.0
+  version: 0.12.0
   profile-schema: 3
   composes: mattpocock/skills#c55ee46073ed923f86ce59a5eb3b6d895095d1b7:tdd mattpocock/skills#c55ee46073ed923f86ce59a5eb3b6d895095d1b7:writing-for-agents mattpocock/skills#c55ee46073ed923f86ce59a5eb3b6d895095d1b7:code-review upstash/context7#e275a848a420e0d11c2822f61201ee005bfd1133:find-docs humanlayer/skills#ca7c8088db69e315a8b2deea43820270457f8f3c:show-me
 ---
@@ -160,9 +160,8 @@ claim are separate**, so a reviewer citing the wrong commit for a real primitive
 is still right. A valid finding outside the issue is an adjacent find. Then read
 the diff yourself against the depth checks in the coding-standards file the
 Standards axis reads, by their leading words: a vocabulary the change extends, a
-rule-shaped prose change, a prose change to ship's SKILL.md or a reference
-file, new pattern-matching code, a new test run with its fix reverted, a fix
-landed after review. Reviewer rounds find these otherwise, serially, at the cost
+rule-shaped prose change, new pattern-matching code, a new test run with its fix
+reverted, a fix landed after review, and any the repo adds beside them. Reviewer rounds find these otherwise, serially, at the cost
 of most of a run's wall time, and the reverted-fix one escapes them entirely.
 This self-review plus green CI is the review gate.
 **Done when:** every report that fired has its Report file on disk and its path
@@ -175,11 +174,11 @@ finding carries a disposition; otherwise go back. A gate run while `code-review`
 is still out is paid twice when a finding lands. Run `base-fresh` first: CI
 tests the merge ref, so a branch that predates a merge still goes green while
 every "does this exist?" answer taken from the worktree was pre-merge; behind:
-rebase, re-run, continue. Confirm every `Carry:` file still matches the main
-checkout's copy; a difference is `carried file modified`, because ship has no
-business editing untracked secrets. Then run the gate at the profile's
-`Location:` from the worktree, inline (small lane: small-lane.md). Its verdict is
-one JSON object: `verdict` `pass|fail|unavailable`, per-gate statuses
+follow its advice, re-run, continue. Confirm every `Carry:` file still matches
+the main checkout's copy; a difference is `carried file modified`, because ship
+has no business editing untracked secrets. Then run the gate at the profile's
+`Location:` from the worktree, inline (small lane: small-lane.md). Its verdict
+is one JSON object: `verdict` `pass|fail|unavailable`, per-gate statuses
 `pass|fail|deferred-to-ci|unavailable`, and `gates.secrets` in every lane;
 unparseable output or a missing `secrets` key reads as `unavailable`. `fail`:
 fix loop. `deferred-to-ci`: proceed, the merge summary naming each deferred
@@ -214,7 +213,11 @@ returned is replied to and resolved per `Resolve:`, every section the rounds
 grew is rewritten, and `read-pr` shows a `## Review` line per reviewer.
 
 **8 · CI.** CI runs from PR-open and overlaps phase 7; `ci-wait <pr>` covers it,
-reading the profile's `Legs:`. On `conflict`, its stderr carries the recovery.
+reading the profile's `Legs:`. `ci-wait` and `poll-pr` wait for the expected
+head, `--sha <sha>` else the worktree's `HEAD` when it is on the PR's branch, so
+a read straight after a push never grades the previous head. A `timeout` whose
+`head_sha` is not that head means the host never showed the push: confirm it
+landed, then re-run. On `conflict`, its stderr carries the recovery.
 `no-checks` is fine only where `No-checks legal:` says so. A red leg named on a
 verification's `Also proven by CI:` line is that verification failing: back to
 phase 2. Red after the reviewers exited: fix, push, proceed on green. Honour
@@ -267,7 +270,7 @@ hold around that:
 | Local gate verdict `unavailable` | `local gate unavailable: <gates>` | attended: ask; unattended: hand back |
 | Carried file changed | `carried file modified: <file>` | attended: ask; unattended: hand back |
 | Red after retries | `red-after-retry: <what>` | attended: ask; unattended: hand back |
-| The branch fell behind its base before the merge | `stale-base: behind <n> on <base>` | attended: holds while you rebase; unattended: hand back |
+| The branch fell behind its base before the merge | `stale-base: behind <n> on <base>` | attended: holds while you merge the base in; unattended: hand back |
 | The PR is closed at the merge gate | `pr-closed: <state>` | attended: ask; unattended: hand back |
 | `prepare` failed its Cloud lane `Bootstrap:` | `bootstrap-failed` | no claim |
 | Open PRs at or above the profile's `PR cap:` | `pr-queue-full` | no claim |

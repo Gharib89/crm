@@ -14,7 +14,12 @@ the unproven check in the merge summary.
 It also cross-checks `## Host` against the remote, validates the profile,
 confirms every skill on ship's `composes` line is installed under this
 checkout's `.claude/skills/` at its pinned ref, as `skills-lock.json` records
-the installed one, and prunes worktrees whose PR is merged or closed.
+the installed one, and prunes leftover worktrees.
+
+A sibling worktree is pruned only when its HEAD is exactly the head of the
+merged or closed PR its branch names. Branch names get reused, so a name match
+alone proves nothing: a fresh worktree, or one with commits past its PR's head,
+is kept with its work.
 
 ## Admission
 

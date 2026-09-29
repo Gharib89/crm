@@ -3,22 +3,22 @@ name: update-skills
 description: "Refresh this repo's skills in one PR: the Gharib89/skills skills, every skill they compose at its pinned ref, and any other repo-scoped skill the owner picks; report upstream drift to the source repo and summarise what changed. In the source repo, move the drifted pins instead. Attended only."
 disable-model-invocation: true
 metadata:
-  version: 1.0.0
+  version: 0.2.0
 ---
 
 # update-skills
 
 Refresh a repo's skills as one PR the repo's own CI, reviewers and merge gate
-see, with a body that says what moved. Vocabulary:
-[CONTEXT.md](https://github.com/Gharib89/skills/blob/main/CONTEXT.md) of the
-source repo (source repo, consumer repo, derived copy, pinned ref, upstream
-drift, refresh).
+see, with a body that says what moved. The **source repo** is
+`Gharib89/skills`, where these skills are written; a **consumer repo** holds
+**derived copies** installed from it, the source repo included. A composed
+skill's **pinned ref** is the upstream commit the source repo tested, and
+**upstream drift** is that upstream moving past it.
 
 **Attended only.** It asks the repo owner which skills to take and re-runs
 `/setup-skills`, which interviews; no cloud routine runs it.
 
-**It calls Ship's generic mechanics by path** from the worktree
-([ADR 0004](https://github.com/Gharib89/skills/blob/main/docs/adr/0004-cross-repo-writes-reach-the-source-repo-on-the-humans-word.md)): `$S` below stands for
+**It calls Ship's generic mechanics by path** from the worktree: `$S` below stands for
 `.claude/skills/ship/scripts` and `$U` for `.claude/skills/update-skills/scripts`.
 After step 2 those are the scripts it just installed, so it never drives a Ship
 other than the one the PR ships. Each mechanic answers `--help` with its flags.
@@ -30,8 +30,11 @@ steps write out in full.
 
 ### 1. Isolate
 
-From the main checkout, `$S/isolate.sh none chore update-skills`, then work
-from the path it prints. Note `git rev-parse HEAD` there as `<old>`: the tree
+From the main checkout, `$S/isolate.sh none chore update-skills-<YYYYMMDD>`,
+the run's date as `date +%Y%m%d` prints it, then work from the path it prints.
+The date keeps a merged refresh branch left on the host from blocking the next
+refresh; a second run the same day is refused by isolation, and nothing is
+deleted to make room. Note `git rev-parse HEAD` there as `<old>`: the tree
 before the refresh, which the plan reads as the old side.
 
 ### 2. Refresh the source-repo skills
@@ -66,9 +69,10 @@ current, run `$S/cleanup.sh none` from the main checkout, and stop.
 ### 4. Composed skills at their pins
 
 Run every `composed[].install` line, then `$S/preflight.sh none` and keep its
-`reasons`. A `worktree exists` reason naming this run's own worktree is
-expected; a profile reason is step 6's; any other carries the line that repairs
-it: run that, then preflight again. A consumer repo never installs a drift
+`reasons`. An `existing branch` reason naming this run's own branch and a
+`worktree exists` reason naming its own worktree are expected; a profile reason
+is step 6's; any other carries the line that repairs it: run that, then
+preflight again. A consumer repo never installs a drift
 row's `head`: that version is one nobody tested Ship against, and the row
 reaches the source repo in step 7 instead.
 
@@ -82,7 +86,7 @@ description. Run the
 `install` line of each skill ticked. Personal skills under `~/.claude/skills`
 are never in the lock and never touched.
 
-### 6. setup-skills sections
+### 6. setup-skills sections, then retired terms
 
 `/setup-skills` re-runs when step 4's `reasons` carry `profile missing` or
 `profile invalid`, or `sections` is non-empty. Ask the owner to run it from a
@@ -95,16 +99,34 @@ section only the step-5 item its template feeds:
 |---|---|
 | `pr-template` | **PR template** |
 | `reviewer-scaffolding` | **Reviewer scaffolding** |
-| `local-gate` | **Local gate** |
+| `local-gate` | **Local gate over the harness** or **Self-contained local gate**, whichever setup-skills' harness detection picks |
 | `coding-standards` | **Coding standards** |
 | `dimension-labels` | **Triage labels on the host** and **The `## Dimension labels` section** |
 | `ado-tracker-doc` | step 1.1's Azure DevOps tracker doc |
+| `ship-block` | **The `### Ship` sub-block** |
+| `cloud-bootstrap` | **Cloud bootstrap** |
 
 A change to setup-skills' `SKILL.md` alone is not a section: its prose moving
 costs no interview. When the owner says it finished, run `$S/preflight.sh none`
-again: the step is done when this run's `worktree exists` is the only reason
-left. Note the profile schema move for step 8: the `Schema:` line of
-`docs/agents/ship.md` at `<old>` against the one now.
+again: the step is done when this run's own `existing branch` and `worktree
+exists` are the only reasons left. Note the profile schema move for step 8: the
+`Schema:` line of `docs/agents/ship.md` at `<old>` against the one now.
+
+**Retired terms**, whether or not setup-skills re-ran. Each `retired` row is a
+word a source-repo skill stopped using inside the range this refresh crosses.
+In a consumer repo, find it in the repo's own files, never the derived copies:
+
+```sh
+git grep -n -w -F -e '<term>' -- . ':!.claude/skills/'
+```
+
+Replace each hit with the row's `replacement` where it reads correctly in that
+sentence. A record of the past, such as a changelog entry or an ADR, keeps the
+word and is no hit. List every other hit, and every hit of a row whose
+`replacement` is null, for step 8's Needs attention as `<path>:<line>: <term>`.
+In the source repo there is nothing to sweep: the PR that retired a word adds
+its row to that skill's `retired-terms.md` and replaces the word in this repo's
+own documents, in the same diff.
 
 ### 7. Report upstream drift
 
@@ -113,7 +135,7 @@ repo, run step 9 first, then this step, then step 8. Write a body file holding
 a `## Drift` section and nothing else, its table
 `| Skill | Pinned | Upstream head |` with one row per `drift` entry. The source
 repo is public, so the body carries skill names and refs only: not this repo's
-name, nor anything else about it ([ADR 0004](https://github.com/Gharib89/skills/blob/main/docs/adr/0004-cross-repo-writes-reach-the-source-repo-on-the-humans-word.md)). Then:
+name, nor anything else about it. Then:
 
 ```sh
 $S/file-issue.sh --repo Gharib89/skills --title "Upstream drift: composed skills" --body-file <body> --label needs-triage
@@ -136,31 +158,66 @@ $S/file-issue.sh --repo Gharib89/skills --title "Upstream drift: composed skills
 
 ### 8. Summary and PR
 
-Commit the refresh and every setup-skills write. The PR body carries these
-sections in this order:
+Commit the refresh, every setup-skills write and every retired-term edit. Run
+the profile's `## Local gate` `Location:` from the worktree and keep its
+`verdict`. The body takes the sections of the repo's PR template (the profile's
+`## PR` `Template:`) in its order, or these headings where it has none; each
+section carries the content below either way:
 
-1. `## Source-repo skills`: for each `source_skills` entry whose version moved,
-   the sections of the file at its `changelog` path above `old_version` up to
-   `new_version`, verbatim, breaking changes first within this section. A null
-   `old_version` is a skill new to this repo: its version alone.
-2. `## Composed skills`: for each `composed` entry whose `old_ref` differs from
-   its `pin`, `<skill>: <old_ref> → <pin>`, then the upstream commit subjects
-   that touched its folder between the two. A null `old_ref` reads "previously
-   unpinned → `<pin>`", with no subjects.
-3. `## setup-skills`: the sections step 6 re-ran and the profile schema move,
-   or "none".
-4. `## Other skills`: each skill step 5 took, `<old_ref> → <head>`, with its
-   subjects the same way.
-5. `## Upstream drift`: the drift issue's link and the `drift` rows, held at
-   their pins in a consumer repo and moved in the source repo; or the printed
-   command; or "none". Then each `unreachable` row as
-   "drift not checked: <skill>: <error>".
+- `## Why the change`: one sentence naming the refresh.
+- `## Change outline`: `Shape: none, mechanical (skills refresh).`, then:
+  1. One version table, `| Skills | Move |`. A `source_skills` entry whose
+     version moved reads `<old_version> → <new_version>`, a null `old_version`
+     `new at <new_version>`. A `composed` entry whose `old_ref` differs from its
+     `pin` reads `<old_ref> → <pin>`, and each skill step 5 took `<old_ref> →
+     <head>`, as 7-character shas, each linked to
+     `https://github.com/<source>/commit/<sha>`, a null `old_ref` reading
+     `unpinned`. Skills with the same move share one row.
+  2. **What changes for this repo**: a plain-words list of what a maintainer
+     here now meets (an exit word renamed, a profile line to add, a refusal a
+     run now makes), drawn from the changelogs and subjects, not restating them.
+  3. **Repo-owned files**: `git diff --name-only <old> -- . ':!.claude/skills/'
+     ':!skills-lock.json'`, the files the refresh changed outside the derived
+     copies.
+- `## Special things to note`:
+  1. `- Door: <one-way|two-way>. Blast radius: <one clause>.`, two-way unless
+     setup-skills changed host state a revert does not undo.
+  2. One line folding every empty outcome among other skills, upstream drift
+     and unreachable upstreams, e.g. `- No other skills moved, no upstream
+     drift, every upstream answered.` Each non-empty one gets its own line
+     instead: an `unreachable` row as `drift not checked: <skill>: <error>`,
+     drift as its rows, held at their pins in a consumer repo and moved in the
+     source repo.
+  3. The sections step 6 re-ran and the profile schema move, only when there
+     are any.
+- `## Needs attention`: the drift issue's link or step 7's printed command,
+  every retired-term hit step 6 listed, a local gate `verdict` other than
+  `pass`, and any to-do left to the owner, one line each; `None.` when empty.
+  The PR opens either way: the owner decides.
+- `## Verification`: the last preflight's `reasons` (step 6's, else step 4's),
+  the expected pair named as expected, and the local gate `verdict`.
+- `## Review`: `None.`: no reviewer loop runs here.
+- `## Attribution`: the environment's footer, last.
+- A bare `Closes #` line: dropped in a consumer repo, `Closes #<n>` in the
+  source repo (step 9). Any other template section: what its comment asks for.
+
+Between the last content section and `## Attribution`, one collapsed block per
+`source_skills` entry whose version moved,
+`<details><summary><skill> <old_version> → <new_version></summary>`: the
+sections of the file at its `changelog` path above `old_version` up to
+`new_version`, verbatim, breaking changes first. A null `old_version` is a skill
+new to this repo: its version alone. A refresh whose new `changelog` carries the
+**The renumber to 0.x.** note, where the old copy's lacked it, crosses that
+renumber: the sections above `old_version` under the old numbers, then
+the renumbered ones up to `new_version`. One more block holds each composed and
+other skill that moved, with the upstream commit subjects that touched its
+folder between the two refs; a null `old_ref` has no subjects.
 
 The subjects are a read, not a gate: the folder is the lock's `skillPath`
 without `/SKILL.md`, and the commits are those of
 `https://api.github.com/repos/<source>/commits?sha=<new>&path=<folder>` newer
-than the old ref, which `.../commits/<old_ref>` dates. A null `old_ref` has no
-subjects; a read that fails writes "subjects unavailable" and goes on.
+than the old ref, which `.../commits/<old_ref>` dates. A read that fails writes
+"subjects unavailable" and goes on.
 
 Open it with `$S/open-pr.sh none --title "<subject>" --body-file <body>`, a
 Conventional-Commit subject honouring the profile's `Subject constraints:`
