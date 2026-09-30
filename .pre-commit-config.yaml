@@ -1,9 +1,12 @@
 # Install once per clone: `pre-commit install` (after `pip install -e ".[dev]"`).
 # Runs ruff lint + format on staged files so the format round-trip never reaches
 # CI. rev is kept in lockstep with the ruff pin in setup.py [dev] — bump both.
+# Installed skills are derived copies (a fix-mode rewrite breaks their
+# skills-lock.json hash) and the fixture trees are byte-exact test inputs.
+exclude: ^(\.claude/skills/|crm/tests/fixtures/|crm/tests/e2e/fixtures/)
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.21
+    rev: 01a675ea018f2fb714478a5ffb83fcea8374bb06  # frozen: v0.15.21
     hooks:
       - id: ruff-check
         args: [--fix]
@@ -11,15 +14,20 @@ repos:
   # Workflow-YAML + inline-bash linter. Also enforced in CI's lint job (ci.yml),
   # which pins the same rev — bump both together.
   - repo: https://github.com/rhysd/actionlint
-    rev: v1.7.12
+    rev: 914e7df21a07ef503a81201c76d2b11c789d3fca  # frozen: v1.7.12
     hooks:
       - id: actionlint
+        # pyflakes on PATH would change results per machine.
+        args: [-pyflakes=]
   # GitHub Actions security auditor. Also enforced in CI's lint job (ci.yml),
   # which pins the same version — bump both together. Config: .github/zizmor.yml.
   - repo: https://github.com/zizmorcore/zizmor-pre-commit
-    rev: v1.26.1
+    rev: e3eebf65325ccc992422292cb7a4baee967cf815  # frozen: v1.26.1
     hooks:
       - id: zizmor
+        # --offline: a cloud session's GH_TOKEN would switch zizmor online, and
+        # the GitHub API refuses that token (401).
+        args: [--no-progress, --offline]
   # Typo checker — pre-commit only, NOT a CI gate (a jargon false positive must
   # never block a merge). D365 ignore-words live in pyproject.toml's
   # [tool.codespell]; additional_dependencies pulls tomli so it reads that config.
@@ -29,7 +37,7 @@ repos:
   # test suites' intentional-misspelling fixtures (did-you-mean tests). Beyond
   # `skip`, it drops the skills-lock.json skill copies, which are never hand-edited.
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.2
+    rev: 57b21406f092110c18776e39b0bda50d37c945c8  # frozen: v2.4.3
     hooks:
       - id: codespell
         additional_dependencies: [tomli]
@@ -42,3 +50,11 @@ repos:
             CHANGELOG\.md$|
             \.claude/skills/(cloud-ship|code-review|find-docs|setup-skills|ship|show-me|tdd|triage|writing-for-agents)/
           )
+  # Shell linter. Runs the ShellCheck on PATH (apt in the cloud setup).
+  - repo: local
+    hooks:
+      - id: shellcheck
+        name: shellcheck
+        entry: shellcheck
+        language: system
+        types: [shell]

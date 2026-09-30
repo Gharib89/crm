@@ -1,0 +1,9 @@
+{
+  "name": "harness-pyright-lsp",
+  "description": "Python language server (Pyright) for type checking and code intelligence",
+  "version": "1.0.0+2a8ad9f74633d10e3d9bb0660a03bfc6e50584b1",
+  "author": {
+    "name": "Anthropic",
+    "email": "support@anthropic.com"
+  }
+}

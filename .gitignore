@@ -37,3 +37,6 @@ evals/results/*
 coverage.xml
 htmlcov/
 .coverage
+
+# pytest-testmon selection data (the harness turn rung; per checkout)
+.testmondata*

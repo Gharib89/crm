@@ -53,11 +53,12 @@ setup(
         "defusedxml>=0.7",
     ],
     extras_require={
-        # pyright is pinned EXACT, not floored: the pip wrapper's bundled node
-        # pyright tracks the package version, so an open `>=` floor let different
-        # machines install different binaries — a regressed 1.1.409 flagged
-        # phantom `reportUnknownMemberType` errors CI's 1.1.411 did not (#632).
-        # Keep this in lockstep with the version CI resolves; bump both together.
+        # pyright is NOT a dev dependency: every caller runs Microsoft's npm
+        # package at one exact version, `npx --yes --package=pyright@1.1.414`
+        # (CI, scripts/check.sh, scripts/local-gate.sh, the strict-check hook and
+        # the vendored pyright-lsp plugin). An open floor once let machines
+        # disagree (#632), so bump every one of those sites together.
+        # pytest-testmon selects the affected tests on the harness turn rung.
         # ruff is pinned EXACT for the same reason: formatter output drifts
         # across versions, so a floor would let local and CI formatting diverge.
         # Keep in lockstep with .pre-commit-config.yaml (ruff-pre-commit rev).
@@ -66,7 +67,7 @@ setup(
             "pytest-cov>=5.0",
             "requests_mock>=1.10",
             "pyinstaller>=6.0",
-            "pyright==1.1.411",
+            "pytest-testmon==2.2.0",
             "ruff==0.15.21",
             "pre-commit>=4.0",
         ],
