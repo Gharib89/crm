@@ -125,7 +125,7 @@ Agent-facing: docs/agents/, .claude/skills/, crm/skills/, CLAUDE.md, .github/cop
 ## Current docs
 
 Sources: context7, Microsoft Learn
-Pinned: click (>=8.4.1; relies on 8.4 internals, ADR 0025), pyright 1.1.411, ruff 0.15.21, semgrep 1.169.0, zizmor 1.26.1, actionlint 1.7.12, Dataverse Web API v9.2
+Pinned: click (>=8.4.1; relies on 8.4 internals, ADR 0025), pyright 1.1.414 (npm), ruff 0.15.21, semgrep 1.169.0, zizmor 1.26.1, actionlint 1.7.12, Dataverse Web API v9.2
 
 ## Cloud lane
 

@@ -32,7 +32,7 @@ Worktrees have no `.venv`: `scripts/local-gate.sh` finds the main checkout's ven
 pip install -e ".[dev,docs]"              # dev + docs deps
 pytest                                    # offline suite; addopts pins `-m 'not e2e'`, so e2e is skipped by default
 pytest crm/tests/test_query.py::test_x    # single test (or `-k '<expr>'` to match by name); `-m slow` for the slow ops
-pyright --pythonpath .venv/bin/python --pythonversion 3.13   # local lint (omit pythonpath → ~56 false errors); strict + py3.13 pinned in pyrightconfig.json
+npx --yes --package=pyright@1.1.414 pyright --pythonpath .venv/bin/python --pythonversion 3.13   # local lint (omit pythonpath → ~56 false errors); one npm pin across CI, gate and hooks (setup.py [dev] comment); strict + py3.13 pinned in pyrightconfig.json
 ruff check . && ruff format --check .     # lint + format gate; CI runs both (config in pyproject.toml)
 uvx semgrep scan --config ci/semgrep-rules.yml --error --metrics off   # house-convention rules (dry-run contract); CI `lint` runs this in its own venv. Not in [dev] — engine needs py>=3.10; `pipx install semgrep` or `uvx semgrep`
 uvx zizmor==1.26.1 .                       # GitHub Actions security audit; CI `lint` runs it pinned in its own venv (config `.github/zizmor.yml`, scoped unpinned-uses policy). Also a pre-commit hook; version lockstep across both. Not in [dev]
@@ -92,6 +92,10 @@ Any PyInstaller bundle-shape change must touch all **5 sites**:
 5. `scripts/build.ps1`
 
 ## Agent skills
+
+### Harness
+
+`scripts/check.sh` is this repo's check entry point: `edit <file>...` lints and formats, `turn` typechecks and runs the affected tests of every uncommitted change, and `full` answers for the whole repo: the runner on every file. It prints one JSON line and exits 0 pass, 1 fail, 2 unavailable, 3 over budget. Hooks in `.claude/settings.json` run `edit` after every Edit or Write and `turn` at every stop, and the pre-commit runner is the commit rung. Harness profile: `docs/agents/harness.md`. Re-run `/setup-harness` after adding a stack, a member or a tool.
 
 ### Subagents
 

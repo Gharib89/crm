@@ -1,0 +1,11 @@
+{
+  "pyright": {
+    "command": "npx",
+    "args": ["--yes", "--package=pyright@1.1.414", "pyright-langserver", "--stdio"],
+    "extensionToLanguage": {
+      ".py": "python",
+      ".pyi": "python"
+    },
+    "settings": {"python": {"pythonPath": ".venv/bin/python"}}
+  }
+}

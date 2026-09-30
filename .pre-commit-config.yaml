@@ -1,9 +1,14 @@
 # Install once per clone: `pre-commit install` (after `pip install -e ".[dev]"`).
 # Runs ruff lint + format on staged files so the format round-trip never reaches
 # CI. rev is kept in lockstep with the ruff pin in setup.py [dev] — bump both.
+# Skills are derived copies (a fix-mode rewrite breaks their skills-lock.json
+# hash; a vendored one is overwritten by the next sync) except the three
+# hand-edited project-native ones (scripts/sync-skills.py PROJECT_NATIVE), which
+# stay linted. The fixture trees are byte-exact test inputs.
+exclude: ^(\.claude/skills/(?!(merge-gate|live-e2e|audit-crm-skill)/)|crm/tests/fixtures/|crm/tests/e2e/fixtures/)
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.21
+    rev: 01a675ea018f2fb714478a5ffb83fcea8374bb06  # frozen: v0.15.21
     hooks:
       - id: ruff-check
         args: [--fix]
@@ -11,15 +16,20 @@ repos:
   # Workflow-YAML + inline-bash linter. Also enforced in CI's lint job (ci.yml),
   # which pins the same rev — bump both together.
   - repo: https://github.com/rhysd/actionlint
-    rev: v1.7.12
+    rev: 914e7df21a07ef503a81201c76d2b11c789d3fca  # frozen: v1.7.12
     hooks:
       - id: actionlint
+        # pyflakes on PATH would change results per machine.
+        args: [-pyflakes=]
   # GitHub Actions security auditor. Also enforced in CI's lint job (ci.yml),
   # which pins the same version — bump both together. Config: .github/zizmor.yml.
   - repo: https://github.com/zizmorcore/zizmor-pre-commit
-    rev: v1.26.1
+    rev: e3eebf65325ccc992422292cb7a4baee967cf815  # frozen: v1.26.1
     hooks:
       - id: zizmor
+        # --offline: a cloud session's GH_TOKEN would switch zizmor online, and
+        # the GitHub API refuses that token (401).
+        args: [--no-progress, --offline]
   # Typo checker — pre-commit only, NOT a CI gate (a jargon false positive must
   # never block a merge). D365 ignore-words live in pyproject.toml's
   # [tool.codespell]; additional_dependencies pulls tomli so it reads that config.
@@ -29,7 +39,7 @@ repos:
   # test suites' intentional-misspelling fixtures (did-you-mean tests). Beyond
   # `skip`, it drops the skills-lock.json skill copies, which are never hand-edited.
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.2
+    rev: 57b21406f092110c18776e39b0bda50d37c945c8  # frozen: v2.4.3
     hooks:
       - id: codespell
         additional_dependencies: [tomli]
@@ -42,3 +52,9 @@ repos:
             CHANGELOG\.md$|
             \.claude/skills/(cloud-ship|code-review|find-docs|setup-skills|ship|show-me|tdd|triage|writing-for-agents)/
           )
+  # Shell linter. The PyPI wheel brings its own pinned ShellCheck binary, so a
+  # clone without one on PATH still runs it.
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: 745eface02aef23e168a8afb6b5737818efbea95  # frozen: v0.11.0.1
+    hooks:
+      - id: shellcheck

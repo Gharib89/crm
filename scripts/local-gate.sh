@@ -116,8 +116,9 @@ else
     pyver=$("$py" -c "import json; print(json.load(open('pyrightconfig.json'))['pythonVersion'])")
     run ruff        "$py" -m ruff check .
     run ruff-format "$py" -m ruff format --check .
-    if [ -x "$venv/bin/pyright" ]; then
-      run pyright   "$venv/bin/pyright" --pythonpath "$py" --pythonversion "$pyver"
+    # Microsoft's npm pyright at the repo's one pinned version (setup.py [dev] comment).
+    if command -v npx >/dev/null; then
+      run pyright   npx --yes --package=pyright@1.1.414 pyright --pythonpath "$py" --pythonversion "$pyver"
     else
       mark pyright unavailable
     fi

@@ -53,7 +53,7 @@ Closes #
 ## Local gate — mirrors CI, all green
 
 - [ ] `pytest`
-- [ ] `pyright --pythonpath .venv/bin/python`
+- [ ] `npx --yes --package=pyright@1.1.414 pyright --pythonpath .venv/bin/python`
 - [ ] `mkdocs build --strict` (if `crm/**`, `docs/**`, `setup.py`, or `mkdocs.yml` touched)
 - [ ] Secret/credential scan clean (no real org GUIDs / fingerprints / secrets — public repo).
 
