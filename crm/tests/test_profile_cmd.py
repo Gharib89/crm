@@ -7,6 +7,7 @@ import json
 import re
 
 import pytest
+import requests
 import requests_mock
 from click.testing import CliRunner
 
@@ -222,6 +223,38 @@ class TestAddTestBeforeSave:
             )
         assert result.exit_code == 1, result.output
         assert "failc" not in session_mod.list_profiles()
+
+    def test_untrusted_certificate_hint_names_no_verify_ssl(self, crm_home):
+        # An internal-CA certificate is not a transient outage: point at the flag.
+        runner = CliRunner()
+        with requests_mock.Mocker() as m:
+            m.get(
+                requests_mock.ANY,
+                exc=requests.exceptions.SSLError("CERTIFICATE_VERIFY_FAILED"),
+            )
+            result = runner.invoke(
+                cli,
+                [
+                    "--json",
+                    "profile",
+                    "add",
+                    "--url",
+                    "https://crm.contoso.local/contoso",
+                    "--username",
+                    "alice",
+                    "--domain",
+                    "CONTOSO",
+                    "--password",
+                    "pw",
+                    "--name",
+                    "tlsc",
+                    "--yes",
+                ],
+            )
+        assert result.exit_code == 1, result.output
+        assert "certificate is not trusted" in result.output
+        assert "--no-verify-ssl" in result.output
+        assert "tlsc" not in session_mod.list_profiles()
 
     def test_failed_test_saved_with_flag(self, crm_home):
         # --save-on-test-failure persists a structurally-valid profile despite the

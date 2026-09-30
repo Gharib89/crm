@@ -95,6 +95,18 @@ def _adfs_note(profile, exc):
     return f"this org signs in through AD FS ({sts}): re-run with --auth-scheme adfs; "
 
 
+def _tls_note(exc):
+    """A hint prefix when the live test failed on an untrusted server certificate."""
+    import requests
+
+    if not isinstance(exc.__cause__, requests.exceptions.SSLError):
+        return ""
+    return (
+        "the server's TLS certificate is not trusted (an internal CA?): re-run with "
+        "--no-verify-ssl, or install the CA certificate; "
+    )
+
+
 @profile_group.command("add")
 @click.option(
     "--url",
@@ -344,20 +356,19 @@ def profile_add(
         # server unreachable, app user not yet provisioned). Save only on an
         # explicit opt-in — never silently.
         if not save_on_test_failure:
-            adfs_note = _adfs_note(profile, exc)
+            cause_note = _adfs_note(profile, exc) or _tls_note(exc)
             if not interactive:
                 _handle_d365_error(
                     ctx,
                     exc,
-                    hint=f"{adfs_note}profile not saved; re-run with --save-on-test-failure "
+                    hint=f"{cause_note}profile not saved; re-run with --save-on-test-failure "
                     "to save despite the failed live test",
                 )
                 return
             click.echo(f"Connection test failed: {exc}", err=True)
-            if adfs_note:
-                click.echo(adfs_note.rstrip("; "), err=True)
             click.echo(
-                "The profile looks structurally valid, so this is likely "
+                cause_note.rstrip("; ")
+                or "The profile looks structurally valid, so this is likely "
                 "transient (VPN down, server unreachable, or the app user "
                 "isn't provisioned yet).",
                 err=True,
