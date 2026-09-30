@@ -11,7 +11,7 @@ from click.testing import CliRunner
 
 from crm.cli import cli
 from crm.core import audit
-from crm.utils.d365_backend import ConnectionProfile
+from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
 
 
 def _save_profile(monkeypatch, tmp_path, **kwargs):
@@ -93,6 +93,18 @@ def test_entity_create_result_id_captured(monkeypatch, tmp_path):
         return {"id": fake_id, "name": "Contoso"}
 
     monkeypatch.setattr(entity_mod, "create", fake_create)
+    # The `_entity_id` injection resolves the primary key through a metadata GET.
+    monkeypatch.setattr(entity_mod, "inject_create_entity_id", lambda *_args: None)
+
+    # The profile's host does not resolve, so a request that escapes the fakes
+    # costs a DNS lookup and the retry backoff (~10 s) before it fails.
+    requests_made = []
+
+    def no_request(self, method, path, **kwargs):
+        requests_made.append((method, path))
+        raise D365Error("offline test reached D365Backend.request")
+
+    monkeypatch.setattr(D365Backend, "request", no_request)
 
     result = CliRunner().invoke(
         cli,
@@ -108,6 +120,7 @@ def test_entity_create_result_id_captured(monkeypatch, tmp_path):
         ],
     )
     assert result.exit_code == 0, result.output
+    assert requests_made == []
 
     rows = audit.read("default")
     assert len(rows) == 1, f"expected 1 journal row, got {len(rows)}: {rows}"

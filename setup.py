@@ -59,6 +59,8 @@ setup(
         # the vendored pyright-lsp plugin). An open floor once let machines
         # disagree (#632), so bump every one of those sites together.
         # pytest-testmon selects the affected tests on the harness turn rung.
+        # pytest-xdist runs CI's suite in parallel (`-n auto` in ci.yml only:
+        # testmon does not support xdist, so `-n` never goes in addopts).
         # ruff is pinned EXACT for the same reason: formatter output drifts
         # across versions, so a floor would let local and CI formatting diverge.
         # Keep in lockstep with .pre-commit-config.yaml (ruff-pre-commit rev).
@@ -68,6 +70,7 @@ setup(
             "requests_mock>=1.10",
             "pyinstaller>=6.0",
             "pytest-testmon==2.2.0",
+            "pytest-xdist==3.8.0",
             "ruff==0.15.21",
             "pre-commit>=4.0",
         ],

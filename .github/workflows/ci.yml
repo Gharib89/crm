@@ -105,8 +105,12 @@ jobs:
       # Coverage is REPORT-ONLY: no --cov-fail-under, no threshold gate, no
       # Codecov (map #819). --cov stays out of addopts so local `pytest` runs
       # fast; CI passes the flags explicitly and uploads the report as an artifact.
+      # Speed (#989): xdist workers, and coverage's sys.monitoring core (py3.12+)
+      # in place of its slower default tracer.
       - name: Run unit tests
-        run: pytest -q --cov=crm --cov-report=xml --cov-report=html
+        env:
+          COVERAGE_CORE: sysmon
+        run: pytest -q -n auto --cov=crm --cov-report=xml --cov-report=html
       - name: Upload coverage report
         # One artifact from Linux is enough for a report-only signal.
         if: runner.os == 'Linux'
