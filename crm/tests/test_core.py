@@ -146,6 +146,17 @@ class TestD365Backend:
         assert req.headers["OData-MaxVersion"] == "4.0"
         assert req.headers["Accept"] == "application/json"
 
+    def test_verify_off_silences_the_per_request_insecure_warning(self, profile):
+        import warnings
+
+        from urllib3.exceptions import InsecureRequestWarning
+
+        profile.verify_ssl = False
+        D365Backend(profile, password="pw")
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.warn("Unverified HTTPS request", InsecureRequestWarning, stacklevel=1)
+        assert caught == []
+
     def test_request_dry_run_returns_preview(self, profile):
         b = D365Backend(profile, password="pw", dry_run=True)
         result = b.post("accounts", json_body={"name": "Foo"})

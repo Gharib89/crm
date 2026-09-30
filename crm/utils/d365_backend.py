@@ -488,6 +488,13 @@ class D365Backend:
         self._session: requests.Session = requests.Session()
         self._session.auth = self._make_auth(password)
         self._session.verify = profile.verify_ssl
+        if not profile.verify_ssl:
+            # The profile opted out; urllib3 would otherwise warn on every request.
+            import warnings
+
+            from urllib3.exceptions import InsecureRequestWarning
+
+            warnings.filterwarnings("ignore", category=InsecureRequestWarning)
         self._effective_retry_max = _resolve_retry_max(profile)
         self._default_caller_id: str | None = _resolve_caller_id()
         self._default_caller_object_id: str | None = _resolve_caller_object_id()
