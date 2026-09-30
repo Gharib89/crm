@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.81.1 (2026-09-30)
+
+### Bug Fixes
+
+- **profile**: Name --no-verify-ssl on an untrusted certificate and stop per-request TLS warnings
+  ([#992](https://github.com/Gharib89/crm/pull/992),
+  [`e19d788`](https://github.com/Gharib89/crm/commit/e19d788a0cc9a121b15fd09159f2e0592b580c89))
+
+
 ## v1.81.0 (2026-09-30)
 
 ### Bug Fixes
