@@ -10,9 +10,10 @@ Strict surface (CLAUDE.md): `crm/core/*` and `crm/utils/d365_backend.py`. The
 rest of the tree is basic mode, so it is skipped to stay fast and quiet.
 
 Invocation mirrors the documented local lint: `--pythonpath .venv/bin/python`
-(else ~56 false import errors) and `--pythonversion 3.9` (else 3.10+ symbols
-mask real runtime ImportErrors). Missing venv/npx -> pass through (exit 0):
-a guardrail must never wedge editing when the toolchain is absent.
+(else ~56 false import errors) and `--pythonversion 3.13`, the python_requires
+floor (else newer symbols mask real runtime ImportErrors). Missing venv/npx ->
+pass through (exit 0): a guardrail must never wedge editing when the toolchain
+is absent.
 """
 
 from __future__ import annotations
@@ -70,7 +71,7 @@ def main() -> int:
                 "--pythonpath",
                 python,
                 "--pythonversion",
-                "3.9",
+                "3.13",
                 rel,
             ],
             cwd=project_dir,
