@@ -246,6 +246,24 @@ class TestReauth:
         assert len(_calls(m, "POST", TRUST)) == 2
         assert len(_calls(m, "GET", WHOAMI)) == 2
 
+    def test_reauth_drops_session_cookie_chunks_the_new_sign_in_did_not_issue(self):
+        b = D365Backend(_profile(), password=PASSWORD)
+        with requests_mock.Mocker() as m:
+            _mock_sign_in(m)
+            signed = {"status_code": 302, "headers": {"Location": "/main.aspx"}}
+            m.post(
+                f"{ORG}/",
+                [
+                    {**signed, "cookies": {"MSISAuth": "old-a", "MSISAuth1": "old-b"}},
+                    {**signed, "cookies": {"MSISAuth": "new-a"}},
+                ],
+            )
+            m.get(WHOAMI, [{"status_code": 401}, {"json": _WHOAMI_BODY}])
+            assert _user_id(b) == _WHOAMI_BODY["UserId"]
+        retried = _calls(m, "GET", WHOAMI)[-1].headers["Cookie"]
+        assert "MSISAuth=new-a" in retried
+        assert "MSISAuth1" not in retried
+
     def test_redirect_to_sts_signs_in_again_once_and_retries(self):
         b = D365Backend(_profile(), password=PASSWORD)
         with requests_mock.Mocker() as m:

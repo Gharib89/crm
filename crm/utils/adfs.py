@@ -281,7 +281,12 @@ class AdfsCookieAuth(AuthBase):
                 sts_url=self._sts_url,
                 timeout=self._timeout,
             )
-            self._session.cookies.update(http.cookies)
+            # The token is chunked over MSISAuth, MSISAuth1, ...; a re-sign-in can
+            # issue fewer chunks, and a stale one left behind corrupts the token.
+            jar = self._session.cookies
+            for c in [c for c in jar if c.name.startswith("MSISAuth")]:
+                jar.clear(c.domain, c.path, c.name)
+            jar.update(http.cookies)
         self._signed_in = True
 
     def _on_response(self, resp: requests.Response, **kwargs: Any) -> requests.Response:
