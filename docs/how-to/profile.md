@@ -1,9 +1,9 @@
 # How-to: profile
 
 Set up and switch connection targets. A **profile** holds the server URL, auth
-scheme, identity fields (NTLM username/domain or OAuth tenant/client id), and the
+scheme, identity fields (NTLM username/domain, AD FS username, or OAuth tenant/client id), and the
 optional `publisher_prefix` used by scaffolding/schema-name derivation. The
-secret (NTLM password or OAuth client secret) is stored alongside it. This is
+secret (NTLM/AD FS password or OAuth client secret) is stored alongside it. This is
 the only place credentials come from — there is no `.env` and no credential
 environment variables. See the [CLI reference](../reference/cli.md) for every flag.
 
@@ -66,6 +66,14 @@ crm profile add \
     --tenant-id <aad-tenant-id> --client-id <app-registration-id> \
     --client-secret "$CLIENT_SECRET" \
     --name online
+
+# On-prem IFD fronted by AD FS — never inferred from the URL, pass --auth-scheme
+crm profile add \
+    --url https://org.contoso.com \
+    --auth-scheme adfs \
+    --username 'CONTOSO\alice' \
+    --password "$SECRET" \
+    --name ifd
 ```
 
 `--client-secret` is an alias for `--password` (the two are mutually exclusive) so
@@ -86,6 +94,30 @@ prefix is set). Either path validates it — 2-8 alphanumeric characters,
 starting with a letter, not starting `mscrm` — before saving: an invalid
 `--publisher-prefix` fails at parse time (exit 2), an invalid wizard entry just
 re-prompts.
+
+### On-prem IFD behind AD FS
+
+An Internet-Facing Deployment whose sign-in page redirects to AD FS rejects NTLM,
+so use `--auth-scheme adfs` with the AD username and password. The CLI finds the
+AD FS server (the STS) from the org's own sign-in redirect; pass
+`--adfs-url https://sts.contoso.com` only to override that discovery (the wizard
+asks for it and a blank answer keeps discovery). `profile edit --adfs-url` changes
+it later, and a blank value restores discovery; `--adfs-url` with any other scheme
+is a usage error. If an `ntlm` `profile add` fails its live test against such an
+org, the error hint names `--auth-scheme adfs`.
+
+- **Username form.** The username reaches AD FS exactly as typed and there is no
+  separate `--domain` for this scheme. Which form the server accepts
+  (`CONTOSO\alice`, `alice@contoso.com`, or bare `alice`) depends on the AD FS
+  configuration; if one is rejected, try another.
+- **Internal CA.** An org and STS signed by a private certificate authority fail
+  verification. `--no-verify-ssl` (on `add`, or `profile edit --no-verify-ssl`)
+  covers both the org and the STS.
+- **Each run signs in fresh.** Session cookies are not persisted; a 401 or a
+  redirect back to the STS mid-run re-authenticates once. Errors name the failed
+  step (discovery, token request, or org sign-in) and never echo the password.
+- **Not supported:** AD FS OAuth, MFA, certificate trust, and Windows-integrated
+  AD FS endpoints.
 
 ## Switch the active profile
 

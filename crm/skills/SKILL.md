@@ -17,7 +17,7 @@ against both targets.
 
 | | On-prem (NTLM) | Cloud / online (OAuth) |
 |---|---|---|
-| Auth scheme | NTLM (also `kerberos` / `negotiate`) | OAuth (client-credentials) |
+| Auth scheme | NTLM (also `kerberos` / `negotiate`; `adfs` for an IFD org behind AD FS) | OAuth (client-credentials) |
 | API version | **v9.1 max** (`v9.2` → HTTP 501) | `v9.2` |
 | `CreateMultiple` / `UpdateMultiple` / `DeleteMultiple` | not available | available |
 | Solution import (sync + `ImportSolutionAsync` / `StageSolution`) | available | available |
@@ -154,9 +154,10 @@ at most one solution export per work session.
 
 ## Hard constraints
 
-- **NTLM (on-prem) or OAuth client-credentials (online).** IFD/Claims, certificate
-  credentials, and other OAuth flows (device-code, interactive, ROPC) are out of
-  scope; OAuth targets the public cloud only.
+- **NTLM or AD FS username/password (on-prem), OAuth client-credentials (online).**
+  AD FS OAuth, MFA, certificate credentials, and other OAuth flows (device-code,
+  interactive, ROPC) are out of scope; OAuth targets the public cloud only. An IFD
+  org needs the `adfs` scheme: `reference/setup.md`.
 - **Secrets are saved by default.** `crm profile add` / `crm profile set-password`
   store the secret in the OS keyring, or a `0600` plaintext field in the profile
   file when the keyring is unavailable (WSL/headless) or `--store-password-plaintext`

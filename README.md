@@ -57,7 +57,7 @@ Two surfaces feed AI agents:
 |--------------------------|--------------------|----------------------------------------|
 | Python                   | ≥ 3.13             |                                        |
 | Dynamics 365 CE on-prem  | 9.0 / 9.1 / 9.2    | Reachable from your machine over HTTPS |
-| Auth                     | NTLM (on-prem) · OAuth (online) | NTLM = Windows Integrated; OAuth = client-credentials for Dataverse cloud. |
+| Auth                     | NTLM or AD FS (on-prem) · OAuth (online) | NTLM = Windows Integrated; AD FS = username/password for an IFD org (`--auth-scheme adfs`); OAuth = client-credentials for Dataverse cloud. |
 
 The D365 server is a **hard runtime dependency** — without it the CLI has nothing
 to talk to. E2E tests fail loudly if credentials are missing.
@@ -225,7 +225,8 @@ command run with no profile configured launches this wizard automatically; under
 `--json` / no TTY it errors cleanly and tells you to run `crm profile add`.
 
 For scripting, pass flags instead. The auth scheme is inferred from the URL
-(`*.dynamics.*` → OAuth, anything else → NTLM); override with `--auth-scheme`.
+(`*.dynamics.*` → OAuth, anything else → NTLM); override with `--auth-scheme`
+(`adfs` for an on-prem IFD org fronted by AD FS; see the [profile how-to](docs/how-to/profile.md)).
 
 **On-prem (NTLM):**
 
@@ -618,9 +619,10 @@ See `D365.md` in the project root for the full SOP.
 
 ## Limits / Out of Scope
 
-- IFD (claims) auth, certificate credentials, and OAuth flows other than
-  client-credentials (device-code, interactive, ROPC) — on-prem uses NTLM,
-  cloud uses OAuth 2.0 client-credentials (secret) against the public cloud only.
+- AD FS OAuth, MFA, certificate credentials, and OAuth flows other than
+  client-credentials (device-code, interactive, ROPC) — on-prem uses NTLM (or
+  username/password through AD FS for an IFD org), cloud uses OAuth 2.0
+  client-credentials (secret) against the public cloud only.
 - Plugin / workflow source code deployment — use solution import for that.
 - Audit log / report execution — out of scope; can be added as an extension.
 

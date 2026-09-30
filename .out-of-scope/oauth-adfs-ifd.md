@@ -5,6 +5,10 @@ Internet-Facing Deployment (IFD) backed by AD FS. OAuth is supported only
 against Entra ID / Dataverse online; on-premises is served by NTLM (and the
 kerberos/negotiate variants).
 
+> **Scope note (#978).** Only AD FS **OAuth** is declined here. IFD sign-in with
+> an AD username and password (WS-Trust against the AD FS STS, the `adfs` auth
+> scheme) is supported; MFA and certificate trust stay out of scope.
+
 ## Why this is out of scope
 
 **No target needs it.** The two real deployments this CLI drives are an
@@ -50,3 +54,4 @@ on-prem, so the bar is "a target that is *only* reachable via IFD OAuth."
 ## Prior requests
 
 - #53 — "feat(auth): configurable OAuth authority/scope for on-prem IFD (AD FS), not just public cloud"
+- #978 — AD FS username/password sign-in for IFD orgs (shipped; not OAuth, so not covered by this decision)

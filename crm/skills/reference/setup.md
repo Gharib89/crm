@@ -26,7 +26,7 @@ Open a new shell so PATH updates, then verify with `crm --version`.
 ## Configure
 
 The CLI authenticates with **Windows Integrated auth** for on-prem (`ntlm` by
-default; `kerberos` / `negotiate` also supported), or **OAuth 2.0
+default; `kerberos` / `negotiate` also supported; `adfs` for IFD), or **OAuth 2.0
 client-credentials** for Dataverse online. Run **`crm profile add`** once to create
 a connection profile — it infers the scheme from the URL (any `.dynamics.` host →
 OAuth — `*.dynamics.com` plus regional clouds like `.dynamics.cn` / `.dynamics.de`;
@@ -59,6 +59,14 @@ crm profile add --url https://crm.contoso.local/contoso \
 crm profile add --url https://contoso.crm.dynamics.com \
   --tenant-id <aad-tenant> --client-id <app-id> --client-secret '<secret>' --name cloud
 ```
+
+**IFD orgs behind AD FS.** NTLM fails there (the Web API answers a bare 500), and
+the URL never infers this scheme, so pick `adfs` by hand. A failed `ntlm` test
+against such an org says so in its hint. Gotchas `--help` cannot tell you: the
+username goes to the STS exactly as typed and which form it accepts (`DOMAIN\user`,
+UPN, or bare name) depends on the AD FS server, so try another form on a
+rejection; an org on an internal CA needs `--no-verify-ssl`, which covers the STS
+too. MFA and certificate trust are unsupported.
 
 The OAuth scope (`https://<host>/.default`) and authority
 (`https://login.microsoftonline.com/<tenant>`) are derived automatically; public
