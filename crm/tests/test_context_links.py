@@ -1,5 +1,5 @@
 # pyright: basic
-"""CONTEXT.md cross-links must point at real, repo-relative paths.
+"""GLOSSARY.md cross-links must point at real, repo-relative paths.
 
 The links are module-granularity (no line anchors), so they survive in-file
 edits and break only on a file move/rename -- this test turns that break into a
@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-CONTEXT_MD = REPO_ROOT / "CONTEXT.md"
+CONTEXT_MD = REPO_ROOT / "GLOSSARY.md"
 LINK_RE = re.compile(r"\]\(([^)]+)\)")
 
 
@@ -29,6 +29,6 @@ def test_context_md_links_resolve():
     repo_links = [
         t.split("#", 1)[0] for t in targets if t and not t.startswith(("http://", "https://", "#"))
     ]
-    assert repo_links, "expected CONTEXT.md to carry repo-relative cross-links"
+    assert repo_links, "expected GLOSSARY.md to carry repo-relative cross-links"
     bad = sorted(t for t in repo_links if not _is_valid_repo_link(t))
-    assert not bad, f"CONTEXT.md links are missing, absolute, or escape the repo: {bad}"
+    assert not bad, f"GLOSSARY.md links are missing, absolute, or escape the repo: {bad}"

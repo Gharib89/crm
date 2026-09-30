@@ -20,8 +20,11 @@
 # upstream that does not answer costs only its own skills a head: each is an
 # `unreachable` row, and every other upstream is still read.
 #
+# A GET that fails is tried again, three attempts in all.
+#
 # stdout: {"heads": {"<skill>": "<sha>"}, "unreachable": [{skill, error}]}
-# exit: 0 · 1 an unreadable lock · 2 usage
+# exit: 0 · 1 an unreadable lock, or every upstream read failed (the count on
+#       stderr, the rows still on stdout) · 2 usage
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../../ship/scripts/_lib.sh" || { printf '{"error":"cannot source _lib.sh"}\n'; exit 2; }
 source "$(dirname "${BASH_SOURCE[0]}")/_lib.sh" || ship_tooling "cannot source update-skills' _lib.sh"
@@ -37,12 +40,25 @@ lock=$(jq -ce 'select(type == "object")' "$root/skills-lock.json" 2>/dev/null) |
 token=${GH_TOKEN:-${GITHUB_TOKEN:-}}
 
 api=https://api.github.com
+_curl() { curl -fsSL --connect-timeout 10 --max-time 30 -H 'Accept: application/vnd.github+json' "$@"; }
 # get <path>: one GET, the body in $body, curl's own error on stderr as
 # evidence; on failure $err names the request and get returns 1. Bounded in
-# time, so an upstream that accepts and never answers fails here too.
+# time, so an upstream that accepts and never answers fails here too. A failure
+# is tried again, three attempts in all: one flaky route timed out all 15
+# upstreams in one run, and every skill of a source repo read as unreachable.
+# The token travels as a config on curl's stdin (`-K -`), never as an argument:
+# any user on the host reads argv from /proc/<pid>/cmdline.
 get() {
-  body=$(curl -fsSL --connect-timeout 10 --max-time 30 -H 'Accept: application/vnd.github+json' ${token:+-H "Authorization: Bearer $token"} "$api/$1") \
-    || { err="cannot read $api/$1"; return 1; }
+  local attempt
+  for attempt in 1 2 3; do
+    if [ -n "$token" ]; then
+      body=$(printf 'header = "Authorization: Bearer %s"\n' "$token" | _curl -K - "$api/$1") && return 0
+    else
+      body=$(_curl "$api/$1") && return 0
+    fi
+    [ "$attempt" -eq 3 ] || sleep "$attempt"
+  done
+  err="cannot read $api/$1"; return 1
 }
 
 # One `<skill> <source> <folder> <base>` row per skill to look up, joined by
@@ -83,3 +99,9 @@ while IFS=$'\037' read -r skill src dir base; do
   out=$(jq -c --arg k "$skill" --arg v "$at" '.[$k] = $v' <<<"$out")
 done <<<"$rows"
 jq -cn --argjson h "$out" --argjson u "$miss" '{heads: $h, unreachable: $u}'
+# No head at all, with skills asked for: the plan would read "no drift" off an
+# empty `heads`, so the exit says the reads failed. stdout keeps the rows.
+if [ "$out" = '{}' ] && [ "$miss" != '[]' ]; then
+  printf 'every upstream read failed: %s skills unreachable\n' "$(jq length <<<"$miss")" >&2
+  exit 1
+fi

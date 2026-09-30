@@ -2190,7 +2190,7 @@ def test_exported_keys_and_gaps_partition_adapter_surface(kind):
 
 @pytest.mark.parametrize("kind", sorted(EXPORT_GAPS))
 def test_export_gaps_carry_a_recorded_reason(kind):
-    """A gap is deliberate, each with a recorded reason (CONTEXT.md → 'Export gap')."""
+    """A gap is deliberate, each with a recorded reason (GLOSSARY.md → 'Export gap')."""
     for key, reason in EXPORT_GAPS[kind].items():
         assert reason and reason.strip(), f"{kind}.{key}: empty gap reason"
 

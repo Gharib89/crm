@@ -21,6 +21,12 @@ still a complete run. The levers, in rough order of impact:
   subagent ("map how X, Y, Z connect; return signatures, call sites and data
   shapes") and read only the exact lines you will edit: a file you only need to
   *understand* stays out of main context.
+- **Read one reference file per call.** Several files chained in one `cat`
+  can pass the persist limit, and the caller then sees a 2 KB preview of the
+  lot and re-reads each file it chained.
+- **Read the profile by `##` section**, naming the heading (`## Reviewers`,
+  say) in a section-scoped `awk` or `sed -n`, for the sections a phase uses,
+  rather than the whole file.
 - **Investigate inside the worktree from the start**, so every file you read is
   the copy you will edit.
 - **Targeted test nodes during the loop; the full suite only at the local

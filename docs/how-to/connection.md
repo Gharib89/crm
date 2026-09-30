@@ -27,7 +27,7 @@ self-identifying — useful for confirming which org is active without matching
 | `org_name` | friendly org name from the `organizations` table (null on read failure) |
 
 The success envelope also carries `meta.profile` and `meta.url` (as for every
-backend-connected `--json` command — see "Connection identity" in `CONTEXT.md`).
+backend-connected `--json` command — see "Connection identity" in `GLOSSARY.md`).
 
 A non-zero exit (e.g. `401`) means the credentials are wrong — for NTLM the
 `DOMAIN\username` / password, for OAuth (online) the app-registration client id /

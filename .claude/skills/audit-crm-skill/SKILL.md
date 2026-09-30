@@ -107,7 +107,7 @@ numbers or repo paths inside `crm/skills/` content.
 Gates before the PR:
 
 ```bash
-grep -rn 'docs/\|CONTEXT.md\|CLAUDE.md\|crm/tests' crm/skills/   # self-containment: expect no hits
+grep -rn 'docs/\|GLOSSARY.md\|CLAUDE.md\|crm/tests' crm/skills/   # self-containment: expect no hits
 .venv/bin/pytest -q -k "skill"                                    # offline skill-tree tests
 mkdocs build --strict                                             # docs CI parity (crm/** triggers it)
 ```

@@ -1,6 +1,6 @@
 """Exit-code contract (ADR 0001): 0 success / 1 operational failure / 2 usage error.
 
-These tests pin the signal coding agents loop on. See CONTEXT.md for the terms
+These tests pin the signal coding agents loop on. See GLOSSARY.md for the terms
 (operational failure, usage error, emit envelope).
 """
 

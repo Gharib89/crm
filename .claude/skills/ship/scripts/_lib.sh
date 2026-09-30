@@ -175,7 +175,10 @@ readonly SHIP_CLAIM_COMMENT='🤖 Claimed by a ship run: implementation in progr
 # cannot load, so a broken install still emits the contract, not "command not found".
 ship_tooling() { jq -n --arg e "$1" '{error: $e}'; exit 2; }
 # SHIP_BY_HAND, set by ship_reach_repo, rides every exit-1 answer as `command`.
-ship_fail()    { jq -n --arg e "$1" --arg c "${SHIP_BY_HAND:-}" '{error: $e} + if $c == "" then {} else {command: $c} end'; exit 1; }
+# The message is also written to stderr (here and in ship_fail_host): a caller
+# piping stdout through `jq -r .field` reads a refusal as `null` and exit 0, and
+# stderr is what still shows it.
+ship_fail()    { jq -n --arg e "$1" --arg c "${SHIP_BY_HAND:-}" '{error: $e} + if $c == "" then {} else {command: $c} end'; printf '%s\n' "$1" >&2; exit 1; }
 
 # ship_fail_host <msg> <adapter-answer>: the exit-1 shape for a host write that
 # failed, carrying the HTTP status of the last attempt. Without it a host that
@@ -191,6 +194,7 @@ ship_fail_host() { # ship_fail_host <msg> <adapter-answer>
   [ -n "$s" ] || s=null
   jq -n --arg e "$1" --argjson s "$s" --arg c "${SHIP_BY_HAND:-}" \
     '{error: $e, status: $s} + if $c == "" then {} else {command: $c} end'
+  printf '%s\n' "$1" >&2
   exit 1
 }
 

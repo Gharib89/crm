@@ -6,4 +6,4 @@ metadata:
   internal: true
 ---
 
-Run a `/grilling` session.
+Call the Skill tool with "grilling".

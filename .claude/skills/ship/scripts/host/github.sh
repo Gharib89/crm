@@ -119,7 +119,7 @@ api() {
     # `gh` spells a stdin payload either `--input -` or `--input=-`.
     if { [ "$prev" = --input ] && [ "$a" = - ]; } || [ "$a" = --input=- ]; then
       buf=$(mktemp) || return 2
-      trap 'rm -f "$buf"' RETURN
+      trap 'rm -f "$buf"; trap - RETURN' RETURN
       cat > "$buf"
       case $a in --input=-) a=--input=$buf ;; *) a=$buf ;; esac
     fi
@@ -304,7 +304,7 @@ host_issue_remove_label() {
 host_issue_comment() {
   local f out rc
   f=$(mktemp) || return 2
-  trap 'rm -f "$f"' RETURN
+  trap 'rm -f "$f"; trap - RETURN' RETURN
   printf '%s' "$2" > "$f"
   out=$(host_pr_comment "$1" "$f"); rc=$?
   [ "$rc" -eq 0 ] || printf '%s\n' "$out"
@@ -391,7 +391,7 @@ host_pr_create() { # <head> <base> <title> <body-file> <issue>
       | _gh_create -X POST "$R/pulls" --input - --jq '{number, url: .html_url, created_at}'
   }
   _pr_find() {
-    api "$R/pulls?state=open&head=$SHIP_OWNER:$head" --jq 'first | select(. != null) | {number, url: .html_url, created_at}'
+    api "$R/pulls" -X GET -f state=open -f "head=$SHIP_OWNER:$head" --jq 'first | select(. != null) | {number, url: .html_url, created_at}'
   }
   _gh_create_verify _pr_post _pr_find
 }
@@ -405,7 +405,7 @@ host_pr_get() {
 }
 
 host_pr_for_branch() { # <branch>
-  api "$R/pulls?state=all&head=$SHIP_OWNER:$1&sort=created&direction=desc&per_page=1" \
+  api "$R/pulls" -X GET -f state=all -f "head=$SHIP_OWNER:$1" -f sort=created -f direction=desc -f per_page=1 \
     --jq 'first | if . == null then null else {number, state: (if .merged_at != null then "merged" elif .state == "open" then "open" else "closed" end),
       head_sha: .head.sha} end'
 }
@@ -572,7 +572,7 @@ _gh_run_list() { # <workflow-file> <since-iso>
 host_workflow_runs() { # <workflow-file> <since-iso>
   local err rc wf=${1##*/}
   err=$(mktemp) || return 2
-  trap 'rm -f "$err"' RETURN
+  trap 'rm -f "$err"; trap - RETURN' RETURN
   _gh_run_list "$wf" "$2" 2>"$err"; rc=$?
   # The flat one retry `gql` keeps rather than `api`'s backoff: a read that
   # answers non-zero reports the reviewer unreachable, and this CLI family is the

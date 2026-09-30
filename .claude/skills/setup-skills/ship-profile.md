@@ -96,7 +96,7 @@ File as an issue labelled `<the needs-triage label from docs/agents/triage-label
 
 ## Docs sync
 
-Targets: <artifacts coupled to a change: README.md, docs/, CONTEXT.md, a shipped skill, examples/, an issue such as map issue #<n>, whose `## ` sections ship rewrites after the merge>
+Targets: <artifacts coupled to a change: README.md, docs/, GLOSSARY.md, a shipped skill, examples/, an issue such as map issue #<n>, whose `## ` sections ship rewrites after the merge>
 Agent-facing: <every path here whose reader is an agent, whether or not it is also a docs-sync target: docs/agents/, .claude/skills/>
 
 ## Current docs

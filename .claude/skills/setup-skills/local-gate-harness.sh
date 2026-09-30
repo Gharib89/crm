@@ -63,10 +63,12 @@ else
   # No CHECK_DEADLINE: `full` is measured only, and a deadline would have
   # check.sh skip whatever it had not reached.
   (unset CHECK_DEADLINE; exec __CHECK__ full) >"$log" 2>"$err"; rc=$?
-  # 0 and 1 carry the one JSON line; 2 (unavailable or tooling), 3 (over
-  # budget) and any stdout outside the contract leave nothing to map one to
-  # one. A status outside the gate vocabulary reads as unavailable.
-  if [ "$rc" -le 1 ] && parsed=$(jq -sce 'select(length == 1) | .[0].checks | objects
+  # 0 to 3 all carry the one JSON line (2 is a check unavailable, 3 over
+  # budget), so an unavailable tool still names its own check; a stdout outside
+  # the contract (the usage path, not a git repo) leaves nothing to map, which
+  # the jq guard catches. A status outside the gate vocabulary reads as
+  # unavailable.
+  if [ "$rc" -le 3 ] && parsed=$(jq -sce 'select(length == 1) | .[0].checks | objects
       | map_values(if . == "skipped" then "pass" elif . == "pass" or . == "fail" or . == "unavailable" then . else "unavailable" end)' \
       "$log" 2>/dev/null); then
     checks=$parsed

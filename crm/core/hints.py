@@ -1,7 +1,7 @@
 """Next-step hints — show-once success-path guidance for humans (issue #657).
 
 Distinct from failure-enrichment `hint` (a fix-it string on error envelopes, see
-CONTEXT.md): a next-step hint is *success*-path teaching ("what to try next"),
+GLOSSARY.md): a next-step hint is *success*-path teaching ("what to try next"),
 rendered only in human/REPL mode and **never** in the JSON envelope. Each hint
 shows at most once per `CRM_HOME` (seen-ids persisted here); `CRM_NO_HINTS`
 disables the whole subsystem.

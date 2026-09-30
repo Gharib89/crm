@@ -57,7 +57,7 @@ host_tooling_reasons() {
 # Azure DevOps repo"); on a developer machine the tooling reasons already name it.
 host_tooling_install() {
   local sudo=""; [ "$(id -u)" -eq 0 ] || sudo="sudo -n"
-  command -v az >/dev/null || curl -sL https://aka.ms/InstallAzureCLIDeb | $sudo bash
+  command -v az >/dev/null || curl -fsSL https://aka.ms/InstallAzureCLIDeb | $sudo bash
   az extension show --name azure-devops >/dev/null 2>&1 || az extension add --name azure-devops
 }
 # Entra login first; a PAT session has no `az account`, so fall back to the
@@ -291,7 +291,7 @@ host_pr_request_review() { # <pr> <login>
 }
 # A closed thread: visible, and a comment-resolution policy reads it as settled.
 host_pr_comment() { # <pr> <body-file>
-  local f out; f=$(mktemp); trap 'rm -f "$f"' RETURN
+  local f out; f=$(mktemp); trap 'rm -f "$f"; trap - RETURN' RETURN
   jq -n --rawfile b "$2" '{comments: [{parentCommentId: 0, content: $b, commentType: 1}], status: "closed"}' > "$f"
   out=$(invoke POST git pullRequestThreads 7.1 --route-parameters project="$SHIP_PROJECT" repositoryId="$SHIP_REPO" pullRequestId="$1" --in-file "$f")
   local rc=$?; rm -f "$f"; [ $rc -eq 0 ] || return 1
@@ -318,7 +318,7 @@ host_pr_reply_thread() { # <pr> <thread-id> <body-file>
   root=$(_thread_raw "$pr" "$thread" | jq -r '.comments[0].id') || return 1
   [ -n "$root" ] && [ "$root" != null ] \
     || { printf '{"replied": false, "url": null, "detail": "no such thread"}\n'; return 1; }
-  f=$(mktemp); trap 'rm -f "$f"' RETURN
+  f=$(mktemp); trap 'rm -f "$f"; trap - RETURN' RETURN
   jq -n --rawfile b "$file" --argjson p "$root" '{parentCommentId: $p, content: $b, commentType: 1}' > "$f"
   _post_reply() {
     az devops invoke "${ORG[@]}" --http-method POST --area git --resource pullRequestThreadComments \
@@ -350,7 +350,7 @@ host_pr_reply_thread() { # <pr> <thread-id> <body-file>
   jq -n --arg u "$(_pr_url "$pr")" --arg t "$thread" '{replied: true, url: ($u + "?discussionId=" + $t)}'
 }
 host_pr_resolve_thread() { # <pr> <thread-id>
-  local f out; f=$(mktemp); trap 'rm -f "$f"' RETURN; printf '{"status":"fixed"}' > "$f"
+  local f out; f=$(mktemp); trap 'rm -f "$f"; trap - RETURN' RETURN; printf '{"status":"fixed"}' > "$f"
   out=$(invoke PATCH git pullRequestThreads 7.1 --route-parameters project="$SHIP_PROJECT" repositoryId="$SHIP_REPO" pullRequestId="$1" threadId="$2" --in-file "$f")
   local rc=$?; rm -f "$f"; [ $rc -eq 0 ] || return 1
   jq '{resolved: (.status | IN("fixed","closed","wontFix","byDesign"))}' <<<"$out"
@@ -380,7 +380,7 @@ _wi_open_wiql() { # <extra predicate>
 }
 host_issues_open() {
   local out err rc=0
-  err=$(mktemp); trap 'rm -f "$err"' RETURN
+  err=$(mktemp); trap 'rm -f "$err"; trap - RETURN' RETURN
   out=$(azx boards query "${PRJ[@]}" --wiql "$(_wi_open_wiql "")" 2>"$err") || rc=$?
   if [ "$rc" -ne 0 ]; then
     # Only the row-limit answer earns the narrower pool. An auth or transient

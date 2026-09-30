@@ -3,7 +3,7 @@ name: update-skills
 description: "Refresh this repo's skills in one PR: the Gharib89/skills skills, every skill they compose at its pinned ref, and any other repo-scoped skill the owner picks; report upstream drift to the source repo and summarise what changed. In the source repo, move the drifted pins instead. Attended only."
 disable-model-invocation: true
 metadata:
-  version: 0.2.0
+  version: 0.4.1
 ---
 
 # update-skills
@@ -16,7 +16,9 @@ skill's **pinned ref** is the upstream commit the source repo tested, and
 **upstream drift** is that upstream moving past it.
 
 **Attended only.** It asks the repo owner which skills to take and re-runs
-`/setup-skills`, which interviews; no cloud routine runs it.
+`/setup-skills`, which interviews; no cloud routine runs it. The one part a
+Ship run follows without invoking it is [In a Ship run](#in-a-ship-run), for an
+upstream-drift issue in the source repo.
 
 **It calls Ship's generic mechanics by path** from the worktree: `$S` below stands for
 `.claude/skills/ship/scripts` and `$U` for `.claude/skills/update-skills/scripts`.
@@ -58,7 +60,9 @@ $U/plan.sh . <scratch>/heads.json --old <old> > <scratch>/plan.json
 
 `heads` reads GitHub's public API with curl, so it needs no credentials. Its
 `unreachable` rows are skills whose upstream did not answer: no head, so never
-drift or an offered update. Carry them to step 8. The plan's fields drive every
+drift or an offered update. Carry them to step 8. `heads` retries a failed read,
+and exits 1 with the count on stderr when every upstream failed: nothing was
+read, so stop and tell the owner. The plan's fields drive every
 later step; the header comment in `plan.sh` defines each one.
 
 Nothing moved (every `source_skills` entry at its old version, every
@@ -114,7 +118,20 @@ exists` are the only reasons left. Note the profile schema move for step 8: the
 
 **Retired terms**, whether or not setup-skills re-ran. Each `retired` row is a
 word a source-repo skill stopped using inside the range this refresh crosses.
-In a consumer repo, find it in the repo's own files, never the derived copies:
+In a consumer repo, find it in the repo's own files, never the derived copies.
+A term that is a file name (a Term cell ending in an extension, such as
+`CONTEXT.md`) is renamed first: `git mv` every tracked file of that name to the
+row's `replacement` in the same directory. List them with:
+
+```sh
+git ls-files -- ':(glob)**/<term>' ':!.claude/skills/'
+```
+
+Three cases rename nothing, each listed for step 8's Needs attention: a file
+that is not the one the row means, such as a test fixture or a vendored
+document, as `<path>: not renamed, not the <term> the row means`; a file whose
+target already exists, as `<path>: not renamed, <replacement> exists`; and every
+file of a row whose replacement is null. Then sweep the references:
 
 ```sh
 git grep -n -w -F -e '<term>' -- . ':!.claude/skills/'
@@ -122,20 +139,23 @@ git grep -n -w -F -e '<term>' -- . ':!.claude/skills/'
 
 Replace each hit with the row's `replacement` where it reads correctly in that
 sentence. A record of the past, such as a changelog entry or an ADR, keeps the
-word and is no hit. List every other hit, and every hit of a row whose
-`replacement` is null, for step 8's Needs attention as `<path>:<line>: <term>`.
+word and is no hit. A hit that names a file this step left in place keeps the
+word too. List it, every other hit that was not replaced, and every hit of a
+row whose `replacement` is null, for step 8's Needs attention as
+`<path>:<line>: <term>`.
 In the source repo there is nothing to sweep: the PR that retired a word adds
-its row to that skill's `retired-terms.md` and replaces the word in this repo's
-own documents, in the same diff.
+its row to that skill's `retired-terms.md`, replaces the word in this repo's
+own documents and renames a file whose name is the word, in the same diff.
 
 ### 7. Report upstream drift
 
 `drift` non-empty: the source repo keeps one open issue for it. In the source
 repo, run step 9 first, then this step, then step 8. Write a body file holding
-a `## Drift` section and nothing else, its table
-`| Skill | Pinned | Upstream head |` with one row per `drift` entry. The source
-repo is public, so the body carries skill names and refs only: not this repo's
-name, nor anything else about it. Then:
+a `## Drift` section, its table `| Skill | Pinned | Upstream head |` with one
+row per `drift` entry, then a `## Moving the pins` section of one sentence:
+`A Ship run moves these pins by the "In a Ship run" section of update-skills' SKILL.md.`
+The source repo is public, so the body carries skill names and refs only: not
+this repo's name, nor anything else about it. Then:
 
 ```sh
 $S/file-issue.sh --repo Gharib89/skills --title "Upstream drift: composed skills" --body-file <body> --label needs-triage
@@ -144,7 +164,9 @@ $S/file-issue.sh --repo Gharib89/skills --title "Upstream drift: composed skills
 - `filed: true`: that is the drift issue.
 - `filed: false`: the candidate titled exactly
   `Upstream drift: composed skills` is the drift issue. Rewrite its table in
-  place, with a file holding the table alone:
+  place, with a file holding the table alone, then write `Moving the pins` the
+  same way from a file holding its one sentence (a section the issue lacks is
+  added):
 
   ```sh
   $S/update-issue-body.sh <n> --repo Gharib89/skills --section Drift --body-file <table>
@@ -249,8 +271,34 @@ Then the refresh line, and `scripts/local-gate.sh`, whose `derived-copies` gate
 holds every pin to the lock. In step 8 the PR body opens with `Closes #<n>`,
 the drift issue step 7 filed or found, and the title is scoped to the composing
 skill, so the release run records the move in that skill's CHANGELOG. A pin
-moved on ship's `composes` line is a breaking change to ship, since preflight
-refuses every consumer still at the old ref (`skill off pin`): the title takes
-`!`, e.g. `fix(ship)!: move show-me to <short sha>`, and the maintainer applies
-the `major` label. A pin moved on setup-skills' line alone refuses nothing and
-takes no `!`.
+moved on ship's `composes` line breaks ship, since preflight refuses every
+consumer still at the old ref (`skill off pin`). While ship is 0.x that grades
+minor: the title is `feat(ship): move show-me to <short sha>`, with no `!`, no
+`BREAKING CHANGE:` footer in any commit, since `bump-guard` reads commits too,
+and no `major` label. State the break in plain words in the commit body and
+under `## Special things to note`. A pin moved on setup-skills' line alone
+refuses nothing and takes no `!` either.
+
+## In a Ship run
+
+A Ship run cannot invoke this skill (`disable-model-invocation`), so on an
+upstream-drift issue in the source repo it follows the steps below by hand, in
+the worktree `isolate` made. `$S` and `$U` are as above. Steps 1, 7 and 8 are
+Ship's: `isolate` is the worktree, the issue being shipped is the drift issue
+step 7 would file, and phase 6 opens the PR with `Closes #<issue>`.
+
+1. `<old>`: `git rev-parse HEAD` in the worktree, before the first edit.
+2. Step 2's source-repo refresh line, from the source repo's CLAUDE.md.
+3. Step 3: `$U/heads.sh .`, then `$U/plan.sh . <heads.json> --old <old>`. A
+   `heads` exit 1 is retried once, then stops the run `red-after-retry: heads`.
+4. Step 9 per `drift` row, which moves the pins, then its refresh line. The
+   local gate is Ship's phase 5, and step 9's title rule is phase 6's title.
+
+Where a step would ask the owner, the run takes the conservative answer and
+writes it to the Run file's deviations log, which lands in the merge summary:
+
+| Step asks | The run records |
+|---|---|
+| Step 5, which other skills to take | none taken; `others not taken: <skill> <old_ref> → <head>` per row |
+| Step 6, the owner re-running `/setup-skills` | not re-run; `setup-skills needed: <section or profile reason>` per item |
+| Step 3, an `unreachable` row | `drift not checked: <skill>: <error>` |
