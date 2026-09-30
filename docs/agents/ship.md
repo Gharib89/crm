@@ -2,7 +2,7 @@
 
 Schema: 3
 
-Every repo-specific fact `/ship` needs, one section per axis. Fourteen `##` headings, always present and in this order; a defaulted axis reads `None.` or `Default.` under its own heading. Facts sit on `Label:` lines and nowhere else, and the prose under a heading explains them. The `Schema:` line above is the profile schema `ship` checks at preflight; only a `setup-skills` re-run moves it. Vocabulary: the `ship` skill's source repo, `Gharib89/skills`, [CONTEXT.md](https://github.com/Gharib89/skills/blob/main/CONTEXT.md).
+Every repo-specific fact `/ship` needs, one section per axis. Fourteen `##` headings, always present and in this order; a defaulted axis reads `None.` or `Default.` under its own heading. Facts sit on `Label:` lines and nowhere else, and the prose under a heading explains them. The `Schema:` line above is the profile schema `ship` checks at preflight; only a `setup-skills` re-run moves it. Vocabulary: the `ship` skill's source repo, `Gharib89/skills`, [GLOSSARY.md](https://github.com/Gharib89/skills/blob/main/GLOSSARY.md).
 
 ## Host
 
@@ -117,7 +117,7 @@ File as an issue labelled `needs-triage`.
 
 ## Docs sync
 
-Targets: README.md, docs/ (how-to/<group>.md, reference/cli.md), CONTEXT.md, docs/adr/, crm/skills/ (the shipped skill), crm/tests/TEST.md, crm/tests/e2e/DISCOVERED_BUGS.md, the e2e coverage gate (an `@covers` test or an `E2E_SKIP` entry in crm/tests/e2e/coverage.py)
+Targets: README.md, docs/ (how-to/<group>.md, reference/cli.md), GLOSSARY.md, docs/adr/, crm/skills/ (the shipped skill), crm/tests/TEST.md, crm/tests/e2e/DISCOVERED_BUGS.md, the e2e coverage gate (an `@covers` test or an `E2E_SKIP` entry in crm/tests/e2e/coverage.py)
 Agent-facing: docs/agents/, .claude/skills/, crm/skills/, CLAUDE.md, .github/copilot-instructions.md
 
 `CHANGELOG.md` is not a target: python-semantic-release owns it.

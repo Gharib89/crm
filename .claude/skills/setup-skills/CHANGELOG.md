@@ -7,6 +7,42 @@ released version. See
 
 <!-- version list -->
 
+## v0.11.1 (2026-09-30)
+
+### Documentation
+
+- **setup-skills**: Carry the three depth checks in the standards template
+  ([#430](https://github.com/Gharib89/skills/pull/430),
+  [`5e55dca`](https://github.com/Gharib89/skills/commit/5e55dca39b7d904d797e752a4b9d1d5bfd23152c))
+
+
+## v0.11.0 (2026-09-29)
+
+### Features
+
+- **ship**: Move tdd and triage to d81f3a1 and retire CONTEXT.md for GLOSSARY.md
+  ([#411](https://github.com/Gharib89/skills/pull/411),
+  [`4ad593d`](https://github.com/Gharib89/skills/commit/4ad593dbc393d2e5d15046018cb9c8c98c9d2573))
+
+
+## v0.10.2 (2026-09-29)
+
+### Bug Fixes
+
+- **setup-skills**: Refresh an installed Claude reviewer workflow on a setup section re-run
+  ([#409](https://github.com/Gharib89/skills/pull/409),
+  [`8d3774f`](https://github.com/Gharib89/skills/commit/8d3774f5ff0a5eb7ed628b5f857f76a53effe6d4))
+
+
+## v0.10.1 (2026-09-29)
+
+### Bug Fixes
+
+- **setup-skills**: Map check.sh's per-check statuses on exit 2 and 3
+  ([#410](https://github.com/Gharib89/skills/pull/410),
+  [`226127c`](https://github.com/Gharib89/skills/commit/226127cd6445116c57b4abe7a32c48f4642f2874))
+
+
 ## v0.10.0 (2026-09-29)
 
 ### Features

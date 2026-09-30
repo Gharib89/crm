@@ -33,7 +33,7 @@ When `crm/skills/` needs changes, **invoke the `writing-for-agents` skill** and 
 
 Then layer these **crm-specific constraints** on top of that generic guidance (they override on conflict):
 
-- **Self-contained.** The skill ships to users who have only the skill, **not the repo**. Never link a shipped skill file to a repo path (`docs/**`, `CONTEXT.md`, `README.md`) — inline what's needed, or put it in a sibling `reference/*.md`.
+- **Self-contained.** The skill ships to users who have only the skill, **not the repo**. Never link a shipped skill file to a repo path (`docs/**`, `GLOSSARY.md`, `README.md`) — inline what's needed, or put it in a sibling `reference/*.md`.
 - **Don't restate the CLI.** The skill states only what `crm describe` / `--help` **cannot**: workflows, gotchas, the JSON contract. **Never** restate flags, choices, or defaults — those live in `--help` and drift.
 - **Shape:** a thin `SKILL.md` router + `reference/*.md` loaded on demand. Keep `SKILL.md` lean.
 - Verify the skill matches current CLI behavior: cross-check against `crm describe` / `--help` output for the changed command before writing.

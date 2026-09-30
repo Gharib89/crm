@@ -21,7 +21,7 @@ crm skill install --target claude --force
 
 1. **Self-contained.** The skill ships to users who have only the skill, not this
    repo. No shipped skill file may link to a repo-only path (`docs/**`,
-   `CONTEXT.md`, `../`) or assume any repo file is present. Inline what the agent
+   `GLOSSARY.md`, `../`) or assume any repo file is present. Inline what the agent
    needs (labels, templates, tables). The only assumed externals are the installed
    `crm` binary and, for the feedback flow, the `gh` CLI.
 2. **Never restate flags.** `crm describe [group]` and `crm <group> --help` emit

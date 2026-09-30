@@ -22,7 +22,9 @@ source "$(dirname "${BASH_SOURCE[0]}")/_lib.sh" || { printf '{"error":"cannot so
 # this mechanic answers `no-checks` a minute later, so it is refused rather than
 # honoured, and the usage line carries the number the refusal names. The profile
 # can drop it to zero, below; the constant is what stands where it does not.
-grace=120
+# SHIP_CI_WAIT_GRACE replaces the constant for the test suite, which proves the
+# grace's start in seconds rather than minutes; no run sets it.
+grace=${SHIP_CI_WAIT_GRACE:-120}
 usage="usage: ci-wait <pr> [--sha <sha>, the head to wait for, default the local HEAD when on the PR head branch, else none; a window closing first is timeout] [--timeout <s>, at least the no-checks grace (${grace}s, 0 where the profile has Legs: None. and No-checks legal: yes)] [--interval <s>]"
 ship_help "$usage" "$@"
 [ -n "${1:-}" ] || ship_tooling "$usage"

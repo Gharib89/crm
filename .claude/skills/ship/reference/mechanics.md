@@ -71,7 +71,8 @@ stderr, and exits `0` ok, `1` the mechanic's own not-ok answer, `2` tooling. A
 malformed invocation is tooling: it prints `{"error": "<usage>"}` and exits 2.
 Exit 1 is an answer, not always a fault: `nothing-ready` from `select`, a
 not-actionable `preflight` and a `poll-pr` window that closed are all exit 1 and
-none is red.
+none is red. An exit-1 `error` is also written to stderr, so a refusal shows
+there even when `| jq -r .field` over stdout reads `null`.
 
 A failed write to a PR body or title, a comment or a thread reply carries the
 host's `status` beside its `error`: a 5xx or 429 outlasted the mechanic's own

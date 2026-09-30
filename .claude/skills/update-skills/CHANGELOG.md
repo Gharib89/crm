@@ -7,6 +7,33 @@ released version. See
 
 <!-- version list -->
 
+## v0.4.1 (2026-09-30)
+
+### Bug Fixes
+
+- **ship**: Nested adapter calls survive RETURN traps; encoded PR lookup; token off argv; installer
+  -f; capped base-fresh log ([#428](https://github.com/Gharib89/skills/pull/428),
+  [`7266a14`](https://github.com/Gharib89/skills/commit/7266a14449df72012123eb22b543ced26f596ff4))
+
+
+## v0.4.0 (2026-09-30)
+
+### Features
+
+- **ship**: Run the suite in parallel and show every refusal
+  ([#417](https://github.com/Gharib89/skills/pull/417),
+  [`f0510d0`](https://github.com/Gharib89/skills/commit/f0510d0927f3cb7fa0788cb1ca428cf97f6dabed))
+
+
+## v0.3.0 (2026-09-29)
+
+### Features
+
+- **ship**: Move tdd and triage to d81f3a1 and retire CONTEXT.md for GLOSSARY.md
+  ([#411](https://github.com/Gharib89/skills/pull/411),
+  [`4ad593d`](https://github.com/Gharib89/skills/commit/4ad593dbc393d2e5d15046018cb9c8c98c9d2573))
+
+
 ## v0.2.0 (2026-09-28)
 
 ### Features

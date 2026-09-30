@@ -64,7 +64,9 @@ observed where no round was admitted.
   cut to the lead line and finding items, and one row per OPEN thread, the run's
   own replies dropped.
 - **A body or `lead` ending `...[truncated]` has not been read.** Re-poll with
-  `--brief --full <id>` for that round or thread before triage.
+  `--brief --full <id>` for that round or thread before triage. Pass every id
+  you will triage in one comma-separated `--full` list, so each thread is read
+  whole.
 - **Findings live in the body as well as in threads**, and a reviewer's reply to
   one thread posts as a bodiless review row that looks like the next round
   arriving: only `substantive: true` counts.

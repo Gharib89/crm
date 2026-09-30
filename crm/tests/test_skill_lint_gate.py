@@ -77,7 +77,7 @@ def test_self_containment_flags_repo_path(tmp_path):
 
 
 def test_self_containment_flags_escaping_link(tmp_path):
-    router = _CLEAN_ROUTER + "\nSee [context](../../CONTEXT.md).\n"
+    router = _CLEAN_ROUTER + "\nSee [context](../../GLOSSARY.md).\n"
     d = _make_tree(tmp_path, router, _CLEAN_REFS)
     r, files = skill_tree(d)
     violations = check_self_containment(r, files)

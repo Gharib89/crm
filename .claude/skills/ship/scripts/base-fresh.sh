@@ -7,7 +7,7 @@
 #
 #   base-fresh
 #
-# stdout: {fresh, base, behind, ahead, fetched}   behind commits listed on stderr
+# stdout: {fresh, base, behind, ahead, fetched}   the newest 39 behind commits on stderr
 # exit: 0 fresh · 1 behind (catch up, then re-run) · 2 the base could not be resolved
 #   Catching up is a rebase only while the branch is not on origin. Once it is,
 #   a rebase rewrites published commits and the plain push `open-pr` makes is
@@ -38,7 +38,9 @@ if ! $fresh; then
   if branch=$(git symbolic-ref -q --short HEAD) && ! git rev-parse --verify -q "refs/remotes/origin/$branch" >/dev/null; then
     advice="rebase onto it and re-run:"
   fi
-  { echo "branch has not seen these commits on $base; $advice"; git log --oneline "HEAD..$base"; } >&2
+  # The header plus the newest 39 commits: 40 lines in all, the size the
+  # mechanics cap their stderr evidence at. `behind` in the JSON stays the full count.
+  { echo "branch has not seen these commits on $base; $advice"; git log --oneline -39 "HEAD..$base"; } >&2
 fi
 jq -n --argjson f "$fresh" --arg b "$base" --argjson behind "$behind" --argjson ahead "$ahead" --argjson fe "$fetched" \
   '{fresh: $f, base: $b, behind: $behind, ahead: $ahead, fetched: $fe}'

@@ -11,7 +11,7 @@ output shape / documented behavior):
 
 - README, `docs/how-to/<group>.md`, and `docs/reference/cli.md` updated in this PR.
 - `crm/skills/` (the shipped agent skill) updated — and still **self-contained**:
-  no links to repo paths (`docs/**`, `CONTEXT.md`), and it states only what
+  no links to repo paths (`docs/**`, `GLOSSARY.md`), and it states only what
   `crm describe` / `--help` cannot (workflows, gotchas, the JSON contract) —
   never restated flags/choices/defaults.
 
@@ -46,7 +46,7 @@ The PR title is the squash subject python-semantic-release reads. Check both:
 
 ## 5 · Emit contract
 
-New or changed command output honors the CLI contract (`CONTEXT.md`):
+New or changed command output honors the CLI contract (`GLOSSARY.md`):
 
 - Envelope shape `{ok, data?, error?, meta?}` under `--json`; `data` is curated,
   not raw-OData passthrough (protocol keys stripped or relocated to `meta`).

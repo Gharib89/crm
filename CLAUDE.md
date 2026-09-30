@@ -58,7 +58,7 @@ Every feature / new command / flag / behavior change ships its docs in the **sam
 - **CHANGELOG.md** — do **not** hand-edit. `python-semantic-release` owns it: it generates each version's section from the Conventional Commit history at release time (see **Release** below). Ship a good `fix:`/`feat:` commit subject instead; for a squash-merge, set the squash *subject* to that line so PSR bumps and documents correctly. There is no `## [Unreleased]` section to maintain.
 - **docs/** — matching `docs/how-to/<group>.md` and `docs/reference/cli.md`.
 - **SKILL ↔ CLI** — `crm/skills/` is the single tracked agent skill (source of truth): a thin `SKILL.md` router + `reference/*.md`. `crm skill install` copies the whole tree into a harness dir outside the repo (`~/.claude/skills/crm/`, etc.). Rules:
-    - **Self-contained** — the skill ships to users who have only the skill, not the repo; never link a shipped skill file to a repo path (`docs/**`, `CONTEXT.md`) — inline what's needed.
+    - **Self-contained** — the skill ships to users who have only the skill, not the repo; never link a shipped skill file to a repo path (`docs/**`, `GLOSSARY.md`) — inline what's needed.
     - **Never restate flags/choices/defaults** — the skill states only what `crm describe`/`--help` cannot (workflows, gotchas, the JSON contract).
     - **Never track an in-repo copy** of the **crm** skill; source of truth is `crm/skills/`.
     - The tracked `.claude/skills/` tree holds three kinds of skill, none hand-edited except the last. **Lock-recorded derived** copies (`ship`, `cloud-ship`, `setup-skills`, `update-skills` and the skills ship and setup-skills compose: `tdd`, `code-review`, `writing-for-agents`, `triage`, `find-docs`, `show-me`) are installed by the skills CLI and recorded in `skills-lock.json`; refresh one by re-running its install line (see "Ship" below). **Vendored** ones (the interactive toolkit) are *derived* copies of personal skills whose source of truth is `~/.claude/skills/`; run `python scripts/sync-skills.py` to refresh them and commit the result — **never hand-edit a vendored copy** (the next sync overwrites it). The tool copies each listed skill verbatim, stamps `metadata.internal: true` on every copy (so `npx skills add Gharib89/crm` hides these dev skills from end users — revealed only with `INSTALL_INTERNAL_SKILLS=1`), transitively pulls each skill's dependencies, and refuses to touch a lock-recorded or project-native skill. **Project-native** ones (`merge-gate`, `live-e2e`, `audit-crm-skill`) have no *separate* source tree — `.claude/skills/` is itself their source of truth, hand-edited here. Every vendored and project-native `SKILL.md` must carry the internal flag (project-native skills get it hand-added); lock-recorded copies stay verbatim and are exempt. A regression test in `crm/tests/test_skill_bundle.py` enforces both.
@@ -119,7 +119,7 @@ Inbound agent-shipped PRs (cloud-ship routine, codex, teammates' agents) get a s
 
 ### Domain docs
 
-Single-context — `CONTEXT.md` + `docs/adr/` at repo root. See `docs/agents/domain.md`.
+Single-context — `GLOSSARY.md` + `docs/adr/` at repo root. See `docs/agents/domain.md`.
 
 ### Ship
 

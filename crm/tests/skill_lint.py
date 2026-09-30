@@ -8,7 +8,7 @@ text/structure. The four rules:
 
 1. **Self-containment** — no repo-only path references and no markdown link that
    escapes the skill directory (an end user installs the skill *without* the repo,
-   so ``docs/**`` / ``CONTEXT.md`` / ``../…`` targets are unreachable).
+   so ``docs/**`` / ``GLOSSARY.md`` / ``../…`` targets are unreachable).
 2. **Internal link integrity** — every ``reference/*.md`` file is reachable from
    the router, every ``reference/<x>.md`` pointer resolves, and no reference file
    is orphaned.
@@ -46,7 +46,7 @@ EXPECTED_SKILL_NAME = "crm"
 # Repo-only path fragments an end user (skill installed *without* the repo) cannot
 # resolve. A hosted docs URL (``https://…``) is fine; a local repo path is not.
 _FORBIDDEN_FRAGMENTS = (
-    "CONTEXT.md",
+    "GLOSSARY.md",
     "docs/adr",
     "docs/agents",
     "docs/contributing",

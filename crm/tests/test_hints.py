@@ -1,7 +1,7 @@
 """Tests for next-step hints (crm/core/hints.py) and their CLI wiring.
 
 Next-step hints are show-once success-path guidance rendered in human/REPL mode
-only (never in the JSON envelope). See issue #657 and CONTEXT.md "Next-step hint".
+only (never in the JSON envelope). See issue #657 and GLOSSARY.md "Next-step hint".
 """
 
 # pyright: basic
