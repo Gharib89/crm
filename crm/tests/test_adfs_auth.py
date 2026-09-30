@@ -176,6 +176,17 @@ class TestSignIn:
         assert texts["Action"] == "http://docs.oasis-open.org/ws-sx/ws-trust/200512/RST/Issue"
         assert texts["To"] == TRUST
 
+    def test_domain_kept_by_a_scheme_override_joins_the_username(self):
+        # `crm --auth-scheme adfs` on an ntlm profile keeps its separate domain.
+        b = D365Backend(_profile(domain="CONTOSO"), password=PASSWORD)
+        with requests_mock.Mocker() as m:
+            _mock_sign_in(m)
+            m.get(WHOAMI, json=_WHOAMI_BODY)
+            b.get("WhoAmI")
+        (rst,) = _calls(m, "POST", TRUST)
+        texts = {el.tag.rsplit("}", 1)[-1]: el.text for el in fromstring(rst.body).iter()}
+        assert texts["Username"] == "CONTOSO\\alice"
+
     def test_adfs_url_overrides_the_discovered_sts(self):
         other = "https://adfs.internal.contoso.com"
         b = D365Backend(_profile(adfs_url=other + "/"), password=PASSWORD)

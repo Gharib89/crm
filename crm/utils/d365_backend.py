@@ -571,14 +571,18 @@ class D365Backend:
                 )
             from crm.utils.adfs import AdfsCookieAuth
 
+            # `profile add` stores adfs domains inside the username; a separate one
+            # survives only a `--auth-scheme adfs` override of an ntlm profile.
+            p = self.profile
+            username = f"{p.domain}\\{p.username}" if p.domain else p.username
             return AdfsCookieAuth(
                 self._session,
-                self.profile.url,
-                self.profile.username,
+                p.url,
+                username,
                 password,
-                sts_url=self.profile.adfs_url,
-                verify=self.profile.verify_ssl,
-                timeout=self.profile.timeout,
+                sts_url=p.adfs_url,
+                verify=p.verify_ssl,
+                timeout=p.timeout,
             )
         raise D365Error(
             f"Unknown auth_scheme {scheme!r}; expected ntlm|kerberos|negotiate|oauth|adfs"
