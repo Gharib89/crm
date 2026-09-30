@@ -1,9 +1,11 @@
 # Install once per clone: `pre-commit install` (after `pip install -e ".[dev]"`).
 # Runs ruff lint + format on staged files so the format round-trip never reaches
 # CI. rev is kept in lockstep with the ruff pin in setup.py [dev] — bump both.
-# Installed skills are derived copies (a fix-mode rewrite breaks their
-# skills-lock.json hash) and the fixture trees are byte-exact test inputs.
-exclude: ^(\.claude/skills/|crm/tests/fixtures/|crm/tests/e2e/fixtures/)
+# Skills are derived copies (a fix-mode rewrite breaks their skills-lock.json
+# hash; a vendored one is overwritten by the next sync) except the three
+# hand-edited project-native ones (scripts/sync-skills.py PROJECT_NATIVE), which
+# stay linted. The fixture trees are byte-exact test inputs.
+exclude: ^(\.claude/skills/(?!(merge-gate|live-e2e|audit-crm-skill)/)|crm/tests/fixtures/|crm/tests/e2e/fixtures/)
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: 01a675ea018f2fb714478a5ffb83fcea8374bb06  # frozen: v0.15.21
@@ -50,11 +52,9 @@ repos:
             CHANGELOG\.md$|
             \.claude/skills/(cloud-ship|code-review|find-docs|setup-skills|ship|show-me|tdd|triage|writing-for-agents)/
           )
-  # Shell linter. Runs the ShellCheck on PATH (apt in the cloud setup).
-  - repo: local
+  # Shell linter. The PyPI wheel brings its own pinned ShellCheck binary, so a
+  # clone without one on PATH still runs it.
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: 745eface02aef23e168a8afb6b5737818efbea95  # frozen: v0.11.0.1
     hooks:
       - id: shellcheck
-        name: shellcheck
-        entry: shellcheck
-        language: system
-        types: [shell]
