@@ -392,7 +392,7 @@ class TestAddWizard:
             )  # blank publisher-prefix, read-only N (both prompted)
         assert result.exit_code == 0, result.output
         assert captured["default"] == "ntlm"  # on-prem host -> inferred ntlm
-        assert captured["values"] == ["ntlm", "kerberos", "negotiate", "oauth"]
+        assert captured["values"] == ["ntlm", "kerberos", "negotiate", "oauth", "adfs"]
         assert session_mod.load_profile("wiz").auth_scheme == "oauth"
 
     def test_auth_scheme_picker_cancel_aborts(self, crm_home, monkeypatch):

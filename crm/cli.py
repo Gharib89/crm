@@ -951,10 +951,10 @@ def _complete_entity_set_names(
 )
 @click.option(
     "--auth-scheme",
-    type=click.Choice(["ntlm", "kerberos", "negotiate", "oauth"]),
+    type=click.Choice(["ntlm", "kerberos", "negotiate", "oauth", "adfs"]),
     default=None,
     help="Override the active profile's auth scheme for this run. "
-    "ntlm/kerberos/negotiate = on-prem; oauth = cloud.",
+    "ntlm/kerberos/negotiate/adfs = on-prem; oauth = cloud.",
 )
 @click.option(
     "--stage-only",

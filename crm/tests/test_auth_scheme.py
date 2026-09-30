@@ -81,7 +81,7 @@ class TestAuthSelection:
 class TestAuthSchemeFlag:
     """The global --auth-scheme flag must accept every backend-valid scheme."""
 
-    @pytest.mark.parametrize("scheme", ["ntlm", "kerberos", "negotiate", "oauth"])
+    @pytest.mark.parametrize("scheme", ["ntlm", "kerberos", "negotiate", "oauth", "adfs"])
     def test_flag_accepts_valid_scheme(self, scheme):
         result = CliRunner().invoke(cli, ["--auth-scheme", scheme, "session", "info"])
         assert _BAD_CHOICE not in result.output
