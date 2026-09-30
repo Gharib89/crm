@@ -206,7 +206,7 @@ class TestSignIn:
         msg = str(ei.value)
         assert ei.value.status == 401
         assert "AD FS token request" in msg and TRUST in msg
-        assert "ID3242" in msg
+        assert "ID3242" in msg and "authorized.." not in msg
         assert "<s:" not in msg
         assert PASSWORD not in msg
         assert PASSWORD not in caplog.text

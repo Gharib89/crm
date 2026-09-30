@@ -224,7 +224,8 @@ def profile_add(
                 raise click.UsageError("--username is required for an on-prem profile.")
             username = click.prompt("Username")
         if auth_scheme == "adfs":
-            # WS-Trust takes the bare username or UPN; no DOMAIN\ prefix (#978).
+            # The username reaches the STS as typed (DOMAIN\user, UPN or bare),
+            # so an adfs profile keeps no separate domain (#978).
             domain = ""
             if adfs_url is None and interactive:
                 adfs_url = click.prompt(

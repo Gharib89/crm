@@ -142,7 +142,7 @@ def _fault_reason(body: bytes) -> str:
         return "no SOAP fault in the response"
     for el in root.iter():
         if el.tag.endswith("}Text") and el.text:
-            return el.text.strip()[:300]
+            return el.text.strip().rstrip(".")[:300]
     return "no fault reason given"
 
 
@@ -197,8 +197,9 @@ def sign_in(
     if resp.status_code != 200:
         raise D365Error(
             f"AD FS token request to {endpoint} failed (HTTP {resp.status_code}): "
-            f"{_fault_reason(resp.content)}. Check the username and password; use the "
-            "bare username or UPN, since some AD FS servers reject DOMAIN\\user.",
+            f"{_fault_reason(resp.content)}. Check the username and password; AD FS "
+            "servers differ in the username form they accept (DOMAIN\\user, UPN or the "
+            "bare name), so try another form.",
             status=401,
         )
     try:
