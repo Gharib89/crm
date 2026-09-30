@@ -96,10 +96,13 @@ def extract_wresult(response_xml: str) -> str:
     """
     fromstring(response_xml)  # well-formed, and no DTD/entities (defusedxml)
     match = _RSTR_START.search(response_xml)
-    end = -1 if match is None else response_xml.find(f"</{match[1]}{_RSTR}>", match.end())
-    if match is None or end < 0:
+    close_tag = None if match is None else re.compile(f"</{re.escape(match[1])}{_RSTR}\\s*>")
+    close = (
+        None if close_tag is None or match is None else close_tag.search(response_xml, match.end())
+    )
+    if match is None or close is None:
         raise D365Error("AD FS token response carried no RequestSecurityTokenResponse.", status=401)
-    fragment = response_xml[match.start() : end + len(f"</{match[1]}{_RSTR}>")]
+    fragment = response_xml[match.start() : close.end()]
     decls = "".join(
         f" xmlns:{prefix}={quoteattr(uri)}" if prefix else f" xmlns={quoteattr(uri)}"
         for prefix, uri in _inherited_namespaces(response_xml).items()
@@ -148,8 +151,8 @@ def _fault_reason(body: bytes) -> str:
 
 def is_sts_redirect(resp: requests.Response) -> bool:
     """Whether *resp* bounces the caller to a WS-Federation sign-in page."""
-    location = resp.headers.get("Location", "")
-    return resp.is_redirect and "wa=wsignin1.0" in location
+    query = urllib.parse.urlsplit(resp.headers.get("Location", "")).query
+    return resp.is_redirect and urllib.parse.parse_qs(query).get("wa") == ["wsignin1.0"]
 
 
 def discover(http: requests.Session, org_url: str, timeout: float) -> tuple[str, str]:
@@ -188,6 +191,12 @@ def sign_in(
     root = f"{org.scheme}://{org.netloc}/"
     discovered, wctx = discover(http, org_url, timeout)
     endpoint = (sts_url or discovered).rstrip("/") + _TRUST_PATH
+    if urllib.parse.urlsplit(endpoint).scheme != "https":
+        raise D365Error(
+            f"AD FS token request refused: {endpoint} is not https, and the request "
+            "carries the password.",
+            status=401,
+        )
     resp = http.post(
         endpoint,
         data=build_rst(endpoint, root, username, password).encode("utf-8"),

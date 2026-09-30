@@ -490,7 +490,10 @@ def connection_doctor(backend: D365Backend) -> dict[str, Any]:
                         "tls",
                         False,
                         f"could not authenticate the request: {exc}",
-                        "for an OAuth profile, check tenant_id/client_id "
+                        "for an AD FS profile, check the username form and re-store "
+                        "the password (crm profile set-password)"
+                        if profile.auth_scheme == "adfs"
+                        else "for an OAuth profile, check tenant_id/client_id "
                         "(crm profile edit) and re-store the client secret "
                         "(crm profile set-password)",
                     ),

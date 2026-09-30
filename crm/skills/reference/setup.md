@@ -62,11 +62,11 @@ crm profile add --url https://contoso.crm.dynamics.com \
 
 **IFD orgs behind AD FS.** NTLM fails there (the Web API answers a bare 500), and
 the URL never infers this scheme, so pick `adfs` by hand. A failed `ntlm` test
-against such an org says so in its hint. Gotchas `--help` cannot tell you: the
-username goes to the STS exactly as typed and which form it accepts (`DOMAIN\user`,
-UPN, or bare name) depends on the AD FS server, so try another form on a
-rejection; an org on an internal CA needs `--no-verify-ssl`, which covers the STS
-too. MFA and certificate trust are unsupported.
+against such an org says so in its hint. The username goes to the STS exactly as
+typed, with no separate `--domain`; which form it accepts (`DOMAIN\user`, UPN, or
+bare name) depends on the AD FS server, so try another form on a rejection, and
+single-quote `'DOMAIN\user'` in the shell. An org on an internal CA needs
+`--no-verify-ssl`, which covers the STS too.
 
 The OAuth scope (`https://<host>/.default`) and authority
 (`https://login.microsoftonline.com/<tenant>`) are derived automatically; public

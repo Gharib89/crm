@@ -17,7 +17,7 @@ against both targets.
 
 | | On-prem (NTLM) | Cloud / online (OAuth) |
 |---|---|---|
-| Auth scheme | NTLM (also `kerberos` / `negotiate`; `adfs` for an IFD org behind AD FS) | OAuth (client-credentials) |
+| Auth scheme | NTLM (also `kerberos` / `negotiate` / `adfs`) | OAuth (client-credentials) |
 | API version | **v9.1 max** (`v9.2` → HTTP 501) | `v9.2` |
 | `CreateMultiple` / `UpdateMultiple` / `DeleteMultiple` | not available | available |
 | Solution import (sync + `ImportSolutionAsync` / `StageSolution`) | available | available |
@@ -157,7 +157,7 @@ at most one solution export per work session.
 - **NTLM or AD FS username/password (on-prem), OAuth client-credentials (online).**
   AD FS OAuth, MFA, certificate credentials, and other OAuth flows (device-code,
   interactive, ROPC) are out of scope; OAuth targets the public cloud only. An IFD
-  org needs the `adfs` scheme: `reference/setup.md`.
+  org (NTLM gets a bare HTTP 500) needs the `adfs` scheme: `reference/setup.md`.
 - **Secrets are saved by default.** `crm profile add` / `crm profile set-password`
   store the secret in the OS keyring, or a `0600` plaintext field in the profile
   file when the keyring is unavailable (WSL/headless) or `--store-password-plaintext`
@@ -217,7 +217,7 @@ For per-domain detail:
 
 | Working on… | Read |
 |---|---|
-| first-time setup: install the `crm` binary, create/switch a connection profile (NTLM or OAuth, secret storage), `--json`/no-TTY behavior | `reference/setup.md` |
+| first-time setup: install the `crm` binary, create/switch a connection profile (NTLM, AD FS or OAuth, secret storage), `--json`/no-TTY behavior | `reference/setup.md` |
 | end-to-end customization: where to start, the order components go in, stage→publish→promote a change across dev/test/prod | `reference/customization-lifecycle.md` |
 | repo-driven customizations-as-code: spec repo layout, plan → approve → `--from-plan` promote, seeding from a live org | `reference/customizations-as-code.md` |
 | records: create/read/update/delete, query (OData/FetchXML/saved), associate/lookup, clone, upsert, ad-hoc `action` | `reference/records.md` |

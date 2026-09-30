@@ -363,3 +363,110 @@ class TestProfileEdit:
         result = CliRunner().invoke(cli, ["--json", "profile", "edit", "ifd", "--adfs-url", STS])
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile("ifd").adfs_url == STS
+
+
+class TestReviewHardening:
+    def test_default_namespace_rstr_keeps_its_namespace(self):
+        doc = (
+            '<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"><s:Body>'
+            '<RequestSecurityTokenResponseCollection xmlns="http://docs.oasis-open.org/ws-sx/ws-trust/200512">'
+            "<RequestSecurityTokenResponse><TokenType>t</TokenType></RequestSecurityTokenResponse >"
+            "</RequestSecurityTokenResponseCollection></s:Body></s:Envelope>"
+        )
+        wresult = adfs.extract_wresult(doc)
+        start_tag = wresult.split(">", 1)[0]
+        assert ' xmlns="http://docs.oasis-open.org/ws-sx/ws-trust/200512"' in start_tag
+        assert wresult.endswith("</RequestSecurityTokenResponse >")
+        assert fromstring(wresult).tag.endswith("}RequestSecurityTokenResponse")
+
+    def test_non_https_sts_never_receives_the_password(self):
+        b = D365Backend(_profile(adfs_url="http://sts.contoso.com"), password=PASSWORD)
+        with requests_mock.Mocker() as m:
+            _mock_sign_in(m)
+            with pytest.raises(D365Error, match="https") as ei:
+                b.get("WhoAmI")
+        assert ei.value.status == 401
+        assert not [r for r in m.request_history if r.method == "POST"]
+
+    def test_wsignin_in_another_parameter_is_not_an_sts_redirect(self):
+        b = D365Backend(_profile(), password=PASSWORD)
+        with requests_mock.Mocker() as m:
+            m.get(
+                f"{ORG}/main.aspx",
+                status_code=302,
+                headers={"Location": f"{STS}/adfs/ls/?wa=wsignout1.0&ru={ORG}/?wa=wsignin1.0"},
+            )
+            with pytest.raises(D365Error, match="without a redirect"):
+                b.get("WhoAmI")
+
+    def test_redirect_after_reauth_is_an_auth_error(self):
+        b = D365Backend(_profile(), password=PASSWORD)
+        with requests_mock.Mocker() as m:
+            _mock_sign_in(m)
+            m.get(WHOAMI, status_code=302, headers={"Location": _discovery_location()})
+            with pytest.raises(D365Error, match="rejected") as ei:
+                b.get("WhoAmI")
+        assert ei.value.status == 401
+        assert len(_calls(m, "POST", TRUST)) == 2
+
+    def test_token_fault_hint_names_every_username_form(self):
+        b = D365Backend(_profile(), password=PASSWORD)
+        with requests_mock.Mocker() as m:
+            _mock_sign_in(m)
+            m.post(TRUST, status_code=500, text=FAULT)
+            with pytest.raises(D365Error) as ei:
+                b.get("WhoAmI")
+        assert "DOMAIN\\user, UPN or the bare name" in str(ei.value)
+
+
+class TestReviewCli:
+    def test_add_adfs_url_with_another_scheme_is_a_usage_error(self, crm_home):
+        result = CliRunner().invoke(cli, _add("--auth-scheme", "ntlm", "--adfs-url", STS))
+        assert result.exit_code == 2
+        assert "--adfs-url" in result.output
+
+    def test_add_domain_with_adfs_is_a_usage_error(self, crm_home):
+        with requests_mock.Mocker():
+            result = CliRunner().invoke(cli, _add("--auth-scheme", "adfs", "--domain", "CONTOSO"))
+        assert result.exit_code == 2
+        assert "--domain" in result.output
+
+    def test_edit_blank_adfs_url_restores_discovery(self, crm_home):
+        session_mod.save_profile(_profile(adfs_url=STS))
+        result = CliRunner().invoke(cli, ["--json", "profile", "edit", "ifd", "--adfs-url", ""])
+        assert result.exit_code == 0, result.output
+        assert session_mod.load_profile("ifd").adfs_url is None
+
+    def test_edit_adfs_url_on_another_scheme_is_a_usage_error(self, crm_home):
+        session_mod.save_profile(_profile(auth_scheme="ntlm"))
+        result = CliRunner().invoke(cli, ["--json", "profile", "edit", "ifd", "--adfs-url", STS])
+        assert result.exit_code == 2
+        assert session_mod.load_profile("ifd").adfs_url is None
+
+    def test_ntlm_transport_failure_skips_the_adfs_probe(self, crm_home, monkeypatch):
+        import requests
+
+        monkeypatch.setattr("crm.utils.d365_backend.time.sleep", lambda _s: None)
+
+        with requests_mock.Mocker() as m:
+            m.get(WHOAMI, exc=requests.exceptions.ConnectTimeout)
+            m.get(f"{ORG}/main.aspx", status_code=302, headers={"Location": _discovery_location()})
+            result = CliRunner().invoke(cli, _add("--auth-scheme", "ntlm"))
+        assert result.exit_code != 0
+        assert not _calls(m, "GET", f"{ORG}/main.aspx")
+
+    def test_doctor_hint_on_adfs_sign_in_failure(self):
+        from crm.core.connection import connection_doctor
+
+        b = D365Backend(_profile(), password=PASSWORD)
+        with requests_mock.Mocker() as m:
+            _mock_sign_in(m)
+            m.post(TRUST, status_code=500, text=FAULT)
+            import socket
+            from unittest import mock
+
+            with mock.patch.object(socket, "create_connection"):
+                report = connection_doctor(b)
+        tls = next(c for c in report["checks"] if c["check"] == "tls")
+        assert not tls["ok"]
+        assert "AD FS" in tls["hint"] and "OAuth" not in tls["hint"]

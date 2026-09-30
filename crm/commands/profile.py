@@ -77,17 +77,19 @@ def _validate_prefix_opt(_ctx, _param, value):
     return value
 
 
-def _adfs_note(profile):
+def _adfs_note(profile, exc):
     """A hint prefix when a Windows-auth profile failed against an AD FS (IFD) org.
 
     An IFD org answers NTLM on the Web API with a bare 500, so the failure alone
-    never says why; its unauthenticated main.aspx redirect to the STS does.
+    never says why; its unauthenticated main.aspx redirect to the STS does. Only
+    probed when the org answered at all: after a transport failure the probe
+    would just wait out a second timeout.
     """
-    if profile.auth_scheme not in ("ntlm", "kerberos", "negotiate"):
+    if profile.auth_scheme not in ("ntlm", "kerberos", "negotiate") or exc.status is None:
         return ""
     from crm.utils.adfs import sts_hint
 
-    sts = sts_hint(profile.url, profile.verify_ssl, profile.timeout)
+    sts = sts_hint(profile.url, profile.verify_ssl, min(profile.timeout, 15))
     if sts is None:
         return ""
     return f"this org signs in through AD FS ({sts}): re-run with --auth-scheme adfs; "
@@ -107,7 +109,7 @@ def _adfs_note(profile):
     default=None,
     help="Override the auth scheme inferred from the URL (adfs = on-prem IFD via AD FS).",
 )
-@click.option("--username", default=None, help="NTLM: username.")
+@click.option("--username", default=None, help="NTLM / AD FS: username.")
 @click.option("--domain", default=None, help="NTLM: AD domain (blank for UPN).")
 @click.option("--tenant-id", default=None, help="OAuth: Azure AD tenant id.")
 @click.option("--client-id", default=None, help="OAuth: application (client) id.")
@@ -206,6 +208,11 @@ def profile_add(
         auth_scheme = chosen
     if adfs_url and auth_scheme != "adfs":
         raise click.UsageError("--adfs-url applies only to --auth-scheme adfs.")
+    if domain and auth_scheme == "adfs":
+        raise click.UsageError(
+            "--domain does not apply to --auth-scheme adfs; put it in --username "
+            "(DOMAIN\\user) if your AD FS server wants it."
+        )
 
     if auth_scheme == "oauth":
         if not tenant_id:
@@ -337,7 +344,7 @@ def profile_add(
         # server unreachable, app user not yet provisioned). Save only on an
         # explicit opt-in — never silently.
         if not save_on_test_failure:
-            adfs_note = _adfs_note(profile)
+            adfs_note = _adfs_note(profile, exc)
             if not interactive:
                 _handle_d365_error(
                     ctx,
@@ -610,6 +617,8 @@ def profile_edit(
     if client_id is not None:
         p.client_id = client_id
     if adfs_url is not None:
+        if adfs_url and p.auth_scheme != "adfs":
+            raise click.UsageError("--adfs-url applies only to an adfs profile.")
         p.adfs_url = adfs_url or None
     if api_version is not None:
         p.api_version = api_version
