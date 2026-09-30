@@ -9,6 +9,64 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.81.0 (2026-09-30)
+
+### Bug Fixes
+
+- Drop stale MSISAuth chunks when AD FS signs in again
+  ([#991](https://github.com/Gharib89/crm/pull/991),
+  [`28f27b9`](https://github.com/Gharib89/crm/commit/28f27b9874885d2d9512376fcfa5117ef86cc41f))
+
+- Keep the profile domain when --auth-scheme adfs overrides an ntlm profile
+  ([#991](https://github.com/Gharib89/crm/pull/991),
+  [`28f27b9`](https://github.com/Gharib89/crm/commit/28f27b9874885d2d9512376fcfa5117ef86cc41f))
+
+- **profile**: Harden adfs sign-in after self-review
+  ([#991](https://github.com/Gharib89/crm/pull/991),
+  [`28f27b9`](https://github.com/Gharib89/crm/commit/28f27b9874885d2d9512376fcfa5117ef86cc41f))
+
+- **profile**: Name every AD FS username form in the token-request hint
+  ([#991](https://github.com/Gharib89/crm/pull/991),
+  [`28f27b9`](https://github.com/Gharib89/crm/commit/28f27b9874885d2d9512376fcfa5117ef86cc41f))
+
+### Chores
+
+- **Add a skill**: Added setup-harness skill
+  ([`3fd9b99`](https://github.com/Gharib89/crm/commit/3fd9b99c9135ffbefed77e65757d2ef608bdbfb1))
+
+- **ci**: Run the unit tests under xdist with sysmon coverage
+  ([#990](https://github.com/Gharib89/crm/pull/990),
+  [`be1b59b`](https://github.com/Gharib89/crm/commit/be1b59b9a313090a5b90c2a2116bb025c989f38e))
+
+- **harness**: Set up the agent check harness ([#988](https://github.com/Gharib89/crm/pull/988),
+  [`b9c8ee2`](https://github.com/Gharib89/crm/commit/b9c8ee2ebdfd1025fc6e824a27f47f5cec534b09))
+
+- **skills**: Refresh derived skills ([#987](https://github.com/Gharib89/crm/pull/987),
+  [`53e2eb0`](https://github.com/Gharib89/crm/commit/53e2eb0b21bdbc9dea61c40151c136f1719687d0))
+
+- **skills**: Refresh derived skills ([#986](https://github.com/Gharib89/crm/pull/986),
+  [`b010e9b`](https://github.com/Gharib89/crm/commit/b010e9bd18fce3da01c5386e403b3be976797f1e))
+
+- **skills**: Refresh derived skills ([#985](https://github.com/Gharib89/crm/pull/985),
+  [`bdf4600`](https://github.com/Gharib89/crm/commit/bdf460024b3829f124c73ec8eb43f585e02590c8))
+
+### Documentation
+
+- Replace ship's retired degraded wording, refresh the Ship block
+  ([#985](https://github.com/Gharib89/crm/pull/985),
+  [`bdf4600`](https://github.com/Gharib89/crm/commit/bdf460024b3829f124c73ec8eb43f585e02590c8))
+
+- **profile**: Document the adfs auth scheme for IFD orgs
+  ([#991](https://github.com/Gharib89/crm/pull/991),
+  [`28f27b9`](https://github.com/Gharib89/crm/commit/28f27b9874885d2d9512376fcfa5117ef86cc41f))
+
+### Features
+
+- **profile**: Add an adfs auth scheme for on-prem IFD orgs via WS-Trust
+  ([#991](https://github.com/Gharib89/crm/pull/991),
+  [`28f27b9`](https://github.com/Gharib89/crm/commit/28f27b9874885d2d9512376fcfa5117ef86cc41f))
+
+
 ## v1.80.6 (2026-09-25)
 
 ### Bug Fixes
