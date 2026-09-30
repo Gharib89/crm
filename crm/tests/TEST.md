@@ -202,6 +202,8 @@ autouse `_enforce_capability` gate), so it runs in plain CI with `D365_E2E` unse
 
 **Capability gating & target divergence:** mark a test `@pytest.mark.requires_cloud` /
 `requires_onprem` when a verb only works on one target; the marker skips it on the other.
+The AD FS (IFD) sign-in test (`connection whoami`, #978) is `requires_onprem` and also skips
+unless `D365_E2E_PROFILE` names an `adfs`-scheme profile, so a plain on-prem run reports it skipped.
 For a verb that works on both but returns different values, take the `target` fixture and
 branch the assertion (e.g. `expected = "v9.2" if target == "cloud" else "v9.1"`) — it then
 runs meaningfully on each union leg. Full coverage = the **union** of an on-prem run and a

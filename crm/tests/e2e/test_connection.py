@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from crm.tests.e2e.coverage import covers
 
 
@@ -34,6 +36,19 @@ def test_whoami_returns_identity(backend, cli):
     meta = env.get("meta", {})
     assert meta.get("profile") == data["profile"]
     assert meta.get("url") == data["url"]
+
+
+@covers("connection whoami")
+@pytest.mark.requires_onprem
+def test_adfs_profile_signs_in_and_reads_the_version(backend, cli):
+    # AD FS (IFD) sign-in end to end (#978): WS-Trust, MSISAuth cookies, Web API.
+    if backend.profile.auth_scheme != "adfs":
+        pytest.skip("needs D365_E2E_PROFILE naming an adfs (IFD) profile")
+    assert backend.get("WhoAmI")["UserId"]
+    assert backend.get("RetrieveVersion")["Version"].startswith("9.")
+    proc = cli(["--json", "connection", "whoami"])
+    assert proc.returncode == 0, proc.stderr
+    assert json.loads(proc.stdout)["ok"] is True
 
 
 @covers("connection status")

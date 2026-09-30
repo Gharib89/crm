@@ -163,9 +163,10 @@ class ConnectionProfile:
     username: str
     api_version: str = "v9.2"
     verify_ssl: bool = True
-    auth_scheme: str = "ntlm"  # ntlm | kerberos | negotiate | oauth
+    auth_scheme: str = "ntlm"  # ntlm | kerberos | negotiate | oauth | adfs
     tenant_id: str | None = None  # oauth: AAD tenant (non-secret)
     client_id: str | None = None  # oauth: app-registration id (non-secret)
+    adfs_url: str | None = None  # adfs: STS override; None = discover from the org
     publisher_prefix: str | None = None  # schema-name prefix, e.g. "new"
     read_only: bool = False  # guardrail: backend refuses org mutations
     timeout: int = 120
@@ -197,9 +198,9 @@ class ConnectionProfile:
     def __post_init__(self) -> None:
         self.url = self.normalize_url(self.url)
         validate_profile_name(self.name)
-        if self.auth_scheme not in ("ntlm", "kerberos", "negotiate", "oauth"):
+        if self.auth_scheme not in ("ntlm", "kerberos", "negotiate", "oauth", "adfs"):
             raise D365Error(
-                f"ConnectionProfile.auth_scheme must be ntlm|kerberos|negotiate|oauth, "
+                f"ConnectionProfile.auth_scheme must be ntlm|kerberos|negotiate|oauth|adfs, "
                 f"got {self.auth_scheme!r}"
             )
         for _field, _value in (
@@ -233,6 +234,7 @@ class ConnectionProfile:
             "auth_scheme": self.auth_scheme,
             "tenant_id": self.tenant_id,
             "client_id": self.client_id,
+            "adfs_url": self.adfs_url,
             "publisher_prefix": self.publisher_prefix,
             "read_only": self.read_only,
             "timeout": self.timeout,
@@ -257,6 +259,7 @@ class ConnectionProfile:
             auth_scheme=d.get("auth_scheme", "ntlm"),
             tenant_id=d.get("tenant_id"),
             client_id=d.get("client_id"),
+            adfs_url=d.get("adfs_url"),
             publisher_prefix=d.get("publisher_prefix"),
             read_only=d.get("read_only", False),
             timeout=d.get("timeout", 120),
@@ -561,7 +564,29 @@ class D365Backend:
             return HttpNegotiateAuth()  # type: ignore[no-any-return]
         if scheme == "oauth":
             return self._make_oauth_auth(password)
-        raise D365Error(f"Unknown auth_scheme {scheme!r}; expected ntlm|kerberos|negotiate|oauth")
+        if scheme == "adfs":
+            if not password:
+                raise D365Error(
+                    "AD FS auth requires a password (crm profile set-password, or pass --password)."
+                )
+            from crm.utils.adfs import AdfsCookieAuth
+
+            # `profile add` stores adfs domains inside the username; a separate one
+            # survives only a `--auth-scheme adfs` override of an ntlm profile.
+            p = self.profile
+            username = f"{p.domain}\\{p.username}" if p.domain else p.username
+            return AdfsCookieAuth(
+                self._session,
+                p.url,
+                username,
+                password,
+                sts_url=p.adfs_url,
+                verify=p.verify_ssl,
+                timeout=p.timeout,
+            )
+        raise D365Error(
+            f"Unknown auth_scheme {scheme!r}; expected ntlm|kerberos|negotiate|oauth|adfs"
+        )
 
     def _make_oauth_auth(self, secret: str) -> AuthBase:
         """Build a bearer-token auth via OAuth 2.0 client-credentials.
