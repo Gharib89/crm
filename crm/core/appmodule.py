@@ -697,51 +697,6 @@ def _read_app_sitemap(
     return rows[0].get("sitemapid"), rows[0].get("sitemapxml")
 
 
-def reconcile_app(
-    backend: D365Backend,
-    *,
-    unique_name: str,
-    components: list[tuple[str, str]],
-    sitemap_xml: str | None,
-    solution: str | None = None,
-) -> dict[str, Any]:
-    """Converge an existing app's component set + sitemap to the declared block.
-
-    Reads the live app by ``unique_name``, then converges the two updatable
-    surfaces (ADR 0024): the **component set** (add declared-but-absent, remove
-    present-but-undeclared, over the reconciled component types) and the
-    **sitemap** (whole-document replacement when the declared XML differs). A
-    **managed** app is refused with no write (``blocked``) — its components and
-    sitemap are owned by its parent solution, so `apply` never mutates it.
-
-    Honors ``backend.dry_run``: the reads run (the reads-execute rule) and the diff
-    is computed, but AddAppComponents / RemoveAppComponents / the sitemap write are
-    suppressed — so a dry run yields the full drift classification with no write.
-
-    Returns ``{appmoduleid, blocked?, component_changes?, sitemap_change?}``, or
-    ``{unreadable: True}`` when the app cannot be read back. With nothing to read,
-    there is nothing to converge, so the caller reports it ``skipped``.
-
-    Internal to `apply` (ADR 0024): the one-call resolve → converge composition of
-    :func:`resolve_app` and :func:`converge_app`. The apply engine drives those two
-    steps separately, as its ``app`` adapter's ``find_live`` / ``reconcile`` pair,
-    so nothing outside the tests that pin this composition calls it; it is retained
-    deliberately (#963) and may be dropped once the adapter-seam tests fully cover
-    both steps (#960 stage b).
-    """
-    row = resolve_app(backend, unique_name)
-    if row is None:
-        return {"unreadable": True}
-    return converge_app(
-        backend,
-        row=row,
-        unique_name=unique_name,
-        components=components,
-        sitemap_xml=sitemap_xml,
-        solution=solution,
-    )
-
-
 def resolve_app(backend: D365Backend, unique_name: str) -> dict[str, Any] | None:
     """Resolve the live app row a declared ``apps:`` block converges against.
 
