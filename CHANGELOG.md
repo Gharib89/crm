@@ -9,6 +9,52 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.81.2 (2026-10-01)
+
+### Bug Fixes
+
+- **repl**: Keep REPL history under CRM_HOME ([#999](https://github.com/Gharib89/crm/pull/999),
+  [`49f8d01`](https://github.com/Gharib89/crm/commit/49f8d0176ff4c5309ff1f922021fb16e88b4f1c0))
+
+- **repl**: Keep REPL history under CRM_HOME and delete dead code
+  ([#999](https://github.com/Gharib89/crm/pull/999),
+  [`49f8d01`](https://github.com/Gharib89/crm/commit/49f8d0176ff4c5309ff1f922021fb16e88b4f1c0))
+
+### Documentation
+
+- **glossary**: Define state home
+  ([`4fb5bc5`](https://github.com/Gharib89/crm/commit/4fb5bc5a9d5b16d5662938affff1126ba375744f))
+
+### Refactoring
+
+- **apply**: Delete unused reconcile_app and apply_form_spec
+  ([#999](https://github.com/Gharib89/crm/pull/999),
+  [`49f8d01`](https://github.com/Gharib89/crm/commit/49f8d0176ff4c5309ff1f922021fb16e88b4f1c0))
+
+- **helpers**: Drop the session_mod and _stdin_is_tty re-exports
+  ([#999](https://github.com/Gharib89/crm/pull/999),
+  [`49f8d01`](https://github.com/Gharib89/crm/commit/49f8d0176ff4c5309ff1f922021fb16e88b4f1c0))
+
+- **hooks**: Drop the unused core destructive-verb copy
+  ([#999](https://github.com/Gharib89/crm/pull/999),
+  [`49f8d01`](https://github.com/Gharib89/crm/commit/49f8d0176ff4c5309ff1f922021fb16e88b4f1c0))
+
+- **query**: Delete test-only count_entity_set ([#999](https://github.com/Gharib89/crm/pull/999),
+  [`49f8d01`](https://github.com/Gharib89/crm/commit/49f8d0176ff4c5309ff1f922021fb16e88b4f1c0))
+
+- **repl**: Drop the input() fallback the ImportError removal orphaned
+  ([#999](https://github.com/Gharib89/crm/pull/999),
+  [`49f8d01`](https://github.com/Gharib89/crm/commit/49f8d0176ff4c5309ff1f922021fb16e88b4f1c0))
+
+- **solution**: Drop the backward-compat re-exports
+  ([#999](https://github.com/Gharib89/crm/pull/999),
+  [`49f8d01`](https://github.com/Gharib89/crm/commit/49f8d0176ff4c5309ff1f922021fb16e88b4f1c0))
+
+- **solution**: Qualify component names through a private module alias
+  ([#999](https://github.com/Gharib89/crm/pull/999),
+  [`49f8d01`](https://github.com/Gharib89/crm/commit/49f8d0176ff4c5309ff1f922021fb16e88b4f1c0))
+
+
 ## v1.81.1 (2026-09-30)
 
 ### Bug Fixes
