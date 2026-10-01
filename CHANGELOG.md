@@ -9,6 +9,32 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.81.3 (2026-10-01)
+
+### Bug Fixes
+
+- **e2e**: Keep scripts/e2e_all.py runnable without crm installed
+  ([#1000](https://github.com/Gharib89/crm/pull/1000),
+  [`4b45e8c`](https://github.com/Gharib89/crm/commit/4b45e8c71c4ebf0f56093874ee89c08e2e1a7c45))
+
+- **state**: Finish the state-home sweep after self-review
+  ([#1000](https://github.com/Gharib89/crm/pull/1000),
+  [`4b45e8c`](https://github.com/Gharib89/crm/commit/4b45e8c71c4ebf0f56093874ee89c08e2e1a7c45))
+
+- **state**: Resolve every state file through one state home; empty CRM_HOME means ~/.crm
+  ([#1000](https://github.com/Gharib89/crm/pull/1000),
+  [`4b45e8c`](https://github.com/Gharib89/crm/commit/4b45e8c71c4ebf0f56093874ee89c08e2e1a7c45))
+
+- **state**: Treat an empty CRM_HOME as ~/.crm through one state-home module
+  ([#1000](https://github.com/Gharib89/crm/pull/1000),
+  [`4b45e8c`](https://github.com/Gharib89/crm/commit/4b45e8c71c4ebf0f56093874ee89c08e2e1a7c45))
+
+### Documentation
+
+- Say an unset or empty CRM_HOME means ~/.crm ([#1000](https://github.com/Gharib89/crm/pull/1000),
+  [`4b45e8c`](https://github.com/Gharib89/crm/commit/4b45e8c71c4ebf0f56093874ee89c08e2e1a7c45))
+
+
 ## v1.81.2 (2026-10-01)
 
 ### Bug Fixes
