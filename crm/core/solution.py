@@ -18,12 +18,7 @@ from typing import Any, cast
 from crm.core import dependencies, entity, metadata_cache
 from crm.core.batch import run_batched
 from crm.core.solution_components import (
-    RESOLVE_SPECS as RESOLVE_SPECS,
-)
-from crm.core.solution_components import (
-    ROOT_COMPONENT_BEHAVIORS as ROOT_COMPONENT_BEHAVIORS,
-)
-from crm.core.solution_components import (
+    RESOLVE_SPECS,
     SOLUTION_COMPONENT_TYPES,
     build_audit,
     component_key,

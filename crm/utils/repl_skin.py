@@ -194,41 +194,7 @@ class ReplSkin:
 
     # ── Prompt ────────────────────────────────────────────────────────
 
-    def prompt(self, project_name: str = "", modified: bool = False, context: str = "") -> str:
-        """Build a styled prompt string for prompt_toolkit or input().
-
-        Args:
-            project_name: Current project name (empty if none open).
-            modified: Whether the project has unsaved changes.
-            context: Optional extra context to show in prompt.
-
-        Returns:
-            Formatted prompt string.
-        """
-        parts = []
-
-        # Icon
-        if self._color:
-            parts.append(f"{_CYAN}◆{_RESET} ")
-        else:
-            parts.append("> ")
-
-        # Software name
-        parts.append(self._c(self.accent + _BOLD, self.software))
-
-        # Project context
-        if project_name or context:
-            ctx = context or project_name
-            mod = "*" if modified else ""
-            parts.append(f" {self._c(_DARK_GRAY, '[')}")
-            parts.append(self._c(_LIGHT_GRAY, f"{ctx}{mod}"))
-            parts.append(self._c(_DARK_GRAY, "]"))
-
-        parts.append(self._c(_GRAY, " ❯ "))
-
-        return "".join(parts)
-
-    def prompt_tokens(self, project_name: str = "", modified: bool = False, context: str = ""):
+    def prompt_tokens(self, project_name: str = "", modified: bool = False):
         """Build prompt_toolkit formatted text tokens for the prompt.
 
         Use with prompt_toolkit's FormattedText for proper ANSI handling.
@@ -241,11 +207,10 @@ class ReplSkin:
         tokens.append(("class:icon", "◆ "))
         tokens.append(("class:software", self.software))
 
-        if project_name or context:
-            ctx = context or project_name
+        if project_name:
             mod = "*" if modified else ""
             tokens.append(("class:bracket", " ["))
-            tokens.append(("class:context", f"{ctx}{mod}"))
+            tokens.append(("class:context", f"{project_name}{mod}"))
             tokens.append(("class:bracket", "]"))
 
         tokens.append(("class:arrow", " ❯ "))
@@ -426,21 +391,17 @@ class ReplSkin:
         )
 
     def get_input(self, pt_session, project_name: str = "", modified: bool = False) -> str:
-        """Get input from user using prompt_toolkit or fallback.
+        """Get input from user through the prompt_toolkit session.
 
         Args:
-            pt_session: A prompt_toolkit PromptSession (or None).
+            pt_session: The PromptSession from :meth:`create_prompt_session`.
             project_name: Current project name.
             modified: Whether project has unsaved changes.
 
         Returns:
             User input string (stripped).
         """
-        if pt_session is not None:
-            from prompt_toolkit.formatted_text import FormattedText
+        from prompt_toolkit.formatted_text import FormattedText
 
-            tokens = self.prompt_tokens(project_name, modified)
-            return pt_session.prompt(FormattedText(tokens)).strip()
-        else:
-            raw_prompt = self.prompt(project_name, modified)
-            return input(raw_prompt).strip()
+        tokens = self.prompt_tokens(project_name, modified)
+        return pt_session.prompt(FormattedText(tokens)).strip()
