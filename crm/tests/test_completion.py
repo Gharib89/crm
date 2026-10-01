@@ -431,5 +431,6 @@ class TestMarker:
         assert reg.read_marker() is None
 
     def test_corrupt_is_none(self):
+        reg.marker_path().parent.mkdir(parents=True, exist_ok=True)
         reg.marker_path().write_text("{not json", encoding="utf-8")
         assert reg.read_marker() is None

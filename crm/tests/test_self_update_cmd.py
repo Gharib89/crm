@@ -571,6 +571,7 @@ class TestCompletionRefresh:
         from crm.commands import completion_registry as creg
 
         _force_method(monkeypatch, "editable")
+        creg.marker_path().parent.mkdir(parents=True, exist_ok=True)
         creg.marker_path().write_text(
             json.dumps({"shell": "zsh", "script_path": 123, "installed_version": "0.0.1"}),
             encoding="utf-8",

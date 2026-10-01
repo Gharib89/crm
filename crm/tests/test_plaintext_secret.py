@@ -80,7 +80,7 @@ def test_secret_file_created_0600_without_post_write_chmod(monkeypatch):
         calls.append(str(path))
         return real_chmod(path, mode, *a, **k)
 
-    monkeypatch.setattr(session_mod.os, "chmod", spy_chmod)
+    monkeypatch.setattr(os, "chmod", spy_chmod)
     path = session_mod.save_profile_secret_plaintext("prod", "p@ss")
     assert (path.stat().st_mode & 0o777) == 0o600
     assert calls == [], f"secret file must be created 0600, not chmod'd after: {calls}"

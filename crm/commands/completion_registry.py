@@ -11,20 +11,21 @@ The marker is a single object (one CLI-managed completion script)::
 
     {"shell": "zsh", "script_path": "/abs/path/crm.zsh", "installed_version": "3.9.2"}
 
-Read tolerantly (missing/corrupt → ``None``) and written atomically (unique temp
-file + os.replace) so a reader never sees a torn file — identical discipline to
+Read tolerantly (missing/corrupt → ``None``) and written atomically (the state
+home's writer) so a reader never sees a torn file — identical discipline to
 ``skill_registry``.
 """
 
 # pyright: basic
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 from typing import Any
 
 from click.shell_completion import CompletionItem, ShellComplete, split_arg_string
+
+from crm.core.state_home import atomic_write_json, read_json, state_home
 
 # Click 8.x ships zsh/bash/fish completion classes; "powershell" is added by this
 # module via add_completion_class (see PowerShellComplete + the eager registration
@@ -98,20 +99,14 @@ class PowerShellComplete(ShellComplete):
         return f"{item.type}\t{item.value}\t{item.help or ''}"
 
 
-def _crm_home() -> Path:
-    root = Path(os.environ.get("CRM_HOME", str(Path.home() / ".crm"))).expanduser()
-    root.mkdir(parents=True, exist_ok=True)
-    return root
-
-
 def marker_path() -> Path:
-    return _crm_home() / "completion.json"
+    return state_home() / "completion.json"
 
 
 def default_script_path(shell: str) -> Path:
     """The cached-script location under ``CRM_HOME`` for a given shell."""
     ext = _SCRIPT_EXT.get(shell, shell)
-    return _crm_home() / "completion" / f"crm.{ext}"
+    return state_home() / "completion" / f"crm.{ext}"
 
 
 def rc_line(shell: str, dest: Path | str) -> str:
@@ -143,32 +138,14 @@ def read_marker() -> dict[str, Any] | None:
     a genuine I/O fault propagates so the caller surfaces a clean error rather
     than silently treating it as "not installed".
     """
-    try:
-        raw = json.loads(marker_path().read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return None
-    except (json.JSONDecodeError, ValueError, UnicodeDecodeError):
-        return None
+    raw = read_json(marker_path())
     return raw if isinstance(raw, dict) else None
 
 
 def write_marker(shell: str, script_path: str, installed_version: str) -> None:
-    """Atomically record the installed completion script (unique temp + os.replace)."""
-    # Lazy: tempfile is only reached when a completion script is actually
-    # installed — this module is imported eagerly (crm/cli.py) on every run (#702).
-    import tempfile
-
-    path = marker_path()
+    """Atomically record the installed completion script."""
     payload = {"shell": shell, "script_path": script_path, "installed_version": installed_version}
-    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
-    tmp = Path(tmp_name)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(json.dumps(payload, indent=2))
-        os.replace(tmp, path)
-    except BaseException:
-        tmp.unlink(missing_ok=True)
-        raise
+    atomic_write_json(marker_path(), payload)
 
 
 def remove_marker() -> None:

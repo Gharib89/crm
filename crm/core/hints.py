@@ -14,12 +14,11 @@ without a CLI context.
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 from typing import Any, cast
 
-from crm.core.session import DEFAULT_HOME
+from crm.core.state_home import atomic_write_json, read_json, state_home
 
 # Curated hint table: id → the one-line guidance shown after the triggering
 # command's normal output. Quality over quantity — each points at a natural
@@ -44,19 +43,16 @@ def hints_disabled() -> bool:
 
 
 def _seen_path() -> Path:
-    root = Path(os.environ.get("CRM_HOME", str(DEFAULT_HOME))).expanduser()
-    return root / "hints_seen.json"
+    return state_home() / "hints_seen.json"
 
 
 def load_seen() -> set[str]:
     """Return the set of already-shown hint ids. A missing or corrupt store is
     treated as empty and never raises — a broken file must not break commands.
     """
-    p = _seen_path()
     try:
-        with p.open("r", encoding="utf-8") as f:
-            raw: Any = json.load(f)
-    except (OSError, ValueError):
+        raw: Any = read_json(_seen_path())
+    except OSError:
         return set()
     if not isinstance(raw, dict):
         return set()
@@ -69,24 +65,16 @@ def load_seen() -> set[str]:
 def mark_seen(hint_id: str) -> None:
     """Persist `hint_id` as shown, preserving any already-recorded ids.
 
-    Atomic tmp+rename (mirrors ``session._atomic_write_json``, replicated to keep
-    this leaf module free of a cross-module private import). No advisory lock: a
-    lost race merely re-shows a hint once — harmless, unlike session state. Any
+    Atomic write, with no advisory lock: a lost race merely re-shows a hint
+    once — harmless, unlike session state. Any
     write failure (unwritable ``CRM_HOME``, fsync/rename error) is swallowed: a
     hint is optional UX and must never turn a successful command into a crash —
     at worst the hint re-shows next time because it wasn't recorded.
     """
     seen = load_seen()
     seen.add(hint_id)
-    path = _seen_path()
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(path.suffix + ".tmp")
-        with tmp.open("w", encoding="utf-8") as f:
-            json.dump({"seen": sorted(seen)}, f, indent=2, sort_keys=True)
-            f.flush()
-            os.fsync(f.fileno())
-        tmp.replace(path)
+        atomic_write_json(_seen_path(), {"seen": sorted(seen)})
     except OSError:
         pass
 

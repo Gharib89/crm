@@ -39,8 +39,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from crm.core.state_home import state_home
+
 REPO = Path(__file__).resolve().parent.parent
-CRM_HOME = Path(os.environ.get("CRM_HOME") or (Path.home() / ".crm"))
+STATE_HOME = state_home()
 CYAN, DIM, YEL, RST = "\033[1;36m", "\033[2m", "\033[33m", "\033[0m"
 GREEN, RED = "\033[32m", "\033[31m"
 
@@ -114,7 +116,7 @@ def _profile_host(profile: str) -> str | None:
     The host opens the *.dynamics.com prod-host guard for the exact org (the cs-trial
     host changes each provisioning); harmless no-op for an on-prem host. Read-only.
     """
-    pf = CRM_HOME / "profiles" / f"{profile}.json"
+    pf = STATE_HOME / "profiles" / f"{profile}.json"
     if not pf.is_file():
         return None
     url: str = json.loads(pf.read_text(encoding="utf-8")).get("url", "")
@@ -176,7 +178,7 @@ def _run_leg(
 
     host = _profile_host(leg.profile)
     if host is None:
-        msg = f"SKIPPED LEG — profile {leg.profile!r} not found ({CRM_HOME}/profiles)"
+        msg = f"SKIPPED LEG — profile {leg.profile!r} not found ({STATE_HOME}/profiles)"
         print(f"{YEL}{msg}{RST}")
         log.write_text(msg + "\n", encoding="utf-8")
         return 0

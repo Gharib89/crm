@@ -82,6 +82,7 @@ def test_missing_file_reads_as_empty():
 def test_corrupt_file_reads_as_empty(tmp_path):
     from crm.commands import skill_registry as reg
 
+    reg.registry_path().parent.mkdir(parents=True, exist_ok=True)
     reg.registry_path().write_text("{ not json", encoding="utf-8")
     assert reg.read_skills() == []
 

@@ -22,8 +22,10 @@ import urllib.parse
 import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
+from crm.core.state_home import atomic_write, state_home
 from crm.utils.d365_types import BatchOperation, BatchResult
 
 if TYPE_CHECKING:
@@ -318,22 +320,14 @@ DEFAULT_HEADERS: dict[str, str] = {
 }
 
 
-def _oauth_cache_path() -> str | None:
-    """Path to the persistent msal token cache.
+def _oauth_cache_path() -> str:
+    """Path to the persistent msal token cache in the state home.
 
-    Returns None only when the CRM_HOME directory can't be created. An
-    existing-but-unwritable dir still yields a path here; the actual write is
-    best-effort (see `_OAuthBearerAuth._persist_cache`) and falls back to an
-    in-memory cache for this run if it fails.
+    Resolving creates nothing; the write is best-effort (see
+    `_OAuthBearerAuth._persist_cache`) and falls back to an in-memory cache for
+    this run if it fails.
     """
-    root = _os.path.expanduser(
-        _os.environ.get("CRM_HOME") or _os.path.join(_os.path.expanduser("~"), ".crm")
-    )
-    try:
-        _os.makedirs(root, exist_ok=True)
-    except OSError:
-        return None
-    return _os.path.join(root, "msal_token_cache.json")
+    return str(state_home() / "msal_token_cache.json")
 
 
 # Lazily-built, cached OAuth bearer-auth class. Its base (requests' AuthBase) is
@@ -429,23 +423,12 @@ def _oauth_bearer_auth_cls() -> Callable[..., AuthBase]:
             path = self._cache_path
             if cache is None or path is None or not getattr(cache, "has_state_changed", False):
                 return
-            # Write to a pid-unique temp file then atomically replace, so concurrent
-            # `crm` invocations sharing CRM_HOME can't leave a torn cache file.
-            tmp = f"{path}.{_os.getpid()}.tmp"
+            # Atomic and 0600 from the first byte, so concurrent `crm` invocations
+            # sharing the state home can't leave a torn or readable cache file.
             try:
-                fd = _os.open(tmp, _os.O_WRONLY | _os.O_CREAT | _os.O_TRUNC, 0o600)
-                try:
-                    _os.write(fd, cache.serialize().encode("utf-8"))
-                finally:
-                    _os.close(fd)
-                _os.chmod(tmp, 0o600)  # enforce 0600 regardless of umask
-                _os.replace(tmp, path)
+                atomic_write(Path(path), cache.serialize().encode("utf-8"), mode=0o600)
             except OSError:
-                try:
-                    _os.unlink(tmp)
-                except OSError:
-                    pass
-                # best-effort: the in-memory token is still valid this run
+                pass  # best-effort: the in-memory token is still valid this run
 
     _oauth_auth_cls = _OAuthBearerAuth
     return _oauth_auth_cls
@@ -625,7 +608,7 @@ class D365Backend:
 
         cache: Any = _msal.SerializableTokenCache()
         cache_path = _oauth_cache_path()
-        if cache_path is not None and _os.path.exists(cache_path):
+        if _os.path.exists(cache_path):
             try:
                 with open(cache_path, encoding="utf-8") as fh:
                     cache.deserialize(fh.read())
