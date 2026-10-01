@@ -918,6 +918,40 @@ class D365Backend:
             pages_consumed += 1
         return rows
 
+    def find_one(
+        self,
+        entity_set: str,
+        column: str,
+        value: Any,
+        select: str | None,
+        *,
+        expand: str | None = None,
+        unique: BaseException | Callable[[], BaseException] | None = None,
+        **admin_kw: Any,
+    ) -> dict[str, Any] | None:
+        """Return the first row where *column* equals *value*, or ``None``.
+
+        One GET of one page: ``$filter=<column> eq <odata_literal(value)>``,
+        *select* as ``$select`` (``None`` selects every column), *expand* as
+        ``$expand``, and ``$top=1``. With *unique* (an exception, or a factory
+        returning one) it reads ``$top=2`` and raises that error when more than
+        one row matches; without it the first row wins.
+
+        The read runs for real even under dry-run (the reads-execute rule).
+        """
+        params: dict[str, Any] = {
+            "$filter": f"{column} eq {odata_literal(value)}",
+            "$top": "2" if unique is not None else "1",
+        }
+        if select is not None:
+            params["$select"] = select
+        if expand is not None:
+            params["$expand"] = expand
+        rows = self.get_collection(entity_set, params=params, max_pages=1, **admin_kw)
+        if len(rows) > 1 and unique is not None:
+            raise unique if isinstance(unique, BaseException) else unique()
+        return rows[0] if rows else None
+
     def resolve_id_by_name(
         self,
         entity_set: str,
@@ -929,26 +963,16 @@ class D365Backend:
     ) -> str | None:
         """Resolve a record id by an exact match on a name-ish field.
 
-        Issues a filtered GET (``$filter=<filter_field> eq '<escaped value>'``,
-        ``$select=<id_field>``) and returns the first row's *id_field*, or
-        ``None`` when no row matches. Callers keep their own domain-specific
-        not-found raise so per-domain error codes/messages stay local.
+        A :meth:`find_one` on *filter_field* selecting *id_field*: returns the
+        first row's *id_field*, or ``None`` when no row matches. Callers keep
+        their own domain-specific not-found raise so per-domain error
+        codes/messages stay local.
 
         The read runs for real even under dry-run (the reads-execute rule), so a
         preview path that needs the resolved id gets it.
         """
-        rows = self.get_collection(
-            entity_set,
-            params={
-                "$filter": f"{filter_field} eq {odata_literal(value)}",
-                "$select": id_field,
-            },
-            max_pages=1,
-            **admin_kw,
-        )
-        if not rows:
-            return None
-        rid = rows[0].get(id_field)
+        row = self.find_one(entity_set, filter_field, value, id_field, **admin_kw)
+        rid = row.get(id_field) if row else None
         return rid if isinstance(rid, str) else None
 
     def batch(

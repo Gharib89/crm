@@ -279,6 +279,10 @@ class FakeBackend:
             return list(_DEFAULT_ENTITY_DEFINITIONS) if path == "EntityDefinitions" else []
         return result
 
+    # The real query, borrowed: it builds the params and calls self.get_collection,
+    # so a test's responses={"get_collection": ...} keeps driving finder reads.
+    find_one = D365Backend.find_one
+
     def post(self, path: Any = None, *_args: Any, **kwargs: Any) -> Any:
         return self._dispatch("post", path, kwargs)
 

@@ -162,3 +162,55 @@ class TestResolveIdByName:
             # requests_mock lowercases parsed query values; the doubled quote
             # (OData escaping) is the assertion that matters here.
             assert "o''brien" in m.last_request.qs["$filter"][0]
+
+
+class TestFindOne:
+    def test_returns_first_row_on_hit(self, backend, profile):
+        with requests_mock.Mocker() as m:
+            m.get(
+                f"{profile.api_base}webresourceset",
+                json={"value": [{"webresourceid": "a"}, {"webresourceid": "b"}]},
+            )
+            row = backend.find_one("webresourceset", "name", "O'Brien", "webresourceid")
+            qs = m.last_request.qs
+        assert row == {"webresourceid": "a"}
+        assert "name eq 'o''brien'" == qs["$filter"][0]
+        assert qs["$select"] == ["webresourceid"]
+        assert qs["$top"] == ["1"]
+
+    def test_returns_none_on_miss(self, backend, profile):
+        with requests_mock.Mocker() as m:
+            m.get(f"{profile.api_base}webresourceset", json={"value": []})
+            assert backend.find_one("webresourceset", "name", "x", "webresourceid") is None
+
+    def test_expand_passed_through(self, backend, profile):
+        with requests_mock.Mocker() as m:
+            m.get(f"{profile.api_base}sdkmessageprocessingsteps", json={"value": []})
+            backend.find_one(
+                "sdkmessageprocessingsteps",
+                "name",
+                "s",
+                "stage",
+                expand="sdkmessageid($select=name)",
+            )
+            assert m.last_request.qs["$expand"] == ["sdkmessageid($select=name)"]
+
+    def test_unique_reads_two_and_returns_single_match(self, backend, profile):
+        with requests_mock.Mocker() as m:
+            m.get(f"{profile.api_base}roles", json={"value": [{"roleid": "r1"}]})
+            row = backend.find_one("roles", "name", "x", "roleid", unique=D365Error("dup"))
+            assert m.last_request.qs["$top"] == ["2"]
+        assert row == {"roleid": "r1"}
+
+    def test_unique_raises_supplied_exception_on_two_rows(self, backend, profile):
+        with requests_mock.Mocker() as m:
+            m.get(f"{profile.api_base}roles", json={"value": [{"roleid": "1"}, {"roleid": "2"}]})
+            with pytest.raises(D365Error, match="dup") as exc:
+                backend.find_one("roles", "name", "x", "roleid", unique=D365Error("dup", code="C"))
+        assert exc.value.code == "C"
+
+    def test_unique_factory_called_on_two_rows(self, backend, profile):
+        with requests_mock.Mocker() as m:
+            m.get(f"{profile.api_base}roles", json={"value": [{"roleid": "1"}, {"roleid": "2"}]})
+            with pytest.raises(D365Error, match="made"):
+                backend.find_one("roles", "name", "x", "roleid", unique=lambda: D365Error("made"))
