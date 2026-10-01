@@ -297,7 +297,8 @@ Removed: profile `default_solution` (and `--default-solution` on
 [ADR 0020](docs/adr/0020-require-explicit-solution-for-customization-writes.md).
 
 State lives under `~/.crm/` — `CRM_HOME` is the only env var involved in
-credential/connection resolution (it relocates that directory). No credentials
+credential/connection resolution (it relocates that directory; unset or empty, it
+is `~/.crm/`). No credentials
 are ever read from the environment. (Other `CRM_*` vars tune unrelated runtime
 behavior — logging, retries, stage-only — but never supply connection config.)
 
