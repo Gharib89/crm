@@ -130,6 +130,18 @@ class TestBlocksDestructive:
         )
         assert r.returncode == 0
 
+    @pytest.mark.parametrize("verb", ["uninstall", "stage-and-upgrade", "apply-upgrade"])
+    def test_block_solution_lifecycle_verb_no_yes(self, verb):
+        r = _run(f"crm solution {verb} CRMWorx")
+        assert r.returncode == BLOCK
+        assert verb in r.stderr
+
+    def test_allow_solution_clone_as_patch(self):
+        # clone-as-patch is non-destructive: it must pass through without --yes.
+        r = _run("crm solution clone-as-patch CRMWorx")
+        assert r.returncode == 0
+        assert r.stderr == ""
+
     def test_allow_solution_add_component(self):
         # add-component is non-destructive: it must pass through without --yes.
         r = _run(
@@ -226,6 +238,12 @@ class TestAssignRole:
         assert r.returncode == 0
         assert r.stderr == ""
 
+    def test_block_delete_role_no_yes(self):
+        # A forward-looking ROLE_VERBS entry: gated before the verb ships.
+        r = _run(f"crm security delete-role {_ROLE_ID}")
+        assert r.returncode == BLOCK
+        assert "delete-role" in r.stderr
+
     def test_role_verb_gated_regardless_of_group(self):
         # ROLE_VERBS matches by verb name only — even an unrecognised group is blocked.
         r = _run(f"crm other-group assign-role {_ROLE_ID}")
@@ -240,6 +258,7 @@ class TestNonDestructivePassthrough:
             "crm query accounts --filter \"name eq 'x'\"",
             "crm entity get contacts 11111111-1111-1111-1111-111111111111",
             "crm metadata list-entities",
+            "crm metadata",
             "crm metadata entities",
             "crm async list",
             "crm solution list",

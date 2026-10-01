@@ -2,7 +2,7 @@
 """Offline behaviour tests for the git-discipline and secret-scan PreToolUse hooks.
 
 Both hooks are pure-stdlib scripts under .claude/hooks/ (not importable
-packages) — load them by file path like test_destructive_sync.py does. The
+packages) — load them by file path. The
 end-to-end cases drive the real hook contract: JSON payload on stdin, exit 0
 (pass) / 2 (block), reason on stderr.
 
