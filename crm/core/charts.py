@@ -28,6 +28,7 @@ import copy
 import re
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 from crm.core.metadata import attribute_info, attribute_info_or_raise, maybe_publish
@@ -40,38 +41,45 @@ from crm.utils.d365_backend import (
     odata_literal,
 )
 
-_SYSTEM_CHART_SET = "savedqueryvisualizations"
-_USER_CHART_SET = "userqueryvisualizations"
 
-_CHART_SELECT = (
-    "savedqueryvisualizationid,name,primaryentitytypecode,"
-    "datadescription,presentationdescription,description,isdefault"
+@dataclass(frozen=True)
+class _ChartKind:
+    """The entity set and columns that back one chart kind (system or user)."""
+
+    entity_set: str
+    id_field: str
+    select: str
+    # Lighter select for `list`, which projects to list columns only and never
+    # returns the (potentially large) datadescription/presentationdescription XML.
+    list_select: str
+    # User charts have no isdefault column.
+    has_isdefault: bool
+
+
+_SYSTEM_CHART = _ChartKind(
+    entity_set="savedqueryvisualizations",
+    id_field="savedqueryvisualizationid",
+    select=(
+        "savedqueryvisualizationid,name,primaryentitytypecode,"
+        "datadescription,presentationdescription,description,isdefault"
+    ),
+    list_select="savedqueryvisualizationid,name,primaryentitytypecode,isdefault",
+    has_isdefault=True,
 )
-# User charts have no isdefault column.
-_USER_CHART_SELECT = (
-    "userqueryvisualizationid,name,primaryentitytypecode,"
-    "datadescription,presentationdescription,description"
+_USER_CHART = _ChartKind(
+    entity_set="userqueryvisualizations",
+    id_field="userqueryvisualizationid",
+    select=(
+        "userqueryvisualizationid,name,primaryentitytypecode,"
+        "datadescription,presentationdescription,description"
+    ),
+    list_select="userqueryvisualizationid,name,primaryentitytypecode",
+    has_isdefault=False,
 )
-# Lighter selects for `list`, which projects to list columns only and never
-# returns the (potentially large) datadescription/presentationdescription XML.
-_CHART_LIST_SELECT = "savedqueryvisualizationid,name,primaryentitytypecode,isdefault"
-_USER_CHART_LIST_SELECT = "userqueryvisualizationid,name,primaryentitytypecode"
 
 
-def _chart_set(user: bool) -> str:
-    return _USER_CHART_SET if user else _SYSTEM_CHART_SET
-
-
-def _chart_id_field(user: bool) -> str:
-    return "userqueryvisualizationid" if user else "savedqueryvisualizationid"
-
-
-def _chart_select(user: bool) -> str:
-    return _USER_CHART_SELECT if user else _CHART_SELECT
-
-
-def _chart_list_select(user: bool) -> str:
-    return _USER_CHART_LIST_SELECT if user else _CHART_LIST_SELECT
+def _chart_kind(user: bool) -> _ChartKind:
+    return _USER_CHART if user else _SYSTEM_CHART
 
 
 def _normalize_chart_id(chart_id: str) -> str:
@@ -84,33 +92,31 @@ def _normalize_chart_id(chart_id: str) -> str:
     return rid
 
 
-def _project_chart(row: dict[str, Any], *, user: bool) -> dict[str, Any]:
+def _project_chart(row: dict[str, Any], kind: _ChartKind) -> dict[str, Any]:
     """Project a raw chart row into the CLI-owned dict shape (id field varies by
     target; ``isdefault`` is system-only).
     """
-    id_field = _chart_id_field(user)
     rec: dict[str, Any] = {
-        id_field: row.get(id_field),
+        kind.id_field: row.get(kind.id_field),
         "name": row.get("name", ""),
         "primaryentitytypecode": row.get("primaryentitytypecode"),
         "datadescription": row.get("datadescription") or "",
         "presentationdescription": row.get("presentationdescription") or "",
         "description": row.get("description"),
     }
-    if not user:
+    if kind.has_isdefault:
         rec["isdefault"] = bool(row.get("isdefault", False))
     return rec
 
 
-def _project_chart_summary(row: dict[str, Any], *, user: bool) -> dict[str, Any]:
+def _project_chart_summary(row: dict[str, Any], kind: _ChartKind) -> dict[str, Any]:
     """Project a chart row into list columns only (no XML)."""
-    id_field = _chart_id_field(user)
     rec: dict[str, Any] = {
-        id_field: row.get(id_field),
+        kind.id_field: row.get(kind.id_field),
         "name": row.get("name", ""),
         "primaryentitytypecode": row.get("primaryentitytypecode"),
     }
-    if not user:
+    if kind.has_isdefault:
         rec["isdefault"] = bool(row.get("isdefault", False))
     return rec
 
@@ -143,7 +149,7 @@ def read_entity_charts(
     filt = f"primaryentitytypecode eq {odata_literal(entity_logical_name)}"
     rows = backend.get_collection(
         "savedqueryvisualizations",
-        params={"$select": _CHART_SELECT, "$filter": filt},
+        params={"$select": _SYSTEM_CHART.select, "$filter": filt},
     )
     result: list[dict[str, Any]] = []
     for row in rows:
@@ -224,12 +230,13 @@ def list_entity_charts(
     System charts (``savedqueryvisualizations``) by default; ``user=True`` lists
     user charts (``userqueryvisualizations``).
     """
+    kind = _chart_kind(user)
     filt = f"primaryentitytypecode eq {odata_literal(entity_logical_name)}"
     rows = backend.get_collection(
-        _chart_set(user),
-        params={"$select": _chart_list_select(user), "$filter": filt},
+        kind.entity_set,
+        params={"$select": kind.list_select, "$filter": filt},
     )
-    return [_project_chart_summary(row, user=user) for row in rows]
+    return [_project_chart_summary(row, kind) for row in rows]
 
 
 def get_chart(
@@ -239,14 +246,15 @@ def get_chart(
     user: bool = False,
 ) -> dict[str, Any]:
     """Fetch a single chart by id (system by default; ``user=True`` for user)."""
+    kind = _chart_kind(user)
     chart_id = _normalize_chart_id(chart_id)
     row = as_dict(
         backend.get(
-            f"{_chart_set(user)}({chart_id})",
-            params={"$select": _chart_select(user)},
+            f"{kind.entity_set}({chart_id})",
+            params={"$select": kind.select},
         )
     )
-    return _project_chart(row, user=user)
+    return _project_chart(row, kind)
 
 
 def delete_chart(
@@ -260,9 +268,10 @@ def delete_chart(
     Dry-run returns ``{_dry_run, would_delete, <id_field>}``; a real delete
     returns ``{deleted, <id_field>}``.
     """
-    id_field = _chart_id_field(user)
+    kind = _chart_kind(user)
+    id_field = kind.id_field
     chart_id = _normalize_chart_id(chart_id)
-    result = backend.delete(f"{_chart_set(user)}({chart_id})")
+    result = backend.delete(f"{kind.entity_set}({chart_id})")
     if isinstance(result, dict) and result.get("_dry_run"):
         return {"_dry_run": True, "would_delete": True, id_field: chart_id}
     return {"deleted": True, id_field: chart_id}
@@ -290,8 +299,9 @@ def create_chart(
     ``userqueryvisualization``, else a system ``savedqueryvisualization``.
     ``publish=True`` runs ``PublishAllXml`` after the write.
     """
-    entity_set = _chart_set(user)
-    id_field = _chart_id_field(user)
+    kind = _chart_kind(user)
+    entity_set = kind.entity_set
+    id_field = kind.id_field
     body: dict[str, Any] = {"name": name, "primaryentitytypecode": entity}
     if description is not None:
         body["description"] = description
@@ -575,12 +585,12 @@ def _commit_chart_change(
     ``PublishAllXml`` does not apply. System-chart edits publish by default and
     pass ``read_back`` through for the T3 verification of the published state.
     """
-    id_field = _chart_id_field(user)
-    result: dict[str, Any] = {id_field: chart_id, "action": action, "user": user}
+    kind = _chart_kind(user)
+    result: dict[str, Any] = {kind.id_field: chart_id, "action": action, "user": user}
     effective_publish = publish and not user
     return commit_xml_patches(
         backend,
-        entity_set=_chart_set(user),
+        entity_set=kind.entity_set,
         record_id=chart_id,
         columns=columns,
         result=result,
