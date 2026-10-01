@@ -186,6 +186,26 @@ class TestAsyncCLI:
         assert captured.get("order_by") == "completedon desc"
         assert captured.get("filter") == "statuscode eq 30"
 
+    @pytest.mark.parametrize(
+        ("args", "max_pages"), [([], 1), (["--all"], 20), (["--all", "--max-pages", "3"], 3)]
+    )
+    def test_async_list_page_limit_follows_all_flag(self, monkeypatch, profile, args, max_pages):
+        from click.testing import CliRunner
+
+        from crm import cli as crm_cli
+
+        captured: dict[str, Any] = {}
+
+        def fake_list(backend, **kw):
+            captured.update(kw)
+            return []
+
+        monkeypatch.setattr("crm.core.async_ops.list_async_operations", fake_list)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(crm_cli.cli, ["async", "list", *args])
+        assert result.exit_code == 0, result.output
+        assert captured["max_pages"] == max_pages
+
     def test_async_list_state_resolves_named_value(self, monkeypatch, profile):
         from click.testing import CliRunner
 

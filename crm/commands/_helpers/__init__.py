@@ -1,10 +1,9 @@
 """Shared helpers used across crm.commands.* (#271).
 
 Formerly a single ~630-line module, now a package of cohesive submodules — one
-per concern. This ``__init__`` re-exports the full flat namespace, so every
-existing ``from crm.commands._helpers import <name>`` keeps resolving
-identically off the package. Pure reorganization: no behavior, signature, or
-call-site change.
+per concern. This ``__init__`` re-exports them as one flat namespace, so callers
+write ``from crm.commands._helpers import <name>``. A helper with a single
+consuming command lives in that command module instead (#996).
 
 Cross-submodule callers import from their sibling submodule directly (not back
 through this ``__init__``) to keep the package import-cycle-free.

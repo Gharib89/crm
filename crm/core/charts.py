@@ -148,23 +148,10 @@ def read_entity_charts(
     """
     filt = f"primaryentitytypecode eq {odata_literal(entity_logical_name)}"
     rows = backend.get_collection(
-        "savedqueryvisualizations",
+        _SYSTEM_CHART.entity_set,
         params={"$select": _SYSTEM_CHART.select, "$filter": filt},
     )
-    result: list[dict[str, Any]] = []
-    for row in rows:
-        result.append(
-            {
-                "savedqueryvisualizationid": row.get("savedqueryvisualizationid"),
-                "name": row.get("name", ""),
-                "primaryentitytypecode": row.get("primaryentitytypecode"),
-                "datadescription": row.get("datadescription") or "",
-                "presentationdescription": row.get("presentationdescription") or "",
-                "description": row.get("description"),
-                "isdefault": bool(row.get("isdefault", False)),
-            }
-        )
-    return result
+    return [_project_chart(row, _SYSTEM_CHART) for row in rows]
 
 
 def clone_chart_to_entity(
