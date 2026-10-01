@@ -9,6 +9,56 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.81.4 (2026-10-01)
+
+### Bug Fixes
+
+- **translation**: Emit the error envelope when --publish fails
+  ([#1002](https://github.com/Gharib89/crm/pull/1002),
+  [`93e50b3`](https://github.com/Gharib89/crm/commit/93e50b35931b9f07d2482994e0279b56b001deb5))
+
+- **translation**: Emit the error envelope when --publish fails; merge twins and inline
+  pass-throughs ([#1002](https://github.com/Gharib89/crm/pull/1002),
+  [`93e50b3`](https://github.com/Gharib89/crm/commit/93e50b35931b9f07d2482994e0279b56b001deb5))
+
+- **translation**: Journal the import when the follow-up publish fails
+  ([#1002](https://github.com/Gharib89/crm/pull/1002),
+  [`93e50b3`](https://github.com/Gharib89/crm/commit/93e50b35931b9f07d2482994e0279b56b001deb5))
+
+### Refactoring
+
+- Address self-review (chart record in read_entity_charts, async page-limit test)
+  ([#1002](https://github.com/Gharib89/crm/pull/1002),
+  [`93e50b3`](https://github.com/Gharib89/crm/commit/93e50b35931b9f07d2482994e0279b56b001deb5))
+
+- Inline single-caller pass-throughs ([#1002](https://github.com/Gharib89/crm/pull/1002),
+  [`93e50b3`](https://github.com/Gharib89/crm/commit/93e50b35931b9f07d2482994e0279b56b001deb5))
+
+- **charts**: One frozen record per chart kind instead of user switches
+  ([#1002](https://github.com/Gharib89/crm/pull/1002),
+  [`93e50b3`](https://github.com/Gharib89/crm/commit/93e50b35931b9f07d2482994e0279b56b001deb5))
+
+- **commands**: Move single-consumer _helpers members into their command
+  ([#1002](https://github.com/Gharib89/crm/pull/1002),
+  [`93e50b3`](https://github.com/Gharib89/crm/commit/93e50b35931b9f07d2482994e0279b56b001deb5))
+
+- **core**: Inline the force-read wrappers; the backend already reads under dry-run
+  ([#1002](https://github.com/Gharib89/crm/pull/1002),
+  [`93e50b3`](https://github.com/Gharib89/crm/commit/93e50b35931b9f07d2482994e0279b56b001deb5))
+
+- **core**: One as_list in a leaf spec-coercion module
+  ([#1002](https://github.com/Gharib89/crm/pull/1002),
+  [`93e50b3`](https://github.com/Gharib89/crm/commit/93e50b35931b9f07d2482994e0279b56b001deb5))
+
+- **query,async**: Merge the saved/user query and async listing twins
+  ([#1002](https://github.com/Gharib89/crm/pull/1002),
+  [`93e50b3`](https://github.com/Gharib89/crm/commit/93e50b35931b9f07d2482994e0279b56b001deb5))
+
+- **security**: One assign_role and one role list keyed by principal kind
+  ([#1002](https://github.com/Gharib89/crm/pull/1002),
+  [`93e50b3`](https://github.com/Gharib89/crm/commit/93e50b35931b9f07d2482994e0279b56b001deb5))
+
+
 ## v1.81.3 (2026-10-01)
 
 ### Bug Fixes
