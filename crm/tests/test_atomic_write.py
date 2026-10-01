@@ -20,6 +20,7 @@ import time
 import pytest
 
 from crm.core import session as session_mod
+from crm.core import state_home as state_home_mod
 
 
 def test_write_succeeds_when_old_deterministic_tmp_name_is_occupied(tmp_path):
@@ -103,7 +104,7 @@ def test_stale_temp_file_is_reaped_on_write(tmp_path):
     # lock, sweeps orphans older than the threshold (#743).
     stale = tmp_path / ".12345.deadbeefcafe.tmp"
     stale.write_text("orphan", encoding="utf-8")
-    old = time.time() - session_mod._TEMP_REAP_AGE_SECONDS - 60
+    old = time.time() - state_home_mod._TEMP_REAP_AGE_SECONDS - 60
     os.utime(stale, (old, old))
 
     target = tmp_path / "state.json"
@@ -119,7 +120,7 @@ def test_unrelated_dot_tmp_file_is_not_reaped(tmp_path):
     # even when it's old.
     other = tmp_path / ".editor-swap.tmp"
     other.write_text("not ours", encoding="utf-8")
-    old = time.time() - session_mod._TEMP_REAP_AGE_SECONDS - 60
+    old = time.time() - state_home_mod._TEMP_REAP_AGE_SECONDS - 60
     os.utime(other, (old, old))
 
     target = tmp_path / "state.json"

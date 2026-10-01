@@ -28,6 +28,7 @@ from typing import IO, Any, NamedTuple, cast
 # importing this module (e.g. when `crm --help` imports the self-update command
 # module to render help) never pulls in the transport stack (#247).
 from crm import __version__
+from crm.core.state_home import atomic_write_json, read_json, state_home
 
 
 class UpdateError(Exception):
@@ -89,31 +90,20 @@ def fetch_latest_version(base_url: str, timeout: float = _NETWORK_TIMEOUT) -> st
 _CHECK_INTERVAL = 86400.0  # 24h
 
 
-def _state_dir() -> Path:
-    # Resolve CRM_HOME directly (mirrors crm/core/audit.py) rather than importing
-    # session's private root helper.
-    root = Path(os.environ.get("CRM_HOME", str(Path.home() / ".crm"))).expanduser()
-    root.mkdir(parents=True, exist_ok=True)
-    return root
-
-
 def _cache_path() -> Path:
-    return _state_dir() / "update-check.json"
+    return state_home() / "update-check.json"
 
 
 def read_cache() -> dict[str, Any] | None:
     """Last-known {checked_at, latest}, or None if absent/unreadable."""
     try:
-        return json.loads(_cache_path().read_text(encoding="utf-8"))
-    except Exception:
+        return read_json(_cache_path())
+    except OSError:
         return None
 
 
 def _write_cache_dict(data: dict[str, Any]) -> None:
-    path = _cache_path()
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(data), encoding="utf-8")
-    tmp.replace(path)
+    atomic_write_json(_cache_path(), data)
 
 
 def write_cache(latest: str, now: float) -> None:
@@ -794,7 +784,7 @@ _HANDOFF_STALE_AFTER = 300.0
 
 def result_path() -> Path:
     """Where the finisher records the outcome for the next `crm` run to report."""
-    return _state_dir() / _RESULT_NAME
+    return state_home() / _RESULT_NAME
 
 
 def log_path() -> Path:
@@ -805,7 +795,7 @@ def log_path() -> Path:
     scrolled past (or that happened under `--json`, where the notice never prints)
     is still there to inspect. The failure notice names this file.
     """
-    return _state_dir() / _LOG_NAME
+    return state_home() / _LOG_NAME
 
 
 class _Handoffs(NamedTuple):
@@ -819,7 +809,7 @@ def _handoffs(now: float | None = None) -> _Handoffs:
     """
     ref = time.time() if now is None else now
     found = _Handoffs(live=[], stale=[])
-    for handoff in sorted(_state_dir().glob(f"{_HANDOFF_STEM}-*.json")):
+    for handoff in sorted(state_home().glob(f"{_HANDOFF_STEM}-*.json")):
         try:
             age = ref - handoff.stat().st_mtime
         except OSError:
@@ -845,8 +835,8 @@ def _payloads_in_use(handoffs: list[Path]) -> set[str]:
     live: set[str] = set()
     for handoff in handoffs:
         try:
-            parsed = json.loads(handoff.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+            parsed = read_json(handoff)
+        except OSError:
             continue  # unreadable handoff protects nothing; the payload can go
         if not isinstance(parsed, dict):
             continue
@@ -858,7 +848,8 @@ def _payloads_in_use(handoffs: list[Path]) -> set[str]:
 
 def write_handoff(*, install_dir: Path, payload: Path, from_version: str, to_version: str) -> Path:
     """Record what the finisher needs to know, and return the file's path."""
-    path = _state_dir() / f"{_HANDOFF_STEM}-{os.getpid()}.json"
+    path = state_home() / f"{_HANDOFF_STEM}-{os.getpid()}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(
             {
@@ -962,11 +953,8 @@ def _write_result(record: dict[str, Any]) -> None:
     # Suppressed: `finish_deferred_swap` promises never to raise, and the finisher
     # has nowhere to report a failed write anyway — the log line (appended first)
     # is the durable account when this one cannot land.
-    path = result_path()
-    tmp = path.with_suffix(".json.tmp")
     with contextlib.suppress(OSError):
-        tmp.write_text(json.dumps(record), encoding="utf-8")
-        tmp.replace(path)
+        atomic_write_json(result_path(), record)
 
 
 def _append_log(record: Mapping[str, Any]) -> None:
@@ -982,6 +970,7 @@ def _append_log(record: Mapping[str, Any]) -> None:
     entries = [f"{stamp} {outcome}"]
     entries.extend(f"{stamp} warning: {w}" for w in warnings)
     with contextlib.suppress(OSError):
+        log_path().parent.mkdir(parents=True, exist_ok=True)
         with log_path().open("a", encoding="utf-8") as fh:
             fh.write("\n".join(entries) + "\n")
 
@@ -1044,13 +1033,10 @@ def take_update_result() -> dict[str, Any] | None:
     """Read the finisher's record and delete it, so it is reported exactly once."""
     path = result_path()
     try:
-        record = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        # Missing (the common case), unreadable, or malformed by a partial write.
-        # Remove it either way, so junk cannot suppress the next real record.
-        with contextlib.suppress(OSError):
-            path.unlink()
-        return None
+        record = read_json(path)  # None when missing (the common case) or malformed
+    except OSError:
+        record = None
+    # Remove it whatever it held, so junk cannot suppress the next real record.
     with contextlib.suppress(OSError):
         path.unlink()
     return cast("dict[str, Any]", record) if isinstance(record, dict) else None

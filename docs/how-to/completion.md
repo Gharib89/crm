@@ -62,7 +62,7 @@ into a system-wide completion directory yourself, or to inspect the script.
 crm completion install --shell zsh --path ~/.zfunc/_crm
 ```
 
-`--path` overrides the default `${CRM_HOME}/completion/crm.<shell>` location. The
+`--path` overrides the default `${CRM_HOME:-~/.crm}/completion/crm.<shell>` location. The
 marker records this path so `self-update` refreshes the script there.
 
 ## Keeping completion current across upgrades

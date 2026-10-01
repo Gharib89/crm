@@ -1,4 +1,4 @@
-"""Installed-skill registry: ${CRM_HOME}/installed-skills.json.
+"""Installed-skill registry: ${CRM_HOME:-~/.crm}/installed-skills.json.
 
 Records where `crm skill install` copied the bundled skill tree, so `crm
 self-update` can refresh exactly those dests after an upgrade (see ADR-0006).
@@ -9,8 +9,8 @@ Format is a top-level object so future keys land without a break::
 
     {"skills": [{"target": "claude", "dest": "/abs/path", "installed_version": "2.10.0"}]}
 
-Read tolerantly (missing/corrupt → empty list) and written atomically (a unique
-temp file + os.replace) so a reader never sees a torn/partial file. The atomic
+Read tolerantly (missing/corrupt → empty list) and written atomically (the state
+home's writer) so a reader never sees a torn/partial file. The atomic
 write is NOT a lock: two processes doing a simultaneous read-modify-write could
 still drop one update. That is acceptable here — `skill install`/`uninstall` are
 rare, interactive, one-shot operations, not a concurrent hot path — so we keep
@@ -20,12 +20,11 @@ the write torn-free without the cross-platform cost of a real lockfile.
 # pyright: basic
 from __future__ import annotations
 
-import json
-import os
 import shutil
-import tempfile
 from pathlib import Path
 from typing import Any
+
+from crm.core.state_home import atomic_write_json, read_json, state_home
 
 
 def _normalize(dest: str) -> str:
@@ -33,14 +32,8 @@ def _normalize(dest: str) -> str:
     return str(Path(dest).expanduser().resolve())
 
 
-def _crm_home() -> Path:
-    root = Path(os.environ.get("CRM_HOME", str(Path.home() / ".crm"))).expanduser()
-    root.mkdir(parents=True, exist_ok=True)
-    return root
-
-
 def registry_path() -> Path:
-    return _crm_home() / "installed-skills.json"
+    return state_home() / "installed-skills.json"
 
 
 def read_skills() -> list[dict[str, Any]]:
@@ -51,30 +44,13 @@ def read_skills() -> list[dict[str, Any]]:
     caller surfaces a clean error instead of silently treating it as empty and
     clobbering the registry on the next write.
     """
-    try:
-        raw = json.loads(registry_path().read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return []
-    except (json.JSONDecodeError, ValueError, UnicodeDecodeError):
-        return []
+    raw = read_json(registry_path())
     skills = raw.get("skills") if isinstance(raw, dict) else None
     return skills if isinstance(skills, list) else []
 
 
 def _write_skills(skills: list[dict[str, Any]]) -> None:
-    # Unique temp name in the same dir → a fixed `.tmp` would let two concurrent
-    # writers clobber each other's temp file mid-write. os.replace is atomic, so a
-    # reader sees either the old or the new file, never a partial one.
-    path = registry_path()
-    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
-    tmp = Path(tmp_name)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(json.dumps({"skills": skills}, indent=2))
-        os.replace(tmp, path)
-    except BaseException:
-        tmp.unlink(missing_ok=True)
-        raise
+    atomic_write_json(registry_path(), {"skills": skills})
 
 
 def record_install(target: str, dest: str, installed_version: str) -> None:

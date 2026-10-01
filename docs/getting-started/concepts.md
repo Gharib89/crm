@@ -25,7 +25,7 @@ credential environment variables — credentials live only in a profile.
 
 State (profiles, cached tokens, completion scripts) lives under `~/.crm/`. The only
 environment knob that affects connections is `CRM_HOME`, which relocates that
-directory.
+directory; unset or empty, it is `~/.crm/`.
 
 ## Solution and publisher prefix
 

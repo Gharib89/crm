@@ -70,13 +70,14 @@ single-quote `'DOMAIN\user'` in the shell. An org on an internal CA needs
 
 The OAuth scope (`https://<host>/.default`) and authority
 (`https://login.microsoftonline.com/<tenant>`) are derived automatically; public
-cloud only. The bearer token is cached at `~/.crm/msal_token_cache.json` (`0600`).
+cloud only. The bearer token is cached at `~/.crm/msal_token_cache.json` (`0600`;
+root follows `CRM_HOME`).
 The app registration needs an **application user** with a security role in Dynamics.
 
 **No `.env`, no credential env vars.** The CLI reads credentials and connection
 config ONLY from a saved profile (or a per-run `--password`). There is no `.env`
 autoload and no `D365_*` / `CRM_*` environment-variable reading. The one retained
-env knob is `CRM_HOME` (state-directory override; default `~/.crm/`).
+env knob is `CRM_HOME` (state-directory override; unset or empty means `~/.crm/`).
 
 **Read-only profiles (guardrail).** A profile can be marked read-only to block
 accidental writes: the backend refuses every org mutation as an operational

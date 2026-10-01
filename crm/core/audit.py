@@ -23,6 +23,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
+from crm.core.state_home import state_home
 from crm.utils.d365_backend import normalize_guid
 
 # Anything outside this set is replaced with '_' so a user-controlled --session
@@ -45,10 +46,7 @@ def _safe_session(session: str) -> str:
 
 
 def _audit_root() -> Path:
-    root = Path(os.environ.get("CRM_HOME", str(Path.home() / ".crm"))).expanduser()
-    audit = root / "audit"
-    audit.mkdir(parents=True, exist_ok=True)
-    return audit
+    return state_home() / "audit"
 
 
 def _journal_path(session: str) -> Path:
@@ -117,6 +115,7 @@ def record(
     }
     try:
         path = _journal_path(session)
+        path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "a", encoding="utf-8") as f:
             f.write(json.dumps(line) + "\n")
             f.flush()

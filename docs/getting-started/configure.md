@@ -73,7 +73,7 @@ override) → the stored secret (plaintext entry, then keyring) → an interacti
 prompt. No environment variable is consulted.
 
 State lives under `~/.crm/` — the only environment knob that affects connections is
-`CRM_HOME`, which relocates that directory. See [How-to: profile](../how-to/profile.md)
+`CRM_HOME`, which relocates that directory (unset or empty, it is `~/.crm/`). See [How-to: profile](../how-to/profile.md)
 for the full profile reference.
 
 ## Switching and managing profiles

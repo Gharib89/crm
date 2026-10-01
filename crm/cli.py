@@ -1180,8 +1180,9 @@ def _deferred_update_recorded() -> bool:
     from it: this runs after *every* command, and importing the update module for a
     file that is almost never there would put that cost on all of them.
     """
-    root = os.path.expanduser(os.environ.get("CRM_HOME", os.path.join("~", ".crm")))
-    return os.path.exists(os.path.join(root, "update-result.json"))
+    from crm.core.state_home import state_home
+
+    return (state_home() / "update-result.json").exists()
 
 
 @cli.result_callback()

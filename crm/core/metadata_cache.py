@@ -8,20 +8,18 @@ The cache is opt-in and read-through: callers supply a ``fetch`` callable and
 choose whether to bypass the cache (``refresh=True``) or serve from it when
 fresh (``refresh=False``). A 15-minute TTL backstop guards against stale data.
 
-Atomic writes (unique tmp via ``tempfile.mkstemp`` + ``os.replace``) make
-concurrent writes safe: each writer uses its own temp file so two processes
-cannot clobber the same ``.tmp`` path.
+Writes go through the state home's atomic writer, so concurrent writers never
+clobber each other and a reader never sees a partial file.
 """
 
 from __future__ import annotations
 
-import json
-import os
-import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
+
+from crm.core.state_home import atomic_write_json, read_json, state_home
 
 if TYPE_CHECKING:
     from crm.utils.d365_backend import ConnectionProfile
@@ -49,13 +47,9 @@ class CacheLookup:
 # ---------------------------------------------------------------------------
 
 
-def _cache_home() -> Path:
-    return Path(os.environ.get("CRM_HOME", str(Path.home() / ".crm"))).expanduser()
-
-
 def cache_file(profile: ConnectionProfile) -> Path:
     """Return the cache-file path for *profile* (file may not exist yet)."""
-    return _cache_home() / "cache" / profile.name / "entitydefs.json"
+    return state_home() / "cache" / profile.name / "entitydefs.json"
 
 
 def move_cache(old: str, new: str) -> bool:
@@ -63,8 +57,8 @@ def move_cache(old: str, new: str) -> bool:
     iff a move happened. Best-effort: a no-op when the source is absent or the
     destination already exists, so a rename never clobbers an unrelated cache.
     """
-    src = _cache_home() / "cache" / old
-    dst = _cache_home() / "cache" / new
+    src = state_home() / "cache" / old
+    dst = state_home() / "cache" / new
     if not src.is_dir() or dst.exists():
         return False
     dst.parent.mkdir(parents=True, exist_ok=True)
@@ -85,13 +79,8 @@ def write_definitions(
 ) -> None:
     """Atomically write *definitions* to the cache file for *profile*.
 
-    Creates parent directories as needed. Each call writes to its own unique
-    temp file (via ``tempfile.mkstemp``) then atomically replaces the target
-    with ``Path.replace``, so concurrent writers cannot clobber each other's
-    temp file and a concurrent reader never sees a partial file.
+    Creates parent directories as needed.
     """
-    path = cache_file(profile)
-    path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "url": profile.url.rstrip("/"),
         "api_version": profile.api_version,
@@ -99,20 +88,7 @@ def write_definitions(
         "cached_at": now,
         "definitions": definitions,
     }
-    fd, tmp_str = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
-    tmp = Path(tmp_str)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2, sort_keys=True)
-            f.flush()
-            os.fsync(f.fileno())
-        tmp.replace(path)
-    except BaseException:
-        try:
-            tmp.unlink()
-        except OSError:
-            pass
-        raise
+    atomic_write_json(cache_file(profile), payload)
 
 
 def read_definitions(
@@ -131,11 +107,9 @@ def read_definitions(
     - ``cached_at`` older than :data:`TTL_SECONDS`
     - ``definitions`` not a list of ``{"logical": str, "set_name": str}`` dicts
     """
-    path = cache_file(profile)
     try:
-        with path.open("r", encoding="utf-8") as f:
-            raw = json.load(f)
-    except (OSError, ValueError):
+        raw = read_json(cache_file(profile))
+    except OSError:
         return None
 
     if not isinstance(raw, dict):
