@@ -3,6 +3,7 @@
 # pyright: basic
 from __future__ import annotations
 
+import re
 import time
 from pathlib import Path
 from typing import cast
@@ -11,9 +12,7 @@ import click
 
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
-    _CASCADE,
-    _MENU,
-    _REQUIRED,
+    _active_profile,
     _check_expectations,
     _confirm_destructive,
     _destructive_option,
@@ -21,13 +20,11 @@ from crm.commands._helpers import (
     _emit_with_warning,
     _handle_d365_error,
     _journal,
-    _optional_solution_option,
     _output_option,
     _parse_expect,
     _parse_value_labels,
     _publish_option,
     _resolve_publish,
-    _resolve_schema_name,
     _resolve_solution,
     _solution_option,
     d365_errors,
@@ -45,6 +42,60 @@ from crm.core import optionsets as os_mod
 from crm.core import relationships as rel_mod
 from crm.core import status_meta as sm_mod
 from crm.utils.d365_backend import D365Error
+
+_CASCADE = click.Choice(["NoCascade", "Cascade", "Active", "UserOwned", "RemoveLink", "Restrict"])
+_MENU = click.Choice(["UseLabel", "UseCollectionName", "DoNotDisplay"])
+_REQUIRED = click.Choice(["None", "Recommended", "ApplicationRequired"])
+
+
+def _optional_solution_option(f):
+    """Stack an OPTIONAL `--solution` on a hard-delete metadata verb (#636).
+
+    Unlike `_solution_option`, a hard metadata delete removes the component
+    globally — `MSCRM.SolutionUniqueName` cannot scope or orphan a deletion —
+    so `--solution` is *not* required here. Retained as an optional back-compat
+    passthrough, forwarded to the backend when given (no `_resolve_solution`).
+    """
+    return click.option(
+        "--solution",
+        default=None,
+        help="Optional. Forwarded as MSCRM.SolutionUniqueName; a hard delete "
+        "removes the component globally, so this does not scope the delete.",
+    )(f)
+
+
+def _resolve_schema_name(
+    ctx: CLIContext,
+    schema_name: str | None,
+    token: str | None,
+    flag: str,
+) -> str:
+    """Resolve a create command's schema name from an explicit value or prefix.
+
+    If `schema_name` is given, return it verbatim. Otherwise build
+    `<publisher_prefix>_<PascalToken>` from the active profile prefix and the
+    display/name token. Raises UsageError when neither is available.
+    """
+    if schema_name:
+        return schema_name
+    profile = _active_profile(ctx)
+    prefix = profile.publisher_prefix if profile else None
+    if not prefix:
+        raise click.UsageError(
+            f"{flag} is required (no publisher_prefix on the active profile to default from)."
+        )
+    if not token:
+        raise click.UsageError(f"{flag} is required to default the schema name.")
+    # PascalCase across word boundaries and drop non-alphanumerics so a
+    # multi-word display like "Project Task" -> "ProjectTask", not the invalid
+    # "Project Task". Preserve casing of the rest of each word (don't lower it).
+    pascal = "".join(w[:1].upper() + w[1:] for w in re.split(r"[^0-9A-Za-z]+", token) if w)
+    if not pascal:
+        raise click.UsageError(
+            f"{flag} could not be defaulted from {token!r} (no alphanumeric "
+            f"characters); pass {flag} explicitly."
+        )
+    return f"{prefix}_{pascal}"
 
 
 def _audit_option(f):

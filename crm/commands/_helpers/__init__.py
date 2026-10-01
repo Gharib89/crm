@@ -20,8 +20,6 @@ from .admin import (
 from .confirm import (
     _confirm_destructive,
     _destructive_option,
-    _plaintext_secret_warning,
-    prompt_secret,
     select_one,
 )
 from .errors import (
@@ -33,21 +31,11 @@ from .options import (
     _output_option,
 )
 from .parsing import (
-    _CASCADE,
-    _MENU,
-    _REQUIRED,
     _check_expectations,
     _load_payload,
-    _odata_literal,
     _parse_expect,
     _parse_value_labels,
     _read_file,
-    _resolve_async_state,
-    encode_function_params,
-)
-from .profiles import (
-    default_profile_name,
-    infer_auth_scheme,
 )
 from .rendering import (
     _apply_jq,
@@ -70,12 +58,9 @@ from .session import (
     _touch_session,
 )
 from .solutions import (
-    _EXPORT_SETTING_KEYS,
     _active_profile,
-    _optional_solution_option,
     _publish_option,
     _resolve_publish,
-    _resolve_schema_name,
     _resolve_solution,
     _solution_option,
 )
@@ -104,18 +89,13 @@ __all__ = [
     # solution resolution
     "_resolve_solution",
     "_solution_option",
-    "_optional_solution_option",
     "_publish_option",
     "_resolve_publish",
     "_active_profile",
-    "_resolve_schema_name",
-    "_EXPORT_SETTING_KEYS",
     # confirm / secret UX
     "_confirm_destructive",
     "_destructive_option",
-    "_plaintext_secret_warning",
     "select_one",
-    "prompt_secret",
     # admin headers
     "_admin_header_options",
     "_admin_kwargs",
@@ -125,15 +105,6 @@ __all__ = [
     "_parse_expect",
     "_parse_value_labels",
     "_check_expectations",
-    "_odata_literal",
-    "encode_function_params",
-    "_resolve_async_state",
-    "_CASCADE",
-    "_MENU",
-    "_REQUIRED",
-    # profile inference
-    "infer_auth_scheme",
-    "default_profile_name",
     # session / journal
     "_journal",
     "_touch_session",

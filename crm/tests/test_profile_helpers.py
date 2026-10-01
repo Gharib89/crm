@@ -3,10 +3,7 @@
 # pyright: basic
 from __future__ import annotations
 
-from crm.commands._helpers import (
-    default_profile_name,
-    infer_auth_scheme,
-)
+from crm.commands.profile import default_profile_name, infer_auth_scheme
 
 
 class TestInferAuthScheme:
@@ -66,14 +63,15 @@ class TestAuthErrorHint:
 
 import pytest
 
-from crm.commands._helpers import prompt_secret, select_one
+from crm.commands._helpers import select_one
+from crm.commands.profile import prompt_secret
 
 
 class TestPromptSecret:
     """`prompt_secret` masks with `*` via questionary.password (#655)."""
 
     def _stub(self, monkeypatch, value):
-        monkeypatch.setattr("crm.commands._helpers.confirm._stdin_is_tty", lambda: True)
+        monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
 
         class _FakePw:
             def ask(self):
@@ -84,7 +82,7 @@ class TestPromptSecret:
     def test_non_tty_raises_runtime_error(self, monkeypatch):
         # Like select_one, refuse non-TTY stdin itself so a caller that forgets
         # to gate fails loudly rather than hitting a raw prompt_toolkit error.
-        monkeypatch.setattr("crm.commands._helpers.confirm._stdin_is_tty", lambda: False)
+        monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: False)
         with pytest.raises(RuntimeError, match="no interactive terminal"):
             prompt_secret("Password")
 

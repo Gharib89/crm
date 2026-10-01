@@ -1,9 +1,8 @@
-"""Confirm / secret-warning / interactive-select UX helpers."""
+"""Confirm / interactive-select UX helpers."""
 
 # pyright: basic
 from __future__ import annotations
 
-import os
 from typing import TYPE_CHECKING
 
 import click
@@ -12,21 +11,6 @@ from crm.commands._tty import _stdin_is_tty
 
 if TYPE_CHECKING:
     from crm.cli import CLIContext
-
-
-def _plaintext_secret_warning() -> str:
-    """Warning shown after writing a profile secret in PLAINTEXT.
-
-    Shared by `profile add` and `profile set-password` so the wording
-    stays identical. POSIX notes the 0600 mode; Windows adds that file perms are
-    NOT enforced and steers to --store-password (Credential Manager).
-    """
-    if os.name == "posix":
-        return "Stored the secret in PLAINTEXT in the profile file (0600)."
-    return (
-        "Stored the secret in PLAINTEXT in the profile file. On Windows file "
-        "permissions are NOT enforced — prefer --store-password (Credential Manager)."
-    )
 
 
 def _confirm_destructive(
@@ -128,29 +112,3 @@ def select_one(title: str, items: list[tuple[str, str]], default: str | None = N
 
     choices = [questionary.Choice(title=label, value=value) for value, label in items]
     return questionary.select(title, choices=choices, default=default).ask()
-
-
-def prompt_secret(prompt: str) -> str | None:
-    """Prompt for a secret on a TTY, echoing ``*`` per keystroke; return the
-    entered value or None (empty entry or Esc/Ctrl-C cancel).
-
-    Uses ``questionary.password()`` rather than a fully-hidden prompt so new
-    users get visual feedback that their typing registered. Deliberate tradeoff
-    (#655): asterisks reveal the secret's length — the industry norm (ssh/gh/aws)
-    is no echo at all — chosen here for feedback, not as a security control.
-
-    This only runs on a TTY: like `select_one`, it refuses non-TTY stdin itself
-    with a clear ``RuntimeError`` so a caller that forgets to gate fails loudly
-    instead of hitting a raw prompt_toolkit error. Off a TTY the CLI does not
-    prompt at all — the secret must come from ``--password`` / ``--client-secret``
-    or a stored secret — so there is no hidden-prompt fallback here. questionary
-    is imported lazily (like `select_one`) to stay off the `crm --version` fast
-    path.
-    """
-    if not _stdin_is_tty():
-        raise RuntimeError(
-            "prompt_secret: no interactive terminal — pass the secret explicitly instead"
-        )
-    import questionary
-
-    return questionary.password(prompt).ask() or None

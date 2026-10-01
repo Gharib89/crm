@@ -21,8 +21,8 @@ import importlib
 import pytest
 
 # Symbols the command layer imports via `from crm.commands._helpers import ...`.
-# Names only tests reach (`_infer_columns`, `_auth_error_hint`) or nothing imports
-# (`_odata_literal`) are not pinned here.
+# Names only tests reach (`_infer_columns`) are not pinned here. A member with a
+# single consuming command lives in that command module instead (#996).
 _PUBLIC_SURFACE = [
     # rendering / output envelope
     "_sanitize",
@@ -41,14 +41,10 @@ _PUBLIC_SURFACE = [
     "_publish_option",
     "_resolve_publish",
     "_active_profile",
-    "_resolve_schema_name",
-    "_EXPORT_SETTING_KEYS",
     # confirm / secret UX
     "_confirm_destructive",
     "_destructive_option",
-    "_plaintext_secret_warning",
     "select_one",
-    "prompt_secret",
     # admin headers
     "_admin_header_options",
     "_admin_kwargs",
@@ -57,13 +53,6 @@ _PUBLIC_SURFACE = [
     "_parse_expect",
     "_parse_value_labels",
     "_check_expectations",
-    "_resolve_async_state",
-    "_CASCADE",
-    "_MENU",
-    "_REQUIRED",
-    # profile inference
-    "infer_auth_scheme",
-    "default_profile_name",
     # session / journal
     "_journal",
     "_touch_session",
@@ -88,3 +77,27 @@ def test_d365_errors_seam_is_a_context_manager():
     assert hasattr(cm, "__enter__") and hasattr(cm, "__exit__"), (
         "d365_errors(...) must return a context manager"
     )
+
+
+# Single-consumer members moved into their only command module (#996); none may
+# drift back into the shared package.
+_MOVED_OUT = [
+    "_plaintext_secret_warning",
+    "prompt_secret",
+    "infer_auth_scheme",
+    "default_profile_name",
+    "_CASCADE",
+    "_MENU",
+    "_REQUIRED",
+    "_optional_solution_option",
+    "_resolve_schema_name",
+    "encode_function_params",
+    "_resolve_async_state",
+    "_EXPORT_SETTING_KEYS",
+]
+
+
+@pytest.mark.parametrize("name", _MOVED_OUT)
+def test_moved_member_not_exported(name):
+    mod = importlib.import_module("crm.commands._helpers")
+    assert not hasattr(mod, name), f"{name} belongs in its only consuming command module"

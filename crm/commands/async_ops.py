@@ -10,10 +10,29 @@ from crm.commands._helpers import (
     _confirm_destructive,
     _destructive_option,
     _journal,
-    _resolve_async_state,
     d365_errors,
 )
 from crm.core import async_ops as async_ops_mod
+
+_ASYNC_STATE_NAMES = {
+    "ready": 0,
+    "suspended": 1,
+    "locked": 2,
+    "completed": 3,
+}
+
+
+def _resolve_async_state(value: str | None) -> int | None:
+    if value is None:
+        return None
+    if value.isdigit():
+        return int(value)
+    name = value.lower()
+    if name in _ASYNC_STATE_NAMES:
+        return _ASYNC_STATE_NAMES[name]
+    raise click.BadParameter(
+        f"--state must be one of {sorted(_ASYNC_STATE_NAMES)} or an integer; got {value!r}"
+    )
 
 
 @click.group("async")

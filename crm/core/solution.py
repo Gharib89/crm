@@ -1079,8 +1079,3 @@ def publish_xml(backend: D365Backend, parameter_xml: str) -> dict[str, Any]:
     if result:
         return result
     return {"published": True, "action": "PublishXml"}
-
-
-def service_document(backend: D365Backend) -> dict[str, Any]:
-    """GET the root service document — lists all entity sets exposed by the server."""
-    return as_dict(backend.get(""))
