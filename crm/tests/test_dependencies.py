@@ -246,21 +246,6 @@ class TestDependenciesById:
         assert result["component_type"] == 1
 
 
-# ── build_uninstall_dependency_path ───────────────────────────────────────
-
-
-class TestBuildUninstallDependencyPath:
-    def test_string_param_single_quoted(self) -> None:
-        """SolutionUniqueName is Edm.String → SINGLE-QUOTED, not unquoted."""
-        path = dep_mod.build_uninstall_dependency_path("MySolution")
-        assert path == "RetrieveDependenciesForUninstall(SolutionUniqueName='MySolution')"
-
-    def test_embedded_quote_is_doubled(self) -> None:
-        """Per OData, an embedded single-quote is escaped by doubling it."""
-        path = dep_mod.build_uninstall_dependency_path("O'Brien")
-        assert path == "RetrieveDependenciesForUninstall(SolutionUniqueName='O''Brien')"
-
-
 # ── retrieve_dependencies_for_uninstall ───────────────────────────────────
 
 

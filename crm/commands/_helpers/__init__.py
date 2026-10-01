@@ -25,7 +25,6 @@ from .confirm import (
     select_one,
 )
 from .errors import (
-    _auth_error_hint,
     _handle_d365_error,
     d365_errors,
     usage_guard,
@@ -102,7 +101,6 @@ __all__ = [
     "_handle_d365_error",
     "d365_errors",
     "usage_guard",
-    "_auth_error_hint",
     # solution resolution
     "_resolve_solution",
     "_solution_option",

@@ -46,7 +46,7 @@ def _handle_d365_error(
         pname = (
             getattr(getattr(backend, "profile", None), "name", None) or ctx.profile_name or "<name>"
         )
-        hint = _auth_error_hint(exc.status, pname)
+        hint = f"run: crm profile set-password --profile {pname}"
     # Partial-failure context (#64): only the non-transactional optionset update
     # path sets these. Guarded is-not-None so every other error site keeps
     # emitting an identical {status, code, category, retryable} envelope.
@@ -130,14 +130,3 @@ def usage_guard():
         if exc.status is None:
             raise click.UsageError(str(exc)) from exc
         raise
-
-
-def _auth_error_hint(status: int | None, profile_name: str) -> str:
-    """Map an auth failure to a copy-paste fix command, or '' when none applies.
-
-    A 401 (rejected secret) steers the user to re-store the secret for the
-    active profile.
-    """
-    if status == 401:
-        return f"run: crm profile set-password --profile {profile_name}"
-    return ""

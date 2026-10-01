@@ -515,7 +515,7 @@ def _credential_storage(name: str) -> str:
     try:
         if session_mod.load_profile_secret(name) is not None:
             return "plaintext"
-        if keyring_store.has_secret(name):
+        if keyring_store.get_secret(name) is not None:
             return "keyring"
         return "none"
     except _PROFILE_LOAD_ERRORS:
