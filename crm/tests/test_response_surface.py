@@ -214,3 +214,11 @@ class TestFindOne:
             m.get(f"{profile.api_base}roles", json={"value": [{"roleid": "1"}, {"roleid": "2"}]})
             with pytest.raises(D365Error, match="made"):
                 backend.find_one("roles", "name", "x", "roleid", unique=lambda: D365Error("made"))
+
+
+def test_fake_backend_find_one_is_driven_by_get_collection_responses(make_fake_backend):
+    fake = make_fake_backend(responses={"get_collection": [{"id": "1"}, {"id": "2"}]})
+    assert fake.find_one("accounts", "name", "x", "id") == {"id": "1"}
+    verb, path, kwargs = fake.calls[-1]
+    assert (verb, path, kwargs["max_pages"]) == ("get_collection", "accounts", 1)
+    assert kwargs["params"]["$filter"] == "name eq 'x'"

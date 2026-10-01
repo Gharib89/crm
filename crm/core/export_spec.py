@@ -1002,8 +1002,8 @@ def build_app_spec(
 
     # The app's sitemap is linked by sitemapnameunique == the app's uniquename
     # (the inverse of appmodule.set_sitemap). Project its Entity subareas.
-    sitemap = backend.find_one("sitemaps", "sitemapnameunique", unique_name, "sitemapxml")
-    sitemap_xml = str(sitemap.get("sitemapxml") or "") if sitemap else ""
+    sitemap_row = backend.find_one("sitemaps", "sitemapnameunique", unique_name, "sitemapxml")
+    sitemap_xml = str(sitemap_row.get("sitemapxml") or "") if sitemap_row else ""
     if sitemap_xml.strip():
         sitemap = _project_app_sitemap(sitemap_xml, app_label, warn)
         if sitemap is not None:

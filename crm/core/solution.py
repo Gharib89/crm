@@ -727,7 +727,7 @@ def list_solutions(backend: D365Backend, *, managed: bool | None = None) -> list
 def solution_info(backend: D365Backend, unique_name: str) -> dict[str, Any]:
     if not unique_name:
         raise D365Error("solution unique name required.")
-    row = backend.find_one("solutions", "uniquename", unique_name, None)
+    row = backend.find_one("solutions", "uniquename", unique_name, select=None)
     if row is None:
         raise D365Error(f"Solution not found: {unique_name}")
     return row
