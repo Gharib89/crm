@@ -75,15 +75,6 @@ def _shallow_diff(current: dict[str, Any], changes: dict[str, Any]) -> dict[str,
     return diff
 
 
-def _read(backend: D365Backend, path: str, **kw: Any) -> dict[str, Any]:
-    """GET that always hits the network, even in dry-run.
-
-    Reads are side-effect free, so a dry-run still performs the GET in order to
-    compute the merged PUT body and diff; only the PUT is suppressed.
-    """
-    return as_dict(backend.get(path, **kw))
-
-
 def _retrieve_merge_write(
     backend: D365Backend,
     *,
@@ -123,7 +114,7 @@ def _retrieve_merge_write(
     """
     target = write_path or path
     if current is None:
-        current = _read(backend, path)
+        current = as_dict(backend.get(path))
     if ensure:
         defaults = {k: v for k, v in ensure.items() if k not in current}
         if defaults:
@@ -392,7 +383,7 @@ def update_attribute(
         )
 
     base_path = f"EntityDefinitions(LogicalName='{entity}')/Attributes(LogicalName='{attribute}')"
-    base = _read(backend, base_path)
+    base = as_dict(backend.get(base_path))
     odata_type = base.get("@odata.type")
     if not isinstance(odata_type, str) or not odata_type:
         raise D365Error(
@@ -423,7 +414,7 @@ def update_attribute(
     # UserLocal *target*, so here the attribute is datetime.)
     current: dict[str, Any] | None = None
     if behavior_name is not None:
-        current = _read(backend, cast_path)
+        current = as_dict(backend.get(cast_path))
         _check_behavior_transition(current, entity, attribute)
 
     out = _retrieve_merge_write(
@@ -552,10 +543,11 @@ def update_relationship(
             "--cascade-*/--menu-behavior/--menu-label/--menu-order/--hierarchical."
         )
 
-    resolve = _read(
-        backend,
-        f"RelationshipDefinitions(SchemaName='{schema_name}')",
-        params={"$select": "MetadataId,SchemaName,RelationshipType"},
+    resolve = as_dict(
+        backend.get(
+            f"RelationshipDefinitions(SchemaName='{schema_name}')",
+            params={"$select": "MetadataId,SchemaName,RelationshipType"},
+        )
     )
     metadata_id = resolve.get("MetadataId")
     if not isinstance(metadata_id, str) or not metadata_id:

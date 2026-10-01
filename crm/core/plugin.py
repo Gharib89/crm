@@ -682,10 +682,10 @@ def _step_image_info(
         filt = f"sdkmessageprocessingstepid eq {step}"
     else:
         filt = f"name eq {odata_literal(step)}"
-    rows = _force_read_rows(
-        backend,
+    rows = backend.get_collection(
         "sdkmessageprocessingsteps",
-        {"$filter": filt, "$select": "sdkmessageprocessingstepid,stage,_sdkmessageid_value"},
+        params={"$filter": filt, "$select": "sdkmessageprocessingstepid,stage,_sdkmessageid_value"},
+        max_pages=1,
     )
     if not rows or not rows[0].get("sdkmessageprocessingstepid"):
         raise D365Error(f"Plug-in step not found: {step}", code="SdkStepNotFound")
@@ -704,8 +704,10 @@ def _step_image_info(
 
 def _resolve_sdkmessage_name(backend: D365Backend, message_id: str) -> str:
     """Resolve an SDK message's name by id (force-reads)."""
-    rows = _force_read_rows(
-        backend, "sdkmessages", {"$filter": f"sdkmessageid eq {message_id}", "$select": "name"}
+    rows = backend.get_collection(
+        "sdkmessages",
+        params={"$filter": f"sdkmessageid eq {message_id}", "$select": "name"},
+        max_pages=1,
     )
     if not rows or not rows[0].get("name"):
         raise D365Error(f"SDK message not found: {message_id}", code="SdkMessageNotFound")
@@ -729,10 +731,13 @@ def unregister_image(backend: D365Backend, image: str) -> dict[str, Any]:
 
 def _resolve_image_id(backend: D365Backend, name: str) -> str:
     """Resolve an sdkmessageprocessingstepimage id by exact name (force-reads)."""
-    rows = _force_read_rows(
-        backend,
+    rows = backend.get_collection(
         "sdkmessageprocessingstepimages",
-        {"$filter": f"name eq {odata_literal(name)}", "$select": "sdkmessageprocessingstepimageid"},
+        params={
+            "$filter": f"name eq {odata_literal(name)}",
+            "$select": "sdkmessageprocessingstepimageid",
+        },
+        max_pages=1,
     )
     if not rows or not rows[0].get("sdkmessageprocessingstepimageid"):
         raise D365Error(f"Plug-in step image not found: {name}", code="SdkImageNotFound")
@@ -812,10 +817,13 @@ def unregister_assembly(
 
 def _resolve_step_id(backend: D365Backend, name: str) -> str:
     """Resolve an sdkmessageprocessingstep id by exact name (force-reads)."""
-    rows = _force_read_rows(
-        backend,
+    rows = backend.get_collection(
         "sdkmessageprocessingsteps",
-        {"$filter": f"name eq {odata_literal(name)}", "$select": "sdkmessageprocessingstepid"},
+        params={
+            "$filter": f"name eq {odata_literal(name)}",
+            "$select": "sdkmessageprocessingstepid",
+        },
+        max_pages=1,
     )
     if not rows or not rows[0].get("sdkmessageprocessingstepid"):
         raise D365Error(f"Plug-in step not found: {name}", code="SdkStepNotFound")
@@ -835,20 +843,23 @@ def _dependent_step_ids(backend: D365Backend, assembly_id: str) -> list[str]:
     Walks the dependency chain assembly -> plugintypes -> steps. Both GETs
     force-read so the set is correct even under dry-run.
     """
-    type_rows = _force_read_rows(
-        backend,
+    type_rows = backend.get_collection(
         "plugintypes",
-        {"$filter": f"_pluginassemblyid_value eq {assembly_id}", "$select": "plugintypeid"},
+        params={"$filter": f"_pluginassemblyid_value eq {assembly_id}", "$select": "plugintypeid"},
+        max_pages=1,
     )
     step_ids: list[str] = []
     for tr in type_rows:
         ptid = tr.get("plugintypeid")
         if not ptid:
             continue
-        step_rows = _force_read_rows(
-            backend,
+        step_rows = backend.get_collection(
             "sdkmessageprocessingsteps",
-            {"$filter": f"_plugintypeid_value eq {ptid}", "$select": "sdkmessageprocessingstepid"},
+            params={
+                "$filter": f"_plugintypeid_value eq {ptid}",
+                "$select": "sdkmessageprocessingstepid",
+            },
+            max_pages=1,
         )
         step_ids.extend(
             str(sr["sdkmessageprocessingstepid"])
@@ -856,19 +867,6 @@ def _dependent_step_ids(backend: D365Backend, assembly_id: str) -> list[str]:
             if sr.get("sdkmessageprocessingstepid")
         )
     return step_ids
-
-
-def _force_read_rows(
-    backend: D365Backend,
-    entity_set: str,
-    params: dict[str, str],
-) -> list[dict[str, Any]]:
-    """GET `entity_set` rows, forcing a real read even under dry-run.
-
-    A step is POSTed only after its bound ids are resolved, so the resolution
-    GETs must run for real even in dry-run (mirrors `_resolve_id_by_name`).
-    """
-    return backend.get_collection(entity_set, params=params, max_pages=1)
 
 
 def _resolve_or_none(
@@ -912,8 +910,8 @@ def _resolve_plugintype_id(
     if assembly is not None:
         pid = _resolve_id_by_name(backend, assembly)
         filt += f" and _pluginassemblyid_value eq {pid}"
-    rows = _force_read_rows(
-        backend, "plugintypes", {"$filter": filt, "$select": "plugintypeid,typename"}
+    rows = backend.get_collection(
+        "plugintypes", params={"$filter": filt, "$select": "plugintypeid,typename"}, max_pages=1
     )
     if not rows or not rows[0].get("plugintypeid"):
         raise D365Error(f"Plug-in type not found: {typename}", code="PluginTypeNotFound")
@@ -947,8 +945,8 @@ def _resolve_sdkmessagefilter_id(
     filt = (
         f"primaryobjecttypecode eq {odata_literal(entity)} and _sdkmessageid_value eq {message_id}"
     )
-    rows = _force_read_rows(
-        backend, "sdkmessagefilters", {"$filter": filt, "$select": "sdkmessagefilterid"}
+    rows = backend.get_collection(
+        "sdkmessagefilters", params={"$filter": filt, "$select": "sdkmessagefilterid"}, max_pages=1
     )
     if not rows or not rows[0].get("sdkmessagefilterid"):
         raise D365Error(
