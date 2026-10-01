@@ -26,6 +26,8 @@ from crm.core import dependencies as dep_mod
 from crm.core import export_spec as export_spec_mod
 from crm.core import session as session_mod
 from crm.core import solution as sol_mod
+from crm.core import solution_components as sc_mod
+from crm.core import solution_transfer as st_mod
 from crm.core import solution_validate as sv_mod
 from crm.core import solutionpackager as sp_mod
 from crm.utils.d365_backend import D365Error
@@ -173,7 +175,7 @@ def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path, 
         items = sol_mod.solution_components(ctx.backend(), unique_name)
 
     if save_path:
-        normalized = sol_mod.normalize_components(items)
+        normalized = sc_mod.normalize_components(items)
         out = Path(save_path)
         try:
             out.parent.mkdir(parents=True, exist_ok=True)
@@ -186,7 +188,7 @@ def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path, 
 
     if diff_path:
         try:
-            result = sol_mod.diff_components(items, expected or [])
+            result = sc_mod.diff_components(items, expected or [])
         except (KeyError, ValueError, TypeError, AttributeError) as exc:
             ctx.emit(False, error=f"Malformed component row in {diff_path!r}: {exc}")
             return
@@ -208,11 +210,11 @@ def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path, 
             resolved = sol_mod.resolve_component_names(ctx.backend(), items)
 
         def _enrich(it):
-            r = resolved.get(sol_mod.component_key(it.get("componenttype"), it.get("objectid")), {})
+            r = resolved.get(sc_mod.component_key(it.get("componenttype"), it.get("objectid")), {})
             row = {
                 **it,
-                "componenttypename": sol_mod.component_type_name(it.get("componenttype", 0)),
-                "rootcomponentbehaviorname": sol_mod.root_behavior_name(
+                "componenttypename": sc_mod.component_type_name(it.get("componenttype", 0)),
+                "rootcomponentbehaviorname": sc_mod.root_behavior_name(
                     it.get("rootcomponentbehavior")
                 ),
                 "name": r.get("name"),
@@ -244,7 +246,7 @@ def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path, 
         # JSON callers don't each maintain their own componenttype→name map
         # (#627). The human table below already resolves it for display.
         enriched = [
-            {**it, "componenttypename": sol_mod.component_type_name(it.get("componenttype", 0))}
+            {**it, "componenttypename": sc_mod.component_type_name(it.get("componenttype", 0))}
             for it in items
         ]
         ctx.emit(True, data=enriched, meta={"count": len(enriched)})
@@ -253,7 +255,7 @@ def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path, 
     headers = ["componenttype", "objectid", "rootcomponentbehavior"]
     rows = [
         [
-            sol_mod.component_type_name(it.get("componenttype", 0)),
+            sc_mod.component_type_name(it.get("componenttype", 0)),
             it.get("objectid", ""),
             "" if it.get("rootcomponentbehavior") is None else it.get("rootcomponentbehavior"),
         ]
@@ -437,7 +439,7 @@ def solution_layer_conflicts_cmd(ctx: CLIContext, managed_name, unmanaged_name):
     with d365_errors(ctx):
         managed_comps = sol_mod.solution_components(backend, managed_name)
         unmanaged_comps = sol_mod.solution_components(backend, unmanaged_name)
-    conflicts = sol_mod.layer_conflicts(managed_comps, unmanaged_comps)
+    conflicts = sc_mod.layer_conflicts(managed_comps, unmanaged_comps)
 
     meta = {"count": len(conflicts)}
     if ctx.json_mode:
@@ -997,7 +999,7 @@ def solution_stage_and_upgrade_cmd(
 
     with _no_retry_scope(ctx, no_retry):
         with d365_errors(ctx):
-            info = sol_mod.import_solution(
+            info = st_mod.import_solution(
                 ctx.backend(),
                 zip_path,
                 publish_workflows=not no_publish,
@@ -1135,7 +1137,7 @@ def solution_export_cmd(
                 unique_name = _pick_solution(ctx, "Select a solution to export")
                 if unique_name is None:
                     return
-            info = sol_mod.export_solution(
+            info = st_mod.export_solution(
                 ctx.backend(),
                 unique_name,
                 output,
@@ -1286,7 +1288,7 @@ def solution_import_cmd(
         )
     with _no_retry_scope(ctx, no_retry):
         with d365_errors(ctx):
-            info = sol_mod.import_solution(
+            info = st_mod.import_solution(
                 ctx.backend(),
                 zip_path,
                 publish_workflows=publish,
@@ -1470,6 +1472,6 @@ def solution_validate_cmd(ctx: CLIContext, zip_path, against_org):
 def solution_import_result_cmd(ctx: CLIContext, import_job_id, formatted):
     """Re-fetch a prior ImportJob and parse its per-component pass/fail results."""
     with d365_errors(ctx):
-        info = sol_mod.import_result(ctx.backend(), import_job_id, formatted=formatted)
+        info = st_mod.import_result(ctx.backend(), import_job_id, formatted=formatted)
     warnings = info.pop("warnings", None)
     ctx.emit(True, data=info, warnings=warnings)

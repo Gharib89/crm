@@ -13,7 +13,7 @@ import pytest
 from click.testing import CliRunner
 
 from crm.cli import cli
-from crm.core import solution as sol_mod
+from crm.core import solution_components as sc_mod
 
 _A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 _B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
@@ -34,19 +34,19 @@ class TestNormalizeComponents:
                 "extra_field": "ignored",
             }
         ]
-        result = sol_mod.normalize_components(raw)
+        result = sc_mod.normalize_components(raw)
         assert len(result) == 1
         assert set(result[0].keys()) == {"componenttype", "objectid", "rootcomponentbehavior"}
 
     def test_componenttype_string_coerced_to_int(self):
         raw = [{"componenttype": "61", "objectid": _A, "rootcomponentbehavior": 0}]
-        result = sol_mod.normalize_components(raw)
+        result = sc_mod.normalize_components(raw)
         assert result[0]["componenttype"] == 61
         assert isinstance(result[0]["componenttype"], int)
 
     def test_objectid_lowercased(self):
         raw = [{"componenttype": 1, "objectid": _A.upper(), "rootcomponentbehavior": 0}]
-        result = sol_mod.normalize_components(raw)
+        result = sc_mod.normalize_components(raw)
         assert result[0]["objectid"] == _A.lower()
 
     @pytest.mark.parametrize("bad_objectid", [None, 123, ["x"]])
@@ -54,7 +54,7 @@ class TestNormalizeComponents:
         # A malformed snapshot must fail fast, not silently coerce null -> "none".
         raw = [{"componenttype": 1, "objectid": bad_objectid, "rootcomponentbehavior": 0}]
         with pytest.raises(ValueError, match="objectid must be a string"):
-            sol_mod.normalize_components(raw)
+            sc_mod.normalize_components(raw)
 
     @pytest.mark.parametrize(
         "row",
@@ -64,12 +64,12 @@ class TestNormalizeComponents:
         ],
     )
     def test_rootcomponentbehavior_none_stays_none(self, row):
-        result = sol_mod.normalize_components([row])
+        result = sc_mod.normalize_components([row])
         assert result[0]["rootcomponentbehavior"] is None
 
     def test_rootcomponentbehavior_coerced_to_int(self):
         raw = [{"componenttype": 1, "objectid": _A, "rootcomponentbehavior": "2"}]
-        result = sol_mod.normalize_components(raw)
+        result = sc_mod.normalize_components(raw)
         assert result[0]["rootcomponentbehavior"] == 2
         assert isinstance(result[0]["rootcomponentbehavior"], int)
 
@@ -77,7 +77,7 @@ class TestNormalizeComponents:
         raw = [{"componenttype": "1", "objectid": _A.upper(), "rootcomponentbehavior": 0}]
         original_ct = raw[0]["componenttype"]
         original_oid = raw[0]["objectid"]
-        sol_mod.normalize_components(raw)
+        sc_mod.normalize_components(raw)
         assert raw[0]["componenttype"] == original_ct
         assert raw[0]["objectid"] == original_oid
 
@@ -87,7 +87,7 @@ class TestNormalizeComponents:
             {"componenttype": 1, "objectid": _C, "rootcomponentbehavior": 0},
             {"componenttype": 1, "objectid": _A, "rootcomponentbehavior": 0},
         ]
-        result = sol_mod.normalize_components(raw)
+        result = sc_mod.normalize_components(raw)
         assert result[0]["componenttype"] == 1
         assert result[0]["objectid"] == _A
         assert result[1]["componenttype"] == 1
@@ -102,7 +102,7 @@ class TestNormalizeComponents:
             {"componenttype": 1, "objectid": _B, "rootcomponentbehavior": None},
             {"componenttype": 1, "objectid": _A, "rootcomponentbehavior": 0},
         ]
-        result = sol_mod.normalize_components(raw)
+        result = sc_mod.normalize_components(raw)
         assert len(result) == 2
         assert result[0]["objectid"] == _A
         assert result[0]["rootcomponentbehavior"] == 0
@@ -114,8 +114,8 @@ class TestNormalizeComponents:
             {"componenttype": "61", "objectid": _A.upper(), "rootcomponentbehavior": 0},
             {"componenttype": 1, "objectid": _B, "rootcomponentbehavior": None},
         ]
-        first = sol_mod.normalize_components(raw)
-        second = sol_mod.normalize_components(first)
+        first = sc_mod.normalize_components(raw)
+        second = sc_mod.normalize_components(first)
         assert first == second
 
 
@@ -123,7 +123,7 @@ class TestDiffComponents:
     def test_exact_match_returns_matches_true_empty_lists(self):
         live = [_comp(1, _A, 0), _comp(61, _B, 0)]
         expected = [_comp(1, _A, 0), _comp(61, _B, 0)]
-        result = sol_mod.diff_components(live, expected)
+        result = sc_mod.diff_components(live, expected)
         assert result["matches"] is True
         assert result["missing"] == []
         assert result["unexpected"] == []
@@ -131,7 +131,7 @@ class TestDiffComponents:
     def test_missing_only(self):
         live = [_comp(1, _A, 0)]
         expected = [_comp(1, _A, 0), _comp(61, _B, 0)]
-        result = sol_mod.diff_components(live, expected)
+        result = sc_mod.diff_components(live, expected)
         assert result["matches"] is False
         assert len(result["missing"]) == 1
         assert result["missing"][0]["objectid"] == _B
@@ -140,7 +140,7 @@ class TestDiffComponents:
     def test_unexpected_only(self):
         live = [_comp(1, _A, 0), _comp(61, _B, 0)]
         expected = [_comp(1, _A, 0)]
-        result = sol_mod.diff_components(live, expected)
+        result = sc_mod.diff_components(live, expected)
         assert result["matches"] is False
         assert result["missing"] == []
         assert len(result["unexpected"]) == 1
@@ -151,7 +151,7 @@ class TestDiffComponents:
         # → different tuple key → one missing, one unexpected
         live = [_comp(1, _A, rcb=0)]
         expected = [_comp(1, _A, rcb=2)]
-        result = sol_mod.diff_components(live, expected)
+        result = sc_mod.diff_components(live, expected)
         assert result["matches"] is False
         assert len(result["missing"]) == 1
         assert result["missing"][0]["rootcomponentbehavior"] == 2
@@ -167,7 +167,7 @@ class TestDiffComponents:
             {"componenttype": "1", "objectid": _A.upper(), "rootcomponentbehavior": 0},
             {"componenttype": 61, "objectid": _B, "rootcomponentbehavior": None},
         ]
-        result = sol_mod.diff_components(raw, sol_mod.normalize_components(raw))
+        result = sc_mod.diff_components(raw, sc_mod.normalize_components(raw))
         assert result["matches"] is True
         assert result["missing"] == []
         assert result["unexpected"] == []
@@ -176,11 +176,11 @@ class TestDiffComponents:
         # live has uppercase GUID, expected has lowercase — should still match
         live = [{"componenttype": 1, "objectid": _A.upper(), "rootcomponentbehavior": 0}]
         expected = [{"componenttype": 1, "objectid": _A.lower(), "rootcomponentbehavior": 0}]
-        result = sol_mod.diff_components(live, expected)
+        result = sc_mod.diff_components(live, expected)
         assert result["matches"] is True
 
     def test_empty_both_sides_matches_true(self):
-        result = sol_mod.diff_components([], [])
+        result = sc_mod.diff_components([], [])
         assert result["matches"] is True
         assert result["missing"] == []
         assert result["unexpected"] == []
@@ -189,14 +189,14 @@ class TestDiffComponents:
         # live has C, expected has A and B — missing=[A, B] (sorted), unexpected=[C]
         live = [_comp(1, _C, 0)]
         expected = [_comp(1, _A, 0), _comp(1, _B, 0)]
-        result = sol_mod.diff_components(live, expected)
+        result = sc_mod.diff_components(live, expected)
         assert result["missing"][0]["objectid"] == _A
         assert result["missing"][1]["objectid"] == _B
 
     def test_result_keys_are_exactly_three_fields(self):
         live = [_comp(1, _A, 0)]
         expected = [_comp(1, _B, 0)]
-        result = sol_mod.diff_components(live, expected)
+        result = sc_mod.diff_components(live, expected)
         for item in result["missing"] + result["unexpected"]:
             assert set(item.keys()) == {"componenttype", "objectid", "rootcomponentbehavior"}
 
@@ -229,7 +229,7 @@ class TestComponentsDiffSave:
         self._patch(monkeypatch)
         expected_file = tmp_path / "expected.json"
         expected_file.write_text(
-            json.dumps(sol_mod.normalize_components(_LIVE), indent=2),
+            json.dumps(sc_mod.normalize_components(_LIVE), indent=2),
             encoding="utf-8",
         )
         result = self._invoke("--diff", str(expected_file))

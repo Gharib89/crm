@@ -30,6 +30,7 @@ from crm.core import plugin as plugin_mod
 from crm.core import relationships as rel_mod
 from crm.core import security as sec_mod
 from crm.core import solution as sol_mod
+from crm.core import solution_components as sc_mod
 from crm.core import views as views_mod
 from crm.core import webresource as wr_mod
 from crm.core.batch import run_batched
@@ -3399,7 +3400,7 @@ def _ensure_referenced_optionsets(run: _Run) -> None:
                 backend,
                 solution=run.solution,
                 component_id=metadata_id,
-                component_type=sol_mod.SOLUTION_COMPONENT_TYPES["optionset"],
+                component_type=sc_mod.SOLUTION_COMPONENT_TYPES["optionset"],
             )
             # Report as skipped (not applied): the optionset pre-existed so we
             # cannot tell without an extra GET whether it was already a solution

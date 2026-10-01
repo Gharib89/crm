@@ -20,7 +20,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from crm.core.query import odata_query
-from crm.core.solution import export_solution, import_solution, publish_all, solution_info
+from crm.core.solution import publish_all, solution_info
+from crm.core.solution_transfer import export_solution, import_solution
 from crm.core.solution_validate import validate_solution
 from crm.core.webresource import (
     get_webresource,  # pyright: ignore[reportUnusedImport]; re-exported for the command layer

@@ -511,7 +511,7 @@ def _setup_case(case_id: str, monkeypatch, tmp_path: Path, called: dict) -> None
         )
     elif case_id == "solution:solution_stage_and_upgrade_cmd":
         monkeypatch.setattr(
-            "crm.commands.solution.sol_mod.import_solution",
+            "crm.core.solution_transfer.import_solution",
             lambda *a, **k: _record(called, "stage-upgrade"),
         )
     elif case_id == "solution:solution_apply_upgrade_cmd":
@@ -521,7 +521,7 @@ def _setup_case(case_id: str, monkeypatch, tmp_path: Path, called: dict) -> None
         )
     elif case_id == "solution:solution_import_cmd":
         monkeypatch.setattr(
-            "crm.commands.solution.sol_mod.import_solution",
+            "crm.core.solution_transfer.import_solution",
             lambda *a, **k: _record(called, "import"),
         )
     elif case_id == "translation:translation_import_cmd":

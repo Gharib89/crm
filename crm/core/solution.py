@@ -1,12 +1,9 @@
 """Solution lifecycle: create-publisher / create / list / info + publish utilities.
 
 This module owns the solution/publisher lifecycle CRUD and the publish actions. The
-pure component algebra and the import/export transfer pipeline now live in
-`crm.core.solution_components` and `crm.core.solution_transfer` respectively, but
-every name they hold is **re-exported here** so the public surface of
-`crm.core.solution` is unchanged: `from crm.core.solution import X`,
-`crm.core.solution.X`, and `monkeypatch.setattr("crm.core.solution.X", ...)` all
-keep resolving for every X that existed before the split.
+pure component algebra lives in `crm.core.solution_components` and the import/export
+transfer pipeline in `crm.core.solution_transfer`; callers import those names from
+their own module.
 """
 
 from __future__ import annotations
@@ -26,49 +23,12 @@ from crm.core.solution_components import (
 from crm.core.solution_components import (
     ROOT_COMPONENT_BEHAVIORS as ROOT_COMPONENT_BEHAVIORS,
 )
-
-# ── Backward-compat re-exports ───────────────────────────────────────────────
-#
-# Homes changed, the public surface did not. These are deliberate re-exports
-# (the redundant `as X` marks them intentional for pyright); callers and tests
-# that reach these names via `crm.core.solution.<name>` must keep working. Note:
-# a function whose body moved to one of these modules is patched on its NEW home
-# module — direct-internal tests for `solution_transfer` privates patch there.
 from crm.core.solution_components import (
-    SOLUTION_COMPONENT_TYPES as SOLUTION_COMPONENT_TYPES,
-)
-from crm.core.solution_components import (
-    build_audit as build_audit,
-)
-from crm.core.solution_components import (
-    component_key as component_key,
-)
-from crm.core.solution_components import (
-    component_type_name as component_type_name,
-)
-from crm.core.solution_components import (
-    diff_components as diff_components,
-)
-from crm.core.solution_components import (
-    layer_conflicts as layer_conflicts,
-)
-from crm.core.solution_components import (
-    normalize_components as normalize_components,
-)
-from crm.core.solution_components import (
-    root_behavior_name as root_behavior_name,
-)
-from crm.core.solution_transfer import (
-    export_solution as export_solution,
-)
-from crm.core.solution_transfer import (
-    import_result as import_result,
-)
-from crm.core.solution_transfer import (
-    import_solution as import_solution,
-)
-from crm.core.solution_transfer import (
-    parse_import_job_data as parse_import_job_data,
+    SOLUTION_COMPONENT_TYPES,
+    build_audit,
+    component_key,
+    component_type_name,
+    normalize_components,
 )
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 from crm.utils.d365_types import BatchOperation
@@ -412,7 +372,7 @@ def update_solution(
 # ── Solution components (#71) ────────────────────────────────────────────────
 #
 # The friendly-name → integer type map lives in solution_components
-# (SOLUTION_COMPONENT_TYPES, re-exported above). resolve_component_type stays here
+# (SOLUTION_COMPONENT_TYPES, imported above). resolve_component_type stays here
 # alongside the add/remove lifecycle verbs that consume it.
 
 

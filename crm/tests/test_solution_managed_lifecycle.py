@@ -24,6 +24,7 @@ from click.testing import CliRunner
 
 from crm.cli import cli
 from crm.core import solution as sol_mod
+from crm.core import solution_transfer as st_mod
 from crm.utils.d365_backend import D365Error
 
 _PATCH_ID = "33333333-3333-3333-3333-333333333333"
@@ -161,14 +162,14 @@ class TestHoldingImport:
     def test_holding_solution_flag_in_body(self, dry_backend, tmp_path):
         zip_path = tmp_path / "in.zip"
         zip_path.write_bytes(b"PK\x03\x04stub")
-        out = sol_mod.import_solution(dry_backend, zip_path, holding_solution=True)
+        out = st_mod.import_solution(dry_backend, zip_path, holding_solution=True)
         assert out["_dry_run"] is True
         assert out["body"]["HoldingSolution"] is True
 
     def test_holding_solution_default_false(self, dry_backend, tmp_path):
         zip_path = tmp_path / "in.zip"
         zip_path.write_bytes(b"PK\x03\x04stub")
-        out = sol_mod.import_solution(dry_backend, zip_path)
+        out = st_mod.import_solution(dry_backend, zip_path)
         assert out["body"]["HoldingSolution"] is False
 
 
@@ -357,7 +358,7 @@ class TestStageAndUpgradeCommand:
             return {"status": "succeeded", "import_job_id": "x"}
 
         promoted = {"called": False}
-        monkeypatch.setattr("crm.core.solution.import_solution", fake_import)
+        monkeypatch.setattr("crm.core.solution_transfer.import_solution", fake_import)
         monkeypatch.setattr(
             "crm.core.solution.delete_and_promote", lambda *a, **k: promoted.update(called=True)
         )
@@ -387,7 +388,7 @@ class TestStageAndUpgradeCommand:
         zip_path.write_bytes(b"PK\x03\x04stub")
         captured = {}
         monkeypatch.setattr(
-            "crm.core.solution.import_solution",
+            "crm.core.solution_transfer.import_solution",
             lambda backend, path, **kw: captured.update(kw) or {"status": "succeeded"},
         )
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
@@ -413,7 +414,7 @@ class TestStageAndUpgradeCommand:
         zip_path.write_bytes(b"PK\x03\x04stub")
         captured = {}
         monkeypatch.setattr(
-            "crm.core.solution.import_solution",
+            "crm.core.solution_transfer.import_solution",
             lambda backend, path, **kw: captured.update(kw) or {"status": "succeeded"},
         )
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
@@ -452,7 +453,8 @@ class TestStageAndUpgradeCommand:
         zip_path = tmp_path / "up.zip"
         zip_path.write_bytes(b"PK\x03\x04stub")
         monkeypatch.setattr(
-            "crm.core.solution.import_solution", lambda backend, path, **kw: {"status": "succeeded"}
+            "crm.core.solution_transfer.import_solution",
+            lambda backend, path, **kw: {"status": "succeeded"},
         )
         monkeypatch.setattr(
             "crm.core.solution.delete_and_promote",

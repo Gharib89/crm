@@ -15,6 +15,7 @@ from click.testing import CliRunner
 
 from crm.cli import cli
 from crm.core import solution as sol_mod
+from crm.core import solution_components as sc_mod
 
 _A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 _B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
@@ -41,16 +42,16 @@ def _batch_response(parts: list[tuple[int, dict]]) -> bytes:
 
 class TestRootBehaviorName:
     def test_known_labels(self):
-        assert sol_mod.root_behavior_name(0) == "whole-entity (all subcomponents)"
-        assert sol_mod.root_behavior_name(1) == "shell (no subcomponents)"
-        assert sol_mod.root_behavior_name(2) == "shell + metadata"
+        assert sc_mod.root_behavior_name(0) == "whole-entity (all subcomponents)"
+        assert sc_mod.root_behavior_name(1) == "shell (no subcomponents)"
+        assert sc_mod.root_behavior_name(2) == "shell + metadata"
 
     def test_none_stays_none(self):
         # Non-root components carry no behavior; the label must not fabricate one.
-        assert sol_mod.root_behavior_name(None) is None
+        assert sc_mod.root_behavior_name(None) is None
 
     def test_unknown_falls_back_to_raw_int(self):
-        assert sol_mod.root_behavior_name(99) == "99"
+        assert sc_mod.root_behavior_name(99) == "99"
 
 
 class TestResolveComponentNames:
