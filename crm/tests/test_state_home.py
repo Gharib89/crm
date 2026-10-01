@@ -48,6 +48,11 @@ def test_empty_crm_home_writes_every_state_file_under_home_dot_crm(empty_crm_hom
     metadata_cache.write_definitions(profile, [], now=0.0)
     completion_registry.write_marker("bash", "/x/crm.bash", "1.0.0")
     skill_registry.record_install("claude", str(tmp_path / "skills" / "crm"), "1.0.0")
+    update._write_result({"ok": True, "at": 0.0})
+    update.write_handoff(
+        install_dir=tmp_path / "i", payload=tmp_path / "p", from_version="1", to_version="2"
+    )
+    history = session.history_file_path()
 
     assert list(cwd.iterdir()) == []
     state = home / ".crm"
@@ -60,8 +65,11 @@ def test_empty_crm_home_writes_every_state_file_under_home_dot_crm(empty_crm_hom
         "cache/p1/entitydefs.json",
         "completion.json",
         "installed-skills.json",
+        "update-result.json",
     ):
         assert (state / rel).is_file(), rel
+    assert list(state.glob("update-handoff-*.json"))
+    assert history == str(state / "history")
     assert _oauth_cache_path() == str(state / "msal_token_cache.json")
 
 

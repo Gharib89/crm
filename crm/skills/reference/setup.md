@@ -70,7 +70,8 @@ single-quote `'DOMAIN\user'` in the shell. An org on an internal CA needs
 
 The OAuth scope (`https://<host>/.default`) and authority
 (`https://login.microsoftonline.com/<tenant>`) are derived automatically; public
-cloud only. The bearer token is cached at `~/.crm/msal_token_cache.json` (`0600`).
+cloud only. The bearer token is cached at `~/.crm/msal_token_cache.json` (`0600`;
+root follows `CRM_HOME`).
 The app registration needs an **application user** with a security role in Dynamics.
 
 **No `.env`, no credential env vars.** The CLI reads credentials and connection

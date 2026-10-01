@@ -90,12 +90,8 @@ def fetch_latest_version(base_url: str, timeout: float = _NETWORK_TIMEOUT) -> st
 _CHECK_INTERVAL = 86400.0  # 24h
 
 
-def _state_dir() -> Path:
-    return state_home()
-
-
 def _cache_path() -> Path:
-    return _state_dir() / "update-check.json"
+    return state_home() / "update-check.json"
 
 
 def read_cache() -> dict[str, Any] | None:
@@ -788,7 +784,7 @@ _HANDOFF_STALE_AFTER = 300.0
 
 def result_path() -> Path:
     """Where the finisher records the outcome for the next `crm` run to report."""
-    return _state_dir() / _RESULT_NAME
+    return state_home() / _RESULT_NAME
 
 
 def log_path() -> Path:
@@ -799,7 +795,7 @@ def log_path() -> Path:
     scrolled past (or that happened under `--json`, where the notice never prints)
     is still there to inspect. The failure notice names this file.
     """
-    return _state_dir() / _LOG_NAME
+    return state_home() / _LOG_NAME
 
 
 class _Handoffs(NamedTuple):
@@ -813,7 +809,7 @@ def _handoffs(now: float | None = None) -> _Handoffs:
     """
     ref = time.time() if now is None else now
     found = _Handoffs(live=[], stale=[])
-    for handoff in sorted(_state_dir().glob(f"{_HANDOFF_STEM}-*.json")):
+    for handoff in sorted(state_home().glob(f"{_HANDOFF_STEM}-*.json")):
         try:
             age = ref - handoff.stat().st_mtime
         except OSError:
@@ -852,7 +848,7 @@ def _payloads_in_use(handoffs: list[Path]) -> set[str]:
 
 def write_handoff(*, install_dir: Path, payload: Path, from_version: str, to_version: str) -> Path:
     """Record what the finisher needs to know, and return the file's path."""
-    path = _state_dir() / f"{_HANDOFF_STEM}-{os.getpid()}.json"
+    path = state_home() / f"{_HANDOFF_STEM}-{os.getpid()}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(

@@ -74,7 +74,7 @@ def completion_show(ctx: CLIContext, shell: str | None):
     "path",
     type=click.Path(dir_okay=False),
     default=None,
-    help="Where to write the script. Default: ${CRM_HOME}/completion/crm.<shell>.",
+    help="Where to write the script. Default: ${CRM_HOME:-~/.crm}/completion/crm.<shell>.",
 )
 @pass_ctx
 def completion_install(ctx: CLIContext, shell: str | None, path: str | None):

@@ -1,4 +1,4 @@
-"""Installed-skill registry: ${CRM_HOME}/installed-skills.json.
+"""Installed-skill registry: ${CRM_HOME:-~/.crm}/installed-skills.json.
 
 Records where `crm skill install` copied the bundled skill tree, so `crm
 self-update` can refresh exactly those dests after an upgrade (see ADR-0006).

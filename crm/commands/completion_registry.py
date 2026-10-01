@@ -1,4 +1,4 @@
-"""Shell-completion source generation + install marker: ``${CRM_HOME}/completion.json``.
+"""Shell-completion source generation + install marker: ``${CRM_HOME:-~/.crm}/completion.json``.
 
 Completion itself is Click's built-in mechanism (``_CRM_COMPLETE=<shell>_source
 crm``); this module is a thin layer that (a) renders that source script in-process

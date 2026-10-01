@@ -277,8 +277,8 @@ When a command needs the secret it checks, in order:
 
 There is no environment-variable step — `.env`, `D365_*`, and `CRM_*` credential
 variables are not read. `CRM_HOME` is the only env var involved in
-credential/connection resolution (it relocates the state directory; unset or
-empty, it is `~/.crm/`). Other `CRM_*` vars tune unrelated runtime behavior (logging,
+credential/connection resolution (it relocates the state home; unset or empty,
+it is `~/.crm/`). Other `CRM_*` vars tune unrelated runtime behavior (logging,
 retries, stage-only) but never supply connection config.
 
 ## Confirm it works
