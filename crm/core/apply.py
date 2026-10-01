@@ -35,6 +35,7 @@ from crm.core import views as views_mod
 from crm.core import webresource as wr_mod
 from crm.core.batch import run_batched
 from crm.core.metadata_attrs import ATTRIBUTE_KINDS
+from crm.core.spec_coercion import as_list
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 from crm.utils.d365_types import BatchOperation
 
@@ -43,11 +44,6 @@ Entry = dict[str, Any]
 
 class _Aborted(Exception):
     """Internal signal: a metadata POST failed; stop applying the rest of the spec."""
-
-
-def _as_list(value: Any) -> list[dict[str, Any]]:
-    """Coerce a spec sub-collection to a list of dicts (empty when absent)."""
-    return cast("list[dict[str, Any]]", value) if isinstance(value, list) else []
 
 
 def _columns(value: Any) -> list[tuple[str, int]]:
@@ -172,25 +168,25 @@ def _validate_form_block(block: Any, elabel: str) -> None:
     _require_str(block, "name", label, optional=True)
     for coll in ("tabs", "libraries", "handlers"):
         _require_list(block, coll, label)
-    for tab in _as_list(block.get("tabs")):
+    for tab in as_list(block.get("tabs")):
         _require_str(tab, "name", f"{label} tab")
         _require_str(tab, "label", f"{label} tab {tab.get('name')!r}", optional=True)
         _validate_columns(tab.get("columns"), f"{label} tab {tab.get('name')!r}")
         _require_list(tab, "sections", f"{label} tab {tab.get('name')!r}")
-        for section in _as_list(tab.get("sections")):
+        for section in as_list(tab.get("sections")):
             slabel = f"{label} section"
             _require_str(section, "name", slabel)
             _require_str(section, "label", f"{slabel} {section.get('name')!r}", optional=True)
             _validate_columns(section.get("columns"), f"{slabel} {section.get('name')!r}")
             _require_list(section, "fields", f"{slabel} {section.get('name')!r}")
-            for field in _as_list(section.get("fields")):
+            for field in as_list(section.get("fields")):
                 flabel = f"{slabel} {section.get('name')!r} field"
                 _require_str(field, "name", flabel)
                 _require_str(field, "label", flabel, optional=True)
     for lib in cast("list[Any]", block.get("libraries") or []):
         if not isinstance(lib, str) or not lib:
             raise D365Error(f"{label}: each library must be a non-empty string.")
-    for handler in _as_list(block.get("handlers")):
+    for handler in as_list(block.get("handlers")):
         hlabel = f"{label} handler"
         _require_str(handler, "function", hlabel)
         _require_str(handler, "library", hlabel)
@@ -220,19 +216,19 @@ def _validate_sitemap_block(sitemap: Any, applabel: str) -> None:
         raise D365Error(f"{label} must be a mapping.")
     sitemap = cast("dict[str, Any]", sitemap)
     _require_list(sitemap, "areas", label)
-    if not _as_list(sitemap.get("areas")):
+    if not as_list(sitemap.get("areas")):
         raise D365Error(f"{label}: needs at least one area.")
-    for area in _as_list(sitemap.get("areas")):
+    for area in as_list(sitemap.get("areas")):
         alabel = f"{label} area"
         _require_str(area, "id", alabel)
         _require_str(area, "title", f"{alabel} {area.get('id')!r}", optional=True)
         _require_list(area, "groups", f"{alabel} {area.get('id')!r}")
-        for group in _as_list(area.get("groups")):
+        for group in as_list(area.get("groups")):
             glabel = f"{alabel} {area.get('id')!r} group"
             _require_str(group, "id", glabel)
             _require_str(group, "title", f"{glabel} {group.get('id')!r}", optional=True)
             _require_list(group, "subareas", f"{glabel} {group.get('id')!r}")
-            for sub in _as_list(group.get("subareas")):
+            for sub in as_list(group.get("subareas")):
                 slabel = f"{glabel} {group.get('id')!r} subarea"
                 _require_str(sub, "entity", slabel)
                 _require_str(sub, "title", slabel, optional=True)
@@ -260,7 +256,7 @@ def _validate_app_block(block: Any, alabel: str) -> None:
     # rather than deep inside create_app's first backend touch.
     mc.validate_schema_name(block["unique_name"], subject="unique_name", example="cwx_crmworx")
     _require_list(block, "components", label)
-    for comp in _as_list(block.get("components")):
+    for comp in as_list(block.get("components")):
         clabel = f"{label} component"
         _require_str(comp, "kind", clabel)
         _require_str(comp, "id", clabel)
@@ -297,9 +293,9 @@ def _declared_nested(
     def declared(spec: dict[str, Any]) -> dict[str | None, set[str]]:
         return {
             ent["schema_name"].lower(): {
-                item[name_key].lower() for item in _as_list(ent.get(collection))
+                item[name_key].lower() for item in as_list(ent.get(collection))
             }
-            for ent in _as_list(spec.get("entities"))
+            for ent in as_list(spec.get("entities"))
             if isinstance(ent.get(collection), list)
         }
 
@@ -696,7 +692,7 @@ def _validate_entity_subtree(ent: dict[str, Any]) -> None:
     for sub in ENTITY_LAYOUT:
         _require_list(ent, sub, elabel)
     for sub, slot in ENTITY_LAYOUT.items():
-        for block in _as_list(ent.get(sub)):
+        for block in as_list(ent.get(sub)):
             REGISTRY[slot.kind].validate(block, elabel if slot.qualified_label else None)
 
 
@@ -714,7 +710,7 @@ def _validate_step_images(step: dict[str, Any], slabel: str) -> None:
     shape is checked here, under the step-qualified label their errors always carried.
     """
     _require_list(step, "images", slabel)
-    for img in _as_list(step.get("images")):
+    for img in as_list(step.get("images")):
         _require(img, ("alias", "image_type"), f"{slabel} image")
         for key in ("alias", "image_type", "attributes", "name", "message_property_name"):
             if img.get(key) is not None and not isinstance(img[key], str):
@@ -731,12 +727,12 @@ def _validate_plugin_subtree(plugin: dict[str, Any]) -> None:
     plabel = f"plug-in {plugin.get('assembly') or plugin['file']!r}"
     for sub in ("types", *PLUGIN_LAYOUT):
         _require_list(plugin, sub, plabel)
-    for typ in _as_list(plugin.get("types")):
+    for typ in as_list(plugin.get("types")):
         _require(typ, ("type_name",), f"{plabel} type")
         if not isinstance(typ["type_name"], str):
             raise D365Error(f"{plabel}: type type_name must be a string.")
     for sub, slot in PLUGIN_LAYOUT.items():
-        for step in _as_list(plugin.get(sub)):
+        for step in as_list(plugin.get(sub)):
             REGISTRY[slot.kind].validate(step, plabel if slot.qualified_label else None)
             _validate_step_images(step, f"{plabel} step {step['name']!r}")
 
@@ -791,7 +787,7 @@ def validate_spec(spec: Any) -> None:
     # rules (top-level shape, the mandatory solution block, sub-collections-are-lists)
     # stay here, and a compound key's sub-collections go to its `nested` pass.
     for key, slot in SPEC_LAYOUT.items():
-        for block in _as_list(sp.get(key)):
+        for block in as_list(sp.get(key)):
             REGISTRY[slot.kind].validate(block)
             if slot.nested is not None:
                 slot.nested(block)
@@ -1579,7 +1575,7 @@ def _reconcile_optionset(
     live_values = {o.get("Value") for o in live_options if isinstance(o.get("Value"), int)}
     inserts: list[tuple[int | None, str]] = [
         (o["value"], o["label"])
-        for o in _as_list(os_spec.get("options"))
+        for o in as_list(os_spec.get("options"))
         if isinstance(o.get("value"), int) and o["value"] not in live_values
     ]
     if not inserts:
@@ -1703,9 +1699,9 @@ def _validate_security_role_block(role: dict[str, Any], _label: str) -> None:
     _require_list(role, "privileges", rlabel)
     # A role with no declared privileges would send an empty ReplacePrivilegesRole,
     # wiping the role's removable privileges — almost certainly a spec mistake.
-    if not _as_list(role.get("privileges")):
+    if not as_list(role.get("privileges")):
         raise D365Error(f"{rlabel}: at least one privilege row is required.")
-    for row in _as_list(role.get("privileges")):
+    for row in as_list(role.get("privileges")):
         _require(row, ("depth",), f"{rlabel} privilege")
         if not isinstance(row["depth"], str):
             raise D365Error(f"{rlabel}: privilege depth must be a string.")
@@ -2075,7 +2071,7 @@ def _reconcile_plugin(
         # each declared type directly; a pre-existing one is listed once to skip what
         # it already has.
         live_typenames: set[str] | None = None
-        for typ in _as_list(plugin.get("types")):
+        for typ in as_list(plugin.get("types")):
             t_entry: Entry = {"kind": "plugin-type", "name": typ["type_name"]}
             if assembly_planned:
                 verdicts.append(("planned", t_entry))
@@ -2103,13 +2099,13 @@ def _reconcile_plugin(
             verdicts.append((_bucket_of(result), t_entry))
 
         # Steps (their own registry kind, driven from here) with their images.
-        for step in _as_list(plugin.get("steps")):
+        for step in as_list(plugin.get("steps")):
             s_entry: Entry = {"kind": "plugin-step", "name": step["name"]}
             if assembly_planned:
                 verdicts.append(("planned", s_entry))
                 verdicts.extend(
                     ("planned", {"kind": "plugin-image", "name": img["alias"]})
-                    for img in _as_list(step.get("images"))
+                    for img in as_list(step.get("images"))
                 )
                 continue
             live_step = _plugin_call(
@@ -2143,7 +2139,7 @@ def _reconcile_plugin(
                 step_id = str(live_step["sdkmessageprocessingstepid"])
                 step_blocked = any(b == "replace_blocked" for b, _ in step_verdicts)
 
-            for img in _as_list(step.get("images")):
+            for img in as_list(step.get("images")):
                 img_entry: Entry = {"kind": "plugin-image", "name": img["alias"]}
                 if step_blocked:
                     continue  # blocked step: leave its images until it is recreated
@@ -2292,7 +2288,7 @@ def _find_live_app(
 
 def _app_components(block: dict[str, Any]) -> list[tuple[str, str]]:
     """The ``(kind, id)`` pairs an app block's ``components:`` declares."""
-    return [(c["kind"], c["id"]) for c in _as_list(block.get("components"))]
+    return [(c["kind"], c["id"]) for c in as_list(block.get("components"))]
 
 
 def _app_sitemap_xml(block: dict[str, Any]) -> str | None:
@@ -2367,7 +2363,7 @@ def _select_top(key: str) -> Callable[[dict[str, Any]], list[_Group]]:
     """A top-level kind's blocks: one unscoped group, empty when nothing is declared."""
 
     def select(spec: dict[str, Any]) -> list[_Group]:
-        blocks = _as_list(spec.get(key))
+        blocks = as_list(spec.get(key))
         return [(None, blocks)] if blocks else []
 
     return select
@@ -2382,8 +2378,8 @@ def _select_nested(key: str) -> Callable[[dict[str, Any]], list[_Group]]:
 
     def select(spec: dict[str, Any]) -> list[_Group]:
         groups: list[_Group] = []
-        for ent in _as_list(spec.get("entities")):
-            blocks = _as_list(ent.get(key))
+        for ent in as_list(spec.get("entities")):
+            blocks = as_list(ent.get(key))
             if blocks:
                 groups.append((ent, blocks))
         return groups
@@ -2399,7 +2395,7 @@ def _select_entities(spec: dict[str, Any]) -> list[_Group]:
     the logical name the run captured for it, exactly as an attribute reads its
     owner's. So an entity is its own parent here rather than a top-level block.
     """
-    return [(ent, [ent]) for ent in _as_list(spec.get("entities"))]
+    return [(ent, [ent]) for ent in as_list(spec.get("entities"))]
 
 
 def _name_key(key: str) -> Callable[[dict[str, Any], ReconcileCtx], str]:
@@ -2620,7 +2616,7 @@ REGISTRY: dict[str, Adapter] = {
         },
         transforms={
             "options": lambda b: (
-                [(o.get("value"), o["label"]) for o in _as_list(b.get("options"))] or None
+                [(o.get("value"), o["label"]) for o in as_list(b.get("options"))] or None
             ),
         },
         injected=frozenset({"backend", "entity", "solution", "if_exists", "publish"}),
@@ -2735,7 +2731,7 @@ REGISTRY: dict[str, Adapter] = {
         prune=PruneSpec(
             component_type=1,
             declared=_declared_top(
-                lambda s: {e["schema_name"].lower() for e in _as_list(s.get("entities"))}
+                lambda s: {e["schema_name"].lower() for e in as_list(s.get("entities"))}
             ),
             data_bearing=True,
             # delete_entity takes the logical name, which IS the resolved name.
@@ -2825,7 +2821,7 @@ REGISTRY: dict[str, Adapter] = {
         },
         transforms={
             "options": lambda b: (
-                [(o.get("value"), o["label"]) for o in _as_list(b.get("options"))] or None
+                [(o.get("value"), o["label"]) for o in as_list(b.get("options"))] or None
             ),
         },
         injected=frozenset({"backend", "is_global", "publish", "solution", "if_exists"}),
@@ -2862,7 +2858,7 @@ REGISTRY: dict[str, Adapter] = {
         prune=PruneSpec(
             component_type=61,
             declared=_declared_top(
-                lambda s: {w["name"].lower() for w in _as_list(s.get("webresources"))}
+                lambda s: {w["name"].lower() for w in as_list(s.get("webresources"))}
             ),
             ref_path="webresourceset({id})",
             name_attr="name",
@@ -2886,7 +2882,7 @@ REGISTRY: dict[str, Adapter] = {
         prune=PruneSpec(
             component_type=20,
             declared=_declared_top(
-                lambda s: {r["name"].lower() for r in _as_list(s.get("security_roles"))}
+                lambda s: {r["name"].lower() for r in as_list(s.get("security_roles"))}
             ),
             ref_path="roles({id})",
             name_attr="name",
@@ -2962,8 +2958,8 @@ REGISTRY: dict[str, Adapter] = {
             declared=_declared_top(
                 lambda s: {
                     st["name"].lower()
-                    for p in _as_list(s.get("plugins"))
-                    for st in _as_list(p.get("steps"))
+                    for p in as_list(s.get("plugins"))
+                    for st in as_list(p.get("steps"))
                 }
             ),
             ref_path="sdkmessageprocessingsteps({id})",
@@ -3113,7 +3109,7 @@ def _desired_role_privileges(
     """
     sets: list[list[dict[str, Any]]] = []
     warnings: list[str] = []
-    for row in _as_list(role_spec.get("privileges")):
+    for row in as_list(role_spec.get("privileges")):
         privs, warns = sec_mod.resolve_role_privileges(
             backend,
             access=row.get("access"),
@@ -3260,7 +3256,7 @@ def _prune_candidates(
     # declares — an entity absent from a kind's `declared` mapping omitted that key,
     # so the spec is not authoritative over it and its children are never pruned.
     scoped = [(kind, ps, ps.scoped_live) for kind, ps in prunable if ps.scoped_live is not None]
-    for ent in _as_list(spec.get("entities")):
+    for ent in as_list(spec.get("entities")):
         logical = ent["schema_name"].lower()
         for kind, ps, list_live in scoped:
             member_ids = by_type.get(ps.component_type, set())
@@ -3376,7 +3372,7 @@ def _ensure_referenced_optionsets(run: _Run) -> None:
     if not run.include_referenced_optionsets or not run.solution:
         return
     backend = run.backend
-    for os_spec in _as_list(run.spec.get("optionsets")):
+    for os_spec in as_list(run.spec.get("optionsets")):
         os_name: str = os_spec["name"]
         if os_name in run.optionsets_created:
             continue  # created this run: MSCRM.SolutionUniqueName header handled it

@@ -15,12 +15,13 @@ Shapes verified live against D365 CE on-prem 9.1 (walkthrough §11):
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any
 
 from crm.core import metadata_constraints as mc
 from crm.core.batch import run_batched
 from crm.core.entity_names import load_name_map
 from crm.core.metadata import maybe_publish
+from crm.core.spec_coercion import as_list
 from crm.utils.d365_backend import (
     D365Backend,
     D365Error,
@@ -161,20 +162,6 @@ def _norm_guid(guid: str) -> str:
     reporting spurious drift on a mere case difference.
     """
     return (normalize_guid(guid) or guid.strip()).lower()
-
-
-def _as_blocks(value: Any) -> list[dict[str, Any]]:
-    """Coerce a nested spec sub-collection to a list of dicts (empty when absent).
-
-    The sitemap block reaching :func:`sitemap_tuples` has already passed `apply`'s
-    up-front validation, so this only narrows the parsed-YAML `Any` for the type
-    checker rather than re-deciding shape.
-
-    Deliberately a local twin of `apply._as_list` rather than a shared import: the
-    dependency runs one way (`apply` imports the cores), so a core reaching back
-    into `apply` for a two-line coercion would make the seam circular.
-    """
-    return cast("list[dict[str, Any]]", value) if isinstance(value, list) else []
 
 
 # The component kinds an app's spec `components:` block may declare — the record-
@@ -826,13 +813,13 @@ def sitemap_tuples(
     areas: list[tuple[str, str]] = []
     groups: list[tuple[str, str, str]] = []
     subareas: list[tuple[str, str, str, str | None]] = []
-    for area in _as_blocks(sitemap.get("areas")):
+    for area in as_list(sitemap.get("areas")):
         aid = str(area["id"])
         areas.append((aid, str(area.get("title") or "")))
-        for group in _as_blocks(area.get("groups")):
+        for group in as_list(area.get("groups")):
             gid = str(group["id"])
             groups.append((aid, gid, str(group.get("title") or "")))
-            for sub in _as_blocks(group.get("subareas")):
+            for sub in as_list(group.get("subareas")):
                 title = sub.get("title")
                 subareas.append((aid, gid, str(sub["entity"]), str(title) if title else None))
     return areas, groups, subareas

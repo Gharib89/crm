@@ -26,6 +26,7 @@ from datetime import UTC, datetime
 from typing import Any, cast
 
 from crm import __version__
+from crm.core.spec_coercion import as_list
 from crm.utils.d365_backend import D365Backend, D365Error
 
 # The plan on-disk contract version. Bumped only on an incompatible shape change;
@@ -44,11 +45,6 @@ _VERDICT_BUCKETS = ("planned", "updated", "skipped", "replace_blocked", "pruned"
 # prune-refused, the prune ``deleted`` / ``would_prune`` flags, and a ``failed``
 # entry's ``error``. Nothing here is recomputed.
 _DETAIL_KEYS = ("diff", "reason", "deleted", "would_prune", "error")
-
-
-def _as_list(value: Any) -> list[dict[str, Any]]:
-    """Coerce a spec sub-collection to a list of dicts (empty when absent)."""
-    return cast("list[dict[str, Any]]", value) if isinstance(value, list) else []
 
 
 def _sha256_file(base_dir: str | None, file: str) -> str | None:
@@ -86,7 +82,7 @@ def _payload_pins(spec: dict[str, Any], base_dir: str | None) -> dict[str, str |
     unreadable payload maps to ``None`` (see ``_sha256_file``).
     """
     files: list[str] = []
-    for block in (*_as_list(spec.get("webresources")), *_as_list(spec.get("plugins"))):
+    for block in (*as_list(spec.get("webresources")), *as_list(spec.get("plugins"))):
         file = block.get("file")
         if isinstance(file, str) and file not in files:
             files.append(file)
@@ -97,7 +93,7 @@ def _verdict_records(report: dict[str, Any]) -> list[dict[str, Any]]:
     """One ``{kind, name, verdict, ...}`` record per component in the drift report."""
     records: list[dict[str, Any]] = []
     for bucket in _VERDICT_BUCKETS:
-        for entry in _as_list(report.get(bucket)):
+        for entry in as_list(report.get(bucket)):
             record: dict[str, Any] = {
                 "kind": entry.get("kind"),
                 "name": entry.get("name"),
@@ -305,7 +301,7 @@ def preflight_plan(
         )
     blocking = [
         v
-        for v in _as_list(plan.get("verdicts"))
+        for v in as_list(plan.get("verdicts"))
         if v.get("verdict") in ("replace_blocked", "failed")
     ]
     if blocking:
@@ -400,7 +396,7 @@ def diff_plan(
     def by_id(records: list[dict[str, Any]]) -> dict[tuple[Any, Any], dict[str, Any]]:
         return {(r.get("kind"), r.get("name")): r for r in records if participates(r)}
 
-    plan_map = by_id(_as_list(plan.get("verdicts")))
+    plan_map = by_id(as_list(plan.get("verdicts")))
     live_map = by_id(_verdict_records(live_report))
     out: list[dict[str, Any]] = []
     for key in sorted(set(plan_map) | set(live_map), key=lambda k: (str(k[0]), str(k[1]))):
