@@ -8,13 +8,12 @@ import click
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
     _confirm_destructive,
-    _handle_d365_error,
     _journal,
     _no_retry_scope,
     _output_option,
+    d365_errors,
 )
 from crm.core import translation as translation_mod
-from crm.utils.d365_backend import D365Error
 
 
 @click.group("translation")
@@ -41,15 +40,13 @@ def translation_export_cmd(ctx: CLIContext, solution, output, timeout, no_retry)
     """Export all translations for SOLUTION to a zip (CrmTranslations.xml)."""
     with _no_retry_scope(ctx, no_retry):
         try:
-            info = translation_mod.export_translation(
-                ctx.backend(),
-                solution,
-                output,
-                timeout=timeout,
-            )
-        except D365Error as exc:
-            _handle_d365_error(ctx, exc)
-            return
+            with d365_errors(ctx):
+                info = translation_mod.export_translation(
+                    ctx.backend(),
+                    solution,
+                    output,
+                    timeout=timeout,
+                )
         except OSError as exc:
             ctx.emit(False, error=f"Could not write {output}: {exc}")
             return
@@ -85,21 +82,20 @@ def translation_import_cmd(ctx: CLIContext, zip_path, timeout, no_retry, yes, pu
     )
     with _no_retry_scope(ctx, no_retry):
         try:
-            info = translation_mod.import_translation(
-                ctx.backend(),
-                zip_path,
-                timeout=timeout,
-            )
-        except D365Error as exc:
-            _handle_d365_error(ctx, exc)
-            return
+            with d365_errors(ctx):
+                info = translation_mod.import_translation(
+                    ctx.backend(),
+                    zip_path,
+                    timeout=timeout,
+                )
         except OSError as exc:
             ctx.emit(False, error=f"Could not read {zip_path}: {exc}")
             return
         if publish and not info.get("_dry_run"):
             from crm.core import solution as sol_mod
 
-            info["publish"] = sol_mod.publish_all(ctx.backend())
+            with d365_errors(ctx):
+                info["publish"] = sol_mod.publish_all(ctx.backend())
             ctx.emit(True, data=info)
         else:
             ctx.emit(
