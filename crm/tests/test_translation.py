@@ -487,6 +487,12 @@ class TestTranslationCommands:
         envelope = json.loads(result.stdout)
         assert envelope["ok"] is False
         assert "publish failed" in envelope["error"]
+        # The import already changed the org, so it is journaled even though the
+        # publish that followed it failed.
+        from crm.core import audit
+
+        rows = audit.read("default")
+        assert [r["command"] for r in rows] == ["translation import"]
 
     def test_import_command_with_publish_flag_dry_run_skips_publish(self, monkeypatch, tmp_path):
         _seed_profile(tmp_path, monkeypatch)

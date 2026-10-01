@@ -94,8 +94,14 @@ def translation_import_cmd(ctx: CLIContext, zip_path, timeout, no_retry, yes, pu
         if publish and not info.get("_dry_run"):
             from crm.core import solution as sol_mod
 
-            with d365_errors(ctx):
-                info["publish"] = sol_mod.publish_all(ctx.backend())
+            try:
+                with d365_errors(ctx):
+                    info["publish"] = sol_mod.publish_all(ctx.backend())
+            except click.exceptions.Exit:
+                # The import already changed the org: journal it before the
+                # failed publish's exit propagates.
+                _journal(ctx, zip_path, info)
+                raise
             ctx.emit(True, data=info)
         else:
             ctx.emit(
