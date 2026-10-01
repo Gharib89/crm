@@ -117,7 +117,7 @@ class TestListRoles:
         assert filt == "contains(name,'it''s')"
 
 
-# ── list_user_roles ──────────────────────────────────────────────────────
+# ── list_principal_roles: user ──────────────────────────────────────────────────────
 
 
 class TestListUserRoles:
@@ -126,7 +126,7 @@ class TestListUserRoles:
         mock_roles = [{"roleid": _ROLE_ID, "name": "Salesperson"}]
         with requests_mock.Mocker() as m:
             m.get(backend.url_for(expected_path), json={"value": mock_roles})
-            result = sec.list_user_roles(backend, _GUID)
+            result = sec.list_principal_roles(backend, "user", _GUID)
         assert result == mock_roles
         assert expected_path in m.request_history[0].url
 
@@ -134,13 +134,13 @@ class TestListUserRoles:
         path = f"systemusers({_GUID})/systemuserroles_association"
         with requests_mock.Mocker() as m:
             m.get(backend.url_for(path), json={"value": []})
-            sec.list_user_roles(backend, _GUID)
+            sec.list_principal_roles(backend, "user", _GUID)
         qs = m.request_history[0].qs
         assert "roleid" in qs["$select"][0]
         assert qs["$orderby"] == ["name"]
 
 
-# ── list_team_roles ──────────────────────────────────────────────────────
+# ── list_principal_roles: team ──────────────────────────────────────────────────────
 
 
 class TestListTeamRoles:
@@ -149,7 +149,7 @@ class TestListTeamRoles:
         mock_roles = [{"roleid": _ROLE_ID, "name": "Sales Team Role"}]
         with requests_mock.Mocker() as m:
             m.get(backend.url_for(expected_path), json={"value": mock_roles})
-            result = sec.list_team_roles(backend, _GUID)
+            result = sec.list_principal_roles(backend, "team", _GUID)
         assert result == mock_roles
         assert expected_path in m.request_history[0].url
 
@@ -157,7 +157,7 @@ class TestListTeamRoles:
         path = f"teams({_GUID})/teamroles_association"
         with requests_mock.Mocker() as m:
             m.get(backend.url_for(path), json={"value": []})
-            sec.list_team_roles(backend, _GUID)
+            sec.list_principal_roles(backend, "team", _GUID)
         qs = m.request_history[0].qs
         assert "roleid" in qs["$select"][0]
         assert qs["$orderby"] == ["name"]
@@ -199,7 +199,7 @@ class TestListUserPrivileges:
             sec.list_user_privileges(backend, "not-a-guid")
 
 
-# ── assign_role_to_user ──────────────────────────────────────────────────
+# ── assign_role: user ──────────────────────────────────────────────────
 
 
 class TestAssignRoleToUser:
@@ -207,14 +207,14 @@ class TestAssignRoleToUser:
         ref_url = backend.url_for(f"systemusers({_GUID})/systemuserroles_association/$ref")
         with requests_mock.Mocker() as m:
             m.post(ref_url, status_code=204)
-            sec.assign_role_to_user(backend, _GUID, _ROLE_ID)
+            sec.assign_role(backend, "user", _GUID, _ROLE_ID)
         assert "/systemuserroles_association/$ref" in m.request_history[0].url
 
     def test_body_odata_id_ends_with_role(self, backend):
         ref_url = backend.url_for(f"systemusers({_GUID})/systemuserroles_association/$ref")
         with requests_mock.Mocker() as m:
             m.post(ref_url, status_code=204)
-            sec.assign_role_to_user(backend, _GUID, _ROLE_ID)
+            sec.assign_role(backend, "user", _GUID, _ROLE_ID)
         body = json.loads(m.request_history[0].body)
         assert body["@odata.id"].endswith(f"roles({_ROLE_ID})")
 
@@ -222,11 +222,11 @@ class TestAssignRoleToUser:
         ref_url = backend.url_for(f"systemusers({_GUID})/systemuserroles_association/$ref")
         with requests_mock.Mocker() as m:
             m.post(ref_url, status_code=204)
-            result = sec.assign_role_to_user(backend, _GUID, _ROLE_ID)
+            result = sec.assign_role(backend, "user", _GUID, _ROLE_ID)
         assert result.get("associated") is True
 
 
-# ── assign_role_to_team ──────────────────────────────────────────────────
+# ── assign_role: team ──────────────────────────────────────────────────
 
 
 class TestAssignRoleToTeam:
@@ -234,14 +234,14 @@ class TestAssignRoleToTeam:
         ref_url = backend.url_for(f"teams({_GUID})/teamroles_association/$ref")
         with requests_mock.Mocker() as m:
             m.post(ref_url, status_code=204)
-            sec.assign_role_to_team(backend, _GUID, _ROLE_ID)
+            sec.assign_role(backend, "team", _GUID, _ROLE_ID)
         assert "/teamroles_association/$ref" in m.request_history[0].url
 
     def test_body_odata_id_ends_with_role(self, backend):
         ref_url = backend.url_for(f"teams({_GUID})/teamroles_association/$ref")
         with requests_mock.Mocker() as m:
             m.post(ref_url, status_code=204)
-            sec.assign_role_to_team(backend, _GUID, _ROLE_ID)
+            sec.assign_role(backend, "team", _GUID, _ROLE_ID)
         body = json.loads(m.request_history[0].body)
         assert body["@odata.id"].endswith(f"roles({_ROLE_ID})")
 
@@ -249,7 +249,7 @@ class TestAssignRoleToTeam:
         ref_url = backend.url_for(f"teams({_GUID})/teamroles_association/$ref")
         with requests_mock.Mocker() as m:
             m.post(ref_url, status_code=204)
-            result = sec.assign_role_to_team(backend, _GUID, _ROLE_ID)
+            result = sec.assign_role(backend, "team", _GUID, _ROLE_ID)
         assert result.get("associated") is True
 
 

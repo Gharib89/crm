@@ -7,7 +7,7 @@ responsible for formatting.
 from __future__ import annotations
 
 import json
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from crm.core import entity as entity_mod
 from crm.core import entity_names
@@ -18,8 +18,11 @@ from crm.utils.d365_types import BatchOperation
 # ── Constants ────────────────────────────────────────────────────────────
 
 _ROLES_SET = "roles"
-_USER_ROLES_NAV = "systemuserroles_association"
-_TEAM_ROLES_NAV = "teamroles_association"
+# Role-holding principal kind → (entity set, roles navigation property).
+_ROLE_HOLDERS: dict[str, tuple[str, str]] = {
+    "user": ("systemusers", "systemuserroles_association"),
+    "team": ("teams", "teamroles_association"),
+}
 _USER_PRIVILEGES_FN = "Microsoft.Dynamics.CRM.RetrieveUserPrivileges"
 
 # POA record-sharing operations (unbound Web API action/function names).
@@ -152,25 +155,14 @@ def list_roles(
     return backend.get_collection(_ROLES_SET, params=params)
 
 
-def list_user_roles(
+def list_principal_roles(
     backend: D365Backend,
-    user_id: str,
+    kind: Literal["user", "team"],
+    principal_id: str,
 ) -> list[dict[str, Any]]:
-    """List the security roles assigned to a system user."""
-    path = f"{entity_mod.build_record_path('systemusers', user_id)}/{_USER_ROLES_NAV}"
-    params: dict[str, str] = {
-        "$select": "roleid,name",
-        "$orderby": "name",
-    }
-    return backend.get_collection(path, params=params)
-
-
-def list_team_roles(
-    backend: D365Backend,
-    team_id: str,
-) -> list[dict[str, Any]]:
-    """List the security roles assigned to a team."""
-    path = f"{entity_mod.build_record_path('teams', team_id)}/{_TEAM_ROLES_NAV}"
+    """List the security roles assigned to a system user or a team."""
+    entity_set, nav = _ROLE_HOLDERS[kind]
+    path = f"{entity_mod.build_record_path(entity_set, principal_id)}/{nav}"
     params: dict[str, str] = {
         "$select": "roleid,name",
         "$orderby": "name",
@@ -199,72 +191,25 @@ def list_user_privileges(
 # ── Writes ───────────────────────────────────────────────────────────────
 
 
-def _assign_role(
+def assign_role(
     backend: D365Backend,
-    target_set: str,
-    target_id: str,
-    nav: str,
+    kind: Literal["user", "team"],
+    principal_id: str,
     role_id: str,
     *,
-    caller_id: str | None,
-    caller_object_id: str | None,
-    suppress_duplicate_detection: bool | None,
-    bypass_custom_plugin_execution: bool | None,
+    caller_id: str | None = None,
+    caller_object_id: str | None = None,
+    suppress_duplicate_detection: bool | None = None,
+    bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
+    """Assign a security role to a system user or a team."""
+    entity_set, nav = _ROLE_HOLDERS[kind]
     return entity_mod.associate(
         backend,
-        target_set,
-        target_id,
+        entity_set,
+        principal_id,
         nav,
         _ROLES_SET,
-        role_id,
-        caller_id=caller_id,
-        caller_object_id=caller_object_id,
-        suppress_duplicate_detection=suppress_duplicate_detection,
-        bypass_custom_plugin_execution=bypass_custom_plugin_execution,
-    )
-
-
-def assign_role_to_user(
-    backend: D365Backend,
-    user_id: str,
-    role_id: str,
-    *,
-    caller_id: str | None = None,
-    caller_object_id: str | None = None,
-    suppress_duplicate_detection: bool | None = None,
-    bypass_custom_plugin_execution: bool | None = None,
-) -> dict[str, Any]:
-    """Assign a security role to a system user."""
-    return _assign_role(
-        backend,
-        "systemusers",
-        user_id,
-        _USER_ROLES_NAV,
-        role_id,
-        caller_id=caller_id,
-        caller_object_id=caller_object_id,
-        suppress_duplicate_detection=suppress_duplicate_detection,
-        bypass_custom_plugin_execution=bypass_custom_plugin_execution,
-    )
-
-
-def assign_role_to_team(
-    backend: D365Backend,
-    team_id: str,
-    role_id: str,
-    *,
-    caller_id: str | None = None,
-    caller_object_id: str | None = None,
-    suppress_duplicate_detection: bool | None = None,
-    bypass_custom_plugin_execution: bool | None = None,
-) -> dict[str, Any]:
-    """Assign a security role to a team."""
-    return _assign_role(
-        backend,
-        "teams",
-        team_id,
-        _TEAM_ROLES_NAV,
         role_id,
         caller_id=caller_id,
         caller_object_id=caller_object_id,
