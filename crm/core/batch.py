@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, cast
 
-from crm.utils.d365_backend import D365Backend, D365Error
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 from crm.utils.d365_types import BatchOperation, BatchResult
 
 _VALID_METHODS = ("GET", "POST", "PATCH", "DELETE")
@@ -146,3 +146,8 @@ def render_batch_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
     success = sum(1 for r in results if 200 <= int(r.get("status", 0) or 0) < 300)
     failed = total - success
     return {"total": total, "success": success, "failed": failed}
+
+
+def service_document(backend: D365Backend) -> dict[str, Any]:
+    """GET the root service document — lists all entity sets exposed by the server."""
+    return as_dict(backend.get(""))

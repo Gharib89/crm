@@ -99,12 +99,6 @@ class TestOwnerValidation:
         with pytest.raises(D365Error, match="owner_id"):
             async_ops.list_async_operations(backend, owner_id="not-a-guid")
 
-    def test_list_all_rejects_invalid_owner_id(self, backend):
-        from crm.utils.d365_backend import D365Error
-
-        with pytest.raises(D365Error, match="owner_id"):
-            async_ops.list_all_async_operations(backend, owner_id="not-a-guid")
-
     def test_list_normalizes_braced_uppercase_owner_id(self, backend, profile):
         """Braced + uppercase GUID must be emitted canonical (lower, no braces)."""
         braced = "{CCCCCCCC-DDDD-EEEE-FFFF-000000000000}"
@@ -112,23 +106,6 @@ class TestOwnerValidation:
         with requests_mock.Mocker() as m:
             m.get(f"{profile.api_base}asyncoperations", json={"value": []})
             async_ops.list_async_operations(backend, owner_id=braced)
-            qs = m.last_request.qs
-            f = qs.get("$filter", [""])[0]
-            assert f"_ownerid_value eq {canonical}" in f
-            assert "{" not in f
-            assert "CCCCCCCC" not in f
-
-    def test_list_all_normalizes_braced_uppercase_owner_id(self, backend, profile):
-        """Braced + uppercase GUID must be emitted canonical (lower, no braces).
-
-        list_all_async_operations has its own normalization block separate from
-        list_async_operations, so this is not redundant with the sibling test.
-        """
-        braced = "{CCCCCCCC-DDDD-EEEE-FFFF-000000000000}"
-        canonical = "cccccccc-dddd-eeee-ffff-000000000000"
-        with requests_mock.Mocker() as m:
-            m.get(f"{profile.api_base}asyncoperations", json={"value": []})
-            async_ops.list_all_async_operations(backend, owner_id=braced)
             qs = m.last_request.qs
             f = qs.get("$filter", [""])[0]
             assert f"_ownerid_value eq {canonical}" in f
@@ -148,7 +125,7 @@ class TestListAll:
                 next_url,
                 json={"value": [{"asyncoperationid": "2"}]},
             )
-            rows = async_ops.list_all_async_operations(backend, page_size=1, max_pages=10)
+            rows = async_ops.list_async_operations(backend, top=1, max_pages=10)
             assert [r["asyncoperationid"] for r in rows] == ["1", "2"]  # pyright: ignore[reportTypedDictNotRequiredAccess]
 
     def test_max_pages_caps_pagination(self, backend, profile):
@@ -167,7 +144,7 @@ class TestListAll:
                     "@odata.nextLink": f"{profile.api_base}asyncoperations?$skiptoken=b",
                 },
             )
-            rows = async_ops.list_all_async_operations(backend, page_size=1, max_pages=2)
+            rows = async_ops.list_async_operations(backend, top=1, max_pages=2)
             assert [r["asyncoperationid"] for r in rows] == ["1", "2"]  # pyright: ignore[reportTypedDictNotRequiredAccess]
             # 3rd page (skiptoken=b) is not fetched.
             assert m.call_count == 2
@@ -208,6 +185,26 @@ class TestAsyncCLI:
         assert result.exit_code == 0, result.output
         assert captured.get("order_by") == "completedon desc"
         assert captured.get("filter") == "statuscode eq 30"
+
+    @pytest.mark.parametrize(
+        ("args", "max_pages"), [([], 1), (["--all"], 20), (["--all", "--max-pages", "3"], 3)]
+    )
+    def test_async_list_page_limit_follows_all_flag(self, monkeypatch, profile, args, max_pages):
+        from click.testing import CliRunner
+
+        from crm import cli as crm_cli
+
+        captured: dict[str, Any] = {}
+
+        def fake_list(backend, **kw):
+            captured.update(kw)
+            return []
+
+        monkeypatch.setattr("crm.core.async_ops.list_async_operations", fake_list)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(crm_cli.cli, ["async", "list", *args])
+        assert result.exit_code == 0, result.output
+        assert captured["max_pages"] == max_pages
 
     def test_async_list_state_resolves_named_value(self, monkeypatch, profile):
         from click.testing import CliRunner

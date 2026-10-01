@@ -124,8 +124,8 @@ class TestListUserRoles:
     def test_human_shows_role_name(self, monkeypatch, backend):
         _stub_backend(monkeypatch, backend)
         monkeypatch.setattr(
-            "crm.commands.security.security_mod.list_user_roles",
-            lambda b, user_id: _USER_ROLES,
+            "crm.commands.security.security_mod.list_principal_roles",
+            lambda b, kind, principal_id: _USER_ROLES,
         )
         result = CliRunner().invoke(cli, ["security", "list-user-roles", "user-guid-1"])
         assert result.exit_code == 0, result.output
@@ -134,8 +134,8 @@ class TestListUserRoles:
     def test_json_envelope(self, monkeypatch, backend):
         _stub_backend(monkeypatch, backend)
         monkeypatch.setattr(
-            "crm.commands.security.security_mod.list_user_roles",
-            lambda b, user_id: _USER_ROLES,
+            "crm.commands.security.security_mod.list_principal_roles",
+            lambda b, kind, principal_id: _USER_ROLES,
         )
         result = CliRunner().invoke(cli, ["--json", "security", "list-user-roles", "user-guid-1"])
         assert result.exit_code == 0, result.output
@@ -151,8 +151,8 @@ class TestListTeamRoles:
     def test_human_shows_role_name(self, monkeypatch, backend):
         _stub_backend(monkeypatch, backend)
         monkeypatch.setattr(
-            "crm.commands.security.security_mod.list_team_roles",
-            lambda b, team_id: _TEAM_ROLES,
+            "crm.commands.security.security_mod.list_principal_roles",
+            lambda b, kind, principal_id: _TEAM_ROLES,
         )
         result = CliRunner().invoke(cli, ["security", "list-team-roles", "team-guid-1"])
         assert result.exit_code == 0, result.output
@@ -161,8 +161,8 @@ class TestListTeamRoles:
     def test_json_envelope(self, monkeypatch, backend):
         _stub_backend(monkeypatch, backend)
         monkeypatch.setattr(
-            "crm.commands.security.security_mod.list_team_roles",
-            lambda b, team_id: _TEAM_ROLES,
+            "crm.commands.security.security_mod.list_principal_roles",
+            lambda b, kind, principal_id: _TEAM_ROLES,
         )
         result = CliRunner().invoke(cli, ["--json", "security", "list-team-roles", "team-guid-1"])
         assert result.exit_code == 0, result.output
@@ -234,13 +234,13 @@ class TestAssignRole:
         _stub_backend(monkeypatch, backend)
         calls = []
 
-        def _fake_assign_user(b, user_id, role_id, **kw):
-            calls.append((user_id, role_id))
+        def _fake_assign(b, kind, principal_id, role_id, **kw):
+            calls.append((kind, principal_id, role_id))
             return _ASSIGN_OK
 
         monkeypatch.setattr(
-            "crm.commands.security.security_mod.assign_role_to_user",
-            _fake_assign_user,
+            "crm.commands.security.security_mod.assign_role",
+            _fake_assign,
         )
         result = CliRunner().invoke(
             cli,
@@ -255,7 +255,7 @@ class TestAssignRole:
             ],
         )
         assert result.exit_code == 0, result.output
-        assert calls == [("user-guid-1", "role-1111")]
+        assert calls == [("user", "user-guid-1", "role-1111")]
         env = json.loads(result.stdout)
         assert env["ok"] is True
         assert env["data"]["associated"] is True
@@ -264,13 +264,13 @@ class TestAssignRole:
         _stub_backend(monkeypatch, backend)
         calls = []
 
-        def _fake_assign_team(b, team_id, role_id, **kw):
-            calls.append((team_id, role_id))
+        def _fake_assign(b, kind, principal_id, role_id, **kw):
+            calls.append((kind, principal_id, role_id))
             return _ASSIGN_OK
 
         monkeypatch.setattr(
-            "crm.commands.security.security_mod.assign_role_to_team",
-            _fake_assign_team,
+            "crm.commands.security.security_mod.assign_role",
+            _fake_assign,
         )
         result = CliRunner().invoke(
             cli,
@@ -285,15 +285,15 @@ class TestAssignRole:
             ],
         )
         assert result.exit_code == 0, result.output
-        assert calls == [("team-guid-1", "role-2222")]
+        assert calls == [("team", "team-guid-1", "role-2222")]
         env = json.loads(result.stdout)
         assert env["ok"] is True
 
     def test_assign_without_yes_non_interactive_aborts(self, monkeypatch, backend):
         _stub_backend(monkeypatch, backend)
         monkeypatch.setattr(
-            "crm.commands.security.security_mod.assign_role_to_user",
-            lambda b, user_id, role_id, **kw: _ASSIGN_OK,
+            "crm.commands.security.security_mod.assign_role",
+            lambda b, kind, principal_id, role_id, **kw: _ASSIGN_OK,
         )
         result = CliRunner().invoke(
             cli,
@@ -316,8 +316,8 @@ class TestAssignRole:
     def test_assign_d365_error_clean_envelope(self, monkeypatch, backend):
         _stub_backend(monkeypatch, backend)
         monkeypatch.setattr(
-            "crm.commands.security.security_mod.assign_role_to_user",
-            lambda b, user_id, role_id, **kw: (_ for _ in ()).throw(
+            "crm.commands.security.security_mod.assign_role",
+            lambda b, kind, principal_id, role_id, **kw: (_ for _ in ()).throw(
                 D365Error("Forbidden", status=403, code="0x80040220")
             ),
         )

@@ -200,21 +200,16 @@ def _check_root_parity(sol_root: ET.Element, cust_root: ET.Element) -> list[Find
     return findings
 
 
-def _force_get(backend: D365Backend, path: str, params: dict[str, str]) -> dict[str, Any]:
-    """Read-only org probe: always a real GET, even under --dry-run.
-
-    The org checks are idempotent reads whose accuracy depends on the live
-    answer; a preview/empty dry-run response would surface false findings.
-    Mirrors metadata.target_exists / plugin._force_read_rows.
-    """
-    return as_dict(backend.get(path, params=params))
-
-
 def _webresource_exists_in_org(backend: D365Backend, name: str) -> bool:
-    resp = _force_get(
-        backend,
-        "webresourceset",
-        {"$select": "webresourceid", "$filter": f"name eq {odata_literal(name)}", "$top": "1"},
+    resp = as_dict(
+        backend.get(
+            "webresourceset",
+            params={
+                "$select": "webresourceid",
+                "$filter": f"name eq {odata_literal(name)}",
+                "$top": "1",
+            },
+        )
     )
     return bool(resp.get("value"))
 
@@ -251,10 +246,11 @@ def _check_webresource_refs(cust_root: ET.Element, backend: D365Backend | None) 
 
 
 def _optionset_exists_in_org(backend: D365Backend, name: str) -> bool:
-    resp = _force_get(
-        backend,
-        "GlobalOptionSetDefinitions",
-        {"$select": "Name", "$filter": f"Name eq {odata_literal(name)}", "$top": "1"},
+    resp = as_dict(
+        backend.get(
+            "GlobalOptionSetDefinitions",
+            params={"$select": "Name", "$filter": f"Name eq {odata_literal(name)}", "$top": "1"},
+        )
     )
     return bool(resp.get("value"))
 
@@ -316,10 +312,11 @@ def _check_org_collisions(cust_root: ET.Element, backend: D365Backend) -> list[F
             if gid:
                 guids.add(_norm(gid))
         for gid in sorted(guids):
-            resp = _force_get(
-                backend,
-                entity_set,
-                {"$select": id_attr, "$filter": f"{id_attr} eq {gid}", "$top": "1"},
+            resp = as_dict(
+                backend.get(
+                    entity_set,
+                    params={"$select": id_attr, "$filter": f"{id_attr} eq {gid}", "$top": "1"},
+                )
             )
             if resp.get("value"):
                 findings.append(
@@ -439,10 +436,15 @@ def _check_xaml_stage_collisions(zip_path: str | Path, backend: D365Backend) -> 
             if _GUID_RE.match(gid):
                 guids.add(gid)
     for gid in sorted(guids):
-        resp = _force_get(
-            backend,
-            "processstages",
-            {"$select": "processstageid", "$filter": f"processstageid eq {gid}", "$top": "1"},
+        resp = as_dict(
+            backend.get(
+                "processstages",
+                params={
+                    "$select": "processstageid",
+                    "$filter": f"processstageid eq {gid}",
+                    "$top": "1",
+                },
+            )
         )
         if resp.get("value"):
             findings.append(
@@ -490,7 +492,7 @@ def _check_package_version(sol_root: ET.Element, backend: D365Backend) -> list[F
     if pkg is None:
         return []
     try:
-        resp = _force_get(backend, "RetrieveVersion()", {})
+        resp = as_dict(backend.get("RetrieveVersion()"))
     except D365Error as exc:
         return [
             Finding(

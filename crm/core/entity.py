@@ -948,19 +948,14 @@ def _odata_count(body: dict[str, Any] | str | None) -> int:
 # primary id AND address1_addressid-class child ids — no per-entity lists); the
 # rest are dropped by name. All are re-addable via `overrides`.
 _NEVER_COPY_NAMES = frozenset({"statecode", "statuscode", "ownerid", "overriddencreatedon"})
-# Attribute types whose value is carried as a `_<name>_value` lookup property
-# and must be rebound with `<nav>@odata.bind`, not copied verbatim (`ownerid` is
-# in the never-copy set, but `Owner` stays so any other owner-typed column is
-# rebound, not silently dropped). Canonical home is the import-side binder.
-_LOOKUP_TYPES = lookup_bind.LOOKUP_TYPES
 
 # Per-value lookup annotations (present on an annotated retrieve). `_ASSOC_NAV_*`
 # is the exact case-sensitive single-valued navigation property for the value
 # currently set — authoritative for both single-target and polymorphic lookups
-# (avoids guessing nav-prop casing, the #228 hazard); `_LOOKUP_LOGICAL_*` is the
-# target table's logical name, which selects its entity set for the bind URL.
+# (avoids guessing nav-prop casing, the #228 hazard); `lookup_bind`'s
+# `LOOKUP_LOGICAL_ANNOTATION` is the target table's logical name, which selects
+# its entity set for the bind URL.
 _ASSOC_NAV_ANNOTATION = "Microsoft.Dynamics.CRM.associatednavigationproperty"
-_LOOKUP_LOGICAL_ANNOTATION = lookup_bind.LOOKUP_LOGICAL_ANNOTATION
 
 
 def _plan_from_specs(
@@ -1019,13 +1014,16 @@ def _build_clone_body(
     lookup_bind_keys: dict[str, str] = {}
     errors: list[str] = []
     for name, attr_type in create_attrs.items():
-        if attr_type in _LOOKUP_TYPES:
+        # A lookup value is rebound with `<nav>@odata.bind`, not copied verbatim
+        # (`ownerid` is in the never-copy set, but `Owner` stays in the lookup
+        # types so any other owner-typed column is rebound, not silently dropped).
+        if attr_type in lookup_bind.LOOKUP_TYPES:
             value_key = f"_{name}_value"
             guid = source.get(value_key)
             if not guid:
                 continue
             nav = source.get(f"{value_key}@{_ASSOC_NAV_ANNOTATION}")
-            target_logical = source.get(f"{value_key}@{_LOOKUP_LOGICAL_ANNOTATION}")
+            target_logical = source.get(f"{value_key}@{lookup_bind.LOOKUP_LOGICAL_ANNOTATION}")
             target_set = logical_to_set.get(target_logical or "")
             if not nav or not target_set:
                 errors.append(

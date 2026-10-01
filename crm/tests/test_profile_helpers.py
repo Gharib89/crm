@@ -3,11 +3,7 @@
 # pyright: basic
 from __future__ import annotations
 
-from crm.commands._helpers import (
-    _auth_error_hint,
-    default_profile_name,
-    infer_auth_scheme,
-)
+from crm.commands.profile import default_profile_name, infer_auth_scheme
 
 
 class TestInferAuthScheme:
@@ -33,25 +29,49 @@ class TestDefaultProfileName:
 
 
 class TestAuthErrorHint:
+    """`_handle_d365_error` derives a set-password fix-it hint on a 401 only."""
+
+    def _envelope(self, status):
+        import json
+
+        import click
+        from click.testing import CliRunner
+
+        from crm.cli import CLIContext
+        from crm.commands._helpers import _handle_d365_error
+        from crm.utils.d365_backend import D365Error
+
+        ctx = CLIContext()
+        ctx.json_mode = True
+        ctx.profile_name = "cloud"
+
+        @click.command()
+        def _cmd():
+            _handle_d365_error(ctx, D365Error("rejected", status=status))
+
+        result = CliRunner().invoke(_cmd, catch_exceptions=False)
+        return json.loads(result.output)
+
     def test_401_hints_set_password(self):
-        hint = _auth_error_hint(401, "cloud")
+        hint = self._envelope(401)["meta"]["hint"]
         assert "crm profile set-password" in hint
         assert "--profile cloud" in hint
 
     def test_unrelated_status_has_no_hint(self):
-        assert _auth_error_hint(404, "cloud") == ""
+        assert "hint" not in self._envelope(404)["meta"]
 
 
 import pytest
 
-from crm.commands._helpers import prompt_secret, select_one
+from crm.commands._helpers import select_one
+from crm.commands.profile import prompt_secret
 
 
 class TestPromptSecret:
     """`prompt_secret` masks with `*` via questionary.password (#655)."""
 
     def _stub(self, monkeypatch, value):
-        monkeypatch.setattr("crm.commands._helpers.confirm._stdin_is_tty", lambda: True)
+        monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
 
         class _FakePw:
             def ask(self):
@@ -62,7 +82,7 @@ class TestPromptSecret:
     def test_non_tty_raises_runtime_error(self, monkeypatch):
         # Like select_one, refuse non-TTY stdin itself so a caller that forgets
         # to gate fails loudly rather than hitting a raw prompt_toolkit error.
-        monkeypatch.setattr("crm.commands._helpers.confirm._stdin_is_tty", lambda: False)
+        monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: False)
         with pytest.raises(RuntimeError, match="no interactive terminal"):
             prompt_secret("Password")
 

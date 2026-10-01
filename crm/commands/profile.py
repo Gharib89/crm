@@ -3,17 +3,16 @@
 # pyright: basic
 from __future__ import annotations
 
+import os
+import urllib.parse
+
 import click
 
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
     _confirm_destructive,
     _handle_d365_error,
-    _plaintext_secret_warning,
     d365_errors,
-    default_profile_name,
-    infer_auth_scheme,
-    prompt_secret,
     select_one,
 )
 from crm.commands._tty import _stdin_is_tty
@@ -42,6 +41,70 @@ _PROFILE_LOAD_ERRORS = (
     AttributeError,
     D365Error,
 )
+
+
+# Dataverse online hosts always end in this suffix (crm.dynamics.com,
+# crm4.dynamics.com, crm.dynamics.cn, ...). Anything else is treated as on-prem.
+_CLOUD_HOST_MARKER = ".dynamics."
+
+
+def infer_auth_scheme(url: str) -> str:
+    """Guess the auth scheme from the server URL: oauth for Dataverse online
+    (`*.dynamics.*`), else ntlm. The wizard shows this as an overridable default.
+    """
+    host = (urllib.parse.urlparse(url).hostname or "").lower()
+    return "oauth" if _CLOUD_HOST_MARKER in host else "ntlm"
+
+
+def default_profile_name(url: str) -> str:
+    """Default profile name = the first label of the URL host (`crm.contoso.local`
+    -> `crm`, `orgd080.crm.dynamics.com` -> `orgd080`). Falls back to 'default'
+    when the URL has no parseable host.
+    """
+    host = urllib.parse.urlparse(url).hostname or ""
+    label = host.split(".")[0] if host else ""
+    return label or "default"
+
+
+def _plaintext_secret_warning() -> str:
+    """Warning shown after writing a profile secret in PLAINTEXT.
+
+    Shared by `profile add` and `profile set-password` so the wording
+    stays identical. POSIX notes the 0600 mode; Windows adds that file perms are
+    NOT enforced and steers to --store-password (Credential Manager).
+    """
+    if os.name == "posix":
+        return "Stored the secret in PLAINTEXT in the profile file (0600)."
+    return (
+        "Stored the secret in PLAINTEXT in the profile file. On Windows file "
+        "permissions are NOT enforced — prefer --store-password (Credential Manager)."
+    )
+
+
+def prompt_secret(prompt: str) -> str | None:
+    """Prompt for a secret on a TTY, echoing ``*`` per keystroke; return the
+    entered value or None (empty entry or Esc/Ctrl-C cancel).
+
+    Uses ``questionary.password()`` rather than a fully-hidden prompt so new
+    users get visual feedback that their typing registered. Deliberate tradeoff
+    (#655): asterisks reveal the secret's length — the industry norm (ssh/gh/aws)
+    is no echo at all — chosen here for feedback, not as a security control.
+
+    This only runs on a TTY: like `select_one`, it refuses non-TTY stdin itself
+    with a clear ``RuntimeError`` so a caller that forgets to gate fails loudly
+    instead of hitting a raw prompt_toolkit error. Off a TTY the CLI does not
+    prompt at all — the secret must come from ``--password`` / ``--client-secret``
+    or a stored secret — so there is no hidden-prompt fallback here. questionary
+    is imported lazily (like `select_one`) to stay off the `crm --version` fast
+    path.
+    """
+    if not _stdin_is_tty():
+        raise RuntimeError(
+            "prompt_secret: no interactive terminal — pass the secret explicitly instead"
+        )
+    import questionary
+
+    return questionary.password(prompt).ask() or None
 
 
 @click.group("profile")
@@ -515,7 +578,7 @@ def _credential_storage(name: str) -> str:
     try:
         if session_mod.load_profile_secret(name) is not None:
             return "plaintext"
-        if keyring_store.has_secret(name):
+        if keyring_store.get_secret(name) is not None:
             return "keyring"
         return "none"
     except _PROFILE_LOAD_ERRORS:

@@ -486,7 +486,7 @@ def _setup_case(case_id: str, monkeypatch, tmp_path: Path, called: dict) -> None
         )
     elif case_id == "security:assign_role":
         monkeypatch.setattr(
-            "crm.commands.security.security_mod.assign_role_to_user",
+            "crm.commands.security.security_mod.assign_role",
             lambda *a, **k: _record(called, "assign"),
         )
     elif case_id == "security:grant":

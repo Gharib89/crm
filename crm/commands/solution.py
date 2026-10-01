@@ -10,7 +10,6 @@ import click
 
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
-    _EXPORT_SETTING_KEYS,
     _active_profile,
     _confirm_destructive,
     _destructive_option,
@@ -31,6 +30,19 @@ from crm.core import solution_transfer as st_mod
 from crm.core import solution_validate as sv_mod
 from crm.core import solutionpackager as sp_mod
 from crm.utils.d365_backend import D365Error
+
+_EXPORT_SETTING_KEYS: dict[str, str] = {
+    "autonumbering": "export_autonumbering",
+    "calendar": "export_calendar",
+    "customizations": "export_customizations",
+    "email-tracking": "export_email_tracking",
+    "general": "export_general",
+    "isv-config": "export_isv_config",
+    "marketing": "export_marketing",
+    "outlook-sync": "export_outlook_sync",
+    "relationship-roles": "export_relationship_roles",
+    "sales": "export_sales",
+}
 
 
 @click.group("solution")

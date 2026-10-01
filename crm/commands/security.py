@@ -218,7 +218,7 @@ def list_user_roles(ctx: CLIContext, user_id):
     full effective privilege set (direct + team-inherited).
     """
     with d365_errors(ctx):
-        items = security_mod.list_user_roles(ctx.backend(), user_id)
+        items = security_mod.list_principal_roles(ctx.backend(), "user", user_id)
     if ctx.json_mode:
         ctx.emit(True, data=items, meta={"count": len(items)})
         return
@@ -233,7 +233,7 @@ def list_user_roles(ctx: CLIContext, user_id):
 def list_team_roles(ctx: CLIContext, team_id):
     """List security roles assigned to a team (TEAM_ID is a GUID)."""
     with d365_errors(ctx):
-        items = security_mod.list_team_roles(ctx.backend(), team_id)
+        items = security_mod.list_principal_roles(ctx.backend(), "team", team_id)
     if ctx.json_mode:
         ctx.emit(True, data=items, meta={"count": len(items)})
         return
@@ -306,20 +306,13 @@ def assign_role(
     )
     _confirm_destructive(ctx, "role", role_id, yes, message=message)
     with d365_errors(ctx):
-        if to_user:
-            result = security_mod.assign_role_to_user(
-                ctx.backend(),
-                to_user,
-                role_id,
-                **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
-            )
-        else:
-            result = security_mod.assign_role_to_team(
-                ctx.backend(),
-                to_team,
-                role_id,
-                **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
-            )
+        result = security_mod.assign_role(
+            ctx.backend(),
+            principal,
+            principal_id,
+            role_id,
+            **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
+        )
     ctx.emit(True, data=result)
     _journal(ctx, role_id, result)
 

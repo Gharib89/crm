@@ -172,19 +172,6 @@ def build_dependency_path(
     return f"{func}(ObjectId={metadata_id},ComponentType={component_type})"
 
 
-def build_uninstall_dependency_path(solution_unique_name: str) -> str:
-    """Inline-function URL for ``RetrieveDependenciesForUninstall``.
-
-    ``SolutionUniqueName`` is ``Edm.String`` → SINGLE-QUOTED (embedded quotes
-    doubled per OData), unlike the unquoted GUID/int encoding in
-    ``build_dependency_path``.
-    """
-    return (
-        f"RetrieveDependenciesForUninstall(SolutionUniqueName="
-        f"{odata_literal(solution_unique_name)})"
-    )
-
-
 def dependencies_by_id(
     backend: D365Backend,
     metadata_id: str,
@@ -280,7 +267,9 @@ def retrieve_dependencies_for_uninstall(
     name = solution_unique_name.strip()
     if not name:
         raise D365Error("solution unique name is required.")
-    path = build_uninstall_dependency_path(name)
+    # SolutionUniqueName is Edm.String: single-quoted, embedded quotes doubled,
+    # unlike the unquoted GUID/int encoding in `build_dependency_path`.
+    path = f"RetrieveDependenciesForUninstall(SolutionUniqueName={odata_literal(name)})"
     result = as_dict(backend.get(path))
 
     records: list[dict[str, Any]] = result.get("value") or []

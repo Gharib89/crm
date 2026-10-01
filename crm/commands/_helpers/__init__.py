@@ -1,10 +1,9 @@
 """Shared helpers used across crm.commands.* (#271).
 
 Formerly a single ~630-line module, now a package of cohesive submodules — one
-per concern. This ``__init__`` re-exports the full flat namespace, so every
-existing ``from crm.commands._helpers import <name>`` keeps resolving
-identically off the package. Pure reorganization: no behavior, signature, or
-call-site change.
+per concern. This ``__init__`` re-exports them as one flat namespace, so callers
+write ``from crm.commands._helpers import <name>``. A helper with a single
+consuming command lives in that command module instead (#996).
 
 Cross-submodule callers import from their sibling submodule directly (not back
 through this ``__init__``) to keep the package import-cycle-free.
@@ -20,12 +19,9 @@ from .admin import (
 from .confirm import (
     _confirm_destructive,
     _destructive_option,
-    _plaintext_secret_warning,
-    prompt_secret,
     select_one,
 )
 from .errors import (
-    _auth_error_hint,
     _handle_d365_error,
     d365_errors,
     usage_guard,
@@ -34,21 +30,11 @@ from .options import (
     _output_option,
 )
 from .parsing import (
-    _CASCADE,
-    _MENU,
-    _REQUIRED,
     _check_expectations,
     _load_payload,
-    _odata_literal,
     _parse_expect,
     _parse_value_labels,
     _read_file,
-    _resolve_async_state,
-    encode_function_params,
-)
-from .profiles import (
-    default_profile_name,
-    infer_auth_scheme,
 )
 from .rendering import (
     _apply_jq,
@@ -71,12 +57,9 @@ from .session import (
     _touch_session,
 )
 from .solutions import (
-    _EXPORT_SETTING_KEYS,
     _active_profile,
-    _optional_solution_option,
     _publish_option,
     _resolve_publish,
-    _resolve_schema_name,
     _resolve_solution,
     _solution_option,
 )
@@ -102,22 +85,16 @@ __all__ = [
     "_handle_d365_error",
     "d365_errors",
     "usage_guard",
-    "_auth_error_hint",
     # solution resolution
     "_resolve_solution",
     "_solution_option",
-    "_optional_solution_option",
     "_publish_option",
     "_resolve_publish",
     "_active_profile",
-    "_resolve_schema_name",
-    "_EXPORT_SETTING_KEYS",
     # confirm / secret UX
     "_confirm_destructive",
     "_destructive_option",
-    "_plaintext_secret_warning",
     "select_one",
-    "prompt_secret",
     # admin headers
     "_admin_header_options",
     "_admin_kwargs",
@@ -127,15 +104,6 @@ __all__ = [
     "_parse_expect",
     "_parse_value_labels",
     "_check_expectations",
-    "_odata_literal",
-    "encode_function_params",
-    "_resolve_async_state",
-    "_CASCADE",
-    "_MENU",
-    "_REQUIRED",
-    # profile inference
-    "infer_auth_scheme",
-    "default_profile_name",
     # session / journal
     "_journal",
     "_touch_session",

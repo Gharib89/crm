@@ -47,12 +47,6 @@ def test_get_missing_returns_none(fake):
     assert keyring_store.get_secret("nope") is None
 
 
-def test_has_secret_true_false(fake):
-    assert keyring_store.has_secret("prod") is False
-    keyring_store.set_secret("prod", "x")
-    assert keyring_store.has_secret("prod") is True
-
-
 def test_delete_existing_returns_true(fake):
     keyring_store.set_secret("prod", "x")
     assert keyring_store.delete_secret("prod") is True
@@ -73,7 +67,6 @@ def test_unavailable_when_keyring_missing(monkeypatch):
 
     monkeypatch.setattr(keyring_store, "_import_keyring", _raise)
     assert keyring_store.is_available() is False
-    assert keyring_store.has_secret("prod") is False
     assert keyring_store.get_secret("prod") is None  # soft: resolver source
     assert keyring_store.delete_secret("prod") is False  # soft: nothing to delete
     with pytest.raises(D365Error):

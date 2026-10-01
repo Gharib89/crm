@@ -26,7 +26,6 @@ def fake_keyring(monkeypatch):
     monkeypatch.setattr(keyring_store, "is_available", lambda: True)
     monkeypatch.setattr(keyring_store, "get_secret", lambda n: store.get(n))
     monkeypatch.setattr(keyring_store, "set_secret", lambda n, s: store.__setitem__(n, s))
-    monkeypatch.setattr(keyring_store, "has_secret", lambda n: n in store)
     return store
 
 

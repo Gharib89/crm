@@ -193,11 +193,6 @@ _LABEL_LANGUAGECODE = "1033"
 _MAX_LAYOUT_COLUMNS = 4
 
 
-def _fresh_cell_id() -> str:
-    """A brace-wrapped uuid4 for a newly inserted cell, matching FormXml style."""
-    return xml_edit.fresh_guid()
-
-
 def _parse_formxml(formxml: str) -> ET.Element:
     """Parse FormXml, turning a malformed payload into a ``D365Error`` so the CLI
     emits its standard error envelope rather than a raw ``ParseError`` traceback.
@@ -277,7 +272,7 @@ def _append_cell(section: ET.Element, cell: ET.Element) -> None:
 def _build_field_cell(datafieldname: str, classid: str, label: str) -> ET.Element:
     """A fresh bound-field ``<cell>`` (fresh id, label, control) for the field."""
     cell = ET.Element("cell")
-    cell.set("id", _fresh_cell_id())
+    cell.set("id", xml_edit.fresh_guid())
     labels = ET.SubElement(cell, "labels")
     lab = ET.SubElement(labels, "label")
     lab.set("description", label)

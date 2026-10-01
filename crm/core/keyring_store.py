@@ -125,7 +125,3 @@ def delete_secret(profile_name: str) -> bool:
     except Exception:
         # Soft-fail: a backend error must not break delete-password / profiles.
         return False
-
-
-def has_secret(profile_name: str) -> bool:
-    return get_secret(profile_name) is not None

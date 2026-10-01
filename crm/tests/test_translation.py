@@ -454,6 +454,46 @@ class TestTranslationCommands:
         warnings = envelope.get("meta", {}).get("warnings", [])
         assert not any("publish-all" in w for w in warnings)
 
+    def test_import_command_publish_d365_error_emits_envelope(self, monkeypatch, tmp_path):
+        _seed_profile(tmp_path, monkeypatch)
+        src = _write_translations_zip(tmp_path / "labels.zip")
+        from crm.commands import translation as tr_cmd
+
+        monkeypatch.setattr(
+            tr_cmd.translation_mod,
+            "import_translation",
+            lambda backend, zip_path, **kw: {
+                "import_job_id": "11111111-2222-3333-4444-555555555555",
+                "status": "succeeded",
+                "action": "ImportTranslation",
+            },
+        )
+        import crm.core.solution as sol_core
+
+        def _boom(backend):
+            raise D365Error("publish failed", status=500)
+
+        monkeypatch.setattr(sol_core, "publish_all", _boom)
+        from crm.cli import cli
+
+        result = CliRunner().invoke(
+            cli,
+            ["--profile", "t", "--json", "translation", "import", str(src), "--yes", "--publish"],
+        )
+        assert not isinstance(result.exception, D365Error), "raw traceback, no envelope"
+        assert result.exit_code == 1
+        import json
+
+        envelope = json.loads(result.stdout)
+        assert envelope["ok"] is False
+        assert "publish failed" in envelope["error"]
+        # The import already changed the org, so it is journaled even though the
+        # publish that followed it failed.
+        from crm.core import audit
+
+        rows = audit.read("default")
+        assert [r["command"] for r in rows] == ["translation import"]
+
     def test_import_command_with_publish_flag_dry_run_skips_publish(self, monkeypatch, tmp_path):
         _seed_profile(tmp_path, monkeypatch)
         src = _write_translations_zip(tmp_path / "labels.zip")

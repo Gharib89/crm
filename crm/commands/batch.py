@@ -11,7 +11,6 @@ import click
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import _journal, _output_option, d365_errors
 from crm.core import batch as batch_mod
-from crm.core import solution as sol_mod
 
 
 @click.command("service-document")
@@ -19,7 +18,7 @@ from crm.core import solution as sol_mod
 def service_document_cmd(ctx: CLIContext):
     """GET the root service document — lists every entity set the server exposes."""
     with d365_errors(ctx):
-        result = sol_mod.service_document(ctx.backend())
+        result = batch_mod.service_document(ctx.backend())
     if ctx.json_mode:
         ctx.emit(True, data=result, meta={"count": len((result or {}).get("value", []))})
         return
