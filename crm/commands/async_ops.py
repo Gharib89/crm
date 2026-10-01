@@ -55,27 +55,16 @@ def async_list(
     with d365_errors(ctx):
         state_int = _resolve_async_state(state)
         backend = ctx.backend()
-        if fetch_all:
-            rows = async_ops_mod.list_all_async_operations(
-                backend,
-                state=state_int,
-                message_name=message_name,
-                owner_id=owner_id,
-                page_size=top,
-                max_pages=max_pages,
-                order_by=order_by,
-                filter=filter,
-            )
-        else:
-            rows = async_ops_mod.list_async_operations(
-                backend,
-                state=state_int,
-                message_name=message_name,
-                owner_id=owner_id,
-                top=top,
-                order_by=order_by,
-                filter=filter,
-            )
+        rows = async_ops_mod.list_async_operations(
+            backend,
+            state=state_int,
+            message_name=message_name,
+            owner_id=owner_id,
+            top=top,
+            max_pages=max_pages if fetch_all else 1,
+            order_by=order_by,
+            filter=filter,
+        )
     ctx.emit(True, data=rows, meta={"count": len(rows)})
 
 

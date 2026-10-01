@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Literal
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 
@@ -227,46 +227,29 @@ def _prefer_header(include_annotations: bool, page_size: int | None) -> dict[str
     return {"Prefer": ",".join(parts)} if parts else {}
 
 
-def saved_query(
+_PREDEFINED_QUERY_PARAM: dict[str, str] = {"saved": "savedQuery", "user": "userQuery"}
+
+
+def predefined_query(
     backend: D365Backend,
     entity_set: str,
-    savedquery_id: str,
+    query_id: str,
     *,
+    kind: Literal["saved", "user"],
     include_annotations: bool = False,
     page_size: int | None = None,
 ) -> dict[str, Any]:
-    """Execute a system view (savedquery) by GUID.
+    """Execute a system view (`kind="saved"`, savedquery) or a saved view
+    (`kind="user"`, userquery) by GUID.
 
-    Equivalent to: GET /<set>?savedQuery=<guid>
+    Equivalent to: GET /<set>?savedQuery=<guid> or GET /<set>?userQuery=<guid>
     Reference: https://learn.microsoft.com/power-apps/developer/data-platform/webapi/retrieve-and-execute-predefined-queries
     """
     headers = _prefer_header(include_annotations, page_size)
     return as_dict(
         backend.get(
             entity_set,
-            params={"savedQuery": savedquery_id},
-            extra_headers=headers or None,
-        )
-    )
-
-
-def user_query(
-    backend: D365Backend,
-    entity_set: str,
-    userquery_id: str,
-    *,
-    include_annotations: bool = False,
-    page_size: int | None = None,
-) -> dict[str, Any]:
-    """Execute a saved view (userquery) by GUID.
-
-    Equivalent to: GET /<set>?userQuery=<guid>
-    """
-    headers = _prefer_header(include_annotations, page_size)
-    return as_dict(
-        backend.get(
-            entity_set,
-            params={"userQuery": userquery_id},
+            params={_PREDEFINED_QUERY_PARAM[kind]: query_id},
             extra_headers=headers or None,
         )
     )

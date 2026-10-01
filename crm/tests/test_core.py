@@ -696,14 +696,14 @@ class TestSavedAndUserQuery:
         qid = "00000000-0000-0000-00aa-000010001002"
         with requests_mock.Mocker() as m:
             m.get(backend.url_for("accounts"), json={"value": []})
-            query_mod.saved_query(backend, "accounts", qid)
+            query_mod.predefined_query(backend, "accounts", qid, kind="saved")
         assert m.request_history[0].qs["savedquery"] == [qid]
 
     def test_user_query_sends_userquery_param(self, backend):
         qid = "11111111-2222-3333-4444-555555555555"
         with requests_mock.Mocker() as m:
             m.get(backend.url_for("contacts"), json={"value": []})
-            query_mod.user_query(backend, "contacts", qid)
+            query_mod.predefined_query(backend, "contacts", qid, kind="user")
         assert m.request_history[0].qs["userquery"] == [qid]
 
 

@@ -265,10 +265,11 @@ def query_saved(ctx: CLIContext, entity_set, savedquery_id, annotations, page_si
     discover IDs.
     """
     with d365_errors(ctx):
-        result = query_mod.saved_query(
+        result = query_mod.predefined_query(
             ctx.backend(),
             entity_set,
             savedquery_id,
+            kind="saved",
             include_annotations=annotations,
             page_size=page_size,
         )
@@ -292,10 +293,11 @@ def query_saved(ctx: CLIContext, entity_set, savedquery_id, annotations, page_si
 def query_user(ctx: CLIContext, entity_set, userquery_id, annotations, page_size, minimal):
     """Execute a saved view (userquery) by GUID."""
     with d365_errors(ctx):
-        result = query_mod.user_query(
+        result = query_mod.predefined_query(
             ctx.backend(),
             entity_set,
             userquery_id,
+            kind="user",
             include_annotations=annotations,
             page_size=page_size,
         )
