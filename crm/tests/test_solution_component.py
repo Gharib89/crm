@@ -18,6 +18,7 @@ from click.testing import CliRunner
 
 from crm.cli import cli
 from crm.core import solution as sol_mod
+from crm.core import solution_components as sc_mod
 from crm.utils.d365_backend import D365Error
 
 _SOL_ID = "22222222-2222-2222-2222-222222222222"
@@ -82,11 +83,11 @@ class TestComponentTypeName:
         ],
     )
     def test_known_codes(self, code, expected):
-        assert sol_mod.component_type_name(code) == expected
+        assert sc_mod.component_type_name(code) == expected
 
     def test_unknown_code_falls_back_to_str(self):
         # An unmapped code must not crash — it renders as its integer's string form.
-        assert sol_mod.component_type_name(99999) == "99999"
+        assert sc_mod.component_type_name(99999) == "99999"
 
 
 class TestAddSolutionComponent:

@@ -1,9 +1,7 @@
 """Pure component algebra for solutions: type-code map, normalise, diff, layer-conflicts.
 
 Backend-free by design — no `D365Backend` / HTTP dependency, so these functions are
-trivially unit-testable in isolation. Every name here is re-exported from
-`crm.core.solution` for backward compatibility (callers and tests that reach them
-via `crm.core.solution.<name>` keep working unchanged).
+trivially unit-testable in isolation.
 """
 
 from __future__ import annotations

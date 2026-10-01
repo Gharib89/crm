@@ -1,12 +1,9 @@
 """Solution lifecycle: create-publisher / create / list / info + publish utilities.
 
 This module owns the solution/publisher lifecycle CRUD and the publish actions. The
-pure component algebra and the import/export transfer pipeline now live in
-`crm.core.solution_components` and `crm.core.solution_transfer` respectively, but
-every name they hold is **re-exported here** so the public surface of
-`crm.core.solution` is unchanged: `from crm.core.solution import X`,
-`crm.core.solution.X`, and `monkeypatch.setattr("crm.core.solution.X", ...)` all
-keep resolving for every X that existed before the split.
+pure component algebra lives in `crm.core.solution_components` and the import/export
+transfer pipeline in `crm.core.solution_transfer`; callers import those names from
+their own module.
 """
 
 from __future__ import annotations
@@ -19,57 +16,10 @@ from pathlib import Path
 from typing import Any, cast
 
 from crm.core import dependencies, entity, metadata_cache
-from crm.core.batch import run_batched
-from crm.core.solution_components import (
-    RESOLVE_SPECS as RESOLVE_SPECS,
-)
-from crm.core.solution_components import (
-    ROOT_COMPONENT_BEHAVIORS as ROOT_COMPONENT_BEHAVIORS,
-)
 
-# ── Backward-compat re-exports ───────────────────────────────────────────────
-#
-# Homes changed, the public surface did not. These are deliberate re-exports
-# (the redundant `as X` marks them intentional for pyright); callers and tests
-# that reach these names via `crm.core.solution.<name>` must keep working. Note:
-# a function whose body moved to one of these modules is patched on its NEW home
-# module — direct-internal tests for `solution_transfer` privates patch there.
-from crm.core.solution_components import (
-    SOLUTION_COMPONENT_TYPES as SOLUTION_COMPONENT_TYPES,
-)
-from crm.core.solution_components import (
-    build_audit as build_audit,
-)
-from crm.core.solution_components import (
-    component_key as component_key,
-)
-from crm.core.solution_components import (
-    component_type_name as component_type_name,
-)
-from crm.core.solution_components import (
-    diff_components as diff_components,
-)
-from crm.core.solution_components import (
-    layer_conflicts as layer_conflicts,
-)
-from crm.core.solution_components import (
-    normalize_components as normalize_components,
-)
-from crm.core.solution_components import (
-    root_behavior_name as root_behavior_name,
-)
-from crm.core.solution_transfer import (
-    export_solution as export_solution,
-)
-from crm.core.solution_transfer import (
-    import_result as import_result,
-)
-from crm.core.solution_transfer import (
-    import_solution as import_solution,
-)
-from crm.core.solution_transfer import (
-    parse_import_job_data as parse_import_job_data,
-)
+# Module-qualified so the moved names do not resolve as crm.core.solution.<name>.
+from crm.core import solution_components as _components
+from crm.core.batch import run_batched
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 from crm.utils.d365_types import BatchOperation
 
@@ -412,7 +362,7 @@ def update_solution(
 # ── Solution components (#71) ────────────────────────────────────────────────
 #
 # The friendly-name → integer type map lives in solution_components
-# (SOLUTION_COMPONENT_TYPES, re-exported above). resolve_component_type stays here
+# (_components.SOLUTION_COMPONENT_TYPES). resolve_component_type stays here
 # alongside the add/remove lifecycle verbs that consume it.
 
 
@@ -429,9 +379,9 @@ def resolve_component_type(value: str | int) -> int:
         return int(text)
     key = re.sub(r"[\s_-]+", "", text).lower()
     try:
-        return SOLUTION_COMPONENT_TYPES[key]
+        return _components.SOLUTION_COMPONENT_TYPES[key]
     except KeyError:
-        known = ", ".join(sorted(SOLUTION_COMPONENT_TYPES))
+        known = ", ".join(sorted(_components.SOLUTION_COMPONENT_TYPES))
         raise D365Error(
             f"unknown component type {value!r}; pass an integer or one of: {known}."
         ) from None
@@ -440,7 +390,7 @@ def resolve_component_type(value: str | int) -> int:
 # The `entity` componenttype (1) is the only root for which the platform accepts
 # DoNotIncludeSubcomponents:true — and the cascade vector the #916 audit reasons
 # about.
-_ENTITY_TYPE = SOLUTION_COMPONENT_TYPES["entity"]
+_ENTITY_TYPE = _components.SOLUTION_COMPONENT_TYPES["entity"]
 
 
 def reject_non_entity_no_subcomponents(components: list[dict[str, Any]]) -> None:
@@ -876,7 +826,7 @@ def resolve_component_names(
         if componenttype == 2:  # attribute — entity-scoped, resolved in bulk
             attr_ids.append(oid_lower)
             continue
-        spec = RESOLVE_SPECS.get(componenttype)
+        spec = _components.RESOLVE_SPECS.get(componenttype)
         if spec is None:
             continue
         url = f"{spec.path.format(id=objectid)}?$select={spec.select}"
@@ -907,10 +857,10 @@ def resolve_component_names(
                 parent = body.get(spec.entity_field)
                 if parent:
                     entry["entity"] = parent
-            resolved[component_key(componenttype, oid_lower)] = entry
+            resolved[_components.component_key(componenttype, oid_lower)] = entry
 
     for mid, entry in _resolve_attribute_names(backend, attr_ids).items():
-        resolved[component_key(2, mid)] = entry
+        resolved[_components.component_key(2, mid)] = entry
 
     return resolved
 
@@ -971,7 +921,9 @@ def _required_edges(
     GETs (reads still run) — mirrors :func:`resolve_component_names`.
     """
     ids = [str(e.get("objectid") or "") for e in entities]
-    self_keys = [component_key(e.get("componenttype"), e.get("objectid")) for e in entities]
+    self_keys = [
+        _components.component_key(e.get("componenttype"), e.get("objectid")) for e in entities
+    ]
     if not ids:
         return {}
     if backend.dry_run or backend.read_only:
@@ -992,7 +944,7 @@ def _required_edges(
     required_by: dict[tuple[int, str], list[str]] = {}
     for self_key, reqs in zip(self_keys, required_lists, strict=True):
         for req in reqs:
-            rkey = component_key(req["componenttype"], req["objectid"])
+            rkey = _components.component_key(req["componenttype"], req["objectid"])
             if rkey == self_key:  # a component requiring itself is not a cascade
                 continue
             required_by.setdefault(rkey, []).append(self_key[1])
@@ -1016,7 +968,7 @@ def audit_solution(backend: D365Backend, unique_name: str) -> dict[str, Any]:
     components (the cascade vector), resolves friendly names, and classifies via
     :func:`build_audit`. Returns the ``build_audit`` report plus ``"solution"``.
     """
-    components = normalize_components(solution_components(backend, unique_name))
+    components = _components.normalize_components(solution_components(backend, unique_name))
     entities = [c for c in components if c["componenttype"] == _ENTITY_TYPE]
     required_by_ids = _required_edges(backend, entities)
     names = resolve_component_names(backend, components)
@@ -1027,7 +979,7 @@ def audit_solution(backend: D365Backend, unique_name: str) -> dict[str, Any]:
         key: [name_by_oid.get(r, r) for r in requirers]
         for key, requirers in required_by_ids.items()
     }
-    report = build_audit(components, required_by=required_by, names=names)
+    report = _components.build_audit(components, required_by=required_by, names=names)
     return {"solution": unique_name, **report}
 
 
@@ -1042,16 +994,16 @@ def preview_required_components(
     requested components — the components themselves are excluded. Each component's
     directly-required set is one ``RetrieveRequiredComponents`` GET.
     """
-    requested = {component_key(ct, cid) for cid, ct in components}
+    requested = {_components.component_key(ct, cid) for cid, ct in components}
     seen: dict[tuple[int, str], dict[str, Any]] = {}
     for component_id, component_type in components:
         for req in required_component_ids(backend, component_id, component_type):
-            key = component_key(req["componenttype"], req["objectid"])
+            key = _components.component_key(req["componenttype"], req["objectid"])
             if key in requested or key in seen:
                 continue
             seen[key] = {
                 "componenttype": req["componenttype"],
-                "type_name": component_type_name(req["componenttype"]),
+                "type_name": _components.component_type_name(req["componenttype"]),
                 "objectid": req["objectid"],
             }
     return sorted(seen.values(), key=lambda r: (r["componenttype"], r["objectid"]))

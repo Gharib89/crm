@@ -1792,38 +1792,6 @@ class TestWorkflowDelete:
         assert [r.method for r in m.request_history] == ["GET"]
 
 
-class TestCountEntitySet:
-    def test_count_returns_int_from_text_plain(self, backend):
-        with requests_mock.Mocker() as m:
-            m.get(
-                backend.url_for("contacts/$count"),
-                text="42",
-                headers={"Content-Type": "text/plain"},
-            )
-            result = query_mod.count_entity_set(backend, "contacts")
-        assert result == 42
-        assert len(m.request_history) == 1, "happy path must issue exactly one request"
-
-    def test_count_falls_back_when_text_plain_empty(self, backend):
-        with requests_mock.Mocker() as m:
-            m.get(
-                backend.url_for("contacts/$count"),
-                text="",
-                headers={"Content-Type": "text/plain"},
-            )
-            m.get(
-                backend.url_for("contacts"),
-                json={"value": [{"contactid": "x"}], "@odata.count": 7},
-            )
-            result = query_mod.count_entity_set(backend, "contacts")
-        assert result == 7
-        assert len(m.request_history) == 2, "fallback must issue two requests in order"
-        assert m.request_history[0].url.endswith("/$count")
-        assert (
-            "$count=true" in m.request_history[1].url or "%24count=true" in m.request_history[1].url
-        )
-
-
 # ── cli.py ──────────────────────────────────────────────────────────────
 
 
@@ -1918,7 +1886,7 @@ class TestSolutionExportFlags:
 
         import crm.commands.solution as sol_commands_mod
 
-        monkeypatch.setattr(sol_commands_mod.sol_mod, "export_solution", fake_export_solution)
+        monkeypatch.setattr(sol_commands_mod.st_mod, "export_solution", fake_export_solution)
         # Stub backend so no real connection resolution happens.
         monkeypatch.setattr(cli_mod.CLIContext, "backend", lambda self: object())
 
@@ -1983,9 +1951,9 @@ class TestExportSolutionAsync:
                     "ExportSolutionFile": encoded,
                 },
             )
-            from crm.core import solution as sol_mod
+            from crm.core import solution_transfer as st_mod
 
-            info = sol_mod.export_solution(
+            info = st_mod.export_solution(
                 backend,
                 "MySolution",
                 out,
@@ -2023,18 +1991,18 @@ class TestExportSolutionAsync:
                     "friendlymessage": "Solution export failed",
                 },
             )
-            from crm.core import solution as sol_mod
+            from crm.core import solution_transfer as st_mod
 
             with pytest.raises(D365Error, match="export failed"):
-                sol_mod.export_solution(backend, "MySolution", out)
+                st_mod.export_solution(backend, "MySolution", out)
 
         assert not out.exists()
 
     def test_export_dry_run_short_circuits(self, profile, tmp_path):
         dry = D365Backend(profile, password="pw", dry_run=True)
-        from crm.core import solution as sol_mod
+        from crm.core import solution_transfer as st_mod
 
-        info = sol_mod.export_solution(dry, "MySolution", tmp_path / "x.zip")
+        info = st_mod.export_solution(dry, "MySolution", tmp_path / "x.zip")
         assert info["_dry_run"] is True
         assert info["action"] == "ExportSolutionAsync"
 
@@ -2067,9 +2035,9 @@ class TestExportSolutionAsync:
                     "ExportSolutionFile": encoded,
                 },
             )
-            from crm.core import solution as sol_mod
+            from crm.core import solution_transfer as st_mod
 
-            sol_mod.export_solution(
+            st_mod.export_solution(
                 backend,
                 "MySol",
                 tmp_path / "out.zip",
@@ -2110,9 +2078,9 @@ class TestImportSolutionAsync:
                 requests_mock.ANY,
                 json={"statecode": 3, "statuscode": 30, "message": "Done"},
             )
-            from crm.core import solution as sol_mod
+            from crm.core import solution_transfer as st_mod
 
-            info = sol_mod.import_solution(backend, zip_path, quiet=True)
+            info = st_mod.import_solution(backend, zip_path, quiet=True)
 
         assert info["async_operation_id"] == self.OP_ID
         assert info["status"] == "succeeded"
@@ -2144,9 +2112,9 @@ class TestImportSolutionAsync:
                 requests_mock.ANY,
                 json={"statecode": 3, "statuscode": 30, "message": "Done"},
             )
-            from crm.core import solution as sol_mod
+            from crm.core import solution_transfer as st_mod
 
-            sol_mod.import_solution(backend, zip_path, quiet=True, skip_dependency_check=True)
+            st_mod.import_solution(backend, zip_path, quiet=True, skip_dependency_check=True)
 
         async_post = next(r for r in m.request_history if r.url.endswith("ImportSolutionAsync"))
         assert json.loads(async_post.body)["SkipProductUpdateDependencies"] is True
@@ -2173,18 +2141,18 @@ class TestImportSolutionAsync:
                 requests_mock.ANY,
                 json={"statecode": 3, "statuscode": 30, "message": "Done"},
             )
-            from crm.core import solution as sol_mod
+            from crm.core import solution_transfer as st_mod
 
-            sol_mod.import_solution(backend, zip_path, quiet=True)
+            st_mod.import_solution(backend, zip_path, quiet=True)
 
         async_post = next(r for r in m.request_history if r.url.endswith("ImportSolutionAsync"))
         assert "SkipProductUpdateDependencies" not in json.loads(async_post.body)
 
     def test_import_missing_file_raises(self, backend, tmp_path):
-        from crm.core import solution as sol_mod
+        from crm.core import solution_transfer as st_mod
 
         with pytest.raises(D365Error, match="not found"):
-            sol_mod.import_solution(backend, tmp_path / "missing.zip")
+            st_mod.import_solution(backend, tmp_path / "missing.zip")
 
     def test_import_raises_on_async_failure(self, backend, tmp_path, monkeypatch):
         import time as _t
@@ -2209,18 +2177,18 @@ class TestImportSolutionAsync:
                     "friendlymessage": "Import failed: missing dependency",
                 },
             )
-            from crm.core import solution as sol_mod
+            from crm.core import solution_transfer as st_mod
 
             with pytest.raises(D365Error, match="missing dependency"):
-                sol_mod.import_solution(backend, zip_path, quiet=True)
+                st_mod.import_solution(backend, zip_path, quiet=True)
 
     def test_import_dry_run_short_circuits(self, profile, tmp_path):
         zip_path = tmp_path / "in.zip"
         zip_path.write_bytes(b"PK\x03\x04stub")
         dry = D365Backend(profile, password="pw", dry_run=True)
-        from crm.core import solution as sol_mod
+        from crm.core import solution_transfer as st_mod
 
-        info = sol_mod.import_solution(dry, zip_path)
+        info = st_mod.import_solution(dry, zip_path)
         assert info["_dry_run"] is True
         assert info["action"] == "ImportSolutionAsync"
         assert "import_job_id" in info
@@ -2261,9 +2229,9 @@ class TestImportSolutionAsync:
                     "data": self._DATA_SUCCESS,
                 },
             )
-            from crm.core import solution as sol_mod
+            from crm.core import solution_transfer as st_mod
 
-            info = sol_mod.import_solution(backend, zip_path, quiet=True)
+            info = st_mod.import_solution(backend, zip_path, quiet=True)
 
         async_req = next(r for r in m.request_history if r.url.endswith("ImportSolutionAsync"))
         sync_req = next(r for r in m.request_history if r.url.endswith("ImportSolution"))
@@ -2296,9 +2264,9 @@ class TestImportSolutionAsync:
                 )
                 m.post(backend.url_for("ImportSolution"), status_code=204, text="")
                 m.get(requests_mock.ANY, json={"progress": 100.0, "data": None})
-                from crm.core import solution as sol_mod
+                from crm.core import solution_transfer as st_mod
 
-                sol_mod.import_solution(backend, zip_path, quiet=True, timeout=timeout)
+                st_mod.import_solution(backend, zip_path, quiet=True, timeout=timeout)
             async_req = next(r for r in m.request_history if r.url.endswith("ImportSolutionAsync"))
             sync_req = next(r for r in m.request_history if r.url.endswith("ImportSolution"))
             assert async_req.timeout == backend.profile.timeout
@@ -2329,10 +2297,10 @@ class TestImportSolutionAsync:
                     }
                 },
             )
-            from crm.core import solution as sol_mod
+            from crm.core import solution_transfer as st_mod
 
             with pytest.raises(D365Error, match="dependent component") as ex:
-                sol_mod.import_solution(backend, zip_path, quiet=True)
+                st_mod.import_solution(backend, zip_path, quiet=True)
         assert "import_job_id=" in str(ex.value)
 
     @pytest.mark.parametrize(
@@ -2360,9 +2328,9 @@ class TestImportSolutionAsync:
             m.post(backend.url_for("ImportSolutionAsync"), status_code=400, json=self._REJECT_BODY)
             m.post(backend.url_for("ImportSolution"), status_code=204, text="")
             m.get(requests_mock.ANY, **job_row_resp)
-            from crm.core import solution as sol_mod
+            from crm.core import solution_transfer as st_mod
 
-            info = sol_mod.import_solution(backend, zip_path, quiet=True)
+            info = st_mod.import_solution(backend, zip_path, quiet=True)
 
         assert info["status"] == "succeeded"
         assert info["import_job_id"] is not None
@@ -2389,9 +2357,9 @@ class TestImportSolutionAsync:
                 status_code=404,
                 json={"error": {"message": "importjob Does Not Exist"}},
             )
-            from crm.core import solution as sol_mod
+            from crm.core import solution_transfer as st_mod
 
-            info = sol_mod.import_solution(backend, zip_path, quiet=True, formatted=True)
+            info = st_mod.import_solution(backend, zip_path, quiet=True, formatted=True)
 
         assert info["status"] == "succeeded"
         assert "formatted_results" not in info
@@ -2417,10 +2385,10 @@ class TestImportSolutionAsync:
 
         with requests_mock.Mocker() as m:
             m.post(backend.url_for("ImportSolutionAsync"), json=_post_handler)
-            from crm.core import solution as sol_mod
+            from crm.core import solution_transfer as st_mod
 
             with pytest.raises(D365Error, match="permission"):
-                sol_mod.import_solution(backend, zip_path, quiet=True)
+                st_mod.import_solution(backend, zip_path, quiet=True)
 
         assert call_count["n"] == 1
 

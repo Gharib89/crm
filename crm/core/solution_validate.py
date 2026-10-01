@@ -22,7 +22,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from crm.core.solution import SOLUTION_COMPONENT_TYPES as _CT
+from crm.core.solution_components import SOLUTION_COMPONENT_TYPES as _CT
 from crm.utils import safe_xml
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 

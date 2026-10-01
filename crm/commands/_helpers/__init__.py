@@ -13,14 +13,6 @@ through this ``__init__``) to keep the package import-cycle-free.
 # pyright: basic
 from __future__ import annotations
 
-from crm.commands._tty import _stdin_is_tty
-
-# Module references kept at the package top level for fidelity with the old
-# single-module namespace. `session_mod` is monkeypatched in the test suite via
-# `_helpers.session_mod.load_profile`, and is the same module object the
-# solution/session submodules use, so the patch stays visible to them.
-from crm.core import session as session_mod
-
 from .admin import (
     _admin_header_options,
     _admin_kwargs,
@@ -90,11 +82,6 @@ from .solutions import (
 )
 
 __all__ = [
-    # package-level surface pinned by test_helpers_package_surface.py:
-    # session_mod is the patch seam tests reach via `_helpers.session_mod`;
-    # _stdin_is_tty is the TTY probe re-exported for the command layer.
-    "session_mod",
-    "_stdin_is_tty",
     # rendering / output envelope
     "_sanitize",
     "_strip_odata_keys",

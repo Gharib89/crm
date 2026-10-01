@@ -45,7 +45,7 @@ def _stub(monkeypatch, backend, *, solutions=None):
         calls["output"] = str(output)
         return {"action": "ExportSolution", "bytes": 42, "path": str(output)}
 
-    monkeypatch.setattr("crm.commands.solution.sol_mod.export_solution", _fake_export)
+    monkeypatch.setattr("crm.core.solution_transfer.export_solution", _fake_export)
     return calls
 
 

@@ -20,6 +20,7 @@ def test_e2e_solution_export_with_customization_flag(backend, tmp_path):
     """
     from crm.core import metadata as meta_mod
     from crm.core import solution as sol_mod
+    from crm.core import solution_transfer as st_mod
 
     suffix = uuid.uuid4().hex[:8]
     prefix = f"e2e{suffix[:4]}"  # 7 chars, starts with a letter
@@ -53,7 +54,7 @@ def test_e2e_solution_export_with_customization_flag(backend, tmp_path):
         )
         created_entity = True
 
-        sol_mod.export_solution(
+        st_mod.export_solution(
             backend,
             sol_name,
             out,

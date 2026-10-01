@@ -449,13 +449,13 @@ def test_import_round_trip_and_result_and_job_status(cli, backend, ephemeral_sol
     On targets where the async import returns no async_operation_id (e.g. sync
     fallback on older on-prem), job-status is skipped at runtime.
     """
-    from crm.core import solution as sol_mod
+    from crm.core import solution_transfer as st_mod
 
     zip_path = tmp_path / f"{ephemeral_solution}_reimport.zip"
 
     # Export first (using core directly — export is already covered elsewhere).
     try:
-        sol_mod.export_solution(backend, ephemeral_solution, zip_path)
+        st_mod.export_solution(backend, ephemeral_solution, zip_path)
     except Exception as exc:
         pytest.skip(f"export failed, cannot run import round-trip: {exc}")
 

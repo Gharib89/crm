@@ -45,6 +45,7 @@ def test_managed_upgrade_single_org_lifecycle(cli, backend, tmp_path):
     separate `apply-upgrade`) so both verbs are covered, asserting each envelope.
     """
     from crm.core import solution as sol_mod
+    from crm.core import solution_transfer as st_mod
 
     suffix = uuid.uuid4().hex[:8]
     prefix = f"e2e{suffix[:4]}"  # 7 chars, starts with a letter
@@ -73,7 +74,7 @@ def test_managed_upgrade_single_org_lifecycle(cli, backend, tmp_path):
 
         # ── export v1 managed, bump version, export v2 managed (both before the
         # unmanaged source is dropped — afterwards it can no longer be exported) ──
-        sol_mod.export_solution(backend, sol_name, v1_zip, managed=True)
+        st_mod.export_solution(backend, sol_name, v1_zip, managed=True)
         assert v1_zip.exists() and v1_zip.stat().st_size > 1000, "empty v1 managed export"
 
         r = cli(
@@ -89,7 +90,7 @@ def test_managed_upgrade_single_org_lifecycle(cli, backend, tmp_path):
         assert r.returncode == 0, f"set-version failed:\n{r.stderr}\n{r.stdout}"
         assert json.loads(r.stdout)["ok"], r.stdout
 
-        sol_mod.export_solution(backend, sol_name, v2_zip, managed=True)
+        st_mod.export_solution(backend, sol_name, v2_zip, managed=True)
         assert v2_zip.exists() and v2_zip.stat().st_size > 1000, "empty v2 managed export"
 
         # ── drop the unmanaged author copy so the managed base can install under

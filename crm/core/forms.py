@@ -2445,53 +2445,6 @@ def commit_declared_form(
     }
 
 
-def apply_form_spec(
-    backend: D365Backend,
-    entity: str,
-    block: dict[str, Any],
-    *,
-    publish: bool,
-    solution: str | None,
-    dry_run: bool,
-) -> dict[str, Any]:
-    """Converge one declared ``forms:`` block onto ``entity``'s main form.
-
-    Internal to `apply` (ADR 0024): the one-call resolve → converge → commit
-    composition of :func:`resolve_declared_form` and :func:`commit_declared_form`.
-    The apply engine now drives those two steps separately, as its ``form``
-    adapter's ``find_live`` / ``reconcile`` pair, so nothing outside the tests that
-    pin this composition calls it; it is retained deliberately (#962) and may be
-    dropped once the adapter-seam tests fully cover both steps (#960 stage b).
-
-    Returns ``{form, formid, components, committed, blocked}``. ``blocked`` is
-    non-empty when the block's ``name`` does not resolve to a single existing main
-    form (see :func:`resolve_declared_form`); ``{unmaterialized: True}`` when the
-    entity has no main form yet, which the caller reports as ``planned``.
-    """
-    form_row, blocked = resolve_declared_form(backend, entity, block)
-    if blocked:
-        return {
-            "form": block.get("name"),
-            "components": [],
-            "committed": False,
-            "blocked": blocked,
-        }
-    if form_row is None:
-        return {
-            "form": block.get("name"),
-            "components": [],
-            "committed": False,
-            "blocked": [],
-            "unmaterialized": True,
-        }
-    return {
-        **commit_declared_form(
-            backend, entity, form_row, block, publish=publish, solution=solution, dry_run=dry_run
-        ),
-        "blocked": [],
-    }
-
-
 # --- `export-spec` form projection (ADR 0024 / ADR 0019 seedable invariant) ------
 #
 # The inverse of converge_declared_form: read an entity's main form and project a

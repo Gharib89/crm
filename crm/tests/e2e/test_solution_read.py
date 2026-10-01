@@ -115,11 +115,11 @@ def test_solution_dependencies_ephemeral(cli, ephemeral_solution):
 @covers("solution validate")
 def test_solution_validate_exported_zip(cli, backend, ephemeral_solution, tmp_path):
     """Export the throwaway solution to a zip, then validate it offline."""
-    from crm.core import solution as sol_mod
+    from crm.core import solution_transfer as st_mod
 
     zip_path = tmp_path / f"{ephemeral_solution}.zip"
     try:
-        sol_mod.export_solution(backend, ephemeral_solution, zip_path)
+        st_mod.export_solution(backend, ephemeral_solution, zip_path)
     except Exception as exc:
         pytest.skip(f"export failed, cannot validate: {exc}")
 
@@ -141,11 +141,11 @@ def test_solution_validate_against_org_version_ok(cli, backend, ephemeral_soluti
     a cloud-exported v9.2 package would trip the v9.1 ceiling, 0x80048068). This
     leg proves the check runs live and does not false-reject the equal/older case.
     """
-    from crm.core import solution as sol_mod
+    from crm.core import solution_transfer as st_mod
 
     zip_path = tmp_path / f"{ephemeral_solution}_against.zip"
     try:
-        sol_mod.export_solution(backend, ephemeral_solution, zip_path)
+        st_mod.export_solution(backend, ephemeral_solution, zip_path)
     except Exception as exc:
         pytest.skip(f"export failed, cannot validate: {exc}")
 
@@ -169,11 +169,11 @@ def test_solution_missing_components_self_exported(cli, backend, ephemeral_solut
     org. A self-exported zip is guaranteed to need nothing from the exporting org —
     the result must be an empty list with ok=true and meta.count=0.
     """
-    from crm.core import solution as sol_mod
+    from crm.core import solution_transfer as st_mod
 
     zip_path = tmp_path / f"{ephemeral_solution}_mc.zip"
     try:
-        sol_mod.export_solution(backend, ephemeral_solution, zip_path)
+        st_mod.export_solution(backend, ephemeral_solution, zip_path)
     except Exception as exc:
         pytest.skip(f"export failed, cannot check missing-components: {exc}")
 

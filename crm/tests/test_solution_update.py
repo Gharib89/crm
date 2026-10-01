@@ -206,7 +206,7 @@ class TestSolutionImportConfirm:
             captured.update(kw)
             return {"imported": True}
 
-        monkeypatch.setattr("crm.core.solution.import_solution", fake)
+        monkeypatch.setattr("crm.core.solution_transfer.import_solution", fake)
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         return captured
 

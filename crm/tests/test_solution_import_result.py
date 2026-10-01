@@ -13,7 +13,6 @@ import requests_mock
 from click.testing import CliRunner
 
 from crm.cli import cli
-from crm.core import solution as sol
 from crm.core import solution_transfer as transfer
 from crm.utils.d365_backend import ConnectionProfile, D365Backend
 
@@ -53,7 +52,7 @@ datetimeticks="634224269608387238" />
 
 
 def test_parse_success_returns_overall_and_components():
-    env = sol.parse_import_job_data(_DATA_SUCCESS)
+    env = transfer.parse_import_job_data(_DATA_SUCCESS)
     assert env["result"] == "success"
     assert env["solution"] == "samplesolutionforImport"
     opt = next(c for c in env["components"] if c["type"] == "optionSet")
@@ -84,7 +83,7 @@ _DATA_PARTIAL = """<importexportxml progress="100" processed="true">
 
 
 def test_parse_captures_failed_component_detail():
-    env = sol.parse_import_job_data(_DATA_PARTIAL)
+    env = transfer.parse_import_job_data(_DATA_PARTIAL)
     assert env["result"] == "success"  # manifest says success...
     failed = next(c for c in env["components"] if c["result"] == "failure")
     assert failed["type"] == "entity"
@@ -99,7 +98,7 @@ def test_parse_captures_failed_component_detail():
 def test_parse_anonymous_component_name_falls_back_to_type():
     # <rootComponent> carries no LocalizedName/name/id/UniqueName — name must
     # still be a non-null label so the {name,type,result} contract holds.
-    env = sol.parse_import_job_data(_DATA_SUCCESS)
+    env = transfer.parse_import_job_data(_DATA_SUCCESS)
     rc = next(c for c in env["components"] if c["type"] == "rootComponent")
     assert rc["name"] == "rootComponent"
 
@@ -111,7 +110,7 @@ def test_parse_overall_failure():
         '<result result="failure" errorcode="0x8004" errortext="boom" />'
         "</solutionManifest></solutionManifests></importexportxml>"
     )
-    env = sol.parse_import_job_data(xml)
+    env = transfer.parse_import_job_data(xml)
     assert env["result"] == "failure"
 
 
@@ -119,9 +118,9 @@ def test_parse_unparseable_raises():
     from crm.utils.d365_backend import D365Error
 
     with pytest.raises(D365Error, match="empty"):
-        sol.parse_import_job_data("   ")
+        transfer.parse_import_job_data("   ")
     with pytest.raises(D365Error, match="parse"):
-        sol.parse_import_job_data("<not-closed>")
+        transfer.parse_import_job_data("<not-closed>")
 
 
 def test_import_result_reports_partial_failure_warning(backend):
@@ -135,7 +134,7 @@ def test_import_result_reports_partial_failure_warning(backend):
                 "completedon": "2026-06-05T00:00:00Z",
             },
         )
-        out = sol.import_result(backend, _JOB_ID)
+        out = transfer.import_result(backend, _JOB_ID)
     assert out["import_job_id"] == _JOB_ID
     assert out["solution"] == "partialsolution"
     assert out["result"] == "success"  # async said succeeded...
@@ -154,7 +153,7 @@ def test_import_result_formatted_attaches_report_verbatim(backend):
             backend.url_for(f"RetrieveFormattedImportJobResults(ImportJobId={_JOB_ID})"),
             json={"FormattedResults": report},
         )
-        out = sol.import_result(backend, _JOB_ID, formatted=True)
+        out = transfer.import_result(backend, _JOB_ID, formatted=True)
     assert out["formatted_results"] == report
 
 
@@ -165,7 +164,7 @@ def test_import_result_missing_data_warns_not_raises(backend):
         m.get(
             backend.url_for(f"importjobs({_JOB_ID})"), json={"solutionname": "s", "progress": 100.0}
         )  # no data
-        out = sol.import_result(backend, _JOB_ID)
+        out = transfer.import_result(backend, _JOB_ID)
     assert out["import_job_id"] == _JOB_ID
     assert out["solution"] == "s"
     assert "result" not in out
@@ -179,7 +178,7 @@ def test_import_result_without_formatted_omits_report(backend):
             backend.url_for(f"importjobs({_JOB_ID})"),
             json={"data": _DATA_SUCCESS, "solutionname": "s", "progress": 100.0},
         )
-        out = sol.import_result(backend, _JOB_ID)
+        out = transfer.import_result(backend, _JOB_ID)
     assert "formatted_results" not in out
     assert "warnings" not in out  # clean success → no warnings
 
@@ -205,7 +204,7 @@ def test_import_solution_surfaces_partial_failure(backend, tmp_path, no_sleep):
                 "data": _DATA_PARTIAL,
             },
         )
-        info = sol.import_solution(backend, zip_path, quiet=True)
+        info = transfer.import_solution(backend, zip_path, quiet=True)
     assert info["status"] == "succeeded"  # async statuscode 30
     assert info["result"] == "success"  # manifest-level
     assert info["warnings"]  # ...partial failure no longer hidden
@@ -228,7 +227,7 @@ def test_import_solution_warns_when_data_missing(backend, tmp_path, no_sleep):
             json={"statecode": 3, "statuscode": 30, "message": "Done"},
         )
         m.get(re.compile(r"importjobs"), json={"progress": 100.0})  # no data
-        info = sol.import_solution(backend, zip_path, quiet=True)
+        info = transfer.import_solution(backend, zip_path, quiet=True)
     assert info["status"] == "succeeded"
     assert "result" not in info
     assert info["warnings"]
@@ -270,7 +269,7 @@ def test_import_solution_managed_field_false_on_valid_unmanaged_zip(backend, tmp
                 "data": _DATA_PARTIAL,
             },
         )
-        info = sol.import_solution(backend, zip_path, quiet=True)
+        info = transfer.import_solution(backend, zip_path, quiet=True)
     assert info["managed"] is False
 
 
@@ -293,7 +292,7 @@ def test_import_solution_managed_field_none_on_garbage_zip(backend, tmp_path, no
                 "data": _DATA_PARTIAL,
             },
         )
-        info = sol.import_solution(backend, zip_path, quiet=True)
+        info = transfer.import_solution(backend, zip_path, quiet=True)
     assert info["managed"] is None
 
 
@@ -310,7 +309,7 @@ def test_import_solution_dry_run_includes_managed_and_dry_run_sentinel(tmp_path)
     dry_backend = D365Backend(profile, password="pw", dry_run=True)
     zip_path = tmp_path / "unmanaged.zip"
     _make_solution_zip(zip_path, "0")
-    out = sol.import_solution(dry_backend, zip_path, quiet=True)
+    out = transfer.import_solution(dry_backend, zip_path, quiet=True)
     assert "_dry_run" in out
     assert out["managed"] is False
 
@@ -349,7 +348,7 @@ def test_import_result_command_surfaces_warnings_and_formatted(monkeypatch, tmp_
             "warnings": ["entity 'Account' import result is 'failure'."],
         }
 
-    monkeypatch.setattr(sol, "import_result", fake_import_result)
+    monkeypatch.setattr(transfer, "import_result", fake_import_result)
     result = CliRunner().invoke(
         cli,
         ["--json", "--profile", "p", "solution", "import-result", _JOB_ID, "--formatted"],
@@ -375,7 +374,7 @@ def test_import_command_passes_skip_dependency_check(monkeypatch, tmp_path):
         captured["skip"] = skip_dependency_check
         return {"import_job_id": _JOB_ID, "status": "succeeded"}
 
-    monkeypatch.setattr(sol, "import_solution", fake_import_solution)
+    monkeypatch.setattr(transfer, "import_solution", fake_import_solution)
     result = CliRunner().invoke(
         cli,
         [

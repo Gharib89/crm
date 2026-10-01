@@ -2,8 +2,7 @@
 
 The deep subsystem behind `import_solution()` / `export_solution()` /
 `import_result()` — async actions with sync fallbacks, solution-zip sniffing, and
-ImportJob `data` XML parsing. Every public name here is re-exported from
-`crm.core.solution` for backward compatibility.
+ImportJob `data` XML parsing.
 """
 
 from __future__ import annotations

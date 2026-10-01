@@ -76,9 +76,9 @@ def _ctx_with_profile(monkeypatch, *, publisher_prefix=None):
     )
     ctx = CLIContext()
     ctx.profile_name = "p"
-    from crm.commands import _helpers
+    from crm.core import session as session_mod
 
-    monkeypatch.setattr(_helpers.session_mod, "load_profile", lambda _n: profile)
+    monkeypatch.setattr(session_mod, "load_profile", lambda _n: profile)
     return ctx
 
 

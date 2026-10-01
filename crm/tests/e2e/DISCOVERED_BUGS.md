@@ -255,7 +255,7 @@ $ crm --profile <org> query odata appmodules --filter "uniquename eq 'new_x'"
 
 **Fix (shipped, #809)** — `crm.core.appmodule` reads go through
 `RetrieveUnpublishedMultiple()` + `$filter` (create read-back, `_resolve_appmodule`,
-and `reconcile_app`'s app find), which returns the current view regardless of
+and apply's app find, `resolve_app`), which returns the current view regardless of
 publish state; the by-id `RetrieveUnpublished` function is not bound to appmodule,
 so it is never used. Separately, a targeted `PublishXml` for an appmodule runs
 `ValidateApp`, which requires the app to *contain* a sitemap — a sitemap linked only

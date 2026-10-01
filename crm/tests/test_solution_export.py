@@ -1,4 +1,4 @@
-"""Unit tests for crm.core.solution.export_solution (sync fallback)."""
+"""Unit tests for crm.core.solution_transfer.export_solution (sync fallback)."""
 # pyright: basic
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ def test_async_unavailable_predicate():
 
 
 def test_export_falls_back_to_sync_when_async_disabled(backend, tmp_path):
-    from crm.core import solution as sol
+    from crm.core import solution_transfer as transfer
 
     out = tmp_path / "crmworx.zip"
     encoded = base64.b64encode(_ZIP_BYTES).decode("ascii")
@@ -42,14 +42,14 @@ def test_export_falls_back_to_sync_when_async_disabled(backend, tmp_path):
             backend.url_for("ExportSolution"),
             json={"ExportSolutionFile": encoded},
         )
-        info = sol.export_solution(backend, "CRMWorx", out)
+        info = transfer.export_solution(backend, "CRMWorx", out)
     assert info["action"] == "ExportSolution"
     assert info["bytes"] == len(_ZIP_BYTES)
     assert out.read_bytes() == _ZIP_BYTES
 
 
 def test_export_async_error_other_than_unavailable_propagates(backend, tmp_path):
-    from crm.core import solution as sol
+    from crm.core import solution_transfer as transfer
 
     with requests_mock.Mocker() as m:
         m.post(
@@ -58,4 +58,4 @@ def test_export_async_error_other_than_unavailable_propagates(backend, tmp_path)
             json={"error": {"code": "0x", "message": "boom"}},
         )
         with pytest.raises(D365Error, match="boom"):
-            sol.export_solution(backend, "CRMWorx", tmp_path / "x.zip")
+            transfer.export_solution(backend, "CRMWorx", tmp_path / "x.zip")

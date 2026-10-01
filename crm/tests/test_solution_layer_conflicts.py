@@ -12,7 +12,7 @@ import json
 from click.testing import CliRunner
 
 from crm.cli import cli
-from crm.core import solution as sol_mod
+from crm.core import solution_components as sc_mod
 
 _A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 _B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
@@ -27,7 +27,7 @@ class TestLayerConflicts:
     def test_overlap_returns_intersection(self):
         managed = [_comp(1, _A, 0), _comp(61, _B, 0)]
         unmanaged = [_comp(1, _A, 0), _comp(20, _C, 0)]
-        result = sol_mod.layer_conflicts(managed, unmanaged)
+        result = sc_mod.layer_conflicts(managed, unmanaged)
         assert len(result) == 1
         assert result[0]["componenttype"] == 1
         assert result[0]["objectid"] == _A
@@ -35,41 +35,41 @@ class TestLayerConflicts:
     def test_no_overlap_returns_empty(self):
         managed = [_comp(1, _A, 0)]
         unmanaged = [_comp(20, _C, 0)]
-        assert sol_mod.layer_conflicts(managed, unmanaged) == []
+        assert sc_mod.layer_conflicts(managed, unmanaged) == []
 
     def test_rcb_differs_still_conflicts(self):
         # Same (componenttype, objectid), different rootcomponentbehavior → still an
         # overlap; the row carries BOTH sides' rcb.
         managed = [_comp(1, _A, 0)]
         unmanaged = [_comp(1, _A, 2)]
-        result = sol_mod.layer_conflicts(managed, unmanaged)
+        result = sc_mod.layer_conflicts(managed, unmanaged)
         assert len(result) == 1
         assert result[0]["managed_rootcomponentbehavior"] == 0
         assert result[0]["unmanaged_rootcomponentbehavior"] == 2
 
     def test_friendly_type_name(self):
-        result = sol_mod.layer_conflicts([_comp(1, _A, 0)], [_comp(1, _A, 0)])
+        result = sc_mod.layer_conflicts([_comp(1, _A, 0)], [_comp(1, _A, 0)])
         assert result[0]["type_name"] == "entity"
 
     def test_unmapped_type_falls_back_to_str_int(self):
         # 9999 is not in SOLUTION_COMPONENT_TYPES.
-        result = sol_mod.layer_conflicts([_comp(9999, _A, 0)], [_comp(9999, _A, 0)])
+        result = sc_mod.layer_conflicts([_comp(9999, _A, 0)], [_comp(9999, _A, 0)])
         assert result[0]["type_name"] == "9999"
 
     def test_sorted_by_type_then_objectid(self):
         managed = [_comp(61, _B, 0), _comp(1, _C, 0), _comp(1, _A, 0)]
         unmanaged = [_comp(61, _B, 0), _comp(1, _C, 0), _comp(1, _A, 0)]
-        result = sol_mod.layer_conflicts(managed, unmanaged)
+        result = sc_mod.layer_conflicts(managed, unmanaged)
         keys = [(r["componenttype"], r["objectid"]) for r in result]
         assert keys == [(1, _A), (1, _C), (61, _B)]
 
     def test_case_insensitive_objectid_matching(self):
         managed = [_comp(1, _A.upper(), 0)]
         unmanaged = [_comp(1, _A.lower(), 0)]
-        assert len(sol_mod.layer_conflicts(managed, unmanaged)) == 1
+        assert len(sc_mod.layer_conflicts(managed, unmanaged)) == 1
 
     def test_row_has_exact_five_keys(self):
-        result = sol_mod.layer_conflicts([_comp(1, _A, 0)], [_comp(1, _A, 0)])
+        result = sc_mod.layer_conflicts([_comp(1, _A, 0)], [_comp(1, _A, 0)])
         assert set(result[0].keys()) == {
             "componenttype",
             "type_name",
