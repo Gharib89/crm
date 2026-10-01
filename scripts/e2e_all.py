@@ -39,9 +39,13 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from crm.core.state_home import state_home
-
 REPO = Path(__file__).resolve().parent.parent
+# Run as `python scripts/e2e_all.py`, sys.path[0] is scripts/: put this checkout
+# first so its own crm is imported, whether or not (or wherever) it is installed.
+sys.path.insert(0, str(REPO))
+
+from crm.core.state_home import state_home  # noqa: E402
+
 STATE_HOME = state_home()
 CYAN, DIM, YEL, RST = "\033[1;36m", "\033[2m", "\033[33m", "\033[0m"
 GREEN, RED = "\033[32m", "\033[31m"
