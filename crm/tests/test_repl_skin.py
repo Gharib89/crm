@@ -52,3 +52,24 @@ def test_display_home_path_outside_home_is_absolute(tmp_path, monkeypatch):
     result = _display_home_path(str(outside))
     assert result == str(outside.resolve())
     assert not result.startswith("~")
+
+
+# ── History location ──────────────────────────────────────────────────
+
+
+def test_history_file_follows_crm_home(tmp_path, monkeypatch):
+    # CRM_HOME is the whole state home: the REPL history lives under it, and no
+    # ~/.crm is created beside it.
+    crm_home = tmp_path / "crm-home"
+    fake_home = tmp_path / "home"
+    monkeypatch.setenv("CRM_HOME", str(crm_home))
+    monkeypatch.setattr(Path, "home", lambda: fake_home)
+    captured = {}
+    monkeypatch.setattr("prompt_toolkit.PromptSession", lambda **kw: captured.update(kw))
+
+    from crm.utils.repl_skin import ReplSkin
+
+    ReplSkin("d365").create_prompt_session()
+
+    assert Path(captured["history"].filename) == crm_home / "history"
+    assert not (fake_home / ".crm").exists()

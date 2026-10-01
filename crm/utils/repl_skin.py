@@ -17,6 +17,8 @@ import os
 import sys
 from pathlib import Path
 
+from crm.core.session import history_file_path
+
 # ── ANSI color codes (no external deps for core styling) ──────────────
 
 _RESET = "\033[0m"
@@ -90,24 +92,12 @@ class ReplSkin:
     interactive REPL and human-readable command output.
     """
 
-    def __init__(
-        self,
-        software: str,
-        version: str = "1.0.0",
-        history_file: str | None = None,
-        skill_path: str | None = None,
-    ):
+    def __init__(self, software: str, version: str = "1.0.0"):
         """Initialize the REPL skin.
 
         Args:
-            software: Software name (e.g., "gimp", "shotcut", "blender").
+            software: Skin name shown in the banner and prompt (the CLI passes "d365").
             version: CLI version string.
-            history_file: Path for persistent command history.
-                         Defaults to ~/.crm/history
-            skill_path: Path to the SKILL.md file for agent discovery.
-                        Auto-detected from the repo-root skills/ tree when present,
-                        otherwise from the package's skills/ directory.
-                        Displayed in banner for AI agents to know where to read skill info.
         """
         self.software = software.lower().replace("-", "_")
         self.display_name = software.replace("_", " ").title()
@@ -122,31 +112,7 @@ class ReplSkin:
         ).expanduser()
         self.global_skill_path = str(global_skill_root / self.skill_id / "SKILL.md")
 
-        # Prefer repo-root canonical skills/<skill-id>/SKILL.md when running
-        # from a source checkout. Fall back to the packaged
-        # crm/skills/SKILL.md for installed harnesses.
-        if skill_path is None:
-            package_skill = Path(__file__).resolve().parent.parent / "skills" / "SKILL.md"
-            repo_skill = None
-            for parent in Path(__file__).resolve().parents:
-                candidate = parent / "skills" / self.skill_id / "SKILL.md"
-                if candidate.is_file():
-                    repo_skill = candidate
-                    break
-            if repo_skill and repo_skill.is_file():
-                skill_path = str(repo_skill)
-            elif package_skill.is_file():
-                skill_path = str(package_skill)
-        self.skill_path = skill_path
         self.accent = _DEFAULT_ACCENT
-
-        # History file
-        if history_file is None:
-            hist_dir = Path.home() / ".crm"
-            hist_dir.mkdir(parents=True, exist_ok=True)
-            self.history_file = str(hist_dir / "history")
-        else:
-            self.history_file = history_file
 
         # Detect terminal capabilities
         self._color = self._detect_color_support()
@@ -292,10 +258,7 @@ class ReplSkin:
         Returns:
             prompt_toolkit.styles.Style
         """
-        try:
-            from prompt_toolkit.styles import Style
-        except ImportError:
-            return None
+        from prompt_toolkit.styles import Style
 
         accent_hex = "#5fafff"
 
@@ -442,40 +405,33 @@ class ReplSkin:
     def create_prompt_session(self, completer=None):
         """Create a prompt_toolkit PromptSession with skin styling.
 
+        The line history lives in the state home (``CRM_HOME``, default ``~/.crm``).
+
         Args:
             completer: Optional prompt_toolkit Completer for tab completion.
 
         Returns:
-            A configured PromptSession, or None if prompt_toolkit unavailable.
+            A configured PromptSession.
         """
-        try:
-            from prompt_toolkit import PromptSession
-            from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
-            from prompt_toolkit.history import FileHistory
+        from prompt_toolkit import PromptSession
+        from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
+        from prompt_toolkit.history import FileHistory
 
-            style = self.get_prompt_style()
+        return PromptSession(
+            history=FileHistory(history_file_path()),
+            auto_suggest=AutoSuggestFromHistory(),
+            style=self.get_prompt_style(),
+            enable_history_search=True,
+            completer=completer,
+        )
 
-            session = PromptSession(
-                history=FileHistory(self.history_file),
-                auto_suggest=AutoSuggestFromHistory(),
-                style=style,
-                enable_history_search=True,
-                completer=completer,
-            )
-            return session
-        except ImportError:
-            return None
-
-    def get_input(
-        self, pt_session, project_name: str = "", modified: bool = False, context: str = ""
-    ) -> str:
+    def get_input(self, pt_session, project_name: str = "", modified: bool = False) -> str:
         """Get input from user using prompt_toolkit or fallback.
 
         Args:
             pt_session: A prompt_toolkit PromptSession (or None).
             project_name: Current project name.
             modified: Whether project has unsaved changes.
-            context: Optional context string.
 
         Returns:
             User input string (stripped).
@@ -483,8 +439,8 @@ class ReplSkin:
         if pt_session is not None:
             from prompt_toolkit.formatted_text import FormattedText
 
-            tokens = self.prompt_tokens(project_name, modified, context)
+            tokens = self.prompt_tokens(project_name, modified)
             return pt_session.prompt(FormattedText(tokens)).strip()
         else:
-            raw_prompt = self.prompt(project_name, modified, context)
+            raw_prompt = self.prompt(project_name, modified)
             return input(raw_prompt).strip()
