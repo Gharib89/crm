@@ -213,6 +213,13 @@ _Disambiguation_: a D365 **global option set** (a shared picklist) is always wri
 "option set" in full — never shortened to "global option", which is this CLI-contract
 term.
 
+**State home**:
+The one directory where crm keeps all local state: profiles, sessions, the audit
+journal, caches, hints and registries, and REPL history. `CRM_HOME` relocates it;
+unset or empty, it is `~/.crm`. Only a write creates it or its subdirectories; a
+read never does.
+_Avoid_: config dir, data dir, crm folder.
+
 ### Dry-run
 
 **Dry-run preview**:
