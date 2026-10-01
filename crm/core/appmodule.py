@@ -189,13 +189,7 @@ def create_app(
     if if_exists not in ("error", "skip"):
         raise D365Error("if_exists must be 'error' or 'skip'.")
 
-    existing = backend.get_collection(
-        "appmodules",
-        params={
-            "$filter": f"uniquename eq {odata_literal(unique_name)}",
-            "$select": "appmoduleid,uniquename",
-        },
-    )
+    existing = backend.find_one("appmodules", "uniquename", unique_name, "appmoduleid,uniquename")
     if existing and not backend.dry_run:
         if if_exists == "error":
             raise D365Error(f"App {unique_name!r} already exists.", code="AlreadyExists")
@@ -203,7 +197,7 @@ def create_app(
             "skipped": True,
             "exists": True,
             "uniquename": unique_name,
-            "appmoduleid": existing[0].get("appmoduleid"),
+            "appmoduleid": existing.get("appmoduleid"),
         }
 
     body: dict[str, Any] = {
@@ -226,18 +220,14 @@ def create_app(
         # the skip the empty query couldn't, re-querying for a best-effort id.
         # `if_exists == "error"` still propagates — it genuinely collided.
         if if_exists == "skip" and _is_duplicate_create_fault(exc):
-            requery = backend.get_collection(
-                "appmodules",
-                params={
-                    "$filter": f"uniquename eq {odata_literal(unique_name)}",
-                    "$select": "appmoduleid,uniquename",
-                },
+            requery = backend.find_one(
+                "appmodules", "uniquename", unique_name, "appmoduleid,uniquename"
             )
             return {
                 "skipped": True,
                 "exists": True,
                 "uniquename": unique_name,
-                "appmoduleid": requery[0].get("appmoduleid") if requery else None,
+                "appmoduleid": requery.get("appmoduleid") if requery else None,
             }
         raise
     if result.get("_dry_run"):
@@ -663,27 +653,6 @@ def _read_app_components(
     return live
 
 
-def _read_app_sitemap(
-    backend: D365Backend,
-    unique_name: str,
-) -> tuple[str | None, str | None]:
-    """The ``(sitemapid, sitemapxml)`` of the app's linked sitemap, or ``(None, None)``.
-
-    Apps link their sitemap by ``sitemapnameunique == <app uniquename>`` (the
-    association ``set_sitemap`` writes). The first match is used.
-    """
-    rows = backend.get_collection(
-        "sitemaps",
-        params={
-            "$filter": f"sitemapnameunique eq {odata_literal(unique_name)}",
-            "$select": "sitemapid,sitemapxml",
-        },
-    )
-    if not rows:
-        return None, None
-    return rows[0].get("sitemapid"), rows[0].get("sitemapxml")
-
-
 def resolve_app(backend: D365Backend, unique_name: str) -> dict[str, Any] | None:
     """Resolve the live app row a declared ``apps:`` block converges against.
 
@@ -771,7 +740,12 @@ def converge_app(
     # is idempotent), and `build_sitemapxml` is deterministic. An org that reformats
     # the stored XML would make every re-apply report a spurious converge; none seen.
     if sitemap_xml is not None:
-        smid, live_xml = _read_app_sitemap(backend, unique_name)
+        # Apps link their sitemap by sitemapnameunique == <app uniquename> (the
+        # association set_sitemap writes). The first match is used.
+        live = backend.find_one(
+            "sitemaps", "sitemapnameunique", unique_name, "sitemapid,sitemapxml"
+        )
+        smid, live_xml = (live.get("sitemapid"), live.get("sitemapxml")) if live else (None, None)
         if live_xml is None:
             sm = set_sitemap(
                 backend,

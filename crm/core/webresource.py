@@ -25,7 +25,6 @@ from crm.utils.d365_backend import (
     D365Error,
     as_dict,
     normalize_guid,
-    odata_literal,
 )
 
 # Dataverse solution-component type for a web resource (the system `componenttype`
@@ -286,16 +285,10 @@ def get_webresource(
     select = "webresourceid,name,displayname,webresourcetype,ismanaged,modifiedon"
     if include_content:
         select += ",content"
-    rows = backend.get_collection(
-        "webresourceset",
-        params={
-            "$filter": f"name eq {odata_literal(name)}",
-            "$select": select,
-        },
-    )
-    if not rows:
+    row = backend.find_one("webresourceset", "name", name, select)
+    if row is None:
         raise D365Error(f"Web resource not found: {name}", code="WebResourceNotFound")
-    return rows[0]
+    return row
 
 
 def find_webresource(backend: D365Backend, name: str) -> dict[str, Any] | None:
@@ -306,14 +299,9 @@ def find_webresource(backend: D365Backend, name: str) -> dict[str, Any] | None:
     diff the live body against the spec's file. A forced-real read (``get_collection``
     runs even under dry-run), so a dry-run still reports create-vs-update correctly.
     """
-    rows = backend.get_collection(
-        "webresourceset",
-        params={
-            "$filter": f"name eq {odata_literal(name)}",
-            "$select": "webresourceid,name,displayname,webresourcetype,content",
-        },
+    return backend.find_one(
+        "webresourceset", "name", name, "webresourceid,name,displayname,webresourcetype,content"
     )
-    return rows[0] if rows else None
 
 
 def list_webresources(

@@ -795,11 +795,7 @@ def validate_spec(spec: Any) -> None:
 
 def _solution_exists(backend: D365Backend, name: str) -> bool:
     """Forced-real existence check for a solution by uniquename (dry-run safe)."""
-    rows = backend.get_collection(
-        "solutions",
-        params={"$filter": f"uniquename eq {odata_literal(name)}", "$select": "solutionid"},
-    )
-    return bool(rows)
+    return backend.find_one("solutions", "uniquename", name, "solutionid") is not None
 
 
 def _bucket_of(result: dict[str, Any]) -> str:
@@ -1810,8 +1806,14 @@ def _find_live_plugin_assembly(
     plugin: dict[str, Any],
     ctx: ReconcileCtx,
 ) -> dict[str, Any] | None:
-    """Probe the live plug-in assembly this block reconciles against (or None)."""
-    return plugin_mod.find_assembly(backend, _assembly_name(plugin))
+    """Probe the live plug-in assembly this block reconciles against (or None).
+
+    Selects the base64 `content` so apply can diff a live assembly against a
+    rebuilt DLL. Assembly names are unique per org.
+    """
+    return backend.find_one(
+        "pluginassemblies", "name", _assembly_name(plugin), "pluginassemblyid,name,content"
+    )
 
 
 def _validate_plugin_assembly_block(plugin: dict[str, Any], _label: str) -> None:

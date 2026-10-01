@@ -24,7 +24,7 @@ from typing import Any
 
 from crm.core.solution_components import SOLUTION_COMPONENT_TYPES as _CT
 from crm.utils import safe_xml
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 
 _REQUIRED_MEMBERS = ("solution.xml", "customizations.xml", "[Content_Types].xml")
 # Cap decompression so a zip-bomb manifest can't OOM the validator (see the same
@@ -201,17 +201,7 @@ def _check_root_parity(sol_root: ET.Element, cust_root: ET.Element) -> list[Find
 
 
 def _webresource_exists_in_org(backend: D365Backend, name: str) -> bool:
-    resp = as_dict(
-        backend.get(
-            "webresourceset",
-            params={
-                "$select": "webresourceid",
-                "$filter": f"name eq {odata_literal(name)}",
-                "$top": "1",
-            },
-        )
-    )
-    return bool(resp.get("value"))
+    return backend.find_one("webresourceset", "name", name, "webresourceid") is not None
 
 
 def _check_webresource_refs(cust_root: ET.Element, backend: D365Backend | None) -> list[Finding]:
@@ -246,13 +236,7 @@ def _check_webresource_refs(cust_root: ET.Element, backend: D365Backend | None) 
 
 
 def _optionset_exists_in_org(backend: D365Backend, name: str) -> bool:
-    resp = as_dict(
-        backend.get(
-            "GlobalOptionSetDefinitions",
-            params={"$select": "Name", "$filter": f"Name eq {odata_literal(name)}", "$top": "1"},
-        )
-    )
-    return bool(resp.get("value"))
+    return backend.find_one("GlobalOptionSetDefinitions", "Name", name, "Name") is not None
 
 
 def _check_optionset_bindings(cust_root: ET.Element, backend: D365Backend | None) -> list[Finding]:
