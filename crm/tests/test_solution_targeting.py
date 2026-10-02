@@ -376,8 +376,8 @@ _SOLUTION_REQUIRED = (
     ],
     ids=["ribbon-remove", "security-create-role", "ribbon-list"],
 )
-def test_missing_solution_fails_before_confirmation(monkeypatch, tmp_path, args):
-    """A confirm-gated write without --solution fails exit 2, never prompting first."""
+def test_missing_solution_fails_before_prompt_or_backend(monkeypatch, tmp_path, args):
+    """No --solution fails exit 2 before any confirmation prompt or backend call."""
     _save_profile(monkeypatch, tmp_path)
     result = CliRunner().invoke(cli, ["--profile", "p", *args])
     assert result.exit_code == 2, result.output

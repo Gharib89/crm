@@ -102,7 +102,7 @@ cannot act on; validating first turns that into a clean `unknown_fields` envelop
 **Solution-scoped writes.** Every customization write — any verb that authors or
 edits a solution component, in any group — requires an explicit
 `--solution <unique_name>`: there is no profile default and no opt-out, and
-omitting it exits 2 before any other usage error, confirmation prompt or backend
+omitting it exits 2 at parse time, before any confirmation prompt or backend
 call (even under `--dry-run`). Pass
 `--solution Default` for a deliberate Default-Solution-only write. `apply` takes
 the target as the spec's mandatory top-level `solution:` block instead of a flag.

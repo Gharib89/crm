@@ -20,12 +20,10 @@ orphaned, un-ALM'd customizations discovered late, in the wrong solution
 
 The solution target is **explicit and mandatory** on every customization write.
 
-- The shared `--solution` option (`_solution_option`) carries the check as its Click
-  callback: a missing `--solution` raises `click.UsageError` (exit 2) — **no
-  profile-default fallback, no `(solution, warning)` tuple, no `require_solution`
-  parameter.** The failure fires at parse time, before any confirmation prompt or
-  backend call, **including under `--dry-run`** (#998; it was a per-verb
-  `_resolve_solution` call until then).
+- The shared resolver is `_resolve_solution(ctx, explicit) -> str`: it returns the
+  explicit `--solution` or raises `click.UsageError` (exit 2) — **no profile-default
+  fallback, no `(solution, warning)` tuple, no `require_solution` parameter.** The
+  failure fires before any backend call, **including under `--dry-run`**.
 - The requirement covers every solution-aware group (metadata create-\*, plugin, web
   resource, form, view, chart, dashboard, sitemap, app, SLA, report, connection role,
   duplicate-detection, field security, security role, scaffold, ribbon) **and**
@@ -93,3 +91,7 @@ components must target an explicit unmanaged solution. Pass --solution
 - **Partially supersedes ADR 0002:** the `solution create` → `default_solution`
   auto-wire half is removed; the `create-publisher` → `publisher_prefix` auto-wire
   half stands.
+
+## Amendments
+
+- **2026-10-02: the check moves into the option callback ([#998](https://github.com/Gharib89/crm/issues/998)).** `_resolve_solution` and its 87 per-verb calls are removed. The shared `--solution` option (`_solution_option`) now carries the check as its Click callback, so a missing `--solution` raises the same `click.UsageError` (exit 2, same text) at parse time: before any confirmation prompt or backend call, including under `--dry-run`, and before any body-level usage error. Status stays **accepted**: only where the check runs changed, not the decision.
