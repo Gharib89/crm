@@ -99,6 +99,9 @@ validate its target and derive the command, so it stays live-only.
 crm ribbon list cwx_ticket --solution MySolution
 ```
 
+`list` is a read, but `--solution` is still required: it names the solution whose
+RibbonDiffXml is read.
+
 ## Add a JavaScript button
 
 ```bash

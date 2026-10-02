@@ -636,6 +636,8 @@ class TestSlaCreateCommand:
                 "incident",
                 "--business-hours",
                 "not-a-guid",
+                "--solution",
+                "MySolution",
             ],
         )
         assert result.exit_code != 0
@@ -714,6 +716,8 @@ class TestSlaAddKpiCommand:
                 _FETCH,
                 "--success-criteria-file",
                 str(bad),
+                "--solution",
+                "MySolution",
             ],
         )
         assert result.exit_code != 0
@@ -738,6 +742,8 @@ class TestSlaAddKpiCommand:
                 "k",
                 "--success-criteria",
                 _SUCCESS,
+                "--solution",
+                "MySolution",
             ],
         )
         assert result.exit_code != 0
@@ -772,6 +778,8 @@ class TestSlaAddKpiCommand:
                 _FETCH,
                 "--success-criteria",
                 _SUCCESS,
+                "--solution",
+                "MySolution",
             ],
         )
         assert result.exit_code != 0

@@ -20,7 +20,6 @@ from crm.commands._helpers import (
     _emit_with_warning,
     _journal,
     _read_file,
-    _resolve_solution,
     _solution_option,
     d365_errors,
 )
@@ -122,7 +121,6 @@ def report_create(
         if filename is None:
             filename = os.path.basename(body_file)
 
-    solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = report_mod.create_report(
             ctx.backend(),
@@ -155,7 +153,6 @@ def report_set_category(
     solution: str | None,
 ) -> None:
     """File REPORT_ID under a report area (creates a reportcategory record)."""
-    solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = report_mod.set_category(
             ctx.backend(), report_id, category=category, solution=solution

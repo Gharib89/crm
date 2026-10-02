@@ -733,6 +733,8 @@ def test_e2e_scaffold_table_missing_prefix_is_usage_error(backend, monkeypatch):
                 "Project",
                 "--column",
                 "Code:string",
+                "--solution",
+                "contoso_sol",
             ],
         )
 

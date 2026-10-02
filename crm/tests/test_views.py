@@ -1280,24 +1280,46 @@ class TestViewEditCommandUsage:
         return CliRunner().invoke(cli, args)
 
     def test_edit_columns_no_flags_is_usage_error(self):
-        result = self._invoke(["view", "edit-columns", _ENTITY, "View"])
+        result = self._invoke(["view", "edit-columns", _ENTITY, "View", "--solution", "TestSol"])
         assert result.exit_code == 2
         assert "nothing to do" in result.output
 
     def test_edit_columns_reorder_with_add_is_usage_error(self):
         result = self._invoke(
-            ["view", "edit-columns", _ENTITY, "View", "--reorder", "a,b", "--add", "c"]
+            [
+                "view",
+                "edit-columns",
+                _ENTITY,
+                "View",
+                "--solution",
+                "TestSol",
+                "--reorder",
+                "a,b",
+                "--add",
+                "c",
+            ]
         )
         assert result.exit_code == 2
         assert "cannot be combined" in result.output
 
     def test_set_order_no_flags_is_usage_error(self):
-        result = self._invoke(["view", "set-order", _ENTITY, "View"])
+        result = self._invoke(["view", "set-order", _ENTITY, "View", "--solution", "TestSol"])
         assert result.exit_code == 2
         assert "nothing to do" in result.output
 
     def test_add_filter_malformed_condition_is_usage_error(self):
-        result = self._invoke(["view", "add-filter", _ENTITY, "View", "--condition", "loneword"])
+        result = self._invoke(
+            [
+                "view",
+                "add-filter",
+                _ENTITY,
+                "View",
+                "--solution",
+                "TestSol",
+                "--condition",
+                "loneword",
+            ]
+        )
         assert result.exit_code == 2
         combined = result.output + result.stderr
         assert "operator" in combined
@@ -1538,6 +1560,8 @@ class TestViewCommand:
                 "cwx_name:220",
                 "--order",
                 "createdon banana",
+                "--solution",
+                "TestSol",
                 "--no-publish",
             ],
         )

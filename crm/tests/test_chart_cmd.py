@@ -136,7 +136,18 @@ class TestChartCreate:
     def test_create_requires_a_mode(self, backend, monkeypatch):
         _use_backend(monkeypatch, backend)
         result = CliRunner().invoke(
-            cli, ["--json", "chart", "create", "new_project", "--name", "X", "--no-publish"]
+            cli,
+            [
+                "--json",
+                "chart",
+                "create",
+                "new_project",
+                "--name",
+                "X",
+                "--solution",
+                "TestSol",
+                "--no-publish",
+            ],
         )
         assert result.exit_code != 0
         assert "either" in result.output.lower()
@@ -162,6 +173,8 @@ class TestChartCreate:
                 str(pd),
                 "--web-resource",
                 "new_chartscript",
+                "--solution",
+                "TestSol",
                 "--no-publish",
             ],
         )
@@ -183,6 +196,8 @@ class TestChartCreate:
                 "X",
                 "--data-description",
                 str(dd),
+                "--solution",
+                "TestSol",
                 "--no-publish",
             ],
         )

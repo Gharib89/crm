@@ -9,7 +9,6 @@ from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
     _active_profile,
     _journal,
-    _resolve_solution,
     _solution_option,
     d365_errors,
 )
@@ -98,10 +97,7 @@ def table(
             "set publisher_prefix on the active profile (e.g. via crm profile edit)."
         )
 
-    # --- 2. Resolve solution ---
-    solution = _resolve_solution(ctx, solution)
-
-    # --- 3. Build the spec (pure, no backend) ---
+    # --- 2. Build the spec (pure, no backend) ---
     with d365_errors(ctx):
         spec = scaffold_mod.build_table_spec(
             display_name=display,
@@ -115,12 +111,12 @@ def table(
     # not a per-run knob (#636).
     spec["solution"] = {"unique_name": solution}
 
-    # --- 4. Apply via apply_spec ---
+    # --- 3. Apply via apply_spec ---
     with d365_errors(ctx):
         backend = ctx.backend()
         res = apply_mod.apply_spec(backend, spec, stage_only=ctx.stage_only)
 
-    # --- 5. Emit result ---
+    # --- 4. Emit result ---
     data = {k: res[k] for k in ("applied", "skipped", "planned", "failed")}
     warnings = []
     # Under dry-run the columns' references (lookup target entities, picklist
@@ -138,7 +134,7 @@ def table(
         warnings=warnings or None,
     )
 
-    # --- 6. Journal on success ---
+    # --- 5. Journal on success ---
     if res["ok"]:
         _journal(
             ctx,

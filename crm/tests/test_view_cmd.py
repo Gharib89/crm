@@ -96,7 +96,9 @@ def test_parse_order_too_many_tokens():
 
 def test_edit_columns_nothing_to_do_is_usage_error(monkeypatch):
     monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-    res = CliRunner().invoke(cli, ["view", "edit-columns", "account", "My View"])
+    res = CliRunner().invoke(
+        cli, ["view", "edit-columns", "account", "My View", "--solution", "TestSol"]
+    )
     assert res.exit_code == 2
     assert "nothing to do" in res.output
 
@@ -110,6 +112,8 @@ def test_edit_columns_reorder_with_add_is_usage_error(monkeypatch):
             "edit-columns",
             "account",
             "My View",
+            "--solution",
+            "TestSol",
             "--reorder",
             "name,createdon",
             "--add",
@@ -264,7 +268,9 @@ def test_edit_columns_reorder_calls_core(monkeypatch):
 
 def test_set_order_nothing_to_do_is_usage_error(monkeypatch):
     monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-    res = CliRunner().invoke(cli, ["view", "set-order", "account", "My View"])
+    res = CliRunner().invoke(
+        cli, ["view", "set-order", "account", "My View", "--solution", "TestSol"]
+    )
     assert res.exit_code == 2
     assert "nothing to do" in res.output
 

@@ -15,7 +15,6 @@ from crm.commands._helpers import (
     _destructive_option,
     _emit_with_warning,
     _journal,
-    _resolve_solution,
     _solution_option,
     d365_errors,
 )
@@ -70,7 +69,6 @@ def register_assembly_cmd(
     update_warning = _ignored_update_flags_warning(
         update, version, culture, public_key_token, description
     )
-    solution = _resolve_solution(ctx, solution)
     warning = update_warning
     with d365_errors(ctx):
         info = plugin_mod.register_assembly(
@@ -123,7 +121,6 @@ def register_type_cmd(ctx: CLIContext, assembly, type_name, friendly_name, name,
     A content-only register-assembly does not create plugintype rows, so name
     each type here before register-step --plugin-type can resolve it.
     """
-    solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = plugin_mod.register_type(
             ctx.backend(),
@@ -248,7 +245,6 @@ def register_step_cmd(
     The step's event handler is a plug-in type (--plugin-type) or a service
     endpoint such as a webhook (--service-endpoint) — pass exactly one.
     """
-    solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = plugin_mod.register_step(
             ctx.backend(),
@@ -298,7 +294,6 @@ def register_step_cmd(
 @pass_ctx
 def register_webhook_cmd(ctx: CLIContext, name, url, auth, auth_value, solution):
     """Register a webhook service endpoint (serviceendpoint, contract=8)."""
-    solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = plugin_mod.register_webhook(
             ctx.backend(), name=name, url=url, auth=auth, auth_value=auth_value, solution=solution
@@ -344,7 +339,6 @@ def register_image_cmd(
     ctx: CLIContext, step, image_type, alias, attributes, name, message_property_name, solution
 ):
     """Register a step entity image (sdkmessageprocessingstepimage)."""
-    solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = plugin_mod.register_image(
             ctx.backend(),

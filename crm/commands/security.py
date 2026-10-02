@@ -13,7 +13,6 @@ from crm.commands._helpers import (
     _destructive_option,
     _emit_with_warning,
     _journal,
-    _resolve_solution,
     _solution_option,
     d365_errors,
 )
@@ -108,7 +107,6 @@ def create_role(ctx: CLIContext, name, business_unit, if_exists, solution, yes):
     preview without writing.
     """
     _confirm_destructive(ctx, "role", name, yes, message=f"Create security role {name!r}?")
-    solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         result = security_mod.create_role(
             ctx.backend(),

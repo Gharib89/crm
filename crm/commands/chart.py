@@ -13,7 +13,6 @@ from crm.commands._helpers import (
     _journal,
     _publish_option,
     _resolve_publish,
-    _resolve_solution,
     _solution_option,
     d365_errors,
 )
@@ -191,7 +190,6 @@ def chart_create(
     data_xml = _read_file(data_description_file)
     pres_xml = _read_file(presentation_description_file)
 
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
 
     with d365_errors(ctx):
@@ -270,7 +268,6 @@ def chart_update(
     user_owned = _resolve_user_owned(user_owned, user_owned_alias)
     data_xml = _read_file(data_description_file)
     pres_xml = _read_file(presentation_description_file)
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = charts_mod.update_chart(
@@ -315,7 +312,6 @@ def chart_set_fetch(
     """Replace the inner <fetch> of a chart's datadescription (keeps its categories)."""
     user_owned = _resolve_user_owned(user_owned, user_owned_alias)
     fetch_xml = _read_file(fetch_file) or ""
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = charts_mod.set_chart_fetch(
@@ -358,7 +354,6 @@ def chart_add_series(
 ) -> None:
     """Add an aggregate series to a chart (fetch attribute + measure + presentation series)."""
     user_owned = _resolve_user_owned(user_owned, user_owned_alias)
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = charts_mod.add_chart_series(
@@ -394,7 +389,6 @@ def chart_remove_series(
 ) -> None:
     """Remove an aggregate series from a chart by its alias (refuses the last series)."""
     user_owned = _resolve_user_owned(user_owned, user_owned_alias)
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = charts_mod.remove_chart_series(
@@ -435,7 +429,6 @@ def chart_set_groupby(
 ) -> None:
     """Set a chart's grouping (category) column, optionally with a date grouping."""
     user_owned = _resolve_user_owned(user_owned, user_owned_alias)
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = charts_mod.set_chart_groupby(

@@ -15,7 +15,6 @@ from crm.commands._helpers import (
     _destructive_option,
     _journal,
     _output_option,
-    _resolve_solution,
     _solution_option,
     d365_errors,
 )
@@ -508,7 +507,6 @@ def workflow_clone(
     bypass_plugins,
 ):
     """Clone a workflow definition onto another entity (xaml-retargeted)."""
-    solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = workflow_mod.clone_workflow_to_entity(
             ctx.backend(),

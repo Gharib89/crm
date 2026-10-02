@@ -46,6 +46,8 @@ class TestExactlyOneContentMode:
                 "SFA_Grp",
                 "--id",
                 "x",
+                "--solution",
+                "TestSol",
             ],
         )
         # mutually-exclusive/required flag combos are CLI usage errors (exit 2)
@@ -71,6 +73,8 @@ class TestExactlyOneContentMode:
                 "https://x",
                 "--dashboard",
                 "12345678-1234-1234-1234-1234567890ab",
+                "--solution",
+                "TestSol",
             ],
         )
         assert result.exit_code == 2, result.output
@@ -92,6 +96,8 @@ class TestExactlyOneContentMode:
                 "x",
                 "--entity",
                 "account",
+                "--solution",
+                "TestSol",
                 "--pass-params",
             ],
         )
@@ -118,6 +124,8 @@ class TestSetTitlePairing:
                 "1031",
                 "--title",
                 "Only one",
+                "--solution",
+                "TestSol",
             ],
         )
         # one --title for two --lcid is a CLI usage error (exit 2)
@@ -135,7 +143,9 @@ class TestSetTitlePairing:
     def test_bad_input_is_usage_error_before_backend(self, backend, monkeypatch, args, needle):
         _use_backend(monkeypatch, backend)
         with rm_module.Mocker() as m:
-            result = CliRunner().invoke(cli, ["--json", "sitemap", "set-title", _SID, *args])
+            result = CliRunner().invoke(
+                cli, ["--json", "sitemap", "set-title", _SID, "--solution", "TestSol", *args]
+            )
             assert m.request_history == []
         assert result.exit_code == 2, result.output
         assert needle in result.output
@@ -198,6 +208,8 @@ class TestSetDescriptionPairing:
                 "1031",
                 "--description",
                 "Only one",
+                "--solution",
+                "TestSol",
             ],
         )
         assert result.exit_code == 2, result.output
@@ -236,6 +248,8 @@ class TestDuplicateLcidPairing:
                     "1033",
                     f"--{flag}",
                     "B",
+                    "--solution",
+                    "TestSol",
                     "--no-publish",
                 ],
             )
@@ -258,6 +272,8 @@ class TestMoveNodeValidation:
                 _SID,
                 "--id",
                 "nav_accts",
+                "--solution",
+                "TestSol",
             ],
         )
         assert result.exit_code == 2, result.output
@@ -278,6 +294,8 @@ class TestMoveNodeValidation:
                 "nav_cases",
                 "--after",
                 "nav_leads",
+                "--solution",
+                "TestSol",
             ],
         )
         assert result.exit_code == 2, result.output
@@ -298,6 +316,8 @@ class TestMoveNodeValidation:
                 "nav_accts",
                 "--before",
                 "   ",
+                "--solution",
+                "TestSol",
             ],
         )
         assert result.exit_code == 2, result.output

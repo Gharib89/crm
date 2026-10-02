@@ -37,8 +37,7 @@ def _resolve_publish(ctx: CLIContext, publish: bool) -> bool:
 def _publish_option(f):
     """Stack the standard `--publish/--no-publish` flag on a mutating command.
 
-    Pairs with `_resolve_publish` in the verb body, mirroring how
-    `_solution_option` pairs with `_resolve_solution`. The help text is uniform
+    Pairs with `_resolve_publish` in the verb body. The help text is uniform
     across all sites (it was inconsistent / absent before #294).
     """
     return click.option(
@@ -63,36 +62,40 @@ def _active_profile(ctx: CLIContext) -> ConnectionProfile | None:
         return None
 
 
+def _require_solution(ctx: click.Context, _param: click.Parameter, value: str | None):
+    """`--solution` callback: a customization write must name its target (#636).
+
+    A component filed without a named solution is silently orphaned into only
+    the system Default Solution, so the target must always be on the command
+    line: there is no profile `default_solution` fallback. Raises
+    `click.UsageError` (exit 2) at parse time, before any confirmation prompt or
+    backend call (including under `--dry-run`). Deliberate Default-Solution-only
+    writes pass `--solution Default` explicitly. A ribbon `--diff-file` edit is
+    offline and forbids `--solution`, so it is exempt. Click processes a missing
+    option after every option given on the command line, so a given
+    `--diff-file` is already in `ctx.params` here.
+    """
+    if value or ctx.resilient_parsing or ctx.params.get("diff_file") is not None:
+        return value
+    raise click.UsageError(
+        "--solution is required for customization writes — components must "
+        "target an explicit unmanaged solution. Pass --solution <unique_name>."
+    )
+
+
 def _solution_option(f):
     """Stack the mandatory `--solution` flag on a customization-write command.
 
-    Pairs with `_resolve_solution` in the verb body, which raises a UsageError
-    (exit 2) when it is omitted — there is no profile default and no opt-out
-    (#636). `--solution Default` is the explicit escape hatch for a deliberate
+    Its callback, `_require_solution`, raises a UsageError (exit 2) when it is
+    omitted: there is no profile default and no opt-out (#636).
+    `--solution Default` is the explicit escape hatch for a deliberate
     Default-Solution-only write.
     """
     return click.option(
         "--solution",
         default=None,
+        callback=_require_solution,
         help="Target unmanaged solution uniquename (MSCRM.SolutionUniqueName). "
         "Required for customization writes; pass --solution Default for a "
         "deliberate Default-Solution-only write.",
     )(f)
-
-
-def _resolve_solution(ctx: CLIContext, explicit: str | None) -> str:
-    """Resolve the target unmanaged solution for a customization write (#636).
-
-    An explicit `--solution` is mandatory: a component filed without a named
-    solution is silently orphaned into only the system Default Solution, so the
-    target must always be on the command line — there is no profile
-    `default_solution` fallback. Raises `click.UsageError` (exit 2) when none is
-    given, before any backend call (including under `--dry-run`). Deliberate
-    Default-Solution-only writes pass `--solution Default` explicitly.
-    """
-    if explicit:
-        return explicit
-    raise click.UsageError(
-        "--solution is required for customization writes — components must "
-        "target an explicit unmanaged solution. Pass --solution <unique_name>."
-    )

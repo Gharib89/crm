@@ -599,6 +599,8 @@ class TestCreateRole:
                 "security",
                 "create-role",
                 "R",
+                "--solution",
+                "mysol",
             ],
             input="",
         )

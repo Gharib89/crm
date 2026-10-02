@@ -25,7 +25,6 @@ from crm.commands._helpers import (
     _parse_value_labels,
     _publish_option,
     _resolve_publish,
-    _resolve_solution,
     _solution_option,
     d365_errors,
     usage_guard,
@@ -54,7 +53,7 @@ def _optional_solution_option(f):
     Unlike `_solution_option`, a hard metadata delete removes the component
     globally — `MSCRM.SolutionUniqueName` cannot scope or orphan a deletion —
     so `--solution` is *not* required here. Retained as an optional back-compat
-    passthrough, forwarded to the backend when given (no `_resolve_solution`).
+    passthrough, forwarded to the backend when given (no required-check callback).
     """
     return click.option(
         "--solution",
@@ -696,7 +695,6 @@ def metadata_create_entity(
     first.
     """
     schema_name = _resolve_schema_name(ctx, schema_name, display_name, "--schema-name")
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = meta_mod.create_entity(
@@ -788,7 +786,6 @@ def metadata_clone_entity(
     """
     if with_all:
         with_forms = with_views = with_workflows = with_charts = True
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = clone_mod.clone_entity(
@@ -852,7 +849,6 @@ def metadata_update_entity(
     publish,
 ):
     """Update an entity (table) definition (retrieve-merge-write)."""
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = mu_mod.update_entity(
@@ -930,7 +926,6 @@ def metadata_update_attribute(
 
     Option-set option edits are NOT handled here — use `update-optionset`.
     """
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = mu_mod.update_attribute(
@@ -994,7 +989,6 @@ def metadata_update_relationship(
     publish,
 ):
     """Update a relationship definition (retrieve-merge-write)."""
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     cascade: dict[str, str] = {}
     for member, value in (
@@ -1291,7 +1285,6 @@ def metadata_add_attribute(
 ):
     """Add an attribute (column) to an existing entity."""
     schema_name = _resolve_schema_name(ctx, schema_name, display_name, "--schema-name")
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     parsed_options = _parse_value_labels(options, flag="--option") or None
 
@@ -1411,7 +1404,6 @@ def metadata_create_key(
 ):
     """Create an alternate key on an entity."""
     schema_name = _resolve_schema_name(ctx, schema_name, display_name, "--name")
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     attrs = [a.strip() for a in key_attributes.split(",") if a.strip()]
     if not attrs:
@@ -1520,7 +1512,6 @@ def metadata_create_one_to_many(
     publish,
 ):
     """Create a 1:N relationship and its lookup attribute atomically."""
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = rel_mod.create_one_to_many(
@@ -1587,7 +1578,6 @@ def metadata_create_many_to_many(
     publish,
 ):
     """Create an N:N relationship via the dedicated action."""
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = rel_mod.create_many_to_many(
@@ -1698,7 +1688,6 @@ def metadata_create_optionset(
 ):
     """Create a global option set."""
     name = _resolve_schema_name(ctx, name, display_name, "--name")
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     parsed = _parse_value_labels(options, flag="--option")
     with d365_errors(ctx):
@@ -1757,7 +1746,6 @@ def metadata_update_optionset(
     publish,
 ):
     """Granular update: insert/update/delete/reorder options."""
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     insert = _parse_value_labels(insert_options, flag="--insert-option")
     # require_value=True guarantees an int for every value, so this narrowing
@@ -1830,7 +1818,6 @@ def metadata_status_add(
     ctx: CLIContext, entity, state_code, label_text, value, description, solution, publish
 ):
     """Add a statuscode option tied to a state (InsertStatusValue)."""
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = sm_mod.add_status_value(
@@ -1866,7 +1853,6 @@ def metadata_state_relabel(
     ctx: CLIContext, entity, value, label_text, description, merge_labels, solution, publish
 ):
     """Relabel a statecode state option (UpdateStateValue)."""
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = sm_mod.relabel_state_value(
@@ -1900,7 +1886,6 @@ def metadata_create_mapping(
     ctx: CLIContext, relationship, source_attr, target_attr, auto, solution
 ):
     """Create a field mapping on a 1:N relationship, or --auto generate them."""
-    solution = _resolve_solution(ctx, solution)
     if auto:
         if source_attr or target_attr:
             raise click.UsageError("--auto cannot be combined with --from/--to.")

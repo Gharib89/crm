@@ -36,7 +36,6 @@ _PUBLIC_SURFACE = [
     "d365_errors",
     "usage_guard",
     # solution resolution
-    "_resolve_solution",
     "_solution_option",
     "_publish_option",
     "_resolve_publish",
@@ -101,3 +100,9 @@ _MOVED_OUT = [
 def test_moved_member_not_exported(name):
     mod = importlib.import_module("crm.commands._helpers")
     assert not hasattr(mod, name), f"{name} belongs in its only consuming command module"
+
+
+def test_resolve_solution_is_gone():
+    # #998 moved the --solution check into _solution_option's callback.
+    mod = importlib.import_module("crm.commands._helpers")
+    assert not hasattr(mod, "_resolve_solution")

@@ -16,7 +16,6 @@ from crm.commands._helpers import (
     _journal,
     _publish_option,
     _resolve_publish,
-    _resolve_solution,
     _solution_option,
     d365_errors,
 )
@@ -59,7 +58,6 @@ def webresource_create(
 ):
     """Create a web resource."""
     display_name = display_name if display_name is not None else display_name_alias
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         wtype = wr_mod.resolve_webresourcetype(file, wr_type)
@@ -97,7 +95,6 @@ def webresource_update(
 ):
     """Update a web resource by name (content and/or display name)."""
     display_name = display_name if display_name is not None else display_name_alias
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     content = Path(file).read_bytes() if file else None
     with d365_errors(ctx):
@@ -175,7 +172,6 @@ def webresource_push(ctx: CLIContext, directory, prefix, solution, publish):
     For a continuous redeploy loop, pair with a file watcher, e.g.
     `find webresources -name '*.js' | entr crm webresource push webresources --prefix cwx`.
     """
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         res = wr_mod.push_webresources(

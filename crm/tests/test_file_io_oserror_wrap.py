@@ -173,7 +173,9 @@ _CMD_READ_CASES = [
         ["solution", "publish", "--xml-file"], "publish.xml", id="solution-publish-xml-file"
     ),
     pytest.param(
-        ["app", "set-sitemap", "MySite", "--xml-file"], "sitemap.xml", id="app-set-sitemap-xml-file"
+        ["app", "set-sitemap", "MySite", "--solution", "Sol", "--xml-file"],
+        "sitemap.xml",
+        id="app-set-sitemap-xml-file",
     ),
 ]
 
