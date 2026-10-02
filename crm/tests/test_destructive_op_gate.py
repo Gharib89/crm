@@ -530,6 +530,47 @@ class TestProseNamingAVerb:
         assert "delete-role" in r.stderr
 
 
+class TestShellRunners:
+    """A command string handed to a shell runner (`bash -c`, `eval`) is checked
+    like a top-level command (#1020).
+    """
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            f'bash -c "echo hi; {_ROLE_DELETE}"',
+            f"sh -c 'echo; {_ROLE_DELETE}'",
+            f"zsh -c '{_ROLE_DELETE}'",
+            f"dash -c '{_ROLE_DELETE}'",
+            f"bash -lc '{_ROLE_DELETE}'",
+            f"/bin/bash -e -c '{_ROLE_DELETE}'",
+            f"env bash -c '{_ROLE_DELETE}'",
+            f"env FOO=1 sh -c '{_ROLE_DELETE}'",
+            f'eval "echo hi; {_ROLE_DELETE}"',
+            f"bash -c \"sh -c '{_ROLE_DELETE}'\"",
+            f"true && bash -c '{_ROLE_DELETE}'",
+        ],
+    )
+    def test_runner_payload_blocked(self, cmd):
+        r = _run(cmd)
+        assert r.returncode == BLOCK, f"gate bypassed: {cmd!r}\n{r.stdout}"
+        assert "delete-role" in r.stderr
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            f"bash -c '{_ROLE_DELETE} --yes'",
+            f'eval "{_ROLE_DELETE} --yes"',
+            "bash -c 'crm security list-roles'",
+            "bash script.sh",
+            'eval "$(ssh-agent -s)"',
+        ],
+    )
+    def test_runner_payload_allowed(self, cmd):
+        r = _run(cmd)
+        assert r.returncode == 0, f"false positive on: {cmd!r}\n{r.stderr}"
+
+
 class TestStdinParsing:
     def test_ignores_non_bash_tool(self):
         r = _run("crm metadata delete-entity new_widget", tool_name="Read")

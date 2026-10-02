@@ -544,27 +544,35 @@ def _main_commit_reason(rest: list[str], repo_dir: str) -> str | None:
     )
 
 
-def main() -> int:
-    raw = sys.stdin.read()
-    try:
-        payload = json.loads(raw)
-    except (ValueError, TypeError):
-        return 0
-    if not isinstance(payload, dict):
-        return 0
-    if payload.get("tool_name") != "Bash":
-        return 0
+# Shells whose `-c` argument is a command string; `env` may precede one.
+_SHELLS = {"bash", "sh", "zsh", "dash"}
 
-    command = (payload.get("tool_input") or {}).get("command")
-    if not isinstance(command, str) or not command.strip():
-        return 0
 
-    # Track the effective working directory across segments (`cd x && git ...`)
-    # so repo-dependent git checks inspect the right repository. An
-    # unresolvable `cd` (`cd $WT`) makes it None -> those checks skip.
-    cwd = payload.get("cwd")
-    effective: str | None = cwd if isinstance(cwd, str) and cwd else os.getcwd()
+def _runner_payload(tokens: list[str]) -> str | None:
+    """The command string a shell runner segment executes, else None (#1020):
+    the argument after a `-c` flag cluster (`-c`, `-lc`) of a shell, or the
+    joined arguments of `eval`. Other runners (ssh, sudo, xargs, python -c) are
+    out of scope: no string check can follow every interpreter.
+    """
+    tokens = _strip_assignments(tokens)
+    if tokens and os.path.basename(tokens[0]) == "env":
+        tokens = _strip_assignments(tokens[1:])
+    if not tokens:
+        return None
+    word = os.path.basename(tokens[0])
+    if word == "eval":
+        return " ".join(tokens[1:])
+    if word in _SHELLS:
+        for i, tok in enumerate(tokens[1:-1], start=1):
+            if tok.startswith("-") and not tok.startswith("--") and "c" in tok:
+                return tokens[i + 1]
+    return None
 
+
+def _block_reason(command: str, effective: str | None) -> str | None:
+    """Why `command` must be blocked, else None. A shell runner's command
+    string is checked recursively; it is strictly shorter, so this ends.
+    """
     # Inspect every sub-command so a destructive crm call inside a compound
     # command (`true && crm ...`, `a|crm ...`, `$(crm ...)`) or with a path
     # prefix (`/usr/bin/crm ...`) is still caught. --yes is scoped to its own
@@ -577,16 +585,22 @@ def main() -> int:
     for segment in _split_segments(view) + lex_segments:
         label = _destructive_match(segment)
         if label is not None and not _confirm_present(segment):
-            sys.stderr.write(
+            return (
                 f"BLOCKED: `crm {label}` is a destructive operation and was prevented by "
                 f"the destructive-op gate. It permanently deletes or cancels server state. "
-                f"To confirm intentionally, re-run with the `--yes` flag.\n"
+                f"To confirm intentionally, re-run with the `--yes` flag."
             )
-            return BLOCK
 
     # git-discipline checks walk the quote-aware view only — accurate `cd`
-    # tracking and intact quoted arguments matter here.
+    # tracking and intact quoted arguments matter here. A shell runner's
+    # command string gets every check, crm and git alike (#1020).
     for segment in lex_segments:
+        inner = _runner_payload(segment)
+        if inner is not None:
+            reason = _block_reason(inner, effective)
+            if reason is not None:
+                return reason
+            continue
         tokens = _strip_assignments(segment)
         if not tokens:
             continue
@@ -607,8 +621,34 @@ def main() -> int:
             if repo_dir is not None:
                 reason = _main_commit_reason(rest, repo_dir)
         if reason is not None:
-            sys.stderr.write(reason + "\n")
-            return BLOCK
+            return reason
+    return None
+
+
+def main() -> int:
+    raw = sys.stdin.read()
+    try:
+        payload = json.loads(raw)
+    except (ValueError, TypeError):
+        return 0
+    if not isinstance(payload, dict):
+        return 0
+    if payload.get("tool_name") != "Bash":
+        return 0
+
+    command = (payload.get("tool_input") or {}).get("command")
+    if not isinstance(command, str) or not command.strip():
+        return 0
+
+    # Track the effective working directory across segments (`cd x && git ...`)
+    # so repo-dependent git checks inspect the right repository. An
+    # unresolvable `cd` (`cd $WT`) makes it None -> those checks skip.
+    cwd = payload.get("cwd")
+    effective: str | None = cwd if isinstance(cwd, str) and cwd else os.getcwd()
+    reason = _block_reason(command, effective)
+    if reason is not None:
+        sys.stderr.write(reason + "\n")
+        return BLOCK
     return 0
 
 

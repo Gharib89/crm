@@ -97,6 +97,13 @@ class TestGitAddGate:
         code, _ = _run_hook(_GATE_PATH, "true && git add --all", str(tmp_path))
         assert code == 2
 
+    @pytest.mark.parametrize("cmd", ["bash -c 'git add -A'", "eval 'git add .'"])
+    def test_end_to_end_shell_runner(self, tmp_path, cmd):
+        # A string handed to a shell runner is checked like a top-level command (#1020).
+        code, err = _run_hook(_GATE_PATH, cmd, str(tmp_path))
+        assert code == 2
+        assert "explicit paths" in err
+
 
 class TestGitParts:
     def test_repo_override_and_rest(self):
