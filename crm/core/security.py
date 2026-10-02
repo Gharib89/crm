@@ -561,19 +561,19 @@ def _resolve_role_id(backend: D365Backend, role: str) -> str:
     gid = normalize_guid(role)
     if gid is not None:
         return gid
-    escaped = role.replace("'", "''")
-    rows = backend.get_collection(
+    row = backend.find_one(
         _ROLES_SET,
-        params={"$select": "roleid,name", "$filter": f"name eq '{escaped}'"},
-    )
-    if not rows:
-        raise D365Error(f"no role found named {role!r}")
-    if len(rows) > 1:
-        raise D365Error(
-            f"role name {role!r} is ambiguous ({len(rows)} matches across business "
+        "name",
+        role,
+        "roleid,name",
+        unique=D365Error(
+            f"role name {role!r} is ambiguous (more than one match across business "
             "units); pass the role id instead"
-        )
-    return str(rows[0].get("roleid"))
+        ),
+    )
+    if row is None:
+        raise D365Error(f"no role found named {role!r}")
+    return str(row.get("roleid"))
 
 
 _PRIV_SELECT = "name,privilegeid,canbebasic,canbelocal,canbedeep,canbeglobal"

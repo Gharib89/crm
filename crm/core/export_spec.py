@@ -76,7 +76,7 @@ from crm.core import (
     xml_edit,
 )
 from crm.core import metadata_constraints as mc
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 
 _PICKLIST_KINDS = frozenset({"picklist", "multiselect"})
 _LENGTH_KINDS = frozenset({"string", "memo"})
@@ -1002,14 +1002,8 @@ def build_app_spec(
 
     # The app's sitemap is linked by sitemapnameunique == the app's uniquename
     # (the inverse of appmodule.set_sitemap). Project its Entity subareas.
-    sitemaps = backend.get_collection(
-        "sitemaps",
-        params={
-            "$filter": f"sitemapnameunique eq {odata_literal(unique_name)}",
-            "$select": "sitemapxml",
-        },
-    )
-    sitemap_xml = str(sitemaps[0].get("sitemapxml") or "") if sitemaps else ""
+    sitemap_row = backend.find_one("sitemaps", "sitemapnameunique", unique_name, "sitemapxml")
+    sitemap_xml = str(sitemap_row.get("sitemapxml") or "") if sitemap_row else ""
     if sitemap_xml.strip():
         sitemap = _project_app_sitemap(sitemap_xml, app_label, warn)
         if sitemap is not None:

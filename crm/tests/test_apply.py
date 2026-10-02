@@ -3308,7 +3308,7 @@ def _mock_assembly_absent(m, backend):
 
 
 def _mock_assembly_live(m, backend, *, content=_DLL_BYTES):
-    """A pre-existing assembly. The one GET serves find_assembly AND the
+    """A pre-existing assembly. The one GET serves the live-assembly probe AND the
     update/resolve id-lookup, carrying the live base64 `content`; PATCH 204.
     """
     row = {
@@ -4511,7 +4511,7 @@ def test_apply_creates_plugin_type_when_assembly_freshly_created(backend, tmp_pa
     asm_row = {"pluginassemblyid": _ASM_ID, "name": _ASM_NAME, "content": ""}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
-        # First GET: find_assembly (absence probe) → empty.
+        # First GET: the live-assembly probe (absence) → empty.
         # Second GET: register_type's _resolve_id_by_name → return new assembly.
         m.get(
             backend.url_for("pluginassemblies"),

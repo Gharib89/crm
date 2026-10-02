@@ -678,23 +678,27 @@ def _step_image_info(
     validate stage rules even under dry-run.
     """
     step = step.strip()
+    select = "sdkmessageprocessingstepid,stage,_sdkmessageid_value"
     if _looks_like_guid(step):
-        filt = f"sdkmessageprocessingstepid eq {step}"
-    else:
-        filt = f"name eq {odata_literal(step)}"
-    rows = backend.get_collection(
-        "sdkmessageprocessingsteps",
-        params={"$filter": filt, "$select": "sdkmessageprocessingstepid,stage,_sdkmessageid_value"},
-        max_pages=1,
-    )
-    if not rows or not rows[0].get("sdkmessageprocessingstepid"):
-        raise D365Error(f"Plug-in step not found: {step}", code="SdkStepNotFound")
-    if len(rows) > 1:
-        raise D365Error(
-            f"Multiple plug-in steps match name {step!r}; pass the step's GUID instead.",
-            code="AmbiguousStepName",
+        rows = backend.get_collection(
+            "sdkmessageprocessingsteps",
+            params={"$filter": f"sdkmessageprocessingstepid eq {step}", "$select": select},
+            max_pages=1,
         )
-    row = rows[0]
+        row = rows[0] if rows else None
+    else:
+        row = backend.find_one(
+            "sdkmessageprocessingsteps",
+            "name",
+            step,
+            select,
+            unique=D365Error(
+                f"Multiple plug-in steps match name {step!r}; pass the step's GUID instead.",
+                code="AmbiguousStepName",
+            ),
+        )
+    if not row or not row.get("sdkmessageprocessingstepid"):
+        raise D365Error(f"Plug-in step not found: {step}", code="SdkStepNotFound")
     return (
         str(row["sdkmessageprocessingstepid"]),
         int(row.get("stage") or 0),
@@ -731,23 +735,20 @@ def unregister_image(backend: D365Backend, image: str) -> dict[str, Any]:
 
 def _resolve_image_id(backend: D365Backend, name: str) -> str:
     """Resolve an sdkmessageprocessingstepimage id by exact name (force-reads)."""
-    rows = backend.get_collection(
+    # Image names are not unique across steps; refuse to guess.
+    row = backend.find_one(
         "sdkmessageprocessingstepimages",
-        params={
-            "$filter": f"name eq {odata_literal(name)}",
-            "$select": "sdkmessageprocessingstepimageid",
-        },
-        max_pages=1,
-    )
-    if not rows or not rows[0].get("sdkmessageprocessingstepimageid"):
-        raise D365Error(f"Plug-in step image not found: {name}", code="SdkImageNotFound")
-    if len(rows) > 1:
-        # Image names are not unique across steps; refuse to guess.
-        raise D365Error(
+        "name",
+        name,
+        "sdkmessageprocessingstepimageid",
+        unique=D365Error(
             f"Multiple plug-in step images match name {name!r}; pass the image's GUID instead.",
             code="AmbiguousImageName",
-        )
-    return str(rows[0]["sdkmessageprocessingstepimageid"])
+        ),
+    )
+    if not row or not row.get("sdkmessageprocessingstepimageid"):
+        raise D365Error(f"Plug-in step image not found: {name}", code="SdkImageNotFound")
+    return str(row["sdkmessageprocessingstepimageid"])
 
 
 def unregister_step(backend: D365Backend, step: str) -> dict[str, Any]:
@@ -817,24 +818,21 @@ def unregister_assembly(
 
 def _resolve_step_id(backend: D365Backend, name: str) -> str:
     """Resolve an sdkmessageprocessingstep id by exact name (force-reads)."""
-    rows = backend.get_collection(
+    # The platform does not enforce unique step names; refuse to guess which
+    # one to delete. The caller must disambiguate with the step's GUID.
+    row = backend.find_one(
         "sdkmessageprocessingsteps",
-        params={
-            "$filter": f"name eq {odata_literal(name)}",
-            "$select": "sdkmessageprocessingstepid",
-        },
-        max_pages=1,
-    )
-    if not rows or not rows[0].get("sdkmessageprocessingstepid"):
-        raise D365Error(f"Plug-in step not found: {name}", code="SdkStepNotFound")
-    if len(rows) > 1:
-        # The platform does not enforce unique step names; refuse to guess which
-        # one to delete. The caller must disambiguate with the step's GUID.
-        raise D365Error(
+        "name",
+        name,
+        "sdkmessageprocessingstepid",
+        unique=D365Error(
             f"Multiple plug-in steps match name {name!r}; pass the step's GUID instead.",
             code="AmbiguousStepName",
-        )
-    return str(rows[0]["sdkmessageprocessingstepid"])
+        ),
+    )
+    if not row or not row.get("sdkmessageprocessingstepid"):
+        raise D365Error(f"Plug-in step not found: {name}", code="SdkStepNotFound")
+    return str(row["sdkmessageprocessingstepid"])
 
 
 def _dependent_step_ids(backend: D365Backend, assembly_id: str) -> list[str]:
@@ -1018,23 +1016,6 @@ MODE_VALUES: dict[str, int] = dict(_MODE)
 ISOLATION_MODE_VALUES: dict[str, int] = dict(_ISOLATION_MODE)
 
 
-def find_assembly(backend: D365Backend, name: str) -> dict[str, Any] | None:
-    """Find a plug-in assembly by exact name; return its row or None.
-
-    Selects the base64 `content` so apply can diff a live assembly against a
-    rebuilt DLL. Returns the first match (assembly names are unique per org).
-    """
-    rows = backend.get_collection(
-        "pluginassemblies",
-        params={
-            "$filter": f"name eq {odata_literal(name)}",
-            "$select": "pluginassemblyid,name,content",
-        },
-        max_pages=1,
-    )
-    return rows[0] if rows else None
-
-
 def find_step(backend: D365Backend, name: str) -> dict[str, Any] | None:
     """Find an sdkmessageprocessingstep by exact name; return its row or None.
 
@@ -1046,30 +1027,22 @@ def find_step(backend: D365Backend, name: str) -> dict[str, Any] | None:
     when the name matches more than one step: step names are not unique, so a
     declared step must use a unique name to be reconciled unambiguously.
     """
-    rows = backend.get_collection(
+    return backend.find_one(
         "sdkmessageprocessingsteps",
-        params={
-            "$filter": f"name eq {odata_literal(name)}",
-            "$select": (
-                "sdkmessageprocessingstepid,stage,mode,rank,filteringattributes,configuration"
-            ),
-            "$expand": (
-                "sdkmessageid($select=name),"
-                "plugintypeid($select=typename),"
-                "sdkmessagefilterid($select=primaryobjecttypecode)"
-            ),
-        },
-        max_pages=1,
-    )
-    if not rows:
-        return None
-    if len(rows) > 1:
-        raise D365Error(
+        "name",
+        name,
+        "sdkmessageprocessingstepid,stage,mode,rank,filteringattributes,configuration",
+        expand=(
+            "sdkmessageid($select=name),"
+            "plugintypeid($select=typename),"
+            "sdkmessagefilterid($select=primaryobjecttypecode)"
+        ),
+        unique=D365Error(
             f"Multiple plug-in steps match name {name!r}; step names are not "
             "unique — declare a unique name per step so apply can reconcile it.",
             code="AmbiguousStepName",
-        )
-    return rows[0]
+        ),
+    )
 
 
 def find_step_image(

@@ -649,6 +649,24 @@ class TestSetRolePrivileges:
         sent = {p["PrivilegeId"]: p["Depth"] for p in body["Privileges"]}
         assert sent == {_PRV_READ: "Global", _PRV_WRITE: "Global"}
 
+    def test_role_name_is_odata_escaped(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("roles"), json={"value": []})
+            with pytest.raises(D365Error, match='no role found named "O\'Brien"'):
+                sec.set_role_privileges(backend, "O'Brien", privilege_names=["x"], depth="global")
+            # requests_mock lowercases parsed query values.
+            assert m.last_request.qs["$filter"] == ["name eq 'o''brien'"]
+
+    def test_role_name_matching_several_business_units_is_ambiguous(self, backend):
+        rows = [{"roleid": _ROLE_ID}, {"roleid": _BU_ID}]
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("roles"), json={"value": rows})
+            with pytest.raises(
+                D365Error,
+                match=r"'Sales' is ambiguous \(more than one match across business units\)",
+            ):
+                sec.set_role_privileges(backend, "Sales", privilege_names=["x"], depth="global")
+
     def test_multi_entity_privileges_read_in_one_batch(self, backend, profile):
         # issue #703: N entities → one $batch of Privileges GETs, not N GETs.
         with requests_mock.Mocker() as m:

@@ -20,7 +20,7 @@ from crm.core import dependencies, entity, metadata_cache
 # Module-qualified so the moved names do not resolve as crm.core.solution.<name>.
 from crm.core import solution_components as _components
 from crm.core.batch import run_batched
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 from crm.utils.d365_types import BatchOperation
 
 # ── Create publisher / solution ─────────────────────────────────────────────
@@ -83,13 +83,7 @@ def create_publisher(
     if if_exists not in ("error", "skip"):
         raise D365Error("if_exists must be 'error' or 'skip'.")
 
-    existing = backend.get_collection(
-        "publishers",
-        params={
-            "$filter": f"uniquename eq {odata_literal(name)}",
-            "$select": "publisherid,uniquename",
-        },
-    )
+    existing = backend.find_one("publishers", "uniquename", name, "publisherid,uniquename")
     if existing and not backend.dry_run:
         if if_exists == "error":
             raise D365Error(f"Publisher {name!r} already exists.", code="AlreadyExists")
@@ -97,7 +91,7 @@ def create_publisher(
             "skipped": True,
             "exists": True,
             "uniquename": name,
-            "publisherid": existing[0].get("publisherid"),
+            "publisherid": existing.get("publisherid"),
         }
 
     body: dict[str, Any] = {
@@ -149,13 +143,7 @@ def create_solution(
     if if_exists not in ("error", "skip"):
         raise D365Error("if_exists must be 'error' or 'skip'.")
 
-    existing = backend.get_collection(
-        "solutions",
-        params={
-            "$filter": f"uniquename eq {odata_literal(name)}",
-            "$select": "solutionid,uniquename",
-        },
-    )
+    existing = backend.find_one("solutions", "uniquename", name, "solutionid,uniquename")
     # The skip/error short-circuit below only fires on a real (non-dry) run. Every
     # path that reaches the POST — including the dry-run preview — needs the
     # publisher id to build the bind, so resolve it now unless we already know
@@ -173,7 +161,7 @@ def create_solution(
             "skipped": True,
             "exists": True,
             "uniquename": name,
-            "solutionid": existing[0].get("solutionid"),
+            "solutionid": existing.get("solutionid"),
         }
 
     body: dict[str, Any] = {
@@ -739,12 +727,10 @@ def list_solutions(backend: D365Backend, *, managed: bool | None = None) -> list
 def solution_info(backend: D365Backend, unique_name: str) -> dict[str, Any]:
     if not unique_name:
         raise D365Error("solution unique name required.")
-    params = {"$filter": f"uniquename eq {odata_literal(unique_name)}"}
-    result = as_dict(backend.get("solutions", params=params))
-    items = result.get("value", [])
-    if not items:
+    row = backend.find_one("solutions", "uniquename", unique_name, select=None)
+    if row is None:
         raise D365Error(f"Solution not found: {unique_name}")
-    return items[0]
+    return row
 
 
 def solution_components(backend: D365Backend, unique_name: str) -> list[dict[str, Any]]:
