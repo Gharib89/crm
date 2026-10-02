@@ -459,6 +459,8 @@ class TestProseNamingAVerb:
             f"cat <<EOF > /tmp/sh\n{_ROLE_DELETE}\nEOF",
             f"tee bash <<EOF\n{_ROLE_DELETE}\nEOF",
             f"gh pr create --body \"$(cat <<'EOF'\n{_ROLE_DELETE}\nEOF\n)\"",
+            f"gh pr create --body-file - <<'EOF'\n{_ROLE_DELETE}\nEOF",
+            f"mkdir -p d && cat > d/f.md <<'EOF'\n{_ROLE_DELETE}\nEOF",
         ],
     )
     def test_heredoc_body_naming_verb_allowed(self, cmd):
@@ -510,6 +512,14 @@ class TestProseNamingAVerb:
             f". /dev/stdin <<EOF\n{_ROLE_DELETE}\nEOF",
             f"eval \"$(cat <<'EOF'\n{_ROLE_DELETE}\nEOF\n)\"",
             f'bash -c "echo hi\n{_ROLE_DELETE}"',
+            f"git -c alias.x='!sh' x <<EOF\n{_ROLE_DELETE}\nEOF",
+            f"git -c alias.x='!true\n{_ROLE_DELETE}\n' x",
+            f"cat <<EOF |\n{_ROLE_DELETE}\nEOF\nsh",
+            f"cat() {{ bash; }}\ncat <<EOF\n{_ROLE_DELETE}\nEOF",
+            # A delimiter the view cannot read keeps its body live.
+            f'cat <<"E"OF\nx\nEOF\n{_ROLE_DELETE}\nE',
+            f"cat <<\\EOF\nEOF\n{_ROLE_DELETE}\n\\EOF",
+            f"(( cat << 2 ))\n{_ROLE_DELETE}\n2",
         ],
     )
     def test_real_invocation_still_blocked(self, cmd):

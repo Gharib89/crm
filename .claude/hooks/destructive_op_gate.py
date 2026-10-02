@@ -241,14 +241,21 @@ def _split_segments_lex(command: str) -> list[list[str]]:
 _SEPARATOR_CHARS = set(";|&()\n\r`")
 
 # A heredoc opener: `<<WORD`, `<<-WORD`, `<<'WORD'`, `<<"WORD"`. A `<<<`
-# here-string is not one.
-_HEREDOC = re.compile(r"(?<!<)<<-?[ \t]*(['\"]?)([^\s;&|<>()'\"]+)\1")
+# here-string is not one. A delimiter spelled any other way (`<<"E"OF`,
+# `<<\EOF`) does not match, so its body stays live.
+_HEREDOC = re.compile(r"(?<!<)<<-?[ \t]*(['\"]?)([^\s;&|<>()'\"\\]+)\1(?=[\s;&|<>()]|$)")
 
 # Commands that never run their stdin or arguments as shell code. Only their
 # heredoc bodies and quoted arguments count as prose; every other command's
 # stay live, so an unlisted runner (eval, source, ssh, sudo, bash -c) fails
-# closed.
-_INERT = {"cat", "tee", "gh", "git", "echo", "printf"}
+# closed. Not git: aliases, `rebase -x` and `core.pager` run shell strings.
+_INERT = {"cat", "tee", "gh", "echo", "printf", "cd", "mkdir"}
+
+# A function or alias defined in the same command can make an `_INERT` name
+# run code; such a command gets no prose view at all.
+_SHADOWED = re.compile(
+    r"\b(?:function\s+|alias\s+)?(?:" + "|".join(sorted(_INERT)) + r")\s*(?:\(\s*\)|=)"
+)
 
 # What may precede a `#` that starts a comment.
 _COMMENT_AFTER = set(" \t\n;|&(")
@@ -293,6 +300,8 @@ def _shell_view(command: str) -> str:
     them. Anything this does not recognise is left as is, so the splitters see
     it exactly as before. Both splitters read this view.
     """
+    if _SHADOWED.search(command):
+        return command
     out: list[str] = []
     # Open contexts: "'" / '"' (a "!" suffix: quoted text stays live), "$'",
     # "$(", "`". `starts` holds, per command context, the index in `out`
@@ -364,7 +373,15 @@ def _shell_view(command: str) -> str:
                 line_start = command.rfind("\n", 0, i) + 1
                 pending = [(w, q) for w, q, at in heredocs if at >= line_start]
                 end = _heredoc_end(command, i + 1, pending) if pending else None
-                inert = line_words - {""} <= _INERT and len(pending) == len(heredocs)
+                # A pipeline continued past the body (`cat <<EOF |`) or an
+                # arithmetic `<<` makes the opener line unreadable here.
+                opener = command[line_start:i].rstrip()
+                inert = (
+                    line_words - {""} <= _INERT
+                    and len(pending) == len(heredocs)
+                    and not opener.endswith(("|", "&"))
+                    and "((" not in opener
+                )
                 heredocs, line_words = [], set()
                 if end is not None and inert:
                     out.append("\n")
