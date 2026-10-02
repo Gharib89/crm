@@ -1,6 +1,6 @@
 """On-disk session + connection-profile persistence.
 
-Layout under `~/.crm/`:
+Layout under the state home (`CRM_HOME`, default `~/.crm`):
 
     profiles/<name>.json   — ConnectionProfile dicts (+ optional opt-in `_secret`)
     sessions/<name>.json   — last-used profile + context (current entity, last query)

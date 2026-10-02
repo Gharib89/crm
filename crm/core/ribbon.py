@@ -23,9 +23,7 @@ from crm.core.query import odata_query
 from crm.core.solution import publish_all, solution_info
 from crm.core.solution_transfer import export_solution, import_solution
 from crm.core.solution_validate import validate_solution
-from crm.core.webresource import (
-    get_webresource,  # pyright: ignore[reportUnusedImport]; re-exported for the command layer
-)
+from crm.core.webresource import get_webresource
 
 # Redundant alias = explicit re-export for the command layer
 # (crm/commands/ribbon.py calls ribbon_mod.resolve_webresource_id).

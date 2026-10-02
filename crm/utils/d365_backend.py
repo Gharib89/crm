@@ -1,11 +1,26 @@
-"""D365 on-prem 9.x Web API HTTP backend.
-
-Wraps `requests` + `requests_ntlm` to talk to the live Dataverse Web API at
-`https://<server>/<org>/api/data/v9.x/`.
+"""Dataverse Web API HTTP backend, for on-prem v9.x and Dataverse online.
 
 This module is the **only** place in the harness that talks HTTP to the server.
 Every other core module asks the backend to issue a request and gets back the
 parsed JSON or a raised `D365Error`.
+
+Section map, in file order:
+
+- Errors: `D365Error`, `classify_d365_error`.
+- Profiles: `validate_profile_name`, `ConnectionProfile` (validated against
+  `AUTH_SCHEMES`, re-exported from `crm.utils.d365_types`).
+- OAuth: `_oauth_cache_path`, `_oauth_bearer_auth_cls` (builds the
+  `_OAuthBearerAuth` bearer class over an msal token cache).
+- `D365Backend`: the dry-run and read-only guards (`dry_run`, `read_only`,
+  `as_dry_run`); auth selection in `_make_auth` (NTLM, Kerberos/Negotiate,
+  AD FS via `crm.utils.adfs.AdfsCookieAuth`) and `_make_oauth_auth`; the request
+  loop in `request` and its verb helpers; `get_collection` paging, `find_one`,
+  `resolve_id_by_name`; `batch` and `poll_async_operation`.
+- Responses and retries: `_parse_response`; `_compute_delay`,
+  `_is_response_retryable`, `_customization_lock_code`,
+  `_is_transport_retryable`, `_parse_retry_after`, `_resolve_retry_max`.
+- `$batch` wire format: `_assemble_batch_body`, `_parse_batch_response`.
+- Helpers: `as_dict`, `odata_literal`, `normalize_guid`.
 """
 
 from __future__ import annotations

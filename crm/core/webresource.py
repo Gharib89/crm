@@ -126,8 +126,8 @@ def update_webresource(
     """Update a web resource by name with a plain PATCH of only sent fields.
 
     Requires at least one of `content` / `display_name`. Resolves the id by
-    name (force-reads even under dry-run), then PATCHes only the provided
-    fields — not retrieve-merge-write.
+    name (a real read even under dry-run, per the reads-execute rule), then
+    PATCHes only the provided fields — not retrieve-merge-write.
     """
     if content is None and display_name is None:
         raise D365Error("nothing to update: pass new content and/or a display name.")
