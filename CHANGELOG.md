@@ -9,6 +9,47 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.81.5 (2026-10-02)
+
+### Bug Fixes
+
+- **cli**: Check --solution at parse time, before any confirmation prompt
+  ([#1004](https://github.com/Gharib89/crm/pull/1004),
+  [`5d114f3`](https://github.com/Gharib89/crm/commit/5d114f30a68bdd6bc0e345914af889838753717c))
+
+- **cli**: Check --solution in the option callback, before any prompt
+  ([#1004](https://github.com/Gharib89/crm/pull/1004),
+  [`5d114f3`](https://github.com/Gharib89/crm/commit/5d114f30a68bdd6bc0e345914af889838753717c))
+
+### Documentation
+
+- Amend ADR 0020 rather than rewrite it; drop a skill overclaim
+  ([#1004](https://github.com/Gharib89/crm/pull/1004),
+  [`5d114f3`](https://github.com/Gharib89/crm/commit/5d114f30a68bdd6bc0e345914af889838753717c))
+
+- Note --solution fails first, and is required on ribbon list
+  ([#1004](https://github.com/Gharib89/crm/pull/1004),
+  [`5d114f3`](https://github.com/Gharib89/crm/commit/5d114f30a68bdd6bc0e345914af889838753717c))
+
+### Refactoring
+
+- **backend**: Add find_one and build resolve_id_by_name on it
+  ([#1003](https://github.com/Gharib89/crm/pull/1003),
+  [`7df61f5`](https://github.com/Gharib89/crm/commit/7df61f5fe9fe6e6cbb31d87b72daaf6edafe5de7))
+
+- **core**: Address self-review on find_one sites
+  ([#1003](https://github.com/Gharib89/crm/pull/1003),
+  [`7df61f5`](https://github.com/Gharib89/crm/commit/7df61f5fe9fe6e6cbb31d87b72daaf6edafe5de7))
+
+- **core**: One find_one query for single-column exact-match finders
+  ([#1003](https://github.com/Gharib89/crm/pull/1003),
+  [`7df61f5`](https://github.com/Gharib89/crm/commit/7df61f5fe9fe6e6cbb31d87b72daaf6edafe5de7))
+
+- **core**: Route single-column exact-match finders through find_one
+  ([#1003](https://github.com/Gharib89/crm/pull/1003),
+  [`7df61f5`](https://github.com/Gharib89/crm/commit/7df61f5fe9fe6e6cbb31d87b72daaf6edafe5de7))
+
+
 ## v1.81.4 (2026-10-01)
 
 ### Bug Fixes
