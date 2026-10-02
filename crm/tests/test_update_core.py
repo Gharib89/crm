@@ -1620,6 +1620,9 @@ class TestOrchestrators:
         t1 = run_background_check(json_mode=False, stderr_isatty=True, env={}, now=1.0)
         t2 = run_background_check(json_mode=False, stderr_isatty=True, env={}, now=1.0)
         assert t1 is not None and t2 is None
+        # Join before returning: refresh_cache resolves CRM_HOME at write time, so a
+        # late write would land in the next test's state home (#1019).
+        t1.join()
 
     def test_emit_notice_prints_when_newer(
         self, crm_home: Path, monkeypatch: pytest.MonkeyPatch
