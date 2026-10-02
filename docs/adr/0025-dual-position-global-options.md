@@ -84,6 +84,6 @@ the other root options stay root-only and keep the existing position hint.
   options; only the five are removed from its jurisdiction (they no longer reach the
   `NoSuchOption` path on a leaf).
 - The contract terms **Global option** and **Dual-position global option** live in
-  `CONTEXT.md`; the capability is documented in the README and the crm skill's
+  `GLOSSARY.md`; the capability is documented in the README and the crm skill's
   flag-placement guidance. References ADR 0008 (output contract) and ADR 0023
   (client-side shaping, the home of `--fields`/`--jq`).

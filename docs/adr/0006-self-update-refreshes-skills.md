@@ -53,7 +53,7 @@ binary itself but the wheel's skill is already new.
   (`refreshed` / `skipped` / `pruned` / `error`, with `from_version` → `to_version`)
   is surfaced in `data.skills`, so agents see exactly what changed.
 - `installed-skills.json` is internal CLI state, not contract vocabulary —
-  [CONTEXT.md](../../CONTEXT.md) is intentionally left untouched. The file format is
+  [GLOSSARY.md](../../GLOSSARY.md) is intentionally left untouched. The file format is
   a top-level object (`{"skills": [...]}`) so future keys land without a break, and is
   read tolerantly (missing/corrupt → empty list, never raises).
 - Re-running `self-update` when everything is already in sync is a cheap no-op (a

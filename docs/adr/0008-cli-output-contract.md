@@ -46,7 +46,7 @@ of the raw D365 Web API response. Concretely:
 - **Passthrough `data`** (mirror the raw Web API response): rejected — it makes
   `@odata.*` and the `query odata` envelope a "feature," but forces a different
   extraction rule per command on the primary consumer (agents). The envelope is
-  the CLI's contract (per CONTEXT.md), not a D365 mirror.
+  the CLI's contract (per GLOSSARY.md), not a D365 mirror.
 - **Bare `id` instead of `_entity_id`**: rejected — a bare `id` injected into
   create/get full record would be indistinguishable from a genuine attribute
   and breaks the established leading-underscore convention for synthesized fields
@@ -67,5 +67,5 @@ of the raw D365 Web API response. Concretely:
   its full record.
 - These breaks are one-time, recorded here and in the `fix:`/`feat:` commit
   subjects so `python-semantic-release` documents them in `CHANGELOG.md`.
-- The contract terms live in `CONTEXT.md` (Data payload, List payload,
+- The contract terms live in `GLOSSARY.md` (Data payload, List payload,
   Normalized entity id, Record render modes).
