@@ -60,8 +60,8 @@ mark() { gates[$1]=$2; }   # mark <name> deferred-to-ci|unavailable
 # the pac e2e; docs.yml runs `docs`). The windows-latest matrix halves of `test`
 # and `package` have no local mirror; CI proves them.
 
-# deps: a sibling worktree has no .venv, and installing one there would repoint
-# the shared editable install, so use this checkout's .venv, else the main
+# deps: a worktree's own .venv is optional (the strict pyright hook and
+# check.sh fall back the same way): use this checkout's .venv, else the main
 # checkout's (the parent of the common git dir), with PYTHONPATH on this tree.
 venv=""
 main=$(cd "$(git rev-parse --git-common-dir)/.." && pwd)

@@ -13,7 +13,7 @@ Host: github
 Carry: None.
 Bootstrap: None.
 
-crm reads no `.env` and no credential env vars (credentials come only from a saved profile under `CRM_HOME`), so nothing gitignored needs carrying. Sibling worktrees have no `.venv`: the local gate resolves the main checkout's venv itself.
+crm reads no `.env` and no credential env vars (credentials come only from a saved profile under `CRM_HOME`), so nothing gitignored needs carrying. A sibling worktree's own `.venv` is optional: the local gate, `scripts/check.sh` and the strict pyright hook fall back to the main checkout's.
 
 ## Local gate
 
