@@ -390,7 +390,7 @@ def validate_icon_webresource(backend: D365Backend, *, slot: str, name: str) -> 
     (``modern_image`` / ``image16`` / ``image32``). Raises D365Error if the web
     resource does not exist (via `get_webresource`) or its ``webresourcetype`` is not
     valid for the slot — SVG (11) for ``modern_image``, a raster type
-    (PNG/JPG/GIF/ICO) for ``image16`` / ``image32``. A forced live read, so a missing
+    (PNG/JPG/GIF/ICO) for ``image16`` / ``image32``. A real read even under dry-run, so a missing
     or wrong-type reference is caught before the slow export → import round-trip
     (mirroring the `--webresource` existence check `add-button` already runs). Per
     ADR 0001 this in-command validation is an operational failure (exit 1), not a

@@ -60,7 +60,7 @@ def _columns(value: Any) -> list[tuple[str, int]]:
 
 
 def _resolve_otc(backend: D365Backend, logical: str) -> int | None:
-    """Forced-real GET of an entity's ObjectTypeCode; None if not yet assigned/readable.
+    """GET of an entity's ObjectTypeCode (real under dry-run); None if not yet assigned/readable.
 
     A brand-new custom table's OTC is often unreadable until the apply's final
     publish, so the caller reports its views as `planned` and a second apply
@@ -404,7 +404,7 @@ class _Run:
       entity_logicals   entity schema name → live logical name, captured by the
                         entity phase and read by every entity-scoped kind.
       object_type_codes entity logical name → its ObjectTypeCode, filled by the view
-                        phase's `prepare` (one forced-real GET per entity).
+                        phase's `prepare` (one GET per entity, real under dry-run).
       optionsets_created  global option sets this run created (or would): the
                         referenced-option-set ensure step skips them, since their
                         create carried the solution header already.
@@ -794,7 +794,7 @@ def validate_spec(spec: Any) -> None:
 
 
 def _solution_exists(backend: D365Backend, name: str) -> bool:
-    """Forced-real existence check for a solution by uniquename (dry-run safe)."""
+    """Existence check for a solution by uniquename (a real read under dry-run)."""
     return backend.find_one("solutions", "uniquename", name, "solutionid") is not None
 
 
@@ -827,7 +827,7 @@ def _present(result: dict[str, Any]) -> bool:
     """True when a create-builder reports the component already exists.
 
     A real apply short-circuits the POST and returns `skipped`; a dry-run leaves
-    the POST suppressed and reports the forced-real existence probe via
+    the POST suppressed and reports the live existence probe via
     `would_skip`. Either way the component is live, so apply reconciles it against
     the spec rather than creating it — the same reconcile path runs in both modes
     (its writes are no-ops under dry-run per the reads-execute rule), which is what
@@ -1630,7 +1630,7 @@ def _reconcile_webresource(
 
     ``create_webresource`` has no ``if_exists`` guard, so this kind owns its create
     path rather than letting the driver probe with a create: ``find_live`` is the
-    single existence read (forced-real, dry-run safe) and an absent web resource is
+    single existence read (real even under dry-run) and an absent web resource is
     created right here from the same body bytes the diff would compare.
 
     On the diff side the spec's body bytes — read from the block + ``ctx.base_dir`` —

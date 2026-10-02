@@ -25,8 +25,8 @@ from crm.utils.d365_types import BatchOperation
 
 # ── Create publisher / solution ─────────────────────────────────────────────
 #
-# Both mirror appmodule.create_app: a forced-real existence GET (accurate even
-# under --dry-run), --if-exists error|skip semantics, then a 204-create via
+# Both mirror appmodule.create_app: an existence GET (a real read even under
+# --dry-run, per the reads-execute rule), --if-exists error|skip semantics, then a 204-create via
 # entity.create(return_record=False) whose OData-EntityId GUID is synthesised
 # into the returned record. on-prem 9.1 publisher/solution contract is verified
 # against the op-9-1 docs (customizationprefix 2-8 alnum not 'mscrm';
@@ -134,7 +134,7 @@ def create_solution(
     """Create an unmanaged solution bound to a publisher. Returns `{created, solutionid, ...}`.
 
     Exactly one of `publisher_unique_name` / `publisher_id` identifies the publisher;
-    a uniquename is resolved to its id with a forced-real GET so a missing publisher
+    a uniquename is resolved to its id with a GET (reads-execute rule) so a missing publisher
     raises before the solution POST (no orphan). `friendly_name` defaults to `name`,
     `version` to '1.0.0.0'.
     """
@@ -203,8 +203,8 @@ def clone_as_patch(
     A patch must share the parent's major.minor and have a higher build/revision.
     When `version` is omitted the parent's version is read and its revision (the
     4th part) is bumped by one; when `display_name` is omitted it defaults to the
-    parent's friendlyname. Both defaults need the parent record, read with a
-    forced-real GET so they resolve under --dry-run too.
+    parent's friendlyname. Both defaults need the parent record; its GET runs even
+    under --dry-run (the reads-execute rule), so they resolve there too.
 
     Returns `{cloned, parent_solution, display_name, version, patch_solutionid}`
     on a real run.
@@ -238,7 +238,7 @@ def uninstall_solution(
 ) -> dict[str, Any]:
     """Uninstall a solution: DELETE /solutions(<id>).
 
-    Resolves the solutionid with a forced-real GET (so the preview is accurate
+    Resolves the solutionid with a GET (reads-execute rule, so the preview is accurate
     under --dry-run and a missing solution fails fast before any DELETE). Unless
     `force=True`, pre-flights RetrieveDependenciesForUninstall and refuses with
     the blocker list when any dependency would block the uninstall — turning a
@@ -407,7 +407,7 @@ def reject_non_entity_no_subcomponents(components: list[dict[str, Any]]) -> None
 
 
 def _require_unmanaged_solution(backend: D365Backend, solution: str, *, verb: str) -> None:
-    """Forced-real solution_info pre-flight (works under dry-run too); raise if the
+    """solution_info pre-flight (runs under dry-run too: reads-execute rule); raise if the
     target is managed. `verb` is the action phrase, e.g. 'added to'.
     """
     info = solution_info(backend, solution)
@@ -430,7 +430,7 @@ def add_solution_component(
 ) -> dict[str, Any]:
     """Add an existing component to an unmanaged solution via AddSolutionComponent.
 
-    Pre-flights solution_info (forced-real even under dry-run) and refuses a
+    Pre-flights solution_info (a real read even under dry-run) and refuses a
     managed target — AddSolutionComponent is unmanaged-only. Returns
     `{added, solution, component_id, component_type}` on a real run.
     """
@@ -475,7 +475,7 @@ def remove_solution_component(
 ) -> dict[str, Any]:
     """Remove a component from an unmanaged solution via RemoveSolutionComponent.
 
-    Pre-flights solution_info (forced-real even under dry-run) and refuses a
+    Pre-flights solution_info (a real read even under dry-run) and refuses a
     managed target — a managed solution cannot be edited. Returns
     `{removed, solution, component_id, component_type}` on a real run.
     """

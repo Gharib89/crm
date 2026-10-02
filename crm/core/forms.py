@@ -2422,9 +2422,10 @@ def commit_declared_form(
     apply's *converge → commit* steps (ADR 0024).
 
     Computes the convergence (additive + drift, :func:`converge_declared_form`) and,
-    on a real run with something to change, PATCHes it in ONE write. Reads are
-    forced-real, so a dry-run still reads live and reports the would-change set
-    without writing. Returns ``{form, formid, components, committed}``.
+    on a real run with something to change, PATCHes it in ONE write. Reads
+    execute even under dry-run (the reads-execute rule), so a dry-run still reads
+    live and reports the would-change set without writing. Returns
+    ``{form, formid, components, committed}``.
     """
     new_xml, changes = converge_declared_form(backend, entity, form_row, block)
     committed = bool(changes) and not dry_run

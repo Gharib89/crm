@@ -97,7 +97,7 @@ class TestUpdateSolution:
 
     def test_dry_run_previews_no_patch(self, dry_backend):
         with requests_mock.Mocker() as m:
-            # solution_info is a forced-real read even under --dry-run (mirrors create)
+            # solution_info is a real read even under --dry-run (mirrors create)
             m.get(dry_backend.url_for("solutions"), json={"value": [_unmanaged_row()]})
             m.patch(dry_backend.url_for(f"solutions({_SOL_ID})"), status_code=204)
             out = sol_mod.update_solution(dry_backend, "CRMWorx", version="2.0.0.0")
@@ -105,7 +105,7 @@ class TestUpdateSolution:
         assert out["body"] == {"version": "2.0.0.0"}
         assert out["solutionid"] == _SOL_ID
         assert _patches(m) == []  # no real PATCH under dry-run
-        assert any(r.method == "GET" for r in m.request_history)  # forced-real resolve
+        assert any(r.method == "GET" for r in m.request_history)  # live resolve (reads-execute)
 
     @pytest.mark.parametrize(
         "bad_version",
