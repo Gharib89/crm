@@ -69,7 +69,7 @@ Every feature / new command / flag / behavior change ships its docs in the **sam
 
 ### Running the live e2e suite
 
-Live e2e runs (`D365_E2E=1 pytest -m e2e`) and any live-org verification follow the **`live-e2e`** skill (`.claude/skills/live-e2e/SKILL.md`): live targets (`agent-cloud` preferred, `agent-on-prem` VPN-gated, ephemeral `agent-cs-trial`), creds wiring (`D365_E2E_PROFILE` vs flat `D365_*`), the worktree-code recipe and its tripwires, the cloud host guard, the verify-on-the-reported-target rule, and the fixture-placeholder rule. Pin `--profile <name>` on any live command and confirm the org via `crm connection whoami` before reporting target-specific facts.
+Live e2e runs (`D365_E2E=1 pytest -m e2e`) and any live-org verification follow the **`live-e2e`** skill (`.claude/skills/live-e2e/SKILL.md`): live targets (`agent-cloud`, ephemeral `agent-cs-trial`), creds wiring (`D365_E2E_PROFILE` vs flat `D365_*`), the worktree-code recipe and its tripwires (one pytest process per org, lock contention, run duration), the cloud host guard, the "on-prem leg not run" rule, and the fixture-placeholder rule. Pin `--profile <name>` on any live command and confirm the org via `crm connection whoami` before reporting target-specific facts.
 
 `.github/workflows/docs.yml` runs `mkdocs build --strict` on any `crm/**`, `setup.py`, `docs/**`, or `mkdocs.yml` change — **stale refs / broken links fail CI.**
 

@@ -74,13 +74,13 @@ docs/contributing/coding-standards.md
 
 ### Live e2e
 
-Proves: the changed command's requests and responses against a real D365 org, Dataverse online or on-prem v9.x
+Proves: the changed command's requests and responses against the live `agent-cloud` Dataverse org
 Applies when: the change touches a D365-touching command's Web API path (crm/core/*, or a command that calls the org), or fixes a bug reported on one target; not local/meta groups (profile, session, skill, self-update, repl, scaffold), docs or tooling
-Run: `D365_E2E=1 D365_E2E_PROFILE=<profile> PYTHONPATH=<worktree> <venv>/bin/python -m pytest -m e2e crm/tests/e2e/<file> -k '<expr>'`, per the `live-e2e` skill
-Needs: a saved crm profile for a live target: `agent-cloud` preferred, `agent-on-prem` needs the VPN; detect with `crm --profile <profile> connection whoami` exiting 0
+Run: the `live-e2e` skill's §3 recipe, from the worktree, against `agent-cloud`
+Needs: the saved crm profile `agent-cloud`; detect with `crm --profile agent-cloud connection whoami` exiting 0
 Without it: hand-off
 Also proven by CI: None.
-Claims to probe: behavior that differs between on-prem v9.x and Dataverse online (entity set names, metadata attributes, platform permits); a target-specific bug is verified on the target it was reported on
+Claims to probe: behavior that differs between on-prem v9.x and Dataverse online (entity set names, metadata attributes, platform permits); an on-prem-reported bug follows the skill's "on-prem leg not run" rule
 
 On-prem is the priority target. `e2e.yml` runs the live suite on a schedule only, so no PR leg proves this.
 
