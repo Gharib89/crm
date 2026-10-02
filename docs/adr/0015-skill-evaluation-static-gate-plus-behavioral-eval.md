@@ -125,3 +125,7 @@ skill's intentional sparseness (ADR 0009). Lives in `crm/tests/skill_coverage.py
 - This extends ADR 0009's "states only what `describe`/`--help` cannot" invariant with the
   enforcement it was missing: Machine A mechanically guards the *reachability* half, Machine
   B periodically measures the *workflow* half.
+
+## Amendments
+
+- **2026-10-03: the default eval target is `agent-cloud` only ([#1012](https://github.com/Gharib89/crm/issues/1012)).** The Target clause named both `agent-cloud` and `agent-on-prem`. No `agent-on-prem` profile exists on the maintainer machine, and `agent-cloud` is the one live target agents use ([#1006](https://github.com/Gharib89/crm/issues/1006)), so every default run skipped its on-prem leg. `both_runner` now defaults to `agent-cloud`; an on-prem leg is opt-in with `--profiles agent-cloud,<on-prem-profile>`, and the union and skip-unreachable mechanics are unchanged. Status stays **accepted**: only the default profile list changed.

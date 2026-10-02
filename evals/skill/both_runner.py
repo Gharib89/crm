@@ -2,11 +2,10 @@
 baseline trend (issue #573).
 
 Where :mod:`evals.skill.set_runner` runs the whole set against *one* target, this loops
-the two standing project profiles — ``agent-cloud`` and ``agent-on-prem`` — runs the set
-against each *reachable* one, and reports coverage as the **union**. A target whose host
-does not answer (on-prem with the VPN down) is **skipped with a message**, never failed:
-cloud gives always-on breadth, and the on-prem leg lands its rows whenever a maintainer
-runs this with the VPN up. ``--repeat N`` runs each task N times per target to smooth
+a list of profiles (default: the standing ``agent-cloud``; pass ``--profiles`` to add an
+on-prem leg), runs the set against each *reachable* one, and reports coverage as the
+**union**. A target whose host does not answer (on-prem with the VPN down) is **skipped
+with a message**, never failed. ``--repeat N`` runs each task N times per target to smooth
 run-to-run variance, recording the pass-rate as a fraction.
 
 ``--update-baseline`` appends one dated per-target row to the tracked ``baseline.md`` so a
@@ -46,9 +45,10 @@ from evals.skill.set_runner import (
 )
 from evals.skill.target import TargetError
 
-#: The two standing project targets; cloud first (always reachable, no VPN), on-prem
-#: second (the priority target, VPN-gated). Matches the project's e2e profile names.
-DEFAULT_PROFILES = ("agent-cloud", "agent-on-prem")
+#: The standing eval target: ``agent-cloud``, the one live profile agents use (#1006).
+#: There is no standing on-prem profile (#1012); add an on-prem leg with
+#: ``--profiles agent-cloud,<on-prem-profile>``.
+DEFAULT_PROFILES = ("agent-cloud",)
 
 BASELINE = Path(__file__).parent / "baseline.md"
 
@@ -260,7 +260,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--profiles",
         default=",".join(DEFAULT_PROFILES),
-        help="comma-separated profile names (default: agent-cloud,agent-on-prem)",
+        help="comma-separated profile names (default: agent-cloud)",
     )
     parser.add_argument(
         "--repeat",

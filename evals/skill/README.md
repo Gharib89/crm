@@ -197,8 +197,9 @@ python -m evals.skill run --target both                    # both (the default)
 python -m evals.skill run --target cloud --repeat 3
 ```
 
-- **`--target cloud|onprem|both`** picks the standing profile(s) (`agent-cloud` /
-  `agent-on-prem`) and the underlying runner; `both` is the default.
+- **`--target cloud|onprem|both`** picks the standing profile(s) and the underlying runner;
+  `both` is the default and runs `both_runner`'s default profile list (`agent-cloud` only,
+  #1012).
 - The agent command defaults to **`claude -p --dangerously-skip-permissions --model sonnet`**
   — the permission-gate footgun is gone, and `sonnet` is the baseline (the harness measures
   the skill, not the model). `--model <m>` swaps the model; `--agent-cmd <cmd>` overrides the
@@ -300,9 +301,9 @@ exactly as for the single-task runner. To run **both** targets in one go, see be
 
 ## Run both targets + the baseline trend (`both_runner`, #573)
 
-The both-targets runner loops the two standing profiles (`agent-cloud`, then
-`agent-on-prem`), runs the set against each **reachable** one, and reports coverage as the
-**union**. A target whose host does not answer (on-prem with the VPN down) is **skipped
+The both-targets runner loops a profile list (default: `agent-cloud` only, #1012; add an
+on-prem leg with `--profiles agent-cloud,<on-prem-profile>`), runs the set against each
+**reachable** one, and reports coverage as the **union**. A target whose host does not answer (on-prem with the VPN down) is **skipped
 with a message**, never failed — so a cloud-only run still succeeds and lands its rows.
 `--repeat N` runs each task N times per target to smooth run-to-run variance.
 
