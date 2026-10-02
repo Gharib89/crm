@@ -3,7 +3,7 @@
 A dry-run invocation in JSON mode must carry meta.dry_run=true in the envelope,
 keyed off the invocation-level flag (CLIContext.dry_run) — NOT off sniffing the
 data for the _dry_run sentinel — so list-shaped batch previews and poll previews
-are covered uniformly and forced-real existence-probe GETs do not false-positive.
+are covered uniformly and live existence-probe GETs do not false-positive.
 Existing meta keys (e.g. staged) are preserved. The signal is scoped to JSON mode;
 the in-data _dry_run sentinel is retained for back-compat (ADR 0002 reads it pre-emit).
 """

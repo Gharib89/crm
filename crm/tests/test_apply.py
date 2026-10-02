@@ -597,7 +597,7 @@ def test_apply_dry_run_greenfield_reports_dependents_planned(dry_backend):
         "optionsets": [_OPTIONSET],
     }
     with requests_mock.Mocker() as m:
-        # Only forced-real existence GETs fire under dry-run; everything is absent.
+        # Only the live existence GETs fire under dry-run; everything is absent.
         m.get(backend.url_for("publishers"), json={"value": []})
         # Greenfield: the solution does not exist yet, so prune detection finds
         # nothing to enumerate (its existence probe returns empty).
@@ -1413,7 +1413,7 @@ class TestApplyIncludeReferencedOptionsets:
         backend = dry_backend
         spec = self._spec()
         with requests_mock.Mocker() as m:
-            # solutions probe for _solution_exists (forced-real)
+            # solutions probe for _solution_exists (a real read)
             m.get(backend.url_for("solutions"), json={"value": []})
             # optionset EXISTS → would_skip=True → skipped → NOT in planned_names
             m.get(
