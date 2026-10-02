@@ -1732,8 +1732,8 @@ class TestRegisterImage:
 
         dry = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
-            # step + message resolution execute even under dry-run (reads-execute rule) so the
-            # validity rules and messagepropertyname derivation still run
+            # step + message resolution GETs execute even under dry-run (reads-execute
+            # rule) so the validity rules and messagepropertyname derivation still run
             _mock_image_resolution(m, dry)
             out = plugin.register_image(dry, step=_STEP_ID, image_type="pre", alias="preimg")
         assert out["_dry_run"] is True
