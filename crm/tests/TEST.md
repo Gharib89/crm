@@ -20,9 +20,11 @@ whose tests do not follow the naming:
 | `crm/core/metadata.py` | `test_core.py::TestMetadata`, `::TestPicklistMetadata`, `::TestCreateEntity`, `::TestCreateVirtualEntity`, `::TestCreateEntityReadback`, `test_metadata_*.py` |
 | `crm/core/export.py` | `test_core.py::TestExport`, `::TestOrderedKeys` |
 | `crm/core/solution.py`, `solution_transfer.py` | `test_core.py::TestPublish`, `::TestExportSolutionAsync`, `::TestImportSolutionAsync`, `test_solution_*.py` |
+| `crm/core/solutionpackager.py` | `test_solution_packager.py` |
+| `crm/core/references.py` | `test_dry_run_references.py`, `test_appmodule.py` |
+| `crm/core/spec_coercion.py` | no file of its own; exercised through `test_apply.py`, `test_plan.py`, `test_appmodule.py` |
+| `crm/core/logging_setup.py` | `test_logging.py` |
 | `crm/core/workflow.py` | `test_core.py::TestWorkflow`, `::TestWorkflowDelete`, `test_workflow_*.py` |
-| `crm/core/hints.py` | `test_hints.py` |
-| `crm/utils/repl_skin.py` | `test_repl_skin.py` |
 | `crm/cli.py` (`CLIContext`, emit envelope) | `test_core.py::TestErrorEnvelope`, `::TestReplBackendCache`, `test_output_contract.py`, `test_exit_codes.py`, `test_cli_offline_smoke.py` |
 | `crm/commands/_helpers/` | `test_core.py::TestLoadPayload`, `test_concise_render.py` (`rendering.py`), `test_helpers_option_groups.py`, `test_helpers_package_surface.py`, `test_d365_errors_enrich.py` |
 | `crm/commands/profile.py` | `test_profile_cmd.py`, `test_profile_helpers.py`, `test_profile_name_sanitization.py`, `test_profile_url_normalization.py` |

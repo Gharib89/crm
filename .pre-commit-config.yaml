@@ -50,7 +50,7 @@ repos:
             docs/research/.*\.(html|json)$|
             .*\.(svg|lock|min\.js)$|
             CHANGELOG\.md$|
-            \.claude/skills/(cloud-ship|code-review|find-docs|setup-skills|ship|show-me|tdd|triage|writing-for-agents)/
+            \.claude/skills/(cloud-ship|code-review|find-docs|setup-harness|setup-skills|ship|show-me|tdd|triage|update-skills|writing-for-agents)/
           )
   # Shell linter. The PyPI wheel brings its own pinned ShellCheck binary, so a
   # clone without one on PATH still runs it.

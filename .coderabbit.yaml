@@ -107,7 +107,7 @@ reviews:
       instructions: >-
         Three kinds of skill live here. Lock-recorded derived copies (every
         skill named in skills-lock.json: ship, cloud-ship, setup-skills,
-        tdd, code-review, writing-for-agents, triage, find-docs, show-me)
+        update-skills, setup-harness, tdd, code-review, writing-for-agents, triage, find-docs, show-me)
         are installed verbatim by the skills CLI and never hand-edited — do
         not request content changes on them; a refresh replacing them
         wholesale is expected and mechanical.
