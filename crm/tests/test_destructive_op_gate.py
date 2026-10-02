@@ -516,6 +516,8 @@ class TestProseNamingAVerb:
             f"git -c alias.x='!true\n{_ROLE_DELETE}\n' x",
             f"cat <<EOF |\n{_ROLE_DELETE}\nEOF\nsh",
             f"cat() {{ bash; }}\ncat <<EOF\n{_ROLE_DELETE}\nEOF",
+            f"function cat {{ bash; }}\ncat <<EOF\n{_ROLE_DELETE}\nEOF",
+            f"cat <<EOF $(\n{_ROLE_DELETE}\n)\nbody\nEOF",
             # A delimiter the view cannot read keeps its body live.
             f'cat <<"E"OF\nx\nEOF\n{_ROLE_DELETE}\nE',
             f"cat <<\\EOF\nEOF\n{_ROLE_DELETE}\n\\EOF",

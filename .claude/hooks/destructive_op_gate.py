@@ -253,8 +253,9 @@ _INERT = {"cat", "tee", "gh", "echo", "printf", "cd", "mkdir"}
 
 # A function or alias defined in the same command can make an `_INERT` name
 # run code; such a command gets no prose view at all.
+_INERT_NAMES = "|".join(sorted(_INERT))
 _SHADOWED = re.compile(
-    r"\b(?:function\s+|alias\s+)?(?:" + "|".join(sorted(_INERT)) + r")\s*(?:\(\s*\)|=)"
+    rf"\bfunction\s+(?:{_INERT_NAMES})\b|\b(?:alias\s+)?(?:{_INERT_NAMES})\s*(?:\(\s*\)|=)"
 )
 
 # What may precede a `#` that starts a comment.
@@ -309,7 +310,8 @@ def _shell_view(command: str) -> str:
     stack: list[str] = []
     starts = [0]
     line_words: set[str] = set()  # command words of this line's segments
-    heredocs: list[tuple[str, bool, int]] = []  # (terminator, quoted, offset)
+    # (terminator, quoted, offset, stack depth at the opener)
+    heredocs: list[tuple[str, bool, int, int]] = []
 
     def record() -> None:
         line_words.add(_command_word("".join(out[starts[-1] :])))
@@ -363,7 +365,7 @@ def _shell_view(command: str) -> str:
             i = n if end == -1 else end
             continue
         elif m := _HEREDOC.match(command, i):
-            heredocs.append((m.group(2), bool(m.group(1)), i))
+            heredocs.append((m.group(2), bool(m.group(1)), i, len(stack)))
             out.append(m.group(0))
             i = m.end()
             continue
@@ -371,7 +373,10 @@ def _shell_view(command: str) -> str:
             record()
             if c == "\n":
                 line_start = command.rfind("\n", 0, i) + 1
-                pending = [(w, q) for w, q, at in heredocs if at >= line_start]
+                # A body starts only at a newline in the opener's own context,
+                # never one inside a substitution still open on that line.
+                depth = len(stack)
+                pending = [(w, q) for w, q, at, d in heredocs if at >= line_start and d == depth]
                 end = _heredoc_end(command, i + 1, pending) if pending else None
                 # A pipeline continued past the body (`cat <<EOF |`) or an
                 # arithmetic `<<` makes the opener line unreadable here.
