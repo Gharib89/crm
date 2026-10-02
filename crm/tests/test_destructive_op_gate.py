@@ -440,6 +440,56 @@ class TestSeparatorAndPrefixBypass:
         assert r.returncode == 0, r.stderr
 
 
+class TestProseNamingAVerb:
+    """Text the shell never executes only names a verb (#1011): heredoc bodies,
+    quoted arguments of other commands. It must not trip the gate.
+    """
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            f"cat > brief.md <<EOF\nThe gate blocks\ncrm security delete-role {_ROLE_ID}\nEOF",
+            f"cat <<'EOF' > brief.md\ncrm security delete-role {_ROLE_ID}\nEOF\ngit status",
+            f"cat <<-EOF\n\tcrm security delete-role {_ROLE_ID}\n\tEOF",
+        ],
+    )
+    def test_heredoc_body_naming_verb_allowed(self, cmd):
+        r = _run(cmd)
+        assert r.returncode == 0, f"false positive on: {cmd!r}\n{r.stderr}"
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            f'gh issue create --body "Steps:\ncrm security delete-role {_ROLE_ID}\nis blocked"',
+            f'gh issue create --body "The gate (crm security delete-role {_ROLE_ID}) fires"',
+            f"gh issue comment 1 --body 'see; crm security delete-role {_ROLE_ID}'",
+            f"# don't run this\ngh issue create --body 'x\ncrm security delete-role {_ROLE_ID}'",
+        ],
+    )
+    def test_quoted_argument_naming_verb_allowed(self, cmd):
+        r = _run(cmd)
+        assert r.returncode == 0, f"false positive on: {cmd!r}\n{r.stderr}"
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            f"crm security delete-role {_ROLE_ID}",
+            f"cd /tmp && crm security delete-role {_ROLE_ID}",
+            # Real invocations around prose still match.
+            f"cat <<EOF\nprose\nEOF\ncrm security delete-role {_ROLE_ID}",
+            f"bash <<EOF\ncrm security delete-role {_ROLE_ID}\nEOF",
+            f"cat <<EOF | sh\ncrm security delete-role {_ROLE_ID}\nEOF",
+            f'X="$(crm security delete-role {_ROLE_ID})"',
+            f'echo "`crm security delete-role {_ROLE_ID}`"',
+            f"# don't run this\ncrm security delete-role {_ROLE_ID}",
+        ],
+    )
+    def test_real_invocation_still_blocked(self, cmd):
+        r = _run(cmd)
+        assert r.returncode == BLOCK, f"gate bypassed: {cmd!r}\n{r.stdout}"
+        assert "delete-role" in r.stderr
+
+
 class TestStdinParsing:
     def test_ignores_non_bash_tool(self):
         r = _run("crm metadata delete-entity new_widget", tool_name="Read")

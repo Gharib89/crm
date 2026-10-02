@@ -236,6 +236,90 @@ def _split_segments_lex(command: str) -> list[list[str]]:
     return segments
 
 
+# Characters the raw split cuts on. Inside quoted literal text they are plain
+# text, so `_shell_view` blanks them there.
+_SEPARATOR_CHARS = set(";|&()\n\r`")
+
+# A heredoc opener: `<<WORD`, `<<-WORD`, `<<'WORD'`, `<<"WORD"`. A `<<<`
+# here-string is not one.
+_HEREDOC = re.compile(r"(?<!<)<<-?[ \t]*(['\"]?)([^\s;&|<>()'\"]+)\1")
+
+# A heredoc fed to one of these runs its body as commands, so the body stays.
+_SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
+
+
+def _shell_view(command: str) -> str:
+    """Return `command` reduced to the text the shell runs as commands (#1011).
+
+    Heredoc bodies are dropped (kept when the opener line names a shell), `#`
+    comments are dropped, and separator characters inside quoted literal text
+    are blanked, so prose that only names a destructive verb never splits into
+    a segment of its own. `$(...)` and backtick substitutions stay live, inside
+    double quotes too: the shell runs them. Both splitters read this view.
+    """
+    out: list[str] = []
+    stack: list[str] = []  # open contexts: "'", '"', "$(", "`"
+    heredocs: list[str] = []  # terminators opened on the current line
+    i, n = 0, len(command)
+    while i < n:
+        c = command[i]
+        top = stack[-1] if stack else ""
+        if top == "'":
+            if c == "'":
+                stack.pop()
+            elif c in _SEPARATOR_CHARS:
+                c = " "
+        elif c == "\\":
+            out.append(command[i : i + 2])
+            i += 2
+            continue
+        elif top == '"' and c == '"':
+            stack.pop()
+        elif command.startswith("$(", i):
+            stack.append("$(")
+        elif c == "`":
+            if top == "`":
+                stack.pop()
+            else:
+                stack.append("`")
+        elif top == '"':
+            if c in _SEPARATOR_CHARS:
+                c = " "
+        elif c in "'\"":
+            stack.append(c)
+        elif c == ")" and top == "$(":
+            stack.pop()
+        elif c == "#" and (not out or out[-1][-1:] in " \t\n;|&("):
+            end = command.find("\n", i)
+            i = n if end == -1 else end
+            continue
+        elif m := _HEREDOC.match(command, i):
+            heredocs.append(m.group(2))
+            out.append(m.group(0))
+            i = m.end()
+            continue
+        elif c == "\n" and heredocs:
+            opener = command[command.rfind("\n", 0, i) + 1 : i]
+            words = {os.path.basename(w) for w in re.split(r"[\s;&|()]+", opener)}
+            if not words & _SHELLS:
+                # Skip each body through its terminator line, in opening order.
+                i += 1
+                for word in heredocs:
+                    while i < n:
+                        end = command.find("\n", i)
+                        end = n if end == -1 else end
+                        line, i = command[i:end], end + 1
+                        if line.strip() == word:
+                            break
+                heredocs = []
+                out.append("\n")
+                continue
+            heredocs = []
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
 # --- git discipline gates (CLAUDE.md "Branch & worktree discipline") ---------
 
 # `git add` arguments that blanket-stage instead of naming explicit paths.
@@ -407,9 +491,11 @@ def main() -> int:
     # prefix (`/usr/bin/crm ...`) is still caught. --yes is scoped to its own
     # segment. Both segmentations are checked (#675): the raw split covers
     # backtick substitution, the quote-aware split covers operators inside
-    # quoted arguments that shred the raw pieces.
-    lex_segments = _split_segments_lex(command)
-    for segment in _split_segments(command) + lex_segments:
+    # quoted arguments that shred the raw pieces. Both read the shell view, so
+    # heredoc bodies and quoted prose that only name a verb never match (#1011).
+    view = _shell_view(command)
+    lex_segments = _split_segments_lex(view)
+    for segment in _split_segments(view) + lex_segments:
         label = _destructive_match(segment)
         if label is not None and not _confirm_present(segment):
             sys.stderr.write(
