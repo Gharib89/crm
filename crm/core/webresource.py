@@ -296,8 +296,8 @@ def find_webresource(backend: D365Backend, name: str) -> dict[str, Any] | None:
 
     Unlike :func:`get_webresource` this returns ``None`` (not a raise) when the
     name is unknown and the ``$select`` carries the base64 ``content`` so apply can
-    diff the live body against the spec's file. A forced-real read (``get_collection``
-    runs even under dry-run), so a dry-run still reports create-vs-update correctly.
+    diff the live body against the spec's file. The read executes even under
+    dry-run (the reads-execute rule), so a dry-run still reports create-vs-update correctly.
     """
     return backend.find_one(
         "webresourceset", "name", name, "webresourceid,name,displayname,webresourcetype,content"

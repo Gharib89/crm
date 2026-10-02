@@ -4,7 +4,7 @@ This module is the **only** place in the harness that talks HTTP to the server.
 Every other core module asks the backend to issue a request and gets back the
 parsed JSON or a raised `D365Error`.
 
-Section map, in file order:
+Section map:
 
 - Errors: `D365Error`, `classify_d365_error`.
 - Profiles: `validate_profile_name`, `ConnectionProfile` (validated against
@@ -19,6 +19,8 @@ Section map, in file order:
 - Responses and retries: `_parse_response`; `_compute_delay`,
   `_is_response_retryable`, `_customization_lock_code`,
   `_is_transport_retryable`, `_parse_retry_after`, `_resolve_retry_max`.
+- Impersonation and env-driven request knobs: `_resolve_caller_id`,
+  `_resolve_caller_object_id`, `_resolve_guid_env`, `_resolve_bool_env`.
 - `$batch` wire format: `_assemble_batch_body`, `_parse_batch_response`.
 - Helpers: `as_dict`, `odata_literal`, `normalize_guid`.
 """
@@ -181,7 +183,7 @@ class ConnectionProfile:
     username: str
     api_version: str = "v9.2"
     verify_ssl: bool = True
-    auth_scheme: str = "ntlm"  # ntlm | kerberos | negotiate | oauth | adfs
+    auth_scheme: str = "ntlm"  # one of AUTH_SCHEMES
     tenant_id: str | None = None  # oauth: AAD tenant (non-secret)
     client_id: str | None = None  # oauth: app-registration id (non-secret)
     adfs_url: str | None = None  # adfs: STS override; None = discover from the org

@@ -920,8 +920,8 @@ def _resolve_plugintype_id(
 def _resolve_serviceendpoint_id(backend: D365Backend, name: str) -> str:
     """Resolve a service endpoint id by exact name.
 
-    Forces a real read even under dry-run (mirrors the other step-handler
-    resolvers — a step is POSTed only after its bound id is known).
+    The read executes even under dry-run (the reads-execute rule, as in the
+    other step-handler resolvers — a step is POSTed only after its bound id is known).
     """
     sid = backend.resolve_id_by_name(
         "serviceendpoints", filter_field="name", id_field="serviceendpointid", value=name
@@ -988,7 +988,7 @@ def _update_assembly_content(
 def _resolve_id_by_name(backend: D365Backend, name: str) -> str:
     """Resolve a plug-in assembly's id by exact name.
 
-    Forces a real read even under dry-run (a PATCH preview needs the real id;
+    The read executes even under dry-run (the reads-execute rule: a PATCH preview needs the real id;
     mirrors webresource._resolve_id_by_name).
     """
     pid = backend.resolve_id_by_name(
