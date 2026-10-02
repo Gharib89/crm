@@ -7,6 +7,7 @@
 - [Phase 2: adjacent finds](#phase-2-adjacent-finds)
 - [Verify the spec's external-system claims before building on them](#verify-the-specs-external-system-claims-before-building-on-them)
 - [Phase 1 detail: spec precedence](#phase-1-detail-spec-precedence)
+- [Phase 1 detail: anchors the issue cites](#phase-1-detail-anchors-the-issue-cites)
 
 ## Phase 2: classify, then implement test-first
 
@@ -91,3 +92,24 @@ latest authoritative spec wins and the body's original acceptance criteria no
 longer bind. Note it in the deviations log, and expect a reviewer reading the
 stale body to flag "missing" requirements; reject those in phases 4 and 7 with
 the comment as evidence.
+
+## Phase 1 detail: anchors the issue cites
+
+An issue that names a file, a heading or a step number in another skill or
+file records what its author believed when writing it. Grep each one in the
+worktree before planning, because a run that builds on a wrong anchor spends
+its reviewer rounds unwinding it. Where the tree contradicts one, the tree
+wins:
+
+1. Rewrite the issue section the anchor sits in to match the tree with
+   `update-issue-body <issue> --section <name> --body-file <path>`, the
+   original section kept below the rewrite in a column-0 `<details>` block. The
+   mechanic carries that `<details>` record through every later write to the
+   section, so a later file holds the new content alone. An anchor in
+   the preamble, which the mechanic leaves alone, is restated in the section
+   whose criteria build on it.
+2. Build against the rewritten criteria, and log the substitution in the
+   deviations log.
+
+A contradiction that leaves the issue nothing to build is the `mis-specified`
+stop instead.

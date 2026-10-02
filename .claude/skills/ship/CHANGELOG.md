@@ -7,6 +7,42 @@ released version. See
 
 <!-- version list -->
 
+## v0.16.0 (2026-10-02)
+
+### Features
+
+- **ship**: Section surgery keeps <details> records intact
+  ([#450](https://github.com/Gharib89/skills/pull/450),
+  [`ff1b53a`](https://github.com/Gharib89/skills/commit/ff1b53a60749387a90836230484359d91e0db6e9))
+
+
+## v0.15.2 (2026-10-02)
+
+### Documentation
+
+- Name the lock as the skill inventory, group the glossary, and hold hard-wrapped prose to 80
+  columns ([#447](https://github.com/Gharib89/skills/pull/447),
+  [`97cd290`](https://github.com/Gharib89/skills/commit/97cd290a2908d0b96d1b39b7766bbb667ebf11af))
+
+
+## v0.15.1 (2026-10-02)
+
+### Bug Fixes
+
+- **ship**: Request-review reads a round in flight as landed
+  ([#446](https://github.com/Gharib89/skills/pull/446),
+  [`a2146b0`](https://github.com/Gharib89/skills/commit/a2146b09bdee6386e53af3307d1dadf423793c45))
+
+
+## v0.15.0 (2026-10-02)
+
+### Features
+
+- The lock decides the skill set, and each check and tool message points to the way forward
+  ([#443](https://github.com/Gharib89/skills/pull/443),
+  [`4af91bb`](https://github.com/Gharib89/skills/commit/4af91bbc5c913ef958d6d591e961133dfc279fbf))
+
+
 ## v0.14.2 (2026-09-30)
 
 ### Bug Fixes

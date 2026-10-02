@@ -10,10 +10,16 @@
 # repo's (ADR 0004). Its host is probed first, and every exit 1 under it, the
 # probe's or a refused write's, carries the command to run by hand as `command`.
 #
+# A `<details>` block at column 0 is a `<details>` record, the original phase 1
+# keeps below a rewrite: its `## ` lines are not sections, and a write to the
+# section holding it keeps it, verbatim, below the new content (`ship_inert` in
+# _lib.sh). A body file ending inside an open one is refused like an open fence.
+#
 # Section-only by design: no whole-body mode and no preamble, so two runs
 # editing different sections of one issue cannot clobber each other. Phase 9
 # runs it after `merge` has verified the merge, so nothing reaches the issue for
-# code that has not landed.
+# code that has not landed; phase 1 runs it before any code, to rewrite a
+# section whose anchor the tree contradicts, which describes no code at all.
 #
 # Trailing newlines are normalized: the body is read without them and written
 # ending in exactly one, so a byte diff of a read-back against the body before
@@ -49,7 +55,7 @@ done
 [ -n "$section" ] && [ -f "$file" ] || ship_tooling "$usage"
 content=$(cat "$file") || ship_tooling "cannot read $file"
 unclosed=$(ship_fence_unclosed "$content")
-[ -z "$unclosed" ] || ship_tooling "body file ends inside an unclosed fence ($unclosed)"
+[ -z "$unclosed" ] || ship_tooling "body file ends inside an unclosed fence or <details> record ($unclosed)"
 ship_load_host "$repo"
 [ -z "$repo" ] || ship_reach_repo "$repo" "$SHIP_SCRIPTS/update-issue-body.sh" "${argv[@]}"
 

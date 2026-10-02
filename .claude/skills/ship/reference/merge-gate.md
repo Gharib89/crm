@@ -132,12 +132,13 @@ section, because `update-issue-body` replaces nothing smaller.
 A drafted section is written after the merge and never before, so no issue
 records code that has not landed: once `merge` answers `merged: true`, and
 before `cleanup`, run `update-issue-body <n> --section "<section>" --body-file
-<draft>` per tracker draft, `<section>` verbatim from the heading `read-issue` returned.
-Re-read the issue first: a section that no longer matches its base is
+<draft>` per tracker draft, `<section>` verbatim from the heading `read-issue`
+returned. Re-read the issue first: a section that no longer matches its base is
 redrafted, posted, and written on the human's explicit "yes". `created: true`
 for a section the draft meant to replace means the name missed: re-run with the
 returned heading, and name the stray section as a Ship defect. Exit 1 means
-nothing was written: a Ship defect for the summary, with the tracker draft attached.
+nothing was written: a Ship defect for the summary, with the tracker draft
+attached.
 
 The unattended lane runs no merge, so under each draft the summary gives the
 command a human runs after merging, from a file they save the draft to,
@@ -172,10 +173,10 @@ A Ship defect draft reaches the source repo on the human's word alone,
 and "merge" is not that word: it approves the PR, not publishing the run's
 context to a public repo. On "file defects", or a word naming one draft, run
 `file-issue --repo Gharib89/skills --title "<title>" --body-file <draft> --label
-needs-triage` per Ship defect draft and put its answer on the row: the number filed, the
-candidates it answered with instead, each read the way phase 2 reads one, or,
-on exit 1 with a `command`, that command verbatim for the human to run where
-the write succeeds. Before or after the merge, either order holds.
+needs-triage` per Ship defect draft and put its answer on the row: the number
+filed, the candidates it answered with instead, each read the way phase 2 reads
+one, or, on exit 1 with a `command`, that command verbatim for the human to run
+where the write succeeds. Before or after the merge, either order holds.
 
 ## Unattended: post to the PR, then return
 

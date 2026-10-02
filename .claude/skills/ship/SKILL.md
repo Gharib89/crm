@@ -1,12 +1,9 @@
 ---
 name: ship
-description: >-
-  Drive one tracker issue to a merge-ready PR in a single run, stopping only at
-  the human merge gate. Use when the user wants to ship an issue, or to run the
-  unattended lane.
+description: Drive one tracker issue to a merge-ready PR in a single run, stopping only at the human merge gate. Use when the user wants to ship an issue, or to run the unattended lane.
 argument-hint: "[issue-number] [--unattended]"
 metadata:
-  version: 0.14.2
+  version: 0.16.0
   profile-schema: 3
   composes: mattpocock/skills#d81f3a183412e71a5b1e84ca21bc1a35eea03a60:tdd mattpocock/skills#c55ee46073ed923f86ce59a5eb3b6d895095d1b7:writing-for-agents mattpocock/skills#c55ee46073ed923f86ce59a5eb3b6d895095d1b7:code-review upstash/context7#e275a848a420e0d11c2822f61201ee005bfd1133:find-docs humanlayer/skills#ca7c8088db69e315a8b2deea43820270457f8f3c:show-me
 ---
@@ -78,9 +75,9 @@ once its `Done when:` holds, not before.
 mechanic wraps. **Every host write, and every gating read, goes through a
 mechanic**: one no mechanic performs is a **Ship defect** for the merge
 summary's `Ship defects:` row, never a hand-rolled call; merge-gate.md says
-where its draft goes. [reference/mechanics.md](reference/mechanics.md) carries the rule
-in full, the informational reads it admits, the mechanic each phase runs and the
-contract they share, `--help` included.
+where its draft goes. [reference/mechanics.md](reference/mechanics.md) carries
+the rule in full, the informational reads it admits, the mechanic each phase
+runs and the contract they share, `--help` included.
 
 **0 · Isolate.** [reference/isolate.md](reference/isolate.md) carries what
 preflight proves and refuses, the profile it loads and why the worktree is made
@@ -96,14 +93,14 @@ printed, and you **commit as you go**, because the PR needs real commits. A
 **Done when:** `preflight` answered `ok: true`, `isolate` printed its path, and
 any `## Worktree` `Bootstrap:` ran green.
 
-**1 · Understand.** From the `read-issue` result, derive what success looks like
-and write it into the Run file as criteria a later phase can check. A later
-authoritative comment supersedes the body (**spec precedence**,
-[reference/implement.md](reference/implement.md)). Too vague to plan: stop
+**1 · Understand.** Too vague to plan from the `read-issue` result: stop
 `ambiguous`, with no claim taken. Otherwise **claim before any work**:
-`manage-issue <issue> take`. The claim holds until merge; every stop after this
-point follows the stop table.
-**Done when:** `claim: taken`, and the Run file carries the success criteria.
+`manage-issue <issue> take`, held until merge; later stops follow the stop
+table. Then **grep each anchor** the issue cites, rewriting one the tree
+contradicts ([implement.md](reference/implement.md)), and only then write what
+success looks like into the Run file as criteria a later phase can check; a
+later authoritative comment supersedes the body (**spec precedence**).
+**Done when:** `claim: taken`, anchors grepped, the Run file holds the criteria.
 
 **2 · Implement.** [reference/implement.md](reference/implement.md) carries the
 classes, the TDD override, external-claim probes, the judgment/execution split
@@ -134,11 +131,12 @@ and the small lane skip this phase.
 **4 · Sync docs, then self-review.** Docs first, so the review reads the docs
 edits as part of the diff. **Docs-sync fires only when the public surface or
 observable behavior changed**: bring the profile's `Targets:` in line, folding
-the edits into this change, a tracker issue's as a [drafted section](reference/merge-gate.md#a-tracker-issue-on-targets).
-Skip it for internal refactors, a bugfix restoring documented behavior,
-test-only or tooling changes, and comments, and say so in one line at the merge
-gate. **The `writing-for-agents` pass has a trigger of its own**, firing even
-where docs-sync is skipped: whenever the diff touches a target on the profile's
+the edits into this change, a tracker issue's as a
+[drafted section](reference/merge-gate.md#a-tracker-issue-on-targets). Skip it
+for internal refactors, a bugfix restoring documented behavior, test-only or
+tooling changes, and comments, and say so in one line at the merge gate.
+**The `writing-for-agents` pass has a trigger of its own**, firing even where
+docs-sync is skipped: whenever the diff touches a target on the profile's
 `Agent-facing:` line, at the judgment tier, in the `writing` scratch directory,
 over every agent-facing file in the diff. Human prose takes the mechanical pass.
 With docs-sync's edits landed, load `code-review`, then dispatch this pass and
@@ -163,9 +161,10 @@ is still right. A valid finding outside the issue is an adjacent find. Then read
 the diff yourself against the depth checks in the coding-standards file the
 Standards axis reads, by their leading words: a vocabulary the change extends, a
 rule-shaped prose change, new pattern-matching code, a new test run with its fix
-reverted, a fix landed after review, and any the repo adds beside them. Reviewer rounds find these otherwise, serially, at the cost
-of most of a run's wall time, and the reverted-fix one escapes them entirely.
-This self-review plus green CI is the review gate.
+reverted, a fix landed after review, and any the repo adds beside them. Reviewer
+rounds find these otherwise, serially, at the cost of most of a run's wall time,
+and the reverted-fix one escapes them entirely. This self-review plus green CI
+is the review gate.
 **Done when:** every report that fired has its Report file on disk and its path
 in the Run file, every finding carries a disposition, and docs-sync landed or is
 skipped in one line.
@@ -240,8 +239,8 @@ owns the step, and a step no mechanic re-does is a Ship defect for the summary.
 Unattended: `comment-pr <pr> --body-file` with the summary, and return.
 **Done when:** attended, `merge`, every `update-issue-body` and `cleanup` exited
 0 with no `false`, and every Ship defect draft is filed, answered with
-candidates, carries its `command` on the row, or was declined; unattended, `comment-pr` posted and the run returned the PR
-link.
+candidates, carries its `command` on the row, or was declined; unattended,
+`comment-pr` posted and the run returned the PR link.
 
 ## The stops
 

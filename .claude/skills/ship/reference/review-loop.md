@@ -88,8 +88,8 @@ observed where no round was admitted.
   finding contradicts it, and cite it when declining. A valid finding outside
   the issue is an adjacent find.
 - **Batch fixes into one push per round.** A fix to a rule goes to every copy of
-  that rule in the same batch: grep the phrase before you push and read each hunk
-  back.
+  that rule in the same batch: grep the phrase before you push and read each
+  hunk back.
 - **Reply in the thread**: `reply-thread <pr> <thread> --body-file` for every
   `replied: false` thread, `fixed in <sha>` or the decline and its reason. Once
   every thread carries a reply, run the block's `Resolve:` per thread; `Resolve:

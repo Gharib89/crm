@@ -4,6 +4,7 @@
 # (docs/agents/harness.md); owned by the repo from here.
 #
 #   scripts/local-gate.sh [--small <node>] [--base <ref>]
+#   --help or -h prints that usage line and exits 0, before any check runs.
 #
 # Contract (ship's local-gate contract, the same in every repo):
 #   stdout: one JSON object, {"verdict","base","lane","gates":{<name>:<status>}}
@@ -25,6 +26,7 @@ while [ $# -gt 0 ]; do
   case $1 in
     --small) [ $# -ge 2 ] || { printf '{"error":"--small needs a test node"}\n'; exit 2; }; small=$2; shift 2 ;;
     --base)  [ $# -ge 2 ] || { printf '{"error":"--base needs a ref"}\n'; exit 2; }; base=$2; shift 2 ;;
+    -h|--help) echo 'usage: scripts/local-gate.sh [--small <node>] [--base <ref>]'; exit 0 ;;
     *) printf '{"error":"unknown flag: %s"}\n' "$1"; exit 2 ;;
   esac
 done

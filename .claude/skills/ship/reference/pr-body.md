@@ -35,10 +35,10 @@ write into. Every variant carries:
 - **`## Needs attention`**: every issue the run filed or linked and every Ship
   defect it met, `None.` when there are neither.
 - **`## Verification`**: one line per applicable verification in the merge
-  summary's `Verification` row format, or `None applicable: <reason>`, with three
-  such reasons and no fourth: `class docs`, `small lane`, and a full-lane change
-  where no `Applies when:` line matches (a profile listing zero verifications
-  is that case).
+  summary's `Verification` row format, or `None applicable: <reason>`, with
+  three such reasons and no fourth: `class docs`, `small lane`, and a full-lane
+  change where no `Applies when:` line matches (a profile listing zero
+  verifications is that case).
 - **`## Review`**, one placeholder line per reviewer at open, filled at the
   phase-7 exit in the fixed shape [review-loop.md](review-loop.md) carries.
 - **A count with the command that produced it**, wherever the body measures the
@@ -116,12 +116,14 @@ deviations log.
 and writes its `## <name>` line itself, so the file holds the content alone.
 `--preamble` replaces everything above the first heading, where the closing line
 sits, carrying the old closing line over when the new content lacks one; a body
-with no heading is preamble entire.
+with no heading is preamble entire. A column-0 `<details>` block is a
+`<details>` record, whose rule [mechanics.md](mechanics.md#section-surgery)
+states.
 
 **Every title or body write to an open PR ends with `read-pr <pr>`**, whose
 `## ` headings are checked against the ones the body owes: a section a rewrite
 swallowed is missing there, and that is the only place a swallowed `##
 Attribution` shows while the PR is open. `update-pr-body`'s `sections` list is
-the same check one write earlier. Read the headings fence-aware: a Change
-outline fence over a markdown change carries `## ` lines of its own, which are
-example text and not sections.
+the same check one write earlier. Read the headings fence- and record-aware: a
+Change outline fence over a markdown change carries `## ` lines of its own, and
+so does a `<details>` record, and neither's are sections.

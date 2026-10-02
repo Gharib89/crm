@@ -24,13 +24,14 @@ is kept with its work.
 ## Admission
 
 Every not-actionable reason is collected into `reasons`, each a row of
-`SKILL.md`'s stop table, named in the words the table uses. Admission by label is
-`ready-for-agent` always and `ready-for-human` in an attended run only; anything
-else is `not triaged`. An assignee, your own identity included, is `already
-claimed`: stale-claim recovery is a human unassigning by hand. `existing PR` is
-a live PR whose body **closes** this issue or whose head branch ends in
-`-<issue>`. PRs that merely mention it come back as `mentions[]`, and live
-cross-references as `mentioned_by[]` rows: context for phase 1, no kind of stop.
+`SKILL.md`'s stop table, named in the words the table uses. Admission by label
+is `ready-for-agent` always and `ready-for-human` in an attended run only;
+anything else is `not triaged`. An assignee, your own identity included, is
+`already claimed`: stale-claim recovery is a human unassigning by hand.
+`existing PR` is a live PR whose body **closes** this issue or whose head branch
+ends in `-<issue>`. PRs that merely mention it come back as `mentions[]`, and
+live cross-references as `mentioned_by[]` rows: context for phase 1, no kind of
+stop.
 
 ## The worktree
 
