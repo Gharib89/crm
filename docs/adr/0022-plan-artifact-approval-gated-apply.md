@@ -60,7 +60,7 @@ exactly true**.
   unknown/newer plan-format version → refuse.
 - **No `crm diff` command.** Spec-vs-live drift is already
   `export-spec` → `--dry-run apply` (ADR 0019, #611), and the glossary bans
-  "diff" in favour of **drift report** (CONTEXT.md). Whole-org diffing beyond
+  "diff" in favour of **drift report** (GLOSSARY.md). Whole-org diffing beyond
   the apply spec surface stays out of scope, as ADR 0019 fenced it.
 
 ## Why record this

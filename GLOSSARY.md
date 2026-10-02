@@ -14,6 +14,16 @@ The single result a command produces via [`CLIContext.emit`](crm/cli.py) — eit
 a human rendering or, under `--json`, the `{ok, data?, error?, meta?}` object.
 _Avoid_: response, output blob.
 
+**Human render**:
+The emit envelope's non-`--json` path: [`CLIContext.emit`](crm/cli.py)
+hands `data` to `ReplSkin` ([`crm/utils/repl_skin.py`](crm/utils/repl_skin.py)) for
+tables, key/value status lines and warnings; values are truncated by `_short_repr`
+in [`crm/commands/_helpers/rendering.py`](crm/commands/_helpers/rendering.py) and
+long lists capped with a "more items" line; then `CLIContext.hint` may print a
+one-time next-step hint, its text keyed in `HINTS`
+([`crm/core/hints.py`](crm/core/hints.py)). None of it reaches `--json` output.
+_Avoid_: pretty output.
+
 **Data payload**:
 The `data` member of the emit envelope. A *curated, CLI-owned* shape
 ([ADR 0008](docs/adr/0008-cli-output-contract.md)) — not a
@@ -53,7 +63,9 @@ Optional, additive detail a verb layers onto an operational failure — a fix-it
 `hint` (appended to the error text; mirrored to `meta.hint` under `--json`)
 and/or extra `meta` keys derived from the caught `D365Error`. The canonical
 envelope is *reserved*: `meta`'s `{status, code, category, retryable}` and the
-raw error text always come from the `D365Error` itself and can never be
+raw error text always come from the `D365Error` itself (`category` and
+`retryable` from `classify_d365_error` in
+[`crm/utils/d365_backend.py`](crm/utils/d365_backend.py)) and can never be
 overwritten — the [`d365_errors` seam](crm/commands/_helpers/errors.py) raises if
 an enrichment names a reserved key. Enrichment that costs extra reads self-gates
 on `--json` at the caller (the *when-to-pay* gate), so the human render skips it.

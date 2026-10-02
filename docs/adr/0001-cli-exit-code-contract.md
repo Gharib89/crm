@@ -9,7 +9,7 @@ command failures historically exited `0` (`CLIContext.emit` only printed). We ma
 `emit(ok=False)` raise `click.exceptions.Exit(1)`, fixing the contract to: `0` =
 success, `1` = operational failure (D365 server error, in-command validation, or a
 declined confirmation), `2` = Click usage error (unknown flag / bad parameter,
-unchanged). See [CONTEXT.md](../../CONTEXT.md) for the term definitions.
+unchanged). See [GLOSSARY.md](../../GLOSSARY.md) for the term definitions.
 
 ## Considered options
 

@@ -47,7 +47,7 @@ command owns all method logic and the notice can never drift from it.
   upgrade command exits non-zero, the command emits an `ok:false` envelope (exit 1,
   so CI sees the failure) that still carries the same `data` fields plus the
   `error` message. `install_method` joins the CLI contract vocabulary
-  (`CONTEXT.md`). `--check` is unchanged and method-agnostic.
+  (`GLOSSARY.md`). `--check` is unchanged and method-agnostic.
 - **Post-upgrade skill/completion refresh** — after a successful uv/pipx reinstall,
   the running process is the pre-reinstall package (stale, sometimes already
   removed), so the freshly installed `crm` is re-invoked via a guarded internal

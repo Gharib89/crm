@@ -17,7 +17,7 @@ clientdata #37, solution clone #166 — orbits the same boundary) and, so far,
 every observed "Web API can't do it" case was a misdiagnosis: the
 `0x80045003`/`0x80045004` errors that motivated #164 came from targeting an
 **activation record** instead of its **workflow definition** (see
-[CONTEXT.md](../../CONTEXT.md)); the definition accepts the plain OData state
+[GLOSSARY.md](../../GLOSSARY.md)); the definition accepts the plain OData state
 PATCH and delete.
 
 ## Considered options

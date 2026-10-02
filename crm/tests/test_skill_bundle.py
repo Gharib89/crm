@@ -8,12 +8,15 @@ The static-conformance rules (self-containment, internal link integrity, thinnes
 budgets, frontmatter contract) live in the dedicated skill-lint gate
 (``skill_lint.py`` + ``test_skill_lint_gate.py``, #889 / ADR 0028); what remains
 here are the guards that gate has no view of: the plugin manifest, the internal
-marking of dev skills, the exact expected-reference set, and #183 content routing.
+marking of dev skills, the exact expected-reference set, #183 content routing, and
+two cross-file consistency checks (#1009).
 """
 
 from __future__ import annotations
 
+import importlib.util
 import json
+import re
 from pathlib import Path
 
 SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
@@ -24,6 +27,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 PLUGIN_MANIFEST = REPO_ROOT / ".claude-plugin" / "plugin.json"
 INTERNAL_SKILLS_DIR = REPO_ROOT / ".claude" / "skills"
 SKILLS_LOCK = REPO_ROOT / "skills-lock.json"
+SYNC_SKILLS = REPO_ROOT / "scripts" / "sync-skills.py"
+PRE_COMMIT_CONFIG = REPO_ROOT / ".pre-commit-config.yaml"
+ADR_DIR = REPO_ROOT / "docs" / "adr"
 
 EXPECTED_REFERENCES = {
     "setup.md",
@@ -192,3 +198,36 @@ def test_router_routes_import_failures_to_solutions():
     assert "failed import" in row, (
         f"solutions.md routing row lacks import-failure investigation: {row!r}"
     )
+
+
+def test_project_native_matches_pre_commit_exclude():
+    """#1009: the project-native skills are named twice, in sync-skills.py's
+    PROJECT_NATIVE (never vendored over) and as the only skills the top-level
+    pre-commit `exclude` leaves linted. A skill added to one and not the other is
+    either overwritten by a sync or silently skips the hooks. The real pattern is
+    compiled, so a later alternative re-excluding a skill is caught too.
+    """
+    spec = importlib.util.spec_from_file_location("sync_skills", SYNC_SKILLS)
+    assert spec and spec.loader
+    sync_skills = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(sync_skills)
+    config = PRE_COMMIT_CONFIG.read_text(encoding="utf-8")
+    match = re.search(r"^exclude: (.+)$", config, re.MULTILINE)
+    assert match, "no top-level exclude in .pre-commit-config.yaml"
+    exclude = re.compile(match.group(1))
+    skills = sorted(p.parent.name for p in INTERNAL_SKILLS_DIR.glob("*/SKILL.md"))
+    assert skills, f"no skills found under {INTERNAL_SKILLS_DIR}"
+    linted = {n for n in skills if not exclude.search(f".claude/skills/{n}/SKILL.md")}
+    assert linted == sync_skills.PROJECT_NATIVE
+
+
+def test_adrs_do_not_link_context_md():
+    """#1009: CONTEXT.md was renamed GLOSSARY.md; an ADR linking the old name is a
+    dead link to the domain glossary.
+    """
+    stale = [
+        p.name
+        for p in sorted(ADR_DIR.glob("*.md"))
+        if "CONTEXT.md" in p.read_text(encoding="utf-8")
+    ]
+    assert not stale, f"ADRs still mention CONTEXT.md: {stale}"

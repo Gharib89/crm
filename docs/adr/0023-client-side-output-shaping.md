@@ -81,7 +81,7 @@ mangled or hidden). **Dry-run previews are shaped like any other data.**
   byte-identical to before. No default payload changes.
 - Agents get one shaping idiom that works on every command, shaped and unshaped
   output alike keep the one ADR 0008 extraction rule (`ok`/`data`/`meta`).
-- The contract term lives in `CONTEXT.md` (**Shaped payload**); the flags are
+- The contract term lives in `GLOSSARY.md` (**Shaped payload**); the flags are
   documented in the CLI reference and the query how-to; the crm skill teaches the
   budget idiom at spine level (project/count a fat verb before loading it).
 - `--jq` (#736) and its PyInstaller bundling (#737) extend this decision without

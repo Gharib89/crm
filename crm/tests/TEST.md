@@ -1,70 +1,56 @@
 # Test Plan & Results — crm
 
-## Test Inventory
+## Test map
 
-| File              | Type | Planned tests | External deps                              |
-|-------------------|------|---------------|--------------------------------------------|
-| `test_core.py`    | Unit | 22            | None (HTTP mocked with `requests_mock`)    |
-| `test_resilience.py` | Unit | 49            | None (HTTP mocked with `requests_mock`)    |
-| `e2e/` (per-group) | E2E  | ~95 (live, opt-in) | **Live D365** (on-prem NTLM and/or cloud OAuth), `D365_E2E=1` |
-| `test_e2e_coverage_gate.py` | Unit | 3        | None (offline — walks the lazy Click tree) |
-| `test_docs_command_examples.py` | Unit | ~850 (1 per doc example) + seam units | None (offline — `CliRunner` + `crm --json describe`) |
-| `test_cli_offline_smoke.py` | Unit | 3        | None (`CliRunner`, no live server)         |
-| `test_admin_headers.py` | Unit | 26       | None (HTTP mocked with `requests_mock`)    |
-| `test_batch.py`   | Unit | 13            | None (HTTP mocked with `requests_mock`)    |
-| `test_async_ops.py` | Unit | 7           | None (HTTP mocked with `requests_mock`)    |
+The offline suite under `crm/tests/` is named after what it exercises: a core
+module `crm/core/<m>.py` is covered by `test_<m>.py` plus feature slices
+`test_<m>_<feature>.py` (for example `test_query_paging.py`), and a command group
+`crm/commands/<g>.py` by `test_<g>_cmd.py` where the group has its own command-layer
+file. `test_core.py` is the original mixed file, one class per module. The modules
+whose tests do not follow the naming:
 
-## Unit Test Plan (`test_core.py`)
+| Module | Test files |
+|---|---|
+| `crm/utils/d365_backend.py` | `test_core.py::TestD365Backend`, `test_resilience.py` (retries, throttling, timeouts), `test_admin_headers.py`, `test_auth_scheme.py`, `test_error_taxonomy.py` (`classify_d365_error`) |
+| `crm/utils/adfs.py` | `test_adfs_auth.py` |
+| `crm/core/connection.py` | `test_core.py::TestApiVersionNegotiation`, `test_connection_core.py`, `test_oauth_auth.py` |
+| `crm/core/session.py` | `test_core.py::TestSessionStore`, `test_session_audit.py`, `test_touch_session.py`, `test_plaintext_secret.py` (stored secrets) |
+| `crm/core/entity.py` | `test_core.py::TestEntityCrud`, `::TestAlternateKeyPath`, `::TestResolveAlternateKey`, `::TestAssociate`, `test_entity_*.py` |
+| `crm/core/query.py` | `test_core.py::TestQuery`, `::TestSavedAndUserQuery`, `test_query_*.py` |
+| `crm/core/metadata.py` | `test_core.py::TestMetadata`, `::TestPicklistMetadata`, `::TestCreateEntity`, `::TestCreateVirtualEntity`, `::TestCreateEntityReadback`, `test_metadata_*.py` |
+| `crm/core/export.py` | `test_core.py::TestExport`, `::TestOrderedKeys` |
+| `crm/core/solution.py`, `solution_transfer.py` | `test_core.py::TestPublish`, `::TestExportSolutionAsync`, `::TestImportSolutionAsync`, `test_solution_*.py` |
+| `crm/core/solutionpackager.py` | `test_solution_packager.py` |
+| `crm/core/references.py` | `test_dry_run_references.py` |
+| `crm/core/spec_coercion.py` | no file of its own; exercised through `test_apply.py`, `test_plan.py`, `test_appmodule.py` |
+| `crm/core/logging_setup.py` | `test_logging.py` |
+| `crm/core/workflow.py` | `test_core.py::TestWorkflow`, `::TestWorkflowDelete`, `test_workflow_*.py` |
+| `crm/cli.py` (`CLIContext`, emit envelope) | `test_core.py::TestErrorEnvelope`, `::TestReplBackendCache`, `test_output_contract.py`, `test_exit_codes.py`, `test_cli_offline_smoke.py` |
+| `crm/commands/_helpers/` | `test_core.py::TestLoadPayload`, `test_concise_render.py` (`rendering.py`), `test_helpers_option_groups.py`, `test_helpers_package_surface.py`, `test_d365_errors_enrich.py` |
+| `crm/commands/profile.py` | `test_profile_cmd.py`, `test_profile_helpers.py`, `test_profile_name_sanitization.py`, `test_profile_url_normalization.py` |
 
-All unit tests are pure-Python with HTTP responses mocked via `requests_mock`. No
-network access. They verify URL building, header policy, query encoding, payload
-shape, and on-disk session/profile serialization.
+Gates that span the whole CLI rather than one module: `test_e2e_coverage_gate.py`
+(every D365-touching command has live e2e coverage or an `E2E_SKIP` reason),
+`test_docs_command_examples.py` (every documented `crm` example parses),
+`test_skill_bundle.py`, `test_skill_coverage_gate.py` and `test_skill_lint_gate.py`
+(the shipped skill), and `test_sync_skills.py` (the vendored dev skills).
 
-### `connection.py`
-- `test_profile_from_env_happy_path` — env vars compile into a `ConnectionProfile`.
-- `test_profile_from_env_missing_url` — raises `D365Error` mentioning `D365_URL`.
-- `test_profile_from_env_rejects_unsupported_auth` — env `D365_AUTH` other than `ntlm`/`oauth` rejected.
-- `test_resolve_credentials_requires_password` — raises on missing password.
+## Test seams
 
-### `test_oauth_auth.py` — OAuth client-credentials (issue #49)
-- Profile accepts `auth_scheme="oauth"` + `tenant_id`/`client_id` (round-trip through dict; secret never stored).
-- `profile_from_env` with `D365_AUTH=oauth` builds an oauth profile with no username; missing `D365_TENANT_ID`/`D365_CLIENT_ID` each name the var.
-- `resolve_credentials` flows `D365_CLIENT_SECRET` as the secret; missing names the var.
-- `_make_auth` oauth branch returns a bearer `AuthBase` (msal mocked); msal-absent raises naming `msal`; scope/authority derived from URL + tenant; header injected.
-- Acquire failure raises `D365Error` with app-registration guidance and does not retry.
-- Token cache written `0600` under `CRM_HOME`, reloaded on next construct, in-memory fallback when unwritable.
+Every offline test fakes D365 at one of three seams (`conftest.py` holds the
+fixtures and the canonical literals):
 
-### `d365_backend.py`
-- `test_url_for_relative_path` — joins against `api_base`.
-- `test_url_for_absolute_path_passthrough` — absolute URLs untouched.
-- `test_request_sends_required_odata_headers` — `OData-Version`, `OData-MaxVersion`, `Accept`.
-- `test_request_dry_run_returns_preview` — dry-run skips HTTP, returns request dict.
-- `test_request_error_4xx_raises_d365error` — body parsed for code/message.
+- **Core:** a real `D365Backend` with `requests_mock` at the wire, through the
+  `backend` / `dry_backend` fixtures. Exercises URL building, headers, retries and
+  error parsing.
+- **Commands:** `FakeBackend` (`conftest.py`) injected at `CLIContext.backend`
+  through `make_fake_backend` / `fake_backend` plus `inject_backend`. Bypasses the
+  transport; for command-layer tests that care only about the parsed response.
+- **CLI:** Click's `CliRunner` over the `crm` group, for parsing, exit codes and
+  the emit envelope.
 
-### `entity.py`
-- `test_retrieve_builds_select_expand_params`
-- `test_create_sets_if_none_match_and_prefer_return`
-- `test_update_sets_if_match_star_when_prevent_create`
-- `test_upsert_omits_if_match_header`
-- `test_delete_returns_id_payload`
-- `test_invalid_guid_rejected`
-
-### `query.py`
-- `test_odata_query_compiles_filter_and_top`
-- `test_odata_query_includes_annotations_prefer_header`
-- `test_fetchxml_query_url_encodes_xml_once`
-- `test_fetchxml_query_rejects_non_fetch_payload`
-
-### `metadata.py`
-- `test_list_entities_filters_custom_only`
-- `test_entity_info_uses_logical_name_path`
-- `test_list_attributes_returns_value_array`
-
-### `session.py`
-- `test_save_then_load_profile_roundtrip`
-- `test_list_profiles_alphabetical`
-- `test_session_history_trims_to_max_length`
-- `test_atomic_write_replaces_file`
+Live D365 is reached only by the opt-in e2e suite below (`-m e2e`, `D365_E2E=1`);
+the default `addopts` deselects it.
 
 ## Live E2E suite (`crm/tests/e2e/`)
 
@@ -339,134 +325,11 @@ operations missing from the first cut. All have dedicated unit tests.
 | `metadata picklist`                     | Type-aware cast: `PicklistAttributeMetadata` / `StateAttributeMetadata` / `StatusAttributeMetadata` (#229)             |
 | `solution publish-all` / `publish`      | `PublishAllXml` / `PublishXml` actions                                                                                 |
 | `service-document`                      | `GET /api/data/v9.x/` — root service document, all entity sets                                                         |
-| `.env` autoload + `CRM_*` env aliases   | Matches Contoso-style PowerShell tooling (`CRM_BASE_URL`, `CRM_USERNAME`, ...)                                            |
 | `DOMAIN\\user` parsing                  | Splits backslash-form usernames into `domain` + `username` for NTLM                                                    |
-
-## Test Results
-
-### Live run against Contoso org (2026-05-16, D365 v9.1.44.15 on `internalcrm.contoso.local`)
-
-Run command:
-```bash
-PATH="$PWD/.venv/bin:$PATH" \
-  D365_URL="http://internalcrm.contoso.local/Contoso" \
-  D365_USERNAME="contoso\crmadmin" \
-  D365_PASSWORD=*** \
-  D365_AUTH=ntlm D365_API_VERSION=v9.1 \
-  CRM_FORCE_INSTALLED=1 \
-  .venv/bin/pytest crm/tests/ -v --tb=no
-```
-
-Result: **45 passed in 5.41s** (37 unit + 8 E2E live).
-
-All E2E paths exercised against the live Contoso org:
-- `WhoAmI()` → real UserId / BusinessUnitId / OrganizationId
-- `EntityDefinitions` → 1300+ entities incl. `account`
-- contact create → get → update → delete round-trip
-- FetchXML query against `contacts`
-- subprocess `--help`, `--json connection status`, `--json metadata entities --top 3`, full contact workflow
-
-### Offline run
-
-Run command:
-```bash
-PATH="$PWD/.venv/bin:$PATH" .venv/bin/pytest crm/tests/ -v --tb=no
-```
-
-Output:
-```
-============================= test session starts ==============================
-platform linux -- Python 3.12.3, pytest-9.0.3, pluggy-1.6.0
-rootdir: /home/gharib/wip/projects/cc/crm
-plugins: requests-mock-1.12.1
-collected 35 items
-
-test_core.py::TestConnectionEnv::test_profile_from_env_happy_path PASSED
-test_core.py::TestConnectionEnv::test_profile_from_env_missing_url PASSED
-test_core.py::TestConnectionEnv::test_profile_from_env_rejects_unsupported_auth PASSED
-test_core.py::TestConnectionEnv::test_resolve_credentials_requires_password PASSED
-test_core.py::TestD365Backend::test_url_for_relative_path PASSED
-test_core.py::TestD365Backend::test_url_for_absolute_path_passthrough PASSED
-test_core.py::TestD365Backend::test_request_sends_required_odata_headers PASSED
-test_core.py::TestD365Backend::test_request_dry_run_returns_preview PASSED
-test_core.py::TestD365Backend::test_request_error_4xx_raises_d365error PASSED
-test_core.py::TestEntityCrud::test_retrieve_builds_select_expand_params PASSED
-test_core.py::TestEntityCrud::test_create_sets_if_none_match_and_prefer_return PASSED
-test_core.py::TestEntityCrud::test_update_sets_if_match_star_when_prevent_create PASSED
-test_core.py::TestEntityCrud::test_upsert_omits_if_match_header PASSED
-test_core.py::TestEntityCrud::test_delete_returns_id_payload PASSED
-test_core.py::TestEntityCrud::test_invalid_guid_rejected PASSED
-test_core.py::TestQuery::test_odata_query_compiles_filter_and_top PASSED
-test_core.py::TestQuery::test_odata_query_includes_annotations_prefer_header PASSED
-test_core.py::TestQuery::test_fetchxml_query_url_encodes_xml_once PASSED
-test_core.py::TestQuery::test_fetchxml_query_rejects_non_fetch_payload PASSED
-test_core.py::TestMetadata::test_list_entities_filters_custom_only PASSED
-test_core.py::TestMetadata::test_entity_info_uses_logical_name_path PASSED
-test_core.py::TestMetadata::test_list_attributes_returns_value_array PASSED
-test_core.py::TestSessionStore::test_save_then_load_profile_roundtrip PASSED
-test_core.py::TestSessionStore::test_list_profiles_alphabetical PASSED
-test_core.py::TestSessionStore::test_session_history_trims_to_max_length PASSED
-test_core.py::TestSessionStore::test_atomic_write_replaces_file PASSED
-test_core.py::TestExport::test_export_records_csv PASSED
-test_cli_offline_smoke.py::test_help PASSED
-test_cli_offline_smoke.py::TestDeleteEntityCli::test_delete_entity_requires_confirmation PASSED
-test_cli_offline_smoke.py::TestAddAttributeBooleanDefaultParsing::test_rejects_unknown_boolean_default PASSED
-test_e2e_coverage_gate.py::test_every_d365_command_has_e2e_coverage PASSED
-# live e2e under crm/tests/e2e/ is DESELECTED by the default `-m 'not e2e'` filter (run with D365_E2E=1)
-
-================== 2170 passed, 95 deselected in ~45s ==================
-```
-
-(Subsequent run after the MS-docs audit additions: 10 new unit tests across
-`TestAssociate`, `TestSavedAndUserQuery`, `TestPicklistMetadata`, `TestPublish`,
-and `TestConnectionDotenv`.)
-
-## Summary Statistics
-
-| Metric                          | Offline run     | Live run (Contoso) |
-|---------------------------------|-----------------|-----------------|
-| Total tests collected           | 45              | 45              |
-| Tests run                       | 39              | 45              |
-| Pass rate                       | 39 / 39 (100%)  | 45 / 45 (100%)  |
-| Skipped (require live D365)     | 6               | 0               |
-| Execution time                  | 0.45s           | 5.41s           |
-
-All 29 runnable tests pass. The 6 skipped tests require a reachable Dynamics 365
-on-prem 9.x server (`D365_URL`, `D365_USERNAME`, `D365_PASSWORD` env vars). They
-are not implemented with mocks because the harness must talk to the real server
-in E2E; this is the HARNESS.md "no graceful degradation" rule applied as
-"skip-with-instructions" for environments where the server is not provided.
-
-## Coverage Notes
-
-Covered by `test_core.py`:
-- Connection env-var parsing (happy path + missing URL + wrong auth mode + missing password)
-- D365Backend URL building, header policy, dry-run preview, 4xx error mapping
-- Entity CRUD: retrieve/create/update/upsert/delete including header policy
-  (If-None-Match, If-Match, Prefer: return=representation) and GUID validation
-- Query: OData $select/$filter/$top/$orderby compilation, annotations Prefer
-  header, FetchXML single URL-encoding, fetchXml payload validation
-- Metadata: list_entities with custom-only filter, entity_info path, attributes listing
-- Session store: profile round-trip, alphabetical listing, history trim, atomic write
-- Export: CSV round-trip from a mocked OData page
-
-Covered by `test_cli_offline_smoke.py` (subprocess/`CliRunner`, no live env):
-- `crm --help` runs and exits 0
-- `--json connection status` returns valid JSON envelope with `ok=true`
-
-Not yet covered (requires live D365 server, gated by env):
-- Real WhoAmI / EntityDefinitions / contact CRUD round-trip
-- Live FetchXML query against `contact`
-- Subprocess CLI full workflow (create → get → delete) against live server
-
-These are wired in the test file and will run automatically once `D365_URL` /
-`D365_USERNAME` / `D365_PASSWORD` are set. In CI/release testing, set
-`CRM_FORCE_INSTALLED=1` so the subprocess tests refuse to fall back to
-`python -m` and instead require the installed `crm` command.
 
 ## Manual smoke test — Spec B async solution flow
 
-Pre-req: `D365_URL` / `D365_USERNAME` / `D365_PASSWORD` set against a
+Pre-req: a saved profile (`crm profile add`) against a
 Contoso 9.1.44.15 (or any on-prem 9.x) target.
 
 1. Pick a managed solution on the server (e.g. `MySolution`).

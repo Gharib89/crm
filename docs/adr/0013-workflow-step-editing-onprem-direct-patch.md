@@ -1,6 +1,6 @@
 # Workflow step-editing is on-prem-only via direct xaml PATCH
 
-`workflow update` splits along the **provenance wall** (see `CONTEXT.md`). Editing
+`workflow update` splits along the **provenance wall** (see `GLOSSARY.md`). Editing
 a classic process's **metadata** (name, scope, triggers, on-demand) is not
 provenance-gated and works on **both targets**. Editing its **logic** — the step
 XAML — is provenance-gated, so it is **on-prem only**, performed by a direct PATCH

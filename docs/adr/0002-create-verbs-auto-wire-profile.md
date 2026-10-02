@@ -66,7 +66,7 @@ a mutable preferences store.
   envelope (`profile_updated`) and disabled with `--no-set-default`; re-running a
   create overwrites the same field with the same value (idempotent in practice).
 - `profile_updated` / `profile_update` are implementation detail of these commands,
-  not contract vocabulary — [CONTEXT.md](../../CONTEXT.md) is intentionally left
+  not contract vocabulary — [GLOSSARY.md](../../GLOSSARY.md) is intentionally left
   untouched.
 - Agents scripting the prerequisite get the zero-touch flow:
   `solution create-publisher … && solution create … && metadata create-entity …`
