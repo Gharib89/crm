@@ -9,11 +9,17 @@ happened -- this surfaces type regressions at write time instead of at CI.
 Strict surface (CLAUDE.md): `crm/core/*` and `crm/utils/d365_backend.py`. The
 rest of the tree is basic mode, so it is skipped to stay fast and quiet.
 
+Scope is relative to the git toplevel of the edited file's own directory, not
+CLAUDE_PROJECT_DIR: a session started in the main checkout edits sibling
+worktrees, whose paths sit outside the project dir.
+
 Invocation mirrors the documented local lint: `--pythonpath .venv/bin/python`
 (else ~56 false import errors) and `--pythonversion 3.13`, the python_requires
-floor (else newer symbols mask real runtime ImportErrors). Missing venv/npx ->
-pass through (exit 0): a guardrail must never wedge editing when the toolchain
-is absent.
+floor (else newer symbols mask real runtime ImportErrors). The venv is the
+root's own, else the main checkout's (the parent of the git common dir), the
+same fallback scripts/check.sh and scripts/local-gate.sh use. Missing venv/npx
+-> pass through (exit 0): a guardrail must never wedge editing when the
+toolchain is absent.
 """
 
 from __future__ import annotations
@@ -34,6 +40,21 @@ def _in_strict_scope(rel: str) -> bool:
     return rel.startswith("crm/core/") or rel == "crm/utils/d365_backend.py"
 
 
+def _git(cwd: str, *args: str) -> str | None:
+    try:
+        proc = subprocess.run(
+            ["git", *args],
+            cwd=cwd,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return proc.stdout.strip() if proc.returncode == 0 else None
+
+
 def main() -> int:
     try:
         payload = json.loads(sys.stdin.read())
@@ -46,10 +67,12 @@ def main() -> int:
     if not isinstance(file_path, str) or not file_path.strip():
         return 0
 
-    project_dir = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
     abs_path = os.path.abspath(file_path)
+    root = _git(os.path.dirname(abs_path), "rev-parse", "--show-toplevel")
+    if root is None:
+        return 0
     try:
-        rel = os.path.relpath(abs_path, project_dir)
+        rel = os.path.relpath(abs_path, root)
     except ValueError:
         return 0
     if not _in_strict_scope(rel):
@@ -57,8 +80,12 @@ def main() -> int:
 
     # Microsoft's npm pyright at the repo's one pinned version (setup.py [dev] comment).
     npx = shutil.which("npx")
-    python = os.path.join(project_dir, ".venv", "bin", "python")
-    if not (npx and os.path.exists(python)):
+    main_checkout = os.path.dirname(
+        os.path.join(root, _git(root, "rev-parse", "--git-common-dir") or ".git")
+    )
+    candidates = (os.path.join(d, ".venv", "bin", "python") for d in (root, main_checkout))
+    python = next((p for p in candidates if os.path.exists(p)), None)
+    if not (npx and python):
         return 0  # toolchain absent -> never block editing
 
     try:
@@ -74,7 +101,7 @@ def main() -> int:
                 "3.13",
                 rel,
             ],
-            cwd=project_dir,
+            cwd=root,
             capture_output=True,
             text=True,
             timeout=120,

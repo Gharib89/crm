@@ -24,7 +24,7 @@ The main checkout (`~/wip/projects/crm`) is shared by concurrent agent sessions 
 2. All work, commits, and the PR happen from that branch.
 3. Remove the worktree after merge.
 
-Worktrees have no `.venv`: `scripts/local-gate.sh` finds the main checkout's venv itself; for an ad-hoc run use `PYTHONPATH=$WT <main-venv>/bin/python -m pytest` (the main venv's editable install points at the main checkout otherwise). In the shared checkout itself: read-only work and small docs-only commits to `main` (via a throwaway worktree if the dir is on someone else's branch). Before **any** git mutation anywhere: `git branch --show-current && git status -sb` first, and stage with explicit paths, never `git add -A`.
+A worktree's own `.venv` is optional: the strict pyright hook, `scripts/check.sh` and `scripts/local-gate.sh` each use it when present, else the main checkout's; for an ad-hoc run use `PYTHONPATH=$WT <main-venv>/bin/python -m pytest` (the main venv's editable install points at the main checkout otherwise). In the shared checkout itself: read-only work and small docs-only commits to `main` (via a throwaway worktree if the dir is on someone else's branch). Before **any** git mutation anywhere: `git branch --show-current && git status -sb` first, and stage with explicit paths, never `git add -A`.
 
 ## Commands
 

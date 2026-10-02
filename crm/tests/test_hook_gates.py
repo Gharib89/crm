@@ -23,6 +23,7 @@ import pytest
 _HOOKS_DIR = Path(__file__).resolve().parents[2] / ".claude" / "hooks"
 _GATE_PATH = _HOOKS_DIR / "destructive_op_gate.py"
 _SCAN_PATH = _HOOKS_DIR / "secret_scan_gate.py"
+_PYRIGHT_PATH = _HOOKS_DIR / "pyright_strict_check.py"
 
 
 def _load(path: Path):
@@ -352,3 +353,112 @@ class TestSecretScanEndToEnd:
         code, err = _run_hook(_SCAN_PATH, "git commit -m 'cfg'", str(crm_repo), env=env)
         assert code == 2
         assert "org identifier" in err
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="the fake npx is a shebang script; the hook targets .venv/bin"
+)
+class TestPyrightStrictHook:
+    """Drive the PostToolUse hook with a fake `npx` that records how pyright was
+    invoked, so no real toolchain is needed.
+    """
+
+    def _fake_npx(self, tmp_path: Path, exit_code: int = 1) -> Path:
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir(exist_ok=True)
+        npx = bin_dir / "npx"
+        npx.write_text(
+            f"#!{sys.executable}\n"
+            "import json, os, sys\n"
+            f"open({str(tmp_path / 'npx-call.json')!r}, 'w').write("
+            "json.dumps({'argv': sys.argv[1:], 'cwd': os.getcwd()}))\n"
+            "print('error: strict violation')\n"
+            f"sys.exit({exit_code})\n",
+            encoding="utf-8",
+        )
+        npx.chmod(0o755)
+        return bin_dir
+
+    def _venv(self, root: Path) -> Path:
+        python = root / ".venv" / "bin" / "python"
+        python.parent.mkdir(parents=True)
+        python.write_text("", encoding="utf-8")
+        return python
+
+    def _run(
+        self, file_path: Path, project_dir: Path, bin_dir: Path, path: str | None = None
+    ) -> tuple[int, str]:
+        import os
+
+        env = dict(os.environ)
+        env["CLAUDE_PROJECT_DIR"] = str(project_dir)
+        env["PATH"] = path or f"{bin_dir}{os.pathsep}{env['PATH']}"
+        payload = json.dumps({"tool_name": "Edit", "tool_input": {"file_path": str(file_path)}})
+        proc = subprocess.run(
+            [sys.executable, str(_PYRIGHT_PATH)],
+            input=payload,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            env=env,
+        )
+        return proc.returncode, proc.stderr
+
+    def _call(self, tmp_path: Path) -> dict | None:
+        record = tmp_path / "npx-call.json"
+        return json.loads(record.read_text(encoding="utf-8")) if record.exists() else None
+
+    def _worktree_file(self, crm_repo: Path, tmp_path: Path, rel: str) -> tuple[Path, Path]:
+        wt = tmp_path / "wt"
+        _git(crm_repo, "worktree", "add", "-b", "fix/wt", str(wt))
+        target = wt / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("x: int = 'a'\n", encoding="utf-8")
+        return wt, target
+
+    def test_worktree_core_file_checked_with_main_venv(self, crm_repo, tmp_path):
+        main_python = self._venv(crm_repo)
+        wt, target = self._worktree_file(crm_repo, tmp_path, "crm/core/x.py")
+        code, err = self._run(target, crm_repo, self._fake_npx(tmp_path))
+        assert code == 2
+        assert "strict violation" in err
+        call = self._call(tmp_path)
+        assert call is not None
+        assert Path(call["cwd"]).resolve() == wt.resolve()
+        assert call["argv"][-1] == "crm/core/x.py"
+        assert call["argv"][call["argv"].index("--pythonpath") + 1] == str(main_python)
+
+    def test_worktree_own_venv_preferred(self, crm_repo, tmp_path):
+        self._venv(crm_repo)
+        wt, target = self._worktree_file(crm_repo, tmp_path, "crm/core/x.py")
+        wt_python = self._venv(wt)
+        self._run(target, crm_repo, self._fake_npx(tmp_path))
+        call = self._call(tmp_path)
+        assert call is not None
+        assert call["argv"][call["argv"].index("--pythonpath") + 1] == str(wt_python)
+
+    def test_out_of_scope_file_skipped(self, crm_repo, tmp_path):
+        self._venv(crm_repo)
+        _, target = self._worktree_file(crm_repo, tmp_path, "crm/commands/x.py")
+        code, _ = self._run(target, crm_repo, self._fake_npx(tmp_path))
+        assert code == 0
+        assert self._call(tmp_path) is None
+
+    def test_no_venv_fails_open(self, crm_repo, tmp_path):
+        _, target = self._worktree_file(crm_repo, tmp_path, "crm/core/x.py")
+        code, _ = self._run(target, crm_repo, self._fake_npx(tmp_path))
+        assert code == 0
+        assert self._call(tmp_path) is None
+
+    def test_no_npx_fails_open(self, crm_repo, tmp_path):
+        import shutil
+
+        self._venv(crm_repo)
+        _, target = self._worktree_file(crm_repo, tmp_path, "crm/core/x.py")
+        git_only = tmp_path / "git-only"
+        git_only.mkdir()
+        git = shutil.which("git")
+        assert git is not None
+        (git_only / "git").symlink_to(git)
+        code, _ = self._run(target, crm_repo, git_only, path=str(git_only))
+        assert code == 0
