@@ -9,6 +9,33 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.81.8 (2026-10-02)
+
+### Bug Fixes
+
+- **hooks**: Check command strings handed to bash -c, sh -c, env and eval
+  ([#1025](https://github.com/Gharib89/crm/pull/1025),
+  [`ed7587a`](https://github.com/Gharib89/crm/commit/ed7587aa439c4dce4e6657ab5bc6608b1fcea436))
+
+### Chores
+
+- **evals**: Default the skill-eval runner to agent-cloud only
+  ([#1022](https://github.com/Gharib89/crm/pull/1022),
+  [`714495a`](https://github.com/Gharib89/crm/commit/714495a9e79db684d99c9581122bd6637076a6fa))
+
+### Refactoring
+
+- Reword "forced-real" comments to the reads-execute rule
+  ([#1024](https://github.com/Gharib89/crm/pull/1024),
+  [`2157282`](https://github.com/Gharib89/crm/commit/2157282eba4f3f6a818c6b4081751e8a2aa51917))
+
+### Testing
+
+- Join the background-check thread so it cannot write into the next test
+  ([#1023](https://github.com/Gharib89/crm/pull/1023),
+  [`8be96a0`](https://github.com/Gharib89/crm/commit/8be96a03483ac7f29ff05d8152a7b1dc64786a77))
+
+
 ## v1.81.7 (2026-10-02)
 
 ### Bug Fixes
