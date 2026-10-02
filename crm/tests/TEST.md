@@ -21,7 +21,7 @@ whose tests do not follow the naming:
 | `crm/core/export.py` | `test_core.py::TestExport`, `::TestOrderedKeys` |
 | `crm/core/solution.py`, `solution_transfer.py` | `test_core.py::TestPublish`, `::TestExportSolutionAsync`, `::TestImportSolutionAsync`, `test_solution_*.py` |
 | `crm/core/solutionpackager.py` | `test_solution_packager.py` |
-| `crm/core/references.py` | `test_dry_run_references.py`, `test_appmodule.py` |
+| `crm/core/references.py` | `test_dry_run_references.py` |
 | `crm/core/spec_coercion.py` | no file of its own; exercised through `test_apply.py`, `test_plan.py`, `test_appmodule.py` |
 | `crm/core/logging_setup.py` | `test_logging.py` |
 | `crm/core/workflow.py` | `test_core.py::TestWorkflow`, `::TestWorkflowDelete`, `test_workflow_*.py` |

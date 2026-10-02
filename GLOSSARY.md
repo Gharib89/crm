@@ -19,7 +19,7 @@ The emit envelope's non-`--json` path: [`CLIContext.emit`](crm/cli.py)
 hands `data` to `ReplSkin` ([`crm/utils/repl_skin.py`](crm/utils/repl_skin.py)) for
 tables, key/value status lines and warnings; values are truncated by `_short_repr`
 in [`crm/commands/_helpers/rendering.py`](crm/commands/_helpers/rendering.py) and
-long lists capped with a "more items" line; then `CLIContext.hint` may print one
+long lists capped with a "more items" line; then `CLIContext.hint` may print a
 one-time next-step hint, its text keyed in `HINTS`
 ([`crm/core/hints.py`](crm/core/hints.py)). None of it reaches `--json` output.
 _Avoid_: pretty output.
