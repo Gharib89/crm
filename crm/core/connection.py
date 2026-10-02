@@ -2,7 +2,7 @@
 test reachability, and run the connection doctor.
 
 Credentials and connection config come ONLY from a saved profile (under
-``~/.crm/profiles``) or an explicit ``--password``. There is no ``.env`` autoload
+the state home's ``profiles/``) or an explicit ``--password``. There is no ``.env`` autoload
 and no ``D365_*`` / ``CRM_*`` environment-variable reading — run ``crm profile add``
 once to configure a profile.
 """

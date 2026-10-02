@@ -20,6 +20,7 @@ from crm.core import connection as conn_mod
 from crm.core import keyring_store
 from crm.core import session as session_mod
 from crm.utils.d365_backend import (
+    AUTH_SCHEMES,
     ConnectionProfile,
     D365Backend,
     D365Error,
@@ -148,7 +149,7 @@ def _adfs_note(profile, exc):
     probed when the org answered at all: after a transport failure the probe
     would just wait out a second timeout.
     """
-    if profile.auth_scheme not in ("ntlm", "kerberos", "negotiate") or exc.status is None:
+    if profile.auth_scheme in ("oauth", "adfs") or exc.status is None:
         return ""
     from crm.utils.adfs import sts_hint
 
@@ -180,7 +181,7 @@ def _tls_note(exc):
 @click.option(
     "--auth-scheme",
     "auth_opt",
-    type=click.Choice(["ntlm", "kerberos", "negotiate", "oauth", "adfs"]),
+    type=click.Choice(AUTH_SCHEMES),
     default=None,
     help="Override the auth scheme inferred from the URL (adfs = on-prem IFD via AD FS).",
 )
@@ -275,8 +276,7 @@ def profile_add(
     url = ConnectionProfile.normalize_url(url)
     auth_scheme = auth_opt or infer_auth_scheme(url)
     if interactive and auth_opt is None:
-        schemes = ["ntlm", "kerberos", "negotiate", "oauth", "adfs"]
-        chosen = select_one("Auth scheme", [(s, s) for s in schemes], default=auth_scheme)
+        chosen = select_one("Auth scheme", [(s, s) for s in AUTH_SCHEMES], default=auth_scheme)
         if chosen is None:
             ctx.emit(False, error="aborted by user")
             return

@@ -290,7 +290,7 @@ class TestRegisterAssemblyUpdate:
         dry = D365Backend(profile, password="pw", dry_run=True)
         path = _write_dll(tmp_path)
         with requests_mock.Mocker() as m:
-            # _resolve_id_by_name force-reads even under dry-run
+            # _resolve_id_by_name executes even under dry-run (reads-execute rule)
             m.get(dry.url_for("pluginassemblies"), json={"value": [{"pluginassemblyid": _PA_ID}]})
             out = plugin.register_assembly(dry, path=path, update=True)
         assert out["_dry_run"] is True
@@ -1257,7 +1257,7 @@ class TestUnregisterStep:
 
         dry = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
-            # name resolution force-reads even under dry-run
+            # name resolution executes even under dry-run (reads-execute rule)
             m.get(
                 dry.url_for("sdkmessageprocessingsteps"),
                 json={"value": [{"sdkmessageprocessingstepid": _DELETE_STEP_ID}]},
@@ -1377,7 +1377,7 @@ class TestUnregisterAssembly:
         dry = D365Backend(profile, password="pw", dry_run=True)
         aid = _PA_ID
         with requests_mock.Mocker() as m:
-            # resolution GETs force-read even under dry-run
+            # resolution GETs execute even under dry-run (reads-execute rule)
             m.get(dry.url_for("pluginassemblies"), json={"value": [{"pluginassemblyid": aid}]})
             m.get(dry.url_for("plugintypes"), json={"value": [{"plugintypeid": _PTID_A}]})
             m.get(
@@ -1732,8 +1732,8 @@ class TestRegisterImage:
 
         dry = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
-            # step + message resolution force-read even under dry-run so the
-            # validity rules and messagepropertyname derivation still run
+            # step + message resolution GETs execute even under dry-run (reads-execute
+            # rule) so the validity rules and messagepropertyname derivation still run
             _mock_image_resolution(m, dry)
             out = plugin.register_image(dry, step=_STEP_ID, image_type="pre", alias="preimg")
         assert out["_dry_run"] is True

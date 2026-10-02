@@ -4,8 +4,8 @@ register_assembly POSTs the `pluginassemblies` entity; the assembly file's
 bytes are base64-encoded into the `content` column. update is a plain PATCH of
 only the `content` field (no retrieve-merge-write, but it does carry
 `MSCRM.SolutionUniqueName` when a solution is given), resolving the assembly id
-by name and forcing a real read even under dry-run so a PATCH preview targets
-the live id.
+by name with a GET that runs for real even under dry-run (the reads-execute
+rule) so a PATCH preview targets the live id.
 
 Identity (name/version/culture/publickeytoken) is derived in pure Python —
 filename stem plus documented defaults, with per-call overrides — NOT by .NET
@@ -257,8 +257,8 @@ def register_type(
     null `name` yields an empty, unusable label (issue #866). version/culture/
     publickeytoken are read-only — server-derived from the bound assembly — and
     are never sent. The assembly name->id resolution is
-    a GET and runs live even under dry-run (mirrors register_assembly's
-    force-read); the POST is short-circuited to a {_dry_run, would_create}
+    a GET and runs live even under dry-run (the reads-execute rule, as in
+    register_assembly); the POST is short-circuited to a {_dry_run, would_create}
     preview.
 
     Raises D365Error if the assembly NAME is unknown.
@@ -674,8 +674,8 @@ def _step_image_info(
 ) -> tuple[str, int, str]:
     """Resolve a step (GUID or exact name) to (id, stage, sdkmessage id).
 
-    Force-reads so image registration can derive messagepropertyname and
-    validate stage rules even under dry-run.
+    Its reads execute even under dry-run (the reads-execute rule) so image
+    registration can derive messagepropertyname and validate stage rules.
     """
     step = step.strip()
     select = "sdkmessageprocessingstepid,stage,_sdkmessageid_value"
@@ -707,7 +707,7 @@ def _step_image_info(
 
 
 def _resolve_sdkmessage_name(backend: D365Backend, message_id: str) -> str:
-    """Resolve an SDK message's name by id (force-reads)."""
+    """Resolve an SDK message's name by id (a real read under dry-run too)."""
     rows = backend.get_collection(
         "sdkmessages",
         params={"$filter": f"sdkmessageid eq {message_id}", "$select": "name"},
@@ -722,7 +722,7 @@ def unregister_image(backend: D365Backend, image: str) -> dict[str, Any]:
     """Unregister (delete) an `sdkmessageprocessingstepimage` by name or id.
 
     `image` is used directly when it looks like a GUID; otherwise it is
-    resolved by exact name (force-reads, mirrors unregister_step). Dry-run
+    resolved by exact name (a real read under dry-run too, as in unregister_step). Dry-run
     passes through the backend's delete preview (no real DELETE).
     """
     image = image.strip()
@@ -734,7 +734,7 @@ def unregister_image(backend: D365Backend, image: str) -> dict[str, Any]:
 
 
 def _resolve_image_id(backend: D365Backend, name: str) -> str:
-    """Resolve an sdkmessageprocessingstepimage id by exact name (force-reads)."""
+    """Resolve an sdkmessageprocessingstepimage id by exact name (a real read under dry-run too)."""
     # Image names are not unique across steps; refuse to guess.
     row = backend.find_one(
         "sdkmessageprocessingstepimages",
@@ -755,8 +755,9 @@ def unregister_step(backend: D365Backend, step: str) -> dict[str, Any]:
     """Unregister (delete) an `sdkmessageprocessingstep` by name or id.
 
     `step` is used directly when it looks like a GUID; otherwise it is resolved
-    by exact name (the lookup force-reads even under dry-run so a dry-run delete
-    still targets the live id). A name that matches no step raises D365Error.
+    by exact name (the lookup runs for real even under dry-run, per the
+    reads-execute rule, so a dry-run delete still targets the live id). A name
+    that matches no step raises D365Error.
 
     Deleting the step cascades its registered entity images (sdkmessageprocessingstepimage)
     automatically — no separate image delete is needed (MS Learn). Dry-run
@@ -784,8 +785,8 @@ def unregister_assembly(
     deleting the assembly cascades its plugintypes — neither is deleted here
     explicitly (MS Learn).
 
-    Under dry-run no real DELETE is issued: the resolution GETs still force-read
-    (mirrors the rest of this module) and a `_dry_run` preview naming the
+    Under dry-run no real DELETE is issued: the resolution GETs still execute
+    (the reads-execute rule) and a `_dry_run` preview naming the
     assembly, the dependent step count, and the step ids is returned.
 
     Raises D365Error when an assembly name resolves to nothing.
@@ -817,7 +818,7 @@ def unregister_assembly(
 
 
 def _resolve_step_id(backend: D365Backend, name: str) -> str:
-    """Resolve an sdkmessageprocessingstep id by exact name (force-reads)."""
+    """Resolve an sdkmessageprocessingstep id by exact name (a real read under dry-run too)."""
     # The platform does not enforce unique step names; refuse to guess which
     # one to delete. The caller must disambiguate with the step's GUID.
     row = backend.find_one(
@@ -839,7 +840,7 @@ def _dependent_step_ids(backend: D365Backend, assembly_id: str) -> list[str]:
     """Collect ids of every step that depends on `assembly_id`.
 
     Walks the dependency chain assembly -> plugintypes -> steps. Both GETs
-    force-read so the set is correct even under dry-run.
+    execute even under dry-run (the reads-execute rule) so the set is correct.
     """
     type_rows = backend.get_collection(
         "plugintypes",
@@ -919,8 +920,8 @@ def _resolve_plugintype_id(
 def _resolve_serviceendpoint_id(backend: D365Backend, name: str) -> str:
     """Resolve a service endpoint id by exact name.
 
-    Forces a real read even under dry-run (mirrors the other step-handler
-    resolvers — a step is POSTed only after its bound id is known).
+    The read executes even under dry-run (the reads-execute rule, as in the
+    other step-handler resolvers — a step is POSTed only after its bound id is known).
     """
     sid = backend.resolve_id_by_name(
         "serviceendpoints", filter_field="name", id_field="serviceendpointid", value=name
@@ -987,7 +988,7 @@ def _update_assembly_content(
 def _resolve_id_by_name(backend: D365Backend, name: str) -> str:
     """Resolve a plug-in assembly's id by exact name.
 
-    Forces a real read even under dry-run (a PATCH preview needs the real id;
+    The read executes even under dry-run (the reads-execute rule: a PATCH preview needs the real id;
     mirrors webresource._resolve_id_by_name).
     """
     pid = backend.resolve_id_by_name(

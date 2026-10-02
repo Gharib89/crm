@@ -13,6 +13,7 @@ from click.testing import CliRunner
 
 from crm.cli import cli
 from crm.core import session as session_mod
+from crm.utils.d365_backend import AUTH_SCHEMES
 
 _WHOAMI = {
     "UserId": "00000000-0000-0000-0000-000000000001",
@@ -425,7 +426,7 @@ class TestAddWizard:
             )  # blank publisher-prefix, read-only N (both prompted)
         assert result.exit_code == 0, result.output
         assert captured["default"] == "ntlm"  # on-prem host -> inferred ntlm
-        assert captured["values"] == ["ntlm", "kerberos", "negotiate", "oauth", "adfs"]
+        assert captured["values"] == list(AUTH_SCHEMES)
         assert session_mod.load_profile("wiz").auth_scheme == "oauth"
 
     def test_auth_scheme_picker_cancel_aborts(self, crm_home, monkeypatch):

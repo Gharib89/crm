@@ -1,11 +1,28 @@
-"""D365 on-prem 9.x Web API HTTP backend.
-
-Wraps `requests` + `requests_ntlm` to talk to the live Dataverse Web API at
-`https://<server>/<org>/api/data/v9.x/`.
+"""Dataverse Web API HTTP backend, for on-prem v9.x and Dataverse online.
 
 This module is the **only** place in the harness that talks HTTP to the server.
 Every other core module asks the backend to issue a request and gets back the
 parsed JSON or a raised `D365Error`.
+
+Section map:
+
+- Errors: `D365Error`, `classify_d365_error`.
+- Profiles: `validate_profile_name`, `ConnectionProfile` (validated against
+  `AUTH_SCHEMES`, re-exported from `crm.utils.d365_types`).
+- OAuth: `_oauth_cache_path`, `_oauth_bearer_auth_cls` (builds the
+  `_OAuthBearerAuth` bearer class over an msal token cache).
+- `D365Backend`: the dry-run and read-only guards (`dry_run`, `read_only`,
+  `as_dry_run`); auth selection in `_make_auth` (NTLM, Kerberos/Negotiate,
+  AD FS via `crm.utils.adfs.AdfsCookieAuth`) and `_make_oauth_auth`; the request
+  loop in `request` and its verb helpers; `get_collection` paging, `find_one`,
+  `resolve_id_by_name`; `batch` and `poll_async_operation`.
+- Responses and retries: `_parse_response`; `_compute_delay`,
+  `_is_response_retryable`, `_customization_lock_code`,
+  `_is_transport_retryable`, `_parse_retry_after`, `_resolve_retry_max`.
+- Impersonation and env-driven request knobs: `_resolve_caller_id`,
+  `_resolve_caller_object_id`, `_resolve_guid_env`, `_resolve_bool_env`.
+- `$batch` wire format: `_assemble_batch_body`, `_parse_batch_response`.
+- Helpers: `as_dict`, `odata_literal`, `normalize_guid`.
 """
 
 from __future__ import annotations
@@ -26,6 +43,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from crm.core.state_home import atomic_write, state_home
+from crm.utils.d365_types import AUTH_SCHEMES as AUTH_SCHEMES
 from crm.utils.d365_types import BatchOperation, BatchResult
 
 if TYPE_CHECKING:
@@ -165,7 +183,7 @@ class ConnectionProfile:
     username: str
     api_version: str = "v9.2"
     verify_ssl: bool = True
-    auth_scheme: str = "ntlm"  # ntlm | kerberos | negotiate | oauth | adfs
+    auth_scheme: str = "ntlm"  # one of AUTH_SCHEMES
     tenant_id: str | None = None  # oauth: AAD tenant (non-secret)
     client_id: str | None = None  # oauth: app-registration id (non-secret)
     adfs_url: str | None = None  # adfs: STS override; None = discover from the org
@@ -200,9 +218,9 @@ class ConnectionProfile:
     def __post_init__(self) -> None:
         self.url = self.normalize_url(self.url)
         validate_profile_name(self.name)
-        if self.auth_scheme not in ("ntlm", "kerberos", "negotiate", "oauth", "adfs"):
+        if self.auth_scheme not in AUTH_SCHEMES:
             raise D365Error(
-                f"ConnectionProfile.auth_scheme must be ntlm|kerberos|negotiate|oauth|adfs, "
+                f"ConnectionProfile.auth_scheme must be {'|'.join(AUTH_SCHEMES)}, "
                 f"got {self.auth_scheme!r}"
             )
         for _field, _value in (
@@ -574,9 +592,7 @@ class D365Backend:
                 verify=p.verify_ssl,
                 timeout=p.timeout,
             )
-        raise D365Error(
-            f"Unknown auth_scheme {scheme!r}; expected ntlm|kerberos|negotiate|oauth|adfs"
-        )
+        raise D365Error(f"Unknown auth_scheme {scheme!r}; expected {'|'.join(AUTH_SCHEMES)}")
 
     def _make_oauth_auth(self, secret: str) -> AuthBase:
         """Build a bearer-token auth via OAuth 2.0 client-credentials.

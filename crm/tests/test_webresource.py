@@ -289,7 +289,7 @@ class TestUpdateWebresource:
 
         dry = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
-            # _resolve_id_by_name force-reads even under dry-run
+            # _resolve_id_by_name executes even under dry-run (reads-execute rule)
             m.get(dry.url_for("webresourceset"), json={"value": [{"webresourceid": _WR_ID}]})
             out = webresource.update_webresource(dry, "new_x.js", content=b"x")
         assert out["_dry_run"] is True
@@ -457,7 +457,7 @@ class TestDeleteWebresource:
 
         dry = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
-            # resolve-by-name force-reads even under dry-run
+            # resolve-by-name executes even under dry-run (reads-execute rule)
             m.get(dry.url_for("webresourceset"), json={"value": [{"webresourceid": _WR_ID}]})
             out = webresource.delete_webresource(dry, "new_x.js")
         assert out["_dry_run"] is True
