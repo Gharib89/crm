@@ -9,6 +9,93 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.81.7 (2026-10-02)
+
+### Bug Fixes
+
+- **hooks**: Catch function-form shadowing and substitution-spanning heredocs
+  ([#1021](https://github.com/Gharib89/crm/pull/1021),
+  [`460ed4f`](https://github.com/Gharib89/crm/commit/460ed4f14bbe890f39d3deefc758404f10089414))
+
+- **hooks**: Close the gate view's remaining fail-open paths
+  ([#1021](https://github.com/Gharib89/crm/pull/1021),
+  [`460ed4f`](https://github.com/Gharib89/crm/commit/460ed4f14bbe890f39d3deefc758404f10089414))
+
+- **hooks**: Fail the gate's shell view closed ([#1021](https://github.com/Gharib89/crm/pull/1021),
+  [`460ed4f`](https://github.com/Gharib89/crm/commit/460ed4f14bbe890f39d3deefc758404f10089414))
+
+- **hooks**: Stop the destructive-op gate matching heredoc and quoted prose
+  ([#1021](https://github.com/Gharib89/crm/pull/1021),
+  [`460ed4f`](https://github.com/Gharib89/crm/commit/460ed4f14bbe890f39d3deefc758404f10089414))
+
+### Documentation
+
+- Align TEST.md, ADR glossary links, glossary and standards with the repo; add two consistency tests
+  ([#1016](https://github.com/Gharib89/crm/pull/1016),
+  [`4366b74`](https://github.com/Gharib89/crm/commit/4366b7451efbf8103a7f8b4c739aee087f2e369c))
+
+- Copilot review fixes for #1009 (setup-harness in refresh line, hint wording, references row)
+  ([#1016](https://github.com/Gharib89/crm/pull/1016),
+  [`4366b74`](https://github.com/Gharib89/crm/commit/4366b7451efbf8103a7f8b4c739aee087f2e369c))
+
+- Glossary and standards name classify_d365_error, human render entry, depth-checks heading, ADR
+  amendment convention, setup-harness in CLAUDE.md taxonomy
+  ([#1016](https://github.com/Gharib89/crm/pull/1016),
+  [`4366b74`](https://github.com/Gharib89/crm/commit/4366b7451efbf8103a7f8b4c739aee087f2e369c))
+
+- Self-review fixes for #1009 (compiled-exclude test, stale lock-recorded lists, test map rows, ADR
+  supersession) ([#1016](https://github.com/Gharib89/crm/pull/1016),
+  [`4366b74`](https://github.com/Gharib89/crm/commit/4366b7451efbf8103a7f8b4c739aee087f2e369c))
+
+- **claude-md**: Keep archived history out of greps, shell-neutral CLI driving, release-binary and
+  auth pointers ([#1015](https://github.com/Gharib89/crm/pull/1015),
+  [`50950bf`](https://github.com/Gharib89/crm/commit/50950bfa25919d48a7a36e14c3bbbfc473daf5e1))
+
+- **claude-md**: Keep frozen history out of greps, shell-neutral CLI driving, release-binary and
+  auth pointers ([#1015](https://github.com/Gharib89/crm/pull/1015),
+  [`50950bf`](https://github.com/Gharib89/crm/commit/50950bfa25919d48a7a36e14c3bbbfc473daf5e1))
+
+- **claude-md**: Lead the release-binary pointer with the action
+  ([#1015](https://github.com/Gharib89/crm/pull/1015),
+  [`50950bf`](https://github.com/Gharib89/crm/commit/50950bfa25919d48a7a36e14c3bbbfc473daf5e1))
+
+- **claude-md**: Say archived history, reach CHANGELOG exclusion for rg, point at credential
+  resolution ([#1015](https://github.com/Gharib89/crm/pull/1015),
+  [`50950bf`](https://github.com/Gharib89/crm/commit/50950bfa25919d48a7a36e14c3bbbfc473daf5e1))
+
+- **tests**: Replace TEST.md count table and frozen run with a module-to-test map and test seams
+  ([#1016](https://github.com/Gharib89/crm/pull/1016),
+  [`4366b74`](https://github.com/Gharib89/crm/commit/4366b7451efbf8103a7f8b4c739aee087f2e369c))
+
+### Refactoring
+
+- Backend section map and reads-execute/state-home comment sweep
+  ([#1018](https://github.com/Gharib89/crm/pull/1018),
+  [`959ba3d`](https://github.com/Gharib89/crm/commit/959ba3d3834d31ae8a7fa45252816c16f5cd3cdf))
+
+- Finish the self-review sweep (state home, reads-execute rule, section map)
+  ([#1018](https://github.com/Gharib89/crm/pull/1018),
+  [`959ba3d`](https://github.com/Gharib89/crm/commit/959ba3d3834d31ae8a7fa45252816c16f5cd3cdf))
+
+- Fix subject-verb agreement in a rewritten test comment
+  ([#1018](https://github.com/Gharib89/crm/pull/1018),
+  [`959ba3d`](https://github.com/Gharib89/crm/commit/959ba3d3834d31ae8a7fa45252816c16f5cd3cdf))
+
+- One AUTH_SCHEMES tuple for profile validation and every scheme choice
+  ([#1018](https://github.com/Gharib89/crm/pull/1018),
+  [`959ba3d`](https://github.com/Gharib89/crm/commit/959ba3d3834d31ae8a7fa45252816c16f5cd3cdf))
+
+- One AUTH_SCHEMES tuple, backend section map, stale-comment sweep
+  ([#1018](https://github.com/Gharib89/crm/pull/1018),
+  [`959ba3d`](https://github.com/Gharib89/crm/commit/959ba3d3834d31ae8a7fa45252816c16f5cd3cdf))
+
+### Testing
+
+- **docs**: Guard ADR glossary links and project-native skill set; repoint ADRs to GLOSSARY.md
+  ([#1016](https://github.com/Gharib89/crm/pull/1016),
+  [`4366b74`](https://github.com/Gharib89/crm/commit/4366b7451efbf8103a7f8b4c739aee087f2e369c))
+
+
 ## v1.81.6 (2026-10-02)
 
 ### Bug Fixes
