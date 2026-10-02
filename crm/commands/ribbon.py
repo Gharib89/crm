@@ -18,10 +18,10 @@ from crm.commands._helpers import (
     _output_option,
     _publish_option,
     _resolve_publish,
-    _resolve_solution,
     _solution_option,
     d365_errors,
 )
+from crm.commands._helpers.solutions import _require_solution
 from crm.core import ribbon as ribbon_mod
 from crm.utils.d365_backend import D365Error, odata_literal
 
@@ -233,11 +233,16 @@ def _emit_ribbon_xml(ctx: CLIContext, pretty, label, output):
 
 @ribbon_group.command("list")
 @click.argument("entity")
-@_solution_option
+@click.option(
+    "--solution",
+    default=None,
+    callback=_require_solution,
+    help="Unmanaged solution uniquename whose RibbonDiffXml to read. Required; "
+    "this is a read, not a customization write.",
+)
 @pass_ctx
 def ribbon_list(ctx: CLIContext, entity, solution):
     """List the custom buttons declared in a solution's RibbonDiffXml."""
-    solution = _resolve_solution(ctx, solution)
     if ctx.dry_run:
         with d365_errors(ctx):
             with tempfile.TemporaryDirectory() as td:
@@ -356,7 +361,6 @@ def ribbon_add_button(
         )
         return
 
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         ribbon_mod.resolve_webresource_id(ctx.backend(), webresource)
@@ -405,7 +409,6 @@ def ribbon_remove(ctx, entity, button_id, yes, publish, solution, diff_file):
         ctx.emit(True, data={"removed": button_id, "diff_file": diff_file}, warnings=None)
         return
 
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         result, warnings = _apply_with_scale_warnings(
@@ -500,7 +503,6 @@ def ribbon_set_label(
         )
         return
 
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     if lcid is not None:
         with d365_errors(ctx):
@@ -557,7 +559,6 @@ def ribbon_set_icon(ctx, entity, button_id, modern_image, image16, image32, publ
     solution round-trip, and written as a $webresource: directive so the solution
     gains a dependency on the icon web resource.
     """
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     if modern_image is None and image16 is None and image32 is None:
         raise click.UsageError("pass at least one of --modern-image / --image16 / --image32")
@@ -621,7 +622,6 @@ def ribbon_hide_button(ctx, entity, target_id, method, yes, publish, solution):
     always-false platform DisplayRules; `hide-action` writes a HideCustomAction,
     which is irreversible without a new solution version and is gated behind --yes.
     """
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
 
     # T2: resolve --target-id in the live composed ribbon; a typo must error here,
@@ -756,7 +756,6 @@ def ribbon_set_rules(
         )
         return
 
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         result, warnings = _apply_with_scale_warnings(
@@ -836,7 +835,6 @@ def ribbon_add_custom_rule(
         )
         return
 
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         ribbon_mod.resolve_webresource_id(ctx.backend(), webresource)
@@ -885,7 +883,6 @@ def ribbon_apply(ctx, entity, from_file, publish, solution):
     <RibbonDiffXml> in the solution is replaced VERBATIM with the file's content
     (desired-state: an element removed offline does not reappear from live state).
     """
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         replacement = ribbon_mod.load_ribbon_diff_file(from_file)

@@ -18,7 +18,6 @@ from crm.commands._helpers import (
     _journal,
     _publish_option,
     _resolve_publish,
-    _resolve_solution,
     _solution_option,
     d365_errors,
 )
@@ -56,7 +55,6 @@ def sitemap_add_area(
     ctx: CLIContext, sitemap_id, area_id, title, icon, show_groups, solution, publish
 ):
     """Add an Area to the sitemap SITEMAP_ID."""
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = sitemap_mod.add_area(
@@ -83,7 +81,6 @@ def sitemap_add_area(
 @pass_ctx
 def sitemap_add_group(ctx: CLIContext, sitemap_id, area_id, group_id, title, solution, publish):
     """Add a Group under an Area in the sitemap SITEMAP_ID."""
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = sitemap_mod.add_group(
@@ -146,7 +143,6 @@ def sitemap_add_subarea(
         raise click.UsageError("Provide exactly one of --entity, --url or --dashboard.")
     if pass_params and not url:
         raise click.UsageError("--pass-params is only valid with --url.")
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = sitemap_mod.add_subarea(
@@ -196,7 +192,6 @@ def sitemap_move_node(
     after = (after or "").strip() or None
     if sum(1 for v in (before, after, index) if v is not None) != 1:
         raise click.UsageError("Provide exactly one of --before, --after or --index.")
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = sitemap_mod.move_node(
@@ -271,7 +266,6 @@ def _localized_pairs(node_id, lcids, values, *, value_flag):
 def sitemap_set_title(ctx: CLIContext, sitemap_id, node_id, lcids, titles, solution, publish):
     """Set localized title(s) on a node in the sitemap SITEMAP_ID."""
     node_id, pairs = _localized_pairs(node_id, lcids, titles, value_flag="title")
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = sitemap_mod.set_title(
@@ -313,7 +307,6 @@ def sitemap_set_description(
 ):
     """Set localized description(s) on a node in the sitemap SITEMAP_ID."""
     node_id, pairs = _localized_pairs(node_id, lcids, descriptions, value_flag="description")
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = sitemap_mod.set_description(
@@ -342,7 +335,6 @@ def sitemap_set_description(
 @pass_ctx
 def sitemap_remove_node(ctx: CLIContext, sitemap_id, node_id, comment_out, solution, publish):
     """Remove (or comment out) a node from the sitemap SITEMAP_ID."""
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = sitemap_mod.remove_node(

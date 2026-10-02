@@ -171,7 +171,17 @@ class TestAddPermission:
         _use_backend(backend, monkeypatch)
         with rm_module.Mocker():
             result = CliRunner().invoke(
-                cli, ["--json", "fieldsec", "add-permission", _PROFILE_ID, "account", "creditlimit"]
+                cli,
+                [
+                    "--json",
+                    "fieldsec",
+                    "add-permission",
+                    _PROFILE_ID,
+                    "account",
+                    "creditlimit",
+                    "--solution",
+                    "MySol",
+                ],
             )
         assert result.exit_code == 2
         assert json.loads(result.output)["ok"] is False

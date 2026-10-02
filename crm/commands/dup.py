@@ -10,7 +10,6 @@ from crm.commands._helpers import (
     _emit_with_warning,
     _journal,
     _load_payload,
-    _resolve_solution,
     _solution_option,
     d365_errors,
 )
@@ -76,7 +75,6 @@ def dup_create(ctx: CLIContext, entity, name, matching_entity, description, solu
     The rule is created unpublished — add conditions with `dup add-condition`,
     then activate it with `dup publish`.
     """
-    solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = dup_mod.create_rule(
             ctx.backend(),
@@ -135,7 +133,6 @@ def dup_add_condition(
     operators require --operator-param N (the character count); the others
     reject it.
     """
-    solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = dup_mod.add_condition(
             ctx.backend(),

@@ -15,7 +15,6 @@ from crm.commands._helpers import (
     _output_option,
     _publish_option,
     _resolve_publish,
-    _resolve_solution,
     _solution_option,
     d365_errors,
 )
@@ -166,7 +165,6 @@ def form_clone(
     solution: str | None,
 ) -> None:
     """Clone a named form to another entity."""
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         forms = forms_mod.read_entity_forms(ctx.backend(), entity)
@@ -205,7 +203,6 @@ def form_add_field(
     solution: str | None,
 ) -> None:
     """Add a field to an entity form (resolves the control type from metadata)."""
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.add_form_field(
@@ -238,7 +235,6 @@ def form_remove_field(
     solution: str | None,
 ) -> None:
     """Remove a field from an entity form."""
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.remove_form_field(
@@ -273,7 +269,6 @@ def form_set_field(
     solution: str | None,
 ) -> None:
     """Move an existing field to a different tab/section of an entity form."""
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.set_form_field(
@@ -340,7 +335,6 @@ def form_set_field_props(
     solution: str | None,
 ) -> None:
     """Toggle presentation properties of an existing field on an entity form."""
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.set_form_field_props(
@@ -394,7 +388,6 @@ def form_add_library(
     solution: str | None,
 ) -> None:
     """Register a JS script library on an entity form (idempotent)."""
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.add_form_library(
@@ -454,7 +447,6 @@ def form_add_handler(
     solution: str | None,
 ) -> None:
     """Wire a JS event handler on an entity form (registering its library)."""
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.add_form_handler(
@@ -495,7 +487,6 @@ def form_remove_handler(
     solution: str | None,
 ) -> None:
     """Remove a JS event handler from an entity form."""
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.remove_form_handler(
@@ -570,7 +561,6 @@ def form_add_tab(
     solution: str | None,
 ) -> None:
     """Add a tab (with a starter section) to an entity form."""
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.add_form_tab(
@@ -608,7 +598,6 @@ def form_remove_tab(
     """Remove a tab from an entity form (refuses the only tab, or a tab holding
     bound fields without --force).
     """
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.remove_form_tab(
@@ -642,7 +631,6 @@ def form_rename_tab(
     solution: str | None,
 ) -> None:
     """Set a tab's display label (its logical name is left intact)."""
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.rename_form_tab(
@@ -676,7 +664,6 @@ def form_move_tab(
     solution: str | None,
 ) -> None:
     """Reorder a tab on an entity form (to the front, or after --after)."""
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.move_form_tab(
@@ -716,7 +703,6 @@ def form_add_section(
     solution: str | None,
 ) -> None:
     """Add a section to a tab of an entity form."""
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.add_form_section(
@@ -757,7 +743,6 @@ def form_remove_section(
     """Remove a section from a tab of an entity form (refuses a section holding
     bound fields without --force).
     """
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.remove_form_section(
@@ -794,7 +779,6 @@ def form_rename_section(
     solution: str | None,
 ) -> None:
     """Set a section's display label on an entity form."""
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.rename_form_section(
@@ -831,7 +815,6 @@ def form_move_section(
     solution: str | None,
 ) -> None:
     """Reorder a section within its tab on an entity form."""
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.move_form_section(

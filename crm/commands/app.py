@@ -15,7 +15,6 @@ from crm.commands._helpers import (
     _journal,
     _publish_option,
     _resolve_publish,
-    _resolve_solution,
     _solution_option,
     d365_errors,
 )
@@ -49,7 +48,6 @@ def app_create(
     ctx: CLIContext, name, unique_name, description, if_exists, icon_webresource, solution, publish
 ):
     """Create a model-driven app."""
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         backend = ctx.backend()
@@ -216,7 +214,6 @@ def app_build_sitemap(
     parsed_areas = [_parse_area(a) for a in areas]
     parsed_groups = [_parse_group(g) for g in groups]
     parsed_subareas = [_parse_subarea(s) for s in subareas]
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = app_mod.build_sitemap(
@@ -265,7 +262,6 @@ def app_set_sitemap(ctx: CLIContext, sitemap_name, xml_file, unique_name, soluti
     except OSError as exc:
         ctx.emit(False, error=f"Could not read {xml_file!r}: {exc}")
         return
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = app_mod.set_sitemap(

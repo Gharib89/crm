@@ -14,7 +14,6 @@ from crm.commands._helpers import (
     _publish_option,
     _read_file,
     _resolve_publish,
-    _resolve_solution,
     _solution_option,
     d365_errors,
 )
@@ -114,7 +113,6 @@ def dashboard_add_chart(
     publish: bool,
 ) -> None:
     """Add a chart tile (ChartGrid) to dashboard DASHBOARD_ID's FormXml."""
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = dashboard_mod.add_chart_to_dashboard(
@@ -171,7 +169,6 @@ def dashboard_add_view(
     publish: bool,
 ) -> None:
     """Add a view-only grid tile (ChartGrid) to dashboard DASHBOARD_ID's FormXml."""
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = dashboard_mod.add_view_to_dashboard(
@@ -232,7 +229,6 @@ def dashboard_add_iframe(
     url = (url or "").strip()
     if not url:
         raise click.UsageError("--url must be a non-empty URL.")
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = dashboard_mod.add_iframe_to_dashboard(
@@ -282,7 +278,6 @@ def dashboard_add_webresource(
     webresource = (webresource or "").strip()
     if not webresource:
         raise click.UsageError("--webresource must be a non-empty id or name.")
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = dashboard_mod.add_webresource_to_dashboard(
@@ -346,7 +341,6 @@ def dashboard_remove_component(
         raise click.UsageError(
             "Provide exactly one of --cell-id, --index, --view, --chart or --url."
         )
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = dashboard_mod.remove_component_from_dashboard(
@@ -401,7 +395,6 @@ def dashboard_create(
         )
 
     formxml = _read_file(formxml_file)
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
 
     with d365_errors(ctx):

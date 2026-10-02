@@ -20,10 +20,12 @@ orphaned, un-ALM'd customizations discovered late, in the wrong solution
 
 The solution target is **explicit and mandatory** on every customization write.
 
-- The shared resolver is `_resolve_solution(ctx, explicit) -> str`: it returns the
-  explicit `--solution` or raises `click.UsageError` (exit 2) — **no profile-default
-  fallback, no `(solution, warning)` tuple, no `require_solution` parameter.** The
-  failure fires before any backend call, **including under `--dry-run`**.
+- The shared `--solution` option (`_solution_option`) carries the check as its Click
+  callback: a missing `--solution` raises `click.UsageError` (exit 2) — **no
+  profile-default fallback, no `(solution, warning)` tuple, no `require_solution`
+  parameter.** The failure fires at parse time, before any confirmation prompt or
+  backend call, **including under `--dry-run`** (#998; it was a per-verb
+  `_resolve_solution` call until then).
 - The requirement covers every solution-aware group (metadata create-\*, plugin, web
   resource, form, view, chart, dashboard, sitemap, app, SLA, report, connection role,
   duplicate-detection, field security, security role, scaffold, ribbon) **and**

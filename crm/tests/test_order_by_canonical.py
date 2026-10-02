@@ -112,6 +112,8 @@ def test_view_create_empty_order_by_is_usage_error(monkeypatch):
             "cwx_name:220",
             "--order-by",
             "",
+            "--solution",
+            "TestSol",
             "--no-publish",
         ],
     )

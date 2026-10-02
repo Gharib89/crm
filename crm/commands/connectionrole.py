@@ -9,7 +9,6 @@ from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
     _emit_with_warning,
     _journal,
-    _resolve_solution,
     _solution_option,
     d365_errors,
 )
@@ -34,7 +33,6 @@ def connectionrole_group():
 @pass_ctx
 def connectionrole_create(ctx: CLIContext, name, category, description, solution) -> None:
     """Create a connection role named NAME."""
-    solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = cr_mod.create_role(
             ctx.backend(),
@@ -57,7 +55,6 @@ def connectionrole_scope(ctx: CLIContext, role, entity, solution) -> None:
 
     Call repeatedly to scope a role to several entity types.
     """
-    solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = cr_mod.scope(
             ctx.backend(),

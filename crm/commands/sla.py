@@ -13,7 +13,6 @@ from crm.commands._helpers import (
     _admin_kwargs,
     _emit_with_warning,
     _journal,
-    _resolve_solution,
     _solution_option,
     d365_errors,
 )
@@ -119,7 +118,6 @@ def sla_create(
     with d365_errors(ctx):
         if business_hours is not None and normalize_guid(business_hours) is None:
             raise D365Error(f"Invalid GUID for --business-hours: {business_hours!r}")
-    solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = sla_mod.create_sla(
             ctx.backend(),
@@ -200,7 +198,6 @@ def sla_add_kpi(
     # `sla activate` — an invalid id fails fast without a session round-trip.
     with d365_errors(ctx):
         sla_id = sla_mod.validate_sla_id(sla_id)
-    solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = sla_mod.add_kpi(
             ctx.backend(),

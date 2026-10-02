@@ -60,7 +60,6 @@ from .solutions import (
     _active_profile,
     _publish_option,
     _resolve_publish,
-    _resolve_solution,
     _solution_option,
 )
 
@@ -86,7 +85,6 @@ __all__ = [
     "d365_errors",
     "usage_guard",
     # solution resolution
-    "_resolve_solution",
     "_solution_option",
     "_publish_option",
     "_resolve_publish",

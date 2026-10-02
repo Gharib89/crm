@@ -1,11 +1,11 @@
 """Issue #636: explicit --solution is mandatory for customization writes.
 
-The shared solution-resolution helper `_resolve_solution(ctx, explicit) -> str`
-raises a UsageError (exit 2) when no --solution is given — there is no profile
+The shared `--solution` option's callback (`_require_solution`, #998) raises a
+UsageError (exit 2) at parse time when no --solution is given — there is no profile
 `default_solution` fallback and no strictness knob any more (supersedes #22 and
 the `default_solution` half of ADR 0002). Covers:
-  - explicit --solution wins (returns the string)
-  - no --solution -> UsageError (exit 2), before any backend call
+  - an explicit --solution (including Default) satisfies the requirement
+  - no --solution -> UsageError (exit 2), before any prompt or backend call
   - publisher prefix still supplies the schema-name default for create commands
   - hard metadata delete verbs are EXEMPT (a global delete can't orphan, so the
     MSCRM.SolutionUniqueName header is inert and --solution stays optional)
@@ -18,12 +18,10 @@ from __future__ import annotations
 
 import json
 
-import click
 import pytest
 from click.testing import CliRunner
 
-from crm.cli import CLIContext, cli
-from crm.commands._helpers import _resolve_solution
+from crm.cli import cli
 from crm.utils.d365_backend import ConnectionProfile
 
 # ── ConnectionProfile round-trip ─────────────────────────────────────────
@@ -60,38 +58,6 @@ def test_profile_from_dict_drops_legacy_default_solution():
     assert p.publisher_prefix == "new"
     assert not hasattr(p, "default_solution")
     assert "default_solution" not in p.to_dict()
-
-
-# ── _resolve_solution helper ─────────────────────────────────────────────
-
-
-def _ctx_with_profile(monkeypatch, *, publisher_prefix=None):
-    """Build a CLIContext whose active profile carries the given prefix."""
-    profile = ConnectionProfile(
-        name="p",
-        url="https://crm.contoso.local/contoso",
-        domain="",
-        username="alice",
-        publisher_prefix=publisher_prefix,
-    )
-    ctx = CLIContext()
-    ctx.profile_name = "p"
-    from crm.core import session as session_mod
-
-    monkeypatch.setattr(session_mod, "load_profile", lambda _n: profile)
-    return ctx
-
-
-def test_resolve_explicit_solution_returns_str(monkeypatch):
-    ctx = _ctx_with_profile(monkeypatch)
-    assert _resolve_solution(ctx, "ExplicitSol") == "ExplicitSol"
-
-
-def test_resolve_none_raises_usage_error(monkeypatch):
-    ctx = _ctx_with_profile(monkeypatch)
-    with pytest.raises(click.UsageError) as exc:
-        _resolve_solution(ctx, None)
-    assert "solution" in str(exc.value).lower()
 
 
 # ── CLI integration ──────────────────────────────────────────────────────
@@ -393,3 +359,35 @@ def test_connection_status_has_no_default_solution(monkeypatch, tmp_path):
     prof = env["data"]["profile"]
     assert prof["publisher_prefix"] == "new"
     assert "default_solution" not in prof
+
+
+_SOLUTION_REQUIRED = (
+    "--solution is required for customization writes — components must "
+    "target an explicit unmanaged solution. Pass --solution <unique_name>."
+)
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["ribbon", "remove", "account", "--button-id", "new.btn"],
+        ["security", "create-role", "Agent Read-Only"],
+        ["ribbon", "list", "account"],
+    ],
+    ids=["ribbon-remove", "security-create-role", "ribbon-list"],
+)
+def test_missing_solution_fails_before_confirmation(monkeypatch, tmp_path, args):
+    """A confirm-gated write without --solution fails exit 2, never prompting first."""
+    _save_profile(monkeypatch, tmp_path)
+    result = CliRunner().invoke(cli, ["--profile", "p", *args])
+    assert result.exit_code == 2, result.output
+    assert _SOLUTION_REQUIRED in result.output
+    assert "Pass --yes" not in result.output
+
+
+def test_missing_solution_message_is_exact_under_json_dry_run(monkeypatch, tmp_path):
+    _save_profile(monkeypatch, tmp_path, publisher_prefix="new")
+    args = ["--json", "--dry-run", "--profile", "p", "metadata", "create-entity"]
+    result = CliRunner().invoke(cli, [*args, "--display", "Project", "--no-publish"])
+    assert result.exit_code == 2, result.output
+    assert json.loads(result.output)["error"] == _SOLUTION_REQUIRED

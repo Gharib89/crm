@@ -121,6 +121,8 @@ class TestDashboardCreate:
                 "--formxml",
                 self._formxml_file(tmp_path),
                 "--interactive",
+                "--solution",
+                "TestSol",
                 "--no-publish",
             ],
         )
@@ -293,7 +295,17 @@ class TestDashboardAddIframe:
         _use_backend(monkeypatch, backend)
         result = CliRunner().invoke(
             cli,
-            ["--json", "dashboard", "add-iframe", _DASH["formid"], "--url", "   ", "--no-publish"],
+            [
+                "--json",
+                "dashboard",
+                "add-iframe",
+                _DASH["formid"],
+                "--url",
+                "   ",
+                "--solution",
+                "TestSol",
+                "--no-publish",
+            ],
         )
         assert result.exit_code == 2, result.output
 
@@ -346,6 +358,8 @@ class TestDashboardAddWebresource:
                 _DASH["formid"],
                 "--webresource",
                 "  ",
+                "--solution",
+                "TestSol",
                 "--no-publish",
             ],
         )
@@ -398,7 +412,16 @@ class TestDashboardRemoveComponent:
         # layer before a backend is built — not an operational core error.
         _use_backend(monkeypatch, backend)
         result = CliRunner().invoke(
-            cli, ["--json", "dashboard", "remove-component", _DASH["formid"], "--no-publish"]
+            cli,
+            [
+                "--json",
+                "dashboard",
+                "remove-component",
+                _DASH["formid"],
+                "--solution",
+                "TestSol",
+                "--no-publish",
+            ],
         )
         assert result.exit_code == 2, result.output
         assert json.loads(result.output)["ok"] is False
@@ -416,6 +439,8 @@ class TestDashboardRemoveComponent:
                 "0",
                 "--view",
                 self._RV,
+                "--solution",
+                "TestSol",
                 "--no-publish",
             ],
         )

@@ -11,7 +11,6 @@ from crm.commands._helpers import (
     _journal,
     _publish_option,
     _resolve_publish,
-    _resolve_solution,
     _solution_option,
     d365_errors,
 )
@@ -177,7 +176,6 @@ def view_create(
     order_desc = False
     if order_by is not None:
         order_by, order_desc = _parse_order(order_by)
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = views_mod.create_view(
@@ -257,7 +255,6 @@ def view_edit_columns(
     reorder_parsed = (
         [c.strip() for c in reorder.split(",") if c.strip()] if reorder is not None else None
     )
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = views_mod.edit_view_columns(
@@ -327,7 +324,6 @@ def view_add_filter(
     solution upgrade may revert.
     """
     parsed = [_parse_condition(c) for c in conditions]
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = views_mod.add_view_filter(
@@ -368,7 +364,6 @@ def view_remove_filter(ctx: CLIContext, entity, view, query_type, conditions, so
     solution upgrade may revert.
     """
     parsed = [_parse_condition(c) for c in conditions]
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = views_mod.remove_view_filter(
@@ -418,7 +413,6 @@ def view_set_order(
         raise click.UsageError("nothing to do: pass --order, --add-order, or --clear-order.")
     order_parsed = [_parse_order(o) for o in order]
     add_order_parsed = [_parse_order(o) for o in add_order]
-    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = views_mod.set_view_order(

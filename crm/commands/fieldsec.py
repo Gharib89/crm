@@ -9,7 +9,6 @@ from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
     _emit_with_warning,
     _journal,
-    _resolve_solution,
     _solution_option,
     d365_errors,
 )
@@ -58,7 +57,6 @@ def fieldsec_get(ctx: CLIContext, profile: str) -> None:
 @pass_ctx
 def fieldsec_create_profile(ctx: CLIContext, name, description, solution) -> None:
     """Create a field security profile named NAME."""
-    solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = fieldsec_mod.create_profile(
             ctx.backend(),
@@ -91,7 +89,6 @@ def fieldsec_add_permission(
     # is built. The core function repeats the check for direct (non-CLI) callers.
     if not (read or create or update):
         raise click.UsageError("pass at least one of --read / --create / --update.")
-    solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = fieldsec_mod.add_permission(
             ctx.backend(),
