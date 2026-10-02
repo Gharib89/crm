@@ -36,13 +36,13 @@ The suite is opt-in: `D365_E2E=1`, plus one of two cred sources:
 The fixture resolves `shutil.which("crm")` → the installed **PyInstaller binary** (`~/.local/bin/crm`), which **ignores `PYTHONPATH`** (it bundles its own code), so an e2e run silently exercises the OLD installed code, not your worktree fix. The venv console-script `.venv/bin/crm` is *also* on PATH and *does* honor `PYTHONPATH`, so stripping only `~/.local/bin` isn't enough. Strip **both** crm dirs so `which` returns nothing and the fixture falls back to `[sys.executable, "-m", "crm"]`:
 
 ```bash
-WT=<worktree>; MAIN=<main checkout>; LOG=<scratch dir>/e2e.log
-CLOUD_HOST=$(crm profile list --json | python3 -c 'import json,sys; print(next(p["url"] for p in json.load(sys.stdin)["data"] if p["name"]=="agent-cloud").split("/")[2])')
+WT=<worktree>; MAIN=<main checkout>; LOG=<scratch dir>/e2e.log; P=agent-cloud   # or agent-cs-trial for its CS verbs
+CLOUD_HOST=$(crm profile list --json | P=$P python3 -c 'import json,os,sys; print(next(p["url"] for p in json.load(sys.stdin)["data"] if p["name"]==os.environ["P"]).split("/")[2])')
 NEWPATH=$(echo "$PATH"|tr ':' '\n'|grep -vE '/\.local/bin|/crm/\.venv/bin'|paste -sd:)
-cd $WT && D365_E2E=1 D365_E2E_PROFILE=agent-cloud D365_E2E_ALLOW_HOST=$CLOUD_HOST PATH=$NEWPATH PYTHONPATH=$WT $MAIN/.venv/bin/python -m pytest -m e2e <node> >$LOG 2>&1
+cd $WT && D365_E2E=1 D365_E2E_PROFILE=$P D365_E2E_ALLOW_HOST=$CLOUD_HOST PATH=$NEWPATH PYTHONPATH=$WT $MAIN/.venv/bin/python -m pytest -m e2e <node> >$LOG 2>&1
 ```
 
-`CLOUD_HOST` is the exact host the cloud guard (§2) needs; `crm profile list` is a local read, so the installed binary is fine for it. Launch the pytest line as §4 says.
+`CLOUD_HOST` is the exact host of profile `$P` that the cloud guard (§2) needs; `crm profile list` is a local read, so the installed binary is fine for it. Launch the pytest line as §4 says.
 
 **cwd beats `PYTHONPATH` — `PYTHONPATH=$WT` is NOT sufficient on its own.** `python -m crm` (the fixture fallback, spawned as a subprocess) and any `-m`/`-c` invocation put cwd as `''` at `sys.path[0]`, *ahead* of `PYTHONPATH` (`sys.path[1]`). If the process cwd is the main checkout (which holds a `crm/` package — and the agent shell's default cwd is the main checkout), `import crm` resolves to MAIN and the worktree fix silently never runs. Run from `$WT` (the `cd $WT` above), or front-load it explicitly (`sys.path.insert(0, $WT)`); the editable-install meta-path finder is *appended* (last in `sys.meta_path`), so it is **not** the cause — cwd is. `pytest` collecting test modules is immune (rootdir insertion), but the `cli`-fixture subprocess it spawns is not.
 
