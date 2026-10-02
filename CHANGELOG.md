@@ -9,6 +9,33 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.81.6 (2026-10-02)
+
+### Bug Fixes
+
+- **hooks**: Pin git capture encoding; align check.sh venv comment
+  ([#1014](https://github.com/Gharib89/crm/pull/1014),
+  [`745cd7c`](https://github.com/Gharib89/crm/commit/745cd7c77b2ac2b254cf68adf98f55257b8bf711))
+
+- **hooks**: Run the strict pyright hook on worktree edits
+  ([#1014](https://github.com/Gharib89/crm/pull/1014),
+  [`745cd7c`](https://github.com/Gharib89/crm/commit/745cd7c77b2ac2b254cf68adf98f55257b8bf711))
+
+### Documentation
+
+- **live-e2e**: Address self-review: profile allowlist, background wait, merge-gate pointer
+  ([#1013](https://github.com/Gharib89/crm/pull/1013),
+  [`f50c79b`](https://github.com/Gharib89/crm/commit/f50c79bec4b550709dee14914b36772ba35bc527))
+
+- **live-e2e**: One recipe in the live-e2e skill, cloud-only target, per-org and duration tripwires
+  ([#1013](https://github.com/Gharib89/crm/pull/1013),
+  [`f50c79b`](https://github.com/Gharib89/crm/commit/f50c79bec4b550709dee14914b36772ba35bc527))
+
+- **live-e2e**: Parameterize the recipe's profile so agent-cs-trial runs reuse it
+  ([#1013](https://github.com/Gharib89/crm/pull/1013),
+  [`f50c79b`](https://github.com/Gharib89/crm/commit/f50c79bec4b550709dee14914b36772ba35bc527))
+
+
 ## v1.81.5 (2026-10-02)
 
 ### Bug Fixes
