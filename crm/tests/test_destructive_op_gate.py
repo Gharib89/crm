@@ -440,6 +440,96 @@ class TestSeparatorAndPrefixBypass:
         assert r.returncode == 0, r.stderr
 
 
+_ROLE_DELETE = f"crm security delete-role {_ROLE_ID}"
+
+
+class TestProseNamingAVerb:
+    """Text the shell never executes only names a verb (#1011): heredoc bodies
+    and quoted arguments of inert commands. It must not trip the gate, while
+    every real invocation around or inside such text still does.
+    """
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            f"cat > brief.md <<EOF\nThe gate blocks\n{_ROLE_DELETE}\nEOF",
+            f"cat <<'EOF' > brief.md\n{_ROLE_DELETE}\nEOF\ngit status",
+            f"cat <<-EOF\n\t{_ROLE_DELETE}\n\tEOF",
+            f"cat <<'EOF'\n$({_ROLE_DELETE})\nEOF",
+            f"cat <<EOF > /tmp/sh\n{_ROLE_DELETE}\nEOF",
+            f"tee bash <<EOF\n{_ROLE_DELETE}\nEOF",
+            f"gh pr create --body \"$(cat <<'EOF'\n{_ROLE_DELETE}\nEOF\n)\"",
+            f"gh pr create --body-file - <<'EOF'\n{_ROLE_DELETE}\nEOF",
+            f"mkdir -p d && cat > d/f.md <<'EOF'\n{_ROLE_DELETE}\nEOF",
+        ],
+    )
+    def test_heredoc_body_naming_verb_allowed(self, cmd):
+        r = _run(cmd)
+        assert r.returncode == 0, f"false positive on: {cmd!r}\n{r.stderr}"
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            f'gh issue create --body "Steps:\n{_ROLE_DELETE}\nis blocked"',
+            f'gh issue create --body "The gate ({_ROLE_DELETE}) fires"',
+            f'gh issue create --body "it\'s ok\n{_ROLE_DELETE}"',
+            f"gh pr comment 1 --body 'note:\n{_ROLE_DELETE}'",
+            f'gh x "$(date)" --body "a\n{_ROLE_DELETE}"',
+            f"# don't run this\ngh issue create --body 'x\n{_ROLE_DELETE}'",
+        ],
+    )
+    def test_quoted_argument_naming_verb_allowed(self, cmd):
+        r = _run(cmd)
+        assert r.returncode == 0, f"false positive on: {cmd!r}\n{r.stderr}"
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            _ROLE_DELETE,
+            f"cd /tmp && {_ROLE_DELETE}",
+            # Real invocations around prose still match.
+            f"cat <<EOF\nprose\nEOF\n{_ROLE_DELETE}",
+            f"cat <<A <<B\na\nA\nb\nB\n{_ROLE_DELETE}",
+            f"cat <<EOF; {_ROLE_DELETE}\nbody\nEOF",
+            f"# don't run this\n{_ROLE_DELETE}",
+            f"echo \\ #; {_ROLE_DELETE}",
+            f"printf $'don\\'t\\n'; {_ROLE_DELETE}",
+            f"echo $((1<<2))\n{_ROLE_DELETE}",
+            f"(( x << 2 ))\n{_ROLE_DELETE}",
+            # Substitutions run, inside double quotes and unquoted heredocs too.
+            f'X="$({_ROLE_DELETE})"',
+            f'echo "`{_ROLE_DELETE}`"',
+            f'gh issue create --body "$({_ROLE_DELETE})"',
+            f"cat <<EOF\n$({_ROLE_DELETE})\nEOF",
+            f"cat <<EOF\n`{_ROLE_DELETE}`\nEOF",
+            # A heredoc fed to anything but an inert command keeps its body.
+            f"bash <<EOF\n{_ROLE_DELETE}\nEOF",
+            f"cat <<EOF | sh\n{_ROLE_DELETE}\nEOF",
+            f"cat <<EOF | fish\n{_ROLE_DELETE}\nEOF",
+            f"sudo -s <<EOF\n{_ROLE_DELETE}\nEOF",
+            f"ssh host <<EOF\n{_ROLE_DELETE}\nEOF",
+            f"source /dev/stdin <<EOF\n{_ROLE_DELETE}\nEOF",
+            f". /dev/stdin <<EOF\n{_ROLE_DELETE}\nEOF",
+            f"eval \"$(cat <<'EOF'\n{_ROLE_DELETE}\nEOF\n)\"",
+            f'bash -c "echo hi\n{_ROLE_DELETE}"',
+            f"git -c alias.x='!sh' x <<EOF\n{_ROLE_DELETE}\nEOF",
+            f"git -c alias.x='!true\n{_ROLE_DELETE}\n' x",
+            f"cat <<EOF |\n{_ROLE_DELETE}\nEOF\nsh",
+            f"cat() {{ bash; }}\ncat <<EOF\n{_ROLE_DELETE}\nEOF",
+            f"function cat {{ bash; }}\ncat <<EOF\n{_ROLE_DELETE}\nEOF",
+            f"cat <<EOF $(\n{_ROLE_DELETE}\n)\nbody\nEOF",
+            # A delimiter the view cannot read keeps its body live.
+            f'cat <<"E"OF\nx\nEOF\n{_ROLE_DELETE}\nE',
+            f"cat <<\\EOF\nEOF\n{_ROLE_DELETE}\n\\EOF",
+            f"(( cat << 2 ))\n{_ROLE_DELETE}\n2",
+        ],
+    )
+    def test_real_invocation_still_blocked(self, cmd):
+        r = _run(cmd)
+        assert r.returncode == BLOCK, f"gate bypassed: {cmd!r}\n{r.stdout}"
+        assert "delete-role" in r.stderr
+
+
 class TestStdinParsing:
     def test_ignores_non_bash_tool(self):
         r = _run("crm metadata delete-entity new_widget", tool_name="Read")

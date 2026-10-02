@@ -236,6 +236,169 @@ def _split_segments_lex(command: str) -> list[list[str]]:
     return segments
 
 
+# Characters the raw split cuts on. Inside quoted literal text they are plain
+# text, so `_shell_view` blanks them there.
+_SEPARATOR_CHARS = set(";|&()\n\r`")
+
+# A heredoc opener: `<<WORD`, `<<-WORD`, `<<'WORD'`, `<<"WORD"`. A `<<<`
+# here-string is not one. A delimiter spelled any other way (`<<"E"OF`,
+# `<<\EOF`) does not match, so its body stays live.
+_HEREDOC = re.compile(r"(?<!<)<<-?[ \t]*(['\"]?)([^\s;&|<>()'\"\\]+)\1(?=[\s;&|<>()]|$)")
+
+# Commands that never run their stdin or arguments as shell code. Only their
+# heredoc bodies and quoted arguments count as prose; every other command's
+# stay live, so an unlisted runner (eval, source, ssh, sudo, bash -c) fails
+# closed. Not git: aliases, `rebase -x` and `core.pager` run shell strings.
+_INERT = {"cat", "tee", "gh", "echo", "printf", "cd", "mkdir"}
+
+# A function or alias defined in the same command can make an `_INERT` name
+# run code; such a command gets no prose view at all.
+_INERT_NAMES = "|".join(sorted(_INERT))
+_SHADOWED = re.compile(
+    rf"\bfunction\s+(?:{_INERT_NAMES})\b|\b(?:alias\s+)?(?:{_INERT_NAMES})\s*(?:\(\s*\)|=)"
+)
+
+# What may precede a `#` that starts a comment.
+_COMMENT_AFTER = set(" \t\n;|&(")
+
+
+def _command_word(text: str) -> str:
+    """Basename of the first non-assignment word of `text`, else ''."""
+    for word in text.split():
+        if not _ASSIGNMENT.match(word):
+            return os.path.basename(word)
+    return ""
+
+
+def _heredoc_end(command: str, start: int, heredocs: list[tuple[str, bool]]) -> int | None:
+    """Index just past the bodies that begin at `start`, in opening order, or
+    None when they must stay: a terminator line is missing, or an unquoted
+    body holds a substitution the shell expands.
+    """
+    pos = start
+    for word, quoted in heredocs:
+        body_start = pos
+        while True:
+            if pos >= len(command):
+                return None
+            end = command.find("\n", pos)
+            end = len(command) if end == -1 else end
+            line, pos = command[pos:end], end + 1
+            if line.strip() == word:
+                break
+        if not quoted and ("$(" in command[body_start:pos] or "`" in command[body_start:pos]):
+            return None
+    return pos
+
+
+def _shell_view(command: str) -> str:
+    """Return `command` with the prose of `_INERT` commands neutralised (#1011).
+
+    For an `_INERT` command, separator characters inside its quoted arguments
+    are blanked, and a heredoc body is dropped when every command on the
+    opener line is `_INERT`. `#` comments are dropped. `$(...)` and backtick
+    substitutions stay live, inside double quotes too, since the shell runs
+    them. Anything this does not recognise is left as is, so the splitters see
+    it exactly as before. Both splitters read this view.
+    """
+    if _SHADOWED.search(command):
+        return command
+    out: list[str] = []
+    # Open contexts: "'" / '"' (a "!" suffix: quoted text stays live), "$'",
+    # "$(", "`". `starts` holds, per command context, the index in `out`
+    # where its current segment began.
+    stack: list[str] = []
+    starts = [0]
+    line_words: set[str] = set()  # command words of this line's segments
+    # (terminator, quoted, offset, stack depth at the opener)
+    heredocs: list[tuple[str, bool, int, int]] = []
+
+    def record() -> None:
+        line_words.add(_command_word("".join(out[starts[-1] :])))
+
+    i, n = 0, len(command)
+    while i < n:
+        c = command[i]
+        top = stack[-1] if stack else ""
+        if top[:1] == "'":
+            if c == "'":
+                stack.pop()
+            elif top == "'" and c in _SEPARATOR_CHARS:
+                c = " "
+        elif top == "$'":
+            if c == "\\":
+                out.append(command[i : i + 2])
+                i += 2
+                continue
+            if c == "'":
+                stack.pop()
+        elif c == "\\":
+            out.append(command[i : i + 2])
+            i += 2
+            continue
+        elif top[:1] == '"' and c == '"':
+            stack.pop()
+        elif command.startswith("$(", i) or c == "`" and top != "`":
+            record()
+            stack.append("$(" if c == "$" else "`")
+            out.append(stack[-1])
+            i += len(stack[-1])
+            starts.append(len(out))
+            continue
+        elif c == "`" or c == ")" and top == "$(":
+            record()
+            stack.pop()
+            starts.pop()
+        elif top[:1] == '"':
+            if top == '"' and c in _SEPARATOR_CHARS:
+                c = " "
+        elif command.startswith("$'", i):
+            stack.append("$'")
+            out.append("$'")
+            i += 2
+            continue
+        elif c in "'\"":
+            live = _command_word("".join(out[starts[-1] :])) not in _INERT
+            stack.append(c + "!" * live)
+        elif c == "#" and (not out or out[-1] in _COMMENT_AFTER):
+            end = command.find("\n", i)
+            i = n if end == -1 else end
+            continue
+        elif m := _HEREDOC.match(command, i):
+            heredocs.append((m.group(2), bool(m.group(1)), i, len(stack)))
+            out.append(m.group(0))
+            i = m.end()
+            continue
+        elif c in _SEPARATOR_CHARS:
+            record()
+            if c == "\n":
+                line_start = command.rfind("\n", 0, i) + 1
+                # A body starts only at a newline in the opener's own context,
+                # never one inside a substitution still open on that line.
+                depth = len(stack)
+                pending = [(w, q) for w, q, at, d in heredocs if at >= line_start and d == depth]
+                end = _heredoc_end(command, i + 1, pending) if pending else None
+                # A pipeline continued past the body (`cat <<EOF |`) or an
+                # arithmetic `<<` makes the opener line unreadable here.
+                opener = command[line_start:i].rstrip()
+                inert = (
+                    line_words - {""} <= _INERT
+                    and len(pending) == len(heredocs)
+                    and not opener.endswith(("|", "&"))
+                    and "((" not in opener
+                )
+                heredocs, line_words = [], set()
+                if end is not None and inert:
+                    out.append("\n")
+                    i = end
+                    starts[-1] = len(out)
+                    continue
+            starts[-1] = len(out) + 1
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
 # --- git discipline gates (CLAUDE.md "Branch & worktree discipline") ---------
 
 # `git add` arguments that blanket-stage instead of naming explicit paths.
@@ -407,9 +570,11 @@ def main() -> int:
     # prefix (`/usr/bin/crm ...`) is still caught. --yes is scoped to its own
     # segment. Both segmentations are checked (#675): the raw split covers
     # backtick substitution, the quote-aware split covers operators inside
-    # quoted arguments that shred the raw pieces.
-    lex_segments = _split_segments_lex(command)
-    for segment in _split_segments(command) + lex_segments:
+    # quoted arguments that shred the raw pieces. Both read the shell view, so
+    # heredoc bodies and quoted prose that only name a verb never match (#1011).
+    view = _shell_view(command)
+    lex_segments = _split_segments_lex(view)
+    for segment in _split_segments(view) + lex_segments:
         label = _destructive_match(segment)
         if label is not None and not _confirm_present(segment):
             sys.stderr.write(
