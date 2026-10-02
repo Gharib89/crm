@@ -255,7 +255,7 @@ def append_baseline(path: str | Path, rows: list[dict[str, Any]]) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Run the skill-eval set against both targets; union coverage + baseline trend."
+        description="Run the skill-eval set per profile (default: agent-cloud) + baseline trend."
     )
     parser.add_argument(
         "--profiles",

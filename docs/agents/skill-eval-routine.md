@@ -37,7 +37,7 @@ and aborts if isolation isn't real, rather than running unsandboxed (#906). **Ru
 eval on native Linux** — the built-in network sandbox is unreliable on WSL2 (the preflight
 aborts there); the routine's own `both_runner` is unaffected since it does not sandbox.
 
-## Two cadences (pick by what reaches both targets)
+## Two cadences (pick by what each host can reach)
 
 The default run is **cloud only** (`agent-cloud`). On-prem is VPN-gated, so an on-prem leg
 is opt-in: append `--profiles agent-cloud,<on-prem-profile>` on a host with that profile and
