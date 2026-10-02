@@ -90,14 +90,13 @@ evidence. Every finding gets a one-line disposition for the verdict comment.
   their `@covers` strings (`@covers(...)` stamps are a coverage registry, not
   pytest markers, so `-k`/`-m` cannot select on them) — confirm the touched
   verbs appear in those strings, then run
-  `D365_E2E=1 pytest -m e2e <files>` (worktree-code recipe). Run on
-  **every live target the touched commands support** — cloud and on-prem gate
-  capabilities differently, so a single-target green can pass a test whose
-  capability gate is wrong for the other target. Pin `--profile`, confirm the org via
-  `crm connection whoami`, and quote both in the verdict. A target unreachable
-  (VPN down, trial expired) is an explicit skip with reason, never a silent pass.
-  **Done = the full `test_<group>*.py` file(s) ran green on every supported
-  target** — the PR's own new test node passing alone is not the integration test.
+  those files with the skill's §3 recipe against `agent-cloud` (plus
+  `agent-cs-trial` for its CS verbs while the trial lives). Pin `--profile`,
+  confirm the org via `crm connection whoami`, and quote both in the verdict. A
+  target unreachable (trial expired) is an explicit skip with reason, never a
+  silent pass; a PR touching on-prem behaviour says "on-prem leg not run".
+  **Done = the full `test_<group>*.py` file(s) ran green on `agent-cloud`**:
+  the PR's own new test node passing alone is not the integration test.
 - **No D365 surface** (docs, local groups, offline-provable refactor) → offline
   suite only; say so in the verdict.
 

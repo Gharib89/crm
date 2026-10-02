@@ -5,7 +5,7 @@ runs, and teammates' agent sessions — each stopping at its own merge gate with
 tests green and review-bot rounds (Copilot, plus the Claude fallback when Copilot
 exits not reviewed) addressed; CodeRabbit is manual, driven only by this gate. The **`merge-gate` skill**
 (`.claude/skills/merge-gate/`, source of truth) is the maintainer's independent
-second gate: run locally (the only environment with both live-org profiles), it
+second gate: run locally (the only environment with the live-org profiles), it
 re-verifies the PR instead of trusting the author agent's claims, and leaves it
 either merge-confident or explicitly failed. The maintainer merges; the gate
 never does.
