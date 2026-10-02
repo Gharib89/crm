@@ -544,22 +544,36 @@ def _main_commit_reason(rest: list[str], repo_dir: str) -> str | None:
     )
 
 
-# Shells whose `-c` argument is a command string; `env` may precede one.
+# Shells whose `-c` argument is a command string.
 _SHELLS = {"bash", "sh", "zsh", "dash"}
+
+# `env` options that consume the following token as their value.
+_ENV_VALUE_OPTIONS = {"-u", "--unset", "-C", "--chdir"}
+
+# How deep runners may nest (`bash -c "env sh -c '...'"`) before the gate
+# stops reading and blocks instead.
+_MAX_NESTING = 8
 
 
 def _runner_payload(tokens: list[str]) -> str | None:
     """The command string a shell runner segment executes, else None (#1020):
-    the argument after a `-c` flag cluster (`-c`, `-lc`) of a shell, or the
-    joined arguments of `eval`. Other runners (ssh, sudo, xargs, python -c) are
-    out of scope: no string check can follow every interpreter.
+    the argument after a `-c` flag cluster (`-c`, `-lc`) of a shell, the joined
+    arguments of `eval`, or the command `env` runs (after its options and
+    assignments; an `-S` string is the command itself). Other runners (ssh,
+    sudo, xargs, python -c) are out of scope: no string check can follow every
+    interpreter.
     """
     tokens = _strip_assignments(tokens)
-    if tokens and os.path.basename(tokens[0]) == "env":
-        tokens = _strip_assignments(tokens[1:])
     if not tokens:
         return None
     word = os.path.basename(tokens[0])
+    if word == "env":
+        rest = tokens[1:]
+        while rest and (rest[0].startswith("-") or _ASSIGNMENT.match(rest[0])):
+            if rest[0] in ("-S", "--split-string") and len(rest) > 1:
+                return " ".join(rest[1:])
+            rest = rest[2:] if rest[0] in _ENV_VALUE_OPTIONS else rest[1:]
+        return shlex.join(rest) if rest else None
     if word == "eval":
         return " ".join(tokens[1:])
     if word in _SHELLS:
@@ -569,9 +583,9 @@ def _runner_payload(tokens: list[str]) -> str | None:
     return None
 
 
-def _block_reason(command: str, effective: str | None) -> str | None:
+def _block_reason(command: str, effective: str | None, depth: int = 0) -> str | None:
     """Why `command` must be blocked, else None. A shell runner's command
-    string is checked recursively; it is strictly shorter, so this ends.
+    string is checked recursively, up to `_MAX_NESTING` levels.
     """
     # Inspect every sub-command so a destructive crm call inside a compound
     # command (`true && crm ...`, `a|crm ...`, `$(crm ...)`) or with a path
@@ -597,7 +611,9 @@ def _block_reason(command: str, effective: str | None) -> str | None:
     for segment in lex_segments:
         inner = _runner_payload(segment)
         if inner is not None:
-            reason = _block_reason(inner, effective)
+            if depth >= _MAX_NESTING:
+                return "BLOCKED: shell runners nest too deeply for the destructive-op gate to read."
+            reason = _block_reason(inner, effective, depth + 1)
             if reason is not None:
                 return reason
             continue
