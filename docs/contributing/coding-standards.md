@@ -140,7 +140,8 @@ House rules on top of the shape:
   usage error. Granular per-class codes are rejected — failure-class detail lives in the
   envelope (`error`, `meta.status/code/category/retryable`), not the exit code.
 - The envelope's `{status, code, category, retryable}` is reserved and always derived from the
-  caught `D365Error` itself; an `enrich(exc)` callback's `extra_meta` is strictly additive and
+  caught `D365Error` itself (`category` and `retryable` by `classify_d365_error` in
+  `crm/utils/d365_backend.py`); an `enrich(exc)` callback's `extra_meta` is strictly additive and
   raises if it names a reserved key.
 - Never `assert` for a runtime invariant in shipped code — `assert` is stripped under
   `python -O`, and the frozen PyInstaller build can run optimized. Raise `D365Error` (or the
@@ -217,6 +218,8 @@ sections above.
 
 - **PR body: seven sections, in order.** `## Why the change`, `## Change outline`, `## Special things to note`, `## Needs attention`, `## Verification`, `## Review`, `## Attribution`. Every body carries all seven, template or not, because ship writes the headings it does not find; a missing one is a finding, and `## Attribution` last is what keeps a section rewrite from swallowing the footer.
 - **PR body: `## Change outline` carries a Shape.** A `diff` fence over a call tree, control flow, pseudocode or component tree, under `## Change outline`, which every body carries because ship writes the heading where no template gives it. Text forms only; mermaid and HTML are out. One behavioural fence per PR, about 15 lines or fewer, with a carrier file tree after it only where the same edit lands in more than two files. Every node is a real symbol, each tree's root node carries its file path, and no line carries a line number. `Shape: none, mechanical (<kind>).` replaces the fence only where the reviewer's question is "did the text change correctly", never where it is "what does X now do"; silent absence is a finding either way.
+### Depth checks
+
 - **A vocabulary the change extends is swept across the whole tree, sibling spellings included.** Grep the new term and the ones it sits beside, across every file rather than the ones the diff already opened; a stale spelling left in the copy nobody grepped reads as the current rule to the agent that finds it first.
 - **History keeps the old word through a rename.** The sweep above stops at history: a changelog entry and an ADR keep the word as it was, since each records what was true when it was written.
 - **A rule-shaped prose change reaches every item it governs, one outcome each.** Enumerate the items the rule names and check the change lands on each exactly once; an item the rewrite skipped, or one left carrying two answers, is where a reviewer finds five rounds of work.

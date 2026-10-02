@@ -49,3 +49,7 @@ If the concept you need isn't in the glossary yet, that's a signal — either yo
 If your output contradicts an existing ADR, surface it explicitly rather than silently overriding:
 
 > _Contradicts ADR-0007 (event-sourced orders) — but worth reopening because…_
+
+## Amend an accepted ADR, never rewrite it
+
+An accepted ADR's decision text stays as written: it records what was decided and why at the time. When later work changes how the decision is carried out, or reconciles it with what was built, append a dated entry under a `## Amendments` heading at the end of the ADR (create the heading if absent), one bullet per amendment: the date, a short title, a link to the issue, what changed and why, and whether the status still holds. ADR 0028 is the worked example. A change that overturns the decision itself is a new ADR that supersedes the old one, not an amendment.
