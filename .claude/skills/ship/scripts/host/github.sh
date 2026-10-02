@@ -363,16 +363,16 @@ host_issue_create() { # <title> <body-file> <label>
 # rewrite of that section drops it. A body with no heading has no section to
 # fall inside, so it keeps the append.
 #
-# Fenced blocks are skipped by `SHIP_AWK_FENCE`, matching the model
-# `ship_body_closes` uses: a `## ` inside a fence is example text, and a closing
-# line printed into a fence renders as code, so the host registers no link and
-# the keyword test that gates a re-run reads false.
+# Fenced blocks and `<details>` records are skipped by `ship_inert`, matching
+# the fence model `ship_body_closes` uses: a `## ` inside a fence is example
+# text, and a closing line printed into a fence renders as code, so the host
+# registers no link and the keyword test that gates a re-run reads false.
 # The heading match stays anchored at column 0 on purpose: it has to agree
 # with `update-pr-body`, whose `^## ` is what decides a section boundary.
 _gh_add_closes() { # <body> <issue>
   awk -v n="$2" "$SHIP_AWK_FENCE"'
-    { fenced = ship_fence($0) }
-    !placed && !fenced && /^## / { print "Closes #" n; print ""; placed = 1 }
+    { inert = ship_inert($0) }
+    !placed && !inert && /^## / { print "Closes #" n; print ""; placed = 1 }
     { print }
     END { if (!placed) printf "\nCloses #%s\n", n }' <<<"$1"
 }
@@ -606,10 +606,14 @@ host_run_denials() { # <run-url>
       else error("a claude-review warning leads with no count") end' <<<"$ann"
 }
 
-# The PR's review_requested events, oldest first, as {login, created_at}.
-_gh_requested_events() { # <pr>
+# The PR's review events, oldest first, as {event, login, created_at}: each
+# review_requested and review_request_removed under the reviewer it names, and
+# each review under its author.
+_gh_review_events() { # <pr>
   api "$R/issues/$1/timeline" --paginate \
-    --jq '.[] | select(.event == "review_requested") | select(.requested_reviewer.login) | {login: .requested_reviewer.login, created_at}' \
+    --jq '.[] | select(.event == "review_requested" or .event == "review_request_removed" or .event == "reviewed")
+      | {event, login: (if .event == "reviewed" then .user.login else .requested_reviewer.login end), created_at: (.created_at // .submitted_at)}
+      | select(.login)' \
     | jq -s .
 }
 
@@ -629,15 +633,15 @@ _gh_recorded_def='def norm: ascii_downcase | sub("\\[bot\\]$"; "");
 # and an empty requested_reviewers list proves nothing once the bot has posted.
 host_pr_request_review() { # <pr> <login>
   local pr=$1 login=$2 ok=false before after pending readback now
-  before=$(_gh_requested_events "$pr") || before='[]'
+  before=$(_gh_review_events "$pr") || before='[]'
   # Stamped before the POST, so a review submitted the instant the request lands
   # is still at-or-after the fallback requested_at.
   now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   api -X POST "$R/pulls/$pr/requested_reviewers" -f "reviewers[]=$login" >/dev/null && ok=true
   sleep 2
-  after=$(_gh_requested_events "$pr") || after='[]'
+  after=$(_gh_review_events "$pr") || after='[]'
   pending=$(api "$R/pulls/$pr" --jq '.requested_reviewers[].login' | jq -R . | jq -s .)
-  readback=$( { jq -r '.[]' <<<"$pending"; jq -r '.[].login' <<<"$after"; } | jq -R . | jq -s 'unique')
+  readback=$( { jq -r '.[]' <<<"$pending"; jq -r '.[] | select(.event == "review_requested") | .login' <<<"$after"; } | jq -R . | jq -s 'unique')
   # The request landed if the timeline gained a review_requested event during
   # this call, or if the reviewer is pending on `requested_reviewers` now under
   # any name it is recorded as (`recorded`).
@@ -650,11 +654,25 @@ host_pr_request_review() { # <pr> <login>
   # lands after this call's `requested_at` and is what the caller waits for:
   # already pending counts as landed. The timeline is chronological, so a new
   # event is the last one.
+  # A round in flight counts as well, whatever the POST answered: before the
+  # POST, the reviewer's last review event was a request, neither answered nor
+  # withdrawn, and no withdrawal ends the call. GitHub drops a reviewer from the
+  # pending list once it starts reviewing and a re-request writes no event, so a
+  # Copilot ruleset's PR-open round reads that way while Copilot is mid-review,
+  # and its request's time is the round's `requested_at` (#444). Read off the
+  # timeline before the POST, so a review that lands during the call still
+  # counts. An answered request is followed by its review, so an earlier round
+  # never reads as this one.
   jq -n --argjson ok "$ok" --argjson b "$before" --argjson a "$after" --argjson p "$pending" --argjson rb "$readback" --arg l "$login" --arg alias "$(_gh_alias "$login")" --arg now "$now" \
     "$_gh_recorded_def"'
-     {requested: ($ok and (($a | length) > ($b | length) or any($p[]; recorded))),
-      readback: $rb,
-      requested_at: (if ($a | length) > ($b | length) then ($a[-1].created_at // $now) else $now end)}'
+     def requests: map(select(.event == "review_requested"));
+     ($a | requests) as $ar | (($ar | length) > ($b | requests | length)) as $new
+     | def last_of: [.[] | select(.login | recorded)] | last;
+     ($b | last_of) as $lb
+     | ($lb.event == "review_requested" and ($a | last_of).event != "review_request_removed") as $open
+     | {requested: (($ok and ($new or any($p[]; recorded))) or $open),
+        readback: $rb,
+        requested_at: (if $new then ($ar[-1].created_at // $now) elif $open then $lb.created_at else $now end)}'
 }
 
 host_pr_comment() { # <pr> <body-file>

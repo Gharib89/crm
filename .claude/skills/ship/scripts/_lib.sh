@@ -429,6 +429,21 @@ ship_missing_skill_reasons() {
 # `ship_deindent(s)` strips up to three leading spaces. It is a `match` because
 # mawk, the default awk on Debian and Ubuntu, reads `sub(/^ ? ? ?/, ...)` as one
 # optional space.
+#
+# `ship_inert(line)` is what every `## ` heading reader calls instead of
+# `ship_fence`: 0 for a live line, 1 for a fenced one, 2 for a line of a
+# `<details>` record. Such a record runs from a line opening on a whole
+# `<details>` or `<details ...>` tag at column 0 (a `<details` with no `>` is
+# prose) to its matching line opening on `</details>`, nesting counted, or is
+# that one line where it ends on `</details>`: the superseded original a phase-1
+# rewrite keeps, or a changelog a PR body folds away. Only a tag at column 0 counts, so prose inside a record that mentions
+# the tag mid-line neither nests nor closes it. No line of a record is a
+# heading, so the copy of the body's headings it repeats is never matched, never
+# ends a section and never ends the preamble. A fence still wins: a `<details>`
+# line inside a fence opens nothing, and a fenced `</details>` inside a record
+# closes nothing. Its depth lives in the global `_record`, which the awk program
+# embedding it leaves to it like the fence globals. The closing-keyword tests
+# stay on `ship_fence`, since GitHub honours a `Closes #n` inside `<details>`.
 readonly SHIP_AWK_FENCE='function ship_deindent(s) {
     if (match(s, /^ +/)) s = substr(s, (RLENGTH < 3 ? RLENGTH : 3) + 1)
     return s
@@ -444,6 +459,16 @@ readonly SHIP_AWK_FENCE='function ship_deindent(s) {
     }
     else if (c == _fence_char && n >= _fence_len && substr(s, n + 1) ~ /^[ \t\r]*$/) _fenced = 0
     return _fenced
+  }
+  function ship_inert(line,   f, rec) {
+    f = ship_fence(line); rec = _record
+    if (f) return rec ? 2 : f
+    if (line ~ /^<details(>|[ \t][^>]*>)/) {
+      _record++; rec = 1
+      if (line ~ /<\/details>[ \t\r]*$/) _record--
+    }
+    else if (_record && line ~ /^<\/details>/) _record--
+    return rec ? 2 : 0
   }
 '
 
@@ -518,9 +543,13 @@ ship_body_closing_line() { # ship_body_closing_line <text>
 # `Closes` line above the first heading. Prints the new body; exit 0 replaced,
 # 1 created, the way ship_body_closes answers with its exit code.
 #
-# The heading match is anchored at column 0 and skips fenced blocks by
-# SHIP_AWK_FENCE, the rule _gh_add_closes reads too, so the two agree on what a
-# section boundary is. It compares the line to `## <section>` LITERALLY rather
+# The heading match is anchored at column 0 and skips fenced blocks and
+# `<details>` records by `ship_inert`, the rule _gh_add_closes reads too, so the
+# two agree on what a section boundary is. A record in the section's old content
+# is never deleted: it is carried through verbatim, in order, below the new
+# content, each one followed by a blank line.
+#
+# It compares the line to `## <section>` LITERALLY rather
 # than building an ERE around the name: `--section` takes any name, and a `.` or
 # a `+` in one would otherwise match a heading nobody asked for, silently
 # rewriting the wrong section of a PR body. Both sides of that comparison have
@@ -569,11 +598,12 @@ ship_body_replace_section() { # ship_body_replace_section <body> <section> <body
       for (i = start; i <= n; i++) print buf[i]
     }
     BEGIN { hd = trimmed("## " ENVIRON["SHIP_SECTION"], 1) }
-    { fenced = ship_fence($0) }
-    !fenced && trimmed($0, 0) == hd {
+    { inert = ship_inert($0) }
+    !inert && trimmed($0, 0) == hd {
       if (skip) next
       print; print ""; dump(); print ""; skip=1; placed=1; next }
-    skip && !fenced && /^## / { skip=0 }
+    skip && !inert && /^## / { skip=0 }
+    skip && inert == 2 { print; if (!_record) print ""; next }
     !skip { print }
     END { if (!placed) { printf "\n%s\n\n", hd; dump(); exit 1 } }' <<<"$1"
 }
@@ -585,9 +615,9 @@ ship_body_replace_section() { # ship_body_replace_section <body> <section> <body
 # rewrite that half before #173, so an accepted body-shape finding in phase 7 was
 # reported and left standing; this is what makes it a fix like any other.
 #
-# The boundary is the same column-0 `^## ` outside a fence that
-# ship_body_replace_section and _gh_add_closes read, so the two halves of a body
-# meet exactly and neither can reach into the other.
+# The boundary is the same column-0 `^## ` outside a fence or a `<details>`
+# record that ship_body_replace_section and _gh_add_closes read, so the two
+# halves of a body meet exactly and neither can reach into the other.
 #
 # Unlike a section, a preamble is always present: a body that opens on its first
 # heading has an empty one, and the content is placed above that heading. So
@@ -612,8 +642,8 @@ ship_body_replace_preamble() { # ship_body_replace_preamble <body> <body-file>
   local content carried pre
   content=$(cat "$2")
   pre=$(awk "$SHIP_AWK_FENCE"'
-    { fenced = ship_fence($0) }
-    !fenced && /^## / { exit }
+    { inert = ship_inert($0) }
+    !inert && /^## / { exit }
     { print }' <<<"$1")
   carried=$(ship_body_closing_line "$pre")
   if [ -n "$carried" ] && [ -z "$(ship_body_closing_line "$content")" ]; then
@@ -630,8 +660,8 @@ ship_body_replace_preamble() { # ship_body_replace_preamble <body> <body-file>
       for (i = 1; i <= n; i++) print a[i]
       return n
     }
-    { fenced = ship_fence($0) }
-    !placed && !fenced && /^## / { if (dump() > 0) print ""; placed = 1 }
+    { inert = ship_inert($0) }
+    !placed && !inert && /^## / { if (dump() > 0) print ""; placed = 1 }
     placed { print }
     END { if (!placed) dump() }' <<<"$1"
 }
@@ -782,31 +812,39 @@ readonly SHIP_REVIEWER_RUN='
      // {status: "none", conclusion: null, url: null})
   | {status, conclusion, url, denied: null}'
 
-# ship_fence_unclosed <text>: does the text end inside a fenced block? Prints
-# `line <n>: <run>` naming the opener still open, or nothing when the
-# fence state is balanced. `update-pr-body` asks before it rewrites a section:
-# an open fence inverts the in-fence state for the rest of the body, so every
-# `## ` heading after it reads as example text and the rewrite swallows the
-# sections between them (run #121 lost four that way).
+# ship_fence_unclosed <text>: does the text end inside a fenced block or a
+# `<details>` record? Prints `line <n>: <run>` naming the opener still open, or
+# nothing when both are balanced. `update-pr-body` asks before it rewrites a
+# section: an open fence inverts the in-fence state for the rest of the body,
+# so every `## ` heading after it reads as example text and the rewrite
+# swallows the sections between them (run #121 lost four that way). An open
+# record hides every heading after it the same way, so it is reported too,
+# naming the outermost opener as `line <n>: <details>`. This is the one reader
+# of `ship_inert`'s globals rather than its answer: it asks which of the two is
+# still open at the end, which the per-line answer does not say.
 ship_fence_unclosed() {
   awk "$SHIP_AWK_FENCE"'
-    { was = fenced; fenced = ship_fence($0)
-      if (!was && fenced) {
+    { was = _fenced; was_rec = _record; ship_inert($0)
+      if (!was && _fenced) {
         open_line = NR; open_run = $0
         open_run = ship_deindent(open_run); sub(/[^`~].*$/, "", open_run)
-      } }
-    END { if (fenced) printf "line %d: %s\n", open_line, open_run }' <<<"$1"
+      }
+      if (!was_rec && _record) rec_line = NR }
+    END {
+      if (_fenced) printf "line %d: %s\n", open_line, open_run
+      else if (_record) printf "line %d: <details>\n", rec_line }' <<<"$1"
 }
 
 # ship_body_headings <body>: the body's `## ` section headings, heading text
-# only, one per line, in order. The same fence rule as every transformation
-# above, so a `## ` inside a fence is example text here too. `update-pr-body`
+# only, one per line, in order. The same `ship_inert` rule as every
+# transformation above, so a `## ` inside a fence is example text here too, and
+# one inside a `<details>` record is not a section. `update-pr-body`
 # reports this after the write, where a swallowed section is visible in the JSON
 # rather than eight minutes later in a review.
 ship_body_headings() {
   awk "$SHIP_AWK_FENCE"'
-    { fenced = ship_fence($0) }
-    !fenced && /^## / { sub(/^## /, ""); sub(/[ \t\r]+$/, ""); print }' <<<"$1"
+    { inert = ship_inert($0) }
+    !inert && /^## / { sub(/^## /, ""); sub(/[ \t\r]+$/, ""); print }' <<<"$1"
 }
 
 # ship_profile_path: the ship profile in the checkout the caller runs in, rather

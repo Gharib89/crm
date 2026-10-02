@@ -7,6 +7,24 @@ released version. See
 
 <!-- version list -->
 
+## v0.5.1 (2026-10-02)
+
+### Documentation
+
+- Name the lock as the skill inventory, group the glossary, and hold hard-wrapped prose to 80
+  columns ([#447](https://github.com/Gharib89/skills/pull/447),
+  [`97cd290`](https://github.com/Gharib89/skills/commit/97cd290a2908d0b96d1b39b7766bbb667ebf11af))
+
+
+## v0.5.0 (2026-09-30)
+
+### Features
+
+- **update-skills**: Follow setup-skills in-session instead of handing off
+  ([#433](https://github.com/Gharib89/skills/pull/433),
+  [`b98fed6`](https://github.com/Gharib89/skills/commit/b98fed61c2115036bf3a76e72bb92ce8b7bbc590))
+
+
 ## v0.4.1 (2026-09-30)
 
 ### Bug Fixes

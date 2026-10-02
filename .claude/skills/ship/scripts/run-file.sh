@@ -25,7 +25,8 @@
 #
 # `init` writes the ten items and returns them, one per harness task the run
 # then creates; `--rebuild` with `--state` is the recovery from a Run file a
-# subagent overwrote. A flip returns the `mirror` value for that phase's task.
+# subagent overwrote or removed. A flip returns the `mirror` value for that
+# phase's task.
 # Below the checklist it writes three sections the run fills by hand: `Design
 # and plan`, `Deviations log`, and `Direct reads`, one line per informational
 # read the run made straight through the host's REST form, no mechanic covering
@@ -40,6 +41,9 @@ set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/_lib.sh" || { printf '{"error":"cannot source _lib.sh"}\n'; exit 2; }
 
 usage='usage: run-file init <issue|slug> --scratchpad <dir> [--rebuild] [--state <n>=<spec>] [--tripwires <t>] [--verifications <v>] [--reviewers <r>] [--legs <l>] | open <n> | close <n> | skip <n> <reason> | timing, each taking --file <path> or --issue <n|slug> [--scratchpad <dir>, default $TMPDIR or /tmp] resolving <scratchpad>/ship-<issue>/run.md'
+# The recovery both refusals of a missing record carry, rather than prose a
+# compacted run may no longer hold.
+rebuild_hint="rebuild it with \`run-file init <issue> --scratchpad <dir> --rebuild\`, re-passing the --tripwires, --verifications, --reviewers and --legs the run began with and one --state per phase the transcript accounts for (open for the one that was running, no invented range), then log what was lost in the deviations log"
 ship_help "$usage" "$@"
 [ -n "${1:-}" ] || ship_tooling "$usage"
 verb=$1; shift
@@ -149,8 +153,9 @@ parse_file() { # parse_file "$@": where every flip and timing reads the record
   [ -n "$file" ] || [ -n "$issue" ] || ship_tooling "$usage"
   [ -n "$file" ] || file="${scratchpad%/}/ship-$issue/run.md"
   # The resolved path, not the flags it came from: a run that brought the wrong
-  # scratchpad reads which record the mechanic went looking for.
-  [ -f "$file" ] || ship_fail "no Run file at $file"
+  # scratchpad reads which record the mechanic went looking for, and one whose
+  # record a subagent removed reads the same recovery as an overwritten one.
+  [ -f "$file" ] || ship_fail "no Run file at $file: check that path first; if it is the right one, a subagent removed the Run file; $rebuild_hint"
 }
 # The row a flip acts on, or the refusal that it is not there. A missing line
 # for one of the ten phases is the symptom of a Run file a subagent wrote over,
@@ -161,7 +166,7 @@ take_row() { # take_row <n>: sets line and lineno
   row=$(phase_row "$1")
   if [ -z "$row" ]; then
     case $1 in
-      [0-9]) ship_fail "no phase $1 line in $file: a subagent overwrote the Run file; rebuild it with \`run-file init <issue> --scratchpad <dir> --rebuild\`, re-passing the --tripwires, --verifications, --reviewers and --legs the run began with and one --state per phase the transcript accounts for (open for the one that was running, no invented range), then log what was lost in the deviations log" ;;
+      [0-9]) ship_fail "no phase $1 line in $file: a subagent overwrote the Run file; $rebuild_hint" ;;
     esac
     ship_fail "no phase $1 line in $file"
   fi

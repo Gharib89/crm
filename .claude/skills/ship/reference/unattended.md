@@ -62,8 +62,8 @@ leave no trace on any issue.
 3. **Select.** `select`: the oldest open `ready-for-agent` issue with no
    assignee and no open blocker. No candidate: stop `nothing-ready`, the one
    clean no-op. The host's blocker query exists and failed: stop
-   `blockers-unavailable`, because shipping a dependent issue out of order builds
-   a PR on unmerged work.
+   `blockers-unavailable`, because shipping a dependent issue out of order
+   builds a PR on unmerged work.
 4. **Run** phases 0 to 9 on the selected issue as `ship <issue> --unattended`,
    skipping `prepare`, which is done.
 5. **Report**: the PR link and the merge summary's location, or the stop
