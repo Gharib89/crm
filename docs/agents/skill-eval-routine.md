@@ -14,7 +14,7 @@ D365_E2E_ALLOW_HOST=<cloud-host> CRM_EVAL_AGENT_CMD='claude -p' \
 ```
 
 then opens a PR with the appended `baseline.md` row(s). `both_runner` runs the set against
-each **reachable** target (`agent-cloud`, then `agent-on-prem`), unions the coverage, and
+each **reachable** profile (default: `agent-cloud` only, #1012), unions the coverage, and
 **skips** an unreachable one with a `—` row rather than failing (see
 `evals/skill/README.md`). `--repeat 3` runs each task three times so the recorded pass-rate
 is a fraction that smooths run-to-run variance.
@@ -37,14 +37,16 @@ and aborts if isolation isn't real, rather than running unsandboxed (#906). **Ru
 eval on native Linux** — the built-in network sandbox is unreliable on WSL2 (the preflight
 aborts there); the routine's own `both_runner` is unaffected since it does not sandbox.
 
-## Two cadences (pick by what reaches both targets)
+## Two cadences (pick by what each host can reach)
 
-On-prem is VPN-gated, so **only a host on the VPN sees both targets**:
+The default run is **cloud only** (`agent-cloud`). On-prem is VPN-gated, so an on-prem leg
+is opt-in: append `--profiles agent-cloud,<on-prem-profile>` on a host with that profile and
+the VPN up.
 
-- **Local schedule (covers both targets).** A `cron`/`launchd`/Task Scheduler entry on a
-  maintainer machine that has the `crm` binary, the installed skill, a Claude login, the
-  `agent-cloud` + `agent-on-prem` profiles, and the VPN. This is the one cadence that lands
-  **both** legs' rows. Example weekday-morning cron:
+- **Local schedule.** A `cron`/`launchd`/Task Scheduler entry on a maintainer machine that
+  has the `crm` binary, the installed skill, a Claude login and the `agent-cloud` profile
+  (plus an on-prem profile and the VPN, if you add the on-prem leg). Example weekday-morning
+  cron:
 
   ```cron
   30 6 * * 1-5  cd ~/wip/projects/crm && git switch -c chore/baseline-$(date +%F) && \
@@ -61,9 +63,8 @@ On-prem is VPN-gated, so **only a host on the VPN sees both targets**:
 
 - **claude.ai routine (cloud leg only).** Mirrors the `cloud-ship` routine
   (`docs/agents/cloud-ship-routine.md`): a scheduled routine whose environment is configured
-  for the cloud org. Its sandbox **cannot reach on-prem** (no VPN), so the on-prem leg skips
-  there — the routine keeps the always-on **cloud** trend fresh; the local schedule above
-  fills the on-prem rows. Configure the routine environment as for cloud-ship, plus
+  for the cloud org. Its sandbox **cannot reach on-prem** (no VPN), so it runs the default
+  cloud leg only and keeps the always-on **cloud** trend fresh. Configure the routine environment as for cloud-ship, plus
   `CRM_EVAL_AGENT_CMD=claude -p`, `D365_E2E_PROFILE=agent-cloud`, and
   `D365_E2E_ALLOW_HOST=<cloud-host>`; point its prompt at the one-fire command above and
   have it open the PR.

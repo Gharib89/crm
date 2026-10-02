@@ -197,8 +197,9 @@ python -m evals.skill run --target both                    # both (the default)
 python -m evals.skill run --target cloud --repeat 3
 ```
 
-- **`--target cloud|onprem|both`** picks the standing profile(s) (`agent-cloud` /
-  `agent-on-prem`) and the underlying runner; `both` is the default.
+- **`--target cloud|onprem|both`** picks the standing profile(s) and the underlying runner;
+  `both` is the default and runs `both_runner`'s default profile list (`agent-cloud` only,
+  #1012).
 - The agent command defaults to **`claude -p --dangerously-skip-permissions --model sonnet`**
   — the permission-gate footgun is gone, and `sonnet` is the baseline (the harness measures
   the skill, not the model). `--model <m>` swaps the model; `--agent-cmd <cmd>` overrides the
@@ -298,16 +299,17 @@ CRM_EVAL_AGENT_CMD='claude -p --dangerously-skip-permissions' \
 The target is inferred from the profile's auth scheme (OAuth → cloud, NTLM → on-prem),
 exactly as for the single-task runner. To run **both** targets in one go, see below.
 
-## Run both targets + the baseline trend (`both_runner`, #573)
+## Run the target set + the baseline trend (`both_runner`, #573)
 
-The both-targets runner loops the two standing profiles (`agent-cloud`, then
-`agent-on-prem`), runs the set against each **reachable** one, and reports coverage as the
-**union**. A target whose host does not answer (on-prem with the VPN down) is **skipped
+The both-targets runner loops a profile list (default: `agent-cloud` only, #1012; add an
+on-prem leg with `--profiles agent-cloud,<on-prem-profile>`), runs the set against each
+**reachable** one, and reports coverage as the **union**. A target whose host does not answer (on-prem with the VPN down) is **skipped
 with a message**, never failed — so a cloud-only run still succeeds and lands its rows.
 `--repeat N` runs each task N times per target to smooth run-to-run variance.
 
 ```bash
-# Both targets, 3 trials per task, append the dated rows to baseline.md:
+# Default profile (agent-cloud), 3 trials per task, append the dated rows to baseline.md.
+# Add an on-prem leg with --profiles agent-cloud,<on-prem-profile>.
 D365_E2E_ALLOW_HOST=<your-org>.crm.dynamics.com \
 CRM_EVAL_AGENT_CMD='claude -p --dangerously-skip-permissions' \
     python -m evals.skill.both_runner --repeat 3 --update-baseline   # --json for the raw result

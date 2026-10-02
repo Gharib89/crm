@@ -105,7 +105,7 @@ def test_target_both_routes_to_both_runner(tmp_path, monkeypatch):
 
     rc = run(target="both", out_dir=tmp_path, run_set_fn=fake_set, run_both_fn=fake_both)
     assert rc == 0
-    assert "both" in calls
+    assert calls["both"]["profiles"] == ["agent-cloud"]  # #1012: no agent-on-prem profile exists
     assert json.loads((tmp_path / "result.json").read_text())["both"] is True
 
 
