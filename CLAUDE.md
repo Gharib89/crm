@@ -13,8 +13,8 @@ Setup is `crm profile add` (interactive wizard on a TTY; flag-driven for scripti
 - `crm/core/*` — Web API logic, one module per domain (`entity`, `query`, `metadata`, `solution`, …); pyright **strict**.
 - `crm/commands/*` — thin Click wrappers, one per `crm <group>`; `crm/cli.py` wires them; `crm/__main__.py` is the entry.
 - `crm/skills/` — agent skill shipped in the wheel: a thin `SKILL.md` router + `reference/*.md` loaded on demand (kept in sync with the CLI — see below).
-- Auth lives in `crm/utils/d365_backend.py` and `crm/utils/adfs.py`; profile inference (`infer_auth_scheme`) lives in `crm/commands/profile.py`.
-- `docs/research/` and `docs/superpowers/` are frozen history: excluded from the site build (`exclude_docs`) and, through the root `.ignore`, from `rg` and the Grep tool. With `git grep`, exclude them by pathspec, and `CHANGELOG.md` too when searching for callers: `git grep <sym> -- ':!docs/research' ':!docs/superpowers' ':!CHANGELOG.md'`.
+- Auth lives in `crm/utils/d365_backend.py` and `crm/utils/adfs.py`; credential resolution (`resolve_credentials`) in `crm/core/connection.py`; profile inference (`infer_auth_scheme`) in `crm/commands/profile.py`.
+- `docs/research/` and `docs/superpowers/` are archived history: excluded from the site build (`exclude_docs`) and, through the root `.ignore`, from `rg` and the Grep tool; `git grep` needs the pathspec `-- ':!docs/research' ':!docs/superpowers'`. Caller searches also exclude `CHANGELOG.md`: `rg -g '!CHANGELOG.md'`, or `':!CHANGELOG.md'` in `git grep`.
 
 Coding standards: `docs/contributing/coding-standards.md` is canonical — every reviewer (the `code-review` skill's Standards axis, `.coderabbit.yaml` path instructions, `.github/copilot-instructions.md`) derives from it. Rule changes land there first, then re-derive the reviewer configs.
 
