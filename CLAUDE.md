@@ -13,6 +13,8 @@ Setup is `crm profile add` (interactive wizard on a TTY; flag-driven for scripti
 - `crm/core/*` — Web API logic, one module per domain (`entity`, `query`, `metadata`, `solution`, …); pyright **strict**.
 - `crm/commands/*` — thin Click wrappers, one per `crm <group>`; `crm/cli.py` wires them; `crm/__main__.py` is the entry.
 - `crm/skills/` — agent skill shipped in the wheel: a thin `SKILL.md` router + `reference/*.md` loaded on demand (kept in sync with the CLI — see below).
+- Auth lives in `crm/utils/d365_backend.py` and `crm/utils/adfs.py`; profile inference (`infer_auth_scheme`) lives in `crm/commands/profile.py`.
+- `docs/research/` and `docs/superpowers/` are frozen history: excluded from the site build (`exclude_docs`) and, through the root `.ignore`, from `rg` and the Grep tool. With `git grep`, exclude them by pathspec, and `CHANGELOG.md` too when searching for callers: `git grep <sym> -- ':!docs/research' ':!docs/superpowers' ':!CHANGELOG.md'`.
 
 Coding standards: `docs/contributing/coding-standards.md` is canonical — every reviewer (the `code-review` skill's Standards axis, `.coderabbit.yaml` path instructions, `.github/copilot-instructions.md`) derives from it. Rule changes land there first, then re-derive the reviewer configs.
 
@@ -40,15 +42,15 @@ pre-commit install                        # once per clone: ruff + codespell run
 mkdocs build --strict                     # docs; CI runs this, warnings fail
 ```
 
-## Driving the CLI from zsh (output-capture traps)
+## Driving the CLI from bash or zsh (output-capture traps)
 
-The shell here is **zsh**. Three quirks silently fake results when you capture `crm` output — in e2e `cli`-fixture checks, QA sweeps, or any scripted run — and each one reads like a CLI bug when it's really the harness lying:
+The Bash tool runs **bash**; the interactive shell here is **zsh**. `crm` on `PATH` is the installed release binary, which lags HEAD: to run checkout code use `.venv/bin/crm`, or `PYTHONPATH=$WT <main-venv>/bin/python -m crm` in a worktree. Three quirks silently fake results when you capture `crm` output — in e2e `cli`-fixture checks, QA sweeps, or any scripted run — and each one reads like a CLI bug when it's really the harness lying:
 
-- **No word-split on unquoted vars.** `P="--profile x"; crm $P …` passes `--profile x` as a *single* arg → `No such option '--profile x'`. Use a zsh **array** `P=(--profile x)` (or `${=P}`), never a plain string.
-- **`| head` / SIGPIPE corrupts the captured exit code** (not zsh-specific). A real exit-0 can surface as exit-1 when `head` closes the pipe early and Click catches `BrokenPipeError`. Assert exit codes with **no pipe**: `crm … >/dev/null 2>&1; echo $?`.
-- **MULTIOS tees redirections.** `crm … 2>&1 1>/dev/null | wc` shows the same output on *both* streams, faking a stdout/stderr duplication. Check stream separation with **files**, not pipes: `crm … >/tmp/o 2>/tmp/e; diff /tmp/o /tmp/e`.
+- **Pass args as an array, expanded `"${P[@]}"`.** A string `P="--profile x"; crm $P …` passes `--profile x` as a *single* arg in zsh → `No such option '--profile x'`. An array expanded bare as `$P` passes only its first element in bash, so `crm $P metadata …` reads `metadata` as the profile name. `P=(--profile x); crm "${P[@]}" …` works in both shells.
+- **`| head` / SIGPIPE corrupts the captured exit code** (either shell). A real exit-0 can surface as exit-1 when `head` closes the pipe early and Click catches `BrokenPipeError`. Assert exit codes with **no pipe**: `crm … >/dev/null 2>&1; echo $?`.
+- **MULTIOS tees redirections (zsh only).** `crm … 2>&1 1>/dev/null | wc` shows the same output on *both* streams, faking a stdout/stderr duplication. Check stream separation with **files**, not pipes: `crm … >/tmp/o 2>/tmp/e; diff /tmp/o /tmp/e`.
 
-Robust pattern: pass args via an array, run to temp files (no pipe), capture `$?` immediately, then `head`/`grep`/`diff` the **files**. Treat any pipe-, `head`-, or `2>&1`-based finding as suspect until reproduced without the pipe.
+Robust pattern: pass args via an array (`"${P[@]}"`), run to temp files (no pipe), capture `$?` immediately, then `head`/`grep`/`diff` the **files**. Treat any pipe-, `head`-, or `2>&1`-based finding as suspect until reproduced without the pipe.
 
 ## Keep docs in sync with code
 
