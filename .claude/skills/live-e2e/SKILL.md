@@ -1,27 +1,26 @@
 ---
 name: live-e2e
-description: Run the live e2e suite or verify a change against a live D365 org. Use when running `pytest -m e2e` / `D365_E2E=1`, picking a live target or profile (agent-cloud, agent-on-prem, agent-cs-trial), or exercising worktree code against a live org.
+description: Run the live e2e suite or verify a change against a live D365 org. Use when running `pytest -m e2e` / `D365_E2E=1`, picking a live target or profile (agent-cloud, agent-cs-trial), or exercising worktree code against a live org.
 metadata:
   internal: true
 ---
 
 # Live e2e runs
 
-This is the operational recipe — target, creds, invocation, tripwires. Suite internals (fixtures, capability gates, coverage gate, discovered bugs) live in `crm/tests/TEST.md`.
+This is the one operational recipe: target, creds, invocation, tripwires. Other docs point here rather than restating it. Suite internals (fixtures, capability gates, coverage gate, discovered bugs) live in `crm/tests/TEST.md`.
 
 Done = the run's org was confirmed via `crm connection whoami --profile <name>` and the result is reported **with its target** — cloud-green ≠ on-prem-green.
 
 ## 1. Pick the target
 
-Two standing profiles, plus one ephemeral:
+One standing profile, plus one ephemeral:
 
-- **`agent-cloud`** (OAuth / Dataverse online) — prefer for general verification: always reachable, no VPN.
-- **`agent-on-prem`** (NTLM on-prem v9.1 test org) — needed for `requires_onprem` and target-divergent checks. VPN required.
+- **`agent-cloud`** (OAuth / Dataverse online) — the live target agents use: always reachable, no VPN. `requires_onprem` tests skip on it.
 - **`agent-cs-trial`** (ADR 0012) — an **ephemeral** OAuth profile pointing at a Customer-Service-provisioned Dataverse trial, standing in for CS-dependent verbs the general `agent-cloud` org can't host (`sla create`/`add-kpi`, `audit detail`, `workflow run`). A self-service CS trial expires (≤60 days), so **`agent-cloud` stays *the* cloud target and CI stays pointed at it** — never re-point `agent-cloud` or the CI cloud secret at the trial. The CS-verb tests skip-with-instructions when the trial is absent, so they run only on local, opportunistic `--profile agent-cs-trial` runs while the trial lives. The trial's `*.dynamics.com` host changes each time one is provisioned (kept in local memory, not committed) — set `D365_E2E_ALLOW_HOST` to that host for a local run.
 
 Pin `--profile <name>` on any live command and confirm the org via `crm connection whoami` before reporting target-specific facts.
 
-**A bug reported on a specific target must be verified on THAT target.** Cloud silently reassigns server-side ids and quietly rewrites/accepts inputs that on-prem v9.x rejects, so a cloud-green run can mask an on-prem-only failure. For an on-prem-reported bug, run the on-prem leg.
+**Cloud-green is not on-prem-green.** Cloud silently reassigns server-side ids and quietly rewrites/accepts inputs that on-prem v9.x rejects, so a cloud-green run can mask an on-prem-only failure. Agents have no on-prem profile: for an on-prem-reported bug, run the cloud leg and write **"on-prem leg not run"** in the merge summary or hand-off, so the maintainer knows that leg is still owed.
 
 ## 2. Point the suite at it
 
@@ -36,18 +35,28 @@ The suite is opt-in: `D365_E2E=1`, plus one of two cred sources:
 
 **On-prem unreachable → session skips** with a "VPN down?" message (any HTTP response, incl 401/403, counts as reachable). Tripwire: the *first* on-prem run right after connecting the VPN can false-skip — a cold NTLM probe can exceed the reachability timeout. Re-run once before concluding the target is down.
 
-## 3. Worktree code through the `cli` fixture
+## 3. The recipe: worktree code through the `cli` fixture
 
 The fixture resolves `shutil.which("crm")` → the installed **PyInstaller binary** (`~/.local/bin/crm`), which **ignores `PYTHONPATH`** (it bundles its own code), so an e2e run silently exercises the OLD installed code, not your worktree fix. The venv console-script `.venv/bin/crm` is *also* on PATH and *does* honor `PYTHONPATH`, so stripping only `~/.local/bin` isn't enough. Strip **both** crm dirs so `which` returns nothing and the fixture falls back to `[sys.executable, "-m", "crm"]`:
 
 ```bash
+WT=<worktree>; MAIN=<main checkout>; LOG=<scratch dir>/e2e.log
+HOST=$(crm profile list --json | python3 -c 'import json,sys; print(next(p["url"] for p in json.load(sys.stdin)["data"] if p["name"]=="agent-cloud").split("/")[2])')
 NEWPATH=$(echo "$PATH"|tr ':' '\n'|grep -vE '/\.local/bin|/crm/\.venv/bin'|paste -sd:)
-cd $WT && D365_E2E=1 D365_E2E_PROFILE=<p> PATH=$NEWPATH PYTHONPATH=$WT <main-venv>/bin/python -m pytest -m e2e <node>
+cd $WT && D365_E2E=1 D365_E2E_PROFILE=agent-cloud D365_E2E_ALLOW_HOST=$HOST PATH=$NEWPATH PYTHONPATH=$WT $MAIN/.venv/bin/python -m pytest -m e2e <node> >$LOG 2>&1
 ```
+
+`HOST` is the exact host the cloud guard (§2) needs; `crm profile list` is a local read, so the installed binary is fine for it.
 
 **cwd beats `PYTHONPATH` — `PYTHONPATH=$WT` is NOT sufficient on its own.** `python -m crm` (the fixture fallback, spawned as a subprocess) and any `-m`/`-c` invocation put cwd as `''` at `sys.path[0]`, *ahead* of `PYTHONPATH` (`sys.path[1]`). If the process cwd is the main checkout (which holds a `crm/` package — and the agent shell's default cwd is the main checkout), `import crm` resolves to MAIN and the worktree fix silently never runs. Run from `$WT` (the `cd $WT` above), or front-load it explicitly (`sys.path.insert(0, $WT)`); the editable-install meta-path finder is *appended* (last in `sys.meta_path`), so it is **not** the cause — cwd is. `pytest` collecting test modules is immune (rootdir insertion), but the `cli`-fixture subprocess it spawns is not.
 
 Tripwire: an e2e that *should* pass with your fix fails **identically to pre-fix** → you're running the frozen binary, OR `import crm` resolved to the main checkout because cwd ≠ `$WT`.
+
+## 4. Running it
+
+- **One pytest process per org at a time.** Dataverse holds one org-wide customization lock, so two concurrent runs against `agent-cloud` fail each other. That includes a main-checkout comparison run beside the worktree run, and two files split across shells or subagents: list the files in one pytest command, or run them in sequence in one shell. Say this in any e2e subagent's prompt.
+- **Lock contention is not a regression.** A `CalledProcessError` whose output carries `CustomizationLockException` (`Cannot start another [EntityCustomization]`) means another run held the lock. Re-run that node alone before calling it a failure.
+- **A multi-file run takes 15 to 25 minutes.** Launch it in the background with output to `$LOG` and wait for the log's terminal pytest line (`=== N passed ... in Ns ===`, or `failed`/`error` in its place), e.g. with a Monitor until-loop on `grep -qE '^=+ .* in [0-9.]+s' $LOG`. Don't `tail -f` it or `sleep`: both block the turn on a fixed guess, not on the run.
 
 ## Writing e2e fixtures
 
