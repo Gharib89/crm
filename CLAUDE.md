@@ -44,7 +44,7 @@ mkdocs build --strict                     # docs; CI runs this, warnings fail
 
 ## Driving the CLI from bash or zsh (output-capture traps)
 
-The Bash tool runs **bash**; the interactive shell here is **zsh**. `crm` on `PATH` is the installed release binary, which lags HEAD: to run checkout code use `.venv/bin/crm`, or `PYTHONPATH=$WT <main-venv>/bin/python -m crm` in a worktree. Three quirks silently fake results when you capture `crm` output — in e2e `cli`-fixture checks, QA sweeps, or any scripted run — and each one reads like a CLI bug when it's really the harness lying:
+The Bash tool runs **bash**; the interactive shell here is **zsh**. Run checkout code through `.venv/bin/crm`, or `PYTHONPATH=$WT <main-venv>/bin/python -m crm` in a worktree: `crm` on `PATH` is the installed release binary, which lags HEAD. Three quirks silently fake results when you capture `crm` output — in e2e `cli`-fixture checks, QA sweeps, or any scripted run — and each one reads like a CLI bug when it's really the harness lying:
 
 - **Pass args as an array, expanded `"${P[@]}"`.** A string `P="--profile x"; crm $P …` passes `--profile x` as a *single* arg in zsh → `No such option '--profile x'`. An array expanded bare as `$P` passes only its first element in bash, so `crm $P metadata …` reads `metadata` as the profile name. `P=(--profile x); crm "${P[@]}" …` works in both shells.
 - **`| head` / SIGPIPE corrupts the captured exit code** (either shell). A real exit-0 can surface as exit-1 when `head` closes the pipe early and Click catches `BrokenPipeError`. Assert exit codes with **no pipe**: `crm … >/dev/null 2>&1; echo $?`.
