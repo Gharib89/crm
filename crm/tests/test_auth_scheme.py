@@ -3,13 +3,14 @@
 # pyright: basic
 from __future__ import annotations
 
+import re
 import sys
 
 import pytest
 from click.testing import CliRunner
 
 from crm.cli import cli
-from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
+from crm.utils.d365_backend import AUTH_SCHEMES, ConnectionProfile, D365Backend, D365Error
 
 _BAD_CHOICE = "Invalid value for '--auth-scheme'"
 
@@ -23,6 +24,23 @@ def _profile(scheme: str = "ntlm") -> ConnectionProfile:
         verify_ssl=False,
         auth_scheme=scheme,
     )
+
+
+class TestAuthSchemes:
+    """One AUTH_SCHEMES tuple drives validation and every scheme choice list."""
+
+    def test_tuple_keeps_set_and_order(self):
+        assert "|".join(AUTH_SCHEMES) == "ntlm|kerberos|negotiate|oauth|adfs"
+
+    @pytest.mark.parametrize("args", [["--help"], ["profile", "add", "--help"]])
+    def test_options_offer_exactly_auth_schemes(self, args):
+        result = CliRunner().invoke(cli, args)
+        assert result.exit_code == 0, result.output
+        assert f"--auth-scheme [{'|'.join(AUTH_SCHEMES)}]" in result.output
+
+    def test_unknown_scheme_rejected_naming_the_set(self):
+        with pytest.raises(D365Error, match=re.escape("|".join(AUTH_SCHEMES))):
+            _profile("basic")
 
 
 class TestProfileField:
@@ -81,7 +99,7 @@ class TestAuthSelection:
 class TestAuthSchemeFlag:
     """The global --auth-scheme flag must accept every backend-valid scheme."""
 
-    @pytest.mark.parametrize("scheme", ["ntlm", "kerberos", "negotiate", "oauth", "adfs"])
+    @pytest.mark.parametrize("scheme", AUTH_SCHEMES)
     def test_flag_accepts_valid_scheme(self, scheme):
         result = CliRunner().invoke(cli, ["--auth-scheme", scheme, "session", "info"])
         assert _BAD_CHOICE not in result.output

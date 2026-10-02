@@ -20,6 +20,7 @@ import click
 
 from crm import __version__
 from crm.core.logging_setup import setup_logging
+from crm.utils.d365_types import AUTH_SCHEMES
 
 if TYPE_CHECKING:
     from crm.utils.d365_backend import D365Backend
@@ -951,7 +952,7 @@ def _complete_entity_set_names(
 )
 @click.option(
     "--auth-scheme",
-    type=click.Choice(["ntlm", "kerberos", "negotiate", "oauth", "adfs"]),
+    type=click.Choice(AUTH_SCHEMES),
     default=None,
     help="Override the active profile's auth scheme for this run. "
     "ntlm/kerberos/negotiate/adfs = on-prem; oauth = cloud.",

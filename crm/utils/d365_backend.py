@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from crm.core.state_home import atomic_write, state_home
+from crm.utils.d365_types import AUTH_SCHEMES as AUTH_SCHEMES
 from crm.utils.d365_types import BatchOperation, BatchResult
 
 if TYPE_CHECKING:
@@ -200,9 +201,9 @@ class ConnectionProfile:
     def __post_init__(self) -> None:
         self.url = self.normalize_url(self.url)
         validate_profile_name(self.name)
-        if self.auth_scheme not in ("ntlm", "kerberos", "negotiate", "oauth", "adfs"):
+        if self.auth_scheme not in AUTH_SCHEMES:
             raise D365Error(
-                f"ConnectionProfile.auth_scheme must be ntlm|kerberos|negotiate|oauth|adfs, "
+                f"ConnectionProfile.auth_scheme must be {'|'.join(AUTH_SCHEMES)}, "
                 f"got {self.auth_scheme!r}"
             )
         for _field, _value in (
@@ -574,9 +575,7 @@ class D365Backend:
                 verify=p.verify_ssl,
                 timeout=p.timeout,
             )
-        raise D365Error(
-            f"Unknown auth_scheme {scheme!r}; expected ntlm|kerberos|negotiate|oauth|adfs"
-        )
+        raise D365Error(f"Unknown auth_scheme {scheme!r}; expected {'|'.join(AUTH_SCHEMES)}")
 
     def _make_oauth_auth(self, secret: str) -> AuthBase:
         """Build a bearer-token auth via OAuth 2.0 client-credentials.
