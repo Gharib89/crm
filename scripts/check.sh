@@ -28,8 +28,8 @@ shopt -u patsub_replacement 2>/dev/null || :
 
 # >>> setup-harness configuration
 # The tools live in this checkout's .venv, else the main checkout's: a sibling
-# worktree has none, and PYTHONPATH points the main venv's editable install at
-# this tree (the same resolution scripts/local-gate.sh uses).
+# worktree's own is optional, and PYTHONPATH points the main venv's editable
+# install at this tree (the same resolution scripts/local-gate.sh uses).
 top=$(git rev-parse --show-toplevel 2>/dev/null)
 VENV=$top/.venv
 [ -x "$VENV/bin/python" ] || VENV=$(cd "$(git rev-parse --git-common-dir 2>/dev/null)/.." 2>/dev/null && pwd)/.venv
