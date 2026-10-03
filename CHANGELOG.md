@@ -9,6 +9,33 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.81.9 (2026-10-03)
+
+### Bug Fixes
+
+- **gate**: Report check unavailable without a venv; name the real gate keys
+  ([#1028](https://github.com/Gharib89/crm/pull/1028),
+  [`7ee1c13`](https://github.com/Gharib89/crm/commit/7ee1c1384960b25609fd45e86e6d8f91e05dc4ad))
+
+### Chores
+
+- **gate**: Run the local gate over check.sh full
+  ([#1028](https://github.com/Gharib89/crm/pull/1028),
+  [`7ee1c13`](https://github.com/Gharib89/crm/commit/7ee1c1384960b25609fd45e86e6d8f91e05dc4ad))
+
+- **skills**: Refresh derived skills ([#1026](https://github.com/Gharib89/crm/pull/1026),
+  [`623c09f`](https://github.com/Gharib89/crm/commit/623c09f543e0aa19ed532de42c95c99d69a86fbd))
+
+### Documentation
+
+- Clarify the github.com allowlist rationale ([#1028](https://github.com/Gharib89/crm/pull/1028),
+  [`7ee1c13`](https://github.com/Gharib89/crm/commit/7ee1c1384960b25609fd45e86e6d8f91e05dc4ad))
+
+- Describe the gate over check.sh full; drop the bootstrap's actionlint
+  ([#1028](https://github.com/Gharib89/crm/pull/1028),
+  [`7ee1c13`](https://github.com/Gharib89/crm/commit/7ee1c1384960b25609fd45e86e6d8f91e05dc4ad))
+
+
 ## v1.81.8 (2026-10-02)
 
 ### Bug Fixes
