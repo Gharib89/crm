@@ -1,19 +1,24 @@
 #!/usr/bin/env bash
-# Local gate: every check this repo's CI runs, run locally before a PR opens.
-# Written by setup-skills; owned by the repo, which is who edits it from here.
+# Local gate over the harness: the repo's `check.sh full`, plus the gates only
+# Ship needs. Written by setup-skills where the repo has a harness profile
+# (docs/agents/harness.md); owned by the repo from here.
 #
 #   scripts/local-gate.sh [--small <node>] [--base <ref>]
 #   --help or -h prints that usage line and exits 0, before any check runs.
 #
 # Contract (ship's local-gate contract, the same in every repo):
 #   stdout: one JSON object, {"verdict","base","lane","gates":{<name>:<status>}}
-#   stderr: a failing gate's last 40 log lines
+#   stderr: a failing gate's last 40 log lines, and the last 40 lines of
+#           check.sh's own stderr unless check.sh answered a clean pass
 #   exit:   0 every gate passed · 1 a gate failed · 2 tooling
 #   gate status: pass | fail | deferred-to-ci | unavailable
-#     deferred-to-ci: planned, CI proves this gate (Docker absent, other-OS leg)
-#     unavailable:    unexpected, the gate could not ask its question (tool missing)
 #   verdict: pass | fail | unavailable; fail wins over unavailable
 #   `secrets` is required in every lane. Base defaults to origin/HEAD.
+#
+# check.sh owns every check it runs, each one a gate of the same name here. This
+# file owns only what check.sh cannot know: `secrets` over base..HEAD, `deps`,
+# checks relative to the base, the small-lane node and `deferred-to-ci` marks.
+# Bash 3.2 plus jq, so it runs on a stock macOS bash.
 #
 # --small takes a pytest node id (crm/tests/test_x.py::test_y), or, for a
 # docs-class change, the path of the changed document, which runs `docs`.
@@ -28,7 +33,6 @@ while [ $# -gt 0 ]; do
     *) printf '{"error":"unknown flag: %s"}\n' "$1"; exit 2 ;;
   esac
 done
-[ "${BASH_VERSINFO[0]}" -ge 4 ] || { echo '{"error":"bash 4+ required (associative arrays); macOS: brew install bash"}'; exit 2; }
 command -v jq >/dev/null || { echo '{"error":"jq not installed"}'; exit 2; }
 cd "$(git rev-parse --show-toplevel 2>/dev/null)" || { echo '{"error":"not inside a git checkout"}'; exit 2; }
 if [ -z "$base" ]; then
@@ -45,26 +49,21 @@ lane=full; [ -z "$small" ] || lane=small
 small_gate=""
 case $small in
   '') ;;
-  *::*|*/test_*.py) small_gate="test" ;;
+  *::*|*/test_*.py) small_gate=tests ;;
   *.md|docs/*|mkdocs.yml) [ -e "$small" ] && small_gate=docs ;;
 esac
 [ -z "$small" ] || [ -n "$small_gate" ] \
   || { printf '{"error":"--small %s is neither a pytest node nor a doc"}\n' "$small"; exit 2; }
 
-declare -A gates
-log=$(mktemp); trap 'rm -f "$log"' EXIT
-run()  { local name=$1; shift; if "$@" >"$log" 2>&1; then gates[$name]=pass; else gates[$name]=fail; tail -n 40 "$log" >&2; fi; }
-mark() { gates[$1]=$2; }   # mark <name> deferred-to-ci|unavailable
+gates='{}' checks='{}'
+log=$(mktemp) err=$(mktemp); trap 'rm -f "$log" "$err"' EXIT
+put()  { gates=$(jq -c --arg k "$1" --arg v "$2" '. + {($k): $v}' <<<"$gates"); }
+run()  { local name=$1; shift; if "$@" >"$log" 2>&1; then put "$name" pass; else put "$name" fail; tail -n 40 "$log" >&2; fi; }
+mark() { put "$1" "$2"; }   # mark <name> deferred-to-ci|unavailable
 
-# --- gates ---------------------------------------------------------------------
-# Gate names are the tools of each CI leg in `## CI` (ci.yml `lint` runs ruff,
-# ruff-format, pyright, semgrep, actionlint and zizmor; `test` runs pytest and
-# the pac e2e; docs.yml runs `docs`). The windows-latest matrix halves of `test`
-# and `package` have no local mirror; CI proves them.
-
-# deps: a worktree's own .venv is optional (the strict pyright hook and
-# check.sh fall back the same way): use this checkout's .venv, else the main
-# checkout's (the parent of the common git dir), with PYTHONPATH on this tree.
+# A worktree's own .venv is optional: use this checkout's, else the main
+# checkout's (the parent of the common git dir), with PYTHONPATH on this tree,
+# the same resolution check.sh makes.
 venv=""
 main=$(cd "$(git rev-parse --git-common-dir)/.." && pwd)
 for d in "$PWD/.venv" "$main/.venv"; do
@@ -73,87 +72,70 @@ done
 py="$venv/bin/python"
 export PYTHONPATH=$PWD
 
-# tool <name>: from PATH, else the venv's (the cloud bootstrap installs gitleaks,
-# actionlint and uv there). Empty when neither has it.
-tool() { command -v "$1" || { [ -x "$venv/bin/$1" ] && echo "$venv/bin/$1"; }; }
-uvx=$(tool uvx)
-gitleaks=$(tool gitleaks)
-actionlint=$(tool actionlint)
-
-# secrets: required in every lane.
+# --- gates ---------------------------------------------------------------------
+# secrets: required in every lane. gitleaks from PATH, else the venv's, where
+# the cloud bootstrap installs it.
+gitleaks=$(command -v gitleaks || { [ -x "$venv/bin/gitleaks" ] && echo "$venv/bin/gitleaks"; })
 if [ -n "$gitleaks" ]; then
   run secrets "$gitleaks" detect --no-banner --redact --log-opts="$base..HEAD"
 else
   mark secrets unavailable
 fi
 
-venv_gates=(ruff ruff-format pyright test docs)
-[ "$lane" = small ] && venv_gates=("$small_gate")
-if [ -z "$venv" ]; then
+if [ -z "$venv" ]; then                  # every lane: a fresh worktree has no dependencies yet
   echo "deps: no .venv here or at $main; create it there: python3.13 -m venv .venv && .venv/bin/pip install -e '.[dev,docs]'" >&2
   mark deps unavailable
-  for g in "${venv_gates[@]}"; do mark "$g" unavailable; done
+  [ "$lane" = full ] || mark "$small_gate" unavailable
 else
   run deps "$py" -c 'import crm, pytest, ruff, mkdocs'
 fi
-
-# semgrep: house-convention rules, pinned like CI's lint job (kept out of the venv).
-if [ -n "$uvx" ]; then
-  run semgrep "$uvx" semgrep==1.169.0 scan --config ci/semgrep-rules.yml --error --metrics off
-else
-  mark semgrep unavailable
-fi
-
 if [ "$lane" = small ]; then
+  # The one node, run directly: check.sh has no rung for it.
   if [ -n "$venv" ]; then
-    if [ "$small_gate" = test ]; then
-      run test "$py" -m pytest -q "$small"
+    if [ "$small_gate" = tests ]; then
+      run tests "$py" -m pytest -q "$small"
     else
       run docs "$py" -m mkdocs build --strict
     fi
   fi
 else
-  if [ -n "$venv" ]; then
-    # The pyright floor comes from pyrightconfig.json, never hardcoded.
-    pyver=$("$py" -c "import json; print(json.load(open('pyrightconfig.json'))['pythonVersion'])")
-    run ruff        "$py" -m ruff check .
-    run ruff-format "$py" -m ruff format --check .
-    # Microsoft's npm pyright at the repo's one pinned version (setup.py [dev] comment).
-    if command -v npx >/dev/null; then
-      run pyright   npx --yes --package=pyright@1.1.414 pyright --pythonpath "$py" --pythonversion "$pyver"
-    else
-      mark pyright unavailable
-    fi
-    run test        "$py" -m pytest -q
-    run docs        "$py" -m mkdocs build --strict
+  # No CHECK_DEADLINE: `full` is measured only, and a deadline would have
+  # check.sh skip whatever it had not reached. codespell is a pre-commit-only
+  # typo check that must never block a merge, so the runner skips it here; the
+  # commit rung and a plain `check.sh full` still run it.
+  (unset CHECK_DEADLINE; SKIP=codespell exec scripts/check.sh full) >"$log" 2>"$err"; rc=$?
+  # 0 to 3 all carry the one JSON line (2 is a check unavailable, 3 over
+  # budget), so an unavailable tool still names its own check; a stdout outside
+  # the contract (the usage path, not a git repo) leaves nothing to map, which
+  # the jq guard catches. A status outside the gate vocabulary reads as
+  # unavailable.
+  if [ "$rc" -le 3 ] && parsed=$(jq -sce 'select(length == 1) | .[0].checks | objects
+      | map_values(if . == "skipped" then "pass" elif . == "pass" or . == "fail" or . == "unavailable" then . else "unavailable" end)' \
+      "$log" 2>/dev/null); then
+    checks=$parsed
+    [ "$rc" -eq 0 ] || tail -n 40 "$err" >&2
+  else
+    mark check unavailable
+    tail -n 40 "$err" >&2
   fi
+
   # The pac solution pack/extract e2e (CI `test` leg); CI provisions pac.
   if command -v pac >/dev/null && [ -n "$venv" ]; then
     run pac-e2e "$py" -m pytest -q -m e2e crm/tests/e2e/test_solution_packager_e2e.py
   else
     mark pac-e2e deferred-to-ci
   fi
-  # Workflow linters only when .github/ changed (CI's lint job runs them always).
-  if ! git diff --quiet "$base"...HEAD -- .github/ 2>/dev/null; then
-    if [ -n "$actionlint" ]; then run actionlint "$actionlint"; else mark actionlint unavailable; fi
-    if [ -n "$uvx" ]; then run zizmor "$uvx" zizmor==1.26.1 .; else mark zizmor unavailable; fi   # version lockstep with CI + pre-commit
-  fi
   mark package deferred-to-ci             # PyInstaller build + smoke, ubuntu + windows
   mark bump-guard deferred-to-ci          # reads the PR title, which exists only once the PR does
 fi
 # --- end gates -----------------------------------------------------------------
 
-verdict=pass
-for s in "${gates[@]}"; do
-  case $s in
-    fail) verdict=fail ;;
-    unavailable) [ "$verdict" = fail ] || verdict=unavailable ;;
-  esac
-done
+# A name both report keeps the worse status, so neither side can mask a failure.
+gates=$(jq -c --argjson c "$checks" '
+  def rank: {"pass": 0, "deferred-to-ci": 1, "unavailable": 2, "fail": 3}[.];
+  reduce ($c | to_entries[]) as $e (.; .[$e.key] = ([.[$e.key] // "pass", $e.value] | max_by(rank)))' <<<"$gates")
+verdict=$(jq -r 'if any(.[]; . == "fail") then "fail" elif any(.[]; . == "unavailable") then "unavailable" else "pass" end' <<<"$gates")
 case $verdict in pass) rc=0 ;; fail) rc=1 ;; *) rc=2 ;; esac
-
-for k in "${!gates[@]}"; do printf '%s\t%s\n' "$k" "${gates[$k]}"; done \
-  | jq -Rs --arg v "$verdict" --arg b "$base" --arg l "$lane" \
-      '{verdict: $v, base: $b, lane: $l,
-        gates: (split("\n") | map(select(. != "") | split("\t") | {(.[0]): .[1]}) | add // {})}'
+jq -cn --arg v "$verdict" --arg b "$base" --arg l "$lane" --argjson g "$gates" \
+  '{verdict: $v, base: $b, lane: $l, gates: $g}'
 exit $rc
