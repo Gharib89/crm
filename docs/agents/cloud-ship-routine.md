@@ -32,7 +32,7 @@ Configure a dedicated environment (e.g. `crm-ship`) and select it for the routin
   managers" checked, for pip/PyPI):
   - `login.microsoftonline.com`   (OAuth client-credentials token endpoint)
   - `<your-org>.crm.dynamics.com` (Dataverse Web API — your cloud org host)
-  - `github.com`       (`git push`/fetch over HTTPS, the bootstrap's gitleaks download, and the pre-commit hook clones the gate's `scripts/check.sh full` makes)
+  - `github.com`       (`git push`/fetch over HTTPS, the bootstrap's gitleaks download, and cloning the pre-commit hook repositories that `scripts/check.sh full` runs)
   - `release-assets.githubusercontent.com` (where the gitleaks release download redirects)
   - `go.dev`, `dl.google.com`, `proxy.golang.org` (pre-commit's Go toolchain and module downloads for the `actionlint` hook, which the gate runs on every full lane)
   - Ship's `prepare` installs `gh` with `apt-get` (`tooling --install`, the one
