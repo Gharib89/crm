@@ -53,7 +53,13 @@ FULL_RUN='"$VENV"/bin/pre-commit run --all-files'
 # shellcheck disable=SC2016 # $VENV expands when the command runs
 TURN_ROWS='|crm|*.py *.pyi pyproject.toml setup.py|npx --yes --package=pyright@1.1.414 pyright --pythonpath "$VENV"/bin/python|"$VENV"/bin/python -m pytest -q|"$VENV"/bin/python -m pytest -q --testmon --testmon-forceselect'
 # Extra checks on `full` only, one per line: <name>|<command>, from the root.
-FULL_ROWS=''
+# The two CI checks the runner and the turn table miss: docs.yml's strict build,
+# and the semgrep house rules at ci.yml's pin, through uvx (on PATH, else the
+# venv's, where the cloud setup installs uv) to keep it out of the venv as CI
+# does. A missing binary exits 127, which reads as `unavailable`.
+# shellcheck disable=SC2016 # $VENV expands when the command runs
+FULL_ROWS='docs|"$VENV"/bin/mkdocs build --strict
+semgrep|"$(command -v uvx || echo "$VENV"/bin/uvx)" semgrep==1.169.0 scan --config ci/semgrep-rules.yml --error --metrics off'
 # FULL_ROWS names the cloud cannot run (the profile's Local-only: parts),
 # space-separated: `skipped` unrun when CLAUDE_CODE_REMOTE=true.
 LOCAL_ONLY=''

@@ -21,7 +21,7 @@ Location: scripts/local-gate.sh
 Small node: a pytest node id, e.g. `crm/tests/test_entity_upsert_if_none_match.py::test_upsert_if_none_match_sets_header`; docs class: the path of the changed document, e.g. `docs/how-to/entity.md`, which runs `mkdocs build --strict`
 Tripwires: None.
 
-The gate uses the checkout's own `.venv`, else the main checkout's (found through `git rev-parse --git-common-dir`), with `PYTHONPATH` on the worktree; with neither it reports `deps` `unavailable` and names the install line. `actionlint` and `zizmor` run only when `.github/` changed; `actionlint` must be on `PATH` (v1.7.12, lockstep with CI).
+The gate uses the checkout's own `.venv`, else the main checkout's (found through `git rev-parse --git-common-dir`), with `PYTHONPATH` on the worktree; with neither it reports `deps` `unavailable` and names the install line. The full lane runs `scripts/check.sh full` and reports each check as a gate of that name: `runner` (pre-commit: ruff, ruff-format, actionlint, zizmor, shellcheck; codespell skipped, reason in the gate script), `typecheck:crm` (pyright), `tests:crm` (pytest), `docs` and `semgrep`. The runner fixes in place, so a `runner` fail can leave ruff's fixes uncommitted in the worktree: commit them before the re-run. With no venv, or when check.sh's output cannot be read, the gate reports `check` `unavailable` in place of check.sh's gates. The small lane reports its node as `tests` or `docs`. The gate itself adds `secrets`, `deps` and `pac-e2e`, and marks `package` and `bump-guard` `deferred-to-ci`.
 
 ## CI
 

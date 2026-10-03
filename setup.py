@@ -55,9 +55,9 @@ setup(
     extras_require={
         # pyright is NOT a dev dependency: every caller runs Microsoft's npm
         # package at one exact version, `npx --yes --package=pyright@1.1.414`
-        # (CI, scripts/check.sh, scripts/local-gate.sh, the strict-check hook and
-        # the vendored pyright-lsp plugin). An open floor once let machines
-        # disagree (#632), so bump every one of those sites together.
+        # (CI, scripts/check.sh, the strict-check hook and the vendored
+        # pyright-lsp plugin). An open floor once let machines disagree (#632),
+        # so bump every one of those sites together.
         # pytest-testmon selects the affected tests on the harness turn rung.
         # pytest-xdist runs CI's suite in parallel (`-n auto` in ci.yml only:
         # testmon does not support xdist, so `-n` never goes in addopts).

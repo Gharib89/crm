@@ -27,7 +27,7 @@ set -uo pipefail
 # must itself be a fast no-op when there is nothing to do (`uv sync --frozen`).
 # After the command runs the done test must pass.
 STEPS='shellcheck|command -v shellcheck|sudo apt-get -o DPkg::Lock::Timeout=120 install -y shellcheck
-deps||if [ ! -x .venv/bin/python ]; then for p in python3.13 python3; do "$p" -c "import sys; sys.exit(sys.version_info < (3, 13))" 2>/dev/null && break; p=; done; [ -n "$p" ] && "$p" -m venv .venv; fi && .venv/bin/pip install -q -e ".[dev]"
+deps||if [ ! -x .venv/bin/python ]; then for p in python3.13 python3; do "$p" -c "import sys; sys.exit(sys.version_info < (3, 13))" 2>/dev/null && break; p=; done; [ -n "$p" ] && "$p" -m venv .venv; fi && .venv/bin/pip install -q -e ".[dev,docs]" uv
 pre-commit||.venv/bin/pre-commit install --install-hooks'
 # <<< setup-harness configuration
 : "${STEPS=}"

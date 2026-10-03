@@ -32,8 +32,9 @@ Configure a dedicated environment (e.g. `crm-ship`) and select it for the routin
   managers" checked, for pip/PyPI):
   - `login.microsoftonline.com`   (OAuth client-credentials token endpoint)
   - `<your-org>.crm.dynamics.com` (Dataverse Web API — your cloud org host)
-  - `github.com`       (`git push`/fetch over HTTPS, and the bootstrap's gitleaks and actionlint downloads)
-  - `release-assets.githubusercontent.com` (where those release downloads redirect)
+  - `github.com`       (`git push`/fetch over HTTPS, the bootstrap's gitleaks download, and cloning the pre-commit hook repositories that `scripts/check.sh full` runs)
+  - `release-assets.githubusercontent.com` (where the gitleaks release download redirects)
+  - `go.dev`, `dl.google.com`, `proxy.golang.org` (pre-commit's Go toolchain and module downloads for the `actionlint` hook, which the gate runs on every full lane)
   - Ship's `prepare` installs `gh` with `apt-get` (`tooling --install`, the one
     route the sandbox proxy passes) and every mechanic calls GitHub REST through
     it; the proxy refuses GraphQL and ship's GitHub adapter falls back to REST on
@@ -57,8 +58,8 @@ Configure a dedicated environment (e.g. `crm-ship`) and select it for the routin
   unset) the bootstrap exits 0 and does nothing. In the sandbox it creates `.venv`
   in the clone (where `scripts/local-gate.sh` looks for it, since the cloud run
   isolates in place) and installs crm `.[dev,docs]` plus `uv` into it, puts
-  gitleaks and actionlint (version and sha256 pinned in the script) in
-  `.venv/bin`, where the gate finds them without relying on the sandbox's `PATH`, then
+  gitleaks (version and sha256 pinned in the script) in `.venv/bin`, where the
+  gate finds it without relying on the sandbox's `PATH`, then
   builds and tests the `agent-cloud` profile through `.venv/bin/python`. With any
   `D365_*` connection variable unset it skips the profile and exits 0: live e2e
   then hands off rather than runs.
