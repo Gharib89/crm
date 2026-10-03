@@ -47,5 +47,5 @@ Declined: shfmt: no Go toolchain on the maintainer's machine, so the hook would 
 Declined: markdownlint-cli2: 10,911 findings on the 261 tracked Markdown files (7,309 of them MD013)
 Declined: Prettier: would rewrite 215 files, has no JS stack to pin in, and puts mkdocs-material syntax at risk
 Declined: ruff 0.16.8: held in lockstep with CI, and 0.16 changes formatter output; bump in its own PR
-Declined: zizmor 1.30.1: held in lockstep with CI and scripts/local-gate.sh; bump in its own PR
+Declined: zizmor 1.30.1: held in lockstep with CI and the pre-commit hook; bump in its own PR
 Declined: run recipe: the CLI is driven by the live-e2e skill and crm describe

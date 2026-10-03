@@ -5,8 +5,8 @@
 # environment and never bakes them into a cached image. Never echoes the secret.
 # GitHub access is ship's own: `prepare` installs `gh` (`tooling --install`)
 # before this runs, and every mechanic calls GitHub REST through it with
-# GH_TOKEN, so nothing here calls the GitHub API (only the gitleaks and actionlint
-# downloads below reach github.com).
+# GH_TOKEN, so nothing here calls the GitHub API (only the gitleaks download
+# below reaches github.com).
 set -euo pipefail
 
 # Ship also runs the Bootstrap on a local `--unattended` run; everything below
@@ -40,13 +40,13 @@ echo "cloud-ship-bootstrap: using $("$PY" --version) ($PY)"
 
 # crm CLI from source (not published to PyPI), into this clone's .venv: the cloud
 # run isolates in place, and scripts/local-gate.sh looks for `$PWD/.venv`. `uv`
-# rides along because the gate's semgrep and zizmor run through `uvx`.
+# rides along because scripts/check.sh runs semgrep through `uvx`.
 "$PY" -m venv .venv
 .venv/bin/python -m pip install -e ".[dev,docs]" uv
 
-# gitleaks and actionlint for the gate, pinned by version and checksum, into
-# .venv/bin, where the gate looks when PATH has neither. actionlint's version is
-# in lockstep with .pre-commit-config.yaml and CI.
+# gitleaks for the gate's `secrets`, pinned by version and checksum, into
+# .venv/bin, where the gate looks when PATH lacks it. actionlint and zizmor run
+# as pre-commit hooks inside check.sh, which bring their own.
 fetch() {  # fetch <url> <sha256> <binary>
   local tgz; tgz=$(mktemp)
   curl -fsSL -o "$tgz" "$1"
@@ -56,8 +56,6 @@ fetch() {  # fetch <url> <sha256> <binary>
 }
 fetch https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz \
   551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb gitleaks
-fetch https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
-  8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8 actionlint
 
 # All connection values come from the routine's cloud environment; nothing
 # org-specific is committed to this public repo. Without them there is no
