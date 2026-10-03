@@ -75,9 +75,10 @@ staged files so the format round-trip never reaches CI.
 More tools landed in the tooling sweep ([#848](https://github.com/Gharib89/crm/issues/848)):
 
 - **actionlint** lints workflow YAML and the inline bash in `run:` blocks (shellcheck-backed). It
-  runs both as a pre-commit hook and as a step in CI's `lint` job. The pre-commit hook fires only on
-  `.github/workflows/**` changes, so a Go toolchain is needed locally only when editing a workflow;
-  CI runs the pinned release binary directly. The rev is pinned in both `.pre-commit-config.yaml`
+  runs both as a pre-commit hook and as a step in CI's `lint` job. The pre-commit hook fires on
+  `.github/workflows/**` changes and on every `scripts/check.sh full`, so on every local-gate run;
+  with no Go on `PATH`, pre-commit downloads its own toolchain (`go.dev`, `dl.google.com`) and the
+  module dependencies (`proxy.golang.org`). CI runs the pinned release binary directly. The rev is pinned in both `.pre-commit-config.yaml`
   and `ci.yml` — bump together.
 - **zizmor** audits the workflows for security issues (credential persistence, cache poisoning,
   excessive permissions, unpinned actions). It runs both as a pre-commit hook and as a step in CI's

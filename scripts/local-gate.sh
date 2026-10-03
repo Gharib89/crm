@@ -85,7 +85,8 @@ fi
 if [ -z "$venv" ]; then                  # every lane: a fresh worktree has no dependencies yet
   echo "deps: no .venv here or at $main; create it there: python3.13 -m venv .venv && .venv/bin/pip install -e '.[dev,docs]'" >&2
   mark deps unavailable
-  [ "$lane" = full ] || mark "$small_gate" unavailable
+  # check.sh would run its tools from the missing venv and read them as fails.
+  if [ "$lane" = full ]; then mark check unavailable; else mark "$small_gate" unavailable; fi
 else
   run deps "$py" -c 'import crm, pytest, ruff, mkdocs'
 fi
@@ -99,24 +100,26 @@ if [ "$lane" = small ]; then
     fi
   fi
 else
-  # No CHECK_DEADLINE: `full` is measured only, and a deadline would have
-  # check.sh skip whatever it had not reached. codespell is a pre-commit-only
-  # typo check that must never block a merge, so the runner skips it here; the
-  # commit rung and a plain `check.sh full` still run it.
-  (unset CHECK_DEADLINE; SKIP=codespell exec scripts/check.sh full) >"$log" 2>"$err"; rc=$?
-  # 0 to 3 all carry the one JSON line (2 is a check unavailable, 3 over
-  # budget), so an unavailable tool still names its own check; a stdout outside
-  # the contract (the usage path, not a git repo) leaves nothing to map, which
-  # the jq guard catches. A status outside the gate vocabulary reads as
-  # unavailable.
-  if [ "$rc" -le 3 ] && parsed=$(jq -sce 'select(length == 1) | .[0].checks | objects
-      | map_values(if . == "skipped" then "pass" elif . == "pass" or . == "fail" or . == "unavailable" then . else "unavailable" end)' \
-      "$log" 2>/dev/null); then
-    checks=$parsed
-    [ "$rc" -eq 0 ] || tail -n 40 "$err" >&2
-  else
-    mark check unavailable
-    tail -n 40 "$err" >&2
+  if [ -n "$venv" ]; then
+    # No CHECK_DEADLINE: `full` is measured only, and a deadline would have
+    # check.sh skip whatever it had not reached. codespell is a pre-commit-only
+    # typo check that must never block a merge, so the runner skips it here; the
+    # commit rung and a plain `check.sh full` still run it.
+    (unset CHECK_DEADLINE; SKIP=codespell exec scripts/check.sh full) >"$log" 2>"$err"; rc=$?
+    # 0 to 3 all carry the one JSON line (2 is a check unavailable, 3 over
+    # budget), so an unavailable tool still names its own check; a stdout outside
+    # the contract (the usage path, not a git repo) leaves nothing to map, which
+    # the jq guard catches. A status outside the gate vocabulary reads as
+    # unavailable.
+    if [ "$rc" -le 3 ] && parsed=$(jq -sce 'select(length == 1) | .[0].checks | objects
+        | map_values(if . == "skipped" then "pass" elif . == "pass" or . == "fail" or . == "unavailable" then . else "unavailable" end)' \
+        "$log" 2>/dev/null); then
+      checks=$parsed
+      [ "$rc" -eq 0 ] || tail -n 40 "$err" >&2
+    else
+      mark check unavailable
+      tail -n 40 "$err" >&2
+    fi
   fi
 
   # The pac solution pack/extract e2e (CI `test` leg); CI provisions pac.
