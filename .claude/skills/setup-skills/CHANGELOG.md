@@ -7,6 +7,89 @@ released version. See
 
 <!-- version list -->
 
+## v0.16.0 (2026-10-10)
+
+### Features
+
+- **ship**: A fallback reviewer also stands in for a primary capped with findings
+  ([#534](https://github.com/Gharib89/skills/pull/534),
+  [`da3acb0`](https://github.com/Gharib89/skills/commit/da3acb05d00fee258e13850b566ba89a5764a1d9))
+
+
+## v0.15.0 (2026-10-10)
+
+### Features
+
+- **ship**: Move find-docs to 522c4db ([#532](https://github.com/Gharib89/skills/pull/532),
+  [`0c7d869`](https://github.com/Gharib89/skills/commit/0c7d869fe95f147ef7e034e8e2937956862e974d))
+
+
+## v0.14.0 (2026-10-08)
+
+### Bug Fixes
+
+- **setup-skills**: Pin claude-code-action v1.0.244 so opus reaches Opus 5.5
+  ([#514](https://github.com/Gharib89/skills/pull/514),
+  [`28342e5`](https://github.com/Gharib89/skills/commit/28342e514254fef5ee3b2d97f832e5f02fd2e614))
+
+### Features
+
+- **ship**: Merge on a clean gate in repos that opt in
+  ([#501](https://github.com/Gharib89/skills/pull/501),
+  [`3d7d8c2`](https://github.com/Gharib89/skills/commit/3d7d8c2d517d558298f6c855dbb8b5a9751dd259))
+
+- **ship**: Move code-review and tdd to f3fc563
+  ([#508](https://github.com/Gharib89/skills/pull/508),
+  [`16646c2`](https://github.com/Gharib89/skills/commit/16646c25737c6b151cee4433afe2bba838d5a09e))
+
+- **ship**: Read native Codex review as a third on-request reviewer
+  ([#513](https://github.com/Gharib89/skills/pull/513),
+  [`e7b6598`](https://github.com/Gharib89/skills/commit/e7b65987e2400571eb9fa790e46227b79f323922))
+
+- **ship**: Self-review gates what reviewers keep catching
+  ([#494](https://github.com/Gharib89/skills/pull/494),
+  [`5ffa640`](https://github.com/Gharib89/skills/commit/5ffa64042668f61e455249374dc6c221c10ae348))
+
+- **ship**: State each rule once and keep unmet criteria verbatim
+  ([#515](https://github.com/Gharib89/skills/pull/515),
+  [`c923bb4`](https://github.com/Gharib89/skills/commit/c923bb4f493ac13c8883a7328c440e3620ea9f5f))
+
+
+## v0.13.1 (2026-10-05)
+
+### Bug Fixes
+
+- **setup-skills**: Have the claude reviewer read the standards files its diff routes to
+  ([`cf5984e`](https://github.com/Gharib89/skills/commit/cf5984e9736850a16552f042b683ddf3f1c9bc7b))
+
+
+## v0.13.0 (2026-10-04)
+
+### Features
+
+- **update-skills**: Refresh every source-repo skill the lock records
+  ([#475](https://github.com/Gharib89/skills/pull/475),
+  [`a4dd316`](https://github.com/Gharib89/skills/commit/a4dd31692f01c34c0d42502a2bf719c798708b53))
+
+
+## v0.12.2 (2026-10-03)
+
+### Bug Fixes
+
+- **setup-skills**: A later gate write keeps the worse status
+  ([#465](https://github.com/Gharib89/skills/pull/465),
+  [`8c85f1d`](https://github.com/Gharib89/skills/commit/8c85f1dbc916629539b03d60498f041f8f9793be))
+
+
+## v0.12.1 (2026-10-03)
+
+### Refactoring
+
+- **setup-skills**: Local gate on Bash 3.2, one bootstrap test, stale gate comments
+  ([#463](https://github.com/Gharib89/skills/pull/463),
+  [`75a0de3`](https://github.com/Gharib89/skills/commit/75a0de3ed65528dda3630a8c748d5c9367bed81b))
+
+
 ## v0.12.0 (2026-10-02)
 
 ### Features

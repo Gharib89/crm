@@ -51,7 +51,6 @@
 #                                           mentions.
 #   host_issue_assign <n> <identity>
 #   host_issue_unassign <n> <identity>
-#   host_issue_has_label <n> <label>     -> exit 0 when present
 #   host_issue_add_label <n> <label>
 #   host_issue_remove_label <n> <label>  (no-op success when absent)
 #   host_issue_comment <n> <body>        (fails with {status})
@@ -68,10 +67,24 @@
 #                                           refuses a set past 20000 rows, and says so on stderr
 #                                           when it does.
 #   host_pr_create <head> <base> <title> <body-file> <issue> -> {number,url,created_at}
-#   host_pr_get <pr>                     -> {number,url,title,body,head_sha,head_ref,base_ref,state,mergeable}
+#   host_pr_get <pr>                     -> {number,url,title,body,head_sha,head_ref,base_ref,draft,state,mergeable}
 #   host_pr_for_branch <branch>          -> {number,state,head_sha} of the newest PR whose head branch is <branch>, or null
 #   host_pr_checks <pr> <head_sha>       -> [{name,status}]
 #                                           status: pending | success | failure.
+#   host_check_job <pr> <head_sha> <name>-> {job_id,attempt,log_tail} the latest check of that
+#                                           name on the head, as the host's re-runnable job.
+#                                           attempt: how many times the job has run on this head,
+#                                           so 1 is not yet re-run. log_tail: the job log's last 40
+#                                           lines as one string, null where the log could not be
+#                                           read. A check that is no job (a commit status, a
+#                                           third-party app) answers job_id, attempt and log_tail
+#                                           all null. Non-zero where the host could not answer or
+#                                           has no job to re-run; always non-zero on Azure DevOps,
+#                                           which has no re-run of a policy evaluation here.
+#                                           ci-wait --rerun-failed reports that as "unavailable".
+#   host_check_rerun <job_id>            (fails with {status}) re-runs that one job and its
+#                                           dependents; ci-wait calls it once per failing leg check
+#                                           whose attempt is 1. Always non-zero on Azure DevOps.
 #   host_pr_reviews <pr> <head_sha> [<full-ids-json>]
 #                                        -> {on_head:[REVIEW],all:[REVIEW],total}
 #                                           REVIEW = {id,login,state,submitted_at,body}
@@ -111,7 +124,7 @@
 #                                           every comment is a thread that host_pr_reviews already
 #                                           carries, so a notice there reaches poll-pr as a review
 #                                           row, graded by SHIP_SUBSTANTIVE and refused through
-#                                           SHIP_REFUSED_BY.
+#                                           SHIP_ROUND_BY.
 #   host_workflow_runs <file> <since-iso>-> [{status,conclusion,created_at,url,title}] the runs
 #                                           of that workflow file, for the event a comment
 #                                           transport starts, created at or
@@ -125,6 +138,19 @@
 #                                           Azure DevOps, which has no such read. poll-pr reports
 #                                           either as "unavailable" and holds the window to the
 #                                           constant on.
+#   host_pr_native_activity <pr> <since-iso> <phrase>
+#                                        -> {comments,pr_reactions,request_reactions} what a
+#                                           reviewer integration with no workflow run leaves on
+#                                           the PR: comments, every PR comment as
+#                                           {id,login,created_at,updated_at,body,url};
+#                                           pr_reactions, the reactions on the PR itself, and
+#                                           request_reactions, those on the latest comment
+#                                           opening with <phrase> at or after <since> ([] where
+#                                           none does), each {content,login,created_at}. content
+#                                           is the host's reaction name (`eyes`, `+1`). Non-zero
+#                                           where the host could not answer; always non-zero and
+#                                           silent on Azure DevOps, which has no native reviewer.
+#                                           poll-pr reports either as "unavailable".
 #   host_run_denials <run-url>           -> {denied} the count of tool calls the round in
 #                                           that completed run was refused: the leading
 #                                           numbers of its jobs' `claude-review` warning
@@ -143,6 +169,15 @@
 #                                           requested_at: ISO-8601 time of the request event, or,
 #                                           where the host records none (always, on Azure DevOps),
 #                                           the wall clock, stamped before the call.
+#   host_pr_requested_at <pr> <login> [<phrase>]
+#                                        -> the UTC time (YYYY-MM-DDTHH:MM:SSZ), alone on a line, the
+#                                           reviewer was last asked for a round, which `poll-pr
+#                                           --reviewer` takes as its --since when none is given: the
+#                                           latest review_requested timeline event for <login>, or,
+#                                           with <phrase> (a comment transport), the latest PR
+#                                           comment opening with it, by anyone. Non-zero and silent
+#                                           where there is none; always, on Azure DevOps, which
+#                                           records no request to read back.
 #   host_pr_comment <pr> <body-file>     -> {id,url,created_at}
 #                                           (fails with {status})
 #                                           id: the comment's id on GitHub, the thread's id on
@@ -168,40 +203,115 @@
 
 SHIP_SCRIPTS=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 readonly SHIP_SCRIPTS
-# shellcheck disable=SC2034  # read by the mechanics that source this library
-readonly SHIP_CLAIM_COMMENT='🤖 Claimed by a ship run: implementation in progress.'
+
+# The hidden line every issue or PR comment Ship posts ends with. It is how
+# `read-issue` marks a comment `ship: true`: a claim, a hand-back or a PR line
+# is told from a human's comment by this line, not by its wording, which a human
+# can quote. It sits at the end so a comment-triggered workflow's request phrase
+# still opens the body. A mechanic that posts a comment appends it through
+# `ship_mark` or `ship_mark_file`, once, here rather than in each adapter. An
+# empty span, not an HTML comment: Azure DevOps' work-item sanitizer drops
+# `<!-- -->` and unquotes attributes, so this unquoted form is the one both hosts
+# hand back byte for byte, and neither renders (probed on the lab, #487).
+SHIP_COMMENT_MARKER='<span data-ship=1></span>'
+readonly SHIP_COMMENT_MARKER
+# ship_mark <body>: the body, then the marker on a line of its own.
+ship_mark() {
+  local b=$1
+  case $b in ''|*$'\n') ;; *) b+=$'\n' ;; esac
+  printf '%s%s\n' "$b" "$SHIP_COMMENT_MARKER"
+}
+# ship_mark_file <src> <dst>: <src>'s bytes then the marker, written to <dst>;
+# 1 where <src> cannot be read, with <dst> untouched. The sentinel keeps the
+# file's trailing newlines through `$( )`, and `&&` keeps `cat`'s status as the
+# substitution's, which a `;` would replace with the sentinel's.
+ship_mark_file() {
+  local b
+  b=$(cat "$1" && printf x) || return 1
+  ship_mark "${b%x}" > "$2"
+}
 
 # ship_tooling <msg>: the exit-2 shape. Also used when the host adapter itself
 # cannot load, so a broken install still emits the contract, not "command not found".
-ship_tooling() { jq -n --arg e "$1" '{error: $e}'; exit 2; }
-# SHIP_BY_HAND, set by ship_reach_repo, rides every exit-1 answer as `command`.
-# The message is also written to stderr (here and in ship_fail_host): a caller
-# piping stdout through `jq -r .field` reads a refusal as `null` and exit 0, and
-# stderr is what still shows it.
-ship_fail()    { jq -n --arg e "$1" --arg c "${SHIP_BY_HAND:-}" '{error: $e} + if $c == "" then {} else {command: $c} end'; printf '%s\n' "$1" >&2; exit 1; }
-
-# ship_fail_host <msg> <adapter-answer>: the exit-1 shape for a host write that
-# failed, carrying the HTTP status of the last attempt. Without it a host that
-# is briefly down and a payload the host refuses produce the identical verdict,
-# and the run has no way to tell them apart: PR #170 spent four minutes
-# bisecting a valid body against a burst of 500s. <adapter-answer> is whatever
-# the adapter printed on its failure path; an adapter that reports no status,
-# as `az` does, leaves it empty and the status is null. A guessed status is
-# worse than none, so anything that is not a number reads as null.
-ship_fail_host() { # ship_fail_host <msg> <adapter-answer>
-  local s
-  s=$(jq -r 'if (.status | type) == "number" then .status else "null" end' <<<"${2:-}" 2>/dev/null) || s=null
-  [ -n "$s" ] || s=null
-  jq -n --arg e "$1" --argjson s "$s" --arg c "${SHIP_BY_HAND:-}" \
-    '{error: $e, status: $s} + if $c == "" then {} else {command: $c} end'
+# The message is also written to stderr, as ship_fail does: a caller piping stdout
+# through `jq -r .field` reads a malformed call as `null` and exit 0.
+ship_tooling() { jq -n --arg e "$1" '{error: $e}'; printf '%s\n' "$1" >&2; exit 2; }
+# ship_fail <msg> [<adapter-answer>]: the exit-1 shape. SHIP_BY_HAND, set by
+# ship_reach_repo, rides every exit-1 answer as `command`. The message is also
+# written to stderr: a caller piping stdout through `jq -r .field` reads a
+# refusal as `null` and exit 0, and stderr is what still shows it.
+#
+# A second argument, even an empty one, marks a host call that failed (a write,
+# or a read whose answer named a reason), and adds the HTTP status of its last
+# attempt as `status`. Without it a host that is briefly
+# down and a payload the host refuses produce the identical verdict, and the run
+# has no way to tell them apart: PR #170 spent four minutes bisecting a valid
+# body against a burst of 500s. <adapter-answer> is whatever the adapter printed
+# on its failure path; an adapter that reports no status, as `az` does, leaves it
+# empty and the status is null. A guessed status is worse than none, so anything
+# that is not a number reads as null. One argument is a refusal the host never
+# saw, which carries no `status` key.
+ship_fail() {
+  local s=
+  if [ $# -ge 2 ]; then
+    s=$(jq -r 'if (.status | type) == "number" then .status else "null" end' <<<"$2" 2>/dev/null) || s=null
+    [ -n "$s" ] || s=null
+  fi
+  jq -n --arg e "$1" --arg s "$s" --arg c "${SHIP_BY_HAND:-}" \
+    '{error: $e} + (if $s == "" then {} else {status: ($s | fromjson)} end)
+     + if $c == "" then {} else {command: $c} end'
   printf '%s\n' "$1" >&2
   exit 1
 }
 
+# ship_recorded_grade <issue>: the grade the issue's Run file records, `patch`,
+# `minor` or `breaking`, from the `Grade: <word>` line (an optional `- ` before
+# it, nothing else before) under its `## Grade` heading (blanks after it allowed),
+# the one shape `run-file grade` reads and writes. Prints nothing when there is
+# no Run file, no such line or a word that is not one of the three: no recorded
+# grade is no check, since a run that never graded has nothing to enforce.
+ship_recorded_grade() { # <issue>
+  local root file
+  root=$(ship_record_root 2>/dev/null) || return 0
+  file=$root/ship-$1/run.md
+  [ -f "$file" ] || return 0
+  awk '/^## /{ f = ($0 ~ /^## Grade[ \t\r]*$/) }
+    f && /^(- )?Grade: (patch|minor|breaking)[ \t\r]*$/ { sub(/^(- )?Grade: /, ""); sub(/[ \t\r]+$/, ""); print; exit }' "$file"
+}
+
+# ship_title_grade <title>: the grade a Conventional-Commit title implies, the
+# type before an optional `(scope)` and an optional `!`, then `:`. `!` is
+# `breaking`, `feat` is `minor`, every other type is `patch`. A title that is no
+# Conventional Commit implies nothing and prints nothing: bump-guard owns that.
+ship_title_grade() { # <title>
+  local re='^([A-Za-z]+)(\([^)]*\))?(!)?:'
+  [[ $1 =~ $re ]] || return 0
+  if [ -n "${BASH_REMATCH[3]}" ]; then echo breaking
+  elif [ "${BASH_REMATCH[1]}" = feat ]; then echo minor
+  else echo patch; fi
+}
+
+# ship_require_grade <issue> <title>: exit 1 when the title grades below the
+# issue's recorded grade. `Grade: minor` and `Grade: breaking` both need a
+# `feat` or a `!` title (a 0.x skill's break is titled feat, ADR 0005);
+# `Grade: patch` accepts any. Run before the push or host write the title feeds.
+ship_require_grade() { # <issue> <title>
+  local want have type
+  want=$(ship_recorded_grade "$1")
+  case $want in minor|breaking) ;; *) return 0 ;; esac
+  have=$(ship_title_grade "$2")
+  [ "$have" = patch ] || return 0
+  type=${2%%[(!:]*}
+  ship_fail "title type $type grades patch, below the recorded Grade: $want; retitle as feat(...)"
+}
+
 # ship_help <usage> "$@": the --help contract. A run asks the script what its
-# flags are rather than reading them out of SKILL.md, so the answer is the same
-# usage string the mechanic's guards print, on stdout, exit 0, nothing on
-# stderr. Called on the line after the usage assignment, before every other
+# flags and its answer are rather than reading them out of SKILL.md, so it
+# prints the same usage string the mechanic's guards print, then the calling
+# script's own `# stdout:` header block (from that line up to its `# exit:` line,
+# or the end of the header comment), each line with its leading `# ` removed.
+# On stdout, exit 0, nothing on stderr. Called on the line after the usage
+# assignment, before every other
 # guard and before ship_load_host: a guard placed after it answers --help with a
 # tooling error wherever the adapter cannot load, which is exactly where someone
 # is asking what the flags are. Only the first argument is read, because --help
@@ -210,16 +320,65 @@ ship_help() { # ship_help <usage> "$@"
   local usage=$1; shift
   [ "${1:-}" = --help ] || return 0
   printf '%s\n' "$usage"
+  awk '/^# stdout:/ { f = 1 }
+    f { if ($0 !~ /^#/ || /^# exit:/) exit; sub(/^# ?/, ""); print }' "${BASH_SOURCE[1]}"
   exit 0
+}
+
+# ship_args <usage> <kinds> "$@": the argument check a mechanic that takes a
+# positional or a `--body-file` runs on the line after `ship_help` (run-file
+# again per verb), so before `ship_load_host` and before any guard of its own.
+# <kinds> is one space-separated word list naming the leading positionals in
+# order: `issue` and `pr` are a number, `issue|none` a number or the word
+# `none`, `arg` any value. Each is required and none may start with `-`: without
+# that a flag typed where an id belongs is read as the id and asked of the host.
+# Empty <kinds> checks the `--body-file` alone. Every `--body-file` word among
+# the rest, even one standing as another flag's value, must be followed by a
+# readable regular file. Every failure is `ship_tooling <usage>`; the mechanic
+# still assigns its own variables and checks its own flags.
+ship_args() { # ship_args <usage> <kinds> "$@"
+  local usage=$1 kind v
+  local -a kinds
+  read -ra kinds <<<"$2"; shift 2
+  for kind in ${kinds[@]+"${kinds[@]}"}; do
+    v=${1:-}
+    case $v in ''|-*) ship_tooling "$usage" ;; esac
+    case $kind in
+      issue|pr) [[ $v =~ ^[0-9]+$ ]] || ship_tooling "$usage" ;;
+      issue\|none) [[ $v =~ ^[0-9]+$ ]] || [ "$v" = none ] || ship_tooling "$usage" ;;
+    esac
+    shift
+  done
+  while [ $# -gt 0 ]; do
+    if [ "$1" = --body-file ]; then
+      [ -f "${2:-}" ] && [ -r "$2" ] || ship_tooling "$usage"
+    fi
+    shift
+  done
+}
+
+# ship_flag_value <usage> <value> [<on-empty>]: the guard on the value a flag
+# takes, run at the flag's own case arm. A missing, empty or leading-dash value
+# is `ship_tooling <usage>`, or `ship_tooling <on-empty>` for an empty one where
+# the caller keeps its own wording. A guard that tests only for emptiness reads
+# the next flag as the value: `--title --body-file b.md` filed a title.
+ship_flag_value() { # ship_flag_value <usage> <value> [<on-empty>]
+  case $2 in -*) ship_tooling "$1" ;; esac
+  [ -n "$2" ] || ship_tooling "${3:-$1}"
+}
+
+# ship_issue_has_label <n> <label>: exit 0 when the issue carries the label,
+# read from `host_issue_get`'s labels[] so no adapter keeps a second read of it.
+ship_issue_has_label() {
+  host_issue_get "$1" | jq -e --arg l "$2" 'any(.labels[]; . == $l)' >/dev/null
 }
 
 # ship_tail40 <file>: a failing step's evidence, the last 40 lines of the log.
 ship_tail40() { tail -n 40 "$1" >&2; }
 
 # Branch convention: <type>/<slug>-<issue>. The "-<issue>" suffix is what
-# preflight greps for on the remote.
-ship_branch()           { printf '%s/%s-%s' "$1" "$2" "$3"; }
-ship_branch_suffix_re() { printf -- '-%s$' "$1"; }
+# preflight greps for on the remote and open-pr checks the branch ends in.
+ship_branch() { printf '%s/%s-%s' "$1" "$2" "$3"; }
 
 # The main checkout, even when run from inside a worktree: --git-common-dir
 # points at the primary .git, so a run started in a worktree lands the new one
@@ -230,6 +389,16 @@ ship_main_checkout() {
   dirname "$common"
 }
 
+# ship_record_root: where a run keeps its record, <git common dir>/ship. The
+# main checkout and every worktree of it resolve the same directory, git never
+# lists it as a working-tree file, and it outlives a wiped temp directory, which
+# took the record with it in three runs. `run-file` and `cleanup` read it.
+ship_record_root() {
+  local common
+  common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
+  printf '%s/ship' "$common"
+}
+
 # Sibling container beside the checkout: <parent>/<repo>.worktrees
 ship_worktree_container() {
   local root; root=$(ship_main_checkout) || return 1
@@ -237,16 +406,17 @@ ship_worktree_container() {
 }
 
 # The base ref, resolved from origin/HEAD rather than a hardcoded branch (ADO
-# defaults vary). Refreshes the symbolic ref where the clone lacks one.
+# defaults vary). Refreshes the symbolic ref where the clone lacks one, which
+# asks the origin; `--local` reads the ref as it is, for a check that skips when
+# the base is unknown rather than reach a host.
 ship_base_ref() {
   local ref
   ref=$(git symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null) \
-    || { git remote set-head origin -a >/dev/null 2>&1 \
+    || { [ "${1:-}" != --local ] && git remote set-head origin -a >/dev/null 2>&1 \
          && ref=$(git symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null); } \
     || return 1
   printf '%s' "${ref#refs/remotes/}"
 }
-ship_base_branch() { local b; b=$(ship_base_ref) || return 1; printf '%s' "${b#origin/}"; }
 
 # Host detection from the origin remote. Sets SHIP_HOST and the host's
 # identifiers; no --host flag and no env var, because every Bash call is a fresh
@@ -265,35 +435,27 @@ ship_detect_host() {
       SHIP_HOST=ado
       local p=${url#*dev.azure.com/}; p=${p%.git}
       SHIP_ORG=${p%%/*}; p=${p#*/}
-      SHIP_PROJECT=${p%%/_git/*}; SHIP_REPO=${p##*/_git/}
-      SHIP_ORG_URL="https://dev.azure.com/$SHIP_ORG"
-      SHIP_REPO_SLUG="$SHIP_ORG/$SHIP_PROJECT/$SHIP_REPO" ;;
-    *@vs-ssh.visualstudio.com:v3/*)
+      SHIP_PROJECT=${p%%/_git/*}; SHIP_REPO=${p##*/_git/} ;;
+    *@vs-ssh.visualstudio.com:v3/*|*ssh.dev.azure.com:v3/*)
       # git@ssh.dev.azure.com:v3/<org>/<project>/<repo> and the visualstudio.com twin
       SHIP_HOST=ado
       local p=${url#*:v3/}
       SHIP_ORG=${p%%/*}; p=${p#*/}
-      SHIP_PROJECT=${p%%/*}; SHIP_REPO=${p#*/}
-      SHIP_ORG_URL="https://dev.azure.com/$SHIP_ORG"
-      SHIP_REPO_SLUG="$SHIP_ORG/$SHIP_PROJECT/$SHIP_REPO" ;;
-    *ssh.dev.azure.com:v3/*)
-      SHIP_HOST=ado
-      local p=${url#*:v3/}
-      SHIP_ORG=${p%%/*}; p=${p#*/}
-      SHIP_PROJECT=${p%%/*}; SHIP_REPO=${p#*/}
-      SHIP_ORG_URL="https://dev.azure.com/$SHIP_ORG"
-      SHIP_REPO_SLUG="$SHIP_ORG/$SHIP_PROJECT/$SHIP_REPO" ;;
+      SHIP_PROJECT=${p%%/*}; SHIP_REPO=${p#*/} ;;
     *.visualstudio.com/*)
       # https://<org>.visualstudio.com/<project>/_git/<repo> (or DefaultCollection/)
       SHIP_HOST=ado
       local hostpart=${url#*://}; hostpart=${hostpart#*@}
       SHIP_ORG=${hostpart%%.visualstudio.com*}
       local p=${url#*.visualstudio.com/}; p=${p#DefaultCollection/}; p=${p%.git}
-      SHIP_PROJECT=${p%%/_git/*}; SHIP_REPO=${p##*/_git/}
-      SHIP_ORG_URL="https://dev.azure.com/$SHIP_ORG"
-      SHIP_REPO_SLUG="$SHIP_ORG/$SHIP_PROJECT/$SHIP_REPO" ;;
+      SHIP_PROJECT=${p%%/_git/*}; SHIP_REPO=${p##*/_git/} ;;
     *) return 1 ;;
   esac
+  # Before the %20 decode below: the slug keeps the project as the remote spells it.
+  if [ "$SHIP_HOST" = ado ]; then
+    SHIP_ORG_URL="https://dev.azure.com/$SHIP_ORG"
+    SHIP_REPO_SLUG="$SHIP_ORG/$SHIP_PROJECT/$SHIP_REPO"
+  fi
   SHIP_PROJECT=$(printf '%s' "${SHIP_PROJECT:-}" | sed 's/%20/ /g')
   export SHIP_HOST SHIP_OWNER SHIP_REPO SHIP_REPO_SLUG SHIP_ORG SHIP_PROJECT SHIP_ORG_URL
 }
@@ -700,12 +862,13 @@ ship_id_list() {
 
 # The review-body clip both adapters run, so they clip in one vocabulary: a jq
 # `clip($id)` filter over a body string, invoked with `--argjson full <ids>`.
-# The cut leaves a marker, so a clipped round reads as clipped.
+# The cut leaves a marker, so a clipped round reads as clipped. The id `open`
+# unclips every row (`poll-pr --brief --full open`).
 # `$id | tostring` so a row the host gives no id (an Azure DevOps vote) compares
 # without erroring; such a row carries no body to unclip.
 # shellcheck disable=SC2034  # read by the host adapters that source this library
 readonly SHIP_REVIEW_CLIP='def clip($id):
-  if ($full | index($id | tostring)) then .
+  if ($full | index("open")) or ($full | index($id | tostring)) then .
   elif length > 2000 then .[0:2000] + "\n...[truncated]"
   else . end;'
 
@@ -757,36 +920,37 @@ readonly SHIP_SUBSTANTIVE="$SHIP_BLOCKED_NOTICE"'
     else (.state | IN("approved", "changes")) end;
   .on_head |= map(.substantive = substantive) | .all |= map(.substantive = substantive)'
 
-# poll-pr's two landing rules over a `host_pr_reviews` projection, invoked with
-# `--arg l <normalised login>` and `--arg s <since|"">`. `$l` arrives already
-# lowercased and stripped of a `[bot]` suffix, the row side normalised here to
-# match. Only a SUBSTANTIVE row lands, as `SHIP_SUBSTANTIVE` graded it, which is
-# what keeps a quota notice from answering for a round that has yet to arrive
-# (#155).
-# shellcheck disable=SC2034  # read by poll-pr
-readonly SHIP_LANDED_BY='
-  def mine: [.[] | select(.substantive and ((.login | ascii_downcase | sub("\\[bot\\]$"; "")) == $l))];
-  if $s == "" then (if (.on_head | mine) != [] then "head" else null end)
-  else (if (.all | mine | map(select(.submitted_at != null and .submitted_at >= $s))) != [] then "since" else null end)
-  end'
+# The one rule for matching a login: case-insensitive, less a `[bot]` suffix, so
+# `Copilot` and `copilot[bot]` are one reviewer wherever a login is compared.
+# Prepend it to a jq program that calls `norm`.
+readonly SHIP_LOGIN_NORM='def norm: ascii_downcase | sub("\\[bot\\]$"; "");'
 
-# poll-pr's refusal test, over the same projection and the same two arguments:
-# the rule that admitted a NOTICE row by that login, a row with a body that is
-# not substantive, which is the one kind `is_notice` leaves. A quota notice
-# answers the request it follows, and no round is coming after it: Copilot's
-# quota is the requesting user's and monthly, so waiting the window out, or
-# asking again, buys nothing (#248, #250: every poll spent its whole window on
-# a refusal already posted). Read only when no round landed, so a round that
-# follows a notice still lands. A notice posted as a PR comment rather than as a
-# review leaves no row here: poll-pr admits it from `host_pr_reviewer_blocked`'s
-# `at`, under the since rule only (#256).
+# poll-pr's two row rules over a `host_pr_reviews` projection: `round_by(<row
+# predicate>)`, invoked with `--arg l <login>` and `--arg s <since|"">`, both
+# sides normalised by `norm`. It answers "head" under the head rule (`$s` is
+# empty) when a row on the head satisfies the predicate, "since" under the since
+# rule when a row in `all` submitted at or after `$s` does, else null.
+#
+# Landing passes `.substantive`: only a SUBSTANTIVE row lands, as
+# `SHIP_SUBSTANTIVE` graded it, which is what keeps a quota notice from
+# answering for a round that has yet to arrive (#155).
+#
+# Refusal passes a NOTICE predicate: a row by that login that is not
+# substantive and has a body, the one kind `is_notice` leaves. A quota notice answers the request
+# it follows, and no round is coming after it: Copilot's quota is the requesting
+# user's and monthly, so waiting the window out, or asking again, buys nothing
+# (#248, #250: every poll spent its whole window on a refusal already posted).
+# Read only when no round landed, so a round that follows a notice still lands. A
+# notice posted as a PR comment rather than as a review leaves no row here:
+# poll-pr admits it from `host_pr_reviewer_blocked`'s `at`, under the since rule
+# only (#256).
 # shellcheck disable=SC2034  # read by poll-pr
-readonly SHIP_REFUSED_BY='
-  def refusals: [.[] | select((.substantive | not) and (.body // "") != ""
-                              and ((.login | ascii_downcase | sub("\\[bot\\]$"; "")) == $l))];
-  if $s == "" then (if (.on_head | refusals) != [] then "head" else null end)
-  else (if (.all | refusals | map(select(.submitted_at != null and .submitted_at >= $s))) != [] then "since" else null end)
-  end'
+readonly SHIP_ROUND_BY="$SHIP_LOGIN_NORM"'
+  def round_by(row):
+    def mine: [.[] | select(row and ((.login | norm) == ($l | norm)))];
+    if $s == "" then (if (.on_head | mine) != [] then "head" else null end)
+    else (if (.all | mine | map(select(.submitted_at != null and .submitted_at >= $s))) != [] then "since" else null end)
+    end;'
 
 # poll-pr's pick of THE run a comment-transport reviewer's round is waiting on,
 # over a `host_workflow_runs` projection, invoked with `--arg t <the PR's title>`.
@@ -811,6 +975,67 @@ readonly SHIP_REVIEWER_RUN='
      // ($rows | last)
      // {status: "none", conclusion: null, url: null})
   | {status, conclusion, url, denied: null}'
+
+# poll-pr's read of a native Codex round (`Workflow: native codex`), over a
+# `host_pr_native_activity` answer, invoked with `--arg l <login> --arg s <since>
+# --arg h <head sha>`. Codex runs no workflow: it acknowledges a request with 👀
+# on the request comment (removed when the round ends), keeps one status comment
+# marked `codex-pull-request-review-summary` edited in place, its Code Review row
+# naming the status, the time and the short commit, and delivers a round either
+# as a formal review (findings) or, clean, as an issue comment opening
+# `Codex Review: Didn't find any major issues` plus 👍 on the PR, with no review
+# at all (probed on #504 and #505 for #500). Answers {run, rounds, notice}:
+#   rounds  each clean delivery at or after <since> as a REVIEW row, so the
+#           landing rule lands a clean round like any other; the 👍 counts only
+#           where no clean comment does.
+#   notice  {line, at} for the first comment by the login at or after <since>
+#           that is neither the status comment nor a clean one: a refusal of a
+#           shape not yet observed (quota, access, a missing environment), whose
+#           first line poll-pr reports as the blocked notice.
+#   run     the `reviewer_run` shape, so the window logic a workflow run drives
+#           drives this too: completed/success once a clean round or a Completed
+#           row on the head is in; completed/refused beside a notice; in_progress
+#           while the 👀 is on, or the row, touched since the request, is not
+#           Completed; completed/stale-head for a Completed row on another
+#           commit; "unavailable" for a Completed row whose commit cell holds no
+#           backticked sha, since a row this reader cannot parse names no
+#           commit; `none` for silence, which is how an unconnected repo answers.
+#           Completed is the only terminal word the probes showed: a row ending
+#           in another word reads in progress and holds the window to the
+#           ceiling, which then reports still-running.
+# A status comment last edited before <since> belongs to an older request.
+# `Didn.t` matches the apostrophe without one inside this single-quoted string.
+# shellcheck disable=SC2034  # read by poll-pr
+readonly SHIP_NATIVE_CODEX="$SHIP_LOGIN_NORM"'
+  def utc: (. // "") | sub("\\.[0-9]+"; "") | sub("\\+00:00$"; "Z");
+  def is_status: (.body // "") | contains("<!-- codex-pull-request-review-summary -->");
+  def is_clean: (.body // "") | test("^\\s*Codex Review: Didn.t find any major issues");
+  def mine: ((.login // "") | norm) == ($l | norm);
+  def first_line: [splits("\n") | sub("^\\s+"; "") | sub("\\s+$"; "") | select(. != "")] | first // "";
+  [.comments[] | select(mine)] as $c
+  | ([$c[] | select(is_status)] | last) as $st
+  | (($st.body // "") | [splits("\n") | select(test("\\*\\*Code Review\\*\\*"))] | first // "") as $row
+  | (($row | capture("`(?<sha>[0-9a-f]{7,40})`").sha) // null) as $sha
+  | ($st != null and ($st.updated_at | utc) >= $s) as $touched
+  | [$c[] | select(is_clean and (.created_at | utc) >= $s)
+     | {id: (.id | tostring), login, state: "comment", submitted_at: .created_at, body}] as $clean
+  | [.pr_reactions[] | select(mine and .content == "+1" and (.created_at | utc) >= $s)
+     | {id: null, login, state: "comment", submitted_at: .created_at,
+        body: "Codex Review: reacted 👍 to the PR, posting no findings."}] as $thumbs
+  | (if $clean != [] then $clean else $thumbs end) as $rounds
+  | ([$c[] | select((is_status | not) and (is_clean | not) and (.created_at | utc) >= $s)] | first) as $reply
+  | {rounds: $rounds,
+     notice: (if $reply == null then null else {line: (($reply.body // "") | first_line), at: ($reply.created_at | utc)} end),
+     run: (if $rounds == [] and $reply == null and $touched and $sha == null
+             and ($row | test("Completed")) then "unavailable"
+           else {url: ($st.url // $reply.url // null), denied: null} +
+       if $rounds != [] then {status: "completed", conclusion: "success"}
+       elif $reply != null then {status: "completed", conclusion: "refused"}
+       elif any(.request_reactions[]; mine and .content == "eyes") then {status: "in_progress", conclusion: null}
+       elif $touched and ($row | test("Completed") | not) then {status: "in_progress", conclusion: null}
+       elif $touched and ($h | startswith($sha)) then {status: "completed", conclusion: "success"}
+       elif $touched then {status: "completed", conclusion: "stale-head"}
+       else {status: "none", conclusion: null, url: null} end end)}'
 
 # ship_fence_unclosed <text>: does the text end inside a fenced block or a
 # `<details>` record? Prints `line <n>: <run>` naming the opener still open, or
@@ -847,6 +1072,87 @@ ship_body_headings() {
     !inert && /^## / { sub(/^## /, ""); sub(/[ \t\r]+$/, ""); print }' <<<"$1"
 }
 
+# ship_outline_missing <body> <paths>: the paths, one per line, that the body's
+# `## Change outline` section does not mention. <paths> is newline-separated. A
+# path is mentioned when the section names it by its full path, or by its
+# basename when no other changed path shares that basename (a derived copy whose
+# source twin is changed mirrors it and does not count): both bounded as `ship_paths_cited` bounds a path, so `_lib.sh` is no
+# mention of `tests/lib.sh` and one bare `SKILL.md` covers no two. A derived copy
+# under `.claude/skills/<rest>` is also mentioned when its source twin
+# `skills/<rest>` is changed and mentioned, since the copy mirrors the source.
+# `skills-lock.json` and any `CHANGELOG.md` are generated, never expected in an
+# outline. The section is found by the same `ship_inert` rule as the headings, so
+# a `## Change outline` in a fence is not one; a body with no such heading
+# mentions nothing, and every expected path is missing.
+ship_outline_missing() { # <body> <paths>
+  local text p twin rc
+  text=$(awk "$SHIP_AWK_FENCE"'
+    { inert = ship_inert($0) }
+    !inert && /^## / { name = $0; sub(/^## /, "", name); sub(/[ \t\r]+$/, "", name); on = (name == "Change outline"); next }
+    on' <<<"$1")
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    case ${p##*/} in skills-lock.json|CHANGELOG.md) continue ;; esac
+    _ship_outline_names "$text" "$p" "$2"; rc=$?
+    [ "$rc" -eq 0 ] && continue
+    [ "$rc" -eq 2 ] && return 2
+    case $p in
+      .claude/skills/*)
+        twin=skills/${p#.claude/skills/}
+        if grep -Fxq -e "$twin" <<<"$2"; then
+          _ship_outline_names "$text" "$twin" "$2"; rc=$?
+          [ "$rc" -eq 0 ] && continue
+          [ "$rc" -eq 2 ] && return 2
+        fi ;;
+    esac
+    printf '%s\n' "$p"
+  done <<<"$2"
+}
+
+# _ship_outline_names <text> <path> <paths>: true when the text names <path> by
+# its full path, or by its basename when <path>'s basename is shared by no other
+# path of <paths> (a derived copy under `.claude/skills/` whose source twin is in
+# <paths> is a mirror and does not count). One bounded matcher: `ship_paths_cited`.
+# Exit 0 named, 1 not named, 2 the matcher failed.
+_ship_outline_names() { # <text> <path> <paths>
+  local p=$2 base n c
+  c=$(ship_paths_cited "$1" "$p") || return 2
+  [ -n "$c" ] && return 0
+  base=${p##*/}
+  n=$(awk -v b="$base" '
+    { all[NR] = $0; has[$0] = 1 }
+    END {
+      for (i = 1; i <= NR; i++) {
+        f = all[i]; sub(/^.*\//, "", f)
+        mirror = (all[i] ~ /^\.claude\/skills\// && ("skills/" substr(all[i], 16)) in has)
+        if (f == b && !mirror) n++
+      }
+      print n + 0 }' <<<"$3")
+  [ "$n" -eq 1 ] || return 1
+  c=$(ship_paths_cited "$1" "$base") || return 2
+  [ -n "$c" ]
+}
+
+# ship_paths_cited <text> <paths>: the paths, one per line, that the text cites.
+# <paths> is newline-separated. A path is cited as a whole token, wherever it
+# sits, a code span, a quote or a link included: it is not preceded by a path
+# character ([A-Za-z0-9_./-], bar a leading `./`) and not followed by one
+# ([A-Za-z0-9_/-], or a `.` that opens an extension). So `scripts/run` does not
+# cite `scripts/run-file.sh`, `a/skills/x.sh` does not cite `skills/x.sh`, and a
+# sentence's closing `.` or a `:12` line suffix does not hide a path. A grep that
+# fails (exit 2, as against 1 for no match) is no answer: exit 2, never "uncited".
+ship_paths_cited() { # <text> <paths>
+  local p re rc
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    re=$(printf '%s' "$p" | sed 's/[]\\.[*^$+?(){}|]/\\&/g')
+    re='(^|[^A-Za-z0-9_./-])(\./)?'$re'($|[^A-Za-z0-9_/.-]|\.($|[^A-Za-z0-9_]))'
+    grep -Eq -e "$re" <<<"$1"; rc=$?
+    case $rc in 0) printf '%s\n' "$p" ;; 1) ;; *) return 2 ;; esac
+  done <<<"$2"
+  return 0
+}
+
 # ship_profile_path: the ship profile in the checkout the caller runs in, rather
 # than the main one: a run inside a worktree is governed by the profile on its
 # own branch, and a repo's first profile lands on a branch before it ever
@@ -878,9 +1184,60 @@ ship_no_checks_expected() { # <profile-body>
   local ci
   ci=$(awk '/^## /{f = ($0 ~ /^## CI[ \t\r]*$/)} f' <<<"$1")
   grep -Eq '^Legs:[[:space:]]*None\.[[:space:]]*$' <<<"$ci" || return 1
-  grep -Eq '^No-checks legal:[[:space:]]*yes([^[:alnum:]]|$)' <<<"$ci" || return 1
-  return 0
+  ship_no_checks_legal "$1"
 }
+# ship_no_checks_legal <profile-body>: true when the profile's `## CI` block says
+# `No-checks legal: yes`, read in that section only like every profile fact.
+ship_no_checks_legal() { # <profile-body>
+  awk '/^## /{f = ($0 ~ /^## CI[ \t\r]*$/)} f' <<<"$1" \
+    | grep -Eq '^No-checks legal:[[:space:]]*yes([^[:alnum:]]|$)'
+}
+
+# ship_profile_legs <profile-body>: the leg names the profile's `Legs:` names
+# under `## CI`, one per line, the text before each entry's first colon. An
+# entry is a `Legs: <name>: <what>` line, repeated or not, or a line below a
+# bare `Legs:`, up to a blank line or the section's next label. `Legs: None.`
+# prints nothing; a section with no `Legs:` line fails, which is "unknown", not
+# "none". An entry that yields no name (no colon, or nothing before it) fails
+# the same way: printed as nothing it would read as `Legs: None.`, and a red
+# check no leg names would then pass as no-checks.
+ship_profile_legs() { # <profile-body>
+  awk 'function emit(  n) { sub(/^[ \t]+/, ""); n = index($0, ":"); if (n > 1) print substr($0, 1, n - 1); else bad = 1 }
+    /^## / { f = ($0 ~ /^## CI[ \t\r]*$/); on = 0; next }
+    !f { next }
+    /^Legs:/ { seen = 1; on = 1; sub(/^Legs:[ \t]*/, ""); sub(/[ \t\r]+$/, "")
+               if ($0 != "" && $0 != "None.") emit(); next }
+    on && (/^[ \t\r]*$/ || /^(No-checks legal|Push policy):/) { on = 0; next }
+    on { sub(/[ \t\r]+$/, ""); emit() }
+    END { exit (!seen || bad) }' <<<"$1"
+}
+
+# A poll loop's host read, telling "no answer yet" from an answer. A read that
+# fails with no HTTP status (a dropped connection, a TLS timeout) is no answer
+# yet, so the loop keeps going; one the host answered with a status is a real
+# refusal. The adapter's `_gh` writes each call's status to
+# $SHIP_HTTP_STATUS_FILE, a file rather than a variable because most reads run
+# in a `$( )` where a variable dies unread; an adapter that never writes it (Azure
+# DevOps, whose `az` reports no status) has every failure read as no answer, so
+# its persistent refusal costs the loop three reads before it ends.
+# The caller sets $SHIP_HTTP_STATUS_FILE to a file it traps for removal.
+# ship_poll_read <out-file> <fn> <args...>: 0 answered, the answer in <out-file>
+# · 1 the host refused, with a status · 3 no answer
+ship_poll_read() {
+  local out=$1; shift
+  : > "$SHIP_HTTP_STATUS_FILE"
+  "$@" > "$out" && return 0
+  [ -s "$SHIP_HTTP_STATUS_FILE" ] && return 1
+  return 3
+}
+
+# A wait's cursor: the window's state, opaque to the caller, which hands it back
+# with `--cursor` to resume the same window. No call holds the tool past
+# SHIP_CALL_CAP seconds (540, under the harness's 600 s limit on one tool call),
+# so a window longer than that is a chain of calls joined by cursors.
+SHIP_CALL_CAP=${SHIP_CALL_CAP:-540}
+ship_cursor_make() { jq -rn --argjson c "$1" '$c | tojson | @base64'; } # <json>
+ship_cursor_read() { jq -cn --arg c "$1" '$c | @base64d | fromjson | if type == "object" then . else error end' 2>/dev/null; } # <cursor>
 
 # ship_head_stale <pr-json> [<sha>]: true while the host shows a PR head other
 # than the expected one, so `ci-wait` and `poll-pr` wait inside their window
@@ -983,6 +1340,12 @@ ship_reviewers() {
 # also what keeps a mechanic name out of it: `comment-pr` is a mechanic, and a
 # word boundary in place of the space would read it as a transport.
 #
+# `Workflow: native <integration>` is the other status source a comment
+# transport may name: an integration that posts its round with no workflow run
+# behind it (native Codex review), whose status poll-pr reads off the PR itself.
+# It names no file, so it is never statted, and only an integration poll-pr has
+# a reader for is admitted, since any other would poll on nothing.
+#
 # Anything that is not an array refuses, exactly as `ship_stale_base_reason`
 # refuses an unreadable verdict: a parse that died must not come back as "the
 # blocks hold", or preflight claims the issue on the strength of a check that
@@ -1001,7 +1364,7 @@ ship_reviewer_reasons() {
     [ "$inside" = yes ] && [ -f "$2/$wf" ] ||
       absent=$(jq -c --arg w "$wf" '. + [$w]' <<<"$absent")
   done < <(jq -r 'if type == "array"
-                  then .[].workflow | select(. != null)
+                  then .[].workflow | select(. != null and (startswith("native ") | not))
                   else empty end' <<<"$1" 2>/dev/null)
   jq -rn --arg r "$1" --argjson absent "$absent" '
     (try ($r | fromjson) catch null) as $rows
@@ -1027,6 +1390,8 @@ ship_reviewer_reasons() {
            elif (($x.request // "") | startswith("comment "))
            then (if $x.workflow == null
                  then "profile invalid: \($x.name) has Request: \($x.request) with no Workflow: naming the workflow file its round comes from"
+                 elif ($x.workflow | startswith("native ")) and $x.workflow != "native codex"
+                 then "profile invalid: \($x.name) has Workflow: \($x.workflow), which names no native integration ship reads (codex)"
                  elif ($absent | index($x.workflow)) != null
                  then "profile invalid: \($x.name) has Workflow: \($x.workflow), which is not in the checkout"
                  else empty end)
@@ -1070,8 +1435,9 @@ ship_reviewer_by_name() {
 # trigger, which posts one round per request on whatever head it lands on.
 # `transport` is `comment` where `Request:` reads `comment <phrase>`, with
 # `phrase` its text and, under the since rule, `await_run` the block's
-# `Workflow:`, the run that separates a round still being written from one that
-# will not come; the run read is keyed by the --since instant, which a head-rule
+# `Workflow:`: a workflow path, whose run separates a round still being written
+# from one that will not come, or `native codex`, whose status poll-pr reads off
+# the PR instead; the run read is keyed by the --since instant, which a head-rule
 # poll has none of. `host` otherwise, the host's own request-a-reviewer call,
 # with both null. `timeout`
 # is the poll's default bound. Under the head rule it is 480, the bound the
@@ -1086,7 +1452,9 @@ ship_reviewer_by_name() {
 # host creates the
 # `issue_comment` run within seconds of the comment, and from then on the run,
 # not the constant, holds the window. A backed-up queue that outlasts it reads
-# as no run, `never-queued`; a caller expecting one passes `--timeout`.
+# as no run, `never-queued`; a caller expecting one passes `--timeout`. Under
+# `native codex` the same 60 bounds Codex's acknowledgement (👀 or a status
+# edit), which arrived within 11 s on both #500 probe PRs.
 #
 # `refusal` is null, or the line `poll-pr` exits 2 on, where the caller's
 # <since> disagrees with the rule: a --since for an on-push reviewer, or none for
@@ -1166,12 +1534,12 @@ ship_stale_base_reason() {
       else "stale-base: base freshness unreadable" end'
 }
 
-# ship_pr_state_reason <state>: the refusal `merge` answers with when the PR is
-# not one a human can still say "merge" about, or nothing when it is. Both
+# ship_pr_state_reason <state>: the refusal `merge` answers with when the PR
+# no longer admits an authorized merge, or nothing when it does. Both
 # adapters normalise to `open`, `merged` or `closed` (Azure DevOps maps
 # `abandoned` to `closed`), and GitHub's merge endpoint accepts a closed PR, so
 # without this a PR somebody deliberately closed is squashed onto the base by a
-# mechanic whose whole contract is that a human said "merge" about THIS PR.
+# mechanic authorized by an explicit "merge" or a clean opted-in gate.
 #
 # `merged` admits because `merge` skips the merge call for it and still owes the
 # steps after it. Anything else refuses, an unreadable state included: a check
@@ -1222,19 +1590,48 @@ ship_pr_state_reason() { # ship_pr_state_reason <state>
 # loop reading rounds from the brief is the loop that has to tell a silent
 # reviewer from one whose run is still going.
 ship_brief() {
-  jq -c --arg me "$2" --arg key "$3" --argjson full "${4:-[]}" '
-    def norm: ascii_downcase | sub("\\[bot\\]$"; "");
+  jq -c --arg me "$2" --arg key "$3" --argjson full "${4:-[]}" "$SHIP_LOGIN_NORM"'
     def by($l): ((.login // "") | norm) == ($l | norm);
     def mine: $me != "" and by($me);
     def awaited($l): $l == "" or by($l);
     def clip: if length > 200 then .[0:200] + "\n...[truncated]" else . end;
+    # Only the HTML names a reviewer body carries are markup: a quoted usage line
+    # (`<n>`, `<name>`) is text and stays.
+    def notags: gsub("</?(details|summary|picture|source|img|br|hr|p|a|div|span|sub|sup|b|i|em|strong|code|pre|kbd|table|thead|tbody|tr|td|th|ul|ol|li|h[1-6]|blockquote)(\\s[^>]*)?/?>"; ""; "i");
+    # The markup of a round comes off before any line is read. A `<details>` block is
+    # replaced by what a loop acts on: `What changed` (the summary of the PR) and
+    # `Resolved` (findings an earlier round closed) go, a block holding list
+    # items keeps its body, and one holding none is itself a finding (the `Previously missed` of a
+    # Copilot overview, which has no thread to carry it), lifted to its title
+    # and first line. Innermost first, so a block inside a block lifts before
+    # the one around it is read. A `<picture>` is a severity badge and goes with
+    # the space before it.
+    def details:
+      gsub("<details[^>]*>\\s*<summary>(?<t>(?:(?!</summary>)[\\s\\S])*)</summary>(?<b>(?:(?!<details)[\\s\\S])*?)</details>";
+           (.t | notags | gsub("^\\s+|\\s+$"; "")) as $t
+           | if ($t | test("^(What changed|Resolved)")) then ""
+             elif (.b | test("(^|\n)[ \t]*([-*+]|[0-9]+[.)])[ \t]")) then .b
+             else "\n- \($t): \(.b | notags | [splits("\n") | select(test("^\\s*$") | not)][0] // "")\n" end);
+    def unhtml:
+      gsub("<!--[\\s\\S]*?-->"; "") | gsub("[ \t]*<picture>[\\s\\S]*?</picture>"; "")
+      | details | details | details | notags
+      | gsub("</?[A-Za-z][^>]*$"; "") | gsub("<!--[\\s\\S]*$"; "");
+    # The lead (the first line with text that is not a heading, behind the h3
+    # verdict heading above it where there is one: an overview states its
+    # severity there and nowhere else), the `Findings:` line and the items. A round with none of the last two is clipped instead.
     def finding_items:
       (if endswith("\n...[truncated]") then "\n...[truncated]" else "" end) as $mark
-      | [splits("\n") | select(test("^[ \t]*$") | not)] as $lines
+      | sub("\n\\.\\.\\.\\[truncated\\]$"; "") | unhtml as $body
+      | [$body | splits("\n") | sub("[ \t\r]+$"; "") | select(test("^[ \t]*$") | not)] as $lines
       | [$lines[] | select(test("^[ \t]*([-*+]|[0-9]+[.)])[ \t]"))] as $items
-      | if ($items | length) == 0 then clip
-        elif $lines[0] == $items[0] then (($items | join("\n")) + $mark)
-        else ((([$lines[0]] + $items) | join("\n")) + $mark) end;
+      | [$lines[] | select(test("^[ \t*_]*Findings:"))] as $found
+      | ([$lines | to_entries[] | select(.value | test("^#") | not)][0]) as $first
+      | ($first.value // $lines[0] // "") as $text
+      | ([$lines[:($first.key // 0)][] | select(test("^###[ \t]+[^# \t]"))][0] // null) as $verdict
+      | (if $verdict == null then $text else ($verdict | sub("^###[ \t]+"; "")) + ": " + $text end) as $lead
+      | if ($items | length) == 0 and ($found | length) == 0 then (($body + $mark) | clip)
+        else (reduce ([$lead] + $found + $items)[] as $l ([]; if index([$l]) then . else . + [$l] end)
+              | join("\n")) + $mark end;
     def lead: [splits("\n") | select(test("^[ \t\r]*$") | not)] as $lines
       | ($lines[0] // "") as $first | ($first | clip) as $cut
       | if ($lines | length) > 1 and $cut == $first
@@ -1243,12 +1640,12 @@ ship_brief() {
     | {head_sha, mergeable, reviewer, landed_by, refused_by, not_reviewed, reviewer_blocked, reviewer_run,
      rounds: [.reviews[$key][] | select((mine | not) and awaited($await)) | . as $r
               | {id, submitted_at, substantive,
-                 body: (if ($full | index($r.id | tostring)) then $r.body
+                 body: (if ($full | index("open")) or ($full | index($r.id | tostring)) then $r.body
                         else ($r.body | finding_items) end)}],
      threads: (if (.threads | type) == "array"
                then [.threads[] | select(.resolved | not)
                      | . as $t | {id, path,
-                                  lead: (if ($full | index($t.id | tostring)) then ($t.body // "")
+                                  lead: (if ($full | index("open")) or ($full | index($t.id | tostring)) then ($t.body // "")
                                          else (($t.body // "") | lead) end),
                                   resolved, replied}]
                else .threads end)}' <<<"$1"

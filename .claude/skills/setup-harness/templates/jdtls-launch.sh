@@ -22,7 +22,7 @@ if [ ! -x "$cache/bin/jdtls" ]; then
   tmp=$(mktemp -d "$cache.XXXXXX") || exit 2
   trap 'rm -rf "$tmp"' EXIT
   url=https://repo.eclipse.org/content/repositories/jdtls-releases/org/eclipse/jdt/ls/org.eclipse.jdt.ls.product/$version/org.eclipse.jdt.ls.product-$version.tar.gz
-  curl -fsSL "$url" > "$tmp/build.tar.gz" || exit 2
+  curl -fsSL --connect-timeout 30 --max-time 600 "$url" > "$tmp/build.tar.gz" || exit 2
   got=$( (sha256sum 2>/dev/null || shasum -a 256) < "$tmp/build.tar.gz" | cut -d' ' -f1)
   [ "$got" = "$sha256" ] || { echo "jdtls-launch: $url has sha256 $got, pinned $sha256" >&2; exit 1; }
   mkdir "$tmp/build" && tar xzf "$tmp/build.tar.gz" -C "$tmp/build" || exit 2

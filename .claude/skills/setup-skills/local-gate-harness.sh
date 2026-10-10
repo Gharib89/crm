@@ -45,7 +45,10 @@ lane=full; [ -z "$small" ] || lane=small
 
 gates='{}' checks='{}'
 log=$(mktemp) err=$(mktemp); trap 'rm -f "$log" "$err"' EXIT
-put()  { gates=$(jq -c --arg k "$1" --arg v "$2" '. + {($k): $v}' <<<"$gates"); }
+# A gate written twice keeps the worse status, so no later write can mask a failure.
+# shellcheck disable=SC2016 # jq's own $a and $b
+worse='def worse($a; $b): [$a // "pass", $b] | max_by({"pass": 0, "deferred-to-ci": 1, "unavailable": 2, "fail": 3}[.]);'
+put()  { gates=$(jq -c --arg k "$1" --arg v "$2" "$worse"' .[$k] = worse(.[$k]; $v)' <<<"$gates"); }
 run()  { local name=$1; shift; if "$@" >"$log" 2>&1; then put "$name" pass; else put "$name" fail; tail -n 40 "$log" >&2; fi; }
 mark() { put "$1" "$2"; }   # mark <name> deferred-to-ci|unavailable
 
@@ -86,9 +89,7 @@ fi
 # --- end gates -----------------------------------------------------------------
 
 # A name both report keeps the worse status, so neither side can mask a failure.
-gates=$(jq -c --argjson c "$checks" '
-  def rank: {"pass": 0, "deferred-to-ci": 1, "unavailable": 2, "fail": 3}[.];
-  reduce ($c | to_entries[]) as $e (.; .[$e.key] = ([.[$e.key] // "pass", $e.value] | max_by(rank)))' <<<"$gates")
+gates=$(jq -c --argjson c "$checks" "$worse"' reduce ($c | to_entries[]) as $e (.; .[$e.key] = worse(.[$e.key]; $e.value))' <<<"$gates")
 verdict=$(jq -r 'if any(.[]; . == "fail") then "fail" elif any(.[]; . == "unavailable") then "unavailable" else "pass" end' <<<"$gates")
 case $verdict in pass) rc=0 ;; fail) rc=1 ;; *) rc=2 ;; esac
 jq -cn --arg v "$verdict" --arg b "$base" --arg l "$lane" --argjson g "$gates" \

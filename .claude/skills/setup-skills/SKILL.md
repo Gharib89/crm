@@ -3,7 +3,7 @@ name: setup-skills
 description: "Configure this repo for the Gharib89/skills engineering skills: draft its ship profile, local gate, PR template, coding-standards doc and reviewer scaffolding, and check the host tooling. Run once after /setup-matt-pocock-skills, before the first /ship."
 disable-model-invocation: true
 metadata:
-  version: 0.12.0
+  version: 0.16.0
   composes: mattpocock/skills#d81f3a183412e71a5b1e84ca21bc1a35eea03a60:triage
 ---
 
@@ -23,9 +23,10 @@ Check all three before exploring. On any failure print the exact command, then "
 2. **Composed skills as derived copies.** `.claude/skills/` holds `code-review`, `tdd`, `writing-for-agents`, `triage`, `find-docs` and `show-me`, each recorded in the repo's `skills-lock.json` (the skills CLI writes it at install) with the `ref` its line below pins, the upstream commit the source repo tested. A copy the lock records at another `ref`, or none, is off its pin: print its line. A copy present but absent from the lock is hand-maintained: report it as "will be replaced by the derived copy", confirm, then refresh it with the same line. A global copy under `~/.claude/skills` leaves this check unmet: a personal skill silently shadows a repo's, so ship's composed skills must live in the repo. Else print:
 
    ```sh
-   npx skills add mattpocock/skills#c55ee46073ed923f86ce59a5eb3b6d895095d1b7 --skill code-review --skill writing-for-agents --agent claude-code -y
-   npx skills add mattpocock/skills#d81f3a183412e71a5b1e84ca21bc1a35eea03a60 --skill tdd --skill triage --agent claude-code -y
-   npx skills add upstash/context7#e275a848a420e0d11c2822f61201ee005bfd1133 --skill find-docs --agent claude-code -y
+   npx skills add mattpocock/skills#f3fc5632f401156837ee3872f14fe33ccf1024ea --skill code-review --skill tdd --agent claude-code -y
+   npx skills add mattpocock/skills#c55ee46073ed923f86ce59a5eb3b6d895095d1b7 --skill writing-for-agents --agent claude-code -y
+   npx skills add mattpocock/skills#d81f3a183412e71a5b1e84ca21bc1a35eea03a60 --skill triage --agent claude-code -y
+   npx skills add upstash/context7#522c4db4fa2e1e31f1b320f09fa8c8fab376987a --skill find-docs --agent claude-code -y
    npx skills add humanlayer/skills#ca7c8088db69e315a8b2deea43820270457f8f3c --skill show-me --agent claude-code -y
    ```
 
@@ -90,8 +91,9 @@ Detect per kind, propose each with the trigger the evidence implies, and confirm
 - **Copilot.** `.github/copilot-instructions.md`, plus the `copilot_code_review` rule read from `gh api repos/{owner}/{repo}/rules/branches/{default_branch}` with the branch percent-encoded into that one segment, since a default branch may carry a slash and an unencoded one addresses a different route. That endpoint returns the rules the host has already resolved for that branch, so a rule scoped to another branch stays out of the answer, and it is the endpoint ship's own preflight reads: propose from the repo-wide ruleset list instead and setup writes a profile ship then refuses. The rule's `review_on_push` fixes the trigger: `true` is on-push; `false` or absent is auto-once where the PR's opening round is the only one wanted, or on-request where that same opening round is the loop's round 1 and the cap buys the rest, which is the shape to propose wherever the repo wants a bound it controls. Preflight reads the rule and refuses a `Trigger:` that disagrees with it, so a value confirmed against the evidence here is the one that runs.
 - **A reviewer with request history.** `review_requested` events on the last ten merged PRs: `on-request`.
 - **Claude Code.** `claude-code-action` in a workflow, where the trigger the workflow declares is the trigger the profile takes: a `pull_request` trigger is on-push, an `issue_comment` trigger is on-request, the phrase its `if:` matches is the `Request: comment <phrase>` value, and the workflow file itself is the `Workflow:` value. A Claude review pipeline on Azure DevOps is on-push.
+- **Codex.** On GitHub only, a comment by `chatgpt-codex-connector[bot]` on the last ten merged PRs, since a user token cannot read the connector's installation (`user/installations` answers 403): `Trigger: on-request`, `Request: comment @codex review`, `Workflow: native codex`, and `Instructions: AGENTS.md` where the root carries one, else `None.`.
 
-Then, for each reviewer the draft names: `Resolve:` is walked where the proposed trigger is on-push or on-request and the reviewer's findings arrive as inline review comments, and it takes the mechanism that reviewer offers on that host. `resolve-thread` covers the GitHub reviewers that open review threads, Copilot and `claude-code-action`. A Claude review pipeline on Azure DevOps takes the line [its scaffold](reviewers/ado-claude-review.md) writes instead, the PR thread's status set to `fixed` once a finding is dispositioned. A reviewer that posts its own resolve comment takes that, as CodeRabbit does. It reads `None.` otherwise, which is what auto-once always takes because its one round ends with every thread dispositioned and none resolved. `Workflow:` is taken from the evidence rather than asked: the path of the workflow file detection already read, on the one reviewer whose `Request:` is a comment transport, and `None.` on every other. `Cap:` is asked of every reviewer, always.
+Then, for each reviewer the draft names: `Resolve:` is walked where the proposed trigger is on-push or on-request and the reviewer's findings arrive as inline review comments, and it takes the mechanism that reviewer offers on that host. `resolve-thread` covers the GitHub reviewers that open review threads, Copilot, `claude-code-action` and Codex. A Claude review pipeline on Azure DevOps takes the line [its scaffold](reviewers/ado-claude-review.md) writes instead, the PR thread's status set to `fixed` once a finding is dispositioned. A reviewer that posts its own resolve comment takes that, as CodeRabbit does. It reads `None.` otherwise, which is what auto-once always takes because its one round ends with every thread dispositioned and none resolved. `Workflow:` is taken from the evidence rather than asked: on each reviewer whose `Request:` is a comment transport, the path of the workflow file detection already read, or `native codex` for Codex, and `None.` on every other. `Cap:` is asked of every reviewer, always.
 
 ### 4. Present, then walk
 
@@ -110,16 +112,17 @@ Walk order and the recommendation to lead with:
 
 ### 5. Confirm and edit
 
-Show the full draft of everything below, then let the user edit before writing. Field-level validation happens here, the one moment a human is present to fix it. Every reviewer block carries every `Label:` line the template lists, `Cap:` included, and the draft is clear of the eight reviewer shapes ship's preflight refuses:
+Show the full draft of everything below, then let the user edit before writing. Field-level validation happens here, the one moment a human is present to fix it. Every reviewer block carries every `Label:` line the template lists, `Cap:` included, and the draft is clear of the nine reviewer shapes ship's preflight refuses:
 
 - an on-request reviewer with no `Cap:`
 - a `Cap:` that is neither a number nor `None.`
 - a `Fallback-for:` on a reviewer whose `Trigger:` is not `on-request`
 - a `Fallback-for:` naming a reviewer the draft does not list
 - a `Request: comment` with no phrase for the transport to post
-- a `Request: comment <phrase>` with no `Workflow:` naming the file its round comes from
+- a `Request: comment <phrase>` with no `Workflow:` naming the file its round comes from, or `native codex`
 - a `Workflow:` on a block whose `Request:` is not a comment transport
 - a `Workflow:` naming a file the checkout does not carry, a path climbing out of it with `..` included
+- a `Workflow: native <integration>` naming an integration other than `codex`
 
 Then: every `Also proven by CI:` names a leg defined in `## CI`; `defer-to-ci` appears only with such a leg; `Host:` matches step 2; fourteen headings in order; the `Schema:` line equals ship's `metadata.profile-schema`.
 

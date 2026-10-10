@@ -18,6 +18,14 @@ count is taken at phase 2's `Done when:`, with every edit committed, and again
 before every later push, in attended and unattended runs alike. Over the cap
 revokes to the full lane.
 
+## A guard is full lane
+
+A diff touching a guard, an allowlist or a deny rule is full lane, whatever its
+size. What it decides is what the run refuses or admits, a unit test proves only
+the inputs its author thought of, and the line count says nothing about how many
+cases it must hold. Predict it at phase 2 with the keys, and count it as failing
+key 2.
+
 ## What collapses
 
 Keys 1 and 2 already make phase-3 verification and the phase-4 docs-sync gate
@@ -54,7 +62,7 @@ call.
 Any of these **downgrades to the full lane** for the remaining phases: the diff
 counted over the size cap, CI red on behavior, a reviewer or the self-review
 flags a real bug, the local gate's floor check hits, or the change turns out to
-touch the public surface. Downgrade means: run the skipped verifications and
-docs-sync, add the missing test or docs, run the full local gate, and apply
-full-lane review terms, from there on. Downgrading once is cheap; shipping a
-non-small change as small is the failure.
+touch the public surface or a guard, allowlist or deny rule. Downgrade means:
+run the skipped verifications and docs-sync, add the missing test or docs, run
+the full local gate, and apply full-lane review terms, from there on.
+Downgrading once is cheap; shipping a non-small change as small is the failure.

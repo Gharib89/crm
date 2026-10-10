@@ -7,8 +7,11 @@
 #
 #   base-fresh
 #
-# stdout: {fresh, base, behind, ahead, fetched}   the newest 39 behind commits on stderr
-# exit: 0 fresh · 1 behind (catch up, then re-run) · 2 the base could not be resolved
+# stdout: {fresh, base, behind, ahead, fetched, branch}   the newest 39 behind commits on stderr
+#   branch: the current branch name, null on a detached HEAD
+# exit: 0 fresh · 1 behind (catch up, then re-run) · 2 the base could not be resolved,
+#   or HEAD is the default branch itself (run from the worktree: there HEAD is
+#   the base, so "fresh" would answer nothing about the run's own branch)
 #   Catching up is a rebase only while the branch is not on origin. Once it is,
 #   a rebase rewrites published commits and the plain push `open-pr` makes is
 #   refused, so the advice is to merge the base in; the squash merge lands one
@@ -27,6 +30,9 @@ git fetch -q origin >/dev/null 2>&1 || { fetched=false; echo "fetch failed; comp
 base=$(ship_base_ref) || ship_tooling "cannot resolve origin/HEAD"
 git rev-parse --verify -q "$base" >/dev/null || ship_tooling "base $base is not a known ref"
 
+branch=$(git symbolic-ref -q --short HEAD) || branch=
+[ "$branch" != "${base#origin/}" ] || ship_tooling "HEAD is the default branch ${base#origin/}; run from the worktree"
+
 behind=$(git rev-list --count "HEAD..$base") || ship_tooling "cannot compare HEAD with $base"
 ahead=$(git rev-list --count "$base..HEAD")
 fresh=true; [ "$behind" -eq 0 ] || fresh=false
@@ -35,13 +41,13 @@ if ! $fresh; then
   # ref the fetch above refreshed rather than ls-remote, so the answer holds
   # offline. A detached HEAD takes the merge advice, which is never wrong.
   advice="merge $base in, which keeps the next push a plain one, and re-run:"
-  if branch=$(git symbolic-ref -q --short HEAD) && ! git rev-parse --verify -q "refs/remotes/origin/$branch" >/dev/null; then
+  if [ -n "$branch" ] && ! git rev-parse --verify -q "refs/remotes/origin/$branch" >/dev/null; then
     advice="rebase onto it and re-run:"
   fi
   # The header plus the newest 39 commits: 40 lines in all, the size the
   # mechanics cap their stderr evidence at. `behind` in the JSON stays the full count.
   { echo "branch has not seen these commits on $base; $advice"; git log --oneline -39 "HEAD..$base"; } >&2
 fi
-jq -n --argjson f "$fresh" --arg b "$base" --argjson behind "$behind" --argjson ahead "$ahead" --argjson fe "$fetched" \
-  '{fresh: $f, base: $b, behind: $behind, ahead: $ahead, fetched: $fe}'
+jq -n --argjson f "$fresh" --arg b "$base" --argjson behind "$behind" --argjson ahead "$ahead" --argjson fe "$fetched" --arg br "$branch" \
+  '{fresh: $f, base: $b, behind: $behind, ahead: $ahead, fetched: $fe, branch: (if $br == "" then null else $br end)}'
 $fresh

@@ -1,7 +1,8 @@
 # Phase 3: verify where it failed
 
-Each entry under `## Verification` has seven lines. You judged `Applies when:`
-at classification; here you run the applicable ones.
+Each entry under `## Verification` has seven lines, and an optional `Timebox:`
+line. You judged `Applies when:` at classification; here you run the applicable
+ones.
 
 - **Run** its `Run:` line scoped to what you touched, the phase-2 regression
   test in that run and the rest of the suite left to the local gate. Pass is
@@ -11,6 +12,11 @@ at classification; here you run the applicable ones.
   environment may auto-heal the bug. Where this machine cannot prove the claim
   (an OS the issue names, a matrix leg), `Also proven by CI:` names the leg that
   does; write the test so that leg proves it and watch it in phase 8.
+- **Timebox.** An entry carrying `Timebox: <n> minutes` stops at the first of
+  an overrun or a second failed rerun, and its result is `fail` with the output
+  so far as evidence, so the run stops `red-after-retry: <verification>`
+  instead of looping. An entry
+  without the line has no bound.
 - **Prerequisite missing** (`Needs:` fails its detection): the disposition is
   the entry's `Without it:` line, one of:
   - `hand-off`: attended, print the exact command and setup, wait for the human

@@ -7,6 +7,39 @@ released version. See
 
 <!-- version list -->
 
+## v0.10.0 (2026-10-08)
+
+### Bug Fixes
+
+- **setup-harness**: Refresh the apt index before an apt route's install
+  ([#512](https://github.com/Gharib89/skills/pull/512),
+  [`a5200c5`](https://github.com/Gharib89/skills/commit/a5200c5c055d62879871f883343a20b30d9388f2))
+
+### Features
+
+- **setup-harness**: Run the full rung's rows concurrently
+  ([#524](https://github.com/Gharib89/skills/pull/524),
+  [`a215272`](https://github.com/Gharib89/skills/commit/a215272b10716b046fc8905bcd27e1841371a9d0))
+
+
+## v0.9.4 (2026-10-05)
+
+### Bug Fixes
+
+- **ship**: Gate the retro's mechanical review findings
+  ([#482](https://github.com/Gharib89/skills/pull/482),
+  [`0c689e8`](https://github.com/Gharib89/skills/commit/0c689e8e731cc86b56bc2c28035c0e609183563a))
+
+
+## v0.9.3 (2026-10-03)
+
+### Bug Fixes
+
+- **setup-harness**: Check.sh skips paths outside the repo
+  ([#461](https://github.com/Gharib89/skills/pull/461),
+  [`03cb0e1`](https://github.com/Gharib89/skills/commit/03cb0e1285c6f08d137adc8ac7ce7d2fefc1b9e5))
+
+
 ## v0.9.2 (2026-09-30)
 
 ### Bug Fixes

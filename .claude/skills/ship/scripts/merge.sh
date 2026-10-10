@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# ship phase 9, ONLY after the human said "merge": squash-merge with the PR
-# title as the subject, re-verify merged, confirm the issue closed (close it
+# ship phase 9, after explicit "merge" or a clean opted-in gate: squash-merge
+# with the PR title as the subject, re-verify merged, confirm the issue closed (close it
 # explicitly if the link did not fire), delete the remote branch and PROVE the
 # deletion, fast-forward the local base branch from the checkout that holds it,
 # release the claim and strip ready-for-agent so a reopened issue goes back
@@ -14,12 +14,12 @@
 # JSON. The merge, the branch deletion and the base fast-forward run unchanged.
 #
 # Before any of that, two refusals. A PR that is neither open nor already merged
-# is not the PR the human said "merge" about: exit 1 `pr-closed: <state>`, with
+# is no longer the authorized PR: exit 1 `pr-closed: <state>`, with
 # nothing merged, no issue closed and no branch deleted. The host's merge
 # endpoint accepts a closed PR, so a run that comes back to a stale PR number
 # would otherwise land a branch somebody deliberately closed. Then the branch is
 # proven fresh against its base: the base can move between phase 5's
-# `base-fresh` and the human's "merge", and the squash would land a branch blind
+# `base-fresh` and merge authorization, and the squash would land a branch blind
 # to those commits, which leaves the summary they approved written against a
 # different tree than the one that would land. Refused as exit 1 `stale-base`.
 #
@@ -38,14 +38,12 @@ set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/_lib.sh" || { printf '{"error":"cannot source _lib.sh"}\n'; exit 2; }
 usage='usage: merge <pr> <issue|none> [--worktree <path>]'
 ship_help "$usage" "$@"
-[ -n "${1:-}" ] && [ -n "${2:-}" ] || ship_tooling "$usage"
+ship_args "$usage" "pr issue|none" "$@"
 pr=$1; issue=$2; shift 2
-case $pr in -*) ship_tooling "$usage" ;; esac
-case $issue in -*) ship_tooling "$usage" ;; esac
 wt=""
 while [ $# -gt 0 ]; do
   case $1 in
-    --worktree) [ -n "${2:-}" ] || ship_tooling "$usage"; wt=$2; shift 2 ;;
+    --worktree) ship_flag_value "$usage" "${2:-}"; wt=$2; shift 2 ;;
     *) ship_tooling "unknown flag: $1" ;;
   esac
 done
@@ -66,8 +64,8 @@ finish() {
 
 prj=$(host_pr_get "$pr") || ship_tooling "cannot read PR $pr"
 state=$(jq -r '.state // ""' <<<"$prj")
-# Before anything else the PR itself is read: a human said "merge" about a PR,
-# and one that is closed is not the PR they said it about. Ahead of the
+# Before anything else the authorized PR itself is read: one that is closed
+# no longer admits the merge. Ahead of the
 # freshness check because a closed PR's branch has nothing to be fresh against,
 # and a stale-base refusal there would name the wrong reason.
 closed=$(ship_pr_state_reason "$state")
@@ -149,7 +147,7 @@ if [ "$issue" != none ]; then
   fi
   rfa=$(ship_triage_label ready-for-agent)
   host_issue_remove_label "$issue" "$rfa" >/dev/null 2>&1
-  host_issue_has_label "$issue" "$rfa" || rfa_removed=true
+  ship_issue_has_label "$issue" "$rfa" || rfa_removed=true
 fi
 
 [ "$issue_closed" = true ] && [ "$remote_deleted" = true ] && [ "$base_updated" = true ] \

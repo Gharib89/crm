@@ -9,10 +9,8 @@ set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/_lib.sh" || { printf '{"error":"cannot source _lib.sh"}\n'; exit 2; }
 usage='usage: resolve-thread <pr> <thread-id>'
 ship_help "$usage" "$@"
-[ -n "${1:-}" ] && [ -n "${2:-}" ] || ship_tooling "$usage"
+ship_args "$usage" "pr arg" "$@"
 pr=$1; thread=$2
-case $pr in -*) ship_tooling "$usage" ;; esac
-case $thread in -*) ship_tooling "$usage" ;; esac
 [ $# -eq 2 ] || ship_tooling "unknown flag: $3"
 ship_load_host
 # A failed call keeps the adapter's reason where it named one ("no such
