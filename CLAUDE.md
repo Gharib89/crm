@@ -39,6 +39,7 @@ ruff check . && ruff format --check .     # lint + format gate; CI runs both (co
 uvx semgrep scan --config ci/semgrep-rules.yml --error --metrics off   # house-convention rules (dry-run contract); CI `lint` runs this in its own venv. Not in [dev] — engine needs py>=3.10; `pipx install semgrep` or `uvx semgrep`
 uvx zizmor==1.26.1 .                       # GitHub Actions security audit; CI `lint` runs it pinned in its own venv (config `.github/zizmor.yml`, scoped unpinned-uses policy). Also a pre-commit hook; version lockstep across both. Not in [dev]
 pre-commit install                        # once per clone: ruff + codespell run on staged files at commit time (actionlint + zizmor on workflow edits)
+sudo apt install shellcheck               # once per machine (or brew): the shellcheck hook runs the ShellCheck on PATH, not a pinned copy
 mkdocs build --strict                     # docs; CI runs this, warnings fail
 ```
 

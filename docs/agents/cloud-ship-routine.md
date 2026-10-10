@@ -55,12 +55,13 @@ Configure a dedicated environment (e.g. `crm-ship`) and select it for the routin
 - **Setup script:** none. Ship's `prepare` repairs the image (`tooling
   --install`), then runs the profile's `## Cloud lane` `Bootstrap:`,
   `scripts/cloud-ship-bootstrap.sh`; outside a cloud sandbox (`CLAUDE_CODE_REMOTE`
-  unset) the bootstrap exits 0 and does nothing. In the sandbox it creates `.venv`
-  in the clone (where `scripts/local-gate.sh` looks for it, since the cloud run
-  isolates in place) and installs crm `.[dev,docs]` plus `uv` into it, puts
-  gitleaks (version and sha256 pinned in the script) in `.venv/bin`, where the
-  gate finds it without relying on the sandbox's `PATH`, then
-  builds and tests the `agent-cloud` profile through `.venv/bin/python`. With any
+  unset) the bootstrap exits 0 and does nothing. In the sandbox it runs the
+  harness cloud setup (`.claude/hooks/cloud-setup.sh`), which creates `.venv` in
+  the clone (where `scripts/local-gate.sh` looks for it, since the cloud run
+  isolates in place) and installs crm `.[dev,docs]` plus `uv` into it; then it
+  builds gitleaks (version pinned in the script) from the Go proxy into
+  `/usr/local/bin`, and builds and tests the `agent-cloud` profile through
+  `.venv/bin/python`. With any
   `D365_*` connection variable unset it skips the profile and exits 0: live e2e
   then hands off rather than runs.
   It needs a **Python >= 3.13** somewhere on `PATH` (crm's floor): it selects the
