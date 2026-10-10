@@ -97,7 +97,7 @@ Any PyInstaller bundle-shape change must touch all **5 sites**:
 
 ### Harness
 
-`scripts/check.sh` is this repo's check entry point: `edit <file>...` lints and formats, `turn` typechecks and runs the affected tests of every uncommitted change, and `full` answers for the whole repo: the runner on every file. It prints one JSON line and exits 0 pass, 1 fail, 2 unavailable, 3 over budget. Hooks in `.claude/settings.json` run `edit` after every Edit or Write and `turn` at every stop, and the pre-commit runner is the commit rung. Harness profile: `docs/agents/harness.md`. Re-run `/setup-harness` after adding a stack, a member or a tool.
+`scripts/check.sh` is this repo's check entry point: `edit <file>...` lints and formats, `turn` typechecks and runs the affected tests of every uncommitted change, and `full` answers for the whole repo: the runner on every file, `mkdocs build --strict` and `semgrep scan --config ci/semgrep-rules.yml`. It prints one JSON line and exits 0 pass, 1 fail, 2 unavailable, 3 over budget. Hooks in `.claude/settings.json` run `edit` after every Edit or Write and `turn` at every stop, and the pre-commit runner is the commit rung. Harness profile: `docs/agents/harness.md`. Re-run `/setup-harness` after adding a stack, a member or a tool.
 
 ### Subagents
 

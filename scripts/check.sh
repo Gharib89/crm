@@ -11,9 +11,11 @@
 # stderr: each failing check's last 40 lines
 # exit:   0 pass · 1 fail · 2 unavailable or tooling · 3 over budget
 #
-# CHECK_DEADLINE=<epoch s> stops the run at that time: the check running at
-# it is over-budget (none, when it fell between checks), the rest skipped,
-# exit 3. Without it, exit 3 never occurs.
+# `full` runs the runner, every TURN_ROWS row and every FULL_ROWS row it runs at
+# once, a row's own checks one after another, and reports them in the declared
+# order. CHECK_DEADLINE=<epoch s> stops the run at that time: every check
+# running at it is over-budget (none, when no check was running then), every
+# check not yet started skipped, exit 3. Without it, exit 3 never occurs.
 #
 # Bash 3.2 and no jq, because hooks run this on every edit on macOS too. Edit
 # the configuration block freely: a setup-harness re-run compares this file by
@@ -80,9 +82,12 @@ cd "$root" || exit 2
 nl='
 '
 deadline=${CHECK_DEADLINE:-}
-# One log for every check in turn; <log>.x is the watchdog's expiry mark.
-log=$(mktemp) || exit 2
-trap 'rm -f "$log" "$log.x"' EXIT
+# The run's scratch directory: `edit` and `turn` reuse one log, check by check,
+# and under `full` each slot (see spawn) has its own; <log>.x is the watchdog's
+# expiry mark.
+tmp=$(mktemp -d) || exit 2
+trap 'rm -rf "$tmp"' EXIT
+log=$tmp/log
 names='' statuses='' expired=''
 record() { names="$names$1$nl" statuses="$statuses$2$nl"; }
 
@@ -163,7 +168,7 @@ EOF
 rung_edit() {
   local f files=''
   for f; do
-    case $f in "$root"/*) f=${f#"$root"/} ;; esac
+    case $f in "$root"/*) f=${f#"$root"/} ;; /*) continue ;; esac
     [ -f "$f" ] && matches "$f" "$EDIT_GLOBS" && ! excluded "$f" && files="$files$f$nl"
   done
   if [ -z "$files" ] || [ -z "$EDIT_RUN" ]; then record runner skipped; return; fi
@@ -230,7 +235,7 @@ rung_turn() {
     unset IFS
   fi
   for f; do
-    case $f in "$root"/*) f=${f#"$root"/} ;; esac
+    case $f in "$root"/*) f=${f#"$root"/} ;; /*) continue ;; esac
     o=$(owner "$f")
     case $o in
       '') ;;
@@ -264,11 +269,58 @@ $rows
 EOF
 }
 
+# <label> <command> [<args>...]: run the command in a slot of its own, in the
+# background: a subshell with its own log, writing its records and its failure
+# tails to its own files, so rows running beside each other never share a log
+# or interleave a tail. Call it only while nothing is recorded: each slot
+# inherits names, statuses and expired, and collect appends every slot's copy.
+# The slot's `done` file goes down last, so a slot that ended without its
+# records is told apart from one that recorded nothing.
+slots=0
+spawn() {
+  slots=$((slots + 1))
+  local s=$tmp/$slots
+  printf '%s' "$1" > "$s.label"
+  shift
+  (
+    log=$s.log
+    "$@"
+    printf '%s' "$names" > "$s.names" &&
+      printf '%s' "$statuses" > "$s.statuses" &&
+      { [ -z "$expired" ] || : > "$s.expired"; } &&
+      : > "$s.done"
+  ) < /dev/null 2> "$s.err" &
+}
+
+# Wait for every slot, then take each one's records and tails in slot order,
+# which is the declared order whatever order the slots finished in. A slot with
+# no `done` file is its label, unavailable: its records are not to be trusted.
+collect() {
+  local i=0 s x
+  # Bash reports a killed slot on stderr; the slot's own tail says it instead.
+  wait 2>/dev/null
+  while [ "$i" -lt "$slots" ]; do
+    i=$((i + 1)) s=$tmp/$i
+    cat "$s.err" >&2
+    if [ ! -e "$s.done" ]; then
+      IFS= read -r -d '' x < "$s.label"
+      record "$x" unavailable
+      printf -- '--- %s: unavailable ---\nits slot ended without recording a result\n' "$x" >&2
+      continue
+    fi
+    IFS= read -r -d '' x < "$s.names"; names=$names$x
+    IFS= read -r -d '' x < "$s.statuses"; statuses=$statuses$x
+    [ ! -e "$s.expired" ] || expired=1
+  done
+}
+
 rung_full() {
   local row name
-  [ -n "$FULL_RUN" ] && check runner . "$FULL_RUN"
+  [ -n "$FULL_RUN" ] && spawn runner check runner . "$FULL_RUN"
   while IFS= read -r row; do
-    [ -n "$row" ] && run_row "$row"
+    [ -n "$row" ] || continue
+    name=${row#*|}
+    spawn "${name%%|*}" run_row "$row"
   done <<EOF
 $TURN_ROWS
 EOF
@@ -276,12 +328,13 @@ EOF
     [ -n "$row" ] || continue
     name=${row%%|*}
     if [ "${CLAUDE_CODE_REMOTE:-}" = true ]; then
-      case " $LOCAL_ONLY " in *" $name "*) record "$name" skipped; continue ;; esac
+      case " $LOCAL_ONLY " in *" $name "*) spawn "$name" record "$name" skipped; continue ;; esac
     fi
-    check "$name" . "${row#*|}"
+    spawn "$name" check "$name" . "${row#*|}"
   done <<EOF
 $FULL_ROWS
 EOF
+  collect
   [ -n "$names" ] || record full skipped
 }
 
