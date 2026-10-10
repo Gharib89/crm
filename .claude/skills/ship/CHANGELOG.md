@@ -7,6 +7,15 @@ released version. See
 
 <!-- version list -->
 
+## v0.21.1 (2026-10-10)
+
+### Bug Fixes
+
+- **ship**: Remove an Azure DevOps tag through invoke wit/$batch, so a PAT-only session can (#540)
+  ([#543](https://github.com/Gharib89/skills/pull/543),
+  [`96a28db`](https://github.com/Gharib89/skills/commit/96a28dbc3febdd1b1eb6e7f965ab0d20ade3ac2f))
+
+
 ## v0.21.0 (2026-10-10)
 
 ### Features

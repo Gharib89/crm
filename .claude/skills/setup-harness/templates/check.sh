@@ -11,9 +11,9 @@
 # stderr: each failing check's last 40 lines
 # exit:   0 pass · 1 fail · 2 unavailable or tooling · 3 over budget
 #
-# `full` runs the runner, every TURN_ROWS row and every FULL_ROWS row it runs at
-# once, a row's own checks one after another, and reports them in the declared
-# order. CHECK_DEADLINE=<epoch s> stops the run at that time: every check
+# `full` runs the runner first, then every TURN_ROWS row and every FULL_ROWS row
+# at once, a row's own checks one after another, and reports them in the
+# declared order. CHECK_DEADLINE=<epoch s> stops the run at that time: every check
 # running at it is over-budget (none, when no check was running then), every
 # check not yet started skipped, exit 3. Without it, exit 3 never occurs.
 #
@@ -146,10 +146,21 @@ EOF
   return 1
 }
 
+# <file>: the file relative to the root, through its directory's real path, so
+# no `..` or link leads outside; status 1 when it resolves outside the root or
+# its directory is gone.
+inside() {
+  local d=${1%/*}
+  case $1 in */*) d=${d:-/} ;; *) d=. ;; esac
+  d=$(cd "$d" 2>/dev/null && pwd -P) || return 1
+  case $d in "$root") d='' ;; "$root"/*) d=${d#"$root"/}/ ;; *) return 1 ;; esac
+  printf '%s' "$d${1##*/}"
+}
+
 rung_edit() {
   local f files=''
   for f; do
-    case $f in "$root"/*) f=${f#"$root"/} ;; /*) continue ;; esac
+    f=$(inside "$f") || continue
     [ -f "$f" ] && matches "$f" "$EDIT_GLOBS" && ! excluded "$f" && files="$files$f$nl"
   done
   if [ -z "$files" ] || [ -z "$EDIT_RUN" ]; then record runner skipped; return; fi
@@ -202,7 +213,7 @@ EOF
 }
 
 rung_turn() {
-  local f o rows='' pairs='' row files pair tab='	' new='' rec changed=''
+  local f o rows='' pairs='' row files pair tab='	' new='' rec changed='' p
   if [ "$#" -eq 0 ]; then
     # Every uncommitted change, untracked files included. NUL-separated, so
     # no path comes back quoted; a rename's second record is its old path.
@@ -216,7 +227,13 @@ rung_turn() {
     unset IFS
   fi
   for f; do
-    case $f in "$root"/*) f=${f#"$root"/} ;; /*) continue ;; esac
+    # A file deleted with its directory has no real path: bounded by its name,
+    # where a `..` is the only way out.
+    if p=$(inside "$f"); then f=$p
+    else
+      case /$f/ in */../*) continue ;; esac
+      case $f in "$root"/*) f=${f#"$root"/} ;; /*) continue ;; esac
+    fi
     o=$(owner "$f")
     case $o in
       '') ;;
@@ -297,7 +314,8 @@ collect() {
 
 rung_full() {
   local row name
-  [ -n "$FULL_RUN" ] && spawn runner check runner . "$FULL_RUN"
+  # The runner first and alone: a hook in fix mode rewrites files the rows read.
+  [ -n "$FULL_RUN" ] && { spawn runner check runner . "$FULL_RUN"; wait; }
   while IFS= read -r row; do
     [ -n "$row" ] || continue
     name=${row#*|}
