@@ -38,19 +38,19 @@ Push policy: Default.
 
 ## Reviewers
 
-### Copilot
+### Codex
 
-Login: copilot-pull-request-reviewer[bot]
-Trigger: auto-once
-Request: None.
-Workflow: None.
-Cap: None.
-Resolve: None.
+Login: chatgpt-codex-connector[bot]
+Trigger: on-request
+Request: comment @codex review
+Workflow: native codex
+Cap: 2
+Resolve: resolve-thread
 Gating: no
 Fallback-for: None.
-Instructions: .github/copilot-instructions.md
+Instructions: AGENTS.md
 
-The repo ruleset "Copilot auto review" fires one round on a ready PR, with `review_on_push: false`: that round is the only one, never re-requested. Its threads are dispositioned once.
+Native Codex review through the ChatGPT Codex Connector app: ship asks for each round with a PR comment, and the round's status is read off Codex's own comments on the PR, so no workflow runs. Codex reads the `## Review guidelines` section of `AGENTS.md` (a symlink to `CLAUDE.md`), which scopes it to what this repo controls.
 
 ### Claude Code
 
@@ -61,10 +61,10 @@ Workflow: .github/workflows/claude-review.yml
 Cap: 2
 Resolve: resolve-thread
 Gating: no
-Fallback-for: Copilot
+Fallback-for: Codex
 Instructions: .github/copilot-instructions.md
 
-Requested when Copilot exits not reviewed for any reason (never-queued, blocked, silent, infra-error, unreachable). Outside ship, any OWNER, MEMBER or COLLABORATOR `@claude` comment on a PR one of them authored also fires the workflow. CodeRabbit also reviews this repo on a `@coderabbitai review` comment, but it has no workflow for a round to be read off, which ship cannot express yet (Gharib89/skills#302), so it is not in this profile.
+Requested when Codex exits not reviewed (never-queued, blocked, silent, infra-error, unreachable) or is capped with findings. Outside ship, any OWNER, MEMBER or COLLABORATOR `@claude` comment on a PR one of them authored also fires the workflow. Copilot and CodeRabbit are not in this profile: the repo's Copilot ruleset may still review a PR once when it opens, outside ship's loop, and CodeRabbit is comment-triggered with no workflow for a round to be read off (Gharib89/skills#302).
 
 ## Coding standards
 
