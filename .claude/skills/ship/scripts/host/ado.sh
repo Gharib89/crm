@@ -2,10 +2,8 @@
 # Azure DevOps adapter: the host_* interface from _lib.sh over the `az` CLI with
 # the azure-devops extension, in preference order: `az repos` / `az boards`
 # where a subcommand exists; `az devops invoke` for what they lack (PR threads,
-# iterations, statuses); `az rest` only where neither reaches, which today is
-# `host_issue_remove_label` alone and is documented at that call. Every host API
-# call goes through the CLI, which holds the credential, so none of them is a
-# curl; the only curl in this file is the installer download in
+# iterations, statuses, the json-patch tag removal). Every host API call goes
+# through the CLI, which holds the credential, so none of them is a curl; the only curl in this file is the installer download in
 # `host_tooling_install`, which is what puts the CLI on the machine. One
 # credential covers the run: `az login` (Entra) or AZURE_DEVOPS_EXT_PAT. Sourced
 # by _lib.sh's ship_load_host; needs SHIP_ORG_URL, SHIP_PROJECT and SHIP_REPO
@@ -128,19 +126,21 @@ host_issue_add_label() {
 # A System.Tags write through `--fields` (an `add` op) merges into the tags
 # already there, so dropping a tag needs a json-patch `replace` with the rest,
 # and dropping the LAST one a `remove`: the server ignores an empty value however
-# it is sent. `az devops invoke` cannot send application/json-patch+json, so every
-# removal is `az rest` on the Entra token: a PAT-only session fails each one and
-# reports false.
+# it is sent. `az devops invoke` cannot reach the work item's PATCH route (it
+# resolves `wit/workItems` to the create route), so the patch rides in a
+# `wit/$batch` request, which works on either credential where `az rest` needs
+# an `az login`. A batch answers 200 whatever its request did, so the request's
+# own code decides.
 host_issue_remove_label() {
-  local cur patch
+  local cur f
   cur=$(host_issue_get "$1") || return 1
   jq -e --arg l "$2" 'any(.labels[]; . == $l)' <<<"$cur" >/dev/null || return 0
-  patch=$(jq -c --arg l "$2" '[.labels[] | select(. != $l)] | join("; ")
+  f=$(mktemp); trap 'rm -f "$f"; trap - RETURN' RETURN
+  jq -c --arg l "$2" --arg u "/_apis/wit/workitems/$1?api-version=7.1" '[.labels[] | select(. != $l)] | join("; ")
     | if . == "" then [{op: "remove", path: "/fields/System.Tags"}]
-      else [{op: "replace", path: "/fields/System.Tags", value: .}] end' <<<"$cur")
-  azx rest --method patch --url "$SHIP_ORG_URL/_apis/wit/workitems/$1?api-version=7.1" \
-    --resource 499b84ac-1321-427f-aa17-267ca6975798 --headers "Content-Type=application/json-patch+json" \
-    --body "$patch" >/dev/null
+      else [{op: "replace", path: "/fields/System.Tags", value: .}] end
+    | [{method: "PATCH", uri: $u, headers: {"Content-Type": "application/json-patch+json"}, body: .}]' <<<"$cur" > "$f"
+  invoke POST wit batch 7.1 --in-file "$f" | jq -e '.value[0].code | . >= 200 and . < 300' >/dev/null
 }
 host_issue_comment() { azx boards work-item update "${ORG[@]}" --id "$1" --discussion "$2" >/dev/null; }
 host_issue_close()   { azx boards work-item update "${ORG[@]}" --id "$1" --state "$ADO_CLOSED" >/dev/null; }

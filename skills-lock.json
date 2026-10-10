@@ -25,7 +25,7 @@
       "source": "Gharib89/skills",
       "sourceType": "github",
       "skillPath": "skills/setup-harness/SKILL.md",
-      "computedHash": "06c83ee9f943401362ed114958c14c47447c32ff4c4479cacb13d606a1b7b98a"
+      "computedHash": "78e8023cdb165fc24bd14911780e1e7c0d17860e34047b24b26f3d6dade04fbd"
     },
     "setup-skills": {
       "source": "Gharib89/skills",
@@ -37,7 +37,7 @@
       "source": "Gharib89/skills",
       "sourceType": "github",
       "skillPath": "skills/ship/SKILL.md",
-      "computedHash": "8589a490fb44972b1be4881d075494bf4849b261976af525bca271a254338df9"
+      "computedHash": "d8ecdacde978985415fe7e3b6bda50f975791e934d376928965f349a7986b4a2"
     },
     "show-me": {
       "source": "humanlayer/skills",
@@ -64,7 +64,7 @@
       "source": "Gharib89/skills",
       "sourceType": "github",
       "skillPath": "skills/update-skills/SKILL.md",
-      "computedHash": "f70f49f73066945237164587874a5ccdc3e9a653012b89423a153d621875fb95"
+      "computedHash": "39ba6b9c06ccbc92e6eac7032e3f0a0ad4092bedf6ab4b2c4f34f04c21ad14db"
     },
     "writing-for-agents": {
       "source": "mattpocock/skills",

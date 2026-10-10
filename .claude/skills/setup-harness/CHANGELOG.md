@@ -7,6 +7,15 @@ released version. See
 
 <!-- version list -->
 
+## v0.10.1 (2026-10-10)
+
+### Bug Fixes
+
+- **setup-harness**: Run the full runner alone first, bound check.sh paths by real path
+  ([#542](https://github.com/Gharib89/skills/pull/542),
+  [`3c391a1`](https://github.com/Gharib89/skills/commit/3c391a14a9784f395b905825b3013f9f16be2454))
+
+
 ## v0.10.0 (2026-10-08)
 
 ### Bug Fixes
