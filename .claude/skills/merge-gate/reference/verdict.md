@@ -7,11 +7,11 @@ Exactly one of:
 - **`gate-passed`** — checklist all pass/n-a, live runs green where required,
   review converged: the most recent *triggered* CodeRabbit round returned no new
   substantive threads (or CodeRabbit declined and the verdict records it), and
-  every Copilot round-1 thread is dispositioned. `gh pr list --label gate-passed`
+  every Codex and Claude thread is dispositioned. `gh pr list --label gate-passed`
   is the maintainer's merge queue.
 - **`gate-failed`** — unconverged (the latest triggered CodeRabbit round still
   substantive, **no triggered round exists at all** — none on the PR, or none
-  after the gate's pushes — or a Copilot round-1 thread left undispositioned), a
+  after the gate's pushes — or a Codex or Claude thread left undispositioned), a
   design-level finding, or a checklist failure the gate can't fix in scope. The
   comment names the decision the maintainer must make (send back to author agent,
   re-scope, close). Never pass a PR on a vacuous bar: no round was triggered is
@@ -42,10 +42,10 @@ Integration tests
 Fixes pushed by the gate
   - <commit>: <what and why>          (— none —)
 
-Review dispositions   (label each finding's source: gate review / Copilot / CodeRabbit)
+Review dispositions   (label each finding's source: gate review / Codex / Claude / CodeRabbit)
   - <finding> → <fixed | declined: evidence>
 
-Copilot: round-1 threads <dispositioned m/total | none | review didn't run>  [· +1 gate re-request spent (significant rewrite): its threads <dispositioned k/total>]
+Codex: threads <dispositioned m/total | none | review didn't run>  · Claude fallback: <threads dispositioned k/total | didn't run>
 CodeRabbit: rounds triggered <n> (last after <sha>) → <no new substantive threads | declined: reason>
 CodeRabbit threads:  <dispositioned <m>/<total> · resolved <yes | pending> | none | skipped: no push, none pending>
 

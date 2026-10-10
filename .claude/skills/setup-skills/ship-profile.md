@@ -1,6 +1,6 @@
 # Ship profile
 
-Schema: 3
+Schema: 4
 
 Every repo-specific fact `/ship` needs, one section per axis. Fourteen `##` headings, always present and in this order; a defaulted axis reads `None.` or `Default.` under its own heading. Facts sit on `Label:` lines and nowhere else, and the prose under a heading explains them. The `Schema:` line above is the profile schema `ship` checks at preflight; only a `setup-skills` re-run moves it.
 
@@ -44,11 +44,11 @@ Push policy: <e.g. one push per review round; minutes are metered, or Default.>
 Login: <the login(s) it reviews under>
 Trigger: <auto-once | on-push | on-request>
 Request: <on-request only: the mechanic that requests a round, or `comment <phrase>` for a reviewer a PR comment triggers, else None.>
-Workflow: <`comment <phrase>` only: the repo-relative path, from the checkout root, of the workflow file that comment starts, whose run is the round's window, else None.>
+Workflow: <`comment <phrase>` only: the repo-relative path, from the checkout root, of the workflow file that comment starts, whose run is the round's window; or `native codex` for native Codex review, which runs none. Every other block: None.>
 Cap: <on-request: max rounds, required, no default; on-push: max rounds, or None. for an uncapped loop; auto-once: None.>
 Resolve: <on-push and on-request: how a dispositioned thread is resolved, else None.>
 Gating: <yes | no>
-Fallback-for: <the reviewer this one stands in for, driven only when that reviewer exits not reviewed; on-request only, else None.>
+Fallback-for: <the reviewer this one stands in for, driven only when that reviewer exits not reviewed or is capped with findings (its Cap: spent, the last round's fixes changing the tree); on-request only, else None.>
 Instructions: <path of the file this reviewer reads, or None.>
 
 ## Coding standards
@@ -59,7 +59,7 @@ Instructions: <path of the file this reviewer reads, or None.>
 
 ## Verification
 
-<!-- Zero or more `### <name>` blocks with exactly these seven lines, or the single line `None.` -->
+<!-- Zero or more `### <name>` blocks with exactly these seven lines (and an optional `Timebox:` line after `Claims to probe:`), or the single line `None.` -->
 
 ### <verification name>
 
@@ -81,6 +81,8 @@ Subject constraints: <reserved prefixes or formats for the squash subject, or No
 ## PR
 
 Template: <path; fill it through its own headings rather than a raw body that bypasses it> | None.
+
+<!-- Optional `Merge: on-clean-gate` opts an attended run into merging on a clean gate. An absent line or `Merge: Default.` keeps the human stop; re-runs preserve the choice and leave an absent line absent. -->
 
 <!-- `Closes #<issue>` and the seven sections `## Why the change`, `## Change outline`, `## Special things to note`, `## Needs attention`, `## Verification`, `## Review` and `## Attribution` are core in every repo, in that order. The closing reference sits above the first `## ` heading, where a section rewrite cannot reach it. -->
 

@@ -57,7 +57,7 @@ host_tooling_reasons() {
 # Azure DevOps repo"); on a developer machine the tooling reasons already name it.
 host_tooling_install() {
   local sudo=""; [ "$(id -u)" -eq 0 ] || sudo="sudo -n"
-  command -v az >/dev/null || curl -fsSL https://aka.ms/InstallAzureCLIDeb | $sudo bash
+  command -v az >/dev/null || curl -fsSL --connect-timeout 30 --max-time 120 https://aka.ms/InstallAzureCLIDeb | $sudo bash
   az extension show --name azure-devops >/dev/null 2>&1 || az extension add --name azure-devops
 }
 # Entra login first; a PAT session has no `az account`, so fall back to the
@@ -118,27 +118,29 @@ host_issue_linked_prs() {
 }
 host_issue_assign()   { azx boards work-item update "${ORG[@]}" --id "$1" --assigned-to "$2" >/dev/null; }
 host_issue_unassign() { azx boards work-item update "${ORG[@]}" --id "$1" --fields "System.AssignedTo=" >/dev/null; }
-_tags() { host_issue_get "$1" | jq -r '.labels | join("; ")'; }
-host_issue_has_label() { host_issue_get "$1" | jq -e --arg l "$2" '.labels | index($l)' >/dev/null; }
 host_issue_add_label() {
-  host_issue_has_label "$1" "$2" && return 0
-  local t; t=$(_tags "$1") || return 1
+  local cur t
+  cur=$(host_issue_get "$1") || return 1
+  jq -e --arg l "$2" 'any(.labels[]; . == $l)' <<<"$cur" >/dev/null && return 0
+  t=$(jq -r '.labels | join("; ")' <<<"$cur")
   azx boards work-item update "${ORG[@]}" --id "$1" --fields "System.Tags=${t:+$t; }$2" >/dev/null
 }
-# Removing the LAST tag needs a json-patch `remove`: the server ignores an empty
-# System.Tags value however it is sent (`--fields`, `add ""`, `replace ""`), and
-# `az devops invoke` cannot send application/json-patch+json, so this one call is
-# `az rest` on the Entra token (a PAT-only session fails it and reports false).
+# A System.Tags write through `--fields` (an `add` op) merges into the tags
+# already there, so dropping a tag needs a json-patch `replace` with the rest,
+# and dropping the LAST one a `remove`: the server ignores an empty value however
+# it is sent. `az devops invoke` cannot send application/json-patch+json, so every
+# removal is `az rest` on the Entra token: a PAT-only session fails each one and
+# reports false.
 host_issue_remove_label() {
-  host_issue_has_label "$1" "$2" || return 0
-  local t; t=$(host_issue_get "$1" | jq -r --arg l "$2" '[.labels[] | select(. != $l)] | join("; ")') || return 1
-  if [ -n "$t" ]; then
-    azx boards work-item update "${ORG[@]}" --id "$1" --fields "System.Tags=$t" >/dev/null
-  else
-    az rest --method patch --url "$SHIP_ORG_URL/_apis/wit/workitems/$1?api-version=7.1" \
-      --resource 499b84ac-1321-427f-aa17-267ca6975798 --headers "Content-Type=application/json-patch+json" \
-      --body '[{"op":"remove","path":"/fields/System.Tags"}]' -o none 2>/dev/null
-  fi
+  local cur patch
+  cur=$(host_issue_get "$1") || return 1
+  jq -e --arg l "$2" 'any(.labels[]; . == $l)' <<<"$cur" >/dev/null || return 0
+  patch=$(jq -c --arg l "$2" '[.labels[] | select(. != $l)] | join("; ")
+    | if . == "" then [{op: "remove", path: "/fields/System.Tags"}]
+      else [{op: "replace", path: "/fields/System.Tags", value: .}] end' <<<"$cur")
+  azx rest --method patch --url "$SHIP_ORG_URL/_apis/wit/workitems/$1?api-version=7.1" \
+    --resource 499b84ac-1321-427f-aa17-267ca6975798 --headers "Content-Type=application/json-patch+json" \
+    --body "$patch" >/dev/null
 }
 host_issue_comment() { azx boards work-item update "${ORG[@]}" --id "$1" --discussion "$2" >/dev/null; }
 host_issue_close()   { azx boards work-item update "${ORG[@]}" --id "$1" --state "$ADO_CLOSED" >/dev/null; }
@@ -188,7 +190,7 @@ host_pr_create() { # <head> <base> <title> <body-file> <issue>
 _pr_norm() {
   jq --arg u "$1" '{number: .pullRequestId, url: $u, title, body: (.description // ""),
     head_sha: .lastMergeSourceCommit.commitId, head_ref: (.sourceRefName | ltrimstr("refs/heads/")),
-    base_ref: (.targetRefName | ltrimstr("refs/heads/")),
+    base_ref: (.targetRefName | ltrimstr("refs/heads/")), draft: (.isDraft // false),
     state: (if .status == "completed" then "merged" elif .status == "active" then "open" else "closed" end),
     mergeable: (if .mergeStatus == "conflicts" then "conflict" elif .mergeStatus == "succeeded" then "clean" else "unknown" end)}'
 }
@@ -289,6 +291,9 @@ host_pr_request_review() { # <pr> <login>
   jq -n --argjson ok "$ok" --argjson rb "$rb" --arg l "$2" --arg now "$now" \
     '{requested: ($ok and ([$rb[] | ascii_downcase] | index($l | ascii_downcase) != null)), readback: $rb, requested_at: $now}'
 }
+# Azure DevOps stamps request-review's `requested_at` off the wall clock and keeps
+# no event to read it back from, so there is no instant to give.
+host_pr_requested_at() { return 1; }
 # A closed thread: visible, and a comment-resolution policy reads it as settled.
 host_pr_comment() { # <pr> <body-file>
   local f out; f=$(mktemp); trap 'rm -f "$f"; trap - RETURN' RETURN
@@ -412,6 +417,13 @@ host_issues_ready() { # <label>
 host_workflow_runs() { return 1; } # <workflow-file> <since-iso>
 # With no awaited run there is no run whose denied calls to count.
 host_run_denials() { return 1; } # <run-url>
+# No reviewer here posts through a native integration, so there is no activity
+# to read a round's status from.
+host_pr_native_activity() { return 1; } # <pr> <since-iso> <phrase>
+# A policy evaluation here is no job this adapter can re-run yet, so `ci-wait
+# --rerun-failed` reports "unavailable" and the run reads the failure by hand.
+host_check_job() { return 1; } # <pr> <head_sha> <name>
+host_check_rerun() { return 1; } # <job_id>
 
 # Azure DevOps has no Copilot-review ruleset, so there is nothing to contradict
 # a profile with. Non-zero and silent is "not checked", the same answer the

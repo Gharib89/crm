@@ -43,7 +43,7 @@ jobs:
           persist-credentials: false
 
       - id: review
-        uses: anthropics/claude-code-action@9171db3e57d6a3140a37ddc2ba92788584e0ead6  # v1.0.234
+        uses: anthropics/claude-code-action@58985842b834ed26087302ba27d07bc24ca8697a # v1.0.244
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
@@ -55,6 +55,8 @@ jobs:
             1. Read `.github/copilot-instructions.md` with the Read tool. It is your brief: it names the
                coding standards to review against and the things that are not
                findings in this repo. Read the standards file it points at as well.
+               Where the standards route by path, also read each file they route
+               this PR's changed paths to, once step 3's diff names them.
             2. Run `gh pr view ${{ github.event.issue.number }} --json title,body,headRefOid`
                and find the linked issue (Closes/Fixes/Resolves #N). If one exists,
                read it with these two commands, which keep only text an OWNER,

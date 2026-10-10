@@ -15,11 +15,11 @@
 | `edit` | lint and format, fix mode, through the pre-commit runner on the edited file | `PostToolUse` on `Edit\|Write` | 5 s / 15 s, per file invocation |
 | `turn` | typecheck plus affected tests of each member the uncommitted changes touch | `Stop` | 60 s / 75 s |
 | commit | the runner's own git hook | `git commit` | 30 s, measured only |
-| `full` | runner on every file, every member's typecheck and whole suite, the repo's check target | a human, CI, Ship's local gate | 10 min, measured only |
+| `full` | runner on every file, every member's typecheck and whole suite, the repo's check target, all at once, so it costs about its longest row | a human, CI, Ship's local gate | 10 min, measured only |
 
 The linter set is defined once, in the runner config; `check.sh` calls a linter directly only when the runner cannot take a file list (lint-staged). Typecheck and tests live in `check.sh`. There is no `commit` subcommand: the commit rung is the runner's git hook.
 
-The contract every caller parses: stdout is one JSON line `{"rung","verdict","checks":{<name>:<status>}}`, status `pass | fail | unavailable | skipped | over-budget`; stderr carries each failing check's last 40 lines; exit 0 pass, 1 fail, 2 unavailable or tooling, 3 over budget. `CHECK_DEADLINE=<epoch s>` makes `check.sh` stop at that time, mark the check running at that time `over-budget` (none, when the deadline fell between checks) and the rest `skipped`, and exit 3; without it exit 3 never occurs. A failure outranks an over-budget check, so a real failure still blocks.
+The contract every caller parses: stdout is one JSON line `{"rung","verdict","checks":{<name>:<status>}}`, status `pass | fail | unavailable | skipped | over-budget`; stderr carries each failing check's last 40 lines; exit 0 pass, 1 fail, 2 unavailable or tooling, 3 over budget. `full` reports its checks in the declared order, whatever order they finish in, each failing check's tail whole under its own name, and a row whose run ended without a result `unavailable`. `CHECK_DEADLINE=<epoch s>` makes `check.sh` stop at that time, mark every check running at that time `over-budget` (none, when no check was running then) and every check not yet started `skipped`, and exit 3; without it exit 3 never occurs. A failure outranks an over-budget check, so a real failure still blocks.
 
 ## Writing check.sh
 

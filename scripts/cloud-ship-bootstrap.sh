@@ -1,63 +1,54 @@
 #!/usr/bin/env bash
-# Per-session provisioning for the cloud ship routine. Run by ship's `prepare`
-# as the profile's `## Cloud lane` Bootstrap (NOT the environment's cached
-# setup-script slot) so it always reads the current connection values from the
-# environment and never bakes them into a cached image. Never echoes the secret.
-# GitHub access is ship's own: `prepare` installs `gh` (`tooling --install`)
-# before this runs, and every mechanic calls GitHub REST through it with
-# GH_TOKEN, so nothing here calls the GitHub API (only the gitleaks download
-# below reaches github.com).
+# The ship profile's `## Cloud lane` `Bootstrap:`, written by setup-skills where
+# the repo has a harness profile (docs/agents/harness.md); owned by the repo
+# from here. Ship's `prepare` runs it before a cloud run takes its claim, so the
+# local gate finds every tool it runs.
+#
+#   scripts/cloud-ship-bootstrap.sh
+#
+# exit: 0 done, or not a cloud session · non-zero a step failed, which ship
+# reads as `bootstrap-failed`
+#
+# The harness cloud setup installs what check.sh runs. This file adds only what
+# Ship alone needs: the secrets scanner the local gate runs, and the repo's own
+# Ship-only steps below. A step belongs to the harness cloud setup unless it
+# needs something only Ship has. Bash 3.2.
 set -euo pipefail
+[ "${CLAUDE_CODE_REMOTE:-}" = true ] || exit 0
+cd "$(git rev-parse --show-toplevel)"
 
-# Ship also runs the Bootstrap on a local `--unattended` run; everything below
-# provisions a cloud sandbox, so a workstation skips it.
-[ "${CLAUDE_CODE_REMOTE:-}" = true ] || { echo "cloud-ship-bootstrap: not in a cloud sandbox; nothing to do"; exit 0; }
+# >>> setup-skills configuration
+# SCANNER: the executable name of the scanner the local gate's `secrets` gate
+# runs (`gitleaks`), looked up with `command -v`. SCANNER_INSTALL: how to
+# install it when missing, `apt_install <package>` or a registry's own install
+# (`pipx install detect-secrets`).
+SCANNER=gitleaks
+# Built from the Go proxy, which the cloud network admits, at the version the
+# workstation runs: apt's gitleaks is 8.16.0, and the release download is blocked.
+# shellcheck disable=SC2016 # expanded when the line below evals it
+SCANNER_INSTALL='GOTOOLCHAIN=auto go install github.com/zricethezav/gitleaks/v8@v8.30.1 && sudo install -m 0755 "$(go env GOPATH)/bin/gitleaks" /usr/local/bin/gitleaks'
+# <<< setup-skills configuration
 
-# crm requires Python >= 3.13. The sandbox image's default `python`/`pip` can lag
-# behind that floor (observed: default `python` = 3.11 with a usable 3.13 present at
-# /usr/bin/python3.13), which makes the editable install below abort on the version
-# pin before the profile is ever built. Don't trust the ambient default — pick the
-# first interpreter that actually satisfies the floor, build the .venv from it, and
-# drive every install *and* the crm CLI itself through `.venv/bin/python`, so the
-# whole bootstrap is pinned to
-# one interpreter regardless of what `python`/`pip`/`crm` resolve to on PATH. A
-# CLOUD_SHIP_PYTHON override is tried first but validated the same way, so a stale
-# value (missing, or < 3.13) just falls through to auto-detection instead of
-# reintroducing the original install failure.
-PY=""
-for cand in ${CLOUD_SHIP_PYTHON:+"$CLOUD_SHIP_PYTHON"} python3.13 python3 python; do
-  if command -v "$cand" >/dev/null 2>&1 \
-     && "$cand" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 13) else 1)'; then
-    PY="$(command -v "$cand")"
-    break
-  fi
-done
-if [ -z "$PY" ]; then
-  echo "cloud-ship-bootstrap: no Python >= 3.13 found (crm requires >=3.13); checked ${CLOUD_SHIP_PYTHON:+$CLOUD_SHIP_PYTHON, }python3.13, python3, python — the sandbox image lacks a compatible interpreter" >&2
-  exit 1
-fi
-echo "cloud-ship-bootstrap: using $("$PY" --version) ($PY)"
-
-# crm CLI from source (not published to PyPI), into this clone's .venv: the cloud
-# run isolates in place, and scripts/local-gate.sh looks for `$PWD/.venv`. `uv`
-# rides along because scripts/check.sh runs semgrep through `uvx`.
-"$PY" -m venv .venv
-.venv/bin/python -m pip install -e ".[dev,docs]" uv
-
-# gitleaks for the gate's `secrets`, pinned by version and checksum, into
-# .venv/bin, where the gate looks when PATH lacks it. actionlint and zizmor run
-# as pre-commit hooks inside check.sh, which bring their own.
-fetch() {  # fetch <url> <sha256> <binary>
-  local tgz; tgz=$(mktemp)
-  curl -fsSL -o "$tgz" "$1"
-  echo "$2  $tgz" | sha256sum -c --quiet -
-  tar -xzf "$tgz" -C .venv/bin "$3"
-  rm -f "$tgz"
+# apt_install <package>...: sudo unless root; a fresh image may carry no
+# package lists yet, so a failed install refreshes them once and retries.
+apt_install() {
+  local sudo=""; [ "$(id -u)" -eq 0 ] || sudo=sudo
+  $sudo apt-get install -y "$@" || { $sudo apt-get update && $sudo apt-get install -y "$@"; }
 }
-fetch https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz \
-  551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb gitleaks
 
-# All connection values come from the routine's cloud environment; nothing
+# The harness cloud setup, at the harness profile's `Setup:` path, read here
+# rather than copied so a re-run of setup-harness that moves it moves this too.
+setup=$(awk '{ sub(/\r$/, "") } /^## / { c = ($0 == "## Cloud"); next } c && sub(/^Setup: /, "") { print; exit }' docs/agents/harness.md)
+[ -n "$setup" ] || { echo "cloud-ship-bootstrap: no Setup: line under ## Cloud in docs/agents/harness.md" >&2; exit 1; }
+[ "$setup" = None. ] || bash "$setup"
+
+command -v "$SCANNER" >/dev/null || { eval "$SCANNER_INSTALL"; command -v "$SCANNER" >/dev/null; }
+
+# The repo's Ship-only steps go here, each failing the bootstrap on non-zero:
+# what needs something only Ship has, such as live-e2e credentials or profiles.
+
+# Never echoes the secret. All connection values come from the routine's cloud
+# environment, read per session rather than baked into a cached image; nothing
 # org-specific is committed to this public repo. Without them there is no
 # profile, and live e2e hands off rather than runs, so skip instead of failing.
 missing=""

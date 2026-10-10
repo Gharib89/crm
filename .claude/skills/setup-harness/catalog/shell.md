@@ -17,7 +17,7 @@ Rung: edit
 Run: `shellcheck {files}`
 Hook: local
 Pin: apt shellcheck
-Route: `sudo apt-get install -y shellcheck`; Blocked: release binaries
+Route: `sudo apt-get update && sudo apt-get install -y shellcheck`; Blocked: release binaries
 Constraints: None.
 Traps: the vendor hook, `koalaman/shellcheck-precommit`, is `language: docker_image`; this entry runs `local` instead since the cloud sandbox has no guaranteed Docker daemon. Results depend on cwd and `-P`/`source-path`. A release binary in `~/.local/bin` shadows apt's copy on `PATH`: report it, never replace it.
 

@@ -16,9 +16,13 @@ the flag.
    The run then returns with the reason: a fire either reaches merge-ready or
    hands the issue back, and leaves no issue claimed and spinning. Admission is
    narrower too: `ready-for-human` is the stop `ready-for-human: attended only`.
-3. **The merge gate posts and returns.** `comment-pr` with the uncompressed
-   summary, then return with the PR link. The claim holds; the open PR is what
-   keeps later fires off the issue.
+3. **The merge gate posts and returns.** First the final head's gate, with its
+   `fail` and `unavailable` outcomes, as
+   [merge-gate.md](merge-gate.md#unattended-post-to-the-pr-then-return)
+   carries it; then `comment-pr` with the uncompressed summary, and return
+   with the PR link. The claim holds; the open PR is what keeps later fires
+   off the issue. `Merge: on-clean-gate` has no effect in this lane: post and
+   return without merging.
 
 Before any of it, **`prepare --unattended`**, which in this lane runs whether
 or not the run is in a cloud sandbox, so a local `ship --unattended` still

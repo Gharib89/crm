@@ -25,7 +25,7 @@ Cloud setup: default
 Verdict: cloud-first
 Setup: .claude/hooks/cloud-setup.sh
 Allowlist: None.
-Proof: 1d36d6e7bf7b3d4d19087c1bf8b0a37b57cbc4ce
+Proof: 5ad0f5e4d5fba86dea99e9c5ee1aaad00d7dad42
 
 ## Excluded
 
@@ -46,6 +46,7 @@ Declined: crm/tests/e2e/plugin_src/NoOpPlugin.csproj as a root: e2e test plug-in
 Declined: shfmt: no Go toolchain on the maintainer's machine, so the hook would fail on every .sh edit
 Declined: markdownlint-cli2: 10,911 findings on the 261 tracked Markdown files (7,309 of them MD013)
 Declined: Prettier: would rewrite 215 files, has no JS stack to pin in, and puts mkdocs-material syntax at risk
-Declined: ruff 0.16.8: held in lockstep with CI, and 0.16 changes formatter output; bump in its own PR
+Declined: ruff 0.16.10: held in lockstep with CI, and 0.16 changes formatter output; bump in its own PR
 Declined: zizmor 1.30.1: held in lockstep with CI and the pre-commit hook; bump in its own PR
+Declined: semgrep 1.179.0: held in lockstep with ci.yml's lint job; bump in its own PR
 Declined: run recipe: the CLI is driven by the live-e2e skill and crm describe

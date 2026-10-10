@@ -39,6 +39,7 @@ ruff check . && ruff format --check .     # lint + format gate; CI runs both (co
 uvx semgrep scan --config ci/semgrep-rules.yml --error --metrics off   # house-convention rules (dry-run contract); CI `lint` runs this in its own venv. Not in [dev] — engine needs py>=3.10; `pipx install semgrep` or `uvx semgrep`
 uvx zizmor==1.26.1 .                       # GitHub Actions security audit; CI `lint` runs it pinned in its own venv (config `.github/zizmor.yml`, scoped unpinned-uses policy). Also a pre-commit hook; version lockstep across both. Not in [dev]
 pre-commit install                        # once per clone: ruff + codespell run on staged files at commit time (actionlint + zizmor on workflow edits)
+sudo apt install shellcheck               # once per machine (or brew): the shellcheck hook runs the ShellCheck on PATH, not a pinned copy
 mkdocs build --strict                     # docs; CI runs this, warnings fail
 ```
 
@@ -97,7 +98,7 @@ Any PyInstaller bundle-shape change must touch all **5 sites**:
 
 ### Harness
 
-`scripts/check.sh` is this repo's check entry point: `edit <file>...` lints and formats, `turn` typechecks and runs the affected tests of every uncommitted change, and `full` answers for the whole repo: the runner on every file. It prints one JSON line and exits 0 pass, 1 fail, 2 unavailable, 3 over budget. Hooks in `.claude/settings.json` run `edit` after every Edit or Write and `turn` at every stop, and the pre-commit runner is the commit rung. Harness profile: `docs/agents/harness.md`. Re-run `/setup-harness` after adding a stack, a member or a tool.
+`scripts/check.sh` is this repo's check entry point: `edit <file>...` lints and formats, `turn` typechecks and runs the affected tests of every uncommitted change, and `full` answers for the whole repo: the runner on every file, `mkdocs build --strict` and `semgrep scan --config ci/semgrep-rules.yml`. It prints one JSON line and exits 0 pass, 1 fail, 2 unavailable, 3 over budget. Hooks in `.claude/settings.json` run `edit` after every Edit or Write and `turn` at every stop, and the pre-commit runner is the commit rung. Harness profile: `docs/agents/harness.md`. Re-run `/setup-harness` after adding a stack, a member or a tool.
 
 ### Subagents
 
@@ -113,15 +114,20 @@ Canonical labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-hu
 
 ### Code review
 
-`/ship`'s review loop runs the reviewers in `docs/agents/ship.md` `## Reviewers`: **Copilot** plus a **Claude Code fallback**. CodeRabbit is manual and merge-gate only.
+`/ship`'s review loop runs the reviewers in `docs/agents/ship.md` `## Reviewers`: **Codex** first, with a **Claude Code fallback**, each capped at 2 rounds. CodeRabbit is manual and merge-gate only.
 
-- **Copilot** reviews once, automatically, when a ready PR opens (ruleset *"Copilot auto review"*, `review_on_push: false`). Never re-request it in the ship flow; disposition its threads once (address, or decline with evidence). House rules live in `.github/copilot-instructions.md` (only the first 4000 chars are read). Review effort is set in the repo's Copilot settings, which an agent cannot read; recent reviews report **Lite**.
-- **Claude Code** (`.github/workflows/claude-review.yml`) runs on an `@claude` PR comment. Ship posts one when Copilot exits not reviewed for any reason (never-queued, blocked, silent, infra-error, unreachable). Any OWNER, MEMBER or COLLABORATOR `@claude` comment on a PR one of them authored also fires it. Cap 2 rounds.
+- **Codex** (native review, the ChatGPT Codex Connector app) runs on a `@codex review` PR comment, which ship posts for each round. It reads the `## Review guidelines` section below through `AGENTS.md`. Anywhere but the request itself, write the phrase without its `@` (`codex review`): every mention starts a round or a Codex task.
+- **Claude Code** (`.github/workflows/claude-review.yml`) runs on an `@claude` PR comment. Ship posts one when Codex exits not reviewed for any reason (never-queued, blocked, silent, infra-error, unreachable) or is capped with findings. Any OWNER, MEMBER or COLLABORATOR `@claude` comment on a PR one of them authored also fires it. House rules for it live in `.github/copilot-instructions.md`.
+- **Copilot** does not review this repo: its ruleset (*"Copilot auto review"*) is disabled.
 - **CodeRabbit** does not auto-review this repo (star-gated) and is not in the ship profile: it is comment-triggered with no workflow, which ship cannot express yet (Gharib89/skills#302). The **`merge-gate`** skill drives it: `@coderabbitai review` while the PR is open (a closed PR declines), after each fix push; `@coderabbitai resolve` only once every thread carries a disposition. Config in `.coderabbit.yaml`.
+
+#### Review guidelines
+
+For Codex PR review, which reads this section through `AGENTS.md`. Review against `docs/contributing/coding-standards.md` and `.github/copilot-instructions.md`. Review only what this repo controls. Skip the derived skill copies under `.claude/skills/`: every lock-recorded skill (a key of `skills-lock.json`), every vendored copy synced by `scripts/sync-skills.py`, and the `harness-pyright-lsp` plugin. A defect in one of them is fixed at its source, not here. Skip `skills-lock.json` and `CHANGELOG.md` as well. Under `.claude/skills/`, only the project-native `merge-gate`, `live-e2e` and `audit-crm-skill` are in scope.
 
 ### PR merge gate
 
-Inbound agent-shipped PRs (cloud-ship routine, codex, teammates' agents) get a second, local review pass via the **`merge-gate`** skill before the maintainer merges: drift checklist + targeted live e2e + scoped fix-in-place + review-bot iteration (the gate posts `@coderabbitai review` after each fix push it makes, since CodeRabbit no longer re-reviews on its own; **one** Copilot re-request permitted only when the gate significantly rewrote the PR — the merge-gate exception to the round-1-only lane), ending in a `gate-passed`/`gate-failed` label. See `docs/agents/pr-merge-gate.md`.
+Inbound agent-shipped PRs (cloud-ship routine, codex, teammates' agents) get a second, local review pass via the **`merge-gate`** skill before the maintainer merges: drift checklist + targeted live e2e + scoped fix-in-place + review-bot iteration (the gate posts `@coderabbitai review` after each fix push it makes, since CodeRabbit no longer re-reviews on its own; Codex and Claude are not re-requested, their threads dispositioned once), ending in a `gate-passed`/`gate-failed` label. See `docs/agents/pr-merge-gate.md`.
 
 ### Domain docs
 
@@ -131,4 +137,4 @@ Single-context — `GLOSSARY.md` + `docs/adr/` at repo root. See `docs/agents/do
 
 `/ship` drives one issue to a merge-ready PR. This repo's ship profile: `docs/agents/ship.md`. Without that file ship refuses: run `/setup-skills`.
 
-Every skill `skills-lock.json` lists is a derived copy, changed at its source and refreshed here; `skills-lock.json` records each one's source. `ship`, `cloud-ship`, `setup-skills`, `update-skills` and `setup-harness` come from `Gharib89/skills`; the skills ship and setup-skills compose come from `mattpocock/skills`, `upstash/context7` and `humanlayer/skills`, each at the pin of the skill that composes it. `/update-skills` refreshes them all in one PR. By hand, refresh a skill by re-running its install line at project scope, without `-g`. Ship's refresh chains its preflight, so a profile the refreshed ship no longer reads is reported now, not on the next `/ship`: `npx skills add Gharib89/skills --skill ship --skill cloud-ship --skill setup-skills --skill update-skills --skill setup-harness --agent claude-code -y && .claude/skills/ship/scripts/preflight.sh none`.
+Every skill `skills-lock.json` lists is a derived copy, changed at its source and refreshed here; `skills-lock.json` records each one's source. `ship`, `cloud-ship`, `setup-skills`, `update-skills` and any other skill the lock records from `Gharib89/skills` come from it; the skills ship and setup-skills compose come from `mattpocock/skills`, `upstash/context7` and `humanlayer/skills`, each at the pin of the skill that composes it. `/update-skills` refreshes them all in one PR. By hand, refresh a skill by re-running its install line at project scope, without `-g`. Ship's refresh chains its preflight, so a profile the refreshed ship no longer reads is reported now, not on the next `/ship`: `flags=$(jq -er '[.skills | to_entries[] | select(.value.source | ascii_downcase == "gharib89/skills") | .key] + ["ship", "cloud-ship", "setup-skills", "update-skills"] | unique | map("--skill " + @sh) | join(" ")' skills-lock.json) && eval "npx skills add Gharib89/skills $flags --agent claude-code -y" && .claude/skills/ship/scripts/preflight.sh none`.

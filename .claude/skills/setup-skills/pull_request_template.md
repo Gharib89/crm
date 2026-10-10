@@ -10,7 +10,7 @@ Closes #
 
 ## Special things to note
 
-<!-- First bullet, always: `- Door: <one-way|two-way>. Blast radius: <one clause>.` One-way is a merge nobody can walk back; the blast radius names who else feels it. Then reviewer warnings, migrations, compatibility constraints, deliberate omissions, and any deviation from the plan that would change how the reviewer reads the diff: at most five of those, one sentence each, grouped by the claim they share, with the Door line outside that count. No `None.` form, the Door line is always there; the full deviations log stays in the merge summary. -->
+<!-- First bullet, always: `- Door: <one-way|two-way>. Blast radius: <one clause>.` One-way is a merge nobody can walk back; the blast radius names who else feels it. Then reviewer warnings, migrations, compatibility constraints, deliberate omissions, and any deviation from the plan that would change how the reviewer reads the diff: preferably five or fewer, one sentence each, grouped by the claim they share, with the Door line outside that count, but every material compatibility or operational risk is included. No `None.` form, the Door line is always there; the full deviations log stays in the merge summary. -->
 
 ## Needs attention
 
@@ -22,7 +22,7 @@ Closes #
 
 ## Review
 
-<!-- One line per reviewer the ship profile names, in the fixed shape `- <reviewer>: <exit word>, <n> rounds, <raised> findings: <accepted> accepted, <declined> declined, <filed> filed`, with one trailing clause only when the reader must know. A fallback whose primary reviewed takes the second form, `- <fallback>: not invoked: <primary> reviewed`, and states no counts, having none. Ship fills these. `None.` when the repo names no reviewer. -->
+<!-- One line per reviewer the ship profile names, in the fixed shape `- <reviewer>: <exit word>, <n> rounds, <raised> findings: <accepted> accepted, <declined> declined, <filed> filed`, with one trailing clause only when the reader must know. A fallback whose primary reviewed, and was not capped with findings, takes the second form, `- <fallback>: not invoked: <primary> reviewed`, and states no counts, having none. Ship fills these. `None.` when the repo names no reviewer. -->
 
 ## Attribution
 

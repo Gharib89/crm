@@ -21,11 +21,8 @@ set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/_lib.sh" || { printf '{"error":"cannot source _lib.sh"}\n'; exit 2; }
 usage='usage: isolate <issue|none> <type> <slug> [--carry <file>...] [--in-place]'
 ship_help "$usage" "$@"
-[ -n "${1:-}" ] && [ -n "${2:-}" ] && [ -n "${3:-}" ] || ship_tooling "$usage"
+ship_args "$usage" "issue|none arg arg" "$@"
 n=$1; type=$2; slug=$3; shift 3
-case $n in -*) ship_tooling "$usage" ;; esac
-case $type in -*) ship_tooling "$usage" ;; esac
-case $slug in -*) ship_tooling "$usage" ;; esac
 carry=(); in_place=false
 while [ $# -gt 0 ]; do
   case $1 in

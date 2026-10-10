@@ -7,6 +7,138 @@ released version. See
 
 <!-- version list -->
 
+## v0.21.0 (2026-10-10)
+
+### Features
+
+- **ship**: A fallback reviewer also stands in for a primary capped with findings
+  ([#534](https://github.com/Gharib89/skills/pull/534),
+  [`da3acb0`](https://github.com/Gharib89/skills/commit/da3acb05d00fee258e13850b566ba89a5764a1d9))
+
+
+## v0.20.0 (2026-10-10)
+
+### Features
+
+- **ship**: Move find-docs to 522c4db ([#532](https://github.com/Gharib89/skills/pull/532),
+  [`0c7d869`](https://github.com/Gharib89/skills/commit/0c7d869fe95f147ef7e034e8e2937956862e974d))
+
+
+## v0.19.0 (2026-10-08)
+
+### Bug Fixes
+
+- **ship**: Read the reviewer's workflow runs unfiltered so a live run is seen
+  ([#522](https://github.com/Gharib89/skills/pull/522),
+  [`a16a3f2`](https://github.com/Gharib89/skills/commit/a16a3f26027c491208243f699092d17950f1a9b9))
+
+- **ship**: Run-file guards answer tooling when grep itself fails (#495)
+  ([#498](https://github.com/Gharib89/skills/pull/498),
+  [`d9e1561`](https://github.com/Gharib89/skills/commit/d9e1561a20de8f9d120f196ec31c6c4aa84d7107))
+
+### Features
+
+- **ship**: End host review rounds on a docs-only fix and prove round fixes once
+  ([#525](https://github.com/Gharib89/skills/pull/525),
+  [`a07bbe6`](https://github.com/Gharib89/skills/commit/a07bbe6bea7b6e6dfd61d0e511ac20248dee07f5))
+
+- **ship**: Grade a reviewer run still live at the ceiling still-running, not infra-error
+  ([#497](https://github.com/Gharib89/skills/pull/497),
+  [`620c6d5`](https://github.com/Gharib89/skills/commit/620c6d5962e913620a9d4df54b965707cc612683))
+
+- **ship**: Merge on a clean gate in repos that opt in
+  ([#501](https://github.com/Gharib89/skills/pull/501),
+  [`3d7d8c2`](https://github.com/Gharib89/skills/commit/3d7d8c2d517d558298f6c855dbb8b5a9751dd259))
+
+- **ship**: Move code-review and tdd to f3fc563
+  ([#508](https://github.com/Gharib89/skills/pull/508),
+  [`16646c2`](https://github.com/Gharib89/skills/commit/16646c25737c6b151cee4433afe2bba838d5a09e))
+
+- **ship**: Read native Codex review as a third on-request reviewer
+  ([#513](https://github.com/Gharib89/skills/pull/513),
+  [`e7b6598`](https://github.com/Gharib89/skills/commit/e7b65987e2400571eb9fa790e46227b79f323922))
+
+- **ship**: State each rule once and keep unmet criteria verbatim
+  ([#515](https://github.com/Gharib89/skills/pull/515),
+  [`c923bb4`](https://github.com/Gharib89/skills/commit/c923bb4f493ac13c8883a7328c440e3620ea9f5f))
+
+- **ship**: Write the red and probe evidence lines from the mechanics that ran them
+  ([#521](https://github.com/Gharib89/skills/pull/521),
+  [`86ba015`](https://github.com/Gharib89/skills/commit/86ba015e963032bd921ccf56a5e1ac93909f9f50))
+
+
+## v0.18.0 (2026-10-06)
+
+### Features
+
+- **ship**: Self-review gates what reviewers keep catching
+  ([#494](https://github.com/Gharib89/skills/pull/494),
+  [`5ffa640`](https://github.com/Gharib89/skills/commit/5ffa64042668f61e455249374dc6c221c10ae348))
+
+
+## v0.17.0 (2026-10-06)
+
+### Features
+
+- **ship**: A durable run record, capped waits and answers from what the profile names
+  ([#491](https://github.com/Gharib89/skills/pull/491),
+  [`58c0da4`](https://github.com/Gharib89/skills/commit/58c0da48c47220a26296b2da6f122a96346723a3))
+
+
+## v0.16.6 (2026-10-05)
+
+### Bug Fixes
+
+- **ship**: Gate the retro's mechanical review findings
+  ([#482](https://github.com/Gharib89/skills/pull/482),
+  [`0c689e8`](https://github.com/Gharib89/skills/commit/0c689e8e731cc86b56bc2c28035c0e609183563a))
+
+
+## v0.16.5 (2026-10-05)
+
+### Bug Fixes
+
+- **ship**: Count a criterion's throwaway probe PR as verification scaffolding
+  ([#481](https://github.com/Gharib89/skills/pull/481),
+  [`7f36cf8`](https://github.com/Gharib89/skills/commit/7f36cf8975b244dfd1194f7b319d83a0a1fcaf91))
+
+
+## v0.16.4 (2026-10-03)
+
+### Bug Fixes
+
+- **ship**: The merge gate closes phase 9 in both lanes
+  ([#466](https://github.com/Gharib89/skills/pull/466),
+  [`054e04a`](https://github.com/Gharib89/skills/commit/054e04a9e4ee52f45aabd382c04661ddcd962146))
+
+
+## v0.16.3 (2026-10-03)
+
+### Bug Fixes
+
+- **ship**: Read-pr carries the PR's draft flag on both hosts
+  ([#460](https://github.com/Gharib89/skills/pull/460),
+  [`9a57b5c`](https://github.com/Gharib89/skills/commit/9a57b5c2d50f0ec34d4a57aa0f58713d3fe6d40f))
+
+
+## v0.16.2 (2026-10-03)
+
+### Bug Fixes
+
+- **ship**: One argument check and login rule; ADO removes a non-last tag
+  ([#457](https://github.com/Gharib89/skills/pull/457),
+  [`551b658`](https://github.com/Gharib89/skills/commit/551b65883a800b9025fc291bc1c5013ae39fcca8))
+
+
+## v0.16.1 (2026-10-03)
+
+### Bug Fixes
+
+- **ship**: Count only the target reviewer's request events in request-review
+  ([#455](https://github.com/Gharib89/skills/pull/455),
+  [`4cc742e`](https://github.com/Gharib89/skills/commit/4cc742e56438093df629ad0d745c16de773ef1c5))
+
+
 ## v0.16.0 (2026-10-02)
 
 ### Features

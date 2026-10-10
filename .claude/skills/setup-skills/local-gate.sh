@@ -25,7 +25,6 @@ while [ $# -gt 0 ]; do
     *) printf '{"error":"unknown flag: %s"}\n' "$1"; exit 2 ;;
   esac
 done
-[ "${BASH_VERSINFO[0]}" -ge 4 ] || { echo '{"error":"bash 4+ required (associative arrays); macOS: brew install bash"}'; exit 2; }
 command -v jq >/dev/null || { echo '{"error":"jq not installed"}'; exit 2; }
 cd "$(git rev-parse --show-toplevel 2>/dev/null)" || { echo '{"error":"not inside a git checkout"}'; exit 2; }
 if [ -z "$base" ]; then
@@ -39,10 +38,14 @@ git rev-parse --verify -q "$base^{commit}" >/dev/null \
   || { jq -cn --arg b "$base" '{error: "base \($b) is not a commit; fetch it or pass --base <ref>"}'; exit 2; }
 lane=full; [ -z "$small" ] || lane=small
 
-declare -A gates
+gates='{}'
 log=$(mktemp); trap 'rm -f "$log"' EXIT
-run()  { local name=$1; shift; if "$@" >"$log" 2>&1; then gates[$name]=pass; else gates[$name]=fail; tail -n 40 "$log" >&2; fi; }
-mark() { gates[$1]=$2; }   # mark <name> deferred-to-ci|unavailable
+# A gate written twice keeps the worse status, so no later write can mask a failure.
+# shellcheck disable=SC2016 # jq's own $a and $b
+worse='def worse($a; $b): [$a // "pass", $b] | max_by({"pass": 0, "deferred-to-ci": 1, "unavailable": 2, "fail": 3}[.]);'
+put()  { gates=$(jq -c --arg k "$1" --arg v "$2" "$worse"' .[$k] = worse(.[$k]; $v)' <<<"$gates"); }
+run()  { local name=$1; shift; if "$@" >"$log" 2>&1; then put "$name" pass; else put "$name" fail; tail -n 40 "$log" >&2; fi; }
+mark() { put "$1" "$2"; }   # mark <name> deferred-to-ci|unavailable
 
 # --- gates ---------------------------------------------------------------------
 # One gate per CI leg, named as the leg is named in the profile's `## CI`.
@@ -65,17 +68,8 @@ else
 fi
 # --- end gates -----------------------------------------------------------------
 
-verdict=pass
-for s in "${gates[@]}"; do
-  case $s in
-    fail) verdict=fail ;;
-    unavailable) [ "$verdict" = fail ] || verdict=unavailable ;;
-  esac
-done
+verdict=$(jq -r 'if any(.[]; . == "fail") then "fail" elif any(.[]; . == "unavailable") then "unavailable" else "pass" end' <<<"$gates")
 case $verdict in pass) rc=0 ;; fail) rc=1 ;; *) rc=2 ;; esac
-
-for k in "${!gates[@]}"; do printf '%s\t%s\n' "$k" "${gates[$k]}"; done \
-  | jq -Rs --arg v "$verdict" --arg b "$base" --arg l "$lane" \
-      '{verdict: $v, base: $b, lane: $l,
-        gates: (split("\n") | map(select(. != "") | split("\t") | {(.[0]): .[1]}) | add // {})}'
+jq -cn --arg v "$verdict" --arg b "$base" --arg l "$lane" --argjson g "$gates" \
+  '{verdict: $v, base: $b, lane: $l, gates: $g}'
 exit $rc

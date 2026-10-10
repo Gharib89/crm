@@ -7,6 +7,42 @@ released version. See
 
 <!-- version list -->
 
+## v0.6.1 (2026-10-05)
+
+### Bug Fixes
+
+- **ship**: Gate the retro's mechanical review findings
+  ([#482](https://github.com/Gharib89/skills/pull/482),
+  [`0c689e8`](https://github.com/Gharib89/skills/commit/0c689e8e731cc86b56bc2c28035c0e609183563a))
+
+
+## v0.6.0 (2026-10-04)
+
+### Features
+
+- **update-skills**: Refresh every source-repo skill the lock records
+  ([#475](https://github.com/Gharib89/skills/pull/475),
+  [`a4dd316`](https://github.com/Gharib89/skills/commit/a4dd31692f01c34c0d42502a2bf719c798708b53))
+
+
+## v0.5.3 (2026-10-04)
+
+### Bug Fixes
+
+- **update-skills**: Expect worktree exists alone before the push
+  ([#474](https://github.com/Gharib89/skills/pull/474),
+  [`8a7eba3`](https://github.com/Gharib89/skills/commit/8a7eba367e94766d27b2409cca0499e7335e0688))
+
+
+## v0.5.2 (2026-10-04)
+
+### Bug Fixes
+
+- **update-skills**: Read upstream subjects by ancestry, not date
+  ([#473](https://github.com/Gharib89/skills/pull/473),
+  [`7a2b340`](https://github.com/Gharib89/skills/commit/7a2b34063b545f3696daf2802ede4a0d8f58d6c2))
+
+
 ## v0.5.1 (2026-10-02)
 
 ### Documentation

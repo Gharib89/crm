@@ -3,7 +3,7 @@
 Scaffold for a repo whose ship profile names Claude Code as a reviewer. It comes in two shapes, on-push and on-request, and a repo takes exactly one; the on-request shape stands alone or as another reviewer's fallback:
 
 - **The on-push shape.** Claude is the only reviewer and reviews every push to an open PR, so it is the whole second pair of eyes, and its job lands a check run on the PR head.
-- **The on-request shape.** A PR comment is the trigger, so nothing fires until a round is asked for. Standalone (`Fallback-for: None.`), it is the repo's reviewer and ship asks for each round, so the cap binds and a small-lane run spends one round. As a fallback, the repo already has a reviewer (Copilot, CodeRabbit) and this one stands in for it on the month its quota runs out, so nothing fires while the primary is healthy. A fallback is on-request because a workflow that fires on every push cannot be withheld while the primary is healthy.
+- **The on-request shape.** A PR comment is the trigger, so nothing fires until a round is asked for. Standalone (`Fallback-for: None.`), it is the repo's reviewer and ship asks for each round, so the cap binds and a small-lane run spends one round. As a fallback, the repo already has a reviewer (Copilot, CodeRabbit) and this one stands in for it on the month its quota runs out, or on a run where the primary is capped with findings (its cap spent, the last round's fixes changing the tree), so nothing fires while the primary reviews and converges. A fallback is on-request because a workflow that fires on every push cannot be withheld while the primary is healthy.
 
 What both shapes do the same way, because ship reads a round off the host alone:
 
@@ -19,7 +19,7 @@ What both shapes do the same way, because ship reads a round off the host alone:
 - **A step that names denied calls.** The action counts refusals and hides them, so a round that spent its turns on denied calls reads as clean. An always-run step reads the round's `permission_denials` from the action's `execution_file`, prints one `denied: <tool> <truncated input>` line per denial to the run log, which REST can read, and raises one warning annotation with the count; at zero it prints nothing, and a file it cannot read raises a warning saying so. The input is model-written, so the prefix keeps a line from starting a `::` command and every `#` in it is written as the JSON escape `\u0023`, because the runner honours a `##[` command anywhere in a line.
 - **A step that speaks when the job fails.** The action failing posts no review and no comment, so a ship run polling the PR reads `not reviewed: silent` under the on-push shape and cannot tell it from a reviewer that did not fire, which is the indistinguishability this step exists to prevent. Under the on-request shape the run read settles it, `poll-pr --reviewer` awaiting the run the block's `Workflow:` names and reading the failed run as `infra-error` with its URL, and the `if: failure()` step below leaves that URL on the PR for both shapes, with the failure subtype where the action left one and `unknown` where it did not. [`ado-claude-review.md`](ado-claude-review.md) carries the same step as a `condition: failed()` one posting a closed PR thread. It needs no permission the job did not already have: a comment on a pull request is posted to `/issues/{n}/comments`, and `pull-requests: write` admits that endpoint on a pull request, with no `issues` scope at all (probed on a runner). The workflow's `permissions:` block scopes only `github.token`, which checkout and this step use; the round's own `gh`, step 2's two reads of the linked issue included, runs on the app installation token the bullet above describes, which that block does not narrow. So no step on `github.token` reads issues, and `issues: read` serves nothing here: a repo may drop it, and the scaffold keeps it only because no round has yet run without it.
 
-Replace `__INSTRUCTIONS__` with the profile's `Instructions:` path for this reviewer: the repo's reviewer brief where it has one (a repo with Copilot keeps it at `.github/copilot-instructions.md`), else the `## Coding standards` path. The reviewer reads that file itself, rather than a copy of it. Where `__INSTRUCTIONS__` is the standards path itself, delete `Read the standards file it points at as well.` from the prompt.
+Replace `__INSTRUCTIONS__` with the profile's `Instructions:` path for this reviewer: the repo's reviewer brief where it has one (a repo with Copilot keeps it at `.github/copilot-instructions.md`), else the `## Coding standards` path. The reviewer reads that file itself, rather than a copy of it. Where `__INSTRUCTIONS__` is the standards path itself, delete `Read the standards file it points at as well.` from the prompt and keep the routing sentence after it.
 
 The two YAML blocks below are each complete on purpose: a consumer copies one of them whole, and a shared block plus a list of substitutions is where a workflow that fails on indentation comes from.
 
@@ -71,7 +71,7 @@ jobs:
           persist-credentials: false
 
       - id: review
-        uses: anthropics/claude-code-action@cfc3eb22bfed5c26ef66e3223c982af27e4524de # v1.0.231
+        uses: anthropics/claude-code-action@58985842b834ed26087302ba27d07bc24ca8697a # v1.0.244
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
@@ -84,6 +84,8 @@ jobs:
             1. Read `__INSTRUCTIONS__` with the Read tool. It is your brief: it names the
                coding standards to review against and the things that are not
                findings in this repo. Read the standards file it points at as well.
+               Where the standards route by path, also read each file they route
+               this PR's changed paths to, once step 3's diff names them.
             2. Run `gh pr view ${{ github.event.pull_request.number }} --json title,body`
                and find the linked issue (Closes/Fixes/Resolves #N). If one exists,
                read it with these two commands, which keep only text an OWNER,
@@ -255,7 +257,7 @@ Instructions: __INSTRUCTIONS__
 
 ## The on-request shape
 
-Replace `__PHRASE__` with the phrase that triggers a round, `@claude` unless something else in the repo already answers to it, and, in the fallback block, `__PRIMARY__` with the `### <name>` of the reviewer this one stands in for, exactly as the profile spells it. Both must agree with the profile: ship posts `__PHRASE__` as a PR comment and nothing else starts a round, and it requests a fallback only when `__PRIMARY__` exits `not reviewed`. The `if:` tests for the phrase anywhere in a comment body, so any comment that merely mentions it, a quote of an earlier request included, spends a round: pick a phrase nobody types in passing.
+Replace `__PHRASE__` with the phrase that triggers a round, `@claude` unless something else in the repo already answers to it, and, in the fallback block, `__PRIMARY__` with the `### <name>` of the reviewer this one stands in for, exactly as the profile spells it. Both must agree with the profile: ship posts `__PHRASE__` as a PR comment and nothing else starts a round, and it requests a fallback only when `__PRIMARY__` exits `not reviewed` or is capped with findings: it spent its `Cap:` and the last round's fixes changed the tree. The `if:` tests for the phrase anywhere in a comment body, so any comment that merely mentions it, a quote of an earlier request included, spends a round: pick a phrase nobody types in passing.
 
 ### `.github/workflows/claude-review.yml`
 
@@ -312,7 +314,7 @@ jobs:
           persist-credentials: false
 
       - id: review
-        uses: anthropics/claude-code-action@cfc3eb22bfed5c26ef66e3223c982af27e4524de # v1.0.231
+        uses: anthropics/claude-code-action@58985842b834ed26087302ba27d07bc24ca8697a # v1.0.244
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
@@ -324,6 +326,8 @@ jobs:
             1. Read `__INSTRUCTIONS__` with the Read tool. It is your brief: it names the
                coding standards to review against and the things that are not
                findings in this repo. Read the standards file it points at as well.
+               Where the standards route by path, also read each file they route
+               this PR's changed paths to, once step 3's diff names them.
             2. Run `gh pr view ${{ github.event.issue.number }} --json title,body,headRefOid`
                and find the linked issue (Closes/Fixes/Resolves #N). If one exists,
                read it with these two commands, which keep only text an OWNER,
@@ -488,7 +492,7 @@ Both shared steps above, then:
    ```
 
    Weigh it first: whatever identity a ship run requests a round under must fall inside that list, and an unattended run whose identity does not gets no review. Ship grades that `never-queued` rather than reading the reviewer as silent, so the loss is named; naming it is not reviewing the PR, which is what this reviewer is there for. A private repo where every commenter can already push needs no commenter line.
-6. Decide whether the `if: failure()` step stays. It costs one PR comment per failed round and nothing on a round that succeeds. Ship grades a failed round here `infra-error` from the run read either way, so dropping the step costs the link on the PR: the human then goes to the Actions tab to find the run themselves. A run asks for this reviewer when it needs the review, standalone or covering a primary that was not reviewed, so it is the last reviewer whose failures should send you there.
+6. Decide whether the `if: failure()` step stays. It costs one PR comment per failed round and nothing on a round that succeeds. Ship grades a failed round here `infra-error` from the run read either way, so dropping the step costs the link on the PR: the human then goes to the Actions tab to find the run themselves. A run asks for this reviewer when it needs the review, standalone or covering a primary that was not reviewed or was capped with findings, so it is the last reviewer whose failures should send you there.
 
 ### Profile blocks this produces
 

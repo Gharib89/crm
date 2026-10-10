@@ -39,4 +39,4 @@ fi
 ok=true; [ -z "$missing" ] || ok=false
 printf '%s\n' "$missing" | jq -Rs --arg h "$SHIP_HOST" --argjson i "$installed" --argjson ok "$ok" \
   '{host: $h, missing: (split("\n") | map(select(. != ""))), installed: $i, ok: $ok}'
-$ok || exit 2
+$ok || { printf 'host-unreachable: %s\n' "$(paste -sd';' <<<"$missing")" >&2; exit 2; }

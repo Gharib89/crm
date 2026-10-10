@@ -54,9 +54,8 @@ set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/_lib.sh" || { printf '{"error":"cannot source _lib.sh"}\n'; exit 2; }
 usage='usage: update-pr-body <pr> (--section <name> | --preamble) --body-file <path>'
 ship_help "$usage" "$@"
-[ -n "${1:-}" ] || ship_tooling "$usage"
+ship_args "$usage" pr "$@"
 pr=$1; shift
-case $pr in -*) ship_tooling "$usage" ;; esac
 section=""; preamble=false; file=""
 while [ $# -gt 0 ]; do
   case $1 in
@@ -71,7 +70,7 @@ if [ "$preamble" = true ]; then
 else
   [ -n "$section" ] || ship_tooling "$usage"
 fi
-[ -f "$file" ] || ship_tooling "$usage"
+[ -n "$file" ] || ship_tooling "$usage"
 content=$(cat "$file") || ship_tooling "cannot read $file"
 unclosed=$(ship_fence_unclosed "$content")
 [ -z "$unclosed" ] || ship_tooling "body file ends inside an unclosed fence or <details> record ($unclosed)"
@@ -93,7 +92,7 @@ elif ship_body_replace_section "$body" "$section" "$file" > "$new"; then
 else
   replaced=false; created=true
 fi
-answer=$(host_pr_set_body "$pr" "$new") || ship_fail_host "PR body update failed" "$answer"
+answer=$(host_pr_set_body "$pr" "$new") || ship_fail "PR body update failed" "$answer"
 sections=$(ship_body_headings "$(cat "$new")")
 jq -n --argjson pr "$pr" --arg s "$section" --argjson p "$preamble" \
   --argjson r "$replaced" --argjson c "$created" --arg h "$sections" \

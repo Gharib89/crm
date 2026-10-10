@@ -39,10 +39,9 @@ set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/_lib.sh" || { printf '{"error":"cannot source _lib.sh"}\n'; exit 2; }
 usage='usage: update-issue-body <issue> [--repo <owner>/<repo>] --section <name> --body-file <path>'
 ship_help "$usage" "$@"
-[ -n "${1:-}" ] || ship_tooling "$usage"
+ship_args "$usage" issue "$@"
 argv=("$@")
 issue=$1; shift
-case $issue in -*) ship_tooling "$usage" ;; esac
 section=""; file=""; repo=""
 while [ $# -gt 0 ]; do
   case $1 in
@@ -52,7 +51,7 @@ while [ $# -gt 0 ]; do
     *) ship_tooling "unknown flag: $1" ;;
   esac
 done
-[ -n "$section" ] && [ -f "$file" ] || ship_tooling "$usage"
+[ -n "$section" ] && [ -n "$file" ] || ship_tooling "$usage"
 content=$(cat "$file") || ship_tooling "cannot read $file"
 unclosed=$(ship_fence_unclosed "$content")
 [ -z "$unclosed" ] || ship_tooling "body file ends inside an unclosed fence or <details> record ($unclosed)"
@@ -62,7 +61,7 @@ ship_load_host "$repo"
 if ! answer=$(host_issue_body "$issue"); then
   reason=$(jq -r '.reason // empty' <<<"$answer" 2>/dev/null)
   [ -n "$reason" ] || ship_tooling "cannot read issue $issue"
-  ship_fail_host "issue $issue: $reason" ""
+  ship_fail "issue $issue: $reason" ""
 fi
 body=$(jq -r .body <<<"$answer")
 new=$(mktemp); trap 'rm -f "$new"' EXIT
@@ -72,7 +71,7 @@ else
   replaced=false; created=true
 fi
 printf '%s\n' "$out" > "$new"
-answer=$(host_issue_set_body "$issue" "$new") || ship_fail_host "issue body update failed" "$answer"
+answer=$(host_issue_set_body "$issue" "$new") || ship_fail "issue body update failed" "$answer"
 sections=$(ship_body_headings "$(cat "$new")")
 jq -n --argjson i "$issue" --arg s "$section" --argjson r "$replaced" --argjson c "$created" --arg h "$sections" \
   '{issue: $i, section: $s, replaced: $r, created: $c,

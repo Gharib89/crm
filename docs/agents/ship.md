@@ -1,6 +1,6 @@
 # Ship profile
 
-Schema: 3
+Schema: 4
 
 Every repo-specific fact `/ship` needs, one section per axis. Fourteen `##` headings, always present and in this order; a defaulted axis reads `None.` or `Default.` under its own heading. Facts sit on `Label:` lines and nowhere else, and the prose under a heading explains them. The `Schema:` line above is the profile schema `ship` checks at preflight; only a `setup-skills` re-run moves it. Vocabulary: the `ship` skill's source repo, `Gharib89/skills`, [GLOSSARY.md](https://github.com/Gharib89/skills/blob/main/GLOSSARY.md).
 
@@ -38,19 +38,19 @@ Push policy: Default.
 
 ## Reviewers
 
-### Copilot
+### Codex
 
-Login: copilot-pull-request-reviewer[bot]
-Trigger: auto-once
-Request: None.
-Workflow: None.
-Cap: None.
-Resolve: None.
+Login: chatgpt-codex-connector[bot]
+Trigger: on-request
+Request: comment @codex review
+Workflow: native codex
+Cap: 2
+Resolve: resolve-thread
 Gating: no
 Fallback-for: None.
-Instructions: .github/copilot-instructions.md
+Instructions: AGENTS.md
 
-The repo ruleset "Copilot auto review" fires one round on a ready PR, with `review_on_push: false`: that round is the only one, never re-requested. Its threads are dispositioned once.
+Native Codex review through the ChatGPT Codex Connector app: ship asks for each round with a PR comment, and the round's status is read off Codex's own comments on the PR, so no workflow runs. Codex reads the `## Review guidelines` section of `AGENTS.md` (a symlink to `CLAUDE.md`), which scopes it to what this repo controls.
 
 ### Claude Code
 
@@ -61,10 +61,10 @@ Workflow: .github/workflows/claude-review.yml
 Cap: 2
 Resolve: resolve-thread
 Gating: no
-Fallback-for: Copilot
+Fallback-for: Codex
 Instructions: .github/copilot-instructions.md
 
-Requested when Copilot exits not reviewed for any reason (never-queued, blocked, silent, infra-error, unreachable). Outside ship, any OWNER, MEMBER or COLLABORATOR `@claude` comment on a PR one of them authored also fires the workflow. CodeRabbit also reviews this repo on a `@coderabbitai review` comment, but it has no workflow for a round to be read off, which ship cannot express yet (Gharib89/skills#302), so it is not in this profile.
+Requested when Codex exits not reviewed (never-queued, blocked, silent, infra-error, unreachable) or is capped with findings. Outside ship, any OWNER, MEMBER or COLLABORATOR `@claude` comment on a PR one of them authored also fires the workflow. Copilot and CodeRabbit are not in this profile: the repo's Copilot ruleset is disabled, and CodeRabbit is comment-triggered with no workflow for a round to be read off (Gharib89/skills#302).
 
 ## Coding standards
 
