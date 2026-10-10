@@ -106,6 +106,7 @@ python-semantic-release bumps `setup.py` and `crm/__init__.py` and writes `CHANG
 ## PR
 
 Template: .github/PULL_REQUEST_TEMPLATE.md
+Merge: on-clean-gate
 
 ## Public surface
 
