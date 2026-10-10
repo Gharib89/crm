@@ -23,7 +23,10 @@ cd "$(git rev-parse --show-toplevel)"
 # install it when missing, `apt_install <package>` or a registry's own install
 # (`pipx install detect-secrets`).
 SCANNER=gitleaks
-SCANNER_INSTALL='apt_install gitleaks'
+# Built from the Go proxy, which the cloud network admits, at the version the
+# workstation runs: apt's gitleaks is 8.16.0, and the release download is blocked.
+# shellcheck disable=SC2016 # expanded when the line below evals it
+SCANNER_INSTALL='GOTOOLCHAIN=auto go install github.com/zricethezav/gitleaks/v8@v8.30.1 && sudo install -m 0755 "$(go env GOPATH)/bin/gitleaks" /usr/local/bin/gitleaks'
 # <<< setup-skills configuration
 
 # apt_install <package>...: sudo unless root; a fresh image may carry no
