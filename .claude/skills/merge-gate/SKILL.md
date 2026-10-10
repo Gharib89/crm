@@ -1,6 +1,6 @@
 ---
 name: merge-gate
-description: Review inbound agent-shipped PRs at the merge gate — drift checklist, targeted live e2e, fix-in-place, review-bot iteration (Copilot + CodeRabbit) — leaving each PR merge-confident (gate-passed) or explicitly failed (gate-failed).
+description: Review inbound agent-shipped PRs at the merge gate — drift checklist, targeted live e2e, fix-in-place, review-bot iteration (CodeRabbit, over the ship reviewers' threads) — leaving each PR merge-confident (gate-passed) or explicitly failed (gate-failed).
 argument-hint: "[pr-number]"
 disable-model-invocation: true
 metadata:
@@ -16,7 +16,7 @@ gaps fixed in place, and re-reviewed — so the maintainer's merge decision is a
 
 Inbound PRs come from several shipping streams (cloud-ship routine, codex,
 teammates' agents). Each has already run its own pipeline — tests, docs-sync,
-Copilot rounds — and stopped at the merge gate. This skill is the independent
+Codex rounds — and stopped at the merge gate. This skill is the independent
 second gate: it assumes nothing the author agent claimed, and re-verifies.
 
 ## Invocation
@@ -44,13 +44,13 @@ Every comment posted to the PR starts with:
 ### 1 · Preflight
 
 - Run `scripts/gate-preflight.sh <n>` — one JSON blob: PR meta + body, labels,
-  linked issues, CI check runs, a `pushed_last_15min` flag, and the CodeRabbit
-  and Claude (`claude[bot]`) threads left with **no disposition** (neither a fix nor a
+  linked issues, CI check runs, a `pushed_last_15min` flag, and the CodeRabbit,
+  Codex (`chatgpt-codex-connector[bot]`) and Claude (`claude[bot]`) threads left with **no disposition** (neither a fix nor a
   decline-with-evidence reply).
 - Skip drafts and PRs with `pushed_last_15min: true` (the author agent may
   still be working); note the skip.
 - Read the PR comments yourself: the author agent's merge summary and its
-  per-reviewer dispositions (Copilot, plus the Claude fallback where it ran;
+  per-reviewer dispositions (Codex, plus the Claude fallback where it ran;
   CodeRabbit is manual, driven by this gate in step 6), plus the linked issue +
   brief. Each undispositioned thread the script surfaced is a gap
   the author agent left — treat it as a review finding for step 3.
@@ -137,20 +137,13 @@ to on-thread, and bulk-resolved via `@coderabbitai resolve` before the verdict:
    each CodeRabbit thread ("fixed in `<sha>`" / decline + evidence); once every
    thread is dispositioned, `@coderabbitai resolve` closes them — never earlier
    (it bulk-resolves).
-2. **Copilot is round-1-only — with one gate exception.** The gate may spend
-   **exactly one** Copilot re-request, and only when it **significantly rewrote**
-   the PR (a scoped lint/format/typo fix does not qualify). Otherwise Copilot's
-   round-1 threads are dispositioned once, as in the ship flow. The exception is
-   **one per PR, not per gate run**. Spend it via
-   `scripts/rerequest-copilot.sh <n>` — it refuses when the re-request was
-   already spent or is still pending (so a re-run or sweep can't re-enter this
-   branch), uses the REST path with the exact bot login (the
-   `gh pr edit --add-reviewer` path and the display name `"Copilot"` both fail
-   on this repo), and verifies `requested_reviewers` actually populated — a
-   bare HTTP 201 can silently no-op.
+2. **The ship reviewers are not re-requested.** Codex and the Claude fallback
+   ran inside the author's ship loop, at their caps; the gate dispositions their
+   threads once (step 3 for any preflight surfaced) and leaves re-review of its
+   own pushes to CodeRabbit.
 3. **Converged = the most recent *triggered* CodeRabbit round returned no new
    substantive threads (or CodeRabbit declined to review and that is recorded in
-   the verdict) + every Copilot round-1 thread dispositioned**
+   the verdict) + every Codex and Claude thread dispositioned**
    (declined-with-evidence counts as dispositioned). A round costs only the
    trigger comment — drive them to quiet, and never call a round you never
    triggered "quiet". If CodeRabbit stays substantive round after round, the PR

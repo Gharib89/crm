@@ -118,7 +118,7 @@ Canonical labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-hu
 
 - **Codex** (native review, the ChatGPT Codex Connector app) runs on a `@codex review` PR comment, which ship posts for each round. It reads the `## Review guidelines` section below through `AGENTS.md`. Anywhere but the request itself, write the phrase without its `@` (`codex review`): every mention starts a round or a Codex task.
 - **Claude Code** (`.github/workflows/claude-review.yml`) runs on an `@claude` PR comment. Ship posts one when Codex exits not reviewed for any reason (never-queued, blocked, silent, infra-error, unreachable) or is capped with findings. Any OWNER, MEMBER or COLLABORATOR `@claude` comment on a PR one of them authored also fires it. House rules for it live in `.github/copilot-instructions.md`.
-- **Copilot** is not in the ship profile. Its repo ruleset (*"Copilot auto review"*) may still review a ready PR once when it opens; ship does not wait for it.
+- **Copilot** does not review this repo: its ruleset (*"Copilot auto review"*) is disabled.
 - **CodeRabbit** does not auto-review this repo (star-gated) and is not in the ship profile: it is comment-triggered with no workflow, which ship cannot express yet (Gharib89/skills#302). The **`merge-gate`** skill drives it: `@coderabbitai review` while the PR is open (a closed PR declines), after each fix push; `@coderabbitai resolve` only once every thread carries a disposition. Config in `.coderabbit.yaml`.
 
 #### Review guidelines
@@ -127,7 +127,7 @@ For Codex PR review, which reads this section through `AGENTS.md`. Review agains
 
 ### PR merge gate
 
-Inbound agent-shipped PRs (cloud-ship routine, codex, teammates' agents) get a second, local review pass via the **`merge-gate`** skill before the maintainer merges: drift checklist + targeted live e2e + scoped fix-in-place + review-bot iteration (the gate posts `@coderabbitai review` after each fix push it makes, since CodeRabbit no longer re-reviews on its own; **one** Copilot re-request permitted only when the gate significantly rewrote the PR — the merge-gate exception to the round-1-only lane), ending in a `gate-passed`/`gate-failed` label. See `docs/agents/pr-merge-gate.md`.
+Inbound agent-shipped PRs (cloud-ship routine, codex, teammates' agents) get a second, local review pass via the **`merge-gate`** skill before the maintainer merges: drift checklist + targeted live e2e + scoped fix-in-place + review-bot iteration (the gate posts `@coderabbitai review` after each fix push it makes, since CodeRabbit no longer re-reviews on its own; Codex and Claude are not re-requested, their threads dispositioned once), ending in a `gate-passed`/`gate-failed` label. See `docs/agents/pr-merge-gate.md`.
 
 ### Domain docs
 

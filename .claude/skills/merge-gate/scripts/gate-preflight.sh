@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Merge-gate step-1 evidence gather for one PR — ONE JSON blob: PR meta + body,
 # labels, linked issues, CI check runs, a pushed-last-15-min flag, and the
-# CodeRabbit and Claude threads left with NO disposition (unresolved, and no
+# CodeRabbit, Codex and Claude threads left with NO disposition (unresolved, and no
 # reply from anyone but the bot that opened it). Judgment stays with the reader;
 # this only gathers.
 #
@@ -37,7 +37,7 @@ THREADS=$(api graphql -f query='
   | jq '[.data.repository.pullRequest.reviewThreads.nodes[]
     | select(.isResolved | not)
     | .comments.nodes[0].author.login as $bot
-    | select($bot == "coderabbitai" or $bot == "claude")
+    | select($bot == "coderabbitai" or $bot == "chatgpt-codex-connector" or $bot == "claude")
     | select([.comments.nodes[1:][] | .author.login] | all(. == $bot))
     | {reviewer: $bot, path, excerpt: (.comments.nodes[0].body | split("\n")[0][0:120])}]') || exit 1
 

@@ -64,7 +64,7 @@ Gating: no
 Fallback-for: Codex
 Instructions: .github/copilot-instructions.md
 
-Requested when Codex exits not reviewed (never-queued, blocked, silent, infra-error, unreachable) or is capped with findings. Outside ship, any OWNER, MEMBER or COLLABORATOR `@claude` comment on a PR one of them authored also fires the workflow. Copilot and CodeRabbit are not in this profile: the repo's Copilot ruleset may still review a PR once when it opens, outside ship's loop, and CodeRabbit is comment-triggered with no workflow for a round to be read off (Gharib89/skills#302).
+Requested when Codex exits not reviewed (never-queued, blocked, silent, infra-error, unreachable) or is capped with findings. Outside ship, any OWNER, MEMBER or COLLABORATOR `@claude` comment on a PR one of them authored also fires the workflow. Copilot and CodeRabbit are not in this profile: the repo's Copilot ruleset is disabled, and CodeRabbit is comment-triggered with no workflow for a round to be read off (Gharib89/skills#302).
 
 ## Coding standards
 
