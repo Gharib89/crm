@@ -1,11 +1,10 @@
 {
   "pyright": {
-    "command": "npx",
-    "args": ["--yes", "--package=pyright@1.1.414", "pyright-langserver", "--stdio"],
+    "command": "${CLAUDE_PLUGIN_ROOT}/pyright-launch.sh",
+    "args": ["1.1.414", "."],
     "extensionToLanguage": {
       ".py": "python",
       ".pyi": "python"
-    },
-    "settings": {"python": {"pythonPath": ".venv/bin/python"}}
+    }
   }
 }

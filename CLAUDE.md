@@ -100,6 +100,8 @@ Any PyInstaller bundle-shape change must touch all **5 sites**:
 
 `scripts/check.sh` is this repo's check entry point: `edit <file>...` lints and formats, `turn` typechecks and runs the affected tests of every uncommitted change, and `full` answers for the whole repo: the runner on every file, `mkdocs build --strict` and `semgrep scan --config ci/semgrep-rules.yml`. It prints one JSON line and exits 0 pass, 1 fail, 2 unavailable, 3 over budget. Hooks in `.claude/settings.json` run `edit` after every Edit or Write and `turn` at every stop, and the pre-commit runner is the commit rung. Harness profile: `docs/agents/harness.md`. Re-run `/setup-harness` after adding a stack, a member or a tool.
 
+Where the `LSP` tool answers (a cloud session starts no language server), use its `goToDefinition` rather than grep to find where a symbol lives, and before changing a function's signature or renaming a symbol, call `findReferences` on it and cross-check the list with a grep for the name. A session's first `findReferences` can come back incomplete while the server is still indexing, often as only the declaration, so run it twice and use the second answer. Trust neither source alone: a file changed through Bash stays invisible to the server for the rest of the session, and grep misses aliased imports and attribute access. The server roots at the folder the session was in at its first `LSP` call and never moves, so in a worktree the session reached by path from the main checkout (a Bash `cd`), `LSP` answers and diagnostics read the main checkout's code: use grep there.
+
 ### Subagents
 
 For code exploration/search, use the **`Explore`** agent and run it on the **haiku** model.
