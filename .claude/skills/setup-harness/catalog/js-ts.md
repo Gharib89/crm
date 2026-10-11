@@ -163,7 +163,7 @@ Run: `${CLAUDE_PROJECT_DIR}/{root}/node_modules/.bin/typescript-language-server 
 Hook: None.
 Pin: package npm typescript-language-server
 Route: None.
-Constraints: vendored from the Anthropic `typescript-lsp` plugin per [reference/language-servers.md](../reference/language-servers.md), pinned once at the stack root beside the repo's own `typescript`, whose tsserver it drives. When the lockfile resolves that `typescript` to 7 or later, the tool is `Unavailable: typescript-lsp needs TS ≤ 6`; a stack with no `typescript` makes it `Unavailable: typescript-lsp needs the stack's typescript`, since the server refuses to initialize without one (measured, 6.0.0). Either way nothing of it is written.
+Constraints: vendored from the Anthropic `typescript-lsp` plugin per [reference/language-servers.md](../reference/language-servers.md), pinned once at the stack root beside the repo's own `typescript`, whose tsserver it drives. When the lockfile resolves that `typescript` to 7 or later, the tool is `Unavailable: typescript-lsp needs TS ≤ 6`; a stack with no `typescript` makes it `Unavailable: typescript-lsp needs the stack's typescript`, since the server refuses to initialize without one. Either way nothing of it is written.
 Local-only: cloud sessions start no plugin language server.
 Traps: None.
 
@@ -178,8 +178,8 @@ Run: `playwright test`
 Hook: local
 Pin: package npm @playwright/test
 Route: `npm install --no-save @playwright/test@{version} && npx --no-install playwright install --with-deps chromium`; Blocked: `cdn.playwright.dev` for the browser download, on the Default network
-Constraints: the repo's own suite only, wired where it is evidence and never a default; its browsers come from the cloud setup's browser step ([reference/surfaces.md](../reference/surfaces.md) `## Web UI`), and `PLAYWRIGHT_BROWSERS_PATH` is never overridden. A repo's copy comes from its frozen install, so `Route:` is the entry trial's alone and never a cloud setup step.
-Traps: `--only-changed` selects by the import graph and the vendor calls it a heuristic, so it is never offered. A `webServer` in the config builds and starts the app, so the row's time is mostly the build's. A `webServer.command` run through `pnpm exec` starts in a new session (pnpm 11.27.1), so Playwright's teardown kill misses the server and the row hangs after its tests pass; where `webServer.command` starts with `pnpm exec`, the report asks the human, as a numbered question, to call `./node_modules/.bin/<bin>` instead, and the skill never edits the config itself; a no drops the `e2e-<member>` row, recorded `Declined: e2e-<member>: webServer.command runs through pnpm exec: <reason>`.
+Constraints: the repo's own suite only, wired where it is evidence and never a default; its browsers come from the cloud setup's browser step ([reference/surfaces.md](../reference/surfaces.md) `## Web UI`). A repo's copy comes from its frozen install, so `Route:` is never a cloud setup step.
+Traps: a `webServer` in the config builds and starts the app, so the row's time is mostly the build's. A `webServer.command` run through `pnpm exec` starts in a new session (pnpm 11.27.1), so Playwright's teardown kill misses the server and the row hangs after its tests pass; where `webServer.command` starts with `pnpm exec`, the report asks the human, as a numbered question, to call `./node_modules/.bin/<bin>` instead, and the skill never edits the config itself; a no drops the `e2e-<member>` row, recorded `Declined: e2e-<member>: webServer.command runs through pnpm exec: <reason>`.
 
 ## public API
 

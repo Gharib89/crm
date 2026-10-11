@@ -7,7 +7,7 @@
 #   update-issue-body <issue> [--repo <owner>/<repo>] --section <name> --body-file <path>
 #
 # --repo edits that GitHub repo's issue instead of the origin's, the source
-# repo's (ADR 0004). Its host is probed first, and every exit 1 under it, the
+# repo's. Its host is probed first, and every exit 1 under it, the
 # probe's or a refused write's, carries the command to run by hand as `command`.
 #
 # A `<details>` block at column 0 is a `<details>` record, the original phase 1

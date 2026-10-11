@@ -37,7 +37,7 @@
 #   {number, kind: issue|pr, state}, so a run learns whether a mention is an
 #   open issue or a merged PR without reaching for the host CLI; both lists
 #   carry live cross-references only, open issues and open or merged PRs.
-#   pruned[] lists sibling worktrees removed because their HEAD is exactly the
+#   pruned[] lists worktrees under .claude/worktrees/ removed because their HEAD is exactly the
 #   head of the merged or closed PR their branch names; a worktree at any other
 #   commit is kept. reviewers[] is one {name, review_on_push} row per reviewer block:
 #   the copilot_code_review ruleset's true or false for the block posting under

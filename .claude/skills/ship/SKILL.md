@@ -1,25 +1,20 @@
 ---
 name: ship
 description: Drive one tracker issue to a merge-ready PR in a single run, reaching the merge gate or merging when the repo opts in and the gate is clean. Use when the user wants to ship an issue, or to run the unattended lane.
-argument-hint: "[issue-number] [--unattended]"
+argument-hint: "[issue-number] [--unattended | --inline [--review]]"
 metadata:
-  version: 0.21.1
+  version: 0.24.0
   profile-schema: 4
   composes: mattpocock/skills#f3fc5632f401156837ee3872f14fe33ccf1024ea:tdd mattpocock/skills#c55ee46073ed923f86ce59a5eb3b6d895095d1b7:writing-for-agents mattpocock/skills#f3fc5632f401156837ee3872f14fe33ccf1024ea:code-review upstash/context7#522c4db4fa2e1e31f1b320f09fa8c8fab376987a:find-docs humanlayer/skills#ca7c8088db69e315a8b2deea43820270457f8f3c:show-me
 ---
 
 # ship
 
-Drive one issue from nothing to a **merge-ready PR**, hands-off, reaching
-the merge gate (or merging on a clean gate where the profile opts in), so the
-human runs `/ship <issue>`, walks away, and comes back
-to a PR implemented test-first, verified against the real thing the repo
-integrates with, self-reviewed, reviewed by every reviewer the repo names,
-CI-green, and summarized for a ten-second approve. This skill is **generic**: it
-knows how to ship and nothing about the repo, and every repo fact comes from the
-**ship profile**, `docs/agents/ship.md`. The copy under `.claude/skills/ship` is
-a **derived copy**, changed in its source repo `Gharib89/skills` and refreshed
-through the command the repo's `### Ship` block in CLAUDE.md carries.
+This skill is **generic**: it knows how to ship and nothing about the repo, and
+every repo fact comes from the **ship profile**, `docs/agents/ship.md`. The copy
+under `.claude/skills/ship` is a **derived copy**, changed in its source repo
+`Gharib89/skills` and refreshed through the command the repo's `### Ship` block
+in CLAUDE.md carries.
 
 **Version.** The harness strips this file's frontmatter on load, so read the
 version once, at the start of the run, with
@@ -41,6 +36,8 @@ in the merge summary, so every PR records which ship produced it.
   blocked stop hands back instead of asking, the sandbox clone is the isolation,
   and the merge gate posts the summary as a PR comment and returns. With no
   `<issue>` it first runs the unattended lane: prepare, PR cap, select.
+- `--inline [--review]`: the **inline lane**; before `prepare`, read
+  [small-lane.md](reference/small-lane.md#the-inline-lane) for its rules.
 
 Without `--unattended` the run is **attended**: any needed human action stops
 and asks, and the claim holds while it waits. **Preparation**, before `run-file
@@ -59,10 +56,7 @@ through the Skill tool when their moment comes, taking each one's logic from the
 skill itself, and tell any composed skill with an unattended mode that the run
 is unattended, explicitly, because it has no other way to know. **Read**
 `show-me` (phase 6, the Change outline) instead;
-[pr-body.md](reference/pr-body.md) says why. The frontmatter's `composes` line
-names all five, each pinned at the upstream commit ship was tested against
-(`<owner>/<repo>#<sha>:<skill>`), and is what phase 0
-checks: a skill added here is added there too.
+[pr-body.md](reference/pr-body.md) says why.
 
 ## The pipeline
 
@@ -90,11 +84,16 @@ every `reasons` entry is a row of the stop table below. Then
 `read-issue <issue>`, phase 1's input, from which the branch `<type>` (`feat`,
 `fix`, `docs`, ...) and `<slug>` are derived. Then `isolate <issue> <type>
 <slug>` with the profile's `Carry:` files, or `isolate ... --in-place`
-unattended. Every edit, commit and the PR happen from the path `isolate`
-printed, and you **commit as you go**, because the PR needs real commits. A
-`Bootstrap:` under `## Worktree` runs once here, after isolate.
-**Done when:** `preflight` answered `ok: true`, `isolate` printed its path, and
-any `## Worktree` `Bootstrap:` ran green.
+unattended. Attended, `EnterWorktree` with `path` set to that path comes right
+after isolate, before any edit or `LSP` call: the language server roots where
+the session stands when it first starts
+([isolate.md](reference/isolate.md#entering-the-worktree)). Every edit, commit
+and the PR happen from the path `isolate` printed, and you **commit as you
+go**, because the PR needs real commits. A `Bootstrap:` under `## Worktree` runs
+once here, after isolate.
+**Done when:** `preflight` answered `ok: true`, `isolate` printed its path, any
+`## Worktree` `Bootstrap:` ran green, and, attended, `EnterWorktree` entered
+that path.
 
 **1 · Understand.** Too vague to plan from the `read-issue` result: stop
 `ambiguous`, with no claim taken. Otherwise **claim before any work**:
@@ -162,8 +161,8 @@ diff since `origin/HEAD`, its Standards axis reading the profile's
 carrying its own scratch directory (`standards`, `spec`) and saying the Local
 gate runs later in the run, so the axis reads the gate's JSON and never runs
 `check.sh full` or the suite itself. **Triage waits for every Report file**; one
-that fails to arrive after the bounded retry is `red-after-retry: <axis>`, never
-a disposition written from memory.
+that fails to arrive after [the stops](#the-stops)' two fix-and-retry attempts
+is `red-after-retry: <axis>`, never a disposition written from memory.
 **Auto-triage** every finding at the judgment tier, one disposition each, under
 the rails and depth checks in
 [implement.md](reference/implement.md#phase-4-triage-and-depth-checks).
@@ -171,15 +170,13 @@ the rails and depth checks in
 [evidence lines](reference/implement.md#phase-4-evidence-lines) that section's
 checks leave: `Reverted-fix:`, `Dropped:`, `Near-miss:` and `Probe:`, the red
 and `Probe:` lines produced by `run-file prove` and `run-file probe`.
-This self-review plus green CI is the review gate.
 **Done when:** every report that fired has its Report file on disk and its path
 in the Run file, every finding carries a disposition, `close 4` took the
 evidence lines, and docs-sync landed or is skipped in one line.
 
 **5 · Local gate.** *Precondition:* every applicable verification is `pass`,
 `deferred-to-ci` or `unexercised`, or the class is `docs`, **and** every phase-4
-finding carries a disposition; otherwise go back. A gate run while `code-review`
-is still out is paid twice when a finding lands. Run `base-fresh` first: CI
+finding carries a disposition; otherwise go back. Run `base-fresh` first: CI
 tests the merge ref, so a branch that predates a merge still goes green while
 every "does this exist?" answer taken from the worktree was pre-merge; behind:
 follow its advice, re-run, continue. Confirm every `Carry:` file still matches
@@ -218,18 +215,19 @@ rung, proves it with the local gate instead. Otherwise the local gate is not
 re-run per round: the final head's gate is the merge gate's re-run on `gate
 read`'s `current: false`, never while a `code-review` is out (phase 5). **Every
 reviewer whose `Fallback-for:` reads `None.` first, then the fallbacks**, each
-driven when its primary exits `not reviewed` or is capped with findings. Exits:
-`reviewed`, `not reviewed: <reason>`, or `not invoked: <primary> reviewed`; `not
-reviewed` proceeds to the merge gate on green CI and is reported there. At exit,
-`update-pr-body --section --body-file` writes the sections the rounds grew, the
-Change outline where it fell short, `Review` last, the title checked against the
-`Grade:`, then the phase-6 read-back; a cap round or a docs-only round whose
-fixes changed the tree earns one local review of them before the merge gate.
+driven when its primary exits `not reviewed` (`inline lane` aside), is capped
+with findings or stops `not landed`. Exits: `reviewed`, `not reviewed:
+<reason>`, or `not invoked: <primary> reviewed`; `not reviewed` proceeds to the
+merge gate on green CI and is reported there. At exit, `update-pr-body --section
+--body-file` writes the sections the rounds grew, the Change outline where it
+fell short, `Review` last, the title checked against the `Grade:`, then the
+phase-6 read-back; the cap, docs-only and not-landed rounds earn the local
+review [review-loop.md](reference/review-loop.md) describes.
 **Done when:** every reviewer carries an exit word, every thread `poll-pr`
 returned is replied to and resolved per `Resolve:`, every section the rounds
-grew is rewritten, the title matches `Grade:`, any cap or docs-only fix review
-is dispositioned, `close 7` took each reviewer's `Round:` and `Stop:` lines, and
-`read-pr` shows a `## Review` line per reviewer.
+grew is rewritten, the title matches `Grade:`, any local review a cap, docs-only
+or not-landed round earned is dispositioned, `close 7` took each reviewer's
+`Round:` and `Stop:` lines, and `read-pr` shows a `## Review` line per reviewer.
 
 **8 · CI.** CI runs from PR-open and overlaps phase 7; `ci-wait <pr>` covers it,
 reading the profile's `Legs:`. `ci-wait` and `poll-pr` wait for the expected
@@ -244,29 +242,28 @@ review quota, so push when the tree changed.
 
 **9 · Merge gate.** [reference/merge-gate.md](reference/merge-gate.md) carries
 the summary's shape, what `merge` does, its two refusals and the tracker drafts.
-Write the summary per that file, uncompressed. Attended: follow its
+Write the summary per that file. Attended: follow its
 `Merge:` branch, waiting for an explicit "merge" by default, or merging when
-`Merge: on-clean-gate` and `run-file gate clean` answers `clean: true`; an
-unmet criterion needs the human's explicit waiver beside the merge word.
+`Merge: on-clean-gate` or the run is inline lane and `run-file gate clean`
+answers `clean: true`; an unmet criterion needs the human's explicit waiver.
 On either authorization run `merge <pr> <issue|none> [--worktree
 <path>]`, `update-issue-body` per tracker draft, settle each Ship defect draft
-(filed on its own word only), `run-file close 9`, then `cleanup <issue|none>`,
-last, as it removes the Run file; a nonzero exit, or a `false` in `merge`'s or
-`cleanup`'s JSON, re-runs the mechanic that owns the step; a step no mechanic
-re-does is a Ship defect for the summary. Unattended: the final head's gate,
-then `comment-pr <pr> --body-file` with the summary, `run-file close 9`. Either
-lane then returns.
+(filed on its own word only), `run-file close 9`, `ExitWorktree` with `action:
+"keep"` (`cleanup` owns the removal) so the session is not left in a deleted
+folder, then `cleanup
+<issue|none>`, last, as it removes the Run file; a nonzero exit, or a `false`
+in `merge`'s or `cleanup`'s JSON, re-runs the mechanic that owns the step; a
+step no mechanic re-does is a Ship defect for the summary. Unattended: the
+final head's gate, then `comment-pr <pr> --body-file` with the summary,
+`run-file close 9`. Either lane then returns.
 **Done when:** attended, `merge` and every `update-issue-body` exited 0 with no
 `false`, every Ship defect draft is filed, answered with candidates, carries its
-`command` or was declined, then `close 9`, then `cleanup <issue|none>` exited 0
-with no `false`; unattended, `comment-pr` posted.
+`command` or was declined, then `close 9`, then `ExitWorktree`, then `cleanup
+<issue|none>` exited 0 with no `false`; unattended, `comment-pr` posted.
 
 ## The stops
 
-The **merge gate** stops for the human by default. An attended run with
-`Merge: on-clean-gate` merges on the clean-gate verdict unless an unmet
-criterion is listed, which waits for the human's waiver; every other attended
-run waits for the exact word "merge". The unattended lane posts and returns.
+The **merge gate** stops as phase 9 says; the unattended lane posts and returns.
 **The stop table below is authoritative.** Everything else, triaging your own
 findings, fixing, re-running, is autonomous. Two guardrails hold around that:
 
@@ -275,8 +272,7 @@ findings, fixing, re-running, is autonomous. Two guardrails hold around that:
   <what>`, and a failure saying the approach is wrong stops sooner. Either way
   **stop and report** with the concrete evidence and, if cheap, a
   verified-working alternative, so the report is a fast yes.
-- **Every stop has a name**, reported verbatim, with the claim action below. A
-  sibling maps the name, a human reads it.
+- **Every stop has a name**, reported verbatim, with the claim action below.
 
 | Stop | Reason | Claim |
 |---|---|---|
@@ -292,6 +288,7 @@ findings, fixing, re-running, is autonomous. Two guardrails hold around that:
 | Red after retries | `red-after-retry: <what>` | attended: ask; unattended: hand back |
 | The branch fell behind its base before the merge | `stale-base: behind <n> on <base>` | attended: holds while you merge the base in; unattended: hand back |
 | The PR is closed at the merge gate | `pr-closed: <state>` | attended: ask; unattended: hand back |
+| `--inline` with `--unattended` or free text | `inline refused` | no claim |
 | `prepare` failed its Cloud lane `Bootstrap:` | `bootstrap-failed` | no claim |
 | Open PRs at or above the profile's `PR cap:` | `pr-queue-full` | no claim |
 | No issue passes selection | `nothing-ready` | no claim |
@@ -320,9 +317,8 @@ is not small.
    fired, and the diff inside the size cap small-lane.md counts.
 
 Behavior change is allowed: a bugfix is one. A diff touching a guard,
-allowlist or deny rule is full lane. Small: read
-[reference/small-lane.md](reference/small-lane.md) before continuing. Its floor
-is the same in every repo, and the lane revokes one way only.
+allowlist or deny rule is full lane, inline under `--review` aside. Small or
+inline: read [reference/small-lane.md](reference/small-lane.md) first.
 
 ## Model tiers
 

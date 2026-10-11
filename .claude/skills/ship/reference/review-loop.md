@@ -13,9 +13,9 @@ The review gate is phase 4's self-review plus green CI; the reviewers under the
 profile's `## Reviewers` are a second pair of eyes on top of it. So phase 7 is
 best-effort: ask each reviewer for a round, wait a bounded time, triage whatever
 landed, and report what happened. A reviewer that answers nothing costs one
-bounded wait, not an investigation. Preflight has already refused the malformed
-blocks. Zero reviewers: skip the phase. A reviewer re-reads the **whole PR**
-each round: treat each round as a fresh read of the committed tree.
+bounded wait, not an investigation. Zero reviewers: skip the phase. A reviewer
+re-reads the **whole PR** each round: treat each round as a fresh read of the
+committed tree.
 
 ## The round
 
@@ -59,18 +59,20 @@ uncapped loop; `auto-once` delivers one round whatever it reads, and under
 `on-push` the number ends ship's engagement while the reviewer may carry on. A
 round at the cap is dispositioned in full and ends the loop; say whether it was
 still landing real findings, which tells the human whether the budget was
-right. Small lane: at most one requested round. A lint or flake fix after the
-loop ends earns no new request; an on-push reviewer re-reads it on its own, so
-disposition that round, which opens no further one.
+right. Small lane: at most one requested round; inline lane: none, or that one
+with `--review` ([small-lane.md](small-lane.md#the-inline-lane)). A lint or
+flake fix after the loop ends earns no new request; an on-push reviewer re-reads
+it on its own, so disposition that round, which opens no further one.
 
-**The cap round and a docs-only round each get one local review before the merge
-gate** when their fixes changed the tree: one `code-review` subagent, Standards
-axis only, over the fix-only diff. Its findings take the dispositions above;
+**The cap round, a docs-only round and a not-landed primary's last round each
+get one local review before the merge gate** when their fixes changed the
+tree: one `code-review` subagent, Standards axis only, over the fix-only
+diff. Its findings take the dispositions above;
 `Cap:` is unchanged and no host round is requested. Skip this review for a
-primary capped with findings whose fallback then exited `reviewed`: the
-fallback's host rounds read those fixes. The review goes to the last reviewer
-that stopped at `cap`, primary or fallback, and to a capped primary whose
-fallback exited `not reviewed`.
+primary capped with findings or stopped `not landed` whose fallback then exited
+`reviewed`: the fallback's host rounds read those fixes. The review goes to the
+last reviewer that stopped at `cap`, primary or fallback, and to a capped or
+not-landed primary whose fallback exited `not reviewed`.
 
 ## Reading a round
 
@@ -107,8 +109,7 @@ admitted.
 - **Write a comment-transport phrase without its `@` everywhere but the
   request.** A reply, a thread answer, a PR body or a reflect comment names
   `codex review`, not the phrase itself: the host delivers every mention, and a
-  stray one starts a round or a Codex task no poll is waiting for (on an issue,
-  Codex answered one with a request to create an environment).
+  stray one starts a round or a Codex task no poll is waiting for.
 - **A poll waits for the expected head**, the worktree's `HEAD` on the PR's
   branch or `--sha`. `not_reviewed: unreachable` with a `head_sha` that is not
   that head means the host never showed the push: confirm it landed, then poll
@@ -119,7 +120,7 @@ admitted.
 - **Triage, don't apply**, at the judgment tier, with [phase 4's definition and
   its two rejection rails](implement.md#phase-4-triage-and-depth-checks). Check
   the reviewer's `Instructions:` file when a finding contradicts it, and cite it
-  when declining. A valid finding outside the issue is an adjacent find.
+  when declining.
 - **Batch fixes into one push per round.** A fix to a rule goes to every copy of
   that rule in the same batch: grep the phrase before you push and read each
   hunk back.
@@ -142,16 +143,18 @@ Each reviewer exits with one of:
   that did not land is a trailing clause, not a different exit.
 - `not reviewed: <reason>`: no round landed, or one did and its threads could
   not be read (`unreachable`): triage that one off its body and answer it with
-  `comment-pr`. The reason is `not_reviewed` off the last poll, or
-  `never-queued` off `request-review`'s exit 1, and never one you infer: a human
+  `comment-pr`. The reason is `not_reviewed` off the last poll,
+  `never-queued` off `request-review`'s exit 1, or `inline lane` where that
+  lane requested no round, and never one you infer: a human
   saying a reviewer "can't review" is a claim to check against the poll. The
   header of `scripts/poll-pr.sh` lists what each cause means. `still-running`
   is a run live at the ceiling: exit with it as read, with no further window,
   and the run's URL on `reviewer_run` goes to the merge gate. `stale-head` is
   Codex's completed round on an older commit with nothing delivered: exit with
   it as read, the status comment's URL to the merge gate.
-- `not invoked: <primary> reviewed`: a fallback whose primary reviewed and was
-  not capped with findings ([Fallbacks](#fallbacks)).
+- `not invoked: <primary> reviewed`: a fallback whose primary reviewed, was
+  not capped with findings and did not stop `not landed`
+  ([Fallbacks](#fallbacks)).
 
 `not reviewed` proceeds to the merge gate on green CI and is reported there. A
 `Gating: yes` reviewer holding the merge on a finding you declined still exits
@@ -176,7 +179,7 @@ run URL listed, and nothing added for a total of 0 or no numeric count.
 
 Each reviewer's rounds and stop go in the Run file as lines, which `run-file
 close 7` requires of every reviewer on the phase-7 row, one `Round:` per round
-(`not reviewed` needs none) and one `Stop:`:
+(`not reviewed` and `inline lane` need none) and one `Stop:`:
 
 ```
 Round: <reviewer> <n>: <text>
@@ -189,13 +192,16 @@ the small lane or for an `auto-once` trigger. Otherwise `<reason>` is one of
 `cap` (`Cap:` spent, or a docs-only fix-only diff ended the loop: either way the
 last fixes went unread by a host round), `tree unchanged` (a round's
 dispositions changed no file, so a further round would read the same tree),
-`small lane` (the lane's one requested round), `auto-once` (the reviewer fires
-once, on PR open) or `not reviewed` (no round was dispositioned: none landed, a
-fallback was not invoked because its primary reviewed, or a round landed whose
-threads could not be read, which keeps its `Round:` line too). A declined
-finding from a `Gating: yes` reviewer also leaves `Override: <reviewer>:
-<finding>, <evidence>` in the Run file, so the clean-gate decision reads the
-same override the human sees in the summary.
+`small lane` (the lane's one requested round), `inline lane` (the lane requested
+no round), `auto-once` (the reviewer fires once, on PR open), `not landed` (a
+dispositioned round's fixes changed the tree, then the next requested round did
+not land, so no host round read them; its cause goes in the trailing clause) or
+`not reviewed` (no round was dispositioned: none landed, a fallback was not
+invoked because its primary reviewed, or a round landed whose threads could not
+be read, which keeps its `Round:` line too). A declined finding from a `Gating:
+yes` reviewer also leaves `Override: <reviewer>: <finding>, <evidence>` in the
+Run file, so the clean-gate decision reads the same override the human sees in
+the summary.
 
 At exit, from the Run file and never from the body the write replaces, one
 `update-pr-body <pr> --section <name> --body-file <path>` per section, each
@@ -209,23 +215,28 @@ type fixed with `update-pr-title`, and `read-pr` reads everything back at once.
 ## Fallbacks
 
 A reviewer whose `Fallback-for:` names another stands in for it, on the runs
-where that primary exits `not reviewed` or is **capped with findings** (ADR
-0002); preflight holds it to on-request, since a reviewer that fires on every
-push cannot be withheld. Drive every non-fallback reviewer to its exit first,
-because a fallback's only input is how its primary exited.
+where that primary exits `not reviewed`, is **capped with findings** or stops
+`not landed`; preflight holds it to on-request, since a reviewer that
+fires on every push cannot be withheld. Drive every non-fallback reviewer to its
+exit first, because a fallback's only input is how its primary exited.
 
-- Primary `not reviewed: <any reason>`, or capped with findings: drive the
-  fallback as an ordinary on-request reviewer under its own `Cap:`. Capped with
-  findings is `Stop: <primary>: cap` after it spent `Cap:` (rounds == Cap) on a
-  last round whose fixes changed the tree, so no host round read them. Its exit
-  is its own, and its `## Review` line and merge-summary block both name the
-  primary's reason (`fallback for codex: capped with findings`, say), the only
-  record of why a second reviewer was paid for.
+- Primary `not reviewed` for any reason other than `inline lane`, capped with
+  findings, or `Stop: <primary>: not landed`: drive the fallback as an ordinary
+  on-request reviewer under its own `Cap:`. Capped with findings is `Stop:
+  <primary>: cap` after it spent `Cap:` (rounds == Cap) on a last round whose
+  fixes changed the tree, so no host round read them. Its exit is its own, and
+  its `## Review` line and merge-summary block both name the primary's reason
+  (`fallback for codex: capped with findings` or `fallback for codex: not
+  landed: blocked`, say), the only record of why a second reviewer was paid
+  for.
 - Primary `reviewed` otherwise (it stopped on `tree unchanged`, a last round
   whose findings were all declined included, or on `small lane` or `auto-once`,
   or a docs-only fix-only diff ended its loop before `Cap:` was spent): do not
   request it; it exits `not invoked: <primary> reviewed`, so a reader sees the
   reviewer exists.
+- Primary `not reviewed: inline lane`: request nothing; the fallback records
+  `Stop: <fallback>: inline lane` too
+  ([small-lane.md](small-lane.md#the-inline-lane)).
 - Nothing is a fallback for a fallback: a chain is one deep.
 
 ## Worked examples
@@ -245,12 +256,3 @@ Brand-level detail lives in the host adapters; these show the mapping only.
 - **Claude Code on GitHub Actions as an `on-request` fallback**: a comment of
   its phrase starts a workflow run posting under `claude[bot]`; a run that
   failed reads `not reviewed: infra-error` with its URL on `reviewer_run`.
-- **Native Codex review as an independent `on-request` reviewer**: a comment of
-  its phrase, no workflow; `Workflow: native codex` has `poll-pr` read Codex's
-  acknowledgement, status comment and clean comment off the PR, so a clean
-  round lands as `reviewed`, a reply that is no round reads `not reviewed:
-  blocked` with its text, and a completed status on another commit reads `not
-  reviewed: stale-head`.
-- **Claude Code on Azure Pipelines as `on-push`, `Gating: yes`**: a build
-  validation policy that fails the build on a critical finding; a declined
-  critical is `reviewed`, cited at the merge gate as the override needed.

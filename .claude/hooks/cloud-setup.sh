@@ -27,7 +27,7 @@ set -uo pipefail
 # must itself be a fast no-op when there is nothing to do (`uv sync --frozen`).
 # After the command runs the done test must pass.
 STEPS='shellcheck|command -v shellcheck|sudo apt-get -o DPkg::Lock::Timeout=120 update && sudo apt-get -o DPkg::Lock::Timeout=120 install -y shellcheck
-deps||if ! .venv/bin/python -c "import pip, sys; sys.exit(sys.version_info < (3, 13))" 2>/dev/null; then for p in ${CLOUD_SHIP_PYTHON:+"$CLOUD_SHIP_PYTHON"} python3.13 python3 python; do "$p" -c "import sys; sys.exit(sys.version_info < (3, 13))" 2>/dev/null && break; p=; done; [ -n "$p" ] && "$p" -m venv --clear .venv; fi && .venv/bin/pip install -q -e ".[dev,docs]" uv==0.12.22
+deps||if ! .venv/bin/python -c "import pip, sys; sys.exit(sys.version_info < (3, 13))" 2>/dev/null; then for p in ${CLOUD_SHIP_PYTHON:+"$CLOUD_SHIP_PYTHON"} python3.13 python3 python; do "$p" -c "import sys; sys.exit(sys.version_info < (3, 13))" 2>/dev/null && break; p=; done; [ -n "$p" ] && "$p" -m venv --clear .venv; fi && .venv/bin/pip install -q -e ".[dev,docs]" uv==0.12.23
 pre-commit||.venv/bin/pre-commit install --install-hooks'
 # <<< setup-harness configuration
 : "${STEPS=}"

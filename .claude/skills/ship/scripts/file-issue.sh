@@ -7,9 +7,9 @@
 #              [--outside-scope "<reason>"]
 #
 # --repo files at that GitHub repo instead of the origin's: a Ship defect, at
-# the source repo, on the human's word (ADR 0004). Its host is probed first,
-# and every exit 1 under it, the probe's or a refused write's, carries the
-# command to run by hand as `command`.
+# the source repo, on the human's word. Its host is probed first, and every
+# exit 1 under it, the probe's or a refused write's, carries the command to run
+# by hand as `command`.
 #
 # In-diff check. Without --repo, on a branch other than the base, a title or body
 # citing a path the branch already changes (the diff from the merge base to the

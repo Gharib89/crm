@@ -7,6 +7,15 @@ released version. See
 
 <!-- version list -->
 
+## v0.2.1 (2026-10-11)
+
+### Bug Fixes
+
+- Collapse derived copies in PR diffs; trim cloud-ship, drive-session, grill-with-artifact and
+  update-skills ([#569](https://github.com/Gharib89/skills/pull/569),
+  [`fc7f7c9`](https://github.com/Gharib89/skills/commit/fc7f7c90803fe8199ac1c0fff94258562d384ccb))
+
+
 **The renumber to 0.x.** Every entry below predates it and keeps the number it was released under. `cloud-ship` was never publicly released, so on 2026-09-28 its version moved from 2.0.0 to 0.2.0: the old major is now the minor. The release run writes new entries above this note, counting on from 0.2.0. See [ADR 0005](https://github.com/Gharib89/skills/blob/main/docs/adr/0005-skills-stay-0x-until-public-release.md).
 
 ## v2.0.0 (2026-09-25)

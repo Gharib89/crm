@@ -1,8 +1,7 @@
 # Phase 3: verify where it failed
 
-Each entry under `## Verification` has seven lines, and an optional `Timebox:`
-line. You judged `Applies when:` at classification; here you run the applicable
-ones.
+You judged each `## Verification` entry's `Applies when:` at classification;
+here you run the applicable entries.
 
 - **Run** its `Run:` line scoped to what you touched, the phase-2 regression
   test in that run and the rest of the suite left to the local gate. Pass is
@@ -39,4 +38,3 @@ ones.
   detection (`Without it:` owns that), a path the run **skipped** (an unrun
   verification), and a verification where **at least one applicable path ran**:
   the paths that ran give the result and `<what ran>` names the unexercised one.
-- `docs` class and the small lane skip this phase entirely.

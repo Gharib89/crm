@@ -13,15 +13,12 @@ that, so it is the one artifact of the run a human reads without the
 transcript. It is written **for the reviewer**, not as the run's record: the
 merge summary is the record, so nothing the body leaves out is lost. Phase 6
 opens it; phase 7 rewrites three of its sections at exit, a fourth, the Change
-outline, where it fell short; phase 9 reads it at the gate. The three top
-headings are taken from the `visual-pr` skill's PR template (humanlayer/skills):
-its template text is the source, its workflow is not, and ship does not compose
-it.
+outline, where it fell short; phase 9 reads it at the gate.
 
 ## What the body carries
 
 The repo's template per the profile's `## PR`, filled through its own headings;
-**with no template, the run writes the same seven headings itself**, because
+**with no template, the run writes the headings below itself**, because
 `open-pr` synthesizes none and a body that skips one is a body phase 7 cannot
 write into. Every variant carries:
 
@@ -34,7 +31,7 @@ write into. Every variant carries:
 - **`## Special things to note`**: the Door line first, then the reviewer's
   warnings and the folded deviations, so it is never `None.`.
 - **`## Needs attention`**: every issue the run filed or linked and every Ship
-  defect it met, `None.` when there are neither.
+  defect it met.
 - **`## Verification`**: one line per applicable verification in the merge
   summary's `Verification` row format, or `None applicable: <reason>`, with
   three such reasons and no fourth: `class docs`, `small lane`, and a full-lane
@@ -47,9 +44,7 @@ write into. Every variant carries:
 - **The attribution footer**, where the environment provides one for pull
   request descriptions, in the body file `open-pr` is handed. The body **ends**
   with it, under a `## ` heading of its own that ship adds where no template
-  carries one (`## Attribution`), after every section a later phase rewrites;
-  [update-pr-body](../scripts/update-pr-body.sh) carries why that placement
-  survives.
+  carries one (`## Attribution`), after every section a later phase rewrites.
 
 ## The Change outline
 
@@ -122,10 +117,6 @@ with no heading is preamble entire. A column-0 `<details>` block is a
 `<details>` record, whose rule [mechanics.md](mechanics.md#section-surgery)
 states.
 
-**Every title or body write to an open PR ends with `read-pr <pr>`**, whose
-`## ` headings are checked against the ones the body owes: a section a rewrite
-swallowed is missing there, and that is the only place a swallowed `##
-Attribution` shows while the PR is open. `update-pr-body`'s `sections` list is
-the same check one write earlier. Read the headings fence- and record-aware: a
-Change outline fence over a markdown change carries `## ` lines of its own, and
-so does a `<details>` record, and neither's are sections.
+A section a rewrite swallowed is missing from `read-pr`'s `headings`, the only
+place a swallowed `## Attribution` shows while the PR is open;
+`update-pr-body`'s `sections` list is the same check one write earlier.

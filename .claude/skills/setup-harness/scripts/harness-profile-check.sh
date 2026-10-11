@@ -17,8 +17,8 @@ case ${1:-} in
   '') echo "$usage" >&2; exit 2 ;;
 esac
 [ -r "$1" ] || { echo "cannot read $1" >&2; exit 2; }
-# The schema this checker reads, moved with the skill's metadata.harness-schema
-# by the bump rule in harness-schema.md.
+# The schema this checker reads, moved with the skill's metadata.harness-schema,
+# the profile template's Schema: line and a new harness-schema.md entry.
 schema=3
 
 awk -v reads="$schema" '

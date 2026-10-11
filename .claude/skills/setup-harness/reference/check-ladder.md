@@ -17,16 +17,16 @@
 | commit | the runner's own git hook | `git commit` | 30 s, measured only |
 | `full` | runner on every file first, since a hook in fix mode rewrites files; then every member's typecheck and whole suite and the repo's check target, all at once, so it costs the runner plus its longest row | a human, CI, Ship's local gate | 10 min, measured only |
 
-The linter set is defined once, in the runner config; `check.sh` calls a linter directly only when the runner cannot take a file list (lint-staged). Typecheck and tests live in `check.sh`. There is no `commit` subcommand: the commit rung is the runner's git hook.
+`check.sh` calls a linter directly only when the runner cannot take a file list (lint-staged). Typecheck and tests live in `check.sh`. There is no `commit` subcommand: the commit rung is the runner's git hook.
 
-The contract every caller parses: stdout is one JSON line `{"rung","verdict","checks":{<name>:<status>}}`, status `pass | fail | unavailable | skipped | over-budget`; stderr carries each failing check's last 40 lines; exit 0 pass, 1 fail, 2 unavailable or tooling, 3 over budget. `full` reports its checks in the declared order, whatever order they finish in, each failing check's tail whole under its own name, and a row whose run ended without a result `unavailable`. `CHECK_DEADLINE=<epoch s>` makes `check.sh` stop at that time, mark every check running at that time `over-budget` (none, when no check was running then) and every check not yet started `skipped`, and exit 3; without it exit 3 never occurs. A failure outranks an over-budget check, so a real failure still blocks.
+The contract every caller parses: stdout is one JSON line `{"rung","verdict","checks":{<name>:<status>}}`, status `pass | fail | unavailable | skipped | over-budget`; stderr carries each failing check's last 40 lines; exit 0 pass, 1 fail, 2 unavailable or tooling, 3 over budget. `full`'s report order and `CHECK_DEADLINE` are as [templates/check.sh](../templates/check.sh) states.
 
 ## Writing check.sh
 
 Copy [templates/check.sh](../templates/check.sh) to `scripts/check.sh`, executable, and fill only the block between `# >>> setup-harness configuration` and `# <<< setup-harness configuration`:
 
 - `EDIT_GLOBS`: shell globs on the file name for every extension the runner config covers (`'*.py *.pyi *.ts *.tsx *.sh'`), plus the basename of each extensionless file detection claimed by shebang (`deploy`). A file matching none is `skipped` fast, so the `PostToolUse` entry needs no per-extension `if`.
-- `EDIT_RUN`: the runner on a file list, `prek run --files {files}` (or `pre-commit run --files {files}`, `lefthook run pre-commit --file {files}`). `check.sh` runs it twice when the first run fails: the first run's fixes fail it, and only what the fixes leave fails the second.
+- `EDIT_RUN`: the runner on a file list, `prek run --files {files}` (or `pre-commit run --files {files}`, `lefthook run pre-commit --file {files}`).
 - `FULL_RUN`: the runner on every file, `prek run --all-files`.
 - `TURN_ROWS`: one row per member, `<path prefix>|<member>|<globs>|<typecheck>|<tests>|<affected tests>`. The prefix ends in `/` (`api/`, `packages/web/`), or is empty for a member at the repo root. Globs are the stack's extensions plus its manifest names, so a manifest change re-checks the member. Commands run in the member's directory, prefixed with the stack's exec command (`uv run --frozen mypy .`, `pnpm exec tsc --noEmit`). `<affected tests>` takes `{files}` relative to the member (`pnpm exec vitest related --run {files}`); leave it empty to run `<tests>`, the member's whole suite. An empty typecheck or tests field is no check.
 - `FULL_ROWS`: extra checks on `full` only, `<name>|<command>` from the root: the repo's own check target (`check-target|make check`), and each surface's behaviour tools per [surfaces.md](surfaces.md) (`e2e-web|cd web && pnpm exec playwright test`).
@@ -43,7 +43,7 @@ Merge beside what the repo has: keep every existing hook entry, add these two, a
 
 ## Budgets
 
-The defaults are the table's; a budget moves only by the human's `override <N>s: <reason>` in the profile. The edit budget covers one invocation: sync `PostToolUse` hooks run one after another, so a batch of N edits costs N times the edit time.
+The edit budget covers one invocation: sync `PostToolUse` hooks run one after another, so a batch of N edits costs N times the edit time.
 
 ## Timing the rungs
 
