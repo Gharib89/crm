@@ -9,7 +9,7 @@
 - [Timing on a re-run](#timing-on-a-re-run)
 - [The report](#the-report)
 
-A run that finds `docs/agents/harness.md` is a re-run. Explore runs in full, as on a first run, and what it finds is compared with what the harness already has: each difference is a **gap**, the report lists them, and the run writes only the gaps the human approves. Every re-run ends in the confirm step, or in `harness: no gaps`. On a first run, the comparison in `## Files the skill wrote` and all of `## Pins` apply too, their Offers asked as step 4 questions; the contract check is a re-run's.
+A run that finds `docs/agents/harness.md` is a re-run. Explore runs in full, as on a first run, and what it finds is compared with what the harness already has: each difference is a **gap**, the report lists them, and the run writes only the gaps the human approves. Every re-run ends in the confirm step, or in `harness: no gaps`. On a first run, the Offers of `## Files the skill wrote` and `## Pins` are asked as step 4 questions; the contract check is a re-run's.
 
 ## Dispositions
 
@@ -23,10 +23,10 @@ Each gap kind takes exactly one disposition:
 | Gap | Disposition |
 |---|---|
 | The profile's `Schema:` trails the skill's `metadata.harness-schema` | Write: the migration, row 1, undroppable |
-| A piece the skill writes is missing: `scripts/check.sh`, `.claude/hooks/check-hook.sh`, a hook entry, the cloud setup or its `SessionStart` entry (cloud-first only; a Ship bootstrap entry whose last command is the cloud setup is that entry, [cloud.md](cloud.md) `## Writing the cloud setup`), a vendored language server, the `CLAUDE.md` block | Write |
+| A piece the skill writes is missing: `scripts/check.sh`, `.claude/hooks/check-hook.sh`, a hook entry, the cloud setup or its `SessionStart` entry (cloud-first only; a Ship bootstrap entry whose last command is the cloud setup is that entry, [cloud.md](cloud.md) `## Writing the cloud setup`), a vendored language server, the `CLAUDE.md` block, or its `LSP` paragraph where a language server is wired | Write |
 | A file the skill wrote lacks what its current template says | Write |
-| A step the skill wrote whose evidence is gone (a `TURN_ROWS` row for a removed member, for a root now `Declined:` as a root or for one under an `Excluded:` prefix, a runner hook for a file kind no longer tracked, a cloud setup step for a removed stack, a browser step or `FULL_ROWS` row for a surface no longer detected, the `tags` step once no griffe row is left, the `dockerd` row once no `mcr` browser step or container tool needs it, a `LOCAL_ONLY` name whose row is gone) | Write: the removal |
-| A `Root:` line whose manifest is no longer a candidate root ([detection.md](detection.md)): the manifest gone, a lockfile beside it, a root's `Workspace:` config naming it, or an `Excluded:` prefix holding it | Write: the removal |
+| A step the skill wrote whose evidence is gone (a `TURN_ROWS` row for a removed member, for a root now `Declined:` as a root or for one under an `Excluded:` prefix, a runner hook for a file kind no longer tracked, a cloud setup step for a removed stack, a browser step or `FULL_ROWS` row for a surface no longer detected, the `tags` step once no griffe row is left, the `dockerd` row once no `mcr` browser step or container tool needs it, a `LOCAL_ONLY` name whose row is gone, the `CLAUDE.md` block's `LSP` paragraph once no language server is wired) | Write: the removal |
+| A `Root:` line whose manifest is no longer a candidate root ([detection.md](detection.md)): the manifest gone, a lockfile beside it (one an exact dev add wrote on an `unlocked` root included, an expected removal per [detection.md](detection.md)), a root's `Workspace:` config naming it, or an `Excluded:` prefix holding it | Write: the removal |
 | An `Excluded:` line whose prefix holds no tracked file | Write: the removal, its alternative in the runner config's `exclude:` and its prefix in `check.sh`'s `EXCLUDED` |
 | A hook `timeout` off deadline plus max(10 s, deadline / 4) | Write |
 | prek's git shim, `$(git rev-parse --git-path hooks)/pre-commit`, lacking `--skip-on-missing-config`, the mark `prek install --allow-missing-config` writes ([runner.md](runner.md)) | Offer: reinstall it with that flag, a change to this machine that commits nothing |
@@ -52,7 +52,7 @@ Not gaps: a line the repo added to a file the skill wrote (kept); a red or unava
 
 ## Files the skill wrote
 
-`scripts/check.sh`, `.claude/hooks/check-hook.sh`, `.claude/hooks/cloud-setup.sh`, the hook entries in `.claude/settings.json`, a vendored plugin (against what [language-servers.md](language-servers.md) `## Vendoring` writes at its pinned SHA, which `## Pins` alone moves), the launcher copied into one (`.claude/skills/harness-jdtls-lsp/jdtls-launch.sh` against `templates/jdtls-launch.sh`) and the `CLAUDE.md` block are each compared whole with the current template **by what they say**: there is no version stamp and no old template to diff against. What the template says outside a configuration block and the copy lacks is a Write that restores it in place; the configuration block is compared with the block Explore would fill now. A line the repo added is kept, in the Write's proposed text too. A line the repo reworded to the same effect is no gap.
+`scripts/check.sh`, `.claude/hooks/check-hook.sh`, `.claude/hooks/cloud-setup.sh`, the hook entries in `.claude/settings.json`, a vendored plugin (against what [language-servers.md](language-servers.md) `## Vendoring` writes at its pinned SHA, which `## Pins` alone moves), the launcher copied into one (`.claude/skills/harness-jdtls-lsp/jdtls-launch.sh` against `templates/jdtls-launch.sh`, `.claude/skills/harness-pyright-lsp/pyright-launch.sh` against `templates/pyright-launch.sh`) and the `CLAUDE.md` block are each compared whole with the current template **by what they say**: there is no version stamp and no old template to diff against. What the template says outside a configuration block and the copy lacks is a Write that restores it in place; the configuration block is compared with the block Explore would fill now. A line the repo added is kept, in the Write's proposed text too. A line the repo reworded to the same effect is no gap.
 
 `scripts/check.sh` is also run against its contract, the cold timing run of `edit`, `turn` and `full` going through this skill's `scripts/check-contract.sh scripts/check.sh <rung> [<file>...]` (commit is the runner's own hook, with no `check.sh` subcommand): it prints the entry point's own JSON line when the contract holds, one line per violation (exit 1) when it does not, and exits 2 when the entry point answered no line with exit 2, which is the repo's tooling failing, not the contract. A violation that a Write from the comparison explains (the JSON `printf` deleted) is that Write. Any other (a repo-added check echoing to stdout, an exit code off its verdict) is the Offer: the current template with a configuration block that runs every check the old file ran, the repo's own additions moved into `TURN_ROWS` or `FULL_ROWS`. Either way the rung's budget verdict is `not judged: contract` until the rewrite lands.
 
@@ -81,7 +81,7 @@ After the writes, in place of step 6's first timing, every rung the batch touche
 
 Step 4's message on a re-run, in this order:
 
-1. **Header**: skill version, `Schema: N` (and "migrates to M" when it trails), the Claude Code floor against the installed version, the step-1 warnings, the surfaces with their evidence paths.
+1. **Header**: as SKILL.md step 4 item 1.
 2. **Offers**, numbered, each with its recommendation.
 3. **Proposed writes**: one table, `| # | Gap | Path | Now | Proposed |`, with the install-check columns filled on unit rows and each unit's glue in full after it; the migration is row 1, marked undroppable.
 4. **Budgets**: rung, cold, warm, budget, verdict.

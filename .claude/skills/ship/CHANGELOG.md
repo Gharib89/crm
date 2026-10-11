@@ -7,6 +7,69 @@ released version. See
 
 <!-- version list -->
 
+## v0.24.0 (2026-10-11)
+
+### Features
+
+- **ship**: Attended runs enter isolate's worktree under .claude/worktrees
+  ([#585](https://github.com/Gharib89/skills/pull/585),
+  [`853a11e`](https://github.com/Gharib89/skills/commit/853a11e5fea8d592c13b506f36f86eb942e5d163))
+
+
+## v0.23.0 (2026-10-11)
+
+### Features
+
+- **ship**: Run-file init refuses a Verification heading with a result word as a later field
+  ([#577](https://github.com/Gharib89/skills/pull/577),
+  [`e115a06`](https://github.com/Gharib89/skills/commit/e115a06f2d1077244b24aa04630675ca384e45aa))
+
+
+## v0.22.3 (2026-10-11)
+
+### Bug Fixes
+
+- **ship**: Skip 3 settles pending verifications as n/a
+  ([#573](https://github.com/Gharib89/skills/pull/573),
+  [`7f77605`](https://github.com/Gharib89/skills/commit/7f77605d59e08a80b43f50be5942d4108a3b9580))
+
+
+## v0.22.2 (2026-10-11)
+
+### Bug Fixes
+
+- **ship**: Name the not-landed round in phase 7, drop repo-local ADR numbers, cut dead lines
+  ([#572](https://github.com/Gharib89/skills/pull/572),
+  [`0f925b9`](https://github.com/Gharib89/skills/commit/0f925b9869253d937905ff9aa0b1b4f6003f313a))
+
+
+## v0.22.1 (2026-10-10)
+
+### Bug Fixes
+
+- **ship**: A not landed stop owes the fallback when a later round never lands
+  ([#552](https://github.com/Gharib89/skills/pull/552),
+  [`aa67eff`](https://github.com/Gharib89/skills/commit/aa67eff381ada245a5effc8a370aaf330e8f5831))
+
+
+## v0.22.0 (2026-10-10)
+
+### Features
+
+- **ship**: An --inline tier of the small lane that merges on a clean gate
+  ([#550](https://github.com/Gharib89/skills/pull/550),
+  [`95656ce`](https://github.com/Gharib89/skills/commit/95656ceb1d42ebdf4b3611f96ff775e770668ae0))
+
+
+## v0.21.2 (2026-10-10)
+
+### Bug Fixes
+
+- **ship**: Create all ten phase tasks at init so the human sees what is left
+  ([#549](https://github.com/Gharib89/skills/pull/549),
+  [`736ca51`](https://github.com/Gharib89/skills/commit/736ca51dc971db70f1c93d25741212c5ddbe3586))
+
+
 ## v0.21.1 (2026-10-10)
 
 ### Bug Fixes

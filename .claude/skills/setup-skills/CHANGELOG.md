@@ -7,6 +7,24 @@ released version. See
 
 <!-- version list -->
 
+## v0.16.2 (2026-10-11)
+
+### Bug Fixes
+
+- **setup-skills**: File the Schema 1 migration note under Schema 1, cut dead lines
+  ([#570](https://github.com/Gharib89/skills/pull/570),
+  [`b88a36c`](https://github.com/Gharib89/skills/commit/b88a36c126c98d140579bf4176be85d8258e1f40))
+
+
+## v0.16.1 (2026-10-10)
+
+### Bug Fixes
+
+- **ship**: A not landed stop owes the fallback when a later round never lands
+  ([#552](https://github.com/Gharib89/skills/pull/552),
+  [`aa67eff`](https://github.com/Gharib89/skills/commit/aa67eff381ada245a5effc8a370aaf330e8f5831))
+
+
 ## v0.16.0 (2026-10-10)
 
 ### Features

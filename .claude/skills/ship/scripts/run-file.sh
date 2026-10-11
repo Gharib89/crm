@@ -47,9 +47,10 @@
 # under `## Verification` and `## Reviewers`, the leg names under `## CI`); a
 # flag given beside it wins. Each `###` heading under `## Verification` is one
 # Verification name whatever it holds, spaces and punctuation included, except
-# `=`, which `--result` splits on. A flip returns the `mirror` value for that
-# phase's task, and `next <n>` is the close of the one open phase and the open
-# of <n> in one call, refused whole when either half would be. `open 4` is the
+# `=`, which `--result` splits on, and a result word as a later `: ` field
+# (`Build: pass`). A flip returns the `mirror` value for that phase's task, and
+# `next <n>` is the close of the one open phase and the open of <n> in one
+# call, refused whole when either half would be. `open 4` is the
 # one open admitted while phase 3 is open, the overlap the run has; any other
 # open over an open phase is refused.
 # Below the checklist it writes sections the run fills: `Verification results`
@@ -60,7 +61,8 @@
 # `close 3` will not pass while any is pending), then `Design and plan`,
 # `Deviations log`, and `Direct reads`, one line per informational read the run
 # made straight through the host's REST form, no mechanic covering it, so one
-# that recurs across runs is visible as a mechanic to promote. `gate record`
+# that recurs across runs is visible as a mechanic to promote. `skip 3 <reason>`
+# settles each still-pending result as `n/a: <reason>`. `gate record`
 # appends the local gate's verdict, the head it ran on and the verdict JSON's
 # `gates` object (compact, one line, absent when the JSON has none) to a
 # `Local gate` section; `gate read` answers whether the head the run is at is
@@ -109,10 +111,11 @@
 # `close 7` reads the reviewers from the phase's checklist row (nothing is held
 # where the row names none, or names what is not a list of names) and needs a
 # `Stop: <reviewer>: <reason>` for each, the last such line deciding, the reason
-# one of cap, tree unchanged, small lane, auto-once or not reviewed, and unless
-# it is `not reviewed` at least one `Round: <reviewer> <n>: <text>`, <n> a
-# positive integer. `grade` writes `Grade: <word>` under the `## Grade` section,
-# replacing the line a call before it wrote.
+# one of cap, tree unchanged, small lane, inline lane, auto-once, not landed or
+# not reviewed, and unless it is `not reviewed` or `inline lane` at least one
+# `Round: <reviewer> <n>: <text>`, <n> a positive integer. `grade` writes
+# `Grade: <word>` under the `## Grade` section, replacing the line a call before
+# it wrote.
 #
 # `prove` runs the sibling `revert-red` on <test> and its <path>s. On its exit 0
 # it appends `Reverted-fix: <test>: red at <sha> reverting <path>...` under
@@ -151,8 +154,10 @@
 #   gate clean: {clean, held_by[]}; clean means the current gate passed or deferred to CI every
 #     check, every profile CI leg succeeded on head, verifications passed or were
 #     inapplicable or deferred to a green associated CI leg, and each
-#     reviewer's loop stopped on tree unchanged with a dispositioned Round. A
-#     not-reviewed primary, or one that spent its Cap: (dispositioned Round
+#     reviewer's loop stopped on tree unchanged with a dispositioned Round, or
+#     on inline lane for an on-request reviewer while the last Lane: line
+#     reads inline, the round `--inline` waived, which covers no primary. A
+#     not-reviewed or not-landed primary, or one that spent its Cap: (dispositioned Round
 #     lines numbered 1 through Cap) and stopped at cap, may be covered by a
 #     fallback that stopped so, and a fallback is owed its own stop only after
 #     such a primary. Other cap,
@@ -431,6 +436,20 @@ record_results() {
 $results
 EORECORD
 }
+# A skipped phase 3 has no close to take a result, so the skip settles each
+# verification still pending as n/a with its reason. The entry is matched as the
+# whole `- <name>: pending` line, not by prefix, so a name that begins another
+# (`lint` beside `lint: strict`) settles only its own entry.
+settle_skipped() { # settle_skipped <reason>
+  local pend
+  pend=$(pending_verifs) || ship_tooling "cannot read the verification results in $file"
+  [ -n "$pend" ] || return 0
+  ps=$pend tx="n/a: $1" awk '
+    BEGIN { n = split(ENVIRON["ps"], p, "\n"); for (i = 1; i <= n; i++) want["- " p[i] ": pending"] = p[i] }
+    /^## /{ f = ($0 == "## Verification results") }
+    f && ($0 in want) { print "- " want[$0] ": " ENVIRON["tx"]; next } { print }' \
+    "$file" > "$file.t" && mv "$file.t" "$file" || { rm -f "$file.t"; ship_tooling "cannot write $file"; }
+}
 # Phase 3 closes only once every named verification has a result.
 refuse_pending() {
   local pend
@@ -654,7 +673,7 @@ EODECLINED
 
 # Phase 7: each reviewer the checklist row names has its stop reason and, unless
 # it never reviewed, a round.
-stop_reasons="cap, tree unchanged, small lane, auto-once, not reviewed"
+stop_reasons="cap, tree unchanged, small lane, inline lane, auto-once, not landed, not reviewed"
 gate_phase7() { # gate_phase7 <phase 7 row>
   local list names nm stop r ok re='^[1-9][0-9]*: [[:space:]]*[^[:space:]]'
   case $1 in *", one bounded pass each"*) ;; *) return 0 ;; esac
@@ -670,18 +689,18 @@ EONAMES
     stop=$(rests "Stop: $nm: " | tail -n 1)
     stop=$(trim_end "$stop")
     case $stop in
-      cap | "tree unchanged" | "small lane" | auto-once | "not reviewed") ;;
-      "") gap "no Stop line for $nm: add \`Stop: $nm: <cap|tree unchanged|small lane|auto-once|not reviewed>\`" ;;
+      cap | "tree unchanged" | "small lane" | "inline lane" | auto-once | "not landed" | "not reviewed") ;;
+      "") gap "no Stop line for $nm: add \`Stop: $nm: <cap|tree unchanged|small lane|inline lane|auto-once|not landed|not reviewed>\`" ;;
       *) gap "Stop line for $nm has reason '$stop', which is not one of $stop_reasons" ;;
     esac
-    [ "$stop" = "not reviewed" ] && continue
+    case $stop in "not reviewed" | "inline lane") continue ;; esac
     ok=false
     while IFS= read -r r; do
       [[ $r =~ $re ]] && ok=true
     done <<EORESTS
 $(rests "Round: $nm ")
 EORESTS
-    [ "$ok" = true ] || gap "no Round line for $nm: add \`Round: $nm <n>: <text>\`, one per round, unless it stopped \`not reviewed\`"
+    [ "$ok" = true ] || gap "no Round line for $nm: add \`Round: $nm <n>: <text>\`, one per round, unless it stopped \`not reviewed\` or \`inline lane\`"
   done <<EONAMES
 $names
 EONAMES
@@ -768,7 +787,9 @@ gate_clean() { # gate_clean <ci-file|->, with file and head already parsed
         and ([$reviewers[] | select(.name == $name) | .cap | numbers] as $cap
              | $cap != [] and ([rests("Round: " + $name + " ")[] | select(test("^[1-9][0-9]*: [[:space:]]*[^[:space:]]"))
                  | capture("^(?<n>[1-9][0-9]*):").n | tonumber] | unique) == [range(1; $cap[0] + 1)]);
-      def owes_fallback($name): stop($name) == "not reviewed" or cap_spent($name);
+      def owes_fallback($name): (stop($name) | IN("not reviewed", "not landed")) or cap_spent($name);
+      # A revocation appends its own Lane: line, so a stale inline stop holds.
+      def inline_run: (rests("Lane: ") | last // "") == "inline";
       def greenleg($leg): [$ci.checks[] | select(named($leg))] as $checks
         | ($checks | length) > 0 and all($checks[]; .status == "success") and samehead($ci.head_sha; $head) and $ci.status == "green";
       # Names may contain colons, so a result is cut by its full literal prefix.
@@ -800,7 +821,7 @@ gate_clean() { # gate_clean <ci-file|->, with file and head already parsed
            else "verification " + $v.name + ": " + $status end),
        ($reviewers[] as $r
          | if $r.fallback_for != null and (owes_fallback($r.fallback_for) | not) then empty
-           elif settled($r.name) then empty
+           elif settled($r.name) or (stop($r.name) == "inline lane" and $r.trigger == "on-request" and inline_run) then empty
            elif owes_fallback($r.name) and any($reviewers[]; .fallback_for == $r.name and settled(.name)) then empty
            elif stop($r.name) == "tree unchanged" then "reviewer " + $r.name + ": no dispositioned round"
            else "reviewer " + $r.name + ": " + stop($r.name) end),
@@ -849,12 +870,16 @@ init)
     case " $given " in *" tripwires "*) ;; *) [ -z "$pf" ] || tripwires=$pf ;; esac
     # A heading is a name whatever it holds, so these names skip the name-shape
     # test a hand-passed list gets; `=` is the one character `--result` cannot
-    # take in one.
+    # take in one, and a result word as a later field is the one shape the
+    # pending test reads as settled (`- Build: pass: pending`).
     pn=$(profile_headings Verification "$profile")
     case " $given " in
       *" verifications "*) ;;
       *) if [ -n "$pn" ]; then
            case $pn in *=*) ship_tooling "a Verification heading cannot carry '=': --result splits the name from the word on it" ;; esac
+           bad=$(w="$result_words" awk '$0 ~ (": (" ENVIRON["w"] ")(:|$)") { print; exit }' <<<"$pn") ||
+             ship_tooling "could not read the Verification headings for result words"
+           [ -z "$bad" ] || ship_tooling "a Verification heading cannot carry a result word as a later field: '$bad' would read as a settled result while pending; rename it"
            verifications=$(join_names <<<"$pn") profile_names=$pn
          fi ;;
     esac
@@ -1022,6 +1047,7 @@ skip)
   new=$(render skipped "$(item "$line")" "$reason")
   reject_written_state "$new"
   write_line "$lineno" "$new"
+  [ "$n" = 3 ] && settle_skipped "$reason"
   flip_json skipped "$new" completed "$reason"
   ;;
 grade)

@@ -23,7 +23,7 @@ Hook: local
 Pin: package maven com.pinterest.ktlint:ktlint-cli
 Route: `mkdir -p "$HOME/.local/lib" "$HOME/.local/bin" && for i in 1 2 3 4 5 6; do [ "$i" = 1 ] || sleep 5; curl -fsSL -o "$HOME/.local/lib/ktlint-{version}.jar" https://repo1.maven.org/maven2/com/pinterest/ktlint/ktlint-cli/{version}/ktlint-cli-{version}-all.jar && break; done && printf '#!/bin/sh\nexec java -jar "%s" "$@"\n' "$HOME/.local/lib/ktlint-{version}.jar" > "$HOME/.local/bin/ktlint" && chmod +x "$HOME/.local/bin/ktlint"`; Blocked: release binaries
 Constraints: Kotlin files only; Java has no vendor linter, so a Java-only member takes no lint default. Needs a JVM, which the image carries (OpenJDK 21). The route puts the Maven Central jar behind a `ktlint` launcher in `~/.local/bin`, so the hook entry names the tool's own binary.
-Traps: 2.0 moves to the `io.github.ktlint` group; the pin stays on `com.pinterest.ktlint` through 1.x. Maven Central's Cloudflare front answers about one cloud-sandbox request in four 429, in bursts, and `curl --retry` kept getting 429 where a fresh `curl` got 200 (measured), so the route runs up to six fresh `curl`s 5 s apart; Maven and Gradle back off on their own.
+Traps: 2.0 moves to the `io.github.ktlint` group; the pin stays on `com.pinterest.ktlint` through 1.x. Maven Central's Cloudflare front answers about one cloud-sandbox request in four 429, in bursts, and `curl --retry` kept getting 429 where a fresh `curl` got 200, so the route runs up to six fresh `curl`s 5 s apart; Maven and Gradle back off on their own.
 
 ## format
 
@@ -65,7 +65,7 @@ Hook: local
 Pin: None.
 Route: None.
 Constraints: the image's preinstalled `gradle`, never `./gradlew`: every `services.gradle.org` distribution the wrapper downloads redirects to a GitHub release asset, which the cloud sandbox refuses. Plugins and dependencies come from the Gradle plugin portal and Maven Central, which pass. A project is the smallest unit it takes. With no `gradle` on `PATH` the tool is `Unavailable: gradle classes needs a gradle on PATH`.
-Traps: the preinstalled Gradle's version is the image's, not the wrapper's `distributionUrl`, so a build needing a newer Gradle fails; installing noble's apt `gradle` (4.4.1) does not fix it; report the rung under Not acted on with the wrapper's version. The image's is 8.14.3. The first run starts a daemon and pays every compile (13.6 s cold, 0.9 s warm on a toy, measured).
+Traps: the preinstalled Gradle's version is the image's, not the wrapper's `distributionUrl`, so a build needing a newer Gradle fails; installing noble's apt `gradle` (4.4.1) does not fix it; report the rung under Not acted on with the wrapper's version. The first run starts a daemon and pays every compile.
 
 ### maven compile
 Publisher: Apache Maven

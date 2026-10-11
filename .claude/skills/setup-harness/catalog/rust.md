@@ -22,7 +22,7 @@ Hook: local
 Pin: None.
 Route: `rustup component add rustfmt`; Blocked: None.
 Constraints: a toolchain component, pinned with the channel in `rust-toolchain.toml` `components`; needs rustup.
-Traps: standalone rustfmt defaults to edition 2015 and reads `rustfmt.toml`, not `Cargo.toml`, so the run sets `edition` in the root's `rustfmt.toml` to the crates' `Cargo.toml` edition where none is set (false diffs otherwise, measured). `rustfmt <file>` also formats that file's out-of-line `mod` children. rustup's `rustfmt` proxy exists before the component does, so the cloud setup's done test is `rustfmt --version`, not `command -v`.
+Traps: standalone rustfmt defaults to edition 2015 and reads `rustfmt.toml`, not `Cargo.toml`, so the run sets `edition` in the root's `rustfmt.toml` to the crates' `Cargo.toml` edition where none is set (false diffs otherwise). `rustfmt <file>` also formats that file's out-of-line `mod` children. rustup's `rustfmt` proxy exists before the component does, so the cloud setup's done test is `rustfmt --version`, not `command -v`.
 
 ## typecheck
 
@@ -73,7 +73,7 @@ Run: `cargo nextest run`
 Hook: local
 Pin: package crates cargo-nextest
 Route: `cargo install --locked cargo-nextest@{version}`; Blocked: `get.nexte.st` (redirects to release binaries)
-Constraints: the source build takes about 219 s (measured), most of the default 300 s cloud setup budget, so proposing it also proposes a budget override. `--locked` is mandatory since 0.9.124.
+Constraints: the source build takes about 219 s, most of the default 300 s cloud setup budget, so proposing it also proposes a budget override. `--locked` is mandatory since 0.9.124.
 Traps: doctests do not run under nextest; `cargo test --doc` still covers them.
 
 ## affected tests
@@ -87,7 +87,7 @@ Run: `cargo nextest run --workspace -E 'rdeps({package})'`
 Hook: local
 Pin: package crates cargo-nextest
 Route: `cargo install --locked cargo-nextest@{version}`; Blocked: `get.nexte.st` (redirects to release binaries)
-Constraints: `{package}` is the member's `[package] name`; the filterset selects that crate and every crate depending on it, from the dependency graph. Run inside a member without `--workspace`, cargo builds only that crate (measured), so `Run:` carries `--workspace`, which selects from the whole workspace from any member directory. Cargo has no changed-files mode, so this is a gap proposal per the catalog README's `## Affected tests`.
+Constraints: `{package}` is the member's `[package] name`; the filterset selects that crate and every crate depending on it, from the dependency graph. Run inside a member without `--workspace`, cargo builds only that crate, so `Run:` carries `--workspace`, which selects from the whole workspace from any member directory. Cargo has no changed-files mode, so this is a gap proposal per the catalog README's `## Affected tests`.
 Traps: the same 219 s build as `cargo-nextest`, and no doctests.
 
 ## language server

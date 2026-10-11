@@ -6,9 +6,8 @@
 - [While a subagent is out, end the turn](#while-a-subagent-is-out-end-the-turn)
 - [The Run file](#the-run-file)
 
-A full ship touches many files across many turns. What bloats the window is raw
-tool output landing in the main thread, not the work itself, so spend tokens on
-decisions, not dumps.
+What bloats the window is raw tool output landing in the main thread, not the
+work itself, so spend tokens on decisions, not dumps.
 
 **The delegation rule: delegate noise, not size.** A subagent earns its cost
 only when the raw output you would otherwise ingest is much larger than the
@@ -43,10 +42,9 @@ still a complete run. The levers, in rough order of impact:
 `<role>` its job in the run (`map`, `execute`, `verify`, `standards`, `spec`,
 `writing`). A subagent handed nowhere to write reaches for the scratchpad its
 own environment block names, and can write over another run's files with no
-failure signal. The directory is a **sibling** of the Run file's rather than a
-child, so a path a subagent invents below it still lands clear of the record.
-Edits to the repo go under the worktree prefix. Pass it the way you pass the
-model tier: written into the prompt, every dispatch.
+failure signal. Edits to the repo go under the worktree prefix. Pass the
+directory the way you pass the model tier: written into the prompt, every
+dispatch.
 
 ## Model tiers
 
@@ -65,8 +63,7 @@ nearest available tier rather than running everything on one model.
 
 Dispatch a composed skill's subagents, then **end the turn**. The completion
 notification resumes the run on its own: a poll loop, a sleep, a status ping or
-a read of the output file buys nothing it does not deliver. This is the one
-place where having nothing to do is the correct next action.
+a read of the output file buys nothing it does not deliver.
 
 ## The Run file
 
@@ -88,33 +85,35 @@ the home of the design and plan; it survives a mid-run context summary, so work
 straight through one, each phase at the width its lane gives it rather than the
 width the remaining context suggests. Every later call finds it from the issue
 alone, `--issue <issue>`, plus the same `--scratchpad` if init took one. The
-task list is its **display**, one harness task per open phase: `run-file next
+task list is its **display**, one harness task per item: create all ten from
+init's `items` in one parallel turn, then set phase 0 to its `mirror`, so the
+human sees the phases still ahead and not only the open one. `run-file next
 <n>` closes the open phase and opens `<n>` in one call and returns both `mirror`
-values, so a phase costs two task calls, a `TaskCreate` for the phase it opened
-and a `TaskUpdate` to complete the one it closed. `open`, `close` and `skip`
-flip one phase. Phase 4 may open while phase 3 is still open, both stamped; a
-phase-4 fix that touches a path a Verification already ran on re-runs that
-Verification scoped to the fix before phase 3 closes. `close 3` takes one
-`--result <name>=<word>` per Verification named at init (`n/a` for one whose
-`Applies when:` you judged false) and refuses while one is missing. Close a
-phase only once its `Done when:` holds: the mechanic stamps whatever close it is
-given, except that `close 3`, `close 4` and `close 7` refuse without the
+values, two `TaskUpdate`s. `open`, `close` and `skip` flip one phase, and each
+returns the `mirror` its task takes. Phase 4 may open while phase 3 is still
+open, both stamped; a phase-4 fix that touches a path a Verification already ran
+on re-runs that Verification scoped to the fix before phase 3 closes. `close 3`
+takes one `--result <name>=<word>` per Verification named at init (`n/a` for one
+whose `Applies when:` you judged false) and refuses while one is missing;
+`skip 3 "<reason>"` settles each one still pending as `n/a: <reason>`. Close a
+phase only once its `Done when:` holds: the mechanic stamps whatever close it
+is given, except that `close 3`, `close 4` and `close 7` refuse without the
 results or evidence lines [implement.md](implement.md#phase-4-evidence-lines)
 and [review-loop.md](review-loop.md#the-exit) format. A **small-lane** run keeps
 all ten items and `skip`s each collapsed phase, so the record shows a decision
 and not a gap; re-running `skip <n> "<reason>"` replaces a reason a wider diff
-outgrew. A harness that refuses the task tools has answered: run on the file
-alone.
+outgrew, though phase 3's settled results keep the first skip's reason. A
+harness that refuses the task tools has answered: run on the file alone.
 
 **A phase-4 report is written to a Report file before one of its findings is
 dispositioned**, `<scratch>/<role>/<role>-report.md`, because a
 report held in context alone is lost to a compaction the Run file survives. Each
 dispatch names the file, and takes back only the path and a summary of at most
-five lines. No file at the named path is a report that failed to arrive: the
-bounded retry, then `red-after-retry`. An inline pass writes the same file
-itself before dispositioning. The Run file's `## Design and plan` names the
-paths; disposition from the file, and quote the merge summary's `Self-review`
-rows from it.
+five lines. No file at the named path is a report that failed to arrive: two
+fix-and-retry attempts, as SKILL.md's stops allow, then `red-after-retry`. An
+inline pass writes the same file itself before dispositioning. The Run file's
+`## Design and plan` names the paths; disposition from the file, and quote the
+merge summary's `Self-review` rows from it.
 
 **A clobbered Run file** answers a flip with a refusal naming a missing line or
 a missing file, and each refusal carries its check and the rebuild. A `--state`

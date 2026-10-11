@@ -22,8 +22,8 @@ Closes #
 
 ## Review
 
-<!-- One line per reviewer the ship profile names, in the fixed shape `- <reviewer>: <exit word>, <n> rounds, <raised> findings: <accepted> accepted, <declined> declined, <filed> filed`, with one trailing clause only when the reader must know. A fallback whose primary reviewed, and was not capped with findings, takes the second form, `- <fallback>: not invoked: <primary> reviewed`, and states no counts, having none. Ship fills these. `None.` when the repo names no reviewer. -->
+<!-- One line per reviewer the ship profile names, in the fixed shape `- <reviewer>: <exit word>, <n> rounds, <raised> findings: <accepted> accepted, <declined> declined, <filed> filed`, with one trailing clause only when the reader must know. A fallback whose primary reviewed, was not capped with findings and did not stop `not landed`, takes the second form, `- <fallback>: not invoked: <primary> reviewed`, and states no counts, having none. Ship fills these. `None.` when the repo names no reviewer. -->
 
 ## Attribution
 
-<!-- The environment's footer for pull request descriptions, verbatim. It ends the body, below every section a later phase rewrites, which is what keeps a section rewrite from swallowing it. -->
+<!-- The environment's footer for pull request descriptions, verbatim. It ends the body, below every section a later phase rewrites. -->

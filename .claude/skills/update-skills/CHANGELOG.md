@@ -7,6 +7,15 @@ released version. See
 
 <!-- version list -->
 
+## v0.7.2 (2026-10-11)
+
+### Bug Fixes
+
+- Collapse derived copies in PR diffs; trim cloud-ship, drive-session, grill-with-artifact and
+  update-skills ([#569](https://github.com/Gharib89/skills/pull/569),
+  [`fc7f7c9`](https://github.com/Gharib89/skills/commit/fc7f7c90803fe8199ac1c0fff94258562d384ccb))
+
+
 ## v0.7.1 (2026-10-10)
 
 ### Bug Fixes

@@ -7,6 +7,60 @@ released version. See
 
 <!-- version list -->
 
+## v0.11.1 (2026-10-11)
+
+### Bug Fixes
+
+- **setup-harness**: Pyright finds the main checkout's .venv from a worktree
+  ([#587](https://github.com/Gharib89/skills/pull/587),
+  [`26136b0`](https://github.com/Gharib89/skills/commit/26136b0a725b96d72939faf026e5b20d2a50acb4))
+
+
+## v0.11.0 (2026-10-11)
+
+### Features
+
+- **setup-harness**: The CLAUDE.md harness block says when to use and distrust LSP
+  ([#583](https://github.com/Gharib89/skills/pull/583),
+  [`dbffccb`](https://github.com/Gharib89/skills/commit/dbffccb734a00414ee252a8bc37302c7e525c560))
+
+
+## v0.10.5 (2026-10-11)
+
+### Bug Fixes
+
+- **setup-harness**: Fetch a cloud proof sha the clone lacks before calling it unproven
+  ([#580](https://github.com/Gharib89/skills/pull/580),
+  [`2988fcf`](https://github.com/Gharib89/skills/commit/2988fcf1081b3a66767b9b7aec4675e911b11dba))
+
+
+## v0.10.4 (2026-10-11)
+
+### Bug Fixes
+
+- **setup-harness**: Exclude the PR template from markdownlint, name the dev add's lockfile
+  ([#575](https://github.com/Gharib89/skills/pull/575),
+  [`1912043`](https://github.com/Gharib89/skills/commit/1912043fda57bb33d91afa62a9626b4375c7bfaf))
+
+
+## v0.10.3 (2026-10-11)
+
+### Bug Fixes
+
+- **setup-harness**: Correct the hadolint row placement, move the schema rules, cut dead lines
+  ([#571](https://github.com/Gharib89/skills/pull/571),
+  [`acba298`](https://github.com/Gharib89/skills/commit/acba29869385b7dd5d63903fa4c8badf124c9360))
+
+
+## v0.10.2 (2026-10-10)
+
+### Bug Fixes
+
+- **setup-harness**: Check.sh drops files under an exported CDPATH or a dash-named directory
+  ([#563](https://github.com/Gharib89/skills/pull/563),
+  [`c42be8e`](https://github.com/Gharib89/skills/commit/c42be8e80230776d9dc2603a75756953a25a9123))
+
+
 ## v0.10.1 (2026-10-10)
 
 ### Bug Fixes

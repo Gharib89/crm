@@ -60,6 +60,8 @@ case $rung in
 esac
 root=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "check.sh: not in a git repo" >&2; exit 2; }
 cd "$root" || exit 2
+# Every later `cd` is root-relative, which an exported CDPATH would redirect.
+unset CDPATH
 nl='
 '
 deadline=${CHECK_DEADLINE:-}
@@ -95,7 +97,7 @@ check() {
       set -m
       # No stdin: a command reading it would drain the row list the caller
       # loops over, dropping every check after it.
-      (cd "$dir" && set +f && eval "$cmd") < /dev/null > "$log" 2>&1 &
+      (cd -- "$dir" && set +f && eval "$cmd") < /dev/null > "$log" 2>&1 &
       pid=$!
       # The mark goes down before the kill, so the verdict never rests on
       # which of the two processes exits first.
@@ -108,7 +110,7 @@ check() {
       kill -TERM -- "-$dog" 2>/dev/null; wait "$dog" 2>/dev/null
       if [ -e "$log.x" ]; then expired=1; break; fi
     else
-      (cd "$dir" && set +f && eval "$cmd") < /dev/null > "$log" 2>&1
+      (cd -- "$dir" && set +f && eval "$cmd") < /dev/null > "$log" 2>&1
       rc=$?
     fi
     tries=$((tries - 1))
@@ -122,8 +124,9 @@ check() {
   esac
 }
 
-# The files, shell-quoted and space-joined, for a {files} placeholder.
-quoted() { local f q=''; for f; do q="$q $(printf '%q' "$f")"; done; printf '%s' "${q# }"; }
+# The files, shell-quoted and space-joined, for a {files} placeholder; a name
+# starting with `-` gains `./`, so no tool reads it as an option.
+quoted() { local f q=''; for f; do case $f in -*) f=./$f ;; esac; q="$q $(printf '%q' "$f")"; done; printf '%s' "${q# }"; }
 
 matches() { # <file> <globs>: 0 when one of the globs matches the file name
   local g
@@ -152,7 +155,7 @@ EOF
 inside() {
   local d=${1%/*}
   case $1 in */*) d=${d:-/} ;; *) d=. ;; esac
-  d=$(cd "$d" 2>/dev/null && pwd -P) || return 1
+  d=$(cd -- "$d" 2>/dev/null && pwd -P) || return 1
   case $d in "$root") d='' ;; "$root"/*) d=${d#"$root"/}/ ;; *) return 1 ;; esac
   printf '%s' "$d${1##*/}"
 }

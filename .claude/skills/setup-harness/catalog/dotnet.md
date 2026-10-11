@@ -21,7 +21,7 @@ Run: `dotnet format whitespace . --folder --include {files}`
 Hook: local
 Pin: apt dotnet-sdk-10.0
 Route: `sudo apt-get update && sudo apt-get install -y dotnet-sdk-10.0`; Blocked: `dotnet-install.sh` (redirects to `builds.dotnet.microsoft.com`)
-Constraints: ships with the SDK, which noble's own apt carries. `--folder` formats the files without loading the project (1.6 s, measured); plain `dotnet format --include` still loads the solution (6.1 s) and misses the edit budget. `packages.microsoft.com` passes but carries no .NET for Ubuntu 24.04. The route updates the apt index first: the image's index goes stale, and its SDK `.deb`s then 404 (measured in the entry trial).
+Constraints: ships with the SDK, which noble's own apt carries. `--folder` formats the files without loading the project (1.6 s); plain `dotnet format --include` still loads the solution (6.1 s) and misses the edit budget. `packages.microsoft.com` passes but carries no .NET for Ubuntu 24.04. The route updates the apt index first: the image's index goes stale, and its SDK `.deb`s then 404.
 Traps: whitespace only: style and analyzer rules need the project loaded, so they ride the build (see `dotnet build`).
 
 ## typecheck

@@ -18,7 +18,7 @@ Run: `actionlint -pyflakes= {files}`
 Hook: local
 Pin: package go github.com/rhysd/actionlint/cmd/actionlint
 Route: `GOBIN="$HOME/.local/bin" go install github.com/rhysd/actionlint/cmd/actionlint@{version}`; Blocked: release binaries, `download-actionlint.bash`
-Constraints: needs Go 1.25 or later, else the module proxy fetches a toolchain (which the cloud sandbox passes). GitHub publishes no workflow linter CLI of its own.
+Constraints: needs Go 1.25 or later, else the module proxy fetches a toolchain (which the cloud sandbox passes).
 Traps: it runs `shellcheck` and `pyflakes` on `run:` scripts when either is on `PATH`, so results change with `PATH`: `Run:` turns pyflakes off, and the hook adds `-shellcheck=` unless the Shell entry's ShellCheck is wired (apt pins it). Its runner labels are compiled in: a new GitHub label or a self-hosted one needs a newer actionlint or `self-hosted-runner.labels` in `.github/actionlint.yaml`.
 
 ### zizmor
@@ -31,7 +31,7 @@ Hook: local
 Pin: package pypi zizmor
 Route: `uv tool install zizmor=={version}`; Blocked: release binaries, the `ghcr.io/zizmorcore/zizmor` image
 Constraints: a second default beside actionlint, not an alternative: actionlint checks correctness and zizmor security, so both are wired.
-Traps: any `GH_TOKEN` or `GITHUB_TOKEN` switches zizmor to online mode, and a cloud session sets one the GitHub API refuses (401), so zizmor passes locally and fails only in a cloud session (measured). `--offline` overrides the token and turns off every online action, a superset of `--no-online-audits`. The vendor hook lives in `zizmorcore/zizmor-pre-commit`, not the tool's own repo.
+Traps: any `GH_TOKEN` or `GITHUB_TOKEN` switches zizmor to online mode, and a cloud session sets one the GitHub API refuses (401), so zizmor passes locally and fails only in a cloud session. `--offline` overrides the token and turns off every online action, a superset of `--no-online-audits`. The vendor hook lives in `zizmorcore/zizmor-pre-commit`, not the tool's own repo.
 
 ## format
 

@@ -1,6 +1,6 @@
 ## Dimension labels
 
-<!-- setup-skills: written verbatim at the end of docs/agents/triage-labels.md, below the role table and the prose lines that explain it, this comment removed. Create each label on the host with the Color and Description columns below. `bug`, `enhancement` and `documentation` are GitHub's own defaults, color and description included, so a fresh repo already carries those three and only `refactor` and `chore` are created. The size greys run light to dark and the priority colors run red through amber to green, so each dimension reads as a ramp in the tracker's label column rather than as unrelated colors. -->
+<!-- setup-skills: written verbatim at the end of docs/agents/triage-labels.md, below the role table and the prose lines that explain it, this comment removed. -->
 
 Three dimensions beside the five triage roles. Triage stamps **at most one label per dimension**, at triage time, alongside the role label, so a maintainer glancing at the tracker reads off what kind of change an issue is, how big it is and how urgent it is without opening it.
 

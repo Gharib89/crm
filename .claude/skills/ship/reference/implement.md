@@ -90,9 +90,8 @@ When the issue asserts a *causal mechanism* about something outside this
 repo's code (a library behavior, a platform's response, an OS path rule),
 treat it as a **hypothesis**, and confirm it against the real thing with the
 cheapest probe *before* writing the fix around it; the profile's `Claims to
-probe:` lines are this repo's examples. A triage brief's root cause is
-frequently a plausible guess. A probe that contradicts the brief is an early
-`mis-specified` stop, not a phase-3 surprise.
+probe:` lines are this repo's examples. A probe that contradicts the brief is an
+early `mis-specified` stop, not a phase-3 surprise.
 
 ## Phase 2: delegate execution, keep judgment
 
@@ -148,15 +147,13 @@ in doubt, write `claim:`. Two rails on rejecting: an assertion
 about **what exists in the repo** is checked against `origin/HEAD` rather than
 the worktree, which may predate a merge; and a finding's **evidence and its
 claim are separate**, so a reviewer citing the wrong commit for a real primitive
-is still right. A valid finding outside the issue is an adjacent find.
+is still right.
 
 Then read the diff yourself against the depth checks in the coding-standards
 file the Standards axis reads, and the sub-files it routes to, by their leading
 words: a vocabulary the change extends, a rule-shaped prose change, new
 pattern-matching code, a new test run with its fix reverted, removed lines with
 no new home, a fix landed after review, and any the repo adds beside them.
-Reviewer rounds find these otherwise, serially, at the cost of most of a run's
-wall time, and the reverted-fix one escapes them entirely.
 
 ## Phase 4 evidence lines
 

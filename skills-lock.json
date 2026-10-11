@@ -5,7 +5,7 @@
       "source": "Gharib89/skills",
       "sourceType": "github",
       "skillPath": "skills/cloud-ship/SKILL.md",
-      "computedHash": "0232ac44431478351146f8a75b1a0180fca0bc48d41fac5afe07e7784c07fd4e"
+      "computedHash": "3880073b636a78da273ffc1ce14ea9afcef3da60ea084d015119a2ab4080c189"
     },
     "code-review": {
       "source": "mattpocock/skills",
@@ -25,19 +25,26 @@
       "source": "Gharib89/skills",
       "sourceType": "github",
       "skillPath": "skills/setup-harness/SKILL.md",
-      "computedHash": "78e8023cdb165fc24bd14911780e1e7c0d17860e34047b24b26f3d6dade04fbd"
+      "computedHash": "248f0e6deb908cf133de6f7c90770333d02bea18c85490a6474d17eba4362b28"
+    },
+    "setup-matt-pocock-skills": {
+      "source": "mattpocock/skills",
+      "ref": "49dd158d1076134a641b33efb035946536778336",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/setup-matt-pocock-skills/SKILL.md",
+      "computedHash": "1d35d0afa3ded88c9324d38db08b2cff91cd03e0e11d64786bee41385cd7b9fb"
     },
     "setup-skills": {
       "source": "Gharib89/skills",
       "sourceType": "github",
       "skillPath": "skills/setup-skills/SKILL.md",
-      "computedHash": "98094a60d9c926b26352ead03230e3597fee5d30f65fdd3688211f82f2373cdb"
+      "computedHash": "805dcee2506add7d81bf3cff6e28ab4de4a8314161389e1a0bf800a29065929e"
     },
     "ship": {
       "source": "Gharib89/skills",
       "sourceType": "github",
       "skillPath": "skills/ship/SKILL.md",
-      "computedHash": "d8ecdacde978985415fe7e3b6bda50f975791e934d376928965f349a7986b4a2"
+      "computedHash": "25d64b79a5632eda86ed0300420258b2a3511716b3422a5324ed250c159fa6df"
     },
     "show-me": {
       "source": "humanlayer/skills",
@@ -64,7 +71,7 @@
       "source": "Gharib89/skills",
       "sourceType": "github",
       "skillPath": "skills/update-skills/SKILL.md",
-      "computedHash": "39ba6b9c06ccbc92e6eac7032e3f0a0ad4092bedf6ab4b2c4f34f04c21ad14db"
+      "computedHash": "2d897ca446baa8899904d2c40fb7946a28fcc7e449ae099832018358f1927f8d"
     },
     "writing-for-agents": {
       "source": "mattpocock/skills",
