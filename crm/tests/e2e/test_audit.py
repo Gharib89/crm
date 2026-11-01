@@ -7,8 +7,8 @@ path are covered without depending on audit data.
 
 `audit detail` (RetrieveAuditDetails) needs a real audit row to decode, so its test
 generates one inline (create + audited update) and runs only where auditing is
-enabled — it skips with setup instructions otherwise (e.g. the general cloud org,
-which has org-level auditing off). See the test's docstring for why the auditid is
+enabled — it skips with setup instructions otherwise (an org with org-level
+auditing off). See the test's docstring for why the auditid is
 resolved from the `audits` table rather than from `audit history`.
 """
 
