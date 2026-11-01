@@ -199,3 +199,22 @@ manually:
    region-correct (`*.crm.dynamics.com` is NAM-only — use `*.crm*.dynamics.com` for other regions).
 4. Seed: enable org auditing; author the classic no-op workflow (draft) + `clone --activate` it.
 5. Verify with a **write** (an `entity create` CRUD roundtrip), not `whoami`.
+
+## Addendum (2026-11-01): rebuild in a new tenant
+
+The `agent-cloud` client secret expired, and the rebuild could not reuse the app registration as
+step 2 above says: its tenant was a self-service trial tenant whose admin username nobody had
+recorded, so no one could sign in to rotate the secret. `agent-cloud` now points at a new Power
+Apps Developer environment in the maintainer's work tenant, with a new app registration there.
+Corrections to the rebuild steps, learned on this run:
+
+- **Record the admin username of whatever tenant holds the app registration.** Without it the
+  registration cannot be managed, and the env has to be rebuilt elsewhere.
+- **Step 4 needs no UI.** Export any background on-demand classic workflow already on the org,
+  empty its `<mxswa:Workflow>` element, rename the `XrmWorkflow<guid>` class to a new id, set
+  `primaryentity` to `account`, and `workflow import` it twice (one draft, one `--activate`).
+- **Auditing is CLI-only too:** `entity update organizations <id>` with `isauditenabled=true`, then
+  `metadata update-entity account --audit` (the verb #767 asked for now exists).
+- **Seed the 5001 `E2E-BULK-SEED` contacts** with `data import` as part of step 4.
+- **Activity without the routine:** the weekly e2e workflow counts as activity, so the env stays
+  inside the 30-day window while the routine is disabled.

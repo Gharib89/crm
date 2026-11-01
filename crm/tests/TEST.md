@@ -204,13 +204,13 @@ lifecycle test (#512) builds a managed v1+v2 of an empty throwaway solution via
 holding solution, then promotes it separately via `apply-upgrade` — asserting the installed
 base version flips 1.0.0.0→2.0.0.0; teardown uninstalls and leaves the org clean. `audit detail`
 is now covered: its test generates an audit row inline (create + audited update) and
-skips-with-instructions where auditing is off, so it runs on a CS-target leg and skips on
-the general cloud org. `theme publish` is now covered too: its test captures the active
+skips-with-instructions where auditing is off; the general cloud org has org auditing
+seeded on, so it runs there. `theme publish` is now covered too: its test captures the active
 theme, publishes a throwaway, then re-publishes the captured original to restore the org.
 `workflow run` is now covered too: a dispatch-only `requires_cloud` test resolves a seeded,
 activated, background on-demand workflow, dispatches it against a throwaway record, and asserts
-a non-null async operation id — skipping with instructions where no such workflow is seeded, so
-it runs on a CS-target leg and skips on the general cloud org. `sla create`/`add-kpi` are now
+a non-null async operation id — skipping with instructions where no such workflow is seeded; the
+general cloud org has one seeded, so it runs there. `sla create`/`add-kpi` are now
 covered by one CS-provisioned lifecycle test (#511): it ensures the target `incident` entity is
 SLA-enabled (publish-requiring), creates the SLA and attaches a KPI item with valid per-KPI
 FetchXML, then deletes the SLA and restores the flag — skipping with setup instructions when
@@ -272,8 +272,8 @@ contacts, `jobtitle="E2E-BULK-SEED"`, bulk-deletable), but its gate reads
 `RetrieveTotalRecordCount`, which the platform **caches ~12–24h** — the live collection
 `$count` already clamps at 5000+`has_more`, yet the test stays skipped until the cached
 count refreshes past 5000. (`query saved`/`query user` now self-seed a throwaway view, so
-they no longer skip.) `audit detail` stays skipped (org auditing off, deliberately
-un-seeded). `test_apply_reconciles_app_components_and_sitemap` (#796) also stays skipped on
+they no longer skip.) `audit detail` runs on the cloud org: org auditing and Account auditing
+are seeded on. `test_apply_reconciles_app_components_and_sitemap` (#796) also stays skipped on
 both available orgs: the appmodule it creates is not GET-retrievable, so the reconcile
 round-trip it drives can't run (`DISCOVERED_BUGS.md` #5, Gharib89/crm#809). Hostnames omitted
 (Contoso placeholders only).
