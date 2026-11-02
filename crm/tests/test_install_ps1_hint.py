@@ -1,3 +1,4 @@
+# pyright: basic
 """The install.ps1 uv fallback hint prints the same pinned command the docs show.
 
 Kept apart from test_install_ps1.py, which skips without PowerShell: this is a
@@ -9,14 +10,23 @@ Build Tools (#1038, #1041).
 import re
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PINNED = re.compile(r"uv tool install --python \d+\.\d+ git\+https://github\.com/Gharib89/crm")
+PINNED_UV_INSTALL = re.compile(
+    r"uv tool install --python \d+\.\d+ git\+https://github\.com/Gharib89/crm"
+)
+DOCS_WITH_WINDOWS_COMMAND = [
+    "README.md",
+    "docs/getting-started/install.md",
+    "docs/getting-started/quickstart.md",
+]
 
 
-def test_install_ps1_uv_hint_matches_readme_windows_command():
-    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+@pytest.mark.parametrize("doc", DOCS_WITH_WINDOWS_COMMAND)
+def test_install_ps1_uv_hint_matches_documented_windows_command(doc):
     script = (REPO_ROOT / "scripts" / "install.ps1").read_text(encoding="utf-8")
-    documented = PINNED.search(readme)
-    assert documented, "README lost its pinned Windows uv command"
-    assert documented.group(0) in script
+    documented = set(PINNED_UV_INSTALL.findall((REPO_ROOT / doc).read_text(encoding="utf-8")))
+    assert documented, f"{doc} lost its pinned Windows uv command"
+    assert set(PINNED_UV_INSTALL.findall(script)) == documented
     assert "uv tool install git+https://github.com/Gharib89/crm" not in script
