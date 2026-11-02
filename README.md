@@ -198,7 +198,8 @@ crm self-update --yes     # run the upgrade non-interactively (uv/pipx installs)
 - **uv tool / pipx** (Option 2) — force-reinstalls from the latest release tag
   (`uv tool install --force --python X.Y git+…@vX.Y.Z`, `X.Y` being the Python
   the uv tool already runs on, so an upgrade never switches interpreter). On a
-  terminal it shows the exact command and asks before running; non-interactively it runs only with `--yes`.
+  terminal it shows the exact command and asks before running; non-interactively
+  it runs only with `--yes`.
 - **editable / `pip install git+…` / unknown** (Option 3) — prints the correct
   git-based upgrade command and never mutates your environment.
 
