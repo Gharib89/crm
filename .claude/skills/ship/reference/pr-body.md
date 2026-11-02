@@ -17,7 +17,10 @@ outline, where it fell short; phase 9 reads it at the gate.
 
 ## What the body carries
 
-The repo's template per the profile's `## PR`, filled through its own headings;
+The repo's template per the profile's `## PR`, filled through its own headings,
+each kept verbatim: `open-pr` refuses a body lacking any, naming each, because
+once the PR is open a section write cannot rename a reworded heading: it
+appends the template's as a second section and leaves the reworded one;
 **with no template, the run writes the headings below itself**, because
 `open-pr` synthesizes none and a body that skips one is a body phase 7 cannot
 write into. Every variant carries:
@@ -25,32 +28,38 @@ write into. Every variant carries:
 - **`Closes #<issue>` on its own line above the first `## ` heading**, where no
   section rewrite reaches it. The mechanic translates it for the host, and puts
   it there itself when the body arrives without one.
-- **`## Why the change`**: exactly one sentence, the problem and what becomes
-  possible now.
+- **`## Why the change`**: the problem and what becomes possible now.
 - **`## Change outline`**: the behavioural fence below.
 - **`## Special things to note`**: the Door line first, then the reviewer's
-  warnings and the folded deviations, so it is never `None.`.
-- **`## Needs attention`**: every issue the run filed or linked and every Ship
-  defect it met.
-- **`## Verification`**: one line per applicable verification in the merge
-  summary's `Verification` row format, or `None applicable: <reason>`, with
-  three such reasons and no fourth: `class docs`, `small lane`, and a full-lane
-  change where no `Applies when:` line matches (a profile listing zero
-  verifications is that case).
+  warnings, the folded adjacent finds and the folded deviations, so it is never
+  `None.`.
+- **`## Needs attention`**: every issue the run filed or linked, every Ship
+  defect it met and every Ship note.
+- **`## Verification`**: each applicable verification's phase-3 result and what
+  ran, or `None applicable: <reason>`.
 - **`## Review`**, one placeholder line per reviewer at open, filled at the
-  phase-7 exit in the fixed shape [review-loop.md](review-loop.md) carries.
-- **A count with the command that produced it**, wherever the body measures the
-  tree, under the rule [merge-gate.md](merge-gate.md) carries.
+  phase-7 exit with its exit word, what its rounds found and what became of
+  the findings ([review-loop.md](review-loop.md#the-exit)).
 - **The attribution footer**, where the environment provides one for pull
   request descriptions, in the body file `open-pr` is handed. The body **ends**
   with it, under a `## ` heading of its own that ship adds where no template
   carries one (`## Attribution`), after every section a later phase rewrites.
 
+The `Closes` line, the headings and the attribution verbatim, attribution last
+and the Door line are the body's rules, because the host's close, `open-pr`,
+later section writes and the reviewer read them. The Change outline keeps the
+shape [below](#the-change-outline), and `Needs attention`, `Verification` and
+`Review` keep one line per entry, with `None.` or `None applicable: <reason>`
+when there is none; past those, what a section says, and at what length, is
+written for its reader.
+
 ## The Change outline
 
 Draw it from the diff at phase 6, not from phase 2's design; a redraw is not a
 deviation. `read-pr`'s `outline_missing` lists the changed paths the outline
-does not mention, and is the read-back check for it.
+does not mention, and is the read-back check for it. A vendored skill's files
+(its `skills-lock.json` `source` not `.`) are mentioned by their folder,
+`.claude/skills/<name>/`, since they have no source twin to name.
 
 It is a `diff` fence over a call tree, control flow, pseudocode or component
 tree, showing what the change **does**. Text forms only: Azure DevOps renders
@@ -75,22 +84,23 @@ constraints are ship's, and its menu of other uses is not.
 ## Special things to note: the folded deviations
 
 What the reviewer must know before reading the diff: warnings, migrations,
-compatibility constraints, deliberate omissions. Preferably five bullets or
-fewer below the Door line, one sentence each, but **every material compatibility
-or operational risk is included**, related ones grouped into one bullet.
+compatibility constraints, deliberate omissions, and each adjacent find folded
+into this PR ([implement.md](implement.md#phase-2-adjacent-finds)). **Every
+material compatibility or operational risk is included**, related ones grouped
+into one bullet.
 
-**The first bullet is always the Door line**, in this shape:
+**The first bullet is always the Door line**, in one of these shapes:
 
 ```text
-- Door: <one-way|two-way>. Blast radius: <one clause>.
+- 🟢 Door: two-way. Blast radius: <who else feels it>.
+- 🔴 Door: one-way. Blast radius: <who else feels it>.
 ```
 
 One-way is a merge nobody can walk back: a released breaking change consumers
 have already adopted, a data migration, a deleted artifact. Two-way is a
 revert. The blast radius names who else feels it rather than grading it. The
-line sits **outside that count**: a reviewer deciding whether to
-approve reads it first, and a change carrying five warnings is exactly the one
-that needs it.
+circle lets a reviewer deciding whether to approve see the door at a glance, and
+it renders as text on GitHub and Azure DevOps alike.
 
 The deviations log stays verbatim in the merge summary. What reaches this
 section is the subset that would change how the reviewer reads the diff,
@@ -101,11 +111,12 @@ reviewing the diff would act on does not appear.
 ## Needs attention: what the run left for someone
 
 One line per issue the run filed or linked, `- #<n> <title>: <one line why it
-matters>`, and one per Ship defect met, `- Ship defect: <what>`. `None.` when
-there are neither. Nothing else belongs here: an adjacent find is filed or fixed
-inline by phase 2's dispositions, so an observation parked here is a find that
-skipped its disposition. It is written from the Run file's record, not the
-deviations log.
+matters>`, one per Ship defect met, `- Ship defect: <what>`, and one per Ship
+note, `- Ship note: <what>`, beside them, so a retro finds the friction after
+the run's files are gone. `None.` when there are none. An adjacent find appears
+here only once filed: a folded one goes under `## Special things to note`, and a
+noted one stays in the merge summary. It is written from the Run file's record,
+not the deviations log.
 
 ## Writing and reading it back
 
@@ -120,3 +131,8 @@ states.
 A section a rewrite swallowed is missing from `read-pr`'s `headings`, the only
 place a swallowed `## Attribution` shows while the PR is open;
 `update-pr-body`'s `sections` list is the same check one write earlier.
+
+`open-pr` runs the repo's body checker, the profile's `## PR` `Body-check:`
+line, on the body file before the push, and `update-pr-body` on the body it
+would publish; on a refusal, fix what the checker's output names and re-run
+the call it refused.

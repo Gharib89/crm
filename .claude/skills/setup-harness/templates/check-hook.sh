@@ -6,6 +6,10 @@
 #   check-hook.sh turn   Stop: check.sh turn, skipped when the working tree has
 #                        not changed since the last check
 #
+# The edit rung checks in the edited file's repo, the turn rung in the cwd's;
+# a repo with no $CHECK, or an edited file outside the session's repo and its
+# worktrees, is skipped in silence.
+#
 # Claude Code sees only exit 2, so a failing check (check.sh exit 1) becomes
 # exit 2 with its output on stderr, capped under the 10k-character limit past
 # which Claude Code swaps it for a file path. A check that is unavailable
@@ -31,7 +35,26 @@ case $rung in
   *) echo "usage: check-hook.sh edit | turn" >&2; exit 2 ;;
 esac
 input=$(cat)
-root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+if [ "$rung" = edit ]; then
+  # The one string field Claude Code sends that ends in `file_path`; JSON
+  # escapes in a path are rare enough that only \" and \\ are undone.
+  file=$(printf '%s' "$input" | sed -nE 's/.*"file_path"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)".*/\1/p' | sed 's/\\"/"/g; s/\\\\/\\/g')
+  [ -n "$file" ] || exit 0
+  # The repo that owns the edited file, wherever the shell's cwd has moved.
+  root=$(git -C "$(dirname "$file")" rev-parse --show-toplevel 2>/dev/null) || exit 0
+  # Only the session's own repo or one of its worktrees (the same git common
+  # dir): another checkout's check.sh would run its own installs.
+  [ "$(git -C "$root" rev-parse --path-format=absolute --git-common-dir)" = \
+    "$(git -C "${CLAUDE_PROJECT_DIR:-.}" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" ] || exit 0
+  set -- "$file"
+else
+  # The cwd's repo, so a session in a worktree checks the worktree.
+  root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+  set --
+fi
+# A repo with no check entry point has no harness, so nothing to check; one
+# that exists but cannot run is a broken harness, reported below.
+[ -e "$root/$CHECK" ] || exit 0
 cd "$root" || exit 0
 tmp='' errf=''
 trap 'rm -f "$tmp" "$errf"' EXIT
@@ -44,13 +67,7 @@ say() { # <message>: a systemMessage for the human; never blocks
 # The names of the checks carrying <status> in a check.sh JSON line.
 named() { printf '%s' "$2" | sed 's/.*"checks":{//' | grep -o "\"[^\"]*\":\"$1\"" | sed 's/":".*//; s/^"//' | paste -sd, - | sed 's/,/, /g'; }
 
-if [ "$rung" = edit ]; then
-  # The one string field Claude Code sends that ends in `file_path`; JSON
-  # escapes in a path are rare enough that only \" and \\ are undone.
-  file=$(printf '%s' "$input" | sed -nE 's/.*"file_path"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)".*/\1/p' | sed 's/\\"/"/g; s/\\\\/\\/g')
-  [ -n "$file" ] || exit 0
-  set -- "$file"
-else
+if [ "$rung" = turn ]; then
   # A throwaway index seeded from the real one, so the fingerprint costs
   # milliseconds and the real index is never touched. `git add` still writes
   # each changed file's blob to the object store, where gc reclaims it.
@@ -66,7 +83,6 @@ else
     [ "${last#* }" = pass ] || say "harness: turn rung still ${last#* }, unchanged since the last check"
     exit 0
   fi
-  set --
 fi
 
 errf=$(mktemp) || exit 0

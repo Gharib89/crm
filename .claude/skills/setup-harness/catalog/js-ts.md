@@ -21,6 +21,7 @@ Run: `eslint --fix {files}`
 Hook: https://github.com/eslint/eslint
 Pin: package npm eslint
 Route: `npm install -g eslint@{version}`; Blocked: None.
+Done test: `[[ " $(eslint --version 2>&1) " == *[!0-9.]{version}[!0-9.-]* ]]`
 Constraints: ESLint 9 and later lint nothing without a flat config; a default writes `eslint.config.mjs` extending `@eslint/js` and, for TypeScript, `typescript-eslint`, both exact dev dependencies through the install check.
 Traps: the vendor hook runs in an isolated env; flat-config plugins must be listed under `additional_dependencies` or they are not resolvable.
 
@@ -33,6 +34,7 @@ Run: `biome lint --write {files}`
 Hook: https://github.com/biomejs/pre-commit
 Pin: package npm @biomejs/biome
 Route: `npm install -g @biomejs/biome@{version}`; Blocked: None.
+Done test: `[[ " $(biome --version 2>&1) " == *[!0-9.]{version}[!0-9.-]* ]]`
 Constraints: None.
 Traps: None.
 
@@ -45,6 +47,7 @@ Run: `oxlint --fix --deny-warnings {files}`
 Hook: https://github.com/oxc-project/mirrors-oxlint
 Pin: package npm oxlint
 Route: `npm install -g oxlint@{version}`; Blocked: None.
+Done test: `[[ " $(oxlint --version 2>&1) " == *[!0-9.]{version}[!0-9.-]* ]]`
 Constraints: None.
 Traps: every finding is a warning by default and exits 0; `--deny-warnings` is required for it to gate anything.
 
@@ -59,6 +62,7 @@ Run: `prettier --write {files}`
 Hook: local
 Pin: package npm prettier
 Route: `npm install -g prettier@{version}`; Blocked: None.
+Done test: `[[ " $(prettier --version 2>&1) " == *[!0-9.]{version}[!0-9.-]* ]]`
 Constraints: None.
 Traps: `prettier/pre-commit` and `pre-commit/mirrors-prettier` are both archived; do not wire either.
 
@@ -71,6 +75,7 @@ Run: `biome format --write {files}`
 Hook: https://github.com/biomejs/pre-commit
 Pin: package npm @biomejs/biome
 Route: `npm install -g @biomejs/biome@{version}`; Blocked: None.
+Done test: `[[ " $(biome --version 2>&1) " == *[!0-9.]{version}[!0-9.-]* ]]`
 Constraints: None.
 Traps: None.
 
@@ -85,6 +90,7 @@ Run: `tsc --noEmit`
 Hook: local
 Pin: package npm typescript
 Route: `npm install -g typescript@{version}`; Blocked: None.
+Done test: `[[ " $(tsc --version 2>&1) " == *[!0-9.]{version}[!0-9.-]* ]]`
 Constraints: typescript-eslint requires `typescript >=4.8.4 <6.1.0`.
 Traps: `tsc --noEmit <file>` fails with `TS5112` once a tsconfig is present; run project-scoped only, with no file arguments.
 
@@ -99,6 +105,7 @@ Run: `vitest run`
 Hook: local
 Pin: package npm vitest
 Route: `npm install -g vitest@{version}`; Blocked: None.
+Done test: `[[ " $(vitest --version 2>&1) " == *vitest/{version}[!0-9.-]* ]]`
 Constraints: None.
 Traps: None.
 
@@ -111,6 +118,7 @@ Run: `jest`
 Hook: local
 Pin: package npm jest
 Route: `npm install -g jest@{version}`; Blocked: None.
+Done test: `[[ " $(jest --version 2>&1) " == *[!0-9.]{version}[!0-9.-]* ]]`
 Constraints: None.
 Traps: `--watchman` defaults true; pass `--no-watchman` where the binary is absent.
 
@@ -137,6 +145,7 @@ Run: `vitest related --run {files}`
 Hook: local
 Pin: package npm vitest
 Route: `npm install -g vitest@{version}`; Blocked: None.
+Done test: `[[ " $(vitest --version 2>&1) " == *vitest/{version}[!0-9.-]* ]]`
 Constraints: follows static imports only; a dynamic `import()` is not tracked.
 Traps: None.
 
@@ -149,6 +158,7 @@ Run: `jest --findRelatedTests {files}`
 Hook: local
 Pin: package npm jest
 Route: `npm install -g jest@{version}`; Blocked: None.
+Done test: `[[ " $(jest --version 2>&1) " == *[!0-9.]{version}[!0-9.-]* ]]`
 Constraints: None.
 Traps: None.
 
@@ -178,6 +188,7 @@ Run: `playwright test`
 Hook: local
 Pin: package npm @playwright/test
 Route: `npm install --no-save @playwright/test@{version} && npx --no-install playwright install --with-deps chromium`; Blocked: `cdn.playwright.dev` for the browser download, on the Default network
+Done test: `[[ " $(playwright --version 2>&1) " == *[!0-9.]{version}[!0-9.-]* ]]`
 Constraints: the repo's own suite only, wired where it is evidence and never a default; its browsers come from the cloud setup's browser step ([reference/surfaces.md](../reference/surfaces.md) `## Web UI`). A repo's copy comes from its frozen install, so `Route:` is never a cloud setup step.
 Traps: a `webServer` in the config builds and starts the app, so the row's time is mostly the build's. A `webServer.command` run through `pnpm exec` starts in a new session (pnpm 11.27.1), so Playwright's teardown kill misses the server and the row hangs after its tests pass; where `webServer.command` starts with `pnpm exec`, the report asks the human, as a numbered question, to call `./node_modules/.bin/<bin>` instead, and the skill never edits the config itself; a no drops the `e2e-<member>` row, recorded `Declined: e2e-<member>: webServer.command runs through pnpm exec: <reason>`.
 
@@ -192,6 +203,7 @@ Run: `publint`
 Hook: local
 Pin: package npm publint
 Route: `npm install -g publint@{version}`; Blocked: None.
+Done test: `[[ " $(publint --version 2>&1) " == *[!0-9.]{version}[!0-9.-]* ]]`
 Constraints: runs `npm pack` itself and checks the tarball's `main`, `exports` and `files` against the files it holds; offline.
 Traps: a `"private": true` package is still checked.
 
@@ -204,5 +216,6 @@ Run: `attw --pack .`
 Hook: local
 Pin: package npm @arethetypeswrong/cli
 Route: `npm install -g @arethetypeswrong/cli@{version}`; Blocked: None.
+Done test: `[[ " $(attw --version 2>&1) " == *"cli: v{version}"[!0-9.-]* ]]`
 Constraints: checks how each module resolution mode resolves the packed tarball's types; offline.
 Traps: a package with no types passes, since there is nothing to resolve. A package whose `exports` has no `require` or `default` condition leading to a CommonJS file is ESM-only, and fails `CJSResolvesToESM` under the default profile: its row passes `--profile esm-only`.

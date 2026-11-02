@@ -7,6 +7,60 @@ released version. See
 
 <!-- version list -->
 
+## v0.10.2 (2026-10-30)
+
+### Bug Fixes
+
+- **update-skills**: A behavioural Shape for re-run edits, and a cleanup line that removes the
+  refresh ([#1059](https://github.com/Gharib89/skills/pull/1059),
+  [`81a5b88`](https://github.com/Gharib89/skills/commit/81a5b88a6dcb6c4c5a7e89666fbaa291fbf269fe))
+
+
+## v0.10.1 (2026-10-20)
+
+### Performance Improvements
+
+- **gate**: Defer every check.sh full check to CI's check-full
+  ([#909](https://github.com/Gharib89/skills/pull/909),
+  [`fd2ced4`](https://github.com/Gharib89/skills/commit/fd2ced42422f7de7e41b51d08d3653acf690fe49))
+
+
+## v0.10.0 (2026-10-15)
+
+### Features
+
+- **setup-skills**: Template and update-skills write the coloured Door line
+  ([#688](https://github.com/Gharib89/skills/pull/688),
+  [`8237b02`](https://github.com/Gharib89/skills/commit/8237b02c5a1627d9a3806fbef5cbec8c1f92ca94))
+
+
+## v0.9.0 (2026-10-14)
+
+### Features
+
+- **ship**: Bind merge to the gated head and delete only the PR's branch
+  ([#642](https://github.com/Gharib89/skills/pull/642),
+  [`b79a318`](https://github.com/Gharib89/skills/commit/b79a318b8edfde7896e1679b9bb6ea2981aa277b))
+
+
+## v0.8.0 (2026-10-12)
+
+### Features
+
+- **update-skills**: Plan.sh drops the one-time 0.x renumber crossing
+  ([#595](https://github.com/Gharib89/skills/pull/595),
+  [`70dd4a5`](https://github.com/Gharib89/skills/commit/70dd4a5bb91a1d2408eff85cc7f52ab0fd2a92c8))
+
+
+## v0.7.3 (2026-10-12)
+
+### Bug Fixes
+
+- Four owned skills stop contradicting what they compose
+  ([#594](https://github.com/Gharib89/skills/pull/594),
+  [`d19612f`](https://github.com/Gharib89/skills/commit/d19612f98f85e5ea98cb1bac0d3d34be5d94d2b0))
+
+
 ## v0.7.2 (2026-10-11)
 
 ### Bug Fixes

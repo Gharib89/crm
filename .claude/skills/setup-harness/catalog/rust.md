@@ -73,6 +73,7 @@ Run: `cargo nextest run`
 Hook: local
 Pin: package crates cargo-nextest
 Route: `cargo install --locked cargo-nextest@{version}`; Blocked: `get.nexte.st` (redirects to release binaries)
+Done test: `[[ " $(cargo nextest --version 2>&1) " == *[!0-9.]{version}[!0-9.-]* ]]`
 Constraints: the source build takes about 219 s, most of the default 300 s cloud setup budget, so proposing it also proposes a budget override. `--locked` is mandatory since 0.9.124.
 Traps: doctests do not run under nextest; `cargo test --doc` still covers them.
 
@@ -87,6 +88,7 @@ Run: `cargo nextest run --workspace -E 'rdeps({package})'`
 Hook: local
 Pin: package crates cargo-nextest
 Route: `cargo install --locked cargo-nextest@{version}`; Blocked: `get.nexte.st` (redirects to release binaries)
+Done test: `[[ " $(cargo nextest --version 2>&1) " == *[!0-9.]{version}[!0-9.-]* ]]`
 Constraints: `{package}` is the member's `[package] name`; the filterset selects that crate and every crate depending on it, from the dependency graph. Run inside a member without `--workspace`, cargo builds only that crate, so `Run:` carries `--workspace`, which selects from the whole workspace from any member directory. Cargo has no changed-files mode, so this is a gap proposal per the catalog README's `## Affected tests`.
 Traps: the same 219 s build as `cargo-nextest`, and no doctests.
 
@@ -116,6 +118,7 @@ Run: `cargo semver-checks check-release`
 Hook: local
 Pin: package crates cargo-semver-checks
 Route: `cargo install --locked cargo-semver-checks@{version}`; Blocked: `cargo binstall` (GitHub release assets)
+Done test: `[[ " $(cargo semver-checks --version 2>&1) " == *[!0-9.]{version}[!0-9.-]* ]]`
 Constraints: the baseline is the crate's newest crates.io release, so it is proposed only where one exists ([reference/surfaces.md](../reference/surfaces.md) `## Library`); `--baseline-rev <ref>` is kept where the repo's own CI or a script passes it. It reads rustdoc JSON, whose format each release supports only for the then-current stable and beta, so its pin moves with `rust-toolchain.toml`.
 Local-only: cloud install 351 s exceeds the 300 s cloud setup budget
 Traps: None.

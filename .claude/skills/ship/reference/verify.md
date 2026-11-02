@@ -16,6 +16,16 @@ here you run the applicable entries.
   so far as evidence, so the run stops `red-after-retry: <verification>`
   instead of looping. An entry
   without the line has no bound.
+- **Head.** `close 3` records each result with the head it ran on: the
+  head the last `run-file ran <name>` stamped when the run ended, else the
+  worktree's `HEAD`, and `--head` outranks both. A `pass` keeps the clean
+  gate only while its head covers the PR head: a later commit other than a
+  clean base merge holds the gate, unless no file the entry's `Paths:` globs
+  match differs between the recorded head and the PR head (a glob matching no
+  file at either head proves nothing). A later change
+  that holds it, a fix after phase 3 or one the human asked for at the merge
+  gate, re-runs the Verification and records it again with
+  `close 3 --result`.
 - **Prerequisite missing** (`Needs:` fails its detection): the disposition is
   the entry's `Without it:` line, one of:
   - `hand-off`: attended, print the exact command and setup, wait for the human

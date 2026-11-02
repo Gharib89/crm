@@ -1,6 +1,6 @@
 # Ship profile
 
-Schema: 4
+Schema: 5
 
 Every repo-specific fact `/ship` needs, one section per axis. Fourteen `##` headings, always present and in this order; a defaulted axis reads `None.` or `Default.` under its own heading. Facts sit on `Label:` lines and nowhere else, and the prose under a heading explains them. The `Schema:` line above is the profile schema `ship` checks at preflight; only a `setup-skills` re-run moves it.
 
@@ -33,7 +33,9 @@ Push policy: <e.g. one push per review round; minutes are metered, or Default.>
 
 ## Reviewers
 
-<!-- Zero or more `### <name>` blocks, or the single line `None.` Trigger fixes how a round starts; brand decides nothing. -->
+Self-review cap: <the most phase-4 self-review rounds a run spends, a whole number of 1 or more; 3 by default>
+
+<!-- Below the `Self-review cap:` line, zero or more `### <name>` blocks, or the single line `None.` Trigger fixes how a round starts; brand decides nothing. -->
 
 ### <reviewer name>
 
@@ -55,7 +57,7 @@ Instructions: <path of the file this reviewer reads, or None.>
 
 ## Verification
 
-<!-- Zero or more `### <name>` blocks with exactly these seven lines (and an optional `Timebox:` line after `Claims to probe:`), or the single line `None.` -->
+<!-- Zero or more `### <name>` blocks with exactly these seven lines (and optional `Timebox:` and `Paths:` lines after `Claims to probe:`), or the single line `None.` -->
 
 ### <verification name>
 
@@ -78,7 +80,7 @@ Subject constraints: <reserved prefixes or formats for the squash subject, or No
 
 Template: <path; fill it through its own headings rather than a raw body that bypasses it> | None.
 
-<!-- Optional: `Merge: on-clean-gate` or `Merge: Default.`, per profile-schema.md's Optional lines. -->
+<!-- Optional: `Merge: on-clean-gate` or `Merge: Default.`, and `Body-check: <path>` for the repo's own body checker, per profile-schema.md's Optional lines. -->
 
 <!-- `Closes #<issue>` and the seven sections `## Why the change`, `## Change outline`, `## Special things to note`, `## Needs attention`, `## Verification`, `## Review` and `## Attribution` are core in every repo, in that order. The closing reference sits above the first `## ` heading, where a section rewrite cannot reach it. -->
 

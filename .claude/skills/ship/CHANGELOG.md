@@ -7,6 +7,464 @@ released version. See
 
 <!-- version list -->
 
+## v0.54.2 (2026-10-30)
+
+### Bug Fixes
+
+- **ship**: Cleanup finds a <type>/<slug>-<n> branch with no worktree
+  ([#1066](https://github.com/Gharib89/skills/pull/1066),
+  [`171ec3d`](https://github.com/Gharib89/skills/commit/171ec3dc94d9afad1d5036316951e571dc291535))
+
+
+## v0.54.1 (2026-10-30)
+
+### Bug Fixes
+
+- **ship**: A wrong reply is corrected by a new one, never edited by hand
+  ([#1064](https://github.com/Gharib89/skills/pull/1064),
+  [`1a60742`](https://github.com/Gharib89/skills/commit/1a60742df527dc0b25949fd1a1d30558e1029d9a))
+
+
+## v0.54.0 (2026-10-29)
+
+### Features
+
+- **ship**: Move code-review and codebase-design to a496f55
+  ([#1052](https://github.com/Gharib89/skills/pull/1052),
+  [`0490956`](https://github.com/Gharib89/skills/commit/0490956482c9d1abf1cfb6f710b707be40039cb8))
+
+
+## v0.53.0 (2026-10-29)
+
+### Features
+
+- **ship**: A host stop stamped at the self-review's capped head lifts its hold
+  ([#1051](https://github.com/Gharib89/skills/pull/1051),
+  [`8e02b00`](https://github.com/Gharib89/skills/commit/8e02b006b25e9c51abffc8a2221d0adb7d287fa7))
+
+
+## v0.52.0 (2026-10-29)
+
+### Features
+
+- **ship**: A docs-only loop end read by the local review clears the cap hold
+  ([#1049](https://github.com/Gharib89/skills/pull/1049),
+  [`96deef4`](https://github.com/Gharib89/skills/commit/96deef44756a5a744e1687a6a7b50828d06186fe))
+
+
+## v0.51.3 (2026-10-27)
+
+### Bug Fixes
+
+- **ship**: The worktree guard and the Report-file name read as the harness behaves
+  ([#1020](https://github.com/Gharib89/skills/pull/1020),
+  [`bafc3b7`](https://github.com/Gharib89/skills/commit/bafc3b7fd55b6724f0836948267e4b254b313c77))
+
+
+## v0.51.2 (2026-10-27)
+
+### Bug Fixes
+
+- **ship**: Revert-red and run-file skip refusals name the route out
+  ([#995](https://github.com/Gharib89/skills/pull/995),
+  [`fe21ab2`](https://github.com/Gharib89/skills/commit/fe21ab206de985a45437148b81e7a4ad6a6cc0cb))
+
+
+## v0.51.1 (2026-10-27)
+
+### Bug Fixes
+
+- **ship**: Open-pr runs the repo's body check before the push
+  ([#993](https://github.com/Gharib89/skills/pull/993),
+  [`2c04e92`](https://github.com/Gharib89/skills/commit/2c04e92a7c45d4aee8f74f8ce87f888b35aef2b8))
+
+
+## v0.51.0 (2026-10-25)
+
+### Features
+
+- **ship**: Run-file records plain-bullet criteria and holds the gate on an orphan not-met line
+  ([#959](https://github.com/Gharib89/skills/pull/959),
+  [`594783a`](https://github.com/Gharib89/skills/commit/594783af50f86d6d1409962ebd00a4b666e098b2))
+
+
+## v0.50.2 (2026-10-23)
+
+### Bug Fixes
+
+- **ship**: Poll-pr counts the reviewer-run ceiling from the request
+  ([#953](https://github.com/Gharib89/skills/pull/953),
+  [`c0d358b`](https://github.com/Gharib89/skills/commit/c0d358b84b4afdd644ed3818d5e2d67211b55eba))
+
+
+## v0.50.1 (2026-10-22)
+
+### Bug Fixes
+
+- **ship**: A round that never lands ends as not landed; the hold names the range to read
+  ([#943](https://github.com/Gharib89/skills/pull/943),
+  [`1294f36`](https://github.com/Gharib89/skills/commit/1294f36e03a7fb5d8092a7ea09bfd12581fa8c17))
+
+
+## v0.50.0 (2026-10-22)
+
+### Features
+
+- **ship**: Run file holds missing criteria, stamps ran head, orders skips, proves per fix
+  ([#941](https://github.com/Gharib89/skills/pull/941),
+  [`48932d4`](https://github.com/Gharib89/skills/commit/48932d409a1c426a644f486bc925eade98a142ab))
+
+
+## v0.49.0 (2026-10-20)
+
+### Features
+
+- **ship**: Refuse close 5 on unsettled criteria and add gate summary for the merge-gate lines
+  ([#895](https://github.com/Gharib89/skills/pull/895),
+  [`2153b02`](https://github.com/Gharib89/skills/commit/2153b029367988ef8f1e5c039ad43c124631eb0f))
+
+
+## v0.48.0 (2026-10-19)
+
+### Features
+
+- **ship**: Past-cap review line, single slug number, next with none open
+  ([#884](https://github.com/Gharib89/skills/pull/884),
+  [`663da02`](https://github.com/Gharib89/skills/commit/663da026ac9d7259d0f49d1719f48676f40ca6e5))
+
+
+## v0.47.4 (2026-10-18)
+
+### Bug Fixes
+
+- **ship**: Phase 9 names the relative merge.sh invocation
+  ([#873](https://github.com/Gharib89/skills/pull/873),
+  [`fdbe6e5`](https://github.com/Gharib89/skills/commit/fdbe6e50233e3b7ca7d428f6190dfd1cf4c25028))
+
+
+## v0.47.3 (2026-10-18)
+
+### Bug Fixes
+
+- **ship**: Run-file note numbers a line under Criteria as the next entry
+  ([#866](https://github.com/Gharib89/skills/pull/866),
+  [`45e366b`](https://github.com/Gharib89/skills/commit/45e366b4e3412cb84a206b6ac5a7b1249ba63b79))
+
+
+## v0.47.2 (2026-10-18)
+
+### Refactoring
+
+- Split every agent-authored file over 5,000 tokens, then gate new ones (#799)
+  ([#848](https://github.com/Gharib89/skills/pull/848),
+  [`0c5b31b`](https://github.com/Gharib89/skills/commit/0c5b31bb4ab1bdb0e156c422e867c2165f6d74d4))
+
+
+## v0.47.1 (2026-10-18)
+
+### Bug Fixes
+
+- **ship**: Run-file note refuses a Criterion line out of the gate's form
+  ([#859](https://github.com/Gharib89/skills/pull/859),
+  [`78b3658`](https://github.com/Gharib89/skills/commit/78b365883565c09a92d06e8a71caf7c43b173df7))
+
+
+## v0.47.0 (2026-10-18)
+
+### Features
+
+- **ship**: Checked body edits, run-file Stop grammar and note verb, and adjacent finds filed in the
+  run ([#791](https://github.com/Gharib89/skills/pull/791),
+  [`26106e2`](https://github.com/Gharib89/skills/commit/26106e2f863ddb96b167d4b491e430cd737172af))
+
+
+## v0.46.0 (2026-10-17)
+
+### Features
+
+- **ship**: Unmet checkbox criteria hold the clean gate, and a re-raised declined finding caps its
+  reviewer ([#790](https://github.com/Gharib89/skills/pull/790),
+  [`0db4985`](https://github.com/Gharib89/skills/commit/0db4985e961d50fd0e4c9fe4cb58dba4d82f5ba2))
+
+
+## v0.45.4 (2026-10-17)
+
+### Bug Fixes
+
+- **ship**: Answer check-pr-body --help and state prove's verbatim-word rule in run-file --help
+  ([#769](https://github.com/Gharib89/skills/pull/769),
+  [`1f4f441`](https://github.com/Gharib89/skills/commit/1f4f441babe7f838f002e0cf8054c0db6c833df8))
+
+
+## v0.45.3 (2026-10-17)
+
+### Bug Fixes
+
+- Stop pipefail gates failing open on an early-exiting grep -q
+  ([#761](https://github.com/Gharib89/skills/pull/761),
+  [`e6c6a11`](https://github.com/Gharib89/skills/commit/e6c6a114e893c554cda1bbb8fd677df47bc91b16))
+
+
+## v0.45.2 (2026-10-17)
+
+### Bug Fixes
+
+- **ship**: Read Codex's marker-led clean receipt as a clean round
+  ([#754](https://github.com/Gharib89/skills/pull/754),
+  [`cd9ab23`](https://github.com/Gharib89/skills/commit/cd9ab2388803170774c1414fde581a92ad43eecf))
+
+
+## v0.45.1 (2026-10-15)
+
+### Bug Fixes
+
+- **ship**: Revert-red keeps runner-command words jq reads as options
+  ([#715](https://github.com/Gharib89/skills/pull/715),
+  [`91754cf`](https://github.com/Gharib89/skills/commit/91754cf4965380b2132856d7f04ba0a6ce7ef1bd))
+
+
+## v0.45.0 (2026-10-15)
+
+### Features
+
+- **ship**: Run-file prove and revert-red take a runner command after --
+  ([#710](https://github.com/Gharib89/skills/pull/710),
+  [`385c216`](https://github.com/Gharib89/skills/commit/385c216109a0958da9e22a354b2c41de5bc2fa54))
+
+
+## v0.44.0 (2026-10-15)
+
+### Features
+
+- **ship**: Poll-pr --brief names why a landed round closed done: false
+  ([#691](https://github.com/Gharib89/skills/pull/691),
+  [`1b6fc6d`](https://github.com/Gharib89/skills/commit/1b6fc6d4126cf3cdd337ab25af46b3ae1c688cd9))
+
+
+## v0.43.0 (2026-10-15)
+
+### Features
+
+- **ship**: Close 7 takes a not-invoked stop for a fallback whose primary reviewed
+  ([#689](https://github.com/Gharib89/skills/pull/689),
+  [`b64d2da`](https://github.com/Gharib89/skills/commit/b64d2da07f74a8f3ca980b99fe851ac53d5158fd))
+
+
+## v0.42.0 (2026-10-15)
+
+### Features
+
+- **ship**: PR body keeps its structure and a coloured Door line; summary keeps its content; finds
+  fold, file or note ([#681](https://github.com/Gharib89/skills/pull/681),
+  [`c7c8ff2`](https://github.com/Gharib89/skills/commit/c7c8ff28a54b7479c63e476bf1c6b96b90757bb0))
+
+
+## v0.41.0 (2026-10-15)
+
+### Features
+
+- **ship**: Phase-4 evidence, fixed numbers and run choreography become judgment
+  ([#679](https://github.com/Gharib89/skills/pull/679),
+  [`6d33765`](https://github.com/Gharib89/skills/commit/6d337656d23bfb144acb8e9ab5555005784336b6))
+
+
+## v0.40.0 (2026-10-15)
+
+### Features
+
+- **ship**: Mechanics cover gating calls only; direct calls, Ship notes, and a defect never holds
+  the gate ([#675](https://github.com/Gharib89/skills/pull/675),
+  [`9aaf1be`](https://github.com/Gharib89/skills/commit/9aaf1be800a576b118246e2882b6a899a014ab9d))
+
+
+## v0.39.1 (2026-10-15)
+
+### Bug Fixes
+
+- **ship**: Ship_args stops its --body-file scan at --
+  ([#650](https://github.com/Gharib89/skills/pull/650),
+  [`946adcb`](https://github.com/Gharib89/skills/commit/946adcbefcaa6be2b25d10c771af0dc81aca8fbd))
+
+
+## v0.39.0 (2026-10-15)
+
+### Features
+
+- **ship**: Open-pr refuses a body lacking a template heading
+  ([#648](https://github.com/Gharib89/skills/pull/648),
+  [`98a4531`](https://github.com/Gharib89/skills/commit/98a453110b33e8c0728c1144ccac926942784e20))
+
+
+## v0.38.0 (2026-10-14)
+
+### Features
+
+- **ship**: Clean-gate evidence covers the PR head
+  ([#645](https://github.com/Gharib89/skills/pull/645),
+  [`9e1bdb7`](https://github.com/Gharib89/skills/commit/9e1bdb779f973002649eb5020f45615ab9075f66))
+
+
+## v0.37.0 (2026-10-14)
+
+### Features
+
+- **ship**: Exclusive claims, confirmed label reads, atomic Run file init
+  ([#644](https://github.com/Gharib89/skills/pull/644),
+  [`61b6166`](https://github.com/Gharib89/skills/commit/61b6166639604bc8ea0787fc1a6e2ae81ac2f7d1))
+
+
+## v0.36.0 (2026-10-14)
+
+### Features
+
+- **ship**: Bind merge to the gated head and delete only the PR's branch
+  ([#642](https://github.com/Gharib89/skills/pull/642),
+  [`b79a318`](https://github.com/Gharib89/skills/commit/b79a318b8edfde7896e1679b9bb6ea2981aa277b))
+
+
+## v0.35.0 (2026-10-14)
+
+### Features
+
+- **ship**: Check callers before changing a contract, and justify a new dependency
+  ([#640](https://github.com/Gharib89/skills/pull/640),
+  [`6c04f11`](https://github.com/Gharib89/skills/commit/6c04f11a517ea4bcd0d09ee412b950d0c3315474))
+
+
+## v0.34.0 (2026-10-14)
+
+### Features
+
+- **ship**: Move find-docs to 3131245 ([#639](https://github.com/Gharib89/skills/pull/639),
+  [`b67df06`](https://github.com/Gharib89/skills/commit/b67df064a12356b4381e93b4b4fe5556e6613808))
+
+
+## v0.33.0 (2026-10-13)
+
+### Features
+
+- **ship**: Close 3 records a late Verification result on a closed phase 3
+  ([#629](https://github.com/Gharib89/skills/pull/629),
+  [`5d7eb9e`](https://github.com/Gharib89/skills/commit/5d7eb9ee37a4025eb3fa72f682c4b4600010d6fd))
+
+
+## v0.32.0 (2026-10-13)
+
+### Features
+
+- **ship**: A rework run skips threads whose latest comment is Ship's own
+  ([#628](https://github.com/Gharib89/skills/pull/628),
+  [`f2bae05`](https://github.com/Gharib89/skills/commit/f2bae05e9a8446fe32e55e8d084e28df7af1ee9d))
+
+
+## v0.31.1 (2026-10-12)
+
+### Bug Fixes
+
+- **ship**: Close 3 records a Verification the PR adds to the profile
+  ([#624](https://github.com/Gharib89/skills/pull/624),
+  [`493503d`](https://github.com/Gharib89/skills/commit/493503db654d65df1de92768d492293054ebdc3a))
+
+
+## v0.31.0 (2026-10-12)
+
+### Features
+
+- **ship**: Authoritative PR comments since the head push count as rework feedback
+  ([#623](https://github.com/Gharib89/skills/pull/623),
+  [`04b6d24`](https://github.com/Gharib89/skills/commit/04b6d244eec413c62881a17707a15a6406982b5b))
+
+
+## v0.30.0 (2026-10-12)
+
+### Features
+
+- **ship**: Rework a merge-gate PR from its open threads and invocation text
+  ([#622](https://github.com/Gharib89/skills/pull/622),
+  [`c7c6fa7`](https://github.com/Gharib89/skills/commit/c7c6fa7605fce1047463724691a8851f0cc454d9))
+
+
+## v0.29.0 (2026-10-12)
+
+### Features
+
+- **ship**: Read-issue marks comment writers; only they supersede the body
+  ([#617](https://github.com/Gharib89/skills/pull/617),
+  [`608b6ad`](https://github.com/Gharib89/skills/commit/608b6adf5272c12b368dac2d433fdddd1d3ca931))
+
+
+## v0.28.0 (2026-10-12)
+
+### Features
+
+- **ship**: Compose codebase-design, which tdd calls
+  ([#615](https://github.com/Gharib89/skills/pull/615),
+  [`80f9fec`](https://github.com/Gharib89/skills/commit/80f9feca2b70399eab31f134a31da56ab1d9bea0))
+
+
+## v0.27.0 (2026-10-12)
+
+### Features
+
+- **setup-skills**: Lower-the-bar convention, needs-split shape, frontmatter lint
+  ([#610](https://github.com/Gharib89/skills/pull/610),
+  [`2450c04`](https://github.com/Gharib89/skills/commit/2450c046db1d57b77387e24b275eeef70d34f906))
+
+
+## v0.26.0 (2026-10-12)
+
+### Features
+
+- **ship**: Keep the Run file under the XDG state dir, outside every checkout
+  ([#602](https://github.com/Gharib89/skills/pull/602),
+  [`86a91b7`](https://github.com/Gharib89/skills/commit/86a91b72a98acc0efbca6692d6d71ec160459d40))
+
+
+## v0.25.1 (2026-10-12)
+
+### Bug Fixes
+
+- **ship**: Name the phase-7 local review's Report file
+  ([#599](https://github.com/Gharib89/skills/pull/599),
+  [`0d96d44`](https://github.com/Gharib89/skills/commit/0d96d448cc80120d960130ccd3900fb83ecb7972))
+
+
+## v0.25.0 (2026-10-12)
+
+### Features
+
+- **ship**: Loop the phase-4 self-review up to a profile-set cap
+  ([#598](https://github.com/Gharib89/skills/pull/598),
+  [`ee54529`](https://github.com/Gharib89/skills/commit/ee545296828d962f6420723a8039ec779a0c4fdc))
+
+
+## v0.24.3 (2026-10-12)
+
+### Bug Fixes
+
+- Four owned skills stop contradicting what they compose
+  ([#594](https://github.com/Gharib89/skills/pull/594),
+  [`d19612f`](https://github.com/Gharib89/skills/commit/d19612f98f85e5ea98cb1bac0d3d34be5d94d2b0))
+
+
+## v0.24.2 (2026-10-11)
+
+### Bug Fixes
+
+- **ship**: Review-loop.md names the brief thread row's fields
+  ([#592](https://github.com/Gharib89/skills/pull/592),
+  [`6fa6a6c`](https://github.com/Gharib89/skills/commit/6fa6a6cef343739e3890d07a7dcbc9a08aaadf71))
+
+
+## v0.24.1 (2026-10-11)
+
+### Bug Fixes
+
+- **ship**: Gate clean admits a path-filtered leg No-checks legal: allows
+  ([#591](https://github.com/Gharib89/skills/pull/591),
+  [`497d467`](https://github.com/Gharib89/skills/commit/497d46734b6aeb7dfd0c09572428d5a434c1fe6f))
+
+
 ## v0.24.0 (2026-10-11)
 
 ### Features

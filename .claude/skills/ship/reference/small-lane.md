@@ -4,19 +4,21 @@ A change that passes all three lane keys (SKILL.md, *The lanes*) skips the
 ceremony that cannot matter and keeps every check. The floor is the same in
 every repo.
 
-## The size cap
+## The size
 
-Key 3's cap is **200 changed lines**, added plus deleted, as
-`git diff --numstat origin/HEAD...HEAD` counts them. Excluded: test files the
+Key 3's size is judgment: a diff a reviewer takes in at one sitting, with
+**about 200 changed lines** as the usual mark, added plus deleted, as
+`git diff --numstat origin/HEAD...HEAD` counts them, or from the rework base in
+a [rework run](rework.md#phase-2-the-lane-keys). Excluded: test files the
 run wrote or edited for its red-first tests, and files the run regenerates
 rather than authors (a derived copy the refresh line writes, `skills-lock.json`,
 a Tripwire's rebuilt bundle). Agent-facing prose counts. The run never edits a
 CHANGELOG.
 
-**Measured, never estimated.** Phase 2 announces the lane as a prediction. The
-count is taken at phase 2's `Done when:`, with every edit committed, and again
-before every later push, in attended and unattended runs alike. Over the cap
-revokes to the full lane.
+**Count, then judge.** Phase 2 predicts the lane. Count at phase 2's
+`Done when:`, with every edit committed, and again before a push that grew the
+diff, for example after a review round's fixes. A diff you judge past that
+size revokes to the full lane.
 
 ## A guard is full lane
 
@@ -51,13 +53,13 @@ On top of that:
 5. CI green plus every reviewer per its trigger
 6. The merge gate
 
-Adjacent finds are still filed: an unfiled find is lost and filing costs one
-call.
+Adjacent finds still take their dispositions (fold, file or note): a find with
+none is lost, and filing costs one call.
 
 ## Revocable, one way
 
 Any of these **downgrades to the full lane** for the remaining phases: the diff
-counted over the size cap, CI red on behavior, a reviewer or the self-review
+judged past the size, CI red on behavior, a reviewer or the self-review
 flags a real bug, the local gate's floor check hits, or the change turns out to
 touch the public surface or a guard, allowlist or deny rule. Downgrade means:
 run the skipped verifications and docs-sync, add the missing test or docs, run
@@ -71,8 +73,10 @@ human's approval to merge this one PR on a clean gate, and nothing wider. With
 `--unattended`, or free text in place of an issue, stop `inline refused` before
 `prepare`, printing the usage line `/ship <issue> --inline [--review]`.
 
-- **Keys:** the small lane's three, plus a **20-line cap** counted the way the
-  size cap above counts its 200, at the same moments. A guard, allowlist or
+- **Keys:** the small lane's three, plus a **20-line cap**, a rule rather than a
+  mark: counted by *The size*'s `--numstat` command and exclusions, folded
+  adjacent finds included, at phase 2's
+  `Done when:` and again before every later push. A guard, allowlist or
   deny-rule diff stays inline with `--review`, and is full lane without.
 - **Kept from above:** the floor, the local gate, subagents, adjacent finds.
 - **Reviewers:** without `--review`, request no round. Each on-request
@@ -82,7 +86,7 @@ human's approval to merge this one PR on a clean gate, and nothing wider. With
   lane's one requested round, and a fallback stands in per `Fallback-for:`.
   `auto-once` and `on-push` reviewers behave as in every lane.
 - **Merge:** phase 9 takes merge-gate.md's `on-clean-gate` branch for this PR.
-- **Named:** the run header, the `## Review` section and the merge summary say
+- **Named:** the first reply, the `## Review` section and the merge summary say
   `inline lane`. Phase 2 writes `Lane: inline` in the Run file: `gate clean`
   honours an `inline lane` stop only while the last `Lane:` line reads `inline`.
 

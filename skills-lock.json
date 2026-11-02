@@ -5,46 +5,53 @@
       "source": "Gharib89/skills",
       "sourceType": "github",
       "skillPath": "skills/cloud-ship/SKILL.md",
-      "computedHash": "3880073b636a78da273ffc1ce14ea9afcef3da60ea084d015119a2ab4080c189"
+      "computedHash": "0bcbf82df22bc35844cda2b63e1fcfad32952a0c88df4c6772879c656d6cf033"
     },
     "code-review": {
       "source": "mattpocock/skills",
-      "ref": "f3fc5632f401156837ee3872f14fe33ccf1024ea",
+      "ref": "a496f5513d4a4cf889bc48e189e579f4b0bdf6aa",
       "sourceType": "github",
       "skillPath": "skills/engineering/code-review/SKILL.md",
-      "computedHash": "57cfd4ceb011f05e58a1a4f4cad3b2e03419d371f8990f4bcb32ff0d435a039f"
+      "computedHash": "c2745e2be960b82b9fddd82cf45265f42431e7b045c403f297b25f0f311e9210"
+    },
+    "codebase-design": {
+      "source": "mattpocock/skills",
+      "ref": "a496f5513d4a4cf889bc48e189e579f4b0bdf6aa",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/codebase-design/SKILL.md",
+      "computedHash": "aa11a96c08451f4ff86052d5da94004a8c97bb4ea41b2ac8a4300c189f66c89c"
     },
     "find-docs": {
       "source": "upstash/context7",
-      "ref": "522c4db4fa2e1e31f1b320f09fa8c8fab376987a",
+      "ref": "3131245817e9e40626d8f43ce85dabab09d4ff35",
       "sourceType": "github",
       "skillPath": "skills/find-docs/SKILL.md",
-      "computedHash": "96b36c1cfc6b40e5c1a54d9318d802f259781b21a536e5eb645565f8fefe4832"
+      "computedHash": "e4a9a707d8e5d575d166a175f2fec66e0a13de46597f7dbc910c735ccf01bb93"
     },
     "setup-harness": {
       "source": "Gharib89/skills",
       "sourceType": "github",
       "skillPath": "skills/setup-harness/SKILL.md",
-      "computedHash": "248f0e6deb908cf133de6f7c90770333d02bea18c85490a6474d17eba4362b28"
+      "computedHash": "6c9a47fb2f00964da71a873d1228e3cb37036da3eb02ac4a4a49a2c6e6839980"
     },
     "setup-matt-pocock-skills": {
       "source": "mattpocock/skills",
-      "ref": "49dd158d1076134a641b33efb035946536778336",
+      "ref": "4ae2317ddb22b046e26455e4f9c9b3aaaf62212d",
       "sourceType": "github",
       "skillPath": "skills/engineering/setup-matt-pocock-skills/SKILL.md",
-      "computedHash": "1d35d0afa3ded88c9324d38db08b2cff91cd03e0e11d64786bee41385cd7b9fb"
+      "computedHash": "50d6c45174f56a4323b24978f36fcc9169fae0b3abb026587bf636e468c4954c"
     },
     "setup-skills": {
       "source": "Gharib89/skills",
       "sourceType": "github",
       "skillPath": "skills/setup-skills/SKILL.md",
-      "computedHash": "805dcee2506add7d81bf3cff6e28ab4de4a8314161389e1a0bf800a29065929e"
+      "computedHash": "976b1eea8edaed3ebfc98e42664dcec9a658a4932b8fa6f3fa73c8fada56501e"
     },
     "ship": {
       "source": "Gharib89/skills",
       "sourceType": "github",
       "skillPath": "skills/ship/SKILL.md",
-      "computedHash": "25d64b79a5632eda86ed0300420258b2a3511716b3422a5324ed250c159fa6df"
+      "computedHash": "44a5eb68a7545bdbe228a40e4d5dfe4ef521e6d7fa2cd0bd933b2c8eadd59376"
     },
     "show-me": {
       "source": "humanlayer/skills",
@@ -71,7 +78,7 @@
       "source": "Gharib89/skills",
       "sourceType": "github",
       "skillPath": "skills/update-skills/SKILL.md",
-      "computedHash": "2d897ca446baa8899904d2c40fb7946a28fcc7e449ae099832018358f1927f8d"
+      "computedHash": "d04fcd1be1bab12fb0e1ed690d0908d20937059139c7d0d9796ed9f711bdc644"
     },
     "writing-for-agents": {
       "source": "mattpocock/skills",

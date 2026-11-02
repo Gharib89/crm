@@ -1,6 +1,6 @@
 # Ship profile
 
-Schema: 4
+Schema: 5
 
 Every repo-specific fact `/ship` needs, one section per axis. Fourteen `##` headings, always present and in this order; a defaulted axis reads `None.` or `Default.` under its own heading. Facts sit on `Label:` lines and nowhere else, and the prose under a heading explains them. The `Schema:` line above is the profile schema `ship` checks at preflight; only a `setup-skills` re-run moves it. Vocabulary: the `ship` skill's source repo, `Gharib89/skills`, [GLOSSARY.md](https://github.com/Gharib89/skills/blob/main/GLOSSARY.md).
 
@@ -37,6 +37,8 @@ Push policy: Default.
 `lint`, `test` and `package` come from `ci.yml`, `docs` from `docs.yml`, `bump-guard` from `bump-guard.yml`. Non-PR workflows: `e2e.yml` (live e2e, schedule and dispatch only), `semantic-release.yml` and `release.yml` (push to main and tag), and `docs.yml`'s Cloudflare deploy on push.
 
 ## Reviewers
+
+Self-review cap: 3
 
 ### Codex
 

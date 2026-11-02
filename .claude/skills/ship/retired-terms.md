@@ -14,3 +14,5 @@ same diff. A cell holds no `|`.
 | 0.9.0 | cap-hit | None. |
 | 0.13.0 | CONTEXT.md | GLOSSARY.md |
 | 0.13.0 | CONTEXT-MAP.md | GLOSSARY-MAP.md |
+| 0.40.0 | informational read | direct call |
+| 0.40.0 | Direct reads | Direct calls |

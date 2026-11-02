@@ -2,7 +2,7 @@
 
 One `## Schema N` entry per number, oldest first, each listing the structural changes from N-1.
 
-Optional lines: a line `ship` accepts without expecting it takes no entry and no bump. Under `## PR`, `Merge: on-clean-gate` opts an attended run into merging when its recorded gate is clean; `Merge: Default.` or an absent line keeps the human stop. A re-run preserves an existing `Merge:` choice and leaves an absent line absent, including in new profiles. A `### <verification>` block under `## Verification` may carry `Timebox: <n> minutes` or `Timebox: <n> min`, after `Claims to probe:`, bounding that verification's run; a block without it has no bound, and `ship` reads a profile either way.
+Optional lines: a line `ship` accepts without expecting it takes no entry and no bump. Under `## PR`, `Merge: on-clean-gate` opts an attended run into merging when its recorded gate is clean; `Merge: Default.` or an absent line keeps the human stop. A re-run preserves an existing `Merge:` choice and leaves an absent line absent, including in new profiles. Also under `## PR`, `Body-check: <path>` names the repo's own PR body checker, an executable path from the checkout root that takes the body file as its one argument and exits 0 to pass, 1 to refuse with its reason on stdout: `open-pr` runs it on the body file before the push and `update-pr-body` on the body it would publish, each refusing a body the checker fails; `Body-check: None.` or an absent line publishes unchecked, and a re-run preserves an existing `Body-check:` line the same way. A `### <verification>` block under `## Verification` may carry `Timebox: <n> minutes` or `Timebox: <n> min`, after `Claims to probe:`, bounding that verification's run; a block without it has no bound, and `ship` reads a profile either way. The same block may carry `Paths: <glob>[, <glob>...]` after `Claims to probe:` (and after `Timebox:` where both stand), the files its result depends on as git `:(glob)` pathspecs, `*` within one directory and `**` across them: the files its `Applies when:` prose describes, written as globs, so a change to that prose changes the globs too. The clean gate then counts a later head as still proven by a `pass` recorded on an earlier one while no file those globs match differs between the two; a glob matching no file at either head proves nothing. Without it, only a head reached from the recorded one by merges of the base with no conflict to resolve stays proven. A re-run preserves an existing `Paths:` line.
 
 ## Schema 1
 
@@ -36,3 +36,11 @@ A comment-transport reviewer whose round comes from no workflow run: native Code
 - `Workflow:` gains the value `native <integration>`, beside a workflow path and `None.`, on a block whose `Request:` is `comment <phrase>`. It names the integration the round's status is read from instead of a run; `native codex` is the one ship reads. The value names no file, so preflight does not stat it. It is GitHub-only: on Azure DevOps the read always answers `unavailable`, so setup-skills drafts it only where `Host:` is `github`.
 
 Migration from Schema 3: rewrite the `Schema:` line. No block changes, since no Schema 3 profile could carry the new value.
+
+## Schema 5
+
+The bound on ship's phase-4 self-review loop. Only `## Reviewers` moves; the fourteen headings and every other `Label:` line are unchanged from Schema 4.
+
+- `## Reviewers` gains a `Self-review cap: <n>` line, directly under the heading and above the `### <reviewer>` blocks or `None.`: the most self-review rounds a run spends in phase 4, a whole number of 1 or more. `1` is the single round every run spent before this schema. Ship reads an absent line as 3, and preflight refuses a value that is not a whole number of 1 or more rather than reading it as 3. The line is no reviewer block's field: the reviewer blocks are read from the first `###` down.
+
+Migration from Schema 4: write `Self-review cap: 3` under `## Reviewers`, the value ship reads where the line is absent, and rewrite the `Schema:` line.

@@ -21,6 +21,7 @@ Run: `ruff check --fix --force-exclude {files}`
 Hook: https://github.com/astral-sh/ruff-pre-commit
 Pin: package pypi ruff
 Route: `uv tool install ruff=={version}`; Blocked: Astral's curl installer, release binaries
+Done test: `[[ " $(ruff --version 2>&1) " == *[!0-9.]{version}[!0-9.-]* ]]`
 Constraints: None.
 Traps: an explicit file path bypasses `[tool.ruff] exclude` unless `--force-exclude` is passed. ruff reads a `pyproject.toml` only when it has a `[tool.ruff]` table; a member below the root without one is linted from the root and its first-party imports are sorted as third-party, so the run adds an empty table there.
 
@@ -35,6 +36,7 @@ Run: `ruff format {files}`
 Hook: https://github.com/astral-sh/ruff-pre-commit
 Pin: package pypi ruff
 Route: `uv tool install ruff=={version}`; Blocked: Astral's curl installer, release binaries
+Done test: `[[ " $(ruff --version 2>&1) " == *[!0-9.]{version}[!0-9.-]* ]]`
 Constraints: the lint role's `--fix` must run before this, on the vendor hook's own ordering.
 Traps: None.
 
@@ -47,6 +49,7 @@ Run: `black {files}`
 Hook: https://github.com/psf/black-pre-commit-mirror
 Pin: package pypi black
 Route: `uv tool install black=={version}`; Blocked: None.
+Done test: `[[ " $(black --version 2>&1) " == *"black, {version}"[!0-9.-]* ]]`
 Constraints: None.
 Traps: None.
 
@@ -61,6 +64,7 @@ Run: `mypy .`
 Hook: local
 Pin: package pypi mypy
 Route: `uv tool install mypy=={version}`; Blocked: None.
+Done test: `[[ " $(mypy --version 2>&1) " == *[!0-9.]{version}[!0-9.-]* ]]`
 Constraints: None.
 Traps: the only pre-commit hook, `pre-commit/mirrors-mypy`, is a third-party mirror that runs in an isolated venv without project dependencies; this entry pins and runs mypy itself instead.
 
@@ -73,6 +77,7 @@ Run: `pyright .`
 Hook: local
 Pin: package npm pyright
 Route: `npm install -g pyright@{version}`; Blocked: the PyPI `pyright` wheel is a third-party wrapper, not the vendor's own registry
+Done test: `[[ " $(pyright --version 2>&1) " == *[!0-9.]{version}[!0-9.-]* ]]`
 Constraints: needs Node on PATH (ships as an npm package).
 Traps: the CLI costs 4 to 10 s per call (Node start, no cache); do not put it on the edit rung.
 
@@ -85,6 +90,7 @@ Run: `ty check .`
 Hook: https://github.com/astral-sh/ty-pre-commit
 Pin: package pypi ty
 Route: `uv tool install ty=={version}`; Blocked: None.
+Done test: `[[ " $(ty --version 2>&1) " == *[!0-9.]{version}[!0-9.-]* ]]`
 Constraints: beta (0.0.x, classifier "4 - Beta").
 Traps: the vendor hook may create or update `uv.lock`; pass `--isolated` to avoid that.
 
@@ -99,6 +105,7 @@ Run: `pytest`
 Hook: local
 Pin: package pypi pytest
 Route: `uv tool install pytest=={version}`; Blocked: None.
+Done test: `[[ " $(pytest --version 2>&1) " == *[!0-9.]{version}[!0-9.-]* ]]`
 Constraints: None.
 Traps: None.
 
@@ -113,6 +120,7 @@ Run: `pytest --testmon`
 Hook: local
 Pin: package pypi pytest-testmon
 Route: `uv tool install pytest --with pytest-testmon=={version}`; Blocked: None.
+Done test: `[[ " $(pytest -VV 2>&1) " == *pytest-testmon-{version}[!0-9.-]* ]]`
 Constraints: needs `coverage<8` and a first full run to build `.testmondata` before it can select. The route installs it into a pytest tool environment because `uv tool install` refuses a package with no executable of its own; that pytest is the newest release testmon admits.
 Traps: crashes with `KeyError: 'lf'` under `-p no:cacheprovider`. Where the stack's pytest `addopts` (`[tool.pytest.ini_options]`, `pytest.ini`, `setup.cfg` or `tox.ini`) carries `-m` or `-k`, testmon deselects nothing and every turn runs the whole suite: write the turn row's `<affected tests>` field as `pytest --testmon --testmon-forceselect`, behind any exec prefix.
 
@@ -142,5 +150,6 @@ Run: `griffe check {package} -s src`
 Hook: local
 Pin: package pypi griffe
 Route: `uv tool install griffe=={version}`; Blocked: None.
+Done test: `[[ " $(griffe --version 2>&1) " == *[!0-9.]{version}[!0-9.-]* ]]`
 Constraints: compares the working tree's public API with the latest git tag's, so it needs a release tag in the history; `{package}` is the import package's name in either layout, not the distribution name, and `-s` the directory holding it: `Run:` gives a src layout's `src`, and a flat layout writes `-s .`.
 Traps: with no tag in the history it exits 1 with a traceback rather than a finding; a clone that fetched no tags, as a cloud session's does, needs the cloud setup's `tags` row ([reference/cloud.md](../reference/cloud.md) step 3).

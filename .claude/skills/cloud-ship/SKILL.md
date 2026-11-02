@@ -2,10 +2,10 @@
 name: cloud-ship
 description: >-
   Run one fire of a scheduled cloud routine: invoke `ship` unattended and relay
-  its outcome. Composes `ship`. Use only from a cloud routine's prompt; a human
-  runs `/ship`.
+  its outcome. Composes `ship`. Use when a cloud routine's prompt invokes it,
+  and only then; a human runs `/ship`.
 metadata:
-  version: 0.2.1
+  version: 0.3.0
 ---
 
 # cloud-ship
@@ -19,11 +19,12 @@ nothing else.
 1. **Invoke `ship` unattended.** Call the Skill tool with skill `ship` and
    arguments `--unattended`, no issue number. Ship runs the whole unattended
    lane (`reference/unattended.md` in its own folder) and returns.
-2. **Relay.** Report ship's step-5 result verbatim, prefixed with
-   `cloud-ship <version>` (the `metadata.version` above): the PR link, where
-   the merge summary is, and each reviewer's exit off its `Review` block
+2. **Relay.** Report that lane's step-5 result verbatim, prefixed with
+   `cloud-ship <version>` (the `metadata.version` above): the PR link and
+   where the merge summary is, or the stop reason as ship named it. With a PR,
+   add each reviewer's exit, read off the merge summary's `Review` block
    (`reviewed`, `not reviewed: <reason>` or `not invoked: <primary>
-   reviewed`), or the stop reason as ship named it.
+   reviewed`).
 
 ## The one invariant
 

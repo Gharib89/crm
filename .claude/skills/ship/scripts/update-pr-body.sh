@@ -45,11 +45,21 @@
 # the preamble is by definition what sits above the first heading, so a heading
 # in it would open a section the write then puts the carried closing line inside.
 #
+# The repo's own body checker, the `Body-check:` line under the profile's `## PR`
+# (a path from the checkout root, run with the new body's file as its one
+# argument), runs on the body this would publish, before the host write: exit 0
+# publishes, exit 1 refuses with the checker's stdout in the error, and any other
+# exit is tooling with its stderr, each capped at its last 40 lines. No profile, no line or `None.` publishes
+# unchecked. A body already failing the checker for a part this write does not
+# touch is refused too: it would fail the repo's CI as it stands.
+#
 # stdout: {pr, section, replaced, created, sections[]}
 #         {pr, section: null, preamble: true, replaced, created, sections[]}
 #   sections[]: the `## ` headings of the body AFTER the write, so a swallowed
 #   section is visible in the verdict rather than in a review eight minutes later.
-# exit: 0 · 1 update failed, with the host's status where there was one · 2 usage
+# exit: 0 · 1 update failed, with the host's status where there was one, or the
+#   body checker refused · 2 usage, a body checker that could not run, or a
+#   profile that exists and cannot be read
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/_lib.sh" || { printf '{"error":"cannot source _lib.sh"}\n'; exit 2; }
 usage='usage: update-pr-body <pr> (--section <name> | --preamble) --body-file <path>'
@@ -92,6 +102,7 @@ elif ship_body_replace_section "$body" "$section" "$file" > "$new"; then
 else
   replaced=false; created=true
 fi
+ship_require_body_check "$new"
 answer=$(host_pr_set_body "$pr" "$new") || ship_fail "PR body update failed" "$answer"
 sections=$(ship_body_headings "$(cat "$new")")
 jq -n --argjson pr "$pr" --arg s "$section" --argjson p "$preamble" \
