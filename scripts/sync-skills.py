@@ -57,7 +57,6 @@ class SkillEntry(TypedDict):
 # or to force its invocation flag.
 SYNC: list[SkillEntry] = [
     {"name": "blindspot", "model_invokable": False},
-    {"name": "codebase-design", "model_invokable": False},
     {"name": "domain-modeling", "model_invokable": False},
     {"name": "grill-me", "model_invokable": False},
     {"name": "grill-with-docs", "model_invokable": False},
