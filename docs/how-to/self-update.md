@@ -29,8 +29,10 @@ crm self-update
   existing install untouched and exits non-zero. **On Windows the swap itself is
   deferred** — see below.
 - **uv tool / pipx** — force-reinstalls from the latest release tag
-  (`uv tool install --force git+https://github.com/Gharib89/crm@vX.Y.Z`, or the
-  pipx equivalent). `--force` is used because uv/pipx pin the git commit and a
+  (`uv tool install --force --python X.Y git+https://github.com/Gharib89/crm@vX.Y.Z`,
+  or the pipx equivalent). `--python X.Y` pins the Python `crm` already runs on:
+  without it `--force` rebuilds on uv's default interpreter, which may lack
+  prebuilt wheels for a dependency. `--force` is used because uv/pipx pin the git commit and a
   plain upgrade can silently no-op. On a terminal it prints the command and asks
   `Proceed? [y/N]` (default No); non-interactively it runs only with `--yes`.
   If `uv`/`pipx` isn't on your PATH, it falls back to printing the command.
