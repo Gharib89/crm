@@ -89,5 +89,5 @@ Write-Host "Installed: " -NoNewline
 Write-Host ""
 Write-Host "Update anytime with 'crm self-update'."
 Write-Host "If this unsigned binary is blocked by SmartScreen/Defender/AppLocker,"
-Write-Host "install via uv instead: 'uv tool install git+https://github.com/Gharib89/crm'"
+Write-Host "install via uv instead: 'uv tool install --python 3.14 git+https://github.com/Gharib89/crm'"
 Write-Host "(its 'crm self-update' handles upgrades too)."
