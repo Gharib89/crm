@@ -18,6 +18,21 @@
 # profile's and the host's.
 #
 #   preflight <issue|none> [--unattended]
+#   preflight <issue> --rework [--feedback]
+#
+# `--rework` is the Rework run's admission, attended only and never on `none`
+# (both a usage error). In place of the plain run's `already claimed`,
+# `existing PR` and `existing branch` it admits the run only when the claim is
+# the signed-in identity's and exactly one open PR closes the issue, its head the
+# one `*-<n>` branch on origin; every other shape is one `not reworkable:
+# <detail>` reason. A `*-<n>` worktree on that branch, clean and at the PR's
+# head, is the one an ended attended run left: reused, not `worktree exists`.
+# Admitted with no feedback thread and no feedback comment is `no feedback`,
+# unless `--feedback` says the human gave the run text of its own. A feedback
+# thread is an unresolved review thread whose latest comment is not Ship's own
+# (`ship_last` false), so a decline left open for the human is not one. A
+# feedback comment is an authoritative one (`writer: true`) with no Ship marker,
+# posted after the head push: the push that put the PR's head at its sha.
 #
 # `none` as the issue argument is the task-spec run: there is no issue to read,
 # so the issue block is skipped and `none` is the literal branch and worktree
@@ -25,13 +40,13 @@
 # free-text runs are not the same run, so a `*-none` branch is no reason.
 #
 # stdout: {host, repo, identity, profile, ok, reasons[], mentions[], mentioned_by[],
-#          pruned[], reviewers[]}
+#          pruned[], reviewers[], self_review_cap, rework}
 #   reasons use the stop names verbatim, detail after a colon:
 #   closed · is a pull request · already claimed · existing PR · existing branch
 #   · worktree exists · not triaged: run /triage first · ready-for-human:
 #   attended only · profile missing · profile invalid: <detail> · skill missing:
 #   <detail> · skill off pin: <detail> · skills lock unreadable: <detail> ·
-#   composes pin invalid: <detail>
+#   composes pin invalid: <detail> · not reworkable: <detail> · no feedback
 #   mentions[] lists live PRs that name the issue without closing it: context
 #   for phase 1, and no kind of stop. mentioned_by[] is the same rows widened to
 #   {number, kind: issue|pr, state}, so a run learns whether a mention is an
@@ -43,22 +58,40 @@
 #   the copilot_code_review ruleset's true or false for the block posting under
 #   the Copilot login, null for every other block and where the host could not
 #   answer. It is the ruleset read the Trigger check rests on, reported for
-#   the human; the review loop does not branch on it.
+#   the human; the review loop does not branch on it. self_review_cap is the
+#   number of phase-4 self-review rounds the profile's `Self-review cap:` line
+#   allows, read at column 0 under `## Reviewers` above its first `###` block
+#   and outside a fence, 3 when the line is absent, and null with a
+#   `profile invalid:` reason when its value is not a whole number of at least
+#   1, or when there is no profile to read. rework is null on a plain run, and on
+#   a rework run {pr, branch, head_sha, worktree, threads[], comments[]}: the PR
+#   being reworked, its head branch and sha, the reusable worktree's path or
+#   null, the ids of its feedback threads, and its feedback comments
+#   as {author, created_at, body}; null where no one PR was admitted: none or
+#   several open, one unreadable or on another branch, origin, its threads, its
+#   comments or its head push unreadable.
 # exit: 0 actionable · 1 not actionable · 2 tooling, or host-unreachable
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/_lib.sh" || { printf '{"error":"cannot source _lib.sh"}\n'; exit 2; }
 
-usage='usage: preflight <issue|none> [--unattended]'
+usage='usage: preflight <issue|none> [--unattended] | preflight <issue> --rework [--feedback]'
 ship_help "$usage" "$@"
 ship_args "$usage" "issue|none" "$@"
 n=$1; shift
-unattended=false
+unattended=false rework=false feedback=false
 while [ $# -gt 0 ]; do
   case $1 in
     --unattended) unattended=true; shift ;;
+    --rework) rework=true; shift ;;
+    --feedback) feedback=true; shift ;;
     *) ship_tooling "unknown flag: $1" ;;
   esac
 done
+if $rework; then
+  { [ "$n" = none ] || $unattended; } && ship_tooling "$usage"
+elif $feedback; then
+  ship_tooling "$usage"
+fi
 
 ship_load_host
 identity=null
@@ -84,6 +117,7 @@ esac
 root=$(ship_main_checkout) || ship_tooling "not inside a git checkout"
 reasons=()
 reviewers='[]'
+self_review_cap=null
 
 # Profile: presence, the fourteen headings in order, the Schema line, and the
 # Host cross-check. `ship_profile_path` carries which checkout it is read from,
@@ -114,6 +148,21 @@ else
   esac
   declared=$(awk '/^## Host/{f=1;next} /^## /{f=0} f && /^Host:/{sub(/^Host: */,""); print; exit}' "$profile" | tr -d ' `')
   [ "$declared" = "$SHIP_HOST" ] || reasons+=("profile invalid: Host mismatch (profile says '${declared:-nothing}', remote is $SHIP_HOST)")
+
+  # The phase-4 loop's bound, optional so a profile without the line keeps
+  # running. A value that is not a count is refused rather than read as the
+  # default: a typo there would silently change how many rounds a run spends.
+  line=$(awk "$SHIP_AWK_FENCE"'{ fenced = ship_fence($0) } fenced { next }
+    /^## / { s = $0; sub(/[ \t\r]+$/, "", s); sec = (s == "## Reviewers"); next }
+    /^### / { sec = 0; next }
+    sec && /^Self-review cap:/ { v = $0; sub(/^Self-review cap:[ \t]*/, "", v); sub(/[ \t\r]+$/, "", v); print "=" v; exit }' "$profile")
+  if [ -z "$line" ]; then
+    self_review_cap=3
+  elif [[ ${line#=} =~ ^[1-9][0-9]*$ ]]; then
+    self_review_cap=${line#=}
+  else
+    reasons+=("profile invalid: Self-review cap: ${line#=} is not a whole number of rounds, 1 or more")
+  fi
 
   # The reviewer blocks, through the one parser. Refused here rather than at
   # phase 7 because a run that reaches phase 7 has already spent itself, and
@@ -189,7 +238,13 @@ else
   [ "$(jq -r .state <<<"$issue")" = open ] || reasons+=("closed")
   [ "$(jq -r .is_pr <<<"$issue")" = false ] || reasons+=("is a pull request")
   assignees=$(jq -r '.assignees | join(", ")' <<<"$issue")
-  [ -z "$assignees" ] || reasons+=("already claimed: $assignees")
+  if ! $rework; then
+    [ -z "$assignees" ] || reasons+=("already claimed: $assignees")
+  elif [ -z "$assignees" ]; then
+    reasons+=("not reworkable: not claimed")
+  elif [ "$assignees" != "$me" ]; then
+    reasons+=("not reworkable: claimed by $assignees")
+  fi
 
   rfa=$(ship_triage_label ready-for-agent); rfh=$(ship_triage_label ready-for-human)
   if jq -e --arg l "$rfa" '.labels | index($l)' <<<"$issue" >/dev/null; then :
@@ -199,11 +254,14 @@ else
     reasons+=("not triaged: run /triage first")
   fi
 
-  if linked=$(host_issue_linked_prs "$n"); then
+  if linked=$(host_issue_linked_prs "$n") && jq -e '.closing and .mentions' >/dev/null 2>&1 <<<"$linked"; then
     closing=$(jq -r '[.closing[] | "#\(.number) (\(.state))"] | join(", ")' <<<"$linked")
-    [ -z "$closing" ] || reasons+=("existing PR: $closing")
+    $rework || [ -z "$closing" ] || reasons+=("existing PR: $closing")
+    open_prs=$(jq -c '[.closing[] | select(.state == "open") | .number]' <<<"$linked")
     mentions=$(jq -c '[.mentions[] | select(.kind == "pr") | .number]' <<<"$linked")
     mentioned_by=$(jq -c '.mentions' <<<"$linked")
+  elif $rework; then
+    reasons+=("not reworkable: cross-references unreadable")
   else
     reasons+=("existing PR: cross-references unreadable, cannot prove none")
   fi
@@ -212,20 +270,74 @@ fi
 # A free-text run has no number to match: its `<type>/<slug>-none` branch would
 # collide with any earlier free-text run's, and two of those are not one run.
 if [ "$n" != none ]; then
-  br=$(git -C "$root" ls-remote --heads origin "*-$n" 2>/dev/null | awk '{print $2}' | sed 's|refs/heads/||' | paste -sd, -) \
-    || reasons+=("existing branch: remote unreadable, cannot prove none")
-  [ -z "$br" ] || reasons+=("existing branch: $br")
+  if ! br=$(git -C "$root" ls-remote --heads origin "*-$n" 2>/dev/null | awk '{print $2}' | sed 's|refs/heads/||' | paste -sd, -); then
+    if $rework; then
+      reasons+=("not reworkable: remote unreadable")
+      open_prs=""
+    else
+      reasons+=("existing branch: remote unreadable, cannot prove none")
+    fi
+  fi
+  $rework || [ -z "$br" ] || reasons+=("existing branch: $br")
+fi
+
+# The Rework run's admission: the one open PR closing the issue, its head the one
+# `*-<n>` branch on origin, and something to rework it from.
+rework_json=null
+# Both sides of the head-push compare pass this one check: the adapters owe the
+# one UTC spelling, and a time spelled any other way would compare as text, so
+# it is unreadable. `\z`, since `$` also matches before a trailing newline.
+strict_utc='def strict_utc: if type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\\z")
+  then . else error("not a UTC time") end; '
+if $rework && [ -n "${open_prs:-}" ]; then
+  case $(jq length <<<"$open_prs") in
+    0) reasons+=("not reworkable: no open PR") ;;
+    1) num=$(jq '.[0]' <<<"$open_prs")
+       if ! pr=$(host_pr_get "$num") || ! head=$(jq -er .head_ref <<<"$pr"); then
+         reasons+=("not reworkable: PR #$num unreadable")
+       elif [ "$head" != "${br:-}" ]; then
+         reasons+=("not reworkable: branch mismatch: PR #$num heads $head, origin has ${br:-no *-$n branch}")
+       elif ! threads=$(host_pr_threads "$num") \
+         || ! open_threads=$(jq -c '[.[] | select((.resolved | not) and (.ship_last | not)) | .id]' <<<"$threads"); then
+         reasons+=("not reworkable: review threads unreadable")
+       elif ! comments=$(host_pr_comments "$num") \
+         || ! comments=$(jq -c --arg m "$SHIP_COMMENT_MARKER" "$strict_utc"'[.[]
+              | select(.writer == true and ((.body // "") | contains($m) | not))
+              | {author, created_at: (.created_at | strict_utc), body}]' <<<"$comments"); then
+         reasons+=("not reworkable: PR comments unreadable")
+       elif [ "$comments" != '[]' ] && ! pushed=$(host_pr_pushed_at "$num" "$head" "$(jq -r .head_sha <<<"$pr")" \
+         | jq -Rre "$strict_utc"'strict_utc'); then
+         reasons+=("not reworkable: head push unreadable")
+       else
+         # The head push is the cut-off: a comment older than it was already in
+         # front of the run that pushed. Both sides count whole seconds, and a
+         # comment stamped in the push's own second may predate it, so the
+         # compare is strict.
+         [ "$comments" = '[]' ] || comments=$(jq -c --arg p "$pushed" 'map(select(.created_at > $p))' <<<"$comments")
+         [ "$open_threads$comments" != '[][]' ] || $feedback || reasons+=("no feedback")
+         rework_json=$(jq -c --argjson t "$open_threads" --argjson c "$comments" \
+           '{pr: .number, branch: .head_ref, head_sha, worktree: null, threads: $t, comments: $c}' <<<"$pr")
+       fi ;;
+    *) reasons+=("not reworkable: several open PRs: $(jq -r 'map("#\(.)") | join(", ")' <<<"$open_prs")") ;;
+  esac
 fi
 
 for wt in "$container"/*-"$n"/; do
-  [ -d "$wt" ] && reasons+=("worktree exists: ${wt%/}")
+  [ -d "$wt" ] || continue
+  wt=${wt%/}
+  if [ "$rework_json" != null ] && ship_worktree_at "$wt" "$(jq -r .branch <<<"$rework_json")" "$(jq -r .head_sha <<<"$rework_json")"; then
+    rework_json=$(jq -c --arg w "$wt" '.worktree = $w' <<<"$rework_json")
+  else
+    reasons+=("worktree exists: $wt")
+  fi
 done
 
 ok=true; [ "${#reasons[@]}" -eq 0 ] || ok=false
 printf '%s\n' "${reasons[@]+"${reasons[@]}"}" | jq -Rs --arg h "$SHIP_HOST" --arg r "$SHIP_REPO_SLUG" \
   --argjson id "$identity" --arg p "$profile" --argjson ok "$ok" --argjson m "$mentions" \
   --argjson mb "$mentioned_by" --argjson pr "$pruned" --argjson rv "$reviewers" \
+  --argjson sc "$self_review_cap" --argjson rw "$rework_json" \
   '{host: $h, repo: $r, identity: $id, profile: $p, ok: $ok,
     reasons: (split("\n") | map(select(. != ""))), mentions: $m, mentioned_by: $mb, pruned: $pr,
-    reviewers: $rv}'
+    reviewers: $rv, self_review_cap: $sc, rework: $rw}'
 $ok

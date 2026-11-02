@@ -7,7 +7,8 @@
 #
 # Contract (ship's local-gate contract, the same in every repo):
 #   stdout: one JSON object, {"verdict","base","lane","gates":{<name>:<status>}}
-#   stderr: a failing gate's last 40 log lines
+#   stderr: a failing gate's last 40 log lines, and with no scanner on PATH one
+#           line naming the command that installs it
 #   exit:   0 every gate passed · 1 a gate failed · 2 tooling
 #   gate status: pass | fail | deferred-to-ci | unavailable
 #     deferred-to-ci: planned, CI proves this gate (Docker absent, other-OS leg)
@@ -53,11 +54,16 @@ mark() { put "$1" "$2"; }   # mark <name> deferred-to-ci|unavailable
 # names in step with the profile.
 
 # secrets: required in every lane. Wired to the scanner setup-skills detected;
-# `unavailable` here stops the first attended run and names what to add.
+# `unavailable` here stops the first attended run and names what to add. Its
+# missing-scanner line names that scanner and a command installing it on a
+# developer machine, plain shell with no `'` (`sudo apt-get install -y gitleaks`,
+# `pipx install detect-secrets`); gitleaks and its install when setup-skills
+# detected none.
 if command -v gitleaks >/dev/null; then
   run secrets gitleaks detect --no-banner --redact --log-opts="$base..HEAD"
 else
   mark secrets unavailable
+  echo 'secrets: gitleaks not on PATH; __SCANNER_INSTALL__ installs it' >&2
 fi
 
 run deps  __DEPS__                       # every lane: a fresh worktree has no dependencies yet

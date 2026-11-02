@@ -4,7 +4,9 @@
 #   read-issue <issue>
 #
 # stdout: {number, title, body, state, is_pr, labels[], assignees[], created_at,
-#          url, comments: [{author, body, created_at, ship}], blockers: [n...] | "unavailable"}
+#          url, comments: [{author, body, created_at, writer, ship}], blockers: [n...] | "unavailable"}
+#   writer: true where the comment's author has write access to the repo, false
+#   where not, null where the host cannot answer (always, on Azure DevOps).
 #   ship: true on a comment a ship mechanic posted, which carries the hidden
 #   marker `<span data-ship=1></span>`; false on every other comment, a human's
 #   included.

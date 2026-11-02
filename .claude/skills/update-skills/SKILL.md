@@ -3,7 +3,7 @@ name: update-skills
 description: "Refresh this repo's skills in one PR: the Gharib89/skills skills, every skill they compose at its pinned ref, and any other repo-scoped skill the owner picks; report upstream drift to the source repo and summarise what changed. In the source repo, move the drifted pins instead. Attended only."
 disable-model-invocation: true
 metadata:
-  version: 0.7.2
+  version: 0.10.2
 ---
 
 # update-skills
@@ -32,7 +32,9 @@ From the main checkout, `$S/isolate.sh none chore update-skills-<YYYYMMDD>`,
 the run's date as `date +%Y%m%d` prints it, then work from the path it prints.
 A second run the same day is refused by isolation, and nothing is deleted to
 make room. Note `git rev-parse HEAD` there as `<old>`: the tree
-before the refresh, which the plan reads as the old side.
+before the refresh, which the plan reads as the old side. Note isolate's
+`worktree` and `branch` too, for step 8's cleanup line: the ship copy present
+after the merge may keep its worktrees elsewhere than this one did.
 
 ### 2. Refresh the source-repo skills
 
@@ -194,7 +196,13 @@ the profile's `## Local gate` `Location:` from the worktree and keep its
 section carries the content below either way:
 
 - `## Why the change`: one sentence naming the refresh.
-- `## Change outline`: `Shape: none, mechanical (skills refresh).`, then:
+- `## Change outline`: `Shape: none, mechanical (skills refresh).` while item 3
+  below lists no file a run executes. When it lists one (a workflow, a script,
+  a hook, such as a file the setup-skills re-run edited), the outline opens
+  instead with one `diff` fence of 15 lines or fewer, in the form
+  `.claude/skills/show-me/SKILL.md` gives, each such file's path a root over
+  the steps it changed, then
+  `Shape: mechanical for the skill copies (skills refresh).`. Then:
   1. One version table, `| Skills | Move |`. A `source_skills` entry whose
      version moved reads `<old_version> → <new_version>`, a null `old_version`
      `new at <new_version>`. A `composed` entry whose `old_ref` differs from its
@@ -213,8 +221,9 @@ section carries the content below either way:
      bash -c 'O=$1; shift; L=$(jq -er ".skills | keys[]" skills-lock.json) || exit 2; for s in $L; do set -- "$@" ":!.claude/skills/$s/"; done; git diff --name-only "$O" -- . ":!skills-lock.json" "$@"' _ '<old>'
      ```
 - `## Special things to note`:
-  1. `- Door: <one-way|two-way>. Blast radius: <one clause>.`, two-way unless
-     setup-skills changed host state a revert does not undo.
+  1. `- 🟢 Door: two-way. Blast radius: <who else feels it>.`, or
+     `- 🔴 Door: one-way. Blast radius: <who else feels it>.` when setup-skills
+     changed host state a revert does not undo.
   2. One line folding every empty outcome among other skills, upstream drift
      and unreachable upstreams, e.g. `- No other skills moved, no upstream
      drift, every upstream answered.` Each non-empty one gets its own line
@@ -240,10 +249,7 @@ Between the last content section and `## Attribution`, one collapsed block per
 `<details><summary><skill> <old_version> → <new_version></summary>`: the
 sections of the file at its `changelog` path above `old_version` up to
 `new_version`, verbatim, breaking changes first. A null `old_version` is a skill
-new to this repo: its version alone. A refresh whose new `changelog` carries the
-**The renumber to 0.x.** note, where the old copy's lacked it, crosses that
-renumber: the sections above `old_version` under the old numbers, then
-the renumbered ones up to `new_version`. One more block holds each composed and
+new to this repo: its version alone. One more block holds each composed and
 other skill that moved, with the upstream commit subjects that touched its
 folder between the two refs; a null `old_ref` has no subjects.
 
@@ -258,9 +264,19 @@ on.
 Open it with `$S/open-pr.sh none --title "<subject>" --body-file <body>`, a
 Conventional-Commit subject honouring the profile's `Subject constraints:`
 (`chore(skills): refresh derived skills` where it has none), then
-`$S/read-pr.sh <pr>`. Hand the owner the link, and
-`.claude/skills/ship/scripts/cleanup.sh none` to run from the main checkout
-after the merge, and stop: the PR merges the way the repo merges anything.
+`$S/read-pr.sh <pr>`. Hand the owner the link and this line, with the
+`<worktree>` and `<branch>` step 1 noted, to run from the main checkout after
+the merge. It removes the refresh's worktree, local branch and remote branch:
+the repo's own merge may leave the remote one, and `cleanup.sh` deletes no
+remote branch and finds only worktrees in its own container.
+
+```sh
+git worktree remove --force "<worktree>"; git branch -D <branch>; git push origin --delete <branch>; git fetch --prune origin
+```
+
+A `remote ref does not exist` from the push means the host deleted the branch
+on merge; the prune then drops its stale tracking ref. Then stop: the PR merges
+the way the repo merges anything.
 
 ### 9. Source-repo mode
 
@@ -285,10 +301,12 @@ finds the drift issue this PR closes; steps 6 and 8 run unchanged. Per row:
    restores its folder and lock entry from `<old>`), put `<from>` back on each
    line step 2 edited, and record `held back: <skill>: <reliance it breaks>`.
 
-Then the refresh line, and `scripts/local-gate.sh`, whose `derived-copies` gate
-holds every pin to the lock. A gate red at the new pins holds back the row whose
-skill or folder its failing output names, or every moved row where it names
-none, the failing gate as the reliance; then refresh and gate again. In step 8
+Then the refresh line, and `scripts/check.sh full`, whose `derived-copies`
+check holds every pin to the lock and whose `tests` check runs the suite; the
+local gate defers both to CI, so it cannot hold a row back. A check red at the
+new pins holds back the row whose skill or folder its failing output names, or
+every moved row where it names none, the failing check as the reliance; then
+refresh and run `full` again. In step 8
 the PR body opens with `Closes #<n>`, the drift issue step 7 filed or found, or
 `Refs #<n>` with a row held back, and `## Needs attention` lists each `held
 back` line. With every row held back, open no PR: hand the owner those lines and
@@ -316,14 +334,16 @@ would file, and phase 6 opens the PR with `Closes #<issue>` but for a hold-back.
 2. Step 2's source-repo refresh line, from the source repo's CLAUDE.md.
 3. Step 3, with its source-repo token. A `heads` exit 1 is retried once, then
    stops the run `red-after-retry: heads`.
-4. Step 9 per `drift` and `others` row, then its refresh line. The local gate
-   is Ship's phase 5, where a red gate at the new pins is step 9's hold-back,
-   not a fix-and-retry; step 9's title rule is phase 6's title.
+4. Step 9 per `drift` and `others` row, then its refresh line and its
+   `scripts/check.sh full`, before Ship's phase 5: a red check at the new pins
+   is step 9's hold-back, not a fix-and-retry; step 9's title rule is phase 6's
+   title.
 
 A held-back row hands the issue back to the owner. With some rows moved, phase
 6 runs `open-pr none --title <t> --body-file <f>`, `<f>` saying `Refs #<issue>`,
 then `manage-issue <issue> handback "<reason>"` naming each `held back` line,
-before the merge gate; `merge` takes `<pr> none`, `cleanup` keeps `<issue>`.
+before the merge gate; `merge` takes `none` as its issue, `cleanup`
+keeps `<issue>`.
 With every row held back there is no PR: hand back, `cleanup <issue>`, and stop.
 
 Where a step would ask the owner, the run takes the conservative answer and

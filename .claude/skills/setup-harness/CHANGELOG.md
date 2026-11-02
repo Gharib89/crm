@@ -7,6 +7,78 @@ released version. See
 
 <!-- version list -->
 
+## v0.15.0 (2026-10-30)
+
+### Features
+
+- **setup-harness**: A local-only harness and a no-harness gate name an install for a missing tool
+  ([#1065](https://github.com/Gharib89/skills/pull/1065),
+  [`fb0f990`](https://github.com/Gharib89/skills/commit/fb0f9903207c2b80a1eb09bac439933ea40d3efb))
+
+
+## v0.14.0 (2026-10-30)
+
+### Features
+
+- **setup-harness**: A local session gets the gate tools' local install
+  ([#1063](https://github.com/Gharib89/skills/pull/1063),
+  [`36b7fc1`](https://github.com/Gharib89/skills/commit/36b7fc1df30af474fb8e9a9e53207946562088e2))
+
+
+## v0.13.1 (2026-10-30)
+
+### Bug Fixes
+
+- **setup-harness**: The edit hook stays in the session's repo, and pinned cloud done tests match
+  the pin ([#1061](https://github.com/Gharib89/skills/pull/1061),
+  [`f943f0b`](https://github.com/Gharib89/skills/commit/f943f0b7a4789251ff8d9887bd60f13fa5b71cde))
+
+
+## v0.13.0 (2026-10-20)
+
+### Features
+
+- **setup-harness**: {paths} hands a turn row its deleted paths
+  ([#914](https://github.com/Gharib89/skills/pull/914),
+  [`d33dd8f`](https://github.com/Gharib89/skills/commit/d33dd8f198f3c2d44a9cdc01b944bdbf8abc2c9e))
+
+
+## v0.12.3 (2026-10-19)
+
+### Bug Fixes
+
+- **harness**: Turn rung runs the tests naming a deleted .sh
+  ([#886](https://github.com/Gharib89/skills/pull/886),
+  [`63e8b4f`](https://github.com/Gharib89/skills/commit/63e8b4f151f8586ff7718370567632d07cab21ec))
+
+
+## v0.12.2 (2026-10-15)
+
+### Bug Fixes
+
+- **setup-harness**: Check.sh skips installed skills with no Excluded: line
+  ([#714](https://github.com/Gharib89/skills/pull/714),
+  [`ce88761`](https://github.com/Gharib89/skills/commit/ce88761915cb75acbea9ab5aba691140cf39468e))
+
+
+## v0.12.1 (2026-10-14)
+
+### Bug Fixes
+
+- **setup-harness**: Check-hook stays quiet in a repo with no check.sh
+  ([#634](https://github.com/Gharib89/skills/pull/634),
+  [`211da1d`](https://github.com/Gharib89/skills/commit/211da1de1feda0e8da921800a45c1a3c054120de))
+
+
+## v0.12.0 (2026-10-11)
+
+### Features
+
+- **setup-harness**: Check.sh installs a root's missing dependencies first
+  ([#588](https://github.com/Gharib89/skills/pull/588),
+  [`5a71eaf`](https://github.com/Gharib89/skills/commit/5a71eaf52af31eafe656c93d91919d57ae328417))
+
+
 ## v0.11.1 (2026-10-11)
 
 ### Bug Fixes

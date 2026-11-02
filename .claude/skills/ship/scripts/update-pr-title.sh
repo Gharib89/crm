@@ -7,13 +7,15 @@
 # Grade check. When the PR's head branch ends in `-<issue>` and that issue's Run
 # file records a `Grade: minor` or `Grade: breaking`, a title whose type grades
 # patch (anything but `feat` or a `!`) is refused before any host write, even one
-# equal to the current title. No such suffix, Run file or Grade line is no check.
-# The Run file is read at `<git common dir>/ship/ship-<issue>/run.md`, so a run
-# started with `run-file --scratchpad <dir>` keeps its Run file elsewhere and is
-# not checked.
+# equal to the current title. No such suffix, Run file or Grade line is no check;
+# a record root or Run file that cannot be read is refused, exit 2.
+# The Run file is read at
+# `${XDG_STATE_HOME:-~/.local/state}/ship/<repo key>/ship-<issue>/run.md`, so a
+# run started with `run-file --scratchpad <dir>` keeps its Run file elsewhere
+# and is not checked.
 #
 # stdout: {pr, title, changed}
-# exit: 0 · 1 title grades below the recorded Grade, or update failed (with the host's status where there was one) · 2 usage
+# exit: 0 · 1 title grades below the recorded Grade, or update failed (with the host's status where there was one) · 2 usage, or the recorded grade could not be read
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/_lib.sh" || { printf '{"error":"cannot source _lib.sh"}\n'; exit 2; }
 usage='usage: update-pr-title <pr> --title "<subject>"'

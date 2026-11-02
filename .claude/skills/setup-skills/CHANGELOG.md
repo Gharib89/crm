@@ -7,6 +7,158 @@ released version. See
 
 <!-- version list -->
 
+## v0.28.0 (2026-10-30)
+
+### Features
+
+- **setup-harness**: A local-only harness and a no-harness gate name an install for a missing tool
+  ([#1065](https://github.com/Gharib89/skills/pull/1065),
+  [`fb0f990`](https://github.com/Gharib89/skills/commit/fb0f9903207c2b80a1eb09bac439933ea40d3efb))
+
+
+## v0.27.0 (2026-10-30)
+
+### Features
+
+- **setup-harness**: A local session gets the gate tools' local install
+  ([#1063](https://github.com/Gharib89/skills/pull/1063),
+  [`36b7fc1`](https://github.com/Gharib89/skills/commit/36b7fc1df30af474fb8e9a9e53207946562088e2))
+
+
+## v0.26.0 (2026-10-29)
+
+### Features
+
+- **ship**: Move code-review and codebase-design to a496f55
+  ([#1052](https://github.com/Gharib89/skills/pull/1052),
+  [`0490956`](https://github.com/Gharib89/skills/commit/0490956482c9d1abf1cfb6f710b707be40039cb8))
+
+
+## v0.25.3 (2026-10-27)
+
+### Bug Fixes
+
+- **ship**: Open-pr runs the repo's body check before the push
+  ([#993](https://github.com/Gharib89/skills/pull/993),
+  [`2c04e92`](https://github.com/Gharib89/skills/commit/2c04e92a7c45d4aee8f74f8ce87f888b35aef2b8))
+
+
+## v0.25.2 (2026-10-18)
+
+### Bug Fixes
+
+- **ship**: Phase 9 names the relative merge.sh invocation
+  ([#873](https://github.com/Gharib89/skills/pull/873),
+  [`fdbe6e5`](https://github.com/Gharib89/skills/commit/fdbe6e50233e3b7ca7d428f6190dfd1cf4c25028))
+
+
+## v0.25.1 (2026-10-18)
+
+### Refactoring
+
+- Split every agent-authored file over 5,000 tokens, then gate new ones (#799)
+  ([#848](https://github.com/Gharib89/skills/pull/848),
+  [`0c5b31b`](https://github.com/Gharib89/skills/commit/0c5b31bb4ab1bdb0e156c422e867c2165f6d74d4))
+
+
+## v0.25.0 (2026-10-18)
+
+### Features
+
+- **ship**: Checked body edits, run-file Stop grammar and note verb, and adjacent finds filed in the
+  run ([#791](https://github.com/Gharib89/skills/pull/791),
+  [`26106e2`](https://github.com/Gharib89/skills/commit/26106e2f863ddb96b167d4b491e430cd737172af))
+
+
+## v0.24.0 (2026-10-15)
+
+### Features
+
+- **setup-skills**: Template and update-skills write the coloured Door line
+  ([#688](https://github.com/Gharib89/skills/pull/688),
+  [`8237b02`](https://github.com/Gharib89/skills/commit/8237b02c5a1627d9a3806fbef5cbec8c1f92ca94))
+
+
+## v0.23.0 (2026-10-14)
+
+### Features
+
+- **ship**: Clean-gate evidence covers the PR head
+  ([#645](https://github.com/Gharib89/skills/pull/645),
+  [`9e1bdb7`](https://github.com/Gharib89/skills/commit/9e1bdb779f973002649eb5020f45615ab9075f66))
+
+
+## v0.22.0 (2026-10-14)
+
+### Features
+
+- **ship**: Check callers before changing a contract, and justify a new dependency
+  ([#640](https://github.com/Gharib89/skills/pull/640),
+  [`6c04f11`](https://github.com/Gharib89/skills/commit/6c04f11a517ea4bcd0d09ee412b950d0c3315474))
+
+
+## v0.21.0 (2026-10-14)
+
+### Features
+
+- **ship**: Move find-docs to 3131245 ([#639](https://github.com/Gharib89/skills/pull/639),
+  [`b67df06`](https://github.com/Gharib89/skills/commit/b67df064a12356b4381e93b4b4fe5556e6613808))
+
+
+## v0.20.0 (2026-10-12)
+
+### Features
+
+- **setup-skills**: The claude reviewer trusts issue text only from authors who can push
+  ([#625](https://github.com/Gharib89/skills/pull/625),
+  [`0e523d3`](https://github.com/Gharib89/skills/commit/0e523d38cb30944f59d3a4d725b9cd119f0c9fac))
+
+
+## v0.19.1 (2026-10-12)
+
+### Refactoring
+
+- **setup-skills**: Count the prose budget in words, split setup-skills into references
+  ([#618](https://github.com/Gharib89/skills/pull/618),
+  [`858c5ad`](https://github.com/Gharib89/skills/commit/858c5ad8d95c79dbe67272097dec4a917078e65d))
+
+
+## v0.19.0 (2026-10-12)
+
+### Features
+
+- **ship**: Compose codebase-design, which tdd calls
+  ([#615](https://github.com/Gharib89/skills/pull/615),
+  [`80f9fec`](https://github.com/Gharib89/skills/commit/80f9feca2b70399eab31f134a31da56ab1d9bea0))
+
+
+## v0.18.0 (2026-10-12)
+
+### Features
+
+- **setup-skills**: Lower-the-bar convention, needs-split shape, frontmatter lint
+  ([#610](https://github.com/Gharib89/skills/pull/610),
+  [`2450c04`](https://github.com/Gharib89/skills/commit/2450c046db1d57b77387e24b275eeef70d34f906))
+
+
+## v0.17.0 (2026-10-12)
+
+### Features
+
+- **ship**: Loop the phase-4 self-review up to a profile-set cap
+  ([#598](https://github.com/Gharib89/skills/pull/598),
+  [`ee54529`](https://github.com/Gharib89/skills/commit/ee545296828d962f6420723a8039ec779a0c4fdc))
+
+
+## v0.16.3 (2026-10-12)
+
+### Bug Fixes
+
+- Four owned skills stop contradicting what they compose
+  ([#594](https://github.com/Gharib89/skills/pull/594),
+  [`d19612f`](https://github.com/Gharib89/skills/commit/d19612f98f85e5ea98cb1bac0d3d34be5d94d2b0))
+
+
 ## v0.16.2 (2026-10-11)
 
 ### Bug Fixes

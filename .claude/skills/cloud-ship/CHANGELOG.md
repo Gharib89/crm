@@ -7,6 +7,24 @@ released version. See
 
 <!-- version list -->
 
+## v0.3.0 (2026-10-12)
+
+### Features
+
+- **setup-skills**: Lower-the-bar convention, needs-split shape, frontmatter lint
+  ([#610](https://github.com/Gharib89/skills/pull/610),
+  [`2450c04`](https://github.com/Gharib89/skills/commit/2450c046db1d57b77387e24b275eeef70d34f906))
+
+
+## v0.2.2 (2026-10-12)
+
+### Bug Fixes
+
+- Four owned skills stop contradicting what they compose
+  ([#594](https://github.com/Gharib89/skills/pull/594),
+  [`d19612f`](https://github.com/Gharib89/skills/commit/d19612f98f85e5ea98cb1bac0d3d34be5d94d2b0))
+
+
 ## v0.2.1 (2026-10-11)
 
 ### Bug Fixes

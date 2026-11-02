@@ -1,11 +1,11 @@
 ---
 name: ship
 description: Drive one tracker issue to a merge-ready PR in a single run, reaching the merge gate or merging when the repo opts in and the gate is clean. Use when the user wants to ship an issue, or to run the unattended lane.
-argument-hint: "[issue-number] [--unattended | --inline [--review]]"
+argument-hint: "[issue-number] [--unattended | [--rework [\"<feedback>\"]] [--inline [--review]]]"
 metadata:
-  version: 0.24.0
-  profile-schema: 4
-  composes: mattpocock/skills#f3fc5632f401156837ee3872f14fe33ccf1024ea:tdd mattpocock/skills#c55ee46073ed923f86ce59a5eb3b6d895095d1b7:writing-for-agents mattpocock/skills#f3fc5632f401156837ee3872f14fe33ccf1024ea:code-review upstash/context7#522c4db4fa2e1e31f1b320f09fa8c8fab376987a:find-docs humanlayer/skills#ca7c8088db69e315a8b2deea43820270457f8f3c:show-me
+  version: 0.54.2
+  profile-schema: 5
+  composes: mattpocock/skills#f3fc5632f401156837ee3872f14fe33ccf1024ea:tdd mattpocock/skills#a496f5513d4a4cf889bc48e189e579f4b0bdf6aa:codebase-design mattpocock/skills#c55ee46073ed923f86ce59a5eb3b6d895095d1b7:writing-for-agents mattpocock/skills#a496f5513d4a4cf889bc48e189e579f4b0bdf6aa:code-review upstash/context7#3131245817e9e40626d8f43ce85dabab09d4ff35:find-docs humanlayer/skills#ca7c8088db69e315a8b2deea43820270457f8f3c:show-me
 ---
 
 # ship
@@ -18,9 +18,9 @@ in CLAUDE.md carries.
 
 **Version.** The harness strips this file's frontmatter on load, so read the
 version once, at the start of the run, with
-`sed -n 's/^  version: //p' <base directory>/SKILL.md`, then print
-`ship <version>` in the run header, the first line of the first reply, and again
-in the merge summary, so every PR records which ship produced it.
+`sed -n 's/^  version: //p' <base directory>/SKILL.md`; by default print
+`ship <version>` in the first reply and the merge summary, so the PR records
+which ship produced it.
 
 ## Argument and flags
 
@@ -38,6 +38,9 @@ in the merge summary, so every PR records which ship produced it.
   `<issue>` it first runs the unattended lane: prepare, PR cap, select.
 - `--inline [--review]`: the **inline lane**; before `prepare`, read
   [small-lane.md](reference/small-lane.md#the-inline-lane) for its rules.
+- `--rework ["<feedback>"]`: the **rework run**, reworking the PR an earlier
+  run left at the merge gate; before `run-file init`, read
+  [rework.md](reference/rework.md). Attended only; `--inline` composes.
 
 Without `--unattended` the run is **attended**: any needed human action stops
 and asks, and the claim holds while it waits. **Preparation**, before `run-file
@@ -62,79 +65,65 @@ is unattended, explicitly, because it has no other way to know. **Read**
 
 Work the phases in order, keeping the main thread on orchestration and
 decisions. **First**, read
-[reference/context-discipline.md](reference/context-discipline.md): the
-delegation rule and the levers that keep a long run from bloating the window.
-Then the run's **required first action**: after `prepare` and before phase 0,
-`run-file init <issue|slug> --from-profile` initializes the Run file holding the
-ten-item checklist. Each phase below flips it with `run-file next`, `open`,
-`close` or `skip`, and closes once its `Done when:` holds, not before.
+[reference/context-discipline.md](reference/context-discipline.md): defaults
+that keep a long run from bloating the window, and what it still requires. Then
+the run's **first write**: after `prepare`, an issue's `read-issue` and
+before phase 0, `run-file init <issue|slug> --from-profile` initializes the Run
+file holding the ten-item checklist; an issue's run adds `--criteria -`,
+per [implement.md](reference/implement.md#phase-1-criteria-the-run-owes). Each
+phase below flips it with `run-file next`, `open`, `close` or `skip`, and closes
+once its `Done when:` holds, not before.
+
+**A turn never ends on a plan line.** It ends on a stop from the table below
+(the merge gate included) or on a wait its last line names: a background job or
+subagent whose notification resumes the run. A line saying what comes next is
+followed by doing it in the same turn. When that job or subagent comes back,
+announce its end in one line before the next step, so the human reading the
+session sees the run move on.
 
 **A phase runs the mechanic it names**, rather than re-deriving what that
-mechanic wraps. **Every host write, and every gating read, goes through a
-mechanic**: one no mechanic performs is a **Ship defect** for the merge
-summary's `Ship defects:` row, never a hand-rolled call; merge-gate.md says
-where its draft goes. [reference/mechanics.md](reference/mechanics.md) carries
-the rule in full, the informational reads it admits, the mechanic each phase
-runs and the contract they share, `--help` included.
+mechanic wraps. **Every gating call goes through a mechanic**, a host call a
+later phase, stop, merge or release depends on: one no mechanic performs is a
+**Ship defect** for the summary, never hand-rolled, and never holds the clean
+gate. Any other uncovered call is a **direct call** through `gh api` or `az
+rest`, logged first with `run-file call`; worked-around friction is a **Ship
+note**. [reference/mechanics.md](reference/mechanics.md) lists the gating calls,
+each phase's mechanic and their shared contract, `--help` included.
 
 **0 · Isolate.** [reference/isolate.md](reference/isolate.md) carries what
-preflight proves and refuses, the profile it loads and why the worktree is made
-the way it is. Run `preflight <issue>` (`--unattended` in an unattended run):
-every `reasons` entry is a row of the stop table below. Then
-`read-issue <issue>`, phase 1's input, from which the branch `<type>` (`feat`,
-`fix`, `docs`, ...) and `<slug>` are derived. Then `isolate <issue> <type>
-<slug>` with the profile's `Carry:` files, or `isolate ... --in-place`
-unattended. Attended, `EnterWorktree` with `path` set to that path comes right
-after isolate, before any edit or `LSP` call: the language server roots where
-the session stands when it first starts
-([isolate.md](reference/isolate.md#entering-the-worktree)). Every edit, commit
-and the PR happen from the path `isolate` printed, and you **commit as you
-go**, because the PR needs real commits. A `Bootstrap:` under `## Worktree` runs
-once here, after isolate.
+preflight proves and refuses and why the worktree is made the way it is.
+Run `preflight <issue>`, then `read-issue`, then `isolate`; the steps are in
+[phase-steps.md](reference/phase-steps.md#phase-0-isolate).
 **Done when:** `preflight` answered `ok: true`, `isolate` printed its path, any
 `## Worktree` `Bootstrap:` ran green, and, attended, `EnterWorktree` entered
 that path.
 
 **1 · Understand.** Too vague to plan from the `read-issue` result: stop
 `ambiguous`, with no claim taken. Otherwise **claim before any work**:
-`manage-issue <issue> take`, held until merge; later stops follow the stop
-table. Then **grep each anchor** the issue cites, rewriting one the tree
-contradicts through `update-issue-body`
-([implement.md](reference/implement.md#phase-1-anchors-the-issue-cites)). A
-criterion needing a host action no mechanic performs stays verbatim: unattended,
-it is an **unmet criterion** the merge summary lists; attended, ask first, per
-[implement.md](reference/implement.md#phase-1-a-criterion-no-mechanic-can-perform)
-on both. Only then write what success looks like into the Run file as criteria
-a later phase can check; a later authoritative comment supersedes the body
-(**spec precedence**).
+`manage-issue <issue> take --fresh` (bare in a rework or resumed run, holding
+it already), held until merge; later stops follow the stop table.
+Then **grep each anchor** the issue cites and settle the success criteria in
+the Run file (a later `writer: true` brief or comment supersedes the body:
+**spec precedence**); the steps are in
+[phase-steps.md](reference/phase-steps.md#phase-1-anchors-and-criteria).
 **Done when:** `claim: taken`, anchors grepped, the Run file holds the criteria.
 
 **2 · Implement.** [reference/implement.md](reference/implement.md) carries the
 classes, the TDD override, external-claim probes, the judgment/execution split
-and the adjacent-find dispositions. Classify `docs` / `code` / `infra`;
-**announce the class, the skip path it implies, whether the three lane keys
-hold**, and the applicable verifications from `## Verification` (their `Applies
-when:` lines are prose you judge here). Record the version grade of the public
-surface change under the profile's `Subject constraints:` with `run-file grade
-<patch|minor|breaking>`: `open-pr` and `update-pr-title` refuse a title type
-that grades lower. Then implement test-first per class; `Tripwires:` and
-`In-PR requirement:` land in this change whatever the class.
-Keep a **deviations log** from the first edit: whenever the territory forces a
-departure from the issue, brief or plan, take the conservative option, log what
-and why, keep going; it lands verbatim in the merge summary. If the diff
-outgrows one PR, or the fix demands a redesign the issue did not scope, stop
-`needs-split` with a split proposal.
+and the adjacent-find dispositions.
+Classify the change, judge the lane keys and verifications, record `run-file
+grade`, keep the **deviations log** from the first edit, and stop
+`needs-split` when one PR cannot hold it. The steps are in
+[phase-steps.md](reference/phase-steps.md#phase-2-implement).
 **Done when:** the applicable tests are green (red first, per class), the
 tripwires and in-PR requirement have landed, `Grade:` is recorded, a small-lane
-diff is counted under the cap, and every departure and adjacent find so far is
-in the Run file with its disposition.
+diff is counted, and every departure and adjacent find so far is in the Run
+file with its disposition.
 
 **3 · Verify.** [reference/verify.md](reference/verify.md) carries the result
-words, the `Without it:` dispositions and what `unexercised` is. Run each
-applicable verification's `Run:` line **scoped to what you touched**, on the
-environment the issue was reported against: green elsewhere is not fixed. Noisy
-runs go to a cheap-tier subagent in the `verify` scratch directory. `docs` class
-and the small lane skip this phase.
+words, the `Without it:` dispositions and what `unexercised` is.
+Run each applicable verification's `Run:` line, scoped to what you touched
+([phase-steps.md](reference/phase-steps.md#phase-3-verify)).
 **Done when:** `run-file close 3` took a `--result` for every Verification,
 each applicable one `pass`, `deferred-to-ci` or `unexercised`; any other result
 is recorded, then takes its named stop. Or `run-file skip 3` recorded what
@@ -148,55 +137,37 @@ the edits into this change, a tracker issue's as a
 for internal refactors, a bugfix restoring documented behavior, test-only or
 tooling changes, and comments, and say so in one line at the merge gate.
 **The `writing-for-agents` pass has a trigger of its own**, firing even where
-docs-sync is skipped: whenever the diff touches a target on the profile's
-`Agent-facing:` line, at the judgment tier, in the `writing` scratch directory,
-over every agent-facing file in the diff. Human prose takes the mechanical pass.
-With docs-sync's edits landed, load `code-review`, then dispatch this pass and
-its two axes in one turn and end it, each naming its Report file. Small lane:
-dispatch the axes, then run this pass inline.
+docs-sync is skipped; with docs-sync's edits landed, load `code-review` and
+dispatch this pass and its two axes in one turn. Its trigger, tier and
+small-lane form are in
+[phase-steps.md](reference/phase-steps.md#phase-4-writing-pass).
 
-**Self-review**, unconditional in every lane: invoke `code-review` against the
-diff since `origin/HEAD`, its Standards axis reading the profile's
-`## Coding standards` path, its Spec axis reading the issue, each axis prompt
-carrying its own scratch directory (`standards`, `spec`) and saying the Local
-gate runs later in the run, so the axis reads the gate's JSON and never runs
-`check.sh full` or the suite itself. **Triage waits for every Report file**; one
-that fails to arrive after [the stops](#the-stops)' two fix-and-retry attempts
-is `red-after-retry: <axis>`, never a disposition written from memory.
-**Auto-triage** every finding at the judgment tier, one disposition each, under
-the rails and depth checks in
-[implement.md](reference/implement.md#phase-4-triage-and-depth-checks).
-`run-file close 4` refuses until the Run file holds the
-[evidence lines](reference/implement.md#phase-4-evidence-lines) that section's
-checks leave: `Reverted-fix:`, `Dropped:`, `Near-miss:` and `Probe:`, the red
-and `Probe:` lines produced by `run-file prove` and `run-file probe`.
+**Self-review**, unconditional in every lane, is a loop: round 1 invokes
+`code-review` against the diff since `origin/HEAD`, triage waits for every
+Report file, each finding takes one disposition, and the Standards axis
+re-runs over each round's fix-only diff until `tree unchanged` or the `cap`;
+`run-file close 4` refuses without the evidence lines. Steps:
+[phase-steps.md](reference/phase-steps.md#phase-4-self-review).
 **Done when:** every report that fired has its Report file on disk and its path
 in the Run file, every finding carries a disposition, `close 4` took the
 evidence lines, and docs-sync landed or is skipped in one line.
 
 **5 · Local gate.** *Precondition:* every applicable verification is `pass`,
-`deferred-to-ci` or `unexercised`, or the class is `docs`, **and** every phase-4
-finding carries a disposition; otherwise go back. Run `base-fresh` first: CI
-tests the merge ref, so a branch that predates a merge still goes green while
-every "does this exist?" answer taken from the worktree was pre-merge; behind:
-follow its advice, re-run, continue. Confirm every `Carry:` file still matches
-the main checkout's copy; a difference is `carried file modified`, because ship
-never edits untracked secrets. Then run the gate at the profile's `Location:`
-from the worktree, inline, and `run-file gate record` its JSON (small lane:
-small-lane.md). The JSON holds `verdict` `pass|fail|unavailable`, per-gate
-statuses `pass|fail|deferred-to-ci|unavailable` and `gates.secrets` in every
-lane; unparseable output or a missing `secrets` key reads as `unavailable`.
-`fail`: fix loop. `deferred-to-ci`: proceed, the merge summary naming each
-deferred gate. `unavailable`: stop `local gate unavailable`, the PR unopened.
+`deferred-to-ci` or `unexercised`, or none applies, **and** every phase-4
+finding carries a disposition; otherwise go back.
+Run `base-fresh` first (behind: follow its advice, re-run, continue), confirm
+every `Carry:` file matches the main checkout's copy, then run the gate at the
+profile's `Location:` from the worktree, inline, and `run-file gate record`
+its JSON. The verdict words and what each does are in
+[phase-steps.md](reference/phase-steps.md#phase-5-local-gate).
 **Done when:** `base-fresh` answered `fresh: true`, the `Carry:` files match,
 and the recorded verdict reads `verdict: pass` with `gates.secrets` present.
 
 **6 · Open PR.** [reference/pr-body.md](reference/pr-body.md) carries what the
 body holds and how it is written and read back. `open-pr <issue> --title
 --body-file`, **non-draft** (drafts may not trigger a reviewer). Title: a
-Conventional-Commit subject derived from the issue, honouring `Subject
-constraints:`; it becomes the squash subject release tooling reads, and one that
-later proves wrong is fixed with `update-pr-title`. **Every title or body write
+Conventional-Commit subject honouring `Subject constraints:`, fixed later with
+`update-pr-title`. **Every title or body write
 to an open PR ends with `read-pr <pr>`**, its `## ` headings checked against the
 ones the body owes. Then `reflect <issue> <pr>`.
 **Done when:** `read-pr` shows an open, non-draft PR carrying the headings the
@@ -204,61 +175,33 @@ body owes, and `reflect` posted.
 
 **7 · Reviewers.** [reference/review-loop.md](reference/review-loop.md) carries
 the round per trigger, the cap as a budget, reading a round, the exit lines and
-fallbacks. Best-effort: for each reviewer under `## Reviewers`, per round, start
-it by its `Trigger:`, wait out one `poll-pr --brief` window, triage whatever
-landed, push the fixes once, answer each thread with `reply-thread`, then the
-block's `Resolve:`; `Cap:` bounds the rounds, and a docs-only fix-only diff ends
-them. A round's fix is proven by its targeted test nodes plus the repo's edit
-rung, the per-file check its harness runs after each edit (`check.sh edit
-<file>...`), over the files it touched; a repo with no harness, and so no edit
-rung, proves it with the local gate instead. Otherwise the local gate is not
-re-run per round: the final head's gate is the merge gate's re-run on `gate
-read`'s `current: false`, never while a `code-review` is out (phase 5). **Every
-reviewer whose `Fallback-for:` reads `None.` first, then the fallbacks**, each
-driven when its primary exits `not reviewed` (`inline lane` aside), is capped
-with findings or stops `not landed`. Exits: `reviewed`, `not reviewed:
-<reason>`, or `not invoked: <primary> reviewed`; `not reviewed` proceeds to the
-merge gate on green CI and is reported there. At exit, `update-pr-body --section
---body-file` writes the sections the rounds grew, the Change outline where it
-fell short, `Review` last, the title checked against the `Grade:`, then the
-phase-6 read-back; the cap, docs-only and not-landed rounds earn the local
-review [review-loop.md](reference/review-loop.md) describes.
+fallbacks.
+Best-effort: each reviewer under `## Reviewers` gets its rounds, every
+reviewer whose `Fallback-for:` reads `None.` first, then the fallbacks; a
+round starts by the block's `Trigger:`, waits one `poll-pr --brief` window,
+triages what landed, pushes the fixes once and answers each thread. Steps,
+exit words and exit write-up:
+[phase-steps.md](reference/phase-steps.md#phase-7-reviewers).
 **Done when:** every reviewer carries an exit word, every thread `poll-pr`
 returned is replied to and resolved per `Resolve:`, every section the rounds
 grew is rewritten, the title matches `Grade:`, any local review a cap, docs-only
-or not-landed round earned is dispositioned, `close 7` took each reviewer's
+or not-landed round earned is dispositioned (its `Past-cap:` or `Docs-only:`
+line recorded where one applies), `close 7` took each reviewer's
 `Round:` and `Stop:` lines, and `read-pr` shows a `## Review` line per reviewer.
 
 **8 · CI.** CI runs from PR-open and overlaps phase 7; `ci-wait <pr>` covers it,
-reading the profile's `Legs:`. `ci-wait` and `poll-pr` wait for the expected
-head ([mechanics.md](reference/mechanics.md#waits-past-540-s)). On `conflict`,
-its stderr carries the recovery. `no-checks` is fine only where `No-checks
-legal:` says so. A red leg named on a verification's `Also proven by CI:` line
-is that verification failing: back to phase 2. Red after the reviewers exited:
-fix, push, proceed on green. Honour `Push policy:`: a push spends CI minutes and
-review quota, so push when the tree changed.
+reading the profile's `Legs:`.
+How the waits, a conflict, `no-checks`, a red leg and `Push policy:` are read
+is in [phase-steps.md](reference/phase-steps.md#phase-8-ci).
 **Done when:** `ci-wait` answered `green`, each `missing_legs` entry one
 `No-checks legal:` admits, or `no-checks` where it admits that.
 
 **9 · Merge gate.** [reference/merge-gate.md](reference/merge-gate.md) carries
-the summary's shape, what `merge` does, its two refusals and the tracker drafts.
-Write the summary per that file. Attended: follow its
-`Merge:` branch, waiting for an explicit "merge" by default, or merging when
-`Merge: on-clean-gate` or the run is inline lane and `run-file gate clean`
-answers `clean: true`; an unmet criterion needs the human's explicit waiver.
-On either authorization run `merge <pr> <issue|none> [--worktree
-<path>]`, `update-issue-body` per tracker draft, settle each Ship defect draft
-(filed on its own word only), `run-file close 9`, `ExitWorktree` with `action:
-"keep"` (`cleanup` owns the removal) so the session is not left in a deleted
-folder, then `cleanup
-<issue|none>`, last, as it removes the Run file; a nonzero exit, or a `false`
-in `merge`'s or `cleanup`'s JSON, re-runs the mechanic that owns the step; a
-step no mechanic re-does is a Ship defect for the summary. Unattended: the
-final head's gate, then `comment-pr <pr> --body-file` with the summary,
-`run-file close 9`. Either lane then returns.
+the summary's shape, what `merge` does, its refusals and the tracker drafts.
+Write the summary per that file; the steps from the merge authorization to
+the return are in [phase-steps.md](reference/phase-steps.md#phase-9-merge-gate).
 **Done when:** attended, `merge` and every `update-issue-body` exited 0 with no
-`false`, every Ship defect draft is filed, answered with candidates, carries its
-`command` or was declined, then `close 9`, then `ExitWorktree`, then `cleanup
+`false`, then `close 9`, then `ExitWorktree`, then `cleanup
 <issue|none>` exited 0 with no `false`; unattended, `comment-pr` posted.
 
 ## The stops
@@ -267,11 +210,11 @@ The **merge gate** stops as phase 9 says; the unattended lane posts and returns.
 **The stop table below is authoritative.** Everything else, triaging your own
 findings, fixing, re-running, is autonomous. Two guardrails hold around that:
 
-- **Red is fixed or reported.** Any failure before the merge gate gets at most
-  two fix-and-retry attempts; still red after the second is `red-after-retry:
-  <what>`, and a failure saying the approach is wrong stops sooner. Either way
-  **stop and report** with the concrete evidence and, if cheap, a
-  verified-working alternative, so the report is a fast yes.
+- **Red is fixed or reported.** Retry a failure before the merge gate while
+  retries make progress (two attempts is a fair mark); once they stop, it is
+  `red-after-retry: <what>`, and one saying the approach is wrong stops at
+  once. Either way **stop and report** with the concrete evidence and, if
+  cheap, a verified-working alternative, so the report is a fast yes.
 - **Every stop has a name**, reported verbatim, with the claim action below.
 
 | Stop | Reason | Claim |
@@ -280,6 +223,8 @@ findings, fixing, re-running, is autonomous. Two guardrails hold around that:
 | A skill ship composes is not installed at its pin, or its pin is malformed | `skill missing: <skill>; run <install line>`, `skill off pin: <skill> at <ref>, pinned <sha>; run <install line>`, `skills lock unreadable: skills-lock.json; repair it, then re-run preflight`, `composes pin invalid: <entry>; want <form>` | no claim |
 | Preflight not actionable | `closed`, `is a pull request`, `already claimed`, `existing PR`, `existing branch`, `worktree exists`, `not triaged: run /triage first`, `ready-for-human: attended only` | no claim |
 | Issue too vague to plan | `ambiguous` | no claim |
+| Another run claimed it after preflight | `contested: <others>`, `held: another run of this identity holds it` | `contested`: no claim; `held`: the other run's |
+| A `--rework` run not admitted, or with nothing to rework | `not reworkable: <detail>`, `no feedback` | unchanged |
 | Change outgrows one PR, or needs a redesign the issue did not scope | `needs-split` | attended: ask; unattended: hand back |
 | A find shows the issue is mis-specified | `mis-specified` | attended: ask; unattended: hand back |
 | Verification prerequisite missing | `hand-off` (attended waits, claim holds) / `blocked-verification` | attended: hold; unattended: hand back |
@@ -288,6 +233,7 @@ findings, fixing, re-running, is autonomous. Two guardrails hold around that:
 | Red after retries | `red-after-retry: <what>` | attended: ask; unattended: hand back |
 | The branch fell behind its base before the merge | `stale-base: behind <n> on <base>` | attended: holds while you merge the base in; unattended: hand back |
 | The PR is closed at the merge gate | `pr-closed: <state>` | attended: ask; unattended: hand back |
+| The PR's head moved after the merge gate read it | `head-moved: <current> != <gated>` | attended: holds while the gate re-reads the new head; unattended: not reached, the lane runs no merge |
 | `--inline` with `--unattended` or free text | `inline refused` | no claim |
 | `prepare` failed its Cloud lane `Bootstrap:` | `bootstrap-failed` | no claim |
 | Open PRs at or above the profile's `PR cap:` | `pr-queue-full` | no claim |
@@ -295,17 +241,14 @@ findings, fixing, re-running, is autonomous. Two guardrails hold around that:
 | The host's blocker query exists and failed | `blockers-unavailable` | no claim |
 | Merge gate reached | none: the run's success | holds until merge |
 
-Hand-back is `manage-issue <issue> handback "<reason>"`: unassign, drop
-`ready-for-agent`, add `ready-for-human`, comment the reason; one that exits 1
-says on its own output what the claim is left as. In an attended run you stop
-and ask, and hand back only if the human says stop, to the human queue: never to
-the agent queue, which loops forever.
+Hand-back is `manage-issue <issue> handback "<reason>"`; the rules, attended
+and unattended, are in
+[phase-steps.md](reference/phase-steps.md#hand-back).
 
 ## The lanes
 
 Every run is **full lane** until the change proves it **small**: all three keys
-hold, asserted by you at phase 2 and announced with the class. When unsure, it
-is not small.
+hold, as you judge them at phase 2. When unsure, it is not small.
 
 1. **No public-surface change.** The public surface is the profile's
    `## Public surface`; `Default.` means the exported or published API, CLI
@@ -314,7 +257,7 @@ is not small.
    it, or the class is `docs` and there is no behavior to test; either way no
    verification in the profile's `## Verification` applies.
 3. **Contained.** No new dependency, none of the profile's `Tripwires:`
-   fired, and the diff inside the size cap small-lane.md counts.
+   fired, and the diff within the size small-lane.md describes.
 
 Behavior change is allowed: a bugfix is one. A diff touching a guard,
 allowlist or deny rule is full lane, inline under `--review` aside. Small or
@@ -322,9 +265,10 @@ inline: read [reference/small-lane.md](reference/small-lane.md) first.
 
 ## Model tiers
 
-Pick every subagent's model from the one tier table in
-[context-discipline.md](reference/context-discipline.md#model-tiers), and tag
-each with its model and its scratch directory; neither is inherited.
+The tier table in
+[context-discipline.md](reference/context-discipline.md#model-tiers) is each
+subagent's default model. Every subagent prompt names its scratch directory,
+which is not inherited.
 
 ## Working standards
 
@@ -340,6 +284,11 @@ These bind every edit a run makes, in every repo, regardless of a personal
 - **Root cause, not symptom.** No temporary patches, no swallowed errors, no
   `TODO` standing in for the fix; if the real fix is out of scope, say so and
   file it.
+- **Callers found, dependencies justified.** Before changing a contract, find
+  its callers and tests and update each one the change breaks; prefer the
+  standard library or what the repo already installs, and justify a new
+  dependency in the PR body; [implement.md](reference/implement.md)'s phase 2
+  says how.
 - **Comments record the why.** Document public APIs and non-obvious
   constraints, invariants and workarounds; skip narrative comments on internals.
 - **Concise PR body, always the why.** State what changed and why; the reader

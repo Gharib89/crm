@@ -4,17 +4,21 @@
 # from here. Ship's `prepare` runs it before a cloud run takes its claim, so the
 # local gate finds every tool it runs.
 #
-#   scripts/cloud-ship-bootstrap.sh
+#   scripts/cloud-ship-bootstrap.sh [--local]
+#   --local installs on this machine, outside a cloud session: the cloud
+#   setup's own `--local` run and the scanner, not the Ship-only steps. The local
+#   gate names it when the scanner is missing.
 #
-# exit: 0 done, or not a cloud session · non-zero a step failed, which ship
-# reads as `bootstrap-failed`
+# exit: 0 done, or not a cloud session and no --local · non-zero a step failed,
+# which ship reads as `bootstrap-failed`
 #
 # The harness cloud setup installs what check.sh runs. This file adds only what
 # Ship alone needs: the secrets scanner the local gate runs, and the repo's own
 # Ship-only steps below. A step belongs to the harness cloud setup unless it
 # needs something only Ship has. Bash 3.2.
 set -euo pipefail
-[ "${CLAUDE_CODE_REMOTE:-}" = true ] || exit 0
+local_flag=; [ "${1:-}" != --local ] || local_flag=--local
+[ -n "$local_flag" ] || [ "${CLAUDE_CODE_REMOTE:-}" = true ] || exit 0
 cd "$(git rev-parse --show-toplevel)"
 
 # >>> setup-skills configuration
@@ -37,9 +41,10 @@ apt_install() {
 # rather than copied so a re-run of setup-harness that moves it moves this too.
 setup=$(awk '{ sub(/\r$/, "") } /^## / { c = ($0 == "## Cloud"); next } c && sub(/^Setup: /, "") { print; exit }' docs/agents/harness.md)
 [ -n "$setup" ] || { echo "cloud-ship-bootstrap: no Setup: line under ## Cloud in docs/agents/harness.md" >&2; exit 1; }
-[ "$setup" = None. ] || bash "$setup"
+[ "$setup" = None. ] || bash "$setup" ${local_flag:+"$local_flag"}
 
 command -v "$SCANNER" >/dev/null || { eval "$SCANNER_INSTALL"; command -v "$SCANNER" >/dev/null; }
+[ -z "$local_flag" ] || exit 0
 
 # The repo's Ship-only steps go here, each failing the bootstrap on non-zero:
 # what needs something only Ship has, such as live-e2e credentials or profiles.

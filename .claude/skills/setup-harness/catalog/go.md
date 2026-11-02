@@ -21,6 +21,7 @@ Run: `golangci-lint run --fix`
 Hook: https://github.com/golangci/golangci-lint
 Pin: package go github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 Route: `GOBIN="$HOME/.local/bin" go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{version}`; Blocked: `install.sh`, release binaries
+Done test: `v={version}; [[ " $(golangci-lint --version 2>&1) " == *"has version ${v#v}"[!0-9.-]* ]]`
 Constraints: takes packages, not files: the vendor repo's `golangci-lint-full` id, or a local hook of its shape (`pass_filenames: false`, entry `golangci-lint run --fix`), never its `golangci-lint` id. It lints the file's whole module, so a large module can outrun the 5 s edit budget; its per-package cache makes a warm run pay only for changed packages. Needs a Go toolchain.
 Traps: the `golangci-lint` hook id's `--new-from-rev HEAD` narrows the run to modified files, where the `unused` linter misreports.
 

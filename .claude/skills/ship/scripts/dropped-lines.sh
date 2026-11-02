@@ -19,13 +19,13 @@
 # removed lines in one hunk, no matched line among them (a blank one inside the
 # run does not break it), holding at least DROPPED_MIN non-blank lines: one or
 # two unmatched removed lines are an edit, not a drop. Text that was rewritten
-# rather than moved is unmatched too, so a reworded block is reported and needs
-# its disposition like a deleted one. Renames are read as a delete plus an add,
-# so a file renamed with its content intact reports nothing.
+# rather than moved is unmatched too, so a reworded block is reported like a
+# deleted one. Renames are read as a delete plus an add, so a file renamed with
+# its content intact reports nothing.
 #
 # stdout: {base, blocks: [{id, file, line, lines, text}]}
 #   base: the commit diffed against
-#   id: "<file>:<line>", the block's handle for a disposition
+#   id: "<file>:<line>", the block's handle
 #   file, line: where the block's first line was, in the base's version of the
 #     file (a deleted file keeps its old path)
 #   lines: the block's non-blank lines
