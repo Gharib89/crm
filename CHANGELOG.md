@@ -9,6 +9,21 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.81.11 (2026-11-02)
+
+### Bug Fixes
+
+- **install**: Pin --python 3.14 in install.ps1's uv fallback hint
+  ([#1042](https://github.com/Gharib89/crm/pull/1042),
+  [`576fa32`](https://github.com/Gharib89/crm/commit/576fa32ee0e8cc332cc323061367554848d56196))
+
+### Testing
+
+- **install**: Check install.ps1's uv hint against every page showing it
+  ([#1042](https://github.com/Gharib89/crm/pull/1042),
+  [`576fa32`](https://github.com/Gharib89/crm/commit/576fa32ee0e8cc332cc323061367554848d56196))
+
+
 ## v1.81.10 (2026-11-02)
 
 ### Bug Fixes
