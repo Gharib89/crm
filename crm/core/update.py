@@ -299,7 +299,7 @@ def upgrade_command(method: str, latest: str) -> str:
         # interpreter otherwise, which can be a Python with no prebuilt wheels for
         # a dependency (#1038). The version, not sys.executable: --force deletes
         # the env that path lives in.
-        python = f"{sys.version_info[0]}.{sys.version_info[1]}"
+        python = f"{sys.version_info.major}.{sys.version_info.minor}"
         return f"uv tool install --force --python {python} {spec}"
     if method == "pipx":
         return f"pipx install --force {spec}"

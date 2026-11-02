@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -443,7 +444,7 @@ class TestUpgradeCommand:
     def test_uv_tool_python_pin_follows_patched_version_info(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(update_mod.sys, "version_info", (3, 14, 10, "final", 0))
+        monkeypatch.setattr(update_mod.sys, "version_info", SimpleNamespace(major=3, minor=14))
         cmd = upgrade_command("uv-tool", "v3.1.0")
         assert (
             cmd

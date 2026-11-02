@@ -84,8 +84,9 @@ Then install `crm`:
     uv tool install git+https://github.com/Gharib89/crm
     ```
 
-On Windows, pin the interpreter with `--python 3.14`: uv may otherwise pick Python 3.15, where PyYAML has no prebuilt Windows wheel and
-building one needs the MSVC Build Tools.
+On Windows, pin the interpreter with `--python 3.14`: uv may otherwise pick
+Python 3.15, where PyYAML has no prebuilt Windows wheel and building one needs
+the MSVC Build Tools.
 Run `uv tool update-shell` once if `crm` isn't found in a new shell, then:
 
 ```bash
