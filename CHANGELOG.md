@@ -9,6 +9,117 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.81.10 (2026-11-02)
+
+### Bug Fixes
+
+- **self-update**: Address self-review round 1 ([#1040](https://github.com/Gharib89/crm/pull/1040),
+  [`1a0b295`](https://github.com/Gharib89/crm/commit/1a0b29569c8968b89c3f5dc61da73113f41d7a6f))
+
+- **self-update**: Pin the running Python on the uv-tool upgrade
+  ([#1040](https://github.com/Gharib89/crm/pull/1040),
+  [`1a0b295`](https://github.com/Gharib89/crm/commit/1a0b29569c8968b89c3f5dc61da73113f41d7a6f))
+
+- **self-update**: Pin the running Python on uv-tool upgrades
+  ([#1040](https://github.com/Gharib89/crm/pull/1040),
+  [`1a0b295`](https://github.com/Gharib89/crm/commit/1a0b29569c8968b89c3f5dc61da73113f41d7a6f))
+
+### Chores
+
+- Set up this repo for Ship ([#1032](https://github.com/Gharib89/crm/pull/1032),
+  [`70b8bd0`](https://github.com/Gharib89/crm/commit/70b8bd08b343957c8ad5a5aa610e78e2ac72835b))
+
+- **ci**: Pin claude-code-action v1.0.244 in the Claude review
+  ([#1029](https://github.com/Gharib89/crm/pull/1029),
+  [`210692b`](https://github.com/Gharib89/crm/commit/210692b5cd2f6b64b152207bf7da7cc164f9f4fe))
+
+- **harness**: Cloud proof at 29f821bd1217877ed071eec5e5d1c31c5a768c1b
+  ([#1032](https://github.com/Gharib89/crm/pull/1032),
+  [`70b8bd0`](https://github.com/Gharib89/crm/commit/70b8bd08b343957c8ad5a5aa610e78e2ac72835b))
+
+- **harness**: Cloud proof at 5ad0f5e4d5fba86dea99e9c5ee1aaad00d7dad42
+  ([#1029](https://github.com/Gharib89/crm/pull/1029),
+  [`210692b`](https://github.com/Gharib89/crm/commit/210692b5cd2f6b64b152207bf7da7cc164f9f4fe))
+
+- **harness**: Honor CLOUD_SHIP_PYTHON in the cloud setup, document local ShellCheck
+  ([#1029](https://github.com/Gharib89/crm/pull/1029),
+  [`210692b`](https://github.com/Gharib89/crm/commit/210692b5cd2f6b64b152207bf7da7cc164f9f4fe))
+
+- **harness**: Re-run setup-harness 0.10.0 ([#1029](https://github.com/Gharib89/crm/pull/1029),
+  [`210692b`](https://github.com/Gharib89/crm/commit/210692b5cd2f6b64b152207bf7da7cc164f9f4fe))
+
+- **harness**: Rebuild an unusable venv in the cloud setup
+  ([#1029](https://github.com/Gharib89/crm/pull/1029),
+  [`210692b`](https://github.com/Gharib89/crm/commit/210692b5cd2f6b64b152207bf7da7cc164f9f4fe))
+
+- **harness**: Refresh check.sh, pyright launcher, LSP guidance and uv pin
+  ([#1032](https://github.com/Gharib89/crm/pull/1032),
+  [`70b8bd0`](https://github.com/Gharib89/crm/commit/70b8bd08b343957c8ad5a5aa610e78e2ac72835b))
+
+- **merge-gate**: Drop Copilot, sweep Codex threads
+  ([#1029](https://github.com/Gharib89/crm/pull/1029),
+  [`210692b`](https://github.com/Gharib89/crm/commit/210692b5cd2f6b64b152207bf7da7cc164f9f4fe))
+
+- **ship**: Build gitleaks 8.30.1 from the Go proxy in the cloud bootstrap
+  ([#1029](https://github.com/Gharib89/crm/pull/1029),
+  [`210692b`](https://github.com/Gharib89/crm/commit/210692b5cd2f6b64b152207bf7da7cc164f9f4fe))
+
+- **ship**: Merge on a clean gate ([#1031](https://github.com/Gharib89/crm/pull/1031),
+  [`69913de`](https://github.com/Gharib89/crm/commit/69913defa12fc810c861c7d356e253d3be9eca53))
+
+- **ship**: Review with Codex, Claude Code as its fallback, each capped at 2
+  ([#1029](https://github.com/Gharib89/crm/pull/1029),
+  [`210692b`](https://github.com/Gharib89/crm/commit/210692b5cd2f6b64b152207bf7da7cc164f9f4fe))
+
+- **skills**: Install setup-matt-pocock-skills, refresh derived skills
+  ([#1032](https://github.com/Gharib89/crm/pull/1032),
+  [`70b8bd0`](https://github.com/Gharib89/crm/commit/70b8bd08b343957c8ad5a5aa610e78e2ac72835b))
+
+- **skills**: Refresh derived skills ([#1039](https://github.com/Gharib89/crm/pull/1039),
+  [`44097f1`](https://github.com/Gharib89/crm/commit/44097f17b0afe400a57f27e1c76507fcc50a9e78))
+
+- **skills**: Refresh derived skills ([#1030](https://github.com/Gharib89/crm/pull/1030),
+  [`29931cd`](https://github.com/Gharib89/crm/commit/29931cd84992f5eafb5ff1523103713884ae8306))
+
+- **skills**: Refresh derived skills ([#1029](https://github.com/Gharib89/crm/pull/1029),
+  [`210692b`](https://github.com/Gharib89/crm/commit/210692b5cd2f6b64b152207bf7da7cc164f9f4fe))
+
+- **skills**: Refresh derived skills, review with Codex
+  ([#1029](https://github.com/Gharib89/crm/pull/1029),
+  [`210692b`](https://github.com/Gharib89/crm/commit/210692b5cd2f6b64b152207bf7da7cc164f9f4fe))
+
+- **skills**: Stop vendoring codebase-design, it is lock-recorded now
+  ([#1039](https://github.com/Gharib89/crm/pull/1039),
+  [`44097f1`](https://github.com/Gharib89/crm/commit/44097f17b0afe400a57f27e1c76507fcc50a9e78))
+
+### Documentation
+
+- Install crm on Windows through uv with a pinned Python
+  ([#1040](https://github.com/Gharib89/crm/pull/1040),
+  [`1a0b295`](https://github.com/Gharib89/crm/commit/1a0b29569c8968b89c3f5dc61da73113f41d7a6f))
+
+- Rewrap the README self-update bullet ([#1040](https://github.com/Gharib89/crm/pull/1040),
+  [`1a0b295`](https://github.com/Gharib89/crm/commit/1a0b29569c8968b89c3f5dc61da73113f41d7a6f))
+
+- **agents**: Frontier query reads subIssues and blockedBy through gh issue view
+  ([#1032](https://github.com/Gharib89/crm/pull/1032),
+  [`70b8bd0`](https://github.com/Gharib89/crm/commit/70b8bd08b343957c8ad5a5aa610e78e2ac72835b))
+
+- **agents**: Refresh issue-tracker and domain docs to the pinned templates
+  ([#1032](https://github.com/Gharib89/crm/pull/1032),
+  [`70b8bd0`](https://github.com/Gharib89/crm/commit/70b8bd08b343957c8ad5a5aa610e78e2ac72835b))
+
+- **e2e**: Record the 2026-11-01 cloud e2e org rebuild
+  ([#1037](https://github.com/Gharib89/crm/pull/1037),
+  [`d6270fd`](https://github.com/Gharib89/crm/commit/d6270fda1dcdea83595d3fcba753407d5bf649e1))
+
+### Testing
+
+- **self-update**: Patch version_info with a tuple, not a namespace
+  ([#1040](https://github.com/Gharib89/crm/pull/1040),
+  [`1a0b295`](https://github.com/Gharib89/crm/commit/1a0b29569c8968b89c3f5dc61da73113f41d7a6f))
+
+
 ## v1.81.9 (2026-10-03)
 
 ### Bug Fixes
