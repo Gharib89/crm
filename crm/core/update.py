@@ -295,7 +295,12 @@ def upgrade_command(method: str, latest: str) -> str:
     if method == "uv-tool":
         # --force (not `uv tool upgrade`): uv pins the git commit SHA, so a plain
         # upgrade can silently no-op; a forced reinstall reliably fetches the tag.
-        return f"uv tool install --force {spec}"
+        # --python pins the running X.Y: --force rebuilds the env on uv's default
+        # interpreter otherwise, which can be a Python with no prebuilt wheels for
+        # a dependency (#1038). The version, not sys.executable: --force deletes
+        # the env that path lives in.
+        python = f"{sys.version_info.major}.{sys.version_info.minor}"
+        return f"uv tool install --force --python {python} {spec}"
     if method == "pipx":
         return f"pipx install --force {spec}"
     if method == "editable":

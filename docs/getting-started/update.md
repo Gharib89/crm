@@ -24,8 +24,10 @@ how `crm` was installed and does the right thing:
   against the published `SHA256SUMS`, and swaps the bundle in place. A checksum
   mismatch or download failure leaves your install untouched.
 - **uv tool / pipx** — force-reinstalls from the latest release tag
-  (`uv tool install --force git+https://github.com/Gharib89/crm@vX.Y.Z`, or the
-  pipx equivalent). Because `crm` is a git source, a forced reinstall is what
+  (`uv tool install --force --python X.Y git+https://github.com/Gharib89/crm@vX.Y.Z`,
+  or the pipx equivalent). For uv, `--python X.Y` is the Python `crm` already
+  runs on, so the rebuilt environment never switches interpreter. Because `crm`
+  is a git source, a forced reinstall is what
   reliably fetches the new version — a plain `uv tool upgrade` can no-op on the
   pinned commit. On a terminal `self-update` prints the exact command and asks
   before running it; non-interactively (`--json` or no TTY) it runs only with

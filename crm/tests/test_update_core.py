@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 import time
+from collections import namedtuple
 from pathlib import Path
 from typing import Any
 
@@ -431,9 +432,31 @@ class TestDetectInstallMethod:
 class TestUpgradeCommand:
     """Command/argv construction: git tag pinned, argv only for auto-run methods."""
 
-    def test_uv_tool_force_reinstall_pinned_to_tag(self) -> None:
+    def test_uv_tool_force_reinstall_pinned_to_tag_and_running_python(self) -> None:
+        # --python X.Y keeps the rebuilt tool env on the running interpreter;
+        # without it uv's default discovery can switch to a newer Python (#1038).
+        py = f"{sys.version_info.major}.{sys.version_info.minor}"
         cmd = upgrade_command("uv-tool", "v3.1.0")
-        assert cmd == "uv tool install --force git+https://github.com/Gharib89/crm@v3.1.0"
+        assert cmd == (
+            f"uv tool install --force --python {py} git+https://github.com/Gharib89/crm@v3.1.0"
+        )
+
+    def test_uv_tool_python_pin_follows_patched_version_info(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A tuple with named fields, like the real one, so version comparisons
+        # elsewhere keep working while it is patched.
+        version_info = namedtuple("version_info", "major minor micro releaselevel serial")
+        monkeypatch.setattr(update_mod.sys, "version_info", version_info(3, 14, 10, "final", 0))
+        cmd = upgrade_command("uv-tool", "v3.1.0")
+        assert (
+            cmd
+            == "uv tool install --force --python 3.14 git+https://github.com/Gharib89/crm@v3.1.0"
+        )
+        argv = upgrade_argv("uv-tool", "v3.1.0")
+        assert argv is not None
+        i = argv.index("--python")
+        assert argv[i + 1] == "3.14"
 
     def test_pipx_force_reinstall_pinned_to_tag(self) -> None:
         cmd = upgrade_command("pipx", "3.1.0")  # bare version normalizes to a v-tag

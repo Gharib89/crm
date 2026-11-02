@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import sys
 
 import pytest
 from click.testing import CliRunner
@@ -103,7 +104,8 @@ class TestMethodAwareUpdate:
         data = json.loads(result.output)["data"]
         assert data["executed"] is False
         assert data["reason"] == "no-tty-without-yes"
-        assert data["command"].startswith("uv tool install --force ")
+        py = f"{sys.version_info.major}.{sys.version_info.minor}"
+        assert data["command"].startswith(f"uv tool install --force --python {py} ")
         assert ran["n"] == 0
 
     def test_uv_tool_autoruns_with_yes(self, monkeypatch):
@@ -129,6 +131,8 @@ class TestMethodAwareUpdate:
             "tool",
             "install",
             "--force",
+            "--python",
+            f"{sys.version_info.major}.{sys.version_info.minor}",
             "git+https://github.com/Gharib89/crm@v3.0.0",
         ]
 

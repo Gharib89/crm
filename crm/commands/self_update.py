@@ -148,7 +148,7 @@ def _inprocess_refresh(
 def _post_upgrade_refresh() -> dict[str, Any] | None:
     """Re-invoke the freshly-installed `crm` to re-sync recorded skills/completion.
 
-    After a `uv tool install --force` / `pipx install --force`, the running
+    After a `uv tool install --force --python X.Y` / `pipx install --force`, the running
     process is still the pre-reinstall package (stale, and on some layouts already
     removed), so an in-process refresh would copy the OLD skill tree. We shell out
     to the new binary on PATH with the guarded `--refresh-only` entry (which never

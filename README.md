@@ -125,11 +125,32 @@ winget install --id=astral-sh.uv -e
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
+Open a new shell and confirm uv is on your PATH:
+
+```bash
+uv --version
+```
+
 Then install `crm` from the repository (it is not published to PyPI, so install
 from the Git source or a wheel):
 
+**Windows (PowerShell):**
+
+```powershell
+uv tool install --python 3.14 git+https://github.com/Gharib89/crm
+```
+
+**Linux / macOS:**
+
 ```bash
 uv tool install git+https://github.com/Gharib89/crm
+```
+
+On Windows, pin the interpreter with `--python 3.14`: uv may otherwise pick
+Python 3.15, where PyYAML has no prebuilt Windows wheel and building one needs
+the MSVC Build Tools.
+
+```bash
 crm --version
 ```
 
@@ -175,8 +196,10 @@ crm self-update --yes     # run the upgrade non-interactively (uv/pipx installs)
   swap is applied by a detached helper as `crm` exits and the *next* `crm` command
   reports the outcome — see [how-to/self-update](docs/how-to/self-update.md).
 - **uv tool / pipx** (Option 2) — force-reinstalls from the latest release tag
-  (`uv tool install --force git+…@vX.Y.Z`). On a terminal it shows the exact
-  command and asks before running; non-interactively it runs only with `--yes`.
+  (`uv tool install --force --python X.Y git+…@vX.Y.Z`, `X.Y` being the Python
+  `crm` already runs on, so an upgrade never switches interpreter). On a
+  terminal it shows the exact command and asks before running; non-interactively
+  it runs only with `--yes`.
 - **editable / `pip install git+…` / unknown** (Option 3) — prints the correct
   git-based upgrade command and never mutates your environment.
 

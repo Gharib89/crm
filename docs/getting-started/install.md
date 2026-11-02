@@ -50,11 +50,46 @@ executable for endpoint security to flag. Recommended when the install script's
 prebuilt binary is blocked on a managed machine.
 
 First install [uv](https://docs.astral.sh/uv/getting-started/installation/) if
-you don't already have it (`winget install --id=astral-sh.uv -e` on Windows, or
-`curl -LsSf https://astral.sh/uv/install.sh | sh` on Linux/macOS). Then:
+you don't already have it:
+
+=== "Windows (PowerShell)"
+
+    ```powershell
+    winget install --id=astral-sh.uv -e
+    ```
+
+=== "Linux / macOS"
+
+    ```bash
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    ```
+
+Open a new shell and confirm uv is on your `PATH`:
 
 ```bash
-uv tool install git+https://github.com/Gharib89/crm
+uv --version
+```
+
+Then install `crm`:
+
+=== "Windows (PowerShell)"
+
+    ```powershell
+    uv tool install --python 3.14 git+https://github.com/Gharib89/crm
+    ```
+
+=== "Linux / macOS"
+
+    ```bash
+    uv tool install git+https://github.com/Gharib89/crm
+    ```
+
+On Windows, pin the interpreter with `--python 3.14`: uv may otherwise pick
+Python 3.15, where PyYAML has no prebuilt Windows wheel and building one needs
+the MSVC Build Tools.
+Run `uv tool update-shell` once if `crm` isn't found in a new shell, then:
+
+```bash
 crm --version
 ```
 
