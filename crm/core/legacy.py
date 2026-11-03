@@ -18,6 +18,7 @@ building, response parsing and v9 commands do not carry over.
 
 from __future__ import annotations
 
+import dataclasses
 import time
 import xml.etree.ElementTree as ET
 from typing import TYPE_CHECKING
@@ -141,6 +142,20 @@ class LegacyClient:
                 time.sleep(_BACKOFF_SECONDS[attempt])
                 attempt += 1
         return _parse(resp)
+
+
+def probe_crm2011(profile: ConnectionProfile, password: str) -> str | None:
+    """Return the org's build if it answers ``RetrieveVersion`` over /web with 5.x, else None.
+
+    ``crm profile add`` calls this when the Web API is absent (a 404), to tell a
+    CRM 2011 org apart from a wrong URL.
+    """
+    candidate = dataclasses.replace(profile, platform=PLATFORM_CRM2011)
+    try:
+        version = LegacyClient(candidate, password).execute("RetrieveVersion").get("Version")
+    except D365Error:
+        return None
+    return version if version and version.startswith("5.") else None
 
 
 def _value(node: ET.Element | None) -> str | None:
