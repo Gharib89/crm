@@ -13,7 +13,7 @@ from `solution export-spec`, and it matches records across stages by
 
 ## Decision
 
-- **Descriptive, not desired state.** An inventory records everything deployed,
+- **Descriptive, not desired state.** A migration inventory records everything deployed,
   including what cannot be re-created from a spec: plug-in registrations whose
   binaries live on disk or in the GAC, processes, every form, ribbon and sitemap
   XML. `export-spec` stays apply-seedable only (ADR 0019); neither format grows
@@ -22,7 +22,7 @@ from `solution export-spec`, and it matches records across stages by
   logical name, a web resource's name, a plug-in type's assembly plus full type
   name, since one class name can be registered from two assemblies). The source
   GUID is recorded but never decides a match, because not every migration route
-  preserves it. A key shared by two records in one inventory is reported as
+  preserves it. A key shared by two records in one migration inventory is reported as
   ambiguous.
 - **Completeness is data.** Each kind carries its **kind coverage**, and what the
   source cannot expose is an **extraction gap** entry. A capped or truncated read
@@ -31,7 +31,7 @@ from `solution export-spec`, and it matches records across stages by
   change. Additive fields keep the version. A reader refuses an unknown version
   and ignores unknown fields.
 - **Published state only.** Extractors read the published customization and
-  record `publication_state`. Nothing publishes to obtain an inventory.
+  record `publication_state`. Nothing publishes to obtain a migration inventory.
 
 ## Considered options
 
@@ -40,6 +40,6 @@ from `solution export-spec`, and it matches records across stages by
   break that invariant or force a second, diff-only mode inside one format.
 - **Match by GUID.** Rejected: it reports every re-created component as removed
   plus added, and silently pairs nothing when a route re-keys components.
-- **Treat `solution export` zips as the inventory.** Rejected as the contract:
+- **Treat `solution export` zips as the migration inventory.** Rejected as the contract:
   they are a raw artifact source an extractor may use, but they carry no
   coverage evidence, no gaps, and no stable cross-stage shape.
