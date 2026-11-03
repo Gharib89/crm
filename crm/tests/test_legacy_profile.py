@@ -160,5 +160,5 @@ class TestProfileEditCannotClearCrm2011ReadOnly:
             cli, ["profile", "edit", "legacy", "--no-read-only"], input="y\n"
         )
         assert result.exit_code == 1, result.output
-        assert "crm2011" in result.output
+        assert "CRM 2011 profile" in result.output
         assert session_mod.load_profile("legacy").read_only is True

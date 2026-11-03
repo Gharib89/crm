@@ -63,20 +63,30 @@ _NS = {
 
 def _refuse(what: str) -> D365Error:
     return D365Error(
-        f"refused: {what} is not an allowlisted read; a CRM 2011 (legacy) profile is "
-        "read-only and `crm legacy` sends only allowlisted reads"
+        f"refused: {what} is not an allowlisted read; a CRM 2011 profile is read-only"
+        " and `crm legacy` sends only allowlisted reads"
     )
+
+
+def require_crm2011(profile: ConnectionProfile) -> None:
+    """Refuse a profile `crm legacy` cannot serve: not crm2011, or not NTLM."""
+    if profile.platform != PLATFORM_CRM2011:
+        raise D365Error(
+            f"Profile {profile.name!r} is not a CRM 2011 profile; "
+            "`crm legacy` runs only on a crm2011 profile."
+        )
+    if profile.auth_scheme != "ntlm":
+        raise D365Error(
+            f"Profile {profile.name!r} uses {profile.auth_scheme!r}; `crm legacy` supports "
+            "only HTTP NTLM."
+        )
 
 
 class LegacyClient:
     """Read-only SOAP client for one CRM 2011 org, authenticated with HTTP NTLM."""
 
     def __init__(self, profile: ConnectionProfile, password: str):
-        if profile.platform != PLATFORM_CRM2011:
-            raise D365Error(
-                f"Profile {profile.name!r} is not a CRM 2011 (legacy) profile; "
-                "`crm legacy` runs only on a crm2011 profile."
-            )
+        require_crm2011(profile)
         import requests
         from requests_ntlm import HttpNtlmAuth
 
@@ -103,7 +113,7 @@ class LegacyClient:
         if results is None:
             raise D365Error(f"{request_name}: the SOAP response carries no ExecuteResult")
         return {
-            pair.findtext("b:key", "", _NS): _value(pair.find("b:value", _NS))
+            pair.findtext("b:key", "", _NS): _result_text(pair.find("b:value", _NS))
             for pair in results.findall("a:KeyValuePairOfstringanyType", _NS)
         }
 
@@ -144,21 +154,26 @@ class LegacyClient:
         return _parse(resp)
 
 
-def probe_crm2011(profile: ConnectionProfile, password: str) -> str | None:
-    """Return the org's build if it answers ``RetrieveVersion`` over /web with 5.x, else None.
+def detect_crm2011(
+    profile: ConnectionProfile, password: str, web_api_error: D365Error
+) -> ConnectionProfile | None:
+    """Return *profile* as a crm2011 profile if the org is CRM 2011, else None.
 
-    ``crm profile add`` calls this when the Web API is absent (a 404), to tell a
-    CRM 2011 org apart from a wrong URL.
+    ``crm profile add`` calls this when the Web API test failed. Only a 404 on an
+    NTLM profile qualifies; the org must then answer ``RetrieveVersion`` over
+    /web with a 5.x build, which tells a CRM 2011 org apart from a wrong URL.
     """
+    if web_api_error.status != 404 or profile.auth_scheme != "ntlm":
+        return None
     candidate = dataclasses.replace(profile, platform=PLATFORM_CRM2011)
     try:
         version = LegacyClient(candidate, password).execute("RetrieveVersion").get("Version")
     except D365Error:
         return None
-    return version if version and version.startswith("5.") else None
+    return candidate if version and version.startswith("5.") else None
 
 
-def _value(node: ET.Element | None) -> str | None:
+def _result_text(node: ET.Element | None) -> str | None:
     if node is None or node.get(f"{{{_NS['i']}}}nil") == "true":
         return None
     return node.text
@@ -192,7 +207,9 @@ def _parse(resp: requests.Response) -> ET.Element:
     message = fault.findtext("faultstring") or "SOAP fault"
     if org_fault is not None:
         raw = org_fault.findtext("a:ErrorCode", None, _NS)
-        if raw and raw.lstrip("-").isdigit():
-            code = f"0x{int(raw) & 0xFFFFFFFF:08x}"
+        try:
+            code = f"0x{int(raw or '') & 0xFFFFFFFF:08x}"
+        except ValueError:
+            code = None
         message = org_fault.findtext("a:Message", None, _NS) or message
     raise D365Error(message, status=resp.status_code, code=code)

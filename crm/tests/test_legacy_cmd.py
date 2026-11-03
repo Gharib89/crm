@@ -94,3 +94,12 @@ def test_legacy_refuses_a_v9_profile(crm_home, verb):
     assert result.exit_code == 1, result.output
     assert "not a CRM 2011" in json.loads(result.output)["error"]
     assert m.call_count == 0
+
+
+def test_legacy_refuses_a_v9_profile_before_any_secret_lookup(crm_home):
+    session_mod.save_profile(
+        ConnectionProfile(name="nosecret", url=_URL, domain="CONTOSO", username="alice")
+    )
+    result = CliRunner().invoke(cli, ["--json", "--profile", "nosecret", "legacy", "version"])
+    assert result.exit_code == 1, result.output
+    assert "not a CRM 2011" in json.loads(result.output)["error"]

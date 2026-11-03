@@ -410,16 +410,12 @@ def profile_add(
             # No Web API (404): a CRM 2011 org answers RetrieveVersion over its
             # SOAP /web endpoint instead, and is saved as a read-only crm2011
             # profile (ADR 0031). Anything else keeps the Web API failure.
-            from crm.core.legacy import probe_crm2011
+            from crm.core.legacy import detect_crm2011
 
-            if not (
-                web_api_exc.status == 404
-                and profile.auth_scheme == "ntlm"
-                and probe_crm2011(profile, secret)
-            ):
+            crm2011 = detect_crm2011(profile, secret, web_api_exc)
+            if crm2011 is None:
                 raise
-            profile.platform = PLATFORM_CRM2011
-            profile.read_only = True
+            profile = crm2011
             info = {}
     except D365Error as exc:
         malformed = conn_mod.profile_structural_problem(profile, has_secret=bool(secret))
@@ -718,19 +714,19 @@ def profile_edit(
         p.publisher_prefix = publisher_prefix
     if verify_ssl is not None:
         p.verify_ssl = verify_ssl
-    # Read-only is asymmetric: tighten (--read-only) anywhere, but clearing it
-    # (--no-read-only) is gated behind a real TTY + confirmation so a
-    # non-interactive run (agent/CI/--json) can't flip the guardrail off. Same
-    # no-TTY → clean-error pattern as the no-profile → `profile add` fallback.
     if read_only is False and p.platform == PLATFORM_CRM2011:
         ctx.emit(
             False,
             error=(
-                f"{name!r} is a crm2011 (CRM 2011 legacy) profile, which is always "
+                f"{name!r} is a CRM 2011 profile, which is always "
                 "read-only; --no-read-only cannot clear it."
             ),
         )
         return
+    # Read-only is asymmetric: tighten (--read-only) anywhere, but clearing it
+    # (--no-read-only) is gated behind a real TTY + confirmation so a
+    # non-interactive run (agent/CI/--json) can't flip the guardrail off. Same
+    # no-TTY → clean-error pattern as the no-profile → `profile add` fallback.
     if read_only is True:
         p.read_only = True
     elif read_only is False and p.read_only:

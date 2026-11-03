@@ -127,6 +127,18 @@ class TestFaults:
         assert info.value.status == 404
         assert "text/html" in str(info.value)
 
+    @pytest.mark.parametrize("raw", ["--5", "\u00b2", "abc", ""])
+    def test_an_unreadable_error_code_keeps_the_fault_without_a_code(self, client, raw):
+        body = _fixture("fault_not_found.xml").replace(
+            "<ErrorCode>-2147220969</ErrorCode>", f"<ErrorCode>{raw}</ErrorCode>", 1
+        )
+        with requests_mock.Mocker() as m:
+            m.post(_ENDPOINT, text=body, status_code=500, headers={"Content-Type": "text/xml"})
+            with pytest.raises(D365Error) as info:
+                client.execute("WhoAmI")
+        assert info.value.code is None
+        assert "Does Not Exist" in str(info.value)
+
 
 class TestConnectRetries:
     def test_retries_after_connect_timeout(self, client, no_sleep):

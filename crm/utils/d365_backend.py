@@ -177,8 +177,9 @@ def classify_d365_error(
 # Dataverse online), the default and the meaning of a profile JSON without the
 # key; "crm2011" is a legacy CRM 2011 org reached only through `crm legacy`'s
 # read-only SOAP transport (ADR 0031).
+PLATFORM_V9 = "v9"
 PLATFORM_CRM2011 = "crm2011"
-PLATFORMS = ("v9", PLATFORM_CRM2011)
+PLATFORMS = (PLATFORM_V9, PLATFORM_CRM2011)
 
 
 @dataclass
@@ -197,7 +198,7 @@ class ConnectionProfile:
     adfs_url: str | None = None  # adfs: STS override; None = discover from the org
     publisher_prefix: str | None = None  # schema-name prefix, e.g. "new"
     read_only: bool = False  # guardrail: backend refuses org mutations
-    platform: str = "v9"  # one of PLATFORMS; crm2011 is always read-only
+    platform: str = PLATFORM_V9  # one of PLATFORMS; crm2011 is always read-only
     timeout: int = 120
     retry_max: int = 5
     retry_base_delay: float = 1.0
@@ -300,7 +301,7 @@ class ConnectionProfile:
             adfs_url=d.get("adfs_url"),
             publisher_prefix=d.get("publisher_prefix"),
             read_only=d.get("read_only", False),
-            platform=d.get("platform", "v9"),
+            platform=d.get("platform", PLATFORM_V9),
             timeout=d.get("timeout", 120),
             retry_max=d.get("retry_max", 5),
             retry_base_delay=d.get("retry_base_delay", 1.0),
@@ -488,7 +489,7 @@ class D365Backend:
             raise D365Error(f"Profile {profile.name!r} is missing the server URL.")
         if profile.platform == PLATFORM_CRM2011:
             raise D365Error(
-                f"Profile {profile.name!r} is a CRM 2011 (legacy) profile, which has no "
+                f"Profile {profile.name!r} is a CRM 2011 profile, which has no "
                 "Web API; this command does not support it. Use `crm legacy` (for "
                 f"example `crm legacy whoami --profile {profile.name}`)."
             )

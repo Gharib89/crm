@@ -324,14 +324,18 @@ class CLIContext:
     def legacy_client(self) -> LegacyClient:
         """Build the read-only SOAP client for a crm2011 profile (`crm legacy`).
 
-        Resolves the profile and secret exactly as backend() does; LegacyClient
-        refuses a profile that is not crm2011.
+        Selects the profile and resolves its secret the way backend() does, but
+        refuses a non-crm2011 profile before any secret lookup or prompt.
         """
         from crm.core import connection as conn_mod
-        from crm.core.legacy import LegacyClient
+        from crm.core import session as session_mod
+        from crm.core.legacy import LegacyClient, require_crm2011
 
+        name = self._effective_profile()
+        if name is not None and session_mod.profile_path(name).is_file():
+            require_crm2011(session_mod.load_profile(name))
         resolved = conn_mod.resolve_credentials(
-            profile_name=self._effective_profile(),
+            profile_name=name,
             password_override=self.password,
             allow_prompt=_stdin_is_tty() and not self.json_mode,
         )
