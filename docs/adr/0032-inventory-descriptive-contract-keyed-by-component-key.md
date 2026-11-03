@@ -11,6 +11,10 @@ protocol-independent manifest plus raw artifacts that the legacy SOAP adapter
 from `solution export-spec`, and it matches records across stages by
 **component key**, not by GUID.
 
+The legacy adapter is the read-only, CRM 2011-only exception to ADR 0003 that
+ADR 0031 records (it lands with #1043). This ADR adds no transport: the contract
+is protocol-independent, and ADR 0003 still governs every v9/cloud path.
+
 ## Decision
 
 - **Descriptive, not desired state.** A migration inventory records everything deployed,
