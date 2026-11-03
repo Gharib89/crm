@@ -2,10 +2,10 @@
 status: accepted
 ---
 
-# Inventory: a descriptive contract keyed by component key
+# Migration inventory: a descriptive contract keyed by component key
 
 A migration from CRM 2011 through on-prem v9.1 to the cloud needs comparable
-views of each stage (#1034). We define the **inventory**: a versioned,
+views of each stage (#1034). We define the **migration inventory**: a versioned,
 protocol-independent manifest plus raw artifacts that the legacy SOAP adapter
 (#1033) and the v9/cloud Web API paths both emit. It is a new format, separate
 from `solution export-spec`, and it matches records across stages by
@@ -19,7 +19,8 @@ from `solution export-spec`, and it matches records across stages by
   XML. `export-spec` stays apply-seedable only (ADR 0019); neither format grows
   into the other.
 - **Matched by component key.** Each kind defines a natural key (an entity's
-  logical name, a web resource's name, a plug-in type's full name). The source
+  logical name, a web resource's name, a plug-in type's assembly plus full type
+  name, since one class name can be registered from two assemblies). The source
   GUID is recorded but never decides a match, because not every migration route
   preserves it. A key shared by two records in one inventory is reported as
   ambiguous.

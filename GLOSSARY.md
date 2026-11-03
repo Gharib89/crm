@@ -455,26 +455,29 @@ customization XML through a known grammar.
 
 ### Migration inventory
 
-**Inventory**:
+**Migration inventory**:
 One extraction's complete, descriptive record of an org's customizations: every
 component read, its raw artifacts, and the evidence of how complete the read was.
-Its JSON index is the **inventory manifest**. An inventory describes what is
-deployed; it is never a desired state to converge to
+Its JSON index is the **inventory manifest**. A migration inventory describes what
+is deployed; it is never a desired state to converge to
 ([ADR 0032](docs/adr/0032-inventory-descriptive-contract-keyed-by-component-key.md)).
-_Avoid_: snapshot (an inventory is the artifact, whatever stage it was taken at),
-baseline (the role an inventory plays in a comparison, not a kind of artifact),
+Bare "inventory" elsewhere (`org brief`, `solution components --save`,
+`workflow migration-assess`) means an informal listing, never this artifact.
+_Avoid_: snapshot (the artifact is the same whatever stage it was taken at),
+baseline (the role one plays in a comparison, not a kind of artifact),
 spec (the apply desired state), org brief (a capped summary for orientation).
 
 **Component key**:
 The natural identity of a component within its kind, such as an entity's logical
-name or a web resource's name, by which two inventories' records are matched.
-A component's GUID is recorded but never decides a match, since a migration route
-may not preserve it. Two records sharing a key in one inventory are **ambiguous**,
-never silently matched.
+name, a web resource's name, or a plug-in type's assembly plus full type name, by
+which two migration inventories' records are matched. A component's GUID is
+recorded but never decides a match, since a migration route may not preserve it.
+Two records sharing a key in one migration inventory are **ambiguous**, never
+silently matched.
 _Avoid_: id (means the GUID), name (not unique for every kind).
 
 **Kind coverage**:
-How completely an inventory read one component kind: complete, partial,
+How completely a migration inventory read one component kind: complete, partial,
 unsupported, or failed, with the evidence that says so. A capped or truncated read
 is partial, never complete.
 _Avoid_: count, completeness flag.
@@ -482,7 +485,7 @@ _Avoid_: count, completeness flag.
 **Extraction gap**:
 Something the source org cannot expose to an extraction (an assembly stored on
 disk or in the GAC, an ISV page, an external integration), recorded in the
-inventory as an explicit entry rather than left out. Distinct from an **export
+migration inventory as an explicit entry rather than left out. Distinct from an **export
 gap**, which is a deliberate omission of `solution export-spec`.
 _Avoid_: missing component, export gap.
 
