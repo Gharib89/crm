@@ -23,6 +23,7 @@ from crm.core.logging_setup import setup_logging
 from crm.utils.d365_types import AUTH_SCHEMES
 
 if TYPE_CHECKING:
+    from crm.core.legacy import LegacyClient
     from crm.utils.d365_backend import D365Backend
 from crm.commands._helpers import (
     _apply_jq,
@@ -257,10 +258,8 @@ class CLIContext:
         if text is not None:
             self.skin.hint(text)
 
-    def backend(self) -> D365Backend:
-        from crm.core import connection as conn_mod
+    def _effective_profile(self) -> str | None:
         from crm.core import session as session_mod
-        from crm.utils.d365_backend import D365Backend
 
         # Profile selection: --profile flag > session active_profile > wizard.
         # A flag value is authoritative; otherwise fall back to the saved
@@ -287,7 +286,13 @@ class CLIContext:
             _click.get_current_context().invoke(profile_add)
             state = session_mod.load_session(self.session_name)
             effective_profile = state.get("active_profile")
+        return effective_profile
 
+    def backend(self) -> D365Backend:
+        from crm.core import connection as conn_mod
+        from crm.utils.d365_backend import D365Backend
+
+        effective_profile = self._effective_profile()
         key = (
             effective_profile,
             self.password,
@@ -315,6 +320,22 @@ class CLIContext:
         # a cached backend) so emit() stamps meta.profile/url (#624).
         self.connection_resolved = True
         return self._backend
+
+    def legacy_client(self) -> LegacyClient:
+        """Build the read-only SOAP client for a crm2011 profile (`crm legacy`).
+
+        Resolves the profile and secret exactly as backend() does; LegacyClient
+        refuses a profile that is not crm2011.
+        """
+        from crm.core import connection as conn_mod
+        from crm.core.legacy import LegacyClient
+
+        resolved = conn_mod.resolve_credentials(
+            profile_name=self._effective_profile(),
+            password_override=self.password,
+            allow_prompt=_stdin_is_tty() and not self.json_mode,
+        )
+        return LegacyClient(resolved.profile, resolved.password)
 
     def materialized_backend(self) -> D365Backend | None:
         """Return the cached backend, if one already exists, without resolving it."""
@@ -734,6 +755,7 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
         "examples": "crm.commands.examples:examples_cmd",
         "fieldsec": "crm.commands.fieldsec:fieldsec_group",
         "form": "crm.commands.form:form_group",
+        "legacy": "crm.commands.legacy:legacy_group",
         "metadata": "crm.commands.metadata:metadata_group",
         "org": "crm.commands.org:org_group",
         "plugin": "crm.commands.plugin:plugin_group",

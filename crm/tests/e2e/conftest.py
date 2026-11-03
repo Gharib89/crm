@@ -300,6 +300,15 @@ def _enforce_capability(request):
     # plain CI with D365_E2E unset.
     if request.node.get_closest_marker("offline"):
         return
+    # A CRM 2011 org has no Web API, so `crm legacy` tests skip the v9 live
+    # target and run against the crm2011 profile D365_E2E_LEGACY_PROFILE names.
+    if request.node.get_closest_marker("requires_legacy"):
+        if (
+            os.environ.get("D365_E2E", "").strip() != "1"
+            or not os.environ.get("D365_E2E_LEGACY_PROFILE", "").strip()
+        ):
+            pytest.skip("needs D365_E2E=1 and D365_E2E_LEGACY_PROFILE naming a crm2011 profile")
+        return
     # Every other e2e test needs a live target: pull the (now non-autouse)
     # live_profile here so its opt-in + reachability skip fires exactly as it did
     # when live_profile was autouse — preserving behaviour for all existing tests.
