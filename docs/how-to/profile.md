@@ -194,6 +194,19 @@ A read-only refusal is never a `--dry-run` preview: `--dry-run` is checked first
 so a read-only + dry-run mutation still previews (`ok:true`), while a real
 mutation is refused (`ok:false`, exit 1).
 
+## A CRM 2011 org: the `crm2011` platform
+
+A CRM 2011 org has no Web API. When `profile add` on an NTLM profile gets a 404
+from the Web API and the org answers `RetrieveVersion` over its SOAP endpoint with
+a `5.x` build, it saves the profile with `platform: crm2011` (its output gains a
+`platform` key). A profile JSON without `platform` means `v9` (the Web API, on-prem
+or Dataverse), so existing profiles need no migration.
+
+A `crm2011` profile is **always read-only**, and unlike the guardrail above it
+cannot be cleared: `profile edit NAME --no-read-only` refuses, even on a terminal.
+Only `crm legacy` runs on it; any other command fails (exit 1) with an error
+naming `crm legacy`. See [How-to: legacy](legacy.md).
+
 ## Rename a profile
 
 ```bash

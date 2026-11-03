@@ -1,14 +1,15 @@
 ---
 name: crm
-description: Operate Microsoft Dynamics 365 Customer Engagement — on-premises (v9.x, NTLM) or Dataverse online (OAuth) — from the shell. Use for record CRUD, OData/FetchXML queries, metadata browsing, solution lifecycle, UI customization (forms, sitemaps, dashboards, ribbons), plug-in and workflow automation, and bulk CSV/JSONL import and export. Triggers on Dynamics 365, D365 CE, Dataverse, Web API, FetchXML, NTLM CRM, on-prem CRM.
+description: Operate Microsoft Dynamics 365 Customer Engagement — on-premises (v9.x, NTLM) or Dataverse online (OAuth) — from the shell. Use for record CRUD, OData/FetchXML queries, metadata browsing, solution lifecycle, UI customization (forms, sitemaps, dashboards, ribbons), plug-in and workflow automation, and bulk CSV/JSONL import and export. Triggers on Dynamics 365, D365 CE, Dataverse, Web API, FetchXML, NTLM CRM, on-prem CRM, CRM 2011.
 ---
 
 # crm
 
 A stateful CLI for **Microsoft Dynamics 365 Customer Engagement — on-premises
-9.x (NTLM) or Dataverse online (OAuth)**. Every command issues a real HTTP request
-to the Dataverse Web API at `<url>/api/data/v9.x/`. There is no local mocking — the
-live D365 server is a hard runtime dependency.
+9.x (NTLM) or Dataverse online (OAuth)**. Every command (bar `crm legacy`, for a
+CRM 2011 org: `reference/setup.md`) issues a real HTTP request to the Dataverse Web
+API at `<url>/api/data/v9.x/`. There is no local mocking — the live D365 server is a
+hard runtime dependency.
 
 ## On-prem vs cloud
 
@@ -218,7 +219,7 @@ For per-domain detail:
 
 | Working on… | Read |
 |---|---|
-| first-time setup: install the `crm` binary, create/switch a connection profile (NTLM, AD FS or OAuth, secret storage), `--json`/no-TTY behavior | `reference/setup.md` |
+| first-time setup: install the `crm` binary, create/switch a connection profile (NTLM, AD FS or OAuth, secret storage), `--json`/no-TTY behavior; legacy CRM 2011 (read-only `crm legacy`) | `reference/setup.md` |
 | end-to-end customization: where to start, the order components go in, stage→publish→promote a change across dev/test/prod | `reference/customization-lifecycle.md` |
 | repo-driven customizations-as-code: spec repo layout, plan → approve → `--from-plan` promote, seeding from a live org | `reference/customizations-as-code.md` |
 | records: create/read/update/delete, query (OData/FetchXML/saved), associate/lookup, clone, upsert, ad-hoc `action` | `reference/records.md` |

@@ -27,6 +27,7 @@ whose tests do not follow the naming:
 | `crm/core/workflow.py` | `test_core.py::TestWorkflow`, `::TestWorkflowDelete`, `test_workflow_*.py` |
 | `crm/cli.py` (`CLIContext`, emit envelope) | `test_core.py::TestErrorEnvelope`, `::TestReplBackendCache`, `test_output_contract.py`, `test_exit_codes.py`, `test_cli_offline_smoke.py` |
 | `crm/commands/_helpers/` | `test_core.py::TestLoadPayload`, `test_concise_render.py` (`rendering.py`), `test_helpers_option_groups.py`, `test_helpers_package_surface.py`, `test_d365_errors_enrich.py` |
+| `crm/core/legacy.py`, `crm/commands/legacy.py` | `test_legacy_transport.py` (envelope, allowlist, faults, connect retries), `test_legacy_cmd.py`, `test_legacy_profile.py` (`crm2011` marker, always read-only); live: `e2e/test_legacy.py` |
 | `crm/commands/profile.py` | `test_profile_cmd.py`, `test_profile_helpers.py`, `test_profile_name_sanitization.py`, `test_profile_url_normalization.py` |
 
 Gates that span the whole CLI rather than one module: `test_e2e_coverage_gate.py`
@@ -179,6 +180,19 @@ standalone marker is `offline`, below):
 | **on-prem-only** | Only works/behaves on NTLM/on-prem | `@pytest.mark.requires_onprem` |
 | **cloud-only** | Only works on Dataverse | `@pytest.mark.requires_cloud` |
 | **both / divergent** | Works on both but **asserts different values** per target | **no marker** — branch on the `target` fixture (`"cloud"`/`"onprem"`) and assert per-target; runs on both union legs |
+
+**`requires_legacy` marker**: also orthogonal to the four buckets: it tags the `crm legacy`
+tests (`crm/tests/e2e/test_legacy.py`, ADR 0031), which target a CRM 2011 org that has **no
+Web API**, so they skip the `live_profile` v9 target entirely. They run only with
+`D365_E2E=1 D365_E2E_LEGACY_PROFILE=<crm2011 profile name>` (the profile is made by
+`crm profile add` against the 2011 org) and otherwise skip with a "needs ..." message, so
+plain CI and every v9 run report them skipped. The profile is read from your **real**
+`CRM_HOME` (the test passes it through to the `cli` fixture), not a throwaway one. Run the
+file alone, with the live-e2e PATH stripping (both crm dirs off `PATH`, run from the
+worktree) so the `cli` fixture runs your checkout's code, not the installed binary:
+`D365_E2E=1 D365_E2E_LEGACY_PROFILE=<name> pytest crm/tests/e2e/test_legacy.py`. The org is
+usually behind a VPN; the transport retries a connect timeout, but a still-down VPN fails
+the test rather than skipping it.
 
 **`offline` marker** — orthogonal to the four buckets above (which all describe
 *live* tests). `@pytest.mark.offline` tags a test that needs **no** live org at all,
