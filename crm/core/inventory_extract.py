@@ -38,6 +38,7 @@ from typing import Any, Protocol, cast
 
 from crm.core import legacy_reads
 from crm.core.inventory import (
+    KEY_FIELDS,
     KINDS,
     MANIFEST_NAME,
     SCHEMA_VERSION,
@@ -768,6 +769,8 @@ class _Builder:
         try:
             key = component_key(kind, fields)
         except InventoryError as exc:
+            if kind not in KEY_FIELDS or any(n not in fields for n in KEY_FIELDS[kind]):
+                raise  # an unknown kind or a missing field is a builder bug, not org data
             count, first = self.unkeyed.get(kind, (0, str(exc)))
             self.unkeyed[kind] = (count + 1, first)
             return None
@@ -1016,7 +1019,9 @@ class _Builder:
             )  # fmt: skip
 
     def scope(self, solutions: tuple[str, ...]) -> None:
-        """Keep only what the named solutions hold, and the gaps about it.
+        """Keep only what the named solutions hold, and the gaps about those records.
+
+        The per-kind row-count gaps (unresolved and unkeyed rows) stay org-wide.
 
         Kept: the solutions, their memberships, each member, each record of a
         member entity (`attribute`, `local_option_set`, `form`, `view`,
@@ -1116,8 +1121,8 @@ class _Builder:
                     kind=kind, key=None,
                     description=f"{n} {kind} row(s) naming a component of type {code}"
                     " that this inventory does not record",
-                    reason="the component is of a kind v1 does not define, or its own read"
-                    " failed, so it has no component key",
+                    reason="the component is of a kind v1 does not define, its own read"
+                    " failed, or its own row has no component key",
                 )
             )  # fmt: skip
         return gaps

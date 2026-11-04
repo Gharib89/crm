@@ -143,7 +143,8 @@ names the endpoint:
   entities): such an entity has no UI, so its ribbon is not read (CRM 2011 faults
   the read), and one gap lists them all;
 - **rows naming a component this inventory does not record** (a solution
-  membership or dependency on a kind v1 does not define, or whose own read failed),
+  membership or dependency on a kind v1 does not define, whose own read failed, or
+  whose own row has no component key),
   counted per kind and component type;
 - **rows the key contract cannot hold** (a component key field the org left empty,
   such as a plug-in step with no name), counted per kind with the first error;
