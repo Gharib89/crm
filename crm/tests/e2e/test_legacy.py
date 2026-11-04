@@ -22,10 +22,12 @@ _REAL_HOME = os.environ.get("CRM_HOME", "")
 _GUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 
-def _legacy(cli, verb: str) -> dict:
+def _legacy(cli, verb: str, *args: str) -> dict:
     name = os.environ["D365_E2E_LEGACY_PROFILE"].strip()
     proc = cli(
-        ["--json", "--profile", name, "legacy", verb], check=False, env={"CRM_HOME": _REAL_HOME}
+        ["--json", "--profile", name, "legacy", verb, *args],
+        check=False,
+        env={"CRM_HOME": _REAL_HOME},
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
     env = json.loads(proc.stdout)
@@ -45,3 +47,30 @@ def test_legacy_whoami_returns_the_three_ids(cli):
     data = _legacy(cli, "whoami")
     for key in ("user_id", "business_unit_id", "organization_id"):
         assert _GUID.match(data[key]), key
+
+
+@covers("legacy metadata")
+def test_legacy_metadata_lists_entities_and_reads_account(cli):
+    entities = _legacy(cli, "metadata")
+    assert entities
+    for entity in entities:
+        assert {"logical_name", "custom", "object_type_code"} <= entity.keys()
+    detail = _legacy(cli, "metadata", "account")
+    assert detail["errors"] == []
+    (account,) = detail["entities"]
+    assert account["attributes"]
+    assert account["relationships"]["one_to_many"]
+
+
+@covers("legacy components")
+def test_legacy_components_pages_and_writes_payloads(cli, tmp_path):
+    data = _legacy(
+        cli, "components", "web-resources", "plugin-steps", "step-images", "--out", str(tmp_path)
+    )
+    assert data["errors"] == []
+    written = [r for r in data["web-resources"] if "content_file" in r]
+    assert written
+    assert all((tmp_path / r["content_file"]).is_file() for r in written)
+    step_ids = {s["id"] for s in data["plugin-steps"]}
+    assert step_ids
+    assert any(i["sdkmessageprocessingstepid"]["id"] in step_ids for i in data["step-images"])

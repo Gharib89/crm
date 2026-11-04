@@ -7,14 +7,16 @@ Fixtures under ``fixtures/legacy/`` are real dev-org responses (CRM 2011 UR15,
 # pyright: basic
 from __future__ import annotations
 
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
 import requests
 import requests_mock
 
-from crm.core.legacy import READ_ONLY_REQUESTS, LegacyClient
+from crm.core.legacy import READ_ONLY_REQUESTS, LegacyClient, parameter
 from crm.utils.d365_backend import ConnectionProfile, D365Error, classify_d365_error
+from crm.utils.safe_xml import fromstring
 
 _FIXTURES = Path(__file__).parent / "fixtures" / "legacy"
 _ENDPOINT = "https://crm.contoso.local/contoso/XRMServices/2011/Organization.svc/web"
@@ -237,7 +239,31 @@ class TestConnectRetries:
 
 class TestAllowlist:
     def test_allowlist_is_one_frozen_set(self):
-        assert READ_ONLY_REQUESTS == frozenset({"WhoAmI", "RetrieveVersion"})
+        assert READ_ONLY_REQUESTS == frozenset(
+            {
+                "WhoAmI",
+                "RetrieveVersion",
+                "RetrieveAllEntities",
+                "RetrieveEntity",
+                "RetrieveAllOptionSets",
+            }
+        )
+
+    @pytest.mark.parametrize(
+        "request_name", ["RetrieveAllEntities", "RetrieveEntity", "RetrieveAllOptionSets"]
+    )
+    def test_metadata_requests_are_admitted(self, client, request_name):
+        with requests_mock.Mocker() as m:
+            _soap(m, "retrieve_all_entities.xml")
+            client.execute_results(request_name)
+        assert m.call_count == 1
+
+    @pytest.mark.parametrize("request_name", ["RetrieveMultiple", "Delete", "PublishAllXml"])
+    def test_an_operation_or_write_is_not_an_execute_request(self, client, request_name):
+        with requests_mock.Mocker() as m:
+            with pytest.raises(D365Error, match=request_name):
+                client.execute_results(request_name)
+        assert m.call_count == 0
 
     @pytest.mark.parametrize(
         "operation", ["Create", "Update", "Delete", "Associate", "Disassociate"]
@@ -260,3 +286,144 @@ class TestAllowlist:
             with pytest.raises(D365Error):
                 client._send("Execute", "<x/>")
         assert m.call_count == 0
+
+
+_CRM = "http://schemas.microsoft.com/xrm/2011/Contracts"
+
+
+def _sent_query(request) -> ET.Element:
+    """The FetchXML root a RetrieveMultiple request body carried."""
+    envelope = fromstring(request.body)
+    query = envelope.find(f".//{{{_CRM}}}Query")
+    assert query is not None and query.text
+    return fromstring(query.text)
+
+
+class TestParameter:
+    def test_renders_one_typed_pair(self):
+        xml = parameter("LogicalName", "string", "http://www.w3.org/2001/XMLSchema", "a<b&c")
+        pair = fromstring(
+            f'<r xmlns:a="{_CRM}" xmlns:b="http://schemas.datacontract.org/2004/07/System.Collections.Generic"'
+            f' xmlns:i="http://www.w3.org/2001/XMLSchema-instance">{xml}</r>'
+        )[0]
+        assert pair.tag == f"{{{_CRM}}}KeyValuePairOfstringanyType"
+        assert pair[0].text == "LogicalName"
+        value = pair[1]
+        assert value.text == "a<b&c"
+        assert value.get("{http://www.w3.org/2001/XMLSchema-instance}type") == "c:string"
+
+    def test_execute_places_parameters_in_the_request(self, client):
+        with requests_mock.Mocker() as m:
+            _soap(m, "retrieve_entity_account.xml")
+            client.execute_results(
+                "RetrieveEntity",
+                parameter("LogicalName", "string", "http://www.w3.org/2001/XMLSchema", "account"),
+            )
+        body = m.request_history[0].body.decode()
+        assert "<b:key>LogicalName</b:key>" in body
+        assert "<a:RequestName>RetrieveEntity</a:RequestName>" in body
+
+
+class TestRetrieveMultiple:
+    _FETCH = '<fetch><entity name="webresource"><attribute name="name"/></entity></fetch>'
+
+    def _two_pages(self, m):
+        ct = {"Content-Type": "text/xml; charset=utf-8"}
+        m.post(
+            _ENDPOINT,
+            [
+                {"text": _fixture("rm_webresource_page1.xml"), "headers": ct},
+                {"text": _fixture("rm_webresource_page2.xml"), "headers": ct},
+            ],
+        )
+
+    def test_pages_carry_the_cookie_and_stop_on_the_last_page(self, client):
+        with requests_mock.Mocker() as m:
+            self._two_pages(m)
+            pages = list(client.retrieve_multiple(self._FETCH))
+        assert [len(p) for p in pages] == [2, 1]
+        assert m.call_count == 2
+        first, second = (_sent_query(r) for r in m.request_history)
+        assert first.get("page") == "1" and first.get("paging-cookie") is None
+        assert first.get("count") == "5000"
+        assert second.get("page") == "2"
+        assert second.get("paging-cookie") == (
+            '<cookie page="1"><webresourceid last="{50000000-0000-0000-0000-000000000002}"'
+            ' first="{50000000-0000-0000-0000-000000000001}" /></cookie>'
+        )
+        assert second[0].get("name") == "webresource"
+        assert m.request_history[0].headers["SOAPAction"] == _ACTION + "RetrieveMultiple"
+
+    def test_page_size_sets_count(self, client):
+        with requests_mock.Mocker() as m:
+            _soap(m, "rm_empty.xml")
+            assert list(client.retrieve_multiple(self._FETCH, page_size=50)) == [[]]
+        assert _sent_query(m.request_history[0]).get("count") == "50"
+
+    def test_more_records_without_a_cookie_yields_the_page_then_raises(self, client):
+        body = _fixture("rm_webresource_page1.xml")
+        start = body.index("<a:PagingCookie>")
+        body = (
+            body[:start]
+            + '<a:PagingCookie i:nil="true"/>'
+            + body[body.index("</a:PagingCookie>") + 17 :]
+        )
+        pages = []
+        with requests_mock.Mocker() as m:
+            m.post(_ENDPOINT, text=body, headers={"Content-Type": "text/xml"})
+            with pytest.raises(D365Error, match="paging stopped early.*page 1 of webresource"):
+                for page in client.retrieve_multiple(self._FETCH):
+                    pages.append(page)
+        assert [len(p) for p in pages] == [2]
+        assert m.call_count == 1
+
+    def test_a_fault_mid_paging_keeps_the_pages_already_read(self, client):
+        ct = {"Content-Type": "text/xml; charset=utf-8"}
+        pages = []
+        with requests_mock.Mocker() as m:
+            m.post(
+                _ENDPOINT,
+                [
+                    {"text": _fixture("rm_webresource_page1.xml"), "headers": ct},
+                    {
+                        "text": _fixture("fault_entity_not_found.xml"),
+                        "status_code": 500,
+                        "headers": ct,
+                    },
+                ],
+            )
+            with pytest.raises(D365Error) as info:
+                for page in client.retrieve_multiple(self._FETCH):
+                    pages.append(page)
+        assert len(pages) == 1
+        assert info.value.code == "0x80040217"
+
+
+class TestRecords:
+    def test_values_convert_by_their_xsi_type(self, client):
+        with requests_mock.Mocker() as m:
+            _soap(m, "rm_webresource_page1.xml")
+            record = next(client.retrieve_multiple("<fetch><entity name='webresource'/></fetch>"))[
+                0
+            ]
+        assert record["id"] == "50000000-0000-0000-0000-000000000001"
+        assert record["name"] == "new_/scripts/form.js"
+        assert record["webresourcetype"] == 3
+        assert record["ismanaged"] is False
+        assert record["webresourceid"] == "50000000-0000-0000-0000-000000000001"
+        assert record["formatted"] == {
+            "webresourcetype": "Script (JScript)",
+            "ismanaged": "Unmanaged",
+        }
+
+    def test_references_and_ints(self, client):
+        with requests_mock.Mocker() as m:
+            _soap(m, "rm_sdkmessageprocessingstep.xml")
+            record = next(client.retrieve_multiple("<fetch><entity name='x'/></fetch>"))[0]
+        assert record["sdkmessageid"] == {
+            "id": "71000000-0000-0000-0000-000000000001",
+            "logical_name": "sdkmessage",
+            "name": "Update",
+        }
+        assert record["rank"] == 1
+        assert record["stage"] == 40
