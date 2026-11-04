@@ -457,3 +457,20 @@ def test_inventory_extract_on_a_v9_profile_fails_on_a_failed_kind(crm_home, monk
     assert result.exit_code == 1
     env = json.loads(result.output)
     assert env["ok"] is False and "systemform page 1: plug-in failed" in env["error"]
+
+
+def test_a_row_with_an_unkeyable_field_is_a_gap_and_the_run_goes_on(tmp_path):
+    # Measured on a Dataverse trial org: a system step whose name is empty.
+    step = {**_ORG["sdkmessageprocessingsteps"][0][0], "sdkmessageprocessingstepid": _id(42)}
+    org = {**_ORG, "sdkmessageprocessingsteps": [[*_ORG["sdkmessageprocessingsteps"][0],
+                                                  {**step, "name": ""}]]}  # fmt: skip
+    out = tmp_path / "inv"
+    summary = _extract(FakeBackend(org=org), out)
+    assert summary.complete
+    data = _manifest(out)
+    assert _keys(data, "step") == [
+        "Update|new_project|40|0|Contoso.Plugins%7CContoso.Plugins.ProjectPlugin|Project: Update"
+    ]
+    (gap,) = [g for g in data["gaps"] if g["kind"] == "step" and g["key"] is None]
+    assert gap["description"].startswith("1 step row(s)")
+    assert "step.name must be a non-empty string" in gap["description"]

@@ -44,6 +44,7 @@ from crm.core.inventory import (
     Artifact,
     ExtractionGap,
     Inventory,
+    InventoryError,
     KindCoverage,
     Record,
     Scope,
@@ -737,6 +738,7 @@ class _Builder:
         self.index: dict[tuple[int, str], tuple[str, str]] = {}
         self.by_id: dict[str, dict[str, str]] = {}
         self.unresolved: dict[tuple[str, int], int] = {}
+        self.unkeyed: dict[str, tuple[int, str]] = {}  # kind: (rows, the first error)
         self.extra_gaps: list[ExtractionGap] = []
         # ISV page -> the (kind, key) of each record referencing it.
         self.isv: dict[str, set[tuple[str, str]]] = {}
@@ -756,8 +758,19 @@ class _Builder:
         managed: bool | None,
         payloads: list[tuple[str, bytes, bool]],
         component_type: int | None = None,
-    ) -> str:
-        key = component_key(kind, fields)
+    ) -> str | None:
+        """Queue a record and index its key; None when its key fields break the key contract.
+
+        Org data can hold what the contract cannot key (a step with an empty
+        name, measured on a Dataverse trial org): such a row is counted into one
+        gap per kind rather than failing the whole run.
+        """
+        try:
+            key = component_key(kind, fields)
+        except InventoryError as exc:
+            count, first = self.unkeyed.get(kind, (0, str(exc)))
+            self.unkeyed[kind] = (count + 1, first)
+            return None
         self.pending.append(
             _Pending(kind, key, row_id, display_name, origin, managed, fields, payloads)
         )
@@ -854,7 +867,7 @@ class _Builder:
                 r.get("displayname"), self._origin(r), r.get("ismanaged"), payloads, 61,
             )  # fmt: skip
             for _, data, is_text in payloads:
-                if is_text:
+                if is_text and key is not None:
                     self._scan_isv(data, ("web_resource", key))
         for r in rows.get("plugin_assembly", []):
             source = r.get("sourcetype")
@@ -865,7 +878,7 @@ class _Builder:
                 r.get("name"), self._origin(r), r.get("ismanaged"),
                 self._staged("plugin_assembly", r, text=False), 91,
             )  # fmt: skip
-            if source != 0:
+            if key is not None and source != 0:
                 where = {1: "on disk", 2: "in the GAC"}.get(
                     source if isinstance(source, int) else -1
                 )
@@ -1086,6 +1099,15 @@ class _Builder:
                     description=f"ISV page {page}, referenced from {where}",
                     reason=f"ISV folder pages are files on the CRM web server, which {self.api}"
                     " cannot read",
+                )
+            )  # fmt: skip
+        for kind, (n, first) in sorted(self.unkeyed.items()):
+            gaps.append(
+                ExtractionGap(
+                    kind=kind, key=None,
+                    description=f"{n} {kind} row(s) not recorded; the first: {first}",
+                    reason="the org's data leaves a component key field empty or mistyped,"
+                    " so the row has no component key",
                 )
             )  # fmt: skip
         for (kind, code), n in sorted(self.unresolved.items()):

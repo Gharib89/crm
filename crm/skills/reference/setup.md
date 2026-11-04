@@ -172,5 +172,6 @@ binaries). It describes what is deployed; it is never a spec for `crm apply`.
   record counts**, and report the manifest's `gaps` to the user as manual
   follow-up: they name what the inventory could not capture, both what the
   endpoint cannot read (assemblies on disk or in the GAC, ISV pages, external
-  integrations, on-premises SSRS data sources) and membership or dependency
-  rows naming a component of a kind v1 does not record or whose read failed.
+  integrations, on-premises SSRS data sources), membership or dependency
+  rows naming a component of a kind v1 does not record or whose read failed,
+  and rows whose component key field the org left empty.
