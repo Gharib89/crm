@@ -121,7 +121,11 @@ def legacy_components(ctx: CLIContext, kinds: tuple[str, ...], out_dir: Path | N
     with d365_errors(ctx):
         client = ctx.legacy_client()
         if out_dir is not None:
-            out_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                out_dir.mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                ctx.emit(False, error=f"--out {out_dir}: {exc}")
+                return
         data, errors = legacy_reads.read_components(client, names, out_dir)
     _emit_with_failures(
         ctx, {**data, "errors": errors}, _meta(ctx, client), errors, len(names), "kinds", "kind"

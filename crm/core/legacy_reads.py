@@ -186,13 +186,14 @@ class Kind:
     """One component kind: the entity to page, its columns and an optional filter.
 
     *payload* names the column holding the large body (a web resource's content,
-    a form's XML) that ``--out`` writes to a file. *filter* is a FetchXML
-    fragment placed inside the entity.
+    a form's XML) that ``--out`` writes to a file with extension *suffix*.
+    *filter* is a FetchXML fragment placed inside the entity.
     """
 
     entity: str
     attributes: tuple[str, ...]
     payload: str | None = None
+    suffix: str = "xml"
     filter: str = ""
 
 
@@ -249,6 +250,7 @@ KINDS: dict[str, Kind] = {
         "workflow",
         ("name", "category", "type", "primaryentity", "statecode", "xaml"),
         payload="xaml",
+        suffix="xaml",
         filter='<filter><condition attribute="type" operator="eq" value="1"/></filter>',
     ),
     "solutions": Kind(
@@ -285,17 +287,21 @@ def _mark_binary(row: dict[str, object]) -> None:
         )
 
 
-def _write_payload(out_dir: Path, name: str, column: str, row: dict[str, object]) -> None:
-    """Move *row*'s *column* payload into ``out_dir/<name>/<id>.<ext>``, leaving its path."""
+def _write_payload(out_dir: Path, name: str, kind: Kind, row: dict[str, object]) -> None:
+    """Move *row*'s payload into ``out_dir/<name>/<id>.<ext>``, leaving its path."""
+    column = kind.payload
+    if column is None:
+        return
     value = row.get(column)
     if not isinstance(value, str):
         return
-    if name == "web-resources":
+    if kind.entity == "webresource":
+        # Web resource content is base64, its type picks the extension.
         kind_code = row.get("webresourcetype")
         ext = _WEB_RESOURCE_EXT.get(kind_code if isinstance(kind_code, int) else 0, "bin")
-        data = base64.b64decode(value)
+        data = base64.b64decode(value, validate=True)
     else:
-        ext = "xaml" if name == "processes" else "xml"
+        ext = kind.suffix
         data = value.encode("utf-8")
     relative = f"{name}/{row['id']}.{ext}"
     target = out_dir / relative
@@ -323,9 +329,12 @@ def read_components(
                 for row in page:
                     if name == "plugin-assemblies":
                         _mark_binary(row)
-                    if out_dir is not None and kind.payload is not None:
-                        _write_payload(out_dir, name, kind.payload, row)
+                    if out_dir is not None:
+                        _write_payload(out_dir, name, kind, row)
                 rows.extend(page)
-        except D365Error as exc:
-            errors.append({"kind": name, "error": str(exc), "code": exc.code})
+        except (D365Error, OSError, ValueError) as exc:
+            # A fault, a payload that cannot be written (OSError) or one that is
+            # not valid base64 (binascii.Error, a ValueError) fails this kind only.
+            code = exc.code if isinstance(exc, D365Error) else None
+            errors.append({"kind": name, "error": str(exc), "code": code})
     return data, errors
