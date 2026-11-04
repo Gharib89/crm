@@ -9,6 +9,114 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.86.0 (2026-11-04)
+
+### Bug Fixes
+
+- **inventory**: Give ambiguous id-less records distinct artifact files
+  ([#1071](https://github.com/Gharib89/crm/pull/1071),
+  [`06ae9c8`](https://github.com/Gharib89/crm/commit/06ae9c8ab3b16dbf14ed6a43152748d6aed97538))
+
+- **inventory**: Include the global option sets among the kinds a short scope marks
+  ([#1071](https://github.com/Gharib89/crm/pull/1071),
+  [`06ae9c8`](https://github.com/Gharib89/crm/commit/06ae9c8ab3b16dbf14ed6a43152748d6aed97538))
+
+- **inventory**: Keep a member entity's relationships in a solution scope, test the disk assembly
+  gap ([#1071](https://github.com/Gharib89/crm/pull/1071),
+  [`06ae9c8`](https://github.com/Gharib89/crm/commit/06ae9c8ab3b16dbf14ed6a43152748d6aed97538))
+
+- **inventory**: Keep a scoped run's unrecorded-row gaps in scope, and drop repeated --solution
+  names ([#1071](https://github.com/Gharib89/crm/pull/1071),
+  [`06ae9c8`](https://github.com/Gharib89/crm/commit/06ae9c8ab3b16dbf14ed6a43152748d6aed97538))
+
+- **inventory**: Keep builder key errors loud, and name unkeyed rows in the unresolved gap reason
+  ([#1071](https://github.com/Gharib89/crm/pull/1071),
+  [`06ae9c8`](https://github.com/Gharib89/crm/commit/06ae9c8ab3b16dbf14ed6a43152748d6aed97538))
+
+- **inventory**: Keep the scope docstring and ribbon gap wording to what was measured
+  ([#1071](https://github.com/Gharib89/crm/pull/1071),
+  [`06ae9c8`](https://github.com/Gharib89/crm/commit/06ae9c8ab3b16dbf14ed6a43152748d6aed97538))
+
+- **inventory**: Key each v9 app sitemap by its unique name
+  ([#1071](https://github.com/Gharib89/crm/pull/1071),
+  [`06ae9c8`](https://github.com/Gharib89/crm/commit/06ae9c8ab3b16dbf14ed6a43152748d6aed97538))
+
+- **inventory**: Leave the solution records complete when only the membership read falls short
+  ([#1071](https://github.com/Gharib89/crm/pull/1071),
+  [`06ae9c8`](https://github.com/Gharib89/crm/commit/06ae9c8ab3b16dbf14ed6a43152748d6aed97538))
+
+- **inventory**: Mark every scoped kind incomplete when the scope reads fall short
+  ([#1071](https://github.com/Gharib89/crm/pull/1071),
+  [`06ae9c8`](https://github.com/Gharib89/crm/commit/06ae9c8ab3b16dbf14ed6a43152748d6aed97538))
+
+- **inventory**: Mark the other scope kind too when one scope read falls short
+  ([#1071](https://github.com/Gharib89/crm/pull/1071),
+  [`06ae9c8`](https://github.com/Gharib89/crm/commit/06ae9c8ab3b16dbf14ed6a43152748d6aed97538))
+
+- **inventory**: Name the ribbon guard for what it checks and correct its docs
+  ([#1071](https://github.com/Gharib89/crm/pull/1071),
+  [`06ae9c8`](https://github.com/Gharib89/crm/commit/06ae9c8ab3b16dbf14ed6a43152748d6aed97538))
+
+- **inventory**: Pass no owner for orphaned plug-in type, step and image rows
+  ([#1071](https://github.com/Gharib89/crm/pull/1071),
+  [`06ae9c8`](https://github.com/Gharib89/crm/commit/06ae9c8ab3b16dbf14ed6a43152748d6aed97538))
+
+- **inventory**: Record a row the key contract cannot hold as a gap instead of failing the run
+  ([#1071](https://github.com/Gharib89/crm/pull/1071),
+  [`06ae9c8`](https://github.com/Gharib89/crm/commit/06ae9c8ab3b16dbf14ed6a43152748d6aed97538))
+
+- **inventory**: Record the ribbon of an entity with no collection label as a gap
+  ([#1071](https://github.com/Gharib89/crm/pull/1071),
+  [`06ae9c8`](https://github.com/Gharib89/crm/commit/06ae9c8ab3b16dbf14ed6a43152748d6aed97538))
+
+- **inventory**: Scope shell entity members, match solution names case-insensitively, and flag
+  entity-detail kinds when the entity list fails
+  ([#1071](https://github.com/Gharib89/crm/pull/1071),
+  [`06ae9c8`](https://github.com/Gharib89/crm/commit/06ae9c8ab3b16dbf14ed6a43152748d6aed97538))
+
+### Documentation
+
+- **claude**: Require writing-for-agents from every session that edits a skill
+  ([#1069](https://github.com/Gharib89/crm/pull/1069),
+  [`e2ccc64`](https://github.com/Gharib89/crm/commit/e2ccc64b8d984a65677bd38c6aebbdfeb19f2a92))
+
+- **inventory**: Document the v9 extract and --solution, add its live e2e test
+  ([#1071](https://github.com/Gharib89/crm/pull/1071),
+  [`06ae9c8`](https://github.com/Gharib89/crm/commit/06ae9c8ab3b16dbf14ed6a43152748d6aed97538))
+
+- **inventory**: Name the key-field discriminator in artifact_path's docstring
+  ([#1071](https://github.com/Gharib89/crm/pull/1071),
+  [`06ae9c8`](https://github.com/Gharib89/crm/commit/06ae9c8ab3b16dbf14ed6a43152748d6aed97538))
+
+- **inventory**: Say a scoped run leaves out every untied plug-in row
+  ([#1071](https://github.com/Gharib89/crm/pull/1071),
+  [`06ae9c8`](https://github.com/Gharib89/crm/commit/06ae9c8ab3b16dbf14ed6a43152748d6aed97538))
+
+- **inventory**: Separate the message-less step from the scoped orphan rows
+  ([#1071](https://github.com/Gharib89/crm/pull/1071),
+  [`06ae9c8`](https://github.com/Gharib89/crm/commit/06ae9c8ab3b16dbf14ed6a43152748d6aed97538))
+
+- **skill**: Drop the inventory bullet that restated --help
+  ([#1071](https://github.com/Gharib89/crm/pull/1071),
+  [`06ae9c8`](https://github.com/Gharib89/crm/commit/06ae9c8ab3b16dbf14ed6a43152748d6aed97538))
+
+### Features
+
+- **inventory**: Crm inventory extract for v9 on-prem and cloud profiles
+  ([#1071](https://github.com/Gharib89/crm/pull/1071),
+  [`06ae9c8`](https://github.com/Gharib89/crm/commit/06ae9c8ab3b16dbf14ed6a43152748d6aed97538))
+
+### Refactoring
+
+- **inventory**: Catch only key-field value errors with a KeyFieldValueError subclass
+  ([#1071](https://github.com/Gharib89/crm/pull/1071),
+  [`06ae9c8`](https://github.com/Gharib89/crm/commit/06ae9c8ab3b16dbf14ed6a43152748d6aed97538))
+
+- **inventory**: Keep the relationship-sides constant with the module's other constants
+  ([#1071](https://github.com/Gharib89/crm/pull/1071),
+  [`06ae9c8`](https://github.com/Gharib89/crm/commit/06ae9c8ab3b16dbf14ed6a43152748d6aed97538))
+
+
 ## v1.85.0 (2026-11-04)
 
 ### Bug Fixes
