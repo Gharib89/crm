@@ -147,9 +147,6 @@ A migration inventory is a read-only, descriptive record of an org's customizati
 extraction gaps) plus raw artifacts (XML, XAML, web resource content, assembly
 binaries). It describes what is deployed; it is never a spec for `crm apply`.
 
-- **The manifest's `source.platform` (`crm2011`, `onprem`, `cloud`) records
-  which platform it was read from.** It never writes to the org, so a read-only
-  profile runs it.
 - **It runs for tens of minutes on a large org** (each entity costs a metadata
   read and a ribbon read): give it a long timeout or run it in the background.
 - **To inventory part of an org, narrow it to solutions** (`--solution`, see
