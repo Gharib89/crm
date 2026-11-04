@@ -1,0 +1,548 @@
+{
+  "cli_version": "1.83.0",
+  "coverage": {
+    "attribute": {
+      "errors": [],
+      "pages": 1,
+      "records": 1,
+      "status": "complete",
+      "truncated": false
+    },
+    "dependency": {
+      "errors": [],
+      "pages": 1,
+      "records": 1,
+      "status": "complete",
+      "truncated": false
+    },
+    "entity": {
+      "errors": [],
+      "pages": 1,
+      "records": 2,
+      "status": "complete",
+      "truncated": false
+    },
+    "form": {
+      "errors": [],
+      "pages": 1,
+      "records": 2,
+      "status": "complete",
+      "truncated": false
+    },
+    "global_option_set": {
+      "errors": [],
+      "pages": 1,
+      "records": 1,
+      "status": "complete",
+      "truncated": false
+    },
+    "local_option_set": {
+      "errors": [],
+      "pages": 1,
+      "records": 1,
+      "status": "complete",
+      "truncated": false
+    },
+    "plugin_assembly": {
+      "errors": [],
+      "pages": 1,
+      "records": 1,
+      "status": "complete",
+      "truncated": false
+    },
+    "plugin_type": {
+      "errors": [],
+      "pages": 1,
+      "records": 1,
+      "status": "complete",
+      "truncated": false
+    },
+    "process": {
+      "errors": [],
+      "pages": 1,
+      "records": 1,
+      "status": "complete",
+      "truncated": false
+    },
+    "relationship": {
+      "errors": [],
+      "pages": 1,
+      "records": 1,
+      "status": "complete",
+      "truncated": false
+    },
+    "ribbon": {
+      "errors": [
+        "entity ribbon reads stopped at the page cap"
+      ],
+      "pages": 1,
+      "records": 1,
+      "status": "partial",
+      "truncated": true
+    },
+    "sitemap": {
+      "errors": [],
+      "pages": 1,
+      "records": 1,
+      "status": "complete",
+      "truncated": false
+    },
+    "solution": {
+      "errors": [],
+      "pages": 1,
+      "records": 1,
+      "status": "complete",
+      "truncated": false
+    },
+    "solution_membership": {
+      "errors": [],
+      "pages": 1,
+      "records": 1,
+      "status": "complete",
+      "truncated": false
+    },
+    "step": {
+      "errors": [],
+      "pages": 1,
+      "records": 1,
+      "status": "complete",
+      "truncated": false
+    },
+    "step_image": {
+      "errors": [],
+      "pages": 1,
+      "records": 1,
+      "status": "complete",
+      "truncated": false
+    },
+    "view": {
+      "errors": [],
+      "pages": 1,
+      "records": 1,
+      "status": "complete",
+      "truncated": false
+    },
+    "web_resource": {
+      "errors": [],
+      "pages": 1,
+      "records": 2,
+      "status": "complete",
+      "truncated": false
+    }
+  },
+  "extracted_at": "2026-11-04T11:00:00Z",
+  "gaps": [],
+  "publication": "published",
+  "records": [
+    {
+      "artifacts": [],
+      "display_name": "Name",
+      "fields": {
+        "attribute_type": "String",
+        "entity": "new_project",
+        "logical_name": "new_name"
+      },
+      "id": null,
+      "key": "new_project|new_name",
+      "kind": "attribute",
+      "managed": false,
+      "origin": "custom",
+      "publication_state": "published"
+    },
+    {
+      "artifacts": [],
+      "display_name": null,
+      "fields": {
+        "dependency_type": 2,
+        "dependent_key": "new_project|2|Information",
+        "dependent_kind": "form",
+        "required_key": "new_project|new_name",
+        "required_kind": "attribute"
+      },
+      "id": null,
+      "key": "form|new_project%7C2%7CInformation|attribute|new_project%7Cnew_name|2",
+      "kind": "dependency",
+      "managed": null,
+      "origin": "unknown",
+      "publication_state": "published"
+    },
+    {
+      "artifacts": [],
+      "display_name": "Account",
+      "fields": {
+        "logical_name": "account"
+      },
+      "id": null,
+      "key": "account",
+      "kind": "entity",
+      "managed": true,
+      "origin": "system",
+      "publication_state": "published"
+    },
+    {
+      "artifacts": [],
+      "display_name": "Project",
+      "fields": {
+        "logical_name": "new_project",
+        "ownership": "user"
+      },
+      "id": "00000000-0000-0000-0000-000000000012",
+      "key": "new_project",
+      "kind": "entity",
+      "managed": false,
+      "origin": "custom",
+      "publication_state": "published"
+    },
+    {
+      "artifacts": [
+        {
+          "content": "text",
+          "normalized_sha256": "7f08b798bdae6362bcbf2f2cf90acb4d5e42c9833b0d6d4b6b5e3ba93b689cf2",
+          "path": "artifacts/form/account-2-account-fcdfaea7c97b.form.xml",
+          "sha256": "7f08b798bdae6362bcbf2f2cf90acb4d5e42c9833b0d6d4b6b5e3ba93b689cf2"
+        }
+      ],
+      "display_name": null,
+      "fields": {
+        "entity": "account",
+        "form_type": 2,
+        "handlers": [],
+        "libraries": [],
+        "name": "Account"
+      },
+      "id": "00000000-0000-0000-0000-000000000020",
+      "key": "account|2|Account",
+      "kind": "form",
+      "managed": true,
+      "origin": "system",
+      "publication_state": "published"
+    },
+    {
+      "artifacts": [
+        {
+          "content": "text",
+          "normalized_sha256": "c3b0e4ddf63c1b8367b940ba56f88fe29b8c7e5e3d4bfe2d63b226f7d17bf451",
+          "path": "artifacts/form/new_project-2-information-939b965ec569.form.xml",
+          "sha256": "c3b0e4ddf63c1b8367b940ba56f88fe29b8c7e5e3d4bfe2d63b226f7d17bf451"
+        }
+      ],
+      "display_name": null,
+      "fields": {
+        "entity": "new_project",
+        "form_type": 2,
+        "handlers": [
+          {
+            "attribute": null,
+            "enabled": true,
+            "event": "onload",
+            "function": "Contoso.Project.onLoad",
+            "library": "new_/scripts/project.js"
+          }
+        ],
+        "libraries": [
+          "new_/scripts/project.js"
+        ],
+        "name": "Information"
+      },
+      "id": "00000000-0000-0000-0000-000000000024",
+      "key": "new_project|2|Information",
+      "kind": "form",
+      "managed": false,
+      "origin": "custom",
+      "publication_state": "published"
+    },
+    {
+      "artifacts": [],
+      "display_name": "Priority",
+      "fields": {
+        "name": "new_priority",
+        "options": [
+          1,
+          2,
+          3
+        ]
+      },
+      "id": null,
+      "key": "new_priority",
+      "kind": "global_option_set",
+      "managed": false,
+      "origin": "custom",
+      "publication_state": "published"
+    },
+    {
+      "artifacts": [],
+      "display_name": null,
+      "fields": {
+        "attribute": "new_status",
+        "entity": "new_project",
+        "options": [
+          100000000,
+          100000001
+        ]
+      },
+      "id": null,
+      "key": "new_project|new_status",
+      "kind": "local_option_set",
+      "managed": false,
+      "origin": "custom",
+      "publication_state": "published"
+    },
+    {
+      "artifacts": [
+        {
+          "content": "binary",
+          "normalized_sha256": "b07994ec179a4129bd717eb6c8129d26f5d409f604498d5bba9df401161a7130",
+          "path": "artifacts/plugin_assembly/contoso.plugins-bdb1a827d0fe.content.dll",
+          "sha256": "b07994ec179a4129bd717eb6c8129d26f5d409f604498d5bba9df401161a7130"
+        }
+      ],
+      "display_name": null,
+      "fields": {
+        "name": "Contoso.Plugins",
+        "version": "1.0.0.0"
+      },
+      "id": "00000000-0000-0000-0000-000000000050",
+      "key": "Contoso.Plugins",
+      "kind": "plugin_assembly",
+      "managed": false,
+      "origin": "custom",
+      "publication_state": "published"
+    },
+    {
+      "artifacts": [],
+      "display_name": null,
+      "fields": {
+        "assembly": "Contoso.Plugins",
+        "type_name": "Contoso.Plugins.ProjectCreate"
+      },
+      "id": "00000000-0000-0000-0000-000000000051",
+      "key": "Contoso.Plugins|Contoso.Plugins.ProjectCreate",
+      "kind": "plugin_type",
+      "managed": false,
+      "origin": "custom",
+      "publication_state": "published"
+    },
+    {
+      "artifacts": [
+        {
+          "content": "text",
+          "normalized_sha256": "be0744aaebb9a9fb548db8409579999185056ae376b50319e8658bd0c22c8535",
+          "path": "artifacts/process/0-new_project-project-approval-0a77028c0a59.workflow.xaml",
+          "sha256": "be0744aaebb9a9fb548db8409579999185056ae376b50319e8658bd0c22c8535"
+        }
+      ],
+      "display_name": null,
+      "fields": {
+        "activities": [
+          "Contoso.Workflows|Contoso.Workflows.NotifyOwner"
+        ],
+        "category": 0,
+        "name": "Project approval",
+        "primary_entity": "new_project"
+      },
+      "id": "00000000-0000-0000-0000-000000000060",
+      "key": "0|new_project|Project approval",
+      "kind": "process",
+      "managed": false,
+      "origin": "custom",
+      "publication_state": "published"
+    },
+    {
+      "artifacts": [],
+      "display_name": null,
+      "fields": {
+        "relationship_type": "OneToMany",
+        "schema_name": "new_account_new_project"
+      },
+      "id": null,
+      "key": "new_account_new_project",
+      "kind": "relationship",
+      "managed": false,
+      "origin": "custom",
+      "publication_state": "published"
+    },
+    {
+      "artifacts": [
+        {
+          "content": "text",
+          "normalized_sha256": "9235fa863015b1dd9a72b57077d85812df98de0ff48ee99027fd0af3a50bf5ee",
+          "path": "artifacts/ribbon/application-a0c04255d266.ribbon.xml",
+          "sha256": "9235fa863015b1dd9a72b57077d85812df98de0ff48ee99027fd0af3a50bf5ee"
+        }
+      ],
+      "display_name": null,
+      "fields": {
+        "entity": null
+      },
+      "id": null,
+      "key": "application",
+      "kind": "ribbon",
+      "managed": null,
+      "origin": "system",
+      "publication_state": "published"
+    },
+    {
+      "artifacts": [
+        {
+          "content": "text",
+          "normalized_sha256": "1f8558b12f1fb281c44a5fecd90bcbcdbd8a1981f820be9dab40103e04bdfaf9",
+          "path": "artifacts/sitemap/default-968c1c9e4675.sitemap.xml",
+          "sha256": "1f8558b12f1fb281c44a5fecd90bcbcdbd8a1981f820be9dab40103e04bdfaf9"
+        }
+      ],
+      "display_name": null,
+      "fields": {
+        "unique_name": null
+      },
+      "id": null,
+      "key": "default",
+      "kind": "sitemap",
+      "managed": null,
+      "origin": "system",
+      "publication_state": "published"
+    },
+    {
+      "artifacts": [],
+      "display_name": null,
+      "fields": {
+        "unique_name": "ContosoCore",
+        "version": "1.0.0.0"
+      },
+      "id": "00000000-0000-0000-0000-000000000070",
+      "key": "ContosoCore",
+      "kind": "solution",
+      "managed": false,
+      "origin": "custom",
+      "publication_state": "published"
+    },
+    {
+      "artifacts": [],
+      "display_name": null,
+      "fields": {
+        "member_key": "new_/scripts/project.js",
+        "member_kind": "web_resource",
+        "solution": "ContosoCore"
+      },
+      "id": null,
+      "key": "ContosoCore|web_resource|new_/scripts/project.js",
+      "kind": "solution_membership",
+      "managed": false,
+      "origin": "custom",
+      "publication_state": "published"
+    },
+    {
+      "artifacts": [],
+      "display_name": null,
+      "fields": {
+        "message": "Create",
+        "mode": 0,
+        "name": "Contoso.Plugins.ProjectCreate: Create of new_project",
+        "plugin_type": "Contoso.Plugins|Contoso.Plugins.ProjectCreate",
+        "primary_entity": "new_project",
+        "stage": 40
+      },
+      "id": "00000000-0000-0000-0000-000000000052",
+      "key": "Create|new_project|40|0|Contoso.Plugins%7CContoso.Plugins.ProjectCreate|Contoso.Plugins.ProjectCreate: Create of new_project",
+      "kind": "step",
+      "managed": false,
+      "origin": "custom",
+      "publication_state": "published"
+    },
+    {
+      "artifacts": [],
+      "display_name": null,
+      "fields": {
+        "alias": "PostImage",
+        "image_type": 1,
+        "step": "Create|new_project|40|0|Contoso.Plugins%7CContoso.Plugins.ProjectCreate|Contoso.Plugins.ProjectCreate: Create of new_project"
+      },
+      "id": "00000000-0000-0000-0000-000000000053",
+      "key": "Create%7Cnew_project%7C40%7C0%7CContoso.Plugins%257CContoso.Plugins.ProjectCreate%7CContoso.Plugins.ProjectCreate: Create of new_project|PostImage|1",
+      "kind": "step_image",
+      "managed": false,
+      "origin": "custom",
+      "publication_state": "published"
+    },
+    {
+      "artifacts": [
+        {
+          "content": "text",
+          "normalized_sha256": "33a107b799c967c7bdb0550c163f4f6e6e66ff62ee02bf9abec7b34263d01ad6",
+          "path": "artifacts/view/new_project-active-projects-eb20f87ebe1b.fetch.xml",
+          "sha256": "33a107b799c967c7bdb0550c163f4f6e6e66ff62ee02bf9abec7b34263d01ad6"
+        },
+        {
+          "content": "text",
+          "normalized_sha256": "5ebdfc5ec8e898f569c115823d8cefce3bf79a5717cee0a948ef1a2a1953d99f",
+          "path": "artifacts/view/new_project-active-projects-eb20f87ebe1b.layout.xml",
+          "sha256": "5ebdfc5ec8e898f569c115823d8cefce3bf79a5717cee0a948ef1a2a1953d99f"
+        }
+      ],
+      "display_name": null,
+      "fields": {
+        "entity": "new_project",
+        "name": "Active Projects",
+        "query_type": 0
+      },
+      "id": "00000000-0000-0000-0000-000000000030",
+      "key": "new_project|Active Projects",
+      "kind": "view",
+      "managed": false,
+      "origin": "custom",
+      "publication_state": "published"
+    },
+    {
+      "artifacts": [
+        {
+          "content": "text",
+          "normalized_sha256": "311524e833f0c5d3c211b10689c2ea7ff739ce30fa94ef1181c0f9767e141217",
+          "path": "artifacts/web_resource/new_-scripts-project.js-3faf488f467a.content.js",
+          "sha256": "311524e833f0c5d3c211b10689c2ea7ff739ce30fa94ef1181c0f9767e141217"
+        }
+      ],
+      "display_name": null,
+      "fields": {
+        "name": "new_/scripts/project.js",
+        "web_resource_type": 3
+      },
+      "id": "00000000-0000-0000-0000-000000000042",
+      "key": "new_/scripts/project.js",
+      "kind": "web_resource",
+      "managed": false,
+      "origin": "custom",
+      "publication_state": "published"
+    },
+    {
+      "artifacts": [
+        {
+          "content": "text",
+          "normalized_sha256": "8acd179669e691179f1dda6c93b15d97b0c845b1b2871aab1b4b3b260f8c24d5",
+          "path": "artifacts/web_resource/new_-scripts-validation.js-fbeb4fadc0e6.content.js",
+          "sha256": "8acd179669e691179f1dda6c93b15d97b0c845b1b2871aab1b4b3b260f8c24d5"
+        }
+      ],
+      "display_name": null,
+      "fields": {
+        "name": "new_/scripts/validation.js",
+        "web_resource_type": 3
+      },
+      "id": "00000000-0000-0000-0000-000000000041",
+      "key": "new_/scripts/validation.js",
+      "kind": "web_resource",
+      "managed": false,
+      "origin": "custom",
+      "publication_state": "published"
+    }
+  ],
+  "schema_version": 1,
+  "scope": {
+    "mode": "org",
+    "solutions": []
+  },
+  "source": {
+    "org_url": "https://contoso.crm.dynamics.com",
+    "organization_id": "00000000-0000-0000-0000-000000000003",
+    "platform": "cloud",
+    "version": "9.2.0.0000"
+  }
+}

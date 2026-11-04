@@ -1,0 +1,3 @@
+# Inventory fixtures pin exact bytes (BOM, CRLF and LF) because their manifests record
+# each artifact's sha256; Windows checkouts must not convert their line endings.
+crm/tests/fixtures/inventory/** -text

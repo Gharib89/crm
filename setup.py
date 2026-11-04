@@ -19,7 +19,7 @@ setup(
     # run on demand, never shipped to users who install only the wheel.
     packages=find_packages(exclude=["evals", "evals.*"]),
     package_data={
-        "crm": ["skills/*.md", "skills/reference/*.md", "README.md"],
+        "crm": ["skills/*.md", "skills/reference/*.md", "README.md", "schemas/*.json"],
     },
     install_requires=[
         # 8.4.0 first ships click.exceptions.NoSuchCommand and its
@@ -73,6 +73,9 @@ setup(
             "pytest-xdist==3.8.0",
             "ruff==0.15.21",
             "pre-commit>=4.0",
+            # Validates the shipped inventory manifest schema in tests only: the
+            # reader in crm/core/inventory.py checks structure without it.
+            "jsonschema>=4.18",
         ],
         "kerberos": ["requests_negotiate_sspi"],
         # Back-compat no-op: keyring is now a core dependency (above). Kept so
