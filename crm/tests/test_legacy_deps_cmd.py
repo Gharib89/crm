@@ -50,7 +50,8 @@ def _run(fixture: str, *argv: str, status: int = 200):
 
 def test_dependents_parse_both_sides_of_each_dependency(crm_home):
     result, m = _run(
-        "dependents_account.xml", "dependencies", _ACCOUNT, "--component-type", "1",
+        "dependents_account.xml", "dependencies", "{" + _ACCOUNT.upper() + "}",
+        "--component-type", "1",
         "--for", "dependents",
     )  # fmt: skip
     assert result.exit_code == 0, result.output

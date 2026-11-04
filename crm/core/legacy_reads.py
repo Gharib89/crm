@@ -14,6 +14,7 @@ import binascii
 import io
 import xml.etree.ElementTree as ET
 import zipfile
+import zlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -443,7 +444,9 @@ def _unzip_ribbon(node: ET.Element) -> bytes:
     try:
         with zipfile.ZipFile(io.BytesIO(base64.b64decode(node.text or ""))) as archive:
             return archive.read("RibbonXml.xml")
-    except (ValueError, KeyError, zipfile.BadZipFile) as exc:
+    # zlib.error, RuntimeError (encrypted) and NotImplementedError (compression)
+    # are what a damaged entry raises past BadZipFile.
+    except (ValueError, KeyError, RuntimeError, zlib.error, zipfile.BadZipFile) as exc:
         raise D365Error(f"not a readable ribbon zip: {exc}") from exc
 
 

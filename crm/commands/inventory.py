@@ -48,9 +48,9 @@ def inventory_extract(ctx: CLIContext, out_dir: Path):
         )
         return
     with d365_errors(ctx):
-        legacy_inventory.check_out(out_dir)
-        client = ctx.legacy_client()
         try:
+            legacy_inventory.check_out(out_dir)
+            client = ctx.legacy_client()
             summary = legacy_inventory.extract(client, out_dir, cli_version=__version__)
         except OSError as exc:
             ctx.emit(False, error=f"--out {out_dir}: {exc}")

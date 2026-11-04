@@ -3,7 +3,6 @@
 # pyright: basic
 from __future__ import annotations
 
-import uuid
 from pathlib import Path
 
 import click
@@ -12,6 +11,7 @@ from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import _output_option, d365_errors
 from crm.core import legacy_reads
 from crm.core.legacy import LegacyClient
+from crm.utils.d365_backend import normalize_guid
 
 
 def _meta(ctx: CLIContext, client: LegacyClient) -> dict | None:
@@ -161,13 +161,12 @@ def legacy_dependencies(ctx: CLIContext, object_id: str, component_type: int, fo
     row names both sides by component type and object id, plus the dependency
     type (1 solution internal, 2 published, 4 unpublished).
     """
-    try:
-        uuid.UUID(object_id)
-    except ValueError:
-        raise click.BadParameter(f"{object_id!r} is not a GUID.", param_hint="OBJECT_ID") from None
+    guid = normalize_guid(object_id)
+    if guid is None:
+        raise click.BadParameter(f"{object_id!r} is not a GUID.", param_hint="OBJECT_ID")
     with d365_errors(ctx):
         client = ctx.legacy_client()
-        rows = legacy_reads.dependencies(client, object_id, component_type, for_)
+        rows = legacy_reads.dependencies(client, guid, component_type, for_)
     meta = _meta(ctx, client)
     ctx.emit(True, data=rows, meta={**meta, "for": for_} if meta else None)
 

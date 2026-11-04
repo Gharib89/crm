@@ -517,3 +517,42 @@ def test_inventory_extract_reports_a_write_failure_as_an_envelope(
     assert result.exit_code == 1, result.output
     env = json.loads(result.output)
     assert env["ok"] is False and "Permission denied" in env["error"]
+
+
+def test_a_ribbon_with_a_corrupt_entry_is_a_d365_error(monkeypatch):
+    import io
+    import zipfile
+    import zlib
+    from typing import cast
+    from xml.etree import ElementTree as ET
+
+    from crm.core.legacy import LegacyClient
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as archive:
+        archive.writestr("RibbonXml.xml", "<RibbonDefinitions/>")
+    node = ET.Element("value")
+    node.text = base64.b64encode(buf.getvalue()).decode()
+
+    def corrupt(self, name):
+        raise zlib.error("invalid stored block lengths")
+
+    monkeypatch.setattr(zipfile.ZipFile, "read", corrupt)
+    stub = type("Stub", (), {"execute_results": lambda self, *a: {"CompressedEntityXml": node}})
+    with pytest.raises(D365Error, match="not a readable ribbon zip"):
+        legacy_reads.ribbon_xml(cast("LegacyClient", stub()), "account")
+
+
+def test_inventory_extract_reports_an_unreadable_out_folder_as_an_envelope(
+    crm_home, monkeypatch, tmp_path
+):
+    def denied(out):
+        raise PermissionError(13, "Permission denied", str(out))
+
+    monkeypatch.setattr(legacy_inventory, "check_out", denied)
+    result = CliRunner().invoke(
+        cli,
+        ["--json", "--profile", "legacy", "inventory", "extract", "--out", str(tmp_path / "inv")],
+    )
+    assert result.exit_code == 1, result.output
+    assert "Permission denied" in json.loads(result.output)["error"]

@@ -878,7 +878,8 @@ class _Builder:
         Every payload is re-derived from the checkpoint, so an earlier run's
         artifacts are dropped first: a resumed run leaves no unreferenced file.
         """
-        shutil.rmtree(self.out / "artifacts", ignore_errors=True)
+        if (self.out / "artifacts").exists():
+            shutil.rmtree(self.out / "artifacts")
         counts: dict[tuple[str, str], int] = {}
         for p in self.pending:
             counts[(p.kind, p.key)] = counts.get((p.kind, p.key), 0) + 1
