@@ -188,7 +188,7 @@ within each kind, never by GUID, and each key gets one verdict:
 
 What a side could not read is never reported as removed, added or changed: a
 record or artifact missing on a side whose extraction gap names the key is no
-difference, a key a gap names is `not_comparable` unless a field or a hash differs
+difference. A key a gap names is `not_comparable` unless a field or a hash differs
 anyway (then `changed`, the gap in its `reason`), and both sides' gaps are listed
 in the result. Different scopes or source platforms are allowed; the header states both
 sides and flags `same_platform` and `same_scope`.

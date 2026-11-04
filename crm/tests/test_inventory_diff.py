@@ -54,6 +54,7 @@ def test_legacy_to_v9_gives_changed_unchanged_ambiguous_identity_only_and_not_co
     # The assembly's binary lives on disk at the CRM 2011 stage: a gap, not a changed artifact.
     assembly = _entry(diff, "plugin_assembly", "Contoso.Plugins")
     assert assembly.verdict == "not_comparable"
+    assert assembly.reason is not None
     assert assembly.reason.startswith("extraction gap on A: assembly registered on disk")
 
 
@@ -350,4 +351,28 @@ def test_a_key_both_sides_gap_with_nothing_differing_is_not_comparable() -> None
     entry = _entry(diff_inventories(gapped, gapped), "web_resource", "new_/scripts/validation.js")
 
     assert entry.verdict == "not_comparable"
-    assert entry.reason == "extraction gap on A: content not readable"
+    assert entry.reason == (
+        "extraction gap on A: content not readable; extraction gap on B: content not readable"
+    )
+
+
+@pytest.mark.parametrize("side", ["A", "B"])
+def test_a_key_one_side_gap_with_nothing_differing_is_not_comparable(side: str) -> None:
+    v9 = _sample("v9")
+
+    def edit(m: dict[str, Any]) -> None:
+        m["gaps"].append(
+            {
+                "kind": "web_resource",
+                "key": "new_/scripts/project.js",
+                "description": None,
+                "reason": "content not readable",
+            }
+        )
+
+    gapped, plain = _with(v9, edit), inventory.parse_manifest(v9)
+    a, b = (gapped, plain) if side == "A" else (plain, gapped)
+    entry = _entry(diff_inventories(a, b), "web_resource", "new_/scripts/project.js")
+
+    assert entry.verdict == "not_comparable"
+    assert entry.reason == f"extraction gap on {side}: content not readable"

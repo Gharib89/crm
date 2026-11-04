@@ -279,7 +279,8 @@ def _diff_key(
             return KeyDiff(kind, key, "not_comparable", origin, reason=_gap_reason(label, gap))
         return KeyDiff(kind, key, "removed" if not rb else "added", origin)
     x, y = ra[0], rb[0]
-    gap = _gap_reason("A", gap_a) if gap_a else _gap_reason("B", gap_b) if gap_b else None
+    # Both sides' gaps, A first, so swapping A and B mirrors the labels and drops neither.
+    gap = "; ".join(_gap_reason(s, g) for s, g in (("A", gap_a), ("B", gap_b)) if g) or None
     fields = _field_changes(x, y)
     artifacts = tuple(
         c
