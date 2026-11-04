@@ -98,6 +98,30 @@ server's 50,000-record limit, so no aggregate is used.
   under `DIR` and replaces each payload key with `<payload>_file` (a path relative
   to `DIR`). Without it the payload stays inline in the JSON.
 
+### Scope the read to one solution or entity
+
+```bash
+crm --json legacy components --solution contoso_core --profile legacy2011
+crm --json legacy components forms views --entity account --profile legacy2011
+crm --json legacy components --solution contoso_core --entity account --profile legacy2011
+```
+
+- **`--solution UNIQUENAME`** keeps each kind's **solution membership** as the
+  solution exports it: web resources, plug-in assemblies, plug-in steps and
+  processes the solution holds directly; plug-in types through their assembly;
+  step images through their step; forms and views through their entity (CRM 2011
+  keeps no solution row for views and most entity forms, so a member entity
+  brings all its forms and views). `solutions` returns just that solution's row.
+- **`--entity LOGICALNAME`** keeps the five kinds that name an entity: forms,
+  views, processes, plug-in steps (through their message filter) and step
+  images (through their step). With no KIND it reads only those five; naming
+  another kind with it is a usage error (exit 2). The CLI resolves the logical
+  name to the entity's object type code, since CRM 2011 entity conditions fault
+  on a logical name even though the rows print one.
+- **Both together** apply both. An unknown solution or entity fails with exit
+  code 1, naming it, before any kind is read. Paging, `--out` and
+  continue-and-report work as for an unscoped read.
+
 ## Read dependencies
 
 ```bash

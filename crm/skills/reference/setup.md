@@ -128,6 +128,12 @@ tell the user it is untested.
   assembly with `binary: "unavailable"` has no binary in the org, so do not
   retry it. Pass `--out` for any read that includes web resources, processes or
   forms, so the JSON stays small.
+- **To check one solution or one entity, scope `legacy components`** with
+  `--solution` or `--entity` rather than reading everything and filtering. A
+  solution's forms and views come through its member entities (CRM 2011 keeps
+  no solution row for them), so a solution holding `account` returns every
+  account form and view, system ones included. Pass `--entity` the logical
+  name; do not translate it to a type code yourself.
 - **A dependency read takes an id from an earlier read**: the `metadata_id` of a
   `legacy metadata` row for an entity, attribute, relationship or option set, the
   `id` of a `legacy components` row for a kind it reads. Each row names both
