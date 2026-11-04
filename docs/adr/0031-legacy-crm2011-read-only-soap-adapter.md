@@ -41,8 +41,9 @@ is made.
   clear it). `profile add` saves the marker when the Web API WhoAmI returns 404 on
   an NTLM profile and `RetrieveVersion` over `/web` answers a `5.x` build.
 - **Faults and non-SOAP replies.** A SOAP fault becomes the standard error with the
-  fault's `ErrorCode` as hex (for example `0x80040217` maps to `not_found`) and
-  follows the exit-code contract ([ADR 0001](0001-cli-exit-code-contract.md)). A
+  fault's `ErrorCode` as hex (for example `0x80040217` maps to `not_found`). SOAP
+  sends every fault as HTTP 500, so a `Client` fault is reported as status 400,
+  not a retryable server error. It follows the exit-code contract ([ADR 0001](0001-cli-exit-code-contract.md)). A
   non-SOAP reply (a 401 text body, an IIS HTML page) is classified by status, never
   parsed as XML. Envelopes are hand-built and parsed with the entity-safe
   `crm.utils.safe_xml`, as the ADFS WS-Trust code does; no SOAP library is added.

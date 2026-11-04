@@ -119,3 +119,13 @@ def test_legacy_refuses_a_non_ntlm_auth_scheme_override(crm_home):
     assert result.exit_code == 1, result.output
     assert "--auth-scheme kerberos" in json.loads(result.output)["error"]
     assert m.call_count == 0
+
+
+def test_a_401_hint_names_the_active_profile(crm_home):
+    _save("legacy", "crm2011")
+    session_mod.save_session({"active_profile": "legacy"})
+    with requests_mock.Mocker() as m:
+        m.post(_ENDPOINT, status_code=401, text="", headers={"Content-Type": "text/plain"})
+        result = CliRunner().invoke(cli, ["--json", "legacy", "whoami"])
+    assert result.exit_code == 1, result.output
+    assert json.loads(result.output)["meta"]["hint"].endswith("--profile legacy")

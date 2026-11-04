@@ -97,6 +97,7 @@ class CLIContext:
         # serving profile/url only on envelopes that actually opened a backend
         # (#624) — never on a later REPL line whose backend is merely cached.
         self.connection_resolved: bool = False
+        self.legacy_profile_name: str | None = None
         self._backend: D365Backend | None = None
         self._backend_key: tuple[str | None, str | None, bool, str | None, bool] | None = None
         self.skin: ReplSkin = ReplSkin("d365", version=__version__)
@@ -339,6 +340,7 @@ class CLIContext:
                 "which supports only HTTP NTLM."
             )
         name = self._effective_profile()
+        self.legacy_profile_name = name  # names the profile in a 401 hint
         if name is not None and session_mod.profile_path(name).is_file():
             require_crm2011(session_mod.load_profile(name))
         resolved = conn_mod.resolve_credentials(

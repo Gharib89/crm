@@ -206,6 +206,11 @@ def _parse(resp: requests.Response) -> ET.Element:
                 f"HTTP {resp.status_code} from the CRM 2011 endpoint", status=resp.status_code
             )
         return root
+    # SOAP 1.1 sends every fault as HTTP 500, so the wire status says nothing
+    # about whose fault it is; the faultcode does. A Client fault (the request
+    # was at fault) is reported as 400 so it does not classify as a retryable
+    # server error.
+    status = 400 if (fault.findtext("faultcode") or "").endswith("Client") else resp.status_code
     org_fault = fault.find(".//a:OrganizationServiceFault", _NS)
     code: str | None = None
     message = fault.findtext("faultstring") or "SOAP fault"
@@ -217,4 +222,4 @@ def _parse(resp: requests.Response) -> ET.Element:
             except ValueError:
                 pass  # an unreadable ErrorCode leaves the fault uncoded
         message = org_fault.findtext("a:Message", None, _NS) or message
-    raise D365Error(message, status=resp.status_code, code=code)
+    raise D365Error(message, status=status, code=code)

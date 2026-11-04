@@ -95,7 +95,7 @@ class TestFaults:
             with pytest.raises(D365Error) as info:
                 client.execute("WhoAmI")
         exc = info.value
-        assert exc.status == 500
+        assert exc.status == 400  # a Client fault, though the wire status is 500
         assert exc.code == "0x80040217"
         assert str(exc) == "account With Id = 44444444-4444-4444-4444-444444444444 Does Not Exist"
         assert classify_d365_error(exc.status, exc.code, str(exc))[0] == "not_found"
@@ -107,6 +107,16 @@ class TestFaults:
                 client.execute("RetrieveVersion")
         assert info.value.code == "0x80040315"
         assert "Request not supported" in str(info.value)
+        exc = info.value
+        assert classify_d365_error(exc.status, exc.code, str(exc)) == ("validation", False)
+
+    def test_a_server_fault_keeps_the_wire_status(self, client):
+        body = _fixture("fault_request_not_supported.xml").replace("s:Client", "s:Server")
+        with requests_mock.Mocker() as m:
+            m.post(_ENDPOINT, text=body, status_code=500, headers={"Content-Type": "text/xml"})
+            with pytest.raises(D365Error) as info:
+                client.execute("RetrieveVersion")
+        assert info.value.status == 500
 
     def test_401_plain_text_is_classified_not_parsed(self, client):
         with requests_mock.Mocker() as m:

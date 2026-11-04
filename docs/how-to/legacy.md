@@ -57,6 +57,8 @@ API URL).
   profile.
 - **A SOAP fault** becomes the standard error with the fault's `ErrorCode` as
   hex (`0x80040217` maps to `not_found`), so exit codes follow the same contract.
+  A fault the request caused (a SOAP `Client` fault) reports status 400 and is
+  not retryable, though SOAP sent it as HTTP 500.
 
 ## Connection retries
 
