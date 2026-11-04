@@ -67,7 +67,8 @@ _URL_ATTR = re.compile(r"\b(?:Url|Address)\s*=\s*\"([^\"]*)\"", re.IGNORECASE)
 # ``unresolved_url`` unknown.
 _PLATFORM_PAGES = (
     "/_root/", "/_grid/", "/_static/", "/_imgs/", "/_common/", "/_forms/", "/tools/",
-    "/main.aspx", "/advancedfind/", "/crmreports/", "/sfa/", "/cs/", "/ma/", "/biz/",
+    "/main.aspx", "/advancedfind/", "/crmreports/", "/userdefined/", "/sfa/", "/cs/", "/ma/",
+    "/biz/",
 )  # fmt: skip
 _NO_TRIGGER = {"status": "unknown", "reason": "manifest v1 records no process trigger"}
 
