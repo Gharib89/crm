@@ -96,8 +96,8 @@ The checkpoint is removed once a run reads everything without an error.
 
 ## Extraction gaps
 
-The manifest's `gaps` names what the SOAP endpoint cannot read, rather than leaving
-it out:
+The manifest's `gaps` names what the SOAP endpoint cannot read, or failed to read,
+rather than leaving it out:
 
 - a **plug-in assembly stored on disk or in the GAC**: its record is written, but
   the binary lives on the CRM server, not in the database;

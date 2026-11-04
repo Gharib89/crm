@@ -136,14 +136,19 @@ def test_inventory_extract_writes_a_valid_crm2011_inventory(cli, tmp_path, monke
         g.description and g.description.startswith("external integrations") for g in parsed.gaps
     )
     # crm writes no credential into any output file: not even the profile's user name.
-    from crm.core import keyring_store
-    from crm.core import session as session_mod
+    # Each is searched raw and in the escaped forms the JSON manifest and XML artifacts use.
+    from xml.sax.saxutils import escape
+
+    from crm.core import connection as conn_mod
 
     monkeypatch.setenv("CRM_HOME", _REAL_HOME)
-    secrets = [session_mod.load_profile(name).username.lower().encode()]
-    secret = session_mod.load_profile_secret(name) or keyring_store.get_secret(name)
-    if secret:
-        secrets.append(secret.lower().encode())
+    resolved = conn_mod.resolve_credentials(profile_name=name)
+    secrets = {
+        form.lower().encode()
+        for value in (resolved.profile.username, resolved.password)
+        if value
+        for form in (value, json.dumps(value, ensure_ascii=False)[1:-1], escape(value))
+    }
     for path in out.rglob("*"):
         if path.is_file():
             data = path.read_bytes().lower()
