@@ -218,6 +218,29 @@ def test_components_out_writes_payload_files(crm_home, tmp_path):
     assert (out / rows[2]["content_file"]).is_file()
 
 
+def test_a_payload_that_cannot_be_written_fails_its_kind_only(crm_home, tmp_path):
+    out = tmp_path / "dump"
+    out.mkdir()
+    (out / "web-resources").write_text("a file where the kind's folder goes")
+    result, _ = _run("components", "web-resources", "plugin-assemblies", "--out", str(out))
+    assert result.exit_code == 1, result.output
+    data = json.loads(result.output)["data"]
+    (err,) = data["errors"]
+    assert err["kind"] == "web-resources"
+    assert err["code"] is None
+    assert len(data["plugin-assemblies"]) == 3
+
+
+def test_an_out_dir_that_cannot_be_created_is_one_error_envelope(crm_home, tmp_path):
+    blocker = tmp_path / "file"
+    blocker.write_text("")
+    result, _ = _run("components", "web-resources", "--out", str(blocker / "dump"))
+    assert result.exit_code == 1, result.output
+    env = json.loads(result.output)
+    assert env["ok"] is False
+    assert env["error"].startswith("--out ")
+
+
 def test_all_kinds_run_when_none_is_named_and_a_fault_does_not_stop_the_rest(crm_home):
     result, m = _run("components", fault_kinds={"plugintype"})
     assert result.exit_code == 1, result.output
