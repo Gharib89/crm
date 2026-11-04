@@ -39,8 +39,9 @@ LOCAL_GROUPS = frozenset(
 )
 
 # Verbs that touch no Web API inside a group whose other verbs do (`inventory diff`
-# compares two inventory folders on disk) — unit-tested elsewhere.
-LOCAL_VERBS = frozenset({"inventory diff"})
+# compares two inventory folders on disk, `inventory map-source` reads one and a repo)
+# — unit-tested elsewhere.
+LOCAL_VERBS = frozenset({"inventory diff", "inventory map-source"})
 
 # D365-touching verbs that genuinely cannot be auto-e2e'd yet. The gate forces a
 # reason to be written down here whenever a verb is added to this map.

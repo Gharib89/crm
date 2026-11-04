@@ -500,6 +500,13 @@ migration inventory as an explicit entry rather than left out. Distinct from an 
 gap**, which is a deliberate omission of `solution export-spec`.
 _Avoid_: missing component, export gap.
 
+**Source map**:
+One migration inventory's custom web resources and plug-ins matched to the files and
+projects of an application repository checkout, each with a status (matched, stale,
+ambiguous, candidate, missing source) and the evidence behind it. Only a content hash
+or a declaration in the registered assembly's project is a match; a name alone is not.
+_Avoid_: source code link, traceability matrix.
+
 **Work package**:
 One repair job: a connected group of components and their source files that must
 change together, with the consumers they affect and what verifies the repair.

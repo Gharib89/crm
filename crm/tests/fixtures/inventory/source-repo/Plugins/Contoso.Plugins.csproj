@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net462</TargetFramework>
+    <AssemblyName>Contoso.Plugins</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CrmSdk.CoreAssemblies" Version="9.0.2.56" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Shared\Contoso.Shared.csproj" />
+    <ProjectReference Include="..\..\External\Contoso.External.csproj" />
+  </ItemGroup>
+</Project>
