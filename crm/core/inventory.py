@@ -62,11 +62,7 @@ class InventoryError(Exception):
 
 
 def _key_part(value: object) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, bool) or not isinstance(value, str | int):
-        raise InventoryError(f"key part must be a string, an integer or null, got {value!r}")
-    return str(value).replace("%", "%25").replace("|", "%7C")
+    raise NotImplementedError
 
 
 def component_key(kind: str, fields: Mapping[str, Any]) -> str:
@@ -80,15 +76,7 @@ def component_key(kind: str, fields: Mapping[str, Any]) -> str:
     Raises:
         InventoryError: the kind is unknown or a key field is missing.
     """
-    names = KEY_FIELDS.get(kind)
-    if names is None:
-        raise InventoryError(f"unknown kind {kind!r}; v1 kinds: {', '.join(KINDS)}")
-    missing = [name for name in names if name not in fields]
-    if missing:
-        raise InventoryError(f"{kind} record lacks key field(s): {', '.join(missing)}")
-    if kind in _NULL_KEY and fields[names[0]] is None:
-        return _NULL_KEY[kind]
-    return "|".join(_key_part(fields[name]) for name in names)
+    raise NotImplementedError
 
 
 def artifact_path(kind: str, key: str, name: str, *, discriminator: str | None = None) -> str:
@@ -101,9 +89,7 @@ def artifact_path(kind: str, key: str, name: str, *, discriminator: str | None =
     keeps its own file. *name* names the artifact within the record
     (``form.xml``, ``fetch.xml``, ``content.js``).
     """
-    slug = re.sub(r"[^a-z0-9._]+", "-", key.lower()).strip("-.")[:60] or "component"
-    digest = hashlib.sha256("\0".join((kind, key, discriminator or "")).encode("utf-8")).hexdigest()
-    return f"artifacts/{kind}/{slug}-{digest[:12]}.{name}"
+    raise NotImplementedError
 
 
 @dataclass(frozen=True)
@@ -116,9 +102,7 @@ class ArtifactHashes:
 
 def normalize_text(data: bytes) -> bytes:
     """Apply the v1 text normalization: strip a leading UTF-8 BOM, convert CRLF to LF."""
-    if data.startswith(_BOM):
-        data = data[len(_BOM) :]
-    return data.replace(b"\r\n", b"\n")
+    raise NotImplementedError
 
 
 def artifact_hashes(data: bytes, *, text: bool) -> ArtifactHashes:
@@ -127,9 +111,7 @@ def artifact_hashes(data: bytes, *, text: bool) -> ArtifactHashes:
     A binary artifact uses the raw hash for both, since v1 defines no binary
     normalization.
     """
-    raw = hashlib.sha256(data).hexdigest()
-    normalized = hashlib.sha256(normalize_text(data)).hexdigest() if text else raw
-    return ArtifactHashes(sha256=raw, normalized_sha256=normalized)
+    raise NotImplementedError
 
 
 SCHEMA_VERSION = 1
@@ -217,171 +199,66 @@ class Inventory:
 
     def ambiguous(self) -> dict[tuple[str, str], tuple[Record, ...]]:
         """Return each (kind, key) that two or more records share, records in manifest order."""
-        groups: dict[tuple[str, str], list[Record]] = {}
-        for record in self.records:
-            groups.setdefault((record.kind, record.key), []).append(record)
-        return {k: tuple(v) for k, v in groups.items() if len(v) > 1}
+        raise NotImplementedError
 
 
 # ── Reader ──────────────────────────────────────────────────────────────────
 
 
 def _obj(value: object, where: str) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        raise InventoryError(f"{where} must be an object")
-    return cast("dict[str, Any]", value)
+    raise NotImplementedError
 
 
 def _list(value: object, where: str) -> list[Any]:
-    if not isinstance(value, list):
-        raise InventoryError(f"{where} must be an array")
-    return cast("list[Any]", value)
+    raise NotImplementedError
 
 
 def _req(obj: dict[str, Any], name: str, where: str) -> object:
-    if name not in obj:
-        raise InventoryError(f"{where} lacks required field {name!r}")
-    return obj[name]
+    raise NotImplementedError
 
 
 def _str(obj: dict[str, Any], name: str, where: str, *, choices: tuple[str, ...] = ()) -> str:
-    value = _req(obj, name, where)
-    if not isinstance(value, str) or not value:
-        raise InventoryError(f"{where}.{name} must be a non-empty string")
-    if choices and value not in choices:
-        raise InventoryError(f"{where}.{name} is {value!r}; expected one of {', '.join(choices)}")
-    return value
+    raise NotImplementedError
 
 
 def _opt_str(obj: dict[str, Any], name: str, where: str) -> str | None:
-    value = _req(obj, name, where)
-    if value is not None and not isinstance(value, str):
-        raise InventoryError(f"{where}.{name} must be a string or null")
-    return value
+    raise NotImplementedError
 
 
 def _int(obj: dict[str, Any], name: str, where: str) -> int:
-    value = _req(obj, name, where)
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise InventoryError(f"{where}.{name} must be a non-negative integer")
-    return value
+    raise NotImplementedError
 
 
 def _bool(obj: dict[str, Any], name: str, where: str, *, nullable: bool = False) -> bool | None:
-    value = _req(obj, name, where)
-    if not isinstance(value, bool) and not (nullable and value is None):
-        raise InventoryError(f"{where}.{name} must be a boolean{' or null' if nullable else ''}")
-    return value
+    raise NotImplementedError
 
 
 def _strings(value: object, where: str) -> tuple[str, ...]:
-    items = _list(value, where)
-    if not all(isinstance(item, str) for item in items):
-        raise InventoryError(f"{where} must hold strings only")
-    return tuple(cast("list[str]", items))
+    raise NotImplementedError
 
 
 def _source(value: object) -> Source:
-    obj = _obj(value, "source")
-    url = _str(obj, "org_url", "source")
-    if urlsplit(url).username is not None or "@" in urlsplit(url).netloc:
-        raise InventoryError("source.org_url must not carry credentials")
-    return Source(
-        platform=_str(obj, "platform", "source", choices=PLATFORMS),
-        org_url=url,
-        organization_id=_opt_str(obj, "organization_id", "source"),
-        version=_str(obj, "version", "source"),
-    )
+    raise NotImplementedError
 
 
 def _scope(value: object) -> Scope:
-    obj = _obj(value, "scope")
-    mode = _str(obj, "mode", "scope", choices=("org", "solutions"))
-    solutions = _strings(_req(obj, "solutions", "scope"), "scope.solutions")
-    if (mode == "solutions") != bool(solutions):
-        raise InventoryError(
-            "scope.solutions must name solutions exactly when scope.mode is 'solutions'"
-        )
-    return Scope(mode=mode, solutions=solutions)
+    raise NotImplementedError
 
 
 def _artifact(value: object, kind: str, where: str) -> Artifact:
-    obj = _obj(value, where)
-    path = _str(obj, "path", where)
-    prefix = f"artifacts/{kind}/"
-    if (
-        not path.startswith(prefix)
-        or "/" in path[len(prefix) :]
-        or path.endswith("/")
-        or ".." in path
-    ):
-        raise InventoryError(f"{where}.path {path!r} must be a file directly under {prefix}")
-    hashes = [_str(obj, name, where) for name in ("sha256", "normalized_sha256")]
-    if not all(_SHA256.fullmatch(h) for h in hashes):
-        raise InventoryError(f"{where} hashes must be 64 lowercase hex digits")
-    return Artifact(
-        path=path,
-        content=_str(obj, "content", where, choices=CONTENTS),
-        sha256=hashes[0],
-        normalized_sha256=hashes[1],
-    )
+    raise NotImplementedError
 
 
 def _record(value: object, where: str) -> Record:
-    obj = _obj(value, where)
-    kind = _str(obj, "kind", where, choices=KINDS)
-    key = _str(obj, "key", where)
-    fields = _obj(_req(obj, "fields", where), f"{where}.fields")
-    expected = component_key(kind, fields)
-    if key != expected:
-        raise InventoryError(
-            f"{where} key {key!r} does not match its fields' component key {expected!r}"
-        )
-    artifacts = _list(_req(obj, "artifacts", where), f"{where}.artifacts")
-    return Record(
-        kind=kind,
-        key=key,
-        id=_opt_str(obj, "id", where),
-        display_name=_opt_str(obj, "display_name", where),
-        origin=_str(obj, "origin", where, choices=ORIGINS),
-        managed=_bool(obj, "managed", where, nullable=True),
-        publication_state=_str(obj, "publication_state", where, choices=PUBLICATION_STATES),
-        fields=fields,
-        artifacts=tuple(
-            _artifact(a, kind, f"{where}.artifacts[{i}]") for i, a in enumerate(artifacts)
-        ),
-    )
+    raise NotImplementedError
 
 
 def _coverage(value: object, kind: str) -> Coverage:
-    where = f"coverage.{kind}"
-    obj = _obj(value, where)
-    coverage = Coverage(
-        status=_str(obj, "status", where, choices=COVERAGE_STATUSES),
-        pages=_int(obj, "pages", where),
-        records=_int(obj, "records", where),
-        truncated=bool(_bool(obj, "truncated", where)),
-        errors=_strings(_req(obj, "errors", where), f"{where}.errors"),
-    )
-    if coverage.status == "complete" and coverage.truncated:
-        raise InventoryError(f"{where} is complete but truncated: a truncated read is partial")
-    return coverage
+    raise NotImplementedError
 
 
 def _gap(value: object, where: str) -> Gap:
-    obj = _obj(value, where)
-    kind = _opt_str(obj, "kind", where)
-    if kind is not None and kind not in KINDS:
-        raise InventoryError(f"{where}.kind {kind!r} is not a v1 kind")
-    gap = Gap(
-        kind=kind,
-        key=_opt_str(obj, "key", where),
-        description=_opt_str(obj, "description", where),
-        reason=_str(obj, "reason", where),
-    )
-    if not gap.key and not gap.description:
-        raise InventoryError(f"{where} must name a key or a description")
-    return gap
+    raise NotImplementedError
 
 
 def parse_manifest(data: object) -> Inventory:
@@ -393,56 +270,7 @@ def parse_manifest(data: object) -> Inventory:
     Raises:
         InventoryError: the manifest breaks the contract; the message names where.
     """
-    obj = _obj(data, "manifest")
-    version = obj.get("schema_version")
-    if type(version) is not int or version != SCHEMA_VERSION:
-        raise InventoryError(
-            f"manifest schema_version {version!r} is not supported; "
-            f"this crm reads schema_version {SCHEMA_VERSION}"
-        )
-    records = tuple(
-        _record(r, f"records[{i}]")
-        for i, r in enumerate(_list(_req(obj, "records", "manifest"), "records"))
-    )
-    raw_coverage = _obj(_req(obj, "coverage", "manifest"), "coverage")
-    unknown = sorted(set(raw_coverage) - set(KINDS))
-    if unknown:
-        raise InventoryError(f"coverage names unknown kind(s): {', '.join(unknown)}")
-    coverage = {kind: _coverage(raw_coverage[kind], kind) for kind in sorted(raw_coverage)}
-    counts: dict[str, int] = {}
-    for record in records:
-        counts[record.kind] = counts.get(record.kind, 0) + 1
-    for kind, count in sorted(counts.items()):
-        if kind not in coverage:
-            raise InventoryError(
-                f"no coverage entry for kind {kind!r}, which holds {count} record(s)"
-            )
-    for kind, entry in coverage.items():
-        if entry.records != counts.get(kind, 0):
-            raise InventoryError(
-                f"coverage.{kind} counts {entry.records} records "
-                f"but the manifest holds {counts.get(kind, 0)}"
-            )
-    seen: set[str] = set()
-    for record in records:
-        for artifact in record.artifacts:
-            if artifact.path in seen:
-                raise InventoryError(f"artifact path {artifact.path!r} is shared by two records")
-            seen.add(artifact.path)
-    return Inventory(
-        schema_version=SCHEMA_VERSION,
-        source=_source(_req(obj, "source", "manifest")),
-        extracted_at=_str(obj, "extracted_at", "manifest"),
-        cli_version=_str(obj, "cli_version", "manifest"),
-        scope=_scope(_req(obj, "scope", "manifest")),
-        publication=_str(obj, "publication", "manifest", choices=("published",)),
-        records=records,
-        coverage=coverage,
-        gaps=tuple(
-            _gap(g, f"gaps[{i}]")
-            for i, g in enumerate(_list(_req(obj, "gaps", "manifest"), "gaps"))
-        ),
-    )
+    raise NotImplementedError
 
 
 def read_inventory(folder: Path) -> Inventory:
@@ -450,19 +278,14 @@ def read_inventory(folder: Path) -> Inventory:
 
     The reader checks the manifest only; it does not re-hash the artifact files.
     """
-    path = folder / MANIFEST_NAME
-    try:
-        data = json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise InventoryError(f"cannot read {path}: {exc}") from exc
-    return parse_manifest(data)
+    raise NotImplementedError
 
 
 # ── Writer ──────────────────────────────────────────────────────────────────
 
 
 def _canonical(value: object) -> str:
-    return json.dumps(value, sort_keys=True, ensure_ascii=False)
+    raise NotImplementedError
 
 
 def dump_manifest(inv: Inventory) -> str:
@@ -473,29 +296,8 @@ def dump_manifest(inv: Inventory) -> str:
     Keys are sorted and the text ends with a newline. The result is checked by
     `parse_manifest`, so a writer cannot emit a manifest the reader refuses.
     """
-    records = [_record_dict(r) for r in inv.records]
-    records.sort(key=lambda r: (r["kind"], r["key"], _canonical(r)))
-    gaps = [asdict(g) for g in inv.gaps]
-    gaps.sort(key=_canonical)
-    manifest: dict[str, Any] = {
-        "schema_version": inv.schema_version,
-        "source": asdict(inv.source),
-        "extracted_at": inv.extracted_at,
-        "cli_version": inv.cli_version,
-        "scope": {"mode": inv.scope.mode, "solutions": sorted(inv.scope.solutions)},
-        "publication": inv.publication,
-        "records": records,
-        "coverage": {
-            kind: {**asdict(c), "errors": list(c.errors)} for kind, c in inv.coverage.items()
-        },
-        "gaps": gaps,
-    }
-    parse_manifest(json.loads(_canonical(manifest)))
-    return json.dumps(manifest, sort_keys=True, ensure_ascii=False, indent=2) + "\n"
+    raise NotImplementedError
 
 
 def _record_dict(record: Record) -> dict[str, Any]:
-    out = asdict(record)
-    out["fields"] = dict(record.fields)
-    out["artifacts"] = sorted((asdict(a) for a in record.artifacts), key=lambda a: a["path"])
-    return out
+    raise NotImplementedError
