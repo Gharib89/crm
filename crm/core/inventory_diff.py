@@ -9,6 +9,7 @@ behave alike. It touches no org; both sides are manifests on disk.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -116,20 +117,20 @@ class InventoryDiff:
     b: Inventory
     entries: tuple[KeyDiff, ...]
 
-    def _tally(self, group: str) -> dict[str, dict[str, int]]:
+    def _tally(self, group: Callable[[KeyDiff], str]) -> dict[str, dict[str, int]]:
         out: dict[str, dict[str, int]] = {}
         for entry in self.entries:
-            per = out.setdefault(getattr(entry, group), {})
+            per = out.setdefault(group(entry), {})
             per[entry.verdict] = per.get(entry.verdict, 0) + 1
         return out
 
     def counts(self) -> dict[str, dict[str, int]]:
         """Return each kind's count per verdict, verdicts with no key left out."""
-        return self._tally("kind")
+        return self._tally(lambda e: e.kind)
 
     def by_origin(self) -> dict[str, dict[str, int]]:
         """Return the count per verdict for each origin, so system drift stays apart from custom."""
-        return self._tally("origin")
+        return self._tally(lambda e: e.origin)
 
     def incomplete(self) -> dict[str, dict[str, str]]:
         """Return each v1 kind not read ``complete`` on both sides, with each side's status.
@@ -278,24 +279,22 @@ def _diff_key(
             return KeyDiff(kind, key, "not_comparable", origin, reason=_gap_reason(label, gap))
         return KeyDiff(kind, key, "removed" if not rb else "added", origin)
     x, y = ra[0], rb[0]
+    gap = _gap_reason("A", gap_a) if gap_a else _gap_reason("B", gap_b) if gap_b else None
     fields = _field_changes(x, y)
-    artifacts: list[ArtifactChange] = []
-    explained: str | None = None
-    for change in _artifact_changes(x, y):
-        if change.a is None and gap_a is not None:
-            explained = explained or _gap_reason("A", gap_a)
-        elif change.b is None and gap_b is not None:
-            explained = explained or _gap_reason("B", gap_b)
-        else:
-            artifacts.append(change)
+    artifacts = tuple(
+        c
+        for c in _artifact_changes(x, y)
+        if not (c.a is None and gap_a) and not (c.b is None and gap_b)
+    )
     ids = (x.id, y.id) if x.id and y.id and x.id != y.id else None
     if fields or artifacts:
         verdict = "changed"
-    elif explained is not None:
-        return KeyDiff(kind, key, "not_comparable", origin, ids=ids, reason=explained)
+    elif gap is not None:
+        # Nothing differs, but a side could not read all of it: no claim of sameness.
+        return KeyDiff(kind, key, "not_comparable", origin, ids=ids, reason=gap)
     else:
         verdict = "identity_only" if ids else "unchanged"
-    return KeyDiff(kind, key, verdict, origin, fields, tuple(artifacts), ids, explained)
+    return KeyDiff(kind, key, verdict, origin, fields, artifacts, ids, gap)
 
 
 def diff_inventories(a: Inventory, b: Inventory) -> InventoryDiff:
@@ -305,8 +304,8 @@ def diff_inventories(a: Inventory, b: Inventory) -> InventoryDiff:
     coverage of the kind is not ``complete``, ``ambiguous`` when the key repeats
     on either side, then ``added``, ``removed``, ``changed``, ``identity_only``
     or ``unchanged``. A record or artifact missing on a side whose extraction gap
-    names the key is evidence that side could not read, not a difference: the
-    key is ``not_comparable`` unless something else differs.
+    names the key is evidence that side could not read, not a difference, and
+    a key a gap names is ``not_comparable`` unless something else differs.
     GUIDs are compared only when both sides record one. Entries sort by kind,
     then key, so the result does not depend on manifest order.
     """

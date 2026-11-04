@@ -190,8 +190,8 @@ it needs no profile and no network.
   with both values, artifacts with both normalized hashes, both ids, a reason):
   pass `--out` whenever you will report keys, not just counts.
 - **`not_comparable` is unknown.** A kind not read `complete` on both sides
-  (`data.incomplete` lists them, even with no records), or a record or artifact
-  that one side's extraction gap explains, cannot be judged: report it with the
+  (`data.incomplete` lists them, even with no records), or a key an extraction
+  gap names with nothing else differing, cannot be judged: report it with the
   coverage or the gap as unknown, not as a removal.
 - **`identity_only` is expected across a migration**: only the GUID differs,
   typical when a route re-creates components. Report it apart from `changed`.

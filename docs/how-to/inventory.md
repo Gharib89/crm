@@ -8,9 +8,9 @@ deployed; it is never a desired state for `crm apply`
 `crm inventory diff` compares two inventories offline (see
 [Compare two inventories](#compare-two-inventories)).
 
-Extraction runs on **every profile**. A `crm2011` profile is read over the CRM 2011 SOAP
-endpoint (see [How-to: legacy](legacy.md) to create one); a v9 on-prem or Dataverse
-online profile is read over the Web API. The manifest's `source.platform` says
+Extraction runs on **every profile**. A `crm2011` profile is read over the CRM 2011
+SOAP endpoint (see [How-to: legacy](legacy.md) to create one); a v9 on-prem or
+Dataverse online profile is read over the Web API. The manifest's `source.platform` says
 which: `crm2011`, `cloud` when the profile authenticates with `oauth`, else
 `onprem`. See the [CLI reference](../reference/cli.md) for every flag.
 
@@ -184,12 +184,13 @@ within each kind, never by GUID, and each key gets one verdict:
 | `identity_only` | only the GUID differs (both sides record one); kept apart from `changed`, since a migration route may re-create components |
 | `unchanged` | fields and normalized artifact hashes agree |
 | `ambiguous` | the key repeats on either side, so it is never matched |
-| `not_comparable` | the kind's coverage is not `complete` on both sides (`partial`, `failed`, `unsupported`, or no entry), or the only difference is a record or artifact missing on a side whose extraction gap names the key |
+| `not_comparable` | the kind's coverage is not `complete` on both sides (`partial`, `failed`, `unsupported`, or no entry), or an extraction gap names the key and nothing else differs |
 
 What a side could not read is never reported as removed, added or changed: a
-record or artifact missing on a side whose extraction gap names the key makes it
-`not_comparable` (a field that differs anyway is still `changed`, the gap in its
-`reason`), and both sides' gaps are listed in the result. Different scopes or source platforms are allowed; the header states both
+record or artifact missing on a side whose extraction gap names the key is no
+difference, a key a gap names is `not_comparable` unless a field or a hash differs
+anyway (then `changed`, the gap in its `reason`), and both sides' gaps are listed
+in the result. Different scopes or source platforms are allowed; the header states both
 sides and flags `same_platform` and `same_scope`.
 
 `data` holds the summary, and `--out FILE` writes the same summary plus every

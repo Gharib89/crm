@@ -330,3 +330,24 @@ def test_cli_exits_1_when_out_cannot_be_written(no_profile, tmp_path: Path) -> N
 
     assert result.exit_code == 1
     assert json.loads(result.output)["error"].startswith(f"--out {out}:")
+
+
+def test_a_key_both_sides_gap_with_nothing_differing_is_not_comparable() -> None:
+    v9 = _sample("v9")
+
+    def edit(m: dict[str, Any]) -> None:
+        _record(m, "web_resource", "new_/scripts/validation.js")["artifacts"] = []
+        m["gaps"].append(
+            {
+                "kind": "web_resource",
+                "key": "new_/scripts/validation.js",
+                "description": None,
+                "reason": "content not readable",
+            }
+        )
+
+    gapped = _with(v9, edit)
+    entry = _entry(diff_inventories(gapped, gapped), "web_resource", "new_/scripts/validation.js")
+
+    assert entry.verdict == "not_comparable"
+    assert entry.reason == "extraction gap on A: content not readable"
