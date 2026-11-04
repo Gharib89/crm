@@ -5,8 +5,10 @@ inventory**: a `manifest.json` in [inventory manifest v1](../reference/inventory
 format plus the raw artifacts it points at. An inventory describes what is
 deployed; it is never a desired state for `crm apply`
 ([ADR 0032](../adr/0032-inventory-descriptive-contract-keyed-by-component-key.md)).
+`crm inventory diff` compares two inventories offline (see
+[Compare two inventories](#compare-two-inventories)).
 
-It runs on **every profile**. A `crm2011` profile is read over the CRM 2011 SOAP
+Extraction runs on **every profile**. A `crm2011` profile is read over the CRM 2011 SOAP
 endpoint (see [How-to: legacy](legacy.md) to create one); a v9 on-prem or Dataverse
 online profile is read over the Web API. The manifest's `source.platform` says
 which: `crm2011`, `cloud` when the profile authenticates with `oauth`, else
@@ -162,3 +164,52 @@ names the endpoint:
   fault. A re-run retries the read.
 
 Collect the others by hand from the server or the people who run the integrations.
+
+## Compare two inventories
+
+```bash
+crm --json inventory diff ./inv-2011 ./inv-v9 --out ./diff-2011-v9.json
+```
+
+`crm inventory diff A B` compares inventory `A` (the earlier stage) with `B`, from
+any stages: CRM 2011, on-prem v9 or cloud. It reads the two folders only and
+touches no org, so it needs no profile. Records are matched by **component key**
+within each kind, never by GUID, and each key gets one verdict:
+
+| Verdict | Meaning |
+|---|---|
+| `added` | the key is only in `B` |
+| `removed` | the key is only in `A` |
+| `changed` | a recorded field differs, or an artifact's `normalized_sha256` does |
+| `identity_only` | only the GUID differs (both sides record one); kept apart from `changed`, since a migration route may re-create components |
+| `unchanged` | fields and normalized artifact hashes agree |
+| `ambiguous` | the key repeats on either side, so it is never matched |
+| `not_comparable` | the kind's coverage is not `complete` on both sides (`partial`, `failed`, `unsupported`, or no entry), or an extraction gap on either side names the key |
+
+What a side could not read is never reported as removed or added: a key an
+extraction gap names is `not_comparable`, and both sides' gaps are listed in the
+result. Different scopes or source platforms are allowed; the header states both
+sides and flags `same_platform` and `same_scope`.
+
+`data` holds the summary, and `--out FILE` writes the same summary plus every
+key's entry:
+
+| Key | Value |
+|---|---|
+| `header` | each side's `platform`, `version`, `org_url`, `extracted_at` and `scope`; `same_platform`, `same_scope`; `basis`, the evidence the verdicts rest on |
+| `counts` | per kind, the number of keys per verdict (a verdict with no key is left out) |
+| `by_origin` | per origin (`custom`, `system`, `unknown`), the number of keys per verdict, so platform-added system components don't drown custom drift |
+| `gaps` | `{a, b}`: each side's extraction gaps |
+| `out` | the `--out` path, or `null` |
+| `entries` | `--out` only: one per key, sorted by kind then key, with `kind`, `key`, `verdict`, `origin`, and where they apply `fields` (`{name, a, b}`; a `fields` entry is named `fields.<name>`), `artifacts` (`{path, a, b}`, the normalized hashes, `null` on the side that lacks it), `ids` (`{a, b}`) and `reason` |
+
+Without `--json` it prints one row per kind with a column per verdict.
+
+A difference is a result, not a failure: the command exits **0**. It exits **1**
+when either folder holds no readable manifest, or one of them has a
+`schema_version` this crm cannot read (the error names both versions). The same
+two inventories give the same `--out` bytes, and swapping `A` and `B` swaps
+`added` and `removed`.
+
+Agreement is evidence, not proof: equal keys, fields and hashes say the recorded
+customization matches, never that the two orgs behave alike.

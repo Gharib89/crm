@@ -219,7 +219,7 @@ For per-domain detail:
 
 | Working on… | Read |
 |---|---|
-| first-time setup: install the `crm` binary, create/switch a connection profile (NTLM, AD FS or OAuth, secret storage), `--json`/no-TTY behavior; legacy CRM 2011 (read-only `crm legacy`); migration inventory of any org (`crm inventory extract`) | `reference/setup.md` |
+| first-time setup: install the `crm` binary, create/switch a connection profile (NTLM, AD FS or OAuth, secret storage), `--json`/no-TTY behavior; legacy CRM 2011 (read-only `crm legacy`); migration inventory of any org (`crm inventory extract`) and comparing two (`crm inventory diff`) | `reference/setup.md` |
 | end-to-end customization: where to start, the order components go in, stage→publish→promote a change across dev/test/prod | `reference/customization-lifecycle.md` |
 | repo-driven customizations-as-code: spec repo layout, plan → approve → `--from-plan` promote, seeding from a live org | `reference/customizations-as-code.md` |
 | records: create/read/update/delete, query (OData/FetchXML/saved), associate/lookup, clone, upsert, ad-hoc `action` | `reference/records.md` |

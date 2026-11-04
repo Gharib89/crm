@@ -176,3 +176,24 @@ binaries). It describes what is deployed; it is never a spec for `crm apply`.
   rows naming a component of a kind v1 does not record, whose read failed, or
   outside the `--solution` scope,
   and rows whose component key field the org left empty.
+
+### Comparing inventories (`crm inventory diff`)
+
+`crm inventory diff A B` compares two inventory folders from any stages
+(CRM 2011, on-prem v9, cloud), `A` the earlier one. It reads only the folders, so
+it needs no profile and no network.
+
+- **Exit 0 means it compared, not that they match.** Read `data.counts` (per kind)
+  and `data.by_origin`; report `custom` drift first, since `system` components
+  differ across platform versions on their own.
+- **`not_comparable` is unknown, never absent.** A kind not read `complete` on
+  both sides, or a key an extraction gap names, cannot be judged: report it with
+  the coverage or gap, never as a removal.
+- **`identity_only` is expected across a migration**: only the GUID differs,
+  typical when a route re-creates components. Report it apart from `changed`.
+- **`ambiguous` keys are never matched**: name them so the user resolves the
+  duplicate, rather than guessing which record pairs with which.
+- **The per-key evidence is in the `--out` file** (`entries`: differing fields
+  with both values, artifacts with both normalized hashes, both ids, a reason).
+  Report matches as evidence that the recorded customization agrees, never as
+  proof that the orgs behave alike.
