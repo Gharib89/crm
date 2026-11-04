@@ -587,7 +587,7 @@ def test_an_image_of_an_unknown_step_is_counted_as_a_gap(tmp_path, monkeypatch):
     out = tmp_path / "inv"
     _extract(FakeBackend(), out)
     gaps = [g for g in _manifest(out)["gaps"] if g["kind"] == "step_image"]
-    assert len(gaps) == 1 and gaps[0]["key"] is None
+    assert [g["reason"] for g in gaps] == [inventory_extract._UNRESOLVED_REASON]
 
 
 def test_an_entity_with_no_collection_label_has_its_ribbon_recorded_as_a_gap(tmp_path, monkeypatch):

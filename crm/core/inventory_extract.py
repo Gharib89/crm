@@ -197,8 +197,8 @@ def _ribbon_gaps(unlabelled: list[str]) -> list[ExtractionGap]:
             description=f"ribbons of {len(unlabelled)} entities with no display or collection"
             f" label: {', '.join(unlabelled)}",
             reason="an entity with no display label has no UI, so its ribbon is not read"
-            " (CRM 2011 faults RetrieveEntityRibbon for one); the Web API faults it for an"
-            " entity with no collection label in the user's language",
+            " (CRM 2011 faults RetrieveEntityRibbon for one); the Web API faulted it, on a cloud"
+            " org, for an entity with no collection label in the user's language",
         )
     ]
 
@@ -613,11 +613,11 @@ def extract(
 
     *solutions* narrows the inventory to those solutions (by unique name):
     their records, their memberships, the components they hold and the
-    subcomponents of the entities they hold with subcomponents (an entity held
-    as a shell or without subcomponents brings only those the solutions list
-    on their own). Entity details and ribbons are
-    read only for those entities; the org-wide reads still run, since a
-    membership names its component only by id.
+    subcomponents of the entities they hold. Entity details and ribbons are
+    read only for the member entities; the org-wide reads still run, since a
+    membership names its component only by id. An entity held as a shell or
+    without subcomponents brings only the subcomponents the solutions list on
+    their own.
 
     Raises:
         D365Error: *out* cannot be used, or a connection-wide failure stopped

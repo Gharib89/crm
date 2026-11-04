@@ -144,12 +144,14 @@ names the endpoint:
 - the **ribbons of entities with no display label** (intersect and internal
   entities): such an entity has no UI, so its ribbon is not read (CRM 2011 faults
   the read), nor is the ribbon of an entity with no collection label in your
-  language (the Web API faults that read), and one gap lists them all;
+  language (the Web API faulted that read on a cloud org; on-prem v9 is not
+  measured), and one gap lists them all;
 - **rows naming a component this inventory does not record** (a solution
   membership or dependency on a kind v1 does not define, whose own read failed,
   whose own row has no component key, or, in a `--solution` run, that may belong to
   an entity outside the named solutions; and a plug-in type, step or step image
-  whose parent is not recorded, which a `--solution` run leaves out),
+  whose parent, or a step whose message, is not recorded, which a `--solution`
+  run leaves out),
   counted per kind and component type;
 - **rows the key contract cannot hold** (a component key field the org left empty,
   such as a plug-in step with no name), counted per kind with the first error;
