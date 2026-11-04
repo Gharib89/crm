@@ -9,6 +9,81 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.85.0 (2026-11-04)
+
+### Bug Fixes
+
+- **inventory**: Inventory extract success envelope names its profile and url
+  ([#1068](https://github.com/Gharib89/crm/pull/1068),
+  [`d1dfa01`](https://github.com/Gharib89/crm/commit/d1dfa01c6a62aa68d43a91b644b018e7db0e405b))
+
+- **inventory**: Review round 1: no-profile errors, a live extraction that must complete
+  ([#1068](https://github.com/Gharib89/crm/pull/1068),
+  [`d1dfa01`](https://github.com/Gharib89/crm/commit/d1dfa01c6a62aa68d43a91b644b018e7db0e405b))
+
+- **inventory**: Review round 2: a failed source read is a manifest gap
+  ([#1068](https://github.com/Gharib89/crm/pull/1068),
+  [`d1dfa01`](https://github.com/Gharib89/crm/commit/d1dfa01c6a62aa68d43a91b644b018e7db0e405b))
+
+- **inventory**: Self-review round 1: source errors, write failures, bad ribbons, stale artifacts
+  ([#1068](https://github.com/Gharib89/crm/pull/1068),
+  [`d1dfa01`](https://github.com/Gharib89/crm/commit/d1dfa01c6a62aa68d43a91b644b018e7db0e405b))
+
+- **inventory**: Self-review round 2: damaged ribbon entries, unreadable --out, braced GUIDs
+  ([#1068](https://github.com/Gharib89/crm/pull/1068),
+  [`d1dfa01`](https://github.com/Gharib89/crm/commit/d1dfa01c6a62aa68d43a91b644b018e7db0e405b))
+
+- **inventory**: Skip ribbon reads for entities with no display label
+  ([#1068](https://github.com/Gharib89/crm/pull/1068),
+  [`d1dfa01`](https://github.com/Gharib89/crm/commit/d1dfa01c6a62aa68d43a91b644b018e7db0e405b))
+
+### Documentation
+
+- **adr**: List the migration skill in the plugin manifest (ADR 0033)
+  ([#1061](https://github.com/Gharib89/crm/pull/1061),
+  [`44d3de2`](https://github.com/Gharib89/crm/commit/44d3de2582f45ad480ba781ab158aae9b2f6d8f7))
+
+- **adr**: Name the planned assess verb without a runnable crm example
+  ([#1061](https://github.com/Gharib89/crm/pull/1061),
+  [`44d3de2`](https://github.com/Gharib89/crm/commit/44d3de2582f45ad480ba781ab158aae9b2f6d8f7))
+
+- **adr**: Record the second shipped skill and compatibility rules as data (ADR 0033)
+  ([#1061](https://github.com/Gharib89/crm/pull/1061),
+  [`44d3de2`](https://github.com/Gharib89/crm/commit/44d3de2582f45ad480ba781ab158aae9b2f6d8f7))
+
+- **inventory**: Crm inventory extract, legacy dependencies and export-solution
+  ([#1068](https://github.com/Gharib89/crm/pull/1068),
+  [`d1dfa01`](https://github.com/Gharib89/crm/commit/d1dfa01c6a62aa68d43a91b644b018e7db0e405b))
+
+### Features
+
+- **inventory**: Crm inventory extract for CRM 2011 orgs, with dependency reads and solution export
+  ([#1068](https://github.com/Gharib89/crm/pull/1068),
+  [`d1dfa01`](https://github.com/Gharib89/crm/commit/d1dfa01c6a62aa68d43a91b644b018e7db0e405b))
+
+- **inventory**: Crm inventory extract for crm2011 profiles, checkpointed and resumable
+  ([#1068](https://github.com/Gharib89/crm/pull/1068),
+  [`d1dfa01`](https://github.com/Gharib89/crm/commit/d1dfa01c6a62aa68d43a91b644b018e7db0e405b))
+
+- **legacy**: CRM 2011 dependency reads, solution export and ribbon reads
+  ([#1068](https://github.com/Gharib89/crm/pull/1068),
+  [`d1dfa01`](https://github.com/Gharib89/crm/commit/d1dfa01c6a62aa68d43a91b644b018e7db0e405b))
+
+### Testing
+
+- **inventory**: Fold credential forms as bytes, escape quotes too
+  ([#1068](https://github.com/Gharib89/crm/pull/1068),
+  [`d1dfa01`](https://github.com/Gharib89/crm/commit/d1dfa01c6a62aa68d43a91b644b018e7db0e405b))
+
+- **inventory**: Scan e2e output for escaped credentials too
+  ([#1068](https://github.com/Gharib89/crm/pull/1068),
+  [`d1dfa01`](https://github.com/Gharib89/crm/commit/d1dfa01c6a62aa68d43a91b644b018e7db0e405b))
+
+- **legacy**: Live e2e for legacy dependencies, export-solution and inventory extract
+  ([#1068](https://github.com/Gharib89/crm/pull/1068),
+  [`d1dfa01`](https://github.com/Gharib89/crm/commit/d1dfa01c6a62aa68d43a91b644b018e7db0e405b))
+
+
 ## v1.84.0 (2026-11-04)
 
 ### Bug Fixes
