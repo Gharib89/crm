@@ -2248,13 +2248,13 @@ def converge_declared_form(
         tlabel = str(tab.get("label") or tname)
         sections = _blocks(tab.get("sections"))
         root = _parse_formxml(formxml)
-        diff: dict[str, Any] = {}
-        added = False
+        tab_diff: dict[str, Any] = {}
+        tab_added = False
         if not _tab_present(root, tname):
             adopted = _adoptable(root.findall("./tabs/tab"), tlabel)
             if adopted is not None:
                 formxml = _adopt(formxml, root, adopted, tname)
-                diff["name"] = {"old": None, "new": tname}
+                tab_diff["name"] = {"old": None, "new": tname}
             else:
                 # The first declared section is the new tab's skeleton, so no empty
                 # `<name>_section` starter is left beside the declared ones.
@@ -2275,20 +2275,20 @@ def converge_declared_form(
                 changes.append({"kind": "tab", "name": tname})
                 if first is not None:
                     changes.append({"kind": "section", "name": str(first["name"]), "tab": tname})
-                added = True
-        if not added and tab.get("label") is not None:
+                tab_added = True
+        if not tab_added and tab.get("label") is not None:
             cur = _read_label(_resolve_target_tab(_parse_formxml(formxml), tname))
             if tlabel != cur:
                 formxml = rename_tab_in_formxml(formxml, tab=tname, label=tlabel)
-                diff["label"] = {"old": cur, "new": tlabel}
-        if diff:
-            changes.append({"kind": "tab", "name": tname, "change": "converged", "diff": diff})
+                tab_diff["label"] = {"old": cur, "new": tlabel}
+        if tab_diff:
+            changes.append({"kind": "tab", "name": tname, "change": "converged", "diff": tab_diff})
         for section in sections:
             sname = str(section["name"])
             slabel = str(section.get("label") or sname)
             root = _parse_formxml(formxml)
-            sdiff: dict[str, Any] = {}
-            s_added = False
+            section_diff: dict[str, Any] = {}
+            section_added = False
             if not _section_present(root, tname, sname):
                 adopted = _adoptable(
                     _resolve_target_tab(root, tname).findall("./columns/column/sections/section"),
@@ -2296,7 +2296,7 @@ def converge_declared_form(
                 )
                 if adopted is not None:
                     formxml = _adopt(formxml, root, adopted, sname)
-                    sdiff["name"] = {"old": None, "new": sname}
+                    section_diff["name"] = {"old": None, "new": sname}
                 else:
                     formxml = add_section_to_formxml(
                         formxml,
@@ -2306,22 +2306,22 @@ def converge_declared_form(
                         columns=int(section.get("columns") or 1),
                     )
                     changes.append({"kind": "section", "name": sname, "tab": tname})
-                    s_added = True
-            if not s_added and section.get("label") is not None:
+                    section_added = True
+            if not section_added and section.get("label") is not None:
                 cur = _read_label(_resolve_target_section(_parse_formxml(formxml), tname, sname))
                 if slabel != cur:
                     formxml = rename_section_in_formxml(
                         formxml, section=sname, label=slabel, tab=tname
                     )
-                    sdiff["label"] = {"old": cur, "new": slabel}
-            if sdiff:
+                    section_diff["label"] = {"old": cur, "new": slabel}
+            if section_diff:
                 changes.append(
                     {
                         "kind": "section",
                         "name": sname,
                         "tab": tname,
                         "change": "converged",
-                        "diff": sdiff,
+                        "diff": section_diff,
                     }
                 )
             for fld in _blocks(section.get("fields")):

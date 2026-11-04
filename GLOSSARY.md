@@ -315,6 +315,16 @@ the divergence is updatable, refuse if destructive
 the create path, which only seeds absent components.
 _Avoid_: sync, merge, upsert.
 
+**Adopt** (form tab / section):
+What `apply`'s form converge does when a declared tab or section names nothing on
+the live form but exactly one **unnamed** live tab (or section, within its tab)
+carries the same label, compared case-insensitively: it writes the declared `name`
+onto that element and converges the block there, reported as a converged change
+with a `name` diff. This is how a spec reaches the platform's default `General`
+tab and section on a new table's main form. Zero or several same-label candidates
+adopt nothing, and a named element is never adopted.
+_Avoid_: claim, match (too loose: name matching is the normal path).
+
 **Component-kind adapter**:
 The single authority for one component kind inside the `apply` engine, behind a
 four-slot interface — `validate` (the complete up-front block check),

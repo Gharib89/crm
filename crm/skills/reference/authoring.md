@@ -87,8 +87,8 @@ expressible in the spec. **Reconciled on re-apply:**
   tab the same way. Zero or several same-label unnamed candidates adopt nothing
   (the tab/section is added), and a named tab/section is never adopted. An added
   tab with declared sections gets no empty `<name>_section` starter. A declared
-  `name` that resolves to no
-  single existing main form is an **identity/ownership divergence** → `replace_blocked`
+  `name` that resolves to no single existing main form is an **identity/ownership
+  divergence** → `replace_blocked`
   (no write, exit 1, siblings still reconcile): the stance is *converge an existing
   main form*, never forge or rewrite the wrong one. A greenfield entity whose main
   form is not yet readable is `planned` — re-apply to land it. Forms are **out of
