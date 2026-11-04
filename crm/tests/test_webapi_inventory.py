@@ -211,6 +211,7 @@ class FakeBackend:
         self.fail = dict(fail or {})
         self.requests: list[tuple[str, int, str | None]] = []
         self.paths: list[str] = []
+        self.fetch_xml: dict[str, str] = {}  # entity set -> its last FetchXML
 
     def get(self, path: str, *, params: dict | None = None, extra_headers: dict | None = None):
         self.paths.append(path)
@@ -234,6 +235,7 @@ class FakeBackend:
 
     def _fetch(self, entity_set: str, fetch_xml: str, headers: dict) -> dict:
         assert "odata.include-annotations" in headers.get("Prefer", "")
+        self.fetch_xml[entity_set] = fetch_xml
         fetch = fromstring(fetch_xml)
         number = int(fetch.get("page", "1"))
         cookie = fetch.get("paging-cookie")
@@ -518,3 +520,15 @@ def test_a_repeated_solution_is_recorded_once_and_resumes(tmp_path):
     assert _manifest(out)["scope"]["solutions"] == ["contoso"]
     summary = _extract(FakeBackend(), out, solutions=("contoso",))
     assert summary.resumed
+
+
+def test_each_app_sitemap_keeps_its_unique_name(tmp_path, monkeypatch):
+    # A v9 org holds one sitemap per model-driven app; only the default has no unique name.
+    app = {"sitemapid": _id(81), "sitemapnameunique": "new_projectapp", "ismanaged": False,
+           "solutionid": _id(2), "sitemapxml": "<SiteMap/>"}  # fmt: skip
+    monkeypatch.setitem(_ORG, "sitemaps", [[*_ORG["sitemaps"][0], app]])
+    out = tmp_path / "inv"
+    backend = FakeBackend()
+    _extract(backend, out)
+    assert 'name="sitemapnameunique"' in backend.fetch_xml["sitemaps"]
+    assert _keys(_manifest(out), "sitemap") == ["default", "new_projectapp"]

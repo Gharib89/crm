@@ -32,7 +32,7 @@ import re
 import shutil
 from collections import Counter
 from collections.abc import Callable, Iterable, Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol, cast
@@ -364,6 +364,12 @@ _READS: tuple[_Read, ...] = (
         ),
     ),  # fmt: skip
 )
+# v9 holds one sitemap per model-driven app, named by sitemapnameunique (null for the
+# default); CRM 2011's sitemap has no such column.
+_V9_READS = tuple(
+    replace(r, attributes=(*r.attributes, "sitemapnameunique")) if r.kind == "sitemap" else r
+    for r in _READS
+)
 
 
 @dataclass
@@ -600,7 +606,8 @@ def extract(
         "list[dict[str, Any]]",
         run.unit(("global_option_set",), "option-sets", source.list_option_sets) or [],
     )
-    rows = {read.kind: run.pages(read) for read in _READS}
+    reads = _READS if source.platform == PLATFORM_CRM2011 else _V9_READS
+    rows = {read.kind: run.pages(read) for read in reads}
     if solutions:
         members = _member_entities(run, rows, solutions)
         entities_read = [e for e in entities if str(e.get("metadata_id")).lower() in members]
@@ -975,10 +982,10 @@ class _Builder:
             )  # fmt: skip
         for r in rows.get("sitemap", []):
             payloads = self._staged("sitemap", r)
-            self.add(
+            key = self.add(
                 "sitemap",
                 r["id"],
-                {"unique_name": None},
+                {"unique_name": r.get("sitemapnameunique") or None},
                 None,
                 self._origin(r),
                 r.get("ismanaged"),
@@ -986,7 +993,8 @@ class _Builder:
                 62,
             )
             for _, data, _ in payloads:
-                self._scan_isv(data, ("sitemap", "default"))
+                if key is not None:
+                    self._scan_isv(data, ("sitemap", key))
 
     def _scan_isv(self, data: bytes, where: tuple[str, str]) -> None:
         for match in _ISV_PAGE.finditer(data.decode("utf-8", errors="replace")):
