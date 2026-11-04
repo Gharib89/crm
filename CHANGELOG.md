@@ -9,6 +9,81 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.82.0 (2026-11-04)
+
+### Bug Fixes
+
+- **legacy**: A bad --auth-scheme is a usage error, a TLS certificate failure is not retried
+  ([#1054](https://github.com/Gharib89/crm/pull/1054),
+  [`fcb270f`](https://github.com/Gharib89/crm/commit/fcb270fc4ba6d741ab7514ed6ded3b3c6a4ff565))
+
+- **legacy**: Classify SOAP client faults as non-retryable, name the active profile in a 401 hint
+  ([#1054](https://github.com/Gharib89/crm/pull/1054),
+  [`fcb270f`](https://github.com/Gharib89/crm/commit/fcb270fc4ba6d741ab7514ed6ded3b3c6a4ff565))
+
+- **legacy**: Dotted SOAP Client fault codes, per-invocation legacy profile name
+  ([#1054](https://github.com/Gharib89/crm/pull/1054),
+  [`fcb270f`](https://github.com/Gharib89/crm/commit/fcb270fc4ba6d741ab7514ed6ded3b3c6a4ff565))
+
+- **legacy**: Emit connection meta only in JSON mode
+  ([#1054](https://github.com/Gharib89/crm/pull/1054),
+  [`fcb270f`](https://github.com/Gharib89/crm/commit/fcb270fc4ba6d741ab7514ed6ded3b3c6a4ff565))
+
+- **legacy**: Refuse a non-NTLM --auth-scheme before any secret lookup
+  ([#1054](https://github.com/Gharib89/crm/pull/1054),
+  [`fcb270f`](https://github.com/Gharib89/crm/commit/fcb270fc4ba6d741ab7514ed6ded3b3c6a4ff565))
+
+- **legacy**: Self-review round 1 fixes ([#1054](https://github.com/Gharib89/crm/pull/1054),
+  [`fcb270f`](https://github.com/Gharib89/crm/commit/fcb270fc4ba6d741ab7514ed6ded3b3c6a4ff565))
+
+- **legacy**: Self-review round 2 fixes ([#1054](https://github.com/Gharib89/crm/pull/1054),
+  [`fcb270f`](https://github.com/Gharib89/crm/commit/fcb270fc4ba6d741ab7514ed6ded3b3c6a4ff565))
+
+- **legacy**: Wrap every requests failure, read the SOAP media type case-insensitively
+  ([#1054](https://github.com/Gharib89/crm/pull/1054),
+  [`fcb270f`](https://github.com/Gharib89/crm/commit/fcb270fc4ba6d741ab7514ed6ded3b3c6a4ff565))
+
+### Documentation
+
+- **adr**: Key plug-in types by assembly; name the term migration inventory
+  ([#1047](https://github.com/Gharib89/crm/pull/1047),
+  [`42be84c`](https://github.com/Gharib89/crm/commit/42be84c3f34bbe6972aeb5dd2cb186790e1576a7))
+
+- **adr**: Note ADR 0032's SOAP producer is the ADR 0003 exception
+  ([#1047](https://github.com/Gharib89/crm/pull/1047),
+  [`42be84c`](https://github.com/Gharib89/crm/commit/42be84c3f34bbe6972aeb5dd2cb186790e1576a7))
+
+- **adr**: Record the inventory contract (ADR 0032) and its glossary terms
+  ([#1047](https://github.com/Gharib89/crm/pull/1047),
+  [`42be84c`](https://github.com/Gharib89/crm/commit/42be84c3f34bbe6972aeb5dd2cb186790e1576a7))
+
+- **adr**: Say migration inventory throughout ADR 0032
+  ([#1047](https://github.com/Gharib89/crm/pull/1047),
+  [`42be84c`](https://github.com/Gharib89/crm/commit/42be84c3f34bbe6972aeb5dd2cb186790e1576a7))
+
+- **legacy**: ADR 0031, how-to, glossary, skill and TEST.md for crm legacy
+  ([#1054](https://github.com/Gharib89/crm/pull/1054),
+  [`fcb270f`](https://github.com/Gharib89/crm/commit/fcb270fc4ba6d741ab7514ed6ded3b3c6a4ff565))
+
+### Features
+
+- **legacy**: Crm legacy whoami and version commands
+  ([#1054](https://github.com/Gharib89/crm/pull/1054),
+  [`fcb270f`](https://github.com/Gharib89/crm/commit/fcb270fc4ba6d741ab7514ed6ded3b3c6a4ff565))
+
+- **legacy**: Crm2011 profile marker, detected by profile add, always read-only
+  ([#1054](https://github.com/Gharib89/crm/pull/1054),
+  [`fcb270f`](https://github.com/Gharib89/crm/commit/fcb270fc4ba6d741ab7514ed6ded3b3c6a4ff565))
+
+- **legacy**: Read-only CRM 2011 SOAP transport with a request allowlist
+  ([#1054](https://github.com/Gharib89/crm/pull/1054),
+  [`fcb270f`](https://github.com/Gharib89/crm/commit/fcb270fc4ba6d741ab7514ed6ded3b3c6a4ff565))
+
+- **legacy**: Read-only CRM 2011 SOAP transport, allowlist and crm legacy whoami/version
+  ([#1054](https://github.com/Gharib89/crm/pull/1054),
+  [`fcb270f`](https://github.com/Gharib89/crm/commit/fcb270fc4ba6d741ab7514ed6ded3b3c6a4ff565))
+
+
 ## v1.81.11 (2026-11-02)
 
 ### Bug Fixes
