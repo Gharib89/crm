@@ -242,6 +242,7 @@ class _TypeDecl:
     path: str
     bases: tuple[str, ...]
     abstract: bool
+    partial: bool
 
 
 @dataclass
@@ -353,12 +354,16 @@ def _cs_types(text: str, path: str) -> list[_TypeDecl]:
                 namespaces = file_ns + [s[1] for s in stack if s and s[0] == "ns"]
                 types = [s[1] for s in stack if s and s[0] == "type"] + [name.lstrip("@")]
                 full = "+".join(types)
-                k = i - 1
-                while k >= 0 and tokens[k] in _CS_MODIFIERS and tokens[k] != "abstract":
+                k = i
+                while k > 0 and tokens[k - 1] in _CS_MODIFIERS:
                     k -= 1
+                modifiers = set(tokens[k:i])
                 # An interface is never registered, so it counts with abstract classes.
-                abstract = tok == "interface" or (k >= 0 and tokens[k] == "abstract")
-                out.append(_TypeDecl(".".join([*namespaces, full]), path, bases, abstract))
+                abstract = tok == "interface" or "abstract" in modifiers
+                decl = _TypeDecl(
+                    ".".join([*namespaces, full]), path, bases, abstract, "partial" in modifiers
+                )
+                out.append(decl)
                 if end < len(tokens) and tokens[end] == "{":
                     stack.append(("type", name.lstrip("@")))
                 i = end + 1
@@ -625,21 +630,20 @@ def _plugin_type(record: Record, repo: _Repo) -> ComponentSource:
     kind, key = record.kind, record.key
     assembly, type_name = str(record.fields["assembly"]), str(record.fields["type_name"])
     decls = [(d, owners) for d, owners in repo.types if d.name == type_name]
-    agree = sorted(
-        {
-            (d.path, o)
-            for d, owners in decls
-            for o in owners
-            if _same_assembly(repo.projects[o].assembly, assembly)
-        }
-    )
-    # Decided on projects, not files: a partial class spans files of one project.
-    files = tuple(sorted({p for p, _ in agree}))
+    agree = [
+        (d, o)
+        for d, owners in decls
+        for o in owners
+        if _same_assembly(repo.projects[o].assembly, assembly)
+    ]
+    files = tuple(sorted({d.path for d, _ in agree}))
     projects = tuple(sorted({o for _, o in agree}))
-    if len(projects) == 1:
+    # A partial class spans several files of one project; full copies in two files do not.
+    if len(projects) == 1 and (len(files) == 1 or all(d.partial for d, _ in agree)):
         return ComponentSource(kind, key, "matched", files, projects)
     if projects:
-        reason = f"{type_name} is declared in several projects that build {assembly}"
+        where = "several projects" if len(projects) > 1 else "several files of a project"
+        reason = f"{type_name} is declared in {where} that build {assembly}"
         return ComponentSource(kind, key, "ambiguous", files, projects, reason=reason)
     if decls:
         owners = sorted({o for _, decl_owners in decls for o in decl_owners})

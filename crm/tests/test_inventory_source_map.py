@@ -92,6 +92,7 @@ def _write_inventory(folder: Path) -> Path:
         _plugin_type("Contoso.Plugins", "Contoso.Plugins.ProjectCreate", folder),
         _plugin_type("Contoso.Plugins", "Contoso.Plugins.AccountUpdate", folder),
         _plugin_type("Contoso.Plugins", "Contoso.Plugins.Removed", folder),
+        _plugin_type("Contoso.Plugins", "Contoso.Plugins.Copied", folder),
         _plugin_type(
             "Contoso.Workflows", "Contoso.Workflows.ApproveActivity", folder, activity=True
         ),
@@ -165,6 +166,13 @@ def test_plugin_statuses_cover_both_namespace_forms_and_a_project_without_assemb
     assert (block.status, block.files, block.projects) == (
         "matched",
         ("Plugins/ProjectCreate.Helpers.cs", "Plugins/ProjectCreate.cs"),
+        ("Plugins/Contoso.Plugins.csproj",),
+    )
+    # Two full (not partial) copies in one project cannot both build: ambiguous.
+    copied = _entry(source_map, "plugin_type", "Contoso.Plugins|Contoso.Plugins.Copied")
+    assert (copied.status, copied.files, copied.projects) == (
+        "ambiguous",
+        ("Plugins/Archive/Copied.cs", "Plugins/Copied.cs"),
         ("Plugins/Contoso.Plugins.csproj",),
     )
     # File-scoped namespace, in a project with no AssemblyName: a custom workflow activity.
@@ -245,7 +253,7 @@ def test_shared_external_and_unmatched_source(inventory_dir: Path) -> None:
             "missing_source": 1,
         },
         "plugin_assembly": {"matched": 2, "missing_source": 1},
-        "plugin_type": {"matched": 2, "candidate": 2, "missing_source": 1},
+        "plugin_type": {"matched": 2, "ambiguous": 1, "candidate": 2, "missing_source": 1},
     }
     assert summary["shared"] == {"web_resources": 1, "projects": 2}
     assert (summary["external"], summary["unmatched_source"]) == (2, 5)
@@ -267,7 +275,7 @@ def test_cli_writes_a_deterministic_map_and_touches_no_org(inventory_dir: Path, 
     assert envelope["data"]["out"] == str(outs[1])
     full = json.loads(outs[0].read_text(encoding="utf-8"))
     assert full["schema_version"] == 1
-    assert len(full["components"]) == 15
+    assert len(full["components"]) == 16
     assert full["unmatched_source"][3] == {
         "path": "src/orphan.js",
         "kind": "web_resource",
