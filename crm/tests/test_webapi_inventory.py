@@ -230,6 +230,9 @@ class FakeBackend:
 
     def get_collection(self, path: str, *, params: dict | None = None):
         self.paths.append(path)
+        exc = self.fail.pop((path, 1), None)
+        if exc is not None:
+            raise exc
         rows = {"EntityDefinitions": _ENTITIES, "GlobalOptionSetDefinitions": _OPTION_SETS}[path]
         return copy.deepcopy(rows)
 
@@ -532,3 +535,40 @@ def test_each_app_sitemap_keeps_its_unique_name(tmp_path, monkeypatch):
     _extract(backend, out)
     assert 'name="sitemapnameunique"' in backend.fetch_xml["sitemaps"]
     assert _keys(_manifest(out), "sitemap") == ["default", "new_projectapp"]
+
+
+def test_an_entity_held_without_its_subcomponents_keeps_only_the_listed_ones(tmp_path, monkeypatch):
+    # new_project is a member at rootcomponentbehavior 1 (subcomponents not included),
+    # with one attribute listed on its own: only that attribute comes along.
+    shell = {**_ORG["solutioncomponents"][0][1], "rootcomponentbehavior": 1}
+    attr = {"solutioncomponentid": _id(103), "componenttype": 2,
+            "objectid": _id(400 + len("new_project")),
+            **_lookup("solutionid", "solution", 2)}  # fmt: skip
+    rows = [_ORG["solutioncomponents"][0][0], shell, attr]
+    monkeypatch.setitem(_ORG, "solutioncomponents", [rows])
+    backend = FakeBackend()
+    out = tmp_path / "inv"
+    _extract(backend, out, solutions=("contoso",))
+    data = _manifest(out)
+    assert 'name="rootcomponentbehavior"' in backend.fetch_xml["solutioncomponents"]
+    assert _keys(data, "entity") == ["new_project"]
+    assert _keys(data, "attribute") == ["new_project|new_projectid"]
+    assert _keys(data, "form") == _keys(data, "view") == _keys(data, "ribbon") == []
+    assert _keys(data, "relationship") == []
+
+
+def test_a_solution_name_matches_case_insensitively(tmp_path):
+    out = tmp_path / "inv"
+    summary = _extract(FakeBackend(), out, solutions=("CONTOSO",))
+    assert summary.errors == []
+    data = _manifest(out)
+    assert data["scope"]["solutions"] == ["contoso"]  # as the org spells it
+    assert _keys(data, "entity") == ["new_project"]
+
+
+def test_a_failed_entity_list_leaves_the_entity_detail_kinds_incomplete(tmp_path):
+    out = tmp_path / "inv"
+    _extract(FakeBackend(fail={("EntityDefinitions", 1): D365Error("boom", status=500)}), out)
+    coverage = _manifest(out)["coverage"]
+    for kind in ("entity", "attribute", "relationship", "local_option_set", "ribbon"):
+        assert coverage[kind]["status"] != "complete", kind

@@ -364,12 +364,18 @@ _READS: tuple[_Read, ...] = (
         ),
     ),  # fmt: skip
 )
-# v9 holds one sitemap per model-driven app, named by sitemapnameunique (null for the
-# default); CRM 2011's sitemap has no such column.
+# Columns v9 has and CRM 2011 lacks: an app sitemap's unique name (one sitemap per
+# model-driven app, null for the default), and how much of a member entity a solution
+# holds (rootcomponentbehavior: 0 with its subcomponents, 1 without, 2 as a shell).
+_V9_COLUMNS = {
+    "sitemap": ("sitemapnameunique",),
+    "solution_membership": ("rootcomponentbehavior",),
+}
 _V9_READS = tuple(
-    replace(r, attributes=(*r.attributes, "sitemapnameunique")) if r.kind == "sitemap" else r
-    for r in _READS
+    replace(r, attributes=(*r.attributes, *_V9_COLUMNS.get(r.kind, ()))) for r in _READS
 )
+# The kinds read per entity from the entity list; a failed list leaves them unread.
+_ENTITY_DETAIL_KINDS = ("attribute", "relationship", "local_option_set", "ribbon")
 
 
 @dataclass
@@ -559,20 +565,28 @@ def _utc_now() -> str:
 
 def _member_entities(
     run: _Run, rows: dict[str, list[dict[str, Any]]], solutions: tuple[str, ...]
-) -> set[str]:
-    """The metadata ids of the entities the named solutions hold; an unknown name is an error."""
+) -> tuple[set[str], tuple[str, ...]]:
+    """The ids of the entities the named solutions hold, and the names as the org spells them.
+
+    Unique names match case-insensitively, as on the server; an unknown name is an error.
+    """
     ids = {
         str(r["id"]).lower(): str(r.get("uniquename"))
         for r in rows.get("solution", [])
-        if r.get("uniquename") in solutions
+        if str(r.get("uniquename")).lower() in solutions
     }
-    for name in sorted(set(solutions) - set(ids.values())):
-        run.tally("solution").errors.append(f"solution {name}: no solution with this unique name")
-    return {
+    spelled = {name.lower(): name for name in ids.values()}
+    for name in solutions:
+        if name not in spelled:
+            run.tally("solution").errors.append(
+                f"solution {name}: no solution with this unique name"
+            )
+    members = {
         str(_ref_id(r.get("objectid")))
         for r in rows.get("solution_membership", [])
         if r.get("componenttype") == _ENTITY and (_ref_id(r.get("solutionid")) or "") in ids
     }
+    return members, tuple(sorted(spelled.get(name, name) for name in solutions))
 
 
 def extract(
@@ -595,13 +609,17 @@ def extract(
         D365Error: *out* cannot be used, or a connection-wide failure stopped
             the read (the checkpoint keeps every finished unit for a re-run).
     """
-    solutions = tuple(sorted(set(solutions)))
+    solutions = tuple(sorted({name.lower() for name in solutions}))
     cp, state, resumed = Checkpoint.open(out, source.org_url, now(), solutions)
     run = _Run(source, cp)
     ident = cast("dict[str, Any]", run.unit((), "source", source.identity) or {})
     entities = cast(
-        "list[dict[str, Any]]", run.unit(("entity",), "entities", source.list_entities) or []
+        "list[dict[str, Any]] | None", run.unit(("entity",), "entities", source.list_entities)
     )
+    if entities is None:
+        for kind in _ENTITY_DETAIL_KINDS:
+            run.tally(kind).errors.append("entities: the entity list read failed")
+        entities = []
     option_sets = cast(
         "list[dict[str, Any]]",
         run.unit(("global_option_set",), "option-sets", source.list_option_sets) or [],
@@ -609,7 +627,7 @@ def extract(
     reads = _READS if source.platform == PLATFORM_CRM2011 else _V9_READS
     rows = {read.kind: run.pages(read) for read in reads}
     if solutions:
-        members = _member_entities(run, rows, solutions)
+        members, solutions = _member_entities(run, rows, solutions)
         entities_read = [e for e in entities if str(e.get("metadata_id")).lower() in members]
     else:
         entities_read = entities
@@ -762,6 +780,8 @@ class _Builder:
         # Rows naming a component this run did not record: (kind, component type,
         # the record a scoped run keeps the row with, or None).
         self.unresolved: list[tuple[str, int, tuple[str, str] | None]] = []
+        # (solution, entity key) of entities a solution holds without their subcomponents.
+        self.shells: set[tuple[str, str]] = set()
         self.scoped = False
         self.unkeyed: dict[str, tuple[int, str]] = {}  # kind: (rows, the first error)
         self.extra_gaps: list[ExtractionGap] = []
@@ -1019,6 +1039,8 @@ class _Builder:
                 owner = ("solution", solution) if solution else None
                 self._unresolve("solution_membership", int(r.get("componenttype") or 0), owner)
                 continue
+            if member[0] == "entity" and r.get("rootcomponentbehavior") in (1, 2):
+                self.shells.add((solution, member[1]))
             self.add(
                 "solution_membership", r["id"],
                 {"solution": solution, "member_kind": member[0], "member_key": member[1]},
@@ -1053,9 +1075,11 @@ class _Builder:
         stay org-wide.
 
         Kept: the solutions, their memberships, each member, each record of a
-        member entity (`attribute`, `local_option_set`, `form`, `view`,
-        `ribbon`, and a `relationship` on either side), and each dependency
-        whose dependent is kept.
+        member entity held with its subcomponents (`attribute`,
+        `local_option_set`, `form`, `view`, `ribbon`, and a `relationship` on
+        either side), and each dependency whose dependent is kept. An entity
+        held without its subcomponents, or as a shell, brings only the members
+        listed on their own.
         """
         named = set(solutions)
         members = {
@@ -1063,7 +1087,14 @@ class _Builder:
             for p in self.pending
             if p.kind == "solution_membership" and p.fields["solution"] in named
         }
-        entities = {key for kind, key in members if kind == "entity"}
+        entities = {
+            p.fields["member_key"]
+            for p in self.pending
+            if p.kind == "solution_membership"
+            and p.fields["solution"] in named
+            and p.fields["member_kind"] == "entity"
+            and (p.fields["solution"], p.fields["member_key"]) not in self.shells
+        }
 
         def held(p: _Pending) -> bool:
             if p.kind == "solution":
