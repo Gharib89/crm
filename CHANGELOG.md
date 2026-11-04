@@ -9,6 +9,39 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.87.0 (2026-11-04)
+
+### Bug Fixes
+
+- **inventory**: A key a gap names stays not_comparable when nothing else differs
+  ([#1073](https://github.com/Gharib89/crm/pull/1073),
+  [`5fcb0ed`](https://github.com/Gharib89/crm/commit/5fcb0edcac294b60fe567f8738ee2cce03fe5113))
+
+- **inventory**: Name both sides' gaps in a diff reason and pin the one-sided gap rule
+  ([#1073](https://github.com/Gharib89/crm/pull/1073),
+  [`5fcb0ed`](https://github.com/Gharib89/crm/commit/5fcb0edcac294b60fe567f8738ee2cce03fe5113))
+
+- **inventory**: Narrow the diff's gap rule, list incomplete kinds, keep origin symmetric
+  ([#1073](https://github.com/Gharib89/crm/pull/1073),
+  [`5fcb0ed`](https://github.com/Gharib89/crm/commit/5fcb0edcac294b60fe567f8738ee2cce03fe5113))
+
+### Documentation
+
+- **inventory**: Document crm inventory diff and the LOCAL_VERBS gate entry
+  ([#1073](https://github.com/Gharib89/crm/pull/1073),
+  [`5fcb0ed`](https://github.com/Gharib89/crm/commit/5fcb0edcac294b60fe567f8738ee2cce03fe5113))
+
+- **inventory**: The offline inventory diff also runs on a crm2011 profile
+  ([#1073](https://github.com/Gharib89/crm/pull/1073),
+  [`5fcb0ed`](https://github.com/Gharib89/crm/commit/5fcb0edcac294b60fe567f8738ee2cce03fe5113))
+
+### Features
+
+- **inventory**: Crm inventory diff across migration stages
+  ([#1073](https://github.com/Gharib89/crm/pull/1073),
+  [`5fcb0ed`](https://github.com/Gharib89/crm/commit/5fcb0edcac294b60fe567f8738ee2cce03fe5113))
+
+
 ## v1.86.0 (2026-11-04)
 
 ### Bug Fixes

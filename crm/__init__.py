@@ -2,4 +2,4 @@
 online (OAuth), over the Web API.
 """
 
-__version__ = "1.86.0"
+__version__ = "1.87.0"
