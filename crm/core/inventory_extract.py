@@ -38,6 +38,7 @@ from typing import Any, Protocol, cast
 
 from crm.core import legacy_reads
 from crm.core.inventory import (
+    KEY_FIELDS,
     KINDS,
     MANIFEST_NAME,
     SCHEMA_VERSION,
@@ -1073,10 +1074,16 @@ class _Builder:
             counts[(p.kind, p.key)] = counts.get((p.kind, p.key), 0) + 1
         records: list[Record] = []
         for p in self.pending:
-            ambiguous = counts[(p.kind, p.key)] > 1
+            # A record with no source id (a ribbon) is told apart by its key fields'
+            # values: the application ribbon's null entity meets an `application` entity.
+            discriminator = (
+                (p.id or json.dumps([p.fields[n] for n in KEY_FIELDS[p.kind]]))
+                if counts[(p.kind, p.key)] > 1
+                else None
+            )
             artifacts: list[Artifact] = []
             for name, data, text in p.payloads:
-                path = artifact_path(p.kind, p.key, name, discriminator=p.id if ambiguous else None)
+                path = artifact_path(p.kind, p.key, name, discriminator=discriminator)
                 target = self.out / path
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(data)

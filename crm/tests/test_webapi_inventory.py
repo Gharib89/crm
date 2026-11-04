@@ -13,6 +13,7 @@ import base64
 import copy
 import io
 import json
+import sys
 import zipfile
 from pathlib import Path
 from urllib.parse import quote
@@ -474,3 +475,17 @@ def test_a_row_with_an_unkeyable_field_is_a_gap_and_the_run_goes_on(tmp_path):
     (gap,) = [g for g in data["gaps"] if g["kind"] == "step" and g["key"] is None]
     assert gap["description"].startswith("1 step row(s)")
     assert "step.name must be a non-empty string" in gap["description"]
+
+
+def test_an_entity_named_application_keeps_its_own_ribbon_file(tmp_path, monkeypatch):
+    # Measured on a Dataverse trial org: an `application` entity, whose ribbon
+    # key meets the application ribbon's (`application`), an ambiguous key.
+    app = {"LogicalName": "application", "DisplayName": _label("Application"),
+           "IsCustomEntity": False, "ObjectTypeCode": 1204, "MetadataId": _id(203),
+           "IsManaged": True}  # fmt: skip
+    monkeypatch.setattr(sys.modules[__name__], "_ENTITIES", [*_ENTITIES, app])
+    out = tmp_path / "inv"
+    _extract(FakeBackend(), out)
+    ribbons = [r for r in _manifest(out)["records"] if r["kind"] == "ribbon"]
+    paths = [a["path"] for r in ribbons if r["key"] == "application" for a in r["artifacts"]]
+    assert len(paths) == 2 and len(set(paths)) == 2

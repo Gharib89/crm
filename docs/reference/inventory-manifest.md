@@ -29,7 +29,8 @@ first 12 hex digits of a SHA-256 over the kind and the full key, and the
 artifact's name within the record (`form.xml`, `fetch.xml`, `layout.xml`,
 `content.js`, `workflow.xaml`). Two keys never share a file, even when they
 slug alike. Records that share an ambiguous key add their source id to the hash
-(`artifact_path(..., discriminator=<id>)`), so each keeps its own file. The
+(`artifact_path(..., discriminator=<id>)`), or, with no source id (a ribbon), their
+key fields' values as JSON, so each keeps its own file. The
 reader refuses an artifact path that two records share.
 
 ## Header
