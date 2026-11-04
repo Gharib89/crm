@@ -110,7 +110,7 @@ profile**; its JSON output carries `platform: "crm2011"`, where a normal profile
 tell the user it is untested.
 
 - **Only `crm legacy`, `crm inventory extract` and the offline `crm inventory
-  diff` and `map-source` run on it** (prove connectivity with `crm --json legacy version`;
+  diff`, `map-source` and `packages` run on it** (prove connectivity with `crm --json legacy version`;
   `crm legacy --help` lists the rest). Every other org command exits 1 with an error naming `crm legacy`, so a
   `crm2011` profile never needs a fallback attempt on `entity` or `query`.
 - **Writes are impossible, not just discouraged.** The profile is always read-only
@@ -221,3 +221,28 @@ the two folders only: no profile, no network, no build.
   `external`, `unmatched_source`), not from `data`, which carries counts only.
 - `shared` web resources and shared projects change together with every
   consumer: say so when the user plans to edit one.
+
+### Grouping an inventory into work packages (`crm inventory packages`)
+
+`crm inventory packages INVENTORY --source-map FILE --out DIR` groups an
+inventory into work packages: connected groups of components and source files
+that must change together. It reads files only. Run `map-source --out` on the
+same inventory first: a source map from another inventory is refused.
+
+- **One package is one repair job.** A shared library and every form, ribbon
+  or assembly using it land in one package: plan and hand it out whole.
+- **Report every unknown.** A package's `findings` list each unknown edge (a
+  `dynamic` name, an `isv_page`, an `external_url`, a name `not_in_inventory`,
+  an `unreadable` artifact), each extraction gap and each doubtful source map
+  status. Each one needs a human look: list every one to the user.
+- **`{"status": "unknown"}` in a field means no data, not no work.** A package
+  with no `expected_behavior` has no scenario seeding it: ask the user for one
+  rather than guessing what the process does.
+- **Scenarios are a JSON file**: `{"scenarios": [{"name", "seeds":
+  ["<kind>:<component key>"], "expected_behavior": ["..."]}]}`. Report
+  `seeds_not_found` (a seed the inventory lacks, often a typo in the key) and
+  `unmatched_scenarios` back to the user.
+- **Read packages from `--out`**: `index.json` lists them, `<package id>.json`
+  holds each one; `data` carries counts only. Package and verification ids are
+  hashes of their members, stable across runs of the same inputs, so refer to
+  them by id.

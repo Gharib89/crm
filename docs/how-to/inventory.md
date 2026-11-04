@@ -6,8 +6,10 @@ format plus the raw artifacts it points at. An inventory describes what is
 deployed; it is never a desired state for `crm apply`
 ([ADR 0032](../adr/0032-inventory-descriptive-contract-keyed-by-component-key.md)).
 `crm inventory diff` compares two inventories offline (see
-[Compare two inventories](#compare-two-inventories)), and `crm inventory map-source`
-matches one to an application repository (see [Map an inventory to source](#map-an-inventory-to-source)).
+[Compare two inventories](#compare-two-inventories)), `crm inventory map-source`
+matches one to an application repository (see [Map an inventory to source](#map-an-inventory-to-source)),
+and `crm inventory packages` groups one into work packages (see
+[Group an inventory into work packages](#group-an-inventory-into-work-packages)).
 
 Extraction runs on **every profile**. A `crm2011` profile is read over the CRM 2011
 SOAP endpoint (see [How-to: legacy](legacy.md) to create one); a v9 on-prem or
@@ -276,6 +278,7 @@ The map also lists:
 | `external`, `unmatched_source` | how many there are |
 | `out` | the `--out` path, or `null` |
 | `components` | `--out` only: one per component, sorted by kind then key, with `kind`, `key`, `status`, `files`, `projects`, `reason`, `consumers` and `shared` |
+| `project_references` | `--out` only: each matched plug-in project that references other C# projects, with every project it reaches through `ProjectReference` (transitively); `crm inventory packages` reads it |
 | `shared_projects`, `external`, `unmatched_source` | `--out` only: the lists, each entry with its paths (`external` entries carry `kind` `nuget` or `script`, `name`, `version` and `used_by`) |
 
 Without `--json` it prints one row per kind with a column per status, then the
@@ -284,3 +287,95 @@ inventory holds no readable manifest or an artifact it names is missing. The sam
 inventory and repository give the same `--out` bytes. A match is evidence, not
 proof: equal hashes say the bytes agree, a declaration match only that the names
 line up.
+
+## Group an inventory into work packages
+
+```bash
+crm inventory map-source ./inv-v9 --repo ~/src/contoso-crm --out ./source-map.json
+crm --json inventory packages ./inv-v9 --source-map ./source-map.json \
+  --scenarios ./scenarios.json --out ./packages
+```
+
+`crm inventory packages INVENTORY --source-map FILE --out DIR` builds the inventory's
+dependency graph and splits it into **work packages**: each one a connected group of
+components and source files that must change together. It reads the inventory, the
+source map `map-source --out` wrote for it, and the optional scenario file: it touches
+no org and needs no profile. A source map made from another inventory (its
+`manifest_sha256` differs) is refused; re-run `map-source` on this one.
+
+The graph's edges come from:
+
+- **The inventory**: platform dependencies; form libraries, event handlers and Url
+  controls (read from each form's XML); ribbon and sitemap `$webresource:` references
+  and URLs; a web resource's `src`, `href`, `openWebResource` and `/WebResources/`
+  strings; a step to its plug-in type and assembly, an image to its step; a process
+  to its activities.
+- **The source map**: a component to its files and C# projects, and a plug-in
+  project to each project it references, so two assemblies built on one shared C#
+  project land together.
+
+A reference read cannot resolve is an **unknown edge**, never dropped. Its `reason`
+is one of:
+
+| Reason | Meaning |
+|---|---|
+| `dynamic` | the name is built at run time (`openWebResource(name)`, a `$webresource:` concatenation, a `{` placeholder in a URL) |
+| `isv_page` | an `/ISV/` page: a custom ASP.NET page outside the inventory |
+| `external_url` | a URL on a host other than the inventory's org |
+| `not_in_inventory` | a name or key the inventory holds no record for |
+| `unreadable` | an artifact that does not parse, or a malformed URL |
+
+Only web resources, plug-in assemblies and types, steps and images, processes, forms,
+ribbons and sitemaps join a group, with the source nodes; entities, attributes, option
+sets and views are context. A system web resource or plug-in does not bridge two groups.
+A group is a package when it holds a source-mapped component or an unknown. A package's
+`id` is `pkg-` plus a hash of its sorted member ids, so the same members give the same
+id on every run.
+
+Each package file holds five fields. A field with nothing in it holds one
+`{"status": "unknown", "reason": ...}` entry rather than an empty list:
+
+| Field | Value |
+|---|---|
+| `source` | each source-mapped member with its map `status`, `files` and `projects`, plus each C# project the group references but no member builds (status `referenced`) |
+| `consumers` | each form, ribbon, sitemap, process or step member, with the entities it sits on and the components that depend on it |
+| `findings` | the unknowns: each unknown edge, each extraction gap on a member, and each member mapped `stale`, `ambiguous` or `missing_source` |
+| `expected_behavior` | each scenario that seeds a member: its name, its `expected_behavior` lines and every package it spans |
+| `verification` | what a check must cover: a form's libraries and handlers, a ribbon command's or sitemap entry's web resources, a step's message, entity, stage, mode, filtering attributes and images, a process's category and entity (its trigger is unknown in manifest v1) |
+
+Each `verification` entry carries an `id`, `req-` plus a hash of the package id, the
+requirement kind and the member, so a later run can match recorded results to it.
+The file also lists `members`, the package's `edges` and the `scenarios` that tag it.
+
+A scenario file names business processes and the components that start them:
+
+```json
+{"scenarios": [
+  {"name": "Project approval",
+   "seeds": ["form:new_project|2|Information", "process:1|new_project|Approve project"],
+   "expected_behavior": ["Approving a project locks its budget fields"]}
+]}
+```
+
+A seed is `<kind>:<key>`, the component key the manifest records. A seed missing from
+the inventory is reported in `seeds_not_found`, and a scenario no package holds in
+`unmatched_scenarios`; a scenario is never dropped.
+
+`data` holds the summary, and `--out DIR` (a new or empty folder) gets `index.json`
+plus one `<package id>.json` per package:
+
+| Key | Value |
+|---|---|
+| `schema_version` | the packages format version, `1` |
+| `inventory` | the inventory it was built from, as in the source map |
+| `packages`, `members`, `largest` | how many packages, their members in all, and the largest package's size; in `index.json`, `packages` is the list (`id`, `file`, `members`, `unknowns`, `scenarios`) |
+| `unknowns` | the findings across all packages |
+| `scenarios`, `unmatched_scenarios`, `seeds_not_found` | the scenario count, the names no package holds, and each `{scenario, seed}` not in the inventory; in `index.json`, `scenarios` lists each one's packages and seeds |
+| `unattached_gaps` | extraction gaps on no package member: a count in `data`, the gaps in `index.json` |
+| `incomplete` | each kind not read `complete` in the inventory: its components may be missing from the graph |
+| `out` | the `--out` folder |
+
+Without `--json` it prints one row per package (members, unknowns, scenarios), then
+the inventory, the unknown count and any unmatched scenarios or missing seeds. It
+exits **0** whatever the packages hold, and **1** when an input is unreadable or
+`--out` is not empty. The same inputs give the same bytes in every file.
