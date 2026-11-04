@@ -30,6 +30,7 @@ import json
 import os
 import re
 import shutil
+from collections import Counter
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -66,6 +67,18 @@ _ENTITY = 1
 
 # The relationship fields naming an entity, 1:N and N:N.
 _RELATIONSHIP_SIDES = ("referenced_entity", "referencing_entity", "entity1", "entity2")
+# The component types a scoped run reads only for member entities (RetrieveEntity):
+# attribute, local option set, relationship.
+_ENTITY_DETAIL_TYPES = frozenset({2, _OPTION_SET, 10})
+_UNRESOLVED_REASON = (
+    "the component is of a kind v1 does not define, its own read failed,"
+    " or its own row has no component key"
+)
+_OUT_OF_SCOPE_REASON = (
+    "a --solution run reads attributes, relationships and local option sets of member"
+    " entities only, so the component may belong to an entity outside the named"
+    " solutions (a whole-org run records it); or "
+)
 
 # Web resource types whose content is text, by webresourcetype code.
 _TEXT_WEB_RESOURCES = frozenset((1, 2, 3, 4, 9))
@@ -576,6 +589,7 @@ def extract(
         D365Error: *out* cannot be used, or a connection-wide failure stopped
             the read (the checkpoint keeps every finished unit for a re-run).
     """
+    solutions = tuple(sorted(set(solutions)))
     cp, state, resumed = Checkpoint.open(out, source.org_url, now(), solutions)
     run = _Run(source, cp)
     ident = cast("dict[str, Any]", run.unit((), "source", source.identity) or {})
@@ -664,7 +678,7 @@ def extract(
         ),
         extracted_at=state["started_at"],
         cli_version=cli_version,
-        scope=Scope(mode="solutions" if solutions else "org", solutions=tuple(sorted(solutions))),
+        scope=Scope(mode="solutions" if solutions else "org", solutions=solutions),
         publication="published",
         records=tuple(records),
         coverage=coverage,
@@ -738,7 +752,10 @@ class _Builder:
         # (component type, object id) -> (kind, key), for memberships and dependencies.
         self.index: dict[tuple[int, str], tuple[str, str]] = {}
         self.by_id: dict[str, dict[str, str]] = {}
-        self.unresolved: dict[tuple[str, int], int] = {}
+        # Rows naming a component this run did not record: (kind, component type,
+        # the record a scoped run keeps the row with, or None).
+        self.unresolved: list[tuple[str, int, tuple[str, str] | None]] = []
+        self.scoped = False
         self.unkeyed: dict[str, tuple[int, str]] = {}  # kind: (rows, the first error)
         self.extra_gaps: list[ExtractionGap] = []
         # ISV page -> the (kind, key) of each record referencing it.
@@ -977,8 +994,8 @@ class _Builder:
             page = self.isv_spelling.setdefault(match.group(0).lower(), match.group(0))
             self.isv.setdefault(page, set()).add(where)
 
-    def _unresolve(self, kind: str, component_type: int) -> None:
-        self.unresolved[(kind, component_type)] = self.unresolved.get((kind, component_type), 0) + 1
+    def _unresolve(self, kind: str, component_type: int, owner: tuple[str, str] | None) -> None:
+        self.unresolved.append((kind, component_type, owner))
 
     def _resolve(self, component_type: object, object_id: object) -> tuple[str, str] | None:
         oid = _ref_id(object_id)
@@ -991,7 +1008,8 @@ class _Builder:
             solution = self.solution_names.get(_ref_id(r.get("solutionid")) or "")
             member = self._resolve(r.get("componenttype"), r.get("objectid"))
             if solution is None or member is None:
-                self._unresolve("solution_membership", int(r.get("componenttype") or 0))
+                owner = ("solution", solution) if solution else None
+                self._unresolve("solution_membership", int(r.get("componenttype") or 0), owner)
                 continue
             self.add(
                 "solution_membership", r["id"],
@@ -1009,7 +1027,7 @@ class _Builder:
                 code = (
                     r.get("requiredcomponenttype") if dependent else r.get("dependentcomponenttype")
                 )
-                self._unresolve("dependency", code if isinstance(code, int) else 0)
+                self._unresolve("dependency", code if isinstance(code, int) else 0, dependent)
                 continue
             self.add(
                 "dependency", r["id"],
@@ -1022,7 +1040,9 @@ class _Builder:
     def scope(self, solutions: tuple[str, ...]) -> None:
         """Keep only what the named solutions hold, and the gaps about those records.
 
-        The per-kind row-count gaps (unresolved and unkeyed rows) stay org-wide.
+        A membership or dependency row naming a component the run did not record is
+        kept by the same rule (its solution, its dependent); the unkeyed-row gaps
+        stay org-wide.
 
         Kept: the solutions, their memberships, each member, each record of a
         member entity (`attribute`, `local_option_set`, `form`, `view`,
@@ -1059,6 +1079,8 @@ class _Builder:
         ]
         self.pending = kept
         self.extra_gaps = [g for g in self.extra_gaps if (g.kind, g.key) in keys]
+        self.unresolved = [u for u in self.unresolved if u[2] in keys]
+        self.scoped = True
         self.isv = {page: refs & keys for page, refs in self.isv.items()}
 
     def finish(self) -> list[Record]:
@@ -1122,14 +1144,17 @@ class _Builder:
                     " so the row has no component key",
                 )
             )  # fmt: skip
-        for (kind, code), n in sorted(self.unresolved.items()):
+        unresolved = Counter((kind, code) for kind, code, _ in self.unresolved)
+        for (kind, code), n in sorted(unresolved.items()):
+            reason = _UNRESOLVED_REASON
+            if self.scoped and code in _ENTITY_DETAIL_TYPES:
+                reason = _OUT_OF_SCOPE_REASON + reason
             gaps.append(
                 ExtractionGap(
                     kind=kind, key=None,
                     description=f"{n} {kind} row(s) naming a component of type {code}"
                     " that this inventory does not record",
-                    reason="the component is of a kind v1 does not define, its own read"
-                    " failed, or its own row has no component key",
+                    reason=reason,
                 )
             )  # fmt: skip
         return gaps

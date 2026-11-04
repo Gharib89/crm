@@ -489,3 +489,32 @@ def test_an_entity_named_application_keeps_its_own_ribbon_file(tmp_path, monkeyp
     paths = [a["path"] for r in ribbons if r["key"] == "application" for a in r["artifacts"]]
     assert len(paths) == 2
     assert len(set(paths)) == 2
+
+
+def test_a_scoped_dependency_on_a_component_outside_the_scope_is_a_scope_gap(tmp_path, monkeypatch):
+    # The member entity's form requires an attribute of account, which is outside
+    # the solution; a scoped run reads no account details, so it cannot record it.
+    outside = {"dependencyid": _id(111), "dependentcomponenttype": 60,
+               "dependentcomponentobjectid": _id(61), "requiredcomponenttype": 2,
+               "requiredcomponentobjectid": _id(407), "dependencytype": 2}  # fmt: skip
+    # The System solution's membership of an account attribute is outside the scope too.
+    other = {"solutioncomponentid": _id(102), "componenttype": 2, "objectid": _id(407),
+             **_lookup("solutionid", "solution", 1)}  # fmt: skip
+    monkeypatch.setitem(_ORG, "dependencies", [[*_ORG["dependencies"][0], outside]])
+    monkeypatch.setitem(_ORG, "solutioncomponents", [[*_ORG["solutioncomponents"][0], other]])
+    out = tmp_path / "inv"
+    _extract(FakeBackend(), out, solutions=("contoso",))
+    gaps = [g for g in _manifest(out)["gaps"] if g["kind"] in ("dependency", "solution_membership")]
+    assert len(gaps) == 1  # the other solution's membership is not counted
+    assert gaps[0]["kind"] == "dependency"
+    assert gaps[0]["description"].startswith("1 dependency row(s)")
+    assert "outside the named solutions" in gaps[0]["reason"]
+
+
+def test_a_repeated_solution_is_recorded_once_and_resumes(tmp_path):
+    out = tmp_path / "inv"
+    _extract(FakeBackend(fail={("systemforms", 1): D365Error("boom", status=500)}), out,
+             solutions=("contoso", "contoso"))  # fmt: skip
+    assert _manifest(out)["scope"]["solutions"] == ["contoso"]
+    summary = _extract(FakeBackend(), out, solutions=("contoso",))
+    assert summary.resumed
