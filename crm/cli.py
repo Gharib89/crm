@@ -322,6 +322,18 @@ class CLIContext:
         self.connection_resolved = True
         return self._backend
 
+    def profile_platform(self) -> str | None:
+        """The selected saved profile's platform marker (``crm2011``), or None for v9/cloud.
+
+        Reads the profile file only: no secret lookup, prompt or connection.
+        """
+        from crm.core import session as session_mod
+
+        name = self._effective_profile()
+        if name is None or not session_mod.profile_path(name).is_file():
+            return None
+        return session_mod.load_profile(name).platform
+
     def legacy_client(self) -> LegacyClient:
         """Build the read-only SOAP client for a crm2011 profile (`crm legacy`).
 
@@ -767,6 +779,7 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
         "examples": "crm.commands.examples:examples_cmd",
         "fieldsec": "crm.commands.fieldsec:fieldsec_group",
         "form": "crm.commands.form:form_group",
+        "inventory": "crm.commands.inventory:inventory_group",
         "legacy": "crm.commands.legacy:legacy_group",
         "metadata": "crm.commands.metadata:metadata_group",
         "org": "crm.commands.org:org_group",
