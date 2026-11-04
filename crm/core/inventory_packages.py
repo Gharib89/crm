@@ -636,7 +636,12 @@ def _requirements(
         f = record.fields
         libraries = sorted(set(targets.get(member, [])))
         if record.kind == "form" and libraries:
-            on = [h for h in handlers.get(member, []) if h["library"] in libraries]
+            lowered = {lib.lower() for lib in libraries}  # link_name matches names caselessly
+            on = [
+                h
+                for h in handlers.get(member, [])
+                if h["library"] and h["library"].lower() in lowered
+            ]
             out.append(req("form_script", member, {"libraries": libraries, "handlers": on}))
         elif record.kind in ("ribbon", "sitemap") and (libraries or member in unknown):
             out.append(
@@ -700,6 +705,14 @@ def _consumers(
         kind, key = node.split(":", 1)
         out.append(Consumer(kind, key, tuple(sorted(refs))))
     return sorted(out, key=lambda c: (c.kind, c.key))
+
+
+def _expected(behaviors: list[ExpectedBehavior]) -> Iterable[ExpectedBehavior | Unknown]:
+    """Each tagging scenario, followed by an unknown when it names no expected behavior."""
+    for b in behaviors:
+        yield b
+        if not b.references:
+            yield Unknown(f"scenario {b.scenario!r} names no expected behavior")
 
 
 def build_packages(
@@ -811,7 +824,8 @@ def build_packages(
                 or (Unknown("nothing in the inventory references a member"),),
                 tuple(sorted(findings, key=Finding.sort_key))
                 or (Unknown("no compatibility rule evaluated; no unknown found"),),
-                tuple(behaviors) or (Unknown("no scenario seeds a member of this package"),),
+                tuple(_expected(behaviors))
+                or (Unknown("no scenario seeds a member of this package"),),
                 tuple(_requirements(package_id, members, nodes, group_edges, refs.handlers))
                 or (Unknown("no member kind states a verification requirement"),),
                 tuple(b.scenario for b in behaviors),

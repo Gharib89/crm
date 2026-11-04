@@ -341,7 +341,7 @@ Each package file holds five fields. A field with nothing in it holds one
 | `source` | each source-mapped member with its map `status`, `files` and `projects`, plus each C# project the group references but no member builds (status `referenced`) |
 | `consumers` | each form, ribbon, sitemap, process or step member, with the entities it sits on and the components that depend on it |
 | `findings` | the unknowns: each unknown edge, each extraction gap on a member, and each member mapped `stale`, `ambiguous` or `missing_source` |
-| `expected_behavior` | each scenario that seeds a member: its name, its `expected_behavior` lines and every package it spans |
+| `expected_behavior` | each scenario that seeds a member: its name, its `expected_behavior` lines and every package it spans, followed by an unknown entry when it names no lines |
 | `verification` | what a check must cover: a form's libraries and handlers, a ribbon command's or sitemap entry's web resources, a step's message, entity, stage, mode, filtering attributes and images, a process's category and entity (its trigger is unknown in manifest v1) |
 
 Each `verification` entry carries an `id`, `req-` plus a hash of the package id, the

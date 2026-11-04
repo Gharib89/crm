@@ -600,3 +600,35 @@ def test_form_handler_fields_merge_with_form_xml(tmp_path):
     assert [(e.reason, e.reference) for e in package.edges if e.target is None] == [
         ("not_in_inventory", "new_/fields.js")
     ]
+
+
+def test_handler_library_case_and_empty_scenario_behavior(tmp_path):
+    folder = tmp_path / "inv"
+    xml = (
+        '<form><formLibraries><Library name="New_/Shared.js" /></formLibraries>'
+        '<events><event name="onsave"><Handlers>'
+        '<Handler functionName="Shared.save" libraryName="NEW_/shared.JS" />'
+        "</Handlers></event></events></form>"
+    )
+    form = _record(
+        "form",
+        {"entity": "account", "form_type": 2, "name": "Main"},
+        folder,
+        files=[("form.xml", xml)],
+    )
+    records = [_web_resource("new_/shared.js", "var Shared = {};\n", folder), form]
+    (tmp_path / "repo").mkdir()
+    (tmp_path / "repo" / "shared.js").write_text("var Shared = {};\n", encoding="utf-8")
+    scenarios = tmp_path / "scenarios.json"
+    seeds = ["form:account|2|Main"]
+    scenarios.write_text(json.dumps({"scenarios": [{"name": "Save", "seeds": seeds}]}))
+    result = build_packages(
+        _write(folder, records), map_source(folder, tmp_path / "repo"), scenarios
+    )
+    (package,) = result.packages
+    (script,) = [r for r in _dicts(package.verification) if r["kind"] == "form_script"]
+    assert [h["function"] for h in script["details"]["handlers"]] == ["Shared.save"]
+    assert _dicts(package.expected_behavior) == [
+        {"scenario": "Save", "references": [], "packages": [package.id]},
+        {"status": "unknown", "reason": "scenario 'Save' names no expected behavior"},
+    ]
