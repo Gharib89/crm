@@ -62,8 +62,9 @@ _OPEN_WR = re.compile(r"openWebResource\s*\(\s*([^,)]*)")
 _LITERAL = re.compile(r"([\"'])([^\"']+)\1")
 _HTML_REF = re.compile(r"\b(src|href)\s*=\s*[\"']([^\"']+)[\"']", re.IGNORECASE)
 _URL_ATTR = re.compile(r"\b(?:Url|Address)\s*=\s*\"([^\"]*)\"", re.IGNORECASE)
-# Folders and pages the CRM server itself ships; a ribbon or sitemap URL under one is no
-# customization. Any other URL nothing resolves is an ``unresolved_url`` unknown.
+# Folders and pages the CRM server itself ships; a URL under one is no customization.
+# Any other same-host, or relative ribbon or sitemap, URL nothing resolves is an
+# ``unresolved_url`` unknown.
 _PLATFORM_PAGES = (
     "/_root/", "/_grid/", "/_static/", "/_imgs/", "/_common/", "/_forms/", "/tools/",
     "/main.aspx", "/advancedfind/", "/crmreports/", "/sfa/", "/cs/", "/ma/", "/biz/",
@@ -348,8 +349,15 @@ class _Refs:
 
     names: Mapping[str, str]  # lowercased web resource name -> its spelling
     org_host: str
+    org_path: str  # an on-prem org URL's /<org> prefix, lowercased, or ""
     edges: set[Edge]
     handlers: dict[str, list[dict[str, str | None]]]
+
+    def platform_page(self, path: str) -> bool:
+        """True when *path* (lowercased, leading slash) is under a folder the server ships."""
+        if self.org_path and path.startswith(self.org_path + "/"):
+            path = path[len(self.org_path) :]
+        return path.startswith(_PLATFORM_PAGES)
 
     def link_name(self, source: str, name: str, edge_type: str) -> None:
         """Add an edge to the web resource *name*, or an unknown one when none has that name."""
@@ -384,7 +392,7 @@ class _Refs:
                 self.unknown(source, "external_url", value)
             elif "/webresources/" in path:
                 self.link_name(source, _after_webresources(parts.path), edge_type)
-            elif not path.startswith(_PLATFORM_PAGES):
+            elif not self.platform_page(path):
                 self.unknown(source, "unresolved_url", value)
             return True
         if parts.scheme:
@@ -487,7 +495,8 @@ def _web_resource(refs: _Refs, source: str, key: str, text: str) -> None:
 
 def _references(inv: Inventory, folder: Path) -> _Refs:
     names = {r.key.lower(): r.key for r in inv.records if r.kind == "web_resource"}
-    refs = _Refs(names, (urlsplit(inv.source.org_url).hostname or "").lower(), set(), {})
+    org = urlsplit(inv.source.org_url)
+    refs = _Refs(names, (org.hostname or "").lower(), org.path.lower().rstrip("/"), set(), {})
     for record in inv.records:
         if record.kind not in ("form", "ribbon", "sitemap", "web_resource"):
             continue
@@ -504,9 +513,7 @@ def _references(inv: Inventory, folder: Path) -> _Refs:
             if record.kind in ("ribbon", "sitemap"):
                 for value in _URL_ATTR.findall(text):
                     path = "/" + value.strip().lower().lstrip("/")
-                    if not refs.link_url(source, value, edge_type) and not path.startswith(
-                        _PLATFORM_PAGES
-                    ):
+                    if not refs.link_url(source, value, edge_type) and not refs.platform_page(path):
                         refs.unknown(source, "unresolved_url", value)
             elif record.kind == "web_resource":
                 _web_resource(refs, source, record.key, text)

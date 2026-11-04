@@ -54,7 +54,8 @@ SITEMAP = (
     '<SiteMap><SubArea Id="reports" Url="/ISV/reports/summary.aspx" />'
     '<SubArea Id="admin" Url="/tools/admin/admin.aspx" />'
     '<SubArea Id="approve" Url="/ContosoApp/approve.aspx" />'
-    '<SubArea Id="home" Url="https://crm.example.test/main.aspx?pagetype=home" />'
+    '<SubArea Id="home" Url="https://crm.example.test/Org/main.aspx?pagetype=home" />'
+    '<SubArea Id="tools" Url="/Org/tools/admin.aspx" />'
     '<SubArea Id="portal" Url="https://crm.example.test/Portal/start.aspx" /></SiteMap>'
 )
 STEP = {

@@ -323,7 +323,7 @@ web resource), in `unattached_unknowns`. Its `reason` is one of:
 | `dynamic` | the name is built at run time (`openWebResource(name)`, a `$webresource:` concatenation, a `{` placeholder in a URL) |
 | `isv_page` | an `/ISV/` page: a custom ASP.NET page outside the inventory |
 | `external_url` | a URL on a host other than the inventory's org |
-| `unresolved_url` | a ribbon or sitemap URL that names no web resource, ISV page or other host (a custom page beside the CRM server, say); a URL under a folder the server ships (`/_root/`, `/tools/`, `/main.aspx` and the like) is skipped |
+| `unresolved_url` | a URL on the org's host, or a relative ribbon or sitemap URL, that names no web resource or ISV page (a custom page beside the CRM server, say); a URL under a folder the server ships (`/_root/`, `/tools/`, `/main.aspx` and the like, after an on-prem `/<org>` prefix) is skipped |
 | `not_in_inventory` | a name or key the inventory holds no record for |
 | `unreadable` | an artifact that does not parse, or a malformed URL |
 
