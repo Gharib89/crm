@@ -3,6 +3,7 @@
 # pyright: basic
 from __future__ import annotations
 
+import uuid
 from pathlib import Path
 
 import click
@@ -160,6 +161,10 @@ def legacy_dependencies(ctx: CLIContext, object_id: str, component_type: int, fo
     row names both sides by component type and object id, plus the dependency
     type (1 solution internal, 2 published, 4 unpublished).
     """
+    try:
+        uuid.UUID(object_id)
+    except ValueError:
+        raise click.BadParameter(f"{object_id!r} is not a GUID.", param_hint="OBJECT_ID") from None
     with d365_errors(ctx):
         client = ctx.legacy_client()
         rows = legacy_reads.dependencies(client, object_id, component_type, for_)

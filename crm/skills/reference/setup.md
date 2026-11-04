@@ -79,6 +79,17 @@ config ONLY from a saved profile (or a per-run `--password`). There is no `.env`
 autoload and no `D365_*` / `CRM_*` environment-variable reading. The one retained
 env knob is `CRM_HOME` (state-directory override; unset or empty means `~/.crm/`).
 
+Switch or inspect profiles with `crm profile use [name]` (no name → interactive
+picker; `--none` clears the active profile) and `crm profile list` (marks the
+active one); edit, rename, or delete one with `crm profile edit` /
+`crm profile rename OLD NEW` / `crm profile rm`. `rename` is the safe way to
+relabel a profile in place (its secret and cached metadata move with it)
+without re-running `add` — but like `rm`, it only repoints the *active*
+session pointer, so a concurrent session still holding the old name breaks. On
+a fresh machine, any connection command with no profile drops into
+`crm profile add` automatically on a terminal (under `--json`/no-TTY it errors
+cleanly telling you to run `crm profile add`).
+
 **Read-only profiles (guardrail).** A profile can be marked read-only to block
 accidental writes: the backend refuses every org mutation as an operational
 failure (`ok:false`, exit 1, error naming the profile) while reads run normally.
@@ -119,11 +130,11 @@ tell the user it is untested.
   forms, so the JSON stays small.
 - **A dependency read takes an id from an earlier read**: the `metadata_id` of a
   `legacy metadata` row for an entity, attribute, relationship or option set, the
-  `id` of a `legacy components` row for anything else. Its rows name both sides
-  by component type code and object id only, so map them back through those reads.
-- **`legacy export-solution` is the zip as published.** Nothing is published
-  first (that would write), so an unpublished edit is not in it; tell the user
-  when they expect one.
+  `id` of a `legacy components` row for a kind it reads. Each row names both
+  sides by component type code and object id (plus parent ids), never by name,
+  so map them back through those reads.
+- **When the user expects an unpublished edit in a `legacy export-solution`
+  zip**, tell them it is not there: the CLI cannot publish on a CRM 2011 org.
 - Success envelopes use the standard JSON contract, with `meta.url` set to the SOAP
   endpoint instead of a Web API base URL. Faults map to the usual `meta.code` and
   `meta.category`. A connect timeout retries inside the CLI (bounded), so treat a
@@ -136,34 +147,26 @@ A migration inventory is a read-only, descriptive record of the whole org: a
 extraction gaps) plus raw artifacts (XML, XAML, web resource content, assembly
 binaries). It describes what is deployed; it is never a spec for `crm apply`.
 
-- **`crm2011` profiles only, for now.** A v9 or cloud profile is refused before
-  anything is written: tell the user that path is not built yet.
-- **It reads every kind and every page**, so it runs for minutes on a real org:
-  give it a long timeout or run it in the background.
-- **Resume by re-running the identical command on the same `--out` folder.**
-  Progress is checkpointed under `<out>/.checkpoint/`; a re-run reuses finished
-  reads (`data.resumed`, `data.reused`) and continues paging from the last page.
-  A folder holding another org's checkpoint, or files and no checkpoint (a
-  finished inventory included), is refused: pass a new folder.
-- **A failed read is continue-and-report.** The manifest is still written, the
-  kind's coverage is `partial` or `failed`, and the command exits 1 with `ok:false`
+- **A v9 or cloud profile is refused before anything is read**: tell the user
+  only `crm2011` is built so far.
+- **It runs for minutes on a real org**: give it a long timeout or run it in
+  the background.
+- **Resume by re-running the identical command on the same `--out` folder.** It
+  reuses finished reads (`data.resumed`, `data.reused`) and continues paging
+  after the last finished page. A folder holding a checkpoint for another org
+  URL, or files and no checkpoint (a finished inventory included), is refused:
+  pass a new folder.
+- **A failed read is continue-and-report.** The command exits 1 with `ok:false`
   but the summary still in `data` (`data.kinds`, `data.errors`,
-  `data.complete: false`). Re-run on the same folder to retry only what failed.
-  An auth or transport failure stops the run with no `data`; re-running resumes it.
-  The checkpoint is deleted only once every kind is complete.
-- **`data` is a summary; read the manifest for the rest.** Judge completeness by
-  each kind's coverage before trusting record counts, and report the manifest's
-  `gaps` to the user as manual follow-up: they name what SOAP cannot read
-  (assemblies on disk or in the GAC, ISV pages, external integrations, SSRS data
-  sources, rows naming a component the inventory does not record).
-
-Switch or inspect profiles with `crm profile use [name]` (no name → interactive
-picker; `--none` clears the active profile) and `crm profile list` (marks the
-active one); edit, rename, or delete one with `crm profile edit` /
-`crm profile rename OLD NEW` / `crm profile rm`. `rename` is the safe way to
-relabel a profile in place (its secret and cached metadata move with it)
-without re-running `add` — but like `rm`, it only repoints the *active*
-session pointer, so a concurrent session still holding the old name breaks. On
-a fresh machine, any connection command with no profile drops into
-`crm profile add` automatically on a terminal (under `--json`/no-TTY it errors
-cleanly telling you to run `crm profile add`).
+  `data.complete: false`), and the manifest is written. Re-run on the same
+  folder to retry only what failed. When a re-run returns the same
+  `data.errors`, the failure is permanent (a page with no paging cookie,
+  content that is not base64, a fault the server repeats): stop and report
+  those errors and the kinds' coverage to the user. An auth or transport
+  failure stops the run with no `data`; re-running resumes it.
+- **Judge completeness by each kind's coverage in the manifest before trusting
+  record counts**, and report the manifest's `gaps` to the user as manual
+  follow-up: they name what the inventory could not capture, both what SOAP
+  cannot read (assemblies on disk or in the GAC, ISV pages, external
+  integrations, SSRS data sources) and membership or dependency rows naming a
+  component of a kind v1 does not record or whose read failed.

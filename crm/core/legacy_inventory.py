@@ -34,6 +34,7 @@ from typing import Any, cast
 
 from crm.core import legacy_reads
 from crm.core.inventory import (
+    KINDS,
     MANIFEST_NAME,
     SCHEMA_VERSION,
     Artifact,
@@ -53,22 +54,7 @@ from crm.utils.d365_backend import D365Error
 
 CHECKPOINT_DIR = ".checkpoint"
 
-# The dependency and solutioncomponent component type codes of the kinds an
-# inventory records. Code 9 (option set) is global or local by the set.
-_COMPONENT_KINDS: dict[int, str] = {
-    1: "entity",
-    2: "attribute",
-    10: "relationship",
-    26: "view",
-    29: "process",
-    60: "form",
-    61: "web_resource",
-    62: "sitemap",
-    90: "plugin_type",
-    91: "plugin_assembly",
-    92: "step",
-    93: "step_image",
-}
+# The solutioncomponent / dependency type code of an option set, global or local by the set.
 _OPTION_SET = 9
 
 # Web resource types whose content is text, by webresourcetype code.
@@ -95,6 +81,33 @@ _STATIC_GAPS = (
         " SSRS, which the CRM 2011 SOAP endpoint does not reach",
     ),
 )
+
+
+def _ribbon_gaps(unlabelled: list[str]) -> list[ExtractionGap]:
+    if not unlabelled:
+        return []
+    return [
+        ExtractionGap(
+            kind="ribbon",
+            key=None,
+            description=f"ribbons of {len(unlabelled)} entities with no display label:"
+            f" {', '.join(unlabelled)}",
+            reason="an entity with no display label has no UI, so CRM 2011 faults its"
+            " RetrieveEntityRibbon; none is read",
+        )
+    ]
+
+
+def check_out(out: Path) -> None:
+    """Refuse *out* when it holds files but no checkpoint, before anything connects.
+
+    Raises:
+        D365Error: *out* holds a finished inventory or unrelated files.
+    """
+    if out.exists() and not (out / CHECKPOINT_DIR / "state.json").is_file() and any(out.iterdir()):
+        raise D365Error(
+            f"--out {out} holds files and no checkpoint to resume; pass an empty or new folder"
+        )
 
 
 @dataclass(frozen=True)
@@ -292,10 +305,7 @@ class Checkpoint:
             if state.get("org_url") != org_url:
                 raise D365Error(f"--out {out} holds a checkpoint of another org; pass a new folder")
             return cp, state, True
-        if out.exists() and any(out.iterdir()):
-            raise D365Error(
-                f"--out {out} holds files and no checkpoint to resume; pass an empty or new folder"
-            )
+        check_out(out)
         state = {"org_url": org_url, "started_at": now}
         cp.save("state", state)
         return cp, state, False
@@ -332,6 +342,7 @@ class _Run:
         self.client = client
         self.cp = cp
         self.tallies: dict[str, _Tally] = {}
+        self.errors: list[str] = []  # failed units that feed no kind (the source read)
 
     def tally(self, kind: str) -> _Tally:
         return self.tallies.setdefault(kind, _Tally())
@@ -352,6 +363,8 @@ class _Run:
                 raise
             for t in tallies:
                 t.errors.append(f"{unit}: {exc}")
+            if not tallies:
+                self.errors.append(f"{unit}: {exc}")
             return None
         self.cp.save(unit, data)
         for t in tallies:
@@ -470,7 +483,8 @@ def extract(
     ribbons: dict[str | None, bytes] = {}
     # An entity with no display label has no UI: its ribbon read faults
     # ("Could not find localized name"), so it is not read (measured on UR15).
-    labelled = (str(e["logical_name"]) for e in entities if e.get("display_name"))
+    labelled = [str(e["logical_name"]) for e in entities if e.get("display_name")]
+    unlabelled = sorted(str(e["logical_name"]) for e in entities if not e.get("display_name"))
     for entity_name in [None, *labelled]:
         unit = f"ribbon/{entity_name or '_application'}"
 
@@ -493,7 +507,7 @@ def extract(
             None,
             {"entity": entity_name},
             None,
-            "system",
+            "unknown",  # the ribbon XML merges the system ribbon and customizations
             None,
             [("ribbon.xml", xml, True)],
         )
@@ -504,7 +518,7 @@ def extract(
     counts: dict[str, int] = {}
     for record in records:
         counts[record.kind] = counts.get(record.kind, 0) + 1
-    for kind in _ALL_KINDS:
+    for kind in KINDS:
         tally = run.tallies.get(kind, _Tally())
         n = counts.get(kind, 0)
         if tally.errors and n == 0:
@@ -529,11 +543,11 @@ def extract(
         publication="published",
         records=tuple(records),
         coverage=coverage,
-        gaps=(*_STATIC_GAPS, *built.gaps()),
+        gaps=(*_STATIC_GAPS, *built.gaps(), *_ribbon_gaps(unlabelled)),
     )
     (out / MANIFEST_NAME).write_text(dump_manifest(inventory), encoding="utf-8")
 
-    errors = [e for t in run.tallies.values() for e in t.errors]
+    errors = [*run.errors, *(e for t in run.tallies.values() for e in t.errors)]
     complete = not errors and all(c.status == "complete" for c in coverage.values())
     if complete:
         cp.remove()
@@ -548,13 +562,6 @@ def extract(
         resumed=resumed,
         complete=complete,
     )
-
-
-_ALL_KINDS = (
-    "entity", "attribute", "relationship", "global_option_set", "local_option_set", "form",
-    "view", "web_resource", "plugin_assembly", "plugin_type", "step", "step_image", "process",
-    "solution", "solution_membership", "dependency", "ribbon", "sitemap",
-)  # fmt: skip
 
 
 def _ref_id(value: object) -> str | None:
@@ -603,6 +610,7 @@ class _Builder:
         self.unresolved: dict[tuple[str, int], int] = {}
         self.extra_gaps: list[ExtractionGap] = []
         self.isv: dict[str, set[str]] = {}
+        self.isv_spelling: dict[str, str] = {}
         solutions = rows.get("solution", [])
         self.solution_names = {
             str(r["id"]).lower(): str(r.get("uniquename")) for r in solutions if r.get("id")
@@ -818,7 +826,9 @@ class _Builder:
 
     def _scan_isv(self, data: bytes, where: str) -> None:
         for match in _ISV_PAGE.finditer(data.decode("utf-8", errors="replace")):
-            self.isv.setdefault(match.group(0).lower(), set()).add(where)
+            # One gap per page, spelled as first seen (IIS paths are case-insensitive).
+            page = self.isv_spelling.setdefault(match.group(0).lower(), match.group(0))
+            self.isv.setdefault(page, set()).add(where)
 
     def _unresolve(self, kind: str, component_type: int) -> None:
         self.unresolved[(kind, component_type)] = self.unresolved.get((kind, component_type), 0) + 1
@@ -863,7 +873,12 @@ class _Builder:
             )  # fmt: skip
 
     def finish(self) -> list[Record]:
-        """Write each record's artifacts and return the records."""
+        """Write each record's artifacts and return the records.
+
+        Every payload is re-derived from the checkpoint, so an earlier run's
+        artifacts are dropped first: a resumed run leaves no unreferenced file.
+        """
+        shutil.rmtree(self.out / "artifacts", ignore_errors=True)
         counts: dict[tuple[str, str], int] = {}
         for p in self.pending:
             counts[(p.kind, p.key)] = counts.get((p.kind, p.key), 0) + 1

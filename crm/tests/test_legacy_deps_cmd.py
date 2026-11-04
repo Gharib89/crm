@@ -136,3 +136,30 @@ def test_export_solution_refuses_a_non_crm2011_profile(tmp_path, monkeypatch):
     )
     assert result.exit_code != 0
     assert "not a CRM 2011 profile" in result.output
+
+
+def test_dependencies_refuse_an_object_id_that_is_not_a_guid(crm_home):
+    result, m = _run("required_account.xml", "dependencies", "account", "--component-type", "1")
+    assert result.exit_code == 2
+    assert "OBJECT_ID" in result.output
+    assert m.call_count == 0
+
+
+def test_export_solution_with_no_file_in_the_response_is_an_error(crm_home, tmp_path):
+    import re
+
+    body = re.sub(
+        r'(<b:value i:type="c:base64Binary"[^>]*>)[^<]*',
+        r"\1",
+        (_FIXTURES / "export_solution.xml").read_text(),
+    )
+    target = tmp_path / "empty.zip"
+    with requests_mock.Mocker() as m:
+        m.post(_ENDPOINT, text=body, headers=_XML)
+        result = CliRunner().invoke(
+            cli,
+            ["--json", "--profile", "legacy", "legacy", "export-solution", "x", "-o", str(target)],
+        )
+    assert result.exit_code == 1, result.output
+    assert "no solution file" in json.loads(result.output)["error"]
+    assert not target.exists()

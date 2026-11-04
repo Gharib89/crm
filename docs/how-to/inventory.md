@@ -106,6 +106,9 @@ it out:
 - **external integrations**: services that call the org or that its plug-ins and
   processes call;
 - the **SQL data sources of SSRS reports**;
+- the **ribbons of entities with no display label** (intersect and internal
+  entities): such an entity has no UI, and CRM 2011 faults its ribbon read, so
+  one gap lists them all;
 - **rows naming a component this inventory does not record** (a solution
   membership or dependency on a kind v1 does not define, or whose own read failed),
   counted per kind and component type.

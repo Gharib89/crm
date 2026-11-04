@@ -418,7 +418,15 @@ def export_solution(client: LegacyClient, unique_name: str) -> bytes:
         parameter("SolutionName", "string", _XSD, unique_name)
         + parameter("Managed", "boolean", _XSD, "false"),
     )
-    return base64.b64decode(_result(results, "ExportSolutionFile", "ExportSolution").text or "")
+    try:
+        data = base64.b64decode(
+            _result(results, "ExportSolutionFile", "ExportSolution").text or "", validate=True
+        )
+    except ValueError as exc:  # binascii.Error
+        raise D365Error(f"ExportSolution: the solution file is not base64: {exc}") from exc
+    if not data:
+        raise D365Error("ExportSolution: the response carries no solution file")
+    return data
 
 
 # Every ribbon location; RibbonLocationFilters is a flags enum, sent by member names.
@@ -431,8 +439,12 @@ _RIBBON_LOCATIONS = parameter(
 
 
 def _unzip_ribbon(node: ET.Element) -> bytes:
-    with zipfile.ZipFile(io.BytesIO(base64.b64decode(node.text or ""))) as archive:
-        return archive.read("RibbonXml.xml")
+    """Unzip a compressed ribbon; a malformed one is a per-item D365Error, not a crash."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(base64.b64decode(node.text or ""))) as archive:
+            return archive.read("RibbonXml.xml")
+    except (ValueError, KeyError, zipfile.BadZipFile) as exc:
+        raise D365Error(f"not a readable ribbon zip: {exc}") from exc
 
 
 def ribbon_xml(client: LegacyClient, entity: str | None) -> bytes:

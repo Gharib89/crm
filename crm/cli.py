@@ -347,7 +347,7 @@ class CLIContext:
 
         if self.auth_scheme not in (None, "ntlm"):
             raise click.UsageError(
-                f"--auth-scheme {self.auth_scheme} does not apply to `crm legacy`, "
+                f"--auth-scheme {self.auth_scheme} does not apply to a crm2011 profile, "
                 "which supports only HTTP NTLM."
             )
         name = self._effective_profile()

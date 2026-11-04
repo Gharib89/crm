@@ -262,6 +262,7 @@ def test_a_full_extraction_writes_a_valid_manifest_and_drops_the_checkpoint(read
     ]
     assert _keys(data, "relationship") == ["account_new_project"]
     assert _keys(data, "ribbon") == ["account", "application", "new_project"]
+    assert {r["origin"] for r in data["records"] if r["kind"] == "ribbon"} == {"unknown"}
     entities = {r["key"]: r for r in data["records"] if r["kind"] == "entity"}
     assert entities["account"]["display_name"] == "Account"
     assert entities["new_project_account"]["display_name"] is None
@@ -295,8 +296,8 @@ def test_the_gaps_name_what_soap_cannot_see(reads, tmp_path):
     assert "on disk" in by_text["Legacy.OnDisk"]["reason"]
     isv = [g["description"] for g in gaps if (g["description"] or "").startswith("ISV page")]
     assert isv == [
-        "ISV page /isv/installationpackagesendoptions.aspx, referenced from sitemap default",
-        "ISV page /isv/managerapproval.aspx, referenced from web_resource new_/scripts/project.js",
+        "ISV page /ISV/InstallationPackageSendOptions.aspx, referenced from sitemap default",
+        "ISV page /ISV/ManagerApproval.aspx, referenced from web_resource new_/scripts/project.js",
     ]
     descriptions = [g["description"] or "" for g in gaps]
     assert any(d.startswith("external integrations") for d in descriptions)
@@ -304,6 +305,9 @@ def test_the_gaps_name_what_soap_cannot_see(reads, tmp_path):
     assert any(
         d.startswith("1 solution_membership row(s)") and "type 31" in d for d in descriptions
     )
+    # The unlabelled entity gets no ribbon read, and the gap says so.
+    ribbon = [g for g in gaps if g["kind"] == "ribbon"]
+    assert len(ribbon) == 1 and "new_project_account" in ribbon[0]["description"]
 
 
 def test_a_resume_after_a_mid_run_failure_reads_each_page_once(reads, tmp_path):
@@ -443,3 +447,73 @@ def test_inventory_extract_refuses_a_v9_profile_until_its_path_lands(crm_home, t
     assert result.exit_code != 0
     assert "crm2011" in result.output
     assert not (tmp_path / "i").exists()
+
+
+def test_a_failed_source_read_is_an_error_and_keeps_the_checkpoint(reads, tmp_path):
+    out = tmp_path / "inv"
+    client = FakeClient()
+
+    def execute(name: str) -> dict:
+        raise D365Error("WhoAmI failed", status=500, code="0x80040216")
+
+    client.execute = execute
+    summary = _extract(client, out)
+    assert not summary.complete
+    assert summary.errors == ["source: WhoAmI failed"]
+    assert (out / ".checkpoint").is_dir()
+    assert _extract(FakeClient(), out).complete
+
+
+def test_a_ribbon_that_is_not_a_zip_is_a_d365_error(monkeypatch):
+    from typing import cast
+    from xml.etree import ElementTree as ET
+
+    from crm.core.legacy import LegacyClient
+
+    node = ET.Element("value")
+    node.text = base64.b64encode(b"not a zip").decode()
+    stub = type("Stub", (), {"execute_results": lambda self, *a: {"CompressedEntityXml": node}})
+    with pytest.raises(D365Error, match="not a readable ribbon zip"):
+        legacy_reads.ribbon_xml(cast("LegacyClient", stub()), "account")
+
+
+def test_a_resume_drops_artifacts_an_earlier_run_wrote(reads, tmp_path):
+    out = tmp_path / "inv"
+    fault = D365Error("plug-in failed", status=500, code="0x80040265")
+    _extract(FakeClient(fail={("systemform", 1): fault}), out)
+    stale = out / "artifacts" / "form" / "stale.form.xml"
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.write_text("<form/>")
+    assert _extract(FakeClient(), out).complete
+    assert not stale.exists()
+
+
+def test_inventory_extract_checks_the_out_folder_before_connecting(crm_home, monkeypatch, tmp_path):
+    def no_client(self):
+        raise AssertionError("connected before the folder check")
+
+    monkeypatch.setattr("crm.cli.CLIContext.legacy_client", no_client)
+    (tmp_path / "notes.txt").write_text("mine")
+    result = CliRunner().invoke(
+        cli, ["--json", "--profile", "legacy", "inventory", "extract", "--out", str(tmp_path)]
+    )
+    assert result.exit_code == 1, result.output
+    assert "no checkpoint" in json.loads(result.output)["error"]
+
+
+def test_inventory_extract_reports_a_write_failure_as_an_envelope(
+    crm_home, reads, monkeypatch, tmp_path
+):
+    monkeypatch.setattr("crm.cli.CLIContext.legacy_client", lambda self: FakeClient())
+
+    def denied(*args, **kwargs):
+        raise PermissionError(13, "Permission denied", str(tmp_path / "inv"))
+
+    monkeypatch.setattr(legacy_inventory, "extract", denied)
+    result = CliRunner().invoke(
+        cli,
+        ["--json", "--profile", "legacy", "inventory", "extract", "--out", str(tmp_path / "inv")],
+    )
+    assert result.exit_code == 1, result.output
+    env = json.loads(result.output)
+    assert env["ok"] is False and "Permission denied" in env["error"]
