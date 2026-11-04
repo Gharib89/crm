@@ -20,17 +20,16 @@ def _meta(ctx: CLIContext, client: LegacyClient) -> dict | None:
 def _emit_with_failures(
     ctx: CLIContext, data, meta, errors: list[dict], total: int, noun: str, label: str
 ) -> None:
-    """Emit *data*; a non-empty *errors* makes it a failure envelope that still carries the data."""
+    """Emit *data*; a non-empty *errors* makes it a failure envelope that still carries the data.
+
+    *meta* (the connection identity) goes on success only: an error envelope's
+    meta is reserved for status, code, category and retryable, as `emit` keeps it.
+    """
     if not errors:
         ctx.emit(True, data=data, meta=meta)
         return
     detail = "; ".join(f"{e[label]}: {e['error']}" for e in errors)
-    ctx.emit(
-        False,
-        data=data,
-        meta=meta,
-        error=f"{len(errors)} of {total} {noun} failed: {detail}",
-    )
+    ctx.emit(False, data=data, error=f"{len(errors)} of {total} {noun} failed: {detail}")
 
 
 @click.group("legacy")

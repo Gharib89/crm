@@ -263,6 +263,7 @@ def test_all_kinds_run_when_none_is_named_and_a_fault_does_not_stop_the_rest(crm
     assert err["kind"] == "plugin-types"
     assert err["code"] == "0x80040217"
     assert "1 of 9 kinds failed" in env["error"]
+    assert "profile" not in env.get("meta", {})
 
 
 def test_processes_ask_for_definitions_only(crm_home):
