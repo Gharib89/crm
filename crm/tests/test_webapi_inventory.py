@@ -13,7 +13,6 @@ import base64
 import copy
 import io
 import json
-import sys
 import zipfile
 from pathlib import Path
 from urllib.parse import quote
@@ -483,9 +482,10 @@ def test_an_entity_named_application_keeps_its_own_ribbon_file(tmp_path, monkeyp
     app = {"LogicalName": "application", "DisplayName": _label("Application"),
            "IsCustomEntity": False, "ObjectTypeCode": 1204, "MetadataId": _id(203),
            "IsManaged": True}  # fmt: skip
-    monkeypatch.setattr(sys.modules[__name__], "_ENTITIES", [*_ENTITIES, app])
+    monkeypatch.setattr(f"{__name__}._ENTITIES", [*_ENTITIES, app])
     out = tmp_path / "inv"
     _extract(FakeBackend(), out)
     ribbons = [r for r in _manifest(out)["records"] if r["kind"] == "ribbon"]
     paths = [a["path"] for r in ribbons if r["key"] == "application" for a in r["artifacts"]]
-    assert len(paths) == 2 and len(set(paths)) == 2
+    assert len(paths) == 2
+    assert len(set(paths)) == 2

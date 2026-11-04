@@ -124,9 +124,9 @@ def artifact_path(kind: str, key: str, name: str, *, discriminator: str | None =
     The file is ``artifacts/<kind>/<slug>-<hash>.<name>``: a readable slug of
     the key plus the first 12 hex digits of a SHA-256 over the kind and full
     key, so two keys never share a file even when they slug alike. Records
-    sharing an ambiguous key pass a *discriminator* (their source id) so each
-    keeps its own file. *name* names the artifact within the record
-    (``form.xml``, ``fetch.xml``, ``content.js``).
+    sharing an ambiguous key pass a *discriminator* (their source id, or with
+    none their key fields' values) so each keeps its own file. *name* names
+    the artifact within the record (``form.xml``, ``fetch.xml``, ``content.js``).
     """
     slug = re.sub(r"[^a-z0-9._]+", "-", key.lower()).strip("-.")[:60] or "component"
     digest = hashlib.sha256("\0".join((kind, key, discriminator or "")).encode("utf-8")).hexdigest()
