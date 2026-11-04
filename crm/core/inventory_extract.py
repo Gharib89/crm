@@ -647,8 +647,7 @@ def extract(
         # it filters may be missing components, so none of them can read complete.
         short = [k for k in _SCOPE_KINDS if run.tally(k).errors or run.tally(k).truncated]
         if short:
-            scoped = {"entity", *_ENTITY_DETAIL_KINDS, *(r.kind for r in reads)}
-            for kind in sorted(scoped - set(_SCOPE_KINDS)):
+            for kind in sorted(set(KINDS) - set(_SCOPE_KINDS)):
                 run.tally(kind).errors.append(
                     f"{', '.join(short)}: the read fell short, so the --solution scope"
                     " may miss components"

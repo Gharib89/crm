@@ -584,7 +584,7 @@ def test_a_failed_membership_read_leaves_every_scoped_kind_incomplete(tmp_path, 
     fault = D365Error("boom", status=500)
     _extract(FakeBackend(fail={(entity_set, 1): fault}), out, solutions=("contoso",))
     coverage = _manifest(out)["coverage"]
-    for kind in ("entity", "attribute", "web_resource", "plugin_assembly", "ribbon"):
+    for kind in ("entity", "attribute", "global_option_set", "web_resource", "ribbon"):
         assert coverage[kind]["status"] != "complete", kind
 
 
