@@ -249,36 +249,51 @@ def _ftp_url(m: dict[str, Any]) -> None:
     m["source"]["org_url"] = "ftp://internalcrm.contoso.local/Contoso"
 
 
+def _upper_case_scheme(m: dict[str, Any]) -> None:
+    m["source"]["org_url"] = "HTTPS://internalcrm.contoso.local/Contoso"
+
+
+def _empty_nullable_key_part(m: dict[str, Any]) -> None:
+    m["records"][0].update(kind="sitemap", key="default", fields={"unique_name": ""})
+    m["coverage"]["sitemap"] = m["coverage"].pop("entity")
+
+
+def _handlers_not_a_list(m: dict[str, Any]) -> None:
+    m["records"][1]["fields"]["handlers"] = 5
+
+
 @pytest.mark.parametrize(
-    ("mutate", "message"),
+    ("mutate", "message", "schema_rejects"),
     [
-        (_drop_key, r"records\[0\].*key"),
-        (_wrong_key, r"key 'account\|2\|Other'.*'account\|2\|Account'"),
-        (_drop_coverage, r"no coverage entry.*form"),
-        (_complete_truncated, r"entity.*complete.*truncated"),
-        (_count_mismatch, r"entity.*2 records.*holds 1"),
-        (_foreign_artifact_path, r"artifacts/form/"),
-        (_shared_artifact_path, r"shared by two records"),
-        (_credentials_in_url, r"org_url.*credentials"),
-        (_bad_origin, r"origin"),
-        (_int_key_part, r"entity\.logical_name must be a non-empty string"),
-        (_ftp_url, r"org_url must be an http\(s\) URL"),
+        (_drop_key, r"records\[0\].*key", True),
+        (_wrong_key, r"key 'account\|2\|Other'.*'account\|2\|Account'", False),
+        (_drop_coverage, r"no coverage entry.*form", False),
+        (_complete_truncated, r"entity.*complete.*truncated", True),
+        (_count_mismatch, r"entity.*2 records.*holds 1", False),
+        (_foreign_artifact_path, r"artifacts/form/", True),
+        (_shared_artifact_path, r"shared by two records", False),
+        (_credentials_in_url, r"org_url.*credentials", True),
+        (_bad_origin, r"origin", True),
+        (_int_key_part, r"entity\.logical_name must be a non-empty string", True),
+        (_ftp_url, r"org_url must be an http\(s\) URL", True),
+        (_upper_case_scheme, r"org_url must be an http\(s\) URL", True),
+        (
+            _empty_nullable_key_part,
+            r"sitemap\.unique_name must be a non-empty string or null",
+            True,
+        ),
+        (_handlers_not_a_list, r"fields\.handlers must be an array", True),
     ],
 )
 def test_reader_refuses_a_manifest_that_breaks_the_contract(
-    mutate: Callable[[dict[str, Any]], None], message: str
+    mutate: Callable[[dict[str, Any]], None], message: str, schema_rejects: bool
 ) -> None:
     manifest = _manifest()
     mutate(manifest)
 
     with pytest.raises(inventory.InventoryError, match=message):
         inventory.parse_manifest(manifest)
-    assert _schema_errors(manifest) != [] or mutate in (
-        _wrong_key,
-        _drop_coverage,
-        _count_mismatch,
-        _shared_artifact_path,
-    )
+    assert (_schema_errors(manifest) != []) == schema_rejects
 
 
 def test_component_key_types_each_part_so_null_and_empty_never_collide() -> None:
@@ -404,17 +419,19 @@ def test_schema_file_is_a_valid_draft_2020_12_schema_whose_kinds_match_the_reade
         for rule in schema["$defs"]["record"]["allOf"]
     }
     assert required == {kind: list(names) for kind, names in inventory.KEY_FIELDS.items()}
-    types = {
-        (rule["if"]["properties"]["kind"]["const"], name): spec["type"]
+    specs = {
+        (rule["if"]["properties"]["kind"]["const"], name): spec
         for rule in schema["$defs"]["record"]["allOf"]
         for name, spec in rule["then"]["properties"]["fields"]["properties"].items()
         if name in inventory.KEY_FIELDS[rule["if"]["properties"]["kind"]["const"]]
     }
-    for (kind, name), json_type in types.items():
-        expected = "integer" if name in inventory.INTEGER_KEY_FIELDS else "string"
-        if (kind, name) in inventory.NULLABLE_KEY_FIELDS:
-            expected = ["string", "null"]
-        assert json_type == expected, (kind, name)
+    for (kind, name), spec in specs.items():
+        expected: dict[str, Any] = {"type": "string", "minLength": 1}
+        if name in inventory.INTEGER_KEY_FIELDS:
+            expected = {"type": "integer"}
+        elif (kind, name) in inventory.NULLABLE_KEY_FIELDS:
+            expected = {"type": ["string", "null"], "minLength": 1}
+        assert {k: v for k, v in spec.items() if k != "description"} == expected, (kind, name)
 
 
 @pytest.mark.parametrize("name", SAMPLES)

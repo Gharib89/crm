@@ -451,7 +451,8 @@
                       ],
                       "properties": {
                         "event": {
-                          "type": "string"
+                          "type": "string",
+                          "minLength": 1
                         },
                         "attribute": {
                           "type": [
@@ -460,10 +461,12 @@
                           ]
                         },
                         "function": {
-                          "type": "string"
+                          "type": "string",
+                          "minLength": 1
                         },
                         "library": {
-                          "type": "string"
+                          "type": "string",
+                          "minLength": 1
                         },
                         "enabled": {
                           "type": "boolean"
@@ -655,7 +658,8 @@
                     "type": [
                       "string",
                       "null"
-                    ]
+                    ],
+                    "minLength": 1
                   },
                   "stage": {
                     "type": "integer"
@@ -751,7 +755,8 @@
                     "type": [
                       "string",
                       "null"
-                    ]
+                    ],
+                    "minLength": 1
                   },
                   "name": {
                     "type": "string",
@@ -925,7 +930,8 @@
                     "type": [
                       "string",
                       "null"
-                    ]
+                    ],
+                    "minLength": 1
                   }
                 }
               },
@@ -960,7 +966,8 @@
                     "type": [
                       "string",
                       "null"
-                    ]
+                    ],
+                    "minLength": 1
                   }
                 }
               },

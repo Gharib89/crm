@@ -307,7 +307,8 @@ def _source(value: object) -> Source:
     obj = _obj(value, "source")
     url = _str(obj, "org_url", "source")
     parts = urlsplit(url)
-    if parts.scheme not in ("http", "https") or not parts.netloc:
+    # urlsplit lowercases the scheme; the schema's pattern is case-sensitive, so match it.
+    if not url.startswith(("http://", "https://")) or not parts.netloc:
         raise InventoryError(f"source.org_url must be an http(s) URL, got {url!r}")
     if "@" in parts.netloc:
         raise InventoryError("source.org_url must not carry credentials")
@@ -352,11 +353,27 @@ def _artifact(value: object, kind: str, where: str) -> Artifact:
     )
 
 
+def _defined_fields(kind: str, fields: dict[str, Any], where: str) -> None:
+    """Check the fields v1 defines beyond the key, when present."""
+    if kind == "form" and "libraries" in fields:
+        _strings(fields["libraries"], f"{where}.libraries")
+    if kind == "form" and "handlers" in fields:
+        for i, item in enumerate(_list(fields["handlers"], f"{where}.handlers")):
+            handler = _obj(item, f"{where}.handlers[{i}]")
+            for name in ("event", "function", "library"):
+                _str(handler, name, f"{where}.handlers[{i}]")
+            _opt_str(handler, "attribute", f"{where}.handlers[{i}]")
+            _bool(handler, "enabled", f"{where}.handlers[{i}]")
+    if kind == "process" and "activities" in fields:
+        _strings(fields["activities"], f"{where}.activities")
+
+
 def _record(value: object, where: str) -> Record:
     obj = _obj(value, where)
     kind = _str(obj, "kind", where, choices=KINDS)
     key = _str(obj, "key", where)
     fields = _obj(_req(obj, "fields", where), f"{where}.fields")
+    _defined_fields(kind, fields, f"{where}.fields")
     expected = component_key(kind, fields)
     if key != expected:
         raise InventoryError(

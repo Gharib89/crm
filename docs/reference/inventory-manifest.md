@@ -101,7 +101,8 @@ refuses a record whose `key` differs from the key its fields give
 ### Fields beyond the key
 
 `fields` may carry more normalized fields; a reader ignores the ones it does not
-know. v1 defines three, so the source-map and packages slices can rely on them:
+know. v1 defines three, so the source-map and packages slices can rely on them,
+and the reader and the schema both check their shape when present:
 
 | Kind | Field | Value |
 |---|---|---|
