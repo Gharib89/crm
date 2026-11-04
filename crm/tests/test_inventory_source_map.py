@@ -175,6 +175,9 @@ def test_plugin_statuses_cover_both_namespace_forms_and_a_project_without_assemb
         ("Plugins/Archive/Copied.cs", "Plugins/Copied.cs"),
         ("Plugins/Contoso.Plugins.csproj",),
     )
+    assert copied.reason == (
+        "Contoso.Plugins.Copied is declared in several files of a project building Contoso.Plugins"
+    )
     # File-scoped namespace, in a project with no AssemblyName: a custom workflow activity.
     activity = _entry(
         source_map, "plugin_type", "Contoso.Workflows|Contoso.Workflows.ApproveActivity"

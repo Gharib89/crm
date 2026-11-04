@@ -642,8 +642,12 @@ def _plugin_type(record: Record, repo: _Repo) -> ComponentSource:
     if len(projects) == 1 and (len(files) == 1 or all(d.partial for d, _ in agree)):
         return ComponentSource(kind, key, "matched", files, projects)
     if projects:
-        where = "several projects" if len(projects) > 1 else "several files of a project"
-        reason = f"{type_name} is declared in {where} that build {assembly}"
+        where = (
+            "several projects that build"
+            if len(projects) > 1
+            else "several files of a project building"
+        )
+        reason = f"{type_name} is declared in {where} {assembly}"
         return ComponentSource(kind, key, "ambiguous", files, projects, reason=reason)
     if decls:
         owners = sorted({o for _, decl_owners in decls for o in decl_owners})
