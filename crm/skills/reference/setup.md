@@ -109,9 +109,9 @@ profile**; its JSON output carries `platform: "crm2011"`, where a normal profile
 `v9`. Verified only on CRM 2011 UR15 (5.0.9690.3557), Linux: on another build or OS,
 tell the user it is untested.
 
-- **Only `crm legacy` and `crm inventory extract` run on it** (prove
-  connectivity with `crm --json legacy version`; `crm legacy --help` lists the
-  rest). Every other command exits 1 with an error naming `crm legacy`, so a
+- **Only `crm legacy`, `crm inventory extract` and the offline `crm inventory
+  diff` run on it** (prove connectivity with `crm --json legacy version`;
+  `crm legacy --help` lists the rest). Every other org command exits 1 with an error naming `crm legacy`, so a
   `crm2011` profile never needs a fallback attempt on `entity` or `query`.
 - **Writes are impossible, not just discouraged.** The profile is always read-only
   and `profile edit --no-read-only` refuses even on a terminal (unlike the guardrail
@@ -176,3 +176,26 @@ binaries). It describes what is deployed; it is never a spec for `crm apply`.
   rows naming a component of a kind v1 does not record, whose read failed, or
   outside the `--solution` scope,
   and rows whose component key field the org left empty.
+
+### Comparing inventories (`crm inventory diff`)
+
+`crm inventory diff A B` compares two inventory folders from any stages
+(CRM 2011, on-prem v9, cloud), `A` the earlier one. It reads only the folders, so
+it needs no profile and no network.
+
+- **Exit 0 means it compared, not that they match.** Read `data.counts` (per kind)
+  and `data.by_origin`; report `custom` drift first, since `system` components
+  differ across platform versions on their own.
+- **The per-key evidence is in the `--out` file** (`entries`: differing fields
+  with both values, artifacts with both normalized hashes, both ids, a reason):
+  pass `--out` whenever you will report keys, not just counts.
+- **`not_comparable` is unknown.** A kind not read `complete` on both sides
+  (`data.incomplete` lists them, even with no records), or a key an extraction
+  gap names with nothing else differing, cannot be judged: report it with the
+  coverage or the gap as unknown, not as a removal.
+- **`identity_only` is expected across a migration**: only the GUID differs,
+  typical when a route re-creates components. Report it apart from `changed`.
+- **`ambiguous` keys repeat on a side**: name them from the `--out` entries so
+  the user resolves the duplicate.
+- Report matches as evidence that the recorded customization agrees; the orgs
+  may still behave differently.

@@ -24,7 +24,7 @@ import importlib
 import pkgutil
 
 import crm.tests.e2e as e2e_pkg
-from crm.tests.e2e.coverage import COVERED, E2E_SKIP, LOCAL_GROUPS
+from crm.tests.e2e.coverage import COVERED, E2E_SKIP, LOCAL_GROUPS, LOCAL_VERBS
 
 
 def _import_all_e2e_test_modules():
@@ -39,7 +39,8 @@ def _import_all_e2e_test_modules():
 
 
 def _expected(walked: set[str]) -> set[str]:
-    return {lf for lf in walked if lf.split(" ", 1)[0] not in LOCAL_GROUPS} - set(E2E_SKIP)
+    local = {lf for lf in walked if lf.split(" ", 1)[0] in LOCAL_GROUPS} | LOCAL_VERBS
+    return walked - local - set(E2E_SKIP)
 
 
 def test_every_d365_command_has_e2e_coverage():
@@ -58,5 +59,7 @@ def test_no_stale_skips_or_local_groups():
     first_tokens = {lf.split(" ", 1)[0] for lf in walked}
     stale_local = LOCAL_GROUPS - first_tokens
     stale_skip = set(E2E_SKIP) - walked
+    stale_verbs = LOCAL_VERBS - walked
     assert not stale_local, f"LOCAL_GROUPS no longer in CLI: {sorted(stale_local)}"
+    assert not stale_verbs, f"LOCAL_VERBS no longer in CLI: {sorted(stale_verbs)}"
     assert not stale_skip, f"E2E_SKIP entries no longer in CLI: {sorted(stale_skip)}"

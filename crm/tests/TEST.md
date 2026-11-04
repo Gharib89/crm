@@ -156,7 +156,8 @@ One-time maintainer setup (each time a trial is stood up):
 walks the lazy Click command tree and fails unless every D365-touching verb has a
 `@covers("<group> <verb>")` test **or** an `E2E_SKIP` entry (with a reason) in
 `crm/tests/e2e/coverage.py`. Local/meta groups (`profile`, `session`, `skill`,
-`self-update`, `repl`, `scaffold`) are out of scope (`LOCAL_GROUPS`).
+`self-update`, `repl`, `scaffold`) are out of scope (`LOCAL_GROUPS`), and so is an offline
+verb inside a group whose other verbs touch the org (`inventory diff`, `LOCAL_VERBS`).
 
 **Doc-examples gate (offline, runs in normal CI):** `crm/tests/test_docs_command_examples.py`
 extracts every `crm …` example from the docs + README (fenced code blocks and inline
