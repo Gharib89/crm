@@ -5,8 +5,9 @@ command fails against it; `crm legacy` reaches it over a read-only SOAP
 transport instead. Tested on CRM 2011 UR15 (5.0.9690.3557), Linux. See the
 [CLI reference](../reference/cli.md) for every flag.
 
-`crm legacy` only reads. It sends an allowlisted set of messages (`WhoAmI` and
-`RetrieveVersion` today) over NTLM, and refuses anything else (`Create`,
+`crm legacy` only reads. It sends an allowlisted set of messages (`WhoAmI`,
+`RetrieveVersion`, the three metadata reads and paged `RetrieveMultiple`) over
+NTLM, and refuses anything else (`Create`,
 `Update`, `Delete`, `Associate`, `Disassociate`, or an unlisted request) before
 it opens a connection. The reasoning is in
 [ADR 0031](../adr/0031-legacy-crm2011-read-only-soap-adapter.md).
@@ -48,6 +49,45 @@ crm --json legacy whoami --profile legacy2011
 `legacy whoami` returns `user_id`, `business_unit_id` and `organization_id`. Both
 use the standard envelope, with `meta.url` set to the SOAP endpoint (not a Web
 API URL).
+
+## Read metadata
+
+```bash
+crm --json legacy metadata --profile legacy2011                  # every entity
+crm --json legacy metadata account contact --profile legacy2011  # per-entity detail
+crm --json legacy metadata --option-sets --profile legacy2011    # global option sets
+```
+
+With no entity, `data` is a list of `logical_name`, `custom` and
+`object_type_code`. With entity names, `data` is `{"entities": [...], "errors":
+[...]}`, each entity carrying its attributes, relationships and option sets. The
+run is **continue-and-report** ([ADR 0007](../adr/0007-record-clone-no-rollback-continue-and-report.md)):
+an entity that faults (a misspelt logical name, say) lands in `errors`, the other
+entities still read, and the exit code is 1. `--option-sets` takes no entity.
+
+## Read solution components
+
+```bash
+crm --json legacy components --profile legacy2011                       # every kind
+crm --json legacy components web-resources processes --out ./dump --profile legacy2011
+```
+
+`data` has one list per kind plus `errors`. Each kind is read with a SOAP
+`RetrieveMultiple` (FetchXML) that follows the server's paging cookie to the last
+page, so a large org is read whole. The two limits it avoids: the OData v2
+`OrganizationData.svc` caps pages at 50, and a FetchXML aggregate stops at the
+server's 50,000-record limit, so no aggregate is used.
+
+- **Continue-and-report per kind.** A kind that faults keeps the rows it already
+  read, is listed in `errors`, and the next kind still runs; the exit code is 1.
+- **`processes` are workflow definitions only** (type 1), not activations or
+  templates.
+- **Plug-in assemblies stored on disk or in the GAC** have no database binary:
+  each is listed with `binary: "unavailable"` and a `binary_reason`, never
+  skipped.
+- **`--out DIR`** writes web resource content, process XAML and form XML to files
+  under `DIR` and replaces each payload key with `<payload>_file` (a path relative
+  to `DIR`). Without it the payload stays inline in the JSON.
 
 ## What is refused
 

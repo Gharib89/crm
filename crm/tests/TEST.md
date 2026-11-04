@@ -27,7 +27,7 @@ whose tests do not follow the naming:
 | `crm/core/workflow.py` | `test_core.py::TestWorkflow`, `::TestWorkflowDelete`, `test_workflow_*.py` |
 | `crm/cli.py` (`CLIContext`, emit envelope) | `test_core.py::TestErrorEnvelope`, `::TestReplBackendCache`, `test_output_contract.py`, `test_exit_codes.py`, `test_cli_offline_smoke.py` |
 | `crm/commands/_helpers/` | `test_core.py::TestLoadPayload`, `test_concise_render.py` (`rendering.py`), `test_helpers_option_groups.py`, `test_helpers_package_surface.py`, `test_d365_errors_enrich.py` |
-| `crm/core/legacy.py`, `crm/commands/legacy.py` | `test_legacy_transport.py` (envelope, allowlist, faults, connect retries), `test_legacy_cmd.py`, `test_legacy_profile.py` (`crm2011` marker, always read-only); live: `e2e/test_legacy.py` |
+| `crm/core/legacy.py`, `crm/core/legacy_reads.py`, `crm/commands/legacy.py` | `test_legacy_transport.py` (envelope, allowlist, faults, connect retries, paged RetrieveMultiple), `test_legacy_cmd.py`, `test_legacy_reads_cmd.py` (`metadata`, `components`), `test_legacy_profile.py` (`crm2011` marker, always read-only); live: `e2e/test_legacy.py` |
 | `crm/commands/profile.py` | `test_profile_cmd.py`, `test_profile_helpers.py`, `test_profile_name_sanitization.py`, `test_profile_url_normalization.py` |
 
 Gates that span the whole CLI rather than one module: `test_e2e_coverage_gate.py`

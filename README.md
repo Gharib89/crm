@@ -304,8 +304,8 @@ enforcement is a server-side read-only security role. See
 [ADR 0021](docs/adr/0021-read-only-profile-tty-gated-guardrail.md).
 
 A legacy **CRM 2011** org (no Web API) is detected by `crm profile add` and saved
-as an always-read-only `crm2011` profile; `crm legacy whoami` / `crm legacy version`
-read it over a read-only SOAP transport (tested on CRM 2011 UR15 (5.0.9690.3557),
+as an always-read-only `crm2011` profile; `crm legacy whoami` / `version` / `metadata` /
+`components` read it over a read-only SOAP transport (tested on CRM 2011 UR15 (5.0.9690.3557),
 Linux). Every other command refuses that profile. See
 [ADR 0031](docs/adr/0031-legacy-crm2011-read-only-soap-adapter.md).
 
@@ -518,7 +518,7 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | Group        | Purpose                                                    |
 |--------------|------------------------------------------------------------|
 | `connection` | Profiles, WhoAmI, preflight diagnostic (`doctor`), reachability checks |
-| `legacy`     | Read-only commands for a legacy CRM 2011 org (`crm2011` profile): `whoami` (user, business unit and organization ids) and `version` (build string), over an allowlisted SOAP transport |
+| `legacy`     | Read-only commands for a legacy CRM 2011 org (`crm2011` profile): `whoami` (user, business unit and organization ids), `version` (build string), `metadata` (entities, attributes, relationships, option sets) and `components` (web resources, plug-ins, processes, forms, views, solutions, paged to the last page), over an allowlisted SOAP transport |
 | `org`        | Org-level orientation: `org brief` is a one-call, read-only inventory (counts + key names, never full rows) — identity, solutions + candidate `--solution` targets, publishers + prefixes, custom entities, apps, and automation/component counts — so an agent can orient without sweeping the fat list verbs |
 | `connectionrole` | Connection roles: `create` a role, `scope` it to an entity type, `match` two roles as reciprocal partners |
 | `entity`     | Record CRUD (get/create/update/upsert/delete); create/update/upsert accept read-shape lookup payloads from get/export/query and rebind them to `@odata.bind`; `upsert` accepts `--key ATTR[,ATTR...]` to match by alternate key instead of a primary GUID (key values read from `--data`, key attrs stripped from the body), plus `--if-none-match` for a create-only upsert (412 if the record exists); `clone` (single-record clone, lookups rebound to the same parents, `--override`/`--unset`; `--with-children` also clones the custom 1:N child rows, repointing them to the new parent — continue-and-report on failure, `--skip-child-entity` prunes); `children` (per-1:N related-record counts via chunked `$batch`, not one query per relationship) |

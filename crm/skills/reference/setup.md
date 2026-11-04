@@ -109,6 +109,14 @@ tell the user it is untested.
   permission problem: report it to the user as unsupported and stop.
 - **`crm legacy` on any other profile refuses**: pass `--profile` naming the
   `crm2011` one.
+- **Reads are continue-and-report.** `legacy metadata ENTITY...` and `legacy
+  components` return the rows they read plus an `errors` list, one entry per
+  entity or kind that faulted, and exit 1 when it is non-empty: read `errors`
+  before trusting a partial `data`. Components page to the last page on their own;
+  there is no limit flag to raise. A plug-in assembly stored on disk or in the GAC
+  shows `binary: "unavailable"` with a reason: its binary is not in the org, so do
+  not retry. `--out DIR` swaps a large payload for a `<column>_file` path under
+  `DIR`; use it for web resources and process XAML rather than inlining them.
 - Success envelopes use the standard JSON contract, with `meta.url` set to the SOAP
   endpoint instead of a Web API base URL. Faults map to the usual `meta.code` and
   `meta.category`. A connect timeout retries inside the CLI (bounded), so treat a

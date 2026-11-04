@@ -79,6 +79,12 @@ is made.
   (`D365_E2E_LEGACY_PROFILE`).
 - Later slices (metadata, component, dependency and solution reads) extend the
   allowlist; none adds a write.
+- **Slice 2 (metadata and component reads, #1044)** added exactly
+  `RetrieveAllEntities`, `RetrieveEntity` and `RetrieveAllOptionSets` to
+  `READ_ONLY_REQUESTS`, and paged `RetrieveMultiple` (FetchXML, following the
+  paging cookie to the last page). No aggregate is used (the server's 50,000-record
+  aggregate limit) and OData v2 stays unused (it caps pages at 50). Both verbs are
+  continue-and-report ([ADR 0007](0007-record-clone-no-rollback-continue-and-report.md)).
 
 ## Out of scope
 
