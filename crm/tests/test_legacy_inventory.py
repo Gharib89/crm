@@ -126,9 +126,12 @@ _ORG: dict[str, list[list[dict]]] = {
 
 _ENTITIES = [
     {"logical_name": "account", "custom": False, "object_type_code": 1,
-     "metadata_id": _id(200), "managed": True},
+     "metadata_id": _id(200), "managed": True, "display_name": "Account"},
     {"logical_name": "new_project", "custom": True, "object_type_code": 10001,
-     "metadata_id": _id(201), "managed": False},
+     "metadata_id": _id(201), "managed": False, "display_name": "Project"},
+    # An intersect entity: no display label, no UI, so no ribbon (the server faults the read).
+    {"logical_name": "new_project_account", "custom": True, "object_type_code": 10002,
+     "metadata_id": _id(202), "managed": False, "display_name": None},
 ]  # fmt: skip
 _OPTION_SETS = [
     {"name": "new_tier", "metadata_id": _id(300), "global": True, "custom": True,
@@ -259,6 +262,9 @@ def test_a_full_extraction_writes_a_valid_manifest_and_drops_the_checkpoint(read
     ]
     assert _keys(data, "relationship") == ["account_new_project"]
     assert _keys(data, "ribbon") == ["account", "application", "new_project"]
+    entities = {r["key"]: r for r in data["records"] if r["kind"] == "entity"}
+    assert entities["account"]["display_name"] == "Account"
+    assert entities["new_project_account"]["display_name"] is None
     assert _keys(data, "sitemap") == ["default"]
     assert _keys(data, "solution_membership") == [
         "contoso|entity|new_project",

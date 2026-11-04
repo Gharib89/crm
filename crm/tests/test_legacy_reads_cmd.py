@@ -98,6 +98,7 @@ def test_metadata_lists_every_entity(crm_home):
     project = env["data"][2]
     assert project["custom"] is True
     assert project["object_type_code"] == 10001
+    assert project["display_name"] == "new_Project"
     assert env["data"][0]["custom"] is False
     assert env["meta"]["profile"] == "legacy"
 

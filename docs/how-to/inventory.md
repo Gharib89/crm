@@ -30,7 +30,8 @@ org (`scope.mode: "org"`):
   membership and dependencies, each with one `RetrieveMultiple` paged to its last
   page (dependencies are the `dependency` entity, read whole, not one component at
   a time);
-- the application ribbon and each entity's ribbon.
+- the application ribbon and the ribbon of each entity with a display label (an
+  entity with none, such as an intersect entity, has no UI and no ribbon).
 
 Expect it to take minutes on a real org.
 

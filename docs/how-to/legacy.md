@@ -59,7 +59,8 @@ crm --json legacy metadata account contact --profile legacy2011  # per-entity de
 crm --json legacy metadata --option-sets --profile legacy2011    # global option sets
 ```
 
-With no entity, `data` is a list of `logical_name`, `custom`,
+With no entity, `data` is a list of `logical_name`, `display_name` (null for an
+entity with no label, such as an intersect entity), `custom`,
 `object_type_code`, `metadata_id` and `managed`. With entity names, `data` is `{"entities": [...], "errors":
 [...]}`, each entity carrying its attributes, relationships and option sets. Entities,
 attributes, relationships and option sets each carry their `metadata_id` (the id

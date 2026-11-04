@@ -68,11 +68,16 @@ def _option_set(el: ET.Element) -> dict[str, Any]:
 
 
 def list_entities(client: LegacyClient) -> list[dict[str, Any]]:
-    """Every entity in server order: logical name, custom flag, object type code."""
+    """Every entity in server order: logical name, display label, custom flag, type code.
+
+    `display_name` is None for an entity with no label (intersect and internal
+    entities): it has no UI, so no form, view or ribbon.
+    """
     results = client.execute_results("RetrieveAllEntities", _filters("Entity") + _AS_IF_PUBLISHED)
     return [
         {
             "logical_name": e.findtext("c:LogicalName", "", _MD),
+            "display_name": e.findtext("c:DisplayName/a:UserLocalizedLabel/a:Label", None, _MD),
             "custom": _flag(e, "c:IsCustomEntity"),
             "object_type_code": int(e.findtext("c:ObjectTypeCode", "0", _MD)),
             "metadata_id": e.findtext("c:MetadataId", None, _MD),

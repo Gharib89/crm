@@ -468,7 +468,10 @@ def extract(
             details.append(detail)
     rows = {read.kind: run.pages(read) for read in _READS}
     ribbons: dict[str | None, bytes] = {}
-    for entity_name in [None, *(str(e["logical_name"]) for e in entities)]:
+    # An entity with no display label has no UI: its ribbon read faults
+    # ("Could not find localized name"), so it is not read (measured on UR15).
+    labelled = (str(e["logical_name"]) for e in entities if e.get("display_name"))
+    for entity_name in [None, *labelled]:
         unit = f"ribbon/{entity_name or '_application'}"
 
         def read_ribbon(entity_name: str | None = entity_name) -> str:
@@ -648,7 +651,8 @@ class _Builder:
             self.add(
                 "entity", e.get("metadata_id"),
                 {"logical_name": e["logical_name"], "object_type_code": e["object_type_code"]},
-                None, "custom" if e["custom"] else "system", e.get("managed"), [], 1,
+                e.get("display_name"), "custom" if e["custom"] else "system", e.get("managed"),
+                [], 1,
             )  # fmt: skip
         for s in option_sets:
             self.add(
