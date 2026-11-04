@@ -17,7 +17,7 @@ import re
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlsplit
 
 from crm.core.inventory import (
@@ -170,6 +170,11 @@ class SourceMap:
     external: tuple[ExternalReference, ...]
     unmatched_source: tuple[UnmatchedSource, ...]
     schema_version: int = SCHEMA_VERSION
+    #: Each plug-in project, and each project those reference in turn, mapped to the
+    #: C# projects it references; a project with no reference is left out.
+    project_references: Mapping[str, tuple[str, ...]] = field(
+        default_factory=lambda: dict[str, tuple[str, ...]]()
+    )
 
     def summary(self) -> dict[str, Any]:
         """Return the header, counts per kind and status, and the totals of the other lists."""
@@ -203,12 +208,133 @@ class SourceMap:
             "shared_projects": [asdict(p) for p in self.shared_projects],
             "external": [asdict(e) for e in self.external],
             "unmatched_source": [asdict(u) for u in self.unmatched_source],
+            "project_references": {p: list(r) for p, r in self.project_references.items()},
         }
 
 
 def dump_source_map(source_map: SourceMap) -> str:
     """Serialize *source_map*: the same inventory and repository give the same bytes."""
     return json.dumps(source_map.to_dict(), sort_keys=True, ensure_ascii=False, indent=2) + "\n"
+
+
+def _map_obj(value: object, where: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise InventoryError(f"source map {where} must be an object")
+    return cast("dict[str, Any]", value)
+
+
+def _map_list(value: object, where: str) -> list[Any]:
+    if not isinstance(value, list):
+        raise InventoryError(f"source map {where} must be an array")
+    return cast("list[Any]", value)
+
+
+def _map_strings(value: object, where: str) -> tuple[str, ...]:
+    items = _map_list(value, where)
+    if not all(isinstance(item, str) for item in items):
+        raise InventoryError(f"source map {where} must hold strings only")
+    return tuple(cast("list[str]", items))
+
+
+def _map_str(obj: dict[str, Any], name: str, where: str, *, optional: bool = False) -> str | None:
+    value = obj.get(name)
+    if (value is None and optional) or (isinstance(value, str) and value):
+        return value
+    raise InventoryError(f"source map {where}.{name} must be a non-empty string")
+
+
+def parse_source_map(data: object) -> SourceMap:
+    """Build a `SourceMap` from a decoded ``map-source --out`` file.
+
+    The version rule runs first: a ``schema_version`` other than this module's
+    is refused. A field this version does not define is ignored, and
+    ``project_references``, which a map written before it existed lacks, reads
+    as empty.
+
+    Raises:
+        InventoryError: the file breaks the source map's shape; the message names where.
+    """
+    obj = _map_obj(data, "file")
+    version = obj.get("schema_version")
+    if type(version) is not int or version != SCHEMA_VERSION:
+        raise InventoryError(
+            f"source map schema_version {version!r} is not supported; "
+            f"this crm reads schema_version {SCHEMA_VERSION}"
+        )
+    components: list[ComponentSource] = []
+    for i, item in enumerate(_map_list(obj.get("components"), "components")):
+        where = f"components[{i}]"
+        c = _map_obj(item, where)
+        kind, status = _map_str(c, "kind", where), _map_str(c, "status", where)
+        if kind not in MAPPED_KINDS or status not in STATUSES:
+            raise InventoryError(f"source map {where} has kind {kind!r}, status {status!r}")
+        components.append(
+            ComponentSource(
+                kind,
+                str(_map_str(c, "key", where)),
+                status,
+                _map_strings(c.get("files", []), f"{where}.files"),
+                _map_strings(c.get("projects", []), f"{where}.projects"),
+                _map_str(c, "reason", where, optional=True),
+                _map_strings(c.get("consumers", []), f"{where}.consumers"),
+            )
+        )
+    shared = tuple(
+        SharedProject(
+            str(_map_str(p, "project", f"shared_projects[{i}]")),
+            str(_map_str(p, "assembly", f"shared_projects[{i}]")),
+            _map_strings(p.get("referenced_by", []), f"shared_projects[{i}].referenced_by"),
+        )
+        for i, p in (
+            (i, _map_obj(v, f"shared_projects[{i}]"))
+            for i, v in enumerate(_map_list(obj.get("shared_projects", []), "shared_projects"))
+        )
+    )
+    external = tuple(
+        ExternalReference(
+            str(_map_str(e, "kind", f"external[{i}]")),
+            str(_map_str(e, "name", f"external[{i}]")),
+            _map_str(e, "version", f"external[{i}]", optional=True),
+            _map_strings(e.get("used_by", []), f"external[{i}].used_by"),
+        )
+        for i, e in (
+            (i, _map_obj(v, f"external[{i}]"))
+            for i, v in enumerate(_map_list(obj.get("external", []), "external"))
+        )
+    )
+    unmatched = tuple(
+        UnmatchedSource(
+            str(_map_str(u, "path", f"unmatched_source[{i}]")),
+            str(_map_str(u, "kind", f"unmatched_source[{i}]")),
+            _map_str(u, "type_name", f"unmatched_source[{i}]", optional=True),
+        )
+        for i, u in (
+            (i, _map_obj(v, f"unmatched_source[{i}]"))
+            for i, v in enumerate(_map_list(obj.get("unmatched_source", []), "unmatched_source"))
+        )
+    )
+    references = _map_obj(obj.get("project_references", {}), "project_references")
+    incomplete = _map_obj(obj.get("incomplete", {}), "incomplete")
+    return SourceMap(
+        _map_obj(obj.get("inventory"), "inventory"),
+        {str(k): str(v) for k, v in incomplete.items()},
+        tuple(components),
+        shared,
+        external,
+        unmatched,
+        project_references={
+            str(p): _map_strings(r, f"project_references.{p}") for p, r in references.items()
+        },
+    )
+
+
+def read_source_map(path: Path) -> SourceMap:
+    """Read and check the source map file ``crm inventory map-source --out`` wrote."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError) as exc:  # ValueError: malformed UTF-8 or JSON
+        raise InventoryError(f"cannot read {path}: {exc}") from exc
+    return parse_source_map(data)
 
 
 # ── Repository scan ─────────────────────────────────────────────────────────
@@ -725,6 +851,16 @@ def map_source(inventory_dir: Path, repo: Path) -> SourceMap:
         for ref, users in sorted(referenced.items())
         if len(users) > 1
     )
+    project_references: dict[str, tuple[str, ...]] = {}
+    pending = sorted(plugin_projects)
+    while pending:
+        path = pending.pop()
+        if path in project_references or path not in scanned.projects:
+            continue
+        refs = scanned.projects[path].references
+        if refs:
+            project_references[path] = refs
+            pending.extend(refs)
 
     packages: dict[tuple[str, str | None], set[str]] = {}
     for project in scanned.projects.values():
@@ -780,5 +916,11 @@ def map_source(inventory_dir: Path, repo: Path) -> SourceMap:
         "extracted_at": inv.extracted_at,
     }
     return SourceMap(
-        header, incomplete, tuple(components), shared, tuple(external), tuple(unmatched)
+        header,
+        incomplete,
+        tuple(components),
+        shared,
+        tuple(external),
+        tuple(unmatched),
+        project_references=dict(sorted(project_references.items())),
     )
