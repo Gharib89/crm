@@ -282,6 +282,34 @@ matches is left untouched, so re-applying an unchanged spec reports the form
 `pass_context` **flags**. A field's control `classid` is **create-only** — a live
 control type that diverges from the attribute is never retyped in place.
 
+**The platform's default tab and section.** A new table's main form opens with a
+tab and a section that carry a label (`General`) but no logical name. A declared
+tab whose `name` matches no live tab **adopts** the one unnamed tab whose label
+equals the declared `label` (which defaults to `name`; compared
+case-insensitively): `apply` writes the declared `name` onto that tab, converges
+the rest of the block there, and reports the form `updated` with the diff
+`name: {old: null, new: <name>}`. A declared section adopts the one unnamed
+section with its label inside its tab the same way, so this spec places its
+fields beside the primary column and Owner instead of adding a second tab:
+
+```yaml
+forms:
+  - tabs:
+      - name: general
+        label: General
+        sections:
+          - name: general
+            label: General
+            fields: [{name: contoso_city}]
+```
+
+When zero or several unnamed tabs (or sections) share the label, nothing is
+adopted and the tab or section is added as usual; a tab or section that already
+has a `name` is never adopted or renamed. A tab `apply` adds takes its first
+declared section as its starter section, so no empty `<name>_section` is left
+beside it; a declared tab with no sections still gets that starter, because an
+empty tab renders broken.
+
 An **identity / ownership divergence** is refused with no write (`replace_blocked`,
 exit 1, siblings still reconcile): a declared `name` that does not resolve to a
 single existing main form. The stance is *converge an existing main form* — `apply`

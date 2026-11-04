@@ -78,7 +78,16 @@ expressible in the spec. **Reconciled on re-apply:**
   form routes to `updated`: a tab/section label, a field's tab+section placement
   (relocated, not duplicated), the relative order of the declared tabs/sections, and
   a handler's `enabled`/`pass_context` flags. A field control `classid` is
-  **create-only** — never retyped in place. A declared `name` that resolves to no
+  **create-only** — never retyped in place. The platform's default tab and section
+  (labelled `General`, no `name`) are reachable by label: a declared tab whose
+  `name` matches nothing **adopts** the single unnamed tab with the same label
+  (`label`, else `name`; case-insensitive), gets the declared `name` written onto
+  it, and converges there (`updated`, diff `name: {old: null, new: <name>}`);
+  a declared section adopts the single unnamed section with its label inside its
+  tab the same way. Zero or several same-label unnamed candidates adopt nothing
+  (the tab/section is added), and a named tab/section is never adopted. An added
+  tab with declared sections gets no empty `<name>_section` starter. A declared
+  `name` that resolves to no
   single existing main form is an **identity/ownership divergence** → `replace_blocked`
   (no write, exit 1, siblings still reconcile): the stance is *converge an existing
   main form*, never forge or rewrite the wrong one. A greenfield entity whose main
