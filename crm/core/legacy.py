@@ -45,6 +45,14 @@ READ_ONLY_REQUESTS: frozenset[str] = frozenset(
         "RetrieveAllEntities",
         "RetrieveEntity",
         "RetrieveAllOptionSets",
+        "RetrieveDependentComponents",
+        "RetrieveRequiredComponents",
+        "RetrieveDependenciesForDelete",
+        # Exports the solution as stored; publishing first (PublishXml,
+        # PublishAllXml) would write, so neither is here.
+        "ExportSolution",
+        "RetrieveApplicationRibbon",
+        "RetrieveEntityRibbon",
     }
 )
 
@@ -105,6 +113,21 @@ def require_crm2011(profile: ConnectionProfile) -> None:
         )
 
 
+@dataclasses.dataclass(frozen=True)
+class Page:
+    """One RetrieveMultiple page: its records, and the cookie that continues it.
+
+    *cookie* is None on the last page, and on a page that reports *more*
+    records but carries no cookie, which cannot be continued.
+    """
+
+    entity: str
+    number: int
+    records: list[dict[str, object]]
+    more: bool
+    cookie: str | None
+
+
 class LegacyClient:
     """Read-only SOAP client for one CRM 2011 org, authenticated with HTTP NTLM."""
 
@@ -158,13 +181,36 @@ class LegacyClient:
         carries no cookie cannot be continued; it is yielded, then raises, so the
         rows already read stay with the caller.
         """
+        for page in self.pages(fetch_xml, page_size=page_size):
+            yield page.records
+            if page.more and page.cookie is None:
+                raise D365Error(
+                    f"paging stopped early: page {page.number} of {page.entity} reports more"
+                    " records but carries no paging cookie"
+                )
+
+    def pages(
+        self, fetch_xml: str, *, page_size: int = 5000, start: Page | None = None
+    ) -> Iterator[Page]:
+        """Page a FetchXML query, yielding each `Page` with what continues it.
+
+        With *start*, the last page an earlier run finished, paging resumes at
+        the page after it from its cookie. Stops after the last page, or after
+        a page that reports more records but carries no cookie (the caller
+        reads that as truncation).
+        """
         fetch = fromstring(fetch_xml)
         entity = fetch.find("entity")
         name = entity.get("name", "") if entity is not None else ""
         fetch.set("count", str(page_size))
-        page = 1
+        number = 1
+        if start is not None:
+            if not start.more or start.cookie is None:
+                return
+            number = start.number + 1
+            fetch.set("paging-cookie", start.cookie)
         while True:
-            fetch.set("page", str(page))
+            fetch.set("page", str(number))
             query = escape(ET.tostring(fetch, encoding="unicode"))
             body = (
                 f"<RetrieveMultiple {_SOAP_BODY_NS}>"
@@ -177,17 +223,14 @@ class LegacyClient:
             )
             if result is None:
                 raise D365Error("RetrieveMultiple: the SOAP response carries no result")
-            yield [_record(e) for e in result.findall("a:Entities/a:Entity", _NS)]
-            if result.findtext("a:MoreRecords", "", _NS) != "true":
+            more = result.findtext("a:MoreRecords", "", _NS) == "true"
+            cookie = result.findtext("a:PagingCookie", "", _NS) or None
+            page = Page(name, number, entity_records(result), more, cookie if more else None)
+            yield page
+            if page.more is False or page.cookie is None:
                 return
-            cookie = result.findtext("a:PagingCookie", "", _NS)
-            if not cookie:
-                raise D365Error(
-                    f"paging stopped early: page {page} of {name} reports more records"
-                    " but carries no paging cookie"
-                )
-            fetch.set("paging-cookie", cookie)
-            page += 1
+            fetch.set("paging-cookie", page.cookie)
+            number += 1
 
     def _send(self, operation: str, body: str, *, request_name: str | None = None) -> ET.Element:
         """POST one SOAP operation, the only path to the wire; the allowlist runs first."""
@@ -271,6 +314,10 @@ def _value(node: ET.Element) -> object:
         return int(node.text or 0)
     if kind == "OptionSetValue":
         return int(node.findtext("a:Value", "0", _NS))
+    if kind == "AliasedValue":
+        # A link-entity column: the value sits one level down.
+        inner = node.find("a:Value", _NS)
+        return None if inner is None else _value(inner)
     if kind == "EntityReference":
         return {
             "id": node.findtext("a:Id", None, _NS),
@@ -278,6 +325,11 @@ def _value(node: ET.Element) -> object:
             "name": node.findtext("a:Name", None, _NS),
         }
     return node.text
+
+
+def entity_records(collection: ET.Element) -> list[dict[str, object]]:
+    """The records of an ``EntityCollection`` (a RetrieveMultiple result or an Execute value)."""
+    return [_record(e) for e in collection.findall("a:Entities/a:Entity", _NS)]
 
 
 def _record(entity: ET.Element) -> dict[str, object]:
