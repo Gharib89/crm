@@ -9,6 +9,62 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.83.0 (2026-11-04)
+
+### Bug Fixes
+
+- **legacy**: An auth or transport failure stops the read, not each item
+  ([#1055](https://github.com/Gharib89/crm/pull/1055),
+  [`929ec56`](https://github.com/Gharib89/crm/commit/929ec56cc6db84c7048de9cd8b4760f6649dbd1e))
+
+- **legacy**: No connection identity on a partial-failure envelope
+  ([#1055](https://github.com/Gharib89/crm/pull/1055),
+  [`929ec56`](https://github.com/Gharib89/crm/commit/929ec56cc6db84c7048de9cd8b4760f6649dbd1e))
+
+- **legacy**: Self-review round 1 fixes ([#1055](https://github.com/Gharib89/crm/pull/1055),
+  [`929ec56`](https://github.com/Gharib89/crm/commit/929ec56cc6db84c7048de9cd8b4760f6649dbd1e))
+
+- **legacy**: Self-review round 2 fixes ([#1055](https://github.com/Gharib89/crm/pull/1055),
+  [`929ec56`](https://github.com/Gharib89/crm/commit/929ec56cc6db84c7048de9cd8b4760f6649dbd1e))
+
+### Documentation
+
+- **legacy**: Metadata and components reads ([#1055](https://github.com/Gharib89/crm/pull/1055),
+  [`929ec56`](https://github.com/Gharib89/crm/commit/929ec56cc6db84c7048de9cd8b4760f6649dbd1e))
+
+### Features
+
+- **legacy**: Allowlist metadata reads, paged RetrieveMultiple and typed records
+  ([#1055](https://github.com/Gharib89/crm/pull/1055),
+  [`929ec56`](https://github.com/Gharib89/crm/commit/929ec56cc6db84c7048de9cd8b4760f6649dbd1e))
+
+- **legacy**: Crm legacy metadata and components, paged and continue-and-report
+  ([#1055](https://github.com/Gharib89/crm/pull/1055),
+  [`929ec56`](https://github.com/Gharib89/crm/commit/929ec56cc6db84c7048de9cd8b4760f6649dbd1e))
+
+- **legacy**: Paged CRM 2011 metadata and component reads
+  ([#1055](https://github.com/Gharib89/crm/pull/1055),
+  [`929ec56`](https://github.com/Gharib89/crm/commit/929ec56cc6db84c7048de9cd8b4760f6649dbd1e))
+
+### Testing
+
+- **legacy**: An unwritable payload or --out dir fails cleanly
+  ([#1055](https://github.com/Gharib89/crm/pull/1055),
+  [`929ec56`](https://github.com/Gharib89/crm/commit/929ec56cc6db84c7048de9cd8b4760f6649dbd1e))
+
+- **legacy**: Live e2e for metadata and components reads
+  ([#1055](https://github.com/Gharib89/crm/pull/1055),
+  [`929ec56`](https://github.com/Gharib89/crm/commit/929ec56cc6db84c7048de9cd8b4760f6649dbd1e))
+
+- **legacy**: Narrow Optional XML lookups for pyright
+  ([#1055](https://github.com/Gharib89/crm/pull/1055),
+  [`929ec56`](https://github.com/Gharib89/crm/commit/929ec56cc6db84c7048de9cd8b4760f6649dbd1e))
+
+- **legacy**: Undecodable web resource content fails its kind only
+  ([#1055](https://github.com/Gharib89/crm/pull/1055),
+  [`929ec56`](https://github.com/Gharib89/crm/commit/929ec56cc6db84c7048de9cd8b4760f6649dbd1e))
+
+
 ## v1.82.0 (2026-11-04)
 
 ### Bug Fixes
