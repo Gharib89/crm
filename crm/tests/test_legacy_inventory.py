@@ -1,4 +1,4 @@
-"""`crm.core.legacy_inventory`: CRM 2011 migration inventory extraction, offline.
+"""`crm.core.inventory_extract` on a crm2011 profile: CRM 2011 extraction, offline.
 
 A fake client stands in for the SOAP transport (its paging is tested in
 test_legacy_transport.py), so these tests drive the extractor's units,
@@ -18,7 +18,7 @@ import pytest
 from click.testing import CliRunner
 
 from crm.cli import cli
-from crm.core import inventory, legacy_inventory, legacy_reads
+from crm.core import inventory, inventory_extract, legacy_reads
 from crm.core import session as session_mod
 from crm.core.legacy import Page
 from crm.utils.d365_backend import (
@@ -225,8 +225,11 @@ def reads(monkeypatch):
 
 
 def _extract(client, out: Path):
-    return legacy_inventory.extract(
-        client, out, cli_version="9.9.9", now=lambda: "2026-11-04T10:00:00Z"
+    return inventory_extract.extract(
+        inventory_extract.LegacySource(client),
+        out,
+        cli_version="9.9.9",
+        now=lambda: "2026-11-04T10:00:00Z",
     )
 
 
@@ -327,7 +330,8 @@ def test_a_resume_after_a_mid_run_failure_reads_each_page_once(reads, tmp_path):
     assert ("webresource", 1, None) not in second.requests
     assert ("webresource", 2, "cookie-webresource-1") in second.requests
     assert not any(entity == "solution" for entity, _, _ in second.requests)
-    assert reads["entities"] == before["entities"] and reads["detail"] == before["detail"]
+    assert reads["entities"] == before["entities"]
+    assert reads["detail"] == len(_ENTITIES)  # each entity's detail is read once in all
     assert summary.reused["web_resource"] == 1 and summary.reused["solution"] == 1
     data = _manifest(out)
     assert _keys(data, "web_resource") == ["new_/img/logo.png", "new_/scripts/project.js"]
@@ -440,15 +444,6 @@ def test_inventory_extract_failure_is_a_failure_envelope_with_the_summary(
     assert env["data"]["kinds"]["form"]["status"] == "failed"
 
 
-def test_inventory_extract_refuses_a_v9_profile_until_its_path_lands(crm_home, tmp_path):
-    result = CliRunner().invoke(
-        cli, ["--json", "--profile", "v9", "inventory", "extract", "--out", str(tmp_path / "i")]
-    )
-    assert result.exit_code != 0
-    assert "crm2011" in result.output
-    assert not (tmp_path / "i").exists()
-
-
 @pytest.mark.parametrize(
     ("argv", "error"),
     [
@@ -539,7 +534,7 @@ def test_inventory_extract_reports_a_write_failure_as_an_envelope(
     def denied(*args, **kwargs):
         raise PermissionError(13, "Permission denied", str(tmp_path / "inv"))
 
-    monkeypatch.setattr(legacy_inventory, "extract", denied)
+    monkeypatch.setattr(inventory_extract, "extract", denied)
     result = CliRunner().invoke(
         cli,
         ["--json", "--profile", "legacy", "inventory", "extract", "--out", str(tmp_path / "inv")],
@@ -579,7 +574,7 @@ def test_inventory_extract_reports_an_unreadable_out_folder_as_an_envelope(
     def denied(out):
         raise PermissionError(13, "Permission denied", str(out))
 
-    monkeypatch.setattr(legacy_inventory, "check_out", denied)
+    monkeypatch.setattr(inventory_extract, "check_out", denied)
     result = CliRunner().invoke(
         cli,
         ["--json", "--profile", "legacy", "inventory", "extract", "--out", str(tmp_path / "inv")],

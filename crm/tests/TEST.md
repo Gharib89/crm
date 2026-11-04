@@ -28,7 +28,8 @@ whose tests do not follow the naming:
 | `crm/cli.py` (`CLIContext`, emit envelope) | `test_core.py::TestErrorEnvelope`, `::TestReplBackendCache`, `test_output_contract.py`, `test_exit_codes.py`, `test_cli_offline_smoke.py` |
 | `crm/commands/_helpers/` | `test_core.py::TestLoadPayload`, `test_concise_render.py` (`rendering.py`), `test_helpers_option_groups.py`, `test_helpers_package_surface.py`, `test_d365_errors_enrich.py` |
 | `crm/core/legacy.py`, `crm/core/legacy_reads.py`, `crm/commands/legacy.py` | `test_legacy_transport.py` (envelope, allowlist, faults, connect retries, paged RetrieveMultiple), `test_legacy_cmd.py`, `test_legacy_reads_cmd.py` (`metadata`, `components`), `test_legacy_deps_cmd.py` (`dependencies`, `export-solution`), `test_legacy_profile.py` (`crm2011` marker, always read-only); live: `e2e/test_legacy.py` |
-| `crm/core/legacy_inventory.py`, `crm/commands/inventory.py` | `test_legacy_inventory.py` (manifest, gaps, checkpoint resume, failed and truncated kinds, refused `--out` folders, the `inventory extract` envelope); live: `e2e/test_legacy.py` |
+| `crm/core/inventory_extract.py`, `crm/commands/inventory.py` | `test_legacy_inventory.py` (manifest, gaps, checkpoint resume, failed and truncated kinds, refused `--out` folders, the `inventory extract` envelope); live: `e2e/test_legacy.py` |
+| `crm/core/webapi_inventory.py` | `test_webapi_inventory.py` (multi-page paging cookie, truncated read, mid-run fault, GAC gap, on-prem vs cloud platform, no credential in output, `--solution` scope and refusals, the v9 `inventory extract` envelope); live: `e2e/test_inventory.py` (a `--solution`-scoped run on the v9 target, twice, compared) beside `e2e/test_legacy.py` |
 | `crm/commands/profile.py` | `test_profile_cmd.py`, `test_profile_helpers.py`, `test_profile_name_sanitization.py`, `test_profile_url_normalization.py` |
 
 Gates that span the whole CLI rather than one module: `test_e2e_coverage_gate.py`

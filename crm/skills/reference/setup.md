@@ -142,20 +142,24 @@ tell the user it is untested.
 
 ### Migration inventory (`crm inventory extract`)
 
-A migration inventory is a read-only, descriptive record of the whole org: a
+A migration inventory is a read-only, descriptive record of an org's customizations: a
 `manifest.json` (schema v1: records keyed by component key, per-kind coverage,
 extraction gaps) plus raw artifacts (XML, XAML, web resource content, assembly
 binaries). It describes what is deployed; it is never a spec for `crm apply`.
 
-- **A v9 or cloud profile is refused before anything is read**: tell the user
-  only `crm2011` is built so far.
-- **It runs for minutes on a real org**: give it a long timeout or run it in
-  the background.
+- **It runs for tens of minutes on a large org** (each entity costs a metadata
+  read and a ribbon read): give it a long timeout or run it in the background.
+- **To inventory part of an org, narrow it to solutions** (`--solution`, see
+  `--help`). The entity reads shrink to the member entities, but the org-wide
+  component reads still run, so a narrowed run is not proportionally quicker. An
+  unknown solution name is a read error on the `solution` kind (exit 1), not a
+  usage error.
 - **Resume by re-running the identical command on the same `--out` folder.** It
   reuses finished reads (`data.resumed`, `data.reused`) and continues paging
   after the last finished page. A folder holding a checkpoint for another org
-  URL, or files and no checkpoint (a finished inventory included), is refused:
-  pass a new folder.
+  URL or another `--solution` scope ("holds a checkpoint of another scope"), or
+  files and no checkpoint (a finished inventory included), is refused: pass a
+  new folder, or repeat the original scope.
 - **A failed read is continue-and-report.** The command exits 1 with `ok:false`
   but the summary still in `data` (`data.kinds`, `data.errors`,
   `data.complete: false`), and the manifest is written. Re-run on the same
@@ -166,7 +170,9 @@ binaries). It describes what is deployed; it is never a spec for `crm apply`.
   failure stops the run with no `data`; re-running resumes it.
 - **Judge completeness by each kind's coverage in the manifest before trusting
   record counts**, and report the manifest's `gaps` to the user as manual
-  follow-up: they name what the inventory could not capture, both what SOAP
-  cannot read (assemblies on disk or in the GAC, ISV pages, external
-  integrations, SSRS data sources) and membership or dependency rows naming a
-  component of a kind v1 does not record or whose read failed.
+  follow-up: they name what the inventory could not capture, both what the
+  endpoint cannot read (assemblies on disk or in the GAC, ISV pages, external
+  integrations, on-premises SSRS data sources), membership or dependency
+  rows naming a component of a kind v1 does not record, whose read failed, or
+  outside the `--solution` scope,
+  and rows whose component key field the org left empty.

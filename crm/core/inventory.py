@@ -75,16 +75,22 @@ class InventoryError(Exception):
     """A manifest, record or key that breaks the inventory manifest contract."""
 
 
+class KeyFieldValueError(InventoryError):
+    """A key field present but holding a value the key contract refuses (empty or mistyped)."""
+
+
 def _key_part(kind: str, name: str, value: object) -> str:
     if name in INTEGER_KEY_FIELDS:
         if type(value) is not int:
-            raise InventoryError(f"{kind}.{name} must be an integer, got {value!r}")
+            raise KeyFieldValueError(f"{kind}.{name} must be an integer, got {value!r}")
         return str(value)
     if value is None and (kind, name) in NULLABLE_KEY_FIELDS:
         return ""
     if not isinstance(value, str) or not value:
         nullable = " or null" if (kind, name) in NULLABLE_KEY_FIELDS else ""
-        raise InventoryError(f"{kind}.{name} must be a non-empty string{nullable}, got {value!r}")
+        raise KeyFieldValueError(
+            f"{kind}.{name} must be a non-empty string{nullable}, got {value!r}"
+        )
     return value.replace("%", "%25").replace("|", "%7C")
 
 
@@ -118,9 +124,9 @@ def artifact_path(kind: str, key: str, name: str, *, discriminator: str | None =
     The file is ``artifacts/<kind>/<slug>-<hash>.<name>``: a readable slug of
     the key plus the first 12 hex digits of a SHA-256 over the kind and full
     key, so two keys never share a file even when they slug alike. Records
-    sharing an ambiguous key pass a *discriminator* (their source id) so each
-    keeps its own file. *name* names the artifact within the record
-    (``form.xml``, ``fetch.xml``, ``content.js``).
+    sharing an ambiguous key pass a *discriminator* (their source id, or with
+    none their key fields' values) so each keeps its own file. *name* names
+    the artifact within the record (``form.xml``, ``fetch.xml``, ``content.js``).
     """
     slug = re.sub(r"[^a-z0-9._]+", "-", key.lower()).strip("-.")[:60] or "component"
     digest = hashlib.sha256("\0".join((kind, key, discriminator or "")).encode("utf-8")).hexdigest()

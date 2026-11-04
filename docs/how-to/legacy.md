@@ -137,7 +137,8 @@ published first, because publishing writes, so the zip holds the org's
 ## Extract a migration inventory
 
 `crm inventory extract --out DIR` runs on a `crm2011` profile and reads the whole
-org into a migration inventory, over the same read-only allowlist. See
+org into a migration inventory, over the same read-only allowlist (it runs on v9
+profiles too, over the Web API). See
 [How-to: inventory](inventory.md).
 
 ## What is refused
