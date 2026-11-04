@@ -139,10 +139,13 @@ _ORG: dict[str, list[list[dict]]] = {
 
 _ENTITIES = [
     {"LogicalName": "account", "DisplayName": _label("Account"), "IsCustomEntity": False,
+     "DisplayCollectionName": _label("Accounts"),
      "ObjectTypeCode": 1, "MetadataId": _id(200), "IsManaged": True},
     {"LogicalName": "new_project", "DisplayName": _label("Project"), "IsCustomEntity": True,
+     "DisplayCollectionName": _label("Projects"),
      "ObjectTypeCode": 10001, "MetadataId": _id(201), "IsManaged": False},
     {"LogicalName": "new_project_account", "DisplayName": _label(None), "IsCustomEntity": True,
+     "DisplayCollectionName": _label(None),
      "ObjectTypeCode": 10002, "MetadataId": _id(202), "IsManaged": False},
 ]  # fmt: skip
 _OPTION_SETS = [
@@ -485,6 +488,7 @@ def test_an_entity_named_application_keeps_its_own_ribbon_file(tmp_path, monkeyp
     # Measured on a Dataverse trial org: an `application` entity, whose ribbon
     # key meets the application ribbon's (`application`), an ambiguous key.
     app = {"LogicalName": "application", "DisplayName": _label("Application"),
+           "DisplayCollectionName": _label("Applications"),
            "IsCustomEntity": False, "ObjectTypeCode": 1204, "MetadataId": _id(203),
            "IsManaged": True}  # fmt: skip
     monkeypatch.setattr(f"{__name__}._ENTITIES", [*_ENTITIES, app])
@@ -584,3 +588,21 @@ def test_an_image_of_an_unknown_step_is_counted_as_a_gap(tmp_path, monkeypatch):
     _extract(FakeBackend(), out)
     gaps = [g for g in _manifest(out)["gaps"] if g["kind"] == "step_image"]
     assert [g["description"][:22] for g in gaps] == ["1 step_image row(s) na"]
+
+
+def test_an_entity_with_no_collection_label_has_its_ribbon_recorded_as_a_gap(tmp_path, monkeypatch):
+    # Dataverse faults RetrieveEntityRibbon for an entity labelled in the user's
+    # language but with no collection label there (seen live on a cloud org).
+    odd = {"LogicalName": "new_syncmap", "DisplayName": _label("Sync Map"),
+           "DisplayCollectionName": _label(None), "IsCustomEntity": True,
+           "ObjectTypeCode": 10003, "MetadataId": _id(203), "IsManaged": False}  # fmt: skip
+    monkeypatch.setattr(f"{__name__}._ENTITIES", [*_ENTITIES, odd])
+    backend = FakeBackend()
+    out = tmp_path / "inv"
+    summary = _extract(backend, out)
+    assert summary.complete
+    # account and new_project only: no read for new_syncmap.
+    assert sum(p.startswith("RetrieveEntityRibbon(") for p in backend.paths) == 2
+    gaps = [g for g in _manifest(out)["gaps"] if g["kind"] == "ribbon"]
+    assert len(gaps) == 1
+    assert "new_syncmap" in gaps[0]["description"]

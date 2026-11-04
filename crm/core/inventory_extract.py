@@ -176,6 +176,16 @@ class LegacySource:
         return self.client.pages(fetch_xml, page_size=page_size, start=start)
 
 
+def _has_ui(entity: dict[str, Any]) -> bool:
+    """Whether the entity's ribbon can be read: it has a display label and, where the
+    source reads one (v9), a collection label too; Dataverse faults RetrieveEntityRibbon
+    for an entity with no collection label in the user's language.
+    """
+    return bool(entity.get("display_name")) and (
+        "collection_name" not in entity or bool(entity["collection_name"])
+    )
+
+
 def _ribbon_gaps(unlabelled: list[str]) -> list[ExtractionGap]:
     if not unlabelled:
         return []
@@ -183,10 +193,11 @@ def _ribbon_gaps(unlabelled: list[str]) -> list[ExtractionGap]:
         ExtractionGap(
             kind="ribbon",
             key=None,
-            description=f"ribbons of {len(unlabelled)} entities with no display label:"
-            f" {', '.join(unlabelled)}",
+            description=f"ribbons of {len(unlabelled)} entities with no display or collection"
+            f" label: {', '.join(unlabelled)}",
             reason="an entity with no display label has no UI, so its ribbon is not read"
-            " (CRM 2011 faults RetrieveEntityRibbon for one)",
+            " (CRM 2011 faults RetrieveEntityRibbon for one); Dataverse faults it for an"
+            " entity with no collection label in the user's language",
         )
     ]
 
@@ -644,8 +655,8 @@ def extract(
     ribbons: dict[str | None, bytes] = {}
     # An entity with no display label has no UI: its ribbon read faults
     # ("Could not find localized name"), so it is not read (measured on UR15).
-    labelled = [str(e["logical_name"]) for e in entities_read if e.get("display_name")]
-    unlabelled = sorted(str(e["logical_name"]) for e in entities_read if not e.get("display_name"))
+    labelled = [str(e["logical_name"]) for e in entities_read if _has_ui(e)]
+    unlabelled = sorted(str(e["logical_name"]) for e in entities_read if not _has_ui(e))
     # The application ribbon belongs to no solution's entities, so a scoped run skips it.
     for entity_name in [*([] if solutions else [None]), *labelled]:
         unit = f"ribbon/{entity_name or '_application'}"

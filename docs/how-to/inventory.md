@@ -143,7 +143,8 @@ names the endpoint:
 - the **SQL data sources of SSRS reports** (`crm2011` and on-prem v9, not cloud);
 - the **ribbons of entities with no display label** (intersect and internal
   entities): such an entity has no UI, so its ribbon is not read (CRM 2011 faults
-  the read), and one gap lists them all;
+  the read), nor is the ribbon of an entity with no collection label in your
+  language (Dataverse faults that read), and one gap lists them all;
 - **rows naming a component this inventory does not record** (a solution
   membership or dependency on a kind v1 does not define, whose own read failed,
   whose own row has no component key, or, in a `--solution` run, that may belong to
