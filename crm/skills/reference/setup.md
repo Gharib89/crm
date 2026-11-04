@@ -226,8 +226,8 @@ the two folders only: no profile, no network, no build.
 
 `crm inventory packages INVENTORY --source-map FILE --out DIR` groups an inventory
 into work packages: connected groups of components and source files that change
-together. It reads files only; the source map must come from `map-source --out` on
-the same inventory.
+together. It reads files only. A source map not made by `map-source --out` from the
+same inventory is refused.
 
 - **Read `data.incomplete` first**: a kind not read `complete` is missing from the
   graph, so a package may lack members and consumers.
@@ -240,8 +240,8 @@ the same inventory.
 - **`{"status": "unknown"}` in a field means no data, not no work.** No
   `expected_behavior` means no scenario seeds the package: ask the user for one.
 - **Scenarios are a JSON file**: `{"scenarios": [{"name", "seeds": ["<kind>:<component
-  key>"], "expected_behavior": ["..."]}]}`. Report `seeds_not_found` (often a typo in
-  the key), `seeds_unpackaged` (a seed in no package, such as an entity) and
+  key>"], "expected_behavior": ["..."]}]}`. Report `seeds_not_found` (a seed the inventory
+  lacks, often a typo), `seeds_unpackaged` (a seed in no package, such as an entity) and
   `unmatched_scenarios`.
 - **Read packages from `--out`**: `index.json` lists them, `<package id>.json` holds
   each; `data` is the summary. Package and verification ids hash their members, so

@@ -244,10 +244,11 @@ def _map_str(obj: dict[str, Any], name: str, where: str) -> str:
 
 
 def _map_opt_str(obj: dict[str, Any], name: str, where: str) -> str | None:
+    # "" is legal: map-source writes a NuGet reference's empty Version="" as is.
     value = obj.get(name)
-    if value is None or (isinstance(value, str) and value):
+    if value is None or isinstance(value, str):
         return value
-    raise InventoryError(f"source map {where}.{name} must be a non-empty string or null")
+    raise InventoryError(f"source map {where}.{name} must be a string or null")
 
 
 def parse_source_map(data: object) -> SourceMap:

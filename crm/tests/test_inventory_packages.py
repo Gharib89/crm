@@ -406,6 +406,8 @@ def test_source_map_round_trips_with_project_references(inputs):
         "Plugins/Contoso.Plugins.csproj": ["Shared/Contoso.Shared.csproj"],
     }
     assert dump_source_map(parse_source_map(data)) == text
+    data["external"] = [{"kind": "nuget", "name": "Foo", "version": "", "used_by": []}]
+    assert parse_source_map(data).external[0].version == ""
     del data["project_references"]
     assert parse_source_map(data).project_references == {}
     data["schema_version"] = 2
@@ -427,6 +429,10 @@ def test_cli_writes_out_and_summarizes(inputs, tmp_path):
     assert [p["file"] for p in index["packages"]] == sorted(
         f"{p['id']}.json" for p in index["packages"]
     )
+
+    table = CliRunner().invoke(cli, [*args[1:], "--out", str(tmp_path / "table")])
+    assert table.exit_code == 0, table.output
+    assert "gaps in no package" in table.output
 
     again = CliRunner().invoke(cli, [*args, "--out", str(out)])
     assert again.exit_code == 1
