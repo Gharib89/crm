@@ -325,12 +325,19 @@ class CLIContext:
         """Build the read-only SOAP client for a crm2011 profile (`crm legacy`).
 
         Selects the profile and resolves its secret the way backend() does, but
-        refuses a non-crm2011 profile before any secret lookup or prompt.
+        refuses a non-crm2011 profile or a non-NTLM --auth-scheme before any
+        secret lookup or prompt.
         """
         from crm.core import connection as conn_mod
         from crm.core import session as session_mod
         from crm.core.legacy import LegacyClient, require_crm2011
+        from crm.utils.d365_backend import D365Error
 
+        if self.auth_scheme not in (None, "ntlm"):
+            raise D365Error(
+                f"--auth-scheme {self.auth_scheme} does not apply to `crm legacy`, "
+                "which supports only HTTP NTLM."
+            )
         name = self._effective_profile()
         if name is not None and session_mod.profile_path(name).is_file():
             require_crm2011(session_mod.load_profile(name))
@@ -339,8 +346,6 @@ class CLIContext:
             password_override=self.password,
             allow_prompt=_stdin_is_tty() and not self.json_mode,
         )
-        if self.auth_scheme is not None:
-            resolved.profile.auth_scheme = self.auth_scheme
         return LegacyClient(resolved.profile, resolved.password)
 
     def materialized_backend(self) -> D365Backend | None:
