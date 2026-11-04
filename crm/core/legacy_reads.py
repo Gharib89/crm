@@ -439,10 +439,13 @@ _RIBBON_LOCATIONS = parameter(
 )
 
 
-def _unzip_ribbon(node: ET.Element) -> bytes:
-    """Unzip a compressed ribbon; a malformed one is a per-item D365Error, not a crash."""
+def unzip_ribbon(compressed: str | None) -> bytes:
+    """Unzip a compressed ribbon (base64 over a zip of ``RibbonXml.xml``), SOAP or Web API.
+
+    A malformed one is a per-item D365Error, not a crash.
+    """
     try:
-        with zipfile.ZipFile(io.BytesIO(base64.b64decode(node.text or ""))) as archive:
+        with zipfile.ZipFile(io.BytesIO(base64.b64decode(compressed or ""))) as archive:
             return archive.read("RibbonXml.xml")
     # zlib.error, RuntimeError (encrypted) and NotImplementedError (compression)
     # are what a damaged entry raises past BadZipFile.
@@ -454,11 +457,11 @@ def ribbon_xml(client: LegacyClient, entity: str | None) -> bytes:
     """The ribbon XML of *entity*, or of the application when *entity* is None."""
     if entity is None:
         results = client.execute_results("RetrieveApplicationRibbon")
-        return _unzip_ribbon(
-            _result(results, "CompressedApplicationRibbonXml", "RetrieveApplicationRibbon")
+        return unzip_ribbon(
+            _result(results, "CompressedApplicationRibbonXml", "RetrieveApplicationRibbon").text
         )
     results = client.execute_results(
         "RetrieveEntityRibbon",
         parameter("EntityName", "string", _XSD, entity) + _RIBBON_LOCATIONS,
     )
-    return _unzip_ribbon(_result(results, "CompressedEntityXml", "RetrieveEntityRibbon"))
+    return unzip_ribbon(_result(results, "CompressedEntityXml", "RetrieveEntityRibbon").text)
