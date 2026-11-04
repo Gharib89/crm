@@ -118,7 +118,9 @@ def test_inventory_extract_writes_a_valid_crm2011_inventory(cli, tmp_path, monke
         check=False,
         env={"CRM_HOME": _REAL_HOME},
     )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
     summary = json.loads(proc.stdout)["data"]
+    assert summary["complete"] is True, proc.stdout
     assert summary["manifest"] == str(out / "manifest.json"), proc.stdout + proc.stderr
     manifest = json.loads((out / "manifest.json").read_text())
     schema = json.loads(
@@ -133,9 +135,17 @@ def test_inventory_extract_writes_a_valid_crm2011_inventory(cli, tmp_path, monke
     assert any(
         g.description and g.description.startswith("external integrations") for g in parsed.gaps
     )
-    # crm writes no credential into the manifest: not even the profile's user name.
+    # crm writes no credential into any output file: not even the profile's user name.
+    from crm.core import keyring_store
     from crm.core import session as session_mod
 
     monkeypatch.setenv("CRM_HOME", _REAL_HOME)
-    user = session_mod.load_profile(name).username.lower()
-    assert user not in (out / "manifest.json").read_text().lower()
+    secrets = [session_mod.load_profile(name).username.lower().encode()]
+    secret = session_mod.load_profile_secret(name) or keyring_store.get_secret(name)
+    if secret:
+        secrets.append(secret.lower().encode())
+    for path in out.rglob("*"):
+        if path.is_file():
+            data = path.read_bytes().lower()
+            # The message names the file only, so a failure never prints a secret.
+            assert not any(s in data for s in secrets), f"a credential appears in {path}"

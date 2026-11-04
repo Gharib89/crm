@@ -24,7 +24,7 @@ from crm.utils.d365_types import AUTH_SCHEMES
 
 if TYPE_CHECKING:
     from crm.core.legacy import LegacyClient
-    from crm.utils.d365_backend import D365Backend
+    from crm.utils.d365_backend import ConnectionProfile, D365Backend
 from crm.commands._helpers import (
     _apply_jq,
     _normalize_odata_envelope,
@@ -322,8 +322,8 @@ class CLIContext:
         self.connection_resolved = True
         return self._backend
 
-    def profile_platform(self) -> str | None:
-        """The selected saved profile's platform marker (``crm2011``), or None for v9/cloud.
+    def saved_profile(self) -> ConnectionProfile | None:
+        """The selected saved profile, or None when no profile is selected or saved.
 
         Reads the profile file only: no secret lookup, prompt or connection.
         """
@@ -332,7 +332,7 @@ class CLIContext:
         name = self._effective_profile()
         if name is None or not session_mod.profile_path(name).is_file():
             return None
-        return session_mod.load_profile(name).platform
+        return session_mod.load_profile(name)
 
     def legacy_client(self) -> LegacyClient:
         """Build the read-only SOAP client for a crm2011 profile (`crm legacy`).
@@ -342,7 +342,6 @@ class CLIContext:
         secret lookup or prompt.
         """
         from crm.core import connection as conn_mod
-        from crm.core import session as session_mod
         from crm.core.legacy import LegacyClient, require_crm2011
 
         if self.auth_scheme not in (None, "ntlm"):
@@ -352,8 +351,9 @@ class CLIContext:
             )
         name = self._effective_profile()
         self.legacy_profile_name = name  # names the profile in a 401 hint
-        if name is not None and session_mod.profile_path(name).is_file():
-            require_crm2011(session_mod.load_profile(name))
+        saved = self.saved_profile()
+        if saved is not None:
+            require_crm2011(saved)
         resolved = conn_mod.resolve_credentials(
             profile_name=name,
             password_override=self.password,

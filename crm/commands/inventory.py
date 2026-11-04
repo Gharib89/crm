@@ -40,7 +40,8 @@ def inventory_extract(ctx: CLIContext, out_dir: Path):
     checkpoint is removed once every read succeeds. Returns a short summary;
     the manifest holds the records, coverage and gaps.
     """
-    if ctx.profile_platform() != PLATFORM_CRM2011:
+    saved = ctx.saved_profile()
+    if saved is not None and saved.platform != PLATFORM_CRM2011:
         ctx.emit(
             False,
             error="`crm inventory extract` supports only crm2011 profiles so far; "

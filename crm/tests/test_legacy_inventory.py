@@ -449,6 +449,25 @@ def test_inventory_extract_refuses_a_v9_profile_until_its_path_lands(crm_home, t
     assert not (tmp_path / "i").exists()
 
 
+@pytest.mark.parametrize(
+    ("argv", "error"),
+    [
+        ((), "Run `crm profile add`"),
+        (("--profile", "nope"), "Profile 'nope' not found."),
+    ],
+)
+def test_inventory_extract_with_no_saved_profile_gives_the_profile_error(
+    tmp_path, monkeypatch, argv, error
+):
+    monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
+    result = CliRunner().invoke(
+        cli, ["--json", *argv, "inventory", "extract", "--out", str(tmp_path / "i")]
+    )
+    assert result.exit_code == 1
+    assert error in json.loads(result.output)["error"]
+    assert not (tmp_path / "i").exists()
+
+
 def test_a_failed_source_read_is_an_error_and_keeps_the_checkpoint(reads, tmp_path):
     out = tmp_path / "inv"
     client = FakeClient()
