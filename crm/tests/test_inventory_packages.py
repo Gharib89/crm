@@ -381,9 +381,9 @@ def test_ids_derive_from_member_keys(inputs):
     digest = hashlib.sha256(b"web_resource:new_/scripts/missing.js").hexdigest()
     assert lone.id == f"pkg-{digest[:12]}"
     plugins = _package_of(result, "plugin_assembly:Contoso.Plugins")
-    (step,) = [r for r in plugins.verification if r.kind == "plugin_step"]
+    (step,) = [r for r in _dicts(plugins.verification) if r["kind"] == "plugin_step"]
     raw = "\0".join((plugins.id, "plugin_step", f"step:{STEP_KEY}"))
-    assert step.id == f"req-{hashlib.sha256(raw.encode()).hexdigest()[:16]}"
+    assert step["id"] == f"req-{hashlib.sha256(raw.encode()).hexdigest()[:16]}"
 
 
 def test_two_runs_write_byte_identical_output(inputs, tmp_path):
