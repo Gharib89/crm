@@ -339,6 +339,8 @@ class CLIContext:
             password_override=self.password,
             allow_prompt=_stdin_is_tty() and not self.json_mode,
         )
+        if self.auth_scheme is not None:
+            resolved.profile.auth_scheme = self.auth_scheme
         return LegacyClient(resolved.profile, resolved.password)
 
     def materialized_backend(self) -> D365Backend | None:

@@ -412,10 +412,10 @@ def profile_add(
             # profile (ADR 0031). Anything else keeps the Web API failure.
             from crm.core.legacy import detect_crm2011
 
-            crm2011 = detect_crm2011(profile, secret, web_api_exc)
-            if crm2011 is None:
+            detected = detect_crm2011(profile, secret, web_api_exc)
+            if detected is None:
                 raise
-            profile = crm2011
+            profile = detected
             info = {}
     except D365Error as exc:
         malformed = conn_mod.profile_structural_problem(profile, has_secret=bool(secret))

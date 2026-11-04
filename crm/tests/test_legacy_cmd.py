@@ -103,3 +103,19 @@ def test_legacy_refuses_a_v9_profile_before_any_secret_lookup(crm_home):
     result = CliRunner().invoke(cli, ["--json", "--profile", "nosecret", "legacy", "version"])
     assert result.exit_code == 1, result.output
     assert "not a CRM 2011" in json.loads(result.output)["error"]
+
+
+def test_legacy_refuses_a_non_ntlm_auth_scheme_override(crm_home):
+    _save("legacy", "crm2011")
+    result, m = _run(
+        "retrieve_version.xml",
+        "--auth-scheme",
+        "kerberos",
+        "--profile",
+        "legacy",
+        "legacy",
+        "version",
+    )
+    assert result.exit_code == 1, result.output
+    assert "only HTTP NTLM" in json.loads(result.output)["error"]
+    assert m.call_count == 0

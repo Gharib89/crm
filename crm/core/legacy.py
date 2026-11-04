@@ -207,9 +207,10 @@ def _parse(resp: requests.Response) -> ET.Element:
     message = fault.findtext("faultstring") or "SOAP fault"
     if org_fault is not None:
         raw = org_fault.findtext("a:ErrorCode", None, _NS)
-        try:
-            code = f"0x{int(raw or '') & 0xFFFFFFFF:08x}"
-        except ValueError:
-            code = None
+        if raw:
+            try:
+                code = f"0x{int(raw) & 0xFFFFFFFF:08x}"
+            except ValueError:
+                pass  # an unreadable ErrorCode leaves the fault uncoded
         message = org_fault.findtext("a:Message", None, _NS) or message
     raise D365Error(message, status=resp.status_code, code=code)

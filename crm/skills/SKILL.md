@@ -7,7 +7,8 @@ description: Operate Microsoft Dynamics 365 Customer Engagement — on-premises 
 
 A stateful CLI for **Microsoft Dynamics 365 Customer Engagement — on-premises
 9.x (NTLM) or Dataverse online (OAuth)**. Every command except `crm legacy` (CRM
-2011, over SOAP) issues a real HTTP request to the Dataverse Web API at `<url>/api/data/v9.x/`. There is no local mocking — the live D365 server is a
+2011, over SOAP) issues a real HTTP request to the Dataverse Web API at
+`<url>/api/data/v9.x/`. There is no local mocking — the live D365 server is a
 hard runtime dependency.
 
 ## On-prem vs cloud
