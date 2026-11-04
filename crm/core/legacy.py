@@ -21,6 +21,7 @@ from __future__ import annotations
 import dataclasses
 import time
 import xml.etree.ElementTree as ET
+from collections.abc import Iterator
 from typing import TYPE_CHECKING
 from xml.sax.saxutils import escape
 
@@ -37,7 +38,15 @@ if TYPE_CHECKING:
 
 # The one allowlist of Execute request names. Later slices extend this set; a
 # request outside it is refused without opening a connection.
-READ_ONLY_REQUESTS: frozenset[str] = frozenset({"WhoAmI", "RetrieveVersion"})
+READ_ONLY_REQUESTS: frozenset[str] = frozenset(
+    {
+        "WhoAmI",
+        "RetrieveVersion",
+        "RetrieveAllEntities",
+        "RetrieveEntity",
+        "RetrieveAllOptionSets",
+    }
+)
 
 # IOrganizationService operations that only read. Create, Update, Delete,
 # Associate and Disassociate are refused.
@@ -59,6 +68,20 @@ _NS = {
     "b": "http://schemas.datacontract.org/2004/07/System.Collections.Generic",
     "i": "http://www.w3.org/2001/XMLSchema-instance",
 }
+_SOAP_BODY_NS = (
+    'xmlns="http://schemas.microsoft.com/xrm/2011/Contracts/Services" '
+    'xmlns:i="http://www.w3.org/2001/XMLSchema-instance"'
+)
+
+
+def parameter(key: str, xsi_type: str, type_ns: str, value: str) -> str:
+    """One ``Execute`` request parameter, rendered for :meth:`LegacyClient.execute_results`."""
+    return (
+        "<a:KeyValuePairOfstringanyType>"
+        f"<b:key>{escape(key)}</b:key>"
+        f'<b:value i:type="c:{xsi_type}" xmlns:c="{type_ns}">{escape(value)}</b:value>'
+        "</a:KeyValuePairOfstringanyType>"
+    )
 
 
 def _refuse(what: str) -> D365Error:
@@ -98,12 +121,19 @@ class LegacyClient:
         self._session.verify = profile.verify_ssl
 
     def execute(self, request_name: str) -> dict[str, str | None]:
-        """Run an allowlisted parameterless ``Execute`` request; return its Results."""
+        """Run an allowlisted parameterless ``Execute`` request; return its Results as text."""
+        return {key: _result_text(node) for key, node in self.execute_results(request_name).items()}
+
+    def execute_results(self, request_name: str, parameters: str = "") -> dict[str, ET.Element]:
+        """Run an allowlisted ``Execute`` request; return each Result's value element.
+
+        *parameters* is pre-rendered :func:`parameter` XML.
+        """
         body = (
-            '<Execute xmlns="http://schemas.microsoft.com/xrm/2011/Contracts/Services" '
-            'xmlns:i="http://www.w3.org/2001/XMLSchema-instance">'
+            f"<Execute {_SOAP_BODY_NS}>"
             '<request xmlns:a="http://schemas.microsoft.com/xrm/2011/Contracts">'
-            '<a:Parameters xmlns:b="http://schemas.datacontract.org/2004/07/System.Collections.Generic"/>'
+            '<a:Parameters xmlns:b="http://schemas.datacontract.org/2004/07/System.Collections.Generic">'
+            f"{parameters}</a:Parameters>"
             '<a:RequestId i:nil="true"/>'
             f"<a:RequestName>{escape(request_name)}</a:RequestName>"
             "</request></Execute>"
@@ -112,10 +142,52 @@ class LegacyClient:
         results = root.find("s:Body/svc:ExecuteResponse/svc:ExecuteResult/a:Results", _NS)
         if results is None:
             raise D365Error(f"{request_name}: the SOAP response carries no ExecuteResult")
+        pairs = results.findall("a:KeyValuePairOfstringanyType", _NS)
         return {
-            pair.findtext("b:key", "", _NS): _result_text(pair.find("b:value", _NS))
-            for pair in results.findall("a:KeyValuePairOfstringanyType", _NS)
+            pair.findtext("b:key", "", _NS): value
+            for pair in pairs
+            if (value := pair.find("b:value", _NS)) is not None
         }
+
+    def retrieve_multiple(
+        self, fetch_xml: str, *, page_size: int = 5000
+    ) -> Iterator[list[dict[str, object]]]:
+        """Page a FetchXML query to its last page, yielding each page's records.
+
+        Follows the SOAP paging cookie. A page that reports more records but
+        carries no cookie cannot be continued; it is yielded, then raises, so the
+        rows already read stay with the caller.
+        """
+        fetch = fromstring(fetch_xml)
+        entity = fetch.find("entity")
+        name = entity.get("name", "") if entity is not None else ""
+        fetch.set("count", str(page_size))
+        page = 1
+        while True:
+            fetch.set("page", str(page))
+            query = escape(ET.tostring(fetch, encoding="unicode"))
+            body = (
+                f"<RetrieveMultiple {_SOAP_BODY_NS}>"
+                '<query i:type="a:FetchExpression" xmlns:a="http://schemas.microsoft.com/xrm/2011/Contracts">'
+                f"<a:Query>{query}</a:Query></query></RetrieveMultiple>"
+            )
+            root = self._send("RetrieveMultiple", body)
+            result = root.find(
+                "s:Body/svc:RetrieveMultipleResponse/svc:RetrieveMultipleResult", _NS
+            )
+            if result is None:
+                raise D365Error("RetrieveMultiple: the SOAP response carries no result")
+            yield [_record(e) for e in result.findall("a:Entities/a:Entity", _NS)]
+            if result.findtext("a:MoreRecords", "", _NS) != "true":
+                return
+            cookie = result.findtext("a:PagingCookie", "", _NS)
+            if not cookie:
+                raise D365Error(
+                    f"paging stopped early: page {page} of {name} reports more records"
+                    " but carries no paging cookie"
+                )
+            fetch.set("paging-cookie", cookie)
+            page += 1
 
     def _send(self, operation: str, body: str, *, request_name: str | None = None) -> ET.Element:
         """POST one SOAP operation, the only path to the wire; the allowlist runs first."""
@@ -186,6 +258,41 @@ def _result_text(node: ET.Element | None) -> str | None:
     if node is None or node.get(f"{{{_NS['i']}}}nil") == "true":
         return None
     return node.text
+
+
+def _value(node: ET.Element) -> object:
+    """Convert one SOAP ``b:value`` by its ``i:type``; unknown types stay text."""
+    if node.get(f"{{{_NS['i']}}}nil") == "true":
+        return None
+    kind = node.get(f"{{{_NS['i']}}}type", "").rpartition(":")[2]
+    if kind == "boolean":
+        return node.text == "true"
+    if kind in ("int", "long"):
+        return int(node.text or 0)
+    if kind == "OptionSetValue":
+        return int(node.findtext("a:Value", "0", _NS))
+    if kind == "EntityReference":
+        return {
+            "id": node.findtext("a:Id", None, _NS),
+            "logical_name": node.findtext("a:LogicalName", None, _NS),
+            "name": node.findtext("a:Name", None, _NS),
+        }
+    return node.text
+
+
+def _record(entity: ET.Element) -> dict[str, object]:
+    record: dict[str, object] = {"id": entity.findtext("a:Id", None, _NS)}
+    for pair in entity.findall("a:Attributes/a:KeyValuePairOfstringanyType", _NS):
+        value = pair.find("b:value", _NS)
+        if value is not None:
+            record[pair.findtext("b:key", "", _NS)] = _value(value)
+    formatted = {
+        pair.findtext("b:key", "", _NS): pair.findtext("b:value", None, _NS)
+        for pair in entity.findall("a:FormattedValues/a:KeyValuePairOfstringstring", _NS)
+    }
+    if formatted:
+        record["formatted"] = formatted
+    return record
 
 
 def _parse(resp: requests.Response) -> ET.Element:
