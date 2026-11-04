@@ -237,14 +237,16 @@ Each component gets one status:
 | `matched` | a repo file's normalized hash (the inventory's BOM and CRLF normalization) equals the deployed `normalized_sha256` | an assembly: one project builds it; a type: a C# declaration of its full name sits in a project that builds its assembly |
 | `stale` | one file lines up by name (its path ends with the web resource name, else it shares the file name) but the content differs: which side is newer is unknown | |
 | `ambiguous` | several files hold the deployed content, or line up by name: all are listed | several projects build the assembly, or declare the type in it |
-| `candidate` | minified content keeps the hashes apart (a line of 500 characters or more, or `.min.` in the name), or the file looks generated (a `.ts` source for a `.js`, an un-minified name for a `.min.js`); `reason` says which | the type is declared in a project that builds another assembly, or the assembly's project exists but the type is not found |
+| `candidate` | minified content on one side only keeps the hashes apart (a line of 500 characters or more, or `.min.` in the name), or the file looks generated (a `.ts` source for a `.js`, an un-minified name for a `.min.js`); `reason` says which | the type is declared in a project that builds another assembly, or the assembly's project exists but the type is not found |
 | `missing_source` | no candidate at all | no candidate at all |
 
 A project's assembly is its `AssemblyName`, or the project file name when it has
 none. Type declarations are found by a lexical scan of `.cs` files, block-scoped and
 file-scoped namespaces alike, nested types named `Outer+Inner`; a `.cs` file belongs
-to the project in its nearest folder holding a `.csproj`. Folders named `bin`, `obj`,
-`node_modules` or `packages`, and dot folders, are not scanned.
+to the project in its nearest folder holding a `.csproj`. `$(MSBuildProjectName)` in
+an `AssemblyName` is expanded; any other MSBuild property is compared as written.
+Folders named `bin`, `obj` or `node_modules`, dot folders, and a `packages` folder
+beside a `.sln` (NuGet's restore folder) are not scanned.
 
 The map also lists:
 
@@ -255,8 +257,10 @@ The map also lists:
   (`ProjectReference`), a shared library.
 - **External references**: NuGet packages (`PackageReference`, `packages.config`)
   and web resource scripts loaded from a host other than the inventory's org.
-- **Unmatched source**: repo files a web resource could be deployed from, and
-  `IPlugin` or `CodeActivity` classes, that no component maps to.
+- **Unmatched source**: repo files a web resource could be deployed from that no
+  component maps to, and non-abstract classes deriving from `IPlugin` or
+  `CodeActivity` (directly or through the repo's own base classes) that no plug-in
+  type names.
 
 `data` holds the summary, and `--out FILE` writes the full map:
 

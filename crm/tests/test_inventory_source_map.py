@@ -207,12 +207,13 @@ def test_shared_external_and_unmatched_source(inventory_dir: Path) -> None:
     assert project.shared
     dashboard = _entry(source_map, "web_resource", "new_/html/dashboard.html")
     assert (dashboard.consumers, dashboard.shared) == (("sitemap:default",), False)
-    (shared,) = source_map.shared_projects
-    assert (shared.project, shared.assembly, shared.referenced_by) == (
-        "Shared/Contoso.Shared.csproj",
-        "Contoso.Shared",
-        ("Plugins/Contoso.Plugins.csproj", "Workflows/Contoso.Workflows.csproj"),
-    )
+    # One project path spelled in another letter case is the same project; a library
+    # outside the checkout is named by its project file.
+    plugin_projects = ("Plugins/Contoso.Plugins.csproj", "Workflows/Contoso.Workflows.csproj")
+    assert [(p.project, p.assembly, p.referenced_by) for p in source_map.shared_projects] == [
+        ("../External/Contoso.External.csproj", "Contoso.External", plugin_projects),
+        ("Shared/Contoso.Shared.csproj", "Contoso.Shared", plugin_projects),
+    ]
     assert [(e.kind, e.name, e.version, e.used_by) for e in source_map.external] == [
         (
             "nuget",
@@ -222,9 +223,15 @@ def test_shared_external_and_unmatched_source(inventory_dir: Path) -> None:
         ),
         ("script", "https://cdn.example.com/charts.js", None, ("new_/html/dashboard.html",)),
     ]
+    # A plug-in class is found beside a mapped one and through the repo's own base
+    # class; the abstract base is not deployable. NuGet's packages folder beside the
+    # solution is not scanned, a JS workspace folder named packages is.
     assert [(u.path, u.kind, u.type_name) for u in source_map.unmatched_source] == [
+        ("Plugins/AccountMerge.cs", "plugin_type", "Contoso.Plugins.AccountMerge"),
+        ("Plugins/ProjectCreate.cs", "plugin_type", "Contoso.Plugins.ProjectCreateLegacy"),
         ("Plugins/Unregistered.cs", "plugin_type", "Contoso.Plugins.Unregistered"),
         ("src/orphan.js", "web_resource", None),
+        ("web/packages/forms/widget.js", "web_resource", None),
     ]
     summary = source_map.summary()
     assert summary["counts"] == {
@@ -238,8 +245,8 @@ def test_shared_external_and_unmatched_source(inventory_dir: Path) -> None:
         "plugin_assembly": {"matched": 2, "missing_source": 1},
         "plugin_type": {"matched": 2, "candidate": 2, "missing_source": 1},
     }
-    assert summary["shared"] == {"web_resources": 1, "projects": 1}
-    assert (summary["external"], summary["unmatched_source"]) == (2, 2)
+    assert summary["shared"] == {"web_resources": 1, "projects": 2}
+    assert (summary["external"], summary["unmatched_source"]) == (2, 5)
     assert summary["schema_version"] == 1
     assert summary["inventory"]["org_url"] == ORG
 
@@ -259,7 +266,7 @@ def test_cli_writes_a_deterministic_map_and_touches_no_org(inventory_dir: Path, 
     full = json.loads(outs[0].read_text(encoding="utf-8"))
     assert full["schema_version"] == 1
     assert len(full["components"]) == 15
-    assert full["unmatched_source"][1] == {
+    assert full["unmatched_source"][3] == {
         "path": "src/orphan.js",
         "kind": "web_resource",
         "type_name": None,

@@ -3,6 +3,7 @@
     <TargetFramework>net462</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Shared\Contoso.Shared.csproj" />
+    <ProjectReference Include="..\shared\contoso.shared.csproj" />
+    <ProjectReference Include="..\..\External\Contoso.External.csproj" />
   </ItemGroup>
 </Project>

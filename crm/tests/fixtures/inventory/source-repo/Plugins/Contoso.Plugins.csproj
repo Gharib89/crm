@@ -8,5 +8,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Shared\Contoso.Shared.csproj" />
+    <ProjectReference Include="..\..\External\Contoso.External.csproj" />
   </ItemGroup>
 </Project>

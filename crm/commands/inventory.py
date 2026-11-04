@@ -173,10 +173,7 @@ def inventory_map_source_cmd(ctx: CLIContext, inventory: Path, repo: Path, out_f
         source_map = map_source(inventory, repo)
         if out_file is not None:
             out_file.write_text(dump_source_map(source_map), encoding="utf-8")
-    except InventoryError as exc:
-        ctx.emit(False, error=str(exc))
-        return
-    except OSError as exc:
+    except (InventoryError, OSError) as exc:
         ctx.emit(False, error=str(exc))
         return
     data = {**source_map.summary(), "out": str(out_file) if out_file else None}

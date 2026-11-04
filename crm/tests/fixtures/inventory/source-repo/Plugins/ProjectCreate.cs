@@ -8,4 +8,9 @@ namespace Contoso.Plugins
         private const string Brace = "{";
         public void Execute(System.IServiceProvider serviceProvider) { }
     }
+
+    public class ProjectCreateLegacy : IPlugin
+    {
+        public void Execute(System.IServiceProvider serviceProvider) { }
+    }
 }

@@ -15,7 +15,7 @@ import os
 import posixpath
 import re
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -37,8 +37,9 @@ STATUSES = ("matched", "stale", "ambiguous", "candidate", "missing_source")
 #: The kinds a source map covers.
 MAPPED_KINDS = ("web_resource", "plugin_assembly", "plugin_type")
 
-#: Folders never scanned: tool state, package caches and build output.
-_SKIP_DIRS = frozenset(("node_modules", "bin", "obj", "packages"))
+#: Folders never scanned: package caches and build output. Dot folders are skipped too,
+#: and NuGet's restore folder, a ``packages`` folder beside a ``.sln``.
+_SKIP_DIRS = frozenset(("node_modules", "bin", "obj"))
 #: Extensions of files a web resource can be deployed from.
 _DEPLOYABLE = frozenset(
     (".htm", ".html", ".css", ".js", ".xml", ".xsl", ".xslt", ".svg", ".resx")
@@ -72,6 +73,10 @@ _CS_NOISE = re.compile(
 )
 _CS_TOKEN = re.compile(r"@?[A-Za-z_][\w.]*|[{};:,<>]")
 _CS_TYPE_KEYWORDS = frozenset(("class", "struct", "interface", "enum", "record"))
+_CS_MODIFIERS = frozenset(
+    ("public", "internal", "private", "protected", "sealed", "static", "abstract", "partial")
+    + ("unsafe", "new", "file", "readonly", "ref")
+)
 
 
 def _attr(attrs: str, name: str) -> str | None:
@@ -193,22 +198,9 @@ class SourceMap:
         return {
             **self.summary(),
             "components": [c.to_dict() for c in self.components],
-            "shared_projects": [
-                {
-                    "project": p.project,
-                    "assembly": p.assembly,
-                    "referenced_by": list(p.referenced_by),
-                }
-                for p in self.shared_projects
-            ],
-            "external": [
-                {"kind": e.kind, "name": e.name, "version": e.version, "used_by": list(e.used_by)}
-                for e in self.external
-            ],
-            "unmatched_source": [
-                {"path": u.path, "kind": u.kind, "type_name": u.type_name}
-                for u in self.unmatched_source
-            ],
+            "shared_projects": [asdict(p) for p in self.shared_projects],
+            "external": [asdict(e) for e in self.external],
+            "unmatched_source": [asdict(u) for u in self.unmatched_source],
         }
 
 
@@ -245,6 +237,7 @@ class _TypeDecl:
     name: str  # the CLR full name: Namespace.Outer+Inner
     path: str
     bases: tuple[str, ...]
+    abstract: bool
 
 
 @dataclass
@@ -257,7 +250,14 @@ class _Repo:
 def _walk(root: Path) -> Iterable[str]:
     """Yield every regular file under *root* as a sorted, posix, root-relative path."""
     for current, dirs, files in os.walk(root):
-        dirs[:] = sorted(d for d in dirs if not d.startswith(".") and d.lower() not in _SKIP_DIRS)
+        solution = any(name.lower().endswith(".sln") for name in files)
+        dirs[:] = sorted(
+            d
+            for d in dirs
+            if not d.startswith(".")
+            and d.lower() not in _SKIP_DIRS
+            and not (solution and d.lower() == "packages")
+        )
         base = Path(current)
         for name in sorted(files):
             path = base / name
@@ -269,9 +269,21 @@ def _is_minified(data: bytes) -> bool:
     return any(len(line) >= _MINIFIED_LINE for line in data.splitlines())
 
 
+def _project_name(rel: str) -> str:
+    """The project file name less ``.csproj``: what a project with no AssemblyName builds."""
+    return posixpath.basename(rel)[: -len(".csproj")]
+
+
 def _project(root: Path, rel: str) -> _Project:
     text = (root / rel).read_text(encoding="utf-8-sig", errors="replace")
     match = _ASSEMBLY_NAME.search(text)
+    # $(MSBuildProjectName) is the one MSBuild property an AssemblyName commonly uses that
+    # the project file alone resolves; any other property is compared as written.
+    assembly = (
+        re.sub(r"\$\(MSBuildProjectName\)", _project_name(rel), match.group(1), flags=re.IGNORECASE)
+        if match
+        else _project_name(rel)
+    )
     folder = posixpath.dirname(rel)
     references = sorted(
         {
@@ -298,7 +310,7 @@ def _project(root: Path, rel: str) -> _Project:
                 packages.add((name, _attr(attrs, "version")))
     return _Project(
         path=rel,
-        assembly=match.group(1) if match else posixpath.basename(rel)[: -len(".csproj")],
+        assembly=assembly,
         references=tuple(references),
         packages=tuple(sorted(packages, key=lambda p: (p[0].lower(), p[0], p[1] or ""))),
     )
@@ -337,7 +349,11 @@ def _cs_types(text: str, path: str) -> list[_TypeDecl]:
                 namespaces = file_ns + [s[1] for s in stack if s and s[0] == "ns"]
                 types = [s[1] for s in stack if s and s[0] == "type"] + [name.lstrip("@")]
                 full = "+".join(types)
-                out.append(_TypeDecl(".".join([*namespaces, full]), path, bases))
+                k = i - 1
+                while k >= 0 and tokens[k] in _CS_MODIFIERS and tokens[k] != "abstract":
+                    k -= 1
+                abstract = k >= 0 and tokens[k] == "abstract"
+                out.append(_TypeDecl(".".join([*namespaces, full]), path, bases, abstract))
                 if end < len(tokens) and tokens[end] == "{":
                     stack.append(("type", name.lstrip("@")))
                 i = end + 1
@@ -386,6 +402,11 @@ def _scan(root: Path) -> _Repo:
     for rel in paths:
         if rel.lower().endswith(".csproj"):
             repo.projects[rel] = _project(root, rel)
+    # A ProjectReference spelled in another letter case names the same file on Windows.
+    spelled = {rel.lower(): rel for rel in repo.projects}
+    for rel, project in repo.projects.items():
+        refs = sorted({spelled.get(ref.lower(), ref) for ref in project.references})
+        repo.projects[rel] = replace(project, references=tuple(refs))
     by_folder: dict[str, list[str]] = {}
     for rel in repo.projects:
         by_folder.setdefault(posixpath.dirname(rel), []).append(rel)
@@ -468,7 +489,10 @@ def _consumers(
             base = posixpath.dirname(record.key)
             for match in _HTML_REF.finditer(text):
                 attr, ref = match.group(1), match.group(2)
-                parts = urlsplit(ref)
+                try:
+                    parts = urlsplit(ref)
+                except ValueError:  # a malformed URL (an unbalanced IPv6 bracket) names nothing
+                    continue
                 if parts.scheme in ("http", "https") or ref.startswith("//"):
                     host = (parts.hostname or "").lower()
                     if attr.lower() == "src" and host and host != org_host:
@@ -543,10 +567,13 @@ def _web_resource(record: Record, data: list[bytes], files: list[_File]) -> Comp
         if artifact is None:
             reason = "no deployed content was recorded, so only the name lines up"
             return ComponentSource(kind, key, "candidate", _paths(names), reason=reason)
+        # Minified on one side only: a build output against its source, so the hashes
+        # cannot agree. Minified on both sides is two builds, compared as usual.
         deployed_min = any(_is_minified(d) for d in data) or ".min." in key.lower()
-        if deployed_min or any(f.minified for f in names):
+        repo_min = any(f.minified or ".min." in f.lower for f in names)
+        if deployed_min != repo_min:
             side = "the deployed content" if deployed_min else "the repository file"
-            reason = f"minified: {side} is minified, so the hashes cannot agree; the name lines up"
+            reason = f"minified: only {side} is minified, so the hashes cannot agree"
             return ComponentSource(kind, key, "candidate", _paths(names), reason=reason)
         if len(names) == 1:
             reason = "the name lines up but the content differs; which side is newer is unknown"
@@ -560,13 +587,14 @@ def _web_resource(record: Record, data: list[bytes], files: list[_File]) -> Comp
     return ComponentSource(kind, key, "missing_source")
 
 
-def _same(a: str, b: str) -> bool:
+def _same_assembly(a: str, b: str) -> bool:
+    """Assembly names compare case-insensitively, as .NET loads them."""
     return a.casefold() == b.casefold()
 
 
 def _assembly(record: Record, repo: _Repo) -> ComponentSource:
     name = str(record.fields["name"])
-    projects = sorted(p.path for p in repo.projects.values() if _same(p.assembly, name))
+    projects = sorted(p.path for p in repo.projects.values() if _same_assembly(p.assembly, name))
     if len(projects) == 1:
         return ComponentSource(record.kind, record.key, "matched", projects=tuple(projects))
     if projects:
@@ -586,7 +614,7 @@ def _plugin_type(record: Record, repo: _Repo) -> ComponentSource:
             (d.path, o)
             for d, owners in decls
             for o in owners
-            if _same(repo.projects[o].assembly, assembly)
+            if _same_assembly(repo.projects[o].assembly, assembly)
         }
     )
     if len(agree) == 1:
@@ -601,14 +629,16 @@ def _plugin_type(record: Record, repo: _Repo) -> ComponentSource:
             reason=f"{type_name} is declared in several projects that build {assembly}",
         )
     if decls:
-        owners = sorted({o for _, os_ in decls for o in os_})
+        owners = sorted({o for _, decl_owners in decls for o in decl_owners})
         built = sorted({repo.projects[o].assembly for o in owners})
         where = f"projects building {', '.join(built)}" if built else "no project"
         reason = f"{type_name} is declared in {where}, not {assembly}"
         return ComponentSource(
             kind, key, "candidate", tuple(sorted({d.path for d, _ in decls})), tuple(owners), reason
         )
-    projects = sorted(p.path for p in repo.projects.values() if _same(p.assembly, assembly))
+    projects = sorted(
+        p.path for p in repo.projects.values() if _same_assembly(p.assembly, assembly)
+    )
     if projects:
         reason = f"a project builds {assembly}, but no declaration of {type_name} was found"
         return ComponentSource(kind, key, "candidate", (), tuple(projects), reason)
@@ -657,7 +687,7 @@ def map_source(inventory_dir: Path, repo: Path) -> SourceMap:
     plugin_projects = {
         p
         for c in components
-        if c.kind == "plugin_assembly" and c.status == "matched"
+        if c.kind == "plugin_assembly" and c.status in ("matched", "ambiguous")
         for p in c.projects
     }
     referenced: dict[str, set[str]] = {}
@@ -667,7 +697,7 @@ def map_source(inventory_dir: Path, repo: Path) -> SourceMap:
     shared = tuple(
         SharedProject(
             ref,
-            scanned.projects[ref].assembly if ref in scanned.projects else posixpath.basename(ref),
+            scanned.projects[ref].assembly if ref in scanned.projects else _project_name(ref),
             tuple(sorted(users)),
         )
         for ref, users in sorted(referenced.items())
@@ -689,6 +719,19 @@ def map_source(inventory_dir: Path, repo: Path) -> SourceMap:
     ]
 
     used = {f for c in components for f in c.files}
+    # A class deriving from IPlugin or CodeActivity, directly or through the repo's own
+    # base classes (a PluginBase template), by simple name.
+    plugin_bases = set(_PLUGIN_BASES)
+    while True:
+        derived = {
+            d.name.rsplit(".", 1)[-1].rsplit("+", 1)[-1]
+            for d, _ in scanned.types
+            if plugin_bases & set(d.bases)
+        }
+        if derived <= plugin_bases:
+            break
+        plugin_bases |= derived
+    registered = {str(r.fields["type_name"]) for r in inv.records if r.kind == "plugin_type"}
     unmatched = [
         UnmatchedSource(f.path, "web_resource")
         for f in scanned.files
@@ -696,7 +739,7 @@ def map_source(inventory_dir: Path, repo: Path) -> SourceMap:
     ] + [
         UnmatchedSource(d.path, "plugin_type", d.name)
         for d, _ in scanned.types
-        if _PLUGIN_BASES & set(d.bases) and d.path not in used
+        if plugin_bases & set(d.bases) and not d.abstract and d.name not in registered
     ]
     unmatched.sort(key=lambda u: (u.path, u.kind, u.type_name or ""))
 
