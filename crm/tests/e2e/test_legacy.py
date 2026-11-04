@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from pathlib import Path
 
 import pytest
 
@@ -74,3 +75,87 @@ def test_legacy_components_pages_and_writes_payloads(cli, tmp_path):
     step_ids = {s["id"] for s in data["plugin-steps"]}
     assert step_ids
     assert any(i["sdkmessageprocessingstepid"]["id"] in step_ids for i in data["step-images"])
+
+
+@covers("legacy dependencies")
+def test_legacy_dependencies_reads_what_depends_on_account(cli):
+    (account,) = [e for e in _legacy(cli, "metadata") if e["logical_name"] == "account"]
+    rows = _legacy(
+        cli, "dependencies", account["metadata_id"], "--component-type", "1", "--for", "dependents"
+    )
+    assert rows
+    assert all(r["requiredcomponentobjectid"] == account["metadata_id"] for r in rows)
+    assert all(isinstance(r["dependentcomponenttype"], int) for r in rows)
+
+
+@covers("legacy export-solution")
+def test_legacy_export_solution_writes_a_solution_zip(cli, tmp_path):
+    import zipfile
+
+    solutions = _legacy(cli, "components", "solutions")["solutions"]
+    system = {"Default", "Active", "Basic", "System"}
+    name = sorted(
+        s["uniquename"] for s in solutions if not s["ismanaged"] and s["uniquename"] not in system
+    )[0]
+    target = tmp_path / "solution.zip"
+    data = _legacy(cli, "export-solution", name, "-o", str(target))
+    assert data["bytes"] == target.stat().st_size
+    with zipfile.ZipFile(target) as archive:
+        assert {"solution.xml", "customizations.xml"} <= set(archive.namelist())
+
+
+@covers("inventory extract")
+def test_inventory_extract_writes_a_valid_crm2011_inventory(cli, tmp_path, monkeypatch):
+    """The full read takes minutes on a real org: every kind, every page."""
+    import jsonschema
+
+    from crm.core import inventory
+
+    name = os.environ["D365_E2E_LEGACY_PROFILE"].strip()
+    out = tmp_path / "inventory"
+    proc = cli(
+        ["--json", "--profile", name, "inventory", "extract", "--out", str(out)],
+        check=False,
+        env={"CRM_HOME": _REAL_HOME},
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    summary = json.loads(proc.stdout)["data"]
+    assert summary["complete"] is True, proc.stdout
+    assert summary["manifest"] == str(out / "manifest.json"), proc.stdout + proc.stderr
+    manifest = json.loads((out / "manifest.json").read_text())
+    schema = json.loads(
+        (
+            Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v1.schema.json"
+        ).read_text()
+    )
+    jsonschema.Draft202012Validator(schema).validate(manifest)
+    parsed = inventory.read_inventory(out)
+    assert parsed.source.platform == "crm2011"
+    assert parsed.source.version.startswith("5.")
+    assert any(
+        g.description and g.description.startswith("external integrations") for g in parsed.gaps
+    )
+    # crm writes no credential into any output file: not even the profile's user name.
+    # Each is searched raw and in the escaped forms the JSON manifest and XML artifacts use.
+    from xml.sax.saxutils import escape
+
+    from crm.core import connection as conn_mod
+
+    monkeypatch.setenv("CRM_HOME", _REAL_HOME)
+    resolved = conn_mod.resolve_credentials(profile_name=name)
+    secrets = {
+        # bytes.lower() folds ASCII only, so fold each form the same way as the file.
+        form.encode().lower()
+        for value in (resolved.profile.username, resolved.password)
+        if value
+        for form in (
+            value,
+            json.dumps(value, ensure_ascii=False)[1:-1],
+            escape(value, {'"': "&quot;", "'": "&apos;"}),
+        )
+    }
+    for path in out.rglob("*"):
+        if path.is_file():
+            data = path.read_bytes().lower()
+            # The message names the file only, so a failure never prints a secret.
+            assert not any(s in data for s in secrets), f"a credential appears in {path}"

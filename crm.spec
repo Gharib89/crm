@@ -60,6 +60,7 @@ a = Analysis(
         'crm.commands.examples',
         'crm.commands.fieldsec',
         'crm.commands.form',
+        'crm.commands.inventory',
         'crm.commands.legacy',
         'crm.commands.metadata',
         'crm.commands.org',

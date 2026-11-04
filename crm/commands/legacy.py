@@ -8,9 +8,10 @@ from pathlib import Path
 import click
 
 from crm.cli import CLIContext, pass_ctx
-from crm.commands._helpers import d365_errors
+from crm.commands._helpers import _output_option, d365_errors
 from crm.core import legacy_reads
 from crm.core.legacy import LegacyClient
+from crm.utils.d365_backend import normalize_guid
 
 
 def _meta(ctx: CLIContext, client: LegacyClient) -> dict | None:
@@ -128,4 +129,70 @@ def legacy_components(ctx: CLIContext, kinds: tuple[str, ...], out_dir: Path | N
         data, errors = legacy_reads.read_components(client, names, out_dir)
     _emit_with_failures(
         ctx, {**data, "errors": errors}, _meta(ctx, client), errors, len(names), "kinds", "kind"
+    )
+
+
+@legacy_group.command("dependencies")
+@click.argument("object_id")
+@click.option(
+    "--component-type",
+    type=int,
+    required=True,
+    help="The component's type code (1 entity, 2 attribute, 9 option set, 61 web resource, ...).",
+)
+@click.option(
+    "--for",
+    "for_",
+    type=click.Choice(list(legacy_reads.DEPENDENCY_REQUESTS)),
+    default="required",
+    show_default=True,
+    help=(
+        "required = what the component needs (RetrieveRequiredComponents); "
+        "dependents = what needs it (RetrieveDependentComponents); "
+        "delete = what blocks its deletion (RetrieveDependenciesForDelete)."
+    ),
+)
+@pass_ctx
+def legacy_dependencies(ctx: CLIContext, object_id: str, component_type: int, for_: str):
+    """Read one component's dependencies: read-only, over a dependency request.
+
+    OBJECT_ID is the component's id (a MetadataId for entities, attributes,
+    relationships and option sets, which `crm legacy metadata` returns). Each
+    row names both sides by component type and object id, plus the dependency
+    type (1 solution internal, 2 published, 4 unpublished).
+    """
+    guid = normalize_guid(object_id)
+    if guid is None:
+        raise click.BadParameter(f"{object_id!r} is not a GUID.", param_hint="OBJECT_ID")
+    with d365_errors(ctx):
+        client = ctx.legacy_client()
+        rows = legacy_reads.dependencies(client, guid, component_type, for_)
+    meta = _meta(ctx, client)
+    ctx.emit(True, data=rows, meta={**meta, "for": for_} if meta else None)
+
+
+@legacy_group.command("export-solution")
+@click.argument("unique_name")
+@_output_option(required=True, help="Write the solution zip to this file.")
+@pass_ctx
+def legacy_export_solution(ctx: CLIContext, unique_name: str, output: str):
+    """Export one solution unmanaged, as stored: read-only, over ExportSolution.
+
+    Nothing is published first (publishing writes), so the zip holds the
+    published customizations only.
+    """
+    with d365_errors(ctx):
+        client = ctx.legacy_client()
+        data = legacy_reads.export_solution(client, unique_name)
+    target = Path(output)
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+    except OSError as exc:
+        ctx.emit(False, error=f"--output {target}: {exc}")
+        return
+    ctx.emit(
+        True,
+        data={"solution": unique_name, "path": str(target), "bytes": len(data)},
+        meta=_meta(ctx, client),
     )

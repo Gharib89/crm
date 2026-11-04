@@ -246,8 +246,22 @@ class TestAllowlist:
                 "RetrieveAllEntities",
                 "RetrieveEntity",
                 "RetrieveAllOptionSets",
+                "RetrieveDependentComponents",
+                "RetrieveRequiredComponents",
+                "RetrieveDependenciesForDelete",
+                "ExportSolution",
+                "RetrieveApplicationRibbon",
+                "RetrieveEntityRibbon",
             }
         )
+
+    @pytest.mark.parametrize("request_name", ["PublishXml", "PublishAllXml", "ImportSolution"])
+    def test_publish_and_import_are_refused_before_any_io(self, client, request_name):
+        # ExportSolution is admitted, but publishing first would write, so it stays refused.
+        with requests_mock.Mocker() as m:
+            with pytest.raises(D365Error, match=f"refused: request '{request_name}'"):
+                client.execute_results(request_name)
+        assert m.call_count == 0
 
     @pytest.mark.parametrize(
         "request_name", ["RetrieveAllEntities", "RetrieveEntity", "RetrieveAllOptionSets"]

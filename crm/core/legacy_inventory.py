@@ -1,0 +1,941 @@
+"""Extract a migration inventory from a CRM 2011 org (ADR 0031, ADR 0032).
+
+``crm inventory extract`` on a crm2011 profile runs this. It reads every kind
+of the v1 manifest over the read-only SOAP client and writes the inventory
+folder `crm.core.inventory` defines.
+
+The read is split into **units** (one metadata request, one entity's detail,
+one RetrieveMultiple page, one ribbon). Each finished unit is saved under
+``<out>/.checkpoint/`` before the next starts, with its payloads staged beside
+it, so an interrupted run resumes from its output folder: a finished unit is
+reused, and a kind's paging resumes after its last finished page from that
+page's cookie. Records are built only once every unit has run, because a
+step's key needs its plug-in type's key, and a membership or a dependency
+needs the key of the component it names. The checkpoint is removed once a run
+reads every unit without an error.
+
+A failed unit is recorded in its kind's coverage and the run goes on
+(continue-and-report, ADR 0007); a connection-wide failure (401, no HTTP
+response) stops the run, and a re-run resumes it.
+"""
+
+from __future__ import annotations
+
+import base64
+import json
+import os
+import re
+import shutil
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any, cast
+
+from crm.core import legacy_reads
+from crm.core.inventory import (
+    KINDS,
+    MANIFEST_NAME,
+    SCHEMA_VERSION,
+    Artifact,
+    ExtractionGap,
+    Inventory,
+    KindCoverage,
+    Record,
+    Scope,
+    Source,
+    artifact_hashes,
+    artifact_path,
+    component_key,
+    dump_manifest,
+)
+from crm.core.legacy import LegacyClient, Page
+from crm.utils.d365_backend import D365Error
+
+CHECKPOINT_DIR = ".checkpoint"
+
+# The solutioncomponent / dependency type code of an option set, global or local by the set.
+_OPTION_SET = 9
+
+# Web resource types whose content is text, by webresourcetype code.
+_TEXT_WEB_RESOURCES = frozenset((1, 2, 3, 4, 9))
+_WEB_RESOURCE_EXT = dict(
+    enumerate(("htm", "css", "js", "xml", "png", "jpg", "gif", "xap", "xsl", "ico"), start=1)
+)
+_ISV_PAGE = re.compile(r"/ISV/[^\s\"'<>?#)\\,;]+", re.IGNORECASE)
+
+_STATIC_GAPS = (
+    ExtractionGap(
+        kind=None,
+        key=None,
+        description="external integrations: services that call the org, or that its"
+        " plug-ins and processes call",
+        reason="an integration's endpoints and credentials live outside the org's"
+        " customizations, so the SOAP endpoint cannot list them",
+    ),
+    ExtractionGap(
+        kind=None,
+        key=None,
+        description="SQL data sources of SSRS reports",
+        reason="reports are not a v1 kind, and a report's data source is configured in"
+        " SSRS, which the CRM 2011 SOAP endpoint does not reach",
+    ),
+)
+
+
+def _ribbon_gaps(unlabelled: list[str]) -> list[ExtractionGap]:
+    if not unlabelled:
+        return []
+    return [
+        ExtractionGap(
+            kind="ribbon",
+            key=None,
+            description=f"ribbons of {len(unlabelled)} entities with no display label:"
+            f" {', '.join(unlabelled)}",
+            reason="an entity with no display label has no UI, so CRM 2011 faults its"
+            " RetrieveEntityRibbon; none is read",
+        )
+    ]
+
+
+def _source_gaps(errors: list[str]) -> list[ExtractionGap]:
+    """One gap per failed source read, so the manifest says why its build is unknown."""
+    return [
+        ExtractionGap(
+            kind=None,
+            key=None,
+            description="source identity and build (WhoAmI, RetrieveVersion)",
+            reason=f"the read failed: {error.partition(': ')[2]}",
+        )
+        for error in errors
+    ]
+
+
+def check_out(out: Path) -> None:
+    """Refuse *out* when it holds files but no checkpoint, before anything connects.
+
+    Raises:
+        D365Error: *out* holds a finished inventory or unrelated files.
+    """
+    if out.exists() and not (out / CHECKPOINT_DIR / "state.json").is_file() and any(out.iterdir()):
+        raise D365Error(
+            f"--out {out} holds files and no checkpoint to resume; pass an empty or new folder"
+        )
+
+
+@dataclass(frozen=True)
+class _Read:
+    """One RetrieveMultiple read: the inventory kind it feeds and its query.
+
+    *payloads* maps a column holding a large body to the artifact name it is
+    staged under (``content``'s name is chosen per row for web resources).
+    """
+
+    kind: str
+    entity: str
+    attributes: tuple[str, ...]
+    payloads: tuple[tuple[str, str], ...] = ()
+    extra: str = ""
+    page_size: int = 5000
+
+    def fetch(self) -> str:
+        columns = "".join(f'<attribute name="{a}"/>' for a in self.attributes)
+        return f'<fetch><entity name="{self.entity}">{columns}{self.extra}</entity></fetch>'
+
+
+def _link(entity: str, key: str, alias: str, column: str) -> str:
+    return (
+        f'<link-entity name="{entity}" from="{key}" to="{key}" link-type="outer"'
+        f' alias="{alias}"><attribute name="{column}"/></link-entity>'
+    )
+
+
+# Run order: solutions first (origin needs them), plug-in types before steps.
+_READS: tuple[_Read, ...] = (
+    _Read(
+        "solution",
+        "solution",
+        ("uniquename", "friendlyname", "version", "ismanaged", "publisherid", "isvisible"),
+    ),
+    _Read(
+        "web_resource",
+        "webresource",
+        ("name", "displayname", "webresourcetype", "ismanaged", "solutionid", "content"),
+        payloads=(("content", "content"),),
+    ),
+    _Read(
+        "plugin_assembly",
+        "pluginassembly",
+        (
+            "name",
+            "version",
+            "culture",
+            "publickeytoken",
+            "isolationmode",
+            "sourcetype",
+            "ismanaged",
+            "solutionid",
+            "content",
+        ),
+        payloads=(("content", "content.dll"),),
+        page_size=20,  # each row carries its assembly binary
+    ),  # fmt: skip
+    _Read(
+        "plugin_type",
+        "plugintype",
+        (
+            "typename",
+            "friendlyname",
+            "pluginassemblyid",
+            "isworkflowactivity",
+            "ismanaged",
+            "solutionid",
+        ),
+    ),
+    _Read(
+        "step",
+        "sdkmessageprocessingstep",
+        (
+            "name",
+            "stage",
+            "mode",
+            "rank",
+            "plugintypeid",
+            "statecode",
+            "filteringattributes",
+            "supporteddeployment",
+            "ismanaged",
+            "solutionid",
+        ),
+        extra=_link("sdkmessage", "sdkmessageid", "message", "name")
+        + _link("sdkmessagefilter", "sdkmessagefilterid", "filter", "primaryobjecttypecode"),
+    ),  # fmt: skip
+    _Read(
+        "step_image",
+        "sdkmessageprocessingstepimage",
+        (
+            "name",
+            "entityalias",
+            "imagetype",
+            "attributes",
+            "messagepropertyname",
+            "sdkmessageprocessingstepid",
+            "ismanaged",
+            "solutionid",
+        ),
+    ),  # fmt: skip
+    _Read(
+        "process",
+        "workflow",
+        ("name", "category", "primaryentity", "statecode", "ismanaged", "solutionid", "xaml"),
+        payloads=(("xaml", "workflow.xaml"),),
+        # type 1 is a definition; activations (type 2) duplicate it.
+        extra='<filter><condition attribute="type" operator="eq" value="1"/></filter>',
+    ),
+    _Read(
+        "form",
+        "systemform",
+        ("name", "objecttypecode", "type", "ismanaged", "solutionid", "formxml"),
+        payloads=(("formxml", "form.xml"),),
+    ),
+    _Read(
+        "view",
+        "savedquery",
+        (
+            "name",
+            "returnedtypecode",
+            "querytype",
+            "ismanaged",
+            "solutionid",
+            "fetchxml",
+            "layoutxml",
+        ),
+        payloads=(("fetchxml", "fetch.xml"), ("layoutxml", "layout.xml")),
+    ),
+    _Read(
+        "sitemap",
+        "sitemap",
+        ("sitemapxml", "ismanaged", "solutionid"),
+        payloads=(("sitemapxml", "sitemap.xml"),),
+    ),
+    _Read("solution_membership", "solutioncomponent", ("solutionid", "componenttype", "objectid")),
+    _Read(
+        "dependency",
+        "dependency",
+        (
+            "dependentcomponentobjectid",
+            "dependentcomponenttype",
+            "requiredcomponentobjectid",
+            "requiredcomponenttype",
+            "dependencytype",
+        ),
+    ),  # fmt: skip
+)
+
+
+@dataclass
+class _Tally:
+    """What one inventory kind's reads did: units read, reused, truncation, errors."""
+
+    pages: int = 0
+    reused: int = 0
+    truncated: bool = False
+    errors: list[str] = field(default_factory=lambda: list[str]())
+
+
+@dataclass(frozen=True)
+class ExtractSummary:
+    """The short result `crm inventory extract` returns; the manifest holds the rest."""
+
+    out: str
+    manifest: str
+    records: int
+    kinds: dict[str, dict[str, Any]]
+    gaps: int
+    errors: list[str]
+    reused: dict[str, int]
+    resumed: bool
+    complete: bool
+
+
+class Checkpoint:
+    """The finished units of one extraction, under ``<out>/.checkpoint/``."""
+
+    def __init__(self, out: Path):
+        self.root = out / CHECKPOINT_DIR
+
+    @classmethod
+    def open(cls, out: Path, org_url: str, now: str) -> tuple[Checkpoint, dict[str, Any], bool]:
+        """Open *out* for a new run or a resume; return the checkpoint, its state, and resumed.
+
+        A folder holding files but no checkpoint is refused, so a finished
+        inventory or unrelated files are never mixed into a new one.
+        """
+        cp = cls(out)
+        state_file = cp.root / "state.json"
+        if state_file.is_file():
+            state = cast("dict[str, Any]", json.loads(state_file.read_text(encoding="utf-8")))
+            if state.get("org_url") != org_url:
+                raise D365Error(f"--out {out} holds a checkpoint of another org; pass a new folder")
+            return cp, state, True
+        check_out(out)
+        state = {"org_url": org_url, "started_at": now}
+        cp.save("state", state)
+        return cp, state, False
+
+    def _path(self, unit: str) -> Path:
+        return self.root / f"{unit}.json"
+
+    def load(self, unit: str) -> Any:
+        path = self._path(unit)
+        return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
+
+    def save(self, unit: str, data: object) -> None:
+        """Save *unit* atomically, so a crash never leaves half a unit to reuse."""
+        path = self._path(unit)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data), encoding="utf-8")
+        os.replace(tmp, path)
+
+    def stage(self, kind: str, row_id: str, name: str, data: bytes) -> None:
+        path = self.staged(kind, row_id, name)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+
+    def staged(self, kind: str, row_id: str, name: str) -> Path:
+        return self.root / "payload" / kind / f"{row_id}.{name}"
+
+    def remove(self) -> None:
+        shutil.rmtree(self.root)
+
+
+class _Run:
+    def __init__(self, client: LegacyClient, cp: Checkpoint):
+        self.client = client
+        self.cp = cp
+        self.tallies: dict[str, _Tally] = {}
+        self.errors: list[str] = []  # failed units that feed no kind (the source read)
+
+    def tally(self, kind: str) -> _Tally:
+        return self.tallies.setdefault(kind, _Tally())
+
+    def unit(self, kinds: Iterable[str], unit: str, read: Callable[[], Any]) -> Any:
+        """Return *unit*'s saved data, or read and save it; a per-item failure returns None."""
+        tallies = [self.tally(k) for k in kinds]
+        data = self.cp.load(unit)
+        if data is not None:
+            for t in tallies:
+                t.pages += 1
+                t.reused += 1
+            return data
+        try:
+            data = read()
+        except D365Error as exc:
+            if legacy_reads.connection_wide(exc):
+                raise
+            for t in tallies:
+                t.errors.append(f"{unit}: {exc}")
+            if not tallies:
+                self.errors.append(f"{unit}: {exc}")
+            return None
+        self.cp.save(unit, data)
+        for t in tallies:
+            t.pages += 1
+        return data
+
+    def pages(self, read: _Read) -> list[dict[str, Any]]:
+        """Page *read* to its end, reusing the pages a checkpoint holds."""
+        tally = self.tally(read.kind)
+        rows: list[dict[str, Any]] = []
+        last: Page | None = None
+        number = 1
+        while (saved := self.cp.load(f"rm/{read.kind}/{number:05d}")) is not None:
+            rows.extend(saved["rows"])
+            last = Page(read.entity, number, [], saved["more"], saved["cookie"])
+            tally.pages += 1
+            tally.reused += 1
+            number += 1
+        try:
+            if last is None or (last.more and last.cookie is not None):
+                for page in self.client.pages(read.fetch(), page_size=read.page_size, start=last):
+                    page_rows = [self._stage(read, r) for r in page.records]
+                    self.cp.save(
+                        f"rm/{read.kind}/{page.number:05d}",
+                        {"rows": page_rows, "more": page.more, "cookie": page.cookie},
+                    )
+                    rows.extend(page_rows)
+                    last = page
+                    tally.pages += 1
+        except (D365Error, ValueError) as exc:
+            # ValueError: web resource or assembly content that is not base64.
+            if isinstance(exc, D365Error) and legacy_reads.connection_wide(exc):
+                raise
+            failed = last.number + 1 if last is not None else 1
+            tally.errors.append(f"{read.entity} page {failed}: {exc}")
+        if last is not None and last.more and last.cookie is None:
+            tally.truncated = True
+            tally.errors.append(
+                f"{read.entity} page {last.number} reports more records but carries no paging"
+                " cookie"
+            )
+        return rows
+
+    def _stage(self, read: _Read, row: dict[str, object]) -> dict[str, object]:
+        """Move *row*'s payloads into staged files, leaving the artifact names on it."""
+        staged: list[str] = []
+        for column, name in read.payloads:
+            value = row.pop(column, None)
+            if not isinstance(value, str) or not value:
+                continue
+            if read.kind == "web_resource":
+                code = row.get("webresourcetype")
+                name = (
+                    f"content.{_WEB_RESOURCE_EXT.get(code if isinstance(code, int) else 0, 'bin')}"
+                )
+                data = base64.b64decode(value, validate=True)
+            elif read.kind == "plugin_assembly":
+                data = base64.b64decode(value, validate=True)
+            else:
+                data = value.encode("utf-8")
+            self.cp.stage(read.kind, str(row["id"]), name, data)
+            staged.append(name)
+        row["_artifacts"] = staged
+        return row
+
+
+def _utc_now() -> str:
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def extract(
+    client: LegacyClient,
+    out: Path,
+    *,
+    cli_version: str,
+    now: Callable[[], str] = _utc_now,
+) -> ExtractSummary:
+    """Extract the org's migration inventory into *out*, resuming a checkpoint there.
+
+    Raises:
+        D365Error: *out* cannot be used, or a connection-wide failure stopped
+            the read (the checkpoint keeps every finished unit for a re-run).
+    """
+    cp, state, resumed = Checkpoint.open(out, client.profile.url, now())
+    run = _Run(client, cp)
+
+    def source() -> dict[str, Any]:
+        return {
+            "organization_id": client.execute("WhoAmI").get("OrganizationId"),
+            "version": client.execute("RetrieveVersion").get("Version"),
+        }
+
+    ident = cast("dict[str, Any]", run.unit((), "source", source) or {})
+    entities = cast(
+        "list[dict[str, Any]]",
+        run.unit(("entity",), "entities", lambda: legacy_reads.list_entities(client)) or [],
+    )
+    option_sets = cast(
+        "list[dict[str, Any]]",
+        run.unit(
+            ("global_option_set",), "option-sets", lambda: legacy_reads.list_option_sets(client)
+        )
+        or [],
+    )
+    details: list[dict[str, Any]] = []
+    for entity in entities:
+        name = str(entity["logical_name"])
+        detail = run.unit(
+            ("attribute", "relationship", "local_option_set"),
+            f"entity/{name}",
+            lambda name=name: legacy_reads.entity_detail(client, name),
+        )
+        if detail is not None:
+            details.append(detail)
+    rows = {read.kind: run.pages(read) for read in _READS}
+    ribbons: dict[str | None, bytes] = {}
+    # An entity with no display label has no UI: its ribbon read faults
+    # ("Could not find localized name"), so it is not read (measured on UR15).
+    labelled = [str(e["logical_name"]) for e in entities if e.get("display_name")]
+    unlabelled = sorted(str(e["logical_name"]) for e in entities if not e.get("display_name"))
+    for entity_name in [None, *labelled]:
+        unit = f"ribbon/{entity_name or '_application'}"
+
+        def read_ribbon(entity_name: str | None = entity_name) -> str:
+            xml = legacy_reads.ribbon_xml(client, entity_name)
+            cp.stage("ribbon", entity_name or "_application", "ribbon.xml", xml)
+            return "ribbon.xml"
+
+        if run.unit(("ribbon",), unit, read_ribbon) is not None:
+            ribbons[entity_name] = cp.staged(
+                "ribbon", entity_name or "_application", "ribbon.xml"
+            ).read_bytes()
+
+    built = _Builder(cp, out, rows)
+    built.metadata(entities, option_sets, details)
+    built.components()
+    for entity_name, xml in ribbons.items():
+        built.add(
+            "ribbon",
+            None,
+            {"entity": entity_name},
+            None,
+            "unknown",  # the ribbon XML merges the system ribbon and customizations
+            None,
+            [("ribbon.xml", xml, True)],
+        )
+    built.memberships_and_dependencies()
+    records = built.finish()
+
+    coverage: dict[str, KindCoverage] = {}
+    counts: dict[str, int] = {}
+    for record in records:
+        counts[record.kind] = counts.get(record.kind, 0) + 1
+    for kind in KINDS:
+        tally = run.tallies.get(kind, _Tally())
+        n = counts.get(kind, 0)
+        if tally.errors and n == 0:
+            status = "failed"
+        elif tally.errors or tally.truncated:
+            status = "partial"
+        else:
+            status = "complete"
+        coverage[kind] = KindCoverage(status, tally.pages, n, tally.truncated, tuple(tally.errors))
+
+    inventory = Inventory(
+        schema_version=SCHEMA_VERSION,
+        source=Source(
+            platform="crm2011",
+            org_url=client.profile.url,
+            organization_id=ident.get("organization_id"),
+            version=ident.get("version") or "unknown",
+        ),
+        extracted_at=state["started_at"],
+        cli_version=cli_version,
+        scope=Scope(mode="org", solutions=()),
+        publication="published",
+        records=tuple(records),
+        coverage=coverage,
+        gaps=(*_STATIC_GAPS, *built.gaps(), *_ribbon_gaps(unlabelled), *_source_gaps(run.errors)),
+    )
+    (out / MANIFEST_NAME).write_text(dump_manifest(inventory), encoding="utf-8")
+
+    errors = [*run.errors, *(e for t in run.tallies.values() for e in t.errors)]
+    complete = not errors and all(c.status == "complete" for c in coverage.values())
+    if complete:
+        cp.remove()
+    return ExtractSummary(
+        out=str(out),
+        manifest=str(out / MANIFEST_NAME),
+        records=len(records),
+        kinds={k: {"status": c.status, "records": c.records} for k, c in coverage.items()},
+        gaps=len(inventory.gaps),
+        errors=errors,
+        reused={k: t.reused for k, t in sorted(run.tallies.items()) if t.reused},
+        resumed=resumed,
+        complete=complete,
+    )
+
+
+def _ref_id(value: object) -> str | None:
+    if isinstance(value, dict):
+        ref = cast("dict[str, Any]", value).get("id")
+        return ref.lower() if isinstance(ref, str) else None
+    return value.lower() if isinstance(value, str) else None
+
+
+def _ref_name(value: object) -> str | None:
+    """The display name an EntityReference column carries, or None."""
+    if isinstance(value, dict):
+        name = cast("dict[str, Any]", value).get("name")
+        return name if isinstance(name, str) else None
+    return None
+
+
+def _entity_name(value: object) -> str | None:
+    """An entity-name column; ``none`` (no entity) is null."""
+    return None if value in (None, "", "none") else str(value)
+
+
+@dataclass
+class _Pending:
+    kind: str
+    key: str
+    id: str | None
+    display_name: str | None
+    origin: str
+    managed: bool | None
+    fields: dict[str, Any]
+    payloads: list[tuple[str, bytes, bool]]
+
+
+class _Builder:
+    """Turns the units' rows into records, resolving cross-kind keys and finding gaps."""
+
+    def __init__(self, cp: Checkpoint, out: Path, rows: dict[str, list[dict[str, Any]]]):
+        self.cp = cp
+        self.out = out
+        self.rows = rows
+        self.pending: list[_Pending] = []
+        # (component type, object id) -> (kind, key), for memberships and dependencies.
+        self.index: dict[tuple[int, str], tuple[str, str]] = {}
+        self.by_id: dict[str, dict[str, str]] = {}
+        self.unresolved: dict[tuple[str, int], int] = {}
+        self.extra_gaps: list[ExtractionGap] = []
+        self.isv: dict[str, set[str]] = {}
+        self.isv_spelling: dict[str, str] = {}
+        solutions = rows.get("solution", [])
+        self.solution_names = {
+            str(r["id"]).lower(): str(r.get("uniquename")) for r in solutions if r.get("id")
+        }
+
+    def add(
+        self,
+        kind: str,
+        row_id: str | None,
+        fields: dict[str, Any],
+        display_name: str | None,
+        origin: str,
+        managed: bool | None,
+        payloads: list[tuple[str, bytes, bool]],
+        component_type: int | None = None,
+    ) -> str:
+        key = component_key(kind, fields)
+        self.pending.append(
+            _Pending(kind, key, row_id, display_name, origin, managed, fields, payloads)
+        )
+        if row_id:
+            self.by_id.setdefault(kind, {})[row_id.lower()] = key
+            if component_type is not None:
+                self.index[(component_type, row_id.lower())] = (kind, key)
+        return key
+
+    def _origin(self, row: dict[str, Any]) -> str:
+        solution = _ref_id(row.get("solutionid"))
+        if solution is None or solution not in self.solution_names:
+            return "unknown"
+        return "system" if self.solution_names[solution] == "System" else "custom"
+
+    def _staged(
+        self, kind: str, row: dict[str, Any], text: bool = True
+    ) -> list[tuple[str, bytes, bool]]:
+        names = cast("list[str]", row.get("_artifacts", []))
+        return [(n, self.cp.staged(kind, str(row["id"]), n).read_bytes(), text) for n in names]
+
+    def metadata(
+        self,
+        entities: list[dict[str, Any]],
+        option_sets: list[dict[str, Any]],
+        details: list[dict[str, Any]],
+    ) -> None:
+        for e in entities:
+            self.add(
+                "entity", e.get("metadata_id"),
+                {"logical_name": e["logical_name"], "object_type_code": e["object_type_code"]},
+                e.get("display_name"), "custom" if e["custom"] else "system", e.get("managed"),
+                [], 1,
+            )  # fmt: skip
+        for s in option_sets:
+            self.add(
+                "global_option_set", s.get("metadata_id"),
+                {"name": s["name"], "type": s["type"], "options": s["options"]},
+                None, "custom" if s["custom"] else "system", None, [], _OPTION_SET,
+            )  # fmt: skip
+        seen_relationships: set[str] = set()
+        for d in details:
+            entity = d["logical_name"]
+            local_sets = {s["name"]: s for s in d["option_sets"] if not s["global"]}
+            for a in d["attributes"]:
+                self.add(
+                    "attribute", a.get("metadata_id"),
+                    {"entity": entity, "logical_name": a["logical_name"], "type": a["type"],
+                     "required_level": a["required_level"], "option_set": a["option_set"]},
+                    None, "custom" if a["custom"] else "system", a.get("managed"), [], 2,
+                )  # fmt: skip
+                local = local_sets.get(a["option_set"] or "")
+                if local is not None:
+                    self.add(
+                        "local_option_set", local.get("metadata_id"),
+                        {"entity": entity, "attribute": a["logical_name"], "name": local["name"],
+                         "type": local["type"], "options": local["options"]},
+                        None, "custom" if a["custom"] else "system", a.get("managed"), [],
+                        _OPTION_SET,
+                    )  # fmt: skip
+            rels = d["relationships"]
+            for shape, items in (
+                ("one_to_many", rels["one_to_many"] + rels["many_to_one"]),
+                ("many_to_many", rels["many_to_many"]),
+            ):
+                for r in items:
+                    if r["schema_name"] in seen_relationships:
+                        continue
+                    seen_relationships.add(r["schema_name"])
+                    fields = {
+                        k: v for k, v in r.items() if k not in ("metadata_id", "custom", "managed")
+                    }
+                    self.add(
+                        "relationship", r.get("metadata_id"), {**fields, "type": shape},
+                        None, "custom" if r["custom"] else "system", r.get("managed"), [], 10,
+                    )  # fmt: skip
+
+    def components(self) -> None:
+        rows = self.rows
+        for r in rows.get("solution", []):
+            visible = r.get("isvisible") is not False and r.get("uniquename") != "Default"
+            self.add(
+                "solution", r["id"],
+                {"unique_name": r["uniquename"], "version": r.get("version"),
+                 "publisher": _ref_name(r.get("publisherid"))},
+                r.get("friendlyname"), "custom" if visible else "system", r.get("ismanaged"), [],
+            )  # fmt: skip
+        for r in rows.get("web_resource", []):
+            code = r.get("webresourcetype")
+            text = code in _TEXT_WEB_RESOURCES
+            payloads = self._staged("web_resource", r, text)
+            key = self.add(
+                "web_resource", r["id"], {"name": r["name"], "web_resource_type": code},
+                r.get("displayname"), self._origin(r), r.get("ismanaged"), payloads, 61,
+            )  # fmt: skip
+            for _, data, is_text in payloads:
+                if is_text:
+                    self._scan_isv(data, f"web_resource {key}")
+        for r in rows.get("plugin_assembly", []):
+            source = r.get("sourcetype")
+            key = self.add(
+                "plugin_assembly", r["id"],
+                {"name": r["name"], "version": r.get("version"), "culture": r.get("culture"),
+                 "public_key_token": r.get("publickeytoken"), "source_type": source},
+                r.get("name"), self._origin(r), r.get("ismanaged"),
+                self._staged("plugin_assembly", r, text=False), 91,
+            )  # fmt: skip
+            if source != 0:
+                where = {1: "on disk", 2: "in the GAC"}.get(
+                    source if isinstance(source, int) else -1
+                )
+                self.extra_gaps.append(
+                    ExtractionGap(
+                        kind="plugin_assembly", key=key, description=None,
+                        reason=f"the assembly binary is stored {where or 'outside the database'}"
+                        " on the CRM server, not in the database, so SOAP cannot read it",
+                    )
+                )  # fmt: skip
+        assemblies = {str(r["id"]).lower(): str(r["name"]) for r in rows.get("plugin_assembly", [])}
+        for r in rows.get("plugin_type", []):
+            ref = r.get("pluginassemblyid")
+            assembly = assemblies.get(_ref_id(ref) or "") or _ref_name(ref)
+            if not assembly:
+                self._unresolve("plugin_type", 91)
+                continue
+            self.add(
+                "plugin_type", r["id"],
+                {"assembly": assembly, "type_name": r["typename"],
+                 "workflow_activity": r.get("isworkflowactivity")},
+                r.get("friendlyname"), self._origin(r), r.get("ismanaged"), [], 90,
+            )  # fmt: skip
+        types = self.by_id.get("plugin_type", {})
+        for r in rows.get("step", []):
+            plugin_type = types.get(_ref_id(r.get("plugintypeid")) or "")
+            message = r.get("message.name")
+            if plugin_type is None or not message:
+                self._unresolve("step", 90)
+                continue
+            self.add(
+                "step", r["id"],
+                {"message": message,
+                 "primary_entity": _entity_name(r.get("filter.primaryobjecttypecode")),
+                 "stage": r["stage"], "mode": r["mode"], "plugin_type": plugin_type,
+                 "name": r["name"], "rank": r.get("rank"),
+                 "filtering_attributes": r.get("filteringattributes"),
+                 "state": r.get("statecode"), "supported_deployment": r.get("supporteddeployment")},
+                r.get("name"), self._origin(r), r.get("ismanaged"), [], 92,
+            )  # fmt: skip
+        steps = self.by_id.get("step", {})
+        for r in rows.get("step_image", []):
+            step = steps.get(_ref_id(r.get("sdkmessageprocessingstepid")) or "")
+            if step is None:
+                self._unresolve("step_image", 92)
+                continue
+            self.add(
+                "step_image", r["id"],
+                {"step": step, "alias": r["entityalias"], "image_type": r["imagetype"],
+                 "attributes": r.get("attributes"),
+                 "message_property": r.get("messagepropertyname")},
+                r.get("name"), self._origin(r), r.get("ismanaged"), [], 93,
+            )  # fmt: skip
+        for r in rows.get("process", []):
+            self.add(
+                "process", r["id"],
+                {"category": r["category"], "primary_entity": _entity_name(r.get("primaryentity")),
+                 "name": r["name"], "state": r.get("statecode")},
+                r.get("name"), self._origin(r), r.get("ismanaged"), self._staged("process", r), 29,
+            )  # fmt: skip
+        for r in rows.get("form", []):
+            self.add(
+                "form", r["id"],
+                {"entity": r["objecttypecode"], "form_type": r["type"], "name": r["name"]},
+                r.get("name"), self._origin(r), r.get("ismanaged"), self._staged("form", r), 60,
+            )  # fmt: skip
+        for r in rows.get("view", []):
+            self.add(
+                "view", r["id"],
+                {"entity": r["returnedtypecode"], "name": r["name"],
+                 "query_type": r.get("querytype")},
+                r.get("name"), self._origin(r), r.get("ismanaged"), self._staged("view", r), 26,
+            )  # fmt: skip
+        for r in rows.get("sitemap", []):
+            payloads = self._staged("sitemap", r)
+            self.add(
+                "sitemap",
+                r["id"],
+                {"unique_name": None},
+                None,
+                self._origin(r),
+                r.get("ismanaged"),
+                payloads,
+                62,
+            )
+            for _, data, _ in payloads:
+                self._scan_isv(data, "sitemap default")
+
+    def _scan_isv(self, data: bytes, where: str) -> None:
+        for match in _ISV_PAGE.finditer(data.decode("utf-8", errors="replace")):
+            # One gap per page, spelled as first seen (IIS paths are case-insensitive).
+            page = self.isv_spelling.setdefault(match.group(0).lower(), match.group(0))
+            self.isv.setdefault(page, set()).add(where)
+
+    def _unresolve(self, kind: str, component_type: int) -> None:
+        self.unresolved[(kind, component_type)] = self.unresolved.get((kind, component_type), 0) + 1
+
+    def _resolve(self, component_type: object, object_id: object) -> tuple[str, str] | None:
+        oid = _ref_id(object_id)
+        if not isinstance(component_type, int) or oid is None:
+            return None
+        return self.index.get((component_type, oid))
+
+    def memberships_and_dependencies(self) -> None:
+        for r in self.rows.get("solution_membership", []):
+            solution = self.solution_names.get(_ref_id(r.get("solutionid")) or "")
+            member = self._resolve(r.get("componenttype"), r.get("objectid"))
+            if solution is None or member is None:
+                self._unresolve("solution_membership", int(r.get("componenttype") or 0))
+                continue
+            self.add(
+                "solution_membership", r["id"],
+                {"solution": solution, "member_kind": member[0], "member_key": member[1]},
+                None, "unknown", None, [],
+            )  # fmt: skip
+        for r in self.rows.get("dependency", []):
+            dependent = self._resolve(
+                r.get("dependentcomponenttype"), r.get("dependentcomponentobjectid")
+            )
+            required = self._resolve(
+                r.get("requiredcomponenttype"), r.get("requiredcomponentobjectid")
+            )
+            if dependent is None or required is None:
+                code = (
+                    r.get("requiredcomponenttype") if dependent else r.get("dependentcomponenttype")
+                )
+                self._unresolve("dependency", code if isinstance(code, int) else 0)
+                continue
+            self.add(
+                "dependency", r["id"],
+                {"dependent_kind": dependent[0], "dependent_key": dependent[1],
+                 "required_kind": required[0], "required_key": required[1],
+                 "dependency_type": r["dependencytype"]},
+                None, "unknown", None, [],
+            )  # fmt: skip
+
+    def finish(self) -> list[Record]:
+        """Write each record's artifacts and return the records.
+
+        Every payload is re-derived from the checkpoint, so an earlier run's
+        artifacts are dropped first: a resumed run leaves no unreferenced file.
+        """
+        if (self.out / "artifacts").exists():
+            shutil.rmtree(self.out / "artifacts")
+        counts: dict[tuple[str, str], int] = {}
+        for p in self.pending:
+            counts[(p.kind, p.key)] = counts.get((p.kind, p.key), 0) + 1
+        records: list[Record] = []
+        for p in self.pending:
+            ambiguous = counts[(p.kind, p.key)] > 1
+            artifacts: list[Artifact] = []
+            for name, data, text in p.payloads:
+                path = artifact_path(p.kind, p.key, name, discriminator=p.id if ambiguous else None)
+                target = self.out / path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(data)
+                hashes = artifact_hashes(data, text=text)
+                artifacts.append(
+                    Artifact(
+                        path, "text" if text else "binary", hashes.sha256, hashes.normalized_sha256
+                    )
+                )
+            records.append(
+                Record(p.kind, p.key, p.id, p.display_name, p.origin, p.managed, "published",
+                       p.fields, tuple(artifacts))
+            )  # fmt: skip
+        return records
+
+    def gaps(self) -> list[ExtractionGap]:
+        gaps = list(self.extra_gaps)
+        for page, refs in sorted(self.isv.items()):
+            gaps.append(
+                ExtractionGap(
+                    kind=None, key=None,
+                    description=f"ISV page {page}, referenced from {'; '.join(sorted(refs))}",
+                    reason="ISV folder pages are files on the CRM web server, which the SOAP"
+                    " endpoint cannot read",
+                )
+            )  # fmt: skip
+        for (kind, code), n in sorted(self.unresolved.items()):
+            gaps.append(
+                ExtractionGap(
+                    kind=kind, key=None,
+                    description=f"{n} {kind} row(s) naming a component of type {code}"
+                    " that this inventory does not record",
+                    reason="the component is of a kind v1 does not define, or its own read"
+                    " failed, so it has no component key",
+                )
+            )  # fmt: skip
+        return gaps

@@ -11,12 +11,15 @@ from __future__ import annotations
 
 import base64
 import binascii
+import io
 import xml.etree.ElementTree as ET
+import zipfile
+import zlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from crm.core.legacy import LegacyClient, parameter
+from crm.core.legacy import LegacyClient, entity_records, parameter
 from crm.utils.d365_backend import D365Error, classify_d365_error
 
 _MD = {
@@ -51,6 +54,7 @@ def _option_set(el: ET.Element) -> dict[str, Any]:
             options.append(boolean)
     return {
         "name": el.findtext("c:Name", "", _MD),
+        "metadata_id": el.findtext("c:MetadataId", None, _MD),
         "global": _flag(el, "c:IsGlobal"),
         "custom": _flag(el, "c:IsCustomOptionSet"),
         "type": el.findtext("c:OptionSetType", "", _MD),
@@ -65,13 +69,20 @@ def _option_set(el: ET.Element) -> dict[str, Any]:
 
 
 def list_entities(client: LegacyClient) -> list[dict[str, Any]]:
-    """Every entity in server order: logical name, custom flag, object type code."""
+    """Every entity in server order: logical name, display label, custom flag, type code.
+
+    `display_name` is None for an entity with no label (intersect and internal
+    entities): it has no UI, so no form, view or ribbon.
+    """
     results = client.execute_results("RetrieveAllEntities", _filters("Entity") + _AS_IF_PUBLISHED)
     return [
         {
             "logical_name": e.findtext("c:LogicalName", "", _MD),
+            "display_name": e.findtext("c:DisplayName/a:UserLocalizedLabel/a:Label", None, _MD),
             "custom": _flag(e, "c:IsCustomEntity"),
             "object_type_code": int(e.findtext("c:ObjectTypeCode", "0", _MD)),
+            "metadata_id": e.findtext("c:MetadataId", None, _MD),
+            "managed": _flag(e, "c:IsManaged"),
         }
         for e in _result(results, "EntityMetadata", "RetrieveAllEntities").findall(
             "c:EntityMetadata", _MD
@@ -93,7 +104,9 @@ def list_option_sets(client: LegacyClient) -> list[dict[str, Any]]:
 def _one_to_many(rel: ET.Element) -> dict[str, Any]:
     return {
         "schema_name": rel.findtext("c:SchemaName", "", _MD),
+        "metadata_id": rel.findtext("c:MetadataId", None, _MD),
         "custom": _flag(rel, "c:IsCustomRelationship"),
+        "managed": _flag(rel, "c:IsManaged"),
         "referenced_entity": rel.findtext("c:ReferencedEntity", "", _MD),
         "referenced_attribute": rel.findtext("c:ReferencedAttribute", "", _MD),
         "referencing_entity": rel.findtext("c:ReferencingEntity", "", _MD),
@@ -104,7 +117,9 @@ def _one_to_many(rel: ET.Element) -> dict[str, Any]:
 def _many_to_many(rel: ET.Element) -> dict[str, Any]:
     return {
         "schema_name": rel.findtext("c:SchemaName", "", _MD),
+        "metadata_id": rel.findtext("c:MetadataId", None, _MD),
         "custom": _flag(rel, "c:IsCustomRelationship"),
+        "managed": _flag(rel, "c:IsManaged"),
         "entity1": rel.findtext("c:Entity1LogicalName", "", _MD),
         "entity2": rel.findtext("c:Entity2LogicalName", "", _MD),
         "intersect_entity": rel.findtext("c:IntersectEntityName", "", _MD),
@@ -131,15 +146,19 @@ def entity_detail(client: LegacyClient, name: str) -> dict[str, Any]:
         attributes.append(
             {
                 "logical_name": attr.findtext("c:LogicalName", "", _MD),
+                "metadata_id": attr.findtext("c:MetadataId", None, _MD),
                 "type": attr.findtext("c:AttributeType", "", _MD),
                 "custom": _flag(attr, "c:IsCustomAttribute"),
+                "managed": _flag(attr, "c:IsManaged"),
                 "required_level": attr.findtext("c:RequiredLevel/a:Value", None, _MD),
                 "option_set": set_name,
             }
         )
     return {
         "logical_name": entity.findtext("c:LogicalName", "", _MD),
+        "metadata_id": entity.findtext("c:MetadataId", None, _MD),
         "custom": _flag(entity, "c:IsCustomEntity"),
+        "managed": _flag(entity, "c:IsManaged"),
         "object_type_code": int(entity.findtext("c:ObjectTypeCode", "0", _MD)),
         "primary_id_attribute": entity.findtext("c:PrimaryIdAttribute", None, _MD),
         "primary_name_attribute": entity.findtext("c:PrimaryNameAttribute", None, _MD),
@@ -168,7 +187,7 @@ def entity_detail(client: LegacyClient, name: str) -> dict[str, Any]:
     }
 
 
-def _connection_wide(exc: D365Error) -> bool:
+def connection_wide(exc: D365Error) -> bool:
     """A 401 or no HTTP response fails every later read too, so it is never per-item."""
     category, _ = classify_d365_error(exc.status, exc.code, str(exc))
     return category in ("auth_failed", "transport_error")
@@ -184,7 +203,7 @@ def read_entities(
         try:
             entities.append(entity_detail(client, name))
         except D365Error as exc:
-            if _connection_wide(exc):
+            if connection_wide(exc):
                 raise
             errors.append({"entity": name, "error": str(exc), "code": exc.code})
     return entities, errors
@@ -344,8 +363,102 @@ def read_components(
         except (D365Error, OSError, binascii.Error) as exc:
             # A fault, a payload that cannot be written (OSError) or web resource
             # content that is not valid base64 (binascii.Error) fails this kind only.
-            if isinstance(exc, D365Error) and _connection_wide(exc):
+            if isinstance(exc, D365Error) and connection_wide(exc):
                 raise
             code = exc.code if isinstance(exc, D365Error) else None
             errors.append({"kind": name, "error": str(exc), "code": code})
     return data, errors
+
+
+# ── Dependencies, solution export, ribbons ─────────────────────────────────
+
+#: `crm legacy dependencies --for` choice -> the Execute request it sends.
+DEPENDENCY_REQUESTS = {
+    "required": "RetrieveRequiredComponents",
+    "dependents": "RetrieveDependentComponents",
+    "delete": "RetrieveDependenciesForDelete",
+}
+_DEPENDENCY_COLUMNS = (
+    "dependentcomponentobjectid",
+    "dependentcomponenttype",
+    "dependentcomponentparentid",
+    "requiredcomponentobjectid",
+    "requiredcomponenttype",
+    "requiredcomponentparentid",
+    "dependencytype",
+)
+
+
+def dependency_row(record: dict[str, object]) -> dict[str, object]:
+    """One dependency, its two sides named by component type and object id."""
+    return {column: record.get(column) for column in _DEPENDENCY_COLUMNS}
+
+
+def dependencies(
+    client: LegacyClient, object_id: str, component_type: int, for_: str
+) -> list[dict[str, object]]:
+    """Read one component's dependencies with the request *for_* names (`DEPENDENCY_REQUESTS`)."""
+    request = DEPENDENCY_REQUESTS[for_]
+    results = client.execute_results(
+        request,
+        parameter("ObjectId", "guid", _SERIALIZATION, object_id)
+        + parameter("ComponentType", "int", _XSD, str(component_type)),
+    )
+    collection = _result(results, "EntityCollection", request)
+    return [dependency_row(r) for r in entity_records(collection)]
+
+
+def export_solution(client: LegacyClient, unique_name: str) -> bytes:
+    """Export a solution unmanaged, as stored, and return the zip bytes.
+
+    Nothing is published first: publishing would write, so the zip carries the
+    org's published customizations only.
+    """
+    results = client.execute_results(
+        "ExportSolution",
+        parameter("SolutionName", "string", _XSD, unique_name)
+        + parameter("Managed", "boolean", _XSD, "false"),
+    )
+    try:
+        data = base64.b64decode(
+            _result(results, "ExportSolutionFile", "ExportSolution").text or "", validate=True
+        )
+    except ValueError as exc:  # binascii.Error
+        raise D365Error(f"ExportSolution: the solution file is not base64: {exc}") from exc
+    if not data:
+        raise D365Error("ExportSolution: the response carries no solution file")
+    return data
+
+
+# Every ribbon location; RibbonLocationFilters is a flags enum, sent by member names.
+_RIBBON_LOCATIONS = parameter(
+    "RibbonLocationFilter",
+    "RibbonLocationFilters",
+    "http://schemas.microsoft.com/crm/2011/Contracts",
+    "Form HomepageGrid SubGrid",
+)
+
+
+def _unzip_ribbon(node: ET.Element) -> bytes:
+    """Unzip a compressed ribbon; a malformed one is a per-item D365Error, not a crash."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(base64.b64decode(node.text or ""))) as archive:
+            return archive.read("RibbonXml.xml")
+    # zlib.error, RuntimeError (encrypted) and NotImplementedError (compression)
+    # are what a damaged entry raises past BadZipFile.
+    except (ValueError, KeyError, RuntimeError, zlib.error, zipfile.BadZipFile) as exc:
+        raise D365Error(f"not a readable ribbon zip: {exc}") from exc
+
+
+def ribbon_xml(client: LegacyClient, entity: str | None) -> bytes:
+    """The ribbon XML of *entity*, or of the application when *entity* is None."""
+    if entity is None:
+        results = client.execute_results("RetrieveApplicationRibbon")
+        return _unzip_ribbon(
+            _result(results, "CompressedApplicationRibbonXml", "RetrieveApplicationRibbon")
+        )
+    results = client.execute_results(
+        "RetrieveEntityRibbon",
+        parameter("EntityName", "string", _XSD, entity) + _RIBBON_LOCATIONS,
+    )
+    return _unzip_ribbon(_result(results, "CompressedEntityXml", "RetrieveEntityRibbon"))

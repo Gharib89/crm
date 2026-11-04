@@ -98,6 +98,7 @@ def test_metadata_lists_every_entity(crm_home):
     project = env["data"][2]
     assert project["custom"] is True
     assert project["object_type_code"] == 10001
+    assert project["display_name"] == "new_Project"
     assert env["data"][0]["custom"] is False
     assert env["meta"]["profile"] == "legacy"
 
@@ -122,7 +123,9 @@ def test_metadata_entity_detail(crm_home):
     assert rels["one_to_many"] == [
         {
             "schema_name": "account_new_project",
+            "metadata_id": "40000000-0000-0000-0000-000000000019",
             "custom": True,
+            "managed": True,
             "referenced_entity": "account",
             "referenced_attribute": "accountid",
             "referencing_entity": "new_project",
@@ -133,7 +136,9 @@ def test_metadata_entity_detail(crm_home):
     assert rels["many_to_many"] == [
         {
             "schema_name": "listaccount_association",
+            "metadata_id": "40000000-0000-0000-0000-000000000023",
             "custom": False,
+            "managed": True,
             "entity1": "list",
             "entity2": "account",
             "intersect_entity": "listmember",
