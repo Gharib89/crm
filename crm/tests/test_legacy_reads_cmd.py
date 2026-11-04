@@ -504,3 +504,17 @@ def test_scoped_reads_send_only_allowlisted_requests(crm_home):
     names, _ = _sent(m)
     assert set(names) == {"RetrieveEntity", "RetrieveAllEntities", "RetrieveMultiple"}
     assert set(names) - {"RetrieveMultiple"} <= READ_ONLY_REQUESTS
+
+
+def test_an_entity_without_a_type_code_fails_instead_of_reading_nothing():
+    import xml.etree.ElementTree as ET
+
+    from crm.core.legacy_reads import resolve_scope
+    from crm.utils.d365_backend import D365Error
+
+    class Client:
+        def execute_results(self, request_name, parameters=""):
+            return {"EntityMetadata": ET.Element("EntityMetadata")}
+
+    with pytest.raises(D365Error, match="entity 'account': .*ObjectTypeCode"):
+        resolve_scope(cast(LegacyClient, Client()), ["forms"], None, "account")

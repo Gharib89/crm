@@ -128,16 +128,21 @@ def _many_to_many(rel: ET.Element) -> dict[str, Any]:
     }
 
 
-def entity_detail(client: LegacyClient, name: str) -> dict[str, Any]:
-    """One entity's attributes, relationships and the option sets its attributes use."""
+def _retrieve_entity(client: LegacyClient, name: str, filters: str) -> ET.Element:
+    """RetrieveEntity *name* with the EntityFilters *filters*; its EntityMetadata."""
     results = client.execute_results(
         "RetrieveEntity",
-        _filters("Attributes Relationships")
+        _filters(filters)
         + parameter("LogicalName", "string", _XSD, name)
         + parameter("MetadataId", "guid", _SERIALIZATION, _NO_ID)
         + _AS_IF_PUBLISHED,
     )
-    entity = _result(results, "EntityMetadata", "RetrieveEntity")
+    return _result(results, "EntityMetadata", "RetrieveEntity")
+
+
+def entity_detail(client: LegacyClient, name: str) -> dict[str, Any]:
+    """One entity's attributes, relationships and the option sets its attributes use."""
+    entity = _retrieve_entity(client, name, "Attributes Relationships")
     attributes: list[dict[str, Any]] = []
     option_sets: dict[str, dict[str, Any]] = {}
     for attr in entity.findall("c:Attributes/c:AttributeMetadata", _MD):
@@ -219,12 +224,12 @@ class Kind:
     a form's XML) that ``--out`` writes to a file with extension *suffix*.
     *conditions* are FetchXML conditions every read of the kind carries.
 
-    Solution membership (`Scope.solution_id`): *member_via* is the column whose
+    Solution membership (`ComponentScope.solution_id`): *member_via* is the column whose
     value is a ``solutioncomponent`` row's ``objectid``, the kind's own *key* or
-    its parent's id. A kind with a *component_type* is carried by its entity: a
-    member is held directly (a row of that type) or through its entity.
+    its parent's id. A kind with a *carried_type* is carried by its entity: a
+    member is held directly (a row of that component type) or through its entity.
 
-    Entity scope (`Scope.entity_code`): *entity_attr* holds the entity's object
+    Entity scope (`ComponentScope.entity_code`): *entity_attr* holds the entity's object
     type code, reached through the link-entities *entity_hops*, each joined on
     its own ``<name>id`` column. A kind with no *entity_attr* names no entity.
     """
@@ -236,12 +241,12 @@ class Kind:
     suffix: str = "xml"
     conditions: str = ""
     member_via: str | None = None
-    component_type: int | None = None
+    carried_type: int | None = None
     entity_attr: str | None = None
     entity_hops: tuple[str, ...] = ()
 
 
-_FILTER = ("sdkmessagefilter",)
+_MESSAGE_FILTER = ("sdkmessagefilter",)
 _STEP = "sdkmessageprocessingstep"
 
 # Insertion order is the order `crm legacy components` runs when no kind is named.
@@ -290,7 +295,7 @@ KINDS: dict[str, Kind] = {
         f"{_STEP}id",
         member_via=f"{_STEP}id",
         entity_attr="primaryobjecttypecode",
-        entity_hops=_FILTER,
+        entity_hops=_MESSAGE_FILTER,
     ),
     "step-images": Kind(
         "sdkmessageprocessingstepimage",
@@ -305,7 +310,7 @@ KINDS: dict[str, Kind] = {
         "sdkmessageprocessingstepimageid",
         member_via=f"{_STEP}id",
         entity_attr="primaryobjecttypecode",
-        entity_hops=(_STEP, *_FILTER),
+        entity_hops=(_STEP, *_MESSAGE_FILTER),
     ),
     # type 1 is a process definition; activations (type 2) duplicate them.
     "processes": Kind(
@@ -328,14 +333,14 @@ KINDS: dict[str, Kind] = {
         ("name", "objecttypecode", "type", "formxml"),
         "formid",
         payload="formxml",
-        component_type=60,
+        carried_type=60,
         entity_attr="objecttypecode",
     ),
     "views": Kind(
         "savedquery",
         ("name", "returnedtypecode", "querytype", "fetchxml", "layoutxml"),
         "savedqueryid",
-        component_type=26,
+        carried_type=26,
         entity_attr="returnedtypecode",
     ),
 }
@@ -347,7 +352,7 @@ _ENTITY_COMPONENT = 1  # a solutioncomponent row's componenttype for an entity
 
 
 @dataclass(frozen=True)
-class Scope:
+class ComponentScope:
     """What `read_components` narrows each kind to; the default reads every row.
 
     *member_codes* are the object type codes of the solution's member entities
@@ -362,7 +367,7 @@ class Scope:
 
 
 #: The unscoped read: every row of each kind.
-EVERYTHING = Scope()
+EVERYTHING = ComponentScope()
 
 
 _BINARY_REASON = {
@@ -397,7 +402,7 @@ def _link(entity: str, column: str, inner: str) -> str:
     )
 
 
-def _fetch(kind: Kind, scope: Scope = EVERYTHING) -> str | None:
+def _fetch(kind: Kind, scope: ComponentScope) -> str | None:
     """The FetchXML for *kind* under *scope*, or None when the scope admits no row."""
     conditions = [kind.conditions]
     links: list[str] = []
@@ -408,15 +413,17 @@ def _fetch(kind: Kind, scope: Scope = EVERYTHING) -> str | None:
                 f'<link-entity name="solutioncomponent" from="objectid" to="{kind.member_via}"'
                 f' link-type="inner">{in_solution}</link-entity>'
             )
-        elif kind.component_type is not None and kind.entity_attr is not None:
-            either = _in(kind.key, scope.members.get(kind.component_type, ())) + _in(
+        elif kind.carried_type is not None and kind.entity_attr is not None:
+            either = _in(kind.key, scope.members.get(kind.carried_type, ())) + _in(
                 kind.entity_attr, scope.member_codes
             )
             if not either:
                 return None
             conditions.append(f'<filter type="or">{either}</filter>')
-        else:  # the solutions kind: the solution's own row
+        elif kind.entity == "solution":  # the solution's own row
             conditions.append(_eq(kind.key, scope.solution_id))
+        else:
+            raise ValueError(f"{kind.entity}: no solution membership rule")
     if scope.entity_code is not None and kind.entity_attr is not None:
         condition = _eq(kind.entity_attr, scope.entity_code)
         if kind.entity_hops:
@@ -441,19 +448,19 @@ def _rows(client: LegacyClient, fetch_xml: str) -> list[dict[str, object]]:
 def _object_type_code(client: LegacyClient, name: str) -> int:
     """The object type code of entity *name*: 2011 entity conditions take it, never the name."""
     try:
-        results = client.execute_results(
-            "RetrieveEntity",
-            _filters("Entity")
-            + parameter("LogicalName", "string", _XSD, name)
-            + parameter("MetadataId", "guid", _SERIALIZATION, _NO_ID)
-            + _AS_IF_PUBLISHED,
-        )
+        code = _retrieve_entity(client, name, "Entity").findtext("c:ObjectTypeCode", None, _MD)
     except D365Error as exc:
         if connection_wide(exc):
             raise
-        raise D365Error(f"entity {name!r}: {exc}", status=exc.status, code=exc.code) from exc
-    entity = _result(results, "EntityMetadata", "RetrieveEntity")
-    return int(entity.findtext("c:ObjectTypeCode", "0", _MD))
+        raise D365Error(
+            f"entity {name!r}: {exc}",
+            status=exc.status,
+            code=exc.code,
+            response_body=exc.response_body,
+        ) from exc
+    if code is None:
+        raise D365Error(f"entity {name!r}: RetrieveEntity carries no ObjectTypeCode")
+    return int(code)
 
 
 def _solution_id(client: LegacyClient, unique_name: str) -> str:
@@ -469,7 +476,7 @@ def _solution_id(client: LegacyClient, unique_name: str) -> str:
 
 def resolve_scope(
     client: LegacyClient, kinds: list[str], solution: str | None, entity: str | None
-) -> Scope:
+) -> ComponentScope:
     """Resolve ``--solution`` and ``--entity`` for *kinds*, before any kind is read.
 
     An unknown solution or entity raises a D365Error naming it. Solution
@@ -480,11 +487,11 @@ def resolve_scope(
     """
     entity_code = None if entity is None else _object_type_code(client, entity)
     if solution is None:
-        return Scope(entity_code=entity_code)
+        return ComponentScope(entity_code=entity_code)
     solution_id = _solution_id(client, solution)
-    carried = sorted({t for n in kinds if (t := KINDS[n].component_type) is not None})
+    carried = sorted({t for n in kinds if (t := KINDS[n].carried_type) is not None})
     if not carried:
-        return Scope(solution_id, entity_code=entity_code)
+        return ComponentScope(solution_id, entity_code=entity_code)
     fetch = (
         '<fetch><entity name="solutioncomponent">'
         '<attribute name="componenttype"/><attribute name="objectid"/>'
@@ -506,7 +513,9 @@ def resolve_scope(
         if entity_ids
         else frozenset[int]()
     )
-    return Scope(solution_id, codes, {t: frozenset(ids) for t, ids in members.items()}, entity_code)
+    return ComponentScope(
+        solution_id, codes, {t: frozenset(ids) for t, ids in members.items()}, entity_code
+    )
 
 
 def _mark_binary(row: dict[str, object]) -> None:
@@ -546,7 +555,7 @@ def _write_payload(out_dir: Path, name: str, kind: Kind, row: dict[str, object])
 
 
 def read_components(
-    client: LegacyClient, kinds: list[str], out_dir: Path | None, scope: Scope = EVERYTHING
+    client: LegacyClient, kinds: list[str], out_dir: Path | None, scope: ComponentScope = EVERYTHING
 ) -> tuple[dict[str, list[dict[str, object]]], list[dict[str, Any]]]:
     """Page each component kind under *scope*; a failed kind is reported and the next still runs.
 

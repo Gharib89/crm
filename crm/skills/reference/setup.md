@@ -132,8 +132,8 @@ tell the user it is untested.
   `--solution` or `--entity` rather than reading everything and filtering. A
   solution's forms and views come through its member entities (CRM 2011 keeps
   no solution row for them), so a solution holding `account` returns every
-  account form and view, system ones included. Pass `--entity` the logical
-  name; do not translate it to a type code yourself.
+  account form and view, system ones included. `--entity` takes the logical
+  name and resolves the object type code CRM 2011 conditions need.
 - **A dependency read takes an id from an earlier read**: the `metadata_id` of a
   `legacy metadata` row for an entity, attribute, relationship or option set, the
   `id` of a `legacy components` row for a kind it reads. Each row names both
