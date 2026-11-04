@@ -65,7 +65,8 @@ API URL).
 A failure with no HTTP response (connect timeout, connection refused, a stalled
 TLS handshake) retries up to 4 attempts with 1, 2 and 4 second backoff, which
 covers an org behind a client VPN whose first connection often times out. Any
-HTTP response, a 500 included, is never retried.
+HTTP response, a 500 included, is never retried, and neither is a TLS
+certificate failure, which fails the same way every time.
 
 ## Caveats
 

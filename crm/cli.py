@@ -332,10 +332,9 @@ class CLIContext:
         from crm.core import connection as conn_mod
         from crm.core import session as session_mod
         from crm.core.legacy import LegacyClient, require_crm2011
-        from crm.utils.d365_backend import D365Error
 
         if self.auth_scheme not in (None, "ntlm"):
-            raise D365Error(
+            raise click.UsageError(
                 f"--auth-scheme {self.auth_scheme} does not apply to `crm legacy`, "
                 "which supports only HTTP NTLM."
             )

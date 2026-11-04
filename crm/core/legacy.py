@@ -143,6 +143,11 @@ class LegacyClient:
                     timeout=self.profile.timeout,
                 )
                 break
+            except requests.exceptions.SSLError as exc:
+                # A certificate failure (a ConnectionError subclass) fails the
+                # same way every time; the measured handshake stall is a
+                # ReadTimeout, retried below.
+                raise D365Error(f"{_TRANSPORT_FAILURE_PREFIX}: {exc}") from exc
             except (requests.ConnectionError, requests.Timeout) as exc:
                 # No HTTP response arrived (connect refused or timed out, or the
                 # TLS handshake stalled, which requests reports as ReadTimeout).

@@ -210,6 +210,13 @@ class TestConnectRetries:
         category, _ = classify_d365_error(info.value.status, info.value.code, str(info.value))
         assert category == "transport_error"
 
+    def test_a_tls_certificate_failure_is_not_retried(self, client, no_sleep):
+        with requests_mock.Mocker() as m:
+            m.post(_ENDPOINT, exc=requests.exceptions.SSLError("certificate verify failed"))
+            with pytest.raises(D365Error):
+                client.execute("WhoAmI")
+        assert m.call_count == 1
+
     def test_no_retry_after_a_500(self, client, no_sleep):
         with requests_mock.Mocker() as m:
             _soap(m, "fault_not_found.xml", status=500)

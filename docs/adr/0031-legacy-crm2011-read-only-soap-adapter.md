@@ -50,7 +50,8 @@ is made.
 - **Bounded connect retries.** A failure with no HTTP response (connect timeout,
   refused, TLS handshake timeout) retries up to 4 attempts with 1, 2 and 4 second
   backoff, because the dev org sits behind a client VPN whose first connection
-  often times out. Any HTTP response, a 500 included, is never retried.
+  often times out. Any HTTP response, a 500 included, is never retried, nor is a
+  TLS certificate failure.
 - **Not widened.** SOAP-only messages on v9 or cloud stay out of scope
   (`.out-of-scope/soap-only-messages.md` is unchanged); the exception exists
   because a CRM 2011 org has no alternative, not because SOAP could reach more.
