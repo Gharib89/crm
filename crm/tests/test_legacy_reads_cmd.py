@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from typing import cast
 
 import pytest
 import requests_mock
@@ -13,6 +14,7 @@ from click.testing import CliRunner
 
 from crm.cli import cli
 from crm.core import session as session_mod
+from crm.core.legacy import LegacyClient
 from crm.core.legacy_reads import KINDS, read_components
 from crm.utils.d365_backend import ConnectionProfile
 from crm.utils.safe_xml import fromstring
@@ -63,12 +65,14 @@ def _answer(rows=None, fault_entities=(), fault_kinds=()):
         if name == "RetrieveAllOptionSets":
             return (_FIXTURES / "retrieve_all_option_sets.xml").read_text()
         if name == "RetrieveEntity":
-            logical = re.search(r"LogicalName</b:key><b:value[^>]*>([^<]*)<", request.body.decode())
-            if logical.group(1) in fault_entities:
+            (logical,) = re.findall(
+                r"LogicalName</b:key><b:value[^>]*>([^<]*)<", request.body.decode()
+            )
+            if logical in fault_entities:
                 return _fault(context)
             return (_FIXTURES / "retrieve_entity_account.xml").read_text()
-        fetch = fromstring(root.findtext(f".//{{{_CRM}}}Query"))
-        entity = fetch.find("entity").get("name")
+        fetch = fromstring(root.findtext(f".//{{{_CRM}}}Query", default=""))
+        entity = fetch[0].get("name")
         if entity in fault_kinds:
             return _fault(context)
         if entity == "webresource":
@@ -268,8 +272,8 @@ def test_processes_ask_for_definitions_only(crm_home):
             cli, ["--json", "--profile", "legacy", "legacy", "components", "processes"]
         )
     root = fromstring(m.request_history[0].body)
-    fetch = fromstring(root.findtext(f".//{{{_CRM}}}Query"))
-    condition = fetch.find("entity/filter/condition")
+    fetch = fromstring(root.findtext(f".//{{{_CRM}}}Query", default=""))
+    (condition,) = fetch.findall("entity/filter/condition")
     assert (condition.get("attribute"), condition.get("operator"), condition.get("value")) == (
         "type",
         "eq",
@@ -290,7 +294,7 @@ def test_web_resource_content_that_is_not_base64_fails_its_kind_only(tmp_path):
         def retrieve_multiple(self, fetch_xml):
             yield [{"id": "w1", "webresourcetype": 3, "content": "not base64!"}]
 
-    data, errors = read_components(Client(), ["web-resources"], tmp_path)
+    data, errors = read_components(cast(LegacyClient, Client()), ["web-resources"], tmp_path)
     assert data["web-resources"] == []
     (err,) = errors
     assert (err["kind"], err["code"]) == ("web-resources", None)

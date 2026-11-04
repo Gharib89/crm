@@ -351,7 +351,7 @@ class TestRetrieveMultiple:
             '<cookie page="1"><webresourceid last="{50000000-0000-0000-0000-000000000002}"'
             ' first="{50000000-0000-0000-0000-000000000001}" /></cookie>'
         )
-        assert second.find("entity").get("name") == "webresource"
+        assert second[0].get("name") == "webresource"
         assert m.request_history[0].headers["SOAPAction"] == _ACTION + "RetrieveMultiple"
 
     def test_page_size_sets_count(self, client):
