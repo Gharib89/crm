@@ -572,3 +572,15 @@ def test_a_failed_entity_list_leaves_the_entity_detail_kinds_incomplete(tmp_path
     coverage = _manifest(out)["coverage"]
     for kind in ("entity", "attribute", "relationship", "local_option_set", "ribbon"):
         assert coverage[kind]["status"] != "complete", kind
+
+
+def test_an_image_of_an_unknown_step_is_counted_as_a_gap(tmp_path, monkeypatch):
+    orphan = {**_ORG["sdkmessageprocessingstepimages"][0][0],
+              "sdkmessageprocessingstepimageid": _id(42),
+              **_lookup("sdkmessageprocessingstepid", "sdkmessageprocessingstep", 49)}  # fmt: skip
+    images = [[*_ORG["sdkmessageprocessingstepimages"][0], orphan]]
+    monkeypatch.setitem(_ORG, "sdkmessageprocessingstepimages", images)
+    out = tmp_path / "inv"
+    _extract(FakeBackend(), out)
+    gaps = [g for g in _manifest(out)["gaps"] if g["kind"] == "step_image"]
+    assert [g["description"][:22] for g in gaps] == ["1 step_image row(s) na"]

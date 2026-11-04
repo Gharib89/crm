@@ -942,7 +942,7 @@ class _Builder:
             ref = r.get("pluginassemblyid")
             assembly = assemblies.get(_ref_id(ref) or "") or _ref_name(ref)
             if not assembly:
-                self._unresolve("plugin_type", 91)
+                self._unresolve("plugin_type", 91, None)
                 continue
             self.add(
                 "plugin_type", r["id"],
@@ -955,7 +955,7 @@ class _Builder:
             plugin_type = types.get(_ref_id(r.get("plugintypeid")) or "")
             message = r.get("message.name")
             if plugin_type is None or not message:
-                self._unresolve("step", 90)
+                self._unresolve("step", 90, None)
                 continue
             self.add(
                 "step", r["id"],
@@ -971,7 +971,7 @@ class _Builder:
         for r in rows.get("step_image", []):
             step = steps.get(_ref_id(r.get("sdkmessageprocessingstepid")) or "")
             if step is None:
-                self._unresolve("step_image", 92)
+                self._unresolve("step_image", 92, None)
                 continue
             self.add(
                 "step_image", r["id"],
@@ -1071,8 +1071,9 @@ class _Builder:
         """Keep only what the named solutions hold, and the gaps about those records.
 
         A membership or dependency row naming a component the run did not record is
-        kept by the same rule (its solution, its dependent); the unkeyed-row gaps
-        stay org-wide.
+        kept by the same rule (its solution, its dependent); an orphaned plug-in
+        type, step or image has no owner to keep it by and is left out. The
+        unkeyed-row gaps stay org-wide.
 
         Kept: the solutions, their memberships, each member, each record of a
         member entity held with its subcomponents (`attribute`,
