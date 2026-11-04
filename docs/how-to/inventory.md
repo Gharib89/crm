@@ -258,7 +258,8 @@ The map also lists:
 - **External references**: NuGet packages (`PackageReference`, `packages.config`)
   and web resource scripts loaded from a host other than the inventory's org.
 - **Unmatched source**: repo files a web resource could be deployed from that no
-  component maps to, and non-abstract classes deriving from `IPlugin` or
+  component maps to (an `.xml` or `.resx` file inside a C# project folder is a
+  build input and is left out), and non-abstract classes deriving from `IPlugin` or
   `CodeActivity` (directly or through the repo's own base classes) that no plug-in
   type names.
 

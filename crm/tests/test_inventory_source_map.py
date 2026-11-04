@@ -225,7 +225,8 @@ def test_shared_external_and_unmatched_source(inventory_dir: Path) -> None:
     ]
     # A plug-in class is found beside a mapped one and through the repo's own base
     # class; the abstract base is not deployable. NuGet's packages folder beside the
-    # solution is not scanned, a JS workspace folder named packages is.
+    # solution is not scanned, a JS workspace folder named packages is. An interface
+    # is never registered, and a .resx inside a C# project is a build input.
     assert [(u.path, u.kind, u.type_name) for u in source_map.unmatched_source] == [
         ("Plugins/AccountMerge.cs", "plugin_type", "Contoso.Plugins.AccountMerge"),
         ("Plugins/ProjectCreate.cs", "plugin_type", "Contoso.Plugins.ProjectCreateLegacy"),

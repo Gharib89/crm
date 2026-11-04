@@ -220,6 +220,8 @@ class _File:
     sha256: str
     normalized_sha256: str
     minified: bool
+    #: An .xml or .resx file inside a C# project folder: a build input, never unmatched source.
+    build_input: bool = False
 
     @property
     def lower(self) -> str:
@@ -417,26 +419,33 @@ def _scan(root: Path) -> _Repo:
     by_folder: dict[str, list[str]] = {}
     for rel in repo.projects:
         by_folder.setdefault(posixpath.dirname(rel), []).append(rel)
+
+    def owners_of(rel: str) -> tuple[str, ...]:
+        folder = posixpath.dirname(rel)
+        while folder not in by_folder:
+            if not folder:
+                return ()
+            folder = posixpath.dirname(folder)
+        return tuple(by_folder[folder])
+
     for rel in paths:
         ext = posixpath.splitext(rel)[1].lower()
         if ext == ".cs":
-            owners: tuple[str, ...] = ()
-            folder = posixpath.dirname(rel)
-            while True:
-                if folder in by_folder:
-                    owners = tuple(by_folder[folder])
-                    break
-                if not folder:
-                    break
-                folder = posixpath.dirname(folder)
             text = (root / rel).read_text(encoding="utf-8-sig", errors="replace")
+            owners = owners_of(rel)
             repo.types.extend((decl, owners) for decl in _cs_types(text, rel))
         elif ext in _DEPLOYABLE or ext == ".ts":
             data = (root / rel).read_bytes()
             text = ext in _TEXT
             hashes = artifact_hashes(data, text=text)
             repo.files.append(
-                _File(rel, hashes.sha256, hashes.normalized_sha256, text and _is_minified(data))
+                _File(
+                    rel,
+                    hashes.sha256,
+                    hashes.normalized_sha256,
+                    text and _is_minified(data),
+                    ext in (".xml", ".resx") and bool(owners_of(rel)),
+                )
             )
     return repo
 
@@ -743,7 +752,9 @@ def map_source(inventory_dir: Path, repo: Path) -> SourceMap:
     unmatched = [
         UnmatchedSource(f.path, "web_resource")
         for f in scanned.files
-        if posixpath.splitext(f.lower)[1] in _DEPLOYABLE and f.path not in used
+        if posixpath.splitext(f.lower)[1] in _DEPLOYABLE
+        and not f.build_input
+        and f.path not in used
     ] + [
         UnmatchedSource(d.path, "plugin_type", d.name)
         for d, _ in scanned.types
