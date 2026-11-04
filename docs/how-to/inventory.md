@@ -6,7 +6,8 @@ format plus the raw artifacts it points at. An inventory describes what is
 deployed; it is never a desired state for `crm apply`
 ([ADR 0032](../adr/0032-inventory-descriptive-contract-keyed-by-component-key.md)).
 `crm inventory diff` compares two inventories offline (see
-[Compare two inventories](#compare-two-inventories)).
+[Compare two inventories](#compare-two-inventories)), and `crm inventory map-source`
+matches one to an application repository (see [Map an inventory to source](#map-an-inventory-to-source)).
 
 Extraction runs on **every profile**. A `crm2011` profile is read over the CRM 2011
 SOAP endpoint (see [How-to: legacy](legacy.md) to create one); a v9 on-prem or
@@ -217,3 +218,64 @@ two inventories give the same `--out` bytes, and swapping `A` and `B` swaps
 
 Agreement is evidence, not proof: equal keys, fields and hashes say the recorded
 customization matches, never that the two orgs behave alike.
+
+## Map an inventory to source
+
+```bash
+crm --json inventory map-source ./inv-v9 --repo ~/src/contoso-crm --out ./source-map.json
+```
+
+`crm inventory map-source INVENTORY --repo PATH` matches the inventory's custom web
+resources, plug-in assemblies and plug-in types (custom workflow activities
+included) to files and C# projects in a local checkout of the application
+repository. It reads the two folders only: it touches no org, needs no profile, and
+never builds or runs anything in the repository. System components are not mapped.
+Each component gets one status:
+
+| Status | Web resource | Plug-in assembly or type |
+|---|---|---|
+| `matched` | a repo file's normalized hash (the inventory's BOM and CRLF normalization) equals the deployed `normalized_sha256` | an assembly: one project builds it; a type: a C# declaration of its full name sits in a project that builds its assembly |
+| `stale` | one file lines up by name (its path ends with the web resource name, else it shares the file name) but the content differs: which side is newer is unknown | |
+| `ambiguous` | several files hold the deployed content, or line up by name: all are listed | several projects build the assembly, or declare the type in it |
+| `candidate` | minified content keeps the hashes apart (a line of 500 characters or more, or `.min.` in the name), or the file looks generated (a `.ts` source for a `.js`, an un-minified name for a `.min.js`); `reason` says which | the type is declared in a project that builds another assembly, or the assembly's project exists but the type is not found |
+| `missing_source` | no candidate at all | no candidate at all |
+
+A project's assembly is its `AssemblyName`, or the project file name when it has
+none. Type declarations are found by a lexical scan of `.cs` files, block-scoped and
+file-scoped namespaces alike, nested types named `Outer+Inner`; a `.cs` file belongs
+to the project in its nearest folder holding a `.csproj`. Folders named `bin`, `obj`,
+`node_modules` or `packages`, and dot folders, are not scanned.
+
+The map also lists:
+
+- **Shared web resources**: one more than one component references, through a form
+  library or handler, a ribbon or sitemap `$webresource:` reference, or another web
+  resource's `src` or `href`. Each web resource entry lists its `consumers`.
+- **Shared projects**: a C# project two or more matched plug-in projects reference
+  (`ProjectReference`), a shared library.
+- **External references**: NuGet packages (`PackageReference`, `packages.config`)
+  and web resource scripts loaded from a host other than the inventory's org.
+- **Unmatched source**: repo files a web resource could be deployed from, and
+  `IPlugin` or `CodeActivity` classes, that no component maps to.
+
+`data` holds the summary, and `--out FILE` writes the full map:
+
+| Key | Value |
+|---|---|
+| `schema_version` | the source map's own format version, `1`; a reader refuses any other |
+| `inventory` | the inventory it was built from: `manifest_sha256` (of its `manifest.json`), `platform`, `version`, `org_url`, `extracted_at` |
+| `basis` | the evidence the statuses rest on |
+| `incomplete` | each mapped kind not read `complete` in the inventory, with its coverage status: its components may be missing from the map |
+| `counts` | per kind, the number of components per status (a status with none is left out) |
+| `shared` | `{web_resources, projects}`: how many are shared |
+| `external`, `unmatched_source` | how many there are |
+| `out` | the `--out` path, or `null` |
+| `components` | `--out` only: one per component, sorted by kind then key, with `kind`, `key`, `status`, `files`, `projects`, `reason`, `consumers` and `shared` |
+| `shared_projects`, `external`, `unmatched_source` | `--out` only: the lists, each entry with its paths (`external` entries carry `kind` `nuget` or `script`, `name`, `version` and `used_by`) |
+
+Without `--json` it prints one row per kind with a column per status, then the
+inventory and the totals. It exits **0** whatever the statuses, and **1** when the
+inventory holds no readable manifest or an artifact it names is missing. The same
+inventory and repository give the same `--out` bytes. A match is evidence, not
+proof: equal hashes say the bytes agree, a declaration match only that the names
+line up.

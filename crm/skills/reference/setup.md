@@ -110,7 +110,7 @@ profile**; its JSON output carries `platform: "crm2011"`, where a normal profile
 tell the user it is untested.
 
 - **Only `crm legacy`, `crm inventory extract` and the offline `crm inventory
-  diff` run on it** (prove connectivity with `crm --json legacy version`;
+  diff` and `map-source` run on it** (prove connectivity with `crm --json legacy version`;
   `crm legacy --help` lists the rest). Every other org command exits 1 with an error naming `crm legacy`, so a
   `crm2011` profile never needs a fallback attempt on `entity` or `query`.
 - **Writes are impossible, not just discouraged.** The profile is always read-only
@@ -199,3 +199,25 @@ it needs no profile and no network.
   the user resolves the duplicate.
 - Report matches as evidence that the recorded customization agrees; the orgs
   may still behave differently.
+
+### Mapping an inventory to source (`crm inventory map-source`)
+
+`crm inventory map-source INVENTORY --repo PATH` matches an inventory's custom web
+resources and plug-ins to a local checkout of the application repository. It reads
+the two folders only: no profile, no network, no build.
+
+- **Only `matched` is a match.** A web resource is matched by its normalized
+  content hash, a plug-in type by its C# declaration in a project that builds the
+  registered assembly. Report `stale` (the name lines up, the content differs,
+  which side is newer is unknown), `ambiguous` (several files, all listed) and
+  `candidate` (read its `reason`: minified or generated content, or a type in a
+  project building another assembly) as leads for the user to confirm.
+- **`missing_source` means not in this checkout**: the source may live in another
+  repository or branch, or be lost. Ask before calling it lost.
+- **Read `data.incomplete` first**: a kind the inventory did not read `complete`
+  leaves components out of the map, so its `unmatched_source` files may be
+  deployed after all.
+- **Name files from the `--out` map** (`components`, `shared_projects`,
+  `external`, `unmatched_source`), not from `data`, which carries counts only.
+- `shared` web resources and shared projects change together with every
+  consumer: say so when the user plans to edit one.
