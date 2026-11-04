@@ -52,7 +52,10 @@ RIBBON = (
 )
 SITEMAP = (
     '<SiteMap><SubArea Id="reports" Url="/ISV/reports/summary.aspx" />'
-    '<SubArea Id="admin" Url="/tools/admin/admin.aspx" /></SiteMap>'
+    '<SubArea Id="admin" Url="/tools/admin/admin.aspx" />'
+    '<SubArea Id="approve" Url="/ContosoApp/approve.aspx" />'
+    '<SubArea Id="home" Url="https://crm.example.test/main.aspx?pagetype=home" />'
+    '<SubArea Id="portal" Url="https://crm.example.test/Portal/start.aspx" /></SiteMap>'
 )
 STEP = {
     "message": "Update",
@@ -338,8 +341,11 @@ def test_dynamic_and_isv_references_become_unknown_edges(inputs):
     ]
     sitemap = _package_of(result, "sitemap:default").to_dict()
     assert sitemap["members"] == ["sitemap:default"]
-    assert [f["reason"] for f in sitemap["findings"]] == ["isv_page"]
-    assert sitemap["findings"][0]["reference"] == "/ISV/reports/summary.aspx"
+    assert [(f["reason"], f["reference"]) for f in sitemap["findings"]] == [
+        ("isv_page", "/ISV/reports/summary.aspx"),
+        ("unresolved_url", "/ContosoApp/approve.aspx"),
+        ("unresolved_url", "https://crm.example.test/Portal/start.aspx"),
+    ]
     assert result.summary()["unknowns"] == sum(
         1 for p in result.packages for f in p.to_dict()["findings"] if "type" in f
     )

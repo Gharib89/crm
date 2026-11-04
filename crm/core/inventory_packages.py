@@ -62,6 +62,12 @@ _OPEN_WR = re.compile(r"openWebResource\s*\(\s*([^,)]*)")
 _LITERAL = re.compile(r"([\"'])([^\"']+)\1")
 _HTML_REF = re.compile(r"\b(src|href)\s*=\s*[\"']([^\"']+)[\"']", re.IGNORECASE)
 _URL_ATTR = re.compile(r"\b(?:Url|Address)\s*=\s*\"([^\"]*)\"", re.IGNORECASE)
+# Folders and pages the CRM server itself ships; a ribbon or sitemap URL under one is no
+# customization. Any other URL nothing resolves is an ``unresolved_url`` unknown.
+_PLATFORM_PAGES = (
+    "/_root/", "/_grid/", "/_static/", "/_imgs/", "/_common/", "/_forms/", "/tools/",
+    "/main.aspx", "/advancedfind/", "/crmreports/", "/sfa/", "/cs/", "/ma/", "/biz/",
+)  # fmt: skip
 _NO_TRIGGER = {"status": "unknown", "reason": "manifest v1 records no process trigger"}
 
 
@@ -378,6 +384,8 @@ class _Refs:
                 self.unknown(source, "external_url", value)
             elif "/webresources/" in path:
                 self.link_name(source, _after_webresources(parts.path), edge_type)
+            elif not path.startswith(_PLATFORM_PAGES):
+                self.unknown(source, "unresolved_url", value)
             return True
         if parts.scheme:
             return True  # javascript:, mailto:, data:
@@ -495,7 +503,11 @@ def _references(inv: Inventory, folder: Path) -> _Refs:
                 refs.link_name(source, name, edge_type)
             if record.kind in ("ribbon", "sitemap"):
                 for value in _URL_ATTR.findall(text):
-                    refs.link_url(source, value, edge_type)
+                    path = "/" + value.strip().lower().lstrip("/")
+                    if not refs.link_url(source, value, edge_type) and not path.startswith(
+                        _PLATFORM_PAGES
+                    ):
+                        refs.unknown(source, "unresolved_url", value)
             elif record.kind == "web_resource":
                 _web_resource(refs, source, record.key, text)
     return refs

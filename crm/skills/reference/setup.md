@@ -234,7 +234,8 @@ same inventory is refused.
 - **One package is one repair job.** A shared library and every form, ribbon or
   assembly using it land in one package: plan and hand it out whole.
 - **Report every unknown** to the user: each package's `findings` (unknown edges:
-  `dynamic`, `isv_page`, `external_url`, `not_in_inventory`, `unreadable`; extraction
+  `dynamic`, `isv_page`, `external_url`, `unresolved_url`, `not_in_inventory`,
+  `unreadable`; extraction
   gaps; doubtful source map statuses), plus `index.json` `unattached_gaps` and
   `unattached_unknowns`, the ones in no package. Each needs a human look.
 - **`{"status": "unknown"}` in a field means no data, not no work.** No
