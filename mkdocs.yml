@@ -163,6 +163,7 @@ nav:
       - legacy: how-to/legacy.md
   - Reference:
       - CLI: reference/cli.md
+      - Inventory manifest: reference/inventory-manifest.md
       - Changelog: changelog.md
   - Contributing:
       - Coding standards: contributing/coding-standards.md
