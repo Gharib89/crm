@@ -201,6 +201,13 @@ def test_reader_refuses_an_unknown_schema_version_naming_both_versions() -> None
         inventory.parse_manifest(manifest)
 
 
+def test_read_inventory_reports_malformed_utf8_as_an_inventory_error(tmp_path: Path) -> None:
+    (tmp_path / "manifest.json").write_bytes(b'{"schema_version": 1, "x": "\xff"}')
+
+    with pytest.raises(inventory.InventoryError, match="cannot read"):
+        inventory.read_inventory(tmp_path)
+
+
 def _drop_key(m: dict[str, Any]) -> None:
     del m["records"][0]["key"]
 
@@ -275,6 +282,14 @@ def _malformed_ipv6_url(m: dict[str, Any]) -> None:
     m["source"]["org_url"] = "https://[::1/Con\ntoso"
 
 
+def _extracted_at_not_a_date_time(m: dict[str, Any]) -> None:
+    m["extracted_at"] = "yesterday"
+
+
+def _binary_artifact_with_two_hashes(m: dict[str, Any]) -> None:
+    m["records"][1]["artifacts"][0]["content"] = "binary"
+
+
 @pytest.mark.parametrize(
     ("mutate", "message", "schema_rejects"),
     [
@@ -299,6 +314,8 @@ def _malformed_ipv6_url(m: dict[str, Any]) -> None:
         (_handler_with_empty_event, r"handlers\[0\]\.event must be a non-empty string", True),
         (_credentials_after_a_query, r"org_url.*credentials", True),
         (_malformed_ipv6_url, r"org_url must be an http\(s\) URL", True),
+        (_extracted_at_not_a_date_time, r"extracted_at must be an RFC 3339 date-time", True),
+        (_binary_artifact_with_two_hashes, r"binary.*normalized_sha256 must equal", False),
     ],
 )
 def test_reader_refuses_a_manifest_that_breaks_the_contract(

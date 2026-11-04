@@ -166,6 +166,10 @@ _SHA256 = re.compile(r"[0-9a-f]{64}")
 # "@" in it reads as credentials. A regex, not urlsplit: urlsplit lowercases the scheme,
 # strips newlines and raises ValueError on a malformed IPv6 host.
 _ORG_URL = re.compile(r"https?://([^/]+)(/.*)?")
+# An RFC 3339 date-time, the schema's extracted_at pattern.
+_EXTRACTED_AT = re.compile(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})"
+)
 
 
 @dataclass(frozen=True)
@@ -347,12 +351,10 @@ def _artifact(value: object, kind: str, where: str) -> Artifact:
     hashes = [_str(obj, name, where) for name in ("sha256", "normalized_sha256")]
     if not all(_SHA256.fullmatch(h) for h in hashes):
         raise InventoryError(f"{where} hashes must be 64 lowercase hex digits")
-    return Artifact(
-        path=path,
-        content=_str(obj, "content", where, choices=CONTENTS),
-        sha256=hashes[0],
-        normalized_sha256=hashes[1],
-    )
+    content = _str(obj, "content", where, choices=CONTENTS)
+    if content == "binary" and hashes[0] != hashes[1]:
+        raise InventoryError(f"{where} is binary, so its normalized_sha256 must equal its sha256")
+    return Artifact(path=path, content=content, sha256=hashes[0], normalized_sha256=hashes[1])
 
 
 def _defined_fields(kind: str, fields: dict[str, Any], where: str) -> None:
@@ -428,6 +430,13 @@ def _gap(value: object, where: str) -> ExtractionGap:
     return gap
 
 
+def _extracted_at(obj: dict[str, Any]) -> str:
+    value = _str(obj, "extracted_at", "manifest")
+    if not _EXTRACTED_AT.fullmatch(value):
+        raise InventoryError(f"manifest.extracted_at must be an RFC 3339 date-time, got {value!r}")
+    return value
+
+
 def parse_manifest(data: object) -> Inventory:
     """Build an `Inventory` from a decoded manifest, applying the v1 contract.
 
@@ -476,7 +485,7 @@ def parse_manifest(data: object) -> Inventory:
     return Inventory(
         schema_version=SCHEMA_VERSION,
         source=_source(_req(obj, "source", "manifest")),
-        extracted_at=_str(obj, "extracted_at", "manifest"),
+        extracted_at=_extracted_at(obj),
         cli_version=_str(obj, "cli_version", "manifest"),
         scope=_scope(_req(obj, "scope", "manifest")),
         publication=_str(obj, "publication", "manifest", choices=("published",)),
@@ -497,7 +506,7 @@ def read_inventory(folder: Path) -> Inventory:
     path = folder / MANIFEST_NAME
     try:
         data = json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError) as exc:  # ValueError: malformed UTF-8 or JSON
         raise InventoryError(f"cannot read {path}: {exc}") from exc
     return parse_manifest(data)
 

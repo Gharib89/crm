@@ -6,8 +6,9 @@ This page defines its format, `schema_version` 1, which the CRM 2011 path and
 the v9 on-prem and cloud paths all emit. No command writes one yet: the
 extractors land in later slices of #1034.
 
-The format ships in the `crm` package as a JSON Schema (draft 2020-12),
-`crm/schemas/inventory-manifest-v1.schema.json`, and as typed records with a
+The format ships in the `crm` wheel as a JSON Schema (draft 2020-12),
+`crm/schemas/inventory-manifest-v1.schema.json` (the standalone binaries leave
+it out, since no command loads it), and as typed records with a
 reader and writer in `crm/core/inventory.py` (`read_inventory`,
 `parse_manifest`, `dump_manifest`, `SCHEMA_VERSION`). The reader checks the
 contract without `jsonschema`, and it also checks the rules the schema cannot
@@ -39,7 +40,7 @@ reader refuses an artifact path that two records share.
 | `source.org_url` | the org's `http` or `https` URL, never with credentials in it |
 | `source.organization_id` | the organization id, or `null` |
 | `source.version` | the org's build or version string |
-| `extracted_at` | when the extraction ran (ISO 8601); the only time field |
+| `extracted_at` | when the extraction ran, an RFC 3339 date-time (`2026-11-04T10:00:00Z`); the only time field |
 | `cli_version` | the `crm` version that wrote the manifest |
 | `scope` | `{"mode": "org", "solutions": []}`, or `{"mode": "solutions", "solutions": [<unique name>...]}` |
 | `publication` | `published`: extractors read the published customization only and never publish |
@@ -132,7 +133,7 @@ an ISV page, an external integration, and SQL report data sources.
 
 - A text artifact's `normalized_sha256` hashes its bytes with a leading UTF-8
   BOM stripped and CRLF converted to LF. `sha256` always hashes the raw bytes.
-- A binary artifact uses the raw hash for both.
+- A binary artifact uses the raw hash for both (reader).
 - XML canonicalization is deferred to a later schema version.
 - `dump_manifest` sorts records by kind, then key, then content, artifacts by
   path and gaps by content, and writes sorted JSON keys. Two extractions of an
