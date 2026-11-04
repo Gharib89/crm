@@ -10,6 +10,7 @@ paged to the last page. A failed entity or kind is recorded and the run goes on
 from __future__ import annotations
 
 import base64
+import binascii
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
@@ -331,10 +332,10 @@ def read_components(
                         _mark_binary(row)
                     if out_dir is not None:
                         _write_payload(out_dir, name, kind, row)
-                rows.extend(page)
-        except (D365Error, OSError, ValueError) as exc:
-            # A fault, a payload that cannot be written (OSError) or one that is
-            # not valid base64 (binascii.Error, a ValueError) fails this kind only.
+                    rows.append(row)
+        except (D365Error, OSError, binascii.Error) as exc:
+            # A fault, a payload that cannot be written (OSError) or web resource
+            # content that is not valid base64 (binascii.Error) fails this kind only.
             code = exc.code if isinstance(exc, D365Error) else None
             errors.append({"kind": name, "error": str(exc), "code": code})
     return data, errors

@@ -80,6 +80,8 @@ server's 50,000-record limit, so no aggregate is used.
 
 - **Continue-and-report per kind.** A kind that faults keeps the rows it already
   read, is listed in `errors`, and the next kind still runs; the exit code is 1.
+  Under `--out`, a payload that cannot be written or decoded fails its kind the
+  same way, with `code: null`.
 - **`processes` are workflow definitions only** (type 1), not activations or
   templates.
 - **Plug-in assemblies stored on disk or in the GAC** have no database binary:

@@ -220,14 +220,17 @@ def test_components_out_writes_payload_files(crm_home, tmp_path):
 
 def test_a_payload_that_cannot_be_written_fails_its_kind_only(crm_home, tmp_path):
     out = tmp_path / "dump"
-    out.mkdir()
-    (out / "web-resources").write_text("a file where the kind's folder goes")
+    # A folder where the second row's file goes: the first row is written and kept.
+    (out / "web-resources" / "50000000-0000-0000-0000-000000000002.css").mkdir(parents=True)
     result, _ = _run("components", "web-resources", "plugin-assemblies", "--out", str(out))
     assert result.exit_code == 1, result.output
     data = json.loads(result.output)["data"]
     (err,) = data["errors"]
     assert err["kind"] == "web-resources"
     assert err["code"] is None
+    assert [r["content_file"] for r in data["web-resources"]] == [
+        "web-resources/50000000-0000-0000-0000-000000000001.js"
+    ]
     assert len(data["plugin-assemblies"]) == 3
 
 
