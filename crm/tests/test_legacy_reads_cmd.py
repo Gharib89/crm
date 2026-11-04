@@ -13,7 +13,7 @@ from click.testing import CliRunner
 
 from crm.cli import cli
 from crm.core import session as session_mod
-from crm.core.legacy_reads import KINDS
+from crm.core.legacy_reads import KINDS, read_components
 from crm.utils.d365_backend import ConnectionProfile
 from crm.utils.safe_xml import fromstring
 
@@ -283,3 +283,14 @@ def test_a_whole_org_failure_is_one_error_envelope(crm_home):
         result = CliRunner().invoke(cli, ["--json", "--profile", "legacy", "legacy", "metadata"])
     assert result.exit_code == 1, result.output
     assert json.loads(result.output)["meta"]["category"] == "auth_failed"
+
+
+def test_web_resource_content_that_is_not_base64_fails_its_kind_only(tmp_path):
+    class Client:
+        def retrieve_multiple(self, fetch_xml):
+            yield [{"id": "w1", "webresourcetype": 3, "content": "not base64!"}]
+
+    data, errors = read_components(Client(), ["web-resources"], tmp_path)
+    assert data["web-resources"] == []
+    (err,) = errors
+    assert (err["kind"], err["code"]) == ("web-resources", None)
