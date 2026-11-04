@@ -204,8 +204,8 @@ or Dataverse), so existing profiles need no migration.
 
 A `crm2011` profile is **always read-only**, and unlike the guardrail above it
 cannot be cleared: `profile edit NAME --no-read-only` refuses, even on a terminal.
-Only `crm legacy` runs on it; any other command fails (exit 1) with an error
-naming `crm legacy`. See [How-to: legacy](legacy.md).
+Only `crm legacy` and `crm inventory extract` run on it; any other command fails
+(exit 1) with an error naming `crm legacy`. See [How-to: legacy](legacy.md).
 
 ## Rename a profile
 

@@ -6,10 +6,11 @@ transport instead. Tested on CRM 2011 UR15 (5.0.9690.3557), Linux. See the
 [CLI reference](../reference/cli.md) for every flag.
 
 `crm legacy` only reads. It sends an allowlisted set of messages (`WhoAmI`,
-`RetrieveVersion`, the three metadata reads and paged `RetrieveMultiple`) over
-NTLM, and refuses anything else (`Create`,
-`Update`, `Delete`, `Associate`, `Disassociate`, or an unlisted request) before
-it opens a connection. The reasoning is in
+`RetrieveVersion`, the three metadata reads, the three dependency reads,
+`ExportSolution`, the two ribbon reads and paged `RetrieveMultiple`) over NTLM,
+and refuses anything else (`Create`, `Update`, `Delete`, `Associate`,
+`Disassociate`, `PublishXml`, `PublishAllXml`, `ImportSolution`, or any other
+unlisted request) before it opens a connection. The reasoning is in
 [ADR 0031](../adr/0031-legacy-crm2011-read-only-soap-adapter.md).
 
 ## Create the profile
@@ -58,9 +59,12 @@ crm --json legacy metadata account contact --profile legacy2011  # per-entity de
 crm --json legacy metadata --option-sets --profile legacy2011    # global option sets
 ```
 
-With no entity, `data` is a list of `logical_name`, `custom` and
-`object_type_code`. With entity names, `data` is `{"entities": [...], "errors":
-[...]}`, each entity carrying its attributes, relationships and option sets. The
+With no entity, `data` is a list of `logical_name`, `custom`,
+`object_type_code`, `metadata_id` and `managed`. With entity names, `data` is `{"entities": [...], "errors":
+[...]}`, each entity carrying its attributes, relationships and option sets. Entities,
+attributes, relationships and option sets each carry their `metadata_id` (the id
+[`legacy dependencies`](#read-dependencies) takes), and entities, attributes and
+relationships carry `managed`. The
 run is **continue-and-report** ([ADR 0007](../adr/0007-record-clone-no-rollback-continue-and-report.md)):
 an entity that faults (a misspelt logical name, say) lands in `errors`, the other
 entities still read, and the exit code is 1. `--option-sets` takes no entity.
@@ -93,10 +97,53 @@ server's 50,000-record limit, so no aggregate is used.
   under `DIR` and replaces each payload key with `<payload>_file` (a path relative
   to `DIR`). Without it the payload stays inline in the JSON.
 
+## Read dependencies
+
+```bash
+crm --json legacy dependencies <metadata-id> --component-type 1 --profile legacy2011
+crm --json legacy dependencies <metadata-id> --component-type 1 --for dependents --profile legacy2011
+```
+
+`legacy dependencies OBJECT_ID --component-type CODE` reads one component's
+dependencies with a dependency request: `--for required` (the default) sends
+`RetrieveRequiredComponents` (what the component needs), `dependents` sends
+`RetrieveDependentComponents` (what needs it) and `delete` sends
+`RetrieveDependenciesForDelete` (what blocks its deletion). `OBJECT_ID` is the
+component's id: the `metadata_id` from `legacy metadata` for an entity, attribute,
+relationship or option set, or the record `id` from `legacy components` for
+anything else. The component type code is the platform's (1 entity, 2 attribute,
+9 option set, 61 web resource, ...).
+
+`data` is a list of rows, each naming both sides by component type and object id
+(`dependentcomponenttype`, `dependentcomponentobjectid`,
+`dependentcomponentparentid`, and the same three for `required`) plus
+`dependencytype` (1 solution internal, 2 published, 4 unpublished). `meta.for`
+echoes the choice. A fault (an id that is not a component of that type, say) is
+one standard error envelope.
+
+## Export a solution
+
+```bash
+crm --json legacy export-solution contoso_core -o ./contoso_core.zip --profile legacy2011
+```
+
+`legacy export-solution UNIQUE_NAME -o FILE` sends `ExportSolution` for an
+**unmanaged** export and writes the zip to `FILE`, creating its folder. Nothing is
+published first, because publishing writes, so the zip holds the org's
+**published** customizations only: an unpublished edit is not in it. `data` is
+`{solution, path, bytes}`.
+
+## Extract a migration inventory
+
+`crm inventory extract --out DIR` runs on a `crm2011` profile and reads the whole
+org into a migration inventory, over the same read-only allowlist. See
+[How-to: inventory](inventory.md).
+
 ## What is refused
 
 - **A v9 or cloud command on a `crm2011` profile** (`crm entity get`,
   `crm query odata`, ...) fails with exit 1 and an error naming `crm legacy`.
+  `crm inventory extract` is the one other command that runs on it.
 - **`crm legacy` on any other profile** refuses and says it needs a `crm2011`
   profile.
 - **A SOAP fault** becomes the standard error with the fault's `ErrorCode` as

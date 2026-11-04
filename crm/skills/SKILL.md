@@ -6,10 +6,10 @@ description: Operate Microsoft Dynamics 365 Customer Engagement — on-premises 
 # crm
 
 A stateful CLI for **Microsoft Dynamics 365 Customer Engagement — on-premises
-9.x (NTLM) or Dataverse online (OAuth)**. Every command except `crm legacy` (CRM
-2011, over SOAP) issues a real HTTP request to the Dataverse Web API at
-`<url>/api/data/v9.x/`. There is no local mocking — the live D365 server is a
-hard runtime dependency.
+9.x (NTLM) or Dataverse online (OAuth)**. Every command except the CRM 2011 reads
+(`crm legacy`, `crm inventory extract`, over SOAP) issues a real HTTP request to
+the Dataverse Web API at `<url>/api/data/v9.x/`. There is no local mocking: the
+live D365 server is a hard runtime dependency.
 
 ## On-prem vs cloud
 
@@ -219,7 +219,7 @@ For per-domain detail:
 
 | Working on… | Read |
 |---|---|
-| first-time setup: install the `crm` binary, create/switch a connection profile (NTLM, AD FS or OAuth, secret storage), `--json`/no-TTY behavior; legacy CRM 2011 (read-only `crm legacy`) | `reference/setup.md` |
+| first-time setup: install the `crm` binary, create/switch a connection profile (NTLM, AD FS or OAuth, secret storage), `--json`/no-TTY behavior; legacy CRM 2011 (read-only `crm legacy`, and its migration inventory via `crm inventory extract`) | `reference/setup.md` |
 | end-to-end customization: where to start, the order components go in, stage→publish→promote a change across dev/test/prod | `reference/customization-lifecycle.md` |
 | repo-driven customizations-as-code: spec repo layout, plan → approve → `--from-plan` promote, seeding from a live org | `reference/customizations-as-code.md` |
 | records: create/read/update/delete, query (OData/FetchXML/saved), associate/lookup, clone, upsert, ad-hoc `action` | `reference/records.md` |

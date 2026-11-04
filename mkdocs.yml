@@ -161,6 +161,7 @@ nav:
       - sla: how-to/sla.md
       - translation: how-to/translation.md
       - legacy: how-to/legacy.md
+      - inventory: how-to/inventory.md
   - Reference:
       - CLI: reference/cli.md
       - Inventory manifest: reference/inventory-manifest.md

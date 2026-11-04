@@ -98,10 +98,10 @@ profile**; its JSON output carries `platform: "crm2011"`, where a normal profile
 `v9`. Verified only on CRM 2011 UR15 (5.0.9690.3557), Linux: on another build or OS,
 tell the user it is untested.
 
-- **Only `crm legacy` runs on it** (prove connectivity with `crm --json legacy
-  version`; `crm legacy --help` lists the rest). Every other command exits 1
-  with an error naming `crm legacy`, so a `crm2011` profile never needs a
-  fallback attempt on `entity` or `query`.
+- **Only `crm legacy` and `crm inventory extract` run on it** (prove
+  connectivity with `crm --json legacy version`; `crm legacy --help` lists the
+  rest). Every other command exits 1 with an error naming `crm legacy`, so a
+  `crm2011` profile never needs a fallback attempt on `entity` or `query`.
 - **Writes are impossible, not just discouraged.** The profile is always read-only
   and `profile edit --no-read-only` refuses even on a terminal (unlike the guardrail
   above), and the SOAP transport sends only allowlisted reads. A refused request
@@ -117,10 +117,45 @@ tell the user it is untested.
   assembly with `binary: "unavailable"` has no binary in the org, so do not
   retry it. Pass `--out` for any read that includes web resources, processes or
   forms, so the JSON stays small.
+- **A dependency read takes an id from an earlier read**: the `metadata_id` of a
+  `legacy metadata` row for an entity, attribute, relationship or option set, the
+  `id` of a `legacy components` row for anything else. Its rows name both sides
+  by component type code and object id only, so map them back through those reads.
+- **`legacy export-solution` is the zip as published.** Nothing is published
+  first (that would write), so an unpublished edit is not in it; tell the user
+  when they expect one.
 - Success envelopes use the standard JSON contract, with `meta.url` set to the SOAP
   endpoint instead of a Web API base URL. Faults map to the usual `meta.code` and
   `meta.category`. A connect timeout retries inside the CLI (bounded), so treat a
   `transport_error` as the org unreachable: check the VPN before running it again.
+
+### Migration inventory (`crm inventory extract`)
+
+A migration inventory is a read-only, descriptive record of the whole org: a
+`manifest.json` (schema v1: records keyed by component key, per-kind coverage,
+extraction gaps) plus raw artifacts (XML, XAML, web resource content, assembly
+binaries). It describes what is deployed; it is never a spec for `crm apply`.
+
+- **`crm2011` profiles only, for now.** A v9 or cloud profile is refused before
+  anything is written: tell the user that path is not built yet.
+- **It reads every kind and every page**, so it runs for minutes on a real org:
+  give it a long timeout or run it in the background.
+- **Resume by re-running the identical command on the same `--out` folder.**
+  Progress is checkpointed under `<out>/.checkpoint/`; a re-run reuses finished
+  reads (`data.resumed`, `data.reused`) and continues paging from the last page.
+  A folder holding another org's checkpoint, or files and no checkpoint (a
+  finished inventory included), is refused: pass a new folder.
+- **A failed read is continue-and-report.** The manifest is still written, the
+  kind's coverage is `partial` or `failed`, and the command exits 1 with `ok:false`
+  but the summary still in `data` (`data.kinds`, `data.errors`,
+  `data.complete: false`). Re-run on the same folder to retry only what failed.
+  An auth or transport failure stops the run with no `data`; re-running resumes it.
+  The checkpoint is deleted only once every kind is complete.
+- **`data` is a summary; read the manifest for the rest.** Judge completeness by
+  each kind's coverage before trusting record counts, and report the manifest's
+  `gaps` to the user as manual follow-up: they name what SOAP cannot read
+  (assemblies on disk or in the GAC, ISV pages, external integrations, SSRS data
+  sources, rows naming a component the inventory does not record).
 
 Switch or inspect profiles with `crm profile use [name]` (no name → interactive
 picker; `--none` clears the active profile) and `crm profile list` (marks the

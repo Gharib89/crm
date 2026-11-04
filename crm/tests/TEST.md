@@ -27,7 +27,8 @@ whose tests do not follow the naming:
 | `crm/core/workflow.py` | `test_core.py::TestWorkflow`, `::TestWorkflowDelete`, `test_workflow_*.py` |
 | `crm/cli.py` (`CLIContext`, emit envelope) | `test_core.py::TestErrorEnvelope`, `::TestReplBackendCache`, `test_output_contract.py`, `test_exit_codes.py`, `test_cli_offline_smoke.py` |
 | `crm/commands/_helpers/` | `test_core.py::TestLoadPayload`, `test_concise_render.py` (`rendering.py`), `test_helpers_option_groups.py`, `test_helpers_package_surface.py`, `test_d365_errors_enrich.py` |
-| `crm/core/legacy.py`, `crm/core/legacy_reads.py`, `crm/commands/legacy.py` | `test_legacy_transport.py` (envelope, allowlist, faults, connect retries, paged RetrieveMultiple), `test_legacy_cmd.py`, `test_legacy_reads_cmd.py` (`metadata`, `components`), `test_legacy_profile.py` (`crm2011` marker, always read-only); live: `e2e/test_legacy.py` |
+| `crm/core/legacy.py`, `crm/core/legacy_reads.py`, `crm/commands/legacy.py` | `test_legacy_transport.py` (envelope, allowlist, faults, connect retries, paged RetrieveMultiple), `test_legacy_cmd.py`, `test_legacy_reads_cmd.py` (`metadata`, `components`), `test_legacy_deps_cmd.py` (`dependencies`, `export-solution`), `test_legacy_profile.py` (`crm2011` marker, always read-only); live: `e2e/test_legacy.py` |
+| `crm/core/legacy_inventory.py`, `crm/commands/inventory.py` | `test_legacy_inventory.py` (manifest, gaps, checkpoint resume, failed and truncated kinds, refused `--out` folders, the `inventory extract` envelope); live: `e2e/test_legacy.py` |
 | `crm/commands/profile.py` | `test_profile_cmd.py`, `test_profile_helpers.py`, `test_profile_name_sanitization.py`, `test_profile_url_normalization.py` |
 
 Gates that span the whole CLI rather than one module: `test_e2e_coverage_gate.py`
@@ -182,7 +183,7 @@ standalone marker is `offline`, below):
 | **both / divergent** | Works on both but **asserts different values** per target | **no marker** — branch on the `target` fixture (`"cloud"`/`"onprem"`) and assert per-target; runs on both union legs |
 
 **`requires_legacy` marker**: also orthogonal to the four buckets: it tags the `crm legacy`
-tests (`crm/tests/e2e/test_legacy.py`, ADR 0031), which target a CRM 2011 org that has **no
+and `crm inventory extract` tests (`crm/tests/e2e/test_legacy.py`, ADR 0031), which target a CRM 2011 org that has **no
 Web API**, so they skip the `live_profile` v9 target entirely. They run only with
 `D365_E2E=1 D365_E2E_LEGACY_PROFILE=<crm2011 profile name>` (the profile is made by
 `crm profile add` against the 2011 org) and otherwise skip with a "needs ..." message, so
