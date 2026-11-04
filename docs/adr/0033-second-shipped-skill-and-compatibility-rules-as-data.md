@@ -8,7 +8,8 @@ The CRM 2011 to cloud migration (#1035) needs an agent skill that teaches
 assessment and verification, distinct from the operational `crm` skill. We ship
 it as a second skill, `crm-migration`, in a sibling folder of the package, and we
 put the version-specific compatibility rules it relies on into the CLI as
-packaged data run by `crm inventory assess`, not into the skill's prose.
+packaged data run by a planned `assess` verb of the inventory command group
+(#1063), not into the skill's prose.
 
 ## Decision
 
@@ -29,7 +30,7 @@ packaged data run by `crm inventory assess`, not into the skill's prose.
 - **Compatibility rules are data in the CLI.** A versioned rules file ships in
   the package. Each **compatibility rule** names the component kind, the source
   and target versions it applies to, a class, a detection, a fix and the
-  Microsoft Learn page that justifies it. `crm inventory assess` runs the rules
+  Microsoft Learn page that justifies it. The `assess` verb runs the rules
   over a migration inventory and writes a versioned findings file of
   **compatibility findings**, keyed by component key (ADR 0032). A kind no rule
   covers yields an `unknown` finding with the reason "no rule", never silence.
