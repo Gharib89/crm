@@ -4,8 +4,8 @@ A **migration inventory** is one extraction's descriptive record of an org's
 customizations ([ADR 0032](../adr/0032-inventory-descriptive-contract-keyed-by-component-key.md)).
 This page defines its format, `schema_version` 1, which the CRM 2011 path and
 the v9 on-prem and cloud paths all emit. `crm inventory extract` writes one
-on a `crm2011` profile ([How-to: inventory](../how-to/inventory.md)); the v9
-on-prem and cloud extractors land in later slices of #1034.
+on any profile: a `crm2011` profile over SOAP, a v9 on-prem or cloud profile
+over the Web API ([How-to: inventory](../how-to/inventory.md)).
 
 The format ships in the `crm` wheel as a JSON Schema (draft 2020-12),
 `crm/schemas/inventory-manifest-v1.schema.json` (the standalone binaries leave
