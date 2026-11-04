@@ -9,6 +9,47 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.88.0 (2026-11-04)
+
+### Bug Fixes
+
+- **inventory**: Harden map-source scan from self-review round 1
+  ([#1074](https://github.com/Gharib89/crm/pull/1074),
+  [`5fa3ec6`](https://github.com/Gharib89/crm/commit/5fa3ec636b4453e8850f78eb902e7de4c4f33730))
+
+- **inventory**: Keep C# project build inputs out of unmatched source
+  ([#1074](https://github.com/Gharib89/crm/pull/1074),
+  [`5fa3ec6`](https://github.com/Gharib89/crm/commit/5fa3ec636b4453e8850f78eb902e7de4c4f33730))
+
+- **inventory**: Keep full copies of a plug-in class in one project ambiguous
+  ([#1074](https://github.com/Gharib89/crm/pull/1074),
+  [`5fa3ec6`](https://github.com/Gharib89/crm/commit/5fa3ec636b4453e8850f78eb902e7de4c4f33730))
+
+- **inventory**: Match a partial plug-in class split across files
+  ([#1074](https://github.com/Gharib89/crm/pull/1074),
+  [`5fa3ec6`](https://github.com/Gharib89/crm/commit/5fa3ec636b4453e8850f78eb902e7de4c4f33730))
+
+- **inventory**: Skip plug-in interfaces and fold re-cased outside references
+  ([#1074](https://github.com/Gharib89/crm/pull/1074),
+  [`5fa3ec6`](https://github.com/Gharib89/crm/commit/5fa3ec636b4453e8850f78eb902e7de4c4f33730))
+
+- **inventory**: Word the several-files ambiguous reason
+  ([#1074](https://github.com/Gharib89/crm/pull/1074),
+  [`5fa3ec6`](https://github.com/Gharib89/crm/commit/5fa3ec636b4453e8850f78eb902e7de4c4f33730))
+
+### Documentation
+
+- **inventory**: Document crm inventory map-source and the source map
+  ([#1074](https://github.com/Gharib89/crm/pull/1074),
+  [`5fa3ec6`](https://github.com/Gharib89/crm/commit/5fa3ec636b4453e8850f78eb902e7de4c4f33730))
+
+### Features
+
+- **inventory**: Crm inventory map-source against an application repository
+  ([#1074](https://github.com/Gharib89/crm/pull/1074),
+  [`5fa3ec6`](https://github.com/Gharib89/crm/commit/5fa3ec636b4453e8850f78eb902e7de4c4f33730))
+
+
 ## v1.87.0 (2026-11-04)
 
 ### Bug Fixes
