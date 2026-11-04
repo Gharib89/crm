@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import json
 import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import jsonschema
 import pytest
 
 from crm.core import inventory
@@ -299,3 +301,121 @@ def test_written_manifest_reads_back_to_the_same_inventory(tmp_path: Path) -> No
     (tmp_path / "manifest.json").write_text(inventory.dump_manifest(inv), encoding="utf-8")
 
     assert inventory.read_inventory(tmp_path) == inv
+
+
+FIXTURES = Path(__file__).parent / "fixtures" / "inventory"
+SCHEMA_FILE = (
+    Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v1.schema.json"
+)
+SAMPLES = ("legacy", "v9", "cloud")
+
+
+def _schema_errors(manifest: object) -> list[str]:
+    schema = json.loads(SCHEMA_FILE.read_text(encoding="utf-8"))
+    validator = jsonschema.Draft202012Validator(schema)
+    return [error.message for error in validator.iter_errors(manifest)]
+
+
+def _sample(name: str) -> dict[str, Any]:
+    return json.loads((FIXTURES / name / "manifest.json").read_text(encoding="utf-8"))
+
+
+def test_schema_file_is_a_valid_draft_2020_12_schema_whose_kinds_match_the_reader() -> None:
+    schema = json.loads(SCHEMA_FILE.read_text(encoding="utf-8"))
+
+    jsonschema.Draft202012Validator.check_schema(schema)
+    assert schema["properties"]["schema_version"] == {"const": inventory.SCHEMA_VERSION}
+    assert schema["$defs"]["record"]["properties"]["kind"]["enum"] == list(inventory.KINDS)
+    required = {
+        rule["if"]["properties"]["kind"]["const"]: rule["then"]["properties"]["fields"]["required"]
+        for rule in schema["$defs"]["record"]["allOf"]
+    }
+    assert required == {kind: list(names) for kind, names in inventory.KEY_FIELDS.items()}
+
+
+@pytest.mark.parametrize("name", SAMPLES)
+def test_sample_manifest_validates_against_the_schema_and_the_reader(name: str) -> None:
+    manifest = _sample(name)
+
+    assert _schema_errors(manifest) == []
+    inv = inventory.read_inventory(FIXTURES / name)
+    assert inventory.dump_manifest(inv) == (FIXTURES / name / "manifest.json").read_text(
+        encoding="utf-8"
+    )
+
+
+@pytest.mark.parametrize("name", SAMPLES)
+def test_sample_artifact_files_match_their_recorded_hashes(name: str) -> None:
+    inv = inventory.read_inventory(FIXTURES / name)
+
+    on_disk = {
+        p.relative_to(FIXTURES / name).as_posix()
+        for p in (FIXTURES / name / "artifacts").rglob("*")
+        if p.is_file()
+    }
+    recorded = {a.path: a for r in inv.records for a in r.artifacts}
+    assert on_disk == set(recorded)
+    for path, artifact in recorded.items():
+        hashes = inventory.artifact_hashes(
+            (FIXTURES / name / path).read_bytes(), text=artifact.content == "text"
+        )
+        assert (hashes.sha256, hashes.normalized_sha256) == (
+            artifact.sha256,
+            artifact.normalized_sha256,
+        ), path
+
+
+def _by_key(name: str) -> dict[tuple[str, str], list[inventory.Record]]:
+    out: dict[tuple[str, str], list[inventory.Record]] = {}
+    for record in inventory.read_inventory(FIXTURES / name).records:
+        out.setdefault((record.kind, record.key), []).append(record)
+    return out
+
+
+def test_samples_carry_the_cases_the_diff_source_map_and_packages_slices_reuse() -> None:
+    legacy, v9, cloud = (inventory.read_inventory(FIXTURES / n) for n in SAMPLES)
+    legacy_keys, v9_keys, cloud_keys = _by_key("legacy"), _by_key("v9"), _by_key("cloud")
+
+    # A missing component: in legacy and v9, gone from cloud.
+    missing = ("attribute", "new_project|new_legacycode")
+    assert missing in legacy_keys and missing in v9_keys and missing not in cloud_keys
+    # An ambiguous key: two legacy forms with the same entity, type and name.
+    assert list(legacy.ambiguous()) == [("form", "new_project|2|Information")]
+    # A changed artifact: same key, different normalized hash.
+    changed = ("web_resource", "new_/scripts/validation.js")
+    assert (
+        legacy_keys[changed][0].artifacts[0].normalized_sha256
+        != v9_keys[changed][0].artifacts[0].normalized_sha256
+    )
+    # The same text with a BOM and CRLF (legacy) and without (v9): one normalized hash, two raw.
+    same = ("web_resource", "new_/scripts/project.js")
+    old, new = legacy_keys[same][0].artifacts[0], v9_keys[same][0].artifacts[0]
+    assert old.normalized_sha256 == new.normalized_sha256 and old.sha256 != new.sha256
+    # An unsupported kind and a partial, truncated one.
+    assert legacy.coverage["dependency"].status == "unsupported"
+    assert cloud.coverage["ribbon"].status == "partial" and cloud.coverage["ribbon"].truncated
+    # Extraction gaps, by key and by description.
+    assert {(g.kind, g.key) for g in legacy.gaps if g.key} == {
+        ("plugin_assembly", "Contoso.Plugins")
+    }
+    assert any(g.kind is None and g.description for g in v9.gaps)
+
+
+@pytest.mark.parametrize(
+    ("name", "schema_refuses", "message"),
+    [
+        ("unknown-schema-version", True, r"schema_version 2 is not supported.*schema_version 1"),
+        # JSON Schema cannot cross-check records against coverage; the reader does.
+        ("kind-without-coverage", False, r"no coverage entry for kind 'form'"),
+        ("complete-truncated", True, r"coverage\.entity is complete but truncated"),
+        ("record-missing-key", True, r"records\[0\] lacks required field 'key'"),
+    ],
+)
+def test_negative_fixture_fails_the_reader_and_where_expressible_the_schema(
+    name: str, schema_refuses: bool, message: str
+) -> None:
+    manifest = json.loads((FIXTURES / "invalid" / f"{name}.json").read_text(encoding="utf-8"))
+
+    assert bool(_schema_errors(manifest)) is schema_refuses
+    with pytest.raises(inventory.InventoryError, match=message):
+        inventory.parse_manifest(manifest)

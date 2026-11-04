@@ -1,0 +1,70 @@
+{
+  "cli_version": "1.83.0",
+  "coverage": {
+    "entity": {
+      "errors": [],
+      "pages": 1,
+      "records": 1,
+      "status": "complete",
+      "truncated": false
+    },
+    "form": {
+      "errors": [],
+      "pages": 1,
+      "records": 1,
+      "status": "complete",
+      "truncated": false
+    }
+  },
+  "extracted_at": "2026-11-04T10:00:00Z",
+  "gaps": [],
+  "publication": "published",
+  "records": [
+    {
+      "artifacts": [],
+      "display_name": "Account",
+      "fields": {
+        "logical_name": "account"
+      },
+      "id": null,
+      "key": "account",
+      "kind": "entity",
+      "managed": true,
+      "origin": "system",
+      "publication_state": "published"
+    },
+    {
+      "artifacts": [
+        {
+          "content": "text",
+          "normalized_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "path": "artifacts/form/account-2-account-0123456789ab.form.xml",
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "display_name": "Account",
+      "fields": {
+        "entity": "account",
+        "form_type": 2,
+        "name": "Account"
+      },
+      "id": "00000000-0000-0000-0000-000000000002",
+      "key": "account|2|Account",
+      "kind": "form",
+      "managed": true,
+      "origin": "system",
+      "publication_state": "published"
+    }
+  ],
+  "schema_version": 2,
+  "scope": {
+    "mode": "org",
+    "solutions": []
+  },
+  "source": {
+    "org_url": "https://internalcrm.contoso.local/Contoso",
+    "organization_id": "00000000-0000-0000-0000-000000000001",
+    "platform": "onprem",
+    "version": "9.1.0.0000"
+  }
+}

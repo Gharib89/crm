@@ -1,0 +1,1 @@
+<fetch><entity name="new_project"><attribute name="new_name" /><filter><condition attribute="statecode" operator="eq" value="0" /></filter></entity></fetch>

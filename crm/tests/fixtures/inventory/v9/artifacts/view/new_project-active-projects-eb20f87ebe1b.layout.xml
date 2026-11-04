@@ -1,0 +1,1 @@
+<grid name="resultset" object="10000" jump="new_name" select="1" icon="1" preview="1"><row name="result" id="new_projectid"><cell name="new_name" width="300" /></row></grid>

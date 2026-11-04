@@ -1,0 +1,1086 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:crm:inventory-manifest:1",
+  "title": "crm migration inventory manifest, schema_version 1",
+  "description": "The manifest.json of a migration inventory (ADR 0032). Readers ignore fields this schema does not define. The key rule (a record's key equals the component key of its fields), the coverage-per-kind rule and the record counts are checked by crm.core.inventory.parse_manifest, since JSON Schema cannot express them.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source",
+    "extracted_at",
+    "cli_version",
+    "scope",
+    "publication",
+    "records",
+    "coverage",
+    "gaps"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "platform",
+        "org_url",
+        "organization_id",
+        "version"
+      ],
+      "properties": {
+        "platform": {
+          "enum": [
+            "crm2011",
+            "onprem",
+            "cloud"
+          ]
+        },
+        "org_url": {
+          "type": "string",
+          "pattern": "^https?://[^/@]+(/.*)?$"
+        },
+        "organization_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "extracted_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cli_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scope": {
+      "type": "object",
+      "required": [
+        "mode",
+        "solutions"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "org",
+            "solutions"
+          ]
+        },
+        "solutions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "if": {
+        "properties": {
+          "mode": {
+            "const": "solutions"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "solutions": {
+            "minItems": 1
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "solutions": {
+            "maxItems": 0
+          }
+        }
+      }
+    },
+    "publication": {
+      "const": "published"
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/record"
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "propertyNames": {
+        "enum": [
+          "entity",
+          "attribute",
+          "relationship",
+          "global_option_set",
+          "local_option_set",
+          "form",
+          "view",
+          "web_resource",
+          "plugin_assembly",
+          "plugin_type",
+          "step",
+          "step_image",
+          "process",
+          "solution",
+          "solution_membership",
+          "dependency",
+          "ribbon",
+          "sitemap"
+        ]
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/coverage"
+      }
+    },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/gap"
+      }
+    }
+  },
+  "$defs": {
+    "record": {
+      "type": "object",
+      "required": [
+        "kind",
+        "key",
+        "id",
+        "display_name",
+        "origin",
+        "managed",
+        "publication_state",
+        "fields",
+        "artifacts"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "entity",
+            "attribute",
+            "relationship",
+            "global_option_set",
+            "local_option_set",
+            "form",
+            "view",
+            "web_resource",
+            "plugin_assembly",
+            "plugin_type",
+            "step",
+            "step_image",
+            "process",
+            "solution",
+            "solution_membership",
+            "dependency",
+            "ribbon",
+            "sitemap"
+          ]
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "display_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "origin": {
+          "enum": [
+            "custom",
+            "system",
+            "unknown"
+          ]
+        },
+        "managed": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "publication_state": {
+          "enum": [
+            "published",
+            "unknown"
+          ]
+        },
+        "fields": {
+          "type": "object"
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/artifact"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "entity"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "fields": {
+                "required": [
+                  "logical_name"
+                ],
+                "properties": {
+                  "logical_name": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "artifacts": {
+                "items": {
+                  "properties": {
+                    "path": {
+                      "pattern": "^artifacts/entity/[^/]+$"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "attribute"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "fields": {
+                "required": [
+                  "entity",
+                  "logical_name"
+                ],
+                "properties": {
+                  "entity": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "logical_name": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "artifacts": {
+                "items": {
+                  "properties": {
+                    "path": {
+                      "pattern": "^artifacts/attribute/[^/]+$"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "relationship"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "fields": {
+                "required": [
+                  "schema_name"
+                ],
+                "properties": {
+                  "schema_name": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "artifacts": {
+                "items": {
+                  "properties": {
+                    "path": {
+                      "pattern": "^artifacts/relationship/[^/]+$"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "global_option_set"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "fields": {
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "artifacts": {
+                "items": {
+                  "properties": {
+                    "path": {
+                      "pattern": "^artifacts/global_option_set/[^/]+$"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "local_option_set"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "fields": {
+                "required": [
+                  "entity",
+                  "attribute"
+                ],
+                "properties": {
+                  "entity": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "attribute": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "artifacts": {
+                "items": {
+                  "properties": {
+                    "path": {
+                      "pattern": "^artifacts/local_option_set/[^/]+$"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "form"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "fields": {
+                "required": [
+                  "entity",
+                  "form_type",
+                  "name"
+                ],
+                "properties": {
+                  "entity": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "form_type": {
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "artifacts": {
+                "items": {
+                  "properties": {
+                    "path": {
+                      "pattern": "^artifacts/form/[^/]+$"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "view"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "fields": {
+                "required": [
+                  "entity",
+                  "name"
+                ],
+                "properties": {
+                  "entity": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "artifacts": {
+                "items": {
+                  "properties": {
+                    "path": {
+                      "pattern": "^artifacts/view/[^/]+$"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "web_resource"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "fields": {
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "artifacts": {
+                "items": {
+                  "properties": {
+                    "path": {
+                      "pattern": "^artifacts/web_resource/[^/]+$"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "plugin_assembly"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "fields": {
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "artifacts": {
+                "items": {
+                  "properties": {
+                    "path": {
+                      "pattern": "^artifacts/plugin_assembly/[^/]+$"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "plugin_type"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "fields": {
+                "required": [
+                  "assembly",
+                  "type_name"
+                ],
+                "properties": {
+                  "assembly": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "type_name": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "artifacts": {
+                "items": {
+                  "properties": {
+                    "path": {
+                      "pattern": "^artifacts/plugin_type/[^/]+$"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "step"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "fields": {
+                "required": [
+                  "message",
+                  "primary_entity",
+                  "stage",
+                  "mode",
+                  "plugin_type",
+                  "name"
+                ],
+                "properties": {
+                  "message": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "primary_entity": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "stage": {
+                    "type": "integer"
+                  },
+                  "mode": {
+                    "type": "integer"
+                  },
+                  "plugin_type": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "artifacts": {
+                "items": {
+                  "properties": {
+                    "path": {
+                      "pattern": "^artifacts/step/[^/]+$"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "step_image"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "fields": {
+                "required": [
+                  "step",
+                  "alias",
+                  "image_type"
+                ],
+                "properties": {
+                  "step": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "alias": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "image_type": {
+                    "type": "integer"
+                  }
+                }
+              },
+              "artifacts": {
+                "items": {
+                  "properties": {
+                    "path": {
+                      "pattern": "^artifacts/step_image/[^/]+$"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "process"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "fields": {
+                "required": [
+                  "category",
+                  "primary_entity",
+                  "name"
+                ],
+                "properties": {
+                  "category": {
+                    "type": "integer"
+                  },
+                  "primary_entity": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "artifacts": {
+                "items": {
+                  "properties": {
+                    "path": {
+                      "pattern": "^artifacts/process/[^/]+$"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "solution"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "fields": {
+                "required": [
+                  "unique_name"
+                ],
+                "properties": {
+                  "unique_name": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "artifacts": {
+                "items": {
+                  "properties": {
+                    "path": {
+                      "pattern": "^artifacts/solution/[^/]+$"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "solution_membership"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "fields": {
+                "required": [
+                  "solution",
+                  "member_kind",
+                  "member_key"
+                ],
+                "properties": {
+                  "solution": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "member_kind": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "member_key": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "artifacts": {
+                "items": {
+                  "properties": {
+                    "path": {
+                      "pattern": "^artifacts/solution_membership/[^/]+$"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "dependency"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "fields": {
+                "required": [
+                  "dependent_kind",
+                  "dependent_key",
+                  "required_kind",
+                  "required_key",
+                  "dependency_type"
+                ],
+                "properties": {
+                  "dependent_kind": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "dependent_key": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "required_kind": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "required_key": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "dependency_type": {
+                    "type": "integer"
+                  }
+                }
+              },
+              "artifacts": {
+                "items": {
+                  "properties": {
+                    "path": {
+                      "pattern": "^artifacts/dependency/[^/]+$"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "ribbon"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "fields": {
+                "required": [
+                  "entity"
+                ],
+                "properties": {
+                  "entity": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              "artifacts": {
+                "items": {
+                  "properties": {
+                    "path": {
+                      "pattern": "^artifacts/ribbon/[^/]+$"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "sitemap"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "fields": {
+                "required": [
+                  "unique_name"
+                ],
+                "properties": {
+                  "unique_name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              "artifacts": {
+                "items": {
+                  "properties": {
+                    "path": {
+                      "pattern": "^artifacts/sitemap/[^/]+$"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "artifact": {
+      "type": "object",
+      "required": [
+        "path",
+        "content",
+        "sha256",
+        "normalized_sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^artifacts/[a-z_]+/[^/]+$",
+          "not": {
+            "pattern": "\\.\\."
+          }
+        },
+        "content": {
+          "enum": [
+            "text",
+            "binary"
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "normalized_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "required": [
+        "status",
+        "pages",
+        "records",
+        "truncated",
+        "errors"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "complete",
+            "partial",
+            "unsupported",
+            "failed"
+          ]
+        },
+        "pages": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "records": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "if": {
+        "properties": {
+          "status": {
+            "const": "complete"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "truncated": {
+            "const": false
+          }
+        }
+      }
+    },
+    "gap": {
+      "type": "object",
+      "required": [
+        "kind",
+        "key",
+        "description",
+        "reason"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "entity",
+            "attribute",
+            "relationship",
+            "global_option_set",
+            "local_option_set",
+            "form",
+            "view",
+            "web_resource",
+            "plugin_assembly",
+            "plugin_type",
+            "step",
+            "step_image",
+            "process",
+            "solution",
+            "solution_membership",
+            "dependency",
+            "ribbon",
+            "sitemap",
+            null
+          ]
+        },
+        "key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "anyOf": [
+        {
+          "properties": {
+            "key": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "properties": {
+            "description": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    }
+  }
+}
