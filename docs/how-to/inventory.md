@@ -360,8 +360,8 @@ A scenario file names business processes and the components that start them:
 
 A seed is `<kind>:<key>`, the component key the manifest records. A seed missing from
 the inventory is reported in `seeds_not_found`, and a scenario no package holds in
-`unmatched_scenarios`, and a seed the inventory holds but no package does (an entity,
-say) in `seeds_unpackaged`; a scenario is never dropped.
+`unmatched_scenarios`. A seed the inventory holds but no package does (an entity, say)
+is reported in `seeds_unpackaged`. A scenario is never dropped.
 
 `data` holds the summary, and `--out DIR` (a new or empty folder) gets `index.json`
 plus one `<package id>.json` per package:

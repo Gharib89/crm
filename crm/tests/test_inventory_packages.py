@@ -551,7 +551,7 @@ def test_unknown_edge_outside_every_package_is_listed(tmp_path):
     result = build_packages(_write(folder, records), map_source(folder, tmp_path / "repo"))
     assert result.packages == ()
     assert result.summary()["unattached_unknowns"] == 2
-    assert sorted((e["from"], e["reason"]) for e in result.index()["unattached_unknowns"]) == [
+    assert [(e["from"], e["reason"]) for e in result.index()["unattached_unknowns"]] == [
         ("entity:new_project", "not_in_inventory"),
         ("web_resource:msdyn_/nav.js", "dynamic"),
     ]

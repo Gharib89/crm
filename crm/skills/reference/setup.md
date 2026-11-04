@@ -249,7 +249,6 @@ same inventory first: a source map from another inventory is refused.
   `seeds_unpackaged` (a seed no package holds, such as an entity) and
   `unmatched_scenarios` back to the user.
 - **Read packages from `--out`**: `index.json` lists them, `<package id>.json`
-  holds each one; `data` carries the summary only (counts, `incomplete`, scenario
-  misses). Package and verification ids are
-  hashes of their members, stable across runs of the same inputs, so refer to
-  them by id.
+  holds each one; `data` carries the summary only (counts, `incomplete`,
+  scenario misses). Package and verification ids are hashes of their members,
+  stable across runs of the same inputs, so refer to them by id.

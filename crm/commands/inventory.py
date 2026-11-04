@@ -274,6 +274,8 @@ def inventory_packages_cmd(
         meta["seeds in no package"] = ", ".join(
             f"{s['scenario']}: {s['seed']}" for s in data["seeds_unpackaged"]
         )
+    if data["unattached_gaps"]:
+        meta["gaps in no package"] = f"{data['unattached_gaps']} (see index.json)"
     if data["unattached_unknowns"]:
         meta["unknowns in no package"] = f"{data['unattached_unknowns']} (see index.json)"
     if data["incomplete"]:
