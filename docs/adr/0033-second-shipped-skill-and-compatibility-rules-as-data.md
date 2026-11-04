@@ -15,9 +15,11 @@ packaged data run by `crm inventory assess`, not into the skill's prose.
 - **Sibling folder, not a container.** The new skill lives at
   `crm/migration-skill/` (`SKILL.md` with `name: crm-migration`, plus
   `reference/`). `crm/skills/` stays the `crm` skill's folder unchanged. The
-  plugin manifest entry `./crm/skills` already makes `npx skills` scan every
-  child folder of `crm/` for a `SKILL.md`, so the new skill is discoverable with
-  no manifest change.
+  plugin manifest's `skills` list gains `./crm/migration-skill` beside
+  `./crm/skills`: the Claude Code plugin loader reads each listed path, so the
+  new skill needs its own entry there. `npx skills` scans every child folder of
+  each entry's parent (`crm/`), so it finds both skills either way, and the
+  added entry changes nothing for it.
 - **One installer, one folder per skill.** `crm skill install` and `uninstall`
   take `--skill crm|crm-migration` (repeatable), defaulting to `crm` so existing
   installs and scripts behave as before. Each skill installs into its own
