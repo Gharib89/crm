@@ -506,6 +506,18 @@ change together, with the consumers they affect and what verifies the repair.
 Shared libraries and assemblies belong to one package, not one per consumer.
 _Avoid_: task, ticket, batch.
 
+**Compatibility rule**:
+A check, qualified by the source and target versions it applies to and backed by
+a cited Microsoft source, that classifies a component for one migration step
+([ADR 0033](docs/adr/0033-second-shipped-skill-and-compatibility-rules-as-data.md)).
+_Avoid_: check (too general), lint.
+
+**Compatibility finding**:
+One compatibility rule's verdict on one component, with its evidence: a
+blocker, deprecated (works today, removed later), optional modernization, or
+unknown. A component no rule covers gets an unknown finding, never none.
+_Avoid_: issue, warning, error.
+
 ## Relationships
 
 - Every **operational failure** is an **emit envelope** with `ok=false` and exits `1`.
