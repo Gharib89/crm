@@ -186,14 +186,16 @@ it needs no profile and no network.
 - **Exit 0 means it compared, not that they match.** Read `data.counts` (per kind)
   and `data.by_origin`; report `custom` drift first, since `system` components
   differ across platform versions on their own.
-- **`not_comparable` is unknown, never absent.** A kind not read `complete` on
-  both sides, or a key an extraction gap names, cannot be judged: report it with
-  the coverage or gap, never as a removal.
+- **The per-key evidence is in the `--out` file** (`entries`: differing fields
+  with both values, artifacts with both normalized hashes, both ids, a reason):
+  pass `--out` whenever you will report keys, not just counts.
+- **`not_comparable` is unknown.** A kind not read `complete` on both sides
+  (`data.incomplete` lists them, even with no records), or a record or artifact
+  that one side's extraction gap explains, cannot be judged: report it with the
+  coverage or the gap as unknown, not as a removal.
 - **`identity_only` is expected across a migration**: only the GUID differs,
   typical when a route re-creates components. Report it apart from `changed`.
-- **`ambiguous` keys are never matched**: name them so the user resolves the
-  duplicate, rather than guessing which record pairs with which.
-- **The per-key evidence is in the `--out` file** (`entries`: differing fields
-  with both values, artifacts with both normalized hashes, both ids, a reason).
-  Report matches as evidence that the recorded customization agrees, never as
-  proof that the orgs behave alike.
+- **`ambiguous` keys repeat on a side**: name them from the `--out` entries so
+  the user resolves the duplicate.
+- Report matches as evidence that the recorded customization agrees; the orgs
+  may still behave differently.

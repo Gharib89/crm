@@ -99,12 +99,13 @@ def inventory_diff_cmd(ctx: CLIContext, a: Path, b: Path, out_file: Path | None)
     component key within each kind, never by GUID, and each key gets one
     verdict: added, removed, changed, identity_only (only the GUID differs),
     unchanged, ambiguous (the key repeats) or not_comparable (a kind's coverage
-    is not complete on both sides, or an extraction gap names the key).
+    is not complete on both sides, or what one side lacks its extraction gap
+    explains).
     Differences exit 0; an unreadable inventory exits 1. Returns the header
-    (both sources and scopes), counts per kind and verdict, counts per origin
-    and both sides' gaps; --out writes the same plus every key's entry, byte
-    for byte the same for the same inputs. Matching evidence is not proof of
-    equivalent behavior.
+    (both sources and scopes), counts per kind and verdict, counts per origin,
+    the kinds not read complete on both sides, and both sides' gaps; --out
+    writes the same plus every key's entry, byte for byte the same for the
+    same inputs. Matching evidence is not proof of equivalent behavior.
     """
     try:
         diff = diff_inventories(*read_pair(a, b))
@@ -124,6 +125,11 @@ def inventory_diff_cmd(ctx: CLIContext, a: Path, b: Path, out_file: Path | None)
     rows = [[kind, *(counts[kind].get(v, 0) for v in VERDICTS)] for kind in sorted(counts)]
     sides = {s: data["header"][s] for s in ("a", "b")}
     meta = {s.upper(): f"{h['platform']} {h['version']} ({h['org_url']})" for s, h in sides.items()}
+    incomplete = data["incomplete"]
+    if incomplete:
+        meta["incomplete"] = ", ".join(
+            f"{kind} (A {s['a']}, B {s['b']})" for kind, s in incomplete.items()
+        )
     if out_file is not None:
         meta["out"] = str(out_file)
     ctx.emit(True, table={"headers": ["kind", *VERDICTS], "rows": rows}, meta=meta)

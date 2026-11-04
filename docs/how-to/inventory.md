@@ -184,11 +184,12 @@ within each kind, never by GUID, and each key gets one verdict:
 | `identity_only` | only the GUID differs (both sides record one); kept apart from `changed`, since a migration route may re-create components |
 | `unchanged` | fields and normalized artifact hashes agree |
 | `ambiguous` | the key repeats on either side, so it is never matched |
-| `not_comparable` | the kind's coverage is not `complete` on both sides (`partial`, `failed`, `unsupported`, or no entry), or an extraction gap on either side names the key |
+| `not_comparable` | the kind's coverage is not `complete` on both sides (`partial`, `failed`, `unsupported`, or no entry), or the only difference is a record or artifact missing on a side whose extraction gap names the key |
 
-What a side could not read is never reported as removed or added: a key an
-extraction gap names is `not_comparable`, and both sides' gaps are listed in the
-result. Different scopes or source platforms are allowed; the header states both
+What a side could not read is never reported as removed, added or changed: a
+record or artifact missing on a side whose extraction gap names the key makes it
+`not_comparable` (a field that differs anyway is still `changed`, the gap in its
+`reason`), and both sides' gaps are listed in the result. Different scopes or source platforms are allowed; the header states both
 sides and flags `same_platform` and `same_scope`.
 
 `data` holds the summary, and `--out FILE` writes the same summary plus every
@@ -198,12 +199,14 @@ key's entry:
 |---|---|
 | `header` | each side's `platform`, `version`, `org_url`, `extracted_at` and `scope`; `same_platform`, `same_scope`; `basis`, the evidence the verdicts rest on |
 | `counts` | per kind, the number of keys per verdict (a verdict with no key is left out) |
-| `by_origin` | per origin (`custom`, `system`, `unknown`), the number of keys per verdict, so platform-added system components don't drown custom drift |
+| `by_origin` | per origin (`custom`, `system`, `unknown`), the number of keys per verdict, so platform-added system components don't drown custom drift; a key whose origin differs between the sides counts under the first of `custom`, `unknown`, `system` |
+| `incomplete` | each kind not read `complete` on both sides, `{a, b}` its status there (`absent` with no coverage entry), listed even when neither side holds a record |
 | `gaps` | `{a, b}`: each side's extraction gaps |
 | `out` | the `--out` path, or `null` |
 | `entries` | `--out` only: one per key, sorted by kind then key, with `kind`, `key`, `verdict`, `origin`, and where they apply `fields` (`{name, a, b}`; a `fields` entry is named `fields.<name>`), `artifacts` (`{path, a, b}`, the normalized hashes, `null` on the side that lacks it), `ids` (`{a, b}`) and `reason` |
 
-Without `--json` it prints one row per kind with a column per verdict.
+Without `--json` it prints one row per kind with a column per verdict, then both
+sources and the incomplete kinds.
 
 A difference is a result, not a failure: the command exits **0**. It exits **1**
 when either folder holds no readable manifest, or one of them has a

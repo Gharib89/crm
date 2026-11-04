@@ -223,3 +223,110 @@ def test_cli_human_mode_prints_a_table_per_kind(no_profile) -> None:
 
     assert result.exit_code == 0, result.output
     assert "web_resource" in result.output and "identity_only" in result.output
+
+
+def test_a_gap_on_a_key_both_sides_hold_still_reports_a_field_change() -> None:
+    v9 = _sample("v9")
+
+    def edit(m: dict[str, Any]) -> None:
+        _record(m, "web_resource", "new_/scripts/validation.js")["display_name"] = "Checks"
+        m["gaps"].append(
+            {
+                "kind": "web_resource",
+                "key": "new_/scripts/validation.js",
+                "description": None,
+                "reason": "content not readable",
+            }
+        )
+
+    diff = diff_inventories(inventory.parse_manifest(v9), _with(v9, edit))
+
+    entry = _entry(diff, "web_resource", "new_/scripts/validation.js")
+    assert entry.verdict == "changed"
+    assert [f.name for f in entry.fields] == ["display_name"]
+
+
+def test_an_artifact_on_one_side_with_no_gap_is_a_change_with_a_null_hash() -> None:
+    v9 = _sample("v9")
+    path = _record(v9, "web_resource", "new_/scripts/validation.js")["artifacts"][0]["path"]
+
+    def edit(m: dict[str, Any]) -> None:
+        _record(m, "web_resource", "new_/scripts/validation.js")["artifacts"] = []
+
+    diff = diff_inventories(inventory.parse_manifest(v9), _with(v9, edit))
+
+    entry = _entry(diff, "web_resource", "new_/scripts/validation.js")
+    assert entry.verdict == "changed"
+    assert [(c.path, c.b) for c in entry.artifacts] == [(path, None)]
+
+
+def test_a_kind_with_no_coverage_entry_or_failed_on_both_sides_is_listed_as_incomplete() -> None:
+    v9 = _sample("v9")
+
+    def drop_views(m: dict[str, Any]) -> None:
+        m["records"] = [r for r in m["records"] if r["kind"] != "view"]
+        del m["coverage"]["view"]
+        m["coverage"]["sitemap"] = m["coverage"]["sitemap"] | {"status": "failed"}
+
+    def fail_sitemap(m: dict[str, Any]) -> None:
+        m["records"] = [r for r in m["records"] if r["kind"] != "sitemap"]
+        m["coverage"]["sitemap"] = m["coverage"]["sitemap"] | {"status": "failed", "records": 0}
+
+    a = _with(v9, drop_views)
+    diff = diff_inventories(a, _with(v9, fail_sitemap))
+
+    assert _entry(diff, "view", "new_project|Active Projects").reason == (
+        "view coverage is absent on A and complete on B"
+    )
+    assert diff.incomplete() == {
+        "sitemap": {"a": "failed", "b": "failed"},
+        "view": {"a": "absent", "b": "complete"},
+    }
+    assert diff.counts()["sitemap"] == {"not_comparable": 1}
+
+
+def test_a_key_whose_origin_flipped_counts_under_the_same_origin_both_ways() -> None:
+    v9 = _sample("v9")
+
+    def edit(m: dict[str, Any]) -> None:
+        _record(m, "entity", "account")["origin"] = "custom"
+
+    a, b = inventory.parse_manifest(v9), _with(v9, edit)
+
+    assert diff_inventories(a, b).by_origin() == diff_inventories(b, a).by_origin()
+    assert _entry(diff_inventories(a, b), "entity", "account").origin == "custom"
+
+
+def _folder(tmp_path: Path, name: str, text: str) -> Path:
+    folder = tmp_path / name
+    folder.mkdir()
+    (folder / "manifest.json").write_text(text, encoding="utf-8")
+    return folder
+
+
+@pytest.mark.parametrize(
+    ("b_text", "message"),
+    [
+        (None, "cannot read"),
+        ("[]", "B ("),
+        ('{"schema_version": "1"}', "A has schema_version 1 and B has schema_version '1'"),
+    ],
+)
+def test_cli_exits_1_when_b_holds_no_readable_manifest(
+    no_profile, tmp_path: Path, b_text: str | None, message: str
+) -> None:
+    b = tmp_path / "empty" if b_text is None else _folder(tmp_path, "b", b_text)
+
+    result = _diff_cli(str(FIXTURES / "v9"), str(b))
+
+    assert result.exit_code == 1
+    assert message in json.loads(result.output)["error"]
+
+
+def test_cli_exits_1_when_out_cannot_be_written(no_profile, tmp_path: Path) -> None:
+    out = tmp_path / "missing-dir" / "diff.json"
+
+    result = _diff_cli(str(FIXTURES / "v9"), str(FIXTURES / "cloud"), "--out", str(out))
+
+    assert result.exit_code == 1
+    assert json.loads(result.output)["error"].startswith(f"--out {out}:")

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from crm.core.inventory import (
+    KINDS,
     SCHEMA_VERSION,
     ExtractionGap,
     Inventory,
@@ -34,6 +35,7 @@ VERDICTS = (
     "ambiguous",
     "not_comparable",
 )
+_ORIGIN_RANK = ("custom", "unknown", "system")
 _RECORD_FIELDS = ("display_name", "origin", "managed", "publication_state")
 _BASIS = (
     "matched by component key; compared on recorded fields and normalized artifact "
@@ -114,24 +116,36 @@ class InventoryDiff:
     b: Inventory
     entries: tuple[KeyDiff, ...]
 
-    def counts(self) -> dict[str, dict[str, int]]:
-        """Return each kind's count per verdict, verdicts with no key left out."""
+    def _tally(self, group: str) -> dict[str, dict[str, int]]:
         out: dict[str, dict[str, int]] = {}
         for entry in self.entries:
-            per = out.setdefault(entry.kind, {})
+            per = out.setdefault(getattr(entry, group), {})
             per[entry.verdict] = per.get(entry.verdict, 0) + 1
         return out
+
+    def counts(self) -> dict[str, dict[str, int]]:
+        """Return each kind's count per verdict, verdicts with no key left out."""
+        return self._tally("kind")
 
     def by_origin(self) -> dict[str, dict[str, int]]:
         """Return the count per verdict for each origin, so system drift stays apart from custom."""
-        out: dict[str, dict[str, int]] = {}
-        for entry in self.entries:
-            per = out.setdefault(entry.origin, {})
-            per[entry.verdict] = per.get(entry.verdict, 0) + 1
+        return self._tally("origin")
+
+    def incomplete(self) -> dict[str, dict[str, str]]:
+        """Return each v1 kind not read ``complete`` on both sides, with each side's status.
+
+        Such a kind is listed even when it holds no record on either side, so a
+        kind neither extraction could read still shows in the result.
+        """
+        out: dict[str, dict[str, str]] = {}
+        for kind in KINDS:
+            sa, sb = _statuses(kind, self.a, self.b)
+            if not sa == sb == "complete":
+                out[kind] = {"a": sa, "b": sb}
         return out
 
     def summary(self) -> dict[str, Any]:
-        """Return the header, counts and both sides' extraction gaps, without per-key entries."""
+        """Return the header, counts, incomplete kinds and gaps, without per-key entries."""
         a, b = _side(self.a), _side(self.b)
         return {
             "header": {
@@ -143,6 +157,7 @@ class InventoryDiff:
             },
             "counts": self.counts(),
             "by_origin": self.by_origin(),
+            "incomplete": self.incomplete(),
             "gaps": {"a": _gaps(self.a), "b": _gaps(self.b)},
         }
 
@@ -169,7 +184,9 @@ def read_pair(a: Path, b: Path) -> tuple[Inventory, Inventory]:
     """
     data = (load_manifest(a), load_manifest(b))
     versions = [_schema_version(d) for d in data]
-    if any(type(v) is not int or v != SCHEMA_VERSION for v in versions):
+    # Only when both decode to objects: a non-object is refused below as not an object.
+    readable = all(isinstance(d, dict) for d in data)
+    if readable and any(type(v) is not int or v != SCHEMA_VERSION for v in versions):
         raise InventoryError(
             f"cannot diff: A has schema_version {versions[0]!r} and B has schema_version "
             f"{versions[1]!r}; this crm reads schema_version {SCHEMA_VERSION}"
@@ -213,10 +230,13 @@ def _artifact_changes(x: Record, y: Record) -> tuple[ArtifactChange, ...]:
     )
 
 
-def _not_comparable(kind: str, a: Inventory, b: Inventory) -> str | None:
+def _statuses(kind: str, a: Inventory, b: Inventory) -> tuple[str, str]:
     ca, cb = a.coverage.get(kind), b.coverage.get(kind)
-    sa = ca.status if ca else "absent"
-    sb = cb.status if cb else "absent"
+    return (ca.status if ca else "absent", cb.status if cb else "absent")
+
+
+def _not_comparable(kind: str, a: Inventory, b: Inventory) -> str | None:
+    sa, sb = _statuses(kind, a, b)
     if sa == sb == "complete":
         return None
     return f"{kind} coverage is {sa} on A and {sb} on B"
@@ -229,19 +249,18 @@ def _gap_for(inv: Inventory, kind: str, key: str) -> ExtractionGap | None:
     return None
 
 
+def _gap_reason(label: str, gap: ExtractionGap) -> str:
+    return f"extraction gap on {label}: {gap.reason}"
+
+
 def _diff_key(
     kind: str, key: str, ra: list[Record], rb: list[Record], a: Inventory, b: Inventory
 ) -> KeyDiff:
-    origin = (rb or ra)[0].origin
+    # The first origin in rank order across both sides, so swapping A and B keeps the bucket.
+    origin = min((r.origin for r in (*ra, *rb)), key=_ORIGIN_RANK.index)
     reason = _not_comparable(kind, a, b)
     if reason is not None:
         return KeyDiff(kind, key, "not_comparable", origin, reason=reason)
-    for label, inv in (("A", a), ("B", b)):
-        gap = _gap_for(inv, kind, key)
-        if gap is not None:
-            # What a side cannot expose is a gap there, never a change, removal or addition.
-            reason = f"extraction gap on {label}: {gap.reason}"
-            return KeyDiff(kind, key, "not_comparable", origin, reason=reason)
     if len(ra) > 1 or len(rb) > 1:
         return KeyDiff(
             kind,
@@ -250,25 +269,44 @@ def _diff_key(
             origin,
             reason=f"the key repeats: {len(ra)} on A, {len(rb)} on B",
         )
+    gap_a, gap_b = _gap_for(a, kind, key), _gap_for(b, kind, key)
+    # What a side cannot expose is a gap there: a record or an artifact missing on a
+    # side whose gap names the key is never a removal, an addition or a change.
     if not ra or not rb:
+        label, gap = ("B", gap_b) if not rb else ("A", gap_a)
+        if gap is not None:
+            return KeyDiff(kind, key, "not_comparable", origin, reason=_gap_reason(label, gap))
         return KeyDiff(kind, key, "removed" if not rb else "added", origin)
     x, y = ra[0], rb[0]
-    fields, artifacts = _field_changes(x, y), _artifact_changes(x, y)
+    fields = _field_changes(x, y)
+    artifacts: list[ArtifactChange] = []
+    explained: str | None = None
+    for change in _artifact_changes(x, y):
+        if change.a is None and gap_a is not None:
+            explained = explained or _gap_reason("A", gap_a)
+        elif change.b is None and gap_b is not None:
+            explained = explained or _gap_reason("B", gap_b)
+        else:
+            artifacts.append(change)
     ids = (x.id, y.id) if x.id and y.id and x.id != y.id else None
     if fields or artifacts:
         verdict = "changed"
+    elif explained is not None:
+        return KeyDiff(kind, key, "not_comparable", origin, ids=ids, reason=explained)
     else:
         verdict = "identity_only" if ids else "unchanged"
-    return KeyDiff(kind, key, verdict, origin, fields, artifacts, ids)
+    return KeyDiff(kind, key, verdict, origin, fields, tuple(artifacts), ids, explained)
 
 
 def diff_inventories(a: Inventory, b: Inventory) -> InventoryDiff:
     """Compare *a* (the earlier stage) with *b*, one `KeyDiff` per component key.
 
     A verdict is decided in this order: ``not_comparable`` when either side's
-    coverage of the kind is not ``complete`` or either side names the key in an
-    extraction gap, ``ambiguous`` when the key repeats on either side,
-    then ``added``, ``removed``, ``changed``, ``identity_only`` or ``unchanged``.
+    coverage of the kind is not ``complete``, ``ambiguous`` when the key repeats
+    on either side, then ``added``, ``removed``, ``changed``, ``identity_only``
+    or ``unchanged``. A record or artifact missing on a side whose extraction gap
+    names the key is evidence that side could not read, not a difference: the
+    key is ``not_comparable`` unless something else differs.
     GUIDs are compared only when both sides record one. Entries sort by kind,
     then key, so the result does not depend on manifest order.
     """
