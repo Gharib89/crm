@@ -77,6 +77,36 @@ def test_legacy_components_pages_and_writes_payloads(cli, tmp_path):
     assert any(i["sdkmessageprocessingstepid"]["id"] in step_ids for i in data["step-images"])
 
 
+@covers("legacy components")
+def test_legacy_components_scoped_by_solution_and_entity(cli):
+    solutions = _legacy(cli, "components", "solutions")["solutions"]
+    system = {"Default", "Active", "Basic", "System"}
+    name = sorted(
+        s["uniquename"] for s in solutions if not s["ismanaged"] and s["uniquename"] not in system
+    )[0]
+    scoped = _legacy(cli, "components", "--solution", name)
+    assert scoped["errors"] == []
+    assert [s["uniquename"] for s in scoped["solutions"]] == [name]
+    # Parent-carried members come with their parent.
+    assemblies = {a["id"] for a in scoped["plugin-assemblies"]}
+    assert all(t["pluginassemblyid"]["id"] in assemblies for t in scoped["plugin-types"])
+    steps = {s["id"] for s in scoped["plugin-steps"]}
+    assert all(i["sdkmessageprocessingstepid"]["id"] in steps for i in scoped["step-images"])
+
+    account = _legacy(cli, "components", "--entity", "account")
+    assert [k for k in account if k != "errors"] == [
+        "plugin-steps",
+        "step-images",
+        "processes",
+        "forms",
+        "views",
+    ]
+    assert account["forms"] and account["views"]
+    assert all(f["objecttypecode"] == "account" for f in account["forms"])
+    assert all(v["returnedtypecode"] == "account" for v in account["views"])
+    assert all(p["primaryentity"] == "account" for p in account["processes"])
+
+
 @covers("legacy dependencies")
 def test_legacy_dependencies_reads_what_depends_on_account(cli):
     (account,) = [e for e in _legacy(cli, "metadata") if e["logical_name"] == "account"]

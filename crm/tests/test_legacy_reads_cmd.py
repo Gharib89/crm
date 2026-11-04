@@ -316,3 +316,191 @@ def test_web_resource_content_that_is_not_base64_fails_its_kind_only(tmp_path):
     assert data["web-resources"] == []
     (err,) = errors
     assert (err["kind"], err["code"]) == ("web-resources", None)
+
+
+# ── --solution / --entity scope ────────────────────────────────────────────
+
+_SOLUTION_ID = "50000000-0000-0000-0000-000000000001"
+_SCOPED = {"solution": "rm_solution.xml", "solutioncomponent": "rm_solutioncomponent.xml"}
+_ENTITY_KINDS = ["plugin-steps", "step-images", "processes", "forms", "views"]
+
+
+def _sent(m) -> tuple[list[str], dict]:
+    """Each request's name (Execute's RequestName, else the operation) and each entity's fetches."""
+    names, fetches = [], {}
+    for request in m.request_history:
+        root = fromstring(request.body)
+        name = root.findtext(f".//{{{_CRM}}}RequestName")
+        names.append(name or request.headers["SOAPAction"].rpartition("/")[2])
+        if name is None:
+            fetch = fromstring(root.findtext(f".//{{{_CRM}}}Query", default=""))
+            fetches.setdefault(fetch[0].get("name"), []).append(fetch)
+    return names, fetches
+
+
+def _conditions(el) -> list[tuple]:
+    return [
+        (c.get("attribute"), c.get("operator"), c.get("value") or [v.text for v in c])
+        for c in el.findall("condition")
+    ]
+
+
+def _link(el, name):
+    (link,) = [x for x in el.findall("link-entity") if x.get("name") == name]
+    return link
+
+
+def _membership(entity, to):
+    """Assert *entity* joins solutioncomponent on *to* within the solution."""
+    link = _link(entity, "solutioncomponent")
+    assert (link.get("from"), link.get("to"), link.get("link-type")) == ("objectid", to, "inner")
+    assert _conditions(link.find("filter")) == [("solutionid", "eq", _SOLUTION_ID)]
+
+
+def test_solution_scope_joins_each_member_kind_on_its_own_or_parent_id(crm_home):
+    result, m = _run("components", "--solution", "contoso_core", rows=_SCOPED)
+    assert result.exit_code == 0, result.output
+    _, fetches = _sent(m)
+    (resolve, own_row) = fetches["solution"]
+    assert _conditions(resolve.find("entity/filter")) == [("uniquename", "eq", "contoso_core")]
+    for entity, to in [
+        ("webresource", "webresourceid"),
+        ("pluginassembly", "pluginassemblyid"),
+        ("plugintype", "pluginassemblyid"),  # its assembly is the member
+        ("sdkmessageprocessingstep", "sdkmessageprocessingstepid"),
+        ("sdkmessageprocessingstepimage", "sdkmessageprocessingstepid"),  # its step is the member
+        ("workflow", "workflowid"),
+    ]:
+        for fetch in fetches[entity]:  # web resources answer in two pages
+            _membership(fetch.find("entity"), to)
+    assert _conditions(fetches["workflow"][0].find("entity/filter")) == [("type", "eq", "1")]
+    # The solutions kind is that solution's own row.
+    assert _conditions(own_row.find("entity/filter")) == [("solutionid", "eq", _SOLUTION_ID)]
+    assert [s["uniquename"] for s in json.loads(result.output)["data"]["solutions"]] == [
+        "contoso_core"
+    ]
+
+
+def test_solution_scope_reads_forms_and_views_through_their_member_entities(crm_home):
+    result, m = _run("components", "forms", "views", "--solution", "contoso_core", rows=_SCOPED)
+    assert result.exit_code == 0, result.output
+    names, fetches = _sent(m)
+    (members,) = fetches["solutioncomponent"]
+    assert _conditions(members.find("entity/filter")) == [
+        ("solutionid", "eq", _SOLUTION_ID),
+        ("componenttype", "in", ["1", "26", "60"]),
+    ]
+    # The member entity's MetadataId maps to its object type code (account, 1).
+    assert "RetrieveAllEntities" in names
+    (forms,) = fetches["systemform"]
+    either = forms.find("entity/filter/filter")
+    assert either.get("type") == "or"
+    assert _conditions(either) == [
+        ("formid", "in", ["60000000-0000-0000-0000-000000000001"]),
+        ("objecttypecode", "in", ["1"]),
+    ]
+    (views,) = fetches["savedquery"]
+    assert _conditions(views.find("entity/filter/filter")) == [("returnedtypecode", "in", ["1"])]
+
+
+def test_a_solution_with_no_member_entity_reads_no_forms_or_views(crm_home):
+    result, m = _run(
+        "components",
+        "forms",
+        "views",
+        "--solution",
+        "contoso_core",
+        rows={"solution": "rm_solution.xml"},
+    )
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)["data"]
+    assert (data["forms"], data["views"]) == ([], [])
+    names, fetches = _sent(m)
+    assert "systemform" not in fetches and "savedquery" not in fetches
+    assert "RetrieveAllEntities" not in names
+
+
+def test_entity_scope_with_no_kind_reads_the_five_entity_kinds_by_type_code(crm_home):
+    result, m = _run("components", "--entity", "account")
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)["data"]
+    assert [k for k in data if k != "errors"] == _ENTITY_KINDS
+    names, fetches = _sent(m)
+    assert names[0] == "RetrieveEntity"
+    assert "EntityFilters</b:key><b:value" in m.request_history[0].body.decode()
+    assert ">Entity</b:value>" in m.request_history[0].body.decode()
+    # Every entity condition carries the integer type code, never the logical name.
+    assert _conditions(fetches["systemform"][0].find("entity/filter")) == [
+        ("objecttypecode", "eq", "1")
+    ]
+    assert _conditions(fetches["savedquery"][0].find("entity/filter")) == [
+        ("returnedtypecode", "eq", "1")
+    ]
+    assert _conditions(fetches["workflow"][0].find("entity/filter")) == [
+        ("type", "eq", "1"),
+        ("primaryentity", "eq", "1"),
+    ]
+    step_filter = _link(fetches["sdkmessageprocessingstep"][0].find("entity"), "sdkmessagefilter")
+    assert (step_filter.get("from"), step_filter.get("to")) == ("sdkmessagefilterid",) * 2
+    assert _conditions(step_filter.find("filter")) == [("primaryobjecttypecode", "eq", "1")]
+    step = _link(
+        fetches["sdkmessageprocessingstepimage"][0].find("entity"), "sdkmessageprocessingstep"
+    )
+    assert (step.get("from"), step.get("to")) == ("sdkmessageprocessingstepid",) * 2
+    assert _conditions(_link(step, "sdkmessagefilter").find("filter")) == [
+        ("primaryobjecttypecode", "eq", "1")
+    ]
+
+
+def test_solution_and_entity_scope_apply_both(crm_home):
+    result, m = _run(
+        "components",
+        "forms",
+        "plugin-steps",
+        "--solution",
+        "contoso_core",
+        "--entity",
+        "account",
+        rows=_SCOPED,
+    )
+    assert result.exit_code == 0, result.output
+    _, fetches = _sent(m)
+    filter_ = fetches["systemform"][0].find("entity/filter")
+    assert _conditions(filter_) == [("objecttypecode", "eq", "1")]
+    assert filter_.find("filter").get("type") == "or"
+    step = fetches["sdkmessageprocessingstep"][0].find("entity")
+    _membership(step, "sdkmessageprocessingstepid")
+    assert _conditions(_link(step, "sdkmessagefilter").find("filter")) == [
+        ("primaryobjecttypecode", "eq", "1")
+    ]
+
+
+def test_an_unknown_solution_fails_naming_it_before_any_kind_is_read(crm_home):
+    result, m = _run("components", "--solution", "contoso_nosuch")
+    assert result.exit_code == 1, result.output
+    assert "contoso_nosuch" in json.loads(result.output)["error"]
+    _, fetches = _sent(m)
+    assert list(fetches) == ["solution"]
+
+
+def test_an_unknown_entity_fails_naming_it_before_any_kind_is_read(crm_home):
+    result, m = _run("components", "--entity", "contoso_nosuch", fault_entities=("contoso_nosuch",))
+    assert result.exit_code == 1, result.output
+    assert "contoso_nosuch" in json.loads(result.output)["error"]
+    assert m.call_count == 1
+
+
+def test_entity_scope_with_a_kind_that_has_no_entity_is_a_usage_error(crm_home):
+    result, m = _run("components", "web-resources", "forms", "--entity", "account")
+    assert result.exit_code == 2, result.output
+    assert "web-resources" in result.output
+    assert m.call_count == 0
+
+
+def test_scoped_reads_send_only_allowlisted_requests(crm_home):
+    from crm.core.legacy import READ_ONLY_REQUESTS
+
+    _, m = _run("components", "--solution", "contoso_core", "--entity", "account", rows=_SCOPED)
+    names, _ = _sent(m)
+    assert set(names) == {"RetrieveEntity", "RetrieveAllEntities", "RetrieveMultiple"}
+    assert set(names) - {"RetrieveMultiple"} <= READ_ONLY_REQUESTS

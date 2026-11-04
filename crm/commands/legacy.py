@@ -106,8 +106,24 @@ def legacy_metadata(ctx: CLIContext, entities: tuple[str, ...], option_sets: boo
     type=click.Path(file_okay=False, path_type=Path),
     help="Write payloads (web resource content, form XML, process XAML) under DIR.",
 )
+@click.option(
+    "--solution",
+    metavar="UNIQUENAME",
+    help="Read only the members of this solution, as it exports them.",
+)
+@click.option(
+    "--entity",
+    metavar="LOGICALNAME",
+    help=f"Read only the components of this entity ({', '.join(legacy_reads.ENTITY_KINDS)}).",
+)
 @pass_ctx
-def legacy_components(ctx: CLIContext, kinds: tuple[str, ...], out_dir: Path | None):
+def legacy_components(
+    ctx: CLIContext,
+    kinds: tuple[str, ...],
+    out_dir: Path | None,
+    solution: str | None,
+    entity: str | None,
+):
     """Read solution components: read-only, paged to the last page over SOAP.
 
     With no KIND, reads every kind. Each kind is paged with the server's paging
@@ -116,8 +132,21 @@ def legacy_components(ctx: CLIContext, kinds: tuple[str, ...], out_dir: Path | N
     with exit code 1. Plug-in assemblies stored on disk or in the GAC are listed
     with `binary: unavailable` and a reason, never skipped. With `--out`, large
     payloads are written to files and the row carries `<column>_file` instead.
+
+    `--solution` keeps a component the solution holds directly or through its
+    parent: plug-in types through their assembly, step images through their
+    step, forms and views through their entity. `--entity` reads only the kinds
+    that name an entity (all of them when no KIND is given). Both together
+    apply both. An unknown solution or entity fails with exit code 1 before any
+    kind is read.
     """
-    names = list(kinds) or list(legacy_reads.KINDS)
+    if entity is not None:
+        wrong = [k for k in kinds if k not in legacy_reads.ENTITY_KINDS]
+        if wrong:
+            raise click.UsageError(f"--entity does not apply to {', '.join(wrong)}.")
+    names = list(kinds) or list(
+        legacy_reads.ENTITY_KINDS if entity is not None else legacy_reads.KINDS
+    )
     if out_dir is not None:
         try:
             out_dir.mkdir(parents=True, exist_ok=True)
@@ -126,7 +155,8 @@ def legacy_components(ctx: CLIContext, kinds: tuple[str, ...], out_dir: Path | N
             return
     with d365_errors(ctx):
         client = ctx.legacy_client()
-        data, errors = legacy_reads.read_components(client, names, out_dir)
+        scope = legacy_reads.resolve_scope(client, names, solution, entity)
+        data, errors = legacy_reads.read_components(client, names, out_dir, scope)
     _emit_with_failures(
         ctx, {**data, "errors": errors}, _meta(ctx, client), errors, len(names), "kinds", "kind"
     )
