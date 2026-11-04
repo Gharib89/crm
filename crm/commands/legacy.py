@@ -3,10 +3,34 @@
 # pyright: basic
 from __future__ import annotations
 
+from pathlib import Path
+
 import click
 
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import d365_errors
+from crm.core import legacy_reads
+from crm.core.legacy import LegacyClient
+
+
+def _meta(ctx: CLIContext, client: LegacyClient) -> dict | None:
+    return {"profile": client.profile.name, "url": client.endpoint} if ctx.json_mode else None
+
+
+def _emit_with_failures(
+    ctx: CLIContext, data, meta, errors: list[dict], total: int, noun: str, label: str
+) -> None:
+    """Emit *data*; a non-empty *errors* makes it a failure envelope that still carries the data."""
+    if not errors:
+        ctx.emit(True, data=data, meta=meta)
+        return
+    detail = "; ".join(f"{e[label]}: {e['error']}" for e in errors)
+    ctx.emit(
+        False,
+        data=data,
+        meta=meta,
+        error=f"{len(errors)} of {total} {noun} failed: {detail}",
+    )
 
 
 @click.group("legacy")
@@ -30,8 +54,7 @@ def legacy_whoami(ctx: CLIContext):
         "business_unit_id": results.get("BusinessUnitId"),
         "organization_id": results.get("OrganizationId"),
     }
-    meta = {"profile": client.profile.name, "url": client.endpoint} if ctx.json_mode else None
-    ctx.emit(True, data=data, meta=meta)
+    ctx.emit(True, data=data, meta=_meta(ctx, client))
 
 
 @legacy_group.command("version")
@@ -42,5 +65,64 @@ def legacy_version(ctx: CLIContext):
         client = ctx.legacy_client()
         results = client.execute("RetrieveVersion")
     data = {"version": results.get("Version")}
-    meta = {"profile": client.profile.name, "url": client.endpoint} if ctx.json_mode else None
-    ctx.emit(True, data=data, meta=meta)
+    ctx.emit(True, data=data, meta=_meta(ctx, client))
+
+
+@legacy_group.command("metadata")
+@click.argument("entities", nargs=-1)
+@click.option(
+    "--option-sets", is_flag=True, help="List the global option sets instead of entities."
+)
+@pass_ctx
+def legacy_metadata(ctx: CLIContext, entities: tuple[str, ...], option_sets: bool):
+    """Read entity metadata: read-only, over RetrieveAllEntities / RetrieveEntity.
+
+    With no ENTITY, lists every entity (logical name, custom flag, object type
+    code). With ENTITY names, reads each one's attributes, relationships and
+    option sets; one that fails is reported and the others still read
+    (continue-and-report), and the exit code is 1 if any failed. `--option-sets`
+    lists the global option sets and takes no ENTITY.
+    """
+    if option_sets and entities:
+        raise click.UsageError("--option-sets takes no ENTITY.")
+    errors: list[dict] = []
+    with d365_errors(ctx):
+        client = ctx.legacy_client()
+        if option_sets:
+            data = legacy_reads.list_option_sets(client)
+        elif not entities:
+            data = legacy_reads.list_entities(client)
+        else:
+            read, errors = legacy_reads.read_entities(client, list(entities))
+            data = {"entities": read, "errors": errors}
+    _emit_with_failures(ctx, data, _meta(ctx, client), errors, len(entities), "entities", "entity")
+
+
+@legacy_group.command("components")
+@click.argument("kinds", nargs=-1, type=click.Choice(list(legacy_reads.KINDS)))
+@click.option(
+    "--out",
+    "out_dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Write payloads (web resource content, form XML, process XAML) under DIR.",
+)
+@pass_ctx
+def legacy_components(ctx: CLIContext, kinds: tuple[str, ...], out_dir: Path | None):
+    """Read solution components: read-only, paged to the last page over SOAP.
+
+    With no KIND, reads every kind. Each kind is paged with the server's paging
+    cookie until the last page; one that fails keeps the rows it already read,
+    is reported in `errors`, and the next kind still runs (continue-and-report),
+    with exit code 1. Plug-in assemblies stored on disk or in the GAC are listed
+    with `binary: unavailable` and a reason, never skipped. With `--out`, large
+    payloads are written to files and the row carries `<column>_file` instead.
+    """
+    names = list(kinds) or list(legacy_reads.KINDS)
+    with d365_errors(ctx):
+        client = ctx.legacy_client()
+        if out_dir is not None:
+            out_dir.mkdir(parents=True, exist_ok=True)
+        data, errors = legacy_reads.read_components(client, names, out_dir)
+    _emit_with_failures(
+        ctx, {**data, "errors": errors}, _meta(ctx, client), errors, len(names), "kinds", "kind"
+    )
