@@ -1110,6 +1110,7 @@ def cli(
     # it opened a connection, so emit() never stamps identity onto a local verb
     # that follows a connecting one in the same REPL session (#624).
     cli_ctx.connection_resolved = False
+    cli_ctx.legacy_profile_name = None
     # Sticky options: in the REPL the same CLIContext is reused across lines, so only
     # overwrite when the user actually supplied the flag — otherwise prior values
     # (e.g., set by `crm profile add`) would be wiped on the next bare command.

@@ -215,7 +215,8 @@ def _parse(resp: requests.Response) -> ET.Element:
     # about whose fault it is; the faultcode does. A Client fault (the request
     # was at fault) is reported as 400 so it does not classify as a retryable
     # server error.
-    status = 400 if (fault.findtext("faultcode") or "").endswith("Client") else resp.status_code
+    faultcode = (fault.findtext("faultcode") or "").rpartition(":")[2]
+    status = 400 if faultcode.partition(".")[0] == "Client" else resp.status_code
     org_fault = fault.find(".//a:OrganizationServiceFault", _NS)
     code: str | None = None
     message = fault.findtext("faultstring") or "SOAP fault"

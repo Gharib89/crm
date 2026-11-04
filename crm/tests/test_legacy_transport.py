@@ -110,6 +110,16 @@ class TestFaults:
         exc = info.value
         assert classify_d365_error(exc.status, exc.code, str(exc)) == ("validation", False)
 
+    def test_a_dotted_client_fault_is_a_client_fault(self, client):
+        body = _fixture("fault_request_not_supported.xml").replace(
+            "s:Client", "s:Client.Authentication"
+        )
+        with requests_mock.Mocker() as m:
+            m.post(_ENDPOINT, text=body, status_code=500, headers={"Content-Type": "text/xml"})
+            with pytest.raises(D365Error) as info:
+                client.execute("RetrieveVersion")
+        assert info.value.status == 400
+
     def test_a_server_fault_keeps_the_wire_status(self, client):
         body = _fixture("fault_request_not_supported.xml").replace("s:Client", "s:Server")
         with requests_mock.Mocker() as m:

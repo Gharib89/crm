@@ -117,7 +117,9 @@ def test_legacy_refuses_a_non_ntlm_auth_scheme_override(crm_home):
         "version",
     )
     assert result.exit_code == 2, result.output
-    assert "--auth-scheme kerberos" in result.output
+    env = json.loads(result.output)
+    assert env["ok"] is False
+    assert "--auth-scheme kerberos" in env["error"]
     assert m.call_count == 0
 
 
