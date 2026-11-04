@@ -310,7 +310,7 @@ as an always-read-only `crm2011` profile; `crm legacy whoami` / `version` / `met
 it, and on v9 on-prem and cloud profiles over the Web API: it writes the migration
 inventory (manifest v1 plus raw artifacts), whole-org or narrowed with `--solution`,
 checkpointed so an interrupted run resumes; `crm inventory diff` compares two inventories
-from any stages offline. Every other command refuses a `crm2011` profile. See
+from any stages offline. Every other org command refuses a `crm2011` profile. See
 [ADR 0031](docs/adr/0031-legacy-crm2011-read-only-soap-adapter.md) and
 [ADR 0032](docs/adr/0032-inventory-descriptive-contract-keyed-by-component-key.md).
 

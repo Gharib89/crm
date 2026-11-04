@@ -276,7 +276,7 @@ or Dataverse; a profile JSON without the key means `v9`). `crm profile add` save
 it when the Web API answers 404 on an NTLM profile and `RetrieveVersion` over the
 SOAP `/web` endpoint answers a `5.x` build. It is **always read-only**: the flag is
 forced on load and `profile edit --no-read-only` refuses, with no TTY escape. Only
-`crm legacy` and `crm inventory extract` run on it; a v9 or cloud command fails fast
+`crm legacy`, `crm inventory extract` and the offline `crm inventory diff` run on it; a v9 or cloud command fails fast
 naming `crm legacy`, and `crm legacy` refuses any other profile
 ([ADR 0031](docs/adr/0031-legacy-crm2011-read-only-soap-adapter.md)).
 _Avoid_: legacy profile, SOAP profile, 2011 mode.

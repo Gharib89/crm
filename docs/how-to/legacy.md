@@ -145,7 +145,7 @@ profiles too, over the Web API). See
 
 - **A v9 or cloud command on a `crm2011` profile** (`crm entity get`,
   `crm query odata`, ...) fails with exit 1 and an error naming `crm legacy`.
-  `crm inventory extract` is the one other command that runs on it.
+  `crm inventory extract` and the offline `crm inventory diff` also run on it.
 - **`crm legacy` on any other profile** refuses and says it needs a `crm2011`
   profile.
 - **A SOAP fault** becomes the standard error with the fault's `ErrorCode` as
