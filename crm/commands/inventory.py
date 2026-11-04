@@ -58,4 +58,5 @@ def inventory_extract(ctx: CLIContext, out_dir: Path):
             error=f"{len(summary.errors)} read(s) failed: {'; '.join(summary.errors)}",
         )
         return
-    ctx.emit(True, data=data)
+    meta = {"profile": client.profile.name, "url": client.endpoint} if ctx.json_mode else None
+    ctx.emit(True, data=data, meta=meta)

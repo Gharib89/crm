@@ -170,6 +170,7 @@ class FakeClient:
         self.profile = ConnectionProfile(
             name="legacy", url=_URL, domain="CONTOSO", username="alice", platform="crm2011"
         )
+        self.endpoint = _URL + "/XRMServices/2011/Organization.svc/web"
         self.org = org or _ORG
         self.fail = dict(fail or {})
         self.requests: list[tuple[str, int, str | None]] = []
@@ -410,6 +411,7 @@ def test_inventory_extract_returns_a_short_summary(crm_home, reads, monkeypatch,
     assert data["manifest"] == str(out / "manifest.json")
     assert data["complete"] is True
     assert data["kinds"]["step"] == {"status": "complete", "records": 1}
+    assert env["meta"] == {"profile": "legacy", "url": fake.endpoint}
 
 
 def test_inventory_extract_failure_is_a_failure_envelope_with_the_summary(
