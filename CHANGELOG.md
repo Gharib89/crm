@@ -9,6 +9,57 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.84.0 (2026-11-04)
+
+### Bug Fixes
+
+- **inventory**: Codex round 1: RFC 3339 extracted_at, equal binary hashes, malformed UTF-8 as
+  InventoryError ([#1056](https://github.com/Gharib89/crm/pull/1056),
+  [`2b40b41`](https://github.com/Gharib89/crm/commit/2b40b419fa22b1f37d5aac04f032376e4022fec1))
+
+- **inventory**: Self-review round 1: typed key parts, dotted names, URL scheme, sorted errors,
+  glossary names ([#1056](https://github.com/Gharib89/crm/pull/1056),
+  [`2b40b41`](https://github.com/Gharib89/crm/commit/2b40b419fa22b1f37d5aac04f032376e4022fec1))
+
+- **inventory**: Self-review round 2: reader and schema agree on empty nullable parts, defined
+  fields and URL scheme case ([#1056](https://github.com/Gharib89/crm/pull/1056),
+  [`2b40b41`](https://github.com/Gharib89/crm/commit/2b40b419fa22b1f37d5aac04f032376e4022fec1))
+
+- **inventory**: Self-review round 3: reader matches the schema's org_url pattern, no urlsplit
+  ValueError escape ([#1056](https://github.com/Gharib89/crm/pull/1056),
+  [`2b40b41`](https://github.com/Gharib89/crm/commit/2b40b419fa22b1f37d5aac04f032376e4022fec1))
+
+### Documentation
+
+- **inventory**: Reference page for manifest v1 and the read-path reuse record
+  ([#1056](https://github.com/Gharib89/crm/pull/1056),
+  [`2b40b41`](https://github.com/Gharib89/crm/commit/2b40b419fa22b1f37d5aac04f032376e4022fec1))
+
+### Features
+
+- **inventory**: Inventory manifest schema v1, sample manifests and the read-path reuse record
+  ([#1056](https://github.com/Gharib89/crm/pull/1056),
+  [`2b40b41`](https://github.com/Gharib89/crm/commit/2b40b419fa22b1f37d5aac04f032376e4022fec1))
+
+- **inventory**: Manifest v1 records, component keys, reader and deterministic writer
+  ([#1056](https://github.com/Gharib89/crm/pull/1056),
+  [`2b40b41`](https://github.com/Gharib89/crm/commit/2b40b419fa22b1f37d5aac04f032376e4022fec1))
+
+- **inventory**: Restore the core bodies after the red proof
+  ([#1056](https://github.com/Gharib89/crm/pull/1056),
+  [`2b40b41`](https://github.com/Gharib89/crm/commit/2b40b419fa22b1f37d5aac04f032376e4022fec1))
+
+- **inventory**: Ship the v1 JSON Schema with legacy, v9 and cloud sample inventories
+  ([#1056](https://github.com/Gharib89/crm/pull/1056),
+  [`2b40b41`](https://github.com/Gharib89/crm/commit/2b40b419fa22b1f37d5aac04f032376e4022fec1))
+
+### Testing
+
+- **inventory**: Stub the core bodies to prove the tests red
+  ([#1056](https://github.com/Gharib89/crm/pull/1056),
+  [`2b40b41`](https://github.com/Gharib89/crm/commit/2b40b419fa22b1f37d5aac04f032376e4022fec1))
+
+
 ## v1.83.0 (2026-11-04)
 
 ### Bug Fixes
