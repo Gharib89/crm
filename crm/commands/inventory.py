@@ -241,9 +241,11 @@ def inventory_packages_cmd(
     unknown, so a shared library and its consumers are one package. Each
     package lists its source, affected consumers, findings (unknowns), expected
     behavior (from --scenarios, else unknown) and verification requirements,
-    each requirement with a stable id. --out gets index.json and one
-    <package id>.json per package, the same bytes for the same inputs. Returns
-    the package count and sizes, the unknown count and unmatched scenarios.
+    each requirement with a stable id; an unknown edge from a node no package
+    holds (an entity, a system web resource) is listed in index.json instead.
+    --out gets index.json and one <package id>.json per package, the same
+    bytes for the same inputs. Returns the package count and sizes, the
+    unknown counts, and the scenario seeds not found or in no package.
     """
     try:
         result = build_packages(inventory, read_source_map(source_map_file), scenarios_file)
@@ -268,6 +270,12 @@ def inventory_packages_cmd(
         meta["seeds not found"] = ", ".join(
             f"{s['scenario']}: {s['seed']}" for s in data["seeds_not_found"]
         )
+    if data["seeds_unpackaged"]:
+        meta["seeds in no package"] = ", ".join(
+            f"{s['scenario']}: {s['seed']}" for s in data["seeds_unpackaged"]
+        )
+    if data["unattached_unknowns"]:
+        meta["unknowns in no package"] = f"{data['unattached_unknowns']} (see index.json)"
     if data["incomplete"]:
         meta["incomplete"] = ", ".join(f"{k} ({v})" for k, v in data["incomplete"].items())
     headers = ["package", "members", "unknowns", "scenarios"]

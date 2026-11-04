@@ -206,7 +206,11 @@ SCENARIOS = {
     "scenarios": [
         {
             "name": "Project approval",
-            "seeds": [f"form:{PROJECT_FORM_KEY}", "process:0|new_project|Project approval"],
+            "seeds": [
+                f"form:{PROJECT_FORM_KEY}",
+                "process:0|new_project|Project approval",
+                "entity:new_project",
+            ],
             "expected_behavior": ["docs/scenarios/project-approval.md"],
         },
         {"name": "Ghost", "seeds": ["web_resource:new_/ghost.js"], "expected_behavior": []},
@@ -323,9 +327,15 @@ def test_dynamic_and_isv_references_become_unknown_edges(inputs):
         "reason": "dynamic",
         "reference": 'page + ".html"',
     }
-    assert {"type": "unknown_edge", "component": dynamic["from"], "reason": "dynamic"}.items() <= (
-        js["findings"][0].items()
-    ) or any(f.get("reason") == "dynamic" for f in js["findings"])
+    assert [f for f in js["findings"] if f["type"] == "unknown_edge"] == [
+        {
+            "type": "unknown_edge",
+            "component": dynamic["from"],
+            "status": None,
+            "reason": "dynamic",
+            "reference": 'page + ".html"',
+        }
+    ]
     sitemap = _package_of(result, "sitemap:default").to_dict()
     assert sitemap["members"] == ["sitemap:default"]
     assert [f["reason"] for f in sitemap["findings"]] == ["isv_page"]
@@ -357,6 +367,9 @@ def test_scenarios_tag_packages_and_report_missing_seeds(inputs):
     assert expected["packages"] == sorted([js.id, plugins.id])
     summary = result.summary()
     assert summary["unmatched_scenarios"] == ["Ghost"]
+    assert summary["seeds_unpackaged"] == [
+        {"scenario": "Project approval", "seed": "entity:new_project"}
+    ]
     assert summary["seeds_not_found"] == [
         {"scenario": "Ghost", "seed": "web_resource:new_/ghost.js"}
     ]
@@ -494,4 +507,90 @@ def test_reference_reader_keeps_unresolvable_and_skips_platform_refs(tmp_path):
         ("web_resource", "dynamic", '$webresource:" +'),
         ("web_resource", "external_url", "https://cdn.example.net/lib.js"),
         ("web_resource", "not_in_inventory", "new_/styles.css"),
+    ]
+
+
+def _write(folder: Path, records: list[inv.Record]) -> Path:
+    manifest = inv.Inventory(
+        inv.SCHEMA_VERSION,
+        inv.Source("cloud", ORG, None, "9.2.0.0000"),
+        "2026-11-01T10:00:00Z",
+        "1.88.0",
+        inv.Scope("org", ()),
+        "published",
+        tuple(records),
+        {r.kind: inv.KindCoverage("complete", 1, 1, False, ()) for r in records},
+        (),
+    )
+    (folder / inv.MANIFEST_NAME).write_text(inv.dump_manifest(manifest), encoding="utf-8")
+    return folder
+
+
+def test_unknown_edge_outside_every_package_is_listed(tmp_path):
+    folder = tmp_path / "inv"
+    system = _record(
+        "web_resource",
+        {"name": "msdyn_/nav.js", "web_resource_type": 3},
+        folder,
+        origin="system",
+        files=[("content.js", "Xrm.Navigation.openWebResource(page + '.htm');\n")],
+    )
+    dependency = {
+        "dependent_kind": "entity",
+        "dependent_key": "new_project",
+        "required_kind": "web_resource",
+        "required_key": "new_/gone.js",
+        "dependency_type": 2,
+    }
+    records = [
+        _record("entity", {"logical_name": "new_project"}, folder),
+        system,
+        _record("dependency", dependency, folder, origin="unknown"),
+    ]
+    (tmp_path / "repo").mkdir()
+    result = build_packages(_write(folder, records), map_source(folder, tmp_path / "repo"))
+    assert result.packages == ()
+    assert result.summary()["unattached_unknowns"] == 2
+    assert sorted((e["from"], e["reason"]) for e in result.index()["unattached_unknowns"]) == [
+        ("entity:new_project", "not_in_inventory"),
+        ("web_resource:msdyn_/nav.js", "dynamic"),
+    ]
+
+
+def test_form_handler_fields_merge_with_form_xml(tmp_path):
+    folder = tmp_path / "inv"
+    handler = {
+        "event": "onload",
+        "attribute": None,
+        "function": "Shared.init",
+        "library": "new_/shared.js",
+        "enabled": True,
+    }
+    xml = (
+        '<form><formLibraries><Library name="new_/shared.js" /></formLibraries>'
+        '<events><event name="onload"><Handlers>'
+        '<Handler functionName="Shared.init" libraryName="new_/shared.js" />'
+        "</Handlers></event></events></form>"
+    )
+    form = _record(
+        "form",
+        {
+            "entity": "account",
+            "form_type": 2,
+            "name": "Main",
+            "libraries": ["new_/shared.js", "new_/fields.js"],
+            "handlers": [handler],
+        },
+        folder,
+        files=[("form.xml", xml)],
+    )
+    records = [_web_resource("new_/shared.js", "var Shared = {};\n", folder), form]
+    (tmp_path / "repo").mkdir()
+    result = build_packages(_write(folder, records), map_source(folder, tmp_path / "repo"))
+    (package,) = result.packages
+    (script,) = [r for r in _dicts(package.verification) if r["kind"] == "form_script"]
+    del handler["enabled"]
+    assert script["details"]["handlers"] == [handler]
+    assert [(e.reason, e.reference) for e in package.edges if e.target is None] == [
+        ("not_in_inventory", "new_/fields.js")
     ]

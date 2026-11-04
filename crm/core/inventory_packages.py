@@ -255,6 +255,7 @@ class PackagesResult:
     packages: tuple[WorkPackage, ...]
     scenarios: tuple[ScenarioReport, ...]
     unattached_gaps: tuple[ExtractionGap, ...]
+    unattached_unknowns: tuple[Edge, ...]
     incomplete: Mapping[str, str]
 
     def summary(self) -> dict[str, Any]:
@@ -273,7 +274,13 @@ class PackagesResult:
                 for s in self.scenarios
                 for seed in s.seeds_not_found
             ],
+            "seeds_unpackaged": [
+                {"scenario": s.name, "seed": seed}
+                for s in self.scenarios
+                for seed in s.seeds_unpackaged
+            ],
             "unattached_gaps": len(self.unattached_gaps),
+            "unattached_unknowns": len(self.unattached_unknowns),
             "incomplete": dict(self.incomplete),
         }
 
@@ -304,6 +311,7 @@ class PackagesResult:
                 {"kind": g.kind, "key": g.key, "description": g.description, "reason": g.reason}
                 for g in self.unattached_gaps
             ],
+            "unattached_unknowns": [e.to_dict() for e in self.unattached_unknowns],
         }
 
 
@@ -337,7 +345,7 @@ class _Refs:
     edges: set[Edge]
     handlers: dict[str, list[dict[str, str | None]]]
 
-    def name(self, source: str, name: str, edge_type: str) -> None:
+    def link_name(self, source: str, name: str, edge_type: str) -> None:
         """Add an edge to the web resource *name*, or an unknown one when none has that name."""
         spelled = self.names.get(name.lower())
         if spelled is None:
@@ -348,7 +356,7 @@ class _Refs:
     def unknown(self, source: str, reason: str, reference: str) -> None:
         self.edges.add(Edge(source, None, "unknown", reason, reference))
 
-    def url(self, source: str, value: str, edge_type: str) -> bool:
+    def link_url(self, source: str, value: str, edge_type: str) -> bool:
         """Classify a URL; return False when it names no web resource, ISV page or other host."""
         low = value.strip().lower()
         if not low or low.startswith("$webresource:"):
@@ -369,12 +377,12 @@ class _Refs:
             if (parts.hostname or "").lower() != self.org_host:
                 self.unknown(source, "external_url", value)
             elif "/webresources/" in path:
-                self.name(source, _after_webresources(parts.path), edge_type)
+                self.link_name(source, _after_webresources(parts.path), edge_type)
             return True
         if parts.scheme:
             return True  # javascript:, mailto:, data:
         if "/webresources/" in "/" + path:
-            self.name(source, _after_webresources("/" + parts.path), edge_type)
+            self.link_name(source, _after_webresources("/" + parts.path), edge_type)
             return True
         return False
 
@@ -430,17 +438,17 @@ def _form(refs: _Refs, source: str, record: Record, texts: list[tuple[str, str]]
                 )
         for url in root.iter("Url"):
             value = (url.text or "").strip()
-            if value and not refs.url(source, value, "form_control"):
-                refs.name(source, value, "form_control")
+            if value and not refs.link_url(source, value, "form_control"):
+                refs.link_name(source, value, "form_control")
     for library in libraries:
         if library:
-            refs.name(source, library, "form_library")
+            refs.link_name(source, library, "form_library")
     unique: list[dict[str, str | None]] = []
     for handler in handlers:
         if handler not in unique:
             unique.append(handler)
             if handler["library"]:
-                refs.name(source, str(handler["library"]), "event_handler")
+                refs.link_name(source, str(handler["library"]), "event_handler")
     refs.handlers[source] = unique
 
 
@@ -449,21 +457,21 @@ def _web_resource(refs: _Refs, source: str, key: str, text: str) -> None:
         arg = match.group(1).strip()
         literal = _LITERAL.fullmatch(arg)
         if literal:
-            refs.name(source, literal.group(2), "open_web_resource")
+            refs.link_name(source, literal.group(2), "open_web_resource")
         else:
             refs.unknown(source, "dynamic", arg)
     for match in _WR_DYNAMIC.finditer(text):
         refs.unknown(source, "dynamic", match.group(0))
     for name in _WR_PATH.findall(text):
-        refs.name(source, name, "web_resource_reference")
+        refs.link_name(source, name, "web_resource_reference")
     for match in _HTML_REF.finditer(text):
         ref = match.group(2).strip()
-        if refs.url(source, ref, "web_resource_reference"):
+        if refs.link_url(source, ref, "web_resource_reference"):
             continue
         path = ref.split("#", 1)[0].split("?", 1)[0]
         if not path or path.startswith("/") or path.lower().endswith(".aspx"):
             continue  # an anchor, or a platform page such as ClientGlobalContext.js.aspx
-        refs.name(
+        refs.link_name(
             source, posixpath.normpath(posixpath.join(posixpath.dirname(key), path)),
             "web_resource_reference",
         )  # fmt: skip
@@ -484,10 +492,10 @@ def _references(inv: Inventory, folder: Path) -> _Refs:
         )
         for _, text in texts:
             for name in _WR_TOKEN.findall(text):
-                refs.name(source, name, edge_type)
+                refs.link_name(source, name, edge_type)
             if record.kind in ("ribbon", "sitemap"):
                 for value in _URL_ATTR.findall(text):
-                    refs.url(source, value, edge_type)
+                    refs.link_url(source, value, edge_type)
             elif record.kind == "web_resource":
                 _web_resource(refs, source, record.key, text)
     return refs
@@ -729,6 +737,7 @@ def build_packages(
 
     drafts: list[tuple[str, set[str], list[str], list[Edge], list[Finding]]] = []
     attached: set[str] = set()
+    packaged: set[str] = set()
     for group in _groups(nodes, edges):
         members = {n for n in group if n in nodes}
         in_group = set(group)
@@ -751,6 +760,7 @@ def build_packages(
         if not members or not (findings or members & mapped.keys()):
             continue
         attached |= members & gaps.keys()
+        packaged |= in_group
         package_id = f"pkg-{hashlib.sha256('\n'.join(sorted(members)).encode()).hexdigest()[:12]}"
         drafts.append((package_id, members, group, group_edges, findings))
 
@@ -817,5 +827,7 @@ def build_packages(
     unattached = tuple(
         g for g in inv.gaps if not (g.kind and g.key and _id(g.kind, g.key) in attached)
     )
+    # An unknown edge from a node no package holds (an entity, a system web resource).
+    loose = tuple(e for e in edges if e.target is None and e.source not in packaged)
     incomplete = {k: c.status for k, c in inv.coverage.items() if c.status != "complete"}
-    return PackagesResult(header, tuple(packages), tuple(reports), unattached, incomplete)
+    return PackagesResult(header, tuple(packages), tuple(reports), unattached, loose, incomplete)

@@ -314,8 +314,9 @@ The graph's edges come from:
   project to each project it references, so two assemblies built on one shared C#
   project land together.
 
-A reference read cannot resolve is an **unknown edge**, never dropped. Its `reason`
-is one of:
+A reference read cannot resolve is an **unknown edge**, never dropped: it sits in
+its package's findings, or, when its component is in no package (an entity, a system
+web resource), in `unattached_unknowns`. Its `reason` is one of:
 
 | Reason | Meaning |
 |---|---|
@@ -359,7 +360,8 @@ A scenario file names business processes and the components that start them:
 
 A seed is `<kind>:<key>`, the component key the manifest records. A seed missing from
 the inventory is reported in `seeds_not_found`, and a scenario no package holds in
-`unmatched_scenarios`; a scenario is never dropped.
+`unmatched_scenarios`, and a seed the inventory holds but no package does (an entity,
+say) in `seeds_unpackaged`; a scenario is never dropped.
 
 `data` holds the summary, and `--out DIR` (a new or empty folder) gets `index.json`
 plus one `<package id>.json` per package:
@@ -370,12 +372,13 @@ plus one `<package id>.json` per package:
 | `inventory` | the inventory it was built from, as in the source map |
 | `packages`, `members`, `largest` | how many packages, their members in all, and the largest package's size; in `index.json`, `packages` is the list (`id`, `file`, `members`, `unknowns`, `scenarios`) |
 | `unknowns` | the findings across all packages |
-| `scenarios`, `unmatched_scenarios`, `seeds_not_found` | the scenario count, the names no package holds, and each `{scenario, seed}` not in the inventory; in `index.json`, `scenarios` lists each one's packages and seeds |
-| `unattached_gaps` | extraction gaps on no package member: a count in `data`, the gaps in `index.json` |
+| `scenarios`, `unmatched_scenarios`, `seeds_not_found`, `seeds_unpackaged` | the scenario count, the names no package holds, each `{scenario, seed}` not in the inventory, and each one in the inventory but in no package; in `index.json`, `scenarios` lists each one's packages and seeds |
+| `unattached_gaps`, `unattached_unknowns` | extraction gaps on no package member, and unknown edges from a component in no package: counts in `data`, the lists in `index.json` |
 | `incomplete` | each kind not read `complete` in the inventory: its components may be missing from the graph |
 | `out` | the `--out` folder |
 
 Without `--json` it prints one row per package (members, unknowns, scenarios), then
-the inventory, the unknown count and any unmatched scenarios or missing seeds. It
+the inventory, the unknown count and any unmatched scenarios, missing or unpackaged
+seeds and unknowns in no package. It
 exits **0** whatever the packages hold, and **1** when an input is unreadable or
 `--out` is not empty. The same inputs give the same bytes in every file.

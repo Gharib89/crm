@@ -236,11 +236,18 @@ def _map_strings(value: object, where: str) -> tuple[str, ...]:
     return tuple(cast("list[str]", items))
 
 
-def _map_str(obj: dict[str, Any], name: str, where: str, *, optional: bool = False) -> str | None:
+def _map_str(obj: dict[str, Any], name: str, where: str) -> str:
     value = obj.get(name)
-    if (value is None and optional) or (isinstance(value, str) and value):
+    if isinstance(value, str) and value:
         return value
     raise InventoryError(f"source map {where}.{name} must be a non-empty string")
+
+
+def _map_opt_str(obj: dict[str, Any], name: str, where: str) -> str | None:
+    value = obj.get(name)
+    if value is None or isinstance(value, str):
+        return value
+    raise InventoryError(f"source map {where}.{name} must be a string or null")
 
 
 def parse_source_map(data: object) -> SourceMap:
@@ -271,18 +278,18 @@ def parse_source_map(data: object) -> SourceMap:
         components.append(
             ComponentSource(
                 kind,
-                str(_map_str(c, "key", where)),
+                _map_str(c, "key", where),
                 status,
                 _map_strings(c.get("files", []), f"{where}.files"),
                 _map_strings(c.get("projects", []), f"{where}.projects"),
-                _map_str(c, "reason", where, optional=True),
+                _map_opt_str(c, "reason", where),
                 _map_strings(c.get("consumers", []), f"{where}.consumers"),
             )
         )
     shared = tuple(
         SharedProject(
-            str(_map_str(p, "project", f"shared_projects[{i}]")),
-            str(_map_str(p, "assembly", f"shared_projects[{i}]")),
+            _map_str(p, "project", f"shared_projects[{i}]"),
+            _map_str(p, "assembly", f"shared_projects[{i}]"),
             _map_strings(p.get("referenced_by", []), f"shared_projects[{i}].referenced_by"),
         )
         for i, p in (
@@ -292,9 +299,9 @@ def parse_source_map(data: object) -> SourceMap:
     )
     external = tuple(
         ExternalReference(
-            str(_map_str(e, "kind", f"external[{i}]")),
-            str(_map_str(e, "name", f"external[{i}]")),
-            _map_str(e, "version", f"external[{i}]", optional=True),
+            _map_str(e, "kind", f"external[{i}]"),
+            _map_str(e, "name", f"external[{i}]"),
+            _map_opt_str(e, "version", f"external[{i}]"),
             _map_strings(e.get("used_by", []), f"external[{i}].used_by"),
         )
         for i, e in (
@@ -304,9 +311,9 @@ def parse_source_map(data: object) -> SourceMap:
     )
     unmatched = tuple(
         UnmatchedSource(
-            str(_map_str(u, "path", f"unmatched_source[{i}]")),
-            str(_map_str(u, "kind", f"unmatched_source[{i}]")),
-            _map_str(u, "type_name", f"unmatched_source[{i}]", optional=True),
+            _map_str(u, "path", f"unmatched_source[{i}]"),
+            _map_str(u, "kind", f"unmatched_source[{i}]"),
+            _map_opt_str(u, "type_name", f"unmatched_source[{i}]"),
         )
         for i, u in (
             (i, _map_obj(v, f"unmatched_source[{i}]"))

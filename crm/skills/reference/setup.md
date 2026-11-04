@@ -229,20 +229,27 @@ inventory into work packages: connected groups of components and source files
 that must change together. It reads files only. Run `map-source --out` on the
 same inventory first: a source map from another inventory is refused.
 
+- **Read `data.incomplete` first**: a kind the inventory did not read
+  `complete` is missing from the graph, so a package may lack members and
+  consumers.
 - **One package is one repair job.** A shared library and every form, ribbon
   or assembly using it land in one package: plan and hand it out whole.
 - **Report every unknown.** A package's `findings` list each unknown edge (a
   `dynamic` name, an `isv_page`, an `external_url`, a name `not_in_inventory`,
   an `unreadable` artifact), each extraction gap and each doubtful source map
-  status. Each one needs a human look: list every one to the user.
+  status. Each one needs a human look: list every one to the user, plus the
+  gaps and unknown edges in no package (`index.json` `unattached_gaps`,
+  `unattached_unknowns`).
 - **`{"status": "unknown"}` in a field means no data, not no work.** A package
   with no `expected_behavior` has no scenario seeding it: ask the user for one
   rather than guessing what the process does.
 - **Scenarios are a JSON file**: `{"scenarios": [{"name", "seeds":
   ["<kind>:<component key>"], "expected_behavior": ["..."]}]}`. Report
-  `seeds_not_found` (a seed the inventory lacks, often a typo in the key) and
+  `seeds_not_found` (a seed the inventory lacks, often a typo in the key),
+  `seeds_unpackaged` (a seed no package holds, such as an entity) and
   `unmatched_scenarios` back to the user.
 - **Read packages from `--out`**: `index.json` lists them, `<package id>.json`
-  holds each one; `data` carries counts only. Package and verification ids are
+  holds each one; `data` carries the summary only (counts, `incomplete`, scenario
+  misses). Package and verification ids are
   hashes of their members, stable across runs of the same inputs, so refer to
   them by id.
