@@ -315,9 +315,9 @@ the divergence is updatable, refuse if destructive
 the create path, which only seeds absent components.
 _Avoid_: sync, merge, upsert.
 
-**Adopt** (form tab / section):
-What `apply`'s form converge does when a declared tab or section names nothing on
-the live form but exactly one **unnamed** live tab (or section, within its tab)
+**Adopt**:
+What `apply`'s form converge does when a declared form tab or section names nothing
+on the live form but exactly one unnamed live tab (or section, within its tab)
 carries the same label, compared case-insensitively: it writes the declared `name`
 onto that element and converges the block there, reported as a converged change
 with a `name` diff. This is how a spec reaches the platform's default `General`
