@@ -80,6 +80,15 @@ class TestResponseParsing:
 
 
 class TestFaults:
+    def test_mixed_case_soap_media_type_is_parsed(self, client):
+        with requests_mock.Mocker() as m:
+            m.post(
+                _ENDPOINT,
+                text=_fixture("retrieve_version.xml"),
+                headers={"Content-Type": "Text/XML; charset=utf-8"},
+            )
+            assert client.execute("RetrieveVersion")["Version"] == "5.0.9690.3557"
+
     def test_organization_service_fault_carries_hex_error_code(self, client):
         with requests_mock.Mocker() as m:
             _soap(m, "fault_not_found.xml", status=500)
@@ -179,6 +188,15 @@ class TestConnectRetries:
             with pytest.raises(D365Error) as info:
                 client.execute("WhoAmI")
         assert m.call_count == 4
+        category, _ = classify_d365_error(info.value.status, info.value.code, str(info.value))
+        assert category == "transport_error"
+
+    def test_other_requests_failures_are_wrapped_without_retry(self, client, no_sleep):
+        with requests_mock.Mocker() as m:
+            m.post(_ENDPOINT, exc=requests.exceptions.MissingSchema)
+            with pytest.raises(D365Error) as info:
+                client.execute("WhoAmI")
+        assert m.call_count == 1
         category, _ = classify_d365_error(info.value.status, info.value.code, str(info.value))
         assert category == "transport_error"
 

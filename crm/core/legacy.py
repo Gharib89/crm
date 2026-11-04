@@ -151,6 +151,10 @@ class LegacyClient:
                     raise D365Error(f"{_TRANSPORT_FAILURE_PREFIX}: {exc}") from exc
                 time.sleep(_BACKOFF_SECONDS[attempt])
                 attempt += 1
+            except requests.RequestException as exc:
+                # A request that cannot be sent at all (a malformed URL, say):
+                # re-sending would fail the same way.
+                raise D365Error(f"{_TRANSPORT_FAILURE_PREFIX}: {exc}") from exc
         return _parse(resp)
 
 
@@ -182,7 +186,7 @@ def _result_text(node: ET.Element | None) -> str | None:
 def _parse(resp: requests.Response) -> ET.Element:
     """Parse a SOAP response, or raise the D365Error a fault or non-SOAP body maps to."""
     content_type = resp.headers.get("Content-Type", "")
-    if "xml" not in content_type:
+    if "xml" not in content_type.lower():  # media types are case-insensitive
         raise D365Error(
             f"HTTP {resp.status_code} from the CRM 2011 endpoint, a non-SOAP "
             f"{content_type or 'untyped'} response",
