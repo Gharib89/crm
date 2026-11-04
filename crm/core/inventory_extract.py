@@ -54,7 +54,7 @@ from crm.core.inventory import (
     dump_manifest,
 )
 from crm.core.legacy import LegacyClient, Page
-from crm.utils.d365_backend import D365Error
+from crm.utils.d365_backend import PLATFORM_CRM2011, D365Error
 
 CHECKPOINT_DIR = ".checkpoint"
 
@@ -125,7 +125,7 @@ class InventorySource(Protocol):
 class LegacySource:
     """A CRM 2011 org, read over the read-only SOAP client."""
 
-    platform = "crm2011"
+    platform = PLATFORM_CRM2011
     api = "the CRM 2011 SOAP endpoint"
     static_gaps = (integration_gap(api), ssrs_gap(api))
 
@@ -527,6 +527,10 @@ class _Run:
             staged.append(name)
         row["_artifacts"] = staged
         return row
+
+
+# The relationship fields naming an entity, 1:N and N:N.
+_RELATIONSHIP_SIDES = ("referenced_entity", "referencing_entity", "entity1", "entity2")
 
 
 def _utc_now() -> str:
@@ -1004,7 +1008,8 @@ class _Builder:
 
         Kept: the solutions, their memberships, each member, each record of a
         member entity (`attribute`, `local_option_set`, `form`, `view`,
-        `ribbon`), and each dependency whose dependent is kept.
+        `ribbon`, and a `relationship` on either side), and each dependency
+        whose dependent is kept.
         """
         named = set(solutions)
         members = {
@@ -1021,6 +1026,9 @@ class _Builder:
                 return p.fields["solution"] in named
             if p.kind in ("attribute", "local_option_set", "form", "view", "ribbon"):
                 return (p.kind, p.key) in members or p.fields["entity"] in entities
+            if p.kind == "relationship":
+                sides = {p.fields.get(k) for k in _RELATIONSHIP_SIDES}
+                return (p.kind, p.key) in members or not sides.isdisjoint(entities)
             return (p.kind, p.key) in members
 
         kept = [p for p in self.pending if p.kind != "dependency" and held(p)]

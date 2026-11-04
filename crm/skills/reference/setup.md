@@ -147,9 +147,9 @@ A migration inventory is a read-only, descriptive record of an org's customizati
 extraction gaps) plus raw artifacts (XML, XAML, web resource content, assembly
 binaries). It describes what is deployed; it is never a spec for `crm apply`.
 
-- **It runs on every profile**: a `crm2011` profile over SOAP, a v9 on-prem or
-  cloud profile over the Web API (the manifest's `source.platform` says which).
-  Every read is a GET, so a read-only profile runs it.
+- **The manifest's `source.platform` (`crm2011`, `onprem`, `cloud`) records
+  which platform it was read from.** It never writes to the org, so a read-only
+  profile runs it.
 - **It runs for tens of minutes on a large org** (each entity costs a metadata
   read and a ribbon read): give it a long timeout or run it in the background.
 - **To inventory part of an org, narrow it to solutions** (`--solution`, see
@@ -175,5 +175,5 @@ binaries). It describes what is deployed; it is never a spec for `crm apply`.
   record counts**, and report the manifest's `gaps` to the user as manual
   follow-up: they name what the inventory could not capture, both what the
   endpoint cannot read (assemblies on disk or in the GAC, ISV pages, external
-  integrations, SSRS data sources outside cloud) and membership or dependency
+  integrations, on-premises SSRS data sources) and membership or dependency
   rows naming a component of a kind v1 does not record or whose read failed.

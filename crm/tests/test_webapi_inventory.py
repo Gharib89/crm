@@ -82,6 +82,9 @@ _ORG: dict[str, list[list[dict]]] = {
         {"pluginassemblyid": _id(21), "name": "Contoso.InGac", "version": "1.0.0.0",
          "culture": "neutral", "publickeytoken": "def", "sourcetype": 2, "ismanaged": False,
          "solutionid": _id(2)},
+        {"pluginassemblyid": _id(22), "name": "Contoso.OnDisk", "version": "1.0.0.0",
+         "culture": "neutral", "publickeytoken": "fed", "sourcetype": 1, "ismanaged": False,
+         "solutionid": _id(2)},
     ]],
     "plugintypes": [[
         {"plugintypeid": _id(30), "typename": "Contoso.Plugins.ProjectPlugin",
@@ -254,8 +257,8 @@ def _extract(backend, out: Path, solutions: tuple[str, ...] = ()):
 
 
 def _manifest(out: Path) -> dict:
-    data = json.loads((out / "manifest.json").read_text())
-    jsonschema.Draft202012Validator(json.loads(_SCHEMA.read_text())).validate(data)
+    data = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    jsonschema.Draft202012Validator(json.loads(_SCHEMA.read_text(encoding="utf-8"))).validate(data)
     inventory.read_inventory(out)
     return data
 
@@ -358,12 +361,13 @@ def test_a_connection_wide_failure_stops_the_run(tmp_path):
         _extract(FakeBackend(fail={("webresourceset", 2): reset}), tmp_path / "inv")
 
 
-def test_a_gac_assembly_is_an_extraction_gap(tmp_path):
+def test_disk_and_gac_assemblies_are_extraction_gaps(tmp_path):
     out = tmp_path / "inv"
     _extract(FakeBackend(), out)
     data = _manifest(out)
-    (gap,) = [g for g in data["gaps"] if g["key"] == "Contoso.InGac"]
-    assert gap["kind"] == "plugin_assembly" and "in the GAC" in gap["reason"]
+    for key, where in (("Contoso.InGac", "in the GAC"), ("Contoso.OnDisk", "on disk")):
+        (gap,) = [g for g in data["gaps"] if g["key"] == key]
+        assert gap["kind"] == "plugin_assembly" and where in gap["reason"]
     descriptions = [g["description"] or "" for g in data["gaps"]]
     # SSRS reports on cloud are FetchXML-based: no SQL data source gap.
     assert not any(d.startswith("SQL data sources") for d in descriptions)
@@ -400,6 +404,7 @@ def test_solution_scope_keeps_the_named_solutions_and_their_members(tmp_path):
     assert _keys(data, "form") == ["new_project|2|Project"]  # a member entity's subcomponent
     assert _keys(data, "view") == ["new_project|Active Projects"]
     assert _keys(data, "ribbon") == ["new_project"]
+    assert _keys(data, "relationship") == ["account_new_project"]  # new_project is one side
     assert _keys(data, "plugin_assembly") == []
     # Entity details and ribbons are read for member entities only.
     assert sum(p.startswith("RetrieveEntity(") for p in backend.paths) == 1

@@ -110,7 +110,7 @@ def _many_to_many(rel: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def entity_detail(meta: dict[str, Any]) -> dict[str, Any]:
+def _reshape_entity(meta: dict[str, Any]) -> dict[str, Any]:
     """Reshape a Web API ``EntityMetadata`` to `crm.core.legacy_reads.entity_detail`'s dict."""
     attributes: list[dict[str, Any]] = []
     option_sets: dict[str, dict[str, Any]] = {}
@@ -244,7 +244,7 @@ class WebApiSource:
         meta = body.get("EntityMetadata")
         if not isinstance(meta, dict):
             raise D365Error(f"RetrieveEntity {name}: the response carries no EntityMetadata")
-        return entity_detail(cast("dict[str, Any]", meta))
+        return _reshape_entity(cast("dict[str, Any]", meta))
 
     def ribbon_xml(self, entity: str | None) -> bytes:
         if entity is None:

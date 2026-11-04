@@ -36,7 +36,7 @@ def _extract(cli, out: Path, solution: str) -> dict:
     assert proc.returncode == 0, proc.stdout + proc.stderr
     summary = json.loads(proc.stdout)["data"]
     assert summary["complete"] is True, proc.stdout
-    return json.loads((out / "manifest.json").read_text())
+    return json.loads((out / "manifest.json").read_text(encoding="utf-8"))
 
 
 @covers("inventory extract")
@@ -49,7 +49,9 @@ def test_inventory_extract_is_valid_and_repeatable(cli, tmp_path):
     solution = _solution(cli)
     first = _extract(cli, tmp_path / "one", solution)
     schema_path = Path(inventory.__file__).parent.parent / "schemas"
-    schema = json.loads((schema_path / "inventory-manifest-v1.schema.json").read_text())
+    schema = json.loads(
+        (schema_path / "inventory-manifest-v1.schema.json").read_text(encoding="utf-8")
+    )
     jsonschema.Draft202012Validator(schema).validate(first)
     parsed = inventory.read_inventory(tmp_path / "one")
     assert parsed.source.platform in ("onprem", "cloud")

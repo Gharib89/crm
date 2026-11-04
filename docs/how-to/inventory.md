@@ -63,8 +63,9 @@ crm --json inventory extract --out ./inventory --solution ContosoCore --solution
 
 `--solution UNIQUE_NAME` (repeatable, on every platform) narrows the inventory to
 the named solutions: their solution records and memberships, each member component,
-each attribute, local option set, form, view and ribbon of a member entity, and each
-dependency whose dependent component is kept. The manifest header records it
+each attribute, local option set, form, view and ribbon of a member entity, each
+relationship with a member entity on either side, and each dependency whose dependent
+component is kept. The manifest header records it
 (`scope.mode: "solutions"`, `scope.solutions`).
 
 Entity details and entity ribbons are read only for member entities, and the
