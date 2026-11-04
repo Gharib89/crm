@@ -62,6 +62,9 @@ CHECKPOINT_DIR = ".checkpoint"
 _OPTION_SET = 9
 _ENTITY = 1
 
+# The relationship fields naming an entity, 1:N and N:N.
+_RELATIONSHIP_SIDES = ("referenced_entity", "referencing_entity", "entity1", "entity2")
+
 # Web resource types whose content is text, by webresourcetype code.
 _TEXT_WEB_RESOURCES = frozenset((1, 2, 3, 4, 9))
 _WEB_RESOURCE_EXT = dict(
@@ -527,10 +530,6 @@ class _Run:
             staged.append(name)
         row["_artifacts"] = staged
         return row
-
-
-# The relationship fields naming an entity, 1:N and N:N.
-_RELATIONSHIP_SIDES = ("referenced_entity", "referencing_entity", "entity1", "entity2")
 
 
 def _utc_now() -> str:
