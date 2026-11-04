@@ -9,6 +9,61 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.89.0 (2026-11-04)
+
+### Bug Fixes
+
+- **inventory**: Keep a ribbon or sitemap URL nothing resolves as an unresolved_url unknown
+  ([#1077](https://github.com/Gharib89/crm/pull/1077),
+  [`d30bc83`](https://github.com/Gharib89/crm/commit/d30bc83dae2f2c2d6410a5b729435c19d8c70421))
+
+- **inventory**: Keep the source map reader's non-empty rule and show gaps in no package
+  ([#1077](https://github.com/Gharib89/crm/pull/1077),
+  [`d30bc83`](https://github.com/Gharib89/crm/commit/d30bc83dae2f2c2d6410a5b729435c19d8c70421))
+
+- **inventory**: List unknown edges and scenario seeds that fall outside every package
+  ([#1077](https://github.com/Gharib89/crm/pull/1077),
+  [`d30bc83`](https://github.com/Gharib89/crm/commit/d30bc83dae2f2c2d6410a5b729435c19d8c70421))
+
+- **inventory**: Match form handlers to libraries caselessly; flag a scenario with no expected
+  behavior ([#1077](https://github.com/Gharib89/crm/pull/1077),
+  [`d30bc83`](https://github.com/Gharib89/crm/commit/d30bc83dae2f2c2d6410a5b729435c19d8c70421))
+
+- **inventory**: Read back a source map holding an empty NuGet version
+  ([#1077](https://github.com/Gharib89/crm/pull/1077),
+  [`d30bc83`](https://github.com/Gharib89/crm/commit/d30bc83dae2f2c2d6410a5b729435c19d8c70421))
+
+- **inventory**: Skip platform pages behind an on-prem org path prefix
+  ([#1077](https://github.com/Gharib89/crm/pull/1077),
+  [`d30bc83`](https://github.com/Gharib89/crm/commit/d30bc83dae2f2c2d6410a5b729435c19d8c70421))
+
+- **inventory**: Skip the platform's /userdefined/ pages in ribbon and sitemap URLs
+  ([#1077](https://github.com/Gharib89/crm/pull/1077),
+  [`d30bc83`](https://github.com/Gharib89/crm/commit/d30bc83dae2f2c2d6410a5b729435c19d8c70421))
+
+### Documentation
+
+- **inventory**: Document crm inventory packages in the how-to, README and crm skill
+  ([#1077](https://github.com/Gharib89/crm/pull/1077),
+  [`d30bc83`](https://github.com/Gharib89/crm/commit/d30bc83dae2f2c2d6410a5b729435c19d8c70421))
+
+- **skill**: Fit the inventory packages section under the setup.md line cap
+  ([#1077](https://github.com/Gharib89/crm/pull/1077),
+  [`d30bc83`](https://github.com/Gharib89/crm/commit/d30bc83dae2f2c2d6410a5b729435c19d8c70421))
+
+### Features
+
+- **inventory**: Crm inventory packages groups an inventory into work packages
+  ([#1077](https://github.com/Gharib89/crm/pull/1077),
+  [`d30bc83`](https://github.com/Gharib89/crm/commit/d30bc83dae2f2c2d6410a5b729435c19d8c70421))
+
+### Testing
+
+- **inventory**: Read the requirement id through its dict so pyright types it
+  ([#1077](https://github.com/Gharib89/crm/pull/1077),
+  [`d30bc83`](https://github.com/Gharib89/crm/commit/d30bc83dae2f2c2d6410a5b729435c19d8c70421))
+
+
 ## v1.88.0 (2026-11-04)
 
 ### Bug Fixes
