@@ -587,11 +587,11 @@ def test_an_image_of_an_unknown_step_is_counted_as_a_gap(tmp_path, monkeypatch):
     out = tmp_path / "inv"
     _extract(FakeBackend(), out)
     gaps = [g for g in _manifest(out)["gaps"] if g["kind"] == "step_image"]
-    assert [g["description"][:22] for g in gaps] == ["1 step_image row(s) na"]
+    assert len(gaps) == 1 and gaps[0]["key"] is None
 
 
 def test_an_entity_with_no_collection_label_has_its_ribbon_recorded_as_a_gap(tmp_path, monkeypatch):
-    # Dataverse faults RetrieveEntityRibbon for an entity labelled in the user's
+    # The Web API faults RetrieveEntityRibbon for an entity labelled in the user's
     # language but with no collection label there (seen live on a cloud org).
     odd = {"LogicalName": "new_syncmap", "DisplayName": _label("Sync Map"),
            "DisplayCollectionName": _label(None), "IsCustomEntity": True,

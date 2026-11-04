@@ -176,10 +176,11 @@ class LegacySource:
         return self.client.pages(fetch_xml, page_size=page_size, start=start)
 
 
-def _has_ui(entity: dict[str, Any]) -> bool:
+def _ribbon_readable(entity: dict[str, Any]) -> bool:
     """Whether the entity's ribbon can be read: it has a display label and, where the
-    source reads one (v9), a collection label too; Dataverse faults RetrieveEntityRibbon
-    for an entity with no collection label in the user's language.
+    source reads a collection label (the Web API source does, the crm2011 source has
+    no ``collection_name`` key), that label too. RetrieveEntityRibbon faults for an
+    entity with no collection label in the user's language (seen on a cloud org).
     """
     return bool(entity.get("display_name")) and (
         "collection_name" not in entity or bool(entity["collection_name"])
@@ -196,7 +197,7 @@ def _ribbon_gaps(unlabelled: list[str]) -> list[ExtractionGap]:
             description=f"ribbons of {len(unlabelled)} entities with no display or collection"
             f" label: {', '.join(unlabelled)}",
             reason="an entity with no display label has no UI, so its ribbon is not read"
-            " (CRM 2011 faults RetrieveEntityRibbon for one); Dataverse faults it for an"
+            " (CRM 2011 faults RetrieveEntityRibbon for one); the Web API faults it for an"
             " entity with no collection label in the user's language",
         )
     ]
@@ -612,7 +613,9 @@ def extract(
 
     *solutions* narrows the inventory to those solutions (by unique name):
     their records, their memberships, the components they hold and the
-    subcomponents of the entities they hold. Entity details and ribbons are
+    subcomponents of the entities they hold with subcomponents (an entity held
+    as a shell or without subcomponents brings only those the solutions list
+    on their own). Entity details and ribbons are
     read only for those entities; the org-wide reads still run, since a
     membership names its component only by id.
 
@@ -653,10 +656,11 @@ def extract(
         if detail is not None:
             details.append(detail)
     ribbons: dict[str | None, bytes] = {}
-    # An entity with no display label has no UI: its ribbon read faults
-    # ("Could not find localized name"), so it is not read (measured on UR15).
-    labelled = [str(e["logical_name"]) for e in entities_read if _has_ui(e)]
-    unlabelled = sorted(str(e["logical_name"]) for e in entities_read if not _has_ui(e))
+    # An entity with no display label (measured on UR15) or no collection label (a
+    # cloud org) faults its ribbon read ("Could not find localized ... name"), so it
+    # is not read.
+    labelled = [str(e["logical_name"]) for e in entities_read if _ribbon_readable(e)]
+    unlabelled = sorted(str(e["logical_name"]) for e in entities_read if not _ribbon_readable(e))
     # The application ribbon belongs to no solution's entities, so a scoped run skips it.
     for entity_name in [*([] if solutions else [None]), *labelled]:
         unit = f"ribbon/{entity_name or '_application'}"
