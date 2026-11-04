@@ -748,10 +748,13 @@ def _build_section(name: str, label: str, columns: int) -> ET.Element:
     return section
 
 
-def _build_tab(name: str, label: str, columns: int) -> ET.Element:
+def _build_tab(
+    name: str, label: str, columns: int, first_section: tuple[str, str, int] | None = None
+) -> ET.Element:
     """A fresh ``<tab>`` (fresh id, ``IsUserDefined=1``) with ``columns`` layout
     columns; the first column carries a non-empty starter ``<section>`` so the tab
-    renders (an empty tab is XSD-valid but renders broken).
+    renders (an empty tab is XSD-valid but renders broken). The starter is
+    ``<name>_section`` unless ``first_section`` ``(name, label, columns)`` names it.
     """
     tab = ET.Element("tab")
     tab.set("name", name)
@@ -765,7 +768,8 @@ def _build_tab(name: str, label: str, columns: int) -> ET.Element:
         col.set("width", width)
         sections = ET.SubElement(col, "sections")
         if i == 0:  # non-empty skeleton in the first column
-            sections.append(_build_section(f"{name}_section", label, 1))
+            sname, slabel, scolumns = first_section or (f"{name}_section", label, 1)
+            sections.append(_build_section(sname, slabel, scolumns))
     return tab
 
 
@@ -903,19 +907,24 @@ def add_tab_to_formxml(
     label: str,
     columns: int = 1,
     after: str | None = None,
+    first_section: tuple[str, str, int] | None = None,
 ) -> str:
     """Return ``formxml`` with a new tab (carrying a starter section) appended, or
-    inserted after the ``after`` sibling tab. Raises ``D365Error`` if a tab of
-    that name already exists or ``columns`` is out of range.
+    inserted after the ``after`` sibling tab. ``first_section`` ``(name, label,
+    columns)`` replaces the default ``<name>_section`` starter. Raises
+    ``D365Error`` if a tab of that name already exists or a ``columns`` is out of
+    range.
     """
     _validate_columns(columns)
+    if first_section is not None:
+        _validate_columns(first_section[2])
     root = _parse_formxml(formxml)
     tabs_el = root.find("./tabs")
     if tabs_el is None:
         raise D365Error("Form has no <tabs> container; cannot add a tab.")
     if any(t.get("name") == name for t in tabs_el.findall("tab")):
         raise D365Error(f"Tab {name!r} already exists on the form.")
-    new_tab = _build_tab(name, label, columns)
+    new_tab = _build_tab(name, label, columns, first_section)
     changed = _element_guids(new_tab)
     if after is None:
         tabs_el.append(new_tab)
@@ -2123,6 +2132,29 @@ def _read_label(element: ET.Element) -> str:
     return (first.get("description") or "") if first is not None else ""
 
 
+def _adoptable(candidates: list[ET.Element], label: str) -> ET.Element | None:
+    """The one unnamed element among ``candidates`` whose base-language label equals
+    ``label`` (case-insensitive), or None when zero or several match (#1053).
+
+    The platform-generated main form's first tab and section carry a GUID id and a
+    label but no ``name``, so a declared tab/section can only find them by label;
+    a tie stays ambiguous and adopts nothing.
+    """
+    want = label.casefold()
+    hits = [e for e in candidates if not e.get("name") and _read_label(e).casefold() == want]
+    return hits[0] if len(hits) == 1 else None
+
+
+def _adopt(formxml: str, root: ET.Element, element: ET.Element, name: str) -> str:
+    """``formxml`` with ``element`` (a node of ``root``, parsed from ``formxml``)
+    given the logical ``name``; ids and every sibling stay untouched.
+    """
+    element.set("name", name)
+    out = xml_edit.serialize_xml(root)
+    _assert_siblings_intact(formxml, out)
+    return out
+
+
 def _field_location(root: ET.Element, datafieldname: str) -> tuple[str | None, str | None]:
     """The (tab name, section name) currently holding ``datafieldname``'s control,
     or ``(None, None)`` if the field is not on the form — the live placement a
@@ -2214,52 +2246,84 @@ def converge_declared_form(
     for tab in _blocks(block.get("tabs")):
         tname = str(tab["name"])
         tlabel = str(tab.get("label") or tname)
+        sections = _blocks(tab.get("sections"))
         root = _parse_formxml(formxml)
+        tab_diff: dict[str, Any] = {}
+        tab_added = False
         if not _tab_present(root, tname):
-            formxml = add_tab_to_formxml(
-                formxml, name=tname, label=tlabel, columns=int(tab.get("columns") or 1)
-            )
-            changes.append({"kind": "tab", "name": tname})
-        elif tab.get("label") is not None:
-            cur = _read_label(_resolve_target_tab(root, tname))
+            adopted = _adoptable(root.findall("./tabs/tab"), tlabel)
+            if adopted is not None:
+                formxml = _adopt(formxml, root, adopted, tname)
+                tab_diff["name"] = {"old": None, "new": tname}
+            else:
+                # The first declared section is the new tab's skeleton, so no empty
+                # `<name>_section` starter is left beside the declared ones.
+                first = sections[0] if sections else None
+                formxml = add_tab_to_formxml(
+                    formxml,
+                    name=tname,
+                    label=tlabel,
+                    columns=int(tab.get("columns") or 1),
+                    first_section=None
+                    if first is None
+                    else (
+                        str(first["name"]),
+                        str(first.get("label") or first["name"]),
+                        int(first.get("columns") or 1),
+                    ),
+                )
+                changes.append({"kind": "tab", "name": tname})
+                if first is not None:
+                    changes.append({"kind": "section", "name": str(first["name"]), "tab": tname})
+                tab_added = True
+        if not tab_added and tab.get("label") is not None:
+            cur = _read_label(_resolve_target_tab(_parse_formxml(formxml), tname))
             if tlabel != cur:
                 formxml = rename_tab_in_formxml(formxml, tab=tname, label=tlabel)
-                changes.append(
-                    {
-                        "kind": "tab",
-                        "name": tname,
-                        "change": "converged",
-                        "diff": {"label": {"old": cur, "new": tlabel}},
-                    }
-                )
-        for section in _blocks(tab.get("sections")):
+                tab_diff["label"] = {"old": cur, "new": tlabel}
+        if tab_diff:
+            changes.append({"kind": "tab", "name": tname, "change": "converged", "diff": tab_diff})
+        for section in sections:
             sname = str(section["name"])
             slabel = str(section.get("label") or sname)
             root = _parse_formxml(formxml)
+            section_diff: dict[str, Any] = {}
+            section_added = False
             if not _section_present(root, tname, sname):
-                formxml = add_section_to_formxml(
-                    formxml,
-                    name=sname,
-                    label=slabel,
-                    tab=tname,
-                    columns=int(section.get("columns") or 1),
+                adopted = _adoptable(
+                    _resolve_target_tab(root, tname).findall("./columns/column/sections/section"),
+                    slabel,
                 )
-                changes.append({"kind": "section", "name": sname, "tab": tname})
-            elif section.get("label") is not None:
-                cur = _read_label(_resolve_target_section(root, tname, sname))
+                if adopted is not None:
+                    formxml = _adopt(formxml, root, adopted, sname)
+                    section_diff["name"] = {"old": None, "new": sname}
+                else:
+                    formxml = add_section_to_formxml(
+                        formxml,
+                        name=sname,
+                        label=slabel,
+                        tab=tname,
+                        columns=int(section.get("columns") or 1),
+                    )
+                    changes.append({"kind": "section", "name": sname, "tab": tname})
+                    section_added = True
+            if not section_added and section.get("label") is not None:
+                cur = _read_label(_resolve_target_section(_parse_formxml(formxml), tname, sname))
                 if slabel != cur:
                     formxml = rename_section_in_formxml(
                         formxml, section=sname, label=slabel, tab=tname
                     )
-                    changes.append(
-                        {
-                            "kind": "section",
-                            "name": sname,
-                            "tab": tname,
-                            "change": "converged",
-                            "diff": {"label": {"old": cur, "new": slabel}},
-                        }
-                    )
+                    section_diff["label"] = {"old": cur, "new": slabel}
+            if section_diff:
+                changes.append(
+                    {
+                        "kind": "section",
+                        "name": sname,
+                        "tab": tname,
+                        "change": "converged",
+                        "diff": section_diff,
+                    }
+                )
             for fld in _blocks(section.get("fields")):
                 fname = str(fld["name"])
                 root = _parse_formxml(formxml)

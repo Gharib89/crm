@@ -1248,7 +1248,7 @@ class TestAddTabToFormxml:
 
         out = forms.add_tab_to_formxml(_MAIN_FORMXML, name="new_tab", label="New Tab")
         # the tab is non-empty: it has a starter section (an empty tab renders broken)
-        assert _sections(out, "new_tab"), "new tab has no section skeleton"
+        assert _sections(out, "new_tab") == ["new_tab_section"]
 
     def test_new_tab_id_is_fresh_and_braced(self):
         from crm.core import forms
@@ -1838,6 +1838,184 @@ class TestConvergeDeclaredFormReconcile:
                 },
             )
         assert changes == []
+
+
+# Shaped like the platform-generated main form of a new table (#1053): the first tab
+# and its first section carry a GUID id and a label but no `name`. Placeholder GUIDs.
+_PLATFORM_FORMXML = (
+    "<form>"
+    "<tabs>"
+    '<tab id="{11111111-0000-0000-0000-000000000001}" IsUserDefined="0">'
+    '<labels><label description="General" languagecode="1033" /></labels>'
+    '<columns><column width="100%"><sections>'
+    '<section id="{22222222-0000-0000-0000-000000000002}" showlabel="false">'
+    '<labels><label description="General" languagecode="1033" /></labels>'
+    '<rows><row><cell id="{33333333-0000-0000-0000-000000000003}">'
+    '<labels><label description="Name" languagecode="1033" /></labels>'
+    '<control id="new_name" classid="{4273EDBD-AC1D-40D3-9FB2-095C621B552D}" '
+    'datafieldname="new_name" /></cell></row>'
+    '<row><cell id="{44444444-0000-0000-0000-000000000004}">'
+    '<labels><label description="Owner" languagecode="1033" /></labels>'
+    '<control id="ownerid" classid="{270BD3DB-D9AF-4782-9025-509E298DEC0A}" '
+    'datafieldname="ownerid" /></cell></row></rows>'
+    "</section></sections></column></columns>"
+    "</tab>"
+    "</tabs>"
+    "</form>"
+)
+
+# A second unnamed tab with the same label, for the ambiguity rule.
+_TWIN_UNNAMED_TAB = (
+    '<tab id="{55555555-0000-0000-0000-000000000005}">'
+    '<labels><label description="General" languagecode="1033" /></labels>'
+    '<columns><column width="100%"><sections>'
+    '<section id="{66666666-0000-0000-0000-000000000006}">'
+    '<labels><label description="Other" languagecode="1033" /></labels>'
+    "<rows></rows>"
+    "</section></sections></column></columns>"
+    "</tab>"
+)
+
+
+class TestConvergeAdoptsUnnamedDefault:
+    """A declared tab/section adopts the platform's single unnamed tab/section with
+    the same label instead of adding a duplicate (#1053).
+    """
+
+    _BLOCK = {
+        "tabs": [
+            {
+                "name": "general",
+                "label": "General",
+                "sections": [
+                    {
+                        "name": "general",
+                        "label": "General",
+                        "fields": [{"name": "new_city"}, {"name": "new_kind"}],
+                    }
+                ],
+            }
+        ]
+    }
+
+    def _converge(self, backend, block, formxml=_PLATFORM_FORMXML):
+        from crm.core import forms
+
+        row = {"formid": "aaaaaaaa-0000-0000-0000-000000000001", "formxml": formxml}
+        with requests_mock.Mocker() as m:
+            for attr in ("new_city", "new_kind"):
+                m.get(
+                    _attr_url(backend, attr),
+                    json={"AttributeType": "String", "LogicalName": attr},
+                )
+            return forms.converge_declared_form(backend, "new_project", row, block)
+
+    def test_adopts_default_tab_and_section_by_label(self, backend):
+        new_xml, changes = self._converge(backend, self._BLOCK)
+        assert _tabs(new_xml) == ["general"]
+        assert _sections(new_xml, "general") == ["general"]
+        assert "general_section" not in new_xml
+        assert list(_controls(new_xml)) == ["new_name", "ownerid", "new_city", "new_kind"]
+        # the adopted elements keep their platform ids
+        assert "{11111111-0000-0000-0000-000000000001}" in new_xml
+        assert "{22222222-0000-0000-0000-000000000002}" in new_xml
+        name_diff = {"name": {"old": None, "new": "general"}}
+        assert changes[:2] == [
+            {"kind": "tab", "name": "general", "change": "converged", "diff": name_diff},
+            {
+                "kind": "section",
+                "name": "general",
+                "tab": "general",
+                "change": "converged",
+                "diff": name_diff,
+            },
+        ]
+        assert [(c["kind"], c["name"]) for c in changes[2:]] == [
+            ("field", "new_city"),
+            ("field", "new_kind"),
+        ]
+
+    def test_reapply_after_adoption_is_a_no_op(self, backend):
+        once, _ = self._converge(backend, self._BLOCK)
+        twice, changes = self._converge(backend, self._BLOCK, formxml=once)
+        assert changes == []
+        assert twice == once
+
+    def test_label_defaults_to_name_and_compares_case_insensitively(self, backend):
+        block = {"tabs": [{"name": "general", "sections": [{"name": "general"}]}]}
+        new_xml, changes = self._converge(backend, block)
+        assert _tabs(new_xml) == ["general"]
+        assert _sections(new_xml, "general") == ["general"]
+        assert [c["diff"] for c in changes] == [{"name": {"old": None, "new": "general"}}] * 2
+        assert 'description="General"' in new_xml  # label left as the platform had it
+
+    def test_declared_label_differing_in_case_is_converged_with_the_name(self, backend):
+        block = {"tabs": [{"name": "general", "label": "GENERAL"}]}
+        _, changes = self._converge(backend, block)
+        assert changes == [
+            {
+                "kind": "tab",
+                "name": "general",
+                "change": "converged",
+                "diff": {
+                    "name": {"old": None, "new": "general"},
+                    "label": {"old": "General", "new": "GENERAL"},
+                },
+            }
+        ]
+
+    def test_two_unnamed_tabs_with_the_label_are_not_adopted(self, backend):
+        live = _PLATFORM_FORMXML.replace("</tabs>", _TWIN_UNNAMED_TAB + "</tabs>")
+        new_xml, changes = self._converge(backend, {"tabs": [{"name": "general"}]}, formxml=live)
+        assert _tabs(new_xml) == [None, None, "general"]
+        assert changes == [{"kind": "tab", "name": "general"}]
+
+    def test_named_tab_with_matching_label_is_not_adopted(self, backend):
+        live = _PLATFORM_FORMXML.replace(
+            '<tab id="{11111111-0000-0000-0000-000000000001}"',
+            '<tab name="tab_main" id="{11111111-0000-0000-0000-000000000001}"',
+        )
+        new_xml, changes = self._converge(backend, {"tabs": [{"name": "general"}]}, formxml=live)
+        assert _tabs(new_xml) == ["tab_main", "general"]
+        assert changes == [{"kind": "tab", "name": "general"}]
+
+    def test_two_unnamed_sections_with_the_label_are_not_adopted(self, backend):
+        twin = (
+            '<section id="{77777777-0000-0000-0000-000000000007}">'
+            '<labels><label description="General" languagecode="1033" /></labels>'
+            "<rows></rows></section>"
+        )
+        live = _PLATFORM_FORMXML.replace(
+            "</section></sections>", "</section>" + twin + "</sections>"
+        )
+        block = {"tabs": [{"name": "general", "sections": [{"name": "general"}]}]}
+        new_xml, changes = self._converge(backend, block, formxml=live)
+        assert _sections(new_xml, "general") == [None, None, "general"]
+        assert changes[1] == {"kind": "section", "name": "general", "tab": "general"}
+
+    def test_added_tab_with_sections_has_no_starter_section(self, backend):
+        block = {
+            "tabs": [
+                {
+                    "name": "extra",
+                    "columns": 2,
+                    "sections": [{"name": "s1", "label": "S1"}, {"name": "s2"}],
+                }
+            ]
+        }
+        new_xml, changes = self._converge(backend, block)
+        assert _sections(new_xml, "extra") == ["s1", "s2"]
+        assert "extra_section" not in new_xml
+        assert 'description="S1"' in new_xml
+        assert changes == [
+            {"kind": "tab", "name": "extra"},
+            {"kind": "section", "name": "s1", "tab": "extra"},
+            {"kind": "section", "name": "s2", "tab": "extra"},
+        ]
+
+    def test_added_tab_without_sections_keeps_the_starter_section(self, backend):
+        new_xml, _ = self._converge(backend, {"tabs": [{"name": "extra"}]})
+        assert _sections(new_xml, "extra") == ["extra_section"]
 
 
 _BILINGUAL_XML = (
