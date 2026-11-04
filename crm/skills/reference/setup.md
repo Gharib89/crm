@@ -112,9 +112,11 @@ tell the user it is untested.
 - **Reads are continue-and-report.** `legacy metadata ENTITY...` and `legacy
   components` return the rows they read plus an `errors` list, one entry per
   entity or kind that faulted, and exit 1 when it is non-empty: read `errors`
-  before trusting a partial `data`. An assembly with `binary: "unavailable"` has
-  no binary in the org, so do not retry it. Pass `--out` for any read that
-  includes web resources, processes or forms, so the JSON stays small.
+  before trusting a partial `data`. An auth or transport failure is not per
+  item: it stops the read with the standard error envelope and no `data`. An
+  assembly with `binary: "unavailable"` has no binary in the org, so do not
+  retry it. Pass `--out` for any read that includes web resources, processes or
+  forms, so the JSON stays small.
 - Success envelopes use the standard JSON contract, with `meta.url` set to the SOAP
   endpoint instead of a Web API base URL. Faults map to the usual `meta.code` and
   `meta.category`. A connect timeout retries inside the CLI (bounded), so treat a

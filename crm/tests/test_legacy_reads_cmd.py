@@ -290,6 +290,18 @@ def test_a_whole_org_failure_is_one_error_envelope(crm_home):
     assert json.loads(result.output)["meta"]["category"] == "auth_failed"
 
 
+@pytest.mark.parametrize(
+    "argv", [("components",), ("metadata", "account", "contact")], ids=["kinds", "entities"]
+)
+def test_an_auth_failure_stops_the_run_instead_of_failing_each_item(crm_home, argv):
+    with requests_mock.Mocker() as m:
+        m.post(_ENDPOINT, status_code=401, text="", headers={"Content-Type": "text/plain"})
+        result = CliRunner().invoke(cli, ["--json", "--profile", "legacy", "legacy", *argv])
+    assert result.exit_code == 1, result.output
+    assert json.loads(result.output)["meta"]["category"] == "auth_failed"
+    assert m.call_count == 1
+
+
 def test_web_resource_content_that_is_not_base64_fails_its_kind_only(tmp_path):
     class Client:
         def retrieve_multiple(self, fetch_xml):

@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from crm.core.legacy import LegacyClient, parameter
-from crm.utils.d365_backend import D365Error
+from crm.utils.d365_backend import D365Error, classify_d365_error
 
 _MD = {
     "a": "http://schemas.microsoft.com/xrm/2011/Contracts",
@@ -168,6 +168,12 @@ def entity_detail(client: LegacyClient, name: str) -> dict[str, Any]:
     }
 
 
+def _connection_wide(exc: D365Error) -> bool:
+    """A 401 or no HTTP response fails every later read too, so it is never per-item."""
+    category, _ = classify_d365_error(exc.status, exc.code, str(exc))
+    return category in ("auth_failed", "transport_error")
+
+
 def read_entities(
     client: LegacyClient, names: list[str]
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -178,6 +184,8 @@ def read_entities(
         try:
             entities.append(entity_detail(client, name))
         except D365Error as exc:
+            if _connection_wide(exc):
+                raise
             errors.append({"entity": name, "error": str(exc), "code": exc.code})
     return entities, errors
 
@@ -336,6 +344,8 @@ def read_components(
         except (D365Error, OSError, binascii.Error) as exc:
             # A fault, a payload that cannot be written (OSError) or web resource
             # content that is not valid base64 (binascii.Error) fails this kind only.
+            if isinstance(exc, D365Error) and _connection_wide(exc):
+                raise
             code = exc.code if isinstance(exc, D365Error) else None
             errors.append({"kind": name, "error": str(exc), "code": code})
     return data, errors
