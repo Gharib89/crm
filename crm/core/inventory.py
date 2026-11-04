@@ -53,6 +53,21 @@ KEY_FIELDS: dict[str, tuple[str, ...]] = {
 }
 KINDS: tuple[str, ...] = tuple(KEY_FIELDS)
 
+#: Key fields holding a platform integer code (shared by CRM 2011 and v9, so keys
+#: match across stages). Every other key field is a non-empty string.
+INTEGER_KEY_FIELDS = frozenset(
+    ("form_type", "stage", "mode", "image_type", "category", "dependency_type")
+)
+#: The (kind, field) pairs whose key field may be null.
+NULLABLE_KEY_FIELDS = frozenset(
+    (
+        ("step", "primary_entity"),
+        ("process", "primary_entity"),
+        ("ribbon", "entity"),
+        ("sitemap", "unique_name"),
+    )
+)
+
 #: The key a null single-part key takes: the application ribbon, the default sitemap.
 _NULL_KEY: dict[str, str] = {"ribbon": "application", "sitemap": "default"}
 
@@ -61,12 +76,17 @@ class InventoryError(Exception):
     """A manifest, record or key that breaks the inventory manifest contract."""
 
 
-def _key_part(value: object) -> str:
-    if value is None:
+def _key_part(kind: str, name: str, value: object) -> str:
+    if name in INTEGER_KEY_FIELDS:
+        if type(value) is not int:
+            raise InventoryError(f"{kind}.{name} must be an integer, got {value!r}")
+        return str(value)
+    if value is None and (kind, name) in NULLABLE_KEY_FIELDS:
         return ""
-    if isinstance(value, bool) or not isinstance(value, str | int):
-        raise InventoryError(f"key part must be a string, an integer or null, got {value!r}")
-    return str(value).replace("%", "%25").replace("|", "%7C")
+    if not isinstance(value, str) or not value:
+        nullable = " or null" if (kind, name) in NULLABLE_KEY_FIELDS else ""
+        raise InventoryError(f"{kind}.{name} must be a non-empty string{nullable}, got {value!r}")
+    return value.replace("%", "%25").replace("|", "%7C")
 
 
 def component_key(kind: str, fields: Mapping[str, Any]) -> str:
@@ -74,11 +94,13 @@ def component_key(kind: str, fields: Mapping[str, Any]) -> str:
 
     The key joins the kind's `KEY_FIELDS` with ``|``, each part escaping ``%``
     and ``|`` (as ``%25`` and ``%7C``) so two different field tuples never give
-    one key. A null part is the empty string; a null ribbon entity is
-    ``application`` and a null sitemap name ``default``.
+    one key. An integer field (`INTEGER_KEY_FIELDS`) is written in decimal;
+    only `NULLABLE_KEY_FIELDS` may be null, as the empty part, so a null and
+    an empty string never meet. A null ribbon entity is ``application`` and a
+    null sitemap name ``default``.
 
     Raises:
-        InventoryError: the kind is unknown or a key field is missing.
+        InventoryError: the kind is unknown, or a key field is missing or mistyped.
     """
     names = KEY_FIELDS.get(kind)
     if names is None:
@@ -88,7 +110,7 @@ def component_key(kind: str, fields: Mapping[str, Any]) -> str:
         raise InventoryError(f"{kind} record lacks key field(s): {', '.join(missing)}")
     if kind in _NULL_KEY and fields[names[0]] is None:
         return _NULL_KEY[kind]
-    return "|".join(_key_part(fields[name]) for name in names)
+    return "|".join(_key_part(kind, name, fields[name]) for name in names)
 
 
 def artifact_path(kind: str, key: str, name: str, *, discriminator: str | None = None) -> str:
@@ -180,12 +202,12 @@ class Record:
     origin: str
     managed: bool | None
     publication_state: str
-    fields: Mapping[str, Any]
+    fields: dict[str, Any]
     artifacts: tuple[Artifact, ...]
 
 
 @dataclass(frozen=True)
-class Coverage:
+class KindCoverage:
     status: str
     pages: int
     records: int
@@ -194,7 +216,7 @@ class Coverage:
 
 
 @dataclass(frozen=True)
-class Gap:
+class ExtractionGap:
     """Something the source cannot expose, named by *key* or *description*."""
 
     kind: str | None
@@ -212,8 +234,8 @@ class Inventory:
     scope: Scope
     publication: str
     records: tuple[Record, ...]
-    coverage: Mapping[str, Coverage]
-    gaps: tuple[Gap, ...]
+    coverage: Mapping[str, KindCoverage]
+    gaps: tuple[ExtractionGap, ...]
 
     def ambiguous(self) -> dict[tuple[str, str], tuple[Record, ...]]:
         """Return each (kind, key) that two or more records share, records in manifest order."""
@@ -284,7 +306,10 @@ def _strings(value: object, where: str) -> tuple[str, ...]:
 def _source(value: object) -> Source:
     obj = _obj(value, "source")
     url = _str(obj, "org_url", "source")
-    if urlsplit(url).username is not None or "@" in urlsplit(url).netloc:
+    parts = urlsplit(url)
+    if parts.scheme not in ("http", "https") or not parts.netloc:
+        raise InventoryError(f"source.org_url must be an http(s) URL, got {url!r}")
+    if "@" in parts.netloc:
         raise InventoryError("source.org_url must not carry credentials")
     return Source(
         platform=_str(obj, "platform", "source", choices=PLATFORMS),
@@ -313,7 +338,7 @@ def _artifact(value: object, kind: str, where: str) -> Artifact:
         not path.startswith(prefix)
         or "/" in path[len(prefix) :]
         or path.endswith("/")
-        or ".." in path
+        or path[len(prefix) :] in (".", "..")
     ):
         raise InventoryError(f"{where}.path {path!r} must be a file directly under {prefix}")
     hashes = [_str(obj, name, where) for name in ("sha256", "normalized_sha256")]
@@ -353,10 +378,10 @@ def _record(value: object, where: str) -> Record:
     )
 
 
-def _coverage(value: object, kind: str) -> Coverage:
+def _coverage(value: object, kind: str) -> KindCoverage:
     where = f"coverage.{kind}"
     obj = _obj(value, where)
-    coverage = Coverage(
+    coverage = KindCoverage(
         status=_str(obj, "status", where, choices=COVERAGE_STATUSES),
         pages=_int(obj, "pages", where),
         records=_int(obj, "records", where),
@@ -368,12 +393,12 @@ def _coverage(value: object, kind: str) -> Coverage:
     return coverage
 
 
-def _gap(value: object, where: str) -> Gap:
+def _gap(value: object, where: str) -> ExtractionGap:
     obj = _obj(value, where)
     kind = _opt_str(obj, "kind", where)
     if kind is not None and kind not in KINDS:
         raise InventoryError(f"{where}.kind {kind!r} is not a v1 kind")
-    gap = Gap(
+    gap = ExtractionGap(
         kind=kind,
         key=_opt_str(obj, "key", where),
         description=_opt_str(obj, "description", where),
@@ -462,14 +487,18 @@ def read_inventory(folder: Path) -> Inventory:
 
 
 def _canonical(value: object) -> str:
-    return json.dumps(value, sort_keys=True, ensure_ascii=False)
+    try:
+        return json.dumps(value, sort_keys=True, ensure_ascii=False, allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise InventoryError(f"manifest holds a value JSON cannot carry: {exc}") from exc
 
 
 def dump_manifest(inv: Inventory) -> str:
     """Serialize *inv* deterministically: two dumps of the same content are byte-identical.
 
     Records sort by kind, then key, then their own content (so records sharing
-    an ambiguous key keep a stable order); artifacts by path; gaps by content.
+    an ambiguous key keep a stable order); artifacts by path; gaps by content;
+    coverage errors by text.
     Keys are sorted and the text ends with a newline. The result is checked by
     `parse_manifest`, so a writer cannot emit a manifest the reader refuses.
     """
@@ -486,7 +515,7 @@ def dump_manifest(inv: Inventory) -> str:
         "publication": inv.publication,
         "records": records,
         "coverage": {
-            kind: {**asdict(c), "errors": list(c.errors)} for kind, c in inv.coverage.items()
+            kind: {**asdict(c), "errors": sorted(c.errors)} for kind, c in inv.coverage.items()
         },
         "gaps": gaps,
     }

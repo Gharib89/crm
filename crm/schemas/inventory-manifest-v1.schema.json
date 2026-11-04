@@ -430,6 +430,46 @@
                   "name": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "libraries": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "web resource names of the form libraries, in load order"
+                  },
+                  "handlers": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "event",
+                        "attribute",
+                        "function",
+                        "library",
+                        "enabled"
+                      ],
+                      "properties": {
+                        "event": {
+                          "type": "string"
+                        },
+                        "attribute": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "function": {
+                          "type": "string"
+                        },
+                        "library": {
+                          "type": "string"
+                        },
+                        "enabled": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
                   }
                 }
               },
@@ -716,6 +756,13 @@
                   "name": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "activities": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "plug-in type keys of the custom workflow activities the definition uses"
                   }
                 }
               },
@@ -944,7 +991,7 @@
           "type": "string",
           "pattern": "^artifacts/[a-z_]+/[^/]+$",
           "not": {
-            "pattern": "\\.\\."
+            "pattern": "/\\.\\.?$"
           }
         },
         "content": {

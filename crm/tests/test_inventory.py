@@ -1,5 +1,7 @@
 """Migration inventory manifest v1: schema, reader, writer and normalization (ADR 0032)."""
 
+# pyright: basic
+
 from __future__ import annotations
 
 import copy
@@ -238,6 +240,15 @@ def _bad_origin(m: dict[str, Any]) -> None:
     m["records"][0]["origin"] = "custom-ish"
 
 
+def _int_key_part(m: dict[str, Any]) -> None:
+    m["records"][0]["fields"]["logical_name"] = 7
+    m["records"][0]["key"] = "7"
+
+
+def _ftp_url(m: dict[str, Any]) -> None:
+    m["source"]["org_url"] = "ftp://internalcrm.contoso.local/Contoso"
+
+
 @pytest.mark.parametrize(
     ("mutate", "message"),
     [
@@ -250,6 +261,8 @@ def _bad_origin(m: dict[str, Any]) -> None:
         (_shared_artifact_path, r"shared by two records"),
         (_credentials_in_url, r"org_url.*credentials"),
         (_bad_origin, r"origin"),
+        (_int_key_part, r"entity\.logical_name must be a non-empty string"),
+        (_ftp_url, r"org_url must be an http\(s\) URL"),
     ],
 )
 def test_reader_refuses_a_manifest_that_breaks_the_contract(
@@ -260,6 +273,66 @@ def test_reader_refuses_a_manifest_that_breaks_the_contract(
 
     with pytest.raises(inventory.InventoryError, match=message):
         inventory.parse_manifest(manifest)
+    assert _schema_errors(manifest) != [] or mutate in (
+        _wrong_key,
+        _drop_coverage,
+        _count_mismatch,
+        _shared_artifact_path,
+    )
+
+
+def test_component_key_types_each_part_so_null_and_empty_never_collide() -> None:
+    step = {"message": "Create", "stage": 40, "mode": 0, "plugin_type": "A|B", "name": "s"}
+
+    assert (
+        inventory.component_key("step", {**step, "primary_entity": None}) == "Create||40|0|A%7CB|s"
+    )
+    with pytest.raises(
+        inventory.InventoryError, match=r"step\.primary_entity must be a non-empty string or null"
+    ):
+        inventory.component_key("step", {**step, "primary_entity": ""})
+    with pytest.raises(inventory.InventoryError, match=r"step\.stage must be an integer"):
+        inventory.component_key("step", {**step, "primary_entity": None, "stage": "40"})
+
+
+def test_artifact_path_for_a_name_with_dots_round_trips_through_the_writer() -> None:
+    manifest = _manifest()
+    record = manifest["records"][0]
+    record.update(
+        kind="web_resource",
+        key="new_/lib/jquery..min.js",
+        fields={"name": "new_/lib/jquery..min.js"},
+    )
+    path = inventory.artifact_path("web_resource", record["key"], "content.js")
+    record["artifacts"] = [
+        {"path": path, "content": "text", "sha256": "a" * 64, "normalized_sha256": "a" * 64}
+    ]
+    del manifest["coverage"]["entity"]
+    manifest["coverage"]["web_resource"] = {
+        "status": "complete",
+        "pages": 1,
+        "records": 1,
+        "truncated": False,
+        "errors": [],
+    }
+
+    text = inventory.dump_manifest(inventory.parse_manifest(manifest))
+
+    assert _schema_errors(json.loads(text)) == []
+
+
+def test_writer_sorts_coverage_errors_and_refuses_values_json_cannot_carry() -> None:
+    first, second = _manifest(), _manifest()
+    first["coverage"]["form"].update(status="partial", errors=["b", "a"])
+    second["coverage"]["form"].update(status="partial", errors=["a", "b"])
+    nan = _manifest()
+    nan["records"][0]["fields"]["ratio"] = float("nan")
+
+    assert inventory.dump_manifest(inventory.parse_manifest(first)) == inventory.dump_manifest(
+        inventory.parse_manifest(second)
+    )
+    with pytest.raises(inventory.InventoryError, match="JSON"):
+        inventory.dump_manifest(inventory.parse_manifest(nan))
 
 
 def test_reader_keeps_both_records_of_an_ambiguous_key_and_reports_them() -> None:
@@ -310,7 +383,7 @@ SCHEMA_FILE = (
 SAMPLES = ("legacy", "v9", "cloud")
 
 
-def _schema_errors(manifest: object) -> list[str]:
+def _schema_errors(manifest: Any) -> list[str]:
     schema = json.loads(SCHEMA_FILE.read_text(encoding="utf-8"))
     validator = jsonschema.Draft202012Validator(schema)
     return [error.message for error in validator.iter_errors(manifest)]
@@ -331,6 +404,17 @@ def test_schema_file_is_a_valid_draft_2020_12_schema_whose_kinds_match_the_reade
         for rule in schema["$defs"]["record"]["allOf"]
     }
     assert required == {kind: list(names) for kind, names in inventory.KEY_FIELDS.items()}
+    types = {
+        (rule["if"]["properties"]["kind"]["const"], name): spec["type"]
+        for rule in schema["$defs"]["record"]["allOf"]
+        for name, spec in rule["then"]["properties"]["fields"]["properties"].items()
+        if name in inventory.KEY_FIELDS[rule["if"]["properties"]["kind"]["const"]]
+    }
+    for (kind, name), json_type in types.items():
+        expected = "integer" if name in inventory.INTEGER_KEY_FIELDS else "string"
+        if (kind, name) in inventory.NULLABLE_KEY_FIELDS:
+            expected = ["string", "null"]
+        assert json_type == expected, (kind, name)
 
 
 @pytest.mark.parametrize("name", SAMPLES)

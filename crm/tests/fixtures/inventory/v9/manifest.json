@@ -226,6 +226,8 @@
       "fields": {
         "entity": "account",
         "form_type": 2,
+        "handlers": [],
+        "libraries": [],
         "name": "Account"
       },
       "id": "00000000-0000-0000-0000-000000000020",
@@ -248,6 +250,18 @@
       "fields": {
         "entity": "new_project",
         "form_type": 2,
+        "handlers": [
+          {
+            "attribute": null,
+            "enabled": true,
+            "event": "onload",
+            "function": "Contoso.Project.onLoad",
+            "library": "new_/scripts/project.js"
+          }
+        ],
+        "libraries": [
+          "new_/scripts/project.js"
+        ],
         "name": "Information"
       },
       "id": "00000000-0000-0000-0000-000000000023",
@@ -339,6 +353,9 @@
       ],
       "display_name": null,
       "fields": {
+        "activities": [
+          "Contoso.Workflows|Contoso.Workflows.NotifyOwner"
+        ],
         "category": 0,
         "name": "Project approval",
         "primary_entity": "new_project"

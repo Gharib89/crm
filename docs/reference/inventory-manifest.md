@@ -36,7 +36,7 @@ reader refuses an artifact path that two records share.
 |---|---|
 | `schema_version` | `1` |
 | `source.platform` | `crm2011`, `onprem` or `cloud` |
-| `source.org_url` | the org URL, never with credentials in it |
+| `source.org_url` | the org's `http` or `https` URL, never with credentials in it |
 | `source.organization_id` | the organization id, or `null` |
 | `source.version` | the org's build or version string |
 | `extracted_at` | when the extraction ran (ISO 8601); the only time field |
@@ -67,7 +67,11 @@ manifest, and `Inventory.ambiguous()` reports them. Nothing picks one.
 
 The key joins the kind's key fields, in the order below, with `|`. Each part
 escapes `%` as `%25` and `|` as `%7C`, so different field values never give
-one key. An integer part is written in decimal, and a `null` part is empty. A
+one key. The code fields (`form_type`, `stage`, `mode`, `image_type`,
+`category`, `dependency_type`) are the platform's integer codes, written in
+decimal, which CRM 2011 and v9 share. Every other key field is a non-empty
+string, and only the four fields the Notes column calls nullable may be
+`null`, written as an empty part. A
 field holding another component's key (`plugin_type`, `step`, `member_key`,
 `dependent_key`, `required_key`) nests it as one escaped part. The reader
 refuses a record whose `key` differs from the key its fields give
@@ -80,19 +84,30 @@ refuses a record whose `key` differs from the key its fields give
 | `relationship` | `schema_name` | |
 | `global_option_set` | `name` | |
 | `local_option_set` | `entity`, `attribute` | |
-| `form` | `entity`, `form_type`, `name` | `form_type` is the `systemform.type` code (2 main, 5 mobile, 7 quick create, ...); event handlers and libraries live in the form XML |
+| `form` | `entity`, `form_type`, `name` | `form_type` is the `systemform.type` code (2 main, 5 mobile, 7 quick create, ...) |
 | `view` | `entity`, `name` | can repeat, so watch for ambiguity |
 | `web_resource` | `name` | |
 | `plugin_assembly` | `name` | |
 | `plugin_type` | `assembly`, `type_name` | one class name can be registered from two assemblies |
 | `step` | `message`, `primary_entity`, `stage`, `mode`, `plugin_type`, `name` | `primary_entity` is `null` for a message with no entity |
 | `step_image` | `step`, `alias`, `image_type` | |
-| `process` | `category`, `primary_entity`, `name` | `category` is the `workflow.category` code; custom workflow activities are plug-in types and their uses sit in the XAML |
+| `process` | `category`, `primary_entity`, `name` | `category` is the `workflow.category` code; `primary_entity` is nullable |
 | `solution` | `unique_name` | |
 | `solution_membership` | `solution`, `member_kind`, `member_key` | |
 | `dependency` | `dependent_kind`, `dependent_key`, `required_kind`, `required_key`, `dependency_type` | |
 | `ribbon` | `entity` | `null` is the application ribbon, key `application` |
 | `sitemap` | `unique_name` | `null` is the default sitemap, key `default` |
+
+### Fields beyond the key
+
+`fields` may carry more normalized fields; a reader ignores the ones it does not
+know. v1 defines three, so the source-map and packages slices can rely on them:
+
+| Kind | Field | Value |
+|---|---|---|
+| `form` | `libraries` | web resource names of the form libraries, in load order |
+| `form` | `handlers` | `[{event, attribute, function, library, enabled}]`, `attribute` `null` for a form-level event |
+| `process` | `activities` | plug-in type keys of the custom workflow activities the definition uses |
 
 ## Kind coverage
 
@@ -167,8 +182,9 @@ Two more limits apply across kinds:
   extractor must detect the cap itself to record `truncated`. Metadata list
   endpoints (`EntityDefinitions` and the rest) return their full set in one
   response, so they do not page.
-- `solution export-spec` is not a source for an inventory: it is apply-seedable
+- `solution export-spec` is not a source for a migration inventory: it is apply-seedable
   only ([ADR 0019](../adr/0019-export-spec-apply-seedable-invariant.md)). It
   skips plug-ins and processes, and reads main forms only, so other forms drop
   out without a skipped entry. `org brief` is a capped summary (name lists
-  capped at 200, the workflow total read from one page), not an inventory.
+  capped at 200, the workflow total read from one page), not a migration
+  inventory.
