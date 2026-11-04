@@ -9,6 +9,37 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.89.1 (2026-11-04)
+
+### Bug Fixes
+
+- **apply**: Forms: adopt the platform's unnamed default tab and section by label
+  ([#1078](https://github.com/Gharib89/crm/pull/1078),
+  [`62b41df`](https://github.com/Gharib89/crm/commit/62b41df24af8dabbae4fd4f5793027ef45bf8b87))
+
+- **apply**: Forms: adopts the platform's unnamed default tab and section by label
+  ([#1078](https://github.com/Gharib89/crm/pull/1078),
+  [`62b41df`](https://github.com/Gharib89/crm/commit/62b41df24af8dabbae4fd4f5793027ef45bf8b87))
+
+### Documentation
+
+- **glossary**: Adopt term follows the file's heading shape
+  ([#1078](https://github.com/Gharib89/crm/pull/1078),
+  [`62b41df`](https://github.com/Gharib89/crm/commit/62b41df24af8dabbae4fd4f5793027ef45bf8b87))
+
+### Refactoring
+
+- **apply**: Name the converge diffs; GLOSSARY term for Adopt
+  ([#1078](https://github.com/Gharib89/crm/pull/1078),
+  [`62b41df`](https://github.com/Gharib89/crm/commit/62b41df24af8dabbae4fd4f5793027ef45bf8b87))
+
+### Testing
+
+- **apply**: Live e2e for forms: default tab adoption, and docs
+  ([#1078](https://github.com/Gharib89/crm/pull/1078),
+  [`62b41df`](https://github.com/Gharib89/crm/commit/62b41df24af8dabbae4fd4f5793027ef45bf8b87))
+
+
 ## v1.89.0 (2026-11-04)
 
 ### Bug Fixes
