@@ -4,6 +4,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\shared\contoso.shared.csproj" />
-    <ProjectReference Include="..\..\External\Contoso.External.csproj" />
+    <ProjectReference Include="..\..\external\contoso.external.csproj" />
   </ItemGroup>
 </Project>

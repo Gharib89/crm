@@ -4,4 +4,8 @@ namespace Contoso.Plugins
     {
         public abstract void Execute(System.IServiceProvider serviceProvider);
     }
+
+    public interface IContosoPlugin : Microsoft.Xrm.Sdk.IPlugin
+    {
+    }
 }

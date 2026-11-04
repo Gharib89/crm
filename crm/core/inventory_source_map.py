@@ -74,8 +74,10 @@ _CS_NOISE = re.compile(
 _CS_TOKEN = re.compile(r"@?[A-Za-z_][\w.]*|[{};:,<>]")
 _CS_TYPE_KEYWORDS = frozenset(("class", "struct", "interface", "enum", "record"))
 _CS_MODIFIERS = frozenset(
-    ("public", "internal", "private", "protected", "sealed", "static", "abstract", "partial")
-    + ("unsafe", "new", "file", "readonly", "ref")
+    (
+        *("public", "internal", "private", "protected", "sealed", "static", "abstract"),
+        *("partial", "unsafe", "new", "file", "readonly", "ref"),
+    )
 )
 
 
@@ -352,7 +354,8 @@ def _cs_types(text: str, path: str) -> list[_TypeDecl]:
                 k = i - 1
                 while k >= 0 and tokens[k] in _CS_MODIFIERS and tokens[k] != "abstract":
                     k -= 1
-                abstract = k >= 0 and tokens[k] == "abstract"
+                # An interface is never registered, so it counts with abstract classes.
+                abstract = tok == "interface" or (k >= 0 and tokens[k] == "abstract")
                 out.append(_TypeDecl(".".join([*namespaces, full]), path, bases, abstract))
                 if end < len(tokens) and tokens[end] == "{":
                     stack.append(("type", name.lstrip("@")))
@@ -402,8 +405,12 @@ def _scan(root: Path) -> _Repo:
     for rel in paths:
         if rel.lower().endswith(".csproj"):
             repo.projects[rel] = _project(root, rel)
-    # A ProjectReference spelled in another letter case names the same file on Windows.
-    spelled = {rel.lower(): rel for rel in repo.projects}
+    # A ProjectReference spelled in another letter case names the same file on Windows:
+    # the checkout's own spelling wins, else the first spelling in sort order.
+    spelled: dict[str, str] = {}
+    for ref in sorted(r for p in repo.projects.values() for r in p.references):
+        spelled.setdefault(ref.lower(), ref)
+    spelled.update({rel.lower(): rel for rel in repo.projects})
     for rel, project in repo.projects.items():
         refs = sorted({spelled.get(ref.lower(), ref) for ref in project.references})
         repo.projects[rel] = replace(project, references=tuple(refs))
@@ -482,8 +489,8 @@ def _consumers(
             for name in _WEBRESOURCE_REF.findall(text):
                 add(name, who, self_key)
             if record.kind == "form":
-                for a, b in _FORM_LIBRARY.findall(text):
-                    add(a or b, who)
+                for library, handler in _FORM_LIBRARY.findall(text):
+                    add(library or handler, who)
             if record.kind != "web_resource":
                 continue
             base = posixpath.dirname(record.key)
@@ -652,10 +659,11 @@ def map_source(inventory_dir: Path, repo: Path) -> SourceMap:
     inventory's normalization) equals the deployed one; else ``stale`` when one
     file lines up by name (its path ends with the web resource name, or with no
     such file, it shares the file name), ``ambiguous`` with several, and
-    ``candidate`` when minified content keeps the hashes apart or the file looks
-    generated from a TypeScript or un-minified source. Plug-in types: matched
+    ``candidate`` when only one side is minified or the file looks generated
+    from a TypeScript or un-minified source. Plug-in types: matched
     when a C# declaration of the full type name sits in a project whose
-    assembly name (``AssemblyName``, else the project file name) is the
+    assembly name (``AssemblyName`` with ``$(MSBuildProjectName)`` expanded,
+    else the project file name) is the
     registered one; a declaration or a project alone is a ``candidate``. No
     candidate at all is ``missing_source``. System components are not mapped.
 
