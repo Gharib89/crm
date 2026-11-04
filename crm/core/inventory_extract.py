@@ -388,6 +388,8 @@ _V9_READS = tuple(
 )
 # The kinds read per entity from the entity list; a failed list leaves them unread.
 _ENTITY_DETAIL_KINDS = ("attribute", "relationship", "local_option_set", "ribbon")
+# The reads a --solution run finds its scope from.
+_SCOPE_KINDS = ("solution", "solution_membership")
 
 
 @dataclass
@@ -641,6 +643,16 @@ def extract(
     reads = _READS if source.platform == PLATFORM_CRM2011 else _V9_READS
     rows = {read.kind: run.pages(read) for read in reads}
     if solutions:
+        # The scope is found from these two reads: if either fell short, every kind
+        # it filters may be missing components, so none of them can read complete.
+        short = [k for k in _SCOPE_KINDS if run.tally(k).errors or run.tally(k).truncated]
+        if short:
+            scoped = {"entity", *_ENTITY_DETAIL_KINDS, *(r.kind for r in reads)}
+            for kind in sorted(scoped - set(_SCOPE_KINDS)):
+                run.tally(kind).errors.append(
+                    f"{', '.join(short)}: the read fell short, so the --solution scope"
+                    " may miss components"
+                )
         members, solutions = _member_entities(run, rows, solutions)
         entities_read = [e for e in entities if str(e.get("metadata_id")).lower() in members]
     else:
