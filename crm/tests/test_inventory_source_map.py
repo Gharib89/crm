@@ -161,9 +161,10 @@ def test_plugin_statuses_cover_both_namespace_forms_and_a_project_without_assemb
     source_map = map_source(inventory_dir, REPO)
 
     block = _entry(source_map, "plugin_type", "Contoso.Plugins|Contoso.Plugins.ProjectCreate")
+    # A partial class split across two files of one project is still one match.
     assert (block.status, block.files, block.projects) == (
         "matched",
-        ("Plugins/ProjectCreate.cs",),
+        ("Plugins/ProjectCreate.Helpers.cs", "Plugins/ProjectCreate.cs"),
         ("Plugins/Contoso.Plugins.csproj",),
     )
     # File-scoped namespace, in a project with no AssemblyName: a custom workflow activity.

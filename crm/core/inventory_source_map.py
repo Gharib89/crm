@@ -633,17 +633,14 @@ def _plugin_type(record: Record, repo: _Repo) -> ComponentSource:
             if _same_assembly(repo.projects[o].assembly, assembly)
         }
     )
-    if len(agree) == 1:
-        return ComponentSource(kind, key, "matched", (agree[0][0],), (agree[0][1],))
-    if agree:
-        return ComponentSource(
-            kind,
-            key,
-            "ambiguous",
-            tuple(sorted({p for p, _ in agree})),
-            tuple(sorted({o for _, o in agree})),
-            reason=f"{type_name} is declared in several projects that build {assembly}",
-        )
+    # Decided on projects, not files: a partial class spans files of one project.
+    files = tuple(sorted({p for p, _ in agree}))
+    projects = tuple(sorted({o for _, o in agree}))
+    if len(projects) == 1:
+        return ComponentSource(kind, key, "matched", files, projects)
+    if projects:
+        reason = f"{type_name} is declared in several projects that build {assembly}"
+        return ComponentSource(kind, key, "ambiguous", files, projects, reason=reason)
     if decls:
         owners = sorted({o for _, decl_owners in decls for o in decl_owners})
         built = sorted({repo.projects[o].assembly for o in owners})
@@ -652,12 +649,12 @@ def _plugin_type(record: Record, repo: _Repo) -> ComponentSource:
         return ComponentSource(
             kind, key, "candidate", tuple(sorted({d.path for d, _ in decls})), tuple(owners), reason
         )
-    projects = sorted(
+    builders = sorted(
         p.path for p in repo.projects.values() if _same_assembly(p.assembly, assembly)
     )
-    if projects:
+    if builders:
         reason = f"a project builds {assembly}, but no declaration of {type_name} was found"
-        return ComponentSource(kind, key, "candidate", (), tuple(projects), reason)
+        return ComponentSource(kind, key, "candidate", (), tuple(builders), reason)
     return ComponentSource(kind, key, "missing_source")
 
 
