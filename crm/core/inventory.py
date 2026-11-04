@@ -18,7 +18,6 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, cast
-from urllib.parse import urlsplit
 
 _BOM = b"\xef\xbb\xbf"
 
@@ -163,6 +162,10 @@ PUBLICATION_STATES = ("published", "unknown")
 COVERAGE_STATUSES = ("complete", "partial", "unsupported", "failed")
 CONTENTS = ("text", "binary")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
+# The schema's org_url pattern, ^https?://[^/@]+(/.*)?$, with the authority captured so an
+# "@" in it reads as credentials. A regex, not urlsplit: urlsplit lowercases the scheme,
+# strips newlines and raises ValueError on a malformed IPv6 host.
+_ORG_URL = re.compile(r"https?://([^/]+)(/.*)?")
 
 
 @dataclass(frozen=True)
@@ -306,11 +309,10 @@ def _strings(value: object, where: str) -> tuple[str, ...]:
 def _source(value: object) -> Source:
     obj = _obj(value, "source")
     url = _str(obj, "org_url", "source")
-    parts = urlsplit(url)
-    # urlsplit lowercases the scheme; the schema's pattern is case-sensitive, so match it.
-    if not url.startswith(("http://", "https://")) or not parts.netloc:
+    match = _ORG_URL.fullmatch(url)
+    if match is None:
         raise InventoryError(f"source.org_url must be an http(s) URL, got {url!r}")
-    if "@" in parts.netloc:
+    if "@" in match.group(1):
         raise InventoryError("source.org_url must not carry credentials")
     return Source(
         platform=_str(obj, "platform", "source", choices=PLATFORMS),

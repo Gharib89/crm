@@ -262,6 +262,19 @@ def _handlers_not_a_list(m: dict[str, Any]) -> None:
     m["records"][1]["fields"]["handlers"] = 5
 
 
+def _handler_with_empty_event(m: dict[str, Any]) -> None:
+    handler = {"event": "", "attribute": None, "function": "f", "library": "l", "enabled": True}
+    m["records"][1]["fields"]["handlers"] = [handler]
+
+
+def _credentials_after_a_query(m: dict[str, Any]) -> None:
+    m["source"]["org_url"] = "https://internalcrm.contoso.local?a@b"
+
+
+def _malformed_ipv6_url(m: dict[str, Any]) -> None:
+    m["source"]["org_url"] = "https://[::1/Con\ntoso"
+
+
 @pytest.mark.parametrize(
     ("mutate", "message", "schema_rejects"),
     [
@@ -283,6 +296,9 @@ def _handlers_not_a_list(m: dict[str, Any]) -> None:
             True,
         ),
         (_handlers_not_a_list, r"fields\.handlers must be an array", True),
+        (_handler_with_empty_event, r"handlers\[0\]\.event must be a non-empty string", True),
+        (_credentials_after_a_query, r"org_url.*credentials", True),
+        (_malformed_ipv6_url, r"org_url must be an http\(s\) URL", True),
     ],
 )
 def test_reader_refuses_a_manifest_that_breaks_the_contract(
