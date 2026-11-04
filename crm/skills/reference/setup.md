@@ -90,6 +90,30 @@ working as intended — clearing it requires an interactive terminal, so don't t
 to disable it non-interactively; it's a guardrail against accidents, not a
 security boundary (the real boundary is a server-side read-only role).
 
+## Legacy CRM 2011 orgs
+
+A CRM 2011 org has no Web API. `crm profile add` detects one itself (Web API 404 on
+an NTLM profile, then a `5.x` build answered over SOAP) and saves a **`crm2011`
+profile**; its JSON output carries `platform: "crm2011"`, where a normal profile says
+`v9`. Verified only on CRM 2011 UR15 (5.0.9690.3557), Linux: on another build or OS,
+tell the user it is untested.
+
+- **Only `crm legacy` runs on it** (prove connectivity with `crm --json legacy
+  version`; `crm legacy --help` lists the rest). Every other command exits 1
+  with an error naming `crm legacy`, so a `crm2011` profile never needs a
+  fallback attempt on `entity` or `query`.
+- **Writes are impossible, not just discouraged.** The profile is always read-only
+  and `profile edit --no-read-only` refuses even on a terminal (unlike the guardrail
+  above), and the SOAP transport sends only allowlisted reads. A refused request
+  (for example a message outside the allowlist) is a CLI limit, not an org
+  permission problem: report it to the user as unsupported and stop.
+- **`crm legacy` on any other profile refuses**: pass `--profile` naming the
+  `crm2011` one.
+- Success envelopes use the standard JSON contract, with `meta.url` set to the SOAP
+  endpoint instead of a Web API base URL. Faults map to the usual `meta.code` and
+  `meta.category`. A connect timeout retries inside the CLI (bounded), so treat a
+  `transport_error` as the org unreachable: check the VPN before running it again.
+
 Switch or inspect profiles with `crm profile use [name]` (no name → interactive
 picker; `--none` clears the active profile) and `crm profile list` (marks the
 active one); edit, rename, or delete one with `crm profile edit` /

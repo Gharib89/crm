@@ -23,6 +23,7 @@ from crm.core.logging_setup import setup_logging
 from crm.utils.d365_types import AUTH_SCHEMES
 
 if TYPE_CHECKING:
+    from crm.core.legacy import LegacyClient
     from crm.utils.d365_backend import D365Backend
 from crm.commands._helpers import (
     _apply_jq,
@@ -96,6 +97,7 @@ class CLIContext:
         # serving profile/url only on envelopes that actually opened a backend
         # (#624) — never on a later REPL line whose backend is merely cached.
         self.connection_resolved: bool = False
+        self.legacy_profile_name: str | None = None
         self._backend: D365Backend | None = None
         self._backend_key: tuple[str | None, str | None, bool, str | None, bool] | None = None
         self.skin: ReplSkin = ReplSkin("d365", version=__version__)
@@ -257,10 +259,8 @@ class CLIContext:
         if text is not None:
             self.skin.hint(text)
 
-    def backend(self) -> D365Backend:
-        from crm.core import connection as conn_mod
+    def _effective_profile(self) -> str | None:
         from crm.core import session as session_mod
-        from crm.utils.d365_backend import D365Backend
 
         # Profile selection: --profile flag > session active_profile > wizard.
         # A flag value is authoritative; otherwise fall back to the saved
@@ -287,7 +287,13 @@ class CLIContext:
             _click.get_current_context().invoke(profile_add)
             state = session_mod.load_session(self.session_name)
             effective_profile = state.get("active_profile")
+        return effective_profile
 
+    def backend(self) -> D365Backend:
+        from crm.core import connection as conn_mod
+        from crm.utils.d365_backend import D365Backend
+
+        effective_profile = self._effective_profile()
         key = (
             effective_profile,
             self.password,
@@ -315,6 +321,33 @@ class CLIContext:
         # a cached backend) so emit() stamps meta.profile/url (#624).
         self.connection_resolved = True
         return self._backend
+
+    def legacy_client(self) -> LegacyClient:
+        """Build the read-only SOAP client for a crm2011 profile (`crm legacy`).
+
+        Selects the profile and resolves its secret the way backend() does, but
+        refuses a non-crm2011 profile or a non-NTLM --auth-scheme before any
+        secret lookup or prompt.
+        """
+        from crm.core import connection as conn_mod
+        from crm.core import session as session_mod
+        from crm.core.legacy import LegacyClient, require_crm2011
+
+        if self.auth_scheme not in (None, "ntlm"):
+            raise click.UsageError(
+                f"--auth-scheme {self.auth_scheme} does not apply to `crm legacy`, "
+                "which supports only HTTP NTLM."
+            )
+        name = self._effective_profile()
+        self.legacy_profile_name = name  # names the profile in a 401 hint
+        if name is not None and session_mod.profile_path(name).is_file():
+            require_crm2011(session_mod.load_profile(name))
+        resolved = conn_mod.resolve_credentials(
+            profile_name=name,
+            password_override=self.password,
+            allow_prompt=_stdin_is_tty() and not self.json_mode,
+        )
+        return LegacyClient(resolved.profile, resolved.password)
 
     def materialized_backend(self) -> D365Backend | None:
         """Return the cached backend, if one already exists, without resolving it."""
@@ -734,6 +767,7 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
         "examples": "crm.commands.examples:examples_cmd",
         "fieldsec": "crm.commands.fieldsec:fieldsec_group",
         "form": "crm.commands.form:form_group",
+        "legacy": "crm.commands.legacy:legacy_group",
         "metadata": "crm.commands.metadata:metadata_group",
         "org": "crm.commands.org:org_group",
         "plugin": "crm.commands.plugin:plugin_group",
@@ -1076,6 +1110,7 @@ def cli(
     # it opened a connection, so emit() never stamps identity onto a local verb
     # that follows a connecting one in the same REPL session (#624).
     cli_ctx.connection_resolved = False
+    cli_ctx.legacy_profile_name = None
     # Sticky options: in the REPL the same CLIContext is reused across lines, so only
     # overwrite when the user actually supplied the flag — otherwise prior values
     # (e.g., set by `crm profile add`) would be wiped on the next bare command.

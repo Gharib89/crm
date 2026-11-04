@@ -4,6 +4,9 @@ status: accepted
 
 # Web API (OData) is the only transport — no SOAP
 
+> One scoped exception: a read-only SOAP adapter for legacy CRM 2011 discovery
+> only, see [ADR 0031](0031-legacy-crm2011-read-only-soap-adapter.md).
+
 The CLI speaks exclusively the Dataverse Web API (OData v4) over HTTPS, for
 on-prem and online alike. We will not add a SOAP transport
 (`SetStateRequest`, `ExecuteRequest`, the 2011 Organization Service endpoint),

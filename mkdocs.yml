@@ -160,6 +160,7 @@ nav:
       - workflow: how-to/workflow.md
       - sla: how-to/sla.md
       - translation: how-to/translation.md
+      - legacy: how-to/legacy.md
   - Reference:
       - CLI: reference/cli.md
       - Changelog: changelog.md

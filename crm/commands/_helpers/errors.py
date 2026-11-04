@@ -40,11 +40,15 @@ def _handle_d365_error(
     }
     # Auto-derive an auth fix-it hint on a 401 when the caller gave none, so a
     # rejected/stale secret steers the user to re-store it. The active profile
-    # name comes from the resolved backend, else the --profile flag.
+    # name comes from the resolved backend, else the profile `crm legacy`
+    # resolved, else the --profile flag.
     if hint is None and exc.status == 401:
         backend = getattr(ctx, "_backend", None)
         pname = (
-            getattr(getattr(backend, "profile", None), "name", None) or ctx.profile_name or "<name>"
+            getattr(getattr(backend, "profile", None), "name", None)
+            or getattr(ctx, "legacy_profile_name", None)
+            or ctx.profile_name
+            or "<name>"
         )
         hint = f"run: crm profile set-password --profile {pname}"
     # Partial-failure context (#64): only the non-transactional optionset update

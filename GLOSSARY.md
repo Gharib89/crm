@@ -270,6 +270,17 @@ exit 1) — never a **dry-run preview** (`ok:true`, exit 0); `--dry-run` is chec
 first, so a read-only + dry-run mutation previews rather than refuses.
 _Avoid_: locked profile, safe mode.
 
+**CRM 2011 profile**:
+A profile whose `platform` is `crm2011` (the default, `v9`, is the Web API on-prem
+or Dataverse; a profile JSON without the key means `v9`). `crm profile add` saves
+it when the Web API answers 404 on an NTLM profile and `RetrieveVersion` over the
+SOAP `/web` endpoint answers a `5.x` build. It is **always read-only**: the flag is
+forced on load and `profile edit --no-read-only` refuses, with no TTY escape. Only
+`crm legacy` runs on it; a v9 or cloud command fails fast naming `crm legacy`, and
+`crm legacy` refuses any other profile
+([ADR 0031](docs/adr/0031-legacy-crm2011-read-only-soap-adapter.md)).
+_Avoid_: legacy profile, SOAP profile, 2011 mode.
+
 **Read-safe action**:
 A named POST action exempt from the read-only refusal because it **extracts**
 rather than mutates — the solution/translation export actions (`ExportSolution`,

@@ -21,6 +21,7 @@ from crm.core import keyring_store
 from crm.core import session as session_mod
 from crm.utils.d365_backend import (
     AUTH_SCHEMES,
+    PLATFORM_CRM2011,
     ConnectionProfile,
     D365Backend,
     D365Error,
@@ -403,7 +404,19 @@ def profile_add(
         test_backend = D365Backend(
             profile, secret, dry_run=ctx.dry_run, retry_on_ambiguous=ctx.retry_on_ambiguous
         )
-        info = conn_mod.test_connection(test_backend, negotiate=negotiate)
+        try:
+            info = conn_mod.test_connection(test_backend, negotiate=negotiate)
+        except D365Error as web_api_exc:
+            # No Web API (404): a CRM 2011 org answers RetrieveVersion over its
+            # SOAP /web endpoint instead, and is saved as a read-only crm2011
+            # profile (ADR 0031). Anything else keeps the Web API failure.
+            from crm.core.legacy import detect_crm2011
+
+            detected = detect_crm2011(profile, secret, web_api_exc)
+            if detected is None:
+                raise
+            profile = detected
+            info = {}
     except D365Error as exc:
         malformed = conn_mod.profile_structural_problem(profile, has_secret=bool(secret))
         if malformed is not None:
@@ -476,7 +489,8 @@ def profile_add(
         "auth_scheme": auth_scheme,
         "credential_storage": where,
         "active": True,
-        "read_only": read_only,
+        "read_only": profile.read_only,
+        "platform": profile.platform,
         "user_id": info.get("user_id") if info else None,
         "api_version": profile.api_version,
     }
@@ -700,6 +714,15 @@ def profile_edit(
         p.publisher_prefix = publisher_prefix
     if verify_ssl is not None:
         p.verify_ssl = verify_ssl
+    if read_only is False and p.platform == PLATFORM_CRM2011:
+        ctx.emit(
+            False,
+            error=(
+                f"{name!r} is a CRM 2011 profile, which is always "
+                "read-only; --no-read-only cannot clear it."
+            ),
+        )
+        return
     # Read-only is asymmetric: tighten (--read-only) anywhere, but clearing it
     # (--no-read-only) is gated behind a real TTY + confirmation so a
     # non-interactive run (agent/CI/--json) can't flip the guardrail off. Same

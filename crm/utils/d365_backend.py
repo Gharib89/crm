@@ -173,6 +173,15 @@ def classify_d365_error(
     return ("validation", False)
 
 
+# Platform marker on a saved profile: "v9" is the Web API (on-prem v9.x or
+# Dataverse online), the default and the meaning of a profile JSON without the
+# key; "crm2011" is a legacy CRM 2011 org reached only through `crm legacy`'s
+# read-only SOAP transport (ADR 0031).
+PLATFORM_V9 = "v9"
+PLATFORM_CRM2011 = "crm2011"
+PLATFORMS = (PLATFORM_V9, PLATFORM_CRM2011)
+
+
 @dataclass
 class ConnectionProfile:
     """A reusable D365 connection profile (no secrets)."""
@@ -189,6 +198,7 @@ class ConnectionProfile:
     adfs_url: str | None = None  # adfs: STS override; None = discover from the org
     publisher_prefix: str | None = None  # schema-name prefix, e.g. "new"
     read_only: bool = False  # guardrail: backend refuses org mutations
+    platform: str = PLATFORM_V9  # one of PLATFORMS; crm2011 is always read-only
     timeout: int = 120
     retry_max: int = 5
     retry_base_delay: float = 1.0
@@ -223,6 +233,14 @@ class ConnectionProfile:
                 f"ConnectionProfile.auth_scheme must be {'|'.join(AUTH_SCHEMES)}, "
                 f"got {self.auth_scheme!r}"
             )
+        if self.platform not in PLATFORMS:
+            raise D365Error(
+                f"ConnectionProfile.platform must be {'|'.join(PLATFORMS)}, got {self.platform!r}"
+            )
+        if self.platform == PLATFORM_CRM2011:
+            # Invariant, not a default: a crm2011 profile can never be cleared to
+            # writable, even by a hand-edited profile file.
+            self.read_only = True
         for _field, _value in (
             ("retry_max", self.retry_max),
             ("retry_base_delay", self.retry_base_delay),
@@ -257,6 +275,7 @@ class ConnectionProfile:
             "adfs_url": self.adfs_url,
             "publisher_prefix": self.publisher_prefix,
             "read_only": self.read_only,
+            "platform": self.platform,
             "timeout": self.timeout,
             "retry_max": self.retry_max,
             "retry_base_delay": self.retry_base_delay,
@@ -282,6 +301,7 @@ class ConnectionProfile:
             adfs_url=d.get("adfs_url"),
             publisher_prefix=d.get("publisher_prefix"),
             read_only=d.get("read_only", False),
+            platform=d.get("platform", PLATFORM_V9),
             timeout=d.get("timeout", 120),
             retry_max=d.get("retry_max", 5),
             retry_base_delay=d.get("retry_base_delay", 1.0),
@@ -467,6 +487,12 @@ class D365Backend:
     ):
         if not profile.url:
             raise D365Error(f"Profile {profile.name!r} is missing the server URL.")
+        if profile.platform == PLATFORM_CRM2011:
+            raise D365Error(
+                f"Profile {profile.name!r} is a CRM 2011 profile, which has no "
+                "Web API; this command does not support it. Use `crm legacy` (for "
+                f"example `crm legacy whoami --profile {profile.name}`)."
+            )
         if profile.auth_scheme != "oauth" and not profile.username:
             raise D365Error(f"Profile {profile.name!r} is missing the username.")
 
