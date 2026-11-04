@@ -129,3 +129,17 @@ def test_a_401_hint_names_the_active_profile(crm_home):
         result = CliRunner().invoke(cli, ["--json", "legacy", "whoami"])
     assert result.exit_code == 1, result.output
     assert json.loads(result.output)["meta"]["hint"].endswith("--profile legacy")
+
+
+@pytest.mark.parametrize(
+    ("verb", "fixture"), [("whoami", "whoami.xml"), ("version", "retrieve_version.xml")]
+)
+def test_human_mode_prints_no_connection_meta(crm_home, verb, fixture):
+    _save("legacy", "crm2011")
+    with requests_mock.Mocker() as m:
+        m.post(
+            _ENDPOINT, text=(_FIXTURES / fixture).read_text(), headers={"Content-Type": "text/xml"}
+        )
+        result = CliRunner().invoke(cli, ["--profile", "legacy", "legacy", verb])
+    assert result.exit_code == 0, result.output
+    assert _ENDPOINT not in result.output

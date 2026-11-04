@@ -30,7 +30,8 @@ def legacy_whoami(ctx: CLIContext):
         "business_unit_id": results.get("BusinessUnitId"),
         "organization_id": results.get("OrganizationId"),
     }
-    ctx.emit(True, data=data, meta={"profile": client.profile.name, "url": client.endpoint})
+    meta = {"profile": client.profile.name, "url": client.endpoint} if ctx.json_mode else None
+    ctx.emit(True, data=data, meta=meta)
 
 
 @legacy_group.command("version")
@@ -41,4 +42,5 @@ def legacy_version(ctx: CLIContext):
         client = ctx.legacy_client()
         results = client.execute("RetrieveVersion")
     data = {"version": results.get("Version")}
-    ctx.emit(True, data=data, meta={"profile": client.profile.name, "url": client.endpoint})
+    meta = {"profile": client.profile.name, "url": client.endpoint} if ctx.json_mode else None
+    ctx.emit(True, data=data, meta=meta)
