@@ -79,7 +79,7 @@ run.
 An unknown solution name is a read error on the `solution` kind: the run goes on,
 exits **1** and keeps its checkpoint (see [When a read fails](#when-a-read-fails)).
 If the solution or solution membership read fails or is cut short, the scope may be
-missing components, so every kind but those two is marked `partial` or `failed` too.
+missing components, so every other kind is marked `partial` or `failed` too.
 
 ## The summary
 

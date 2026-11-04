@@ -578,13 +578,16 @@ def test_a_failed_entity_list_leaves_the_entity_detail_kinds_incomplete(tmp_path
         assert coverage[kind]["status"] != "complete", kind
 
 
-@pytest.mark.parametrize("entity_set", ["solutions", "solutioncomponents"])
-def test_a_failed_membership_read_leaves_every_scoped_kind_incomplete(tmp_path, entity_set):
+@pytest.mark.parametrize(
+    ("entity_set", "other"),
+    [("solutions", "solution_membership"), ("solutioncomponents", "solution")],
+)
+def test_a_failed_membership_read_leaves_every_scoped_kind_incomplete(tmp_path, entity_set, other):
     out = tmp_path / "inv"
     fault = D365Error("boom", status=500)
     _extract(FakeBackend(fail={(entity_set, 1): fault}), out, solutions=("contoso",))
     coverage = _manifest(out)["coverage"]
-    for kind in ("entity", "attribute", "global_option_set", "web_resource", "ribbon"):
+    for kind in ("entity", "attribute", "global_option_set", "web_resource", "ribbon", other):
         assert coverage[kind]["status"] != "complete", kind
 
 

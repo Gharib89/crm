@@ -643,11 +643,12 @@ def extract(
     reads = _READS if source.platform == PLATFORM_CRM2011 else _V9_READS
     rows = {read.kind: run.pages(read) for read in reads}
     if solutions:
-        # The scope is found from these two reads: if either fell short, every kind
-        # it filters may be missing components, so none of them can read complete.
+        # The scope is found from these two reads: if either fell short, every other
+        # kind may be missing components (a membership row needs its solution's
+        # name), so none of them can read complete.
         short = [k for k in _SCOPE_KINDS if run.tally(k).errors or run.tally(k).truncated]
         if short:
-            for kind in sorted(set(KINDS) - set(_SCOPE_KINDS)):
+            for kind in sorted(set(KINDS) - set(short)):
                 run.tally(kind).errors.append(
                     f"{', '.join(short)}: the read fell short, so the --solution scope"
                     " may miss components"
