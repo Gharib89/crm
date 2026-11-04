@@ -1,4 +1,4 @@
-"""`crm inventory`: extract, compare and map migration inventories to source (ADR 0032)."""
+"""`crm inventory`: extract, compare, map to source and package migration inventories (ADR 0032)."""
 
 # pyright: basic
 from __future__ import annotations
@@ -14,14 +14,15 @@ from crm.commands._helpers import d365_errors
 from crm.core import inventory_extract
 from crm.core.inventory import InventoryError
 from crm.core.inventory_diff import VERDICTS, diff_inventories, dump_diff, read_pair
-from crm.core.inventory_source_map import STATUSES, dump_source_map, map_source
+from crm.core.inventory_packages import build_packages, write_packages
+from crm.core.inventory_source_map import STATUSES, dump_source_map, map_source, read_source_map
 from crm.core.webapi_inventory import WebApiSource
 from crm.utils.d365_backend import PLATFORM_CRM2011
 
 
 @click.group("inventory")
 def inventory_group():
-    """Extract, compare and map migration inventories: manifest v1 plus raw artifacts (ADR 0032)."""
+    """Extract, compare, map to source and package migration inventories (ADR 0032)."""
 
 
 @inventory_group.command("extract")
@@ -195,3 +196,89 @@ def inventory_map_source_cmd(ctx: CLIContext, inventory: Path, repo: Path, out_f
     if out_file is not None:
         meta["out"] = str(out_file)
     ctx.emit(True, table={"headers": ["kind", *STATUSES], "rows": rows}, meta=meta)
+
+
+@inventory_group.command("packages")
+@click.argument("inventory", type=click.Path(file_okay=False, path_type=Path))
+@click.option(
+    "--source-map",
+    "source_map_file",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="The source map `crm inventory map-source --out` wrote for this inventory.",
+)
+@click.option(
+    "--scenarios",
+    "scenarios_file",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="A JSON file of named business scenarios, each with seed component keys.",
+)
+@click.option(
+    "--out",
+    "out_dir",
+    required=True,
+    type=click.Path(file_okay=False, path_type=Path),
+    help="An empty or new folder for index.json plus one file per work package.",
+)
+@pass_ctx
+def inventory_packages_cmd(
+    ctx: CLIContext,
+    inventory: Path,
+    source_map_file: Path,
+    scenarios_file: Path | None,
+    out_dir: Path,
+):
+    """Group INVENTORY into work packages over its dependency graph: offline.
+
+    Reads the inventory folder, the source map made from it (--source-map) and
+    an optional scenario file; touches no org. The graph joins components
+    through platform dependencies, form libraries and event handlers, ribbon,
+    sitemap and web resource references, step, image and activity keys, and
+    the source map's files and C# project references. A reference that cannot
+    be resolved statically (a dynamic name, an ISV page, another host's URL, a
+    name not in the inventory) is an unknown edge, never dropped. A work
+    package is a connected group holding a source-mapped component or an
+    unknown, so a shared library and its consumers are one package. Each
+    package lists its source, affected consumers, findings (unknowns), expected
+    behavior (from --scenarios, else unknown) and verification requirements,
+    each requirement with a stable id; an unknown edge from a node no package
+    holds (an entity, a system web resource) is listed in index.json instead.
+    --out gets index.json and one <package id>.json per package, the same
+    bytes for the same inputs. Returns the package count and sizes, the
+    unknown counts, and the scenario seeds not found or in no package.
+    """
+    try:
+        result = build_packages(inventory, read_source_map(source_map_file), scenarios_file)
+        write_packages(result, out_dir)
+    except (InventoryError, OSError) as exc:
+        ctx.emit(False, error=str(exc))
+        return
+    data = {**result.summary(), "out": str(out_dir)}
+    if ctx.json_mode:
+        ctx.emit(True, data=data)
+        return
+    rows = [[p.id, len(p.members), p.unknowns(), ", ".join(p.scenarios)] for p in result.packages]
+    meta = {
+        "inventory": f"{data['inventory']['platform']} {data['inventory']['version']}"
+        f" ({data['inventory']['org_url']})",
+        "unknowns": str(data["unknowns"]),
+        "out": str(out_dir),
+    }
+    if data["unmatched_scenarios"]:
+        meta["unmatched scenarios"] = ", ".join(data["unmatched_scenarios"])
+    if data["seeds_not_found"]:
+        meta["seeds not found"] = ", ".join(
+            f"{s['scenario']}: {s['seed']}" for s in data["seeds_not_found"]
+        )
+    if data["seeds_unpackaged"]:
+        meta["seeds in no package"] = ", ".join(
+            f"{s['scenario']}: {s['seed']}" for s in data["seeds_unpackaged"]
+        )
+    if data["unattached_gaps"]:
+        meta["gaps in no package"] = f"{data['unattached_gaps']} (see index.json)"
+    if data["unattached_unknowns"]:
+        meta["unknowns in no package"] = f"{data['unattached_unknowns']} (see index.json)"
+    if data["incomplete"]:
+        meta["incomplete"] = ", ".join(f"{k} ({v})" for k, v in data["incomplete"].items())
+    headers = ["package", "members", "unknowns", "scenarios"]
+    ctx.emit(True, table={"headers": headers, "rows": rows}, meta=meta)
