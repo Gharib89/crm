@@ -75,16 +75,22 @@ class InventoryError(Exception):
     """A manifest, record or key that breaks the inventory manifest contract."""
 
 
+class KeyFieldValueError(InventoryError):
+    """A key field present but holding a value the key contract refuses (empty or mistyped)."""
+
+
 def _key_part(kind: str, name: str, value: object) -> str:
     if name in INTEGER_KEY_FIELDS:
         if type(value) is not int:
-            raise InventoryError(f"{kind}.{name} must be an integer, got {value!r}")
+            raise KeyFieldValueError(f"{kind}.{name} must be an integer, got {value!r}")
         return str(value)
     if value is None and (kind, name) in NULLABLE_KEY_FIELDS:
         return ""
     if not isinstance(value, str) or not value:
         nullable = " or null" if (kind, name) in NULLABLE_KEY_FIELDS else ""
-        raise InventoryError(f"{kind}.{name} must be a non-empty string{nullable}, got {value!r}")
+        raise KeyFieldValueError(
+            f"{kind}.{name} must be a non-empty string{nullable}, got {value!r}"
+        )
     return value.replace("%", "%25").replace("|", "%7C")
 
 

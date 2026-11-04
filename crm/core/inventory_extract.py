@@ -38,14 +38,13 @@ from typing import Any, Protocol, cast
 
 from crm.core import legacy_reads
 from crm.core.inventory import (
-    KEY_FIELDS,
     KINDS,
     MANIFEST_NAME,
     SCHEMA_VERSION,
     Artifact,
     ExtractionGap,
     Inventory,
-    InventoryError,
+    KeyFieldValueError,
     KindCoverage,
     Record,
     Scope,
@@ -760,17 +759,18 @@ class _Builder:
         payloads: list[tuple[str, bytes, bool]],
         component_type: int | None = None,
     ) -> str | None:
-        """Queue a record and index its key; None when its key fields break the key contract.
+        """Queue a record and index its key; None when a key field's value breaks the contract.
 
         Org data can hold what the contract cannot key (a step with an empty
         name, measured on a Dataverse trial org): such a row is counted into one
         gap per kind rather than failing the whole run.
+
+        Raises:
+            InventoryError: an unknown kind or a missing key field, a builder bug.
         """
         try:
             key = component_key(kind, fields)
-        except InventoryError as exc:
-            if kind not in KEY_FIELDS or any(n not in fields for n in KEY_FIELDS[kind]):
-                raise  # an unknown kind or a missing field is a builder bug, not org data
+        except KeyFieldValueError as exc:
             count, first = self.unkeyed.get(kind, (0, str(exc)))
             self.unkeyed[kind] = (count + 1, first)
             return None
