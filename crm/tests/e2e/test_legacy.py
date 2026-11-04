@@ -144,10 +144,15 @@ def test_inventory_extract_writes_a_valid_crm2011_inventory(cli, tmp_path, monke
     monkeypatch.setenv("CRM_HOME", _REAL_HOME)
     resolved = conn_mod.resolve_credentials(profile_name=name)
     secrets = {
-        form.lower().encode()
+        # bytes.lower() folds ASCII only, so fold each form the same way as the file.
+        form.encode().lower()
         for value in (resolved.profile.username, resolved.password)
         if value
-        for form in (value, json.dumps(value, ensure_ascii=False)[1:-1], escape(value))
+        for form in (
+            value,
+            json.dumps(value, ensure_ascii=False)[1:-1],
+            escape(value, {'"': "&quot;", "'": "&apos;"}),
+        )
     }
     for path in out.rglob("*"):
         if path.is_file():
