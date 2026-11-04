@@ -111,6 +111,9 @@ it out:
   one gap lists them all;
 - **rows naming a component this inventory does not record** (a solution
   membership or dependency on a kind v1 does not define, or whose own read failed),
-  counted per kind and component type.
+  counted per kind and component type;
+- the **source identity and build**, when its `WhoAmI` or `RetrieveVersion` read
+  failed: the manifest's `version` then reads `unknown`, and the gap carries the
+  fault. A re-run retries the read.
 
-Collect these by hand from the server or the people who run the integrations.
+Collect the others by hand from the server or the people who run the integrations.

@@ -479,6 +479,17 @@ def test_a_failed_source_read_is_an_error_and_keeps_the_checkpoint(reads, tmp_pa
     summary = _extract(client, out)
     assert not summary.complete
     assert summary.errors == ["source: WhoAmI failed"]
+    source_gaps = [
+        g for g in _manifest(out)["gaps"] if g["kind"] is None and "WhoAmI" in g["reason"]
+    ]
+    assert source_gaps == [
+        {
+            "kind": None,
+            "key": None,
+            "description": "source identity and build (WhoAmI, RetrieveVersion)",
+            "reason": "the read failed: WhoAmI failed",
+        }
+    ]
     assert (out / ".checkpoint").is_dir()
     assert _extract(FakeClient(), out).complete
 

@@ -98,6 +98,19 @@ def _ribbon_gaps(unlabelled: list[str]) -> list[ExtractionGap]:
     ]
 
 
+def _source_gaps(errors: list[str]) -> list[ExtractionGap]:
+    """One gap per failed source read, so the manifest says why its build is unknown."""
+    return [
+        ExtractionGap(
+            kind=None,
+            key=None,
+            description="source identity and build (WhoAmI, RetrieveVersion)",
+            reason=f"the read failed: {error.partition(': ')[2]}",
+        )
+        for error in errors
+    ]
+
+
 def check_out(out: Path) -> None:
     """Refuse *out* when it holds files but no checkpoint, before anything connects.
 
@@ -543,7 +556,7 @@ def extract(
         publication="published",
         records=tuple(records),
         coverage=coverage,
-        gaps=(*_STATIC_GAPS, *built.gaps(), *_ribbon_gaps(unlabelled)),
+        gaps=(*_STATIC_GAPS, *built.gaps(), *_ribbon_gaps(unlabelled), *_source_gaps(run.errors)),
     )
     (out / MANIFEST_NAME).write_text(dump_manifest(inventory), encoding="utf-8")
 
