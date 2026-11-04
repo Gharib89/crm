@@ -504,17 +504,25 @@ def parse_manifest(data: object) -> Inventory:
     )
 
 
+def load_manifest(folder: Path) -> object:
+    """Decode the ``manifest.json`` at *folder* without checking it against the contract.
+
+    For a caller that must look at a field (``schema_version``) before
+    `parse_manifest` refuses the manifest; everyone else calls `read_inventory`.
+    """
+    path = folder / MANIFEST_NAME
+    try:
+        return json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError) as exc:  # ValueError: malformed UTF-8 or JSON
+        raise InventoryError(f"cannot read {path}: {exc}") from exc
+
+
 def read_inventory(folder: Path) -> Inventory:
     """Read and check the ``manifest.json`` of the migration inventory at *folder*.
 
     The reader checks the manifest only; it does not re-hash the artifact files.
     """
-    path = folder / MANIFEST_NAME
-    try:
-        data = json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, ValueError) as exc:  # ValueError: malformed UTF-8 or JSON
-        raise InventoryError(f"cannot read {path}: {exc}") from exc
-    return parse_manifest(data)
+    return parse_manifest(load_manifest(folder))
 
 
 # ── Writer ──────────────────────────────────────────────────────────────────
