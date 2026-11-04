@@ -149,9 +149,9 @@ names the endpoint:
 - **rows naming a component this inventory does not record** (a solution
   membership or dependency on a kind v1 does not define, whose own read failed,
   whose own row has no component key, or, in a `--solution` run, that may belong to
-  an entity outside the named solutions; and a plug-in type, step or step image
-  whose parent, or a step whose message, is not recorded, which a `--solution`
-  run leaves out),
+  an entity outside the named solutions; a plug-in type, step or step image whose
+  parent is not recorded, which a `--solution` run leaves out; and a step whose row
+  carries no message name),
   counted per kind and component type;
 - **rows the key contract cannot hold** (a component key field the org left empty,
   such as a plug-in step with no name), counted per kind with the first error;
