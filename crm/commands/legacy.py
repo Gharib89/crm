@@ -169,17 +169,18 @@ def legacy_components(
     apply both. An unknown solution or entity fails with exit code 1 before any
     kind is read.
 
-    `--in-use` applies to `plugin-assemblies`, `plugin-types` and `plugin-steps`
-    (all three when no KIND is given): each row gains a `usage` object and the
-    rows proven unused are dropped. Only a disabled step is proven unused; a
-    step with an async job row is used; every other step is `unknown`.
+    `--in-use` applies to `plugin-assemblies`, `plugin-types`, `plugin-steps`
+    and `processes` (all four when no KIND is given): each row gains a `usage`
+    object and the rows proven unused are dropped. Only a disabled step or a
+    process that is not activated is proven unused; one with an async job (or,
+    for a process, a process session) row is used; every other row is `unknown`.
     """
     if in_use:
-        wrong = [k for k in kinds if k not in usage.PLUGIN_KINDS]
+        wrong = [k for k in kinds if k not in usage.USAGE_KINDS]
         if wrong:
             raise click.UsageError(f"--in-use does not apply to {', '.join(wrong)}.")
         kinds = kinds or tuple(
-            k for k in usage.PLUGIN_KINDS if entity is None or k in legacy_reads.ENTITY_KINDS
+            k for k in usage.USAGE_KINDS if entity is None or k in legacy_reads.ENTITY_KINDS
         )
     if entity is not None:
         wrong = [k for k in kinds if k not in legacy_reads.ENTITY_KINDS]

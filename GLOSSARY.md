@@ -489,7 +489,7 @@ baseline (the role one plays in a comparison, not a kind of artifact),
 spec (the apply desired state), org brief (a capped summary for orientation).
 
 **Usage**:
-One component's `{state, signal, value, as_of, reason}`, read by a listing's `--in-use`
+One component's (entity, plug-in, workflow) `{state, signal, value, as_of, reason}`, read by a listing's `--in-use`
 flag. `state` is `used`, `unused` or `unknown`: `unknown` (a failed read, a source with no
 signal) is never `unused`. Only positive evidence or a confirmed empty entity changes a
 row. `--in-use` drops `unused` rows; `--exclude-unknown` also drops `unknown` ones.

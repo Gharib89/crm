@@ -106,17 +106,20 @@ server's 50,000-record limit, so no aggregate is used.
   under `DIR` and replaces each payload key with `<payload>_file` (a path relative
   to `DIR`). Without it the payload stays inline in the JSON.
 
-### Keep only plug-ins that run
+### Keep only plug-ins and processes that run
 
 ```bash
-crm --json legacy components --in-use --profile legacy2011                      # the three plug-in kinds
+crm --json legacy components --in-use --profile legacy2011                      # the plug-in and process kinds
 crm --json legacy components plugin-steps --in-use --exclude-unknown --profile legacy2011
 ```
 
-`--in-use` applies to `plugin-assemblies`, `plugin-types` and `plugin-steps` (all three
-when no kind is named; any other kind is a usage error). Each row gains a `usage`
-object and the rows proven unused (a disabled step, and types and assemblies whose
-steps are all disabled or absent) are dropped. A step that owns an async job row is
+`--in-use` applies to `plugin-assemblies`, `plugin-types`, `plugin-steps` and
+`processes` (all four when no kind is named; any other kind is a usage error). Each
+row gains a `usage` object and the rows proven unused (a disabled step, types and
+assemblies whose steps are all disabled or absent, and a process that is not activated)
+are dropped. A process with an async job row (read through its activation copy) or a
+process session row is `used`; every other process is `unknown`, with the reason (a
+2011 workflow log row names only its job, so it adds no signal). A step that owns an async job row is
 `used`; every other step is `unknown`, because a synchronous step leaves no run record
 and CRM 2011 has no plug-in trace log (recorded as no signal, not an error). The async
 job read is plain and bounded (2011 refuses `asyncoperation` aggregates and its scans

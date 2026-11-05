@@ -17,7 +17,9 @@ from crm.commands._helpers import (
     _output_option,
     _solution_option,
     d365_errors,
+    in_use_options,
 )
+from crm.core import usage
 from crm.core import workflow as workflow_mod
 
 _CATEGORY_NAMES = {
@@ -129,17 +131,36 @@ def _redirect_note_meta(info: dict) -> dict | None:
 @click.option(
     "--on-demand", "on_demand_only", is_flag=True, default=False, help="Only on-demand workflows."
 )
+@in_use_options
 @pass_ctx
-def workflow_list(ctx: CLIContext, category, primary_entity, activated_only, on_demand_only):
-    """List workflow definitions."""
+def workflow_list(
+    ctx: CLIContext,
+    category,
+    primary_entity,
+    activated_only,
+    on_demand_only,
+    in_use: bool,
+    exclude_unknown: bool,
+):
+    """List workflow definitions.
+
+    `--in-use` adds a `usage` object per definition and drops the ones proven
+    unused: a process that is not activated is `unused`, one with an async job
+    or process session row is `used`, anything else is `unknown` (a
+    synchronous workflow, business rule, action or process flow leaves no job,
+    and job history is purged).
+    """
     with d365_errors(ctx):
+        backend = ctx.backend()
         items = workflow_mod.list_workflows(
-            ctx.backend(),
+            backend,
             category=category,
             primary_entity=primary_entity,
             activated_only=activated_only,
             on_demand_only=on_demand_only,
         )
+        if in_use:
+            items = usage.annotate_v9_processes(backend, items, exclude_unknown=exclude_unknown)
     ctx.emit(True, data=items, meta={"count": len(items)})
 
 
