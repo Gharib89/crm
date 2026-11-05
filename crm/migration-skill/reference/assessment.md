@@ -47,9 +47,10 @@ Read each `unknown`'s `reason` and act on it:
 the report as unknowns too.
 
 Classic workflows have their own check, `crm workflow migration-assess`. It reads
-the org through a profile and judges only the move to cloud flows; enter each of
-its blockers in the `online` target's report as a confirmed blocker marked
-"needs redesign", since the command does not call them impossible.
+the org through a profile and judges only their conversion to cloud flows, which
+Dataverse online does not require. Enter its findings as "deprecated but
+working" conversion candidates marked "needs redesign"; they become confirmed
+blockers only when the plan requires the conversion.
 
 Done when every component carries one of the four classes with its rule or
 evidence, or an entry open on a named question, and no `clear` or `unknown` is
