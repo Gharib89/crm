@@ -120,8 +120,8 @@ steps are all disabled or absent) are dropped. A step that owns an async job row
 `used`; every other step is `unknown`, because a synchronous step leaves no run record
 and CRM 2011 has no plug-in trace log (recorded as no signal, not an error). The async
 job read is plain and bounded (2011 refuses `asyncoperation` aggregates and its scans
-can run for minutes): it stops after 120 seconds, and steps it did not reach stay
-`unknown` with the time cap as the reason. See [plug-ins](plugin.md#keep-only-types-that-run)
+can run for minutes): it stops after 120 seconds or 100,000 rows, and steps it did not reach stay
+`unknown` with the cap as the reason. See [plug-ins](plugin.md#keep-only-types-that-run)
 for the rules and [metadata](metadata.md#keep-only-entities-that-hold-data) for the
 `usage` shape.
 

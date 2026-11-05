@@ -48,5 +48,5 @@ step usage up to types and assemblies. Only a disabled step is provably unused.
 - **An absent job row proves nothing**: `asyncautodelete` steps lose successful jobs,
   and bulk-delete jobs purge old ones. Tracing is off by default and keeps about a day.
 - A workflow-activity or custom API type has no steps and reads `unknown`, not `unused`.
-- 2011 has no trace log. Its async job read stops at a 120 second cap and the steps it
+- 2011 has no trace log. Its async job read stops at a 120 second or 100,000 row cap and the steps it
   did not reach stay `unknown`; read the `reason`.

@@ -327,6 +327,7 @@ def probe_legacy_entities(
 
 STEP_SIGNAL = "plugin_step_runs"
 JOB_TIME_CAP = 120.0  # seconds a CRM 2011 async job read may run before it stops
+JOB_ROW_CAP = 100_000  # rows it may read before it stops
 
 
 @dataclass(frozen=True)
@@ -550,23 +551,30 @@ def read_legacy_plugin_evidence(
     """Step ids that own an async job row, read page by page until *time_cap* seconds pass.
 
     CRM 2011 refuses `asyncoperation` aggregates (the 50,000 limit) and filtered
-    scans of it can run for minutes, so the read is plain and bounded: steps not
-    seen when it stops stay `unknown`. There is no `plugintracelog` entity.
+    scans of it can run for minutes, so the read carries no `not-null` filter (rows
+    with no owning step are dropped here) and stops at *time_cap* seconds or
+    `JOB_ROW_CAP` rows: steps not seen when it stops stay `unknown`.
+    There is no `plugintracelog` entity.
     """
     gap = "no plug-in trace log on CRM 2011"
     fetch = (
         '<fetch><entity name="asyncoperation"><attribute name="owningextensionid"/>'
-        '<filter><condition attribute="operationtype" operator="eq" value="1"/>'
-        '<condition attribute="owningextensionid" operator="not-null"/></filter></entity></fetch>'
+        '<filter><condition attribute="operationtype" operator="eq" value="1"/></filter>'
+        "</entity></fetch>"
     )
     deadline = monotonic() + time_cap
     jobs: set[str] = set()
     jobs_gap = None
+    rows = 0
     try:
         for page in client.pages(fetch):
             jobs.update(_ref(r.get("owningextensionid")) for r in page.records)
+            rows += len(page.records)
             if page.more and monotonic() >= deadline:
                 jobs_gap = f"async job read stopped at the {time_cap:g} s time cap"
+                break
+            if page.more and rows >= JOB_ROW_CAP:
+                jobs_gap = f"async job read stopped at the {JOB_ROW_CAP} row cap"
                 break
     except D365Error as exc:
         if connection_wide(exc):
@@ -598,7 +606,7 @@ def probe_legacy_plugins(
         Step(
             str(r["id"]),
             _ref(r.get("plugintypeid")),
-            r.get("statecode") == 0,
+            r.get("statecode") != 1,  # 1 is disabled; an unread state is never a proof
             r.get("mode") == 0,
             bool(r.get("asyncautodelete")),
         )

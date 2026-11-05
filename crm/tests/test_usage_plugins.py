@@ -523,6 +523,21 @@ def test_legacy_a_job_read_past_its_time_cap_stops_and_names_the_cap():
     assert "5 s time cap" in (ev.jobs_gap or "")
 
 
+def test_legacy_a_job_read_past_its_row_cap_stops_and_the_query_has_no_not_null(monkeypatch):
+    monkeypatch.setattr(usage, "JOB_ROW_CAP", 1)
+    respond, seen = _legacy_org(jobs=(("s1",), ("s3",)))
+    profile = ConnectionProfile(
+        name="legacy", url=_URL, domain="CONTOSO", username="alice", platform="crm2011"
+    )
+    with requests_mock.Mocker() as m:
+        m.post(_ENDPOINT, text=respond)
+        ev = usage.read_legacy_plugin_evidence(LegacyClient(profile, "pw"))
+        body = m.request_history[0].text
+    assert ev.jobs == {"s1"} and seen["jobs"] == 1
+    assert "1 row cap" in (ev.jobs_gap or "")
+    assert "not-null" not in body
+
+
 def test_legacy_a_failed_probe_read_keeps_the_rows_read_and_labels_them_unknown(crm_home):
     data = _components("plugin-steps", "--in-use", org=_legacy_org(probe_fault="plugintype"))
     assert _by_state(data["plugin-steps"]) == {"s1": "unknown", "s2": "unknown", "s3": "unknown"}
