@@ -55,6 +55,7 @@ EXPECTED_REFERENCES = {
     "connectionrole.md",
     "troubleshooting.md",
     "feedback.md",
+    "usage.md",
 }
 
 
