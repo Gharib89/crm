@@ -190,3 +190,36 @@ def test_the_short_flag_is_quiet_too(tmp_path, monkeypatch):
     result = CliRunner().invoke(cli, argv)
     assert result.exit_code == 0, result.output
     assert "[crm] extract" not in result.stderr
+
+
+def test_a_first_read_page_event_is_not_a_stage_start_and_is_rate_limited():
+    events = [
+        Progress("records", 0, 12),
+        Progress("records", 0, 12, kind="solution", pages=1),
+        Progress("records", 0, 12, kind="solution", pages=2),
+    ]
+    ticks = iter([0.0, 0.2, 1.5])
+    assert _lines(events, lambda: next(ticks)) == [
+        "[crm] extract stage=records total=12",
+        "[crm] extract stage=records done=0/12 kind=solution pages=2",
+    ]
+
+
+def test_the_eta_averages_read_units_only_when_reused_units_come_first(tmp_path):
+    cp, _, _ = inventory_extract.Checkpoint.open(tmp_path / "inv", "https://x", "t")
+    for n in range(6):
+        cp.save(f"entity/e{n}", {"n": n})
+    events: list[Progress] = []
+    run = inventory_extract._Run(  # pyright: ignore[reportPrivateUsage]
+        None,
+        cp,
+        events.append,
+        _clock(),  # pyright: ignore[reportArgumentType]
+    )
+    run.begin("entity_detail", 16, estimate=True)
+    for n in range(16):
+        run.unit((), f"entity/e{n}", lambda: {"ok": True})
+    # events[0] is the stage start, [1:7] the reused units, [7:] the reads.
+    assert [e.eta for e in events[:11]] == [None] * 11  # reused units never feed it
+    assert events[11].done == 11 and events[11].eta == _STEP * (16 - 11)  # the fifth read
+    assert events[7].reused == 6

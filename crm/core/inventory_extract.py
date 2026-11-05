@@ -618,7 +618,7 @@ class _Run:
                 f"{read.entity} page {last.number} reports more records but carries no paging"
                 " cookie"
             )
-        self._finish(reused=not fetched)
+        self._finish(reused=last is not None and not fetched)
         return rows
 
     def _stage(self, read: _Read, row: dict[str, object]) -> dict[str, object]:

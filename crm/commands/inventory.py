@@ -64,12 +64,13 @@ class ProgressLines:
 
     def __call__(self, p: Progress) -> None:
         now = self._clock()
-        edge = p.done == 0 or (p.total is not None and p.done >= p.total and p.pages is None)
-        if not edge and self._last is not None and now - self._last < 1.0:
+        start = p.done == 0 and p.pages is None
+        last = p.total is not None and p.done >= p.total and p.pages is None
+        if not (start or last) and self._last is not None and now - self._last < 1.0:
             return
         self._last = now
         parts = [f"stage={p.stage}"]
-        if p.done == 0:
+        if start:
             if p.total is not None:
                 parts.append(f"total={p.total}")
         else:
