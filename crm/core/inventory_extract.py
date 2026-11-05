@@ -696,7 +696,10 @@ class _Run:
                     continue
                 # `_stage` names a web resource's artifact from its type, which the rows
                 # read without payloads still carry.
-                carrier = {"id": row["id"], "webresourcetype": row.get("webresourcetype")}
+                carrier: dict[str, object] = {
+                    "id": row["id"],
+                    "webresourcetype": row.get("webresourcetype"),
+                }
                 for column in read.payload_columns:
                     carrier[column] = fetched.get(column)
                 staged[str(row["id"]).lower()] = cast(
