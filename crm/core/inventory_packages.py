@@ -692,9 +692,17 @@ def _references(inv: Inventory, folder: Path) -> _Refs:
     return refs
 
 
+def _nodes(inv: Inventory) -> dict[str, Record]:
+    nodes: dict[str, Record] = {}
+    for record in inv.records:
+        if record.kind not in _NOT_NODES:
+            nodes.setdefault(_id(record.kind, record.key), record)
+    return nodes
+
+
 def reference_edges(inv: Inventory, folder: Path) -> set[Edge]:
-    """The edges the inventory's form, ribbon, sitemap and web resource artifacts name."""
-    return _references(inv, folder).edges
+    """The edges naming a reference: artifact references and the platform's dependency records."""
+    return _references(inv, folder).edges | _structural(inv, _nodes(inv))
 
 
 # ── The graph and its packages ─────────────────────────────────────────────
@@ -949,14 +957,10 @@ def build_packages(
             "the findings file was made from another inventory (its manifest_sha256 differs);"
             " re-run `crm inventory assess` on this one"
         )
-    nodes: dict[str, Record] = {}
-    for record in inv.records:
-        if record.kind not in _NOT_NODES:
-            nodes.setdefault(_id(record.kind, record.key), record)
+    nodes = _nodes(inv)
     refs = _references(inv, inventory_dir)
-    edges = sorted(
-        refs.edges | _structural(inv, nodes) | _source_edges(source_map), key=Edge.sort_key
-    )
+    structural = _structural(inv, nodes)
+    edges = sorted(refs.edges | structural | _source_edges(source_map), key=Edge.sort_key)
     mapped = {_id(c.kind, c.key): c for c in source_map.components}
     gaps: dict[str, list[ExtractionGap]] = {}
     for gap in inv.gaps:
@@ -970,7 +974,7 @@ def build_packages(
             judged.setdefault(_id(f.kind, f.key), []).append(f)
     placed: set[str] = set()
 
-    usages = derive_usage(inv.records, refs.edges, inv.extracted_at)
+    usages = derive_usage(inv.records, refs.edges | structural, inv.extracted_at)
     drafts: list[tuple[str, set[str], list[str], list[Edge], list[Finding], Usage | None]] = []
     filtered = 0
     attached: set[str] = set()

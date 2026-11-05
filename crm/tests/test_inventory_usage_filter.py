@@ -9,6 +9,7 @@ synthetic inventory whose entities carry (or lack) a `usage` as `extract --with-
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +18,7 @@ from click.testing import CliRunner
 
 from crm.cli import cli
 from crm.core import inventory as inv
-from crm.core.inventory_packages import Edge
+from crm.core.inventory_packages import Edge, reference_edges
 from crm.core.inventory_usage_filter import derive_usage, keeps
 from crm.core.inventory_usage_filter import package_usage as _package_usage
 from crm.core.usage import Usage
@@ -79,6 +80,38 @@ def test_a_ribbon_or_sitemap_reference_also_counts(source):
     edge = Edge(f"{source}:x", f"web_resource:{LIB}", f"{source}_reference")
 
     assert _derive([_wr(LIB)], [edge])[f"web_resource:{LIB}"].state == "used"
+
+
+def test_records_sharing_a_key_never_let_an_unused_twin_hide_a_used_one():
+    used = _rec("plugin_assembly", {"name": "A"}, "used")
+    unused = _rec("plugin_assembly", {"name": "A"}, "unused")
+
+    assert _derive([used, unused])["plugin_assembly:A"].state == "used"
+    assert _derive([unused, used])["plugin_assembly:A"].state == "used"
+    unread = _rec("plugin_assembly", {"name": "A"})
+    assert _derive([unused, unread])["plugin_assembly:A"] is None
+
+
+def test_a_platform_dependency_edge_counts_as_a_reference(tmp_path):
+    folder = _inventory(tmp_path, usage=False)
+    parsed = inv.read_inventory(folder)
+    form = _form("new_x")
+    dep = _rec(
+        "dependency",
+        {
+            "dependent_kind": "form",
+            "dependent_key": form.key,
+            "required_kind": "web_resource",
+            "required_key": "new_/scripts/orphan.js",
+            "dependency_type": 1,
+        },
+    )
+    parsed = replace(parsed, records=(*parsed.records, form, dep))
+
+    edges = reference_edges(parsed, folder)
+
+    got = _derive(parsed.records, edges)["web_resource:new_/scripts/orphan.js"]
+    assert got.state == "used"
 
 
 def test_an_unreferenced_web_resource_is_unknown_never_unused():

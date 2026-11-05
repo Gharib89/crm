@@ -72,8 +72,15 @@ def derive_usage(
                     "entity has no records (low confidence: data may have been deleted or migrated)"
                 )
                 usage = Usage("unused", ENTITY_SIGNAL, None, as_of, why)
-        out[node] = usage
+        out[node] = _merge(out[node], usage) if node in out else usage
     return out
+
+
+def _merge(a: Usage | None, b: Usage | None) -> Usage | None:
+    """Two records sharing a component key: one that was not read keeps the row; else roll up."""
+    if a is None or b is None:
+        return None
+    return a if a == b else roll_up([a, b], a.as_of)
 
 
 def package_usage(members: Iterable[Usage | None], as_of: str) -> Usage | None:
