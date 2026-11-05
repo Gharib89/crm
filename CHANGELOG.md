@@ -9,6 +9,40 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.94.0 (2026-11-05)
+
+### Bug Fixes
+
+- **inventory**: Label an entity the probe cannot target unknown, guard an empty 2011 primary id
+  ([#1117](https://github.com/Gharib89/crm/pull/1117),
+  [`dc2e832`](https://github.com/Gharib89/crm/commit/dc2e8326eeff62543a9bc24db3bdfbfe603caeb8))
+
+- **inventory**: Read legacy entity metadata once, leave a zero unconfirmed without an entity set
+  ([#1117](https://github.com/Gharib89/crm/pull/1117),
+  [`dc2e832`](https://github.com/Gharib89/crm/commit/dc2e8326eeff62543a9bc24db3bdfbfe603caeb8))
+
+### Documentation
+
+- **inventory**: Document --in-use, the usage object and the unknown-vs-unused rule
+  ([#1117](https://github.com/Gharib89/crm/pull/1117),
+  [`dc2e832`](https://github.com/Gharib89/crm/commit/dc2e8326eeff62543a9bc24db3bdfbfe603caeb8))
+
+### Features
+
+- **inventory**: Add --in-use usage filter to the entity listings
+  ([#1117](https://github.com/Gharib89/crm/pull/1117),
+  [`dc2e832`](https://github.com/Gharib89/crm/commit/dc2e8326eeff62543a9bc24db3bdfbfe603caeb8))
+
+### Testing
+
+- **inventory**: Satisfy pyright in the usage tests
+  ([#1117](https://github.com/Gharib89/crm/pull/1117),
+  [`dc2e832`](https://github.com/Gharib89/crm/commit/dc2e8326eeff62543a9bc24db3bdfbfe603caeb8))
+
+- **skill**: Expect the usage reference file ([#1117](https://github.com/Gharib89/crm/pull/1117),
+  [`dc2e832`](https://github.com/Gharib89/crm/commit/dc2e8326eeff62543a9bc24db3bdfbfe603caeb8))
+
+
 ## v1.93.3 (2026-11-05)
 
 ### Bug Fixes
