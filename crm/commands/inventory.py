@@ -13,9 +13,14 @@ from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import d365_errors
 from crm.core import inventory_extract
 from crm.core.inventory import InventoryError
-from crm.core.inventory_assess import CLASSES, TARGETS, assess, dump_findings
+from crm.core.inventory_assess import CLASSES, TARGETS, assess, dump_findings, read_findings
 from crm.core.inventory_diff import VERDICTS, diff_inventories, dump_diff, read_pair
-from crm.core.inventory_packages import build_packages, read_packages, write_packages
+from crm.core.inventory_packages import (
+    COMPAT_CLASSES,
+    build_packages,
+    read_packages,
+    write_packages,
+)
 from crm.core.inventory_source_map import STATUSES, dump_source_map, map_source, read_source_map
 from crm.core.inventory_verify import dump_report, verify
 from crm.core.webapi_inventory import WebApiSource
@@ -216,6 +221,12 @@ def inventory_map_source_cmd(ctx: CLIContext, inventory: Path, repo: Path, out_f
     help="A JSON file of named business scenarios, each with seed component keys.",
 )
 @click.option(
+    "--findings",
+    "findings_file",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="The findings file `crm inventory assess --out` wrote for this inventory.",
+)
+@click.option(
     "--out",
     "out_dir",
     required=True,
@@ -228,6 +239,7 @@ def inventory_packages_cmd(
     inventory: Path,
     source_map_file: Path,
     scenarios_file: Path | None,
+    findings_file: Path | None,
     out_dir: Path,
 ):
     """Group INVENTORY into work packages over its dependency graph: offline.
@@ -245,13 +257,24 @@ def inventory_packages_cmd(
     behavior (from --scenarios, else unknown) and verification requirements,
     each requirement with a stable id; an unknown edge from a node no package
     holds (an entity, a system web resource) is listed in index.json instead.
+    --findings (the file `crm inventory assess --out` wrote) adds each blocker,
+    deprecated, optional and unknown finding to the package holding its
+    component, keeping its class, rule id, evidence and Microsoft Learn sources,
+    and counts them per package; a clear finding is not merged, a finding whose
+    component is in no package is listed as unplaced, and a findings file made
+    from another inventory exits 1. Findings never change which packages exist.
     --out gets index.json and one <package id>.json per package, the same
     bytes for the same inputs. Returns the package count and sizes, the
     unknown counts, the scenario seeds not found or in no package, and the
     packages_sha256 a verification results file names (`crm inventory verify`).
     """
     try:
-        result = build_packages(inventory, read_source_map(source_map_file), scenarios_file)
+        result = build_packages(
+            inventory,
+            read_source_map(source_map_file),
+            scenarios_file,
+            read_findings(findings_file) if findings_file else None,
+        )
         write_packages(result, out_dir)
         sha = read_packages(out_dir).sha256
     except (InventoryError, OSError) as exc:
@@ -261,7 +284,12 @@ def inventory_packages_cmd(
     if ctx.json_mode:
         ctx.emit(True, data=data)
         return
-    rows = [[p.id, len(p.members), p.unknowns(), ", ".join(p.scenarios)] for p in result.packages]
+    headers = ["package", "members", "unknowns", "scenarios"]
+    counts = [list(p.counts().values()) if "compatibility" in data else [] for p in result.packages]
+    rows = [
+        [p.id, len(p.members), p.unknowns(), *c, ", ".join(p.scenarios)]
+        for p, c in zip(result.packages, counts, strict=True)
+    ]
     meta = {
         "inventory": f"{data['inventory']['platform']} {data['inventory']['version']}"
         f" ({data['inventory']['org_url']})",
@@ -284,7 +312,14 @@ def inventory_packages_cmd(
         meta["unknowns in no package"] = f"{data['unattached_unknowns']} (see index.json)"
     if data["incomplete"]:
         meta["incomplete"] = ", ".join(f"{k} ({v})" for k, v in data["incomplete"].items())
-    headers = ["package", "members", "unknowns", "scenarios"]
+    if "compatibility" in data:
+        comp = data["compatibility"]
+        headers[3:3] = list(COMPAT_CLASSES)
+        meta["findings"] = f"target {comp['target']}, " + ", ".join(
+            f"{comp[c]} {c}" for c in COMPAT_CLASSES
+        )
+        if comp["unplaced"]:
+            meta["findings in no package"] = f"{comp['unplaced']} (see index.json)"
     ctx.emit(True, table={"headers": headers, "rows": rows}, meta=meta)
 
 

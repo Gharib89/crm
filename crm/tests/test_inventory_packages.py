@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,7 @@ from click.testing import CliRunner
 
 from crm.cli import cli
 from crm.core import inventory as inv
+from crm.core.inventory_assess import assess, dump_findings, read_findings
 from crm.core.inventory_packages import build_packages, write_packages
 from crm.core.inventory_source_map import (
     dump_source_map,
@@ -640,3 +642,242 @@ def test_handler_library_case_and_empty_scenario_behavior(tmp_path):
         {"scenario": "Save", "references": [], "packages": [package.id]},
         {"status": "unknown", "reason": "scenario 'Save' names no expected behavior"},
     ]
+
+
+# ── --findings: compatibility findings merged into each package ────────────
+
+SHARED = "web_resource:new_/scripts/shared.js"
+LEARN = "https://learn.microsoft.com/example/page"
+
+
+def _findings_file(folder: Path, tmp_path: Path, *, manifest_sha: str | None = None) -> Path:
+    """A findings file over the fixture: the real `assess` output plus hand-placed rule hits."""
+    data = json.loads(dump_findings(assess(folder, "online")))
+    hit = {"kind": "web_resource", "key": "new_/scripts/shared.js", "reason": None}
+    data["findings"] = [
+        f for f in data["findings"] if not (f["kind"] == hit["kind"] and f["key"] == hit["key"])
+    ] + [
+        {
+            **hit,
+            "class": "blocker",
+            "rule": "script-sample",
+            "evidence": {
+                "path": "web_resource/shared.js",
+                "sha256": "0" * 64,
+                "locations": [{"line": 1, "column": 5}],
+                "match_count": 1,
+            },
+        },
+        {
+            "kind": "plugin_assembly",
+            "key": "Contoso.Billing",
+            "class": "deprecated",
+            "rule": "assembly-sample",
+            "reason": None,
+            "evidence": {"field": "isolation_mode", "value": 1},
+        },
+    ]
+    data["rules_hit"] |= {
+        "script-sample": {"class": "blocker", "title": "t", "fix": "f", "sources": [LEARN]},
+        "assembly-sample": {"class": "deprecated", "title": "t", "fix": "f", "sources": [LEARN]},
+    }
+    if manifest_sha:
+        data["inventory"]["manifest_sha256"] = manifest_sha
+    path = tmp_path / "findings.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return path
+
+
+def _merged(inputs, tmp_path, **kwargs):
+    folder, source_map, scenarios = inputs
+    findings = read_findings(_findings_file(folder, tmp_path, **kwargs))
+    return build_packages(folder, read_source_map(source_map), scenarios, findings)
+
+
+def _compat(package) -> list[dict]:
+    return [f for f in _dicts(package.findings) if f["type"] == "compatibility"]
+
+
+def test_findings_land_once_in_the_package_holding_their_component(inputs, tmp_path):
+    result = _merged(inputs, tmp_path)
+    shared = _package_of(result, SHARED)
+    (blocker,) = [f for f in _compat(shared) if f["class"] == "blocker"]
+    assert blocker["component"] == SHARED
+    assert blocker["rule"] == "script-sample"
+    assert blocker["evidence"]["locations"] == [{"line": 1, "column": 5}]
+    assert blocker["sources"] == [LEARN]
+    plugins = _package_of(result, "plugin_assembly:Contoso.Billing")
+    (deprecated,) = [f for f in _compat(plugins) if f["class"] == "deprecated"]
+    assert deprecated["evidence"] == {"field": "isolation_mode", "value": 1}
+    assert not [f for f in _compat(plugins) if f["class"] == "blocker"]
+    assert not [f for p in result.packages for f in _compat(p) if f["class"] == "clear"]
+    assert len(result.packages) == 4
+
+
+def test_package_counts_blockers_deprecated_optional_and_unknown(inputs, tmp_path):
+    result = _merged(inputs, tmp_path)
+    shared = _package_of(result, SHARED)
+    unknown = [
+        f
+        for f in _dicts(shared.findings)
+        if f.get("status") != "unknown" and f.get("class") in (None, "unknown")
+    ]
+    assert unknown and shared.counts() == {
+        "blocker": 1,
+        "deprecated": 0,
+        "optional": 0,
+        "unknown": len(unknown),
+    }
+    plugins = _package_of(result, "plugin_assembly:Contoso.Billing")
+    counts = plugins.counts()
+    assert counts["deprecated"] == 1 and counts["blocker"] == 0
+    assert counts["unknown"] == plugins.unknowns() + len(
+        [f for f in _compat(plugins) if f["class"] == "unknown"]
+    )
+    summary = result.summary()["compatibility"]
+    assert summary["target"] == "online"
+    assert summary["blocker"] == 1 and summary["deprecated"] == 1
+    assert [p["counts"] for p in result.index()["packages"]][0].keys() == counts.keys()
+
+
+def test_finding_in_no_package_is_reported_as_unplaced(inputs, tmp_path):
+    result = _merged(inputs, tmp_path)
+    assert result.summary()["compatibility"]["unplaced"] == len(result.unplaced)
+    placed = {(f["kind"], f["key"]) for f in result.index()["compatibility"]["unplaced"]}
+    assert ("entity", "account") in placed
+    assert not [u for u in result.unplaced if u.cls == "clear"]
+
+
+def test_without_findings_the_output_is_unchanged(inputs, tmp_path):
+    folder, source_map, scenarios = inputs
+    plain = build_packages(folder, read_source_map(source_map), scenarios)
+    assert "compatibility" not in plain.summary()
+    assert "compatibility" not in plain.index()
+    assert all("counts" not in p for p in plain.index()["packages"])
+    assert all(f["type"] != "compatibility" for p in plain.packages for f in _dicts(p.findings))
+    merged = _merged(inputs, tmp_path)
+    assert [p.id for p in merged.packages] == [p.id for p in plain.packages]
+
+
+def test_findings_never_create_a_package(inputs, tmp_path):
+    result = _merged(inputs, tmp_path)
+    plain = _packages(inputs)
+    assert [p.members for p in result.packages] == [p.members for p in plain.packages]
+
+
+def test_cli_findings_write_and_summarize(inputs, tmp_path):
+    folder, source_map, _ = inputs
+    findings = _findings_file(folder, tmp_path)
+    args = ["--json", "inventory", "packages", str(folder), "--source-map", str(source_map)]
+    one, two = tmp_path / "one", tmp_path / "two"
+    run = CliRunner().invoke(cli, [*args, "--findings", str(findings), "--out", str(one)])
+    assert run.exit_code == 0, run.output
+    data = json.loads(run.output)["data"]
+    assert data["compatibility"]["blocker"] == 1
+    again = CliRunner().invoke(cli, [*args, "--findings", str(findings), "--out", str(two)])
+    assert again.exit_code == 0, again.output
+    assert sorted(p.name for p in one.iterdir()) == sorted(p.name for p in two.iterdir())
+    for p in one.iterdir():
+        assert p.read_bytes() == (two / p.name).read_bytes()
+    table = CliRunner().invoke(
+        cli, [*args[1:], "--findings", str(findings), "--out", str(tmp_path / "t")]
+    )
+    assert table.exit_code == 0, table.output
+    assert "findings in no package" in table.output
+
+
+#: SHA-256 of each file `packages` wrote for the fixture on main, before --findings existed.
+GOLDEN = {
+    "index.json": "c6117ea47ed6fd90813b9e902f90c7b5fcb24b30162ab9840f75ff444efa4285",
+    "pkg-1624e18a798c.json": "18211175dc603e00c3eb001a40735732a94a2c67138213e8716ce5f369304a86",
+    "pkg-564e3c958900.json": "3d1b41fea0cd47e22acdd5c9a07843dee49e6bc00185ddb6cc75b2713df99984",
+    "pkg-7acad39bcd7d.json": "91befc3bcaeb217da8f73eb40d04c7377a93ef9231e42daeb67851bf3cb29b67",
+    "pkg-9df52d9dd343.json": "b464f07f472fbc7e0cb30ddb2a05c83230c241fcd90cb462bae2b06e1c3adc84",
+}
+
+
+def test_cli_without_findings_matches_the_previous_bytes(inputs, tmp_path):
+    folder, source_map, scenarios = inputs
+    args = ["--json", "inventory", "packages", str(folder), "--source-map", str(source_map)]
+    out = tmp_path / "out"
+    run = CliRunner().invoke(cli, [*args, "--scenarios", str(scenarios), "--out", str(out)])
+    assert run.exit_code == 0, run.output
+    written = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(out.iterdir())}
+    # The golden hashes the fixture's artifacts, which Windows writes with CRLF.
+    if sys.platform != "win32":
+        assert written == GOLDEN
+    assert sorted(written) == sorted(GOLDEN)
+    assert "compatibility" not in json.loads(run.output)["data"]
+
+
+def test_a_gap_on_a_member_counts_once_in_unknown(inputs, tmp_path):
+    result = _merged(inputs, tmp_path)
+    plugins = _package_of(result, "plugin_assembly:Contoso.Plugins")
+    gaps = [f for f in _dicts(plugins.findings) if f["type"] == "extraction_gap"]
+    assert len(gaps) == 1
+    assert not [
+        f
+        for f in _compat(plugins)
+        if f["component"] == "plugin_assembly:Contoso.Plugins"
+        and (f["reason"] or "").startswith("extraction gap:")
+    ]
+    plain = _packages(inputs)
+    before = _package_of(plain, "plugin_assembly:Contoso.Plugins").unknowns()
+    extra = [
+        f
+        for f in _compat(plugins)
+        if f["class"] == "unknown" and not f["reason"].startswith("extraction gap:")
+    ]
+    assert plugins.counts()["unknown"] == before + len(extra)
+
+
+def test_cli_refuses_findings_of_another_inventory(inputs, tmp_path):
+    folder, source_map, _ = inputs
+    findings = _findings_file(folder, tmp_path, manifest_sha="0" * 64)
+    run = CliRunner().invoke(
+        cli,
+        ["--json", "inventory", "packages", str(folder), "--source-map", str(source_map)]
+        + ["--findings", str(findings), "--out", str(tmp_path / "out")],
+    )
+    assert run.exit_code == 1
+    assert "another inventory" in json.loads(run.output)["error"]
+    assert not (tmp_path / "out").exists()
+
+
+@pytest.mark.parametrize(
+    ("edit", "match"),
+    [
+        (lambda d: d.update(schema_version=2), "schema_version"),
+        (lambda d: d["findings"].append({"kind": "form", "key": "x", "class": "bad"}), "class"),
+        (lambda d: d["findings"][-1].update(rule=123), "rule"),
+        (lambda d: d["findings"][-1].update(rule="not-in-rules-hit"), "rules_hit"),
+        (lambda d: d.update(target="not-a-target"), "target"),
+        (lambda d: d.pop("rules_hit"), "rules_hit"),
+        (lambda d: d["findings"].append({"kind": "form", "class": "clear"}), "key"),
+    ],
+)
+def test_malformed_findings_file_is_refused(inputs, tmp_path, edit, match):
+    folder, source_map, _ = inputs
+    path = _findings_file(folder, tmp_path)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    edit(data)
+    path.write_text(json.dumps(data), encoding="utf-8")
+    run = CliRunner().invoke(
+        cli,
+        ["--json", "inventory", "packages", str(folder), "--source-map", str(source_map)]
+        + ["--findings", str(path), "--out", str(tmp_path / "out")],
+    )
+    assert run.exit_code == 1
+    assert match in json.loads(run.output)["error"]
+
+
+def test_findings_file_with_a_byte_order_mark_is_read(inputs, tmp_path):
+    folder, source_map, _ = inputs
+    path = _findings_file(folder, tmp_path)
+    path.write_bytes(b"\xef\xbb\xbf" + path.read_bytes())
+    run = CliRunner().invoke(
+        cli,
+        ["--json", "inventory", "packages", str(folder), "--source-map", str(source_map)]
+        + ["--findings", str(path), "--out", str(tmp_path / "out")],
+    )
+    assert run.exit_code == 0, run.output

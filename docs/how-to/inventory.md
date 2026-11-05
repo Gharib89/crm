@@ -389,6 +389,30 @@ seeds and unknowns in no package. It
 exits **0** whatever the packages hold, and **1** when an input is unreadable or
 `--out` is not empty. The same inputs give the same bytes in every file.
 
+### Merge compatibility findings into the packages
+
+```bash
+crm --json inventory assess ./inv-v9 --target online --out ./findings.json
+crm --json inventory packages ./inv-v9 --source-map ./source-map.json \
+  --findings ./findings.json --out ./packages
+```
+
+`--findings FILE` (optional) reads the file `crm inventory assess --out` wrote. Each
+blocker, deprecated, optional and unknown finding whose component is in a package joins
+that package's `findings` list as a `compatibility` finding, keeping its `class`, `rule`
+id, `evidence` and `sources` (the Microsoft Learn pages of its rule). A shared library's
+finding appears once, in the package holding the library. `clear` findings are not
+merged. Findings never create or regroup packages, so a finding whose component is in no
+package is `unplaced`. Without the flag the output is byte-identical to before.
+
+Every package in `index.json` gains `counts` (`blocker`, `deprecated`, `optional`,
+`unknown`; `unknown` includes the graph's unknown edges and gaps), and the summary and
+`index.json` gain `compatibility`: the `target`, the four totals and `unplaced` (a
+count in the summary, a list of `{kind, key, class, rule}` in `index.json`). The table
+adds the four count columns and a `findings in no package` line. A findings file made
+from another inventory (its `manifest_sha256` differs), of an unsupported
+`schema_version` or malformed exits **1**.
+
 ## Verify work packages
 
 ```bash

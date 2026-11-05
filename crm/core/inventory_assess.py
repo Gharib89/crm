@@ -365,6 +365,108 @@ def dump_findings(result: AssessResult, *, generated_at: str | None = None) -> s
     return json.dumps(body, sort_keys=True, ensure_ascii=False, indent=2) + "\n"
 
 
+@dataclass(frozen=True)
+class FindingsFile:
+    """A findings file read back: the inventory it was made from, its findings, each rule's sources.
+
+    *sources* maps a rule id to the Microsoft Learn URLs that justify it, so a
+    reader can keep a finding's provenance without the rules file.
+    """
+
+    manifest_sha256: str
+    target: str
+    findings: tuple[Finding, ...]
+    sources: dict[str, tuple[str, ...]]
+
+
+def _get(obj: Any, name: str) -> Any:
+    return cast(dict[str, Any], obj).get(name) if isinstance(obj, dict) else None
+
+
+def _field(obj: Any, name: str, kind: type, where: str) -> Any:
+    """``obj[name]``, which must be a *kind*: the reader's one check, naming *where* on failure."""
+    value = _get(obj, name)
+    if type(value) is not kind:
+        raise InventoryError(f"{where}: {name} must be a {kind.__name__}")
+    return value
+
+
+def _evidence(value: Any, where: str) -> ContentEvidence | FieldEvidence | None:
+    if value is None:
+        return None
+    if _get(value, "field") is not None:
+        return FieldEvidence(_field(value, "field", str, where), _get(value, "value"))
+    locations = tuple(
+        (_field(loc, "line", int, where), _field(loc, "column", int, where))
+        for loc in _field(value, "locations", list, where)
+    )
+    return ContentEvidence(
+        _field(value, "path", str, where),
+        _field(value, "sha256", str, where),
+        locations,
+        _field(value, "match_count", int, where),
+    )
+
+
+def _sources(entry: object, where: str) -> list[str]:
+    urls = _field(entry, "sources", list, where)
+    if not all(type(u) is str for u in urls):
+        raise InventoryError(f"{where}: sources must be a list of strings")
+    return urls
+
+
+def read_findings(path: Path) -> FindingsFile:
+    """Read the findings file `dump_findings` wrote to *path*.
+
+    The version rule of ADR 0032 holds: an unknown ``schema_version`` is refused,
+    an unknown field is ignored.
+
+    Raises:
+        InventoryError: the file is unreadable, of another version or malformed.
+    """
+    where = f"findings file {path}"
+    try:
+        data: Any = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError) as exc:  # ValueError: malformed UTF-8 or JSON
+        raise InventoryError(f"cannot read {where}: {exc}") from exc
+    version = _get(data, "schema_version")
+    if type(version) is not int or version != SCHEMA_VERSION:
+        raise InventoryError(
+            f"{where}: schema_version {version!r} is not supported;"
+            f" this crm reads findings schema_version {SCHEMA_VERSION}"
+        )
+    hit = _field(data, "rules_hit", dict, where)
+    findings: list[Finding] = []
+    for i, item in enumerate(_field(data, "findings", list, where)):
+        at = f"{where}: findings[{i}]"
+        cls = _field(item, "class", str, at)
+        if cls not in CLASSES:
+            raise InventoryError(f"{at}: unknown class {cls!r}")
+        rule, reason = _get(item, "rule"), _get(item, "reason")
+        if rule is not None and type(rule) is not str:
+            raise InventoryError(f"{at}: rule must be a string or null")
+        if rule is not None and rule not in hit:
+            raise InventoryError(f"{at}: rule {rule!r} has no entry in rules_hit")
+        findings.append(
+            Finding(
+                _field(item, "kind", str, at),
+                _field(item, "key", str, at),
+                cls,
+                rule,
+                reason if isinstance(reason, str) else None,
+                _evidence(_get(item, "evidence"), f"{at}: evidence"),
+            )
+        )
+    sources = {
+        rule: tuple(_sources(entry, f"{where}: rules_hit.{rule}")) for rule, entry in hit.items()
+    }
+    sha = _field(_field(data, "inventory", dict, where), "manifest_sha256", str, where)
+    target = _field(data, "target", str, where)
+    if target not in TARGETS:
+        raise InventoryError(f"{where}: target {target!r} is not one of {', '.join(TARGETS)}")
+    return FindingsFile(sha, target, tuple(findings), sources)
+
+
 def _locations(pattern: re.Pattern[str], text: str) -> tuple[tuple[tuple[int, int], ...], int]:
     found: list[tuple[int, int]] = []
     count = 0
