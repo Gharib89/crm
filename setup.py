@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="crm",
-    version="1.89.2",
+    version="1.90.0",
     description=(
         "Stateful CLI harness for Microsoft Dynamics 365 Customer Engagement — on-prem "
         "v9.x (NTLM) or Dataverse online (OAuth), over the Web API"

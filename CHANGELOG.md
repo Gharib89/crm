@@ -9,6 +9,60 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.90.0 (2026-11-05)
+
+### Bug Fixes
+
+- **inventory**: Schema refuses a dot-only evidence path with repeated slashes
+  ([#1080](https://github.com/Gharib89/crm/pull/1080),
+  [`9e07543`](https://github.com/Gharib89/crm/commit/9e075435c5af22fff9b6f5ea01a29a82bd50cee6))
+
+- **inventory**: Verify refuses an --out hard-linked to an input
+  ([#1080](https://github.com/Gharib89/crm/pull/1080),
+  [`9e07543`](https://github.com/Gharib89/crm/commit/9e075435c5af22fff9b6f5ea01a29a82bd50cee6))
+
+- **inventory**: Verify refuses an --out that would overwrite an input
+  ([#1080](https://github.com/Gharib89/crm/pull/1080),
+  [`9e07543`](https://github.com/Gharib89/crm/commit/9e075435c5af22fff9b6f5ea01a29a82bd50cee6))
+
+- **inventory**: Verify refuses NUL and confines evidence to the results folder
+  ([#1080](https://github.com/Gharib89/crm/pull/1080),
+  [`9e07543`](https://github.com/Gharib89/crm/commit/9e075435c5af22fff9b6f5ea01a29a82bd50cee6))
+
+### Documentation
+
+- **inventory**: Document crm inventory verify and its results file
+  ([#1080](https://github.com/Gharib89/crm/pull/1080),
+  [`9e07543`](https://github.com/Gharib89/crm/commit/9e075435c5af22fff9b6f5ea01a29a82bd50cee6))
+
+- **skill**: Move the inventory sections to reference/inventory.md
+  ([#1080](https://github.com/Gharib89/crm/pull/1080),
+  [`9e07543`](https://github.com/Gharib89/crm/commit/9e075435c5af22fff9b6f5ea01a29a82bd50cee6))
+
+- **skill**: Writing-for-agents pass on the inventory verify section
+  ([#1080](https://github.com/Gharib89/crm/pull/1080),
+  [`9e07543`](https://github.com/Gharib89/crm/commit/9e075435c5af22fff9b6f5ea01a29a82bd50cee6))
+
+- **tests**: Test-map row for inventory verify ([#1080](https://github.com/Gharib89/crm/pull/1080),
+  [`9e07543`](https://github.com/Gharib89/crm/commit/9e075435c5af22fff9b6f5ea01a29a82bd50cee6))
+
+### Features
+
+- **inventory**: Crm inventory verify, a completion gate over recorded verification results
+  ([#1080](https://github.com/Gharib89/crm/pull/1080),
+  [`9e07543`](https://github.com/Gharib89/crm/commit/9e075435c5af22fff9b6f5ea01a29a82bd50cee6))
+
+- **inventory**: Packages returns the packages_sha256 a results file names
+  ([#1080](https://github.com/Gharib89/crm/pull/1080),
+  [`9e07543`](https://github.com/Gharib89/crm/commit/9e075435c5af22fff9b6f5ea01a29a82bd50cee6))
+
+### Testing
+
+- **inventory**: Write verify evidence fixtures as bytes
+  ([#1080](https://github.com/Gharib89/crm/pull/1080),
+  [`9e07543`](https://github.com/Gharib89/crm/commit/9e075435c5af22fff9b6f5ea01a29a82bd50cee6))
+
+
 ## v1.89.2 (2026-11-05)
 
 ### Bug Fixes
