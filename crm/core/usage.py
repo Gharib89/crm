@@ -638,7 +638,14 @@ def annotate_v9_types(
         )
         for it in items
     ]
-    states = probe_v9_plugin_types(backend, types)
+    try:
+        states = probe_v9_plugin_types(backend, types)
+    except D365Error as exc:
+        if connection_wide(exc):
+            raise
+        # a failed probe read is no evidence: keep the listed rows, labelled unknown
+        gone = Usage("unknown", STEP_SIGNAL, None, _now(), f"usage probe failed: {exc}")
+        states = {t.id: gone for t in types}
     rows = [
         {k: v for k, v in it.items() if k not in ("_pluginassemblyid_value", "isworkflowactivity")}
         for it in items

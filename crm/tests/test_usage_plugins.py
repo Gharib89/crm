@@ -295,6 +295,17 @@ def test_list_types_without_the_flag_has_no_usage_and_no_probe(v9):
     assert not any(p == "asyncoperations" for _, p, _ in v9.calls)
 
 
+def test_list_types_a_failed_probe_keeps_every_type_labelled_unknown(
+    inject_backend, make_fake_backend, monkeypatch
+):
+    monkeypatch.setenv("CRM_HOME", "/nonexistent-crm-home")
+    inject_backend(make_fake_backend(responses=_v9_org(setting_status=403)))
+    rows = _list_types("--in-use")
+    assert len(rows) == 3
+    assert all(r["usage"]["state"] == "unknown" for r in rows)
+    assert "usage probe failed" in rows[0]["usage"]["reason"]
+
+
 def test_list_types_in_use_drops_unused_and_keeps_the_row_shape(v9):
     rows = _list_types("--in-use")
     assert {r["plugintypeid"]: r["usage"]["state"] for r in rows} == {"t1": "used", "t3": "unknown"}
