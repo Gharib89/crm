@@ -33,29 +33,27 @@ is missing stays open.
    which profile reaches it: `reference/environments.md`. Done when every org
    the work touches has a confirmed identity, version and access mode.
 2. **Inventory the source.** Extract the complete migration inventory with
-   `crm inventory extract`, and reconcile deployed components against the
-   application repository with `crm inventory map-source`. `crm org brief` is
-   orientation, never the baseline. Done when the inventory reads every kind
+   `crm inventory extract` (`reference/inventory.md`, which also reads stage
+   diffs), and reconcile deployed components against the application repository
+   with `crm inventory map-source` (`reference/source-mapping.md`). Done when the inventory reads every kind
    `complete`, or each incomplete kind is reported as an unknown.
 3. **Assess compatibility.** Sort each component into confirmed blocker,
    deprecated but working, optional modernization, or unknown, from documented
    rules and source or runtime evidence. `crm inventory assess` runs the
-   rules shipped with crm and gives every component a finding; its `clear` means only that those rules
-   found nothing, so judge each `clear` and `unknown` from evidence. For
+   rules shipped with crm and gives every component a finding
+   (`reference/assessment.md`), which also covers `clear` and `unknown`. For
    classic workflows, `crm workflow migration-assess` flags the cloud-flow
-   blockers. A component no rule covers is unknown, never compatible. Done when
+   blockers. Done when
    every component carries one of the four classes, a `clear` or `unknown`
    from `crm inventory assess` included, once evidence settles it, with the
    rule or evidence behind it.
 4. **Plan remediation.** Group the inventory into dependency-ordered work
    packages with `crm inventory packages`, passing the `assess` file as
-   `--findings` so each package lists its compatibility findings. Each task names its component and
-   source references, its consumers, the Microsoft documentation behind it, the
-   proposed change, its confidence and unknowns, and the tests that will prove
-   it. Done when every package task names all six, or names the missing one as
-   an unknown.
-5. **Patch and build.** Make small changes, each tracing to one package task.
-   Done when the repository's own builds and checks pass on the patched tree.
+   `--findings` so each package lists its compatibility findings
+   and write each package task's six fields as
+   `reference/remediation.md` lists them. Done when that page's Done-when holds.
+5. **Patch and build.** Make small changes, each tracing to one package task
+   (`reference/remediation.md`). Done when the repository's own builds and checks pass on the patched tree.
 6. **Verify on the target.** Follow `reference/verification.md`: confirm the
    target, then run the required tests (unit, browser, integration, permission,
    business scenario) in the named dev or test environment, collecting errors
