@@ -87,3 +87,29 @@ def test_inventory_extract_is_valid_and_repeatable(cli, tmp_path):
             data = path.read_bytes().lower()
             # The message names the file only, so a failure never prints a secret.
             assert not any(s in data for s in secrets), f"a credential appears in {path}"
+
+
+@covers("inventory extract")
+def test_inventory_extract_with_usage_records_usage_and_changes_nothing_else(cli, tmp_path):
+    from crm.core import inventory
+
+    solution = _solution(cli)
+    plain = _extract(cli, tmp_path / "plain", solution, quiet=True)
+    proc = cli(
+        ["--json", "inventory", "extract", "--out", str(tmp_path / "usage"),
+         "--solution", solution, "--with-usage"],
+        check=False,
+    )  # fmt: skip
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "[crm] extract stage=usage-entity" in proc.stderr, proc.stderr
+    parsed = inventory.read_inventory(tmp_path / "usage")
+    assert parsed.scope.usage_read is True
+    with_usage = {"entity", "plugin_assembly", "plugin_type", "step", "process"}
+    assert {r.kind for r in parsed.records if r.usage} <= with_usage
+    assert all(r.usage for r in parsed.records if r.kind == "entity")
+    # Everything but the usage fields is the plain extract's.
+    stripped = json.loads((tmp_path / "usage" / "manifest.json").read_text(encoding="utf-8"))
+    for record in stripped["records"]:
+        record.pop("usage", None)
+    stripped["scope"].pop("usage_read")
+    assert {k for k in plain if plain[k] != stripped[k]} <= {"extracted_at", "gaps"}

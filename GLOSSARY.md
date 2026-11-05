@@ -490,7 +490,7 @@ spec (the apply desired state), org brief (a capped summary for orientation).
 
 **Usage**:
 One component's (entity, plug-in, workflow) `{state, signal, value, as_of, reason}`, read by a listing's `--in-use`
-flag. `state` is `used`, `unused` or `unknown`: `unknown` (a failed read, a source with no
+flag, or recorded per row in an inventory manifest by `inventory extract --with-usage`. `state` is `used`, `unused` or `unknown`: `unknown` (a failed read, a source with no
 signal) is never `unused`. Only positive evidence or a confirmed empty entity changes a
 row. `--in-use` drops `unused` rows; `--exclude-unknown` also drops `unknown` ones.
 Owned by [`crm/core/usage.py`](crm/core/usage.py).

@@ -14,14 +14,14 @@ from __future__ import annotations
 
 import threading
 import time
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Collection, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from typing import Any, Literal
 
 from crm.core.legacy import LegacyClient
-from crm.core.legacy_reads import connection_wide
+from crm.core.legacy_reads import connection_wide, list_entities_with_primary_ids
 from crm.core.workflow import (
     CATEGORY_ACTION,
     CATEGORY_BPF,
@@ -514,6 +514,17 @@ def probe_v9_plugin_types(
     clock: Callable[[], str] = _now,
 ) -> dict[str, Usage]:
     """Usage of each v9 plug-in type, rolled up from its steps: three bulk reads, none per step."""
+    return _v9_plugin_states(backend, types, (), clock=clock)[1]
+
+
+def _v9_plugin_states(
+    backend: D365Backend,
+    types: Sequence[PluginType],
+    assembly_ids: Sequence[str],
+    *,
+    clock: Callable[[], str] = _now,
+) -> tuple[dict[str, Usage], dict[str, Usage], dict[str, Usage]]:
+    """Usage of every step, type and assembly on v9, each keyed by id."""
     try:  # the column is absent before 9.0.x on some on-prem builds: no trace signal then
         org = as_dict(
             backend.get("organizations", params={"$select": "plugintracelogsetting", "$top": "1"})
@@ -541,7 +552,7 @@ def probe_v9_plugin_types(
         if r.get("_eventhandler_value")
     ]
     ev = read_v9_plugin_evidence(backend, trace_on=trace_on)
-    return plugin_usage(steps, types, ev, clock=clock)[1]
+    return plugin_usage(steps, types, ev, assembly_ids=assembly_ids, clock=clock)
 
 
 def _ref(value: object) -> str:
@@ -959,3 +970,68 @@ def annotate_v9_processes(
     unread = Usage("unknown", PROCESS_SIGNAL, None, _now(), "created after the usage read")
     by_id = {it["workflowid"]: states.get(it["workflowid"], unread) for it in items}
     return attach(items, by_id, key=lambda r: r["workflowid"], exclude_unknown=exclude_unknown)
+
+
+# ── inventory extract (slice #1095) ──────────────────────────────────────
+
+#: `inventory extract --with-usage` probes by group: the manifest kinds each fills, and the
+#: signal their rows read `unknown` under when the whole group's probe fails.
+INVENTORY_GROUPS: dict[str, tuple[tuple[str, ...], str]] = {
+    "entity": (("entity",), SIGNAL),
+    "plugins": (("plugin_assembly", "plugin_type", "step"), STEP_SIGNAL),
+    "process": (("process",), PROCESS_SIGNAL),
+}
+GroupUsage = dict[str, dict[str, Usage]]  # manifest kind -> key (entity) or id -> usage
+
+
+def probe_v9_group(
+    backend: D365Backend, group: str, names: Collection[str], *, progress: Progress | None = None
+) -> GroupUsage:
+    """Usage for one group of manifest kinds on v9, by the probes `--in-use` runs.
+
+    *names* are the entity logical names to probe (the kept ones); the other groups read in bulk.
+    """
+    if group == "entity":
+        targets = entity_targets(backend)
+        gone = "not in the entity definitions read for the probe"
+        wanted = [targets.get(n) or EntityTarget(n, "", "", gone) for n in sorted(names)]
+        return {"entity": probe_v9_entities(backend, wanted, progress=progress)}
+    if group == "process":
+        return {"process": probe_v9_processes(backend)}
+    types = [
+        PluginType(
+            r["plugintypeid"],
+            r.get("_pluginassemblyid_value") or "",
+            r.get("typename") or "",
+            WORKFLOW if r.get("isworkflowactivity") else "",
+        )
+        for r in backend.get_collection(
+            "plugintypes",
+            params={"$select": "plugintypeid,_pluginassemblyid_value,typename,isworkflowactivity"},
+        )
+    ]
+    assemblies = [
+        r["pluginassemblyid"]
+        for r in backend.get_collection("pluginassemblies", params={"$select": "pluginassemblyid"})
+    ]
+    steps, by_type, by_assembly = _v9_plugin_states(backend, types, assemblies)
+    return {"plugin_assembly": by_assembly, "plugin_type": by_type, "step": steps}
+
+
+def probe_legacy_group(
+    client: LegacyClient,
+    group: str,
+    names: Collection[str],
+    *,
+    time_cap: float = JOB_TIME_CAP,
+    progress: Progress | None = None,
+) -> GroupUsage:
+    """`probe_v9_group` on CRM 2011; *time_cap* bounds each capped async-job read."""
+    if group == "entity":
+        _, primary_ids = list_entities_with_primary_ids(client)
+        kept = {n: primary_ids.get(n, "") for n in names}
+        return {"entity": probe_legacy_entities(client, kept, progress=progress)}
+    if group == "process":
+        return {"process": probe_legacy_processes(client, time_cap=time_cap)}
+    steps, types, assemblies = probe_legacy_plugins(client, time_cap=time_cap)
+    return {"plugin_assembly": assemblies, "plugin_type": types, "step": steps}

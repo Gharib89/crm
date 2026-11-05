@@ -44,7 +44,7 @@ reader refuses an artifact path that two records share.
 | `source.version` | the org's build or version string |
 | `extracted_at` | when the extraction ran, an RFC 3339 date-time (`2026-11-04T10:00:00Z`); the only time field |
 | `cli_version` | the `crm` version that wrote the manifest |
-| `scope` | `{"mode": "org", "solutions": []}`, or `{"mode": "solutions", "solutions": [<unique name>...]}`; plus `"system": "excluded"` when stock components were left out (the default org-wide run). Absent or `"included"` means a full read (`--include-system`, or `--solution`) |
+| `scope` | `{"mode": "org", "solutions": []}`, or `{"mode": "solutions", "solutions": [<unique name>...]}`; plus `"system": "excluded"` when stock components were left out (the default org-wide run). Absent or `"included"` means a full read (`--include-system`, or `--solution`). `"usage_read": true` when the run was made with `--with-usage` (absent means no usage was read) |
 | `publication` | `published`: extractors read the published customization only and never publish |
 
 ## Records
@@ -62,6 +62,7 @@ reader refuses an artifact path that two records share.
 | `publication_state` | `published` or `unknown` |
 | `fields` | the kind's normalized fields; the key fields below are required, others are the extractor's |
 | `artifacts` | `[{path, content, sha256, normalized_sha256}]`, `content` being `text` or `binary` |
+| `usage` | optional, written by `extract --with-usage` on `entity`, `plugin_assembly`, `plugin_type`, `step` and `process` records: `{state, signal, value, as_of, reason}`. `state` is `used`, `unused` or `unknown`; `signal` names what was measured; `value` is an integer or `null`; `as_of` is when it was read; `reason` says why a state is `unknown`. A record with no `usage` was not read, which is not the same as `state: unknown`. A row is never `unused` because a record was absent: the probe failing or not answering for it gives `unknown` |
 
 Two records with the same kind and key are **ambiguous**: both stay in the
 manifest, and `Inventory.ambiguous()` reports them. Nothing picks one.
@@ -160,6 +161,10 @@ an ISV page, an external integration, and SQL report data sources.
 additive field keeps the version. A reader refuses an unknown `schema_version`
 with an error naming the versions it reads (`1 and 2`), before it reads anything
 else, and ignores fields it does not know.
+
+**Usage (#1095).** `record.usage` and `scope.usage_read` are optional and additive, so
+`schema_version` stays `2`: a manifest written without `--with-usage` is byte-identical
+to before, and a reader that ignores unknown fields reads one with usage.
 
 **v1 to v2 (#1070).** v1 keyed the application ribbon `application` and the
 default sitemap `default`, names an entity or a sitemap can hold, so two records

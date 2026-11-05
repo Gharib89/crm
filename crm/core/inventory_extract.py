@@ -33,7 +33,7 @@ import re
 import shutil
 import time
 from collections import Counter
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Collection, Iterable, Iterator
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -60,6 +60,7 @@ from crm.core.inventory import (
     dump_manifest,
 )
 from crm.core.legacy import LegacyClient, Page
+from crm.core.usage import INVENTORY_GROUPS, JOB_TIME_CAP, GroupUsage, Usage, probe_legacy_group
 from crm.utils.d365_backend import PLATFORM_CRM2011, D365Error
 
 CHECKPOINT_DIR = ".checkpoint"
@@ -165,6 +166,20 @@ class InventorySource(Protocol):
 
     def pages(self, fetch_xml: str, *, page_size: int, start: Page | None) -> Iterator[Page]: ...
 
+    def probe_usage(
+        self,
+        group: str,
+        *,
+        names: Collection[str],
+        time_cap: float,
+        progress: Callable[[int, int], None] | None,
+    ) -> GroupUsage:
+        """Usage of one `INVENTORY_GROUPS` group, by the probes `--in-use` runs.
+
+        *names* are the entity logical names to probe; *time_cap* bounds a capped read.
+        """
+        ...
+
 
 class LegacySource:
     """A CRM 2011 org, read over the read-only SOAP client."""
@@ -200,6 +215,16 @@ class LegacySource:
 
     def pages(self, fetch_xml: str, *, page_size: int, start: Page | None) -> Iterator[Page]:
         return self.client.pages(fetch_xml, page_size=page_size, start=start)
+
+    def probe_usage(
+        self,
+        group: str,
+        *,
+        names: Collection[str],
+        time_cap: float,
+        progress: Callable[[int, int], None] | None,
+    ) -> GroupUsage:
+        return probe_legacy_group(self.client, group, names, time_cap=time_cap, progress=progress)
 
 
 def _ribbon_readable(entity: dict[str, Any]) -> bool:
@@ -602,6 +627,11 @@ class _Run:
             Progress(self._stage_name, self._done, self._total, kind, pages, self._reused, eta)
         )
 
+    def tick(self, done: int, total: int) -> None:
+        """Report *done* of *total* units of the open stage, for a probe that counts its own."""
+        self._done, self._total = done, total
+        self._report()
+
     def _finish(self, *, reused: bool, seconds: float = 0.0) -> None:
         self._done += 1
         if reused:
@@ -842,6 +872,8 @@ def extract(
     now: Callable[[], str] = _utc_now,
     progress: Callable[[Progress], None] | None = None,
     clock: Callable[[], float] = time.monotonic,
+    with_usage: bool = False,
+    usage_time_cap: float = JOB_TIME_CAP,
 ) -> ExtractSummary:
     """Extract the org's migration inventory into *out*, resuming a checkpoint there.
 
@@ -858,6 +890,10 @@ def extract(
     or owned by a managed solution) are left out, and their payloads are never
     fetched. *include_system* keeps them. A ``--solution`` run names its scope
     itself and keeps stock, so *include_system* has no effect on it.
+
+    *with_usage* adds a `usage` to each entity, plug-in assembly, type and step and
+    process row, after the kept rows are known (`_attach_usage`); *usage_time_cap*
+    bounds each capped CRM 2011 async read, in seconds.
 
     *progress* receives a `Progress` event as each stage starts and each unit
     finishes; *clock* (monotonic seconds) times the units for its ETA.
@@ -985,6 +1021,12 @@ def extract(
     if stock_scope:
         built.drop_stock()
     records = built.finish()
+    usage_gaps: list[ExtractionGap] = []
+    usage_errors: list[str] = []
+    if with_usage:
+        records = _attach_usage(
+            source, cp, run, records, usage_time_cap, now(), usage_gaps, usage_errors
+        )
 
     coverage: dict[str, KindCoverage] = {}
     counts: dict[str, int] = {}
@@ -1015,6 +1057,7 @@ def extract(
             mode="solutions" if solutions else "org",
             solutions=solutions,
             system=system,
+            usage_read=with_usage,
         ),
         publication="published",
         records=tuple(records),
@@ -1024,11 +1067,12 @@ def extract(
             *built.gaps(),
             *_ribbon_gaps(unlabelled),
             *_source_gaps(run.errors),
+            *usage_gaps,
         ),
     )
     (out / MANIFEST_NAME).write_text(dump_manifest(inventory), encoding="utf-8")
 
-    errors = [*run.errors, *(e for t in run.tallies.values() for e in t.errors)]
+    errors = [*run.errors, *usage_errors, *(e for t in run.tallies.values() for e in t.errors)]
     complete = not errors and all(c.status == "complete" for c in coverage.values())
     if complete:
         cp.remove()
@@ -1043,6 +1087,80 @@ def extract(
         resumed=resumed,
         complete=complete,
     )
+
+
+_USAGE_LABEL = {
+    "entity": "entities",
+    "plugins": "plug-in assemblies, types and steps",
+    "process": "processes",
+}
+
+
+def _attach_usage(
+    source: InventorySource,
+    cp: Checkpoint,
+    run: _Run,
+    records: list[Record],
+    time_cap: float,
+    as_of: str,
+    gaps: list[ExtractionGap],
+    errors: list[str],
+) -> list[Record]:
+    """Give each row of a kind with a runtime signal its `usage` (`--with-usage`).
+
+    One probe per group of kinds, run after the kept rows are known so a stock-excluded run
+    never probes a stock entity, and each group's answer is a checkpoint unit so a resume
+    skips a finished group. A row the answer lacks is `unknown`, never `unused`. A group whose
+    probe fails (not connection-wide) leaves its rows `unknown` with the reason, a gap and
+    an error (the run goes on and the failed group is probed again on a resume); no answer
+    is saved for it.
+    """
+    out: dict[int, dict[str, Any]] = {}
+    for group, (kinds, signal) in INVENTORY_GROUPS.items():
+        rows = [i for i, r in enumerate(records) if r.kind in kinds]
+        if not rows:
+            continue
+        unit = f"usage/{group}"
+        names: set[str] = {records[i].key for i in rows} if group == "entity" else set()
+        total = len(rows) if group == "entity" else 1
+        run.begin(f"usage-{group}", total)
+        saved = cp.load(unit)
+        why = "not in the usage read"
+        if saved is not None:
+            answer = saved
+        else:
+            try:
+                got = source.probe_usage(group, names=names, time_cap=time_cap, progress=run.tick)
+            except D365Error as exc:
+                if legacy_reads.connection_wide(exc):
+                    raise
+                why = f"usage probe failed: {exc}"
+                gaps.append(
+                    ExtractionGap(
+                        kind=None,
+                        key=None,
+                        description=f"usage of {_USAGE_LABEL[group]}",
+                        reason=why,
+                    )
+                )
+                errors.append(f"usage/{group}: {exc}")
+                answer = {}
+            else:
+                answer = {k: {i: u.to_dict() for i, u in v.items()} for k, v in got.items()}
+                cp.save(unit, answer)
+        run.tick(total, total)
+        found = {
+            k: {(i if k == "entity" else i.lower()): v for i, v in per.items()}
+            for k, per in answer.items()
+        }
+        for i in rows:
+            r = records[i]
+            key = r.key if r.kind == "entity" else (r.id or "").lower()
+            out[i] = (
+                found.get(r.kind, {}).get(key)
+                or Usage("unknown", signal, None, as_of, why).to_dict()
+            )
+    return [replace(r, usage=out[i]) if i in out else r for i, r in enumerate(records)]
 
 
 def _file_hashes(path: Path, *, text: bool, ribbon: bool = False) -> ArtifactHashes:

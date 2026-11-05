@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -104,6 +104,11 @@ def _side(inv: Inventory) -> dict[str, Any]:
     }
 
 
+def _same_scope(a: Inventory, b: Inventory) -> bool:
+    """Whether both read the same components; reading usage on one side changes no scope."""
+    return replace(a.scope, usage_read=False) == replace(b.scope, usage_read=False)
+
+
 def _gaps(inv: Inventory) -> list[dict[str, Any]]:
     gaps = [asdict(g) for g in inv.gaps]
     gaps.sort(key=lambda g: json.dumps(g, sort_keys=True))
@@ -154,7 +159,8 @@ class InventoryDiff:
                 "a": a,
                 "b": b,
                 "same_platform": a["platform"] == b["platform"],
-                "same_scope": a["scope"] == b["scope"],
+                "same_scope": _same_scope(self.a, self.b),
+                "usage_compared": self.a.scope.usage_read and self.b.scope.usage_read,
                 "basis": _BASIS,
             },
             "counts": self.counts(),
@@ -214,7 +220,7 @@ def _same(x: object, y: object) -> bool:
     return json.dumps(x, sort_keys=True) == json.dumps(y, sort_keys=True)
 
 
-def _field_changes(x: Record, y: Record) -> tuple[FieldChange, ...]:
+def _field_changes(x: Record, y: Record, usage: bool = False) -> tuple[FieldChange, ...]:
     out = [
         FieldChange(name, getattr(x, name), getattr(y, name))
         for name in _RECORD_FIELDS
@@ -224,6 +230,10 @@ def _field_changes(x: Record, y: Record) -> tuple[FieldChange, ...]:
         va, vb = x.fields.get(name), y.fields.get(name)
         if not _same(va, vb):
             out.append(FieldChange(f"fields.{name}", va, vb))
+    # Counts and read times drift between runs, so only a state change is a difference; a row
+    # one side did not read (no `usage`) is not compared, never read as unused.
+    if usage and x.usage and y.usage and x.usage["state"] != y.usage["state"]:
+        out.append(FieldChange("usage.state", x.usage["state"], y.usage["state"]))
     return tuple(out)
 
 
@@ -277,7 +287,13 @@ def _gap_reason(label: str, gap: ExtractionGap) -> str:
 
 
 def _diff_key(
-    kind: str, key: str, ra: list[Record], rb: list[Record], a: Inventory, b: Inventory
+    kind: str,
+    key: str,
+    ra: list[Record],
+    rb: list[Record],
+    a: Inventory,
+    b: Inventory,
+    usage: bool,
 ) -> KeyDiff:
     # The first origin in rank order across both sides, so swapping A and B keeps the bucket.
     origin = min((r.origin for r in (*ra, *rb)), key=_ORIGIN_RANK.index)
@@ -303,7 +319,7 @@ def _diff_key(
     x, y = ra[0], rb[0]
     # Both sides' gaps, A first, so swapping A and B mirrors the labels and drops neither.
     gap = "; ".join(_gap_reason(s, g) for s, g in (("A", gap_a), ("B", gap_b)) if g) or None
-    fields = _field_changes(x, y)
+    fields = _field_changes(x, y, usage)
     artifacts = tuple(
         c
         for c in _artifact_changes(x, y)
@@ -326,9 +342,11 @@ def diff_inventories(a: Inventory, b: Inventory) -> InventoryDiff:
     A verdict is decided in this order: ``not_comparable`` when either side's
     coverage of the kind is not ``complete``, ``ambiguous`` when the key repeats
     on either side, then ``added``, ``removed``, ``changed``, ``identity_only``
-    or ``unchanged``. A record or artifact missing on a side whose extraction gap
-    names the key is evidence that side could not read, not a difference, and
-    a key a gap names is ``not_comparable`` unless something else differs.
+    or ``unchanged``. A usage ``state`` change counts only where both sides read usage
+    (``scope.usage_read``); counts and read times are never compared. A record or
+    artifact missing on a side whose extraction gap names the key is evidence that side
+    could not read, not a difference, and a key a gap names is ``not_comparable``
+    unless something else differs.
     GUIDs are compared only when both sides record one. Entries sort by kind,
     then key, so the result does not depend on manifest order.
     """
@@ -337,8 +355,9 @@ def diff_inventories(a: Inventory, b: Inventory) -> InventoryDiff:
         for record in inv.records:
             group.setdefault((record.kind, record.key), []).append(record)
     ga, gb = groups
+    usage = a.scope.usage_read and b.scope.usage_read
     entries = tuple(
-        _diff_key(kind, key, ga.get((kind, key), []), gb.get((kind, key), []), a, b)
+        _diff_key(kind, key, ga.get((kind, key), []), gb.get((kind, key), []), a, b, usage)
         for kind, key in sorted(set(ga) | set(gb))
     )
     return InventoryDiff(a, b, entries)

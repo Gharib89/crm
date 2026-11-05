@@ -84,6 +84,10 @@
             "included",
             "excluded"
           ]
+        },
+        "usage_read": {
+          "type": "boolean",
+          "description": "True when the extraction read usage (--with-usage); absent means false."
         }
       },
       "if": {
@@ -226,6 +230,47 @@
         },
         "fields": {
           "type": "object"
+        },
+        "usage": {
+          "type": "object",
+          "description": "Present only on a record whose kind has a runtime signal, in a manifest whose scope.usage_read is true. Absent means not read, never unused.",
+          "required": [
+            "state",
+            "signal",
+            "value",
+            "as_of",
+            "reason"
+          ],
+          "properties": {
+            "state": {
+              "enum": [
+                "used",
+                "unused",
+                "unknown"
+              ]
+            },
+            "signal": {
+              "type": "string",
+              "minLength": 1
+            },
+            "value": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "as_of": {
+              "type": "string",
+              "minLength": 1
+            },
+            "reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
         },
         "artifacts": {
           "type": "array",
