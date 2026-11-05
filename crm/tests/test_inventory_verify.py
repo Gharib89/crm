@@ -37,7 +37,7 @@ PACKAGES = {
     "pkg-00000000000e": ("req-00000000000000e1",),  # not_tested: pass without evidence
     "pkg-00000000000f": (),  # not_tested: no requirement is known
 }
-ENV = {"profile": "test-org", "org": "https://crm.example.test/Org"}
+ENV = {"profile": "test-org", "org": "https://internalcrm.contoso.local/Org"}
 
 
 def _write_packages(out: Path) -> Path:
@@ -266,20 +266,29 @@ def test_results_recorded_against_another_packages_output_are_refused(packages, 
             },
             "outcome",
         ),
+        *(
+            (
+                {"results": [_result("p", "r", "pass", [{"path": path, "sha256": "0" * 64}])]},
+                "relative path inside",
+            )
+            for path in ("../x", "a/../b", "/x", "a\\b", "C:x", ".", "./", "a\0b", "")
+        ),
         (
-            {"results": [_result("p", "r", "pass", [{"path": "../x", "sha256": "0" * 64}])]},
-            "relative path inside",
+            {"results": [_result("p", "r", "pass", environment={"profile": 1, "org": "o"})]},
+            "results[0].environment.profile",
         ),
     ],
 )
 def test_a_malformed_results_file_is_refused(packages, tmp_path, change, match):
     top = dict(change)
     results = _write_results(tmp_path / "run", packages, top.pop("results", []), **top)
+    schema = jsonschema.Draft202012Validator(json.loads(SCHEMA.read_text(encoding="utf-8")))
 
     run = _invoke(str(packages), "--results", str(results))
 
     assert run.exit_code == 1
     assert match in json.loads(run.output)["error"]
+    assert not schema.is_valid(json.loads(results.read_text(encoding="utf-8")))
 
 
 def test_out_is_deterministic_and_the_results_file_matches_its_schema(packages, tmp_path):
@@ -360,3 +369,56 @@ def test_packages_reports_the_digest_a_results_file_names(tmp_path):
     results.write_text(json.dumps({"schema_version": 1, "packages_sha256": sha, "results": []}))
 
     assert _invoke(str(out), "--results", str(results)).exit_code == 0
+
+
+def test_a_requirement_takes_its_worst_result_and_a_control_may_not_run(packages, tmp_path):
+    folder = tmp_path / "run"
+    ev = _evidence(folder, "a.txt")
+    results = _write_results(
+        folder,
+        packages,
+        [
+            _result("pkg-00000000000a", "req-00000000000000a1", "pass", [ev]),
+            _result("pkg-00000000000a", "req-00000000000000a1", "not_tested"),
+            _result("pkg-00000000000a", "req-00000000000000a2", "pass", [ev]),
+            _result("pkg-00000000000a", "req-00000000000000a2", "blocked", negative_control=True),
+        ],
+    )
+    out = tmp_path / "report.json"
+
+    _invoke(str(packages), "--results", str(results), "--out", str(out))
+
+    (package, *_) = json.loads(out.read_text(encoding="utf-8"))["packages"]
+    rows = {r["id"]: (r["status"], r["reason"], r["controls"]) for r in package["requirements"]}
+    assert rows == {
+        "req-00000000000000a1": ("not_tested", "recorded", []),
+        "req-00000000000000a2": ("pass", None, ["not_run"]),
+    }
+
+
+def test_evidence_reached_through_a_symlink_out_of_the_folder_is_unverified(packages, tmp_path):
+    folder = tmp_path / "run"
+    outside = _evidence(tmp_path / "elsewhere", "a.txt")
+    (folder / "evidence").mkdir(parents=True)
+    (folder / "evidence" / "a.txt").symlink_to(tmp_path / "elsewhere" / outside["path"])
+    results = _write_results(
+        folder,
+        packages,
+        [
+            _result("pkg-00000000000a", rid, "pass", [outside])
+            for rid in ("req-00000000000000a1", "req-00000000000000a2")
+        ],
+    )
+
+    data = json.loads(_invoke(str(packages), "--results", str(results)).output)["data"]
+
+    assert data["packages"][0]["verdict"] == "not_tested"
+
+
+def test_duplicate_unknown_results_are_each_listed(packages, tmp_path):
+    stray = _result("pkg-ffffffffffff", "req-00000000000000a1", "fail")
+    results = _write_results(tmp_path / "run", packages, [stray, stray])
+
+    data = json.loads(_invoke(str(packages), "--results", str(results)).output)["data"]
+
+    assert len(data["unknown_results"]) == 2

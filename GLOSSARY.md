@@ -536,7 +536,9 @@ _Avoid_: task, ticket, batch.
 
 **Verification result**:
 One verification requirement's recorded outcome (pass, fail, blocked, not tested) with
-its evidence: the artifacts the check produced, each with its hash. A pass without
+its evidence: the artifacts the check produced, each with its hash. A work package
+states its verification requirements; a verification results file records their
+results against one packages output. A pass without
 evidence is not a pass: `crm inventory verify` counts it as not tested, and calls a work
 package complete only when every requirement passed with evidence.
 _Avoid_: test result (the check may be manual or a browser run), status.

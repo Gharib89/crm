@@ -14,20 +14,21 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, cast
 
-from crm.core.inventory import InventoryError
+from crm.core.inventory import (
+    _SHA256,  # pyright: ignore[reportPrivateUsage]  # one hex-digest rule for every inventory file
+    InventoryError,
+)
 from crm.core.inventory_packages import read_packages
 
 #: The format version of the results file and of the report.
 SCHEMA_VERSION = 1
 OUTCOMES = ("pass", "fail", "blocked", "not_tested")
 #: Package verdicts in precedence order: the first that applies wins.
-VERDICTS = ("failed", "blocked", "not_tested", "complete")
-_SHA256 = re.compile(r"[0-9a-f]{64}")
+PACKAGE_VERDICTS = ("failed", "blocked", "not_tested", "complete")
 
 
 @dataclass(frozen=True)
@@ -120,7 +121,8 @@ def _evidence(value: object, where: str) -> Evidence:
     obj = _obj(value, where)
     path = _str(obj, "path", where)
     parts = PurePosixPath(path).parts
-    if not parts or path.startswith("/") or "\\" in path or ":" in path or ".." in parts:
+    unsafe = any(c in path for c in "\\:\0") or path.startswith("/") or ".." in parts
+    if not parts or unsafe:
         raise InventoryError(
             f"results file {where}.path {path!r} must be a relative path inside the"
             " results file's folder"
@@ -137,12 +139,13 @@ def _result(value: object, where: str) -> VerificationResult:
     environment = None
     if env is not None:
         e = _obj(env, f"{where}.environment")
-        environment = Environment(_str(e, "profile", where), _str(e, "org", where))
+        at = f"{where}.environment"
+        environment = Environment(_str(e, "profile", at), _str(e, "org", at))
     control = obj.get("negative_control", False)
     if type(control) is not bool:
         raise InventoryError(f"results file {where}.negative_control is not a boolean")
     deployed = [
-        _obj(d, f"{where}.deployed[{i}]")
+        (_obj(d, f"{where}.deployed[{i}]"), f"{where}.deployed[{i}]")
         for i, d in enumerate(_list(obj.get("deployed", []), f"{where}.deployed"))
     ]
     return VerificationResult(
@@ -155,9 +158,7 @@ def _result(value: object, where: str) -> VerificationResult:
         ),
         expected=_str(obj, "expected", where, optional=True),
         actual=_str(obj, "actual", where, optional=True),
-        deployed=tuple(
-            Deployed(_str(d, "component", where), _sha(d, f"{where}.deployed")) for d in deployed
-        ),
+        deployed=tuple(Deployed(_str(d, "component", at), _sha(d, at)) for d, at in deployed),
         errors=_strings(obj, "errors", where),
         environment=environment,
         open_decisions=_strings(obj, "open_decisions", where),
@@ -271,7 +272,7 @@ class VerificationReport:
         return {
             "schema_version": SCHEMA_VERSION,
             "packages_sha256": self.packages_sha256,
-            "counts": {v: verdicts.count(v) for v in VERDICTS},
+            "counts": {v: verdicts.count(v) for v in PACKAGE_VERDICTS},
             "packages": [{"id": p.id, "verdict": p.verdict} for p in self.packages],
             "escaped": [
                 {"package": p.id, "requirement": r.id}
@@ -297,10 +298,17 @@ _RANK = {"fail": 0, "blocked": 1, "not_tested": 2, "pass": 3}
 _VERDICT = {"fail": "failed", "blocked": "blocked", "not_tested": "not_tested", "pass": "complete"}
 
 
+def _digest(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def _evidenced(result: VerificationResult, base: Path) -> bool:
+    """Every evidence file exists inside *base*, a symlink's target included, with its hash."""
+    root = base.resolve()
     for e in result.evidence:
+        path = (base / e.path).resolve()
         try:
-            if hashlib.sha256((base / e.path).read_bytes()).hexdigest() != e.sha256:
+            if not path.is_relative_to(root) or _digest(path) != e.sha256:
                 return False
         except OSError:
             return False
@@ -349,12 +357,12 @@ def verify(packages_dir: Path, results_file: Path) -> VerificationReport:
         )
     checks: dict[tuple[str, str], list[VerificationResult]] = {}
     controls: dict[tuple[str, str], list[VerificationResult]] = {}
-    unknown: set[UnknownResult] = set()
+    unknown: list[UnknownResult] = []
     for r in recorded.results:
         reqs = packages.requirements.get(r.package)
         if reqs is None or r.requirement not in {q.id for q in reqs}:
             reason = "unknown_package" if reqs is None else "unknown_requirement"
-            unknown.add(UnknownResult(r.package, r.requirement, reason))
+            unknown.append(UnknownResult(r.package, r.requirement, reason))
             continue
         (controls if r.negative_control else checks).setdefault(
             (r.package, r.requirement), []

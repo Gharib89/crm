@@ -413,7 +413,7 @@ field.
    "expected": "Approving a project locks its budget fields",
    "actual": "The budget fields were read-only after approval",
    "deployed": [{"component": "web_resource:new_/scripts/project.js", "sha256": "<content hash>"}],
-   "errors": [], "environment": {"profile": "test-org", "org": "https://crm.example.test/Org"},
+   "errors": [], "environment": {"profile": "test-org", "org": "https://internalcrm.contoso.local/Org"},
    "open_decisions": [], "negative_control": false}
  ]}
 ```
