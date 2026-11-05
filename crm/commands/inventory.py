@@ -232,8 +232,13 @@ def inventory_diff_cmd(ctx: CLIContext, a: Path, b: Path, out_file: Path | None)
         ctx.emit(False, error=f"--out {out_file}: {exc}")
         return
     data = {**diff.summary(), "out": str(out_file) if out_file else None}
+    warning = (
+        "only one side was read with --with-usage: usage is not compared"
+        if diff.a.scope.usage_read != diff.b.scope.usage_read
+        else None
+    )
     if ctx.json_mode:
-        ctx.emit(True, data=data)
+        ctx.emit(True, data=data, meta={"warning": warning} if warning else None)
         return
     counts = data["counts"]
     rows = [[kind, *(counts[kind].get(v, 0) for v in VERDICTS)] for kind in sorted(counts)]
@@ -244,8 +249,8 @@ def inventory_diff_cmd(ctx: CLIContext, a: Path, b: Path, out_file: Path | None)
         meta["incomplete"] = ", ".join(
             f"{kind} (A {s['a']}, B {s['b']})" for kind, s in incomplete.items()
         )
-    if diff.a.scope.usage_read != diff.b.scope.usage_read:
-        meta["warning"] = "only one side was read with --with-usage: usage is not compared"
+    if warning:
+        meta["warning"] = warning
     if out_file is not None:
         meta["out"] = str(out_file)
     ctx.emit(True, table={"headers": ["kind", *VERDICTS], "rows": rows}, meta=meta)

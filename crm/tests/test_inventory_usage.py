@@ -356,3 +356,21 @@ def test_diff_command_warns_when_only_one_side_read_usage(tmp_path):
     assert "usage is not compared" in mixed.output
     same = CliRunner().invoke(cli, ["inventory", "diff", str(usage), str(usage)])
     assert "usage is not compared" not in same.output
+
+
+def test_diff_command_json_carries_the_mixed_usage_warning(tmp_path):
+    from click.testing import CliRunner
+
+    from crm.cli import cli
+
+    plain = tmp_path / "plain"
+    _extract(UsageSource(FakeClient(), _answers()), plain)
+    usage = _usage_manifest(tmp_path)
+    mixed = json.loads(
+        CliRunner().invoke(cli, ["--json", "inventory", "diff", str(plain), str(usage)]).output
+    )
+    assert "usage is not compared" in mixed["meta"]["warning"]
+    same = json.loads(
+        CliRunner().invoke(cli, ["--json", "inventory", "diff", str(usage), str(usage)]).output
+    )
+    assert "warning" not in same.get("meta", {})
