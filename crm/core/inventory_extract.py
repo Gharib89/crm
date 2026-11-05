@@ -98,6 +98,9 @@ _STOCK_RIBBON_IDS = frozenset((
     "analysisjob",
 ))  # fmt: skip
 _RIBBON_ID = re.compile(r'\bId="([^"]+)"')
+# `ribbon hide --method hide-action` writes a HideCustomAction whose ids are the target's stock
+# ones; none of the 828 ribbons measured on that org holds one, so its presence is a customization.
+_RIBBON_HIDE = re.compile(r"<HideCustomAction\b")
 _PLATFORM_REASON = (
     "platform: the default migration scope leaves stock components out (managed, or owned by"
     " a managed solution); --include-system keeps them"
@@ -775,7 +778,7 @@ def _utc_now() -> str:
 def _ribbon_custom(path: Path) -> bool:
     """Whether the ribbon XML at *path* holds an entry the platform does not ship."""
     text = path.read_text(encoding="utf-8", errors="replace")
-    return any(
+    return bool(_RIBBON_HIDE.search(text)) or any(
         re.split(r"[.\-_]", i, maxsplit=1)[0].lower() not in _STOCK_RIBBON_IDS
         for i in _RIBBON_ID.findall(text)
     )

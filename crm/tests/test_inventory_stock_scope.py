@@ -220,11 +220,14 @@ def test_the_ribbon_rule_keeps_a_custom_entry_and_drops_a_stock_only_ribbon(
     xml = {
         "new_project": '<R><Button Id="new_project.form.Approve"/></R>',
         "account": '<R><Button Id="Mscrm.Form.account.Save"/><Tab Id="AIBuilder.a.Dummy"/></R>',
-        None: '<R><Button Id="Mscrm.Form.Save"/></R>',
+        None: (
+            '<R><HideCustomAction HideActionId="Mscrm.Form.account.Save.HideAction"'
+            ' Location="Mscrm.Form.account.Save"/></R>'
+        ),
     }
     monkeypatch.setattr(legacy_reads, "ribbon_xml", lambda c, e: xml.get(e, "<R/>").encode())
     _extract(FakeClient(org=_org()), tmp_path / "inv", include_system=False)
-    assert _keys(_manifest(tmp_path / "inv"), "ribbon") == ["new_project"]
+    assert _keys(_manifest(tmp_path / "inv"), "ribbon") == ["application", "new_project"]
 
 
 def test_a_kind_with_no_ismanaged_is_kept_and_recorded_as_a_gap(tmp_path):
