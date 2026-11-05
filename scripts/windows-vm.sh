@@ -62,6 +62,8 @@ create)
     --license-type Windows_Client --storage-sku StandardSSD_LRS \
     --public-ip-sku Standard --nsg-rule NONE \
     --admin-username "$ADMIN" --admin-password "$PASS" -o none
+  # First, so a later failure never leaves a running VM without it.
+  az vm auto-shutdown -g "$RG" -n "$VM" --time "$SHUTDOWN_UTC" -o none
   # OpenSSH server; its stock firewall rule covers only Private networks, and an
   # Azure NIC is Public. Add-WindowsCapability can take 20 minutes.
   # shellcheck disable=SC2016 # PowerShell variables, expanded on the VM
@@ -72,7 +74,6 @@ create)
     $ps = "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
     New-ItemProperty -Path HKLM:\SOFTWARE\OpenSSH -Name DefaultShell -Value $ps -PropertyType String -Force | Out-Null' -o none
   allow_from_here
-  az vm auto-shutdown -g "$RG" -n "$VM" --time "$SHUTDOWN_UTC" -o none
   email=$(command az account show --subscription "$SUB" --query user.name -o tsv)
   sub_id=$(command az account show --subscription "$SUB" --query id -o tsv)
   start=$(date -u +%Y-%m-01)
@@ -86,13 +87,19 @@ create)
   address
   ;;
 up)
-  az vm start -g "$RG" -n "$VM" -o none
+  # Rules first, so the VM never runs open to a previous caller's IP.
   allow_from_here
+  az vm start -g "$RG" -n "$VM" -o none
   record_host
   # RDP answers a few seconds after the start call returns.
   ip=$(az vm show -d -g "$RG" -n "$VM" --query publicIps -o tsv)
-  for _ in $(seq 30); do timeout 5 bash -c "</dev/tcp/$ip/3389" 2>/dev/null && break; sleep 5; done
+  for _ in $(seq 30); do
+    timeout 5 bash -c "</dev/tcp/$ip/3389" 2>/dev/null && { address; exit 0; }
+    sleep 5
+  done
+  echo "RDP on $ip did not answer within about 5 minutes" >&2
   address
+  exit 1
   ;;
 down)
   az vm deallocate -g "$RG" -n "$VM" -o none
