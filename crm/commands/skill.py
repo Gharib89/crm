@@ -122,7 +122,7 @@ def skill_install(
                 False,
                 error=f"Failed to install skill to {dest_dir}: {exc}"
                 + _completed_note("already installed", results),
-                meta={"target": target_label, "completed": results},
+                meta={"target": target_label, "completed_skills": results, "failed_skill": name},
             )
             return
         ref_dir = dest_dir / "reference"
@@ -161,8 +161,8 @@ def skill_uninstall(ctx: CLIContext, target: str, dest: str | None, skills: tupl
             ctx.emit(
                 False,
                 error=f"Failed to uninstall skill at {dest_dir}: {exc}"
-                + _completed_note("already removed", results),
-                meta={"completed": results},
+                + _completed_note("already removed", [r for r in results if r["removed"]]),
+                meta={"completed_skills": results, "failed_skill": name},
             )
             return
     ctx.emit(True, data=results[0] if len(results) == 1 else {"skills": results})

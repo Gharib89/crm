@@ -319,7 +319,8 @@ def test_failed_second_install_reports_the_skill_already_installed(tmp_path: Pat
     assert result.exit_code == 1
     env = json.loads(result.output)
     assert "crm-migration" in env["error"] and "already installed: crm" in env["error"]
-    assert [r["skill"] for r in env["meta"]["completed"]] == ["crm"]
+    assert [r["skill"] for r in env["meta"]["completed_skills"]] == ["crm"]
+    assert env["meta"]["failed_skill"] == "crm-migration"
 
 
 def test_failed_second_uninstall_reports_the_skill_already_removed(tmp_path: Path, monkeypatch):
@@ -343,4 +344,29 @@ def test_failed_second_uninstall_reports_the_skill_already_removed(tmp_path: Pat
     assert result.exit_code == 1
     env = json.loads(result.output)
     assert "already removed: crm" in env["error"]
-    assert [r["skill"] for r in env["meta"]["completed"]] == ["crm"]
+    assert [r["skill"] for r in env["meta"]["completed_skills"]] == ["crm"]
+    assert env["meta"]["failed_skill"] == "crm-migration"
+
+
+def test_failed_uninstall_does_not_call_a_skill_never_installed_removed(
+    tmp_path: Path, monkeypatch
+):
+    import json
+
+    import crm.commands.skill as skill_mod
+
+    runner = _runner(tmp_path, monkeypatch)
+    _with_targets(monkeypatch, tmp_path / "skills")
+    real = skill_mod._uninstall_one
+
+    def fail_migration(dest_dir):
+        if dest_dir.name == "crm-migration":
+            raise OSError("busy")
+        return real(dest_dir)
+
+    monkeypatch.setattr(skill_mod, "_uninstall_one", fail_migration)
+    result = runner.invoke(
+        cli, ["--json", "skill", "uninstall", "--skill", "crm", "--skill", "crm-migration"]
+    )
+    assert result.exit_code == 1
+    assert "already removed" not in json.loads(result.output)["error"]
