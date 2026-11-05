@@ -58,6 +58,30 @@ def test_run_pair_resets_org_before_each_leg():
     assert skill.passed is True and bare.passed is False
 
 
+def _skill_trace(skill: str) -> str:
+    import json
+
+    event = {
+        "type": "assistant",
+        "message": {"content": [{"type": "tool_use", "name": "Skill", "input": {"skill": skill}}]},
+    }
+    return json.dumps(event) + "\n" + json.dumps({"type": "result", "num_turns": 1}) + "\n"
+
+
+def test_run_pair_records_invocation_of_the_tasks_own_skill():
+    # A crm-migration trial that invoked `crm-migration` is invoked=True, not False (#1088).
+    def fake_run_one(task_file, *, install_skill, **kw):
+        res = _fake_result("t1", passed=True)
+        res.transcript = _skill_trace("crm-migration")
+        return res
+
+    kwargs = {"run_one": fake_run_one, "reset_org": lambda: None, "paired": False}
+    mig = run_pair("t1.md", skill="crm-migration", **kwargs)
+    assert [t.invoked for t in mig] == [True]
+    default = run_pair("t1.md", **kwargs)  # default skill crm: the other skill is not a match
+    assert [t.invoked for t in default] == [False]
+
+
 def test_run_pair_k_produces_k_trials_per_leg():
     def fake_run_one(task_file, *, install_skill, **kw):
         return _fake_result("t1", passed=install_skill)

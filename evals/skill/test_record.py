@@ -11,8 +11,11 @@ latest run, and the skill-SHA provenance stamp — all offline.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import re
+
+import pytest
 
 from evals.skill import record
 from evals.skill.runner import RunResult
@@ -78,6 +81,28 @@ def test_record_round_trips_through_dict():
     back = record.TaskRunRecord.from_dict(rec.to_dict())
     assert back == rec
     assert back.efficacy_review is None and back.counterfactual is False
+
+
+def test_old_record_without_skill_loads_as_crm():
+    # Records saved before #1088 carry no `skill`; they ran the crm skill.
+    legacy = {
+        "task_id": "t",
+        "prompt": "p",
+        "raw_trace": "r",
+        "commands": [],
+        "metrics": {},
+        "correctness_verdict": {"status": "pass"},
+        "skill_sha": "abc",
+    }
+    assert record.TaskRunRecord.from_dict(legacy).skill == "crm"
+
+
+@pytest.mark.parametrize("skill", ["crm", "crm-migration"])
+def test_build_record_keeps_the_tasks_skill(skill):
+    spec = dataclasses.replace(_spec(), skill=skill)
+    rec = record.build_record(spec, _result(_TRACE), status="pass", passed=True, reason="", sha="x")
+    assert rec.skill == skill
+    assert record.TaskRunRecord.from_dict(rec.to_dict()).skill == skill
 
 
 def test_from_dict_tolerates_schema_drift():
@@ -193,6 +218,30 @@ def test_skill_sha_is_the_git_tree_sha_of_the_skill():
     # skill changes) — the provenance stamp the review uses for run/review divergence.
     sha = record.skill_sha()
     assert _HEX40.match(sha), f"expected a 40-hex tree SHA, got {sha!r}"
+
+
+@pytest.mark.parametrize(
+    ("skill", "folder"), [("crm", "skills"), ("crm-migration", "migration-skill")]
+)
+def test_skill_sha_stamps_the_named_skills_tree(skill, folder):
+    # Each skill's SHA is its own tree's (#1088), not the crm tree's whatever the skill.
+    import subprocess
+
+    root = record._repo_root()
+    want = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", f"HEAD:crm/{folder}"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    assert record.skill_sha(skill=skill).removesuffix("-dirty") == want
+
+
+def test_skills_stamp_names_each_skill_of_a_mixed_corpus():
+    crm = record.skill_sha(skill="crm")
+    mig = record.skill_sha(skill="crm-migration")
+    assert record.skills_stamp(["crm", "crm", "crm"]) == crm  # unchanged for a crm corpus
+    assert record.skills_stamp(["crm-migration", "crm"]) == f"crm={crm}, crm-migration={mig}"
 
 
 def test_skill_sha_unknown_outside_a_repo(tmp_path):

@@ -13,9 +13,10 @@ a judgment task) and parses a **structured** verdict: three graded axes (*goal r
 *command economy* / *skill adherence*), a **skill-lift** call (``helped|neutral|hindered``),
 and a **skill-fix** suggestion (the payoff — the concrete skill edit, or ``none``).
 
-The reviewer reads ``crm/skills/`` **live from disk** (it runs in the operator's env, not
-the sandbox); the run record already stamps the skill git SHA, so a re-review after a skill
-edit judges the saved traces against the *new* skill — the "did my fix help?" loop.
+The reviewer reads each record's skill tree (``crm/skills/`` or ``crm/migration-skill/``)
+**live from disk** (it runs in the operator's env, not the sandbox); the run record already
+stamps the skill git SHA, so a re-review after a skill edit judges the saved traces
+against the *new* skill — the "did my fix help?" loop.
 
 Outputs: each verdict is written back into its run record, a per-run ``report.md`` is
 emitted into the run dir (gitignored), and ``review --record`` appends the org-agnostic
@@ -40,6 +41,7 @@ from evals.skill.record import (
     TaskRunRecord,
     latest_run_dir,
     load_records,
+    skill_dir,
     write_record,
 )
 
@@ -47,8 +49,8 @@ from evals.skill.record import (
 #: judgment task, not the cheap tier the agent-under-test runs on.
 DEFAULT_REVIEW_CMD = "claude -p --model opus"
 
-#: The skill the reviewer judges against, read live from the repo working tree.
-SKILLS_DIR = Path(__file__).resolve().parents[2] / "crm" / "skills"
+#: The default (``crm``) skill tree; a record's own skill is resolved with ``skill_dir``.
+SKILLS_DIR = skill_dir("crm")
 
 #: The tracked efficacy trend, appended to only by ``review --record`` (human gate).
 EFFICACY_MD = Path(__file__).parent / "efficacy.md"
@@ -373,7 +375,6 @@ def run_review_cmd(
     failed_only: bool = False,
     record_efficacy: bool = False,
     review_cmd: str | None = None,
-    skills_dir: str | Path = SKILLS_DIR,
     efficacy_path: str | Path = EFFICACY_MD,
     today: str | None = None,
     reviewer: Reviewer | None = None,
@@ -395,11 +396,21 @@ def run_review_cmd(
     target = Path(target)
 
     actual_reviewer = reviewer or (lambda p: run_reviewer(p, resolve_review_cmd(review_cmd)))
-    skill_text = skill_reader(skills_dir)
     records = load_records(target)
-    reviewed = review_records(
-        records, skill_text=skill_text, reviewer=actual_reviewer, task=task, failed_only=failed_only
-    )
+    # Each record is judged against the skill it ran (a crm-migration trial against the
+    # migration skill), so review one skill's records at a time with that skill's text.
+    done: set[int] = set()
+    for skill in dict.fromkeys(r.skill for r in records):
+        group = [r for r in records if r.skill == skill]
+        reviewed_group = review_records(
+            group,
+            skill_text=skill_reader(skill_dir(skill)),
+            reviewer=actual_reviewer,
+            task=task,
+            failed_only=failed_only,
+        )
+        done.update(id(r) for r in reviewed_group)
+    reviewed = [r for r in records if id(r) in done]
     for rec in reviewed:
         write_record(target, rec)
 

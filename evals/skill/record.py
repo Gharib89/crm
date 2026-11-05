@@ -18,9 +18,11 @@ from __future__ import annotations
 import dataclasses
 import json
 import subprocess
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
+from crm.commands.skill_registry import SKILL_FOLDERS
 from evals.skill import trace
 from evals.skill.runner import RunResult
 from evals.skill.taskspec import TaskSpec
@@ -50,6 +52,9 @@ class TaskRunRecord:
     #: never overwrites an ``either`` task's two legs, and the review knows which target a
     #: trace came from.
     target: str = ""
+    #: The shipped skill the task ran (``crm`` or ``crm-migration``); older records carry none
+    #: and ran ``crm``. The review reads this skill's text, not whatever the run dir holds.
+    skill: str = "crm"
     #: True for the skill-**absent** leg of a ``--counterfactual`` pair, so it lands in a
     #: separate file and the review can compare it against the skill-present leg.
     counterfactual: bool = False
@@ -114,8 +119,15 @@ def latest_run_dir(runs_root: str | Path = RUNS_ROOT) -> Path | None:
     return dirs[-1] if dirs else None
 
 
-def skill_sha(repo_root: str | Path | None = None) -> str:
-    """The git tree-object SHA of ``crm/skills`` at HEAD, or ``"unknown"``.
+def skill_dir(skill: str = "crm", repo_root: str | Path | None = None) -> Path:
+    """The source tree of ``skill`` in the checkout, from the install registry's mapping."""
+    root = Path(repo_root) if repo_root is not None else _repo_root()
+    return root / "crm" / SKILL_FOLDERS[skill]
+
+
+def skill_sha(repo_root: str | Path | None = None, skill: str = "crm") -> str:
+    """The git tree-object SHA of ``skill``'s tree (``crm/skills`` by default) at HEAD, or
+    ``"unknown"``.
 
     A *tree* SHA (``HEAD:crm/skills``) rather than the commit SHA, so it is stable
     across commits that don't touch the skill and changes exactly when the skill does —
@@ -129,9 +141,10 @@ def skill_sha(repo_root: str | Path | None = None) -> str:
     ``-dirty`` so the provenance is honest rather than stale.
     """
     root = Path(repo_root) if repo_root is not None else _repo_root()
+    tree = f"crm/{SKILL_FOLDERS[skill]}"
     try:
         proc = subprocess.run(
-            ["git", "-C", str(root), "rev-parse", "HEAD:crm/skills"],
+            ["git", "-C", str(root), "rev-parse", f"HEAD:{tree}"],
             capture_output=True,
             text=True,
         )
@@ -142,13 +155,23 @@ def skill_sha(repo_root: str | Path | None = None) -> str:
     sha = proc.stdout.strip()
     try:
         dirty = subprocess.run(
-            ["git", "-C", str(root), "status", "--porcelain", "--", "crm/skills"],
+            ["git", "-C", str(root), "status", "--porcelain", "--", tree],
             capture_output=True,
             text=True,
         )
     except OSError:
         return sha
     return f"{sha}-dirty" if dirty.returncode == 0 and dirty.stdout.strip() else sha
+
+
+def skills_stamp(skills: Iterable[str], repo_root: str | Path | None = None) -> str:
+    """The run-level skill stamp: a crm-only corpus keeps the bare ``crm`` tree SHA; any
+    other corpus names each skill it ran (``crm=<sha>, crm-migration=<sha>``).
+    """
+    names = sorted(set(skills))
+    if names == ["crm"]:
+        return skill_sha(repo_root)
+    return ", ".join(f"{name}={skill_sha(repo_root, name)}" for name in names)
 
 
 def build_record(
@@ -169,7 +192,7 @@ def build_record(
     rather than read off ``result`` — under ``--repeat`` the persisted ``result`` is the
     final trial's trace while the verdict is the *aggregate* across trials, so deriving
     ``passed`` from the last trial would contradict the aggregate ``status``. ``sha`` is
-    the skill SHA stamped once per run; ``target`` is the active target.
+    the SHA of the task's own skill tree (``spec.skill``); ``target`` is the active target.
     """
     return TaskRunRecord(
         task_id=spec.id,
@@ -179,6 +202,7 @@ def build_record(
         metrics=trace.parse_metrics(result.transcript),
         correctness_verdict={"passed": passed, "reason": reason, "status": status},
         skill_sha=sha,
+        skill=spec.skill,
         target=target,
         counterfactual=counterfactual,
     )

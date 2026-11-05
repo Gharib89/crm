@@ -304,9 +304,6 @@ def run_set(
     if not dry_run and resolved is None:
         resolved = target_mod.active_target()
 
-    # Stamp the skill SHA once per run (provenance for the review); only when persisting.
-    skill_sha = record_mod.skill_sha() if run_dir is not None else ""
-
     total = len(files)
     # Tally denominator for the progress display; computed once, only when progress is
     # on and a live run will actually score tasks (a dry run scores nothing).
@@ -423,6 +420,9 @@ def run_set(
         # *scored* task and is a measurement: its failure is logged, never fatal.
         leg_target = resolved or spec.target
         if run_dir is not None and last_result is not None:
+            # Stamp the task's own skill tree (provenance for the review), per record: a
+            # corpus can mix crm and crm-migration tasks.
+            skill_sha = record_mod.skill_sha(skill=spec.skill)
             record_mod.write_record(
                 run_dir,
                 record_mod.build_record(
