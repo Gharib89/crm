@@ -1,6 +1,6 @@
 """Workflow and process usage and `--in-use` on `workflow list` and `legacy components` (#1094)."""
 
-# pyright: basic
+# pyright: basic, reportArgumentType=false, reportOptionalMemberAccess=false, reportOptionalSubscript=false
 from __future__ import annotations
 
 import json
