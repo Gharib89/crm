@@ -26,6 +26,7 @@ setup(
             "migration-skill/reference/*.md",
             "README.md",
             "schemas/*.json",
+            "rules/*.json",
         ],
     },
     install_requires=[

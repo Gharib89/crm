@@ -66,10 +66,10 @@ _ORG: dict[str, list[list[dict]]] = {
     "pluginassembly": [
         [
             {"id": _id(20), "name": "Contoso.Plugins", "version": "1.0.0.0", "culture": "neutral",
-             "publickeytoken": "abc", "sourcetype": 0, "ismanaged": False,
+             "publickeytoken": "abc", "sourcetype": 0, "isolationmode": 2, "ismanaged": False,
              "solutionid": _ref("solution", 2), "content": base64.b64encode(_DLL).decode()},
             {"id": _id(21), "name": "Legacy.OnDisk", "version": "1.0.0.0", "culture": "neutral",
-             "publickeytoken": "def", "sourcetype": 1, "ismanaged": False,
+             "publickeytoken": "def", "sourcetype": 1, "isolationmode": 1, "ismanaged": False,
              "solutionid": _ref("solution", 2)},
         ]
     ],
@@ -288,6 +288,22 @@ def test_a_full_extraction_writes_a_valid_manifest_and_drops_the_checkpoint(read
     (dll,) = next(r for r in data["records"] if r["key"] == "Contoso.Plugins")["artifacts"]
     assert dll["content"] == "binary" and (out / dll["path"]).read_bytes() == _DLL
     assert summary.records == len(data["records"])
+
+
+def test_assembly_records_carry_their_storage_and_isolation(reads, tmp_path):
+    out = tmp_path / "inv"
+    _extract(FakeClient(), out)
+    fields = {
+        r["key"]: r["fields"] for r in _manifest(out)["records"] if r["kind"] == "plugin_assembly"
+    }
+    assert (
+        fields["Contoso.Plugins"]["source_type"],
+        fields["Contoso.Plugins"]["isolation_mode"],
+    ) == (0, 2)
+    assert (fields["Legacy.OnDisk"]["source_type"], fields["Legacy.OnDisk"]["isolation_mode"]) == (
+        1,
+        1,
+    )
 
 
 def test_the_gaps_name_what_soap_cannot_see(reads, tmp_path):

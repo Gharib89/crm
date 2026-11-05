@@ -41,10 +41,16 @@ LOCAL_GROUPS = frozenset(
 # Verbs that touch no Web API inside a group whose other verbs do (`inventory diff`
 # compares two inventory folders on disk, `inventory map-source` reads one and a repo,
 # `inventory packages` reads one and its source map, `inventory verify` reads a
-# packages folder and a results file)
+# packages folder and a results file, `inventory assess` reads one and the packaged rules)
 # — unit-tested elsewhere.
 LOCAL_VERBS = frozenset(
-    {"inventory diff", "inventory map-source", "inventory packages", "inventory verify"}
+    {
+        "inventory diff",
+        "inventory map-source",
+        "inventory packages",
+        "inventory verify",
+        "inventory assess",
+    }
 )
 
 # D365-touching verbs that genuinely cannot be auto-e2e'd yet. The gate forces a

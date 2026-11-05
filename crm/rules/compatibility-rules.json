@@ -1,0 +1,323 @@
+{
+  "schema_version": 1,
+  "version": 1,
+  "rules": [
+    {
+      "id": "web-resource-xrm-page",
+      "kind": "web_resource",
+      "class": "deprecated",
+      "title": "Uses the deprecated Xrm.Page object",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "content_pattern",
+        "pattern": "\\bXrm\\.Page\\b",
+        "web_resource_types": [
+          1,
+          3
+        ]
+      },
+      "fix": "Use the form context: take executionContext.getFormContext() in a form handler (pass the execution context as the first parameter), or PrimaryControl in a ribbon command.",
+      "sources": [
+        "https://learn.microsoft.com/power-platform/important-changes-coming#some-client-apis-are-deprecated",
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/clientapi-form-context",
+        "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/use-client-context"
+      ]
+    },
+    {
+      "id": "web-resource-xrm-utility",
+      "kind": "web_resource",
+      "class": "deprecated",
+      "title": "Uses deprecated Xrm.Utility navigation and dialog methods",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "content_pattern",
+        "pattern": "\\bXrm\\.Utility\\.(openEntityForm|openQuickCreate|openWebResource|alertDialog|confirmDialog|isActivityType)\\b",
+        "web_resource_types": [
+          1,
+          3
+        ]
+      },
+      "fix": "Use Xrm.Navigation.openForm, openWebResource, openAlertDialog and openConfirmDialog, and Xrm.Utility.getEntityMetadata for activity checks.",
+      "sources": [
+        "https://learn.microsoft.com/power-platform/important-changes-coming#some-client-apis-are-deprecated"
+      ]
+    },
+    {
+      "id": "web-resource-get-server-url",
+      "kind": "web_resource",
+      "class": "deprecated",
+      "title": "Reads the server URL through the deprecated context.getServerUrl",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "content_pattern",
+        "pattern": "\\bgetServerUrl\\s*\\(",
+        "web_resource_types": [
+          1,
+          3
+        ]
+      },
+      "fix": "Use Xrm.Utility.getGlobalContext().getClientUrl() (a standalone HTML web resource: ClientGlobalContext.js.aspx, then GetGlobalContext().getClientUrl()).",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/clientapi-xrm#client-api-global-context",
+        "https://learn.microsoft.com/dynamics365/customerengagement/on-premises/developer/web-resources?view=op-9-1#reference-web-resources"
+      ]
+    },
+    {
+      "id": "web-resource-crmform",
+      "kind": "web_resource",
+      "class": "blocker",
+      "title": "Uses the CRM 4.0 crmForm scripting object",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "content_pattern",
+        "pattern": "\\bcrmForm(Submit)?\\b",
+        "web_resource_types": [
+          1,
+          3
+        ]
+      },
+      "fix": "Rewrite against the client API: crmForm.all.<attribute>.DataValue becomes formContext.getAttribute(\"<attribute>\").getValue(). crmForm is not part of the documented 9.x client API, and only the documented API is supported.",
+      "sources": [
+        "https://learn.microsoft.com/dynamics365/customerengagement/on-premises/customize/customizations-supported?view=op-9-1",
+        "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/avoid-2011-api"
+      ]
+    },
+    {
+      "id": "web-resource-soap-2007",
+      "kind": "web_resource",
+      "class": "blocker",
+      "title": "Calls the CRM 4.0 2007 SOAP endpoint",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "content_pattern",
+        "pattern": "(?i)/MSCrmServices/2007/",
+        "web_resource_types": [
+          1,
+          3
+        ]
+      },
+      "fix": "Call the Web API (Xrm.WebApi, or /api/data/v9.x/). The 9.x web services are the Web API, the Organization service and the Organization Data service; the 2007 endpoint is not among them.",
+      "sources": [
+        "https://learn.microsoft.com/dynamics365/customerengagement/on-premises/developer/use-microsoft-dynamics-365-web-services?view=op-9-1"
+      ]
+    },
+    {
+      "id": "web-resource-soap-2011",
+      "kind": "web_resource",
+      "class": "deprecated",
+      "title": "Calls the deprecated CRM 2011 SOAP endpoint",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "content_pattern",
+        "pattern": "(?i)/XRMServices/2011/(Organization|Discovery)\\.svc",
+        "web_resource_types": [
+          1,
+          3
+        ]
+      },
+      "fix": "Call the Web API (Xrm.WebApi, or /api/data/v9.x/).",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/avoid-crm2011-service-soap",
+        "https://learn.microsoft.com/dynamics365/customerengagement/on-premises/developer/use-microsoft-dynamics-365-web-services?view=op-9-1#organization-service"
+      ]
+    },
+    {
+      "id": "web-resource-odata-v2",
+      "kind": "web_resource",
+      "class": "deprecated",
+      "title": "Calls the deprecated OData v2 Organization Data Service",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "content_pattern",
+        "pattern": "(?i)/XRMServices/2011/OrganizationData\\.svc",
+        "web_resource_types": [
+          1,
+          3
+        ]
+      },
+      "fix": "Call the Web API (Xrm.WebApi, or /api/data/v9.x/) and drop helper libraries such as SDK.REST.js.",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/best-practices/business-logic/do-not-use-odata-v2-endpoint",
+        "https://learn.microsoft.com/power-platform/important-changes-coming",
+        "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/avoid-crm2011-service-odata"
+      ]
+    },
+    {
+      "id": "web-resource-jquery-static",
+      "kind": "web_resource",
+      "class": "blocker",
+      "title": "Loads the jQuery 2.1.1 the app shipped, removed online in October 2023",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "online"
+      ],
+      "detection": {
+        "type": "content_pattern",
+        "pattern": "(?i)/_static/_common/scripts/jquery-2\\.1\\.1",
+        "web_resource_types": [
+          1,
+          3
+        ]
+      },
+      "fix": "Ship the jQuery version the code needs as your own web resource, or remove the dependency.",
+      "sources": [
+        "https://learn.microsoft.com/power-platform/important-changes-coming"
+      ]
+    },
+    {
+      "id": "assembly-storage-online",
+      "kind": "plugin_assembly",
+      "class": "blocker",
+      "title": "Assembly stored outside the database (on disk or the GAC), which Dataverse online cannot run",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "online"
+      ],
+      "detection": {
+        "type": "field_in",
+        "field": "source_type",
+        "values": [
+          1,
+          2
+        ]
+      },
+      "fix": "Re-register the assembly with its location set to Database (Plug-in Registration Tool, or pac plugin push).",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/data-platform/register-plug-in#assembly-registration",
+        "https://learn.microsoft.com/power-apps/developer/data-platform/reference/entities/pluginassembly"
+      ]
+    },
+    {
+      "id": "assembly-storage-onprem",
+      "kind": "plugin_assembly",
+      "class": "optional",
+      "title": "Assembly stored outside the database (on disk or the GAC)",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1"
+      ],
+      "detection": {
+        "type": "field_in",
+        "field": "source_type",
+        "values": [
+          1,
+          2
+        ]
+      },
+      "fix": "Re-register the assembly with its location set to Database, which Microsoft strongly recommends for production plug-ins.",
+      "sources": [
+        "https://learn.microsoft.com/dynamics365/customerengagement/on-premises/developer/register-deploy-plugins?view=op-9-1",
+        "https://learn.microsoft.com/power-apps/developer/data-platform/reference/entities/pluginassembly"
+      ]
+    },
+    {
+      "id": "assembly-isolation-none",
+      "kind": "plugin_assembly",
+      "class": "blocker",
+      "title": "Assembly registered without isolation; Dataverse online runs plug-ins only in the sandbox",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "online"
+      ],
+      "detection": {
+        "type": "field_in",
+        "field": "isolation_mode",
+        "values": [
+          1
+        ]
+      },
+      "fix": "Re-register the assembly in Sandbox isolation, and check its code against the sandbox limits (no GAC dependencies, HTTP and HTTPS only).",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/data-platform/register-plug-in#assembly-registration",
+        "https://learn.microsoft.com/dynamics365/customerengagement/on-premises/developer/supported-extensions?view=op-9-1#customizations-using-the-dynamics-365-customer-engagement-on-premises-sdk",
+        "https://learn.microsoft.com/power-apps/developer/data-platform/reference/entities/pluginassembly"
+      ]
+    },
+    {
+      "id": "assembly-isolation-none-onprem",
+      "kind": "plugin_assembly",
+      "class": "optional",
+      "title": "Assembly registered without isolation",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1"
+      ],
+      "detection": {
+        "type": "field_in",
+        "field": "isolation_mode",
+        "values": [
+          1
+        ]
+      },
+      "fix": "Consider Sandbox isolation, which a later move to Dataverse online requires; registering an unisolated assembly needs a Deployment Administrator.",
+      "sources": [
+        "https://learn.microsoft.com/dynamics365/customerengagement/on-premises/developer/register-deploy-plugins?view=op-9-1#security-restrictions",
+        "https://learn.microsoft.com/power-apps/developer/data-platform/reference/entities/pluginassembly"
+      ]
+    }
+  ]
+}

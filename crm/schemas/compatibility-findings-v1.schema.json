@@ -1,0 +1,282 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Gharib89/crm/blob/main/crm/schemas/compatibility-findings-v1.schema.json",
+  "title": "crm compatibility findings, schema_version 1",
+  "description": "The compatibility findings `crm inventory assess` writes for one migration inventory and one target (ADR 0033): every component gets at least one finding, keyed by component key, never GUID. Sorted, so two runs over the same inputs differ only in generated_at. A reader refuses an unknown schema_version and ignores a field it does not define.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "generated_at",
+    "inventory",
+    "target",
+    "rules",
+    "rules_hit",
+    "findings",
+    "unattached_gaps",
+    "incomplete"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "generated_at": {
+      "description": "When the file was written, UTC; the only field that differs between two runs.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "inventory": {
+      "description": "The identity of the inventory the findings were computed from.",
+      "type": "object",
+      "required": [
+        "platform",
+        "org_url",
+        "version",
+        "extracted_at",
+        "cli_version",
+        "manifest_sha256"
+      ],
+      "properties": {
+        "platform": {
+          "enum": [
+            "crm2011",
+            "onprem",
+            "cloud"
+          ]
+        },
+        "org_url": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "extracted_at": {
+          "type": "string"
+        },
+        "cli_version": {
+          "type": "string"
+        },
+        "manifest_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "target": {
+      "enum": [
+        "onprem-9.1",
+        "online"
+      ]
+    },
+    "rules": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "version",
+        "sha256"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "integer"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "rules_hit": {
+      "description": "Each rule a finding names, by id, with its class, title, fix and sources.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "class",
+          "title",
+          "fix",
+          "sources"
+        ],
+        "properties": {
+          "class": {
+            "enum": [
+              "blocker",
+              "deprecated",
+              "optional"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "fix": {
+            "type": "string"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "unattached_gaps": {
+      "description": "Extraction gaps naming no component of the inventory.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "kind",
+          "key",
+          "description",
+          "reason"
+        ]
+      }
+    },
+    "incomplete": {
+      "description": "Each kind whose coverage is not complete, with its status.",
+      "type": "object",
+      "additionalProperties": {
+        "enum": [
+          "partial",
+          "unsupported",
+          "failed"
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "finding": {
+      "type": "object",
+      "required": [
+        "kind",
+        "key",
+        "class",
+        "rule",
+        "reason",
+        "evidence"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "entity",
+            "attribute",
+            "relationship",
+            "global_option_set",
+            "local_option_set",
+            "form",
+            "view",
+            "web_resource",
+            "plugin_assembly",
+            "plugin_type",
+            "step",
+            "step_image",
+            "process",
+            "solution",
+            "solution_membership",
+            "dependency",
+            "ribbon",
+            "sitemap"
+          ]
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "class": {
+          "enum": [
+            "blocker",
+            "deprecated",
+            "optional",
+            "unknown",
+            "clear"
+          ]
+        },
+        "rule": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "description": "Why the finding is unknown: no rule, an extraction gap, a kind coverage that is not complete, a field or artifact the rule needs.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evidence": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": [
+                "path",
+                "sha256",
+                "locations",
+                "match_count"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "sha256": {
+                  "$ref": "#/$defs/sha256"
+                },
+                "match_count": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "locations": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "line",
+                      "column"
+                    ],
+                    "properties": {
+                      "line": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "column": {
+                        "type": "integer",
+                        "minimum": 1
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "field",
+                "value"
+              ],
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "value": {}
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
