@@ -378,12 +378,10 @@ def inventory_verify_cmd(
 )
 @pass_ctx
 def inventory_assess_cmd(ctx: CLIContext, inventory: Path, target: str, out_file: Path):
-    """Run the packaged compatibility rules over INVENTORY for --target: offline.
+    """Run the compatibility rules shipped with crm over INVENTORY for --target: offline.
 
-    Reads the inventory folder and touches no org. Each rule names the
-    component kind, the source versions and targets it applies to, a class
-    (blocker, deprecated, optional), a detection, the fix and its Microsoft
-    Learn sources. Every component gets at least one finding, keyed by
+    Reads the inventory folder and touches no org. Each rule hit carries its
+    fix and Microsoft Learn sources. Every component gets at least one finding, keyed by
     component key: a rule hit gives its class with evidence (the artifact
     path, its sha256 and the matched lines, or the recorded field); a
     component no rule applies to gives unknown "no rule"; one the rules find

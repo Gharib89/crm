@@ -77,7 +77,7 @@
           3
         ]
       },
-      "fix": "Use Xrm.Utility.getGlobalContext().getClientUrl() (a standalone HTML web resource: ClientGlobalContext.js.aspx, then GetGlobalContext().getClientUrl()).",
+      "fix": "Use Xrm.Utility.getGlobalContext().getClientUrl() (a standalone HTML web resource: ClientGlobalContext.js.aspx, then GetGlobalContext().getClientUrl()). Tool judgment: no Microsoft Learn page names getServerUrl; the sources are the closest statements.",
       "sources": [
         "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/clientapi-xrm#client-api-global-context",
         "https://learn.microsoft.com/dynamics365/customerengagement/on-premises/developer/web-resources?view=op-9-1#reference-web-resources"
@@ -104,7 +104,7 @@
           3
         ]
       },
-      "fix": "Rewrite against the client API: crmForm.all.<attribute>.DataValue becomes formContext.getAttribute(\"<attribute>\").getValue(). crmForm is not part of the documented 9.x client API, and only the documented API is supported.",
+      "fix": "Rewrite against the client API: crmForm.all.<attribute>.DataValue becomes formContext.getAttribute(\"<attribute>\").getValue(). crmForm is not part of the documented 9.x client API, and only the documented API is supported. Tool judgment: no Microsoft Learn page names crmForm; the sources are the closest statements.",
       "sources": [
         "https://learn.microsoft.com/dynamics365/customerengagement/on-premises/customize/customizations-supported?view=op-9-1",
         "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/avoid-2011-api"
@@ -131,7 +131,7 @@
           3
         ]
       },
-      "fix": "Call the Web API (Xrm.WebApi, or /api/data/v9.x/). The 9.x web services are the Web API, the Organization service and the Organization Data service; the 2007 endpoint is not among them.",
+      "fix": "Call the Web API (Xrm.WebApi, or /api/data/v9.x/). The 9.x web services are the Web API, the Organization service and the Organization Data service; the 2007 endpoint is not among them. Tool judgment: no Microsoft Learn page names the 2007 endpoint; the sources are the closest statements.",
       "sources": [
         "https://learn.microsoft.com/dynamics365/customerengagement/on-premises/developer/use-microsoft-dynamics-365-web-services?view=op-9-1"
       ]

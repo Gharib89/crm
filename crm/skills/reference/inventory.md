@@ -141,20 +141,21 @@ check and reads files only.
 
 ## Assessing compatibility (`crm inventory assess`)
 
-`crm inventory assess INVENTORY --target onprem-9.1|online --out FILE` runs the
-compatibility rules shipped with crm over an inventory and writes a findings file. It
-reads files only.
+`crm inventory assess INVENTORY --target T --out FILE` runs the compatibility rules
+shipped with crm over an inventory and writes a findings file.
 
 - **Every component gets a finding**, keyed by component key: `blocker`,
   `deprecated` or `optional` from a rule hit, `unknown` with a `reason`, or `clear`
-  (the rules that apply found nothing). `clear` is not proof of compatibility: the
-  rules cover web resource scripts and plug-in assembly registration only.
+  (the rules that apply found nothing). `clear` means only that the rules that apply
+  found nothing, and they cover web resource scripts and plug-in assembly
+  registration. Judge a `clear` component from evidence.
 - **Resolve every `unknown`** before calling a component ready: `no rule` means no rule
   judges it (most kinds), and an `extraction gap` or `kind coverage` reason means the
-  inventory never fully read it.
+  inventory never fully read it. A `source version` reason marks every ruled component
+  of an inventory whose org version extract could not read: re-extract.
 - **Quote the evidence**: a script hit carries the artifact `path`, `sha256` and match
   `locations` (line, column); a registration hit carries the `field` and `value`. The
   fix and the Microsoft Learn sources of each rule hit are under `rules_hit`.
-- **A blocker is a verdict, not a failure**: the command exits 0; read `counts.by_class`.
+- **Read `counts.by_class`, not the exit code**: a blocker exits 0.
 - **`field isolation_mode not recorded`** marks an inventory extracted by an older crm:
   re-extract to judge the isolation rules.
