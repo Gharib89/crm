@@ -56,15 +56,17 @@ is missing stays open.
    an unknown.
 5. **Patch and build.** Make small changes, each tracing to one package task.
    Done when the repository's own builds and checks pass on the patched tree.
-6. **Verify on the target.** Run the required tests (unit, browser,
-   integration, permission, business scenario) in the named dev or test
-   environment, collecting errors and traces. Done when every requirement has an
-   **outcome** (pass, fail, blocked, not tested) with its evidence.
+6. **Verify on the target.** Follow `reference/verification.md`: confirm the
+   target, then run the required tests (unit, browser, integration, permission,
+   business scenario) in the named dev or test environment, collecting errors
+   and traces. Done when every requirement has an **outcome** (pass, fail,
+   blocked, not tested) with its evidence.
 7. **Record the result.** Record each requirement's outcome with its evidence,
    then run `crm inventory verify` and report each package's **verdict** as it
-   gives it. Write a checkpoint beside the verify report listing each package
-   not `complete`, its verdict and its next action, so the next session resumes
-   from it. Done when every package has a verdict and the checkpoint is written.
+   gives it (`reference/verification.md`). Write a checkpoint beside the verify
+   report listing each package not `complete`, its verdict and its next action,
+   so the next session resumes from it. Done when every package has a verdict
+   and the checkpoint is written.
 
 ## Boundaries
 
