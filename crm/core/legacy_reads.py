@@ -77,7 +77,6 @@ def list_entities(client: LegacyClient) -> list[dict[str, Any]]:
     `display_name` is None for an entity with no label (intersect and internal
     entities): it has no UI, so no form, view or ribbon.
     """
-    results = client.execute_results("RetrieveAllEntities", _filters("Entity") + _AS_IF_PUBLISHED)
     return [
         {
             "logical_name": e.findtext("c:LogicalName", "", _MD),
@@ -87,10 +86,23 @@ def list_entities(client: LegacyClient) -> list[dict[str, Any]]:
             "metadata_id": e.findtext("c:MetadataId", None, _MD),
             "managed": _flag(e, "c:IsManaged"),
         }
-        for e in _result(results, "EntityMetadata", "RetrieveAllEntities").findall(
-            "c:EntityMetadata", _MD
-        )
+        for e in _entity_metadata(client)
     ]
+
+
+def _entity_metadata(client: LegacyClient) -> list[ET.Element]:
+    results = client.execute_results("RetrieveAllEntities", _filters("Entity") + _AS_IF_PUBLISHED)
+    return _result(results, "EntityMetadata", "RetrieveAllEntities").findall(
+        "c:EntityMetadata", _MD
+    )
+
+
+def entity_primary_ids(client: LegacyClient) -> dict[str, str]:
+    """Each entity's primary id attribute by logical name, as its metadata names it."""
+    return {
+        e.findtext("c:LogicalName", "", _MD): e.findtext("c:PrimaryIdAttribute", "", _MD)
+        for e in _entity_metadata(client)
+    }
 
 
 def list_option_sets(client: LegacyClient) -> list[dict[str, Any]]:

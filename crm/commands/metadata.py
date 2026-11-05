@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import re
+import sys
 import time
 from pathlib import Path
 from typing import cast
@@ -27,6 +28,7 @@ from crm.commands._helpers import (
     _resolve_publish,
     _solution_option,
     d365_errors,
+    in_use_options,
     usage_guard,
 )
 from crm.core import clone as clone_mod
@@ -40,6 +42,7 @@ from crm.core import metadata_update as mu_mod
 from crm.core import optionsets as os_mod
 from crm.core import relationships as rel_mod
 from crm.core import status_meta as sm_mod
+from crm.core import usage as usage_mod
 from crm.utils.d365_backend import D365Error
 
 _CASCADE = click.Choice(["NoCascade", "Cascade", "Active", "UserOwned", "RemoveLink", "Restrict"])
@@ -144,14 +147,17 @@ def metadata_group():
 @click.option("--managed-only", is_flag=True)
 @click.option("--filter", "filter_expr")
 @click.option("--top", type=int)
+@in_use_options
 @pass_ctx
-def metadata_entities(ctx: CLIContext, custom_only, managed_only, filter_expr, top):
+def metadata_entities(
+    ctx: CLIContext, custom_only, managed_only, filter_expr, top, in_use, exclude_unknown
+):
     """List entity definitions."""
     use_cache = ctx.cache_metadata or ctx.refresh_metadata
     if use_cache:
-        if custom_only or managed_only or filter_expr:
+        if custom_only or managed_only or filter_expr or in_use:
             raise click.UsageError(
-                "Filters (--custom-only, --managed-only, --filter) are not supported "
+                "Filters (--custom-only, --managed-only, --filter, --in-use) are not supported "
                 "with the metadata cache (--cache-metadata / --refresh-metadata); "
                 "the cache stores only logical/set names"
             )
@@ -190,10 +196,25 @@ def metadata_entities(ctx: CLIContext, custom_only, managed_only, filter_expr, t
             filter_expr=filter_expr,
             top=top,
         )
+        if in_use:
+            backend = ctx.backend()
+            targets = usage_mod.entity_targets(backend)
+            wanted = [targets[it["LogicalName"]] for it in items if it["LogicalName"] in targets]
+            states = usage_mod.probe_v9_entities(
+                backend, wanted, progress=usage_mod.UsageProgress(sys.stderr.write, "entities")
+            )
+            items = usage_mod.attach(
+                [it for it in items if it["LogicalName"] in states],
+                states,
+                key=lambda it: it["LogicalName"],
+                exclude_unknown=exclude_unknown,
+            )
     if ctx.json_mode:
         ctx.emit(True, data=items, meta={"count": len(items)})
         return
     headers = ["LogicalName", "EntitySetName", "SchemaName", "IsCustom", "IsManaged"]
+    if in_use:
+        headers.append("Usage")
     rows = [
         [
             it.get("LogicalName", ""),
@@ -201,6 +222,7 @@ def metadata_entities(ctx: CLIContext, custom_only, managed_only, filter_expr, t
             it.get("SchemaName", ""),
             str(it.get("IsCustomEntity", False)),
             str(it.get("IsManaged", False)),
+            *([it["usage"]["state"]] if in_use else []),
         ]
         for it in items
     ]

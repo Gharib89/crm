@@ -36,6 +36,17 @@ def test_metadata_list_entities_managed_filter(backend):
         assert ent.get("IsCustomEntity") is False
 
 
+@covers("metadata entities")
+def test_metadata_entities_in_use_confirms_a_zero_snapshot(backend):
+    """`systemuser` always holds rows, even where the count snapshot reads 0."""
+    from crm.core import usage
+
+    targets = usage.entity_targets(backend)
+    got = usage.probe_v9_entities(backend, [targets["systemuser"], targets["account"]])
+    assert got["systemuser"].state == "used"
+    assert got["account"].state in ("used", "unused")
+
+
 @covers("metadata can-relate")
 def test_e2e_can_relate_eligibility_and_partners(backend):
     """Read-only: account is eligible to be referenced, and the valid-partner

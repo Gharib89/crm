@@ -3,13 +3,14 @@
 # pyright: basic
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import click
 
 from crm.cli import CLIContext, pass_ctx
-from crm.commands._helpers import _output_option, d365_errors
-from crm.core import legacy_reads
+from crm.commands._helpers import _output_option, d365_errors, in_use_options
+from crm.core import legacy_reads, usage
 from crm.core.legacy import LegacyClient
 from crm.utils.d365_backend import normalize_guid
 
@@ -73,8 +74,15 @@ def legacy_version(ctx: CLIContext):
 @click.option(
     "--option-sets", is_flag=True, help="List the global option sets instead of entities."
 )
+@in_use_options
 @pass_ctx
-def legacy_metadata(ctx: CLIContext, entities: tuple[str, ...], option_sets: bool):
+def legacy_metadata(
+    ctx: CLIContext,
+    entities: tuple[str, ...],
+    option_sets: bool,
+    in_use: bool,
+    exclude_unknown: bool,
+):
     """Read entity metadata: read-only, over RetrieveAllEntities / RetrieveEntity.
 
     With no ENTITY, lists every entity (logical name, custom flag, object type
@@ -82,9 +90,16 @@ def legacy_metadata(ctx: CLIContext, entities: tuple[str, ...], option_sets: boo
     option sets; one that fails is reported and the others still read
     (continue-and-report), and the exit code is 1 if any failed. `--option-sets`
     lists the global option sets and takes no ENTITY.
+
+    `--in-use` applies to the entity listing: each row gains a `usage` object
+    (an existence read per entity) and the rows proven unused are dropped.
     """
     if option_sets and entities:
         raise click.UsageError("--option-sets takes no ENTITY.")
+    if in_use and (option_sets or entities):
+        raise click.UsageError(
+            "--in-use applies to the entity listing: no ENTITY, no --option-sets."
+        )
     errors: list[dict] = []
     with d365_errors(ctx):
         client = ctx.legacy_client()
@@ -92,6 +107,15 @@ def legacy_metadata(ctx: CLIContext, entities: tuple[str, ...], option_sets: boo
             data = legacy_reads.list_option_sets(client)
         elif not entities:
             data = legacy_reads.list_entities(client)
+            if in_use:
+                states = usage.probe_legacy_entities(
+                    client,
+                    legacy_reads.entity_primary_ids(client),
+                    progress=usage.UsageProgress(sys.stderr.write, "entities"),
+                )
+                data = usage.attach(
+                    data, states, key=lambda e: e["logical_name"], exclude_unknown=exclude_unknown
+                )
         else:
             read, errors = legacy_reads.read_entities(client, list(entities))
             data = {"entities": read, "errors": errors}
