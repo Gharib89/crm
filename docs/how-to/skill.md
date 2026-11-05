@@ -15,7 +15,7 @@ Copies the bundled skill tree (`SKILL.md` + `reference/*.md`) into `<target>/crm
 crm skill install --skill crm-migration
 crm skill install --skill crm --skill crm-migration   # both at once
 ```
-Two skills ship: `crm` (the default, operating the CLI) and `crm-migration` (assessing and verifying a CRM 2011 or on-prem to Dataverse online migration; it defers to `crm` for exact commands, so install both). `--skill` is repeatable, and each skill installs into its own `<target>/<skill name>` folder, so installing one never touches the other. With several `--skill` values the `--json` envelope lists one row per skill under `data.skills`.
+Two skills ship: `crm` (the default, operating the CLI) and `crm-migration` (assessing and verifying a CRM 2011 or on-prem to Dataverse online migration; it defers to `crm` for exact commands, so install both). `--skill` is repeatable, and each skill installs into its own `<target>/<skill name>` folder, so installing one never touches the other. With several `--skill` values the `--json` envelope lists one row per skill under `data.skills`. If one skill fails partway, the skills before it stay installed (or removed): the error names them and `meta.completed` holds their rows.
 
 ## Install without the CLI (`npx skills`)
 

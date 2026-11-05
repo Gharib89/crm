@@ -295,3 +295,52 @@ def test_uninstall_one_skill_keeps_the_other(tmp_path: Path, monkeypatch):
     assert not (base / "crm-migration").exists()
     assert _tree(base / "crm") == crm_before
     assert [e["skill"] for e in reg.read_skills()] == ["crm"]
+
+
+def test_failed_second_install_reports_the_skill_already_installed(tmp_path: Path, monkeypatch):
+    """A multi-skill install failing partway names what it already installed (PR #1081)."""
+    import json
+
+    import crm.commands.skill_registry as reg
+
+    runner = _runner(tmp_path, monkeypatch)
+    _with_targets(monkeypatch, tmp_path / "skills")
+    real = reg.install_tree
+
+    def fail_migration(src_dir, dest_dir):
+        if dest_dir.name == "crm-migration":
+            raise OSError("disk full")
+        real(src_dir, dest_dir)
+
+    monkeypatch.setattr(reg, "install_tree", fail_migration)
+    result = runner.invoke(
+        cli, ["--json", "skill", "install", "--skill", "crm", "--skill", "crm-migration"]
+    )
+    assert result.exit_code == 1
+    env = json.loads(result.output)
+    assert "crm-migration" in env["error"] and "already installed: crm" in env["error"]
+    assert [r["skill"] for r in env["meta"]["completed"]] == ["crm"]
+
+
+def test_failed_second_uninstall_reports_the_skill_already_removed(tmp_path: Path, monkeypatch):
+    import json
+
+    import crm.commands.skill as skill_mod
+
+    runner = _runner(tmp_path, monkeypatch)
+    _with_targets(monkeypatch, tmp_path / "skills")
+    both = ["--skill", "crm", "--skill", "crm-migration"]
+    assert runner.invoke(cli, ["skill", "install", *both]).exit_code == 0
+    real = skill_mod._uninstall_one
+
+    def fail_migration(dest_dir):
+        if dest_dir.name == "crm-migration":
+            raise OSError("busy")
+        return real(dest_dir)
+
+    monkeypatch.setattr(skill_mod, "_uninstall_one", fail_migration)
+    result = runner.invoke(cli, ["--json", "skill", "uninstall", *both])
+    assert result.exit_code == 1
+    env = json.loads(result.output)
+    assert "already removed: crm" in env["error"]
+    assert [r["skill"] for r in env["meta"]["completed"]] == ["crm"]

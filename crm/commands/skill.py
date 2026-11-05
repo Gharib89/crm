@@ -118,7 +118,12 @@ def skill_install(
             skill_registry.install_tree(src_dir, dest_dir)
             skill_registry.record_install(target_label, str(dest_dir), __version__, skill=name)
         except (OSError, shutil.Error) as exc:
-            ctx.emit(False, error=f"Failed to install skill to {dest_dir}: {exc}")
+            ctx.emit(
+                False,
+                error=f"Failed to install skill to {dest_dir}: {exc}"
+                + _completed_note("already installed", results),
+                meta={"target": target_label, "completed": results},
+            )
             return
         ref_dir = dest_dir / "reference"
         refs = sorted(ref_dir.glob("*.md")) if ref_dir.is_dir() else []
@@ -153,9 +158,21 @@ def skill_uninstall(ctx: CLIContext, target: str, dest: str | None, skills: tupl
         try:
             results.append({"skill": name, **_uninstall_one(dest_dir)})
         except (OSError, shutil.Error) as exc:
-            ctx.emit(False, error=f"Failed to uninstall skill at {dest_dir}: {exc}")
+            ctx.emit(
+                False,
+                error=f"Failed to uninstall skill at {dest_dir}: {exc}"
+                + _completed_note("already removed", results),
+                meta={"completed": results},
+            )
             return
     ctx.emit(True, data=results[0] if len(results) == 1 else {"skills": results})
+
+
+def _completed_note(verb: str, results: list[dict[str, object]]) -> str:
+    """Name the skills a multi-skill run finished before failing, since they stay done."""
+    if not results:
+        return ""
+    return f" ({verb}: {', '.join(str(r['skill']) for r in results)})"
 
 
 def _uninstall_one(dest_dir: Path) -> dict[str, object]:
