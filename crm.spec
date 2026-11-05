@@ -20,6 +20,11 @@ a = Analysis(
         ('crm/rules', 'crm/rules'),
     ],
     hiddenimports=[
+        # tree-sitter and its grammars are lazy-imported inside crm.core.code_parse
+        # (`crm inventory convert`, ADR 0034); the grammars are C extensions.
+        'tree_sitter',
+        'tree_sitter_javascript',
+        'tree_sitter_c_sharp',
         'requests_ntlm',
         'prompt_toolkit',
         # questionary is lazy-imported inside _helpers.select_one (inline pickers);

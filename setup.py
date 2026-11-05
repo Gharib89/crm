@@ -59,6 +59,12 @@ setup(
         # inputs — is parsed through defusedxml so a hostile document cannot carry
         # an entity-expansion bomb (billion-laughs DoS). Pure-Python.
         "defusedxml>=0.7",
+        # Syntax trees for `crm inventory convert` (ADR 0034): a rewrite matches a real
+        # call, never text in a string or comment. Imported lazily (crm/core/code_parse.py)
+        # to keep CLI cold-start cheap; wheels cover Python 3.13 on Linux, Windows, macOS.
+        "tree-sitter>=0.25",
+        "tree-sitter-javascript>=0.25",
+        "tree-sitter-c-sharp>=0.23",
     ],
     extras_require={
         # pyright is NOT a dev dependency: every caller runs Microsoft's npm

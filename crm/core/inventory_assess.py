@@ -92,6 +92,9 @@ class Rule:
     detection: ContentPattern | FieldIn
     fix: str
     sources: tuple[str, ...]
+    #: Id of a registered code transform (`inventory_convert`) that rewrites what this rule
+    #: finds, or None when the rule is detect-only.
+    transform: str | None = None
 
     def applies(self, v: tuple[int, ...]) -> bool:
         """True when an inventory read from source version *v* is in this rule's range."""
@@ -136,6 +139,15 @@ def _items(obj: dict[str, Any], name: str, where: str) -> list[Any]:
     if type(value) is not list or not value:
         raise InventoryError(f"rules file {where}.{name} must be a non-empty list")
     return cast(list[Any], value)
+
+
+def _transform(obj: dict[str, Any], where: str) -> str | None:
+    value = obj.get("transform")
+    if value is None:
+        return None
+    if type(value) is not str or not _RULE_ID.fullmatch(value):
+        raise InventoryError(f"rules file {where}.transform must be a lowercase-hyphen id")
+    return value
 
 
 def _detection(value: object, kind: str, where: str) -> ContentPattern | FieldIn:
@@ -204,6 +216,7 @@ def _rule(value: object, where: str) -> Rule:
         detection=_detection(obj.get("detection"), kind, f"{where}.detection"),
         fix=_text(obj, "fix", where),
         sources=tuple(cast(list[str], sources)),
+        transform=_transform(obj, where),
     )
 
 

@@ -1,0 +1,54 @@
+{
+  "compatibility": {
+    "blocker": 0,
+    "deprecated": 1,
+    "optional": 0,
+    "target": "online",
+    "unknown": 1,
+    "unplaced": []
+  },
+  "incomplete": {},
+  "inventory": {
+    "extracted_at": "2026-11-01T10:00:00Z",
+    "manifest_sha256": "1aa5654c8115e59ec9438b3387ac5333a6500c7c3f63b219566eb630dc24bd27",
+    "org_url": "https://crm.example.test/Org",
+    "platform": "crm2011",
+    "version": "5.0.9690.4376"
+  },
+  "largest": 1,
+  "members": 1,
+  "out_of_scope": 0,
+  "packages": [
+    {
+      "counts": {
+        "blocker": 0,
+        "deprecated": 1,
+        "optional": 0,
+        "unknown": 1
+      },
+      "file": "pkg-21a686922ad7.json",
+      "id": "pkg-21a686922ad7",
+      "members": 1,
+      "out_of_scope": 0,
+      "scenarios": [],
+      "unknowns": 1,
+      "usage": {
+        "as_of": "2026-11-01T10:00:00Z",
+        "reason": "no member is known used",
+        "signal": "member_rollup",
+        "state": "unknown",
+        "value": null
+      }
+    }
+  ],
+  "scenarios": [],
+  "schema_version": 1,
+  "seeds_not_found": [],
+  "seeds_unpackaged": [],
+  "unattached_gaps": [],
+  "unattached_out_of_scope": [],
+  "unattached_unknowns": [],
+  "unknowns": 1,
+  "unmatched_scenarios": [],
+  "usage_filtered": 0
+}

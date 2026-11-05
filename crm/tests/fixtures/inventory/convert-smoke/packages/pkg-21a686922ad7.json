@@ -1,0 +1,78 @@
+{
+  "consumers": [
+    {
+      "reason": "nothing in the inventory references a member",
+      "status": "unknown"
+    }
+  ],
+  "edges": [],
+  "expected_behavior": [
+    {
+      "reason": "no scenario seeds a member of this package",
+      "status": "unknown"
+    }
+  ],
+  "findings": [
+    {
+      "class": "deprecated",
+      "component": "web_resource:new_/scripts/context.js",
+      "evidence": {
+        "locations": [
+          {
+            "column": 10,
+            "line": 2
+          }
+        ],
+        "match_count": 1,
+        "path": "artifacts/web_resource/new_-scripts-context.js-ba45c2bb6339.content.js",
+        "sha256": "3166fa0e4b1f7807bce9a63b315b9f67c04168abce46233c3317a533bb118f61"
+      },
+      "reason": null,
+      "reference": null,
+      "rule": "web-resource-xrm-page",
+      "sources": [
+        "https://learn.microsoft.com/power-platform/important-changes-coming#some-client-apis-are-deprecated",
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/clientapi-form-context",
+        "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/use-client-context"
+      ],
+      "status": null,
+      "type": "compatibility"
+    },
+    {
+      "component": "web_resource:new_/scripts/context.js",
+      "reason": null,
+      "reference": null,
+      "status": "missing_source",
+      "type": "source_status"
+    }
+  ],
+  "id": "pkg-21a686922ad7",
+  "members": [
+    "web_resource:new_/scripts/context.js"
+  ],
+  "scenarios": [],
+  "schema_version": 1,
+  "source": [
+    {
+      "files": [],
+      "key": "new_/scripts/context.js",
+      "kind": "web_resource",
+      "projects": [],
+      "reason": null,
+      "status": "missing_source"
+    }
+  ],
+  "usage": {
+    "as_of": "2026-11-01T10:00:00Z",
+    "reason": "no member is known used",
+    "signal": "member_rollup",
+    "state": "unknown",
+    "value": null
+  },
+  "verification": [
+    {
+      "reason": "no member kind states a verification requirement",
+      "status": "unknown"
+    }
+  ]
+}

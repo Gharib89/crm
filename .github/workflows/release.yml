@@ -70,6 +70,9 @@ jobs:
           test -f "$RUNNER_TEMP/crm-migration/SKILL.md"
           # The compatibility rules `inventory assess` loads ride in the bundle (#1063).
           test -f ./dist/crm/_internal/crm/rules/compatibility-rules.json
+          # The tree-sitter grammars `inventory convert` parses with ride in the bundle (ADR 0034).
+          ./dist/crm/crm --json inventory convert crm/tests/fixtures/inventory/convert-smoke/inventory --findings crm/tests/fixtures/inventory/convert-smoke/findings.json --packages crm/tests/fixtures/inventory/convert-smoke/packages --out "$RUNNER_TEMP/convert-out"
+          grep -rq 'Xrm.Utility.getGlobalContext().getClientUrl()' "$RUNNER_TEMP/convert-out"
 
       - name: Smoke test (Windows)
         if: runner.os == 'Windows'
@@ -84,6 +87,9 @@ jobs:
           .\dist\crm\crm.exe --json skill install --skill crm-migration --dest "$env:RUNNER_TEMP\crm-migration"
           if (-not (Test-Path "$env:RUNNER_TEMP\crm-migration\SKILL.md")) { exit 1 }
           if (-not (Test-Path ".\dist\crm\_internal\crm\rules\compatibility-rules.json")) { exit 1 }
+          .\dist\crm\crm.exe --json inventory convert crm\tests\fixtures\inventory\convert-smoke\inventory --findings crm\tests\fixtures\inventory\convert-smoke\findings.json --packages crm\tests\fixtures\inventory\convert-smoke\packages --out "$env:RUNNER_TEMP\convert-out"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          if (-not (Get-ChildItem "$env:RUNNER_TEMP\convert-out" -Recurse -Filter *.patched.js | Select-String -SimpleMatch 'Xrm.Utility.getGlobalContext().getClientUrl()')) { exit 1 }
 
       - name: Archive (Linux)
         if: runner.os != 'Windows'

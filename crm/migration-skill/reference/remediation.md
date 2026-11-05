@@ -58,6 +58,27 @@ A task missing a field names it as an unknown.
   against the old one is refused: re-run `map-source`, `assess` and `packages`
   from the new inventory.
 
+## Convert code that a rule can rewrite
+
+Run `crm inventory convert` after `assess` and `packages`; it writes only into a
+new `--out` folder (`--help` has the inputs). A finding gets a patch only when its
+rule names a transform, today the `Xrm.Page.context` rewrite in JavaScript web
+resources. Work from `ledger.json`:
+
+- **`patched`** entries carry a diff per component. Review it, apply with
+  `git apply`, then build and re-run `verify`; a patch is a proposal until the
+  package's verification requirements pass.
+- **`manual-review`** entries (file, line, rule, reason) are code the transform
+  could not prove equivalent: an alias, a method that moved, an HTML web
+  resource, or a rewrite the emit gate rejected. Each is a task with its six
+  fields; none is dropped, and none is patched by guessing.
+- The repository diff exists only for a web resource the source map matched by
+  hash. It derives from the deployed text, normalized to LF without a BOM, so
+  the repository file's line endings can make `git apply` fail: normalize the
+  file or apply the patched text by hand.
+- A component with no ledger entry had no transformable finding; it still needs
+  its remediation task.
+
 Done when every package task, every `unplaced` finding and every unknown edge in
-`index.json` has its six fields or a named unknown, and each patch builds clean
-in the repository.
+`index.json` has its six fields or a named unknown, every `manual-review` ledger
+entry has a task, and each patch builds clean in the repository.

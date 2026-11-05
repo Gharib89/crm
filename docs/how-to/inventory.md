@@ -13,7 +13,8 @@ matches one to an application repository (see [Map an inventory to source](#map-
 `crm inventory verify` judges recorded verification results against them (see
 [Verify work packages](#verify-work-packages)), and `crm inventory assess` runs the
 packaged compatibility rules over one (see
-[Assess compatibility](#assess-compatibility)); both can drop unused rows (see
+[Assess compatibility](#assess-compatibility)), and `crm inventory convert` writes
+patches for the code a rule can rewrite (see [Convert code](#convert-code)); packages and assess can drop unused rows (see
 [Filter and sort packages and findings by usage](#filter-and-sort-packages-and-findings-by-usage)).
 
 Extraction runs on **every profile**. A `crm2011` profile is read over the CRM 2011
@@ -654,7 +655,8 @@ It is offline: it reads the inventory folder and touches no org
 
 Each rule names the component kind, the source versions it applies to (compared with the
 manifest's `source.version`), the targets, a class, a detection, the fix and at least one
-Microsoft Learn page. The rules file is
+Microsoft Learn page, and optionally a `transform` id naming the rewrite `inventory convert`
+applies (see [Convert code](#convert-code)). The rules file is
 [`crm/rules/compatibility-rules.json`](https://github.com/Gharib89/crm/blob/main/crm/rules/compatibility-rules.json),
 published with its format,
 [`compatibility-rules-v1.schema.json`](https://github.com/Gharib89/crm/blob/main/crm/schemas/compatibility-rules-v1.schema.json).
@@ -698,3 +700,46 @@ per class), the `unattached_gaps` count, `incomplete` and `out`. Without `--json
 prints one row per kind with its findings per class. Findings are a verdict, so a blocker
 still exits **0**; an unreadable inventory, an unknown `schema_version` or an `--out`
 inside the inventory folder exits **1**.
+
+## Convert code
+
+```bash
+crm --json inventory convert ./inv --findings ./findings.json --packages ./pkgs \
+  --source-map ./source-map.json --out ./patches
+git apply ./patches/<package id>/<stem>.repo.diff
+```
+
+`crm inventory convert` rewrites legacy code by **transforms**, offline: it reads the
+inventory, the `assess` findings and the `packages` output, and writes only under `--out`
+([ADR 0034](../adr/0034-deterministic-code-conversion-writes-patches-only.md)). A rule
+opts in with an optional `transform` id in the rules file; `web-resource-xrm-page` names
+`global-context`. A component is converted only when its finding's rule names a transform.
+
+`global-context` rewrites `Xrm.Page.context.<method>(...)` to
+`Xrm.Utility.getGlobalContext().<method>(...)` in JavaScript web resources (type 3).
+The code is parsed with tree-sitter, so strings and comments are never rewritten. Only a
+direct call of a method that keeps its name is rewritten (`getClientUrl`, `getUserId`,
+`getUserRoles`, `getUserLcid`, `getOrgLcid`, `getOrgUniqueName`,
+`getTimeZoneOffsetMinutes`, `getVersion`, `isOutlookClient`, `isOutlookOnline`,
+`prependOrgName`, `getQueryStringParameters`). An alias, a method that moved (such as
+`getUserName`) and an HTML web resource become **manual-review entries** with file, line,
+rule and reason, and are left unchanged.
+
+An **emit gate** checks each rewritten file: the patched code must parse with no more
+error nodes, and re-running the rule's detection must find exactly the rewritten sites
+fewer. A rejected plan writes nothing and becomes a manual-review entry.
+
+Under `--out`, per work package and component:
+
+| File | Holds |
+|---|---|
+| `<package id>/<stem>.diff` | unified diff against the extracted text, normalized (no BOM, LF) |
+| `<package id>/<stem>.patched.js` | the patched text |
+| `<package id>/<stem>.repo.diff` | diff against the repository file, only when `--source-map` marks the web resource `matched` by hash |
+| `ledger.json` | `schema_version` 1; one entry per package and component key: `status` (`patched` or `manual-review`), `edits`, `original_sha256`, `patched_sha256`, `repo_path`, `files`, `manual_review` |
+
+A component with no transformable finding writes nothing. `--out` must be new or empty
+and not inside the inventory. The repo diff derives from the deployed, normalized text, so
+`git apply` can fail on a repository file with other line endings: convert it first, or
+apply the `.patched.js` by hand. `data` holds `patched`, `manual_review`, `entries` and
+`out`; an unreadable or foreign input or a bad `--out` exits **1**.

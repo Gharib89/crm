@@ -1,0 +1,49 @@
+{
+  "cli_version": "1.98.0",
+  "coverage": {
+    "web_resource": {
+      "errors": [],
+      "pages": 1,
+      "records": 1,
+      "status": "complete",
+      "truncated": false
+    }
+  },
+  "extracted_at": "2026-11-01T10:00:00Z",
+  "gaps": [],
+  "publication": "published",
+  "records": [
+    {
+      "artifacts": [
+        {
+          "content": "text",
+          "normalized_sha256": "3166fa0e4b1f7807bce9a63b315b9f67c04168abce46233c3317a533bb118f61",
+          "path": "artifacts/web_resource/new_-scripts-context.js-ba45c2bb6339.content.js",
+          "sha256": "3166fa0e4b1f7807bce9a63b315b9f67c04168abce46233c3317a533bb118f61"
+        }
+      ],
+      "display_name": null,
+      "fields": {
+        "name": "new_/scripts/context.js",
+        "web_resource_type": 3
+      },
+      "id": null,
+      "key": "new_/scripts/context.js",
+      "kind": "web_resource",
+      "managed": false,
+      "origin": "custom",
+      "publication_state": "published"
+    }
+  ],
+  "schema_version": 2,
+  "scope": {
+    "mode": "org",
+    "solutions": []
+  },
+  "source": {
+    "org_url": "https://crm.example.test/Org",
+    "organization_id": null,
+    "platform": "crm2011",
+    "version": "5.0.9690.4376"
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "findings": [
+    {
+      "class": "deprecated",
+      "evidence": {
+        "locations": [
+          {
+            "column": 10,
+            "line": 2
+          }
+        ],
+        "match_count": 1,
+        "path": "artifacts/web_resource/new_-scripts-context.js-ba45c2bb6339.content.js",
+        "sha256": "3166fa0e4b1f7807bce9a63b315b9f67c04168abce46233c3317a533bb118f61"
+      },
+      "key": "new_/scripts/context.js",
+      "kind": "web_resource",
+      "reason": null,
+      "rule": "web-resource-xrm-page"
+    }
+  ],
+  "generated_at": "2026-11-01T10:00:00Z",
+  "incomplete": {},
+  "inventory": {
+    "cli_version": "1.98.0",
+    "extracted_at": "2026-11-01T10:00:00Z",
+    "manifest_sha256": "1aa5654c8115e59ec9438b3387ac5333a6500c7c3f63b219566eb630dc24bd27",
+    "org_url": "https://crm.example.test/Org",
+    "platform": "crm2011",
+    "version": "5.0.9690.4376"
+  },
+  "rules": {
+    "schema_version": 1,
+    "sha256": "8a056af357d2744358c3d4292d1bf66337caa9ebfffcaed8fe536913e16f2ec2",
+    "version": 1
+  },
+  "rules_hit": {
+    "web-resource-xrm-page": {
+      "class": "deprecated",
+      "fix": "Use the form context: take executionContext.getFormContext() in a form handler (pass the execution context as the first parameter), or PrimaryControl in a ribbon command.",
+      "sources": [
+        "https://learn.microsoft.com/power-platform/important-changes-coming#some-client-apis-are-deprecated",
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/clientapi-form-context",
+        "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/use-client-context"
+      ],
+      "title": "Uses the deprecated Xrm.Page object"
+    }
+  },
+  "schema_version": 1,
+  "target": "online",
+  "unattached_gaps": []
+}

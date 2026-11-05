@@ -23,6 +23,7 @@
           3
         ]
       },
+      "transform": "global-context",
       "fix": "Use the form context: take executionContext.getFormContext() in a form handler (pass the execution context as the first parameter), or PrimaryControl in a ribbon command.",
       "sources": [
         "https://learn.microsoft.com/power-platform/important-changes-coming#some-client-apis-are-deprecated",

@@ -446,7 +446,7 @@ class PackagesOutput:
     requirements: Mapping[str, tuple[Requirement, ...]]
 
 
-_PACKAGE_ID = re.compile(r"pkg-[0-9a-f]{12}")
+PACKAGE_ID = re.compile(r"pkg-[0-9a-f]{12}")
 
 
 def read_packages(folder: Path) -> PackagesOutput:
@@ -482,7 +482,7 @@ def read_packages(folder: Path) -> PackagesOutput:
     requirements: dict[str, tuple[Requirement, ...]] = {}
     for entry in cast(list[Any], entries):
         pid = cast(dict[str, Any], entry).get("id") if type(entry) is dict else None
-        if not (isinstance(pid, str) and _PACKAGE_ID.fullmatch(pid)):
+        if not (isinstance(pid, str) and PACKAGE_ID.fullmatch(pid)):
             raise InventoryError(f"{folder / INDEX_NAME}: malformed package entry {entry!r}")
         package = load(f"{pid}.json")
         items = package.get("verification")
