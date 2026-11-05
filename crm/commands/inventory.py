@@ -316,14 +316,15 @@ def inventory_verify_cmd(
     negative control (a deliberate regression) recording pass is reported
     escaped and keeps its package from complete. A result naming a package or
     requirement PACKAGES lacks is listed as an unknown result. A results file
-    recorded against another packages output is refused. Verdicts exit 0; an
-    unreadable or refused input exits 1. Returns the verdict counts, each
+    recorded against another packages output is refused, as is an --out that
+    would overwrite an input. Verdicts exit 0; an unreadable or refused input
+    exits 1. Returns the verdict counts, each
     package's verdict, the escaped controls and the unknown results; --out
     writes the same plus every requirement's status, byte for byte the same
     for the same inputs.
     """
     try:
-        report = verify(packages, results_file)
+        report = verify(packages, results_file, out_file)
         if out_file is not None:
             out_file.write_text(dump_report(report), encoding="utf-8")
     except InventoryError as exc:

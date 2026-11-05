@@ -336,7 +336,7 @@ def _status(results: list[VerificationResult], base: Path) -> tuple[str, str | N
     return min(statuses, key=lambda s: (_RANK[s[0]], s[1] or ""))
 
 
-def verify(packages_dir: Path, results_file: Path) -> VerificationReport:
+def verify(packages_dir: Path, results_file: Path, out: Path | None = None) -> VerificationReport:
     """Give each package of *packages_dir* a verdict from the results in *results_file*.
 
     A requirement's status is the worst of its results (fail, blocked,
@@ -346,11 +346,12 @@ def verify(packages_dir: Path, results_file: Path) -> VerificationReport:
     blocked, else ``not_tested`` if any is not tested or none is known, else
     ``complete``. A negative control recording ``pass`` escaped: its requirement
     is not tested. A result naming a package or requirement the packages output
-    lacks is listed, never dropped.
+    lacks is listed, never dropped. *out*, the file the caller will write the
+    report to, is refused when it is one of the run's inputs.
 
     Raises:
-        InventoryError: an input is unreadable, or the results were recorded
-            against another packages output.
+        InventoryError: an input is unreadable, the results were recorded
+            against another packages output, or *out* would overwrite an input.
     """
     packages = read_packages(packages_dir)
     recorded = read_results(results_file)
@@ -359,6 +360,16 @@ def verify(packages_dir: Path, results_file: Path) -> VerificationReport:
             "the results file was recorded against another packages output"
             " (its packages_sha256 differs); record the results against this one"
         )
+    if out is not None:
+        base = results_file.parent
+        inputs = {results_file.resolve()}
+        inputs.update((base / e.path).resolve() for r in recorded.results for e in r.evidence)
+        target = out.resolve()
+        if target in inputs or target.is_relative_to(packages_dir.resolve()):
+            raise InventoryError(
+                f"--out {out} would overwrite an input of this run (the results file,"
+                " an evidence file or the packages output): pass another path"
+            )
     checks: dict[tuple[str, str], list[VerificationResult]] = {}
     controls: dict[tuple[str, str], list[VerificationResult]] = {}
     unknown: list[UnknownResult] = []

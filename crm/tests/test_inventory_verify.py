@@ -422,3 +422,24 @@ def test_duplicate_unknown_results_are_each_listed(packages, tmp_path):
     data = json.loads(_invoke(str(packages), "--results", str(results)).output)["data"]
 
     assert len(data["unknown_results"]) == 2
+
+
+@pytest.mark.parametrize("target", ["evidence", "results", "packages"])
+def test_out_that_would_overwrite_an_input_is_refused(packages, tmp_path, target):
+    folder = tmp_path / "run"
+    ev = _evidence(folder, "a.txt")
+    results = _write_results(
+        folder, packages, [_result("pkg-00000000000a", "req-00000000000000a1", "pass", [ev])]
+    )
+    out = {
+        "evidence": folder / ev["path"],
+        "results": results,
+        "packages": packages / "index.json",
+    }[target]
+    before = out.read_bytes()
+
+    run = _invoke(str(packages), "--results", str(results), "--out", str(out))
+
+    assert run.exit_code == 1
+    assert "would overwrite" in json.loads(run.output)["error"]
+    assert out.read_bytes() == before

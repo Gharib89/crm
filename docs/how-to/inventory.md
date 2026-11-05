@@ -467,5 +467,6 @@ dropped: it is listed in `unknown_results` with the reason `unknown_package` or
 Without `--json` it prints one row per package (verdict, requirements passed), then the
 verdict counts, any escaped controls and unknown results. A verdict is not a failure:
 it exits **0** whatever the verdicts, and **1** when an input is unreadable or
-malformed, or the results file was recorded against another packages output. The
-same inputs give the same `--out` bytes.
+malformed, the results file was recorded against another packages output, or `--out`
+would overwrite an input (the results file, an evidence file or the packages output).
+The same inputs give the same `--out` bytes.
