@@ -563,8 +563,8 @@ gets an unknown finding, never none.
 _Avoid_: issue, warning, error.
 
 **Code conversion**:
-Rewriting a component's legacy code to a target-compatible form by rules whose every
-edit is proven equivalent, run offline over a migration inventory and its source map
+Rewriting a component's legacy code to a target-compatible form by transforms whose every
+edit is proven equivalent, run offline over a migration inventory and, when present, its source map
 ([ADR 0034](docs/adr/0034-deterministic-code-conversion-writes-patches-only.md)).
 Web resource text comes from the migration inventory, C# from the mapped application
 repository. Distinct from remediation, which also covers redesign work no rule can do.
@@ -581,8 +581,8 @@ component carrying that rule's finding.
 _Avoid_: codemod, fixer, conversion rule.
 
 **Manual-review entry**:
-A place where a code conversion rule matched legacy code but could not prove an
-equivalent rewrite, recorded with its file, line, rule and reason and left unchanged.
+A place where a compatibility rule with a transform matched legacy code but the transform
+could not prove an equivalent rewrite, recorded with its file, line, rule and reason and left unchanged.
 _Avoid_: TODO, warning, low-confidence rewrite.
 
 **Ribbon diff**:
