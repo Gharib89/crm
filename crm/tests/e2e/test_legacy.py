@@ -63,6 +63,17 @@ def test_legacy_metadata_lists_entities_and_reads_account(cli):
     assert account["relationships"]["one_to_many"]
 
 
+@pytest.mark.slow  # one existence read per entity: about 2 minutes on a full org
+@covers("legacy metadata")
+def test_legacy_metadata_in_use_labels_every_row_and_drops_unused(cli):
+    plain = _legacy(cli, "metadata")
+    rows = _legacy(cli, "metadata", "--in-use")
+    assert {"account", "systemuser"} <= {r["logical_name"] for r in rows}
+    assert len(rows) < len(plain)
+    assert {r["usage"]["state"] for r in rows} <= {"used", "unknown"}
+    assert all(r["usage"]["reason"] for r in rows if r["usage"]["state"] == "unknown")
+
+
 @covers("legacy components")
 def test_legacy_components_pages_and_writes_payloads(cli, tmp_path):
     data = _legacy(

@@ -226,7 +226,7 @@ For per-domain detail:
 | repo-driven customizations-as-code: spec repo layout, plan → approve → `--from-plan` promote, seeding from a live org | `reference/customizations-as-code.md` |
 | records: create/read/update/delete, query (OData/FetchXML/saved), associate/lookup, clone, upsert, ad-hoc `action` | `reference/records.md` |
 | bulk data: CSV/JSONL export/import, server-side BulkDelete (`data delete`), hand-authored `$batch` files | `reference/bulk.md` |
-| metadata (read): browse schema, picklists, dependencies, export-spec, clone-entity, write-readiness brief, entity-def cache, incremental sync (`metadata changes`), relationship eligibility (`can-relate`) | `reference/metadata.md` |
+| metadata (read): browse schema, picklists, dependencies, export-spec, clone-entity, write-readiness brief, entity-def cache, incremental sync (`metadata changes`), relationship eligibility (`can-relate`); which entities hold data (`--in-use`, `unknown` vs `unused`) | `reference/metadata.md`, `reference/usage.md` |
 | metadata write gotchas: datetime behavior, auto-number strings, rollup/calculated columns, status/state option writes, field mappings, hierarchical & virtual tables | `reference/metadata-writes.md` |
 | schema authoring: `apply -f`, `scaffold table`, option sets, views, stage-then-publish | `reference/authoring.md` |
 | solutions: create/export/import, investigate a failed import, async job polling/cancel (`async` group), packager extract/pack, validate, component drift, cascade/whole-entity audit, label translation export/import, `export-spec` (org-to-org drift recipe) | `reference/solutions.md` |

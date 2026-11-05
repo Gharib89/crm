@@ -1,0 +1,36 @@
+# Usage: which components are live (`--in-use`)
+
+Ask a listing for the components that hold data or fire, so a migration spends its
+effort on what matters. Flags: `crm metadata entities --help`,
+`crm legacy metadata --help`.
+
+## The `usage` object
+
+With `--in-use`, every listed row gains `usage`: `{state, signal, value, as_of, reason}`.
+Without the flag the rows are unchanged and nothing is probed.
+
+- `state`: `used`, `unused` or `unknown`.
+- `signal`: what was read. Entities use `record_presence`.
+- `value`: a count, or `null` when only existence is known. A 2011 count capped by the
+  server's 50,000 aggregate limit reads `50000` with `reason: "at least 50,000"`.
+- `as_of`: UTC time the signal was read.
+- `reason`: why a row is `unknown`, or a caveat on a count.
+
+## Gotchas
+
+- **`unknown` is not `unused`.** A failed read, a refused entity, a virtual, elastic or
+  private table: the row stays, labelled `unknown`. `--in-use` drops only `unused`; add
+  `--exclude-unknown` for a proven-used list. Treat an `unknown` row as live when
+  scoping a migration, and read its `reason` before dropping it.
+- **A v9 count of 0 means nothing.** `RetrieveTotalRecordCount` is a snapshot under 24
+  hours old and reads 0 on a young org (`systemuser`, `contact`, `webresource`). The
+  probe confirms every zero with a one-row read; read a zero from
+  `crm query count` as unconfirmed.
+- **A 2011 org has no count API.** Existence is a one-row read by the primary id
+  attribute from metadata. An entity that refuses `RetrieveMultiple` is `unknown`.
+- **The probe is one read per entity, run four at a time.** About 80 seconds for 900
+  entities on Dataverse, two minutes for 425 on 2011. Progress goes to stderr
+  (`[crm] usage stage=entities done=n/total`); stdout stays the JSON envelope. Give it a
+  long timeout, and use `--top` to bound a trial run.
+- `--in-use` does not combine with `--cache-metadata`, and `legacy metadata --in-use`
+  takes no entity names.

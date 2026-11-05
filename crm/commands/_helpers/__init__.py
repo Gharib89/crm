@@ -28,6 +28,7 @@ from .errors import (
 )
 from .options import (
     _output_option,
+    in_use_options,
 )
 from .parsing import (
     _check_expectations,
@@ -80,6 +81,7 @@ __all__ = [
     "_apply_jq",
     # generic option decorators
     "_output_option",
+    "in_use_options",
     # d365 errors
     "_handle_d365_error",
     "d365_errors",

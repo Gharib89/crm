@@ -77,7 +77,26 @@ def list_entities(client: LegacyClient) -> list[dict[str, Any]]:
     `display_name` is None for an entity with no label (intersect and internal
     entities): it has no UI, so no form, view or ribbon.
     """
-    results = client.execute_results("RetrieveAllEntities", _filters("Entity") + _AS_IF_PUBLISHED)
+    return _entity_rows(_entity_metadata(client))
+
+
+def list_entities_with_primary_ids(
+    client: LegacyClient,
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    """`list_entities` plus each entity's primary id attribute by logical name, from one read.
+
+    The primary id is the metadata's own (never `<name>id`: `systemform` has
+    none), which the usage probe needs to read one record per entity.
+    """
+    elements = _entity_metadata(client)
+    primary_ids = {
+        e.findtext("c:LogicalName", "", _MD): e.findtext("c:PrimaryIdAttribute", "", _MD)
+        for e in elements
+    }
+    return _entity_rows(elements), primary_ids
+
+
+def _entity_rows(elements: list[ET.Element]) -> list[dict[str, Any]]:
     return [
         {
             "logical_name": e.findtext("c:LogicalName", "", _MD),
@@ -87,10 +106,15 @@ def list_entities(client: LegacyClient) -> list[dict[str, Any]]:
             "metadata_id": e.findtext("c:MetadataId", None, _MD),
             "managed": _flag(e, "c:IsManaged"),
         }
-        for e in _result(results, "EntityMetadata", "RetrieveAllEntities").findall(
-            "c:EntityMetadata", _MD
-        )
+        for e in elements
     ]
+
+
+def _entity_metadata(client: LegacyClient) -> list[ET.Element]:
+    results = client.execute_results("RetrieveAllEntities", _filters("Entity") + _AS_IF_PUBLISHED)
+    return _result(results, "EntityMetadata", "RetrieveAllEntities").findall(
+        "c:EntityMetadata", _MD
+    )
 
 
 def list_option_sets(client: LegacyClient) -> list[dict[str, Any]]:

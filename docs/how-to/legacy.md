@@ -59,6 +59,14 @@ crm --json legacy metadata account contact --profile legacy2011  # per-entity de
 crm --json legacy metadata --option-sets --profile legacy2011    # global option sets
 ```
 
+`legacy metadata --in-use` (no entity names) adds a `usage` object to each entity and
+drops the ones proven unused; `--exclude-unknown` also drops the `unknown` ones. The
+probe reads one row of each entity, by the primary id attribute its metadata names,
+so an entity CRM 2011 refuses to read (`RetrieveMultiple` not supported, for example
+`postrole`) is `unknown` with the server's reason, never `unused`. See
+[metadata](metadata.md#keep-only-entities-that-hold-data) for the `usage` shape. A
+whole org costs one read per entity (about two minutes for 425 entities).
+
 With no entity, `data` is a list of `logical_name`, `display_name` (null for an
 entity with no label, such as an intersect entity), `custom`,
 `object_type_code`, `metadata_id` and `managed`. With entity names, `data` is `{"entities": [...], "errors":
