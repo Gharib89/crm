@@ -1598,7 +1598,7 @@ class _Builder:
         for page, refs in sorted(self.isv.items()):
             if not refs:
                 continue
-            where = "; ".join(f"{kind} {key}" for kind, key in sorted(refs))
+            where = "; ".join(f"{kind} {key or '(default)'}" for kind, key in sorted(refs))
             gaps.append(
                 ExtractionGap(
                     kind=None, key=None,

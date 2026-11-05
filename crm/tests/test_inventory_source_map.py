@@ -218,7 +218,7 @@ def test_shared_external_and_unmatched_source(inventory_dir: Path) -> None:
     )
     assert project.shared
     dashboard = _entry(source_map, "web_resource", "new_/html/dashboard.html")
-    assert (dashboard.consumers, dashboard.shared) == (("sitemap:default",), False)
+    assert (dashboard.consumers, dashboard.shared) == (("sitemap:",), False)
     # One project path spelled in another letter case is the same project; a library
     # outside the checkout is named by its project file.
     plugin_projects = ("Plugins/Contoso.Plugins.csproj", "Workflows/Contoso.Workflows.csproj")

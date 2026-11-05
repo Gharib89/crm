@@ -34,7 +34,7 @@ from crm.utils.safe_xml import fromstring
 
 _URL = "https://contoso.crm.dynamics.com"
 _SECRET = "s3cr3t-client-secret-value"
-_SCHEMA = Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v1.schema.json"
+_SCHEMA = Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v2.schema.json"
 _FMT = "@OData.Community.Display.V1.FormattedValue"
 _LOOKUP = "@Microsoft.Dynamics.CRM.lookuplogicalname"
 
@@ -311,7 +311,7 @@ def test_a_cloud_extraction_writes_a_schema_valid_manifest(tmp_path):
         {"value": 0, "label": "No"},
         {"value": 1, "label": "Yes"},
     ]
-    assert _keys(data, "ribbon") == ["account", "application", "new_project"]
+    assert _keys(data, "ribbon") == ["", "account", "new_project"]
     solution = next(r for r in data["records"] if r["key"] == "contoso")
     assert solution["fields"]["publisher"] == "Contoso"
     (dependency,) = [r for r in data["records"] if r["kind"] == "dependency"]
@@ -485,8 +485,8 @@ def test_a_row_with_an_unkeyable_field_is_a_gap_and_the_run_goes_on(tmp_path):
 
 
 def test_an_entity_named_application_keeps_its_own_ribbon_file(tmp_path, monkeypatch):
-    # Measured on a Dataverse trial org: an `application` entity, whose ribbon
-    # key meets the application ribbon's (`application`), an ambiguous key.
+    # Measured on a Dataverse trial org: an `application` entity, whose ribbon is
+    # keyed `application`; the application ribbon is keyed "" (#1070), so no key repeats.
     app = {"LogicalName": "application", "DisplayName": _label("Application"),
            "DisplayCollectionName": _label("Applications"),
            "IsCustomEntity": False, "ObjectTypeCode": 1204, "MetadataId": _id(203),
@@ -495,9 +495,14 @@ def test_an_entity_named_application_keeps_its_own_ribbon_file(tmp_path, monkeyp
     out = tmp_path / "inv"
     _extract(FakeBackend(), out)
     ribbons = [r for r in _manifest(out)["records"] if r["kind"] == "ribbon"]
-    paths = [a["path"] for r in ribbons if r["key"] == "application" for a in r["artifacts"]]
+    assert sorted(r["key"] for r in ribbons if r["key"] in ("", "application")) == [
+        "",
+        "application",
+    ]
+    paths = [a["path"] for r in ribbons if r["key"] in ("", "application") for a in r["artifacts"]]
     assert len(paths) == 2
     assert len(set(paths)) == 2
+    assert not inventory.read_inventory(out).ambiguous()
 
 
 def test_a_scoped_dependency_on_a_component_outside_the_scope_is_a_scope_gap(tmp_path, monkeypatch):
@@ -538,7 +543,7 @@ def test_each_app_sitemap_keeps_its_unique_name(tmp_path, monkeypatch):
     backend = FakeBackend()
     _extract(backend, out)
     assert 'name="sitemapnameunique"' in backend.fetch_xml["sitemaps"]
-    assert _keys(_manifest(out), "sitemap") == ["default", "new_projectapp"]
+    assert _keys(_manifest(out), "sitemap") == ["", "new_projectapp"]
 
 
 def test_an_entity_held_without_its_subcomponents_keeps_only_the_listed_ones(tmp_path, monkeypatch):

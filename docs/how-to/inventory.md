@@ -1,7 +1,7 @@
 # How-to: inventory
 
 `crm inventory extract` reads an org's customizations into a **migration
-inventory**: a `manifest.json` in [inventory manifest v1](../reference/inventory-manifest.md)
+inventory**: a `manifest.json` in [inventory manifest v2](../reference/inventory-manifest.md)
 format plus the raw artifacts it points at. An inventory describes what is
 deployed; it is never a desired state for `crm apply`
 ([ADR 0032](../adr/0032-inventory-descriptive-contract-keyed-by-component-key.md)).
@@ -33,7 +33,7 @@ The run is **read-only**, and nothing is published first: the inventory holds th
 every request goes through the same SOAP allowlist as `crm legacy`, so
 `PublishXml`, `PublishAllXml` and `ImportSolution` are refused. On a v9 profile
 every call is a GET, so a [read-only profile](../adr/0021-read-only-profile-tty-gated-guardrail.md)
-runs it too. It reads every v1 kind (`scope.mode: "org"` unless you pass
+runs it too. It reads every v2 kind (`scope.mode: "org"` unless you pass
 `--solution`):
 
 - entities, global option sets, and each entity's attributes, relationships and
@@ -283,8 +283,11 @@ sources and the incomplete kinds.
 
 A difference is a result, not a failure: the command exits **0**. It exits **1**
 when either folder holds no readable manifest, or one of them has a
-`schema_version` this crm cannot read (the error names both versions). The same
-two inventories give the same `--out` bytes, and swapping `A` and `B` swaps
+`schema_version` this crm cannot read (the error names both versions and the
+ones it reads, 1 and 2). A v1 manifest is upgraded on read, so a v1 extract and a v2
+one of the same org pair their application ribbons and default sitemaps (key `""`
+in v2, see the [manifest reference](../reference/inventory-manifest.md#versioning)).
+The same two inventories give the same `--out` bytes, and swapping `A` and `B` swaps
 `added` and `removed`.
 
 Agreement is evidence, not proof: equal keys, fields and hashes say the recorded

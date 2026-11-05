@@ -67,7 +67,7 @@ def test_v9_to_cloud_removes_an_attribute_and_a_partial_kind_is_not_comparable()
 
     assert _entry(forward, "attribute", "new_project|new_legacycode").verdict == "removed"
     assert _entry(backward, "attribute", "new_project|new_legacycode").verdict == "added"
-    ribbon = _entry(forward, "ribbon", "application")
+    ribbon = _entry(forward, "ribbon", "")
     assert ribbon.verdict == "not_comparable"
     assert ribbon.reason == "ribbon coverage is complete on A and partial on B"
     assert forward.counts()["attribute"] == {"removed": 1, "unchanged": 1}
@@ -214,7 +214,7 @@ def test_cli_refuses_an_unreadable_schema_version_naming_both_versions(
 
     assert result.exit_code == 1
     error = json.loads(result.output)["error"]
-    assert "A has schema_version 1 and B has schema_version 2" in error
+    assert "A has schema_version 2 and B has schema_version 3" in error
 
 
 def test_cli_human_mode_prints_a_table_per_kind(no_profile) -> None:
@@ -310,7 +310,7 @@ def _folder(tmp_path: Path, name: str, text: str) -> Path:
     [
         (None, "cannot read"),
         ("[]", "B ("),
-        ('{"schema_version": "1"}', "A has schema_version 1 and B has schema_version '1'"),
+        ('{"schema_version": "1"}', "A has schema_version 2 and B has schema_version '1'"),
     ],
 )
 def test_cli_exits_1_when_b_holds_no_readable_manifest(
@@ -376,3 +376,58 @@ def test_a_key_one_side_gap_with_nothing_differing_is_not_comparable(side: str) 
 
     assert entry.verdict == "not_comparable"
     assert entry.reason == f"extraction gap on {side}: content not readable"
+
+
+def _with_name_collisions(version: int) -> dict[str, Any]:
+    """The v9 sample plus an entity `application`, its ribbon and a sitemap named `default`.
+
+    At v1 the application ribbon and default sitemap carry the keys `application` and
+    `default` (the collision #1070 fixes); at v2 they carry "".
+    """
+    manifest = _sample("v9")
+    null_key = {"ribbon": "application", "sitemap": "default"}
+    for record in manifest["records"]:
+        if version == 1 and record["kind"] in null_key:
+            record["key"] = null_key[record["kind"]]
+    extra = [
+        ("entity", "application", {"logical_name": "application"}),
+        ("ribbon", "application", {"entity": "application"}),
+        ("sitemap", "default", {"unique_name": "default"}),
+    ]
+    for kind, key, fields in extra:
+        manifest["records"].append(
+            {"kind": kind, "key": key, "id": None, "display_name": None, "origin": "custom",
+             "managed": False, "publication_state": "published", "fields": fields,
+             "artifacts": []}
+        )  # fmt: skip
+        manifest["coverage"][kind]["records"] += 1
+    manifest["schema_version"] = version
+    return manifest
+
+
+def test_name_collisions_get_distinct_keys_and_diff_against_themselves_unchanged() -> None:
+    v2 = inventory.parse_manifest(_with_name_collisions(2))
+
+    keys = {(r.kind, r.key) for r in v2.records}
+    assert {
+        ("ribbon", ""),
+        ("ribbon", "application"),
+        ("sitemap", ""),
+        ("sitemap", "default"),
+    } <= keys
+    assert ("entity", "application") in keys
+    assert not v2.ambiguous()
+    diff = diff_inventories(v2, v2)
+    assert {e.verdict for e in diff.entries if e.kind in ("ribbon", "sitemap")} == {"unchanged"}
+
+
+def test_a_v1_manifest_holding_the_collision_upgrades_and_diffs_cleanly_against_v2() -> None:
+    v1 = inventory.parse_manifest(_with_name_collisions(1))
+    v2 = inventory.parse_manifest(_with_name_collisions(2))
+
+    assert v1.schema_version == 2
+    assert not v1.ambiguous()
+    diff = diff_inventories(v1, v2)
+    assert {e.verdict for e in diff.entries} == {"unchanged"}
+    assert _entry(diff, "ribbon", "").verdict == "unchanged"
+    assert _entry(diff, "sitemap", "").verdict == "unchanged"

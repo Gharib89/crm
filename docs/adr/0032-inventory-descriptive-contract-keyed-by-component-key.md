@@ -47,3 +47,17 @@ is protocol-independent, and ADR 0003 still governs every v9/cloud path.
 - **Treat `solution export` zips as the migration inventory.** Rejected as the contract:
   they are a raw artifact source an extractor may use, but they carry no
   coverage evidence, no gaps, and no stable cross-stage shape.
+
+## Amendment: schema_version 2 keys the null ribbon and sitemap `""` (#1070)
+
+v1 gave the application ribbon the key `application` and the default sitemap
+`default`. An org with an entity named `application` (measured on a Dataverse
+trial org, object type code 1204) then held two ribbons keyed `application`, and
+`diff`, `packages` and the source map, which all join on `(kind, key)`, lost one
+of them. v2 drops the special names: a null key field is the empty part, as it
+already was for every other nullable key field, so these two records key `""`,
+which no entity logical name or sitemap unique name can be. Pairing on
+`fields.entity` instead was rejected: it patches three consumers and leaves
+every future `(kind, key)` join exposed. The reader upgrades v1 on read by the
+field, so old manifests stay usable. Decision 3 (GUIDs never decide a match)
+stands.
