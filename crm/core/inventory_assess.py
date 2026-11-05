@@ -316,6 +316,7 @@ class AssessResult:
     findings: tuple[Finding, ...]
     unattached_gaps: tuple[dict[str, Any], ...]
     incomplete: dict[str, str]
+    usage_filtered: int = 0
 
     def summary(self) -> dict[str, Any]:
         by_kind: dict[str, dict[str, int]] = {}
@@ -335,6 +336,7 @@ class AssessResult:
             },
             "unattached_gaps": len(self.unattached_gaps),
             "incomplete": self.incomplete,
+            "usage_filtered": self.usage_filtered,
         }
 
 
@@ -370,6 +372,8 @@ def dump_findings(result: AssessResult, *, generated_at: str | None = None) -> s
         "unattached_gaps": list(result.unattached_gaps),
         "incomplete": result.incomplete,
     }
+    if result.usage_filtered:
+        body["usage_filtered"] = result.usage_filtered
     return json.dumps(body, sort_keys=True, ensure_ascii=False, indent=2) + "\n"
 
 

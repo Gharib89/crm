@@ -139,6 +139,11 @@
         ]
       }
     },
+    "usage_filtered": {
+      "description": "How many findings `--in-use` or `--exclude-unknown` dropped; absent when none was.",
+      "type": "integer",
+      "minimum": 1
+    },
     "incomplete": {
       "description": "Each kind whose coverage is not complete, with its status.",
       "type": "object",

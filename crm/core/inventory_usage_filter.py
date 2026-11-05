@@ -121,10 +121,13 @@ def filter_findings(
     """Give each finding its row's usage, drop the rows the flags exclude, order if asked."""
     usages = derive_usage(records, edges, as_of)
     findings: list[Finding] = []
+    dropped = 0
     for f in result.findings:
         usage = usages.get(f"{f.kind}:{f.key}")
         if keeps(usage, in_use=in_use, exclude_unknown=exclude_unknown):
             findings.append(replace(f, usage=usage.to_dict()) if usage else f)
+        else:
+            dropped += 1
     if sort == "usage":
         findings.sort(key=lambda f: rank(f.usage["state"] if f.usage else None))
-    return replace(result, findings=tuple(findings))
+    return replace(result, findings=tuple(findings), usage_filtered=dropped)

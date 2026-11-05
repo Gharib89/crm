@@ -364,6 +364,29 @@ def test_assess_in_use_drops_the_findings_of_unused_rows(tmp_path):
     assert data["counts"]["by_usage"]["unused"] == 0
 
 
+def test_assess_records_how_many_findings_the_flags_dropped(tmp_path):
+    folder = _inventory(tmp_path, usage=True)
+    every_data, every = _assess(folder, tmp_path, out="all.json")
+
+    data, kept = _assess(folder, tmp_path, "--in-use")
+
+    dropped = len(every["findings"]) - len(kept["findings"])
+    assert dropped > 0
+    assert data["usage_filtered"] == dropped == kept["usage_filtered"]
+    assert every_data["usage_filtered"] == 0 and "usage_filtered" not in every
+
+
+def test_assess_without_flags_survives_an_unreadable_artifact(tmp_path):
+    folder = _inventory(tmp_path, usage=True)
+    for path in folder.rglob("*"):
+        if path.is_file() and path.name != "manifest.json" and path.suffix in (".js", ".xml"):
+            path.unlink()
+
+    data, _ = _assess(folder, tmp_path)
+
+    assert data["counts"]["by_class"]
+
+
 def test_assess_exclude_unknown_drops_unknown_rows_too(tmp_path):
     folder = _inventory(tmp_path, usage=True)
 

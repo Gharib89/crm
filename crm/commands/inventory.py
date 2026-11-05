@@ -610,15 +610,23 @@ def inventory_assess_cmd(
     try:
         result = assess(inventory, target, out=out_file)
         parsed = read_inventory(inventory)
-        result = filter_findings(
-            result,
-            parsed.records,
-            reference_edges(parsed, inventory),
-            parsed.extracted_at,
-            in_use=in_use,
-            exclude_unknown=exclude_unknown,
-            sort=sort,
-        )
+        try:
+            edges = reference_edges(parsed, inventory)
+        except InventoryError:
+            # An unreadable artifact must not cost the assessment it already holds; only a
+            # run that asked for usage needs the references.
+            if in_use or exclude_unknown or sort != "default":
+                raise
+        else:
+            result = filter_findings(
+                result,
+                parsed.records,
+                edges,
+                parsed.extracted_at,
+                in_use=in_use,
+                exclude_unknown=exclude_unknown,
+                sort=sort,
+            )
         out_file.write_text(dump_findings(result), encoding="utf-8")
     except InventoryError as exc:
         ctx.emit(False, error=str(exc))

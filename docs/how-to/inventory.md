@@ -546,7 +546,8 @@ usage is `unknown`.
   `usage_filtered` counts them, and a scenario lists only the packages that remain. The
   table gains a `usage` column, `state (signal)`, or `not read` where there is none.
 - **`assess`**: each finding gains `usage` when its row has one, so the file shows why a row
-  is `unknown`. The flags drop the findings of the excluded rows, blockers included, `counts.by_usage`
+  is `unknown`. The flags drop the findings of the excluded rows, blockers included, `usage_filtered`
+  counts them (in the summary, and in the findings file when non-zero), `counts.by_usage`
   (`used`, `unknown`, `unused`, `not_read`) counts what is left, and `--sort usage` orders
   the `findings` list.
 
