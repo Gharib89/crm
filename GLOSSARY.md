@@ -562,6 +562,35 @@ unknown, or clear (the rules that apply found nothing). A component no rule cove
 gets an unknown finding, never none.
 _Avoid_: issue, warning, error.
 
+**Code conversion**:
+Rewriting a component's legacy code to a target-compatible form by transforms whose every
+edit is proven equivalent, run offline over a migration inventory and, when present, its source map
+([ADR 0034](docs/adr/0034-deterministic-code-conversion-writes-patches-only.md)).
+Web resource text comes from the migration inventory, C# from the mapped application
+repository. Distinct from remediation, which also covers redesign work no rule can do.
+_Avoid_: migration (the whole program), codemod (one rule's implementation), upgrade.
+
+**Conversion patch**:
+A unified diff of one component's code produced by code conversion. It changes
+nothing until someone applies it.
+_Avoid_: fix, remediation.
+
+**Transform**:
+The tested rewrite a compatibility rule names for code conversion. It applies only to a
+component carrying that rule's finding.
+_Avoid_: codemod, fixer, conversion rule.
+
+**Manual-review entry**:
+A place where a compatibility rule with a transform matched legacy code but the transform
+could not prove an equivalent rewrite, recorded with its file, line, rule and reason and left unchanged.
+_Avoid_: TODO, warning, low-confidence rewrite.
+
+**Ribbon diff**:
+The customizer's own ribbon changes for one entity or the application, as a solution
+imports them. Distinct from the compiled ribbon, the effective merge of system and
+custom definitions that the org renders, which cannot be imported.
+_Avoid_: ribbon (ambiguous between the two), RibbonDiffXml (the element, not the concept).
+
 ## Relationships
 
 - Every **operational failure** is an **emit envelope** with `ok=false` and exits `1`.
