@@ -91,15 +91,14 @@ def test_same_tag_same_id_siblings_hash_by_content_in_either_order() -> None:
 
 
 def test_nested_unordered_lists_are_ordered_before_their_parent_siblings_are_keyed() -> None:
-    def command(rules: str) -> str:
+    def command(*rule_ids: str) -> str:
+        rules = "".join(f'<EnableRule Id="{i}"/>' for i in rule_ids)
         return f'<CommandDefinition Id="C"><EnableRules>{rules}</EnableRules></CommandDefinition>'
 
-    ab = '<EnableRule Id="a"/><EnableRule Id="b"/>'
-    ba = '<EnableRule Id="b"/><EnableRule Id="a"/>'
-    other = command('<EnableRule Id="z"/>')
-
-    forward = _ribbon(commands=command(ab) + other)
-    nested_reordered = _ribbon(commands=other + command(ba))
+    forward = _ribbon(commands=command("a", "b") + command("a", "c"))
+    # Only the nested rule order differs; keyed before its own rules are sorted, the first
+    # command would sort after the second.
+    nested_reordered = _ribbon(commands=command("b", "a") + command("a", "c"))
 
     assert _ribbon_hashes(forward).normalized_sha256 == (
         _ribbon_hashes(nested_reordered).normalized_sha256
