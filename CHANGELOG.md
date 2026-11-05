@@ -9,6 +9,53 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.93.0 (2026-11-05)
+
+### Bug Fixes
+
+- **inventory**: A custom entity's ribbon is kept, the ribbon doc matches the rule
+  ([#1111](https://github.com/Gharib89/crm/pull/1111),
+  [`aac2832`](https://github.com/Gharib89/crm/commit/aac2832d558d6ed566a85ce3d526b12ff15d7b5e))
+
+- **inventory**: A full run records no managed flag on global option sets, as before
+  ([#1111](https://github.com/Gharib89/crm/pull/1111),
+  [`aac2832`](https://github.com/Gharib89/crm/commit/aac2832d558d6ed566a85ce3d526b12ff15d7b5e))
+
+- **inventory**: A ribbon holding a HideCustomAction is customized, not stock
+  ([#1111](https://github.com/Gharib89/crm/pull/1111),
+  [`aac2832`](https://github.com/Gharib89/crm/commit/aac2832d558d6ed566a85ce3d526b12ff15d7b5e))
+
+- **inventory**: By-id payload reads filter on the entity's own key column
+  ([#1111](https://github.com/Gharib89/crm/pull/1111),
+  [`aac2832`](https://github.com/Gharib89/crm/commit/aac2832d558d6ed566a85ce3d526b12ff15d7b5e))
+
+- **inventory**: Managed global option sets are stock, key-sharing edges stay, skill text drops the
+  flag ([#1111](https://github.com/Gharib89/crm/pull/1111),
+  [`aac2832`](https://github.com/Gharib89/crm/commit/aac2832d558d6ed566a85ce3d526b12ff15d7b5e))
+
+### Features
+
+- **inventory**: Extract keeps the migration scope by default, --include-system keeps stock
+  ([#1111](https://github.com/Gharib89/crm/pull/1111),
+  [`aac2832`](https://github.com/Gharib89/crm/commit/aac2832d558d6ed566a85ce3d526b12ff15d7b5e))
+
+- **inventory**: Extract only unmanaged components by default, --include-system keeps stock
+  ([#1111](https://github.com/Gharib89/crm/pull/1111),
+  [`aac2832`](https://github.com/Gharib89/crm/commit/aac2832d558d6ed566a85ce3d526b12ff15d7b5e))
+
+### Refactoring
+
+- **inventory**: Name the kept-id helper, share managed ids, split drop_stock
+  ([#1111](https://github.com/Gharib89/crm/pull/1111),
+  [`aac2832`](https://github.com/Gharib89/crm/commit/aac2832d558d6ed566a85ce3d526b12ff15d7b5e))
+
+### Testing
+
+- **inventory**: Silence pyright on the legacy fake client in the stock scope test
+  ([#1111](https://github.com/Gharib89/crm/pull/1111),
+  [`aac2832`](https://github.com/Gharib89/crm/commit/aac2832d558d6ed566a85ce3d526b12ff15d7b5e))
+
+
 ## v1.92.7 (2026-11-05)
 
 ### Bug Fixes
