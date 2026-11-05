@@ -2,7 +2,7 @@
 
 Read a **CRM 2011** org. A CRM 2011 org has no Web API, so every other `crm`
 command fails against it; `crm legacy` reaches it over a read-only SOAP
-transport instead. Tested on CRM 2011 UR15 (5.0.9690.3557), Linux. See the
+transport instead. Tested on CRM 2011 UR15 (5.0.9690.3557), on Linux and Windows. See the
 [CLI reference](../reference/cli.md) for every flag.
 
 `crm legacy` only reads. It sends an allowlisted set of messages (`WhoAmI`,
