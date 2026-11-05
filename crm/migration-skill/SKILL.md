@@ -48,7 +48,8 @@ is missing stays open.
    from `crm inventory assess` included, once evidence settles it, with the
    rule or evidence behind it.
 4. **Plan remediation.** Group the inventory into dependency-ordered work
-   packages with `crm inventory packages`. Each task names its component and
+   packages with `crm inventory packages`, passing the `assess` file as
+   `--findings` so each package lists its compatibility findings. Each task names its component and
    source references, its consumers, the Microsoft documentation behind it, the
    proposed change, its confidence and unknowns, and the tests that will prove
    it. Done when every package task names all six, or names the missing one as
@@ -79,10 +80,3 @@ is missing stays open.
   when `crm inventory verify` gives its package that verdict. Report every other
   state as it stands, and name each unknown plainly: a gap in coverage or
   evidence is an unknown, never a pass.
-
-## Coming
-
-Planned steps that have no command yet; until they land, do the work from the
-evidence you have and report it as manual:
-
-- compatibility findings merged into the work packages.

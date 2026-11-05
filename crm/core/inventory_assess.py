@@ -406,6 +406,13 @@ def _evidence(value: object, where: str) -> ContentEvidence | FieldEvidence | No
     )
 
 
+def _sources(entry: object, where: str) -> list[str]:
+    urls = _field(entry, "sources", list, where)
+    if not all(type(u) is str for u in urls):
+        raise InventoryError(f"{where}: sources must be a list of strings")
+    return urls
+
+
 def read_findings(path: Path) -> FindingsFile:
     """Read the findings file `dump_findings` wrote to *path*.
 
@@ -417,7 +424,7 @@ def read_findings(path: Path) -> FindingsFile:
     """
     where = f"findings file {path}"
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError) as exc:  # ValueError: malformed UTF-8 or JSON
         raise InventoryError(f"cannot read {where}: {exc}") from exc
     version = cast(dict[str, Any], data).get("schema_version") if type(data) is dict else None
@@ -445,8 +452,7 @@ def read_findings(path: Path) -> FindingsFile:
         )
     hit = _field(data, "rules_hit", dict, where)
     sources = {
-        rule: tuple(str(u) for u in _field(entry, "sources", list, f"{where}: rules_hit.{rule}"))
-        for rule, entry in hit.items()
+        rule: tuple(_sources(entry, f"{where}: rules_hit.{rule}")) for rule, entry in hit.items()
     }
     sha = _field(_field(data, "inventory", dict, where), "manifest_sha256", str, where)
     return FindingsFile(sha, _field(data, "target", str, where), tuple(findings), sources)

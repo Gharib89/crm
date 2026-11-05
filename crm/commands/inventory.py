@@ -284,8 +284,12 @@ def inventory_packages_cmd(
     if ctx.json_mode:
         ctx.emit(True, data=data)
         return
-    rows = [[p.id, len(p.members), p.unknowns(), ", ".join(p.scenarios)] for p in result.packages]
     headers = ["package", "members", "unknowns", "scenarios"]
+    counts = [list(p.counts().values()) if "compatibility" in data else [] for p in result.packages]
+    rows = [
+        [p.id, len(p.members), p.unknowns(), *c, ", ".join(p.scenarios)]
+        for p, c in zip(result.packages, counts, strict=True)
+    ]
     meta = {
         "inventory": f"{data['inventory']['platform']} {data['inventory']['version']}"
         f" ({data['inventory']['org_url']})",
@@ -311,10 +315,6 @@ def inventory_packages_cmd(
     if "compatibility" in data:
         comp = data["compatibility"]
         headers[3:3] = list(COMPAT_CLASSES)
-        rows = [
-            [p.id, len(p.members), p.unknowns(), *p.counts().values(), ", ".join(p.scenarios)]
-            for p in result.packages
-        ]
         meta["findings"] = f"target {comp['target']}, " + ", ".join(
             f"{comp[c]} {c}" for c in COMPAT_CLASSES
         )

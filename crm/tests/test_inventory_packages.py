@@ -831,3 +831,15 @@ def test_malformed_findings_file_is_refused(inputs, tmp_path, edit, match):
     )
     assert run.exit_code == 1
     assert match in json.loads(run.output)["error"]
+
+
+def test_findings_file_with_a_byte_order_mark_is_read(inputs, tmp_path):
+    folder, source_map, _ = inputs
+    path = _findings_file(folder, tmp_path)
+    path.write_bytes(b"\xef\xbb\xbf" + path.read_bytes())
+    run = CliRunner().invoke(
+        cli,
+        ["--json", "inventory", "packages", str(folder), "--source-map", str(source_map)]
+        + ["--findings", str(path), "--out", str(tmp_path / "out")],
+    )
+    assert run.exit_code == 0, run.output

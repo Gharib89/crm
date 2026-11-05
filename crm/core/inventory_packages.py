@@ -253,9 +253,9 @@ class WorkPackage:
     def counts(self) -> dict[str, int]:
         """Findings per compatibility class; ``unknown`` adds the graph's unknowns."""
         found = [f.cls for f in self.findings if isinstance(f, Finding)]
-        return {c: found.count(c) for c in COMPAT_CLASSES} | {
-            "unknown": found.count("unknown") + self.unknowns()
-        }
+        counts = {c: found.count(c) for c in COMPAT_CLASSES}
+        counts["unknown"] += self.unknowns()
+        return counts
 
     def to_dict(self) -> dict[str, Any]:
         return {
