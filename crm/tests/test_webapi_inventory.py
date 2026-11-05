@@ -661,7 +661,7 @@ def _fault_in_forms() -> dict:
 
 def _tree(out: Path) -> dict[str, bytes]:
     return {
-        str(p.relative_to(out)): p.read_bytes()
+        p.relative_to(out).as_posix(): p.read_bytes()
         for p in sorted(out.rglob("*"))
         if p.is_file() and ".checkpoint" not in p.parts
     }
