@@ -50,6 +50,7 @@ LOCAL_VERBS = frozenset(
         "inventory packages",
         "inventory verify",
         "inventory assess",
+        "inventory convert",
     }
 )
 

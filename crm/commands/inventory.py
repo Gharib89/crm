@@ -17,6 +17,7 @@ from crm.commands._helpers import d365_errors, in_use_options
 from crm.core import inventory_extract
 from crm.core.inventory import InventoryError, read_inventory
 from crm.core.inventory_assess import CLASSES, TARGETS, assess, dump_findings, read_findings
+from crm.core.inventory_convert import convert
 from crm.core.inventory_diff import VERDICTS, diff_inventories, dump_diff, read_pair
 from crm.core.inventory_extract import Progress
 from crm.core.inventory_packages import (
@@ -554,6 +555,86 @@ def inventory_verify_cmd(
         meta["out"] = str(out_file)
     headers = ["package", "verdict", "passed"]
     ctx.emit(True, table={"headers": headers, "rows": rows}, meta=meta)
+
+
+@inventory_group.command("convert")
+@click.argument("inventory", type=click.Path(file_okay=False, path_type=Path))
+@click.option(
+    "--findings",
+    "findings_file",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="The findings file `crm inventory assess --out` wrote for this inventory.",
+)
+@click.option(
+    "--packages",
+    "packages_dir",
+    required=True,
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    help="The folder `crm inventory packages --out` wrote for this inventory.",
+)
+@click.option(
+    "--source-map",
+    "source_map_file",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="The source map `crm inventory map-source --out` wrote; adds a repo-path diff for"
+    " each web resource it links to a file by hash.",
+)
+@click.option(
+    "--out",
+    "out_dir",
+    required=True,
+    type=click.Path(file_okay=False, path_type=Path),
+    help="An empty or new folder for the patches and the ledger.",
+)
+@pass_ctx
+def inventory_convert_cmd(
+    ctx: CLIContext,
+    inventory: Path,
+    findings_file: Path,
+    packages_dir: Path,
+    source_map_file: Path | None,
+    out_dir: Path,
+):
+    """Rewrite the code of INVENTORY that a compatibility rule can prove: offline.
+
+    Reads the inventory folder, the --findings file and the --packages folder, and
+    touches no org and no repository. A component whose finding names a registered
+    transform (today `Xrm.Page.context.<method>()` to
+    `Xrm.Utility.getGlobalContext().<method>()` in a JavaScript web resource) is
+    parsed with tree-sitter; only a real call is rewritten, never text in a string
+    or comment. Per work package, --out gets a unified diff against the extracted
+    text, the full patched file, and, with --source-map, a repo-path diff for a web
+    resource the map links to a file by hash. `ledger.json` (its own schema_version)
+    records each patch with the SHA-256 of the original and the patched text, and
+    each manual-review entry (file, line, rule, reason) where a rule matches but the
+    rewrite is not proven. A patch is written only if the patched code parses with no
+    new error nodes and re-running the rule finds exactly the rewritten sites fewer;
+    otherwise the code stays untouched and the ledger says why. A component with no
+    transformable finding writes nothing. Nothing is written outside --out; apply a
+    patch yourself with `git apply`. An unreadable input, an input made from another
+    inventory, a non-empty --out or one inside the inventory exits 1. Returns the
+    counts of patched components and manual-review entries, and the out path.
+    """
+    try:
+        result = convert(
+            inventory, findings_file, packages_dir, out_dir, source_map_path=source_map_file
+        )
+    except InventoryError as exc:
+        ctx.emit(False, error=str(exc))
+        return
+    except OSError as exc:
+        ctx.emit(False, error=f"--out {out_dir}: {exc}")
+        return
+    if ctx.json_mode:
+        ctx.emit(True, data={**result.summary(), "out": str(out_dir)})
+        return
+    rows = [
+        [e.package, e.key, e.status, str(e.edits), str(len(e.manual_review))]
+        for e in result.entries
+    ]
+    headers = ["package", "component", "status", "edits", "manual review"]
+    ctx.emit(True, table={"headers": headers, "rows": rows}, meta={"out": str(out_dir)})
 
 
 @inventory_group.command("assess")

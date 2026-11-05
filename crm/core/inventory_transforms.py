@@ -1,0 +1,147 @@
+"""The transform registry for `crm inventory convert` and its transforms (ADR 0034).
+
+A **transform** is named by a compatibility rule's optional ``transform`` id. It reads
+one source file's syntax tree and returns a `Plan`: the byte edits it can prove
+equivalent, and the **unproven** sites where the rule matches but the rewrite is not
+provable. A transform never writes; the engine applies the edits, gates them and
+emits the patch.
+
+A later transform registers itself with `register` and names its rule's id in
+``compatibility-rules.json``.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from tree_sitter import Node
+
+
+@dataclass(frozen=True)
+class Edit:
+    """Replace the bytes ``[start, end)`` of the source with *text*."""
+
+    start: int
+    end: int
+    text: bytes
+
+
+@dataclass(frozen=True)
+class Unproven:
+    """A site (1-based *line*) the rule matches but the transform will not rewrite, and why."""
+
+    line: int
+    reason: str
+
+
+@dataclass(frozen=True)
+class Plan:
+    edits: tuple[Edit, ...]
+    unproven: tuple[Unproven, ...]
+
+
+@dataclass(frozen=True)
+class Transform:
+    """A registered transform: its grammar, the web resource types it reads, its planner."""
+
+    language: str
+    web_resource_types: tuple[int, ...]
+    plan: Callable[[Node], Plan]
+
+
+#: Registered transforms by id. Tests swap entries in to exercise the engine.
+TRANSFORMS: dict[str, Transform] = {}
+
+
+def register(transform_id: str, transform: Transform) -> None:
+    if transform_id in TRANSFORMS:
+        raise ValueError(f"transform {transform_id!r} is already registered")
+    TRANSFORMS[transform_id] = transform
+
+
+# ── global-context ──────────────────────────────────────────────────────────
+
+#: Methods `Xrm.Page.context` and `Xrm.Utility.getGlobalContext()` both carry under one name.
+#: A method that moved (`getUserName` to `userSettings.userName`) is not here.
+SAME_METHOD = frozenset(
+    (
+        "getClientUrl",
+        "getOrgLcid",
+        "getOrgUniqueName",
+        "getQueryStringParameters",
+        "getTimeZoneOffsetMinutes",
+        "getUserId",
+        "getUserLcid",
+        "getUserRoles",
+        "getVersion",
+        "isOutlookClient",
+        "isOutlookOnline",
+        "prependOrgName",
+    )
+)
+_GLOBAL_CONTEXT = b"Xrm.Utility.getGlobalContext()"
+
+
+def _is_xrm_page_context(node: Node) -> bool:
+    """True for the syntax node of exactly ``Xrm.Page.context``, nothing wrapped around it."""
+    if node.type != "member_expression":
+        return False
+    obj, prop = node.child_by_field_name("object"), node.child_by_field_name("property")
+    if obj is None or prop is None or prop.text != b"context" or obj.type != "member_expression":
+        return False
+    root, page = obj.child_by_field_name("object"), obj.child_by_field_name("property")
+    return (
+        root is not None
+        and page is not None
+        and root.type == "identifier"
+        and root.text == b"Xrm"
+        and page.text == b"Page"
+    )
+
+
+def _plan_global_context(root: Node) -> Plan:
+    """Rewrite ``Xrm.Page.context.<m>(...)`` to ``Xrm.Utility.getGlobalContext().<m>(...)``.
+
+    Only a direct call of a `SAME_METHOD` is rewritten. Any other use of the context
+    (an alias, an argument, a moved method) is unproven. Strings and comments are
+    not syntax nodes of that shape, so they are never matched.
+    """
+    edits: list[Edit] = []
+    unproven: list[Unproven] = []
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        stack.extend(node.children)
+        if not _is_xrm_page_context(node):
+            continue
+        line = node.start_point.row + 1
+        parent = node.parent
+        method = (
+            parent.child_by_field_name("property")
+            if parent is not None
+            and parent.type == "member_expression"
+            and parent.child_by_field_name("object") == node
+            else None
+        )
+        call = parent.parent if parent is not None else None
+        called = (
+            call is not None
+            and call.type == "call_expression"
+            and call.child_by_field_name("function") == parent
+        )
+        if method is None or not called:
+            unproven.append(Unproven(line, "Xrm.Page.context is used other than as a direct call"))
+        elif method.text is None or method.text.decode() not in SAME_METHOD:
+            name = method.text.decode() if method.text else "?"
+            unproven.append(Unproven(line, f"{name} has no same-name method on getGlobalContext()"))
+        else:
+            edits.append(Edit(node.start_byte, node.end_byte, _GLOBAL_CONTEXT))
+    edits.sort(key=lambda e: e.start)
+    unproven.sort(key=lambda u: u.line)
+    return Plan(tuple(edits), tuple(unproven))
+
+
+register("global-context", Transform("javascript", (3,), _plan_global_context))
