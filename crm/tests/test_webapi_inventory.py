@@ -636,9 +636,10 @@ class PayloadBackend(FakeBackend):
     def _fetch(self, entity_set: str, fetch_xml: str, headers: dict) -> dict:
         fetch = fromstring(fetch_xml)
         entity = fetch.find("entity")
-        columns = {a.get("name") for a in entity.findall("attribute")}
+        assert entity is not None
+        columns = {a.get("name") or "" for a in entity.findall("attribute")}
         cond = entity.find("filter/condition[@operator='in']")
-        ids = [v.text for v in cond.findall("value")] if cond is not None else None
+        ids = [v.text or "" for v in cond.findall("value")] if cond is not None else None
         self.fetched.append((entity_set, columns, ids))
         if cond is not None and entity_set in self.fail_content:
             raise D365Error("content boom", status=500)
