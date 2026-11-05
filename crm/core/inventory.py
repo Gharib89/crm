@@ -169,7 +169,9 @@ def canonical_ribbon(data: bytes) -> bytes | None:
     """
     try:
         root = safe_xml.fromstring(normalize_text(data))
-        for parent in root.iter():
+        # Reversed document order puts every descendant before its ancestor, so a parent's
+        # sort keys are taken over already-ordered children.
+        for parent in reversed(list(root.iter())):
             if parent.tag in _RIBBON_UNORDERED:
                 keyed = [(c.tag, c.get("Id", ""), _canonical_xml(c), c) for c in parent]
                 keyed.sort(key=lambda k: k[:3])

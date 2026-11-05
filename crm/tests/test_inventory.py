@@ -90,6 +90,22 @@ def test_same_tag_same_id_siblings_hash_by_content_in_either_order() -> None:
     assert forward != _ribbon_hashes(_ribbon(enable=one)).normalized_sha256
 
 
+def test_nested_unordered_lists_are_ordered_before_their_parent_siblings_are_keyed() -> None:
+    def command(rules: str) -> str:
+        return f'<CommandDefinition Id="C"><EnableRules>{rules}</EnableRules></CommandDefinition>'
+
+    ab = '<EnableRule Id="a"/><EnableRule Id="b"/>'
+    ba = '<EnableRule Id="b"/><EnableRule Id="a"/>'
+    other = command('<EnableRule Id="z"/>')
+
+    forward = _ribbon(commands=command(ab) + other)
+    nested_reordered = _ribbon(commands=other + command(ba))
+
+    assert _ribbon_hashes(forward).normalized_sha256 == (
+        _ribbon_hashes(nested_reordered).normalized_sha256
+    )
+
+
 def test_a_ribbon_that_is_not_xml_falls_back_to_the_text_normalization() -> None:
     broken = b"\xef\xbb\xbf<RibbonDiffXml>\r\n<oops>"
 
