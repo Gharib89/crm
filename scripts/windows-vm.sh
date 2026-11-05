@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Manage the on-demand Windows 11 test VM (docs/contributing/windows-test-vm.md).
 #
-#   scripts/windows-vm.sh create   # once: VM, RDP rule, nightly auto-shutdown, budget alert
-#   scripts/windows-vm.sh up       # start, point the RDP rule at this machine's IP, print the address
+#   scripts/windows-vm.sh create   # once: VM, OpenSSH server, RDP/SSH rules, nightly auto-shutdown, budget alert
+#   scripts/windows-vm.sh up       # start, point the RDP and SSH rules at this machine's IP, print the address
 #   scripts/windows-vm.sh down     # deallocate (stops compute billing; a guest OS shutdown does not)
 #   scripts/windows-vm.sh status   # power state and address
 #
@@ -29,10 +29,15 @@ BUDGET_USD="${WINVM_BUDGET_USD:-35}"
 az() { command az "$@" --subscription "$SUB"; }
 my_ip() { curl -fsS -4 https://api.ipify.org; }
 
-allow_rdp_from_here() {
-  az network nsg rule create -g "$RG" --nsg-name "${VM}NSG" -n allow-rdp-me \
-    --priority 1000 --access Allow --protocol Tcp --destination-port-ranges 3389 \
-    --source-address-prefixes "$(my_ip)/32" -o none
+allow_from_here() {
+  local ip rule name port prio
+  ip=$(my_ip)
+  for rule in rdp:3389:1000 ssh:22:1010; do
+    IFS=: read -r name port prio <<<"$rule"
+    az network nsg rule create -g "$RG" --nsg-name "${VM}NSG" -n "allow-$name-me" \
+      --priority "$prio" --access Allow --protocol Tcp --destination-port-ranges "$port" \
+      --source-address-prefixes "$ip/32" -o none
+  done
 }
 
 address() {
@@ -57,7 +62,16 @@ create)
     --license-type Windows_Client --storage-sku StandardSSD_LRS \
     --public-ip-sku Standard --nsg-rule NONE \
     --admin-username "$ADMIN" --admin-password "$PASS" -o none
-  allow_rdp_from_here
+  # OpenSSH server; its stock firewall rule covers only Private networks, and an
+  # Azure NIC is Public. Add-WindowsCapability can take 20 minutes.
+  # shellcheck disable=SC2016 # PowerShell variables, expanded on the VM
+  az vm run-command invoke -g "$RG" -n "$VM" --command-id RunPowerShellScript --scripts '
+    Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 | Out-Null
+    Set-Service sshd -StartupType Automatic; Start-Service sshd
+    Set-NetFirewallRule -Name OpenSSH-Server-In-TCP -Profile Any
+    $ps = "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+    New-ItemProperty -Path HKLM:\SOFTWARE\OpenSSH -Name DefaultShell -Value $ps -PropertyType String -Force | Out-Null' -o none
+  allow_from_here
   az vm auto-shutdown -g "$RG" -n "$VM" --time "$SHUTDOWN_UTC" -o none
   email=$(command az account show --subscription "$SUB" --query user.name -o tsv)
   sub_id=$(command az account show --subscription "$SUB" --query id -o tsv)
@@ -73,7 +87,7 @@ create)
   ;;
 up)
   az vm start -g "$RG" -n "$VM" -o none
-  allow_rdp_from_here
+  allow_from_here
   record_host
   # RDP answers a few seconds after the start call returns.
   ip=$(az vm show -d -g "$RG" -n "$VM" --query publicIps -o tsv)

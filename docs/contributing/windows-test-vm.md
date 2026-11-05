@@ -9,15 +9,73 @@ someone is using it.
 `scripts/windows-vm.sh` manages it:
 
 ```bash
-scripts/windows-vm.sh up       # start, allow RDP from this machine's IP, wait for RDP, print the address
+scripts/windows-vm.sh up       # start, allow RDP and SSH from this machine's IP, wait for RDP, print the address
 scripts/windows-vm.sh down     # deallocate: stops compute billing
 scripts/windows-vm.sh status   # power state and address
-scripts/windows-vm.sh create   # once, already done: VM, RDP rule, auto-shutdown, budget alert
+scripts/windows-vm.sh create   # once, already done: VM, OpenSSH server, auto-shutdown, budget alert
 ```
 
-Connect with any RDP client to the printed address as `crmadmin`. Always finish
-with `down`. Shutting Windows down from inside the guest leaves the VM
-allocated, and compute keeps billing.
+Always finish with `down`. Shutting Windows down from inside the guest leaves
+the VM allocated, and compute keeps billing.
+
+## Access
+
+The VM accepts RDP (3389) and SSH (22) only from the IP that last ran `up`.
+To connect from a second machine on another network, add its IP to both rules:
+
+```bash
+az network nsg rule update --subscription "Visual Studio Professional Subscription" \
+  -g crm-winvm-rg --nsg-name crm-winvmNSG -n allow-rdp-me \
+  --source-address-prefixes <first-ip>/32 <second-ip>/32   # same again with -n allow-ssh-me
+```
+
+- **RDP**, for anything that needs a desktop logon: on Windows,
+  `mstsc /v:<WINVM_HOST>` as `.\crmadmin`; on Linux,
+  `remmina -c rdp://crmadmin@<WINVM_HOST>`. The password is
+  `WINVM_ADMIN_PASSWORD`.
+- **SSH**, for scripted runs: `ssh crmadmin@<WINVM_HOST>` with the same
+  password. The login shell is Windows PowerShell 5.1, and `scp` works for
+  copying files both ways (`scp file crmadmin@<WINVM_HOST>:C:/t/`).
+
+An SSH logon cannot write Windows Credential Manager: `crm profile add` there
+fails with `(1312, 'CredRead', 'A specified logon session does not exist')`.
+Run the keyring step from an RDP session, and pass `--password` per run in an
+SSH session.
+
+## Testing a release on Windows
+
+1. Install the release under test. Copy `scripts/install.ps1` over with `scp`,
+   then over SSH:
+   `$env:CRM_VERSION="v1.92.5"; powershell -ExecutionPolicy Bypass -File C:\t\install.ps1`.
+   The binary lands in `%LOCALAPPDATA%\Programs\crm\crm.exe`; a new shell
+   has it on `PATH`.
+2. Create the profile in an RDP session (`crm profile add …`), so the secret
+   goes to Credential Manager, and confirm a read with `crm connection whoami`
+   or, for a CRM 2011 profile, `crm legacy whoami`.
+3. Run the command set over SSH, each with `--profile <name> --password <secret> --json`,
+   writing each command's stdout and stderr to files under `C:\t\`. Copy the
+   results back with `scp -r` and diff them against the same release's run on
+   Ubuntu.
+
+### An org that filters by source IP
+
+Some orgs accept connections only from known addresses, and the VM's Azure IP
+is not one of them: `Test-NetConnection <org-host> -Port 443` times out. Either
+have the org's admin allow `WINVM_HOST`, or route the org's traffic through a
+machine the org already accepts, with a reverse SSH tunnel run on that machine:
+
+```bash
+ssh -N -R 127.0.0.1:443:<org-host>:443 crmadmin@<WINVM_HOST>
+```
+
+and, on the VM (elevated), point the org's name at the tunnel:
+
+```powershell
+Add-Content C:\Windows\System32\drivers\etc\hosts "`n127.0.0.1 <org-host>"
+```
+
+TLS and NTLM still see the real host name. Remove the hosts line when you are
+done.
 
 ## Settings and credentials
 
