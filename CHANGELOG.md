@@ -9,6 +9,27 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.92.3 (2026-11-05)
+
+### Bug Fixes
+
+- **skills**: Classify migration-assess findings as flow-conversion candidates
+  ([#1086](https://github.com/Gharib89/crm/pull/1086),
+  [`16219f7`](https://github.com/Gharib89/crm/commit/16219f7ce7b0c95967c9b5c19379286393feaea1))
+
+- **skills**: Correct crm-migration references after self-review
+  ([#1086](https://github.com/Gharib89/crm/pull/1086),
+  [`16219f7`](https://github.com/Gharib89/crm/commit/16219f7ce7b0c95967c9b5c19379286393feaea1))
+
+- **skills**: Crm-migration references for inventory, mapping, assessment and remediation
+  ([#1086](https://github.com/Gharib89/crm/pull/1086),
+  [`16219f7`](https://github.com/Gharib89/crm/commit/16219f7ce7b0c95967c9b5c19379286393feaea1))
+
+- **skills**: Point crm-migration assessment evidence at the finding, fix at rules_hit
+  ([#1086](https://github.com/Gharib89/crm/pull/1086),
+  [`16219f7`](https://github.com/Gharib89/crm/commit/16219f7ce7b0c95967c9b5c19379286393feaea1))
+
+
 ## v1.92.2 (2026-11-05)
 
 ### Bug Fixes
