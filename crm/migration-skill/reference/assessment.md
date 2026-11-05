@@ -21,9 +21,9 @@ covers is `unknown`.
 
 ## Quote the evidence
 
-Copy each rule hit's rule id, evidence and Microsoft Learn link (from the
-findings file's `rules_hit`) into the report beside its class; a class without
-them is an assertion.
+Copy each finding's rule id and `evidence`, and the rule's `fix` and Microsoft
+Learn `sources` (the findings file's `rules_hit`, keyed by rule id), into the
+report beside its class; a class without them is an assertion.
 
 ## Turn every unknown into a question or a manual-review entry
 
