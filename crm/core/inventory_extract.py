@@ -962,6 +962,10 @@ def extract(
     built = _Builder(cp, out, rows, source.api, stock_scope)
     built.metadata(entities, option_sets, details)
     built.components()
+    # A custom (unmanaged) entity's ribbon is the entity's own, whatever ids it holds.
+    system_entities = {
+        e["logical_name"] for e in entities if not e["custom"] or e.get("managed") is True
+    }
     for entity_name, ribbon in ribbons.items():
         built.add(
             "ribbon",
@@ -971,7 +975,9 @@ def extract(
             "unknown",  # the ribbon XML merges the system ribbon and customizations
             None,
             [("ribbon.xml", ribbon, True)],
-            stock=stock_scope and not _ribbon_custom(ribbon),
+            stock=stock_scope
+            and (entity_name is None or entity_name in system_entities)
+            and not _ribbon_custom(ribbon),
         )
     built.memberships_and_dependencies()
     if solutions:

@@ -218,7 +218,7 @@ def test_the_ribbon_rule_keeps_a_custom_entry_and_drops_a_stock_only_ribbon(
     tmp_path,
 ):
     xml = {
-        "new_project": '<R><Button Id="new_project.form.Approve"/></R>',
+        "new_project": "<R/>",  # a custom entity's ribbon is kept whatever it holds
         "account": '<R><Button Id="Mscrm.Form.account.Save"/><Tab Id="AIBuilder.a.Dummy"/></R>',
         None: (
             '<R><HideCustomAction HideActionId="Mscrm.Form.account.Save.HideAction"'
@@ -292,3 +292,17 @@ def test_a_checkpoint_of_another_stock_scope_is_refused(tmp_path):
     with pytest.raises(D365Error, match="another stock scope"):
         _extract(FakeClient(org=_org()), out)
     assert _extract(FakeClient(org=_org()), out, include_system=False).complete
+
+
+@pytest.mark.parametrize(
+    ("xml", "custom"),
+    [
+        ('<R><Button Id="new_project.form.Approve"/></R>', True),
+        ('<R><Button Id="Mscrm.Form.account.Save"/><Tab Id="AIBuilder.a.Dummy"/></R>', False),
+        ("<R/>", False),
+    ],
+)
+def test_ribbon_custom_reads_the_entry_ids(tmp_path, xml, custom):
+    path = tmp_path / "ribbon.xml"
+    path.write_text(xml, encoding="utf-8")
+    assert inventory_extract._ribbon_custom(path) is custom

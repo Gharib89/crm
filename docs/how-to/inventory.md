@@ -69,11 +69,12 @@ extract. The manifest header records the choice (`scope.system`: `excluded`, or
 - A stock entity that a kept attribute, relationship, form, view or ribbon names stays
   as a reference row, and a kept step keeps its plug-in type and assembly, so keys
   resolve.
-- A ribbon is kept when it holds an entry outside the platform's own id families
-  (`Mscrm.`, `AIBuilder.`, `msdyn`, and the other families in the code), or a
-  `HideCustomAction`. A ribbon the rule cannot tell from stock is kept, never dropped. A
-  button hidden through a `CommandDefinition` display-rule override reuses stock ids, so
-  that ribbon is left out; use `--include-system` to keep every ribbon.
+- The ribbon of a custom entity is kept. The ribbon of a system entity, and the
+  application ribbon, is kept when it holds an entry outside the platform's own id
+  families (`Mscrm.`, `AIBuilder.`, `msdyn`, and the other families in the code), or a
+  `HideCustomAction`; one whose ids all fall in those families, or that holds none, is
+  left out. A button hidden through a `CommandDefinition` display-rule override reuses
+  stock ids, so that ribbon is left out; use `--include-system` to keep every ribbon.
 - A solution membership or dependency naming a left-out component is not dropped
   silently: it is counted in a gap whose reason starts `platform:`. A kind whose rows
   carry no `ismanaged` is kept whole and noted as a gap.
