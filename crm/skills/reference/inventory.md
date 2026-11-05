@@ -110,6 +110,11 @@ same inventory is refused.
 - **Read packages from `--out`**: `index.json` lists them, `<package id>.json` holds
   each; `data` is the summary. Package and verification ids hash their members, so
   they are stable across runs: refer to them by id.
+- **Add the compatibility verdicts with `--findings FILE`** (the `assess --out` file of
+  the same inventory; another inventory's is refused, exit 1). Blocker, deprecated,
+  optional and unknown findings join the package holding their component; read each
+  package's `counts` and the `compatibility.unplaced` list in `index.json`, findings no
+  package holds, which still need a human look. `clear` is not merged.
 
 ## Judging recorded verification results (`crm inventory verify`)
 
