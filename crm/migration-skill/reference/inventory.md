@@ -11,6 +11,9 @@ profile runs it. Run it once per org and stage, into a folder named for that
 stage, and record the org's version beside the folder
 (`reference/environments.md`).
 
+- **A real org takes many minutes; stderr shows where it is.** Stage lines
+  (`[crm] extract stage=...`) tell a slow run from a stuck one; `--quiet`
+  silences them. Run it in the background with stderr captured.
 - **Narrowing to a solution yields a partial scope.** Write the scope into the
   stage notes, because a diff across two scopes compares different things.
 - **`crm org brief` is orientation only.** It returns counts and key names,

@@ -51,6 +51,26 @@ runs it too. It reads every v1 kind (`scope.mode: "org"` unless you pass
 Each entity gets one metadata read and one ribbon read, so the whole-org read takes
 tens of minutes on a large org.
 
+### Progress
+
+A long extract prints progress on **stderr**, so stdout (the table, or the `--json`
+envelope) is unchanged. Each stage prints a line when it starts, then about one line
+a second, in a `key=value` shape a script can grep:
+
+```text
+[crm] extract stage=entity_detail total=340
+[crm] extract stage=entity_detail done=120/340 reused=5 eta=~4m (estimate)
+```
+
+The stages run in order: `source` (3 reads), `records` (one paged read per record
+kind: `done` counts finished reads, with the current `kind` and its `pages` so far),
+`entity_detail` and `ribbons` (one unit per entity in scope), then `build`, which is
+local. The `eta` appears in `entity_detail` and `ribbons` once five units have been
+read this run, from their average read time; it is an estimate. The `records` stage
+has no total page count, so it shows none. On a resumed run, units restored from the
+checkpoint count as done (`reused`) and do not feed the estimate. Pass `--quiet`
+(`-q`) to suppress the progress lines.
+
 `DIR` receives:
 
 ```text

@@ -28,12 +28,16 @@ def _solution(cli) -> str:
     return names[0]
 
 
-def _extract(cli, out: Path, solution: str) -> dict:
+def _extract(cli, out: Path, solution: str, *, quiet: bool = False) -> dict:
     proc = cli(
-        ["--json", "inventory", "extract", "--out", str(out), "--solution", solution],
+        ["--json", "inventory", "extract", "--out", str(out), "--solution", solution]
+        + (["-q"] if quiet else []),
         check=False,
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
+    # Progress goes to stderr only, and -q silences it.
+    assert ("[crm] extract stage=source" in proc.stderr) is not quiet, proc.stderr
+    assert "[crm] extract" not in proc.stdout
     summary = json.loads(proc.stdout)["data"]
     assert summary["complete"] is True, proc.stdout
     return json.loads((out / "manifest.json").read_text(encoding="utf-8"))
@@ -72,7 +76,7 @@ def test_inventory_extract_is_valid_and_repeatable(cli, tmp_path):
     assert {(r.kind, r.key) for r in parsed.records} == {(f["kind"], f["key"]) for f in findings}
 
     # Two consecutive runs differ only in the header's extraction time.
-    second = _extract(cli, tmp_path / "two", solution)
+    second = _extract(cli, tmp_path / "two", solution, quiet=True)
     assert {k for k in first if first[k] != second[k]} <= {"extracted_at"}
 
     # No credential reaches any output file (the throwaway e2e profile's secret).

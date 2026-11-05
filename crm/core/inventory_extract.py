@@ -30,6 +30,7 @@ import json
 import os
 import re
 import shutil
+import time
 from collections import Counter
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field, replace
@@ -392,6 +393,28 @@ _ENTITY_DETAIL_KINDS = ("attribute", "relationship", "local_option_set", "ribbon
 _SCOPE_KINDS = ("solution", "solution_membership")
 
 
+_ETA_MIN_READS = 5  # units read (not reused) in a stage before its ETA is shown
+
+
+@dataclass(frozen=True)
+class Progress:
+    """One progress event; `crm inventory extract` prints it as a stderr line.
+
+    *done* counts units restored from the checkpoint too (*reused* of them).
+    *total* is None where the stage has no countable total. *kind* and *pages*
+    name the record read in progress. *eta* is an estimate in seconds, set only
+    in a stage of uniform units once `_ETA_MIN_READS` of them were read this run.
+    """
+
+    stage: str
+    done: int
+    total: int | None
+    kind: str | None = None
+    pages: int | None = None
+    reused: int = 0
+    eta: float | None = None
+
+
 @dataclass
 class _Tally:
     """What one inventory kind's reads did: units read, reused, truncation, errors."""
@@ -480,14 +503,53 @@ class Checkpoint:
 
 
 class _Run:
-    def __init__(self, source: InventorySource, cp: Checkpoint):
+    def __init__(
+        self,
+        source: InventorySource,
+        cp: Checkpoint,
+        progress: Callable[[Progress], None] | None = None,
+        clock: Callable[[], float] = time.monotonic,
+    ):
         self.source = source
         self.cp = cp
         self.tallies: dict[str, _Tally] = {}
         self.errors: list[str] = []  # failed units that feed no kind (the source read)
+        self._progress = progress
+        self._clock = clock
+        self._stage_name = ""
+        self._total: int | None = None
+        self._estimate = False
+        self._done = self._reused = self._read = 0
+        self._spent = 0.0
 
     def tally(self, kind: str) -> _Tally:
         return self.tallies.setdefault(kind, _Tally())
+
+    def begin(self, stage: str, total: int | None = None, *, estimate: bool = False) -> None:
+        """Start *stage* of *total* units (None: uncountable); *estimate* turns its ETA on."""
+        self._stage_name, self._total, self._estimate = stage, total, estimate
+        self._done = self._reused = self._read = 0
+        self._spent = 0.0
+        self._report()
+
+    def _report(self, kind: str | None = None, pages: int | None = None) -> None:
+        if self._progress is None:
+            return
+        eta = None
+        if self._estimate and self._total is not None and self._read >= _ETA_MIN_READS:
+            eta = self._spent / self._read * (self._total - self._done)
+        self._progress(
+            Progress(self._stage_name, self._done, self._total, kind, pages, self._reused, eta)
+        )
+
+    def _finish(self, *, reused: bool, seconds: float = 0.0) -> None:
+        self._done += 1
+        if reused:
+            self._reused += 1
+        else:
+            self._read += 1
+            self._spent += seconds
+        self._report()
 
     def unit(self, kinds: Iterable[str], unit: str, read: Callable[[], Any]) -> Any:
         """Return *unit*'s saved data, or read and save it; a per-item failure returns None."""
@@ -497,7 +559,9 @@ class _Run:
             for t in tallies:
                 t.pages += 1
                 t.reused += 1
+            self._finish(reused=True)
             return data
+        began = self._clock()
         try:
             data = read()
         except D365Error as exc:
@@ -507,10 +571,12 @@ class _Run:
                 t.errors.append(f"{unit}: {exc}")
             if not tallies:
                 self.errors.append(f"{unit}: {exc}")
+            self._finish(reused=False, seconds=self._clock() - began)
             return None
         self.cp.save(unit, data)
         for t in tallies:
             t.pages += 1
+        self._finish(reused=False, seconds=self._clock() - began)
         return data
 
     def pages(self, read: _Read) -> list[dict[str, Any]]:
@@ -525,6 +591,8 @@ class _Run:
             tally.pages += 1
             tally.reused += 1
             number += 1
+            self._report(read.kind, number - 1)
+        fetched = False
         try:
             if last is None or (last.more and last.cookie is not None):
                 for page in self.source.pages(read.fetch(), page_size=read.page_size, start=last):
@@ -536,6 +604,8 @@ class _Run:
                     rows.extend(page_rows)
                     last = page
                     tally.pages += 1
+                    fetched = True
+                    self._report(read.kind, tally.pages)
         except (D365Error, ValueError) as exc:
             # ValueError: web resource or assembly content that is not base64.
             if isinstance(exc, D365Error) and legacy_reads.connection_wide(exc):
@@ -548,6 +618,7 @@ class _Run:
                 f"{read.entity} page {last.number} reports more records but carries no paging"
                 " cookie"
             )
+        self._finish(reused=last is not None and not fetched)
         return rows
 
     def _stage(self, read: _Read, row: dict[str, object]) -> dict[str, object]:
@@ -610,6 +681,8 @@ def extract(
     cli_version: str,
     solutions: tuple[str, ...] = (),
     now: Callable[[], str] = _utc_now,
+    progress: Callable[[Progress], None] | None = None,
+    clock: Callable[[], float] = time.monotonic,
 ) -> ExtractSummary:
     """Extract the org's migration inventory into *out*, resuming a checkpoint there.
 
@@ -621,13 +694,17 @@ def extract(
     without subcomponents brings only the subcomponents the solutions list on
     their own.
 
+    *progress* receives a `Progress` event as each stage starts and each unit
+    finishes; *clock* (monotonic seconds) times the units for its ETA.
+
     Raises:
         D365Error: *out* cannot be used, or a connection-wide failure stopped
             the read (the checkpoint keeps every finished unit for a re-run).
     """
     solutions = tuple(sorted({name.lower() for name in solutions}))
     cp, state, resumed = Checkpoint.open(out, source.org_url, now(), solutions)
-    run = _Run(source, cp)
+    run = _Run(source, cp, progress, clock)
+    run.begin("source", 3)
     ident = cast("dict[str, Any]", run.unit((), "source", source.identity) or {})
     entities = cast(
         "list[dict[str, Any]] | None", run.unit(("entity",), "entities", source.list_entities)
@@ -641,6 +718,7 @@ def extract(
         run.unit(("global_option_set",), "option-sets", source.list_option_sets) or [],
     )
     reads = _READS if source.platform == PLATFORM_CRM2011 else _V9_READS
+    run.begin("records", len(reads))
     rows = {read.kind: run.pages(read) for read in reads}
     if solutions:
         # The scope is found from these two reads: if either fell short, the kinds it
@@ -659,6 +737,7 @@ def extract(
     else:
         entities_read = entities
     details: list[dict[str, Any]] = []
+    run.begin("entity_detail", len(entities_read), estimate=True)
     for entity in entities_read:
         name = str(entity["logical_name"])
         detail = run.unit(
@@ -675,7 +754,9 @@ def extract(
     labelled = [str(e["logical_name"]) for e in entities_read if _ribbon_readable(e)]
     unlabelled = sorted(str(e["logical_name"]) for e in entities_read if not _ribbon_readable(e))
     # The application ribbon belongs to no solution's entities, so a scoped run skips it.
-    for entity_name in [*([] if solutions else [None]), *labelled]:
+    ribbon_units = [*([] if solutions else [None]), *labelled]
+    run.begin("ribbons", len(ribbon_units), estimate=True)
+    for entity_name in ribbon_units:
         unit = f"ribbon/{entity_name or '_application'}"
 
         def read_ribbon(entity_name: str | None = entity_name) -> str:
@@ -688,6 +769,7 @@ def extract(
                 "ribbon", entity_name or "_application", "ribbon.xml"
             ).read_bytes()
 
+    run.begin("build")
     built = _Builder(cp, out, rows, source.api)
     built.metadata(entities, option_sets, details)
     built.components()

@@ -435,7 +435,7 @@ def test_inventory_extract_returns_a_short_summary(crm_home, reads, monkeypatch,
         cli, ["--json", "--profile", "legacy", "inventory", "extract", "--out", str(out)]
     )
     assert result.exit_code == 0, result.output
-    env = json.loads(result.output)
+    env = json.loads(result.stdout)
     assert env["ok"] is True
     data = env["data"]
     assert data["manifest"] == str(out / "manifest.json")
@@ -454,7 +454,7 @@ def test_inventory_extract_failure_is_a_failure_envelope_with_the_summary(
         ["--json", "--profile", "legacy", "inventory", "extract", "--out", str(tmp_path / "i")],
     )
     assert result.exit_code == 1
-    env = json.loads(result.output)
+    env = json.loads(result.stdout)
     assert env["ok"] is False
     assert "systemform page 1: plug-in failed" in env["error"]
     assert env["data"]["kinds"]["form"]["status"] == "failed"

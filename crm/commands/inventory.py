@@ -3,6 +3,9 @@
 # pyright: basic
 from __future__ import annotations
 
+import sys
+import time
+from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
 
@@ -15,6 +18,7 @@ from crm.core import inventory_extract
 from crm.core.inventory import InventoryError
 from crm.core.inventory_assess import CLASSES, TARGETS, assess, dump_findings, read_findings
 from crm.core.inventory_diff import VERDICTS, diff_inventories, dump_diff, read_pair
+from crm.core.inventory_extract import Progress
 from crm.core.inventory_packages import (
     COMPAT_CLASSES,
     build_packages,
@@ -32,6 +36,55 @@ def inventory_group():
     """Extract, compare, map to source, package, verify and assess migration inventories."""
 
 
+def _eta(seconds: float) -> str:
+    if (secs := round(seconds)) < 60:
+        return f"~{secs}s"
+    if (mins := round(secs / 60)) < 60:
+        return f"~{mins}m"
+    hours, mins = divmod(mins, 60)
+    return f"~{hours}h{mins:02d}m"
+
+
+class ProgressLines:
+    """Write extract's `Progress` events as `[crm] extract key=value` lines, at most one a second.
+
+    A stage's first line (done 0) and its last (done == total) always print, as
+    `solution import`'s terminal tick does; the lines between are dropped inside
+    the same second. One line per tick, never a redrawn bar, so a CI log or an
+    agent capturing stderr reads it the same as a terminal does.
+    """
+
+    def __init__(
+        self,
+        write: Callable[[str], object],
+        clock: Callable[[], float] = time.monotonic,
+    ):
+        self._write = write
+        self._clock = clock
+        self._last: float | None = None
+
+    def __call__(self, p: Progress) -> None:
+        now = self._clock()
+        start = p.done == 0 and p.pages is None
+        last = p.total is not None and p.done >= p.total and p.pages is None
+        if not (start or last) and self._last is not None and now - self._last < 1.0:
+            return
+        self._last = now
+        parts = [f"stage={p.stage}"]
+        if start:
+            if p.total is not None:
+                parts.append(f"total={p.total}")
+        else:
+            parts.append(f"done={p.done}/{p.total}")
+            if p.kind:
+                parts.append(f"kind={p.kind} pages={p.pages}")
+            if p.reused:
+                parts.append(f"reused={p.reused}")
+            if p.eta is not None:
+                parts.append(f"eta={_eta(p.eta)} (estimate)")
+        self._write("[crm] extract " + " ".join(parts) + "\n")
+
+
 @inventory_group.command("extract")
 @click.option(
     "--out",
@@ -47,8 +100,9 @@ def inventory_group():
     metavar="UNIQUE_NAME",
     help="Narrow the inventory to this solution (repeatable); default: the whole org.",
 )
+@click.option("--quiet", "-q", is_flag=True, help="Suppress the progress lines on stderr.")
 @pass_ctx
-def inventory_extract_cmd(ctx: CLIContext, out_dir: Path, solutions: tuple[str, ...]):
+def inventory_extract_cmd(ctx: CLIContext, out_dir: Path, solutions: tuple[str, ...], quiet: bool):
     """Extract the org's migration inventory into DIR: read-only.
 
     Runs on every profile: a crm2011 profile is read over the CRM 2011 SOAP
@@ -61,6 +115,10 @@ def inventory_extract_cmd(ctx: CLIContext, out_dir: Path, solutions: tuple[str, 
     recorded in the manifest's coverage and the run goes on (exit code 1); the
     checkpoint is removed once every read succeeds. Returns a short summary;
     the manifest holds the records, coverage and gaps.
+
+    Progress goes to stderr, one `[crm] extract` line per stage start and per
+    tick (about one a second), with an ETA marked as an estimate where the
+    stage has a known total; stdout is unchanged. -q suppresses it.
     """
     saved = ctx.saved_profile()
     meta = None
@@ -75,7 +133,11 @@ def inventory_extract_cmd(ctx: CLIContext, out_dir: Path, solutions: tuple[str, 
             else:
                 source = WebApiSource(ctx.backend())
             summary = inventory_extract.extract(
-                source, out_dir, cli_version=__version__, solutions=solutions
+                source,
+                out_dir,
+                cli_version=__version__,
+                solutions=solutions,
+                progress=None if quiet else ProgressLines(sys.stderr.write),
             )
         except OSError as exc:
             ctx.emit(False, error=f"--out {out_dir}: {exc}")
