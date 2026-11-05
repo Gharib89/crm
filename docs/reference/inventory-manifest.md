@@ -171,8 +171,8 @@ The reader accepts v1 and upgrades it on read: a `ribbon` record whose
 null, takes key `""`, decided by the field and not by the old key, so a v1
 manifest that holds the collision upgrades to distinct keys. The result reads as
 v2, so `diff` pairs a v1 manifest with a v2 one. A v1 gap keyed `application` or
-`default` gains a twin keyed `""` (the original stays, since it may name an entity's
-ribbon or a named sitemap). A v1 record that is neither of
+`default` is re-keyed to `""`, and gains a twin instead where the key is ambiguous (the
+original stays, since it may name an entity's ribbon or a named sitemap). A v1 record that is neither of
 those keeps its key. A v1 `solution_membership` or `dependency` row that references
 the application ribbon or default sitemap (its `member_key`, `dependent_key` or
 `required_key` `application` or `default`) is re-keyed to `""` too, unless the manifest

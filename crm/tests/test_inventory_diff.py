@@ -524,3 +524,13 @@ def test_a_v1_reference_stays_where_an_entity_ribbon_makes_it_ambiguous() -> Non
         r for r in v1.records if r.kind == "dependency" and r.fields["dependent_kind"] == "ribbon"
     ]
     assert dep.fields["dependent_key"] == "application"
+
+
+def test_an_unambiguous_v1_gap_is_rekeyed_not_duplicated() -> None:
+    manifest = _with_references(1)
+    manifest["gaps"].append(
+        {"kind": "ribbon", "key": "application", "description": None, "reason": "unreadable"}
+    )
+    v1 = inventory.parse_manifest(manifest)
+
+    assert [(g.kind, g.key) for g in v1.gaps if g.reason == "unreadable"] == [("ribbon", "")]

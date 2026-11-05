@@ -522,19 +522,24 @@ def _gap(value: object, where: str) -> ExtractionGap:
     return gap
 
 
-def _upgrade_references(records: tuple[Record, ...]) -> tuple[Record, ...]:
-    """Re-key a v1 reference to the application ribbon or default sitemap to `""`.
+def _null_record_kinds(records: tuple[Record, ...]) -> tuple[set[str], set[str]]:
+    """The kinds holding a null ribbon or sitemap, and those where no record shares its v1 key.
 
-    A v1 `member_key` or `dependent_key` of `application` names the application
-    ribbon only where no entity `application` has a ribbon of its own: the row cannot say
-    which, so an org holding the collision keeps the v1 reference.
+    A v1 reference to `application` names the application ribbon only where no entity
+    `application` has a ribbon of its own; where one does, the reference is ambiguous.
     """
-    upgradable = {
+    held = {kind for kind in _V1_NULL_KEY if any(r.kind == kind and r.key == "" for r in records)}
+    unambiguous = {
         kind
-        for kind, old in _V1_NULL_KEY.items()
-        if any(r.kind == kind and r.key == "" for r in records)
-        and not any(r.kind == kind and r.key == old for r in records)
+        for kind in held
+        if not any(r.kind == kind and r.key == _V1_NULL_KEY[kind] for r in records)
     }
+    return held, unambiguous
+
+
+def _upgrade_references(records: tuple[Record, ...]) -> tuple[Record, ...]:
+    """Re-key an unambiguous v1 reference to the application ribbon or default sitemap to `""`."""
+    _, upgradable = _null_record_kinds(records)
     out: list[Record] = []
     for record in records:
         fields = dict(record.fields)
@@ -553,18 +558,21 @@ def _upgrade_gaps(
 ) -> tuple[ExtractionGap, ...]:
     """Re-key a v1 gap on the application ribbon or default sitemap to its v2 key.
 
-    The original stays beside its twin: a v1 key `application` named the ribbon of an
-    entity `application` as well, so the gap may still be that record's.
+    Where the v1 key is ambiguous (an entity `application` has a ribbon too), or the gap
+    names no kind, the original stays beside its twin: it may still be another record's.
     """
-    twins = [
-        ExtractionGap(kind=kind, key="", description=gap.description, reason=gap.reason)
-        for gap in gaps
-        for kind, old in _V1_NULL_KEY.items()
-        if gap.key == old
-        and gap.kind in (None, kind)
-        and any(r.kind == kind and r.key == "" for r in records)
-    ]
-    return gaps + tuple(twins)
+    held, unambiguous = _null_record_kinds(records)
+    out: list[ExtractionGap] = []
+    for gap in gaps:
+        keep = True
+        for kind, old in _V1_NULL_KEY.items():
+            if gap.key != old or gap.kind not in (None, kind) or kind not in held:
+                continue
+            out.append(ExtractionGap(kind, "", gap.description, gap.reason))
+            keep = gap.kind is None or kind not in unambiguous
+        if keep:
+            out.append(gap)
+    return tuple(out)
 
 
 def _extracted_at(obj: dict[str, Any]) -> str:
