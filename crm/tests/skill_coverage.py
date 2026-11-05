@@ -24,8 +24,9 @@ from pathlib import Path
 from crm.tests.e2e.coverage import walk_commands
 
 SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
-SKILL_MD = SKILLS_DIR / "SKILL.md"
-REFERENCE_DIR = SKILLS_DIR / "reference"
+# The second shipped skill (`crm-migration`, ADR 0033): the dead-reference
+# invariant covers it too; group completeness binds only the `crm` skill.
+MIGRATION_SKILL_DIR = SKILLS_DIR.parent / "migration-skill"
 
 # A command / verb token: lowercase, may contain digits and hyphens (e.g.
 # ``delete-entity``, ``self-update``). Placeholders (``<logical>``, ``[group]``),
@@ -39,9 +40,9 @@ _INLINE_CODE = re.compile(r"`([^`]+)`")
 _FENCE = re.compile(r"^\s*(```+|~~~+)")
 
 
-def skill_files() -> list[Path]:
-    """Every shipped skill markdown file (router + references)."""
-    return [SKILL_MD, *sorted(REFERENCE_DIR.glob("*.md"))]
+def skill_files(skills_dir: Path = SKILLS_DIR) -> list[Path]:
+    """Every markdown file of one shipped skill (router first, then references)."""
+    return [skills_dir / "SKILL.md", *sorted((skills_dir / "reference").glob("*.md"))]
 
 
 def _command_spans(text: str) -> list[str]:

@@ -4,5 +4,5 @@
   "homepage": "https://crm-cli-docs.pages.dev/",
   "repository": "https://github.com/Gharib89/crm",
   "license": "PolyForm-Noncommercial-1.0.0",
-  "skills": ["./crm/skills"]
+  "skills": ["./crm/skills", "./crm/migration-skill"]
 }

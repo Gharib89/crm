@@ -10,13 +10,16 @@ structural guards in `test_skill_bundle.py`.
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from crm.tests.skill_coverage import (
+    MIGRATION_SKILL_DIR,
     WAIVED,
     catalogue,
     dead_references,
     parse_citations,
+    skill_files,
     unrouted_groups,
 )
 
@@ -105,6 +108,25 @@ def test_no_dead_references_in_shipped_skill():
     _, cited_pairs = parse_citations()
     dead = dead_references(cited_pairs, _LEAVES)
     assert not dead, f"skill cites command(s) absent from the CLI: {sorted(dead)}"
+
+
+def test_no_dead_references_in_migration_skill():
+    _, cited_pairs = parse_citations(skill_files(MIGRATION_SKILL_DIR))
+    dead = dead_references(cited_pairs, _LEAVES)
+    assert not dead, f"crm-migration skill cites command(s) absent from the CLI: {sorted(dead)}"
+
+
+def test_dead_reference_planted_in_the_migration_tree_fails(tmp_path):
+    # #1062: the gate must walk the migration tree, not only crm/skills/.
+    tree = tmp_path / "migration-skill"
+    shutil.copytree(MIGRATION_SKILL_DIR, tree)
+    router = tree / "SKILL.md"
+    router.write_text(
+        router.read_text(encoding="utf-8") + "\nRun `crm inventory totally-fake-verb`.\n",
+        encoding="utf-8",
+    )
+    _, pairs = parse_citations(skill_files(tree))
+    assert dead_references(pairs, _LEAVES) == {"inventory totally-fake-verb"}
 
 
 # ── Invariant 2: group completeness (against the real skill tree) ────────────

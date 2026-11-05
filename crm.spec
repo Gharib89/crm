@@ -15,6 +15,7 @@ a = Analysis(
     binaries=[],
     datas=[
         ('crm/skills', 'crm/skills'),
+        ('crm/migration-skill', 'crm/migration-skill'),
     ],
     hiddenimports=[
         'requests_ntlm',

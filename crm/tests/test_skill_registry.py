@@ -23,7 +23,12 @@ def test_record_then_read():
     reg.record_install("claude", "/abs/path", "2.10.0")
     skills = reg.read_skills()
     assert skills == [
-        {"target": "claude", "dest": _norm("/abs/path"), "installed_version": "2.10.0"}
+        {
+            "target": "claude",
+            "dest": _norm("/abs/path"),
+            "installed_version": "2.10.0",
+            "skill": "crm",
+        }
     ]
 
 
@@ -103,10 +108,12 @@ def test_read_propagates_unexpected_io_error(monkeypatch):
 
 
 def _make_src(tmp_path):
+    """A package dir holding both skill bundles, like the installed `crm/` package."""
     src = tmp_path / "src"
-    (src / "reference").mkdir(parents=True)
-    (src / "SKILL.md").write_text("NEW", encoding="utf-8")
-    (src / "reference" / "x.md").write_text("ref", encoding="utf-8")
+    for folder, body in (("skills", "NEW"), ("migration-skill", "NEW-MIGRATION")):
+        (src / folder / "reference").mkdir(parents=True)
+        (src / folder / "SKILL.md").write_text(body, encoding="utf-8")
+        (src / folder / "reference" / "x.md").write_text("ref", encoding="utf-8")
     return src
 
 
@@ -177,3 +184,33 @@ def test_refresh_error_continues_and_keeps_entry(tmp_path):
     versions = {s["dest"]: s["installed_version"] for s in reg.read_skills()}
     assert versions[str(bad)] == "1.0.0"
     assert versions[str(good)] == "2.0.0"
+
+
+def test_refresh_reads_an_entry_without_a_skill_field_as_crm(tmp_path):
+    # A registry written before #1062 carries no `skill` field.
+    from crm.commands import skill_registry as reg
+
+    src = _make_src(tmp_path)
+    dest = tmp_path / "old"
+    dest.mkdir()
+    reg._write_skills([{"target": "claude", "dest": str(dest), "installed_version": "1.0.0"}])
+
+    results = reg.refresh_skills("2.0.0", src)
+
+    assert results[0]["status"] == "refreshed"
+    assert (dest / "SKILL.md").read_text(encoding="utf-8") == "NEW"
+
+
+def test_refresh_copies_a_migration_entry_from_the_migration_bundle(tmp_path):
+    from crm.commands import skill_registry as reg
+
+    src = _make_src(tmp_path)
+    dest = tmp_path / "crm-migration"
+    dest.mkdir()
+    reg.record_install("claude", str(dest), "1.0.0", skill="crm-migration")
+
+    results = reg.refresh_skills("2.0.0", src)
+
+    assert results[0]["status"] == "refreshed"
+    assert (dest / "SKILL.md").read_text(encoding="utf-8") == "NEW-MIGRATION"
+    assert reg.read_skills()[0]["skill"] == "crm-migration"

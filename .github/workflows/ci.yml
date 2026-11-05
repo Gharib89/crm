@@ -179,6 +179,16 @@ jobs:
           # opts placed before the command.
           ./dist/crm/crm --json --jq 'length' profile list
           ./dist/crm/crm --json --fields name profile list
+          # Both shipped skills ride in the bundle (#1062).
+          ./dist/crm/crm --json skill install --skill crm-migration --dest "$RUNNER_TEMP/crm-migration"
+          test -f "$RUNNER_TEMP/crm-migration/SKILL.md"
+      - name: Wheel carries both skills (Linux)
+        if: runner.os != 'Windows'
+        run: |
+          pip wheel . --no-deps -w "$RUNNER_TEMP/wheel"
+          unzip -l "$RUNNER_TEMP"/wheel/crm-*.whl > "$RUNNER_TEMP/wheel.txt"
+          grep -q 'crm/skills/SKILL.md' "$RUNNER_TEMP/wheel.txt"
+          grep -q 'crm/migration-skill/SKILL.md' "$RUNNER_TEMP/wheel.txt"
       - name: Smoke test (Windows)
         if: runner.os == 'Windows'
         # PowerShell (backslash paths) — declare it so actionlint doesn't lint the
@@ -189,3 +199,5 @@ jobs:
           .\dist\crm\crm.exe --help
           .\dist\crm\crm.exe --json --jq 'length' profile list
           .\dist\crm\crm.exe --json --fields name profile list
+          .\dist\crm\crm.exe --json skill install --skill crm-migration --dest "$env:RUNNER_TEMP\crm-migration"
+          if (-not (Test-Path "$env:RUNNER_TEMP\crm-migration\SKILL.md")) { exit 1 }
