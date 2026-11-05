@@ -60,6 +60,10 @@ _DOUBTFUL = frozenset(("stale", "missing_source", "ambiguous"))
 #: Records that are edges or metadata, never graph nodes.
 _NOT_NODES = frozenset(("dependency", "solution", "solution_membership"))
 
+#: The reason of an unknown edge to a web resource a partial read does not hold: it may be
+#: stock, or another solution's, so it is outside the scope rather than missing from the org.
+OUT_OF_SCOPE = "out_of_scope"
+
 _WR_TOKEN = re.compile(r"\$webresource:([^\"'<>\s&?#]+)", re.IGNORECASE)
 _WR_PATH = re.compile(r"[\"'][^\"'\s]*?/WebResources/([^\"'?#\s]+)[\"']", re.IGNORECASE)
 _WR_DYNAMIC = re.compile(r"(?:\$webresource:|/WebResources/)[\"']\s*\+", re.IGNORECASE)
@@ -176,6 +180,11 @@ class Finding:
     def sort_key(self) -> tuple[str, ...]:
         return (self.component, self.type, self.reason or "", self.reference or "", self.rule or "")
 
+    @property
+    def out_of_scope(self) -> bool:
+        """An unknown edge to a name outside the read: listed, but not an unknown to review."""
+        return self.type == "unknown_edge" and self.reason == OUT_OF_SCOPE
+
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
             "type": self.type,
@@ -248,7 +257,15 @@ class WorkPackage:
 
     def unknowns(self) -> int:
         """The unknown edges, gaps and source statuses of the graph, not assess findings."""
-        return sum(1 for f in self.findings if isinstance(f, Finding) and f.cls is None)
+        return sum(
+            1
+            for f in self.findings
+            if isinstance(f, Finding) and f.cls is None and not f.out_of_scope
+        )
+
+    def out_of_scope_count(self) -> int:
+        """The edges to names outside the read, which ``unknowns`` leaves out."""
+        return sum(1 for f in self.findings if isinstance(f, Finding) and f.out_of_scope)
 
     def counts(self) -> dict[str, int]:
         """Findings per compatibility class; ``unknown`` adds the graph's unknowns."""
@@ -296,6 +313,8 @@ class PackagesResult:
     findings_target: str | None = None
     #: Findings whose component is in no package.
     unplaced: tuple[AssessFinding, ...] = ()
+    #: Out-of-scope edges from nodes no package holds, apart from ``unattached_unknowns``.
+    unattached_out_of_scope: tuple[Edge, ...] = ()
 
     def _compatibility(self) -> dict[str, Any]:
         totals = [p.counts() for p in self.packages]
@@ -331,6 +350,8 @@ class PackagesResult:
             ],
             "unattached_gaps": len(self.unattached_gaps),
             "unattached_unknowns": len(self.unattached_unknowns),
+            "out_of_scope": sum(p.out_of_scope_count() for p in self.packages)
+            + len(self.unattached_out_of_scope),
             "incomplete": dict(self.incomplete),
         } | compatibility
 
@@ -359,6 +380,7 @@ class PackagesResult:
                     "file": f"{p.id}.json",
                     "members": len(p.members),
                     "unknowns": p.unknowns(),
+                    "out_of_scope": p.out_of_scope_count(),
                     **({"counts": p.counts()} if merged else {}),
                     "scenarios": list(p.scenarios),
                 }
@@ -378,6 +400,7 @@ class PackagesResult:
                 for g in self.unattached_gaps
             ],
             "unattached_unknowns": [e.to_dict() for e in self.unattached_unknowns],
+            "unattached_out_of_scope": [e.to_dict() for e in self.unattached_out_of_scope],
         }
 
 
@@ -481,6 +504,7 @@ class _Refs:
     org_path: str  # an on-prem org URL's /<org> prefix, lowercased, or ""
     edges: set[Edge]
     handlers: dict[str, list[dict[str, str | None]]]
+    partial: bool = False  # the read left components out, so a missed name is not proven absent
 
     def platform_page(self, path: str) -> bool:
         """True when *path* (lowercased, leading slash) is under a folder the server ships."""
@@ -492,7 +516,8 @@ class _Refs:
         """Add an edge to the web resource *name*, or an unknown one when none has that name."""
         spelled = self.names.get(name.lower())
         if spelled is None:
-            self.edges.add(Edge(source, None, "unknown", "not_in_inventory", name))
+            reason = OUT_OF_SCOPE if self.partial else "not_in_inventory"
+            self.edges.add(Edge(source, None, "unknown", reason, name))
         elif _id("web_resource", spelled) != source:
             self.edges.add(Edge(source, _id("web_resource", spelled), edge_type))
 
@@ -625,7 +650,15 @@ def _web_resource(refs: _Refs, source: str, key: str, text: str) -> None:
 def _references(inv: Inventory, folder: Path) -> _Refs:
     names = {r.key.lower(): r.key for r in inv.records if r.kind == "web_resource"}
     org = urlsplit(inv.source.org_url)
-    refs = _Refs(names, (org.hostname or "").lower(), org.path.lower().rstrip("/"), set(), {})
+    partial = inv.scope.mode == "solutions" or inv.scope.system == "excluded"
+    refs = _Refs(
+        names,
+        (org.hostname or "").lower(),
+        org.path.lower().rstrip("/"),
+        set(),
+        {},
+        partial=partial,
+    )
     for record in inv.records:
         if record.kind not in ("form", "ribbon", "sitemap", "web_resource"):
             continue
@@ -936,7 +969,10 @@ def build_packages(
             for m in sorted(members)
             if m in mapped and mapped[m].status in _DOUBTFUL
         ]
-        if not members or not (findings or members & mapped.keys()):
+        # An edge outside the read is listed, but alone it does not make a package.
+        if not members or not (
+            any(not f.out_of_scope for f in findings) or members & mapped.keys()
+        ):
             continue
         if findings_file is not None:
             for m in sorted(members & judged.keys()):
@@ -1031,7 +1067,7 @@ def build_packages(
         g for g in inv.gaps if not (g.kind and g.key and _id(g.kind, g.key) in attached)
     )
     # An unknown edge from a node no package holds (an entity, a system web resource).
-    loose = tuple(e for e in edges if e.target is None and e.source not in packaged)
+    loose = [e for e in edges if e.target is None and e.source not in packaged]
     incomplete = {k: c.status for k, c in inv.coverage.items() if c.status != "complete"}
     unplaced = tuple(f for m, found in sorted(judged.items()) if m not in placed for f in found)
     return PackagesResult(
@@ -1039,8 +1075,9 @@ def build_packages(
         tuple(packages),
         tuple(reports),
         unattached,
-        loose,
+        tuple(e for e in loose if e.reason != OUT_OF_SCOPE),
         incomplete,
         findings_file.target if findings_file else None,
         unplaced,
+        tuple(e for e in loose if e.reason == OUT_OF_SCOPE),
     )

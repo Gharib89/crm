@@ -325,7 +325,10 @@ def inventory_packages_cmd(
     be resolved statically (a dynamic name, an ISV page, another host's URL, a
     name not in the inventory) is an unknown edge, never dropped. A work
     package is a connected group holding a source-mapped component or an
-    unknown, so a shared library and its consumers are one package. Each
+    unknown, so a shared library and its consumers are one package. A web
+    resource name missing from an inventory that did not read the whole org is
+    out_of_scope instead: listed and counted apart, not an unknown, and alone
+    it forms no package. Each
     package lists its source, affected consumers, findings (unknowns), expected
     behavior (from --scenarios, else unknown) and verification requirements,
     each requirement with a stable id; an unknown edge from a node no package
@@ -383,6 +386,8 @@ def inventory_packages_cmd(
         meta["gaps in no package"] = f"{data['unattached_gaps']} (see index.json)"
     if data["unattached_unknowns"]:
         meta["unknowns in no package"] = f"{data['unattached_unknowns']} (see index.json)"
+    if data["out_of_scope"]:
+        meta["out of scope"] = f"{data['out_of_scope']} (see index.json)"
     if data["incomplete"]:
         meta["incomplete"] = ", ".join(f"{k} ({v})" for k, v in data["incomplete"].items())
     if "compatibility" in data:
