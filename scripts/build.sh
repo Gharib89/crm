@@ -26,3 +26,5 @@ echo "Built: $REPO_ROOT/dist/crm/  (onedir bundle; launcher: dist/crm/crm)"
 for skill in skills migration-skill; do
   test -f "$REPO_ROOT/dist/crm/_internal/crm/$skill/SKILL.md" || { echo "missing bundled $skill" >&2; exit 1; }
 done
+# The compatibility rules `crm inventory assess` loads (#1063).
+test -f "$REPO_ROOT/dist/crm/_internal/crm/rules/compatibility-rules.json" || { echo "missing bundled rules" >&2; exit 1; }

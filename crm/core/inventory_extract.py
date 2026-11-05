@@ -950,7 +950,8 @@ class _Builder:
             key = self.add(
                 "plugin_assembly", r["id"],
                 {"name": r["name"], "version": r.get("version"), "culture": r.get("culture"),
-                 "public_key_token": r.get("publickeytoken"), "source_type": source},
+                 "public_key_token": r.get("publickeytoken"), "source_type": source,
+                 "isolation_mode": r.get("isolationmode")},
                 r.get("name"), self._origin(r), r.get("ismanaged"),
                 self._staged("plugin_assembly", r, text=False), 91,
             )  # fmt: skip

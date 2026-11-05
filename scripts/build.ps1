@@ -26,3 +26,5 @@ Write-Host "Built: $RepoRoot\dist\crm\  (onedir bundle; launcher: dist\crm\crm.e
 foreach ($skill in 'skills', 'migration-skill') {
     if (-not (Test-Path "$RepoRoot\dist\crm\_internal\crm\$skill\SKILL.md")) { throw "missing bundled $skill" }
 }
+# The compatibility rules `crm inventory assess` loads (#1063).
+if (-not (Test-Path "$RepoRoot\dist\crm\_internal\crm\rules\compatibility-rules.json")) { throw "missing bundled rules" }

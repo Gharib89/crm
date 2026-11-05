@@ -1,4 +1,4 @@
-"""`crm inventory`: extract, compare, map, package and verify migration inventories (ADR 0032)."""
+"""`crm inventory`: extract, compare, map, package, verify and assess migration inventories."""
 
 # pyright: basic
 from __future__ import annotations
@@ -13,6 +13,7 @@ from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import d365_errors
 from crm.core import inventory_extract
 from crm.core.inventory import InventoryError
+from crm.core.inventory_assess import CLASSES, TARGETS, assess, dump_findings
 from crm.core.inventory_diff import VERDICTS, diff_inventories, dump_diff, read_pair
 from crm.core.inventory_packages import build_packages, read_packages, write_packages
 from crm.core.inventory_source_map import STATUSES, dump_source_map, map_source, read_source_map
@@ -23,7 +24,7 @@ from crm.utils.d365_backend import PLATFORM_CRM2011
 
 @click.group("inventory")
 def inventory_group():
-    """Extract, compare, map to source, package and verify migration inventories (ADR 0032)."""
+    """Extract, compare, map to source, package, verify and assess migration inventories."""
 
 
 @inventory_group.command("extract")
@@ -358,3 +359,61 @@ def inventory_verify_cmd(
         meta["out"] = str(out_file)
     headers = ["package", "verdict", "passed"]
     ctx.emit(True, table={"headers": headers, "rows": rows}, meta=meta)
+
+
+@inventory_group.command("assess")
+@click.argument("inventory", type=click.Path(file_okay=False, path_type=Path))
+@click.option(
+    "--target",
+    required=True,
+    type=click.Choice(TARGETS),
+    help="The migration target the rules judge against.",
+)
+@click.option(
+    "--out",
+    "out_file",
+    required=True,
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="Write the findings file, every component's findings, to this JSON file.",
+)
+@pass_ctx
+def inventory_assess_cmd(ctx: CLIContext, inventory: Path, target: str, out_file: Path):
+    """Run the compatibility rules shipped with crm over INVENTORY for --target: offline.
+
+    Reads the inventory folder and touches no org. Each rule hit carries its
+    fix and Microsoft Learn sources. Every component gets at least one finding, keyed by
+    component key: a rule hit gives its class with evidence (the artifact
+    path, its sha256 and the matched lines, or the recorded field); a
+    component no rule applies to gives unknown "no rule"; one the rules find
+    nothing in gives clear. An extraction gap naming the component, or its
+    kind's coverage not complete, adds an unknown saying so. Findings are a
+    verdict, so blockers exit 0; an unreadable inventory, an unknown
+    schema_version or an --out inside the inventory exits 1. --out gets the
+    findings file (its own schema_version), sorted, so two runs differ only in
+    generated_at. Returns the counts per class and per kind and the out path.
+    """
+    try:
+        result = assess(inventory, target, out=out_file)
+        out_file.write_text(dump_findings(result), encoding="utf-8")
+    except InventoryError as exc:
+        ctx.emit(False, error=str(exc))
+        return
+    except OSError as exc:
+        ctx.emit(False, error=f"--out {out_file}: {exc}")
+        return
+    data = {**result.summary(), "out": str(out_file)}
+    if ctx.json_mode:
+        ctx.emit(True, data=data)
+        return
+    by_kind = data["counts"]["by_kind"]
+    rows = [[kind, *(by_kind[kind].get(c, 0) for c in CLASSES)] for kind in by_kind]
+    meta = {
+        "inventory": f"{data['inventory']['platform']} {data['inventory']['version']}"
+        f" ({data['inventory']['org_url']})",
+        "target": target,
+        "rules": f"version {data['rules']['version']}",
+        "out": str(out_file),
+    }
+    if data["incomplete"]:
+        meta["incomplete"] = ", ".join(f"{k} ({v})" for k, v in data["incomplete"].items())
+    ctx.emit(True, table={"headers": ["kind", *CLASSES], "rows": rows}, meta=meta)

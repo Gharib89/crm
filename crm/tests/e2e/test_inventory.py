@@ -58,6 +58,19 @@ def test_inventory_extract_is_valid_and_repeatable(cli, tmp_path):
     assert parsed.scope.solutions == (solution,)
     assert [r.key for r in parsed.records if r.kind == "solution"] == [solution]
 
+    # Each assembly records the registration facts `inventory assess` judges.
+    assemblies = [r for r in parsed.records if r.kind == "plugin_assembly"]
+    assert all({"source_type", "isolation_mode"} <= set(r.fields) for r in assemblies)
+    findings_file = tmp_path / "findings.json"
+    proc = cli(
+        ["--json", "inventory", "assess", str(tmp_path / "one"), "--target", "online",
+         "--out", str(findings_file)],
+        check=False,
+    )  # fmt: skip
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    findings = json.loads(findings_file.read_text(encoding="utf-8"))["findings"]
+    assert {(r.kind, r.key) for r in parsed.records} == {(f["kind"], f["key"]) for f in findings}
+
     # Two consecutive runs differ only in the header's extraction time.
     second = _extract(cli, tmp_path / "two", solution)
     assert {k for k in first if first[k] != second[k]} <= {"extracted_at"}

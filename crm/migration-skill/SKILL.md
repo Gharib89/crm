@@ -39,11 +39,14 @@ is missing stays open.
    `complete`, or each incomplete kind is reported as an unknown.
 3. **Assess compatibility.** Sort each component into confirmed blocker,
    deprecated but working, optional modernization, or unknown, from documented
-   rules and source or runtime evidence. For classic workflows,
-   `crm workflow migration-assess` flags the cloud-flow blockers. A component no
-   rule covers is unknown, never compatible. Done when every inventoried
-   component carries one of the four classes, with the rule or evidence behind
-   it.
+   rules and source or runtime evidence. `crm inventory assess` runs the
+   rules shipped with crm and gives every component a finding; its `clear` means only that those rules
+   found nothing, so judge each `clear` and `unknown` from evidence. For
+   classic workflows, `crm workflow migration-assess` flags the cloud-flow
+   blockers. A component no rule covers is unknown, never compatible. Done when
+   every component carries one of the four classes, a `clear` or `unknown`
+   from `crm inventory assess` included, once evidence settles it, with the
+   rule or evidence behind it.
 4. **Plan remediation.** Group the inventory into dependency-ordered work
    packages with `crm inventory packages`. Each task names its component and
    source references, its consumers, the Microsoft documentation behind it, the
@@ -82,6 +85,4 @@ is missing stays open.
 Planned steps that have no command yet; until they land, do the work from the
 evidence you have and report it as manual:
 
-- version-specific compatibility rules shipped as data, and a command that runs
-  them over an inventory;
 - compatibility findings merged into the work packages.

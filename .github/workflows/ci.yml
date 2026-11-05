@@ -182,6 +182,8 @@ jobs:
           # Both shipped skills ride in the bundle (#1062).
           ./dist/crm/crm --json skill install --skill crm-migration --dest "$RUNNER_TEMP/crm-migration"
           test -f "$RUNNER_TEMP/crm-migration/SKILL.md"
+          # The compatibility rules `inventory assess` loads ride in the bundle (#1063).
+          test -f ./dist/crm/_internal/crm/rules/compatibility-rules.json
       - name: Wheel carries both skills (Linux)
         if: runner.os != 'Windows'
         run: |
@@ -189,6 +191,7 @@ jobs:
           unzip -l "$RUNNER_TEMP"/wheel/crm-*.whl > "$RUNNER_TEMP/wheel.txt"
           grep -q 'crm/skills/SKILL.md' "$RUNNER_TEMP/wheel.txt"
           grep -q 'crm/migration-skill/SKILL.md' "$RUNNER_TEMP/wheel.txt"
+          grep -q 'crm/rules/compatibility-rules.json' "$RUNNER_TEMP/wheel.txt"
       - name: Smoke test (Windows)
         if: runner.os == 'Windows'
         # PowerShell (backslash paths) — declare it so actionlint doesn't lint the
@@ -201,3 +204,4 @@ jobs:
           .\dist\crm\crm.exe --json --fields name profile list
           .\dist\crm\crm.exe --json skill install --skill crm-migration --dest "$env:RUNNER_TEMP\crm-migration"
           if (-not (Test-Path "$env:RUNNER_TEMP\crm-migration\SKILL.md")) { exit 1 }
+          if (-not (Test-Path ".\dist\crm\_internal\crm\rules\compatibility-rules.json")) { exit 1 }

@@ -16,6 +16,8 @@ a = Analysis(
     datas=[
         ('crm/skills', 'crm/skills'),
         ('crm/migration-skill', 'crm/migration-skill'),
+        # The compatibility rules `crm inventory assess` loads at run time (#1063).
+        ('crm/rules', 'crm/rules'),
     ],
     hiddenimports=[
         'requests_ntlm',
