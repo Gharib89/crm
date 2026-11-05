@@ -313,3 +313,20 @@ def test_a_list_valued_field_hit_is_assessed(tmp_path):
     result = assess.assess(folder, "online", rules=assess.parse_rules(data))
     (hit,) = [f for f in _findings(result, "Contoso.Open") if f.cls == "blocker"]
     assert hit.evidence == assess.FieldEvidence("isolation_mode", [1])
+
+
+@pytest.mark.parametrize(
+    ("content", "hit"),
+    [
+        ("var url = Xrm.Page.context.getServerUrl();\n", True),
+        ("var url = GetGlobalContext().getServerUrl ();\n", True),
+        ("function getServerUrl() { return '/'; }\nvar url = getServerUrl();\n", False),
+    ],
+)
+def test_get_server_url_matches_the_context_method_only(tmp_path, content, hit):
+    folder = tmp_path / "s"
+    folder.mkdir()
+    record = _script("new_/scripts/url.js", content, folder)
+    rules = [r for r in assess.load_rules().rules if r.id == "web-resource-get-server-url"]
+    found = assess._assess_record(record, rules, folder)
+    assert ([f.cls for f in found] == ["deprecated"]) is hit

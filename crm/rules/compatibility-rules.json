@@ -71,7 +71,7 @@
       ],
       "detection": {
         "type": "content_pattern",
-        "pattern": "\\bgetServerUrl\\s*\\(",
+        "pattern": "\\.\\s*getServerUrl\\s*\\(",
         "web_resource_types": [
           1,
           3
