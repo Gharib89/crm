@@ -27,6 +27,7 @@ from crm.core.inventory_packages import (
 )
 from crm.core.inventory_source_map import STATUSES, dump_source_map, map_source, read_source_map
 from crm.core.inventory_verify import dump_report, verify
+from crm.core.usage import JOB_TIME_CAP
 from crm.core.webapi_inventory import WebApiSource
 from crm.utils.d365_backend import PLATFORM_CRM2011
 
@@ -105,10 +106,29 @@ class ProgressLines:
     is_flag=True,
     help="Keep the stock components too (managed, or owned by a managed solution).",
 )
+@click.option(
+    "--with-usage",
+    is_flag=True,
+    help="Record a usage object on each entity, plug-in and process row (extra reads).",
+)
+@click.option(
+    "--usage-time-cap",
+    type=click.FloatRange(min=1),
+    default=None,
+    metavar="SECONDS",
+    help=f"With --with-usage: stop each CRM 2011 async-job read after this long (default "
+    f"{JOB_TIME_CAP:g}); the rows it did not reach read unknown.",
+)
 @click.option("--quiet", "-q", is_flag=True, help="Suppress the progress lines on stderr.")
 @pass_ctx
 def inventory_extract_cmd(
-    ctx: CLIContext, out_dir: Path, solutions: tuple[str, ...], include_system: bool, quiet: bool
+    ctx: CLIContext,
+    out_dir: Path,
+    solutions: tuple[str, ...],
+    include_system: bool,
+    with_usage: bool,
+    usage_time_cap: float | None,
+    quiet: bool,
 ):
     """Extract the org's migration inventory into DIR: read-only.
 
@@ -129,7 +149,17 @@ def inventory_extract_cmd(
     Progress goes to stderr, one `[crm] extract` line per stage start and per
     tick (about one a second), with an ETA marked as an estimate where the
     stage has a known total; stdout is unchanged. -q suppresses it.
+
+    --with-usage adds one read stage after the records (default off: a default
+    extract is unchanged, and a whole-org one already issues thousands of reads).
+    It records `usage` ({state, signal, value, as_of, reason}) on entity, plug-in
+    assembly, type and step, and process rows, and `scope.usage_read` in the
+    manifest. A row with no `usage` was not read, which is not `unused`; a probe
+    that fails leaves its rows `unknown` with the reason, lists an extraction
+    gap, and exits 1 with the checkpoint kept, so a re-run probes only it again.
     """
+    if usage_time_cap is not None and not with_usage:
+        raise click.UsageError("--usage-time-cap applies only with --with-usage.")
     saved = ctx.saved_profile()
     meta = None
     with d365_errors(ctx):
@@ -149,6 +179,8 @@ def inventory_extract_cmd(
                 solutions=solutions,
                 include_system=include_system,
                 progress=None if quiet else ProgressLines(sys.stderr.write),
+                with_usage=with_usage,
+                usage_time_cap=usage_time_cap or JOB_TIME_CAP,
             )
         except OSError as exc:
             ctx.emit(False, error=f"--out {out_dir}: {exc}")
@@ -200,8 +232,13 @@ def inventory_diff_cmd(ctx: CLIContext, a: Path, b: Path, out_file: Path | None)
         ctx.emit(False, error=f"--out {out_file}: {exc}")
         return
     data = {**diff.summary(), "out": str(out_file) if out_file else None}
+    warning = (
+        "only one side was read with --with-usage: usage is not compared"
+        if diff.a.scope.usage_read != diff.b.scope.usage_read
+        else None
+    )
     if ctx.json_mode:
-        ctx.emit(True, data=data)
+        ctx.emit(True, data=data, meta={"warning": warning} if warning else None)
         return
     counts = data["counts"]
     rows = [[kind, *(counts[kind].get(v, 0) for v in VERDICTS)] for kind in sorted(counts)]
@@ -212,6 +249,8 @@ def inventory_diff_cmd(ctx: CLIContext, a: Path, b: Path, out_file: Path | None)
         meta["incomplete"] = ", ".join(
             f"{kind} (A {s['a']}, B {s['b']})" for kind, s in incomplete.items()
         )
+    if warning:
+        meta["warning"] = warning
     if out_file is not None:
         meta["out"] = str(out_file)
     ctx.emit(True, table={"headers": ["kind", *VERDICTS], "rows": rows}, meta=meta)

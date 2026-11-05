@@ -118,6 +118,35 @@ plug-in assembly binary (`content.dll`), workflow XAML (`workflow.xaml`), form X
 (`form.xml`), view fetch and layout XML (`fetch.xml`, `layout.xml`), sitemap XML
 (`sitemap.xml`) and ribbon XML (`ribbon.xml`).
 
+## Record usage with `--with-usage`
+
+```bash
+crm --json inventory extract --out ./inventory --with-usage
+```
+
+`--with-usage` adds a `usage` field (`state`, `signal`, `value`, `as_of`, `reason`) to
+each `entity`, `plugin_assembly`, `plugin_type`, `step` and `process` record, from the
+same probes as `--in-use` on the listings. A probe that fails or does not answer for a
+row leaves it `unknown` with a reason, never `unused`. The probes run after the records
+are read, so a default run (stock components left out) never probes stock entities.
+
+A probe that faults is continue-and-report: its rows are `unknown`, a gap names it
+(`usage of <group>`), the summary `errors` carries `usage/<group>: <error>`, and the
+command exits **1** and keeps the checkpoint. A re-run on the same `DIR` skips the
+groups that finished and retries the failed one. Progress prints `stage=usage-entity`,
+`usage-plugins` and `usage-process`.
+
+A single row's own read failure inside a probe that answered shows as `unknown` with its
+reason on that row; only a probe that raises becomes a gap and an error.
+
+`--usage-time-cap SECONDS` bounds the CRM 2011 job read (default 120) and needs
+`--with-usage`. Without `--with-usage` the manifest and the run are unchanged.
+
+`inventory diff` reports a `usage.state` change only when both manifests were read with
+`--with-usage` (the header says `usage_compared`). A plain manifest against a usage one
+still compares, and skips usage; it warns rather than refuses (a table `warning` line, and `meta.warning` under `--json`),
+because nothing else differs.
+
 ## Narrow to solutions
 
 ```bash

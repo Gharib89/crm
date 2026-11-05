@@ -254,17 +254,23 @@ class Scope:
 
     *system* says whether stock components (managed, or owned by a managed
     solution) are ``included`` or ``excluded``; a manifest without it is full.
+    *usage_read* says the extraction read usage (``--with-usage``): a record with no
+    ``usage`` then has no signal to read, and in a manifest without it usage was never
+    read. Neither ever means unused.
     """
 
     mode: str
     solutions: tuple[str, ...]
     system: str = "included"
+    usage_read: bool = False
 
     def to_dict(self) -> dict[str, Any]:
-        """The manifest form; ``system`` is written only when stock is excluded."""
+        """The manifest form; ``system`` and ``usage_read`` are written only off their default."""
         out: dict[str, Any] = {"mode": self.mode, "solutions": sorted(self.solutions)}
         if self.system != "included":
             out["system"] = self.system
+        if self.usage_read:
+            out["usage_read"] = True
         return out
 
 
@@ -289,6 +295,9 @@ class Record:
     publication_state: str
     fields: dict[str, Any]
     artifacts: tuple[Artifact, ...]
+    #: Usage as extracted with ``--with-usage`` (`crm.core.usage.Usage.to_dict`), else None:
+    #: not read, which is distinct from ``state: unknown`` (read, no honest answer).
+    usage: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -413,7 +422,8 @@ def _scope(value: object) -> Scope:
             "scope.solutions must name solutions exactly when scope.mode is 'solutions'"
         )
     system = _str(obj, "system", "scope", choices=SYSTEM_SCOPES) if "system" in obj else "included"
-    return Scope(mode=mode, solutions=solutions, system=system)
+    usage_read = bool(_bool(obj, "usage_read", "scope")) if "usage_read" in obj else False
+    return Scope(mode=mode, solutions=solutions, system=system, usage_read=usage_read)
 
 
 def _artifact(value: object, kind: str, where: str) -> Artifact:
@@ -451,6 +461,24 @@ def _defined_fields(kind: str, fields: dict[str, Any], where: str) -> None:
         _strings(fields["activities"], f"{where}.activities")
 
 
+USAGE_STATES = ("used", "unused", "unknown")
+
+
+def _usage(obj: dict[str, Any], where: str) -> dict[str, Any] | None:
+    """The record's optional ``usage``, checked; absent means not read."""
+    if "usage" not in obj:
+        return None
+    where = f"{where}.usage"
+    usage = _obj(obj["usage"], where)
+    _str(usage, "state", where, choices=USAGE_STATES)
+    _str(usage, "signal", where)
+    _str(usage, "as_of", where)
+    _opt_str(usage, "reason", where)
+    if _req(usage, "value", where) is not None:
+        _int(usage, "value", where)
+    return {k: usage[k] for k in ("state", "signal", "value", "as_of", "reason")}
+
+
 def _record(value: object, where: str, version: int = SCHEMA_VERSION) -> Record:
     obj = _obj(value, where)
     kind = _str(obj, "kind", where, choices=KINDS)
@@ -486,6 +514,7 @@ def _record(value: object, where: str, version: int = SCHEMA_VERSION) -> Record:
         artifacts=tuple(
             _artifact(a, kind, f"{where}.artifacts[{i}]") for i, a in enumerate(artifacts)
         ),
+        usage=_usage(obj, where),
     )
 
 
@@ -710,6 +739,8 @@ def dump_manifest(inv: Inventory) -> str:
 
 def _record_dict(record: Record) -> dict[str, Any]:
     out = asdict(record)
+    if record.usage is None:
+        del out["usage"]  # a default extract stays byte-identical to one before --with-usage
     out["fields"] = dict(record.fields)
     out["artifacts"] = sorted((asdict(a) for a in record.artifacts), key=lambda a: a["path"])
     return out

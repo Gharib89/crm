@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import re
 import xml.etree.ElementTree as ET
-from collections.abc import Iterator
+from collections.abc import Callable, Collection, Iterator
 from typing import Any, cast
 from urllib.parse import unquote
 
@@ -20,6 +20,7 @@ from crm.core.inventory import ExtractionGap
 from crm.core.inventory_extract import integration_gap, ssrs_gap
 from crm.core.legacy import Page
 from crm.core.legacy_reads import unzip_ribbon
+from crm.core.usage import GroupUsage, probe_v9_group
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 from crm.utils.safe_xml import fromstring
 
@@ -296,3 +297,14 @@ class WebApiSource:
                 return
             fetch.set("paging-cookie", page.cookie)
             number += 1
+
+    def probe_usage(
+        self,
+        group: str,
+        *,
+        names: Collection[str],
+        time_cap: float,
+        progress: Callable[[int, int], None] | None,
+    ) -> GroupUsage:
+        # *time_cap* bounds only the CRM 2011 async reads; the Web API probes read in bulk.
+        return probe_v9_group(self.backend, group, names, progress=progress)

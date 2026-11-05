@@ -20,6 +20,10 @@ stage, and record the org's version beside the folder
   `excluded`; a managed component someone customized in place is missed, so audit
   those with a full-scope extract. Extract every stage with the same scope: `diff`
   refuses a pair that differs in `scope.system`.
+- **Usage is opt-in and read after the records.** `--with-usage` adds a per-row
+  `usage` on entities, plug-ins and processes. A row with no `usage` was not read;
+  `state: unknown` means the probe could not tell: count it as unconfirmed. Read the
+  `usage` gaps and summary `errors` before trusting a count of unused rows.
 - **`crm org brief` is orientation only.** It returns counts and key names,
   never full rows; the extracted manifest is the baseline.
 
