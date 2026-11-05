@@ -178,7 +178,9 @@ def legacy_components(
         wrong = [k for k in kinds if k not in usage.PLUGIN_KINDS]
         if wrong:
             raise click.UsageError(f"--in-use does not apply to {', '.join(wrong)}.")
-        kinds = kinds or tuple(usage.PLUGIN_KINDS)
+        kinds = kinds or tuple(
+            k for k in usage.PLUGIN_KINDS if entity is None or k in legacy_reads.ENTITY_KINDS
+        )
     if entity is not None:
         wrong = [k for k in kinds if k not in legacy_reads.ENTITY_KINDS]
         if wrong:

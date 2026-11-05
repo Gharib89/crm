@@ -491,6 +491,17 @@ def test_legacy_in_use_rejects_a_kind_that_is_not_a_plug_in(crm_home):
     assert result.exit_code == 2 and "forms" in result.output
 
 
+def test_legacy_in_use_with_an_entity_and_no_kind_reads_the_entity_plugin_kinds(
+    crm_home, monkeypatch
+):
+    # `--entity` admits only plugin-steps of the three kinds: the default must not trip its check
+    from crm.core import legacy_reads
+
+    monkeypatch.setattr(legacy_reads, "resolve_scope", lambda *a: legacy_reads.EVERYTHING)
+    data = _components("--in-use", "--entity", "account")
+    assert set(data) == {"plugin-steps", "errors"}
+
+
 def test_legacy_a_failed_job_read_is_no_signal_and_steps_stay_unknown(crm_home):
     data = _components("plugin-steps", "--in-use", org=_legacy_org(jobs_fault=True))
     assert _by_state(data["plugin-steps"]) == {"s1": "unknown", "s3": "unknown"}
