@@ -61,6 +61,10 @@ it needs no profile and no network.
 - **The per-key evidence is in the `--out` file** (`entries`: differing fields
   with both values, artifacts with both normalized hashes, both ids, a reason):
   pass `--out` whenever you will report keys, not just counts.
+- **An older extract reads every ribbon `changed` once.** A ribbon's
+  `normalized_sha256` now ignores the order of its rule and command siblings,
+  and a manifest written before that hashed the raw text: re-extract the older
+  side instead of reporting those ribbons.
 - **`not_comparable` is unknown.** A kind not read `complete` on both sides
   (`data.incomplete` lists them, even with no records), or a key an extraction
   gap names with nothing else differing, cannot be judged: report it with the

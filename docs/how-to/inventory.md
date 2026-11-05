@@ -253,7 +253,7 @@ within each kind, never by GUID, and each key gets one verdict:
 | `removed` | the key is only in `A` |
 | `changed` | a recorded field differs, or an artifact's `normalized_sha256` does |
 | `identity_only` | only the GUID differs (both sides record one); kept apart from `changed`, since a migration route may re-create components |
-| `unchanged` | fields and normalized artifact hashes agree |
+| `unchanged` | fields and normalized artifact hashes agree (a ribbon's hash ignores the order of its rule and command siblings) |
 | `ambiguous` | the key repeats on either side, so it is never matched |
 | `not_comparable` | the kind's coverage is not `complete` on both sides (`partial`, `failed`, `unsupported`, or no entry), or an extraction gap names the key and nothing else differs |
 

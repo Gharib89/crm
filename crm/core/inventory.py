@@ -14,10 +14,13 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import xml.etree.ElementTree as ET
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, cast
+
+from crm.utils import safe_xml
 
 _BOM = b"\xef\xbb\xbf"
 
@@ -148,15 +151,48 @@ def normalize_text(data: bytes) -> bytes:
     return data.replace(b"\r\n", b"\n")
 
 
-def artifact_hashes(data: bytes, *, text: bool) -> ArtifactHashes:
+# The ribbon parents whose children the server may return in any order (#1112).
+_RIBBON_UNORDERED = frozenset(("EnableRules", "DisplayRules", "CommandDefinitions"))
+
+
+def _canonical_xml(element: ET.Element) -> str:
+    return ET.canonicalize(ET.tostring(element, encoding="unicode"), strip_text=True)
+
+
+def canonical_ribbon(data: bytes) -> bytes | None:
+    """A ribbon's canonical form, or ``None`` when it is not well-formed XML.
+
+    The children of ``EnableRules``, ``DisplayRules`` and ``CommandDefinitions``
+    are ordered by tag, ``Id`` and full canonical content: ``Id`` alone is not
+    unique among siblings. Everything else keeps its order, which may carry
+    meaning.
+    """
+    try:
+        root = safe_xml.fromstring(normalize_text(data))
+        # Reversed document order puts every descendant before its ancestor, so a parent's
+        # sort keys are taken over already-ordered children.
+        for parent in reversed(list(root.iter())):
+            if parent.tag in _RIBBON_UNORDERED:
+                keyed = [(c.tag, c.get("Id", ""), _canonical_xml(c), c) for c in parent]
+                keyed.sort(key=lambda k: k[:3])
+                parent[:] = [k[3] for k in keyed]
+        return _canonical_xml(root).encode("utf-8")
+    except ET.ParseError:
+        return None
+
+
+def artifact_hashes(data: bytes, *, text: bool, ribbon: bool = False) -> ArtifactHashes:
     """Hash an artifact's raw bytes; a text artifact's normalized hash follows `normalize_text`.
 
-    A binary artifact uses the raw hash for both, since v1 defines no binary
-    normalization.
+    A *ribbon* hashes its `canonical_ribbon` form instead, and a ribbon that does
+    not parse falls back to the text normalization. A binary artifact uses the
+    raw hash for both, since v1 defines no binary normalization.
     """
     raw = hashlib.sha256(data).hexdigest()
-    normalized = hashlib.sha256(normalize_text(data)).hexdigest() if text else raw
-    return ArtifactHashes(sha256=raw, normalized_sha256=normalized)
+    if not text:
+        return ArtifactHashes(sha256=raw, normalized_sha256=raw)
+    normalized = (canonical_ribbon(data) if ribbon else None) or normalize_text(data)
+    return ArtifactHashes(sha256=raw, normalized_sha256=hashlib.sha256(normalized).hexdigest())
 
 
 SCHEMA_VERSION = 1
