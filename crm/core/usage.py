@@ -385,12 +385,13 @@ def _step_usage(step: Step, ev: Evidence, as_of: str) -> Usage:
 def roll_up(children: Sequence[Usage], as_of: str, *, orphan: str = "") -> Usage:
     """A parent's usage from its children: `used` if any is, `unused` only if all are.
 
-    No children means nothing can fire: `unused`, unless *orphan* names why the
-    parent can still run (it then reads `unknown`).
+    No children, or only disabled ones, means nothing can fire through a step:
+    `unused`, unless *orphan* names why the parent can still run without one
+    (it then reads `unknown`).
     """
     if any(c.state == "used" for c in children):
         return Usage("used", STEP_SIGNAL, None, as_of)
-    if not children and orphan:
+    if orphan and all(c.state == "unused" for c in children):
         return Usage("unknown", STEP_SIGNAL, None, as_of, orphan)
     if all(c.state == "unused" for c in children):
         return Usage("unused", STEP_SIGNAL, None, as_of, "every step is disabled or none exists")

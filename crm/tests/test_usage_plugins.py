@@ -243,6 +243,12 @@ def test_v9_a_step_less_custom_api_type_is_unknown_not_unused(make_fake_backend)
     assert got["t2"].state == "unused"  # a type no API names still proves out
 
 
+def test_v9_a_custom_api_type_with_only_disabled_steps_is_unknown_not_unused(make_fake_backend):
+    backend = make_fake_backend(responses=_v9_org(custom_apis=["t2"]))
+    got = usage.probe_v9_plugin_types(backend, _types(), clock=lambda: AS_OF)
+    assert got["t2"].state == "unknown" and "custom API" in (got["t2"].reason or "")
+
+
 def test_v9_an_org_without_custom_apis_is_no_signal_not_an_error(make_fake_backend):
     responses = _v9_org()
     base = responses["get_collection"]
