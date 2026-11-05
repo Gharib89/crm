@@ -785,15 +785,46 @@ def test_cli_findings_write_and_summarize(inputs, tmp_path):
     assert "findings in no package" in table.output
 
 
+#: SHA-256 of each file `packages` wrote for the fixture on main, before --findings existed.
+GOLDEN = {
+    "index.json": "c6117ea47ed6fd90813b9e902f90c7b5fcb24b30162ab9840f75ff444efa4285",
+    "pkg-1624e18a798c.json": "18211175dc603e00c3eb001a40735732a94a2c67138213e8716ce5f369304a86",
+    "pkg-564e3c958900.json": "3d1b41fea0cd47e22acdd5c9a07843dee49e6bc00185ddb6cc75b2713df99984",
+    "pkg-7acad39bcd7d.json": "91befc3bcaeb217da8f73eb40d04c7377a93ef9231e42daeb67851bf3cb29b67",
+    "pkg-9df52d9dd343.json": "b464f07f472fbc7e0cb30ddb2a05c83230c241fcd90cb462bae2b06e1c3adc84",
+}
+
+
 def test_cli_without_findings_matches_the_previous_bytes(inputs, tmp_path):
-    folder, source_map, _ = inputs
+    folder, source_map, scenarios = inputs
     args = ["--json", "inventory", "packages", str(folder), "--source-map", str(source_map)]
     out = tmp_path / "out"
-    assert CliRunner().invoke(cli, [*args, "--out", str(out)]).exit_code == 0
-    index = json.loads((out / "index.json").read_text(encoding="utf-8"))
-    assert "compatibility" not in index
-    for p in out.glob("pkg-*.json"):
-        assert '"compatibility"' not in p.read_text(encoding="utf-8")
+    run = CliRunner().invoke(cli, [*args, "--scenarios", str(scenarios), "--out", str(out)])
+    assert run.exit_code == 0, run.output
+    written = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(out.iterdir())}
+    assert written == GOLDEN
+    assert "compatibility" not in json.loads(run.output)["data"]
+
+
+def test_a_gap_on_a_member_counts_once_in_unknown(inputs, tmp_path):
+    result = _merged(inputs, tmp_path)
+    plugins = _package_of(result, "plugin_assembly:Contoso.Plugins")
+    gaps = [f for f in _dicts(plugins.findings) if f["type"] == "extraction_gap"]
+    assert len(gaps) == 1
+    assert not [
+        f
+        for f in _compat(plugins)
+        if f["component"] == "plugin_assembly:Contoso.Plugins"
+        and (f["reason"] or "").startswith("extraction gap:")
+    ]
+    plain = _packages(inputs)
+    before = _package_of(plain, "plugin_assembly:Contoso.Plugins").unknowns()
+    extra = [
+        f
+        for f in _compat(plugins)
+        if f["class"] == "unknown" and not f["reason"].startswith("extraction gap:")
+    ]
+    assert plugins.counts()["unknown"] == before + len(extra)
 
 
 def test_cli_refuses_findings_of_another_inventory(inputs, tmp_path):

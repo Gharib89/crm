@@ -952,6 +952,8 @@ def build_packages(
                         sources=findings_file.sources.get(f.rule or "", ()),
                     )
                     for f in judged[m]
+                    # The graph already carries the gap as an extraction_gap finding.
+                    if not (m in gaps and (f.reason or "").startswith("extraction gap:"))
                 ]
         attached |= members & gaps.keys()
         packaged |= in_group
