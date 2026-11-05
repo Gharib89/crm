@@ -10,14 +10,15 @@ and writes, under *out* only, per work package:
 - ``<name>.patched<ext>``: the full patched file, its SHA-256 in the ledger,
 - ``<name>.repo.diff``: the same patch against the repository path, only when the
   source map links the component to a file by hash (status ``matched``),
-- ``ledger.json``: one entry per work package and component key, with a
+- ``ledger.json``: one entry per work package, component key and rule, with a
   **manual-review entry** (file, line, rule, reason) for each site a rule matches but
   the transform cannot prove.
 
 The emit gate writes a patch only if the patched code parses with no more error
 nodes than the original and re-running the rule's detection finds exactly the
-rewritten sites fewer. A rejected plan changes nothing and becomes a manual-review
-entry. No file is written into the inventory or a repository. This module touches no org.
+rewritten sites fewer, and the rewrite keeps the line count. A rejected plan changes
+nothing and becomes a manual-review entry. No file is written into the inventory or a
+repository. This module touches no org.
 """
 
 from __future__ import annotations

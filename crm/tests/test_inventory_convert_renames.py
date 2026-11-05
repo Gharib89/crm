@@ -71,6 +71,30 @@ CASES: dict[str, tuple[str, str | None, str, int]] = {
         "web-resource-context-settings",
         2,
     ),
+    "roles-via-variable": (
+        f"var r = {CTX}.getUserRoles();\nr.forEach(f);\n",
+        None,
+        "web-resource-context-settings",
+        1,
+    ),
+    "optional-chain": (
+        f"var n = {CTX}?.getUserName();\nvar m = {CTX}.getUserName?.();\n",
+        None,
+        "web-resource-context-settings",
+        2,
+    ),
+    "window-qualified": (
+        f"var n = window.{CTX}.getUserName();\n",
+        None,
+        "web-resource-context-settings",
+        1,
+    ),
+    "shadowed-xrm": (
+        "function f(Xrm) { return Xrm.Mobile.offline.createRecord(1); }\n",
+        None,
+        "web-resource-xrm-mobile-offline",
+        1,
+    ),
     "grid-row": (
         "var e = row.getData().getEntity();\n",
         "var e = row.data.entity;\n",

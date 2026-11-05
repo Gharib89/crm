@@ -285,8 +285,6 @@ CONTEXT_SETTINGS = {
 #: Parents under which a ``getUserRoles()`` result is only passed on, never read as a list.
 _ROLES_PASSED_ON = frozenset(
     (
-        "variable_declarator",
-        "assignment_expression",
         "return_statement",
         "arguments",
         "pair",

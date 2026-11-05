@@ -84,8 +84,8 @@ spans lines are manual review for every row. Work from `ledger.json`:
   `git apply`, then build and re-run `verify`; a patch is a proposal until the
   package's verification requirements pass.
 - **`manual-review`** entries (file, line, rule, reason) are code the transform
-  could not prove equivalent: an alias, a method that moved, an HTML web
-  resource, or a rewrite the emit gate rejected. Each is a task with its six
+  could not prove equivalent: an alias, a getUserRoles result read as a
+  list, an HTML web resource, or a rewrite the emit gate rejected. Each is a task with its six
   fields; none is dropped, and none is patched by guessing.
 - The repository diff exists only for a web resource the source map matched by
   hash. It derives from the deployed text, normalized to LF without a BOM, so

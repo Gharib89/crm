@@ -742,7 +742,7 @@ edits in one patch, the transforms running in findings order, one ledger entry p
 
 An **emit gate** checks each rewritten file: the patched code must parse with no more
 error nodes, and re-running the rule's detection must find exactly the rewritten sites
-fewer. A rejected plan writes nothing and becomes a manual-review entry.
+fewer, and the rewrite must keep the line count (so manual-review line numbers stay valid). A rejected plan writes nothing and becomes a manual-review entry.
 
 Under `--out`, per work package and component:
 
