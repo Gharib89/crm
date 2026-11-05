@@ -26,6 +26,7 @@
   },
   "largest": 6,
   "members": 10,
+  "out_of_scope": 0,
   "packages": [
     {
       "counts": {
@@ -37,6 +38,7 @@
       "file": "pkg-123c7f4cd189.json",
       "id": "pkg-123c7f4cd189",
       "members": 6,
+      "out_of_scope": 0,
       "scenarios": [
         "Project approval"
       ],
@@ -52,6 +54,7 @@
       "file": "pkg-4bd0d6c9dc4b.json",
       "id": "pkg-4bd0d6c9dc4b",
       "members": 4,
+      "out_of_scope": 0,
       "scenarios": [],
       "unknowns": 1
     }
@@ -77,6 +80,7 @@
       "reason": "outside the org"
     }
   ],
+  "unattached_out_of_scope": [],
   "unattached_unknowns": [],
   "unknowns": 3,
   "unmatched_scenarios": []
