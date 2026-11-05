@@ -9,6 +9,63 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.95.0 (2026-11-05)
+
+### Bug Fixes
+
+- **usage**: Default legacy components --in-use to the plug-in kinds an --entity admits
+  ([#1118](https://github.com/Gharib89/crm/pull/1118),
+  [`ff0270d`](https://github.com/Gharib89/crm/commit/ff0270d43f7f647187f695c894ee434af310bdf4))
+
+- **usage**: Drop the not-null filter from the 2011 job read, add a row cap, read an unset 2011 step
+  state as not disabled ([#1118](https://github.com/Gharib89/crm/pull/1118),
+  [`ff0270d`](https://github.com/Gharib89/crm/commit/ff0270d43f7f647187f695c894ee434af310bdf4))
+
+- **usage**: Keep a custom API type unknown when every step it owns is disabled
+  ([#1118](https://github.com/Gharib89/crm/pull/1118),
+  [`ff0270d`](https://github.com/Gharib89/crm/commit/ff0270d43f7f647187f695c894ee434af310bdf4))
+
+- **usage**: Keep every listed v9 type, labelled unknown, when the usage probe fails
+  ([#1118](https://github.com/Gharib89/crm/pull/1118),
+  [`ff0270d`](https://github.com/Gharib89/crm/commit/ff0270d43f7f647187f695c894ee434af310bdf4))
+
+- **usage**: Key trace evidence by step, keep custom API types unknown, keep partial legacy results,
+  read an unset 2011 step state as not disabled ([#1118](https://github.com/Gharib89/crm/pull/1118),
+  [`ff0270d`](https://github.com/Gharib89/crm/commit/ff0270d43f7f647187f695c894ee434af310bdf4))
+
+- **usage**: Show the usage state in the human-readable plugin type table
+  ([#1118](https://github.com/Gharib89/crm/pull/1118),
+  [`ff0270d`](https://github.com/Gharib89/crm/commit/ff0270d43f7f647187f695c894ee434af310bdf4))
+
+### Documentation
+
+- **usage**: Document --in-use on the plug-in listings and the unknown-vs-unused rules
+  ([#1118](https://github.com/Gharib89/crm/pull/1118),
+  [`ff0270d`](https://github.com/Gharib89/crm/commit/ff0270d43f7f647187f695c894ee434af310bdf4))
+
+### Features
+
+- **usage**: Plug-in step, type and assembly usage with --in-use (legacy and v9)
+  ([#1118](https://github.com/Gharib89/crm/pull/1118),
+  [`ff0270d`](https://github.com/Gharib89/crm/commit/ff0270d43f7f647187f695c894ee434af310bdf4))
+
+### Refactoring
+
+- **usage**: Move the plug-in row annotation out of the command wrappers, read an unset step state
+  as not disabled ([#1118](https://github.com/Gharib89/crm/pull/1118),
+  [`ff0270d`](https://github.com/Gharib89/crm/commit/ff0270d43f7f647187f695c894ee434af310bdf4))
+
+### Testing
+
+- **usage**: Satisfy pyright strict in the plug-in usage code and tests
+  ([#1118](https://github.com/Gharib89/crm/pull/1118),
+  [`ff0270d`](https://github.com/Gharib89/crm/commit/ff0270d43f7f647187f695c894ee434af310bdf4))
+
+- **usage**: Type the legacy usage kind map for pyright strict
+  ([#1118](https://github.com/Gharib89/crm/pull/1118),
+  [`ff0270d`](https://github.com/Gharib89/crm/commit/ff0270d43f7f647187f695c894ee434af310bdf4))
+
+
 ## v1.94.0 (2026-11-05)
 
 ### Bug Fixes
