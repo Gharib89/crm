@@ -60,7 +60,7 @@ Every feature / new command / flag / behavior change ships its docs in the **sam
 - **README.md** — user-facing capability or install change.
 - **CHANGELOG.md** — do **not** hand-edit. `python-semantic-release` owns it: it generates each version's section from the Conventional Commit history at release time (see **Release** below). Ship a good `fix:`/`feat:` commit subject instead; for a squash-merge, set the squash *subject* to that line so PSR bumps and documents correctly. There is no `## [Unreleased]` section to maintain.
 - **docs/** — matching `docs/how-to/<group>.md` and `docs/reference/cli.md`.
-- **SKILL ↔ CLI** — `crm/skills/` is the single tracked agent skill (source of truth): a thin `SKILL.md` router + `reference/*.md`. `crm skill install` copies the whole tree into a harness dir outside the repo (`~/.claude/skills/crm/`, etc.). Rules:
+- **SKILL ↔ CLI** — two shipped agent skills, each its own source of truth: `crm/skills/` (`crm`) and `crm/migration-skill/` (`crm-migration`, ADR 0033), each a thin `SKILL.md` router + `reference/*.md`. `crm skill install [--skill <name>]` copies a tree into a harness dir outside the repo (`~/.claude/skills/<name>/`, etc.). Rules:
     - **Self-contained** — the skill ships to users who have only the skill, not the repo; never link a shipped skill file to a repo path (`docs/**`, `GLOSSARY.md`) — inline what's needed.
     - **Never restate flags/choices/defaults** — the skill states only what `crm describe`/`--help` cannot (workflows, gotchas, the JSON contract).
     - **Never track an in-repo copy** of the **crm** skill; source of truth is `crm/skills/`.

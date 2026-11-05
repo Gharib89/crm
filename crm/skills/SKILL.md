@@ -221,6 +221,7 @@ For per-domain detail:
 |---|---|
 | first-time setup: install the `crm` binary, create/switch a connection profile (NTLM, AD FS or OAuth, secret storage), `--json`/no-TTY behavior; legacy CRM 2011 (read-only `crm legacy`) | `reference/setup.md` |
 | migration inventory of any org (`crm inventory extract`), comparing two (`crm inventory diff`), matching one to an application repository (`crm inventory map-source`), grouping one into work packages (`crm inventory packages`), judging recorded verification results against them (`crm inventory verify`) | `reference/inventory.md` |
+| migrating an org (CRM 2011 or on-premises) to the cloud: the staged workflow and its evidence rules (if absent, suggest `crm skill install --skill crm-migration`) | the `crm-migration` skill |
 | end-to-end customization: where to start, the order components go in, stage→publish→promote a change across dev/test/prod | `reference/customization-lifecycle.md` |
 | repo-driven customizations-as-code: spec repo layout, plan → approve → `--from-plan` promote, seeding from a live org | `reference/customizations-as-code.md` |
 | records: create/read/update/delete, query (OData/FetchXML/saved), associate/lookup, clone, upsert, ad-hoc `action` | `reference/records.md` |

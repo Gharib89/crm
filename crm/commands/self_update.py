@@ -35,7 +35,7 @@ from crm.commands._tty import _stdin_is_tty
 from crm.core import update as update_mod
 
 
-def _frozen_skill_src(install_dir: Path) -> Path | None:
+def _frozen_package_dir(install_dir: Path) -> Path | None:
     """The new `crm` package dir (holding every skill bundle) under a
     freshly-swapped frozen install.
 
@@ -191,7 +191,7 @@ def _finisher_refresh(to_version: str, install: Path) -> list[str]:
     run should print; an empty list means everything re-synced cleanly.
     """
     warnings: list[str] = []
-    for entry in _refresh_skills(to_version, _frozen_skill_src(install)):
+    for entry in _refresh_skills(to_version, _frozen_package_dir(install)):
         if entry.get("status") == "error":
             warnings.append(
                 f"Could not refresh the installed crm agent skill: {entry.get('error')}"
@@ -234,7 +234,7 @@ def _frozen_update(ctx: CLIContext) -> None:
     # the running process is still the old version, so refresh to `to_version`.
     # Fall back to current_version() when already up-to-date (no `to_version` key).
     new_version = str(result.get("to_version") or update_mod.current_version())
-    skills = _refresh_skills(new_version, _frozen_skill_src(target))
+    skills = _refresh_skills(new_version, _frozen_package_dir(target))
     # The completion *content* comes from invoking the binary on PATH, which after
     # the swap is the NEW build (sys.executable's file was replaced in place) — so
     # we shell out rather than render in-process (still the old code post-swap).

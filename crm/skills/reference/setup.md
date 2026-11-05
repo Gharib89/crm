@@ -23,6 +23,10 @@ curl -fsSL https://pub-bbeb86c46454443ca76521dd4d29818e.r2.dev/install.sh | sh
 
 Open a new shell so PATH updates, then verify with `crm --version`.
 
+A second skill, `crm-migration`, owns the workflow and evidence rules for
+migrating an org (CRM 2011 or on-premises) to the cloud; install it with
+`crm skill install --skill crm-migration`.
+
 ## Configure
 
 The CLI authenticates with **Windows Integrated auth** for on-prem (`ntlm` by
@@ -102,12 +106,6 @@ to disable it non-interactively; it's a guardrail against accidents, not a
 security boundary (the real boundary is a server-side read-only role).
 
 ## Legacy CRM 2011 orgs
-
-For a migration off such an org (or off on-premises to the cloud), a second
-skill, `crm-migration`, sets the assessment and verification workflow and its
-evidence rules, and defers to this skill for each command. When the user is
-migrating and it is not installed, suggest
-`crm skill install --skill crm-migration`.
 
 A CRM 2011 org has no Web API. `crm profile add` detects one itself (Web API 404 on
 an NTLM profile, then a `5.x` build answered over SOAP) and saves a **`crm2011`
