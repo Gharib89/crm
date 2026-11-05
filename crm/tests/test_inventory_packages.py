@@ -970,3 +970,16 @@ def test_cli_table_shows_the_out_of_scope_count(tmp_path):
     run = CliRunner().invoke(cli, [*args, "--out", str(tmp_path / "out")])
     assert run.exit_code == 0, run.output
     assert "out of scope" in run.output
+
+
+def test_the_other_inventory_commands_still_render_their_table(inputs, tmp_path):
+    folder, _, _ = inputs
+    mapped = CliRunner().invoke(
+        cli, ["inventory", "map-source", str(folder), "--repo", str(tmp_path / "repo")]
+    )
+    assert mapped.exit_code == 0, mapped.output
+    assessed = CliRunner().invoke(
+        cli,
+        ["inventory", "assess", str(folder), "--target", "online", "--out", str(tmp_path / "a")],
+    )
+    assert assessed.exit_code == 0, assessed.output
