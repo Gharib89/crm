@@ -204,6 +204,9 @@ def test_a_stock_row_s_payload_is_never_fetched(tmp_path):
     _extract(client, tmp_path / "inv", include_system=False)
     by_id = [f for f in client.fetches if "<value>" in f]
     assert any(_id(10) in f for f in by_id)
+    # Each by-id read filters on the entity's own primary key: systemform's is formid.
+    assert any('attribute="formid" operator="in"' in f for f in by_id)
+    assert not any("systemformid" in f for f in by_id)
     assert not any(_id(12) in f or _id(22) in f or _id(71) in f for f in by_id)
     assert not any(
         '<attribute name="content"/>' in f and "<value>" not in f for f in client.fetches

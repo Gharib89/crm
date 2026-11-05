@@ -16,6 +16,10 @@ stage, and record the org's version beside the folder
   silences them. Run it in the background with stderr captured.
 - **Narrowing to a solution yields a partial scope.** Write the scope into the
   stage notes, because a diff across two scopes compares different things.
+- **The default drops stock components.** The manifest's `scope.system` says
+  `excluded`; a managed component someone customized in place is missed, so audit
+  those with an `--include-system` extract. Extract every stage the same way:
+  `diff` refuses a default manifest against a full one.
 - **`crm org brief` is orientation only.** It returns counts and key names,
   never full rows; the extracted manifest is the baseline.
 

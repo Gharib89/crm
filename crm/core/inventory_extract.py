@@ -275,6 +275,11 @@ class _Read:
     def payload_columns(self) -> tuple[str, ...]:
         return tuple(column for column, _ in self.payloads)
 
+    @property
+    def key_attribute(self) -> str:
+        """The entity's primary key column (``systemform``'s is ``formid``)."""
+        return "formid" if self.entity == "systemform" else f"{self.entity}id"
+
     def without_payloads(self) -> _Read:
         return replace(
             self,
@@ -718,7 +723,7 @@ class _Run:
         query = replace(
             read,
             attributes=read.payload_columns,
-            extra=f'<filter><condition attribute="{read.entity}id" operator="in">{values}'
+            extra=f'<filter><condition attribute="{read.key_attribute}" operator="in">{values}'
             "</condition></filter>",
         )
         staged: dict[str, list[str]] = {}
