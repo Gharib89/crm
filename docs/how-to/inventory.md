@@ -102,8 +102,14 @@ the org spells it (`scope.mode: "solutions"`, `scope.solutions`).
 Entity details and entity ribbons are read only for member entities, and the
 application ribbon is not read, so a narrowed run reads less per entity. The
 org-wide component reads still run, because a solution membership names its
-component only by id, so expect the component reads to take as long as a whole-org
-run.
+component only by id, but a web resource's content and a plug-in assembly's binary
+are fetched only for the solutions' members (by id, in small batches), so the
+largest payloads cost in proportion to the solution, not the org. Form, view,
+process and sitemap XML are still read org-wide.
+
+On disk, a finished artifact is a hard link to its staged payload in the checkpoint
+(a copy where the filesystem refuses links), so a run's peak is about the finished
+inventory, not twice it.
 
 An unknown solution name is a read error on the `solution` kind: the run goes on,
 exits **1** and keeps its checkpoint (see [When a read fails](#when-a-read-fails)).

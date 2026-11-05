@@ -619,3 +619,119 @@ def test_an_entity_with_no_collection_label_has_its_ribbon_recorded_as_a_gap(tmp
     gaps = [g for g in _manifest(out)["gaps"] if g["kind"] == "ribbon"]
     assert len(gaps) == 1
     assert "new_syncmap" in gaps[0]["description"]
+
+
+_PAYLOAD_COLUMNS = {"content", "xaml", "formxml", "fetchxml", "layoutxml", "sitemapxml"}
+
+
+class PayloadBackend(FakeBackend):
+    """A FakeBackend that answers an id-`in` filter and drops payload columns not asked for."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # (entity set, requested columns, ids of the `in` filter or None), one per request
+        self.fetched: list[tuple[str, set[str], list[str] | None]] = []
+
+    def _fetch(self, entity_set: str, fetch_xml: str, headers: dict) -> dict:
+        fetch = fromstring(fetch_xml)
+        entity = fetch.find("entity")
+        columns = {a.get("name") for a in entity.findall("attribute")}
+        cond = entity.find("filter/condition[@operator='in']")
+        ids = [v.text for v in cond.findall("value")] if cond is not None else None
+        self.fetched.append((entity_set, columns, ids))
+        body = super()._fetch(entity_set, fetch_xml, headers)
+        rows = body["value"]
+        if cond is not None:
+            rows = [r for r in rows if r[cond.get("attribute")] in ids]
+        drop = _PAYLOAD_COLUMNS - columns
+        body["value"] = [{k: v for k, v in r.items() if k not in drop} for r in rows]
+        return body
+
+    def payload_fetches(self, entity_set: str) -> list[list[str] | None]:
+        return [ids for s, cols, ids in self.fetched if s == entity_set and "content" in cols]
+
+
+def _fault_in_forms() -> dict:
+    return {("systemforms", 1): D365Error("boom", status=500)}
+
+
+def _tree(out: Path) -> dict[str, bytes]:
+    return {
+        str(p.relative_to(out)): p.read_bytes()
+        for p in sorted(out.rglob("*"))
+        if p.is_file() and ".checkpoint" not in p.parts
+    }
+
+
+def test_a_saved_page_holds_no_payload_body(tmp_path):
+    out = tmp_path / "inv"
+    _extract(PayloadBackend(fail=_fault_in_forms()), out)
+    for kind in ("web_resource", "plugin_assembly", "process", "view"):
+        pages = sorted((out / ".checkpoint" / "rm" / kind).glob("*.json"))
+        assert pages, kind
+        for page in pages:
+            for row in json.loads(page.read_text(encoding="utf-8"))["rows"]:
+                assert not _PAYLOAD_COLUMNS & row.keys(), (kind, row)
+    saved = json.loads((out / ".checkpoint/rm/web_resource/00001.json").read_text("utf-8"))
+    assert saved["rows"][0]["_artifacts"] == ["content.js"]
+
+
+def test_an_artifact_shares_its_inode_with_the_staged_payload(tmp_path):
+    out = tmp_path / "inv"
+    _extract(PayloadBackend(fail=_fault_in_forms()), out)  # the fault keeps the checkpoint
+    artifact = next(out.glob("artifacts/web_resource/**/*.js"))
+    staged = out / ".checkpoint/payload/web_resource" / f"{_id(10)}.content.js"
+    assert artifact.read_bytes() == _JS
+    assert artifact.stat().st_ino == staged.stat().st_ino
+
+
+def test_a_copy_replaces_the_link_where_links_fail(tmp_path, monkeypatch):
+    linked = tmp_path / "linked"
+    _extract(PayloadBackend(), linked)
+
+    def no_link(*args, **kwargs):
+        raise OSError("cross-device link")
+
+    monkeypatch.setattr(inventory_extract.os, "link", no_link)
+    copied = tmp_path / "copied"
+    _extract(PayloadBackend(fail=_fault_in_forms()), copied)
+    artifact = next(copied.glob("artifacts/web_resource/**/*.js"))
+    staged = copied / ".checkpoint/payload/web_resource" / f"{_id(10)}.content.js"
+    assert artifact.stat().st_ino != staged.stat().st_ino
+    assert artifact.read_bytes() == _JS
+    # Every artifact the faulted run wrote matches the linked run's bytes.
+    written = {k: v for k, v in _tree(copied).items() if k.startswith("artifacts/")}
+    assert written and all(_tree(linked)[k] == v for k, v in written.items())
+
+
+def test_a_scoped_run_fetches_content_for_member_rows_only(tmp_path):
+    backend = PayloadBackend()
+    out = tmp_path / "inv"
+    assert _extract(backend, out, solutions=("contoso",)).complete
+    fetches = backend.payload_fetches("webresourceset")
+    assert fetches and all(ids == [_id(10)] for ids in fetches)  # one id, whatever the pages
+    assert backend.payload_fetches("pluginassemblies") == []  # no member assembly
+    # The org-wide read still names every row, so keys and gaps resolve as before.
+    metadata = [c for s, c, ids in backend.fetched if s == "webresourceset" and ids is None]
+    assert metadata and all("content" not in c for c in metadata)
+    data = _manifest(out)
+    assert _keys(data, "web_resource") == ["new_/scripts/project.js"]
+    assert (next(out.glob("artifacts/web_resource/**/*.js"))).read_bytes() == _JS
+
+
+def test_an_unscoped_run_still_reads_content_with_each_row(tmp_path):
+    backend = PayloadBackend()
+    assert _extract(backend, tmp_path / "inv").complete
+    assert [ids for ids in backend.payload_fetches("webresourceset")] == [None, None]
+
+
+def test_a_resume_of_a_scoped_run_reuses_the_content_pass(tmp_path):
+    out = tmp_path / "inv"
+    first = PayloadBackend(fail=_fault_in_forms())
+    assert not _extract(first, out, solutions=("contoso",)).complete
+    assert first.payload_fetches("webresourceset")
+    second = PayloadBackend()
+    summary = _extract(second, out, solutions=("contoso",))
+    assert summary.complete and summary.resumed
+    assert second.payload_fetches("webresourceset") == []
+    assert _keys(_manifest(out), "web_resource") == ["new_/scripts/project.js"]
