@@ -781,11 +781,14 @@ def _ribbon_custom(path: Path) -> bool:
     )
 
 
-def _stock_ids(
-    read: _Read, rows: list[dict[str, Any]], solutions: list[dict[str, Any]]
-) -> set[str]:
-    """The ids of *read*'s rows that are not stock (the ones whose payloads are fetched)."""
-    managed = {str(r["id"]).lower() for r in solutions if r.get("ismanaged") is True}
+def _managed_ids(solutions: list[dict[str, Any]]) -> set[str]:
+    """The ids of the managed solutions among the solution rows."""
+    return {str(r["id"]).lower() for r in solutions if r.get("id") and r.get("ismanaged") is True}
+
+
+def _kept_ids(rows: list[dict[str, Any]], solutions: list[dict[str, Any]]) -> set[str]:
+    """The ids of *rows* that are not stock: the ones whose payloads the scope fetches."""
+    managed = _managed_ids(solutions)
     return {str(r["id"]).lower() for r in rows if not _is_stock(r, managed)}
 
 
@@ -862,9 +865,8 @@ def extract(
     """
     solutions = tuple(sorted({name.lower() for name in solutions}))
     stock_scope = not include_system and not solutions
-    cp, state, resumed = Checkpoint.open(
-        out, source.org_url, now(), solutions, "excluded" if stock_scope else "included"
-    )
+    system = "excluded" if stock_scope else "included"
+    cp, state, resumed = Checkpoint.open(out, source.org_url, now(), solutions, system)
     run = _Run(source, cp, progress, clock)
     run.begin("source", 3)
     ident = cast("dict[str, Any]", run.unit((), "source", source.identity) or {})
@@ -901,7 +903,7 @@ def extract(
                     " owned by a managed solution"
                 )
         for read in deferred:
-            run.content(read, rows[read.kind], _stock_ids(read, rows[read.kind], rows["solution"]))
+            run.content(read, rows[read.kind], _kept_ids(rows[read.kind], rows["solution"]))
     if solutions:
         # The scope is found from these two reads: if either fell short, the kinds it
         # filters may be missing components, so none of them can read complete. That
@@ -1003,7 +1005,7 @@ def extract(
         scope=Scope(
             mode="solutions" if solutions else "org",
             solutions=solutions,
-            system="excluded" if stock_scope else "included",
+            system=system,
         ),
         publication="published",
         records=tuple(records),
@@ -1112,9 +1114,7 @@ class _Builder:
         self.solution_names = {
             str(r["id"]).lower(): str(r.get("uniquename")) for r in solutions if r.get("id")
         }
-        self.managed_solutions = {
-            str(r["id"]).lower() for r in solutions if r.get("id") and r.get("ismanaged") is True
-        }
+        self.managed_solutions = _managed_ids(solutions)
         # (kind, the stock kind its row names) -> rows the stock scope left an edge to.
         self.platform_edges: Counter[tuple[str, str]] = Counter()
 
@@ -1131,6 +1131,9 @@ class _Builder:
         stock: bool = False,
     ) -> str | None:
         """Queue a record and index its key; None when a key field's value breaks the contract.
+
+        *stock* marks a row the stock scope leaves out; an entity, attribute,
+        relationship or option set is stock by its own flags instead (not custom, or managed).
 
         Org data can hold what the contract cannot key (a step with an empty
         name, measured on a Dataverse trial org): such a row is counted into one
@@ -1478,6 +1481,33 @@ class _Builder:
         left-out component is counted into a ``platform`` gap, never dropped silently;
         one whose dependent is itself stock is stock's own edge and goes quietly.
         """
+        self._keep_parents()
+        left = {(p.kind, p.key) for p in self.pending if p.stock}
+        kept: list[_Pending] = []
+        for p in self.pending:
+            if p.stock:
+                continue
+            if p.kind == "solution_membership":
+                member = (p.fields["member_kind"], p.fields["member_key"])
+                if member in left:
+                    self.platform_edges[(p.kind, member[0])] += 1
+                    continue
+            elif p.kind == "dependency":
+                if (p.fields["dependent_kind"], p.fields["dependent_key"]) in left:
+                    continue
+                required = (p.fields["required_kind"], p.fields["required_key"])
+                if required in left:
+                    self.platform_edges[(p.kind, required[0])] += 1
+                    continue
+            kept.append(p)
+        self.pending = kept
+        keys = {(p.kind, p.key) for p in kept}
+        self.extra_gaps = [g for g in self.extra_gaps if (g.kind, g.key) in keys]
+        self.unresolved = [u for u in self.unresolved if u[2] is None or u[2] in keys]
+        self.isv = {page: refs & keys for page, refs in self.isv.items()}
+
+    def _keep_parents(self) -> None:
+        """Un-stock the entity a kept record names, and a kept step's type and assembly."""
         by_key = {(p.kind, p.key): p for p in self.pending}
         for p in self.pending:
             if p.stock or p.kind in ("solution_membership", "dependency"):
@@ -1504,29 +1534,6 @@ class _Builder:
                     parent = by_key.get((parent_kind, key))
                     if parent is not None:
                         parent.stock = False
-        left = {(p.kind, p.key) for p in self.pending if p.stock}
-        kept: list[_Pending] = []
-        for p in self.pending:
-            if p.stock:
-                continue
-            if p.kind == "solution_membership":
-                member = (p.fields["member_kind"], p.fields["member_key"])
-                if member in left:
-                    self.platform_edges[(p.kind, member[0])] += 1
-                    continue
-            elif p.kind == "dependency":
-                if (p.fields["dependent_kind"], p.fields["dependent_key"]) in left:
-                    continue
-                required = (p.fields["required_kind"], p.fields["required_key"])
-                if required in left:
-                    self.platform_edges[(p.kind, required[0])] += 1
-                    continue
-            kept.append(p)
-        self.pending = kept
-        keys = {(p.kind, p.key) for p in kept}
-        self.extra_gaps = [g for g in self.extra_gaps if (g.kind, g.key) in keys]
-        self.unresolved = [u for u in self.unresolved if u[2] is None or u[2] in keys]
-        self.isv = {page: refs & keys for page, refs in self.isv.items()}
 
     def finish(self) -> list[Record]:
         """Write each record's artifacts and return the records.
