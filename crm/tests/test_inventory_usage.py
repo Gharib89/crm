@@ -374,3 +374,31 @@ def test_diff_command_json_carries_the_mixed_usage_warning(tmp_path):
         CliRunner().invoke(cli, ["--json", "inventory", "diff", str(usage), str(usage)]).output
     )
     assert "warning" not in same.get("meta", {})
+
+
+def test_a_resume_probes_again_when_the_scope_gained_entities(tmp_path):
+    out = tmp_path / "inv"
+    answers = _answers()
+    answers["plugins"] = D365Error("boom")
+    first = UsageSource(FakeClient(), answers)
+    _extract(first, out, with_usage=True)
+    cp_unit = out / ".checkpoint"
+    assert cp_unit.exists()
+    # The saved entity answer covered fewer names than the resumed scope holds.
+    (f,) = cp_unit.rglob("usage/entity.json")
+    saved = json.loads(f.read_text(encoding="utf-8"))
+    saved["names"] = ["account"]
+    f.write_text(json.dumps(saved), encoding="utf-8")
+    second = UsageSource(FakeClient(), _answers())
+    _extract(second, out, with_usage=True)
+    assert "entity" in second.calls
+    assert _usage_of(_manifest(out), "entity")["new_project"]["state"] != "unknown"
+
+
+def test_same_scope_ignores_the_order_of_the_solutions(tmp_path):
+    from dataclasses import replace
+
+    inv = inventory.read_inventory(_usage_manifest(tmp_path))
+    one = replace(inv, scope=replace(inv.scope, mode="solutions", solutions=("a", "b")))
+    two = replace(inv, scope=replace(inv.scope, mode="solutions", solutions=("b", "a")))
+    assert inventory_diff._same_scope(one, two)

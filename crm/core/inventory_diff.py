@@ -106,7 +106,9 @@ def _side(inv: Inventory) -> dict[str, Any]:
 
 def _same_scope(a: Inventory, b: Inventory) -> bool:
     """Whether both read the same components; reading usage on one side changes no scope."""
-    return replace(a.scope, usage_read=False) == replace(b.scope, usage_read=False)
+    return (
+        replace(a.scope, usage_read=False).to_dict() == replace(b.scope, usage_read=False).to_dict()
+    )
 
 
 def _gaps(inv: Inventory) -> list[dict[str, Any]]:

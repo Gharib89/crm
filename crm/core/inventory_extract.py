@@ -1125,9 +1125,12 @@ def _attach_usage(
         total = len(rows) if group == "entity" else 1
         run.begin(f"usage-{group}", total)
         saved = cp.load(unit)
+        # A resumed scope can gain entities the saved answer never probed: read again.
+        if saved is not None and not names <= set(saved["names"]):
+            saved = None
         why = "not in the usage read"
         if saved is not None:
-            answer = saved
+            answer = saved["answer"]
         else:
             try:
                 got = source.probe_usage(group, names=names, time_cap=time_cap, progress=run.tick)
@@ -1147,7 +1150,7 @@ def _attach_usage(
                 answer = {}
             else:
                 answer = {k: {i: u.to_dict() for i, u in v.items()} for k, v in got.items()}
-                cp.save(unit, answer)
+                cp.save(unit, {"names": sorted(names), "answer": answer})
         run.tick(total, total)
         found = {
             k: {(i if k == "entity" else i.lower()): v for i, v in per.items()}
