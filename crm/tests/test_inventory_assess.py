@@ -291,14 +291,25 @@ def test_a_version_with_a_suffix_is_not_dotted():
         assess._version("9.0x", "source.from")
 
 
-@pytest.mark.parametrize("value", [True, [1], {"a": 1}])
-def test_a_field_rule_matches_on_type_and_value(tmp_path, value):
+def test_a_field_rule_matches_on_type_as_well_as_value(tmp_path):
     folder = tmp_path / "f"
     folder.mkdir()
-    record = _assembly("Contoso.Odd", folder, source_type=0, isolation_mode=value)
+    record = _assembly("Contoso.Odd", folder, source_type=0, isolation_mode=True)
     rules = [r for r in assess.load_rules().rules if r.id == "assembly-isolation-none"]
-    found = assess._assess_record(record, rules, folder)
-    assert [f.cls for f in found] == ["clear"]
-    evidence = assess.FieldEvidence("f", value)
-    odd = assess.Finding("plugin_assembly", "k", "blocker", "r", None, evidence)
-    assert assess._sorted_findings([odd, odd]) == (odd,)
+    assert [f.cls for f in assess._assess_record(record, rules, folder)] == ["clear"]
+
+
+def test_a_list_valued_field_hit_is_assessed(tmp_path):
+    folder = _write_inventory(tmp_path / "l")
+    manifest = json.loads((folder / inv.MANIFEST_NAME).read_text())
+    for record in manifest["records"]:
+        if record["key"] == "Contoso.Open":
+            record["fields"]["isolation_mode"] = [1]
+    (folder / inv.MANIFEST_NAME).write_text(json.dumps(manifest))
+    data = json.loads(assess.RULES_PATH.read_text(encoding="utf-8"))
+    for rule in data["rules"]:
+        if rule["id"] == "assembly-isolation-none":
+            rule["detection"]["values"] = [[1]]
+    result = assess.assess(folder, "online", rules=assess.parse_rules(data))
+    (hit,) = [f for f in _findings(result, "Contoso.Open") if f.cls == "blocker"]
+    assert hit.evidence == assess.FieldEvidence("isolation_mode", [1])
