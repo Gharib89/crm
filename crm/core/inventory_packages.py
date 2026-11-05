@@ -263,7 +263,7 @@ class WorkPackage:
             if isinstance(f, Finding) and f.cls is None and not f.out_of_scope
         )
 
-    def out_of_scope(self) -> int:
+    def out_of_scope_count(self) -> int:
         """The edges to names outside the read, which ``unknowns`` leaves out."""
         return sum(1 for f in self.findings if isinstance(f, Finding) and f.out_of_scope)
 
@@ -350,7 +350,7 @@ class PackagesResult:
             ],
             "unattached_gaps": len(self.unattached_gaps),
             "unattached_unknowns": len(self.unattached_unknowns),
-            "out_of_scope": sum(p.out_of_scope() for p in self.packages)
+            "out_of_scope": sum(p.out_of_scope_count() for p in self.packages)
             + len(self.unattached_out_of_scope),
             "incomplete": dict(self.incomplete),
         } | compatibility
@@ -380,7 +380,7 @@ class PackagesResult:
                     "file": f"{p.id}.json",
                     "members": len(p.members),
                     "unknowns": p.unknowns(),
-                    "out_of_scope": p.out_of_scope(),
+                    "out_of_scope": p.out_of_scope_count(),
                     **({"counts": p.counts()} if merged else {}),
                     "scenarios": list(p.scenarios),
                 }
@@ -652,7 +652,12 @@ def _references(inv: Inventory, folder: Path) -> _Refs:
     org = urlsplit(inv.source.org_url)
     partial = inv.scope.mode == "solutions" or inv.scope.system == "excluded"
     refs = _Refs(
-        names, (org.hostname or "").lower(), org.path.lower().rstrip("/"), set(), {}, partial
+        names,
+        (org.hostname or "").lower(),
+        org.path.lower().rstrip("/"),
+        set(),
+        {},
+        partial=partial,
     )
     for record in inv.records:
         if record.kind not in ("form", "ribbon", "sitemap", "web_resource"):

@@ -271,6 +271,8 @@ def inventory_map_source_cmd(ctx: CLIContext, inventory: Path, repo: Path, out_f
         "external": str(data["external"]),
         "unmatched_source": str(data["unmatched_source"]),
     }
+    if data["out_of_scope"]:
+        meta["out of scope"] = f"{data['out_of_scope']} (see index.json)"
     if data["incomplete"]:
         meta["incomplete"] = ", ".join(f"{k} ({v})" for k, v in data["incomplete"].items())
     if out_file is not None:
@@ -383,6 +385,8 @@ def inventory_packages_cmd(
         meta["gaps in no package"] = f"{data['unattached_gaps']} (see index.json)"
     if data["unattached_unknowns"]:
         meta["unknowns in no package"] = f"{data['unattached_unknowns']} (see index.json)"
+    if data["out_of_scope"]:
+        meta["out of scope"] = f"{data['out_of_scope']} (see index.json)"
     if data["incomplete"]:
         meta["incomplete"] = ", ".join(f"{k} ({v})" for k, v in data["incomplete"].items())
     if "compatibility" in data:
@@ -522,6 +526,8 @@ def inventory_assess_cmd(ctx: CLIContext, inventory: Path, target: str, out_file
         "rules": f"version {data['rules']['version']}",
         "out": str(out_file),
     }
+    if data["out_of_scope"]:
+        meta["out of scope"] = f"{data['out_of_scope']} (see index.json)"
     if data["incomplete"]:
         meta["incomplete"] = ", ".join(f"{k} ({v})" for k, v in data["incomplete"].items())
     ctx.emit(True, table={"headers": ["kind", *CLASSES], "rows": rows}, meta=meta)

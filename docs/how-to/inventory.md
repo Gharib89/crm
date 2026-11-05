@@ -445,7 +445,7 @@ plus one `<package id>.json` per package:
 | `unknowns` | the findings across all packages, without the `out_of_scope` edges |
 | `out_of_scope` | the `out_of_scope` unknown edges, in packages and in none; in `index.json`, those in no package are listed under `unattached_out_of_scope` |
 | `scenarios`, `unmatched_scenarios`, `seeds_not_found`, `seeds_unpackaged` | the scenario count, the names no package holds, each `{scenario, seed}` not in the inventory, and each one in the inventory but in no package; in `index.json`, `scenarios` lists each one's packages and seeds |
-| `unattached_gaps`, `unattached_unknowns` | extraction gaps on no package member, and unknown edges from a component in no package: counts in `data`, the lists in `index.json` |
+| `unattached_gaps`, `unattached_unknowns` | extraction gaps on no package member, and unknown edges from a component in no package: counts in `data`, the lists in `index.json` (`unattached_out_of_scope` lists the `out_of_scope` ones apart) |
 | `incomplete` | each kind not read `complete` in the inventory: its components may be missing from the graph |
 | `packages_sha256` | in `data` only: the digest of the `--out` folder that a verification results file names (see [Verify work packages](#verify-work-packages)) |
 | `out` | the `--out` folder |

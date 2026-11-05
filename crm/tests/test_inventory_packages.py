@@ -788,7 +788,7 @@ def test_cli_findings_write_and_summarize(inputs, tmp_path):
     assert "findings in no package" in table.output
 
 
-#: SHA-256 of each file `packages` wrote for the fixture on main, before --findings existed.
+#: SHA-256 of each file `packages` wrote for the fixture (`index.json` holds `out_of_scope`).
 GOLDEN = {
     "index.json": "eac0e9969a94825303e1e6e8b1150f5c99685413a9a440c2e0e0fbb421adccb2",
     "pkg-1624e18a798c.json": "18211175dc603e00c3eb001a40735732a94a2c67138213e8716ce5f369304a86",
@@ -960,3 +960,13 @@ def test_out_of_scope_stays_out_of_the_unknown_totals_of_a_package(tmp_path):
     summary = result.summary()
     assert (summary["unknowns"], summary["out_of_scope"]) == (2, 2)
     assert result.index()["packages"][0]["out_of_scope"] == 2
+
+
+def test_cli_table_shows_the_out_of_scope_count(tmp_path):
+    folder = _ribbon_inventory(tmp_path, _PARTIAL_SCOPES["solutions"], dynamic=False)
+    source_map = tmp_path / "map.json"
+    source_map.write_text(dump_source_map(map_source(folder, tmp_path / "repo")), encoding="utf-8")
+    args = ["inventory", "packages", str(folder), "--source-map", str(source_map)]
+    run = CliRunner().invoke(cli, [*args, "--out", str(tmp_path / "out")])
+    assert run.exit_code == 0, run.output
+    assert "out of scope" in run.output
