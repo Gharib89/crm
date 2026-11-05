@@ -954,7 +954,7 @@ def test_out_of_scope_stays_out_of_the_unknown_totals_of_a_package(tmp_path):
     folder = _ribbon_inventory(tmp_path, _PARTIAL_SCOPES["solutions"], dynamic=True)
     result = build_packages(folder, map_source(folder, tmp_path / "repo"))
     (package,) = result.packages
-    reasons = sorted(f.reason for f in package.findings if f.type == "unknown_edge")
+    reasons = sorted(e.reason or "" for e in package.edges if e.target is None)
     assert reasons == ["dynamic", "out_of_scope", "out_of_scope"]  # listed, never dropped
     assert package.unknowns() == 2  # the dynamic edge and d.js's missing source status
     summary = result.summary()
