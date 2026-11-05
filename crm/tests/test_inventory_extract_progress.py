@@ -173,9 +173,12 @@ def test_quiet_leaves_stdout_unchanged_and_stderr_without_progress(tmp_path, mon
     loud = run(str(tmp_path / "a"))
     quiet = run(str(tmp_path / "b"), "--quiet")
     assert loud.exit_code == quiet.exit_code == 0, loud.output
-    assert loud.stdout.replace(str(tmp_path / "a"), "") == quiet.stdout.replace(
-        str(tmp_path / "b"), ""
-    )
+
+    def scrub(text: str, folder: Path) -> str:
+        # --json escapes a Windows path's backslashes, so scrub both spellings.
+        return text.replace(json.dumps(str(folder))[1:-1], "").replace(str(folder), "")
+
+    assert scrub(loud.stdout, tmp_path / "a") == scrub(quiet.stdout, tmp_path / "b")
     assert "[crm] extract" not in loud.stdout
     assert "[crm] extract stage=source total=3" in loud.stderr
     assert "[crm] extract stage=build" in loud.stderr
