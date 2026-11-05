@@ -240,6 +240,9 @@ def test_a_global_option_set_that_is_managed_is_stock(monkeypatch, tmp_path):
     monkeypatch.setattr(legacy_reads, "list_option_sets", lambda c: sets)
     _extract(FakeClient(org=_org()), tmp_path / "inv", include_system=False)
     assert _keys(_manifest(tmp_path / "inv"), "global_option_set") == ["new_tier"]
+    _extract(FakeClient(org=_org()), tmp_path / "full")
+    full = [r for r in _manifest(tmp_path / "full")["records"] if r["kind"] == "global_option_set"]
+    assert {r.get("managed") for r in full} <= {None}  # --include-system records no new field
 
 
 def test_an_edge_to_a_key_a_kept_row_also_holds_is_not_a_stock_edge(tmp_path):

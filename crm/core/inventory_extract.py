@@ -1205,7 +1205,9 @@ class _Builder:
             self.add(
                 "global_option_set", s.get("metadata_id"),
                 {"name": s["name"], "type": s["type"], "options": s["options"]},
-                None, "custom" if s["custom"] else "system", s.get("managed"), [], _OPTION_SET,
+                None, "custom" if s["custom"] else "system",
+                s.get("managed") if self.stock_scope else None,  # a full run records what it did
+                [], _OPTION_SET,
             )  # fmt: skip
         seen_relationships: set[str] = set()
         for d in details:
