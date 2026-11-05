@@ -85,6 +85,24 @@ _OUT_OF_SCOPE_REASON = (
     " solutions (a whole-org run records it); or "
 )
 
+# Kinds whose rows carry no ismanaged: the stock scope tells them apart by their own
+# custom and managed flags (metadata) or does not drop them (the rest).
+_METADATA_KINDS = frozenset(
+    ("entity", "attribute", "relationship", "global_option_set", "local_option_set")
+)
+# The first id segment of a ribbon entry the platform ships (measured on a Dataverse org,
+# 2026-11-05: ``Mscrm.`` alone leaves every one of 828 ribbons "customized").
+_STOCK_RIBBON_IDS = frozenset((
+    "mscrm", "msrcm", "aibuilder", "fcb", "accesschecker", "ismodernclienttype",
+    "solutionchecker", "clientutility", "microsoft", "msdyn", "mspp", "portals", "adx",
+    "analysisjob",
+))  # fmt: skip
+_RIBBON_ID = re.compile(r'\bId="([^"]+)"')
+_PLATFORM_REASON = (
+    "platform: the default migration scope leaves stock components out (managed, or owned by"
+    " a managed solution); --include-system keeps them"
+)
+
 # Web resource types whose content is text, by webresourcetype code.
 _TEXT_WEB_RESOURCES = frozenset((1, 2, 3, 4, 9))
 _WEB_RESOURCE_EXT = dict(
@@ -471,7 +489,12 @@ class Checkpoint:
 
     @classmethod
     def open(
-        cls, out: Path, org_url: str, now: str, solutions: tuple[str, ...] = ()
+        cls,
+        out: Path,
+        org_url: str,
+        now: str,
+        solutions: tuple[str, ...] = (),
+        system: str = "included",
     ) -> tuple[Checkpoint, dict[str, Any], bool]:
         """Open *out* for a new run or a resume; return the checkpoint, its state, and resumed.
 
@@ -492,9 +515,15 @@ class Checkpoint:
                     f" ({', '.join(state.get('solutions', [])) or 'the whole org'});"
                     " pass the same --solution values or a new folder"
                 )
+            if state.get("system", "included") != system:
+                raise D365Error(
+                    f"--out {out} holds a checkpoint of another stock scope"
+                    f" (system {state.get('system', 'included')}); pass the same --include-system"
+                    " choice or a new folder"
+                )
             return cp, state, True
         check_out(out)
-        state = {"org_url": org_url, "started_at": now, "solutions": scope}
+        state = {"org_url": org_url, "started_at": now, "solutions": scope, "system": system}
         cp.save("state", state)
         return cp, state, False
 
@@ -738,6 +767,34 @@ def _utc_now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _ribbon_custom(path: Path) -> bool:
+    """Whether the ribbon XML at *path* holds an entry the platform does not ship."""
+    text = path.read_text(encoding="utf-8", errors="replace")
+    return any(
+        re.split(r"[.\-_]", i, maxsplit=1)[0].lower() not in _STOCK_RIBBON_IDS
+        for i in _RIBBON_ID.findall(text)
+    )
+
+
+def _stock_ids(
+    read: _Read, rows: list[dict[str, Any]], solutions: list[dict[str, Any]]
+) -> set[str]:
+    """The ids of *read*'s rows that are not stock (the ones whose payloads are fetched)."""
+    managed = {str(r["id"]).lower() for r in solutions if r.get("ismanaged") is True}
+    return {str(r["id"]).lower() for r in rows if not _is_stock(r, managed)}
+
+
+def _is_stock(row: dict[str, Any], managed_solutions: set[str]) -> bool:
+    """A row is stock when it is managed or owned by a managed solution.
+
+    A row with no ``ismanaged`` is kept: the source gave nothing to drop it by.
+    """
+    flag = row.get("ismanaged")
+    if flag is None:
+        return False
+    return flag is True or (_ref_id(row.get("solutionid")) or "") in managed_solutions
+
+
 def _scope_members(
     run: _Run, rows: dict[str, list[dict[str, Any]]], solutions: tuple[str, ...]
 ) -> tuple[dict[int, set[str]], tuple[str, ...]]:
@@ -770,6 +827,7 @@ def extract(
     *,
     cli_version: str,
     solutions: tuple[str, ...] = (),
+    include_system: bool = False,
     now: Callable[[], str] = _utc_now,
     progress: Callable[[Progress], None] | None = None,
     clock: Callable[[], float] = time.monotonic,
@@ -785,6 +843,11 @@ def extract(
     without subcomponents brings only the subcomponents the solutions list on
     their own.
 
+    By default the inventory holds the migration scope: stock components (managed,
+    or owned by a managed solution) are left out, and their payloads are never
+    fetched. *include_system* keeps them. A ``--solution`` run names its scope
+    itself and keeps stock, so *include_system* has no effect on it.
+
     *progress* receives a `Progress` event as each stage starts and each unit
     finishes; *clock* (monotonic seconds) times the units for its ETA.
 
@@ -793,7 +856,10 @@ def extract(
             the read (the checkpoint keeps every finished unit for a re-run).
     """
     solutions = tuple(sorted({name.lower() for name in solutions}))
-    cp, state, resumed = Checkpoint.open(out, source.org_url, now(), solutions)
+    stock_scope = not include_system and not solutions
+    cp, state, resumed = Checkpoint.open(
+        out, source.org_url, now(), solutions, "excluded" if stock_scope else "included"
+    )
     run = _Run(source, cp, progress, clock)
     run.begin("source", 3)
     ident = cast("dict[str, Any]", run.unit((), "source", source.identity) or {})
@@ -811,12 +877,26 @@ def extract(
     reads = _READS if source.platform == PLATFORM_CRM2011 else _V9_READS
     # A scoped run reads the member-payload kinds without their payloads and fetches the
     # members' payloads once the scope is known, so the scope's own reads run first.
-    deferred = [r for r in reads if solutions and r.member_type is not None]
+    deferred = [
+        r
+        for r in reads
+        if (solutions and r.member_type is not None) or (stock_scope and r.payloads)
+    ]
     first = [r.without_payloads() if r in deferred else r for r in reads]
     if solutions:
         first.sort(key=lambda r: r.kind not in _SCOPE_KINDS)
     run.begin("records", len(reads) + len(deferred))
     rows = {read.kind: run.pages(read) for read in first}
+    if stock_scope:
+        gone = run.tally("solution")
+        if gone.errors or gone.truncated:
+            for kind in sorted({r.kind for r in deferred}):
+                run.tally(kind).errors.append(
+                    "solution: the read fell short, so the stock scope may keep components"
+                    " owned by a managed solution"
+                )
+        for read in deferred:
+            run.content(read, rows[read.kind], _stock_ids(read, rows[read.kind], rows["solution"]))
     if solutions:
         # The scope is found from these two reads: if either fell short, the kinds it
         # filters may be missing components, so none of them can read complete. That
@@ -869,7 +949,7 @@ def extract(
             ribbons[entity_name] = cp.staged("ribbon", entity_name or "_application", "ribbon.xml")
 
     run.begin("build")
-    built = _Builder(cp, out, rows, source.api)
+    built = _Builder(cp, out, rows, source.api, stock_scope)
     built.metadata(entities, option_sets, details)
     built.components()
     for entity_name, ribbon in ribbons.items():
@@ -881,10 +961,13 @@ def extract(
             "unknown",  # the ribbon XML merges the system ribbon and customizations
             None,
             [("ribbon.xml", ribbon, True)],
+            stock=stock_scope and not _ribbon_custom(ribbon),
         )
     built.memberships_and_dependencies()
     if solutions:
         built.scope(solutions)
+    if stock_scope:
+        built.drop_stock()
     records = built.finish()
 
     coverage: dict[str, KindCoverage] = {}
@@ -912,7 +995,11 @@ def extract(
         ),
         extracted_at=state["started_at"],
         cli_version=cli_version,
-        scope=Scope(mode="solutions" if solutions else "org", solutions=solutions),
+        scope=Scope(
+            mode="solutions" if solutions else "org",
+            solutions=solutions,
+            system="excluded" if stock_scope else "included",
+        ),
         publication="published",
         records=tuple(records),
         coverage=coverage,
@@ -981,13 +1068,23 @@ class _Pending:
     managed: bool | None
     fields: dict[str, Any]
     payloads: list[tuple[str, Path, bool]]
+    stock: bool = False
 
 
 class _Builder:
     """Turns the units' rows into records, resolving cross-kind keys and finding gaps."""
 
-    def __init__(self, cp: Checkpoint, out: Path, rows: dict[str, list[dict[str, Any]]], api: str):
+    def __init__(
+        self,
+        cp: Checkpoint,
+        out: Path,
+        rows: dict[str, list[dict[str, Any]]],
+        api: str,
+        stock_scope: bool = False,
+    ):
         self.cp = cp
+        self.stock_scope = stock_scope
+        self.no_managed: Counter[str] = Counter()
         self.api = api
         self.out = out
         self.rows = rows
@@ -1010,6 +1107,11 @@ class _Builder:
         self.solution_names = {
             str(r["id"]).lower(): str(r.get("uniquename")) for r in solutions if r.get("id")
         }
+        self.managed_solutions = {
+            str(r["id"]).lower() for r in solutions if r.get("id") and r.get("ismanaged") is True
+        }
+        # (kind, the stock kind its row names) -> rows the stock scope left an edge to.
+        self.platform_edges: Counter[tuple[str, str]] = Counter()
 
     def add(
         self,
@@ -1021,6 +1123,7 @@ class _Builder:
         managed: bool | None,
         payloads: list[tuple[str, Path, bool]],
         component_type: int | None = None,
+        stock: bool = False,
     ) -> str | None:
         """Queue a record and index its key; None when a key field's value breaks the contract.
 
@@ -1037,14 +1140,24 @@ class _Builder:
             count, first = self.unkeyed.get(kind, (0, str(exc)))
             self.unkeyed[kind] = (count + 1, first)
             return None
+        if kind in _METADATA_KINDS:
+            stock = origin == "system" or managed is True
         self.pending.append(
-            _Pending(kind, key, row_id, display_name, origin, managed, fields, payloads)
+            _Pending(kind, key, row_id, display_name, origin, managed, fields, payloads, stock)
         )
         if row_id:
             self.by_id.setdefault(kind, {})[row_id.lower()] = key
             if component_type is not None:
                 self.index[(component_type, row_id.lower())] = (kind, key)
         return key
+
+    def _stock(self, kind: str, row: dict[str, Any]) -> bool:
+        """Whether the stock scope drops *row* (a kind with an ``ismanaged`` column)."""
+        if not self.stock_scope:
+            return False
+        if row.get("ismanaged") is None:
+            self.no_managed[kind] += 1
+        return _is_stock(row, self.managed_solutions)
 
     def _origin(self, row: dict[str, Any]) -> str:
         solution = _ref_id(row.get("solutionid"))
@@ -1131,6 +1244,7 @@ class _Builder:
             key = self.add(
                 "web_resource", r["id"], {"name": r["name"], "web_resource_type": code},
                 r.get("displayname"), self._origin(r), r.get("ismanaged"), payloads, 61,
+                self._stock("web_resource", r),
             )  # fmt: skip
             for _, path, is_text in payloads:
                 if is_text and key is not None:
@@ -1144,6 +1258,7 @@ class _Builder:
                  "isolation_mode": r.get("isolationmode")},
                 r.get("name"), self._origin(r), r.get("ismanaged"),
                 self._staged("plugin_assembly", r, text=False), 91,
+                self._stock("plugin_assembly", r),
             )  # fmt: skip
             if key is not None and source != 0:
                 where = {1: "on disk", 2: "in the GAC"}.get(
@@ -1168,6 +1283,7 @@ class _Builder:
                 {"assembly": assembly, "type_name": r["typename"],
                  "workflow_activity": r.get("isworkflowactivity")},
                 r.get("friendlyname"), self._origin(r), r.get("ismanaged"), [], 90,
+                self._stock("plugin_type", r),
             )  # fmt: skip
         types = self.by_id.get("plugin_type", {})
         for r in rows.get("step", []):
@@ -1185,6 +1301,7 @@ class _Builder:
                  "filtering_attributes": r.get("filteringattributes"),
                  "state": r.get("statecode"), "supported_deployment": r.get("supporteddeployment")},
                 r.get("name"), self._origin(r), r.get("ismanaged"), [], 92,
+                self._stock("step", r),
             )  # fmt: skip
         steps = self.by_id.get("step", {})
         for r in rows.get("step_image", []):
@@ -1198,6 +1315,7 @@ class _Builder:
                  "attributes": r.get("attributes"),
                  "message_property": r.get("messagepropertyname")},
                 r.get("name"), self._origin(r), r.get("ismanaged"), [], 93,
+                self._stock("step_image", r),
             )  # fmt: skip
         for r in rows.get("process", []):
             self.add(
@@ -1205,12 +1323,14 @@ class _Builder:
                 {"category": r["category"], "primary_entity": _entity_name(r.get("primaryentity")),
                  "name": r["name"], "state": r.get("statecode")},
                 r.get("name"), self._origin(r), r.get("ismanaged"), self._staged("process", r), 29,
+                self._stock("process", r),
             )  # fmt: skip
         for r in rows.get("form", []):
             self.add(
                 "form", r["id"],
                 {"entity": r["objecttypecode"], "form_type": r["type"], "name": r["name"]},
                 r.get("name"), self._origin(r), r.get("ismanaged"), self._staged("form", r), 60,
+                self._stock("form", r),
             )  # fmt: skip
         for r in rows.get("view", []):
             self.add(
@@ -1218,6 +1338,7 @@ class _Builder:
                 {"entity": r["returnedtypecode"], "name": r["name"],
                  "query_type": r.get("querytype")},
                 r.get("name"), self._origin(r), r.get("ismanaged"), self._staged("view", r), 26,
+                self._stock("view", r),
             )  # fmt: skip
         for r in rows.get("sitemap", []):
             payloads = self._staged("sitemap", r)
@@ -1230,6 +1351,7 @@ class _Builder:
                 r.get("ismanaged"),
                 payloads,
                 62,
+                self._stock("sitemap", r),
             )
             for _, path, _ in payloads:
                 if key is not None:
@@ -1342,6 +1464,65 @@ class _Builder:
         self.scoped = True
         self.isv = {page: refs & keys for page, refs in self.isv.items()}
 
+    def drop_stock(self) -> None:
+        """Leave out the stock records, but keep each parent a kept record needs.
+
+        A stock entity holding a kept attribute, relationship, form, view or ribbon
+        stays as a reference row, and so do a kept step's plug-in type and
+        assembly, so keys and edges resolve. A membership or dependency naming a
+        left-out component is counted into a ``platform`` gap, never dropped silently;
+        one whose dependent is itself stock is stock's own edge and goes quietly.
+        """
+        by_key = {(p.kind, p.key): p for p in self.pending}
+        for p in self.pending:
+            if p.stock or p.kind in ("solution_membership", "dependency"):
+                continue
+            entities = [p.fields.get("entity")]
+            if p.kind == "relationship":
+                entities = [p.fields.get(k) for k in _RELATIONSHIP_SIDES]
+            for name in entities:
+                if isinstance(name, str) and name:
+                    parent = by_key.get(("entity", component_key("entity", {"logical_name": name})))
+                    if parent is not None:
+                        parent.stock = False
+        # A kept step needs its type, a type its assembly: climb the chain, children first.
+        for child, link, parent_kind in (
+            ("step_image", "step", "step"),
+            ("step", "plugin_type", "plugin_type"),
+            ("plugin_type", "assembly", "plugin_assembly"),
+        ):
+            for p in self.pending:
+                if p.kind == child and not p.stock and link in p.fields:
+                    key = p.fields[link]
+                    if parent_kind == "plugin_assembly":
+                        key = component_key(parent_kind, {"name": key})
+                    parent = by_key.get((parent_kind, key))
+                    if parent is not None:
+                        parent.stock = False
+        left = {(p.kind, p.key) for p in self.pending if p.stock}
+        kept: list[_Pending] = []
+        for p in self.pending:
+            if p.stock:
+                continue
+            if p.kind == "solution_membership":
+                member = (p.fields["member_kind"], p.fields["member_key"])
+                if member in left:
+                    self.platform_edges[(p.kind, member[0])] += 1
+                    continue
+            elif p.kind == "dependency":
+                if (p.fields["dependent_kind"], p.fields["dependent_key"]) in left:
+                    continue
+                required = (p.fields["required_kind"], p.fields["required_key"])
+                if required in left:
+                    self.platform_edges[(p.kind, required[0])] += 1
+                    continue
+            kept.append(p)
+        self.pending = kept
+        keys = {(p.kind, p.key) for p in kept}
+        self.extra_gaps = [g for g in self.extra_gaps if (g.kind, g.key) in keys]
+        self.unresolved = [u for u in self.unresolved if u[2] is None or u[2] in keys]
+        self.isv = {page: refs & keys for page, refs in self.isv.items()}
+
     def finish(self) -> list[Record]:
         """Write each record's artifacts and return the records.
 
@@ -1407,6 +1588,24 @@ class _Builder:
                     description=f"{n} {kind} row(s) not recorded; the first: {first}",
                     reason="the org's data leaves a component key field empty or mistyped,"
                     " so the row has no component key",
+                )
+            )  # fmt: skip
+        for (kind, target), n in sorted(self.platform_edges.items()):
+            gaps.append(
+                ExtractionGap(
+                    kind=kind, key=None,
+                    description=f"{n} {kind} row(s) naming a stock {target} that this inventory"
+                    " leaves out",
+                    reason=_PLATFORM_REASON,
+                )
+            )  # fmt: skip
+        for kind, n in sorted(self.no_managed.items()):
+            gaps.append(
+                ExtractionGap(
+                    kind=kind, key=None,
+                    description=f"{n} {kind} row(s) carry no ismanaged",
+                    reason="the source returns no ismanaged for this kind, so the stock scope"
+                    " cannot tell stock from custom and kept the rows",
                 )
             )  # fmt: skip
         unresolved = Counter((kind, code) for kind, code, _ in self.unresolved)

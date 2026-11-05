@@ -257,10 +257,10 @@ class FakeBackend:
         return body
 
 
-def _extract(backend, out: Path, solutions: tuple[str, ...] = ()):
+def _extract(backend, out: Path, solutions: tuple[str, ...] = (), include_system: bool = True):
     return inventory_extract.extract(
         WebApiSource(backend), out, cli_version="9.9.9", solutions=solutions,
-        now=lambda: "2026-11-04T10:00:00Z",
+        include_system=include_system, now=lambda: "2026-11-04T10:00:00Z",
     )  # fmt: skip
 
 

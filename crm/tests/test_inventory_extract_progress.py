@@ -37,6 +37,7 @@ def _run(backend, out: Path, **kw) -> list[Progress]:
         WebApiSource(backend),  # pyright: ignore[reportArgumentType]
         out,
         cli_version="9.9.9",
+        include_system=True,
         now=lambda: "2026-11-04T10:00:00Z",
         progress=events.append,
         clock=_clock(),
@@ -106,6 +107,7 @@ def test_no_callback_changes_nothing(tmp_path):
         WebApiSource(FakeBackend()),  # pyright: ignore[reportArgumentType]
         without,
         cli_version="9.9.9",
+        include_system=True,
         now=lambda: "2026-11-04T10:00:00Z",
     )
     assert (with_cb / "manifest.json").read_bytes() == (without / "manifest.json").read_bytes()
