@@ -9,6 +9,42 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.92.1 (2026-11-05)
+
+### Bug Fixes
+
+- **inventory**: Count an extraction gap once, pin the no-findings bytes
+  ([#1084](https://github.com/Gharib89/crm/pull/1084),
+  [`daeb77e`](https://github.com/Gharib89/crm/commit/daeb77e88cf89619a77b446888d6cd92791df69c))
+
+- **inventory**: Merge compatibility findings into work packages (packages --findings)
+  ([#1084](https://github.com/Gharib89/crm/pull/1084),
+  [`daeb77e`](https://github.com/Gharib89/crm/commit/daeb77e88cf89619a77b446888d6cd92791df69c))
+
+- **inventory**: Read findings with utf-8-sig, document --findings in the migration skill
+  ([#1084](https://github.com/Gharib89/crm/pull/1084),
+  [`daeb77e`](https://github.com/Gharib89/crm/commit/daeb77e88cf89619a77b446888d6cd92791df69c))
+
+- **inventory**: Refuse a findings rule with no rules_hit entry or a wrong type
+  ([#1084](https://github.com/Gharib89/crm/pull/1084),
+  [`daeb77e`](https://github.com/Gharib89/crm/commit/daeb77e88cf89619a77b446888d6cd92791df69c))
+
+- **inventory**: Satisfy strict pyright in the findings reader
+  ([#1084](https://github.com/Gharib89/crm/pull/1084),
+  [`daeb77e`](https://github.com/Gharib89/crm/commit/daeb77e88cf89619a77b446888d6cd92791df69c))
+
+### Documentation
+
+- **inventory**: Document packages --findings ([#1084](https://github.com/Gharib89/crm/pull/1084),
+  [`daeb77e`](https://github.com/Gharib89/crm/commit/daeb77e88cf89619a77b446888d6cd92791df69c))
+
+### Testing
+
+- **inventory**: Compare golden bytes off Windows only
+  ([#1084](https://github.com/Gharib89/crm/pull/1084),
+  [`daeb77e`](https://github.com/Gharib89/crm/commit/daeb77e88cf89619a77b446888d6cd92791df69c))
+
+
 ## v1.92.0 (2026-11-05)
 
 ### Bug Fixes
