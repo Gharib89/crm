@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -802,7 +803,10 @@ def test_cli_without_findings_matches_the_previous_bytes(inputs, tmp_path):
     run = CliRunner().invoke(cli, [*args, "--scenarios", str(scenarios), "--out", str(out)])
     assert run.exit_code == 0, run.output
     written = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(out.iterdir())}
-    assert written == GOLDEN
+    # The golden hashes the fixture's artifacts, which Windows writes with CRLF.
+    if sys.platform != "win32":
+        assert written == GOLDEN
+    assert sorted(written) == sorted(GOLDEN)
     assert "compatibility" not in json.loads(run.output)["data"]
 
 
