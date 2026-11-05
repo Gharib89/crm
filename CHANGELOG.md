@@ -9,6 +9,39 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.98.0 (2026-11-05)
+
+### Bug Fixes
+
+- **inventory**: Count platform dependency edges and merge same-key usage
+  ([#1121](https://github.com/Gharib89/crm/pull/1121),
+  [`1c7ef3f`](https://github.com/Gharib89/crm/commit/1c7ef3f76896d7d471f64a209182a3d27cc1c9de))
+
+- **inventory**: Record dropped findings in assess, keep assess when artifacts are unreadable
+  ([#1121](https://github.com/Gharib89/crm/pull/1121),
+  [`1c7ef3f`](https://github.com/Gharib89/crm/commit/1c7ef3f76896d7d471f64a209182a3d27cc1c9de))
+
+- **inventory**: Share the in-use option pair, one usage rank, document dropped blockers
+  ([#1121](https://github.com/Gharib89/crm/pull/1121),
+  [`1c7ef3f`](https://github.com/Gharib89/crm/commit/1c7ef3f76896d7d471f64a209182a3d27cc1c9de))
+
+- **inventory**: Type the usage filter tests for pyright
+  ([#1121](https://github.com/Gharib89/crm/pull/1121),
+  [`1c7ef3f`](https://github.com/Gharib89/crm/commit/1c7ef3f76896d7d471f64a209182a3d27cc1c9de))
+
+### Features
+
+- **inventory**: Packages and assess filter and sort on usage, derive reference usage
+  ([#1121](https://github.com/Gharib89/crm/pull/1121),
+  [`1c7ef3f`](https://github.com/Gharib89/crm/commit/1c7ef3f76896d7d471f64a209182a3d27cc1c9de))
+
+### Testing
+
+- **evals**: Regenerate the worked example for the package usage field
+  ([#1121](https://github.com/Gharib89/crm/pull/1121),
+  [`1c7ef3f`](https://github.com/Gharib89/crm/commit/1c7ef3f76896d7d471f64a209182a3d27cc1c9de))
+
+
 ## v1.97.0 (2026-11-05)
 
 ### Bug Fixes
