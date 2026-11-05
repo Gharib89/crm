@@ -741,6 +741,19 @@ def test_a_resume_of_a_scoped_run_reuses_the_content_pass(tmp_path):
     assert _keys(_manifest(out), "web_resource") == ["new_/scripts/project.js"]
 
 
+def test_a_content_batch_saved_for_other_ids_is_fetched_again(tmp_path):
+    out = tmp_path / "inv"
+    first = PayloadBackend(fail=_fault_in_forms())
+    assert not _extract(first, out, solutions=("contoso",)).complete
+    unit = next(out.glob(".checkpoint/content/web_resource/*.json"))
+    saved = json.loads(unit.read_text())
+    saved["ids"] = [*saved["ids"], _id(999)]  # the batch was cut for other members
+    unit.write_text(json.dumps(saved))
+    second = PayloadBackend()
+    assert _extract(second, out, solutions=("contoso",)).complete
+    assert second.payload_fetches("webresourceset")
+
+
 def test_a_scoped_run_fetches_a_member_assemblys_binary_only(tmp_path):
     org = copy.deepcopy(_ORG)
     org["solutioncomponents"][0].append(

@@ -659,17 +659,21 @@ class _Run:
         fetched = False
         for number, start in enumerate(range(0, len(wanted), size), 1):
             unit = f"content/{read.kind}/{number:05d}"
-            names = self.cp.load(unit)
+            batch = wanted[start : start + size]
+            saved = self.cp.load(unit)
+            # A unit is reused only for the ids it was fetched for: a retry that
+            # finds more members repartitions the batches.
+            names = saved["names"] if saved and saved.get("ids") == batch else None
             if names is None:
                 try:
-                    names = self._fetch_content(read, wanted[start : start + size], by_id)
+                    names = self._fetch_content(read, batch, by_id)
                 except (D365Error, ValueError) as exc:
                     # ValueError: content that is not base64, as in `pages`.
                     if isinstance(exc, D365Error) and legacy_reads.connection_wide(exc):
                         raise
                     tally.errors.append(f"{read.entity} content batch {number}: {exc}")
                     continue
-                self.cp.save(unit, names)
+                self.cp.save(unit, {"ids": batch, "names": names})
                 fetched = True
             else:
                 tally.reused += 1
