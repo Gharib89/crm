@@ -24,7 +24,11 @@ def _counts(path: str) -> list[str]:
 
 
 def _v9_org(
-    counts: dict[str, int], rows: set[str], bad: set[str] = frozenset(), unreadable=(), status=400
+    counts: dict[str, int],
+    rows: set[str],
+    bad: frozenset[str] | set[str] = frozenset(),
+    unreadable=(),
+    status=400,
 ):
     """A `get` answer: batch counts from *counts*, existence reads from *rows*."""
 
@@ -57,7 +61,7 @@ def test_v9_zero_count_is_confirmed_by_an_existence_read(make_fake_backend):
     # the snapshot said 0, the existence read found a row: used, count unknown
     assert got["stale"] == Usage("used", "record_presence", None, AS_OF)
     assert got["empty"].state == "unused" and got["empty"].value == 0
-    assert got["locked"].state == "unknown" and "forbidden" in got["locked"].reason
+    assert got["locked"].state == "unknown" and "forbidden" in (got["locked"].reason or "")
 
 
 # 400: invalid or virtual name; 403: an entity the caller has no read privilege on
@@ -67,7 +71,7 @@ def test_v9_bad_name_does_not_lose_the_rest_of_the_chunk(make_fake_backend, stat
     org = _v9_org({n: 1 for n in names}, set(), {"bad"}, status=status)
     backend = make_fake_backend(responses={"get": org})
     got = usage.probe_v9_entities(backend, [_target(n) for n in names], clock=lambda: AS_OF)
-    assert got["bad"].state == "unknown" and "not valid for read" in got["bad"].reason
+    assert got["bad"].state == "unknown" and "not valid for read" in (got["bad"].reason or "")
     assert [n for n in names if got[n].state == "used"] == names[:50]
     sizes = [len(_counts(p)) for v, p, _ in backend.calls if p.startswith("RetrieveTotal")]
     assert max(sizes) <= 50
@@ -99,7 +103,7 @@ class _FakeLegacy:
 
     def pages(self, fetch_xml, *, page_size=5000, start=None):
         self.fetches.append(fetch_xml)
-        entity = re.search(r'<entity name="([^"]+)"', fetch_xml).group(1)
+        entity = re.findall(r'<entity name="([^"]+)"', fetch_xml)[0]
         if 'aggregate="true"' in fetch_xml and entity in self.over_limit:
             raise D365Error("AggregateQueryRecordLimit exceeded", status=500)
         if entity in self.fail:
@@ -117,25 +121,25 @@ class _Page:
 def test_legacy_existence_read_per_entity_with_unreadable_unknown():
     client = _FakeLegacy(rows={"account"}, fail={"postrole": "RetrieveMultiple not supported"})
     ids = {"account": "accountid", "empty": "emptyid", "postrole": "postroleid"}
-    got = usage.probe_legacy_entities(client, ids, clock=lambda: AS_OF)
+    got = usage.probe_legacy_entities(client, ids, clock=lambda: AS_OF)  # pyright: ignore[reportArgumentType]
     assert got["account"] == Usage("used", "record_presence", None, AS_OF)
     assert got["empty"].state == "unused"
     assert got["postrole"].state == "unknown"
-    assert "not supported" in got["postrole"].reason
+    assert "not supported" in (got["postrole"].reason or "")
     # the primary id comes from metadata, and the read is page size 1 (no fetch top=)
     assert all("<attribute name=" in f and "top=" not in f for f in client.fetches)
 
 
 def test_legacy_entity_without_a_primary_id_is_unknown_and_unread():
     client = _FakeLegacy()
-    got = usage.probe_legacy_entities(client, {"intersect": ""}, clock=lambda: AS_OF)
+    got = usage.probe_legacy_entities(client, {"intersect": ""}, clock=lambda: AS_OF)  # pyright: ignore[reportArgumentType]
     assert got["intersect"].state == "unknown" and client.fetches == []
 
 
 def test_legacy_aggregate_limit_is_at_least_50000_never_unused():
     client = _FakeLegacy(rows={"account", "asyncoperation"}, over_limit={"asyncoperation"})
     ids = {"account": "accountid", "asyncoperation": "asyncoperationid"}
-    got = usage.probe_legacy_entities(client, ids, with_counts=True, clock=lambda: AS_OF)
+    got = usage.probe_legacy_entities(client, ids, with_counts=True, clock=lambda: AS_OF)  # pyright: ignore[reportArgumentType]
     assert got["account"].value == 228
     assert got["asyncoperation"].state == "used"
     assert got["asyncoperation"].value == 50000

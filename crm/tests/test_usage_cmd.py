@@ -139,7 +139,7 @@ def _answer(request, context):
     name = root.findtext(f".//{{{_CRM}}}RequestName")
     if name == "RetrieveAllEntities":
         return (_FIXTURES / "retrieve_all_entities.xml").read_text()
-    entity = fromstring(root.findtext(f".//{{{_CRM}}}Query"))[0].get("name")
+    entity = fromstring(root.findtext(f".//{{{_CRM}}}Query") or "")[0].get("name")
     if entity == "new_project":
         context.status_code = 500
         return (_FIXTURES / "fault_request_not_supported.xml").read_text()
