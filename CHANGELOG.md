@@ -9,6 +9,47 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.91.0 (2026-11-05)
+
+### Bug Fixes
+
+- **skills**: A partial multi-skill failure names the skills already done
+  ([#1081](https://github.com/Gharib89/crm/pull/1081),
+  [`7b03e53`](https://github.com/Gharib89/crm/commit/7b03e53fec3053f31738286ec8f14a95c4f58938))
+
+- **skills**: Codex round 1, the five bundle sites and the canonical docs rule
+  ([#1081](https://github.com/Gharib89/crm/pull/1081),
+  [`7b03e53`](https://github.com/Gharib89/crm/commit/7b03e53fec3053f31738286ec8f14a95c4f58938))
+
+- **skills**: Name the failed skill, and list only skills really removed
+  ([#1081](https://github.com/Gharib89/crm/pull/1081),
+  [`7b03e53`](https://github.com/Gharib89/crm/commit/7b03e53fec3053f31738286ec8f14a95c4f58938))
+
+- **skills**: Refresh leaves a skill alone when the bundle lacks it
+  ([#1081](https://github.com/Gharib89/crm/pull/1081),
+  [`7b03e53`](https://github.com/Gharib89/crm/commit/7b03e53fec3053f31738286ec8f14a95c4f58938))
+
+- **skills**: Self-review round 1 for the crm-migration skill
+  ([#1081](https://github.com/Gharib89/crm/pull/1081),
+  [`7b03e53`](https://github.com/Gharib89/crm/commit/7b03e53fec3053f31738286ec8f14a95c4f58938))
+
+### Documentation
+
+- **skills**: Document --skill and the crm-migration skill
+  ([#1081](https://github.com/Gharib89/crm/pull/1081),
+  [`7b03e53`](https://github.com/Gharib89/crm/commit/7b03e53fec3053f31738286ec8f14a95c4f58938))
+
+- **skills**: README installs both skills for crm-migration
+  ([#1081](https://github.com/Gharib89/crm/pull/1081),
+  [`7b03e53`](https://github.com/Gharib89/crm/commit/7b03e53fec3053f31738286ec8f14a95c4f58938))
+
+### Features
+
+- **skills**: Ship the crm-migration skill beside crm
+  ([#1081](https://github.com/Gharib89/crm/pull/1081),
+  [`7b03e53`](https://github.com/Gharib89/crm/commit/7b03e53fec3053f31738286ec8f14a95c4f58938))
+
+
 ## v1.90.0 (2026-11-05)
 
 ### Bug Fixes
