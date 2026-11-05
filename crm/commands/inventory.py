@@ -14,7 +14,7 @@ from crm.commands._helpers import d365_errors
 from crm.core import inventory_extract
 from crm.core.inventory import InventoryError
 from crm.core.inventory_diff import VERDICTS, diff_inventories, dump_diff, read_pair
-from crm.core.inventory_packages import build_packages, write_packages
+from crm.core.inventory_packages import build_packages, read_packages, write_packages
 from crm.core.inventory_source_map import STATUSES, dump_source_map, map_source, read_source_map
 from crm.core.inventory_verify import dump_report, verify
 from crm.core.webapi_inventory import WebApiSource
@@ -246,15 +246,17 @@ def inventory_packages_cmd(
     holds (an entity, a system web resource) is listed in index.json instead.
     --out gets index.json and one <package id>.json per package, the same
     bytes for the same inputs. Returns the package count and sizes, the
-    unknown counts, and the scenario seeds not found or in no package.
+    unknown counts, the scenario seeds not found or in no package, and the
+    packages_sha256 a verification results file names (`crm inventory verify`).
     """
     try:
         result = build_packages(inventory, read_source_map(source_map_file), scenarios_file)
         write_packages(result, out_dir)
+        sha = read_packages(out_dir).sha256
     except (InventoryError, OSError) as exc:
         ctx.emit(False, error=str(exc))
         return
-    data = {**result.summary(), "out": str(out_dir)}
+    data = {**result.summary(), "packages_sha256": sha, "out": str(out_dir)}
     if ctx.json_mode:
         ctx.emit(True, data=data)
         return

@@ -330,3 +330,33 @@ def test_reads_back_a_real_packages_output(tmp_path):
         p.id: tuple(r for r in p.verification if isinstance(r, Requirement))
         for p in result.packages
     }
+
+
+def test_packages_reports_the_digest_a_results_file_names(tmp_path):
+    from crm.core.inventory_source_map import dump_source_map, map_source
+    from crm.tests.test_inventory_packages import _write_inventory, _write_repo
+
+    folder = _write_inventory(tmp_path / "inv")
+    source_map = tmp_path / "source-map.json"
+    source_map.write_text(
+        dump_source_map(map_source(folder, _write_repo(tmp_path / "repo"))), encoding="utf-8"
+    )
+    out = tmp_path / "packages"
+    run = CliRunner().invoke(
+        cli,
+        [
+            "--json",
+            "inventory",
+            "packages",
+            str(folder),
+            "--source-map",
+            str(source_map),
+            "--out",
+            str(out),
+        ],
+    )
+    sha = json.loads(run.output)["data"]["packages_sha256"]
+    results = tmp_path / "results.json"
+    results.write_text(json.dumps({"schema_version": 1, "packages_sha256": sha, "results": []}))
+
+    assert _invoke(str(out), "--results", str(results)).exit_code == 0
