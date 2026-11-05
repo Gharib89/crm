@@ -534,6 +534,19 @@ change together, with the consumers they affect and what verifies the repair.
 Shared libraries and assemblies belong to one package, not one per consumer.
 _Avoid_: task, ticket, batch.
 
+**Verification result**:
+One verification requirement's recorded outcome (pass, fail, blocked, not tested) with
+its evidence: the artifacts the check produced, each with its hash. A pass without
+evidence is not a pass: `crm inventory verify` counts it as not tested, and calls a work
+package complete only when every requirement passed with evidence.
+_Avoid_: test result (the check may be manual or a browser run), status.
+
+**Negative control**:
+A deliberately introduced regression whose check must fail, recorded to prove the check
+can detect a broken repair. A control that passes has escaped: the check proves
+nothing, so its requirement is not tested.
+_Avoid_: negative test (a test of invalid input), canary.
+
 **Compatibility rule**:
 A check, qualified by the source and target versions it applies to and backed by
 a cited Microsoft source, that classifies a component for one migration step

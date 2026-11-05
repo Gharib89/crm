@@ -110,7 +110,7 @@ profile**; its JSON output carries `platform: "crm2011"`, where a normal profile
 tell the user it is untested.
 
 - **Only `crm legacy`, `crm inventory extract` and the offline `crm inventory
-  diff`, `map-source` and `packages` run on it** (prove connectivity with `crm --json legacy version`;
+  diff`, `map-source`, `packages` and `verify` run on it** (prove connectivity with `crm --json legacy version`;
   `crm legacy --help` lists the rest). Every other org command exits 1 with an error naming `crm legacy`, so a
   `crm2011` profile never needs a fallback attempt on `entity` or `query`.
 - **Writes are impossible, not just discouraged.** The profile is always read-only
@@ -248,3 +248,30 @@ same inventory is refused.
 - **Read packages from `--out`**: `index.json` lists them, `<package id>.json` holds
   each; `data` is the summary. Package and verification ids hash their members, so
   they are stable across runs: refer to them by id.
+
+### Judging recorded verification results (`crm inventory verify`)
+
+`crm inventory verify PACKAGES --results FILE` checks each work package's
+requirements against a verification results file and gives each package a verdict:
+`failed`, `blocked`, `not_tested` or `complete`, the first that applies. It runs no
+check and reads files only.
+
+- **Never call a repair done on your own word**: record a result per requirement and
+  let `verify` say `complete`. A `pass` with no evidence, or whose evidence file is
+  missing or changed, counts as not tested.
+- **Record what you ran**: a results file is `{"schema_version": 1,
+  "packages_sha256": "<data.packages_sha256 of the packages run>", "results":
+  [{"package": "pkg-...", "requirement": "req-...", "outcome":
+  "pass|fail|blocked|not_tested", "evidence": [{"path": "<relative to the results
+  file>", "sha256": "..."}], "expected", "actual", "deployed": [{"component",
+  "sha256"}], "errors", "environment": {"profile", "org"}, "open_decisions",
+  "negative_control"}]}`. The package and requirement ids come from the packages
+  output; a results file of another packages output is refused (exit 1).
+- **An environment that was down is `blocked`, never `pass` or `fail`**: say what
+  blocked it in `errors`.
+- **A negative control** (`"negative_control": true`) records a regression you
+  introduced on purpose; it must `fail`. Report every `escaped` control: the check
+  missed the regression, so its package cannot be complete.
+- **Report `unknown_results`**: a result whose package or requirement id the packages
+  output lacks, usually a typo or results from another run.
+- A verdict exits 0; `--out FILE` writes each requirement's status and `reason`.

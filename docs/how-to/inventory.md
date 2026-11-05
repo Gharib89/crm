@@ -8,8 +8,10 @@ deployed; it is never a desired state for `crm apply`
 `crm inventory diff` compares two inventories offline (see
 [Compare two inventories](#compare-two-inventories)), `crm inventory map-source`
 matches one to an application repository (see [Map an inventory to source](#map-an-inventory-to-source)),
-and `crm inventory packages` groups one into work packages (see
-[Group an inventory into work packages](#group-an-inventory-into-work-packages)).
+`crm inventory packages` groups one into work packages (see
+[Group an inventory into work packages](#group-an-inventory-into-work-packages)), and
+`crm inventory verify` judges recorded verification results against them (see
+[Verify work packages](#verify-work-packages)).
 
 Extraction runs on **every profile**. A `crm2011` profile is read over the CRM 2011
 SOAP endpoint (see [How-to: legacy](legacy.md) to create one); a v9 on-prem or
@@ -376,6 +378,7 @@ plus one `<package id>.json` per package:
 | `scenarios`, `unmatched_scenarios`, `seeds_not_found`, `seeds_unpackaged` | the scenario count, the names no package holds, each `{scenario, seed}` not in the inventory, and each one in the inventory but in no package; in `index.json`, `scenarios` lists each one's packages and seeds |
 | `unattached_gaps`, `unattached_unknowns` | extraction gaps on no package member, and unknown edges from a component in no package: counts in `data`, the lists in `index.json` |
 | `incomplete` | each kind not read `complete` in the inventory: its components may be missing from the graph |
+| `packages_sha256` | in `data` only: the digest of the `--out` folder that a verification results file names (see [Verify work packages](#verify-work-packages)) |
 | `out` | the `--out` folder |
 
 Without `--json` it prints one row per package (members, unknowns, scenarios), then
@@ -383,3 +386,86 @@ the inventory, the unknown count and any unmatched scenarios, missing or unpacka
 seeds and unknowns in no package. It
 exits **0** whatever the packages hold, and **1** when an input is unreadable or
 `--out` is not empty. The same inputs give the same bytes in every file.
+
+## Verify work packages
+
+```bash
+crm --json inventory verify ./packages --results ./run/results.json --out ./verify.json
+```
+
+`crm inventory verify PACKAGES --results FILE` is a completion gate: it checks each work
+package's verification requirements against a **verification results file** someone
+recorded, and gives each package a verdict. It runs no check and touches no org; it only
+judges what was recorded, and never calls a package complete without a passing,
+evidenced result for every requirement.
+
+The results file is JSON, published as
+[`verification-results-v1.schema.json`](https://github.com/Gharib89/crm/blob/main/crm/schemas/verification-results-v1.schema.json).
+Like the manifest, a reader refuses an unknown `schema_version` and ignores an unknown
+field.
+
+```json
+{"schema_version": 1,
+ "packages_sha256": "<the packages output it was recorded against>",
+ "results": [
+  {"package": "pkg-3f2a9c1d0b7e", "requirement": "req-8c1f0a2b3d4e5f60", "outcome": "pass",
+   "evidence": [{"path": "evidence/approve.log", "sha256": "<sha256 of the file>"}],
+   "expected": "Approving a project locks its budget fields",
+   "actual": "The budget fields were read-only after approval",
+   "deployed": [{"component": "web_resource:new_/scripts/project.js", "sha256": "<content hash>"}],
+   "errors": [], "environment": {"profile": "test-org", "org": "https://crm.example.test/Org"},
+   "open_decisions": [], "negative_control": false}
+ ]}
+```
+
+| Field | Value |
+|---|---|
+| `packages_sha256` | the packages output the results were recorded against, as `crm inventory packages` returned it in `data`: a SHA-256 over the lines `<file sha256>  <file name>`, `index.json` first, then each package file in index order. A results file whose value differs is refused (exit 1) |
+| `package`, `requirement` | the package `id` and the `verification` entry's `id` from the packages output |
+| `outcome` | `pass`, `fail`, `blocked` (the check could not run: an environment down, say) or `not_tested` |
+| `evidence` | the artifacts the check produced: each a path relative to the results file's folder, never absolute or with `..`, plus its SHA-256 |
+| `expected`, `actual` | the assertion and what was observed (optional) |
+| `deployed` | the deployed artifacts the check ran against: component id and content hash (optional) |
+| `errors` | error messages or trace references (optional) |
+| `environment` | the crm profile name and the org it ran in (optional) |
+| `open_decisions` | manual decisions still open, reported with the package (optional) |
+| `negative_control` | `true` for a deliberately introduced regression, whose check must fail (optional, default `false`) |
+
+Each requirement takes the worst of its results (fail, blocked, not tested, pass). A
+`pass` counts only with evidence, and only when every evidence file exists under the
+results file's folder with its recorded hash. A package's verdict is the first that
+applies:
+
+| Verdict | When |
+|---|---|
+| `failed` | a requirement failed |
+| `blocked` | a requirement is blocked |
+| `not_tested` | a requirement has no result, records `not_tested`, or passed without evidence or with an evidence file missing or changed; or the package states no requirement |
+| `complete` | every requirement passed with its evidence |
+
+A **negative control** records a regression introduced on purpose, so it should `fail`
+and is reported `held`. One that records `pass` means the check missed the regression:
+it is reported in `escaped`, and its requirement counts as not tested, so the package is
+never `complete`. A control recording `blocked` or `not_tested` is `not_run`.
+
+A result naming a package or requirement id the packages output lacks is never
+dropped: it is listed in `unknown_results` with the reason `unknown_package` or
+`unknown_requirement`.
+
+`data` holds:
+
+| Key | Value |
+|---|---|
+| `schema_version` | the report format version, `1` |
+| `packages_sha256` | the packages output judged |
+| `counts` | packages per verdict: `failed`, `blocked`, `not_tested`, `complete` |
+| `packages` | each package's `id` and `verdict`; in the `--out` file each also lists its `requirements` (`id`, `kind`, `member`, `status`, the `reason` a requirement is not tested: `no_result`, `recorded`, `no_evidence`, `evidence_unverified` or `control_escaped`, and its `controls`) and its `open_decisions` |
+| `escaped` | each `{package, requirement}` whose negative control passed |
+| `unknown_results` | each `{package, requirement, reason}` the packages output lacks |
+| `out` | the `--out` file |
+
+Without `--json` it prints one row per package (verdict, requirements passed), then the
+verdict counts, any escaped controls and unknown results. A verdict is not a failure:
+it exits **0** whatever the verdicts, and **1** when an input is unreadable or
+malformed, or the results file was recorded against another packages output. The
+same inputs give the same `--out` bytes.
