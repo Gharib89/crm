@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 from click.testing import CliRunner
@@ -17,7 +18,8 @@ from click.testing import CliRunner
 from crm.cli import cli
 from crm.core import inventory as inv
 from crm.core.inventory_packages import Edge
-from crm.core.inventory_usage_filter import derive_usage, keeps, package_usage
+from crm.core.inventory_usage_filter import derive_usage, keeps
+from crm.core.inventory_usage_filter import package_usage as _package_usage
 from crm.core.usage import Usage
 
 AS_OF = "2026-11-01T10:00:00Z"
@@ -53,8 +55,13 @@ def _wr(name: str) -> inv.Record:
     return _rec("web_resource", {"name": name, "web_resource_type": 3})
 
 
-def _derive(records, edges=()):
+def _derive(records, edges=()) -> dict[str, Any]:
+    """The derived usage by node id; Any, since a test reads `.state` of what it expects set."""
     return derive_usage(records, edges, AS_OF)
+
+
+def package_usage(members, as_of: str) -> Any:
+    return _package_usage(members, as_of)
 
 
 def test_a_web_resource_a_form_points_at_is_used():
