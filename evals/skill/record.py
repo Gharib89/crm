@@ -169,9 +169,9 @@ def skills_stamp(skills: Iterable[str], repo_root: str | Path | None = None) -> 
     other corpus names each skill it ran (``crm=<sha>, crm-migration=<sha>``).
     """
     names = sorted(set(skills))
-    if names == ["crm"]:
+    if names == ["crm"]:  # keeps the stamp format of runs made before per-skill stamping
         return skill_sha(repo_root)
-    return ", ".join(f"{name}={skill_sha(repo_root, name)}" for name in names)
+    return ", ".join(f"{name}={skill_sha(repo_root, skill=name)}" for name in names)
 
 
 def build_record(

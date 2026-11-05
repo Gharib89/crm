@@ -232,6 +232,8 @@ def test_skill_sha_stamps_the_named_skills_tree(skill, folder):
         ["git", "-C", str(root), "rev-parse", f"HEAD:crm/{folder}"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=True,
     ).stdout.strip()
     assert record.skill_sha(skill=skill).removesuffix("-dirty") == want
