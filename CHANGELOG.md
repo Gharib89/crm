@@ -9,6 +9,53 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.92.0 (2026-11-05)
+
+### Bug Fixes
+
+- **inventory**: Assess an inventory whose source version is unknown
+  ([#1082](https://github.com/Gharib89/crm/pull/1082),
+  [`17262f2`](https://github.com/Gharib89/crm/commit/17262f2a931cc71a2aa803833eae186a562f0e7a))
+
+- **inventory**: Match getServerUrl only as a method call
+  ([#1082](https://github.com/Gharib89/crm/pull/1082),
+  [`17262f2`](https://github.com/Gharib89/crm/commit/17262f2a931cc71a2aa803833eae186a562f0e7a))
+
+### Documentation
+
+- **inventory**: Document crm inventory assess and the clear finding
+  ([#1082](https://github.com/Gharib89/crm/pull/1082),
+  [`17262f2`](https://github.com/Gharib89/crm/commit/17262f2a931cc71a2aa803833eae186a562f0e7a))
+
+- **inventory**: List assess in the README group row and drop its restated usage
+  ([#1082](https://github.com/Gharib89/crm/pull/1082),
+  [`17262f2`](https://github.com/Gharib89/crm/commit/17262f2a931cc71a2aa803833eae186a562f0e7a))
+
+- **inventory**: Sharpen the assess wording and label tool-judgment rules
+  ([#1082](https://github.com/Gharib89/crm/pull/1082),
+  [`17262f2`](https://github.com/Gharib89/crm/commit/17262f2a931cc71a2aa803833eae186a562f0e7a))
+
+### Features
+
+- **inventory**: Crm inventory assess runs compatibility rules shipped as data
+  ([#1082](https://github.com/Gharib89/crm/pull/1082),
+  [`17262f2`](https://github.com/Gharib89/crm/commit/17262f2a931cc71a2aa803833eae186a562f0e7a))
+
+- **inventory**: Crm inventory assess runs packaged compatibility rules
+  ([#1082](https://github.com/Gharib89/crm/pull/1082),
+  [`17262f2`](https://github.com/Gharib89/crm/commit/17262f2a931cc71a2aa803833eae186a562f0e7a))
+
+### Testing
+
+- **inventory**: Live extract records assembly isolation and assess covers it
+  ([#1082](https://github.com/Gharib89/crm/pull/1082),
+  [`17262f2`](https://github.com/Gharib89/crm/commit/17262f2a931cc71a2aa803833eae186a562f0e7a))
+
+- **inventory**: Prove the list-valued field fix end to end
+  ([#1082](https://github.com/Gharib89/crm/pull/1082),
+  [`17262f2`](https://github.com/Gharib89/crm/commit/17262f2a931cc71a2aa803833eae186a562f0e7a))
+
+
 ## v1.91.0 (2026-11-05)
 
 ### Bug Fixes
