@@ -9,6 +9,29 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.97.0 (2026-11-05)
+
+### Bug Fixes
+
+- **inventory**: Carry the mixed-usage diff warning in JSON, note row-level read failures
+  ([#1120](https://github.com/Gharib89/crm/pull/1120),
+  [`29f4529`](https://github.com/Gharib89/crm/commit/29f452930b17171754b4d67ba8fa3092ac2ee94c))
+
+- **inventory**: Re-probe entities a resumed scope gained, keep scope comparison order-independent
+  ([#1120](https://github.com/Gharib89/crm/pull/1120),
+  [`29f4529`](https://github.com/Gharib89/crm/commit/29f452930b17171754b4d67ba8fa3092ac2ee94c))
+
+- **inventory**: Warn on a mixed usage diff, document --with-usage in the crm skill
+  ([#1120](https://github.com/Gharib89/crm/pull/1120),
+  [`29f4529`](https://github.com/Gharib89/crm/commit/29f452930b17171754b4d67ba8fa3092ac2ee94c))
+
+### Features
+
+- **inventory**: Extract --with-usage records a usage field per row
+  ([#1120](https://github.com/Gharib89/crm/pull/1120),
+  [`29f4529`](https://github.com/Gharib89/crm/commit/29f452930b17171754b4d67ba8fa3092ac2ee94c))
+
+
 ## v1.96.0 (2026-11-05)
 
 ### Bug Fixes
