@@ -557,8 +557,9 @@ _Avoid_: check (too general), lint.
 
 **Compatibility finding**:
 One compatibility rule's verdict on one component, with its evidence: a
-blocker, deprecated (works today, removed later), optional modernization, or
-unknown. A component no rule covers gets an unknown finding, never none.
+blocker, deprecated (works today, removed later), optional modernization,
+unknown, or clear (the rules that apply found nothing). A component no rule covers
+gets an unknown finding, never none.
 _Avoid_: issue, warning, error.
 
 ## Relationships

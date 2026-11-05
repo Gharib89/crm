@@ -11,7 +11,9 @@ matches one to an application repository (see [Map an inventory to source](#map-
 `crm inventory packages` groups one into work packages (see
 [Group an inventory into work packages](#group-an-inventory-into-work-packages)), and
 `crm inventory verify` judges recorded verification results against them (see
-[Verify work packages](#verify-work-packages)).
+[Verify work packages](#verify-work-packages)), and `crm inventory assess` runs the
+packaged compatibility rules over one (see
+[Assess compatibility](#assess-compatibility)).
 
 Extraction runs on **every profile**. A `crm2011` profile is read over the CRM 2011
 SOAP endpoint (see [How-to: legacy](legacy.md) to create one); a v9 on-prem or
@@ -470,3 +472,61 @@ it exits **0** whatever the verdicts, and **1** when an input is unreadable or
 malformed, the results file was recorded against another packages output, or `--out`
 would overwrite an input (the results file, an evidence file or the packages output).
 The same inputs give the same `--out` bytes.
+
+## Assess compatibility
+
+```bash
+crm --json inventory assess ./inv --target online --out ./findings.json
+```
+
+`crm inventory assess INVENTORY --target onprem-9.1|online --out FILE` runs the
+**compatibility rules** that ship with crm over an inventory and writes a findings file.
+It is offline: it reads the inventory folder and touches no org
+([ADR 0033](../adr/0033-second-shipped-skill-and-compatibility-rules-as-data.md)).
+
+Each rule names the component kind, the source versions it applies to (compared with the
+manifest's `source.version`), the targets, a class, a detection, the fix and at least one
+Microsoft Learn page. The rules file is
+[`crm/rules/compatibility-rules.json`](https://github.com/Gharib89/crm/blob/main/crm/rules/compatibility-rules.json),
+published with its format,
+[`compatibility-rules-v1.schema.json`](https://github.com/Gharib89/crm/blob/main/crm/schemas/compatibility-rules-v1.schema.json).
+Version 1 covers web resource scripts (HTML and JavaScript) and plug-in assembly
+registration:
+
+| Rule | Class | Targets |
+|---|---|---|
+| `web-resource-xrm-page`: the `Xrm.Page` object | deprecated | both |
+| `web-resource-xrm-utility`: `Xrm.Utility.openEntityForm`, `alertDialog` and the other deprecated methods | deprecated | both |
+| `web-resource-get-server-url`: `getServerUrl()` | deprecated | both |
+| `web-resource-crmform`: CRM 4.0 `crmForm` scripting | blocker | both |
+| `web-resource-soap-2007`: the `/MSCrmServices/2007/` endpoint | blocker | both |
+| `web-resource-soap-2011`: the 2011 `Organization.svc` or `Discovery.svc` SOAP endpoint | deprecated | both |
+| `web-resource-odata-v2`: the `OrganizationData.svc` OData v2 endpoint | deprecated | both |
+| `web-resource-jquery-static`: the jQuery 2.1.1 the app shipped, removed online | blocker | `online` |
+| `assembly-storage-online`, `assembly-storage-onprem`: an assembly stored on disk or in the GAC | blocker online, optional on-prem | one each |
+| `assembly-isolation-none`, `assembly-isolation-none-onprem`: an assembly registered without isolation | blocker online, optional on-prem | one each |
+
+Every component gets at least one **compatibility finding**, keyed by component key,
+never by GUID:
+
+| Class | When |
+|---|---|
+| `blocker`, `deprecated`, `optional` | a rule matched; the evidence is the artifact `path`, its `sha256`, the first ten match `locations` (line and column) and the `match_count`, or for a registration rule the recorded `field` and `value` |
+| `unknown` | no rule applies to the component (reason `no rule`: a kind no rule covers, or a binary web resource); a rule needs a field the inventory did not record (`field isolation_mode not recorded`, an inventory extracted before crm recorded it); a script artifact is missing or its hash differs from the manifest; an extraction gap names the component (`extraction gap: <reason>`); or its kind was not read complete (`kind coverage partial`) |
+| `clear` | the rules that apply found nothing |
+
+A gap or incomplete coverage adds an `unknown` beside the rule findings, so a component
+read only in part keeps both. The findings file
+([`compatibility-findings-v1.schema.json`](https://github.com/Gharib89/crm/blob/main/crm/schemas/compatibility-findings-v1.schema.json))
+has its own `schema_version`, names the inventory (`source`, `extracted_at`,
+`cli_version` and the manifest's `manifest_sha256`), the target and the rules file's
+`version` and `sha256`, and lists each rule a finding names under `rules_hit` with its
+title, fix and sources. Gaps naming no component sit in `unattached_gaps`, and kinds not
+read complete in `incomplete`. It is sorted, so two runs over the same inputs differ only
+in `generated_at`.
+
+`data` holds the same header, `counts` (`by_class`, and `by_kind`: each kind's findings
+per class), the `unattached_gaps` count, `incomplete` and `out`. Without `--json` it
+prints one row per kind with its findings per class. Findings are a verdict, so a blocker
+still exits **0**; an unreadable inventory, an unknown `schema_version` or an `--out`
+inside the inventory folder exits **1**.

@@ -1,7 +1,7 @@
-# Migration inventory: extract, compare, map, package, verify
+# Migration inventory: extract, compare, map, package, verify, assess
 
 `extract` reads an org, a `crm2011` profile included (`reference/setup.md`, Legacy
-CRM 2011 orgs); the other four read files only and need no profile.
+CRM 2011 orgs); the other five read files only and need no profile.
 
 ## Extracting an inventory (`crm inventory extract`)
 
@@ -138,3 +138,23 @@ check and reads files only.
   output lacks, usually a typo or results from another run.
 - **Read the verdicts, not the exit code**: every verdict exits 0. The `--out`
   report's `reason` says why each requirement is not tested.
+
+## Assessing compatibility (`crm inventory assess`)
+
+`crm inventory assess INVENTORY --target onprem-9.1|online --out FILE` runs the
+compatibility rules shipped with crm over an inventory and writes a findings file. It
+reads files only.
+
+- **Every component gets a finding**, keyed by component key: `blocker`,
+  `deprecated` or `optional` from a rule hit, `unknown` with a `reason`, or `clear`
+  (the rules that apply found nothing). `clear` is not proof of compatibility: the
+  rules cover web resource scripts and plug-in assembly registration only.
+- **Resolve every `unknown`** before calling a component ready: `no rule` means no rule
+  judges it (most kinds), and an `extraction gap` or `kind coverage` reason means the
+  inventory never fully read it.
+- **Quote the evidence**: a script hit carries the artifact `path`, `sha256` and match
+  `locations` (line, column); a registration hit carries the `field` and `value`. The
+  fix and the Microsoft Learn sources of each rule hit are under `rules_hit`.
+- **A blocker is a verdict, not a failure**: the command exits 0; read `counts.by_class`.
+- **`field isolation_mode not recorded`** marks an inventory extracted by an older crm:
+  re-extract to judge the isolation rules.

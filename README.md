@@ -316,8 +316,9 @@ inventory (manifest v1 plus raw artifacts), whole-org or narrowed with `--soluti
 checkpointed so an interrupted run resumes; `crm inventory diff` compares two inventories
 from any stages offline, `crm inventory map-source` matches one to an application
 repository's web resource files and plug-in projects, `crm inventory packages` groups
-it into work packages over its dependency graph, and `crm inventory verify` judges
-recorded verification results against them. Every other org command refuses a `crm2011` profile. See
+it into work packages over its dependency graph, `crm inventory verify` judges
+recorded verification results against them, and `crm inventory assess` runs the
+packaged compatibility rules over one for an on-prem 9.1 or Dataverse online target. Every other org command refuses a `crm2011` profile. See
 [ADR 0031](docs/adr/0031-legacy-crm2011-read-only-soap-adapter.md) and
 [ADR 0032](docs/adr/0032-inventory-descriptive-contract-keyed-by-component-key.md).
 
