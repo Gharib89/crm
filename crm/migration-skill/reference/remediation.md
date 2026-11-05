@@ -62,8 +62,23 @@ A task missing a field names it as an unknown.
 
 Run `crm inventory convert` after `assess` and `packages`; it writes only into a
 new `--out` folder (`--help` has the inputs). A finding gets a patch only when its
-rule names a transform, today the `Xrm.Page.context` rewrite in JavaScript web
-resources. Work from `ledger.json`:
+rule names a transform. Every transform reads JavaScript web resources only, and
+one file's rules all land in one patch (one ledger entry per rule). Which rows of
+Microsoft's client API deprecation table convert:
+
+| Rewritten (`patched`) | Manual review, code untouched |
+|---|---|
+| `Xrm.Page.context.getClientUrl()` and the other same-name methods to `Xrm.Utility.getGlobalContext()` | any other use of `Xrm.Page.context`, an alias |
+| `getUserName`, `getUserId`, `getUserLcid`, `getOrgLcid`, `getOrgUniqueName`, `getIsAutoSaveEnabled` to the `userSettings` or `organizationSettings` property; `getTimeZoneOffsetMinutes()` to `userSettings` | a call with arguments |
+| `getUserRoles()` to `userSettings.roles`, only where the result is passed on | a `getUserRoles()` result read as a list: roles are `{id, name}` lookups, not GUID strings; check every read of a rewritten one too |
+| `row.getData().getEntity()` to `row.data.entity` | `getData()` or `getEntity()` alone |
+| `Xrm.Mobile.offline` record methods to `Xrm.WebApi.offline` | `isOfflineEnabled`, other uses |
+| no-argument `data.entity.save()` to `data.save()` (now asynchronous) | `save("saveandnew")` |
+| nothing | `Xrm.Utility.openEntityForm`, `openQuickCreate`, `openWebResource`, `alertDialog`, `confirmDialog`, `isActivityType`: signature or sync behaviour changes |
+| nothing | `addOnKeyPress`, `removeOnKeyPress`, `fireOnKeyPress`, `showAutoComplete`, `hideAutoComplete`: only a custom control replaces them |
+
+A shadowed `Xrm`, `window.Xrm` or `parent.Xrm`, an optional chain and a call that
+spans lines are manual review for every row. Work from `ledger.json`:
 
 - **`patched`** entries carry a diff per component. Review it, apply with
   `git apply`, then build and re-run `verify`; a patch is a proposal until the

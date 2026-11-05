@@ -32,7 +32,13 @@ from typing import Any, Literal, cast
 
 from crm.core.code_parse import error_count, parse
 from crm.core.inventory import MANIFEST_NAME, InventoryError, normalize_text, read_inventory
-from crm.core.inventory_assess import ContentEvidence, ContentPattern, load_rules, read_findings
+from crm.core.inventory_assess import (
+    ContentEvidence,
+    ContentPattern,
+    Rule,
+    load_rules,
+    read_findings,
+)
 from crm.core.inventory_packages import PACKAGE_ID
 from crm.core.inventory_packages import SCHEMA_VERSION as PACKAGES_VERSION
 from crm.core.inventory_source_map import read_source_map
@@ -252,8 +258,10 @@ def convert(
     records = {(r.kind, r.key): r for r in inv.records}
     rules = {r.id: r for r in load_rules().rules}
 
-    entries: list[Entry] = []
-    seen: set[tuple[str, str, str]] = set()
+    # One component can carry findings of several rules that name a transform. Their
+    # transforms run in findings order, each on the text the one before left, so every
+    # rule's edits land in one patch and none is dropped.
+    groups: dict[tuple[str, str, str], dict[str, Rule]] = {}
     for f in findings.findings:
         rule = rules.get(f.rule or "")
         if (
@@ -261,57 +269,80 @@ def convert(
             or rule.transform is None
             or f.cls == "clear"
             or not isinstance(f.evidence, ContentEvidence)
-            or (f.kind, f.key, f.evidence.path) in seen
         ):
             continue
-        seen.add((f.kind, f.key, f.evidence.path))
-        transform = TRANSFORMS.get(rule.transform)
-        if transform is None:
+        if rule.transform not in TRANSFORMS:
             raise InventoryError(
                 f"rule {rule.id} names transform {rule.transform!r}, not registered"
             )
-        record = records.get((f.kind, f.key))
-        path = f.evidence.path
-        detection = rule.detection
-        plan, source, patched, reason = Plan((), ()), b"", None, ""
-        if (
-            record is None
-            or record.fields.get("web_resource_type") not in transform.web_resource_types
-        ):
-            reason = f"transform {rule.transform} does not read this web resource type"
-        else:
-            try:
-                raw = (inventory_dir / path).read_bytes()
-            except OSError as exc:
-                raw, reason = b"", f"artifact unreadable: {exc.strerror or exc}"
-            if not reason and _hex(raw) != f.evidence.sha256:
-                reason = "artifact changed since extraction"
-            if not reason:
+        groups.setdefault((f.kind, f.key, f.evidence.path), {}).setdefault(rule.id, rule)
+    sha_of = {
+        (f.kind, f.key, f.evidence.path): f.evidence.sha256
+        for f in findings.findings
+        if isinstance(f.evidence, ContentEvidence)
+    }
+
+    entries: list[Entry] = []
+    for (kind, key, path), group in groups.items():
+        record = records.get((kind, key))
+        source, problem = b"", ""
+        try:
+            raw = (inventory_dir / path).read_bytes()
+            if _hex(raw) != sha_of[(kind, key, path)]:
+                problem = "artifact changed since extraction"
+            else:
                 source = normalize_text(raw)
-                plan = transform.plan(parse(transform.language, source))
-        if plan.edits:
-            patched = _apply(source, plan.edits)
-            if patched is None:
-                reason = "the planned edits overlap"
-            elif isinstance(detection, ContentPattern):
-                reason = _gate(detection.pattern, transform, source, patched, len(plan.edits)) or ""
-            if reason:
-                reason = f"emit gate rejected the rewrite: {reason}"
-        if not plan.edits and not plan.unproven and not reason:
-            continue
-        for pkg in held.get(f"{f.kind}:{f.key}", [UNPACKAGED]):
-            entry = Entry(pkg, f.kind, f.key, rule.id, rule.transform, "manual-review")
-            entry.manual_review = [
-                ManualReview(path, u.line, rule.id, u.reason) for u in plan.unproven
-            ]
-            if reason:
-                entry.manual_review.insert(0, ManualReview(path, None, rule.id, reason))
-            elif patched is not None:
-                entry.status, entry.edits = "patched", len(plan.edits)
-                entry.original_sha256, entry.patched_sha256 = _hex(source), _hex(patched)
-                entry.repo_path = matched.get((f.kind, f.key))
-                _write(out, entry, path, source, patched)
-            entries.append(entry)
+        except OSError as exc:
+            problem = f"artifact unreadable: {exc.strerror or exc}"
+        current: bytes = source
+        steps: list[tuple[Rule, Plan, str, bool]] = []
+        for rule in group.values():
+            transform = TRANSFORMS[cast(str, rule.transform)]
+            plan, reason = Plan((), ()), problem
+            if (
+                not reason
+                and record is not None
+                and record.fields.get("web_resource_type") in transform.web_resource_types
+            ):
+                plan = transform.plan(parse(transform.language, current))
+            elif not reason:
+                reason = f"transform {rule.transform} does not read this web resource type"
+            applied = False
+            if plan.edits:
+                patched = _apply(current, plan.edits)
+                if patched is None:
+                    reason = "the planned edits overlap"
+                elif patched.count(b"\n") != current.count(b"\n"):
+                    reason = "the rewrite changes the line count"
+                elif isinstance(rule.detection, ContentPattern):
+                    reason = (
+                        _gate(rule.detection.pattern, transform, current, patched, len(plan.edits))
+                        or ""
+                    )
+                if reason:
+                    reason = f"emit gate rejected the rewrite: {reason}"
+                elif patched is not None:
+                    current, applied = patched, True
+            if plan.edits or plan.unproven or reason:
+                steps.append((rule, plan, reason, applied))
+        for pkg in held.get(f"{kind}:{key}", [UNPACKAGED]):
+            files: dict[str, str] = {}
+            for rule, plan, reason, applied in steps:
+                entry = Entry(pkg, kind, key, rule.id, cast(str, rule.transform), "manual-review")
+                entry.manual_review = [
+                    ManualReview(path, u.line, rule.id, u.reason) for u in plan.unproven
+                ]
+                if reason:
+                    entry.manual_review.insert(0, ManualReview(path, None, rule.id, reason))
+                elif applied:
+                    entry.status, entry.edits = "patched", len(plan.edits)
+                    entry.original_sha256, entry.patched_sha256 = _hex(source), _hex(current)
+                    entry.repo_path = matched.get((kind, key))
+                    if not files:
+                        _write(out, entry, path, source, current)
+                        files = entry.files
+                    entry.files = dict(files)
+                entries.append(entry)
     entries.sort(key=lambda e: (e.package, e.kind, e.key))
     result = ConvertResult(manifest_sha, tuple(entries))
     out.mkdir(parents=True, exist_ok=True)

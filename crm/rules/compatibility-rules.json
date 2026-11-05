@@ -55,7 +55,8 @@
       "fix": "Use Xrm.Navigation.openForm, openWebResource, openAlertDialog and openConfirmDialog, and Xrm.Utility.getEntityMetadata for activity checks.",
       "sources": [
         "https://learn.microsoft.com/power-platform/important-changes-coming#some-client-apis-are-deprecated"
-      ]
+      ],
+      "transform": "xrm-utility-review"
     },
     {
       "id": "web-resource-get-server-url",
@@ -82,6 +83,151 @@
       "sources": [
         "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/clientapi-xrm#client-api-global-context",
         "https://learn.microsoft.com/dynamics365/customerengagement/on-premises/developer/web-resources?view=op-9-1#reference-web-resources"
+      ]
+    },
+    {
+      "id": "web-resource-context-settings",
+      "kind": "web_resource",
+      "class": "deprecated",
+      "title": "Reads a user or organization setting through a global context method that moved",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "content_pattern",
+        "pattern": "\\b(?:Xrm\\s*\\.\\s*Page\\s*\\.\\s*context|Xrm\\s*\\.\\s*Utility\\s*\\.\\s*getGlobalContext\\s*\\(\\s*\\))\\s*\\.\\s*(?:getUserName|getUserId|getUserLcid|getUserRoles|getOrgLcid|getOrgUniqueName|getIsAutoSaveEnabled|getTimeZoneOffsetMinutes)\\b",
+        "web_resource_types": [
+          1,
+          3
+        ]
+      },
+      "transform": "context-settings",
+      "fix": "Read the property on Xrm.Utility.getGlobalContext().userSettings (userName, userId, languageId, roles, getTimeZoneOffsetMinutes()) or .organizationSettings (languageId, uniqueName, isAutoSaveEnabled). getUserRoles() returned GUID strings and userSettings.roles holds {id, name} lookups: review each read of the list.",
+      "sources": [
+        "https://learn.microsoft.com/power-platform/important-changes-coming#some-client-apis-are-deprecated",
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/reference/xrm-utility/getglobalcontext/usersettings",
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/reference/xrm-utility/getglobalcontext/organizationsettings",
+        "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/use-org-setting"
+      ]
+    },
+    {
+      "id": "web-resource-grid-row",
+      "kind": "web_resource",
+      "class": "deprecated",
+      "title": "Reads a grid row through the deprecated GridRow.getData or GridRowData.getEntity",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "content_pattern",
+        "pattern": "\\.\\s*getData\\s*\\(\\s*\\)(?:\\s*\\.\\s*getEntity\\s*\\(\\s*\\))?|\\.\\s*getEntity\\s*\\(\\s*\\)",
+        "web_resource_types": [
+          1,
+          3
+        ]
+      },
+      "transform": "grid-row",
+      "fix": "Use GridRow.data in place of getData() and GridRowData.entity in place of getEntity().",
+      "sources": [
+        "https://learn.microsoft.com/power-platform/important-changes-coming#some-client-apis-are-deprecated",
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/reference/grids/gridrow",
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/reference/grids/gridrowdata",
+        "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/use-grid-api"
+      ]
+    },
+    {
+      "id": "web-resource-xrm-mobile-offline",
+      "kind": "web_resource",
+      "class": "deprecated",
+      "title": "Uses the deprecated Xrm.Mobile.offline namespace",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "content_pattern",
+        "pattern": "\\bXrm\\s*\\.\\s*Mobile\\s*\\.\\s*offline\\b",
+        "web_resource_types": [
+          1,
+          3
+        ]
+      },
+      "transform": "mobile-offline",
+      "fix": "Use Xrm.WebApi.offline: the record methods keep their names, and isOfflineEnabled becomes isAvailableOffline.",
+      "sources": [
+        "https://learn.microsoft.com/power-platform/important-changes-coming#some-client-apis-are-deprecated",
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/reference/xrm-webapi/offline",
+        "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/use-offline"
+      ]
+    },
+    {
+      "id": "web-resource-entity-save",
+      "kind": "web_resource",
+      "class": "deprecated",
+      "title": "Saves through the deprecated formContext.data.entity.save",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "content_pattern",
+        "pattern": "\\.\\s*data\\s*\\.\\s*entity\\s*\\.\\s*save\\b",
+        "web_resource_types": [
+          1,
+          3
+        ]
+      },
+      "transform": "entity-save",
+      "fix": "Use formContext.data.save, which takes a saveOptions object and runs asynchronously.",
+      "sources": [
+        "https://learn.microsoft.com/power-platform/important-changes-coming#some-client-apis-are-deprecated",
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/reference/formcontext-data-entity/save",
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/reference/formcontext-data/save"
+      ]
+    },
+    {
+      "id": "web-resource-keypress",
+      "kind": "web_resource",
+      "class": "deprecated",
+      "title": "Uses the deprecated key-press and auto-complete methods",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "content_pattern",
+        "pattern": "\\.\\s*(?:addOnKeyPress|removeOnKeyPress|fireOnKeyPress|showAutoComplete|hideAutoComplete)\\s*\\(",
+        "web_resource_types": [
+          1,
+          3
+        ]
+      },
+      "transform": "keypress-review",
+      "fix": "No API replaces these methods: use a custom control built with the Power Apps component framework.",
+      "sources": [
+        "https://learn.microsoft.com/power-platform/important-changes-coming#some-client-apis-are-deprecated"
       ]
     },
     {

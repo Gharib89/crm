@@ -24,10 +24,10 @@ from crm.core.inventory_source_map import dump_source_map, map_source, read_sour
 
 ORG = "https://crm.example.test/Org"
 CTX_JS = (
-    "// Xrm.Page.context.getUserId() in a comment stays.\n"
+    "// Xrm.Page.context.getVersion() in a comment stays.\n"
     "function load() {\n"
     "  var url = Xrm.Page.context.getClientUrl();\n"
-    "  var id = Xrm.Page.context.getUserId();\n"
+    "  var id = Xrm.Page.context.getVersion();\n"
     "  var note = 'Xrm.Page.context.getClientUrl()';\n"
     "  return Xrm.Page.getAttribute('name') + url + id + note;\n"
     "}\n"
@@ -37,7 +37,7 @@ CLEAN_JS = "function f(ctx) {\n  return ctx.getFormContext();\n}\n"
 ALONE_JS = "function g() {\n  return Xrm.Page.context.getVersion();\n}\n"
 MIXED_JS = (
     "var c = Xrm.Page.context;\n"
-    "var n = Xrm.Page.context.getUserName();\n"
+    "var n = Xrm.Page.context.getCurrentTheme();\n"
     "var u = Xrm.Page.context.getClientUrl();\n"
 )
 CTX_NAME, STRINGS_NAME, CLEAN_NAME, ALONE_NAME, MIXED_NAME = (
@@ -133,8 +133,8 @@ def _ledger(out: Path) -> dict:
     return json.loads((out / LEDGER_NAME).read_text(encoding="utf-8"))
 
 
-def _entry(out: Path, name: str) -> dict:
-    (entry,) = [e for e in _ledger(out)["entries"] if e["key"] == name]
+def _entry(out: Path, name: str, rule: str = "web-resource-xrm-page") -> dict:
+    (entry,) = [e for e in _ledger(out)["entries"] if e["key"] == name and e["rule"] == rule]
     return entry
 
 
@@ -145,7 +145,7 @@ def test_a_component_with_the_finding_gets_diff_patched_file_hash_and_ledger(wor
     assert entry["package"].startswith("pkg-") and entry["rule"] == "web-resource-xrm-page"
     patched = (world.out / entry["files"]["patched"]).read_text(encoding="utf-8")
     assert patched.count("Xrm.Utility.getGlobalContext().getClientUrl()") == 1
-    assert "Xrm.Utility.getGlobalContext().getUserId()" in patched
+    assert "Xrm.Utility.getGlobalContext().getVersion()" in patched
     assert hashlib.sha256(patched.encode()).hexdigest() == entry["patched_sha256"]
     diff = (world.out / entry["files"]["diff"]).read_text(encoding="utf-8")
     assert diff.startswith("--- a/artifacts/web_resource/")
@@ -166,7 +166,7 @@ def test_text_in_a_string_or_comment_is_not_rewritten(world):
     assert STRINGS_NAME not in {e["key"] for e in _ledger(world.out)["entries"]}
     entry = _entry(world.out, CTX_NAME)
     patched = (world.out / entry["files"]["patched"]).read_text(encoding="utf-8")
-    assert "// Xrm.Page.context.getUserId() in a comment stays." in patched
+    assert "// Xrm.Page.context.getVersion() in a comment stays." in patched
     assert "'Xrm.Page.context.getClientUrl()'" in patched
 
 
@@ -178,7 +178,7 @@ def test_other_uses_of_the_context_become_manual_review_entries_and_stay_untouch
     assert reviews == {(1, "web-resource-xrm-page"), (2, "web-resource-xrm-page")}
     assert all(m["file"].startswith("artifacts/web_resource/") for m in entry["manual_review"])
     patched = (world.out / entry["files"]["patched"]).read_text(encoding="utf-8")
-    assert "var c = Xrm.Page.context;" in patched and "getUserName()" in patched
+    assert "var c = Xrm.Page.context;" in patched and "getCurrentTheme()" in patched
 
 
 def test_a_web_resource_type_the_transform_does_not_read_goes_to_manual_review(world):
@@ -207,7 +207,7 @@ def test_a_patch_the_gate_rejects_leaves_the_code_untouched(world, monkeypatch):
 
 def test_the_gate_rejects_a_rewrite_that_leaves_the_rule_matching(world, monkeypatch):
     def noop(root):
-        return transforms.Plan((transforms.Edit(0, 0, b"// x\n"),), ())
+        return transforms.Plan((transforms.Edit(0, 0, b"/* x */"),), ())
 
     monkeypatch.setitem(
         transforms.TRANSFORMS, "global-context", transforms.Transform("javascript", (3,), noop)
@@ -351,7 +351,7 @@ def test_cli_converts_and_reports_counts(world):
     assert res.exit_code == 0, res.output
     data = json.loads(res.output)["data"]
     assert data["patched"] == 3 and data["out"] == str(world.out)
-    assert data["manual_review"] == 3
+    assert data["manual_review"] == 4
 
 
 def test_cli_exits_1_for_a_non_empty_out(world, tmp_path):
@@ -381,11 +381,14 @@ def _convert_text(source: str) -> tuple[str, list[str]]:
             "x = Xrm.Page.context.getClientUrl();",
             "x = Xrm.Utility.getGlobalContext().getClientUrl();",
         ),
-        ("x = Xrm.Page.context.getUserId( );", "x = Xrm.Utility.getGlobalContext().getUserId( );"),
+        (
+            "x = Xrm.Page.context.getVersion( );",
+            "x = Xrm.Utility.getGlobalContext().getVersion( );",
+        ),
         ("f(Xrm.Page.context.getVersion());", "f(Xrm.Utility.getGlobalContext().getVersion());"),
         (
-            "x = Xrm.Page.context\n  .getUserRoles();",
-            "x = Xrm.Utility.getGlobalContext()\n  .getUserRoles();",
+            "x = Xrm.Page.context\n  .getVersion();",
+            "x = Xrm.Utility.getGlobalContext()\n  .getVersion();",
         ),
         ("x = 'Xrm.Page.context.getUserId()'; // Xrm.Page.context.getUserId()", None),
         ("x = `Xrm.Page.context.getUserId()`;", None),
@@ -416,7 +419,7 @@ def test_global_context_before_and_after(before, after):
         "x = Xrm.Page.context?.getClientUrl();",
         "x = Xrm.Page.context.getClientUrl?.();",
         "var c = Xrm.Page.context;",
-        "x = Xrm.Page.context.getUserName();",
+        "x = Xrm.Page.context.getCurrentTheme();",
         "x = Xrm.Page.context.getClientUrl;",
         "x = Xrm.Page.context['getClientUrl']();",
         "x = (Xrm.Page.context).getClientUrl();",
@@ -428,8 +431,8 @@ def test_global_context_leaves_what_it_cannot_prove(source):
 
 
 def test_a_broken_original_does_not_block_an_unrelated_rewrite():
-    patched, _ = _convert_text("x = Xrm.Page.context.getUserId();\nfunction (\n")
-    assert patched.startswith("x = Xrm.Utility.getGlobalContext().getUserId();")
+    patched, _ = _convert_text("x = Xrm.Page.context.getVersion();\nfunction (\n")
+    assert patched.startswith("x = Xrm.Utility.getGlobalContext().getVersion();")
     assert error_count(parse("javascript", patched.encode())) == error_count(
         parse("javascript", b"x = 1;\nfunction (\n")
     )
@@ -442,7 +445,8 @@ def test_a_rule_may_name_a_transform_only_by_a_lowercase_hyphen_id():
         assess.parse_rules(data)
     rules = {r.id: r for r in assess.load_rules().rules}
     assert rules["web-resource-xrm-page"].transform == "global-context"
-    assert rules["web-resource-xrm-utility"].transform is None
+    assert rules["web-resource-xrm-utility"].transform == "xrm-utility-review"
+    assert rules["web-resource-crmform"].transform is None
 
 
 def test_tree_sitter_is_not_imported_until_convert_parses():
