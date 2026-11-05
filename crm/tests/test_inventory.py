@@ -732,3 +732,20 @@ def test_an_unknown_empty_named_field_does_not_open_the_empty_key_exception() ->
     fields = {"entity": "", "logical_name": "x", "": "ribbon"}
     with pytest.raises(inventory.KeyFieldValueError):
         inventory.component_key("attribute", fields)
+
+
+def test_a_gap_may_name_the_empty_key_of_the_application_ribbon_but_no_other_kind() -> None:
+    manifest = _manifest()
+    manifest["gaps"].append(
+        {"kind": "ribbon", "key": "", "description": None, "reason": "unreadable"}
+    )
+    schema = json.loads(SCHEMA_FILE.read_text(encoding="utf-8"))
+    jsonschema.Draft202012Validator(schema).validate(manifest)
+    (gap,) = [g for g in inventory.parse_manifest(manifest).gaps if g.key == ""]
+    assert gap.kind == "ribbon"
+
+    manifest["gaps"][-1]["kind"] = "entity"
+    with pytest.raises(inventory.InventoryError, match="must name a key or a description"):
+        inventory.parse_manifest(manifest)
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.Draft202012Validator(schema).validate(manifest)

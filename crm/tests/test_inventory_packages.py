@@ -994,3 +994,20 @@ def test_the_other_inventory_commands_still_render_their_table(inputs, tmp_path)
         ["inventory", "assess", str(folder), "--target", "online", "--out", str(tmp_path / "a")],
     )
     assert assessed.exit_code == 0, assessed.output
+
+
+def test_a_gap_on_the_empty_keyed_ribbon_attaches_to_its_package(inputs):
+    folder, source_map, scenarios = inputs
+    path = folder / inv.MANIFEST_NAME
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["gaps"].append({"kind": "ribbon", "key": "", "description": None, "reason": "unreadable"})
+    path.write_text(json.dumps(data), encoding="utf-8")
+    source_map.write_text(
+        dump_source_map(map_source(folder, folder.parent / "repo")), encoding="utf-8"
+    )
+
+    result = build_packages(folder, read_source_map(source_map), scenarios)
+
+    assert result.summary()["unattached_gaps"] == 1
+    package = _package_of(result, "ribbon:")
+    assert any(f.get("type") == "extraction_gap" for f in package.to_dict()["findings"])

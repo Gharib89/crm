@@ -1135,6 +1135,19 @@
         },
         {
           "properties": {
+            "kind": {
+              "enum": [
+                "ribbon",
+                "sitemap"
+              ]
+            },
+            "key": {
+              "const": ""
+            }
+          }
+        },
+        {
+          "properties": {
             "description": {
               "type": "string",
               "minLength": 1

@@ -129,7 +129,8 @@ Equal counts never prove two orgs equivalent: compare coverage first.
 
 `gaps` lists what the source cannot expose, as `{kind, key, description,
 reason}`. `kind` may be `null`, and each entry names a `key` or a
-`description`. Typical gaps are an assembly registered on disk or in the GAC,
+`description`. A `ribbon` or `sitemap` gap names the application ribbon or default
+sitemap with the key `""`; no other kind may. Typical gaps are an assembly registered on disk or in the GAC,
 an ISV page, an external integration, and SQL report data sources.
 
 ## Normalization
@@ -169,7 +170,9 @@ The reader accepts v1 and upgrades it on read: a `ribbon` record whose
 `fields.entity` is null, or a `sitemap` record whose `fields.unique_name` is
 null, takes key `""`, decided by the field and not by the old key, so a v1
 manifest that holds the collision upgrades to distinct keys. The result reads as
-v2, so `diff` pairs a v1 manifest with a v2 one. A v1 record that is neither of
+v2, so `diff` pairs a v1 manifest with a v2 one. A v1 gap keyed `application` or
+`default` gains a twin keyed `""` (the original stays, since it may name an entity's
+ribbon or a named sitemap). A v1 record that is neither of
 those keeps its key, and so does a v1 `solution_membership` or `dependency` row that
 references one of them (its `member_key`, `dependent_key` or `required_key` stays
 `application` or `default`); v2 writes `""` there, so such a row of a v1 manifest does not

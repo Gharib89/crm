@@ -466,3 +466,17 @@ def test_artifacts_pair_by_name_when_a_key_change_moves_their_file_path() -> Non
     diff = diff_inventories(v1, v2)
     assert all(not e.artifacts for e in diff.entries)
     assert _entry(diff, "ribbon", "application").verdict == "unchanged"
+
+
+def test_a_v1_gap_on_the_application_ribbon_still_holds_after_the_upgrade() -> None:
+    manifest = _with_name_collisions(1)
+    manifest["gaps"].append(
+        {"kind": "ribbon", "key": "application", "description": None, "reason": "unreadable"}
+    )
+    v1 = inventory.parse_manifest(manifest)
+    v2 = inventory.parse_manifest(_with_name_collisions(2))
+
+    diff = diff_inventories(v1, v2)
+    assert _entry(diff, "ribbon", "").verdict == "not_comparable"
+    assert _entry(diff, "ribbon", "application").verdict == "not_comparable"
+    assert _entry(diff, "sitemap", "").verdict == "unchanged"

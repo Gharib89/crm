@@ -515,9 +515,30 @@ def _gap(value: object, where: str) -> ExtractionGap:
         description=_opt_str(obj, "description", where),
         reason=_str(obj, "reason", where),
     )
-    if not gap.key and not gap.description:
+    # The empty key names the application ribbon or default sitemap, and only those.
+    names_a_key = bool(gap.key) or (gap.key == "" and kind in _EMPTY_KEY_KINDS)
+    if not names_a_key and not gap.description:
         raise InventoryError(f"{where} must name a key or a description")
     return gap
+
+
+def _upgrade_gaps(
+    gaps: tuple[ExtractionGap, ...], records: tuple[Record, ...]
+) -> tuple[ExtractionGap, ...]:
+    """Re-key a v1 gap on the application ribbon or default sitemap to its v2 key.
+
+    The original stays beside its twin: a v1 key `application` named the ribbon of an
+    entity `application` as well, so the gap may still be that record's.
+    """
+    twins = [
+        ExtractionGap(kind=kind, key="", description=gap.description, reason=gap.reason)
+        for gap in gaps
+        for kind, old in _V1_NULL_KEY.items()
+        if gap.key == old
+        and gap.kind in (None, kind)
+        and any(r.kind == kind and r.key == "" for r in records)
+    ]
+    return gaps + tuple(twins)
 
 
 def _extracted_at(obj: dict[str, Any]) -> str:
@@ -568,6 +589,9 @@ def parse_manifest(data: object) -> Inventory:
                 f"coverage.{kind} counts {entry.records} records "
                 f"but the manifest holds {counts.get(kind, 0)}"
             )
+    gaps = tuple(
+        _gap(g, f"gaps[{i}]") for i, g in enumerate(_list(_req(obj, "gaps", "manifest"), "gaps"))
+    )
     seen: set[str] = set()
     for record in records:
         for artifact in record.artifacts:
@@ -583,10 +607,7 @@ def parse_manifest(data: object) -> Inventory:
         publication=_str(obj, "publication", "manifest", choices=("published",)),
         records=records,
         coverage=coverage,
-        gaps=tuple(
-            _gap(g, f"gaps[{i}]")
-            for i, g in enumerate(_list(_req(obj, "gaps", "manifest"), "gaps"))
-        ),
+        gaps=_upgrade_gaps(gaps, records) if version == 1 else gaps,
     )
 
 
