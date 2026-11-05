@@ -28,6 +28,9 @@ from crm.core.workflow import (
     CATEGORY_BUSINESS_RULE,
     CATEGORY_DIALOG,
     CATEGORY_MODERN_FLOW,
+    MODE_REALTIME,
+    STATE_DRAFT,
+    TYPE_ACTIVATION,
     TYPE_DEFINITION,
 )
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
@@ -704,11 +707,27 @@ def annotate_legacy_components(
         if connection_wide(exc):
             raise
         # a failed probe read is no evidence: keep the rows already read, labelled unknown
-        gone = Usage("unknown", STEP_SIGNAL, None, _now(), f"usage probe failed: {exc}")
-        by_kind = {k: {str(r["id"]): gone for r in rows} for k, rows in data.items()}
+        why = f"usage probe failed: {exc}"
+        by_kind = {
+            k: {
+                str(r["id"]): Usage(
+                    "unknown",
+                    PROCESS_SIGNAL if k == "processes" else STEP_SIGNAL,
+                    None,
+                    _now(),
+                    why,
+                )
+                for r in rows
+            }
+            for k, rows in data.items()
+        }
+    unread = Usage("unknown", PROCESS_SIGNAL, None, _now(), "created after the usage read")
     return {
         kind: attach(
-            rows, by_kind[kind], key=lambda r: str(r["id"]), exclude_unknown=exclude_unknown
+            rows,
+            {str(r["id"]): unread for r in rows} | by_kind[kind],  # a row born mid-read is unknown
+            key=lambda r: str(r["id"]),
+            exclude_unknown=exclude_unknown,
         )
         for kind, rows in data.items()
     }
@@ -717,8 +736,6 @@ def annotate_legacy_components(
 # ── workflows and processes (slice #1094) ────────────────────────────────
 
 PROCESS_SIGNAL = "process_runs"
-TYPE_ACTIVATION = 2  # a `workflow` row the server copies from a definition when it activates
-_DRAFT = 0  # statecode of a process that is not activated
 _NO_JOB = {  # kinds whose runs write no async job, so an absent job proves nothing
     CATEGORY_DIALOG: "dialog",
     CATEGORY_BUSINESS_RULE: "business rule",
@@ -826,7 +843,7 @@ def read_v9_process_evidence(backend: D365Backend, parents: dict[str, str]) -> P
 def probe_v9_processes(
     backend: D365Backend, *, clock: Callable[[], str] = _now
 ) -> dict[str, Usage]:
-    """Usage of every v9 process definition: three bulk reads, none per definition."""
+    """Usage of every v9 process definition: four bulk reads, none per definition."""
     select = "workflowid,category,statecode,mode,asyncautodelete"
     defs = backend.get_collection(
         "workflows", params={"$select": select, "$filter": f"type eq {TYPE_DEFINITION}"}
@@ -847,8 +864,8 @@ def probe_v9_processes(
         Process(
             r["workflowid"],
             int(r.get("category") or 0),
-            r.get("statecode") == _DRAFT,  # an unread state is never proof of a draft
-            r.get("mode") == 1,  # 1 is real-time (synchronous), 0 is background
+            r.get("statecode") == STATE_DRAFT[0],  # an unread state is never proof of a draft
+            r.get("mode") == MODE_REALTIME,
             bool(r.get("asyncautodelete")),
         )
         for r in defs
@@ -911,9 +928,9 @@ def probe_legacy_processes(
         Process(
             str(r["id"]),
             int(r.get("category") or 0),
-            r.get("statecode") == _DRAFT,  # an unset state is never proof of a draft
-            False,  # 2011 workflows carry no mode column
-            bool(r.get("asyncautodelete")),
+            draft=r.get("statecode") == STATE_DRAFT[0],  # an unset state is never proof of a draft
+            sync=False,  # 2011 workflows carry no mode column
+            autodelete=bool(r.get("asyncautodelete")),
         )
         for r in defs
     ]

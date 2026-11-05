@@ -305,3 +305,11 @@ def test_legacy_a_job_read_past_its_time_cap_stops_and_names_the_cap():
             LegacyClient(profile, "pw"), time_cap=5, monotonic=lambda: next(ticks)
         )
     assert got["d-quiet"].state == "unknown" and "5 s time cap" in (got["d-quiet"].reason or "")
+
+
+def test_legacy_a_process_row_born_after_the_probe_is_unknown_not_a_crash(monkeypatch):
+    monkeypatch.setattr(usage, "probe_legacy_processes", lambda client: {})
+    got = usage.annotate_legacy_components(
+        None, {"processes": [{"id": "new"}]}, exclude_unknown=False
+    )
+    assert got["processes"][0]["usage"]["state"] == "unknown"

@@ -16,8 +16,8 @@ crm --json workflow list --in-use                    # drop definitions proven u
 crm --json workflow list --in-use --exclude-unknown  # proven-used definitions only
 ```
 
-`--in-use` adds a `usage` object to each definition (three bulk reads: the definitions
-and their activation copies, the async jobs grouped by activation, and the process
+`--in-use` adds a `usage` object to each definition (four bulk reads: the definitions,
+their activation copies, the async jobs grouped by activation, and the process
 sessions grouped by process; never one read per definition):
 
 - A definition that is **not activated** (draft, `statecode` 0) is `unused`

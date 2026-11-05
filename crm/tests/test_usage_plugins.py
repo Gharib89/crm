@@ -506,14 +506,14 @@ def test_legacy_exclude_unknown_keeps_proven_used_only(crm_home):
     assert [r["id"] for r in data["plugin-steps"]] == ["s1"]
 
 
-def test_legacy_in_use_rejects_a_kind_that_is_not_a_plug_in(crm_home):
+def test_legacy_in_use_rejects_a_kind_it_does_not_apply_to(crm_home):
     result = CliRunner().invoke(
         cli, ["--profile", "legacy", "legacy", "components", "forms", "--in-use"]
     )
     assert result.exit_code == 2 and "forms" in result.output
 
 
-def test_legacy_in_use_with_an_entity_and_no_kind_reads_the_entity_plugin_kinds(
+def test_legacy_in_use_with_an_entity_and_no_kind_reads_the_entity_usage_kinds(
     crm_home, monkeypatch
 ):
     # `--entity` admits plugin-steps and processes: the default must not trip its check

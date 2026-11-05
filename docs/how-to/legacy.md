@@ -106,7 +106,7 @@ server's 50,000-record limit, so no aggregate is used.
   under `DIR` and replaces each payload key with `<payload>_file` (a path relative
   to `DIR`). Without it the payload stays inline in the JSON.
 
-### Keep only plug-ins that run
+### Keep only plug-ins and processes that run
 
 ```bash
 crm --json legacy components --in-use --profile legacy2011                      # the plug-in and process kinds
