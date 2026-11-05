@@ -152,11 +152,22 @@ def trust_workspace(sandbox_home: Path, work: Path) -> None:
         ) from exc
 
 
-def provision_isolation(crm_bin: str | None = None, *, install_skill: bool = True) -> Isolation:
+def provision_isolation(
+    crm_bin: str | None = None,
+    *,
+    install_skill: bool = True,
+    skill: str = "crm",
+    fixture: Path | None = None,
+) -> Isolation:
     """Create a sandbox and install the skill into a fresh HOME via ``crm skill install``.
 
     Returns an :class:`Isolation` whose ``env`` launches the agent with no path back
     to the repo. The caller is responsible for :meth:`Isolation.cleanup`.
+
+    ``skill`` names the shipped skill to install (``crm`` or ``crm-migration``, #1067); only
+    that one lands in the fresh HOME. ``fixture`` is a folder copied into the agent's
+    working dir, so a task can start from a sample workspace; it must hold no ``.git`` or
+    ``CLAUDE.md``, which :func:`verify_isolation` would flag as a repo leak.
 
     ``install_skill=False`` provisions the **counterfactual** (skill-absent) leg of a
     ``--counterfactual`` run (#588): the skill is deliberately *not* installed, so the
@@ -172,7 +183,9 @@ def provision_isolation(crm_bin: str | None = None, *, install_skill: bool = Tru
     for d in (home, work, crm_home):
         d.mkdir(parents=True)
 
-    skill_dir = home / ".claude" / "skills" / "crm"
+    skill_dir = home / ".claude" / "skills" / skill
+    if fixture is not None:
+        shutil.copytree(fixture, work, dirs_exist_ok=True)
 
     # Scrub the environment of anything that could lead back to the repo *or* the
     # maintainer's real agent config: fresh HOME and CRM_HOME, no PYTHONPATH (which
@@ -216,7 +229,7 @@ def provision_isolation(crm_bin: str | None = None, *, install_skill: bool = Tru
     # counterfactual (skill-absent) leg skips this entirely (#588).
     if install_skill:
         result = subprocess.run(
-            [crm_bin, "skill", "install", "--dest", str(skill_dir), "--force"],
+            [crm_bin, "skill", "install", "--skill", skill, "--dest", str(skill_dir), "--force"],
             capture_output=True,
             text=True,
             env=env,

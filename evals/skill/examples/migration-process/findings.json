@@ -1,0 +1,195 @@
+{
+  "findings": [
+    {
+      "class": "unknown",
+      "evidence": null,
+      "key": "new_project",
+      "kind": "entity",
+      "reason": "no rule",
+      "rule": null
+    },
+    {
+      "class": "unknown",
+      "evidence": null,
+      "key": "new_project|2|Information",
+      "kind": "form",
+      "reason": "no rule",
+      "rule": null
+    },
+    {
+      "class": "unknown",
+      "evidence": null,
+      "key": "Contoso.Plugins",
+      "kind": "plugin_assembly",
+      "reason": "extraction gap: the assembly is stored on disk, so its binary is not in the database",
+      "rule": null
+    },
+    {
+      "class": "unknown",
+      "evidence": null,
+      "key": "Contoso.Plugins",
+      "kind": "plugin_assembly",
+      "reason": "field isolation_mode not recorded",
+      "rule": "assembly-isolation-none"
+    },
+    {
+      "class": "unknown",
+      "evidence": null,
+      "key": "Contoso.Plugins",
+      "kind": "plugin_assembly",
+      "reason": "field source_type not recorded",
+      "rule": "assembly-storage-online"
+    },
+    {
+      "class": "unknown",
+      "evidence": null,
+      "key": "Contoso.Plugins|Contoso.Plugins.ProjectUpdate",
+      "kind": "plugin_type",
+      "reason": "no rule",
+      "rule": null
+    },
+    {
+      "class": "unknown",
+      "evidence": null,
+      "key": "new_project",
+      "kind": "ribbon",
+      "reason": "no rule",
+      "rule": null
+    },
+    {
+      "class": "unknown",
+      "evidence": null,
+      "key": "Update|new_project|20|0|Contoso.Plugins%7CContoso.Plugins.ProjectUpdate|ProjectUpdate: Update of new_project",
+      "kind": "step",
+      "reason": "no rule",
+      "rule": null
+    },
+    {
+      "class": "unknown",
+      "evidence": null,
+      "key": "Update%7Cnew_project%7C20%7C0%7CContoso.Plugins%257CContoso.Plugins.ProjectUpdate%7CProjectUpdate: Update of new_project|PreImage|0",
+      "kind": "step_image",
+      "reason": "no rule",
+      "rule": null
+    },
+    {
+      "class": "blocker",
+      "evidence": {
+        "locations": [
+          {
+            "column": 3,
+            "line": 2
+          }
+        ],
+        "match_count": 1,
+        "path": "artifacts/web_resource/new_-scripts-legacy.js-a472da17624d.content.js",
+        "sha256": "7bdf01eac08630f5529ca97196727a61d2bf5db79e938ebb149862de389a1538"
+      },
+      "key": "new_/scripts/legacy.js",
+      "kind": "web_resource",
+      "reason": null,
+      "rule": "web-resource-crmform"
+    },
+    {
+      "class": "clear",
+      "evidence": null,
+      "key": "new_/scripts/lookup.js",
+      "kind": "web_resource",
+      "reason": null,
+      "rule": null
+    },
+    {
+      "class": "deprecated",
+      "evidence": {
+        "locations": [
+          {
+            "column": 10,
+            "line": 2
+          }
+        ],
+        "match_count": 1,
+        "path": "artifacts/web_resource/new_-scripts-project.js-3faf488f467a.content.js",
+        "sha256": "deac5a89eb646e868c1aac3d8885f5da6825289553a8d325844dd9e8d0b94a8a"
+      },
+      "key": "new_/scripts/project.js",
+      "kind": "web_resource",
+      "reason": null,
+      "rule": "web-resource-xrm-page"
+    },
+    {
+      "class": "clear",
+      "evidence": null,
+      "key": "new_/scripts/shared.js",
+      "kind": "web_resource",
+      "reason": null,
+      "rule": null
+    }
+  ],
+  "generated_at": "2026-11-05T08:02:35Z",
+  "incomplete": {
+    "dependency": "unsupported"
+  },
+  "inventory": {
+    "cli_version": "1.92.3",
+    "extracted_at": "2026-11-01T10:00:00Z",
+    "manifest_sha256": "f2e253c76edcd5c55d725eb9af12101adb967ec529e9bbeaeb122d30c809ddac",
+    "org_url": "https://crm.example.test/Org",
+    "platform": "crm2011",
+    "version": "5.0.9690.4376"
+  },
+  "rules": {
+    "schema_version": 1,
+    "sha256": "4df4da12903307b54108d9d1b5ebde7d46b9a22d36dc59ce2a6382979480a0ab",
+    "version": 1
+  },
+  "rules_hit": {
+    "assembly-isolation-none": {
+      "class": "blocker",
+      "fix": "Re-register the assembly in Sandbox isolation, and check its code against the sandbox limits (no GAC dependencies, HTTP and HTTPS only).",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/data-platform/register-plug-in#assembly-registration",
+        "https://learn.microsoft.com/dynamics365/customerengagement/on-premises/developer/supported-extensions?view=op-9-1#customizations-using-the-dynamics-365-customer-engagement-on-premises-sdk",
+        "https://learn.microsoft.com/power-apps/developer/data-platform/reference/entities/pluginassembly"
+      ],
+      "title": "Assembly registered without isolation; Dataverse online runs plug-ins only in the sandbox"
+    },
+    "assembly-storage-online": {
+      "class": "blocker",
+      "fix": "Re-register the assembly with its location set to Database (Plug-in Registration Tool, or pac plugin push).",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/data-platform/register-plug-in#assembly-registration",
+        "https://learn.microsoft.com/power-apps/developer/data-platform/reference/entities/pluginassembly"
+      ],
+      "title": "Assembly stored outside the database (on disk or the GAC), which Dataverse online cannot run"
+    },
+    "web-resource-crmform": {
+      "class": "blocker",
+      "fix": "Rewrite against the client API: crmForm.all.<attribute>.DataValue becomes formContext.getAttribute(\"<attribute>\").getValue(). crmForm is not part of the documented 9.x client API, and only the documented API is supported. Tool judgment: no Microsoft Learn page names crmForm; the sources are the closest statements.",
+      "sources": [
+        "https://learn.microsoft.com/dynamics365/customerengagement/on-premises/customize/customizations-supported?view=op-9-1",
+        "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/avoid-2011-api"
+      ],
+      "title": "Uses the CRM 4.0 crmForm scripting object"
+    },
+    "web-resource-xrm-page": {
+      "class": "deprecated",
+      "fix": "Use the form context: take executionContext.getFormContext() in a form handler (pass the execution context as the first parameter), or PrimaryControl in a ribbon command.",
+      "sources": [
+        "https://learn.microsoft.com/power-platform/important-changes-coming#some-client-apis-are-deprecated",
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/clientapi-form-context",
+        "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/use-client-context"
+      ],
+      "title": "Uses the deprecated Xrm.Page object"
+    }
+  },
+  "schema_version": 1,
+  "target": "online",
+  "unattached_gaps": [
+    {
+      "description": "external integrations",
+      "key": null,
+      "kind": null,
+      "reason": "outside the org"
+    }
+  ]
+}

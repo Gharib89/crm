@@ -39,6 +39,17 @@ blocks CI. Run it on demand.
   3/3 is the calibration filter's drop target (ADR 0028), so authoring leans away from it
   — the live baseline-3/3 / skill-0/3 calibration itself runs on paired-run results, not
   at authoring time.
+  Two optional fields (#1067) let a task test the second shipped skill: `skill` (`crm`, the
+  default, or `crm-migration`) names the one skill the isolation step installs through
+  `crm skill install --skill`, and `fixture` names a folder under `fixtures/` copied into the
+  trial's working dir. The `migration-*` tasks use both, are `feasibility` tasks over offline
+  `crm inventory` output, and still seed the live target the run names (they read no org).
+- `fixtures/` — synthetic workspaces a task's `fixture` copies in: `migration-process/` (an
+  inventory, an application repo, a scenario file) and `migration-results/` (work packages,
+  a verification results file and its evidence). No ids, hosts or client names; a test checks.
+- `examples/migration-process/` — the committed worked example: the findings, source map,
+  repair backlog and verification report one process produces. Its README gives the
+  commands; a test re-runs them and compares byte for byte.
 - `taskspec.py` — task parsing and the pure grading predicates (`evaluate_expect` for
   `do`-tasks, `evaluate_feasibility` for feasibility tasks).
 - `isolation.py` — provisions and **verifies** the isolated agent context.

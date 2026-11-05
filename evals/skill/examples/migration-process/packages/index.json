@@ -1,0 +1,83 @@
+{
+  "compatibility": {
+    "blocker": 1,
+    "deprecated": 1,
+    "optional": 0,
+    "target": "online",
+    "unknown": 10,
+    "unplaced": [
+      {
+        "class": "unknown",
+        "key": "new_project",
+        "kind": "entity",
+        "rule": null
+      }
+    ]
+  },
+  "incomplete": {
+    "dependency": "unsupported"
+  },
+  "inventory": {
+    "extracted_at": "2026-11-01T10:00:00Z",
+    "manifest_sha256": "f2e253c76edcd5c55d725eb9af12101adb967ec529e9bbeaeb122d30c809ddac",
+    "org_url": "https://crm.example.test/Org",
+    "platform": "crm2011",
+    "version": "5.0.9690.4376"
+  },
+  "largest": 6,
+  "members": 10,
+  "packages": [
+    {
+      "counts": {
+        "blocker": 1,
+        "deprecated": 1,
+        "optional": 0,
+        "unknown": 4
+      },
+      "file": "pkg-123c7f4cd189.json",
+      "id": "pkg-123c7f4cd189",
+      "members": 6,
+      "scenarios": [
+        "Project approval"
+      ],
+      "unknowns": 2
+    },
+    {
+      "counts": {
+        "blocker": 0,
+        "deprecated": 0,
+        "optional": 0,
+        "unknown": 6
+      },
+      "file": "pkg-4bd0d6c9dc4b.json",
+      "id": "pkg-4bd0d6c9dc4b",
+      "members": 4,
+      "scenarios": [],
+      "unknowns": 1
+    }
+  ],
+  "scenarios": [
+    {
+      "name": "Project approval",
+      "packages": [
+        "pkg-123c7f4cd189"
+      ],
+      "seeds_not_found": [],
+      "seeds_unpackaged": []
+    }
+  ],
+  "schema_version": 1,
+  "seeds_not_found": [],
+  "seeds_unpackaged": [],
+  "unattached_gaps": [
+    {
+      "description": "external integrations",
+      "key": null,
+      "kind": null,
+      "reason": "outside the org"
+    }
+  ],
+  "unattached_unknowns": [],
+  "unknowns": 3,
+  "unmatched_scenarios": []
+}

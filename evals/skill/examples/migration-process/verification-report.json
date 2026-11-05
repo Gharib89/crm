@@ -1,0 +1,52 @@
+{
+  "counts": {
+    "blocked": 1,
+    "complete": 0,
+    "failed": 1,
+    "not_tested": 0
+  },
+  "escaped": [],
+  "packages": [
+    {
+      "id": "pkg-123c7f4cd189",
+      "open_decisions": [],
+      "requirements": [
+        {
+          "controls": [],
+          "id": "req-89a1de790b089617",
+          "kind": "form_script",
+          "member": "form:new_project|2|Information",
+          "reason": null,
+          "status": "pass"
+        },
+        {
+          "controls": [],
+          "id": "req-ca76d0eb9f73eafd",
+          "kind": "ribbon_command",
+          "member": "ribbon:new_project",
+          "reason": null,
+          "status": "fail"
+        }
+      ],
+      "verdict": "failed"
+    },
+    {
+      "id": "pkg-4bd0d6c9dc4b",
+      "open_decisions": [],
+      "requirements": [
+        {
+          "controls": [],
+          "id": "req-985422615c1beb12",
+          "kind": "plugin_step",
+          "member": "step:Update|new_project|20|0|Contoso.Plugins%7CContoso.Plugins.ProjectUpdate|ProjectUpdate: Update of new_project",
+          "reason": null,
+          "status": "blocked"
+        }
+      ],
+      "verdict": "blocked"
+    }
+  ],
+  "packages_sha256": "c8ea3aeafbd65e8a33149b67d84c38fbb412c2eb7ccab5fb3e1e7f1ad0f0dd10",
+  "schema_version": 1,
+  "unknown_results": []
+}

@@ -1,0 +1,193 @@
+{
+  "consumers": [
+    {
+      "key": "new_project",
+      "kind": "entity",
+      "references": [
+        "step:Update|new_project|20|0|Contoso.Plugins%7CContoso.Plugins.ProjectUpdate|ProjectUpdate: Update of new_project"
+      ]
+    },
+    {
+      "key": "Update|new_project|20|0|Contoso.Plugins%7CContoso.Plugins.ProjectUpdate|ProjectUpdate: Update of new_project",
+      "kind": "step",
+      "references": [
+        "plugin_type:Contoso.Plugins|Contoso.Plugins.ProjectUpdate"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "plugin_assembly:Contoso.Plugins",
+      "reason": null,
+      "reference": null,
+      "to": "project:Plugins/Contoso.Plugins.csproj",
+      "type": "source_project"
+    },
+    {
+      "from": "plugin_type:Contoso.Plugins|Contoso.Plugins.ProjectUpdate",
+      "reason": null,
+      "reference": null,
+      "to": "file:Plugins/ProjectUpdate.cs",
+      "type": "source_file"
+    },
+    {
+      "from": "plugin_type:Contoso.Plugins|Contoso.Plugins.ProjectUpdate",
+      "reason": null,
+      "reference": null,
+      "to": "plugin_assembly:Contoso.Plugins",
+      "type": "plugin_type_assembly"
+    },
+    {
+      "from": "plugin_type:Contoso.Plugins|Contoso.Plugins.ProjectUpdate",
+      "reason": null,
+      "reference": null,
+      "to": "project:Plugins/Contoso.Plugins.csproj",
+      "type": "source_project"
+    },
+    {
+      "from": "step:Update|new_project|20|0|Contoso.Plugins%7CContoso.Plugins.ProjectUpdate|ProjectUpdate: Update of new_project",
+      "reason": null,
+      "reference": null,
+      "to": "plugin_type:Contoso.Plugins|Contoso.Plugins.ProjectUpdate",
+      "type": "step_plugin_type"
+    },
+    {
+      "from": "step_image:Update%7Cnew_project%7C20%7C0%7CContoso.Plugins%257CContoso.Plugins.ProjectUpdate%7CProjectUpdate: Update of new_project|PreImage|0",
+      "reason": null,
+      "reference": null,
+      "to": "step:Update|new_project|20|0|Contoso.Plugins%7CContoso.Plugins.ProjectUpdate|ProjectUpdate: Update of new_project",
+      "type": "step_image"
+    }
+  ],
+  "expected_behavior": [
+    {
+      "reason": "no scenario seeds a member of this package",
+      "status": "unknown"
+    }
+  ],
+  "findings": [
+    {
+      "class": "unknown",
+      "component": "plugin_assembly:Contoso.Plugins",
+      "evidence": null,
+      "reason": "field isolation_mode not recorded",
+      "reference": null,
+      "rule": "assembly-isolation-none",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/data-platform/register-plug-in#assembly-registration",
+        "https://learn.microsoft.com/dynamics365/customerengagement/on-premises/developer/supported-extensions?view=op-9-1#customizations-using-the-dynamics-365-customer-engagement-on-premises-sdk",
+        "https://learn.microsoft.com/power-apps/developer/data-platform/reference/entities/pluginassembly"
+      ],
+      "status": null,
+      "type": "compatibility"
+    },
+    {
+      "class": "unknown",
+      "component": "plugin_assembly:Contoso.Plugins",
+      "evidence": null,
+      "reason": "field source_type not recorded",
+      "reference": null,
+      "rule": "assembly-storage-online",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/data-platform/register-plug-in#assembly-registration",
+        "https://learn.microsoft.com/power-apps/developer/data-platform/reference/entities/pluginassembly"
+      ],
+      "status": null,
+      "type": "compatibility"
+    },
+    {
+      "component": "plugin_assembly:Contoso.Plugins",
+      "reason": "the assembly is stored on disk, so its binary is not in the database",
+      "reference": null,
+      "status": null,
+      "type": "extraction_gap"
+    },
+    {
+      "class": "unknown",
+      "component": "plugin_type:Contoso.Plugins|Contoso.Plugins.ProjectUpdate",
+      "evidence": null,
+      "reason": "no rule",
+      "reference": null,
+      "rule": null,
+      "sources": [],
+      "status": null,
+      "type": "compatibility"
+    },
+    {
+      "class": "unknown",
+      "component": "step:Update|new_project|20|0|Contoso.Plugins%7CContoso.Plugins.ProjectUpdate|ProjectUpdate: Update of new_project",
+      "evidence": null,
+      "reason": "no rule",
+      "reference": null,
+      "rule": null,
+      "sources": [],
+      "status": null,
+      "type": "compatibility"
+    },
+    {
+      "class": "unknown",
+      "component": "step_image:Update%7Cnew_project%7C20%7C0%7CContoso.Plugins%257CContoso.Plugins.ProjectUpdate%7CProjectUpdate: Update of new_project|PreImage|0",
+      "evidence": null,
+      "reason": "no rule",
+      "reference": null,
+      "rule": null,
+      "sources": [],
+      "status": null,
+      "type": "compatibility"
+    }
+  ],
+  "id": "pkg-4bd0d6c9dc4b",
+  "members": [
+    "plugin_assembly:Contoso.Plugins",
+    "plugin_type:Contoso.Plugins|Contoso.Plugins.ProjectUpdate",
+    "step:Update|new_project|20|0|Contoso.Plugins%7CContoso.Plugins.ProjectUpdate|ProjectUpdate: Update of new_project",
+    "step_image:Update%7Cnew_project%7C20%7C0%7CContoso.Plugins%257CContoso.Plugins.ProjectUpdate%7CProjectUpdate: Update of new_project|PreImage|0"
+  ],
+  "scenarios": [],
+  "schema_version": 1,
+  "source": [
+    {
+      "files": [],
+      "key": "Contoso.Plugins",
+      "kind": "plugin_assembly",
+      "projects": [
+        "Plugins/Contoso.Plugins.csproj"
+      ],
+      "reason": null,
+      "status": "matched"
+    },
+    {
+      "files": [
+        "Plugins/ProjectUpdate.cs"
+      ],
+      "key": "Contoso.Plugins|Contoso.Plugins.ProjectUpdate",
+      "kind": "plugin_type",
+      "projects": [
+        "Plugins/Contoso.Plugins.csproj"
+      ],
+      "reason": null,
+      "status": "matched"
+    }
+  ],
+  "verification": [
+    {
+      "details": {
+        "filtering_attributes": "new_status",
+        "images": [
+          {
+            "alias": "PreImage",
+            "attributes": "new_status",
+            "image_type": 0
+          }
+        ],
+        "message": "Update",
+        "mode": 0,
+        "primary_entity": "new_project",
+        "stage": 20
+      },
+      "id": "req-985422615c1beb12",
+      "kind": "plugin_step",
+      "member": "step:Update|new_project|20|0|Contoso.Plugins%7CContoso.Plugins.ProjectUpdate|ProjectUpdate: Update of new_project"
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+<RibbonDiffXml><CommandDefinitions><CommandDefinition Id="new.approve"><Actions><JavaScriptFunction Library="$webresource:new_/scripts/shared.js" FunctionName="Shared.approve" /></Actions></CommandDefinition></CommandDefinitions></RibbonDiffXml>

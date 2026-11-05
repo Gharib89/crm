@@ -1,0 +1,1 @@
+var Project = { onLoad: function () {} };
