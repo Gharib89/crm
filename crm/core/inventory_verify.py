@@ -319,6 +319,16 @@ def _evidenced(result: VerificationResult, base: Path) -> bool:
     return True
 
 
+def _aliases(out: Path, path: Path) -> bool:
+    """*out* names *path*'s file: the same resolved path, or a hard link to it."""
+    if out.resolve() == path.resolve():
+        return True
+    try:
+        return out.samefile(path)
+    except OSError:
+        return False
+
+
 def _status(results: list[VerificationResult], base: Path) -> tuple[str, str | None]:
     """The worst status among a requirement's results, with why it is not tested."""
     if not results:
@@ -362,10 +372,10 @@ def verify(packages_dir: Path, results_file: Path, out: Path | None = None) -> V
         )
     if out is not None:
         base = results_file.parent
-        inputs = {results_file.resolve()}
-        inputs.update((base / e.path).resolve() for r in recorded.results for e in r.evidence)
-        target = out.resolve()
-        if target in inputs or target.is_relative_to(packages_dir.resolve()):
+        inputs = [results_file, *packages_dir.iterdir()]
+        inputs += [base / e.path for r in recorded.results for e in r.evidence]
+        inside = out.resolve().is_relative_to(packages_dir.resolve())
+        if inside or any(_aliases(out, path) for path in inputs):
             raise InventoryError(
                 f"--out {out} would overwrite an input of this run (the results file,"
                 " an evidence file or the packages output): pass another path"

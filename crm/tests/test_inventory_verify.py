@@ -424,7 +424,7 @@ def test_duplicate_unknown_results_are_each_listed(packages, tmp_path):
     assert len(data["unknown_results"]) == 2
 
 
-@pytest.mark.parametrize("target", ["evidence", "results", "packages"])
+@pytest.mark.parametrize("target", ["evidence", "results", "packages", "hard link"])
 def test_out_that_would_overwrite_an_input_is_refused(packages, tmp_path, target):
     folder = tmp_path / "run"
     ev = _evidence(folder, "a.txt")
@@ -435,7 +435,10 @@ def test_out_that_would_overwrite_an_input_is_refused(packages, tmp_path, target
         "evidence": folder / ev["path"],
         "results": results,
         "packages": packages / "index.json",
+        "hard link": tmp_path / "report.json",
     }[target]
+    if target == "hard link":
+        out.hardlink_to(folder / ev["path"])
     before = out.read_bytes()
 
     run = _invoke(str(packages), "--results", str(results), "--out", str(out))
