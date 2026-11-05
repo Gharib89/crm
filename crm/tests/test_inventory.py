@@ -726,3 +726,9 @@ def test_the_v1_schema_still_validates_a_v1_manifest_and_the_v2_schema_the_empty
     v2["schema_version"] = 2
     v2["records"][-1]["key"] = ""
     assert _schema_errors(v2) == []
+
+
+def test_an_unknown_empty_named_field_does_not_open_the_empty_key_exception() -> None:
+    fields = {"entity": "", "logical_name": "x", "": "ribbon"}
+    with pytest.raises(inventory.KeyFieldValueError):
+        inventory.component_key("attribute", fields)

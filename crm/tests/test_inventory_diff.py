@@ -401,6 +401,25 @@ def _with_name_collisions(version: int) -> dict[str, Any]:
              "artifacts": []}
         )  # fmt: skip
         manifest["coverage"][kind]["records"] += 1
+    # An artifact's file name carries its key's slug and digest, so v1 names the null
+    # records' files `application-...` and `default-...`, and gives the entity ribbon and
+    # the sitemap named `default` (which shared the key) a discriminator.
+    for record in manifest["records"]:
+        if record["kind"] not in null_key:
+            continue
+        if not record["artifacts"]:
+            digest = "ab" * 32
+            record["artifacts"] = [
+                {"content": "text", "normalized_sha256": digest, "sha256": digest, "path": ""}
+            ]
+        collides = version == 1 and None not in record["fields"].values()
+        for art in record["artifacts"]:
+            art["path"] = inventory.artifact_path(
+                record["kind"],
+                record["key"],
+                f"{record['kind']}.xml",
+                discriminator="source-id" if collides else None,
+            )
     manifest["schema_version"] = version
     return manifest
 
@@ -431,3 +450,19 @@ def test_a_v1_manifest_holding_the_collision_upgrades_and_diffs_cleanly_against_
     assert {e.verdict for e in diff.entries} == {"unchanged"}
     assert _entry(diff, "ribbon", "").verdict == "unchanged"
     assert _entry(diff, "sitemap", "").verdict == "unchanged"
+
+
+def test_artifacts_pair_by_name_when_a_key_change_moves_their_file_path() -> None:
+    v1 = inventory.parse_manifest(_with_name_collisions(1))
+    v2 = inventory.parse_manifest(_with_name_collisions(2))
+
+    def null_ribbon_paths(inv: inventory.Inventory) -> set[str]:
+        return {
+            a.path for r in inv.records if r.kind == "ribbon" and r.fields["entity"] is None
+            for a in r.artifacts
+        }  # fmt: skip
+
+    assert null_ribbon_paths(v1).isdisjoint(null_ribbon_paths(v2))
+    diff = diff_inventories(v1, v2)
+    assert all(not e.artifacts for e in diff.entries)
+    assert _entry(diff, "ribbon", "application").verdict == "unchanged"

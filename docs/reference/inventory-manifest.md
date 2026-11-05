@@ -176,8 +176,9 @@ references one of them (its `member_key`, `dependent_key` or `required_key` stay
 pair with its v2 twin in a diff. A v1 null ribbon or sitemap keyed by any other name is
 refused. One consequence: artifact file names are derived from the key, so a
 v2 extraction names these two files `component-<hash>` where a v1 one named
-them `application-<hash>` and `default-<hash>`; `diff` reads artifact hashes,
-not paths, so it is unaffected.
+them `application-<hash>` and `default-<hash>`; `diff` pairs a record's
+artifacts by their name within the record (`ribbon.xml`), not by path, so it is
+unaffected.
 
 ## What the existing read paths give an extractor
 

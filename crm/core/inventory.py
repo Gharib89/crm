@@ -134,7 +134,7 @@ def component_key(kind: str, fields: Mapping[str, Any]) -> str:
         raise InventoryError(f"{kind} record lacks key field(s): {', '.join(missing)}")
     parts: list[str] = []
     for name in names:
-        referenced = fields.get(_REFERENCE_FIELDS.get(name, ""))
+        referenced = fields.get(_REFERENCE_FIELDS[name]) if name in _REFERENCE_FIELDS else None
         parts.append("" if fields[name] == "" and referenced in _EMPTY_KEY_KINDS
                      else _key_part(kind, name, fields[name]))  # fmt: skip
     return "|".join(parts)
