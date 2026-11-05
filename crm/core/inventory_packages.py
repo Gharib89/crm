@@ -341,6 +341,76 @@ def write_packages(result: PackagesResult, out: Path) -> None:
         (out / f"{package.id}.json").write_text(_dump(package.to_dict()), encoding="utf-8")
 
 
+@dataclass(frozen=True)
+class PackagesOutput:
+    """A packages folder read back: its identity and each package's requirements.
+
+    *sha256* is a SHA-256 over the lines ``<file sha256>  <file name>``, ``index.json``
+    first, then each package file in index order, so changing any file changes it.
+    *requirements* maps each package id to its requirements, empty when its
+    verification is unknown.
+    """
+
+    sha256: str
+    requirements: Mapping[str, tuple[Requirement, ...]]
+
+
+_PACKAGE_ID = re.compile(r"pkg-[0-9a-f]{12}")
+
+
+def read_packages(folder: Path) -> PackagesOutput:
+    """Read the ``index.json`` and package files `write_packages` wrote into *folder*.
+
+    The version rule of ADR 0032 holds: an unknown ``schema_version`` is refused,
+    an unknown field is ignored.
+
+    Raises:
+        InventoryError: a file is missing, unreadable, of another version or malformed.
+    """
+    digest = hashlib.sha256()
+
+    def load(name: str) -> dict[str, Any]:
+        path = folder / name
+        try:
+            raw = path.read_bytes()
+            data = json.loads(raw.decode("utf-8"))
+        except (OSError, ValueError) as exc:  # ValueError: malformed UTF-8 or JSON
+            raise InventoryError(f"cannot read {path}: {exc}") from exc
+        version = cast(dict[str, Any], data).get("schema_version") if type(data) is dict else None
+        if type(version) is not int or version != SCHEMA_VERSION:
+            raise InventoryError(
+                f"{path}: schema_version {version!r} is not supported;"
+                f" this crm reads packages schema_version {SCHEMA_VERSION}"
+            )
+        digest.update(f"{hashlib.sha256(raw).hexdigest()}  {name}\n".encode())
+        return cast(dict[str, Any], data)
+
+    entries = load(INDEX_NAME).get("packages")
+    if type(entries) is not list:
+        raise InventoryError(f"{folder / INDEX_NAME}: packages is not a list")
+    requirements: dict[str, tuple[Requirement, ...]] = {}
+    for entry in cast(list[Any], entries):
+        pid = cast(dict[str, Any], entry).get("id") if type(entry) is dict else None
+        if not (isinstance(pid, str) and _PACKAGE_ID.fullmatch(pid)):
+            raise InventoryError(f"{folder / INDEX_NAME}: malformed package entry {entry!r}")
+        package = load(f"{pid}.json")
+        items = package.get("verification")
+        if package.get("id") != pid or type(items) is not list:
+            raise InventoryError(f"{folder / pid}.json: id or verification is malformed")
+        reqs: list[Requirement] = []
+        for item in cast(list[Any], items):
+            item = cast(dict[str, Any], item) if type(item) is dict else {}
+            if item.get("status") == "unknown":
+                continue
+            fields = [item.get(k) for k in ("id", "kind", "member")]
+            if not all(isinstance(f, str) for f in fields):
+                raise InventoryError(f"{folder / pid}.json: malformed requirement {item!r}")
+            rid, kind, member = cast(list[str], fields)
+            reqs.append(Requirement(rid, kind, member, item.get("details") or {}))
+        requirements[pid] = tuple(reqs)
+    return PackagesOutput(digest.hexdigest(), requirements)
+
+
 # ── References read from the inventory's artifacts ─────────────────────────
 
 

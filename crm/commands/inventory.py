@@ -1,4 +1,4 @@
-"""`crm inventory`: extract, compare, map to source and package migration inventories (ADR 0032)."""
+"""`crm inventory`: extract, compare, map, package and verify migration inventories (ADR 0032)."""
 
 # pyright: basic
 from __future__ import annotations
@@ -16,13 +16,14 @@ from crm.core.inventory import InventoryError
 from crm.core.inventory_diff import VERDICTS, diff_inventories, dump_diff, read_pair
 from crm.core.inventory_packages import build_packages, write_packages
 from crm.core.inventory_source_map import STATUSES, dump_source_map, map_source, read_source_map
+from crm.core.inventory_verify import dump_report, verify
 from crm.core.webapi_inventory import WebApiSource
 from crm.utils.d365_backend import PLATFORM_CRM2011
 
 
 @click.group("inventory")
 def inventory_group():
-    """Extract, compare, map to source and package migration inventories (ADR 0032)."""
+    """Extract, compare, map to source, package and verify migration inventories (ADR 0032)."""
 
 
 @inventory_group.command("extract")
@@ -281,4 +282,76 @@ def inventory_packages_cmd(
     if data["incomplete"]:
         meta["incomplete"] = ", ".join(f"{k} ({v})" for k, v in data["incomplete"].items())
     headers = ["package", "members", "unknowns", "scenarios"]
+    ctx.emit(True, table={"headers": headers, "rows": rows}, meta=meta)
+
+
+@inventory_group.command("verify")
+@click.argument("packages", type=click.Path(file_okay=False, path_type=Path))
+@click.option(
+    "--results",
+    "results_file",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="The verification results file recorded against PACKAGES.",
+)
+@click.option(
+    "--out",
+    "out_file",
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="Write the full report, every requirement's status, to this JSON file.",
+)
+@pass_ctx
+def inventory_verify_cmd(
+    ctx: CLIContext, packages: Path, results_file: Path, out_file: Path | None
+):
+    """Judge recorded verification results against PACKAGES' requirements: offline.
+
+    Reads the folder `crm inventory packages --out` wrote and a verification
+    results file (--results); runs no check and touches no org. Each package
+    gets a verdict, the first that applies: failed (a requirement failed),
+    blocked (one could not run), not_tested (one has no result, or a pass with
+    no evidence or with an evidence file missing or changed), else complete. A
+    negative control (a deliberate regression) recording pass is reported
+    escaped and keeps its package from complete. A result naming a package or
+    requirement PACKAGES lacks is listed as an unknown result. A results file
+    recorded against another packages output is refused. Verdicts exit 0; an
+    unreadable or refused input exits 1. Returns the verdict counts, each
+    package's verdict, the escaped controls and the unknown results; --out
+    writes the same plus every requirement's status, byte for byte the same
+    for the same inputs.
+    """
+    try:
+        report = verify(packages, results_file)
+        if out_file is not None:
+            out_file.write_text(dump_report(report), encoding="utf-8")
+    except InventoryError as exc:
+        ctx.emit(False, error=str(exc))
+        return
+    except OSError as exc:
+        ctx.emit(False, error=f"--out {out_file}: {exc}")
+        return
+    data = {**report.summary(), "out": str(out_file) if out_file else None}
+    if ctx.json_mode:
+        ctx.emit(True, data=data)
+        return
+    rows = [
+        [
+            p.id,
+            p.verdict,
+            f"{sum(r.status == 'pass' for r in p.requirements)}/{len(p.requirements)}",
+        ]
+        for p in report.packages
+    ]
+    meta = {"verdicts": ", ".join(f"{v} {n}" for v, n in data["counts"].items())}
+    if data["escaped"]:
+        meta["escaped controls"] = ", ".join(
+            f"{e['package']}: {e['requirement']}" for e in data["escaped"]
+        )
+    if data["unknown_results"]:
+        meta["unknown results"] = ", ".join(
+            f"{u['package']}: {u['requirement']} ({u['reason']})" for u in data["unknown_results"]
+        )
+    if out_file is not None:
+        meta["out"] = str(out_file)
+    headers = ["package", "verdict", "passed"]
     ctx.emit(True, table={"headers": headers, "rows": rows}, meta=meta)
