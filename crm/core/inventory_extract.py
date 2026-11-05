@@ -26,6 +26,7 @@ response) stops the run, and a re-run resumes it.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import re
@@ -45,6 +46,7 @@ from crm.core.inventory import (
     MANIFEST_NAME,
     SCHEMA_VERSION,
     Artifact,
+    ArtifactHashes,
     ExtractionGap,
     Inventory,
     KeyFieldValueError,
@@ -65,6 +67,8 @@ CHECKPOINT_DIR = ".checkpoint"
 # The solutioncomponent / dependency type code of an option set, global or local by the set.
 _OPTION_SET = 9
 _ENTITY = 1
+_WEB_RESOURCE = 61
+_ASSEMBLY = 91
 
 # The relationship fields naming an entity, 1:N and N:N.
 _RELATIONSHIP_SIDES = ("referenced_entity", "referencing_entity", "entity1", "entity2")
@@ -235,6 +239,9 @@ class _Read:
 
     *payloads* maps a column holding a large body to the artifact name it is
     staged under (``content``'s name is chosen per row for web resources).
+    *member_type* is the solution component type of a kind whose payloads a
+    ``--solution`` run reads only for the scope's members, in batches of
+    *content_batch* ids, after the rows themselves are read without them.
     """
 
     kind: str
@@ -243,6 +250,19 @@ class _Read:
     payloads: tuple[tuple[str, str], ...] = ()
     extra: str = ""
     page_size: int = 5000
+    member_type: int | None = None
+    content_batch: int = 50
+
+    @property
+    def payload_columns(self) -> tuple[str, ...]:
+        return tuple(column for column, _ in self.payloads)
+
+    def without_payloads(self) -> _Read:
+        return replace(
+            self,
+            attributes=tuple(a for a in self.attributes if a not in self.payload_columns),
+            payloads=(),
+        )
 
     def fetch(self) -> str:
         columns = "".join(f'<attribute name="{a}"/>' for a in self.attributes)
@@ -268,6 +288,7 @@ _READS: tuple[_Read, ...] = (
         "webresource",
         ("name", "displayname", "webresourcetype", "ismanaged", "solutionid", "content"),
         payloads=(("content", "content"),),
+        member_type=_WEB_RESOURCE,
     ),
     _Read(
         "plugin_assembly",
@@ -285,6 +306,8 @@ _READS: tuple[_Read, ...] = (
         ),
         payloads=(("content", "content.dll"),),
         page_size=20,  # each row carries its assembly binary
+        member_type=_ASSEMBLY,
+        content_batch=20,
     ),  # fmt: skip
     _Read(
         "plugin_type",
@@ -621,6 +644,73 @@ class _Run:
         self._finish(reused=last is not None and not fetched)
         return rows
 
+    def content(self, read: _Read, rows: list[dict[str, Any]], ids: set[str]) -> None:
+        """Fetch and stage *read*'s payloads for the rows of *rows* named in *ids*.
+
+        The second pass of a scoped read, whose *rows* came without payloads. Ids go
+        in batches, each saved as a unit so a resume skips the finished ones, and the
+        pass counts as one unit of the records stage, as a read's pages do. The kind's
+        coverage `pages` stays the rows' own pages, so a scoped manifest is unchanged.
+        """
+        tally = self.tally(read.kind)
+        by_id = {str(r["id"]).lower(): r for r in rows}
+        wanted = sorted(i for i in ids if i in by_id)
+        size = read.content_batch
+        fetched = False
+        for number, start in enumerate(range(0, len(wanted), size), 1):
+            unit = f"content/{read.kind}/{number:05d}"
+            batch = wanted[start : start + size]
+            saved = self.cp.load(unit)
+            # A unit is reused only for the ids it was fetched for: a retry that
+            # finds more members repartitions the batches.
+            names = saved["names"] if saved and saved.get("ids") == batch else None
+            if names is None:
+                try:
+                    names = self._fetch_content(read, batch, by_id)
+                except (D365Error, ValueError) as exc:
+                    # ValueError: content that is not base64, as in `pages`.
+                    if isinstance(exc, D365Error) and legacy_reads.connection_wide(exc):
+                        raise
+                    tally.errors.append(f"{read.entity} content batch {number}: {exc}")
+                    continue
+                self.cp.save(unit, {"ids": batch, "names": names})
+                fetched = True
+            else:
+                tally.reused += 1
+            for row_id, artifacts in names.items():
+                by_id[row_id]["_artifacts"] = artifacts
+            self._report(read.kind, tally.pages)
+        self._finish(reused=not fetched)
+
+    def _fetch_content(
+        self, read: _Read, batch: list[str], by_id: dict[str, dict[str, Any]]
+    ) -> dict[str, list[str]]:
+        values = "".join(f"<value>{i}</value>" for i in batch)
+        query = replace(
+            read,
+            attributes=read.payload_columns,
+            extra=f'<filter><condition attribute="{read.entity}id" operator="in">{values}'
+            "</condition></filter>",
+        )
+        staged: dict[str, list[str]] = {}
+        for page in self.source.pages(query.fetch(), page_size=len(batch), start=None):
+            for fetched in page.records:
+                row = by_id.get(str(fetched["id"]).lower())
+                if row is None:
+                    continue
+                # `_stage` names a web resource's artifact from its type, which the rows
+                # read without payloads still carry.
+                carrier: dict[str, object] = {
+                    "id": row["id"],
+                    "webresourcetype": row.get("webresourcetype"),
+                }
+                for column in read.payload_columns:
+                    carrier[column] = fetched.get(column)
+                staged[str(row["id"]).lower()] = cast(
+                    "list[str]", self._stage(read, carrier)["_artifacts"]
+                )
+        return staged
+
     def _stage(self, read: _Read, row: dict[str, object]) -> dict[str, object]:
         """Move *row*'s payloads into staged files, leaving the artifact names on it."""
         staged: list[str] = []
@@ -648,10 +738,10 @@ def _utc_now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _member_entities(
+def _scope_members(
     run: _Run, rows: dict[str, list[dict[str, Any]]], solutions: tuple[str, ...]
-) -> tuple[set[str], tuple[str, ...]]:
-    """The ids of the entities the named solutions hold, and the names as the org spells them.
+) -> tuple[dict[int, set[str]], tuple[str, ...]]:
+    """The ids the named solutions hold by component type, and the names as the org spells them.
 
     Unique names match case-insensitively, as on the server; an unknown name is an error.
     """
@@ -666,11 +756,11 @@ def _member_entities(
             run.tally("solution").errors.append(
                 f"solution {name}: no solution with this unique name"
             )
-    members = {
-        str(_ref_id(r.get("objectid")))
-        for r in rows.get("solution_membership", [])
-        if r.get("componenttype") == _ENTITY and (_ref_id(r.get("solutionid")) or "") in ids
-    }
+    members: dict[int, set[str]] = {}
+    for r in rows.get("solution_membership", []):
+        code, member = r.get("componenttype"), _ref_id(r.get("objectid"))
+        if isinstance(code, int) and member and (_ref_id(r.get("solutionid")) or "") in ids:
+            members.setdefault(code, set()).add(member)
     return members, tuple(sorted(spelled.get(name, name) for name in solutions))
 
 
@@ -690,7 +780,8 @@ def extract(
     their records, their memberships, the components they hold and the
     subcomponents of the entities they hold. Entity details and ribbons are
     read only for the member entities; the org-wide reads still run, since a
-    membership names its component only by id. An entity held as a shell or
+    membership names its component only by id, but a web resource's content and
+    an assembly's binary are fetched for the members only. An entity held as a shell or
     without subcomponents brings only the subcomponents the solutions list on
     their own.
 
@@ -718,8 +809,14 @@ def extract(
         run.unit(("global_option_set",), "option-sets", source.list_option_sets) or [],
     )
     reads = _READS if source.platform == PLATFORM_CRM2011 else _V9_READS
-    run.begin("records", len(reads))
-    rows = {read.kind: run.pages(read) for read in reads}
+    # A scoped run reads the member-payload kinds without their payloads and fetches the
+    # members' payloads once the scope is known, so the scope's own reads run first.
+    deferred = [r for r in reads if solutions and r.member_type is not None]
+    first = [r.without_payloads() if r in deferred else r for r in reads]
+    if solutions:
+        first.sort(key=lambda r: r.kind not in _SCOPE_KINDS)
+    run.begin("records", len(reads) + len(deferred))
+    rows = {read.kind: run.pages(read) for read in first}
     if solutions:
         # The scope is found from these two reads: if either fell short, the kinds it
         # filters may be missing components, so none of them can read complete. That
@@ -732,8 +829,12 @@ def extract(
                     f"{', '.join(short)}: the read fell short, so the --solution scope"
                     " may miss components"
                 )
-        members, solutions = _member_entities(run, rows, solutions)
-        entities_read = [e for e in entities if str(e.get("metadata_id")).lower() in members]
+        members, solutions = _scope_members(run, rows, solutions)
+        for read in deferred:
+            run.content(read, rows[read.kind], members.get(cast("int", read.member_type), set()))
+        entities_read = [
+            e for e in entities if str(e.get("metadata_id")).lower() in members.get(_ENTITY, set())
+        ]
     else:
         entities_read = entities
     details: list[dict[str, Any]] = []
@@ -747,7 +848,7 @@ def extract(
         )
         if detail is not None:
             details.append(detail)
-    ribbons: dict[str | None, bytes] = {}
+    ribbons: dict[str | None, Path] = {}
     # An entity with no display label (measured on UR15) or no collection label (a
     # cloud org) faults its ribbon read ("Could not find localized ... name"), so it
     # is not read.
@@ -765,15 +866,13 @@ def extract(
             return "ribbon.xml"
 
         if run.unit(("ribbon",), unit, read_ribbon) is not None:
-            ribbons[entity_name] = cp.staged(
-                "ribbon", entity_name or "_application", "ribbon.xml"
-            ).read_bytes()
+            ribbons[entity_name] = cp.staged("ribbon", entity_name or "_application", "ribbon.xml")
 
     run.begin("build")
     built = _Builder(cp, out, rows, source.api)
     built.metadata(entities, option_sets, details)
     built.components()
-    for entity_name, xml in ribbons.items():
+    for entity_name, ribbon in ribbons.items():
         built.add(
             "ribbon",
             None,
@@ -781,7 +880,7 @@ def extract(
             None,
             "unknown",  # the ribbon XML merges the system ribbon and customizations
             None,
-            [("ribbon.xml", xml, True)],
+            [("ribbon.xml", ribbon, True)],
         )
     built.memberships_and_dependencies()
     if solutions:
@@ -843,6 +942,15 @@ def extract(
     )
 
 
+def _file_hashes(path: Path, *, text: bool) -> ArtifactHashes:
+    """`artifact_hashes` of a file; a binary one is streamed rather than held in memory."""
+    if text:
+        return artifact_hashes(path.read_bytes(), text=True)
+    with path.open("rb") as handle:
+        raw = hashlib.file_digest(handle, "sha256").hexdigest()
+    return ArtifactHashes(sha256=raw, normalized_sha256=raw)
+
+
 def _ref_id(value: object) -> str | None:
     if isinstance(value, dict):
         ref = cast("dict[str, Any]", value).get("id")
@@ -872,7 +980,7 @@ class _Pending:
     origin: str
     managed: bool | None
     fields: dict[str, Any]
-    payloads: list[tuple[str, bytes, bool]]
+    payloads: list[tuple[str, Path, bool]]
 
 
 class _Builder:
@@ -911,7 +1019,7 @@ class _Builder:
         display_name: str | None,
         origin: str,
         managed: bool | None,
-        payloads: list[tuple[str, bytes, bool]],
+        payloads: list[tuple[str, Path, bool]],
         component_type: int | None = None,
     ) -> str | None:
         """Queue a record and index its key; None when a key field's value breaks the contract.
@@ -946,9 +1054,9 @@ class _Builder:
 
     def _staged(
         self, kind: str, row: dict[str, Any], text: bool = True
-    ) -> list[tuple[str, bytes, bool]]:
+    ) -> list[tuple[str, Path, bool]]:
         names = cast("list[str]", row.get("_artifacts", []))
-        return [(n, self.cp.staged(kind, str(row["id"]), n).read_bytes(), text) for n in names]
+        return [(n, self.cp.staged(kind, str(row["id"]), n), text) for n in names]
 
     def metadata(
         self,
@@ -1024,9 +1132,9 @@ class _Builder:
                 "web_resource", r["id"], {"name": r["name"], "web_resource_type": code},
                 r.get("displayname"), self._origin(r), r.get("ismanaged"), payloads, 61,
             )  # fmt: skip
-            for _, data, is_text in payloads:
+            for _, path, is_text in payloads:
                 if is_text and key is not None:
-                    self._scan_isv(data, ("web_resource", key))
+                    self._scan_isv(path.read_bytes(), ("web_resource", key))
         for r in rows.get("plugin_assembly", []):
             source = r.get("sourcetype")
             key = self.add(
@@ -1123,9 +1231,9 @@ class _Builder:
                 payloads,
                 62,
             )
-            for _, data, _ in payloads:
+            for _, path, _ in payloads:
                 if key is not None:
-                    self._scan_isv(data, ("sitemap", key))
+                    self._scan_isv(path.read_bytes(), ("sitemap", key))
 
     def _scan_isv(self, data: bytes, where: tuple[str, str]) -> None:
         for match in _ISV_PAGE.finditer(data.decode("utf-8", errors="replace")):
@@ -1239,6 +1347,9 @@ class _Builder:
 
         Every payload is re-derived from the checkpoint, so an earlier run's
         artifacts are dropped first: a resumed run leaves no unreferenced file.
+        An artifact is a hard link to its staged payload (a copy where the
+        filesystem refuses links), so a payload is one set of bytes on disk. The
+        stage stays for a resume: this runs before completeness is known.
         """
         if (self.out / "artifacts").exists():
             shutil.rmtree(self.out / "artifacts")
@@ -1255,12 +1366,15 @@ class _Builder:
                 else None
             )
             artifacts: list[Artifact] = []
-            for name, data, text in p.payloads:
+            for name, staged, text in p.payloads:
                 path = artifact_path(p.kind, p.key, name, discriminator=discriminator)
                 target = self.out / path
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(data)
-                hashes = artifact_hashes(data, text=text)
+                try:
+                    os.link(staged, target)
+                except OSError:
+                    shutil.copyfile(staged, target)
+                hashes = _file_hashes(target, text=text)
                 artifacts.append(
                     Artifact(
                         path, "text" if text else "binary", hashes.sha256, hashes.normalized_sha256

@@ -375,6 +375,8 @@ ALLOWLIST: dict[str, str] = {
     "diff": "ADR 0022: rejected `crm diff` command, documented as not built",
     # ADR 0022 proposed-but-unshipped surface for the plan-artifact feature.
     "apply --from-plan plan.json": "ADR 0022: proposed unshipped `--from-plan` surface",
+    # ADR 0034 proposes `inventory convert`, built by #1098; drop this once it ships.
+    "inventory convert": "ADR 0034: proposed unshipped verb (#1098)",
 }
 
 

@@ -16,8 +16,9 @@ binaries). It describes what is deployed; it is never a spec for `crm apply`.
   `eta` marked as an estimate); stdout, the JSON envelope, is unchanged. Read
   stderr to tell a slow run from a stuck one; `--quiet` silences it.
 - **To inventory part of an org, narrow it to solutions** (`--solution`, see
-  `--help`). The entity reads shrink to the member entities, but the org-wide
-  component reads still run, so a narrowed run is not proportionally quicker. An
+  `--help`). The entity reads shrink to the member entities, and web resource
+  content and assembly binaries are fetched for members only; the other component
+  reads still run org-wide, so a narrowed run is not proportionally quicker. An
   unknown solution name is a read error on the `solution` kind (exit 1), not a
   usage error.
 - **Resume by re-running the identical command on the same `--out` folder.** It
