@@ -1045,10 +1045,10 @@ def extract(
     )
 
 
-def _file_hashes(path: Path, *, text: bool) -> ArtifactHashes:
+def _file_hashes(path: Path, *, text: bool, ribbon: bool = False) -> ArtifactHashes:
     """`artifact_hashes` of a file; a binary one is streamed rather than held in memory."""
     if text:
-        return artifact_hashes(path.read_bytes(), text=True)
+        return artifact_hashes(path.read_bytes(), text=True, ribbon=ribbon)
     with path.open("rb") as handle:
         raw = hashlib.file_digest(handle, "sha256").hexdigest()
     return ArtifactHashes(sha256=raw, normalized_sha256=raw)
@@ -1581,7 +1581,7 @@ class _Builder:
                     os.link(staged, target)
                 except OSError:
                     shutil.copyfile(staged, target)
-                hashes = _file_hashes(target, text=text)
+                hashes = _file_hashes(target, text=text, ribbon=p.kind == "ribbon")
                 artifacts.append(
                     Artifact(
                         path, "text" if text else "binary", hashes.sha256, hashes.normalized_sha256

@@ -31,6 +31,80 @@ def test_text_artifact_with_bom_and_crlf_shares_normalized_hash_but_not_raw_hash
     assert windows_hashes.sha256 == hashlib.sha256(windows).hexdigest()
 
 
+_TABS = '<TabDisplayRules><TabDisplayRule Id="T1"/><TabDisplayRule Id="T2"/></TabDisplayRules>'
+
+
+def _ribbon(
+    enable: str = '<EnableRule Id="A"><X Y="1"/></EnableRule><EnableRule Id="B"/>',
+    display: str = '<DisplayRule Id="D1"/><DisplayRule Id="D2"/>',
+    commands: str = '<CommandDefinition Id="C1"/><CommandDefinition Id="C2"/>',
+    tabs: str = _TABS,
+) -> bytes:
+    return (
+        "<RibbonDiffXml><CommandDefinitions>"
+        f"{commands}</CommandDefinitions><RuleDefinitions>{tabs}"
+        f"<DisplayRules>{display}</DisplayRules><EnableRules>{enable}</EnableRules>"
+        "</RuleDefinitions></RibbonDiffXml>"
+    ).encode()
+
+
+def _ribbon_hashes(data: bytes) -> inventory.ArtifactHashes:
+    return inventory.artifact_hashes(data, text=True, ribbon=True)
+
+
+def test_ribbon_sibling_order_changes_the_raw_hash_but_not_the_normalized_one() -> None:
+    a = _ribbon()
+    b = _ribbon(
+        enable='<EnableRule Id="B"/><EnableRule Id="A"><X Y="1"/></EnableRule>',
+        display='<DisplayRule Id="D2"/><DisplayRule Id="D1"/>',
+        commands='<CommandDefinition Id="C2"/><CommandDefinition Id="C1"/>',
+    )
+
+    assert _ribbon_hashes(a).sha256 != _ribbon_hashes(b).sha256
+    assert _ribbon_hashes(a).normalized_sha256 == _ribbon_hashes(b).normalized_sha256
+    assert _ribbon_hashes(a).sha256 == hashlib.sha256(a).hexdigest()
+
+
+@pytest.mark.parametrize(
+    "changed",
+    [
+        _ribbon(enable='<EnableRule Id="A"><X Y="2"/></EnableRule><EnableRule Id="B"/>'),
+        _ribbon(enable='<EnableRule Id="A"><X Y="1"/></EnableRule>'),
+        _ribbon(display='<DisplayRule Id="D1"/><DisplayRule Id="D2"/><DisplayRule Id="D3"/>'),
+        _ribbon(tabs=_TABS.replace("T1", "TX").replace("T2", "T1").replace("TX", "T2")),
+    ],
+    ids=["attribute value", "element removed", "element added", "order outside the three parents"],
+)
+def test_a_real_ribbon_change_changes_the_normalized_hash(changed: bytes) -> None:
+    assert _ribbon_hashes(changed).normalized_sha256 != _ribbon_hashes(_ribbon()).normalized_sha256
+
+
+def test_same_tag_same_id_siblings_hash_by_content_in_either_order() -> None:
+    one = '<EnableRule Id="A"><V n="1"/></EnableRule>'
+    two = '<EnableRule Id="A"><V n="2"/></EnableRule>'
+
+    forward = _ribbon_hashes(_ribbon(enable=one + two)).normalized_sha256
+    backward = _ribbon_hashes(_ribbon(enable=two + one)).normalized_sha256
+
+    assert forward == backward
+    assert forward != _ribbon_hashes(_ribbon(enable=one)).normalized_sha256
+
+
+def test_a_ribbon_that_is_not_xml_falls_back_to_the_text_normalization() -> None:
+    broken = b"\xef\xbb\xbf<RibbonDiffXml>\r\n<oops>"
+
+    assert _ribbon_hashes(broken) == inventory.artifact_hashes(broken, text=True)
+
+
+def test_only_a_ribbon_is_canonicalized() -> None:
+    a, b = _ribbon(), _ribbon(display='<DisplayRule Id="D2"/><DisplayRule Id="D1"/>')
+
+    assert (
+        inventory.artifact_hashes(a, text=True).normalized_sha256
+        != inventory.artifact_hashes(b, text=True).normalized_sha256
+    )
+
+
 def test_component_key_joins_the_kind_key_fields_in_table_order() -> None:
     form = {"name": "Information", "entity": "new_project", "form_type": 2, "extra": "ignored"}
 

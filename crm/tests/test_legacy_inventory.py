@@ -20,6 +20,7 @@ from click.testing import CliRunner
 from crm.cli import cli
 from crm.core import inventory, inventory_extract, legacy_reads
 from crm.core import session as session_mod
+from crm.core.inventory_diff import diff_inventories
 from crm.core.legacy import Page
 from crm.utils.d365_backend import (
     _TRANSPORT_FAILURE_PREFIX,  # pyright: ignore[reportPrivateUsage]
@@ -426,6 +427,23 @@ def crm_home(tmp_path, monkeypatch):
     session_mod.save_profile_secret_plaintext("legacy", "pw")
     session_mod.save_profile(ConnectionProfile(name="v9", url=_URL, domain="D", username="u"))
     return tmp_path
+
+
+def test_a_reordered_ribbon_extracts_to_unchanged_in_the_diff(reads, monkeypatch, tmp_path):
+    def ribbon(order):
+        rules = "".join(f'<EnableRule Id="{i}"/>' for i in order)
+        body = f"<RuleDefinitions><EnableRules>{rules}</EnableRules></RuleDefinitions>"
+        return f"<RibbonDiffXml>{body}</RibbonDiffXml>".encode()
+
+    for name, order in (("a", "XY"), ("b", "YX")):
+        monkeypatch.setattr(legacy_reads, "ribbon_xml", lambda c, e, o=order: ribbon(o))
+        _extract(FakeClient(), tmp_path / name)
+
+    a, b = (inventory.read_inventory(tmp_path / n) for n in "ab")
+    ribbons = [e for e in diff_inventories(a, b).entries if e.kind == "ribbon"]
+    assert ribbons and {e.verdict for e in ribbons} == {"unchanged"}
+    path = next(art.path for r in a.records if r.kind == "ribbon" for art in r.artifacts)
+    assert (tmp_path / "a" / path).read_bytes() != (tmp_path / "b" / path).read_bytes()
 
 
 def test_inventory_extract_returns_a_short_summary(crm_home, reads, monkeypatch, tmp_path):

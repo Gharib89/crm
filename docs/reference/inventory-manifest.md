@@ -136,7 +136,18 @@ an ISV page, an external integration, and SQL report data sources.
 - A text artifact's `normalized_sha256` hashes its bytes with a leading UTF-8
   BOM stripped and CRLF converted to LF. `sha256` always hashes the raw bytes.
 - A binary artifact uses the raw hash for both (reader).
-- XML canonicalization is deferred to a later schema version.
+- A ribbon artifact's `normalized_sha256` hashes a canonical form of its XML
+  instead: the children of `EnableRules`, `DisplayRules` and
+  `CommandDefinitions` are put in a fixed order (by tag, `Id`, then full
+  canonical content, since sibling `Id`s repeat), so a server that returns the
+  same ribbon with those siblings reordered keeps one hash. Elements elsewhere
+  keep their order, and a ribbon that does not parse as XML falls back to the
+  text rule above. The artifact file and `sha256` stay as the server sent them.
+  This is an ordinary v1 normalization rule, not a schema bump: a manifest
+  written before it hashes its ribbons by the text rule, so one diff of an old
+  extract against a new one reports its ribbons `changed`.
+- No other artifact kind has XML canonicalization; it is deferred to a later
+  schema version.
 - `dump_manifest` sorts records by kind, then key, then content, artifacts by
   path and gaps by content, and writes sorted JSON keys. Two extractions of an
   unchanged org differ only in `extracted_at`.
