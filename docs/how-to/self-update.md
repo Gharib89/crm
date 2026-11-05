@@ -165,8 +165,9 @@ it is never mixed into an unrelated command's envelope.
 Every non-`--check` `self-update` re-syncs the agent skills you installed with
 [`crm skill install`](skill.md), so the shipped `SKILL.md` never lags the CLI. It
 reads the install registry (`${CRM_HOME:-~/.crm}/installed-skills.json`) and, for
-each recorded destination whose version is stale, re-copies the bundled skill
-tree. This fires on both install types — after a frozen bundle swap, and on a
+each recorded destination whose version is stale, re-copies that skill's bundled
+tree (an entry records which skill it holds, `crm` or `crm-migration`; one from
+a release before the field existed reads as `crm`). This fires on both install types — after a frozen bundle swap, and on a
 `pip`/`uv` install once the upgraded wheel is in place.
 
 The per-destination outcome is reported under `data.skills` (a list of

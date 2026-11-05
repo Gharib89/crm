@@ -103,6 +103,12 @@ security boundary (the real boundary is a server-side read-only role).
 
 ## Legacy CRM 2011 orgs
 
+For a migration off such an org (or off on-premises to the cloud), a second
+skill, `crm-migration`, sets the assessment and verification workflow and its
+evidence rules, and defers to this skill for each command. When the user is
+migrating and it is not installed, suggest
+`crm skill install --skill crm-migration`.
+
 A CRM 2011 org has no Web API. `crm profile add` detects one itself (Web API 404 on
 an NTLM profile, then a `5.x` build answered over SOAP) and saves a **`crm2011`
 profile**; its JSON output carries `platform: "crm2011"`, where a normal profile says
