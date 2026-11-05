@@ -49,11 +49,17 @@ _VERSION = re.compile(r"[0-9]+(\.[0-9]+)*")
 _RULE_ID = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 
 
+def _dotted(text: str) -> tuple[int, ...] | None:
+    if _VERSION.fullmatch(text) is None:
+        return None
+    return tuple(int(part) for part in text.split("."))
+
+
 def _version(text: str, where: str) -> tuple[int, ...]:
-    match = _VERSION.match(text)
-    if match is None:
+    version = _dotted(text)
+    if version is None:
         raise InventoryError(f"{where} {text!r} is not a dotted version")
-    return tuple(int(part) for part in match.group(0).split("."))
+    return version
 
 
 @dataclass(frozen=True)
@@ -87,9 +93,8 @@ class Rule:
     fix: str
     sources: tuple[str, ...]
 
-    def applies(self, version: str) -> bool:
-        """True when an inventory read from source *version* is in this rule's range."""
-        v = _version(version, "source.version")
+    def applies(self, v: tuple[int, ...]) -> bool:
+        """True when an inventory read from source version *v* is in this rule's range."""
         low = _version(self.source_from, "source.from")
         return v >= low and (
             self.source_before is None or v < _version(self.source_before, "source.before")
@@ -135,8 +140,8 @@ def _items(obj: dict[str, Any], name: str, where: str) -> list[Any]:
 
 def _detection(value: object, kind: str, where: str) -> ContentPattern | FieldIn:
     obj = _obj(value, where)
-    kind_of = obj.get("type")
-    if kind_of == "content_pattern":
+    detection_type = obj.get("type")
+    if detection_type == "content_pattern":
         if kind != "web_resource":
             raise InventoryError(
                 f"rules file {where}: content_pattern applies to web_resource only"
@@ -149,10 +154,12 @@ def _detection(value: object, kind: str, where: str) -> ContentPattern | FieldIn
         if not all(type(t) is int for t in types):
             raise InventoryError(f"rules file {where}.web_resource_types must hold integers")
         return ContentPattern(pattern, tuple(cast(list[int], types)))
-    if kind_of == "field_in":
+    if detection_type == "field_in":
         values = _items(obj, "values", where)
         return FieldIn(_text(obj, "field", where), tuple(values))
-    raise InventoryError(f"rules file {where}.type {kind_of!r} is not content_pattern or field_in")
+    raise InventoryError(
+        f"rules file {where}.type {detection_type!r} is not content_pattern or field_in"
+    )
 
 
 def _rule(value: object, where: str) -> Rule:
@@ -270,8 +277,9 @@ class FieldEvidence:
 class Finding:
     """One compatibility finding on the component *kind*/*key*; *cls* is one of `CLASSES`.
 
-    *rule* names the rule a hit, or an ``unknown`` a rule could not decide, came
-    from; *reason* says why a finding is ``unknown``.
+    *rule* names the rule a hit, or an ``unknown`` one rule could not decide,
+    came from, and is None for a finding no single rule gives; *reason* says why
+    a finding is ``unknown``.
     """
 
     kind: str
@@ -411,7 +419,7 @@ def _assess_record(record: Record, rules: list[Rule], folder: Path) -> list[Find
             value = record.fields.get(d.field)
             if value is None:
                 out.append(finding("unknown", rule.id, f"field {d.field} not recorded"))
-            elif value in d.values:
+            elif any(type(value) is type(v) and value == v for v in d.values):
                 out.append(finding(rule.cls, rule.id, None, FieldEvidence(d.field, value)))
             continue
         for path, text in sorted(texts.items()):
@@ -431,10 +439,13 @@ def assess(
     kind, its source range (against the inventory's ``source.version``), its
     targets and, for a content rule, the web resource type all match. A record
     no rule applies to is ``unknown`` "no rule"; one the applying rules find
-    nothing in is ``clear``. Each record named by an extraction gap, or of a kind
-    not read ``complete``, gets one more ``unknown`` saying so. A gap naming no
-    record is listed in *unattached_gaps*. *out*, the file the caller will
-    write, is refused inside the inventory folder.
+    nothing in is ``clear``. With a ``source.version`` that is not a dotted
+    version (the extractor writes "unknown" when it cannot read one), no range
+    can be decided, so a record some rule covers is ``unknown`` instead. Each
+    record named by an extraction gap, or of a kind not read ``complete``, gets
+    one more ``unknown`` saying so. A gap naming no record is listed in
+    *unattached_gaps*. *out*, the file the caller will write, is refused inside
+    the inventory folder.
 
     Raises:
         InventoryError: the inventory or rules file is unreadable or breaks its
@@ -452,10 +463,18 @@ def assess(
     except (OSError, ValueError) as exc:  # ValueError: malformed UTF-8 or JSON
         raise InventoryError(f"cannot read {path}: {exc}") from exc
     inv = parse_manifest(data)
-    active = [r for r in rules.rules if target in r.targets and r.applies(inv.source.version)]
+    version = _dotted(inv.source.version)
+    active = [r for r in rules.rules if target in r.targets]
+    if version is not None:
+        active = [r for r in active if r.applies(version)]
+    unversioned = f"source version {inv.source.version!r} is not a dotted version"
     findings: list[Finding] = []
     for record in inv.records:
-        findings += _assess_record(record, [r for r in active if r.selects(record)], folder)
+        selected = [r for r in active if r.selects(record)]
+        if version is None and selected:
+            findings.append(Finding(record.kind, record.key, "unknown", None, unversioned, None))
+        else:
+            findings += _assess_record(record, selected, folder)
         status = inv.coverage[record.kind].status
         if status != "complete":
             findings.append(
@@ -483,10 +502,16 @@ def assess(
         inventory=_header(inv, raw),
         target=target,
         rules=rules,
-        findings=tuple(sorted(set(findings), key=lambda f: _canonical(_order(f)))),
+        findings=_sorted_findings(findings),
         unattached_gaps=tuple(sorted(unattached, key=_canonical)),
         incomplete={k: c.status for k, c in sorted(inv.coverage.items()) if c.status != "complete"},
     )
+
+
+def _sorted_findings(findings: list[Finding]) -> tuple[Finding, ...]:
+    """Dedupe and sort by canonical JSON: a field value may be a list or dict, so not hashable."""
+    unique = {_canonical(_order(f)): f for f in findings}
+    return tuple(unique[k] for k in sorted(unique))
 
 
 def _order(f: Finding) -> list[Any]:

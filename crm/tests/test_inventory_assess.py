@@ -275,3 +275,30 @@ def test_cli_refuses_an_out_inside_the_inventory(inventory):
         ["--json", "inventory", "assess", str(inventory), "--target", "online", "--out", str(out)],
     )
     assert res.exit_code == 1 and not out.exists()
+
+
+def test_an_unreadable_source_version_makes_ruled_components_unknown(tmp_path):
+    folder = _write_inventory(tmp_path / "unk", version="unknown")
+    result = assess.assess(folder, "online")
+    (legacy,) = _findings(result, "new_/scripts/legacy.js")
+    assert (legacy.cls, legacy.rule) == ("unknown", None)
+    assert legacy.reason == "source version 'unknown' is not a dotted version"
+    assert _classes(result, "new_project") == {"unknown"}
+
+
+def test_a_version_with_a_suffix_is_not_dotted():
+    with pytest.raises(inv.InventoryError, match="dotted"):
+        assess._version("9.0x", "source.from")
+
+
+@pytest.mark.parametrize("value", [True, [1], {"a": 1}])
+def test_a_field_rule_matches_on_type_and_value(tmp_path, value):
+    folder = tmp_path / "f"
+    folder.mkdir()
+    record = _assembly("Contoso.Odd", folder, source_type=0, isolation_mode=value)
+    rules = [r for r in assess.load_rules().rules if r.id == "assembly-isolation-none"]
+    found = assess._assess_record(record, rules, folder)
+    assert [f.cls for f in found] == ["clear"]
+    evidence = assess.FieldEvidence("f", value)
+    odd = assess.Finding("plugin_assembly", "k", "blocker", "r", None, evidence)
+    assert assess._sorted_findings([odd, odd]) == (odd,)
