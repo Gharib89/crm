@@ -239,7 +239,7 @@ def test_a_kind_with_no_ismanaged_is_kept_and_recorded_as_a_gap(tmp_path):
 
 def test_a_solution_run_keeps_stock_and_records_it(tmp_path):
     inventory_extract.extract(
-        inventory_extract.LegacySource(FakeClient(org=_org())),
+        inventory_extract.LegacySource(FakeClient(org=_org())),  # pyright: ignore[reportArgumentType]
         tmp_path / "sol",
         cli_version="9.9.9",
         solutions=("msdyn_patch",),
