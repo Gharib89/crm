@@ -21,13 +21,12 @@ connection diagnostics, `session audit` and `audit history`; its automation page
 covers plug-in steps, workflows and their trace logs. Pull the evidence a
 failing or blocked requirement needs from those commands, save each artifact
 under the results file's folder, and cite it in the result's `evidence` or
-`errors`. Redact secrets and personal data before saving.
+`errors`. Done when each failing or blocked requirement has its error or trace saved.
 
 ## Choose the test kind each requirement needs
 
 Read each package's `verification` entries from `crm inventory packages`
-(`index.json` lists the packages, `<package id>.json` holds each). A requirement
-states its kind; the test that proves it:
+(`index.json` lists the packages, `<package id>.json` holds each). A requirement states its kind; the test that proves it:
 
 | Requirement kind | Test that proves it |
 |---|---|
@@ -35,9 +34,11 @@ states its kind; the test that proves it:
 | `ribbon_command`, `sitemap_entry` | browser test: the control appears, runs and reaches the right target |
 | `plugin_step` | integration test: perform the message, assert the step's effect and its images |
 | `process_trigger` | integration test: fire the trigger, assert the process outcome |
-| permission-sensitive behavior | permission test as a user holding only the intended role |
-| a scenario's `expected_behavior` | business scenario: walk it end to end on realistic data |
-| shared library logic | unit test in the application repository |
+
+Add a **permission test** (run as a user holding only the intended role) where
+the behavior depends on security roles, and a **business scenario** for each
+`expected_behavior` a package carries. Logic in a shared library also gets a unit
+test in the application repository.
 
 A requirement with an `unknown` field or no scenario goes back to the user for
 the expected behavior; a test written without one asserts a guess.
@@ -61,6 +62,9 @@ skill's inventory page gives its shape. Set `packages_sha256` from
   a `pass`.
 - `not_tested`: nobody ran it.
 
+A requirement takes the worst of its results, so a later `pass` never clears an
+earlier `fail`: fix the component, then replace the failed result.
+
 Record `deployed` (component and hash) for the artifact the test exercised, and
 `environment` with the profile and org from the `whoami` check.
 
@@ -70,12 +74,10 @@ to turn it green hides the defect. Change an assertion only when the user
 confirms the expected behavior was wrong, and record that as an `open_decisions`
 entry.
 
-Introduce a deliberate regression as a **negative control**
-(`"negative_control": true`) when the user wants proof the test can fail; it
-must `fail`.
+A deliberate regression recorded with `"negative_control": true` must `fail`.
 
-Done when every requirement of every package has a result or is listed as
-unrecorded in the report.
+Done when every requirement of every package has a result, or is named as
+unrecorded in the final report.
 
 ## Run the gate and report its verdicts
 
@@ -83,7 +85,8 @@ unrecorded in the report.
 crm --json inventory verify PACKAGES --results RESULTS --out verify.json
 ```
 
-Every verdict exits 0, so read the report. Report each package as the gate
+Every verdict exits 0, so read the `--out` report: it alone carries each
+requirement's `reason`. Report each package as the gate
 gives it:
 
 - `complete`: say so, and only for packages the gate marks `complete`.
@@ -95,7 +98,8 @@ gives it:
 Wording for a blocked package: "Package `pkg-...` is `blocked`. Requirement
 `req-...` could not run: <errors>. It stays open until <the action that unblocks
 it>; no completion is claimed." A summary line counting `complete` packages
-carries the count of the others beside it.
+carries the count of the others beside it. Done when every package appears in
+the report with the gate's verdict and, if not `complete`, its reason.
 
 A results file recorded against another packages output is refused (exit 1):
 re-record against the current output, or re-run `crm inventory packages` if the
