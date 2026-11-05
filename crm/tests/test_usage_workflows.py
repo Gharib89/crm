@@ -22,6 +22,9 @@ from crm.tests.test_usage_plugins import (
     _rm,
     crm_home,  # noqa: F401  (a fixture)
 )
+from crm.tests.test_usage_plugins import (
+    _legacy_org as _plugin_org,
+)
 from crm.utils.d365_backend import ConnectionProfile, D365Error
 from crm.utils.safe_xml import fromstring
 
@@ -313,3 +316,34 @@ def test_legacy_a_process_row_born_after_the_probe_is_unknown_not_a_crash(monkey
         None, {"processes": [{"id": "new"}]}, exclude_unknown=False
     )
     assert got["processes"][0]["usage"]["state"] == "unknown"
+
+
+def test_legacy_a_failed_process_probe_keeps_the_plugin_usage(crm_home):  # noqa: F811
+    # the process definitions read fails; the plug-in probe and its rows are unaffected
+    respond, _ = _plugin_org()
+
+    def faulty(request, context):
+        query = fromstring(request.body).findtext(f".//{{{_CRM}}}Query") or ""
+        if 'name="workflow"' in query and 'name="asyncautodelete"' in query:
+            context.status_code = 500
+            context.headers.update(_XML)
+            return "<x/>"
+        return respond(request, context)
+
+    data = _components("--in-use", org=(faulty, None))
+    assert {r["usage"]["state"] for r in data["processes"]} == {"unknown"}
+    assert "usage probe failed" in data["processes"][0]["usage"]["reason"]
+    assert any(r["usage"]["state"] == "used" for r in data["plugin-steps"])
+
+
+def test_v9_a_truncated_group_read_is_named_in_the_reason():
+    class Paged(_Org):
+        def get(self, path, params=None):
+            got = super().get(path, params)
+            if path == "asyncoperations":
+                got["@Microsoft.Dynamics.CRM.morerecords"] = True
+            return got
+
+    got = usage.probe_v9_processes(Paged(jobs=()))
+    assert got["d-used"].state == "unknown"
+    assert "async job read truncated" in (got["d-used"].reason or "")

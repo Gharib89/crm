@@ -695,32 +695,28 @@ def annotate_v9_types(
 def annotate_legacy_components(
     client: LegacyClient, data: dict[str, list[dict[str, Any]]], *, exclude_unknown: bool
 ) -> dict[str, list[dict[str, Any]]]:
-    """Give each plug-in or process row read by `legacy components` its `usage`."""
+    """Give each plug-in or process row read by `legacy components` its `usage`.
+
+    The plug-in and process probes are independent: a failed one labels only its
+    own kinds `unknown` and the other still runs.
+    """
     by_kind: dict[str, dict[str, Usage]] = {}
-    try:
-        if any(k in data for k in PLUGIN_KINDS):
-            steps, types, assemblies = probe_legacy_plugins(client)
-            by_kind.update(zip(PLUGIN_KINDS, (assemblies, types, steps), strict=True))
-        if "processes" in data:
-            by_kind["processes"] = probe_legacy_processes(client)
-    except D365Error as exc:
-        if connection_wide(exc):
-            raise
-        # a failed probe read is no evidence: keep the rows already read, labelled unknown
-        why = f"usage probe failed: {exc}"
-        by_kind = {
-            k: {
-                str(r["id"]): Usage(
-                    "unknown",
-                    PROCESS_SIGNAL if k == "processes" else STEP_SIGNAL,
-                    None,
-                    _now(),
-                    why,
-                )
-                for r in rows
-            }
-            for k, rows in data.items()
-        }
+    probes: list[tuple[tuple[str, ...], str, Callable[[], Sequence[dict[str, Usage]]]]] = [
+        (PLUGIN_KINDS, STEP_SIGNAL, lambda: _plugin_states(client)),
+        (("processes",), PROCESS_SIGNAL, lambda: [probe_legacy_processes(client)]),
+    ]
+    for kinds, signal, probe in probes:
+        present = [k for k in kinds if k in data]
+        if not present:
+            continue
+        try:
+            by_kind.update(zip(kinds, probe(), strict=True))
+        except D365Error as exc:
+            if connection_wide(exc):
+                raise
+            # a failed probe read is no evidence: keep the rows already read, labelled unknown
+            gone = Usage("unknown", signal, None, _now(), f"usage probe failed: {exc}")
+            by_kind.update({k: {str(r["id"]): gone for r in data[k]} for k in present})
     unread = Usage("unknown", PROCESS_SIGNAL, None, _now(), "created after the usage read")
     return {
         kind: attach(
@@ -731,6 +727,11 @@ def annotate_legacy_components(
         )
         for kind, rows in data.items()
     }
+
+
+def _plugin_states(client: LegacyClient) -> list[dict[str, Usage]]:
+    steps, types, assemblies = probe_legacy_plugins(client)
+    return [assemblies, types, steps]  # in PLUGIN_KINDS order
 
 
 # ── workflows and processes (slice #1094) ────────────────────────────────
@@ -802,9 +803,11 @@ def _definition_ids(ids: set[str] | frozenset[str], parents: dict[str, str]) -> 
     return frozenset(parents.get(i, i) for i in ids)
 
 
-def _v9_ids(backend: D365Backend, entity_set: str, fetch: str) -> set[str]:
+def _v9_ids(backend: D365Backend, entity_set: str, fetch: str) -> tuple[set[str], bool]:
+    """Group ids of one aggregate read, and whether the server held back more groups."""
     got = as_dict(backend.get(entity_set, params={"fetchXml": fetch}))
-    return {str(r["step"]) for r in got.get("value", []) if r.get("step")}
+    ids = {str(r["step"]) for r in got.get("value", []) if r.get("step")}
+    return ids, bool(got.get("@Microsoft.Dynamics.CRM.morerecords"))
 
 
 def read_v9_process_evidence(backend: D365Backend, parents: dict[str, str]) -> ProcessEvidence:
@@ -830,7 +833,10 @@ def read_v9_process_evidence(backend: D365Backend, parents: dict[str, str]) -> P
     )
     for entity_set, fetch, into, what in reads:
         try:
-            into.update(_v9_ids(backend, entity_set, fetch))
+            ids, more = _v9_ids(backend, entity_set, fetch)
+            into.update(ids)
+            if more:  # only the first page of groups is read: the rest stay unknown
+                gaps.append(f"{what} truncated at the first page of groups")
         except D365Error as exc:
             if connection_wide(exc):
                 raise
