@@ -160,8 +160,15 @@ def list_types_cmd(ctx: CLIContext, assembly, in_use: bool, exclude_unknown: boo
         ctx.emit(True, data=items, meta={"count": len(items)})
         return
     headers = ["typename", "friendlyname", "plugintypeid"]
-    rows = [[it.get(h, "") for h in headers] for it in items]
-    ctx.emit(True, table={"headers": headers, "rows": rows}, meta={"count": len(items)})
+    rows = [
+        [*(it.get(h, "") for h in headers), *([it["usage"]["state"]] if in_use else [])]
+        for it in items
+    ]
+    ctx.emit(
+        True,
+        table={"headers": [*headers, *(["Usage"] if in_use else [])], "rows": rows},
+        meta={"count": len(items)},
+    )
 
 
 @plugin_group.command("register-step")

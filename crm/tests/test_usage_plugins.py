@@ -295,6 +295,11 @@ def test_list_types_in_use_drops_unused_and_keeps_the_row_shape(v9):
     assert not {"_pluginassemblyid_value", "isworkflowactivity"} & set(rows[0])
 
 
+def test_list_types_in_use_table_has_a_usage_column(v9):
+    out = CliRunner().invoke(cli, ["plugin", "list-types", "--in-use"]).output
+    assert "Usage" in out and "used" in out and "unknown" in out
+
+
 def test_list_types_exclude_unknown_keeps_proven_used_only(v9):
     assert [r["plugintypeid"] for r in _list_types("--in-use", "--exclude-unknown")] == ["t1"]
 
