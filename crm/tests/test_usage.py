@@ -126,6 +126,12 @@ def test_legacy_existence_read_per_entity_with_unreadable_unknown():
     assert all("<attribute name=" in f and "top=" not in f for f in client.fetches)
 
 
+def test_legacy_entity_without_a_primary_id_is_unknown_and_unread():
+    client = _FakeLegacy()
+    got = usage.probe_legacy_entities(client, {"intersect": ""}, clock=lambda: AS_OF)
+    assert got["intersect"].state == "unknown" and client.fetches == []
+
+
 def test_legacy_aggregate_limit_is_at_least_50000_never_unused():
     client = _FakeLegacy(rows={"account", "asyncoperation"}, over_limit={"asyncoperation"})
     ids = {"account": "accountid", "asyncoperation": "asyncoperationid"}

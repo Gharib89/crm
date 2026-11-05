@@ -294,6 +294,9 @@ def probe_legacy_entities(
     tick = _Tick(len(primary_ids), progress)
 
     def probe(name: str) -> tuple[str, Usage]:
+        if not primary_ids[name]:
+            tick.add()
+            return name, Usage("unknown", SIGNAL, None, as_of, "no primary id attribute to read")
         try:
             present = bool(
                 _first_page(

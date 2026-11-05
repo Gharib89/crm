@@ -199,12 +199,17 @@ def metadata_entities(
         if in_use:
             backend = ctx.backend()
             targets = usage_mod.entity_targets(backend)
-            wanted = [targets[it["LogicalName"]] for it in items if it["LogicalName"] in targets]
+            gone = "not in the entity definitions read for the probe"
+            wanted = [
+                targets.get(it["LogicalName"])
+                or usage_mod.EntityTarget(it["LogicalName"], "", "", gone)
+                for it in items
+            ]
             states = usage_mod.probe_v9_entities(
                 backend, wanted, progress=usage_mod.UsageProgress(sys.stderr.write, "entities")
             )
             items = usage_mod.attach(
-                [it for it in items if it["LogicalName"] in states],
+                items,
                 states,
                 key=lambda it: it["LogicalName"],
                 exclude_unknown=exclude_unknown,

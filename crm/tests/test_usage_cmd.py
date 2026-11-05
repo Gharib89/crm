@@ -89,6 +89,15 @@ def test_in_use_drops_unused_only_and_labels_every_row(v9):
     assert set(rows[0]["usage"]) == {"state", "signal", "value", "as_of", "reason"}
 
 
+def test_an_entity_missing_from_the_probe_targets_is_labelled_unknown(
+    inject_backend, make_fake_backend
+):
+    targets = [t for t in _TARGETS if t["LogicalName"] != "note"]
+    inject_backend(make_fake_backend(responses={"get": _v9_get, "get_collection": targets}))
+    rows = {r["LogicalName"]: r["usage"] for r in _entities("--in-use")}
+    assert rows["note"]["state"] == "unknown" and rows["note"]["reason"]
+
+
 def test_exclude_unknown_keeps_proven_used_only(v9):
     rows = _entities("--in-use", "--exclude-unknown")
     assert [r["LogicalName"] for r in rows] == ["account", "contact"]
