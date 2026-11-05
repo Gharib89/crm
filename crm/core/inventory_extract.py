@@ -67,6 +67,8 @@ CHECKPOINT_DIR = ".checkpoint"
 # The solutioncomponent / dependency type code of an option set, global or local by the set.
 _OPTION_SET = 9
 _ENTITY = 1
+_WEB_RESOURCE = 61
+_ASSEMBLY = 91
 
 # The relationship fields naming an entity, 1:N and N:N.
 _RELATIONSHIP_SIDES = ("referenced_entity", "referencing_entity", "entity1", "entity2")
@@ -251,10 +253,15 @@ class _Read:
     member_type: int | None = None
     content_batch: int = 50
 
+    @property
+    def payload_columns(self) -> tuple[str, ...]:
+        return tuple(column for column, _ in self.payloads)
+
     def without_payloads(self) -> _Read:
-        columns = {column for column, _ in self.payloads}
         return replace(
-            self, attributes=tuple(a for a in self.attributes if a not in columns), payloads=()
+            self,
+            attributes=tuple(a for a in self.attributes if a not in self.payload_columns),
+            payloads=(),
         )
 
     def fetch(self) -> str:
@@ -281,7 +288,7 @@ _READS: tuple[_Read, ...] = (
         "webresource",
         ("name", "displayname", "webresourcetype", "ismanaged", "solutionid", "content"),
         payloads=(("content", "content"),),
-        member_type=61,
+        member_type=_WEB_RESOURCE,
     ),
     _Read(
         "plugin_assembly",
@@ -299,7 +306,7 @@ _READS: tuple[_Read, ...] = (
         ),
         payloads=(("content", "content.dll"),),
         page_size=20,  # each row carries its assembly binary
-        member_type=91,
+        member_type=_ASSEMBLY,
         content_batch=20,
     ),  # fmt: skip
     _Read(
@@ -657,6 +664,7 @@ class _Run:
                 try:
                     names = self._fetch_content(read, wanted[start : start + size], by_id)
                 except (D365Error, ValueError) as exc:
+                    # ValueError: content that is not base64, as in `pages`.
                     if isinstance(exc, D365Error) and legacy_reads.connection_wide(exc):
                         raise
                     tally.errors.append(f"{read.entity} content batch {number}: {exc}")
@@ -676,7 +684,7 @@ class _Run:
         values = "".join(f"<value>{i}</value>" for i in batch)
         query = replace(
             read,
-            attributes=tuple(column for column, _ in read.payloads),
+            attributes=read.payload_columns,
             extra=f'<filter><condition attribute="{read.entity}id" operator="in">{values}'
             "</condition></filter>",
         )
@@ -686,8 +694,10 @@ class _Run:
                 row = by_id.get(str(fetched["id"]).lower())
                 if row is None:
                     continue
+                # `_stage` names a web resource's artifact from its type, which the rows
+                # read without payloads still carry.
                 carrier = {"id": row["id"], "webresourcetype": row.get("webresourcetype")}
-                for column, _ in read.payloads:
+                for column in read.payload_columns:
                     carrier[column] = fetched.get(column)
                 staged[str(row["id"]).lower()] = cast(
                     "list[str]", self._stage(read, carrier)["_artifacts"]

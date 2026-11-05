@@ -631,6 +631,7 @@ class PayloadBackend(FakeBackend):
         super().__init__(*args, **kwargs)
         # (entity set, requested columns, ids of the `in` filter or None), one per request
         self.fetched: list[tuple[str, set[str], list[str] | None]] = []
+        self.fail_content: set[str] = set()  # entity sets whose id-`in` fetch raises
 
     def _fetch(self, entity_set: str, fetch_xml: str, headers: dict) -> dict:
         fetch = fromstring(fetch_xml)
@@ -639,6 +640,8 @@ class PayloadBackend(FakeBackend):
         cond = entity.find("filter/condition[@operator='in']")
         ids = [v.text for v in cond.findall("value")] if cond is not None else None
         self.fetched.append((entity_set, columns, ids))
+        if cond is not None and entity_set in self.fail_content:
+            raise D365Error("content boom", status=500)
         body = super()._fetch(entity_set, fetch_xml, headers)
         rows = body["value"]
         if cond is not None:
@@ -735,3 +738,30 @@ def test_a_resume_of_a_scoped_run_reuses_the_content_pass(tmp_path):
     assert summary.complete and summary.resumed
     assert second.payload_fetches("webresourceset") == []
     assert _keys(_manifest(out), "web_resource") == ["new_/scripts/project.js"]
+
+
+def test_a_scoped_run_fetches_a_member_assemblys_binary_only(tmp_path):
+    org = copy.deepcopy(_ORG)
+    org["solutioncomponents"][0].append(
+        {"solutioncomponentid": _id(102), "componenttype": 91, "objectid": _id(20),
+         **_lookup("solutionid", "solution", 2)}
+    )  # fmt: skip
+    backend = PayloadBackend(org=org)
+    out = tmp_path / "inv"
+    assert _extract(backend, out, solutions=("contoso",)).complete
+    fetches = backend.payload_fetches("pluginassemblies")
+    assert fetches and all(ids == [_id(20)] for ids in fetches)  # not the GAC or on-disk rows
+    assert next(out.glob("artifacts/plugin_assembly/**/*.dll")).read_bytes() == _DLL
+    assert _keys(_manifest(out), "plugin_assembly") == ["Contoso.Plugins"]
+
+
+def test_a_failed_content_batch_is_a_partial_kind_and_the_run_goes_on(tmp_path):
+    backend = PayloadBackend()
+    backend.fail_content = {"webresourceset"}
+    out = tmp_path / "inv"
+    summary = _extract(backend, out, solutions=("contoso",))
+    assert not summary.complete
+    assert any("webresource content batch 1: content boom" in e for e in summary.errors)
+    data = _manifest(out)
+    assert data["coverage"]["web_resource"]["status"] == "partial"
+    assert _keys(data, "web_resource") == ["new_/scripts/project.js"]  # the record, no artifact
