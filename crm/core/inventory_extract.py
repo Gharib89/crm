@@ -1199,7 +1199,7 @@ class _Builder:
             self.add(
                 "global_option_set", s.get("metadata_id"),
                 {"name": s["name"], "type": s["type"], "options": s["options"]},
-                None, "custom" if s["custom"] else "system", None, [], _OPTION_SET,
+                None, "custom" if s["custom"] else "system", s.get("managed"), [], _OPTION_SET,
             )  # fmt: skip
         seen_relationships: set[str] = set()
         for d in details:
@@ -1485,7 +1485,10 @@ class _Builder:
         one whose dependent is itself stock is stock's own edge and goes quietly.
         """
         self._keep_parents()
-        left = {(p.kind, p.key) for p in self.pending if p.stock}
+        # Edges name a component by (kind, key): a key a kept record also holds is not left out.
+        left = {(p.kind, p.key) for p in self.pending if p.stock} - {
+            (p.kind, p.key) for p in self.pending if not p.stock
+        }
         kept: list[_Pending] = []
         for p in self.pending:
             if p.stock:

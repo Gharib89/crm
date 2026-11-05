@@ -80,6 +80,7 @@ def _option_set(meta: dict[str, Any]) -> dict[str, Any]:
         "metadata_id": meta.get("MetadataId"),
         "global": bool(meta.get("IsGlobal")),
         "custom": bool(meta.get("IsCustomOptionSet")),
+        "managed": bool(meta.get("IsManaged")),
         "type": meta.get("OptionSetType") or "",
         "options": [{"value": o.get("Value"), "label": _label(o.get("Label"))} for o in options],
     }

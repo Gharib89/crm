@@ -230,6 +230,39 @@ def test_the_ribbon_rule_keeps_a_custom_entry_and_drops_a_stock_only_ribbon(
     assert _keys(_manifest(tmp_path / "inv"), "ribbon") == ["application", "new_project"]
 
 
+def test_a_global_option_set_that_is_managed_is_stock(monkeypatch, tmp_path):
+    sets = [
+        {"name": "new_tier", "metadata_id": _id(300), "global": True, "custom": True,
+         "managed": False, "type": "Picklist", "options": []},
+        {"name": "msdyn_stage", "metadata_id": _id(301), "global": True, "custom": True,
+         "managed": True, "type": "Picklist", "options": []},
+    ]  # fmt: skip
+    monkeypatch.setattr(legacy_reads, "list_option_sets", lambda c: sets)
+    _extract(FakeClient(org=_org()), tmp_path / "inv", include_system=False)
+    assert _keys(_manifest(tmp_path / "inv"), "global_option_set") == ["new_tier"]
+
+
+def test_an_edge_to_a_key_a_kept_row_also_holds_is_not_a_stock_edge(tmp_path):
+    org = _org()
+    base = tmp_path / "base"
+    _extract(FakeClient(org=org), base, include_system=False)
+    clash = copy.deepcopy(org)
+    clash["webresource"][0].append(
+        {
+            "id": _id(13),
+            "name": "new_/scripts/project.js",
+            "displayname": None,
+            "webresourcetype": 3,
+            "ismanaged": True,
+            "solutionid": _ref("solution", 3),
+            "content": base64.b64encode(b"stock").decode(),
+        }
+    )
+    _extract(FakeClient(org=clash), tmp_path / "clash", include_system=False)
+    for kind in ("web_resource", "solution_membership", "dependency"):
+        assert _keys(_manifest(tmp_path / "clash"), kind) == _keys(_manifest(base), kind)
+
+
 def test_a_kind_with_no_ismanaged_is_kept_and_recorded_as_a_gap(tmp_path):
     org = _org()
     for row in org["savedquery"][0]:

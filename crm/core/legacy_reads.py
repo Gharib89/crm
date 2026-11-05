@@ -59,6 +59,7 @@ def _option_set(el: ET.Element) -> dict[str, Any]:
         "metadata_id": el.findtext("c:MetadataId", None, _MD),
         "global": _flag(el, "c:IsGlobal"),
         "custom": _flag(el, "c:IsCustomOptionSet"),
+        "managed": _flag(el, "c:IsManaged"),
         "type": el.findtext("c:OptionSetType", "", _MD),
         "options": [
             {

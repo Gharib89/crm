@@ -21,11 +21,11 @@ binaries). It describes what is deployed; it is never a spec for `crm apply`.
   reads still run org-wide, so a narrowed run is not proportionally quicker. An
   unknown solution name is a read error on the `solution` kind (exit 1), not a
   usage error.
-- **The default leaves out stock components** (managed, or owned by a managed
+- **An extract can leave out stock components** (managed, or owned by a managed
   solution) and their payload reads; the manifest's `scope.system` says
   `excluded`, and edges into them show as `platform:` gaps. A managed component
-  customized in place is missed: audit it with a full extract (see `--help`),
-  and extract both stages of a `diff` the same way.
+  customized in place is missed: audit it with a full-scope extract, and extract
+  both stages of a `diff` with the same scope.
 - **Resume by re-running the identical command on the same `--out` folder.** It
   reuses finished reads (`data.resumed`, `data.reused`) and continues paging
   after the last finished page. A folder holding a checkpoint for another org
