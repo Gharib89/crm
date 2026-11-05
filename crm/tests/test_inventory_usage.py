@@ -341,3 +341,18 @@ def test_the_command_reads_no_usage_by_default(monkeypatch, tmp_path):
 def test_a_time_cap_without_with_usage_is_a_usage_error(monkeypatch, tmp_path):
     result, _, _ = _run(monkeypatch, tmp_path, "--usage-time-cap", "30")
     assert result.exit_code == 2 and "--with-usage" in result.output
+
+
+def test_diff_command_warns_when_only_one_side_read_usage(tmp_path):
+    from click.testing import CliRunner
+
+    from crm.cli import cli
+
+    plain = tmp_path / "plain"
+    _extract(UsageSource(FakeClient(), _answers()), plain)
+    usage = _usage_manifest(tmp_path)
+    mixed = CliRunner().invoke(cli, ["inventory", "diff", str(plain), str(usage)])
+    assert mixed.exit_code == 0, mixed.output
+    assert "usage is not compared" in mixed.output
+    same = CliRunner().invoke(cli, ["inventory", "diff", str(usage), str(usage)])
+    assert "usage is not compared" not in same.output

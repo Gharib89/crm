@@ -26,6 +26,12 @@ binaries). It describes what is deployed; it is never a spec for `crm apply`.
   `excluded`, and edges into them show as `platform:` gaps. A managed component
   customized in place is missed: audit it with a full-scope extract, and extract
   both stages of a `diff` with the same scope.
+- **`--with-usage` records a per-row `usage`** on entities, plug-ins and processes.
+  A row with no `usage` was not read, which differs from `state: unknown` (the
+  probe could not tell); count `unknown` as unconfirmed. A failed probe leaves its
+  rows `unknown`, adds a gap and a `data.errors` line, exits 1 and keeps the
+  checkpoint: a re-run probes only the group that failed. `diff` compares usage
+  only when both stages were extracted with it.
 - **Resume by re-running the identical command on the same `--out` folder.** It
   reuses finished reads (`data.resumed`, `data.reused`) and continues paging
   after the last finished page. A folder holding a checkpoint for another org

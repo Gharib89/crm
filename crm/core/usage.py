@@ -972,7 +972,7 @@ def annotate_v9_processes(
     return attach(items, by_id, key=lambda r: r["workflowid"], exclude_unknown=exclude_unknown)
 
 
-# ── inventory extract (slice #1095) ──────────────────────────────────────
+# ── inventory extract ──────────────────────────────────────
 
 #: `inventory extract --with-usage` probes by group: the manifest kinds each fills, and the
 #: signal their rows read `unknown` under when the whole group's probe fails.

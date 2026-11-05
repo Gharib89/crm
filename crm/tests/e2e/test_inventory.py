@@ -101,9 +101,11 @@ def test_inventory_extract_with_usage_records_usage_and_changes_nothing_else(cli
         check=False,
     )  # fmt: skip
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert "[crm] extract stage=usage-entity" in proc.stderr, proc.stderr
     parsed = inventory.read_inventory(tmp_path / "usage")
     assert parsed.scope.usage_read is True
+    # A group's stage prints only when the scope holds rows of it.
+    if any(r.kind == "entity" for r in parsed.records):
+        assert "[crm] extract stage=usage-entity" in proc.stderr, proc.stderr
     with_usage = {"entity", "plugin_assembly", "plugin_type", "step", "process"}
     assert {r.kind for r in parsed.records if r.usage} <= with_usage
     assert all(r.usage for r in parsed.records if r.kind == "entity")

@@ -244,6 +244,8 @@ def inventory_diff_cmd(ctx: CLIContext, a: Path, b: Path, out_file: Path | None)
         meta["incomplete"] = ", ".join(
             f"{kind} (A {s['a']}, B {s['b']})" for kind, s in incomplete.items()
         )
+    if diff.a.scope.usage_read != diff.b.scope.usage_read:
+        meta["warning"] = "only one side was read with --with-usage: usage is not compared"
     if out_file is not None:
         meta["out"] = str(out_file)
     ctx.emit(True, table={"headers": ["kind", *VERDICTS], "rows": rows}, meta=meta)
