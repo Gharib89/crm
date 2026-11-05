@@ -155,7 +155,13 @@ def _members(packages_dir: Path, manifest_sha: str) -> dict[str, list[str]]:
         pid = cast(dict[str, Any], item).get("id") if type(item) is dict else None
         if type(pid) is not str or not PACKAGE_ID.fullmatch(pid):
             raise InventoryError(f"{packages_dir / 'index.json'}: malformed package {item!r}")
-        members = load(packages_dir / f"{pid}.json").get("members")
+        package = load(packages_dir / f"{pid}.json")
+        if package.get("schema_version") != PACKAGES_VERSION or package.get("id") != pid:
+            raise InventoryError(
+                f"{packages_dir / pid}.json: id or schema_version is not this crm's"
+                f" (packages schema_version {PACKAGES_VERSION})"
+            )
+        members = package.get("members")
         if type(members) is not list:
             raise InventoryError(f"{packages_dir / pid}.json: members is not a list")
         for member in cast(list[Any], members):

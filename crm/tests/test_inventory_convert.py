@@ -305,6 +305,15 @@ def test_a_packages_folder_of_another_inventory_or_version_is_refused(world):
         world.run()
 
 
+def test_a_package_file_of_another_version_is_refused(world):
+    pkg = next(p for p in world.packages.glob("pkg-*.json"))
+    data = json.loads(pkg.read_text(encoding="utf-8"))
+    data["schema_version"] = 999
+    pkg.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(inv.InventoryError, match="schema_version"):
+        world.run()
+
+
 def test_diff_lines_split_on_lf_only(world):
     from crm.core.inventory_convert import _diff
 
@@ -396,6 +405,12 @@ def test_global_context_before_and_after(before, after):
         "var Xrm = mock; x = Xrm.Page.context.getClientUrl();",
         "var f = (Xrm) => Xrm.Page.context.getClientUrl();",
         "try {} catch (Xrm) { x = Xrm.Page.context.getClientUrl(); }",
+        "function load({Xrm = fb}) { return Xrm.Page.context.getClientUrl(); }",
+        "import Xrm from 'x'; x = Xrm.Page.context.getClientUrl();",
+        "import {Xrm} from 'x'; x = Xrm.Page.context.getClientUrl();",
+        "for (Xrm of list) { x = Xrm.Page.context.getClientUrl(); }",
+        "x = window.Xrm.Page.context.getClientUrl();",
+        "x = parent.Xrm.Page.context.getClientUrl();",
         "x = Xrm.Page?.context.getClientUrl();",
         "x = Xrm?.Page.context.getClientUrl();",
         "x = Xrm.Page.context?.getClientUrl();",

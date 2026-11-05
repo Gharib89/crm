@@ -93,13 +93,15 @@ def _is_xrm_page_context(node: Node) -> bool:
     if obj is None or prop is None or prop.text != b"context" or obj.type != "member_expression":
         return False
     root, page = obj.child_by_field_name("object"), obj.child_by_field_name("property")
-    return (
-        root is not None
-        and page is not None
-        and root.type == "identifier"
-        and root.text == b"Xrm"
-        and page.text == b"Page"
-    )
+    return root is not None and page is not None and _is_xrm(root) and page.text == b"Page"
+
+
+def _is_xrm(root: Node) -> bool:
+    """True for ``Xrm`` or a qualified ``<owner>.Xrm`` (``window.Xrm``, ``parent.Xrm``)."""
+    if root.type == "member_expression":
+        prop = root.child_by_field_name("property")
+        return prop is not None and prop.text == b"Xrm"
+    return root.type == "identifier" and root.text == b"Xrm"
 
 
 _DECLARES = frozenset(
@@ -112,10 +114,25 @@ _DECLARES = frozenset(
     )
 )
 _PATTERNS = frozenset(
-    ("formal_parameters", "rest_pattern", "array_pattern", "object_pattern", "pair_pattern")
+    (
+        "formal_parameters",
+        "rest_pattern",
+        "array_pattern",
+        "object_pattern",
+        "pair_pattern",
+        "import_clause",
+        "import_specifier",
+        "namespace_import",
+    )
 )
 _ASSIGNS = frozenset(
-    ("assignment_expression", "augmented_assignment_expression", "assignment_pattern")
+    (
+        "assignment_expression",
+        "augmented_assignment_expression",
+        "assignment_pattern",
+        "object_assignment_pattern",
+        "for_in_statement",
+    )
 )
 
 
@@ -175,7 +192,13 @@ def _plan_global_context(root: Node) -> Plan:
             and call.type == "call_expression"
             and call.child_by_field_name("function") == parent
         )
-        if shadowed:
+        page = node.child_by_field_name("object")
+        xrm = page.child_by_field_name("object") if page is not None else None
+        if xrm is not None and xrm.type == "member_expression":
+            unproven.append(
+                Unproven(line, "a qualified Xrm (window.Xrm, parent.Xrm) may be another frame")
+            )
+        elif shadowed:
             unproven.append(
                 Unproven(line, "Xrm is bound in this file, so it may not be the global")
             )
