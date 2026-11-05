@@ -9,6 +9,33 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.89.2 (2026-11-05)
+
+### Bug Fixes
+
+- **legacy**: Filter crm legacy components by solution and entity
+  ([#1079](https://github.com/Gharib89/crm/pull/1079),
+  [`1f32ac7`](https://github.com/Gharib89/crm/commit/1f32ac7b93ea8d51dbc82267eb2240136f1ab0bc))
+
+- **legacy**: Harden scoped component reads after self-review
+  ([#1079](https://github.com/Gharib89/crm/pull/1079),
+  [`1f32ac7`](https://github.com/Gharib89/crm/commit/1f32ac7b93ea8d51dbc82267eb2240136f1ab0bc))
+
+- **legacy**: Scope crm legacy components by solution and entity
+  ([#1079](https://github.com/Gharib89/crm/pull/1079),
+  [`1f32ac7`](https://github.com/Gharib89/crm/commit/1f32ac7b93ea8d51dbc82267eb2240136f1ab0bc))
+
+### Documentation
+
+- **legacy**: Document scoped crm legacy components reads
+  ([#1079](https://github.com/Gharib89/crm/pull/1079),
+  [`1f32ac7`](https://github.com/Gharib89/crm/commit/1f32ac7b93ea8d51dbc82267eb2240136f1ab0bc))
+
+- **skill**: Fit the scoped legacy components note in the setup.md line cap
+  ([#1079](https://github.com/Gharib89/crm/pull/1079),
+  [`1f32ac7`](https://github.com/Gharib89/crm/commit/1f32ac7b93ea8d51dbc82267eb2240136f1ab0bc))
+
+
 ## v1.89.1 (2026-11-04)
 
 ### Bug Fixes
