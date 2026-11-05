@@ -65,6 +65,9 @@ jobs:
           # ship the archive. profile list is fully offline (no live org).
           ./dist/crm/crm --json --jq 'length' profile list
           ./dist/crm/crm --json --fields name profile list
+          # Both shipped skills ride in the bundle (#1062).
+          ./dist/crm/crm --json skill install --skill crm-migration --dest "$RUNNER_TEMP/crm-migration"
+          test -f "$RUNNER_TEMP/crm-migration/SKILL.md"
 
       - name: Smoke test (Windows)
         if: runner.os == 'Windows'
@@ -76,6 +79,8 @@ jobs:
           .\dist\crm\crm.exe --help
           .\dist\crm\crm.exe --json --jq 'length' profile list
           .\dist\crm\crm.exe --json --fields name profile list
+          .\dist\crm\crm.exe --json skill install --skill crm-migration --dest "$env:RUNNER_TEMP\crm-migration"
+          if (-not (Test-Path "$env:RUNNER_TEMP\crm-migration\SKILL.md")) { exit 1 }
 
       - name: Archive (Linux)
         if: runner.os != 'Windows'

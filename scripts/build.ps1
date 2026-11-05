@@ -22,3 +22,7 @@ pyinstaller crm.spec
 Write-Host ""
 Write-Host "Built: $RepoRoot\dist\crm\  (onedir bundle; launcher: dist\crm\crm.exe)"
 & "$RepoRoot\dist\crm\crm.exe" --version
+# Both shipped skills ride in the bundle (crm.spec datas, #1062).
+foreach ($skill in 'skills', 'migration-skill') {
+    if (-not (Test-Path "$RepoRoot\dist\crm\_internal\crm\$skill\SKILL.md")) { throw "missing bundled $skill" }
+}

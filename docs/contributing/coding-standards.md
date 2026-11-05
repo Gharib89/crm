@@ -202,8 +202,9 @@ Full policy in [`docs/contributing/encoding.md`](encoding.md); the load-bearing 
 ## Docs-in-sync obligation
 
 Every new/changed command, flag, or behavior ships its docs in the same change:
-`docs/how-to/<group>.md`, `docs/reference/cli.md`, `README.md` if user-facing, and `crm/skills/`
-if the change is workflow-visible. Never hand-edit `CHANGELOG.md` — `python-semantic-release`
+`docs/how-to/<group>.md`, `docs/reference/cli.md`, `README.md` if user-facing, and the shipped
+skills (`crm/skills/`, plus `crm/migration-skill/` when the change touches the migration
+workflow) if the change is workflow-visible. Never hand-edit `CHANGELOG.md` — `python-semantic-release`
 generates it from commit subjects. A new lazily-loaded command group is added to `crm.spec`
 hiddenimports (PyInstaller) in the same change.
 
