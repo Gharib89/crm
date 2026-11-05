@@ -224,3 +224,13 @@ def test_the_eta_averages_read_units_only_when_reused_units_come_first(tmp_path)
     assert [e.eta for e in events[:11]] == [None] * 11  # reused units never feed it
     assert events[11].done == 11 and events[11].eta == _STEP * (16 - 11)  # the fifth read
     assert events[7].reused == 6
+
+
+@pytest.mark.parametrize(
+    ("seconds", "text"),
+    [(29.4, "~29s"), (59.6, "~1m"), (3599.0, "~1h00m"), (7199.0, "~2h00m"), (4020.0, "~1h07m")],
+)
+def test_an_eta_never_shows_sixty_of_a_smaller_unit(seconds, text):
+    assert _lines([Progress("ribbons", 5, 9, eta=seconds)], lambda: 0.0) == [
+        f"[crm] extract stage=ribbons done=5/9 eta={text} (estimate)"
+    ]

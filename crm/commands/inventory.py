@@ -37,11 +37,12 @@ def inventory_group():
 
 
 def _eta(seconds: float) -> str:
-    if seconds < 60:
-        return f"~{round(seconds)}s"
-    if seconds < 3600:
-        return f"~{round(seconds / 60)}m"
-    return f"~{int(seconds // 3600)}h{round(seconds % 3600 / 60):02d}m"
+    if (secs := round(seconds)) < 60:
+        return f"~{secs}s"
+    if (mins := round(secs / 60)) < 60:
+        return f"~{mins}m"
+    hours, mins = divmod(mins, 60)
+    return f"~{hours}h{mins:02d}m"
 
 
 class ProgressLines:
