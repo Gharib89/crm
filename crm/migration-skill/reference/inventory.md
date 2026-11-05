@@ -50,7 +50,7 @@ After each upgrade stage, extract again and run `crm inventory diff <earlier>
 |---|---|
 | `unchanged`, `identity_only` | Expected; a GUID changing with the upgrade is normal. Matching is evidence, not proof of equal behavior. |
 | `added` | Note it. |
-| `changed` | Read its entry in the `--out` file and decide whether the upgrade explains it. Every ribbon reading `changed` means one side is an older extract: re-extract it. |
+| `changed` | Read its entry in the `--out` file and decide whether the upgrade explains it. When every ribbon reads `changed`, one side is an older extract: re-extract it. |
 | `removed` | Treat as a lost component: find out why before any further stage runs. |
 | `ambiguous` | The pair cannot be matched: resolve by hand and list it as an unknown. |
 | `not_comparable` | Neither a pass nor a difference. Fix the extraction and re-diff, or carry it as an unknown. |
