@@ -74,7 +74,8 @@ one key. The code fields (`form_type`, `stage`, `mode`, `image_type`,
 `category`, `dependency_type`) are the platform's integer codes, written in
 decimal, which CRM 2011 and v9 share. Every other key field is a non-empty
 string, and only the four fields the Notes column calls nullable may be
-`null`, written as an empty part. A
+`null`, written as an empty part. The one other empty value is a reference to the
+application ribbon or default sitemap (below). A
 field holding another component's key (`plugin_type`, `step`, `member_key`,
 `dependent_key`, `required_key`) nests it as one escaped part. The reader
 refuses a record whose `key` differs from the key its fields give
@@ -96,8 +97,8 @@ refuses a record whose `key` differs from the key its fields give
 | `step_image` | `step`, `alias`, `image_type` | |
 | `process` | `category`, `primary_entity`, `name` | `category` is the `workflow.category` code; `primary_entity` is nullable |
 | `solution` | `unique_name` | |
-| `solution_membership` | `solution`, `member_kind`, `member_key` | |
-| `dependency` | `dependent_kind`, `dependent_key`, `required_kind`, `required_key`, `dependency_type` | |
+| `solution_membership` | `solution`, `member_kind`, `member_key` | `member_key` is `""` when `member_kind` is `ribbon` or `sitemap` and the member is the application ribbon or default sitemap |
+| `dependency` | `dependent_kind`, `dependent_key`, `required_kind`, `required_key`, `dependency_type` | a key field is `""` on the same terms: its kind field is `ribbon` or `sitemap` and the component is the application ribbon or default sitemap |
 | `ribbon` | `entity` | `null` is the application ribbon, key `""` (empty): no entity logical name is empty, so it never meets the ribbon of an entity named `application` |
 | `sitemap` | `unique_name` | `null` is the default sitemap, key `""` (empty), for the same reason: a sitemap named `default` keeps its own key |
 

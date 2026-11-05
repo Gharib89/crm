@@ -33,7 +33,7 @@ The run is **read-only**, and nothing is published first: the inventory holds th
 every request goes through the same SOAP allowlist as `crm legacy`, so
 `PublishXml`, `PublishAllXml` and `ImportSolution` are refused. On a v9 profile
 every call is a GET, so a [read-only profile](../adr/0021-read-only-profile-tty-gated-guardrail.md)
-runs it too. It reads every v2 kind (`scope.mode: "org"` unless you pass
+runs it too. It reads every v1 kind (`scope.mode: "org"` unless you pass
 `--solution`):
 
 - entities, global option sets, and each entity's attributes, relationships and

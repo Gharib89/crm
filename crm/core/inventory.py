@@ -56,7 +56,8 @@ KEY_FIELDS: dict[str, tuple[str, ...]] = {
 KINDS: tuple[str, ...] = tuple(KEY_FIELDS)
 
 #: Key fields holding a platform integer code (shared by CRM 2011 and v9, so keys
-#: match across stages). Every other key field is a non-empty string.
+#: match across stages). Every other key field is a non-empty string, except that a
+#: key reference (`_REFERENCE_FIELDS`) to the application ribbon or default sitemap is "".
 INTEGER_KEY_FIELDS = frozenset(
     ("form_type", "stage", "mode", "image_type", "category", "dependency_type")
 )
@@ -74,6 +75,8 @@ NULLABLE_KEY_FIELDS = frozenset(
 #: default sitemap). v2 keys them ``""``, which no entity logical name or sitemap
 #: unique name can be; the reader upgrades a v1 record by its field, not its key.
 _V1_NULL_KEY: dict[str, str] = {"ribbon": "application", "sitemap": "default"}
+#: The kinds whose key may be (or be referenced as) the empty key.
+_EMPTY_KEY_KINDS = frozenset(_V1_NULL_KEY)
 
 
 class InventoryError(Exception):
@@ -117,7 +120,8 @@ def component_key(kind: str, fields: Mapping[str, Any]) -> str:
     only `NULLABLE_KEY_FIELDS` may be null, as the empty part, so a null and
     an empty string never meet. The application ribbon (null entity) and the
     default sitemap (null name) therefore key ``""``, never a name an entity or
-    sitemap can hold.
+    sitemap can hold. A reference to either, in a membership's or dependency's
+    key-reference field (`_REFERENCE_FIELDS`), is that same empty key.
 
     Raises:
         InventoryError: the kind is unknown, or a key field is missing or mistyped.
@@ -131,7 +135,7 @@ def component_key(kind: str, fields: Mapping[str, Any]) -> str:
     parts: list[str] = []
     for name in names:
         referenced = fields.get(_REFERENCE_FIELDS.get(name, ""))
-        parts.append("" if fields[name] == "" and referenced in _V1_NULL_KEY
+        parts.append("" if fields[name] == "" and referenced in _EMPTY_KEY_KINDS
                      else _key_part(kind, name, fields[name]))  # fmt: skip
     return "|".join(parts)
 
@@ -452,7 +456,7 @@ def _record(value: object, where: str, version: int = SCHEMA_VERSION) -> Record:
     kind = _str(obj, "kind", where, choices=KINDS)
     key = _req(obj, "key", where)
     # Only the application ribbon and default sitemap key "" (below, by their fields).
-    if not isinstance(key, str) or (not key and kind not in _V1_NULL_KEY):
+    if not isinstance(key, str) or (not key and kind not in _EMPTY_KEY_KINDS):
         raise InventoryError(f"{where}.key must be a non-empty string")
     fields = _obj(_req(obj, "fields", where), f"{where}.fields")
     _defined_fields(kind, fields, f"{where}.fields")

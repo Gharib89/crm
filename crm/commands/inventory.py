@@ -114,7 +114,7 @@ def inventory_extract_cmd(
 
     Runs on every profile: a crm2011 profile is read over the CRM 2011 SOAP
     endpoint, a v9 on-prem or Dataverse online profile over the Web API. It
-    reads every v2 kind and never publishes or writes to the org, so a
+    reads every v1 kind and never publishes or writes to the org, so a
     read-only profile runs it. By default it keeps the migration scope and
     leaves stock components out (managed, or owned by a managed solution;
     their payloads are never fetched), still counting any edge to one;
