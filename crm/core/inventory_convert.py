@@ -25,6 +25,7 @@ from __future__ import annotations
 import difflib
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -32,6 +33,8 @@ from typing import Any, Literal, cast
 from crm.core.code_parse import error_count, parse
 from crm.core.inventory import MANIFEST_NAME, InventoryError, normalize_text, read_inventory
 from crm.core.inventory_assess import ContentEvidence, ContentPattern, load_rules, read_findings
+from crm.core.inventory_packages import PACKAGE_ID
+from crm.core.inventory_packages import SCHEMA_VERSION as PACKAGES_VERSION
 from crm.core.inventory_source_map import read_source_map
 from crm.core.inventory_transforms import TRANSFORMS, Edit, Plan, Transform
 
@@ -113,8 +116,12 @@ def _hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _members(packages_dir: Path) -> dict[str, list[str]]:
-    """Map each ``<kind>:<key>`` member to the ids of the work packages that hold it."""
+def _members(packages_dir: Path, manifest_sha: str) -> dict[str, list[str]]:
+    """Map each ``<kind>:<key>`` member to the ids of the work packages that hold it.
+
+    The folder must be a packages output of this inventory, and every package id must
+    be a real one, since the id names a folder under ``--out``.
+    """
 
     def load(path: Path) -> dict[str, Any]:
         try:
@@ -126,12 +133,27 @@ def _members(packages_dir: Path) -> dict[str, list[str]]:
         return cast(dict[str, Any], data)
 
     held: dict[str, list[str]] = {}
-    packages = load(packages_dir / "index.json").get("packages")
+    index = load(packages_dir / "index.json")
+    if index.get("schema_version") != PACKAGES_VERSION:
+        raise InventoryError(
+            f"{packages_dir / 'index.json'}: schema_version {index.get('schema_version')!r} is not"
+            f" supported; this crm reads packages schema_version {PACKAGES_VERSION}"
+        )
+    inventory = index.get("inventory")
+    if (
+        type(inventory) is not dict
+        or cast(dict[str, Any], inventory).get("manifest_sha256") != manifest_sha
+    ):
+        raise InventoryError(
+            "the packages folder was made from another inventory (its manifest_sha256 differs);"
+            " re-run `crm inventory packages` on this one"
+        )
+    packages = index.get("packages")
     if type(packages) is not list:
         raise InventoryError(f"{packages_dir / 'index.json'}: packages is not a list")
     for item in cast(list[Any], packages):
         pid = cast(dict[str, Any], item).get("id") if type(item) is dict else None
-        if type(pid) is not str:
+        if type(pid) is not str or not PACKAGE_ID.fullmatch(pid):
             raise InventoryError(f"{packages_dir / 'index.json'}: malformed package {item!r}")
         members = load(packages_dir / f"{pid}.json").get("members")
         if type(members) is not list:
@@ -172,7 +194,7 @@ def _gate(
 
 def _diff(old: str, new: str, path: str) -> str:
     def lines(text: str) -> list[str]:
-        out = text.splitlines(keepends=True)
+        out = re.findall(r"[^\n]*\n|[^\n]+", text)
         if out and not out[-1].endswith("\n"):
             out[-1] += "\n\\ No newline at end of file\n"
         return out
@@ -220,7 +242,7 @@ def convert(
             for c in source_map.components
             if c.status == "matched" and c.files
         }
-    held = _members(packages_dir)
+    held = _members(packages_dir, manifest_sha)
     records = {(r.kind, r.key): r for r in inv.records}
     rules = {r.id: r for r in load_rules().rules}
 
@@ -299,7 +321,9 @@ def _write(out: Path, entry: Entry, path: str, source: bytes, patched: bytes) ->
     folder = out / entry.package
     folder.mkdir(parents=True, exist_ok=True)
     name = Path(path).name
-    stem, _, ext = name.partition(".content")
+    stem, sep, ext = name.rpartition(".content")
+    if not sep:
+        stem, ext = name, ""
     old, new = source.decode("utf-8"), patched.decode("utf-8")
     files = {
         "diff": (f"{stem}.diff", _diff(old, new, path)),

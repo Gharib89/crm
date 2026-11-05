@@ -282,6 +282,49 @@ def test_findings_of_another_inventory_are_refused(world):
         world.run()
 
 
+def _edit_index(world, edit):
+    path = world.packages / "index.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    edit(data)
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def test_a_package_id_that_escapes_out_is_refused(world):
+    _edit_index(world, lambda d: d["packages"][0].update(id="../escaped"))
+    with pytest.raises(inv.InventoryError, match="malformed package"):
+        world.run()
+    assert not (world.out.parent / "escaped.json").exists()
+
+
+def test_a_packages_folder_of_another_inventory_or_version_is_refused(world):
+    _edit_index(world, lambda d: d["inventory"].update(manifest_sha256="0" * 64))
+    with pytest.raises(inv.InventoryError, match="packages folder was made from another"):
+        world.run()
+    _edit_index(world, lambda d: d.update(schema_version=999))
+    with pytest.raises(inv.InventoryError, match="schema_version 999"):
+        world.run()
+
+
+def test_diff_lines_split_on_lf_only(world):
+    from crm.core.inventory_convert import _diff
+
+    old = "a\u0085b\rc\nXrm.Page.context.getUserId();\n"
+    diff = _diff(old, old.replace("Xrm.Page.context", "Y"), "p.js")
+    assert diff.count("\n-") == 1 and "@@ -1,2 +1,2 @@" in diff
+
+
+def test_names_that_slug_alike_keep_distinct_files(tmp_path):
+    from crm.core.inventory_convert import Entry, _write
+
+    out = tmp_path / "o"
+    for path in (
+        "artifacts/web_resource/main.content-aaa.content.js",
+        "artifacts/web_resource/main.content.extra-bbb.content.js",
+    ):
+        _write(out, Entry("pkg-x", "web_resource", path, "r", "t", "patched"), path, b"a\n", b"b\n")
+    assert len(list((out / "pkg-x").glob("*.diff"))) == 2
+
+
 def test_an_artifact_changed_since_extraction_is_manual_review(world):
     record = next(r for r in inv.read_inventory(world.inventory).records if r.key == CTX_NAME)
     (world.inventory / record.artifacts[0].path).write_text("// edited\n", encoding="utf-8")
@@ -349,6 +392,14 @@ def test_global_context_before_and_after(before, after):
 @pytest.mark.parametrize(
     "source",
     [
+        "function f(Xrm) { return Xrm.Page.context.getClientUrl(); }",
+        "var Xrm = mock; x = Xrm.Page.context.getClientUrl();",
+        "var f = (Xrm) => Xrm.Page.context.getClientUrl();",
+        "try {} catch (Xrm) { x = Xrm.Page.context.getClientUrl(); }",
+        "x = Xrm.Page?.context.getClientUrl();",
+        "x = Xrm?.Page.context.getClientUrl();",
+        "x = Xrm.Page.context?.getClientUrl();",
+        "x = Xrm.Page.context.getClientUrl?.();",
         "var c = Xrm.Page.context;",
         "x = Xrm.Page.context.getUserName();",
         "x = Xrm.Page.context.getClientUrl;",

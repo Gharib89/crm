@@ -102,6 +102,45 @@ def _is_xrm_page_context(node: Node) -> bool:
     )
 
 
+_DECLARES = frozenset(
+    (
+        "variable_declarator",
+        "function_declaration",
+        "function_expression",
+        "generator_function_declaration",
+        "class_declaration",
+    )
+)
+_PATTERNS = frozenset(
+    ("formal_parameters", "rest_pattern", "array_pattern", "object_pattern", "pair_pattern")
+)
+_ASSIGNS = frozenset(
+    ("assignment_expression", "augmented_assignment_expression", "assignment_pattern")
+)
+
+
+def _binds_xrm(node: Node) -> bool:
+    """True when *node* is an ``Xrm`` identifier that declares or assigns a local name."""
+    if node.type not in ("identifier", "shorthand_property_identifier_pattern"):
+        return False
+    if node.text != b"Xrm" or node.parent is None:
+        return False
+    parent = node.parent
+    if parent.type in _DECLARES:
+        return parent.child_by_field_name("name") == node
+    if parent.type in _ASSIGNS:
+        return parent.child_by_field_name("left") == node
+    if parent.type == "arrow_function":
+        return parent.child_by_field_name("parameter") == node
+    if parent.type == "catch_clause":
+        return parent.child_by_field_name("parameter") == node
+    return parent.type in _PATTERNS
+
+
+def _in_optional_chain(*nodes: Node | None) -> bool:
+    return any(n is not None and any(c.type == "optional_chain" for c in n.children) for n in nodes)
+
+
 def _plan_global_context(root: Node) -> Plan:
     """Rewrite ``Xrm.Page.context.<m>(...)`` to ``Xrm.Utility.getGlobalContext().<m>(...)``.
 
@@ -111,12 +150,16 @@ def _plan_global_context(root: Node) -> Plan:
     """
     edits: list[Edit] = []
     unproven: list[Unproven] = []
+    shadowed = False
+    sites: list[Node] = []
     stack = [root]
     while stack:
         node = stack.pop()
         stack.extend(node.children)
-        if not _is_xrm_page_context(node):
-            continue
+        shadowed = shadowed or _binds_xrm(node)
+        if _is_xrm_page_context(node):
+            sites.append(node)
+    for node in sites:
         line = node.start_point.row + 1
         parent = node.parent
         method = (
@@ -132,7 +175,15 @@ def _plan_global_context(root: Node) -> Plan:
             and call.type == "call_expression"
             and call.child_by_field_name("function") == parent
         )
-        if method is None or not called:
+        if shadowed:
+            unproven.append(
+                Unproven(line, "Xrm is bound in this file, so it may not be the global")
+            )
+        elif _in_optional_chain(node, node.child_by_field_name("object"), parent, call):
+            unproven.append(
+                Unproven(line, "an optional chain: the rewrite would drop its short-circuit")
+            )
+        elif method is None or not called:
             unproven.append(Unproven(line, "Xrm.Page.context is used other than as a direct call"))
         elif method.text is None or method.text.decode() not in SAME_METHOD:
             name = method.text.decode() if method.text else "?"
