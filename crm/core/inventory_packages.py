@@ -36,8 +36,13 @@ from crm.core.inventory import (
     Record,
     read_inventory,
 )
+from crm.core.inventory_assess import Finding as AssessFinding
+from crm.core.inventory_assess import FindingsFile
 from crm.core.inventory_source_map import SourceMap
 from crm.utils.safe_xml import fromstring
+
+#: The compatibility classes a package counts; ``clear`` is merged nowhere.
+COMPAT_CLASSES = ("blocker", "deprecated", "optional", "unknown")
 
 #: The format version of the index and package files.
 SCHEMA_VERSION = 1
@@ -152,8 +157,10 @@ class Consumer:
 class Finding:
     """A compatibility finding or unknown about one component.
 
-    *type* is ``unknown_edge``, ``extraction_gap`` or ``source_status``; the
-    compatibility rules of a later slice add their own types to the same list.
+    *type* is ``unknown_edge``, ``extraction_gap`` or ``source_status``, or
+    ``compatibility`` for a finding `crm inventory assess` wrote: that one also
+    carries its *cls* (``blocker``, ``deprecated``, ``optional`` or ``unknown``),
+    *rule* id, *evidence* and the Microsoft Learn *sources* of its rule.
     """
 
     type: str
@@ -161,18 +168,30 @@ class Finding:
     reason: str | None
     status: str | None = None
     reference: str | None = None
+    cls: str | None = None
+    rule: str | None = None
+    evidence: Mapping[str, Any] | None = None
+    sources: tuple[str, ...] = ()
 
     def sort_key(self) -> tuple[str, ...]:
-        return (self.component, self.type, self.reason or "", self.reference or "")
+        return (self.component, self.type, self.reason or "", self.reference or "", self.rule or "")
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "type": self.type,
             "component": self.component,
             "status": self.status,
             "reason": self.reason,
             "reference": self.reference,
         }
+        if self.cls is not None:
+            out |= {
+                "class": self.cls,
+                "rule": self.rule,
+                "evidence": self.evidence,
+                "sources": list(self.sources),
+            }
+        return out
 
 
 @dataclass(frozen=True)
@@ -228,7 +247,15 @@ class WorkPackage:
     scenarios: tuple[str, ...]
 
     def unknowns(self) -> int:
-        return sum(1 for f in self.findings if isinstance(f, Finding))
+        """The unknown edges, gaps and source statuses of the graph, not assess findings."""
+        return sum(1 for f in self.findings if isinstance(f, Finding) and f.cls is None)
+
+    def counts(self) -> dict[str, int]:
+        """Findings per compatibility class; ``unknown`` adds the graph's unknowns."""
+        found = [f.cls for f in self.findings if isinstance(f, Finding)]
+        return {c: found.count(c) for c in COMPAT_CLASSES} | {
+            "unknown": found.count("unknown") + self.unknowns()
+        }
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -265,9 +292,24 @@ class PackagesResult:
     unattached_gaps: tuple[ExtractionGap, ...]
     unattached_unknowns: tuple[Edge, ...]
     incomplete: Mapping[str, str]
+    #: The target of the findings file merged in, None when none was.
+    findings_target: str | None = None
+    #: Findings whose component is in no package.
+    unplaced: tuple[AssessFinding, ...] = ()
+
+    def _compatibility(self) -> dict[str, Any]:
+        totals = [p.counts() for p in self.packages]
+        return {
+            "target": self.findings_target,
+            **{c: sum(t[c] for t in totals) for c in COMPAT_CLASSES},
+            "unplaced": len(self.unplaced),
+        }
 
     def summary(self) -> dict[str, Any]:
         sizes = [len(p.members) for p in self.packages]
+        compatibility = (
+            {} if self.findings_target is None else {"compatibility": self._compatibility()}
+        )
         return {
             "schema_version": SCHEMA_VERSION,
             "inventory": dict(self.inventory),
@@ -290,18 +332,34 @@ class PackagesResult:
             "unattached_gaps": len(self.unattached_gaps),
             "unattached_unknowns": len(self.unattached_unknowns),
             "incomplete": dict(self.incomplete),
-        }
+        } | compatibility
 
     def index(self) -> dict[str, Any]:
         """The summary plus a line per package and scenario, and the unattached gaps."""
+        merged = self.findings_target is not None
+        extra = (
+            {
+                "compatibility": {
+                    **self._compatibility(),
+                    "unplaced": [
+                        {"kind": f.kind, "key": f.key, "class": f.cls, "rule": f.rule}
+                        for f in self.unplaced
+                    ],
+                }
+            }
+            if merged
+            else {}
+        )
         return {
             **self.summary(),
+            **extra,
             "packages": [
                 {
                     "id": p.id,
                     "file": f"{p.id}.json",
                     "members": len(p.members),
                     "unknowns": p.unknowns(),
+                    **({"counts": p.counts()} if merged else {}),
                     "scenarios": list(p.scenarios),
                 }
                 for p in self.packages
@@ -806,15 +864,22 @@ def _expected(behaviors: list[ExpectedBehavior]) -> Iterable[ExpectedBehavior | 
 
 
 def build_packages(
-    inventory_dir: Path, source_map: SourceMap, scenarios: Path | None = None
+    inventory_dir: Path,
+    source_map: SourceMap,
+    scenarios: Path | None = None,
+    findings_file: FindingsFile | None = None,
 ) -> PackagesResult:
     """Build the dependency graph of the inventory at *inventory_dir* and group it into packages.
 
     *source_map* must have been made from this inventory (its ``manifest_sha256``
     matches); *scenarios*, when given, is a scenario file (see `_scenarios`).
+    *findings_file*, when given, must name the same inventory: each of its
+    blocker, deprecated, optional and unknown findings joins the package holding
+    its component, or is listed as unplaced. It never changes which packages exist.
 
     Raises:
-        InventoryError: an input cannot be read, or the source map is of another inventory.
+        InventoryError: an input cannot be read, or the source map or findings
+            file is of another inventory.
     """
     inv = read_inventory(inventory_dir)
     manifest_sha = hashlib.sha256((inventory_dir / MANIFEST_NAME).read_bytes()).hexdigest()
@@ -822,6 +887,11 @@ def build_packages(
         raise InventoryError(
             "the source map was made from another inventory (its manifest_sha256 differs);"
             " re-run `crm inventory map-source` on this one"
+        )
+    if findings_file is not None and findings_file.manifest_sha256 != manifest_sha:
+        raise InventoryError(
+            "the findings file was made from another inventory (its manifest_sha256 differs);"
+            " re-run `crm inventory assess` on this one"
         )
     nodes: dict[str, Record] = {}
     for record in inv.records:
@@ -837,6 +907,12 @@ def build_packages(
         if gap.kind and gap.key:
             gaps.setdefault(_id(gap.kind, gap.key), []).append(gap)
     read_scenarios = _scenarios(scenarios) if scenarios is not None else []
+
+    judged: dict[str, list[AssessFinding]] = {}
+    for f in findings_file.findings if findings_file else ():
+        if f.cls != "clear":
+            judged.setdefault(_id(f.kind, f.key), []).append(f)
+    placed: set[str] = set()
 
     drafts: list[tuple[str, set[str], list[str], list[Edge], list[Finding]]] = []
     attached: set[str] = set()
@@ -862,6 +938,21 @@ def build_packages(
         ]
         if not members or not (findings or members & mapped.keys()):
             continue
+        if findings_file is not None:
+            for m in sorted(members & judged.keys()):
+                placed.add(m)
+                findings += [
+                    Finding(
+                        "compatibility",
+                        m,
+                        f.reason,
+                        cls=f.cls,
+                        rule=f.rule,
+                        evidence=f.evidence.to_dict() if f.evidence else None,
+                        sources=findings_file.sources.get(f.rule or "", ()),
+                    )
+                    for f in judged[m]
+                ]
         attached |= members & gaps.keys()
         packaged |= in_group
         package_id = f"pkg-{hashlib.sha256('\n'.join(sorted(members)).encode()).hexdigest()[:12]}"
@@ -913,7 +1004,13 @@ def build_packages(
                 tuple(_consumers(members, nodes, edges))
                 or (Unknown("nothing in the inventory references a member"),),
                 tuple(sorted(findings, key=Finding.sort_key))
-                or (Unknown("no compatibility rule evaluated; no unknown found"),),
+                or (
+                    Unknown(
+                        "the findings file holds nothing but clear for the members"
+                        if findings_file
+                        else "no compatibility rule evaluated; no unknown found"
+                    ),
+                ),
                 tuple(_expected(behaviors))
                 or (Unknown("no scenario seeds a member of this package"),),
                 tuple(_requirements(package_id, members, nodes, group_edges, refs.handlers))
@@ -934,4 +1031,14 @@ def build_packages(
     # An unknown edge from a node no package holds (an entity, a system web resource).
     loose = tuple(e for e in edges if e.target is None and e.source not in packaged)
     incomplete = {k: c.status for k, c in inv.coverage.items() if c.status != "complete"}
-    return PackagesResult(header, tuple(packages), tuple(reports), unattached, loose, incomplete)
+    unplaced = tuple(f for m, found in sorted(judged.items()) if m not in placed for f in found)
+    return PackagesResult(
+        header,
+        tuple(packages),
+        tuple(reports),
+        unattached,
+        loose,
+        incomplete,
+        findings_file.target if findings_file else None,
+        unplaced,
+    )

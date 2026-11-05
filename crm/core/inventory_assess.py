@@ -365,6 +365,93 @@ def dump_findings(result: AssessResult, *, generated_at: str | None = None) -> s
     return json.dumps(body, sort_keys=True, ensure_ascii=False, indent=2) + "\n"
 
 
+@dataclass(frozen=True)
+class FindingsFile:
+    """A findings file read back: the inventory it was made from, its findings, each rule's sources.
+
+    *sources* maps a rule id to the Microsoft Learn URLs that justify it, so a
+    reader can keep a finding's provenance without the rules file.
+    """
+
+    manifest_sha256: str
+    target: str
+    findings: tuple[Finding, ...]
+    sources: dict[str, tuple[str, ...]]
+
+
+def _field(obj: object, name: str, kind: type, where: str) -> Any:
+    """``obj[name]``, which must be a *kind*: the reader's one check, naming *where* on failure."""
+    value = cast(dict[str, Any], obj).get(name) if type(obj) is dict else None
+    if type(value) is not kind:
+        raise InventoryError(f"{where}: {name} must be a {kind.__name__}")
+    return value
+
+
+def _evidence(value: object, where: str) -> ContentEvidence | FieldEvidence | None:
+    if value is None:
+        return None
+    if type(value) is dict and "field" in value:
+        return FieldEvidence(
+            _field(value, "field", str, where), cast(dict[str, Any], value).get("value")
+        )
+    locations = tuple(
+        (_field(loc, "line", int, where), _field(loc, "column", int, where))
+        for loc in _field(value, "locations", list, where)
+    )
+    return ContentEvidence(
+        _field(value, "path", str, where),
+        _field(value, "sha256", str, where),
+        locations,
+        _field(value, "match_count", int, where),
+    )
+
+
+def read_findings(path: Path) -> FindingsFile:
+    """Read the findings file `dump_findings` wrote to *path*.
+
+    The version rule of ADR 0032 holds: an unknown ``schema_version`` is refused,
+    an unknown field is ignored.
+
+    Raises:
+        InventoryError: the file is unreadable, of another version or malformed.
+    """
+    where = f"findings file {path}"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:  # ValueError: malformed UTF-8 or JSON
+        raise InventoryError(f"cannot read {where}: {exc}") from exc
+    version = cast(dict[str, Any], data).get("schema_version") if type(data) is dict else None
+    if type(version) is not int or version != SCHEMA_VERSION:
+        raise InventoryError(
+            f"{where}: schema_version {version!r} is not supported;"
+            f" this crm reads findings schema_version {SCHEMA_VERSION}"
+        )
+    findings: list[Finding] = []
+    for i, item in enumerate(_field(data, "findings", list, where)):
+        at = f"{where}: findings[{i}]"
+        cls = _field(item, "class", str, at)
+        if cls not in CLASSES:
+            raise InventoryError(f"{at}: unknown class {cls!r}")
+        rule, reason = item.get("rule"), item.get("reason")
+        findings.append(
+            Finding(
+                _field(item, "kind", str, at),
+                _field(item, "key", str, at),
+                cls,
+                rule if isinstance(rule, str) else None,
+                reason if isinstance(reason, str) else None,
+                _evidence(item.get("evidence"), f"{at}: evidence"),
+            )
+        )
+    hit = _field(data, "rules_hit", dict, where)
+    sources = {
+        rule: tuple(str(u) for u in _field(entry, "sources", list, f"{where}: rules_hit.{rule}"))
+        for rule, entry in hit.items()
+    }
+    sha = _field(_field(data, "inventory", dict, where), "manifest_sha256", str, where)
+    return FindingsFile(sha, _field(data, "target", str, where), tuple(findings), sources)
+
+
 def _locations(pattern: re.Pattern[str], text: str) -> tuple[tuple[tuple[int, int], ...], int]:
     found: list[tuple[int, int]] = []
     count = 0
