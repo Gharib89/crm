@@ -256,8 +256,8 @@ requirements against a verification results file and gives each package a verdic
 `failed`, `blocked`, `not_tested` or `complete`, the first that applies. It runs no
 check and reads files only.
 
-- **Never call a repair done on your own word**: record a result per requirement and
-  let `verify` say `complete`. A `pass` with no evidence, or whose evidence file is
+- **Let `verify` call a repair complete**: record a result per requirement and
+  report the verdict it gives. A `pass` with no evidence, or whose evidence file is
   missing or changed, counts as not tested.
 - **Record what you ran**: a results file is `{"schema_version": 1,
   "packages_sha256": "<data.packages_sha256 of the packages run>", "results":
@@ -274,4 +274,5 @@ check and reads files only.
   missed the regression, so its package cannot be complete.
 - **Report `unknown_results`**: a result whose package or requirement id the packages
   output lacks, usually a typo or results from another run.
-- A verdict exits 0; `--out FILE` writes each requirement's status and `reason`.
+- **Read the verdicts, not the exit code**: every verdict exits 0. The `--out`
+  report's `reason` says why each requirement is not tested.
