@@ -451,7 +451,7 @@ def test_inventory_extract_runs_the_v9_path_on_a_v9_profile(crm_home, monkeypatc
     argv = ["--json", "--profile", "v9", "inventory", "extract", "--out", str(out)]
     result = CliRunner().invoke(cli, [*argv, "--solution", "contoso"])
     assert result.exit_code == 0, result.output
-    data = json.loads(result.output)["data"]
+    data = json.loads(result.stdout)["data"]
     assert data["complete"] is True
     assert data["kinds"]["solution"] == {"status": "complete", "records": 1}
     assert _manifest(out)["scope"]["solutions"] == ["contoso"]
@@ -463,7 +463,7 @@ def test_inventory_extract_on_a_v9_profile_fails_on_a_failed_kind(crm_home, monk
     argv = ["--json", "--profile", "v9", "inventory", "extract", "--out", str(tmp_path / "i")]
     result = CliRunner().invoke(cli, argv)
     assert result.exit_code == 1
-    env = json.loads(result.output)
+    env = json.loads(result.stdout)
     assert env["ok"] is False and "systemform page 1: plug-in failed" in env["error"]
 
 

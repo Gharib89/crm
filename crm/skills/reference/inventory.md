@@ -12,6 +12,9 @@ binaries). It describes what is deployed; it is never a spec for `crm apply`.
 
 - **It runs for tens of minutes on a large org** (each entity costs a metadata
   read and a ribbon read): give it a long timeout or run it in the background.
+- **It prints progress on stderr** (`[crm] extract stage=... done=n/total`, with an
+  `eta` marked as an estimate); stdout, the JSON envelope, is unchanged. Read
+  stderr to tell a slow run from a stuck one; `--quiet` silences it.
 - **To inventory part of an org, narrow it to solutions** (`--solution`, see
   `--help`). The entity reads shrink to the member entities, but the org-wide
   component reads still run, so a narrowed run is not proportionally quicker. An

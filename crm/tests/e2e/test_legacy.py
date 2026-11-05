@@ -149,6 +149,7 @@ def test_inventory_extract_writes_a_valid_crm2011_inventory(cli, tmp_path, monke
         env={"CRM_HOME": _REAL_HOME},
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "[crm] extract stage=source" in proc.stderr, proc.stderr
     summary = json.loads(proc.stdout)["data"]
     assert summary["complete"] is True, proc.stdout
     assert summary["manifest"] == str(out / "manifest.json"), proc.stdout + proc.stderr
