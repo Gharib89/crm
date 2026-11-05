@@ -93,10 +93,10 @@ reads: the steps, the async jobs grouped by step, and the tracing setting; never
 read per step):
 
 - A **disabled** step is `unused` (`reason: "disabled"`); a type is `unused` only when
-  every step is disabled or it has none. A workflow activity has no steps by design, so
-  it is `unknown`.
-- A step with an **async job row** (or, with plug-in tracing on, a trace log row for its
-  type and message) is `used`, and so is its type.
+  every step is disabled or it has none. A workflow activity or a custom API
+  implementation has no steps by design, so it is `unknown`.
+- A step with an **async job row** (or, with plug-in tracing on, a trace log row for the
+  step) is `used`, and so is its type.
 - Everything else is `unknown`, and `reason` says why. Most steps are synchronous, which
   leave no run record at all; a step with `asyncautodelete` loses its successful jobs;
   tracing is off by default and its log lasts about a day; completed system jobs are

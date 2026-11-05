@@ -21,8 +21,8 @@ from crm.utils.safe_xml import fromstring
 AS_OF = "2026-11-05T00:00:00Z"
 
 
-def _step(id, *, enabled=True, sync=False, autodelete=False, type_id="t1", message="Update"):
-    return Step(id, type_id, enabled, sync, autodelete, message.lower(), "Contoso.Plugins.One")
+def _step(id, *, enabled=True, sync=False, autodelete=False, type_id="t1"):
+    return Step(id, type_id, enabled, sync, autodelete)
 
 
 _T1 = PluginType("t1", "a1", "Contoso.Plugins.One")
@@ -72,11 +72,9 @@ def test_tracing_off_keeps_a_trace_only_step_unknown_and_says_why():
     assert got["s"].state == "unknown" and "trace log is off" in (got["s"].reason or "")
 
 
-def test_a_trace_hit_on_type_and_message_makes_a_sync_step_used():
-    ev = Evidence(traces=frozenset({("Contoso.Plugins.One", "update")}))
-    got, _, _ = _states(
-        [_step("hit", sync=True), _step("miss", sync=True, message="Create")], ev=ev
-    )
+def test_a_trace_hit_on_the_step_makes_a_sync_step_used():
+    ev = Evidence(traces=frozenset({"hit"}))
+    got, _, _ = _states([_step("hit", sync=True), _step("miss", sync=True)], ev=ev)
     assert (got["hit"].state, got["hit"].signal) == ("used", "plugin_trace")
     assert got["miss"].state == "unknown"
 
@@ -87,7 +85,7 @@ def test_types_and_assemblies_roll_up():
         PluginType("t2", "a1", "Two"),  # only a disabled step
         PluginType("t3", "a2", "Three"),  # an unproven sync step
         PluginType("t4", "a3", "Four"),  # no steps
-        PluginType("t5", "a4", "Five", workflow=True),  # no steps, but a workflow activity
+        PluginType("t5", "a4", "Five", outside=usage.WORKFLOW),  # no steps, but a workflow activity
     ]
     steps = [
         _step("s1", type_id="t1"),
@@ -171,7 +169,9 @@ _V9_STEPS = [
 ]
 
 
-def _v9_org(*, tracing=0, jobs=("s1",), job_error=None, traces=(), setting_status=None):
+def _v9_org(
+    *, tracing=0, jobs=("s1",), job_error=None, traces=(), setting_status=None, custom_apis=()
+):
     def get(path):
         if path == "organizations":
             if setting_status:
@@ -182,10 +182,12 @@ def _v9_org(*, tracing=0, jobs=("s1",), job_error=None, traces=(), setting_statu
                 raise job_error
             return {"value": [{"step": j, "n": 1} for j in jobs]}
         if path == "plugintracelogs":
-            return {"value": [{"type": t, "message": m, "n": 1} for t, m in traces]}
+            return {"value": [{"step": t, "n": 1} for t in traces]}
         raise AssertionError(path)
 
     def get_collection(path):
+        if path == "customapis":
+            return [{"_plugintypeid_value": t} for t in custom_apis]
         return {"plugintypes": _V9_TYPES, "sdkmessageprocessingsteps": _V9_STEPS}[path]
 
     return {"get": get, "get_collection": get_collection}
@@ -233,13 +235,35 @@ def test_v9_a_refused_job_aggregate_leaves_async_steps_unknown(make_fake_backend
     assert got["t1"].state == "unknown" and "async job read failed" in (got["t1"].reason or "")
 
 
+def test_v9_a_step_less_custom_api_type_is_unknown_not_unused(make_fake_backend):
+    backend = make_fake_backend(responses=_v9_org(custom_apis=["t6", "t3"]))
+    types = [*_types(), PluginType("t6", "a3", "Six")]
+    got = usage.probe_v9_plugin_types(backend, types, clock=lambda: AS_OF)
+    assert got["t6"].state == "unknown" and "custom API" in (got["t6"].reason or "")
+    assert got["t2"].state == "unused"  # a type no API names still proves out
+
+
+def test_v9_an_org_without_custom_apis_is_no_signal_not_an_error(make_fake_backend):
+    responses = _v9_org()
+    base = responses["get_collection"]
+
+    def get_collection(path):
+        if path == "customapis":
+            raise D365Error("no such entity", status=404)
+        return base(path)
+
+    backend = make_fake_backend(responses={**responses, "get_collection": get_collection})
+    got = usage.probe_v9_plugin_types(backend, _types(), clock=lambda: AS_OF)
+    assert got["t1"].state == "used"
+
+
 def test_v9_a_missing_tracing_setting_is_no_signal_not_an_error(make_fake_backend):
     got, _ = _v9_probe(make_fake_backend, setting_status=400)
     assert got["t3"].state == "unknown"
 
 
 def test_v9_tracing_on_reads_the_trace_log_and_a_hit_marks_a_sync_step_used(make_fake_backend):
-    got, backend = _v9_probe(make_fake_backend, tracing=1, traces=[("Three", "Create")])
+    got, backend = _v9_probe(make_fake_backend, tracing=1, traces=["s3"])
     assert got["t3"].state == "used"
     assert any(p == "plugintracelogs" for _, p, _ in backend.calls)
 
@@ -387,7 +411,7 @@ def crm_home(tmp_path, monkeypatch):
     session_mod.save_profile_secret_plaintext("legacy", "pw")
 
 
-def _legacy_org(jobs=(("s1",),), jobs_fault=False):
+def _legacy_org(jobs=(("s1",),), jobs_fault=False, probe_fault=None):
     """An answer per entity; `jobs` is a list of async job pages (step ids per page)."""
     pages = iter(jobs)
     seen = {"jobs": 0}
@@ -410,6 +434,9 @@ def _legacy_org(jobs=(("s1",),), jobs_fault=False):
                 ],
                 more=more,
             )
+        if entity == probe_fault:  # only the probe reads it: the listing already passed
+            context.status_code = 500
+            return "<x/>"
         return _rm(_LEGACY[entity or ""])
 
     return respond, seen
@@ -478,6 +505,12 @@ def test_legacy_a_job_read_past_its_time_cap_stops_and_names_the_cap():
         )
     assert ev.jobs == {"s1"} and seen["jobs"] == 1  # page 2 (s3) was never requested
     assert "5 s time cap" in (ev.jobs_gap or "")
+
+
+def test_legacy_a_failed_probe_read_keeps_the_rows_read_and_labels_them_unknown(crm_home):
+    data = _components("plugin-steps", "--in-use", org=_legacy_org(probe_fault="plugintype"))
+    assert _by_state(data["plugin-steps"]) == {"s1": "unknown", "s2": "unknown", "s3": "unknown"}
+    assert "usage probe failed" in data["plugin-steps"][0]["usage"]["reason"]
 
 
 def test_legacy_has_no_trace_entity_and_that_is_recorded_as_no_signal(crm_home):

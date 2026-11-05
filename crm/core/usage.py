@@ -16,7 +16,7 @@ import threading
 import time
 from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -331,15 +331,13 @@ JOB_TIME_CAP = 120.0  # seconds a CRM 2011 async job read may run before it stop
 
 @dataclass(frozen=True)
 class Step:
-    """A processing step with what decides its usage; *message* is its SDK message name."""
+    """A processing step with what decides its usage."""
 
     id: str
     type_id: str
     enabled: bool
     sync: bool
     autodelete: bool
-    message: str = ""
-    type_name: str = ""
 
 
 @dataclass(frozen=True)
@@ -347,12 +345,12 @@ class PluginType:
     id: str
     assembly_id: str
     typename: str
-    workflow: bool = False
+    outside: str = ""  # why the type can run with no step (a workflow activity, a custom API)
 
 
 @dataclass(frozen=True)
 class Evidence:
-    """Run records read for the steps: job rows by step id, trace hits by (type, message).
+    """Run records read for the steps: step ids with a job row, and with a trace log row.
 
     *jobs_gap* says why the job read is incomplete or missing; *trace_gap* why
     there is no trace signal (tracing off, no such entity). Both only explain an
@@ -360,7 +358,7 @@ class Evidence:
     """
 
     jobs: frozenset[str] = frozenset()
-    traces: frozenset[tuple[str, str]] = frozenset()
+    traces: frozenset[str] = frozenset()
     jobs_gap: str | None = None
     trace_gap: str | None = None
 
@@ -370,7 +368,7 @@ def _step_usage(step: Step, ev: Evidence, as_of: str) -> Usage:
         return Usage("unused", STEP_SIGNAL, None, as_of, "disabled")
     if step.id in ev.jobs:
         return Usage("used", "async_job", None, as_of)
-    if (step.type_name, step.message.lower()) in ev.traces:
+    if step.id in ev.traces:
         return Usage("used", "plugin_trace", None, as_of)
     if step.sync:
         why = ["synchronous step: no run record exists"]
@@ -383,7 +381,7 @@ def _step_usage(step: Step, ev: Evidence, as_of: str) -> Usage:
     return Usage("unknown", STEP_SIGNAL, None, as_of, "; ".join(why))
 
 
-def roll_up(children: Sequence[Usage], as_of: str, *, orphan: str | None = None) -> Usage:
+def roll_up(children: Sequence[Usage], as_of: str, *, orphan: str = "") -> Usage:
     """A parent's usage from its children: `used` if any is, `unused` only if all are.
 
     No children means nothing can fire: `unused`, unless *orphan* names why the
@@ -423,7 +421,7 @@ def plugin_usage(
         t.id: roll_up(
             step_states[t.id],
             as_of,
-            orphan="workflow activity: invoked by workflows, not steps" if t.workflow else None,
+            orphan=t.outside,
         )
         for t in types
     }
@@ -447,8 +445,7 @@ def _job_fetch(extra: str = "") -> str:
 def _trace_fetch() -> str:
     return (
         '<fetch aggregate="true"><entity name="plugintracelog">'
-        '<attribute name="typename" alias="type" groupby="true"/>'
-        '<attribute name="messagename" alias="message" groupby="true"/>'
+        '<attribute name="pluginstepid" alias="step" groupby="true"/>'
         '<attribute name="plugintracelogid" alias="n" aggregate="count"/>'
         "</entity></fetch>"
     )
@@ -469,14 +466,12 @@ def read_v9_plugin_evidence(backend: D365Backend, *, trace_on: bool) -> Evidence
         if connection_wide(exc):
             raise
         jobs_gap = f"async job read failed: {exc}"
-    traces: frozenset[tuple[str, str]] = frozenset()
+    traces: frozenset[str] = frozenset()
     trace_gap = "plug-in trace log is off" if not trace_on else None
     if trace_on:
         try:
             got = as_dict(backend.get("plugintracelogs", params={"fetchXml": _trace_fetch()}))
-            traces = frozenset(
-                (str(r["type"]), str(r["message"]).lower()) for r in got.get("value", [])
-            )
+            traces = frozenset(str(r["step"]) for r in got.get("value", []) if r.get("step"))
         except D365Error as exc:
             if connection_wide(exc):
                 raise
@@ -484,9 +479,19 @@ def read_v9_plugin_evidence(backend: D365Backend, *, trace_on: bool) -> Evidence
     return Evidence(jobs, traces, jobs_gap, trace_gap)
 
 
-def _message_name(step_row: dict[str, Any]) -> str:
-    message: dict[str, Any] = step_row.get("sdkmessageid") or {}
-    return str(message.get("name") or "").lower()
+WORKFLOW = "workflow activity: invoked by workflows, not by steps"
+CUSTOM_API = "custom API implementation: invoked by the API, not by steps"
+
+
+def _custom_api_types(backend: D365Backend) -> set[str]:
+    """Plug-in types that implement a custom API (none where the table does not exist)."""
+    try:
+        rows = backend.get_collection("customapis", params={"$select": "_plugintypeid_value"})
+    except D365Error as exc:
+        if exc.status not in (400, 404):
+            raise
+        return set()
+    return {r["_plugintypeid_value"] for r in rows if r.get("_plugintypeid_value")}
 
 
 def probe_v9_plugin_types(
@@ -507,10 +512,10 @@ def probe_v9_plugin_types(
     org_rows: list[dict[str, Any]] = org.get("value") or [{}]
     trace_on = bool(org_rows[0].get("plugintracelogsetting"))
     select = "sdkmessageprocessingstepid,statecode,mode,asyncautodelete,_eventhandler_value"
-    params = {"$select": select}
-    if trace_on:
-        params["$expand"] = "sdkmessageid($select=name)"
-    names = {t.id: t.typename for t in types}
+    api_types = _custom_api_types(backend)
+    types = [
+        replace(t, outside=CUSTOM_API) if t.id in api_types and not t.outside else t for t in types
+    ]
     steps = [
         Step(
             r["sdkmessageprocessingstepid"],
@@ -518,10 +523,8 @@ def probe_v9_plugin_types(
             r.get("statecode") != 1,  # 1 is disabled; an unread state is never a proof
             r.get("mode") == 0,
             bool(r.get("asyncautodelete")),
-            _message_name(r),
-            names.get(r["_eventhandler_value"], ""),
         )
-        for r in backend.get_collection("sdkmessageprocessingsteps", params=params)
+        for r in backend.get_collection("sdkmessageprocessingsteps", params={"$select": select})
         if r.get("_eventhandler_value")
     ]
     ev = read_v9_plugin_evidence(backend, trace_on=trace_on)
@@ -585,7 +588,7 @@ def probe_legacy_plugins(
             str(r["id"]),
             _ref(r.get("pluginassemblyid")),
             str(r.get("typename") or ""),
-            bool(r.get("isworkflowactivity")),
+            WORKFLOW if r.get("isworkflowactivity") else "",
         )
         for r in _fetch_all(
             client, "plugintype", ("typename", "pluginassemblyid", "isworkflowactivity")
@@ -622,7 +625,7 @@ def annotate_v9_types(
             it["plugintypeid"],
             it.get("_pluginassemblyid_value") or "",
             it.get("typename") or "",
-            bool(it.get("isworkflowactivity")),
+            WORKFLOW if it.get("isworkflowactivity") else "",
         )
         for it in items
     ]
@@ -638,10 +641,16 @@ def annotate_legacy_components(
     client: LegacyClient, data: dict[str, list[dict[str, Any]]], *, exclude_unknown: bool
 ) -> dict[str, list[dict[str, Any]]]:
     """Give each plug-in component row read by `legacy components` its `usage`."""
-    steps, types, assemblies = probe_legacy_plugins(client)
-    by_kind: dict[str, dict[str, Usage]] = dict(
-        zip(PLUGIN_KINDS, (assemblies, types, steps), strict=True)
-    )
+    by_kind: dict[str, dict[str, Usage]]
+    try:
+        steps, types, assemblies = probe_legacy_plugins(client)
+        by_kind = dict(zip(PLUGIN_KINDS, (assemblies, types, steps), strict=True))
+    except D365Error as exc:
+        if connection_wide(exc):
+            raise
+        # a failed probe read is no evidence: keep the rows already read, labelled unknown
+        gone = Usage("unknown", STEP_SIGNAL, None, _now(), f"usage probe failed: {exc}")
+        by_kind = {k: {str(r["id"]): gone for r in rows} for k, rows in data.items()}
     return {
         kind: attach(
             rows, by_kind[kind], key=lambda r: str(r["id"]), exclude_unknown=exclude_unknown
