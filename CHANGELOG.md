@@ -9,6 +9,35 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.96.0 (2026-11-05)
+
+### Bug Fixes
+
+- **usage**: Isolate the plug-in and process probe failures, name a truncated group read
+  ([#1119](https://github.com/Gharib89/crm/pull/1119),
+  [`94d360e`](https://github.com/Gharib89/crm/commit/94d360ed94d60c161a44c95dfd20b9052f690e9b))
+
+- **usage**: Tolerate a process row born mid-read, reuse workflow constants, sync docs wording
+  ([#1119](https://github.com/Gharib89/crm/pull/1119),
+  [`94d360e`](https://github.com/Gharib89/crm/commit/94d360ed94d60c161a44c95dfd20b9052f690e9b))
+
+### Features
+
+- **usage**: Workflow and process usage with --in-use (legacy and v9)
+  ([#1119](https://github.com/Gharib89/crm/pull/1119),
+  [`94d360e`](https://github.com/Gharib89/crm/commit/94d360ed94d60c161a44c95dfd20b9052f690e9b))
+
+### Testing
+
+- **usage**: Give the failed-process-probe test a process row
+  ([#1119](https://github.com/Gharib89/crm/pull/1119),
+  [`94d360e`](https://github.com/Gharib89/crm/commit/94d360ed94d60c161a44c95dfd20b9052f690e9b))
+
+- **usage**: Satisfy pyright in the workflow usage tests
+  ([#1119](https://github.com/Gharib89/crm/pull/1119),
+  [`94d360e`](https://github.com/Gharib89/crm/commit/94d360ed94d60c161a44c95dfd20b9052f690e9b))
+
+
 ## v1.95.0 (2026-11-05)
 
 ### Bug Fixes
