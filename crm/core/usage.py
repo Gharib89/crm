@@ -639,7 +639,9 @@ def annotate_legacy_components(
 ) -> dict[str, list[dict[str, Any]]]:
     """Give each plug-in component row read by `legacy components` its `usage`."""
     steps, types, assemblies = probe_legacy_plugins(client)
-    by_kind = dict(zip(PLUGIN_KINDS, (assemblies, types, steps), strict=True))
+    by_kind: dict[str, dict[str, Usage]] = dict(
+        zip(PLUGIN_KINDS, (assemblies, types, steps), strict=True)
+    )
     return {
         kind: attach(
             rows, by_kind[kind], key=lambda r: str(r["id"]), exclude_unknown=exclude_unknown
