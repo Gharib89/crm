@@ -16,6 +16,7 @@ answer_key:
   candidate_files:
     - WebResources/new_/scripts/lookup.js
     - src/new_/scripts/lookup.js
+  candidate_count: 2
 evidence:
   - "reference/source-mapping.md: `ambiguous` means several repository files line up with a deployed web resource and none is proven to be its source; it is reported for manual review with every candidate listed, never resolved by picking one. The fixture repo holds two differing `lookup.js` files under the web resource's path."
   - "Re-derived offline: `crm inventory map-source inventory --repo repo` gives `new_/scripts/lookup.js` the status `ambiguous` with both files (test_migration_evals.py::test_answer_keys_match_the_real_pipeline)."
@@ -41,6 +42,7 @@ current working directory, matching exactly this schema (no extra prose in the f
   "source_file_matched": false,
   "needs_review": true,
   "candidate_files": ["<repo path>"],
+  "candidate_count": 0,
   "rationale": "<one or two sentences>"
 }
 ```
@@ -49,4 +51,5 @@ current working directory, matching exactly this schema (no extra prose in the f
 - `source_file_matched` (boolean): whether you can name its source file with evidence.
 - `needs_review` (boolean): whether a human must decide before it is patched.
 - `candidate_files` (list of strings): every repository file that lines up with it.
+- `candidate_count` (integer): how many files that is.
 - `rationale` (string): a brief justification.

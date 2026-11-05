@@ -203,10 +203,12 @@ def test_answer_keys_match_the_real_pipeline(tmp_path):
     assert key["migration-source-inventory-coverage"] == {
         "inventory_complete": False,
         "incomplete_kinds": incomplete,
+        "incomplete_kind_count": len(incomplete),
         "gap_count": len(manifest["gaps"]),
     }
     assert lookup["status"] == "ambiguous"
     assert key["migration-ambiguous-code-mapping"]["candidate_files"] == lookup["files"]
+    assert key["migration-ambiguous-code-mapping"]["candidate_count"] == len(lookup["files"])
     assembly = {f["class"] for f in _findings_for(findings, "Contoso.Plugins")}
     assert assembly == {"unknown"}
     assert key["migration-missing-capability-unknown"]["assembly_class"] == "unknown"
@@ -215,7 +217,9 @@ def test_answer_keys_match_the_real_pipeline(tmp_path):
         "rule_id": legacy["rule"],
         "package_id": pkg["id"],
     }
-    assert key["migration-blocked-verification"]["package_verdicts"] == verdicts
+    blocked = key["migration-blocked-verification"]
+    assert blocked["failed_packages"] == verdicts.count("failed")
+    assert blocked["blocked_packages"] == verdicts.count("blocked")
     assert "complete" not in verdicts
 
 

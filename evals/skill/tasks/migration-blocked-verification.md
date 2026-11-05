@@ -12,9 +12,8 @@ fixture: migration-results
 answer_key:
   complete: false
   complete_packages: 0
-  package_verdicts:
-    - failed
-    - blocked
+  failed_packages: 1
+  blocked_packages: 1
 evidence:
   - "reference/verification.md: a package is complete only when `crm inventory verify` gives it the verdict `complete`; a failed requirement makes it `failed`, one that could not run makes it `blocked`, and neither is reported as done."
   - "The fixture's results file records a pass, a fail (the ribbon button was not published) and a blocked result (the test org did not answer); `crm inventory verify` gives one package `failed` and the other `blocked`, none `complete` (test_migration_evals.py::test_answer_keys_match_the_real_pipeline)."
@@ -29,7 +28,7 @@ Your current directory holds the workspace:
 
 Task under assessment: *"Our testers recorded their results. Can I tell the business that
 the project approval process is migrated and complete? Judge it with the gate, and report
-each package's verdict."*
+how many packages failed and how many are blocked."*
 
 Write your answer as a single JSON object to a file named `feasibility.json` in your
 current working directory, matching exactly this schema (no extra prose in the file):
@@ -38,12 +37,14 @@ current working directory, matching exactly this schema (no extra prose in the f
 {
   "complete": false,
   "complete_packages": 0,
-  "package_verdicts": ["<verdict>"],
+  "failed_packages": 0,
+  "blocked_packages": 0,
   "reason": "<one or two sentences>"
 }
 ```
 
 - `complete` (boolean): whether the process can be reported complete.
 - `complete_packages` (integer): how many packages the gate marks `complete`.
-- `package_verdicts` (list of strings): the gate's verdict for each package.
+- `failed_packages` (integer): how many packages the gate marks `failed`.
+- `blocked_packages` (integer): how many packages the gate marks `blocked`.
 - `reason` (string): why, naming what failed or could not run.

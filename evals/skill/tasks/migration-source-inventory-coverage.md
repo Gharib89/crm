@@ -13,6 +13,7 @@ answer_key:
   inventory_complete: false
   incomplete_kinds:
     - dependency
+  incomplete_kind_count: 1
   gap_count: 2
 evidence:
   - "reference/inventory.md: an inventory is complete only when every kind reads `complete`; a kind that is not complete, and every recorded extraction gap, is reported as an unknown, never counted as covered. The fixture's manifest records `dependency` as `unsupported` (a CRM 2011 source reads no dependencies) and every other kind `complete`."
@@ -36,6 +37,7 @@ current working directory, matching exactly this schema (no extra prose in the f
 {
   "inventory_complete": false,
   "incomplete_kinds": ["<kind>"],
+  "incomplete_kind_count": 0,
   "gap_count": 0,
   "rationale": "<one or two sentences>"
 }
@@ -43,5 +45,6 @@ current working directory, matching exactly this schema (no extra prose in the f
 
 - `inventory_complete` (boolean): whether every kind was read completely.
 - `incomplete_kinds` (list of strings): each component kind whose coverage is not `complete`.
+- `incomplete_kind_count` (integer): how many kinds that is.
 - `gap_count` (integer): the number of extraction gaps the manifest records.
 - `rationale` (string): a brief justification.
