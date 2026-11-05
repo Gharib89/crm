@@ -1,3 +1,4 @@
+# pyright: basic
 """`crm inventory extract` progress: the core's events and the command's stderr lines, offline."""
 
 from __future__ import annotations
@@ -33,7 +34,7 @@ def _clock():
 def _run(backend, out: Path, **kw) -> list[Progress]:
     events: list[Progress] = []
     inventory_extract.extract(
-        WebApiSource(backend),
+        WebApiSource(backend),  # pyright: ignore[reportArgumentType]
         out,
         cli_version="9.9.9",
         now=lambda: "2026-11-04T10:00:00Z",
@@ -102,7 +103,7 @@ def test_no_callback_changes_nothing(tmp_path):
     without = tmp_path / "b"
     _run(FakeBackend(), with_cb)
     inventory_extract.extract(
-        WebApiSource(FakeBackend()),
+        WebApiSource(FakeBackend()),  # pyright: ignore[reportArgumentType]
         without,
         cli_version="9.9.9",
         now=lambda: "2026-11-04T10:00:00Z",
@@ -211,10 +212,10 @@ def test_the_eta_averages_read_units_only_when_reused_units_come_first(tmp_path)
         cp.save(f"entity/e{n}", {"n": n})
     events: list[Progress] = []
     run = inventory_extract._Run(  # pyright: ignore[reportPrivateUsage]
-        None,
+        None,  # pyright: ignore[reportArgumentType]
         cp,
         events.append,
-        _clock(),  # pyright: ignore[reportArgumentType]
+        _clock(),
     )
     run.begin("entity_detail", 16, estimate=True)
     for n in range(16):
