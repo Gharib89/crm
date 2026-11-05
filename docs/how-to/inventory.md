@@ -13,7 +13,8 @@ matches one to an application repository (see [Map an inventory to source](#map-
 `crm inventory verify` judges recorded verification results against them (see
 [Verify work packages](#verify-work-packages)), and `crm inventory assess` runs the
 packaged compatibility rules over one (see
-[Assess compatibility](#assess-compatibility)).
+[Assess compatibility](#assess-compatibility)); both can drop unused rows (see
+[Filter and sort packages and findings by usage](#filter-and-sort-packages-and-findings-by-usage)).
 
 Extraction runs on **every profile**. A `crm2011` profile is read over the CRM 2011
 SOAP endpoint (see [How-to: legacy](legacy.md) to create one); a v9 on-prem or
@@ -511,6 +512,49 @@ count in the summary, a list of `{kind, key, class, rule}` in `index.json`). The
 adds the four count columns and a `findings in no package` line. A findings file made
 from another inventory (its `manifest_sha256` differs), of an unsupported
 `schema_version` or malformed exits **1**.
+
+## Filter and sort packages and findings by usage
+
+`crm inventory packages` and `crm inventory assess` can drop rows nobody uses and list the
+used ones first. Both take `--in-use` (drop `unused` rows), `--exclude-unknown` (also drop
+`unknown` rows) and `--sort usage` (used first, then unknown or not read, then unused;
+ties keep the default order). They are offline and read no org.
+
+A row's usage is the one `extract --with-usage` recorded
+([Record usage](#record-usage-with-with-usage)), else one derived from the manifest alone:
+
+| Row | Derived usage | Signal |
+|---|---|---|
+| Web resource a form, ribbon or sitemap points at | `used`, reason `static, referenced by <rows>` | `referenced_by` |
+| Web resource nothing points at | `unknown`, reason `unreferenced`; never `unused`, since a script can be loaded by name at run time or from outside the org | `referenced_by` |
+| Form, view or ribbon of an entity whose usage is `unused` | `unused`, reason `entity has no records (low confidence: ...)`, since the data may have been deleted or migrated | `entity_rollup` |
+| Any other row | unchanged: its recorded usage, or none | |
+
+An entity that is `unknown` or `used`, or has no usage, leaves its forms, views and ribbons
+alone. Reports, option sets and chart or dashboard rows have no derivation and stay without
+usage.
+
+A row with no `usage` was not read, which is not `unused`: every flag keeps it, and a
+manifest extracted without `--with-usage` loses no row to `--in-use`. On such a manifest
+`--exclude-unknown` still drops the web resources nothing references, because their derived
+usage is `unknown`.
+
+- **`packages`**: each package gets `usage` (in its file and its `index.json` line), its
+  members' usage rolled up: `used` if any member is, `unused` only if every member is, else
+  `unknown`. A member with no usage counts as `unknown`; a package whose members have none
+  at all has no `usage` field. The flags drop whole packages, the summary's
+  `usage_filtered` counts them, and a scenario lists only the packages that remain. The
+  table gains a `usage` column (`not read` where there is none).
+- **`assess`**: each finding gains `usage` when its row has one, so the file shows why a row
+  is `unknown`. The flags drop the findings of the excluded rows, `counts.by_usage`
+  (`used`, `unknown`, `unused`, `not_read`) counts what is left, and `--sort usage` orders
+  the `findings` list.
+
+```sh
+crm --json inventory assess ./inv --target online --out ./findings.json --in-use
+crm --json inventory packages ./inv --source-map ./map.json --out ./packages \
+  --in-use --sort usage
+```
 
 ## Verify work packages
 

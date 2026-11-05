@@ -18,6 +18,15 @@ package folder:
   `compatibility.unplaced` (findings whose component sits in no package) and the
   unknown edges from nodes no package holds. List each as its own task or a
   manual-review entry; none is dropped.
+- **`usage`** on a package (and on each `assess` finding) says whether anyone
+  runs it: `state`, the `signal` that decided it and a `reason`. A manifest read
+  with `--with-usage` gives runtime counts; any manifest gives derived ones (a
+  web resource a form references is `used`, an unreferenced one `unknown`, a form
+  of an entity with no records `unused` at low confidence). No `usage` means not
+  read, never unused. Pass `--in-use` to `packages` or `assess` to drop `unused`
+  work from the plan, `--exclude-unknown` to drop `unknown` as well, and
+  `--sort usage` to start with what is used. Say which flags were used, since a
+  dropped row is not assessed.
 - **An unknown edge** inside a package is a reference the graph could not resolve
   (a dynamic name, an ISV page, another host's URL). It is an unknown, never a
   pass.
