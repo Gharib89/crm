@@ -88,7 +88,14 @@
       "key": "new_/scripts/legacy.js",
       "kind": "web_resource",
       "reason": null,
-      "rule": "web-resource-crmform"
+      "rule": "web-resource-crmform",
+      "usage": {
+        "as_of": "2026-11-01T10:00:00Z",
+        "reason": "static, referenced by form:new_project|2|Information",
+        "signal": "referenced_by",
+        "state": "used",
+        "value": null
+      }
     },
     {
       "class": "clear",
@@ -96,7 +103,14 @@
       "key": "new_/scripts/lookup.js",
       "kind": "web_resource",
       "reason": null,
-      "rule": null
+      "rule": null,
+      "usage": {
+        "as_of": "2026-11-01T10:00:00Z",
+        "reason": "static, referenced by form:new_project|2|Information",
+        "signal": "referenced_by",
+        "state": "used",
+        "value": null
+      }
     },
     {
       "class": "deprecated",
@@ -114,7 +128,14 @@
       "key": "new_/scripts/project.js",
       "kind": "web_resource",
       "reason": null,
-      "rule": "web-resource-xrm-page"
+      "rule": "web-resource-xrm-page",
+      "usage": {
+        "as_of": "2026-11-01T10:00:00Z",
+        "reason": "static, referenced by form:new_project|2|Information",
+        "signal": "referenced_by",
+        "state": "used",
+        "value": null
+      }
     },
     {
       "class": "clear",
@@ -122,10 +143,17 @@
       "key": "new_/scripts/shared.js",
       "kind": "web_resource",
       "reason": null,
-      "rule": null
+      "rule": null,
+      "usage": {
+        "as_of": "2026-11-01T10:00:00Z",
+        "reason": "static, referenced by form:new_project|2|Information, ribbon:new_project",
+        "signal": "referenced_by",
+        "state": "used",
+        "value": null
+      }
     }
   ],
-  "generated_at": "2026-11-05T08:02:35Z",
+  "generated_at": "2026-11-05T22:45:49Z",
   "incomplete": {
     "dependency": "unsupported"
   },

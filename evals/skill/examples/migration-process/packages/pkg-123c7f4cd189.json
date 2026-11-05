@@ -266,6 +266,13 @@
       "status": "matched"
     }
   ],
+  "usage": {
+    "as_of": "2026-11-01T10:00:00Z",
+    "reason": null,
+    "signal": "member_rollup",
+    "state": "used",
+    "value": null
+  },
   "verification": [
     {
       "details": {

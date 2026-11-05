@@ -42,7 +42,14 @@
       "scenarios": [
         "Project approval"
       ],
-      "unknowns": 2
+      "unknowns": 2,
+      "usage": {
+        "as_of": "2026-11-01T10:00:00Z",
+        "reason": null,
+        "signal": "member_rollup",
+        "state": "used",
+        "value": null
+      }
     },
     {
       "counts": {
@@ -83,5 +90,6 @@
   "unattached_out_of_scope": [],
   "unattached_unknowns": [],
   "unknowns": 3,
-  "unmatched_scenarios": []
+  "unmatched_scenarios": [],
+  "usage_filtered": 0
 }
