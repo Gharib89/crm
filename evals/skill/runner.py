@@ -42,7 +42,13 @@ from pathlib import Path
 from typing import Any
 
 from evals.skill import analyze, isolation, target
-from evals.skill.taskspec import TaskSpec, evaluate_expect, evaluate_feasibility, parse_task_file
+from evals.skill.taskspec import (
+    FIXTURES_DIR,
+    TaskSpec,
+    evaluate_expect,
+    evaluate_feasibility,
+    parse_task_file,
+)
 
 #: Filename a feasibility task's agent writes its structured answer to, in its sandbox cwd
 #: (#891). The task prompt instructs the agent to emit its schema-conforming JSON here; the
@@ -262,7 +268,12 @@ def run_task(
     if install_skill and not resolved_bin:
         raise RunError("crm binary not on PATH")
 
-    iso = isolation.provision_isolation(resolved_bin, install_skill=install_skill)
+    iso = isolation.provision_isolation(
+        resolved_bin,
+        install_skill=install_skill,
+        skill=spec.skill,
+        fixture=FIXTURES_DIR / spec.fixture if spec.fixture else None,
+    )
     try:
         checks = isolation.verify_isolation(iso, expect_skill=install_skill)
         if dry_run:

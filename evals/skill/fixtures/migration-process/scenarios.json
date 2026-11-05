@@ -1,0 +1,13 @@
+{
+  "scenarios": [
+    {
+      "name": "Project approval",
+      "seeds": [
+        "form:new_project|2|Information"
+      ],
+      "expected_behavior": [
+        "docs/scenarios/project-approval.md"
+      ]
+    }
+  ]
+}

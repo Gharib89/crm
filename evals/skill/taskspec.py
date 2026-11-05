@@ -25,6 +25,13 @@ TARGETS = ("cloud", "onprem", "either")
 #: and is graded field-by-field against an evidenced answer key (#891).
 KINDS = ("do", "feasibility")
 
+#: Skills a task may install into its trial (``crm skill install --skill``); ``crm`` is the
+#: default, so every task written before #1067 keeps its behaviour.
+SKILLS = ("crm", "crm-migration")
+
+#: Folder of fixture workspaces a task's ``fixture`` names; each is copied into the trial cwd.
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
+
 #: Allowed ``source.type`` values — the channel a corpus task was harvested from
 #: (ADR 0028 real-demand sourcing). ``firsthand`` is a traceable secondary (this
 #: repo's issues / DISCOVERED_BUGS) and may carry a null ``url``.
@@ -85,6 +92,11 @@ class TaskSpec:
     #: "url": <str|None>}``. Recorded so the corpus is auditable against its sources and
     #: can't silently drift into teaching-to-the-test. Empty when the task predates the tag.
     source: dict[str, Any] = dataclasses.field(default_factory=dict)
+    #: The shipped skill installed for this task's trial (#1067); ``crm`` unless named.
+    skill: str = "crm"
+    #: Name of a folder under :data:`FIXTURES_DIR` copied into the trial's working dir
+    #: (a sample inventory, an application repo, packages); ``None`` for no workspace.
+    fixture: str | None = None
 
     @property
     def is_feasibility(self) -> bool:
@@ -146,6 +158,24 @@ def parse_task_file(path: str | Path) -> TaskSpec:
     kind = meta.get("kind", "do")
     if kind not in KINDS:
         raise ValueError(f"{path}: kind {kind!r} not one of {KINDS}")
+
+    skill = meta.get("skill", "crm")
+    if skill not in SKILLS:
+        raise ValueError(f"{path}: skill {skill!r} not one of {SKILLS}")
+
+    # A plain folder name only (no separators, no ``..``), so a task cannot reach outside
+    # the fixtures tree; the folder must exist so a typo fails the smoke test, not a trial.
+    fixture = meta.get("fixture")
+    if fixture is not None and not (
+        isinstance(fixture, str)
+        and fixture not in ("", ".", "..")
+        and "/" not in fixture
+        and "\\" not in fixture
+        and (FIXTURES_DIR / fixture).is_dir()
+    ):
+        raise ValueError(
+            f"{path}: fixture {fixture!r} must name an existing folder under {FIXTURES_DIR.name}/"
+        )
 
     # Curation metadata (#895): optional, but validated when present so a malformed tag
     # fails the smoke test rather than silently sitting in the corpus. The runner ignores
@@ -285,6 +315,8 @@ def parse_task_file(path: str | Path) -> TaskSpec:
         counterfactual=bool(meta.get("counterfactual", False)),
         tier=tier,
         source=source,
+        skill=skill,
+        fixture=fixture,
     )
 
 

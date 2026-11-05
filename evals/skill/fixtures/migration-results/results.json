@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "packages_sha256": "c8ea3aeafbd65e8a33149b67d84c38fbb412c2eb7ccab5fb3e1e7f1ad0f0dd10",
+  "results": [
+    {
+      "package": "pkg-123c7f4cd189",
+      "requirement": "req-89a1de790b089617",
+      "outcome": "pass",
+      "environment": {
+        "profile": "test-org",
+        "org": "https://crm.example.test/Org"
+      },
+      "evidence": [
+        {
+          "path": "evidence/form-onload.txt",
+          "sha256": "af954d51bd5d39cc4689ea0ea25726827029bdcb2474ede06a15bde27c578373"
+        }
+      ]
+    },
+    {
+      "package": "pkg-123c7f4cd189",
+      "requirement": "req-ca76d0eb9f73eafd",
+      "outcome": "fail",
+      "environment": {
+        "profile": "test-org",
+        "org": "https://crm.example.test/Org"
+      },
+      "evidence": [],
+      "expected": "The Approve button runs Shared.approve and the record shows approved",
+      "actual": "The button did not appear on the form ribbon",
+      "errors": [
+        "ribbon command new.approve was not published"
+      ]
+    },
+    {
+      "package": "pkg-4bd0d6c9dc4b",
+      "requirement": "req-985422615c1beb12",
+      "outcome": "blocked",
+      "environment": {
+        "profile": "test-org",
+        "org": "https://crm.example.test/Org"
+      },
+      "evidence": [],
+      "errors": [
+        "the test org did not answer, so the plug-in step could not run"
+      ]
+    }
+  ]
+}

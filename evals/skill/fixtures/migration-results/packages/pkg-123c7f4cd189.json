@@ -1,0 +1,309 @@
+{
+  "consumers": [
+    {
+      "key": "new_project",
+      "kind": "entity",
+      "references": [
+        "form:new_project|2|Information",
+        "ribbon:new_project"
+      ]
+    },
+    {
+      "key": "new_project|2|Information",
+      "kind": "form",
+      "references": [
+        "web_resource:new_/scripts/legacy.js",
+        "web_resource:new_/scripts/lookup.js",
+        "web_resource:new_/scripts/project.js",
+        "web_resource:new_/scripts/shared.js"
+      ]
+    },
+    {
+      "key": "new_project",
+      "kind": "ribbon",
+      "references": [
+        "web_resource:new_/scripts/shared.js"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "form:new_project|2|Information",
+      "reason": null,
+      "reference": null,
+      "to": "web_resource:new_/scripts/legacy.js",
+      "type": "event_handler"
+    },
+    {
+      "from": "form:new_project|2|Information",
+      "reason": null,
+      "reference": null,
+      "to": "web_resource:new_/scripts/legacy.js",
+      "type": "form_library"
+    },
+    {
+      "from": "form:new_project|2|Information",
+      "reason": null,
+      "reference": null,
+      "to": "web_resource:new_/scripts/lookup.js",
+      "type": "form_library"
+    },
+    {
+      "from": "form:new_project|2|Information",
+      "reason": null,
+      "reference": null,
+      "to": "web_resource:new_/scripts/project.js",
+      "type": "event_handler"
+    },
+    {
+      "from": "form:new_project|2|Information",
+      "reason": null,
+      "reference": null,
+      "to": "web_resource:new_/scripts/project.js",
+      "type": "form_library"
+    },
+    {
+      "from": "form:new_project|2|Information",
+      "reason": null,
+      "reference": null,
+      "to": "web_resource:new_/scripts/shared.js",
+      "type": "form_library"
+    },
+    {
+      "from": "ribbon:new_project",
+      "reason": null,
+      "reference": null,
+      "to": "web_resource:new_/scripts/shared.js",
+      "type": "ribbon_reference"
+    },
+    {
+      "from": "web_resource:new_/scripts/legacy.js",
+      "reason": null,
+      "reference": null,
+      "to": "file:WebResources/new_/scripts/legacy.js",
+      "type": "source_file"
+    },
+    {
+      "from": "web_resource:new_/scripts/lookup.js",
+      "reason": null,
+      "reference": null,
+      "to": "file:WebResources/new_/scripts/lookup.js",
+      "type": "source_file"
+    },
+    {
+      "from": "web_resource:new_/scripts/lookup.js",
+      "reason": null,
+      "reference": null,
+      "to": "file:src/new_/scripts/lookup.js",
+      "type": "source_file"
+    },
+    {
+      "from": "web_resource:new_/scripts/project.js",
+      "reason": null,
+      "reference": null,
+      "to": "file:WebResources/new_/scripts/project.js",
+      "type": "source_file"
+    },
+    {
+      "from": "web_resource:new_/scripts/shared.js",
+      "reason": null,
+      "reference": null,
+      "to": "file:WebResources/new_/scripts/shared.js",
+      "type": "source_file"
+    }
+  ],
+  "expected_behavior": [
+    {
+      "packages": [
+        "pkg-123c7f4cd189"
+      ],
+      "references": [
+        "docs/scenarios/project-approval.md"
+      ],
+      "scenario": "Project approval"
+    }
+  ],
+  "findings": [
+    {
+      "class": "unknown",
+      "component": "form:new_project|2|Information",
+      "evidence": null,
+      "reason": "no rule",
+      "reference": null,
+      "rule": null,
+      "sources": [],
+      "status": null,
+      "type": "compatibility"
+    },
+    {
+      "class": "unknown",
+      "component": "ribbon:new_project",
+      "evidence": null,
+      "reason": "no rule",
+      "reference": null,
+      "rule": null,
+      "sources": [],
+      "status": null,
+      "type": "compatibility"
+    },
+    {
+      "class": "blocker",
+      "component": "web_resource:new_/scripts/legacy.js",
+      "evidence": {
+        "locations": [
+          {
+            "column": 3,
+            "line": 2
+          }
+        ],
+        "match_count": 1,
+        "path": "artifacts/web_resource/new_-scripts-legacy.js-a472da17624d.content.js",
+        "sha256": "7bdf01eac08630f5529ca97196727a61d2bf5db79e938ebb149862de389a1538"
+      },
+      "reason": null,
+      "reference": null,
+      "rule": "web-resource-crmform",
+      "sources": [
+        "https://learn.microsoft.com/dynamics365/customerengagement/on-premises/customize/customizations-supported?view=op-9-1",
+        "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/avoid-2011-api"
+      ],
+      "status": null,
+      "type": "compatibility"
+    },
+    {
+      "component": "web_resource:new_/scripts/lookup.js",
+      "reason": "several files line up by name and none holds the deployed content",
+      "reference": null,
+      "status": "ambiguous",
+      "type": "source_status"
+    },
+    {
+      "class": "deprecated",
+      "component": "web_resource:new_/scripts/project.js",
+      "evidence": {
+        "locations": [
+          {
+            "column": 10,
+            "line": 2
+          }
+        ],
+        "match_count": 1,
+        "path": "artifacts/web_resource/new_-scripts-project.js-3faf488f467a.content.js",
+        "sha256": "deac5a89eb646e868c1aac3d8885f5da6825289553a8d325844dd9e8d0b94a8a"
+      },
+      "reason": null,
+      "reference": null,
+      "rule": "web-resource-xrm-page",
+      "sources": [
+        "https://learn.microsoft.com/power-platform/important-changes-coming#some-client-apis-are-deprecated",
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/clientapi-form-context",
+        "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/use-client-context"
+      ],
+      "status": null,
+      "type": "compatibility"
+    },
+    {
+      "component": "web_resource:new_/scripts/project.js",
+      "reason": "the name lines up but the content differs; which side is newer is unknown",
+      "reference": null,
+      "status": "stale",
+      "type": "source_status"
+    }
+  ],
+  "id": "pkg-123c7f4cd189",
+  "members": [
+    "form:new_project|2|Information",
+    "ribbon:new_project",
+    "web_resource:new_/scripts/legacy.js",
+    "web_resource:new_/scripts/lookup.js",
+    "web_resource:new_/scripts/project.js",
+    "web_resource:new_/scripts/shared.js"
+  ],
+  "scenarios": [
+    "Project approval"
+  ],
+  "schema_version": 1,
+  "source": [
+    {
+      "files": [
+        "WebResources/new_/scripts/legacy.js"
+      ],
+      "key": "new_/scripts/legacy.js",
+      "kind": "web_resource",
+      "projects": [],
+      "reason": null,
+      "status": "matched"
+    },
+    {
+      "files": [
+        "WebResources/new_/scripts/lookup.js",
+        "src/new_/scripts/lookup.js"
+      ],
+      "key": "new_/scripts/lookup.js",
+      "kind": "web_resource",
+      "projects": [],
+      "reason": "several files line up by name and none holds the deployed content",
+      "status": "ambiguous"
+    },
+    {
+      "files": [
+        "WebResources/new_/scripts/project.js"
+      ],
+      "key": "new_/scripts/project.js",
+      "kind": "web_resource",
+      "projects": [],
+      "reason": "the name lines up but the content differs; which side is newer is unknown",
+      "status": "stale"
+    },
+    {
+      "files": [
+        "WebResources/new_/scripts/shared.js"
+      ],
+      "key": "new_/scripts/shared.js",
+      "kind": "web_resource",
+      "projects": [],
+      "reason": null,
+      "status": "matched"
+    }
+  ],
+  "verification": [
+    {
+      "details": {
+        "handlers": [
+          {
+            "attribute": null,
+            "event": "onload",
+            "function": "Project.onLoad",
+            "library": "new_/scripts/project.js"
+          },
+          {
+            "attribute": null,
+            "event": "onsave",
+            "function": "onSave",
+            "library": "new_/scripts/legacy.js"
+          }
+        ],
+        "libraries": [
+          "new_/scripts/legacy.js",
+          "new_/scripts/lookup.js",
+          "new_/scripts/project.js",
+          "new_/scripts/shared.js"
+        ]
+      },
+      "id": "req-89a1de790b089617",
+      "kind": "form_script",
+      "member": "form:new_project|2|Information"
+    },
+    {
+      "details": {
+        "unknown": [],
+        "web_resources": [
+          "new_/scripts/shared.js"
+        ]
+      },
+      "id": "req-ca76d0eb9f73eafd",
+      "kind": "ribbon_command",
+      "member": "ribbon:new_project"
+    }
+  ]
+}

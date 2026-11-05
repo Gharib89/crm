@@ -1,0 +1,119 @@
+{
+  "basis": "web resources matched by normalized content hash, else by name; plug-in types by C# declaration and project assembly name; a match is evidence, not proof of the same build",
+  "components": [
+    {
+      "consumers": [
+        "form:new_project|2|Information"
+      ],
+      "files": [
+        "WebResources/new_/scripts/legacy.js"
+      ],
+      "key": "new_/scripts/legacy.js",
+      "kind": "web_resource",
+      "projects": [],
+      "reason": null,
+      "shared": false,
+      "status": "matched"
+    },
+    {
+      "consumers": [
+        "form:new_project|2|Information"
+      ],
+      "files": [
+        "WebResources/new_/scripts/lookup.js",
+        "src/new_/scripts/lookup.js"
+      ],
+      "key": "new_/scripts/lookup.js",
+      "kind": "web_resource",
+      "projects": [],
+      "reason": "several files line up by name and none holds the deployed content",
+      "shared": false,
+      "status": "ambiguous"
+    },
+    {
+      "consumers": [
+        "form:new_project|2|Information"
+      ],
+      "files": [
+        "WebResources/new_/scripts/project.js"
+      ],
+      "key": "new_/scripts/project.js",
+      "kind": "web_resource",
+      "projects": [],
+      "reason": "the name lines up but the content differs; which side is newer is unknown",
+      "shared": false,
+      "status": "stale"
+    },
+    {
+      "consumers": [
+        "form:new_project|2|Information",
+        "ribbon:new_project"
+      ],
+      "files": [
+        "WebResources/new_/scripts/shared.js"
+      ],
+      "key": "new_/scripts/shared.js",
+      "kind": "web_resource",
+      "projects": [],
+      "reason": null,
+      "shared": true,
+      "status": "matched"
+    },
+    {
+      "consumers": [],
+      "files": [],
+      "key": "Contoso.Plugins",
+      "kind": "plugin_assembly",
+      "projects": [
+        "Plugins/Contoso.Plugins.csproj"
+      ],
+      "reason": null,
+      "shared": false,
+      "status": "matched"
+    },
+    {
+      "consumers": [],
+      "files": [
+        "Plugins/ProjectUpdate.cs"
+      ],
+      "key": "Contoso.Plugins|Contoso.Plugins.ProjectUpdate",
+      "kind": "plugin_type",
+      "projects": [
+        "Plugins/Contoso.Plugins.csproj"
+      ],
+      "reason": null,
+      "shared": false,
+      "status": "matched"
+    }
+  ],
+  "counts": {
+    "plugin_assembly": {
+      "matched": 1
+    },
+    "plugin_type": {
+      "matched": 1
+    },
+    "web_resource": {
+      "ambiguous": 1,
+      "matched": 2,
+      "stale": 1
+    }
+  },
+  "external": [],
+  "incomplete": {},
+  "inventory": {
+    "extracted_at": "2026-11-01T10:00:00Z",
+    "manifest_sha256": "f2e253c76edcd5c55d725eb9af12101adb967ec529e9bbeaeb122d30c809ddac",
+    "org_url": "https://crm.example.test/Org",
+    "platform": "crm2011",
+    "version": "5.0.9690.4376"
+  },
+  "project_references": {},
+  "schema_version": 1,
+  "shared": {
+    "projects": 0,
+    "web_resources": 1
+  },
+  "shared_projects": [],
+  "unmatched_source": []
+}
