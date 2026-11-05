@@ -4,10 +4,8 @@ Step 3 of the workflow. `crm inventory assess <inventory> --target <target>
 --out <file>` is offline. Run it once per target the plan passes through (the
 on-premises 9.1 stop and the cloud), into separate files.
 
-A finding carries a `usage` when its row has one (`reference/remediation.md`
-says how to read it). `--in-use` drops the findings of `unused` rows and
-`--exclude-unknown` those of `unknown` rows, so `counts.by_class` then covers
-only what is left: say so when you quote it. A finding with no `usage` stays.
+When `--in-use` or `--exclude-unknown` was passed, `counts.by_class` covers only
+the rows left: quote it with the flag named.
 
 ## Map findings to the four classes
 

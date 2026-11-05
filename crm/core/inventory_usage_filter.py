@@ -103,9 +103,9 @@ def keeps(usage: Usage | None, *, in_use: bool, exclude_unknown: bool) -> bool:
     )
 
 
-def rank(usage: Usage | None) -> int:
+def rank(state: str | None) -> int:
     """Sort position for ``--sort usage``: used first, then unknown (or not read), then unused."""
-    return _RANK[usage.state] if usage else _RANK["unknown"]
+    return _RANK[state or "unknown"]
 
 
 def filter_findings(
@@ -126,5 +126,5 @@ def filter_findings(
         if keeps(usage, in_use=in_use, exclude_unknown=exclude_unknown):
             findings.append(replace(f, usage=usage.to_dict()) if usage else f)
     if sort == "usage":
-        findings.sort(key=lambda f: _RANK[f.usage["state"]] if f.usage else _RANK["unknown"])
+        findings.sort(key=lambda f: rank(f.usage["state"] if f.usage else None))
     return replace(result, findings=tuple(findings))

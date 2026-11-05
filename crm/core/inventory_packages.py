@@ -1025,7 +1025,7 @@ def build_packages(
         package_id = f"pkg-{hashlib.sha256('\n'.join(sorted(members)).encode()).hexdigest()[:12]}"
         drafts.append((package_id, members, group, group_edges, findings, usage))
 
-    drafts.sort(key=lambda d: (rank(d[5]) if sort == "usage" else 0, d[0]))
+    drafts.sort(key=lambda d: (rank(d[5].state if d[5] else None) if sort == "usage" else 0, d[0]))
     where = {m: d[0] for d in drafts for m in d[1]}
     reports: list[ScenarioReport] = []
     tagged: dict[str, list[ExpectedBehavior]] = {}

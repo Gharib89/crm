@@ -13,7 +13,7 @@ import click
 
 from crm import __version__
 from crm.cli import CLIContext, pass_ctx
-from crm.commands._helpers import d365_errors
+from crm.commands._helpers import d365_errors, in_use_options
 from crm.core import inventory_extract
 from crm.core.inventory import InventoryError, read_inventory
 from crm.core.inventory_assess import CLASSES, TARGETS, assess, dump_findings, read_findings
@@ -40,27 +40,15 @@ def inventory_group():
 
 
 def _usage_options(fn):
-    """The `--in-use`, `--exclude-unknown` and `--sort` options `packages` and `assess` share."""
-    for option in (
+    """The shared `--in-use` / `--exclude-unknown` pair plus `--sort` (`packages`, `assess`)."""
+    return in_use_options(
         click.option(
             "--sort",
             type=click.Choice(SORTS),
             default="default",
             help="`usage` lists used rows first, then unknown or not read, then unused.",
-        ),
-        click.option(
-            "--exclude-unknown",
-            is_flag=True,
-            help="Also drop rows whose usage is `unknown` (one with no usage stays).",
-        ),
-        click.option(
-            "--in-use",
-            is_flag=True,
-            help="Drop rows whose usage is `unused` (read by --with-usage, or derived).",
-        ),
-    ):
-        fn = option(fn)
-    return fn
+        )(fn)
+    )
 
 
 def _eta(seconds: float) -> str:
@@ -421,8 +409,8 @@ def inventory_packages_cmd(
     form, view or ribbon of an entity with no records is `unused` at low
     confidence. A package with no usage at all (nothing read or derived) has no
     `usage` field: not read. --in-use drops a package whose usage is `unused`,
-    --exclude-unknown also one that is `unknown`; neither drops a package that
-    has no usage. --sort usage lists used packages first, then unknown, then
+    --exclude-unknown (which needs --in-use) also one that is `unknown`; neither
+    drops a package that has no usage. --sort usage lists used packages first, then unknown, then
     unused. usage_filtered counts the dropped packages; a scenario lists only
     the packages that remain.
     """
@@ -452,7 +440,7 @@ def inventory_packages_cmd(
             p.id,
             len(p.members),
             p.unknowns(),
-            p.usage.state if p.usage else "not read",
+            f"{p.usage.state} ({p.usage.signal})" if p.usage else "not read",
             *c,
             ", ".join(p.scenarios),
         ]
@@ -615,8 +603,9 @@ def inventory_assess_cmd(
     `used`, an unreferenced one `unknown`, never `unused`; a form, view or ribbon
     of an entity with no records is `unused`, low confidence). A row with no
     usage was not read (counted `not_read`). --in-use drops the findings of
-    `unused` rows, --exclude-unknown also those of `unknown` rows; neither drops
-    a row with no usage. --sort usage lists used rows first.
+    `unused` rows (a blocker on one goes with it), --exclude-unknown, which needs
+    --in-use, also those of `unknown` rows; neither drops a row with no usage.
+    --sort usage lists used rows first.
     """
     try:
         result = assess(inventory, target, out=out_file)

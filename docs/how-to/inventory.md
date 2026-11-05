@@ -517,7 +517,7 @@ from another inventory (its `manifest_sha256` differs), of an unsupported
 
 `crm inventory packages` and `crm inventory assess` can drop rows nobody uses and list the
 used ones first. Both take `--in-use` (drop `unused` rows), `--exclude-unknown` (also drop
-`unknown` rows) and `--sort usage` (used first, then unknown or not read, then unused;
+`unknown` rows; it needs `--in-use`, else exit 2) and `--sort usage` (used first, then unknown or not read, then unused;
 ties keep the default order). They are offline and read no org.
 
 A row's usage is the one `extract --with-usage` recorded
@@ -544,9 +544,9 @@ usage is `unknown`.
   `unknown`. A member with no usage counts as `unknown`; a package whose members have none
   at all has no `usage` field. The flags drop whole packages, the summary's
   `usage_filtered` counts them, and a scenario lists only the packages that remain. The
-  table gains a `usage` column (`not read` where there is none).
+  table gains a `usage` column, `state (signal)`, or `not read` where there is none.
 - **`assess`**: each finding gains `usage` when its row has one, so the file shows why a row
-  is `unknown`. The flags drop the findings of the excluded rows, `counts.by_usage`
+  is `unknown`. The flags drop the findings of the excluded rows, blockers included, `counts.by_usage`
   (`used`, `unknown`, `unused`, `not_read`) counts what is left, and `--sort usage` orders
   the `findings` list.
 

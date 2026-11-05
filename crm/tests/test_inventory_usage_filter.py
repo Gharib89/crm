@@ -305,7 +305,7 @@ def test_exclude_unknown_on_a_manifest_without_usage_drops_only_the_derived_unkn
     folder = _inventory(tmp_path, usage=False)
     every, _ = _packages(folder, tmp_path, out="all")
 
-    strict, out = _packages(folder, tmp_path, "--exclude-unknown", out="f")
+    strict, out = _packages(folder, tmp_path, "--in-use", "--exclude-unknown", out="f")
 
     assert strict["usage_filtered"] == 1  # the unreferenced script's package
     assert strict["packages"] == every["packages"] - 1
@@ -360,7 +360,7 @@ def test_assess_in_use_drops_the_findings_of_unused_rows(tmp_path):
 def test_assess_exclude_unknown_drops_unknown_rows_too(tmp_path):
     folder = _inventory(tmp_path, usage=True)
 
-    _, kept = _assess(folder, tmp_path, "--exclude-unknown")
+    _, kept = _assess(folder, tmp_path, "--in-use", "--exclude-unknown")
 
     assert "web_resource:new_/scripts/orphan.js" not in _keys(kept)
     assert f"web_resource:{LIB}" in _keys(kept)
@@ -384,3 +384,20 @@ def test_assess_sort_by_usage_orders_findings_used_first(tmp_path):
     rank = {"used": 0, "unknown": 1, "unused": 2}
     ranks = [rank[f["usage"]["state"]] if "usage" in f else 1 for f in findings["findings"]]
     assert ranks == sorted(ranks)
+
+
+@pytest.mark.parametrize("command", ["packages", "assess"])
+def test_exclude_unknown_without_in_use_is_a_usage_error(tmp_path, command):
+    folder = _inventory(tmp_path, usage=True)
+    args = ["inventory", command, str(folder), "--exclude-unknown"]
+    (tmp_path / "m.json").write_text("{}", encoding="utf-8")
+    args += (
+        ["--target", "online"]
+        if command == "assess"
+        else ["--source-map", str(tmp_path / "m.json")]
+    )
+    args += ["--out", str(tmp_path / "o")]
+
+    run = CliRunner().invoke(cli, args)
+
+    assert run.exit_code == 2 and "--exclude-unknown needs --in-use" in run.output
