@@ -11,6 +11,7 @@ import json
 import re
 import stat
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -154,6 +155,20 @@ def test_provision_copies_the_fixture_into_the_work_dir():
         isolation.verify_isolation(iso, expect_skill=False)  # no repo markers rode along
     finally:
         iso.cleanup()
+
+
+def test_a_failed_fixture_copy_removes_the_sandbox(tmp_path, monkeypatch):
+    made: list[Path] = []
+    real = tempfile.mkdtemp
+
+    def tracking(*args, **kwargs):
+        made.append(Path(real(*args, **kwargs)))
+        return str(made[-1])
+
+    monkeypatch.setattr(isolation.tempfile, "mkdtemp", tracking)
+    with pytest.raises(isolation.IsolationError, match="could not copy fixture"):
+        isolation.provision_isolation(install_skill=False, fixture=tmp_path / "missing")
+    assert made and not made[0].exists()
 
 
 # --- the five tasks ---------------------------------------------------------

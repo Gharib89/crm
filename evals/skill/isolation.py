@@ -185,7 +185,11 @@ def provision_isolation(
 
     skill_dir = home / ".claude" / "skills" / skill
     if fixture is not None:
-        shutil.copytree(fixture, work, dirs_exist_ok=True)
+        try:
+            shutil.copytree(fixture, work, dirs_exist_ok=True)
+        except (OSError, shutil.Error) as exc:
+            shutil.rmtree(sandbox, ignore_errors=True)
+            raise IsolationError(f"could not copy fixture {fixture.name}: {exc}") from exc
 
     # Scrub the environment of anything that could lead back to the repo *or* the
     # maintainer's real agent config: fresh HOME and CRM_HOME, no PYTHONPATH (which
