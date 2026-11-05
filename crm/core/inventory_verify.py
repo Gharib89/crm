@@ -130,6 +130,11 @@ def _evidence(value: object, where: str) -> Evidence:
     return Evidence(path, _sha(obj, where))
 
 
+def _deployed(value: object, where: str) -> Deployed:
+    obj = _obj(value, where)
+    return Deployed(_str(obj, "component", where), _sha(obj, where))
+
+
 def _result(value: object, where: str) -> VerificationResult:
     obj = _obj(value, where)
     outcome = _str(obj, "outcome", where)
@@ -138,16 +143,12 @@ def _result(value: object, where: str) -> VerificationResult:
     env = obj.get("environment")
     environment = None
     if env is not None:
-        e = _obj(env, f"{where}.environment")
         at = f"{where}.environment"
+        e = _obj(env, at)
         environment = Environment(_str(e, "profile", at), _str(e, "org", at))
     control = obj.get("negative_control", False)
     if type(control) is not bool:
         raise InventoryError(f"results file {where}.negative_control is not a boolean")
-    deployed = [
-        (_obj(d, f"{where}.deployed[{i}]"), f"{where}.deployed[{i}]")
-        for i, d in enumerate(_list(obj.get("deployed", []), f"{where}.deployed"))
-    ]
     return VerificationResult(
         package=_str(obj, "package", where),
         requirement=_str(obj, "requirement", where),
@@ -158,7 +159,10 @@ def _result(value: object, where: str) -> VerificationResult:
         ),
         expected=_str(obj, "expected", where, optional=True),
         actual=_str(obj, "actual", where, optional=True),
-        deployed=tuple(Deployed(_str(d, "component", at), _sha(d, at)) for d, at in deployed),
+        deployed=tuple(
+            _deployed(v, f"{where}.deployed[{i}]")
+            for i, v in enumerate(_list(obj.get("deployed", []), f"{where}.deployed"))
+        ),
         errors=_strings(obj, "errors", where),
         environment=environment,
         open_decisions=_strings(obj, "open_decisions", where),

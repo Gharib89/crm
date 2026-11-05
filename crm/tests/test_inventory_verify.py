@@ -271,7 +271,7 @@ def test_results_recorded_against_another_packages_output_are_refused(packages, 
                 {"results": [_result("p", "r", "pass", [{"path": path, "sha256": "0" * 64}])]},
                 "relative path inside",
             )
-            for path in ("../x", "a/../b", "/x", "a\\b", "C:x", ".", "./", "a\0b", "")
+            for path in ("../x", "a/../b", "/x", "a\\b", "C:x", ".", "./", ".//", "a\0b", "")
         ),
         (
             {"results": [_result("p", "r", "pass", environment={"profile": 1, "org": "o"})]},

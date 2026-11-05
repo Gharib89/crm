@@ -30,7 +30,7 @@
             "type": "object",
             "required": ["path", "sha256"],
             "properties": {
-              "path": {"type": "string", "minLength": 1, "pattern": "^(?!/)(?!(\\.(/|$))+$)(?!.*(^|/)\\.\\.(/|$))[^\\\\:\\u0000]+$"},
+              "path": {"type": "string", "minLength": 1, "pattern": "^(?!/)(?!(\\.(/+|$))+$)(?!.*(^|/)\\.\\.(/|$))[^\\\\:\\u0000]+$"},
               "sha256": {"$ref": "#/$defs/sha256"}
             }
           }
