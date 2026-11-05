@@ -416,7 +416,7 @@ Each package file holds five fields. A field with nothing in it holds one
 | `consumers` | each form, ribbon, sitemap, process or step member, with the entities it sits on and the components that depend on it |
 | `findings` | the unknowns: each unknown edge, each extraction gap on a member, and each member mapped `stale`, `ambiguous` or `missing_source` |
 | `expected_behavior` | each scenario that seeds a member: its name, its `expected_behavior` lines and every package it spans, followed by an unknown entry when it names no lines |
-| `verification` | what a check must cover: a form's libraries and handlers, a ribbon command's or sitemap entry's web resources, a step's message, entity, stage, mode, filtering attributes and images, a process's category and entity (its trigger is unknown in manifest v1) |
+| `verification` | what a check must cover: a form's libraries and handlers, a ribbon command's or sitemap entry's web resources, a step's message, entity, stage, mode, filtering attributes and images, a process's category and entity (its trigger is unknown in manifest v2) |
 
 Each `verification` entry carries an `id`, `req-` plus a hash of the package id, the
 requirement kind and the member, so a later run can match recorded results to it.

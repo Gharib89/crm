@@ -169,7 +169,10 @@ The reader accepts v1 and upgrades it on read: a `ribbon` record whose
 null, takes key `""`, decided by the field and not by the old key, so a v1
 manifest that holds the collision upgrades to distinct keys. The result reads as
 v2, so `diff` pairs a v1 manifest with a v2 one. A v1 record that is neither of
-those keeps its key. A v1 null ribbon or sitemap keyed by any other name is
+those keeps its key, and so does a v1 `solution_membership` or `dependency` row that
+references one of them (its `member_key`, `dependent_key` or `required_key` stays
+`application` or `default`); v2 writes `""` there, so such a row of a v1 manifest does not
+pair with its v2 twin in a diff. A v1 null ribbon or sitemap keyed by any other name is
 refused. One consequence: artifact file names are derived from the key, so a
 v2 extraction names these two files `component-<hash>` where a v1 one named
 them `application-<hash>` and `default-<hash>`; `diff` reads artifact hashes,

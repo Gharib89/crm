@@ -1,4 +1,4 @@
-"""Migration inventory manifest v1: schema, reader, writer and normalization (ADR 0032)."""
+"""Migration inventory manifest v2 and the v1 upgrade: schema, reader, writer (ADR 0032)."""
 
 # pyright: basic
 
@@ -556,6 +556,8 @@ def test_schema_file_is_a_valid_draft_2020_12_schema_whose_kinds_match_the_reade
             expected = {"type": "integer"}
         elif (kind, name) in inventory.NULLABLE_KEY_FIELDS:
             expected = {"type": ["string", "null"], "minLength": 1}
+        elif name in inventory._REFERENCE_FIELDS:  # may be "": see component_key
+            expected = {"type": "string"}
         assert {k: v for k, v in spec.items() if k != "description"} == expected, (kind, name)
 
 
@@ -685,23 +687,39 @@ def test_reader_refuses_a_v1_application_ribbon_keyed_by_anything_but_its_v1_key
         inventory.parse_manifest(manifest)
 
 
-@pytest.mark.parametrize("version", [1, 2])
-def test_reader_refuses_the_v1_key_on_a_v2_manifest_and_an_empty_key_elsewhere(
-    version: int,
-) -> None:
+def test_reader_refuses_the_v1_key_on_a_v2_manifest() -> None:
     manifest = _v1_application_ribbon()
     manifest["schema_version"] = 2
+
     with pytest.raises(inventory.InventoryError, match="does not match"):
         inventory.parse_manifest(manifest)
+
+
+@pytest.mark.parametrize("version", [1, 2])
+def test_reader_refuses_an_empty_key_on_any_other_kind(version: int) -> None:
     manifest = _manifest()
     manifest["schema_version"] = version
     manifest["records"][0]["key"] = ""
+
     with pytest.raises(inventory.InventoryError, match="key must be a non-empty string"):
         inventory.parse_manifest(manifest)
 
 
+def test_a_membership_or_dependency_may_reference_the_application_ribbon_or_default_sitemap() -> (
+    None
+):
+    member = {"solution": "contoso", "member_kind": "sitemap", "member_key": ""}
+    assert inventory.component_key("solution_membership", member) == "contoso|sitemap|"
+    dep = {"dependent_kind": "ribbon", "dependent_key": "", "required_kind": "entity",
+           "required_key": "account", "dependency_type": 2}  # fmt: skip
+    assert inventory.component_key("dependency", dep) == "ribbon||entity|account|2"
+    with pytest.raises(inventory.KeyFieldValueError):
+        inventory.component_key("solution_membership", {**member, "member_kind": "entity"})
+
+
 def test_the_v1_schema_still_validates_a_v1_manifest_and_the_v2_schema_the_empty_key() -> None:
-    v1_schema = json.loads(SCHEMA_FILE.with_name("inventory-manifest-v1.schema.json").read_text())
+    v1_file = SCHEMA_FILE.with_name("inventory-manifest-v1.schema.json")
+    v1_schema = json.loads(v1_file.read_text(encoding="utf-8"))
     v1 = _v1_application_ribbon()
     assert list(jsonschema.Draft202012Validator(v1_schema).iter_errors(v1)) == []
     v2 = copy.deepcopy(v1)

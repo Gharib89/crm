@@ -1565,8 +1565,8 @@ class _Builder:
             counts[(p.kind, p.key)] = counts.get((p.kind, p.key), 0) + 1
         records: list[Record] = []
         for p in self.pending:
-            # A record with no source id (a ribbon) is told apart by its key fields'
-            # values: the application ribbon's null entity meets an `application` entity.
+            # A record with no source id (a ribbon) sharing its key with another is told
+            # apart by its key fields' values.
             discriminator = (
                 (p.id or json.dumps([p.fields[n] for n in KEY_FIELDS[p.kind]]))
                 if counts[(p.kind, p.key)] > 1

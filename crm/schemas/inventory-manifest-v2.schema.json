@@ -850,7 +850,7 @@
                   },
                   "member_key": {
                     "type": "string",
-                    "minLength": 1
+                    "description": "Non-empty, except a reference to the application ribbon or default sitemap, which is the empty string; parse_manifest enforces that."
                   }
                 }
               },
@@ -891,7 +891,7 @@
                   },
                   "dependent_key": {
                     "type": "string",
-                    "minLength": 1
+                    "description": "Non-empty, except a reference to the application ribbon or default sitemap, which is the empty string; parse_manifest enforces that."
                   },
                   "required_kind": {
                     "type": "string",
@@ -899,7 +899,7 @@
                   },
                   "required_key": {
                     "type": "string",
-                    "minLength": 1
+                    "description": "Non-empty, except a reference to the application ribbon or default sitemap, which is the empty string; parse_manifest enforces that."
                   },
                   "dependency_type": {
                     "type": "integer"

@@ -1,11 +1,11 @@
-"""Migration inventory manifest v1: the contract every extractor emits (ADR 0032).
+"""Migration inventory manifest v2: the contract every extractor emits (ADR 0032).
 
 A migration inventory is a folder holding ``manifest.json`` (the inventory
 manifest) and ``artifacts/<kind>/<file>``. This module owns the format both the
 CRM 2011 path and the v9/cloud paths write: the component key per kind, artifact
 paths and hashes, the typed records, a deterministic writer and a reader that
 applies the version rule. The JSON Schema of the same format ships at
-``crm/schemas/inventory-manifest-v1.schema.json``; the reader validates
+``crm/schemas/inventory-manifest-v2.schema.json``; the reader validates
 structure without it, so no runtime code depends on ``jsonschema``.
 """
 
@@ -84,6 +84,15 @@ class KeyFieldValueError(InventoryError):
     """A key field present but holding a value the key contract refuses (empty or mistyped)."""
 
 
+#: Key-reference fields mapped to the field naming the referenced kind. A reference
+#: to the application ribbon or default sitemap is the empty key, which is legal here.
+_REFERENCE_FIELDS = {
+    "member_key": "member_kind",
+    "dependent_key": "dependent_kind",
+    "required_key": "required_kind",
+}
+
+
 def _key_part(kind: str, name: str, value: object) -> str:
     if name in INTEGER_KEY_FIELDS:
         if type(value) is not int:
@@ -119,7 +128,12 @@ def component_key(kind: str, fields: Mapping[str, Any]) -> str:
     missing = [name for name in names if name not in fields]
     if missing:
         raise InventoryError(f"{kind} record lacks key field(s): {', '.join(missing)}")
-    return "|".join(_key_part(kind, name, fields[name]) for name in names)
+    parts: list[str] = []
+    for name in names:
+        referenced = fields.get(_REFERENCE_FIELDS.get(name, ""))
+        parts.append("" if fields[name] == "" and referenced in _V1_NULL_KEY
+                     else _key_part(kind, name, fields[name]))  # fmt: skip
+    return "|".join(parts)
 
 
 def artifact_path(kind: str, key: str, name: str, *, discriminator: str | None = None) -> str:

@@ -505,6 +505,25 @@ def test_an_entity_named_application_keeps_its_own_ribbon_file(tmp_path, monkeyp
     assert not inventory.read_inventory(out).ambiguous()
 
 
+def test_a_membership_and_a_dependency_of_the_default_sitemap_keep_its_empty_key(
+    tmp_path, monkeypatch
+):
+    member = {"solutioncomponentid": _id(102), "componenttype": 62, "objectid": _id(80),
+              **_lookup("solutionid", "solution", 2)}  # fmt: skip
+    dep = {"dependencyid": _id(111), "dependentcomponenttype": 62,
+           "dependentcomponentobjectid": _id(80), "requiredcomponenttype": 1,
+           "requiredcomponentobjectid": _id(201), "dependencytype": 2}  # fmt: skip
+    monkeypatch.setitem(_ORG, "solutioncomponents", [[*_ORG["solutioncomponents"][0], member]])
+    monkeypatch.setitem(_ORG, "dependencies", [[*_ORG["dependencies"][0], dep]])
+    out = tmp_path / "inv"
+    _extract(FakeBackend(), out)
+    data = _manifest(out)
+    refs = [r["fields"] for r in data["records"] if r["kind"] == "solution_membership"]
+    assert {"solution": "contoso", "member_kind": "sitemap", "member_key": ""} in refs
+    deps = [r["fields"] for r in data["records"] if r["kind"] == "dependency"]
+    assert any(d["dependent_kind"] == "sitemap" and d["dependent_key"] == "" for d in deps)
+
+
 def test_a_scoped_dependency_on_a_component_outside_the_scope_is_a_scope_gap(tmp_path, monkeypatch):
     # The member entity's form requires an attribute of account, which is outside
     # the solution; a scoped run reads no account details, so it cannot record it.
