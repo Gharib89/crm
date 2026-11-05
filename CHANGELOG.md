@@ -9,6 +9,19 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.92.2 (2026-11-05)
+
+### Bug Fixes
+
+- **skills**: Crm-migration reference for cloud verification and checkpoints
+  ([#1085](https://github.com/Gharib89/crm/pull/1085),
+  [`20c6b06`](https://github.com/Gharib89/crm/commit/20c6b06943e92dcb37e6bc6cc2460c6d5e5ae3f3))
+
+- **skills**: Crm-migration verification page: real requirement kinds, done criteria
+  ([#1085](https://github.com/Gharib89/crm/pull/1085),
+  [`20c6b06`](https://github.com/Gharib89/crm/commit/20c6b06943e92dcb37e6bc6cc2460c6d5e5ae3f3))
+
+
 ## v1.92.1 (2026-11-05)
 
 ### Bug Fixes
