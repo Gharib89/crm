@@ -67,7 +67,7 @@ def _write_packages(out: Path) -> Path:
 def _evidence(folder: Path, name: str, body: str = "ok\n") -> dict:
     path = folder / "evidence" / name
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(body, encoding="utf-8")
+    path.write_bytes(body.encode())  # bytes: text mode writes \r\n on Windows
     return {"path": f"evidence/{name}", "sha256": hashlib.sha256(body.encode()).hexdigest()}
 
 
