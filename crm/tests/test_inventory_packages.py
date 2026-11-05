@@ -677,7 +677,7 @@ def _findings_file(folder: Path, tmp_path: Path, *, manifest_sha: str | None = N
             "evidence": {"field": "isolation_mode", "value": 1},
         },
     ]
-    data["rules_hit"] = {
+    data["rules_hit"] |= {
         "script-sample": {"class": "blocker", "title": "t", "fix": "f", "sources": [LEARN]},
         "assembly-sample": {"class": "deprecated", "title": "t", "fix": "f", "sources": [LEARN]},
     }
@@ -849,6 +849,9 @@ def test_cli_refuses_findings_of_another_inventory(inputs, tmp_path):
     [
         (lambda d: d.update(schema_version=2), "schema_version"),
         (lambda d: d["findings"].append({"kind": "form", "key": "x", "class": "bad"}), "class"),
+        (lambda d: d["findings"][-1].update(rule=123), "rule"),
+        (lambda d: d["findings"][-1].update(rule="not-in-rules-hit"), "rules_hit"),
+        (lambda d: d.update(target="not-a-target"), "target"),
         (lambda d: d.pop("rules_hit"), "rules_hit"),
         (lambda d: d["findings"].append({"kind": "form", "class": "clear"}), "key"),
     ],

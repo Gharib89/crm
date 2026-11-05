@@ -435,6 +435,7 @@ def read_findings(path: Path) -> FindingsFile:
             f"{where}: schema_version {version!r} is not supported;"
             f" this crm reads findings schema_version {SCHEMA_VERSION}"
         )
+    hit = _field(data, "rules_hit", dict, where)
     findings: list[Finding] = []
     for i, item in enumerate(_field(data, "findings", list, where)):
         at = f"{where}: findings[{i}]"
@@ -442,22 +443,28 @@ def read_findings(path: Path) -> FindingsFile:
         if cls not in CLASSES:
             raise InventoryError(f"{at}: unknown class {cls!r}")
         rule, reason = _get(item, "rule"), _get(item, "reason")
+        if rule is not None and type(rule) is not str:
+            raise InventoryError(f"{at}: rule must be a string or null")
+        if rule is not None and rule not in hit:
+            raise InventoryError(f"{at}: rule {rule!r} has no entry in rules_hit")
         findings.append(
             Finding(
                 _field(item, "kind", str, at),
                 _field(item, "key", str, at),
                 cls,
-                rule if isinstance(rule, str) else None,
+                rule,
                 reason if isinstance(reason, str) else None,
                 _evidence(_get(item, "evidence"), f"{at}: evidence"),
             )
         )
-    hit = _field(data, "rules_hit", dict, where)
     sources = {
         rule: tuple(_sources(entry, f"{where}: rules_hit.{rule}")) for rule, entry in hit.items()
     }
     sha = _field(_field(data, "inventory", dict, where), "manifest_sha256", str, where)
-    return FindingsFile(sha, _field(data, "target", str, where), tuple(findings), sources)
+    target = _field(data, "target", str, where)
+    if target not in TARGETS:
+        raise InventoryError(f"{where}: target {target!r} is not one of {', '.join(TARGETS)}")
+    return FindingsFile(sha, target, tuple(findings), sources)
 
 
 def _locations(pattern: re.Pattern[str], text: str) -> tuple[tuple[tuple[int, int], ...], int]:
