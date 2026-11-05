@@ -9,6 +9,35 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.92.7 (2026-11-05)
+
+### Bug Fixes
+
+- **dev**: Windows-vm.sh guardrails come before the risky steps
+  ([#1109](https://github.com/Gharib89/crm/pull/1109),
+  [`e98b427`](https://github.com/Gharib89/crm/commit/e98b42741d96293fd2fef5b814c85d4789150277))
+
+### Chores
+
+- **dev**: On-demand Windows 11 test VM in Azure
+  ([#1109](https://github.com/Gharib89/crm/pull/1109),
+  [`e98b427`](https://github.com/Gharib89/crm/commit/e98b42741d96293fd2fef5b814c85d4789150277))
+
+- **dev**: SSH access and a Windows test recipe for the test VM
+  ([#1109](https://github.com/Gharib89/crm/pull/1109),
+  [`e98b427`](https://github.com/Gharib89/crm/commit/e98b42741d96293fd2fef5b814c85d4789150277))
+
+### Documentation
+
+- **legacy**: CRM 2011 reads verified on Windows too
+  ([#1113](https://github.com/Gharib89/crm/pull/1113),
+  [`1c9ce35`](https://github.com/Gharib89/crm/commit/1c9ce35d2155d559aab480b7aeab8647aa2798cf))
+
+- **legacy**: Say Windows in the crm legacy group help too
+  ([#1113](https://github.com/Gharib89/crm/pull/1113),
+  [`1c9ce35`](https://github.com/Gharib89/crm/commit/1c9ce35d2155d559aab480b7aeab8647aa2798cf))
+
+
 ## v1.92.6 (2026-11-05)
 
 ### Bug Fixes
