@@ -379,21 +379,23 @@ class FindingsFile:
     sources: dict[str, tuple[str, ...]]
 
 
-def _field(obj: object, name: str, kind: type, where: str) -> Any:
+def _get(obj: Any, name: str) -> Any:
+    return cast(dict[str, Any], obj).get(name) if isinstance(obj, dict) else None
+
+
+def _field(obj: Any, name: str, kind: type, where: str) -> Any:
     """``obj[name]``, which must be a *kind*: the reader's one check, naming *where* on failure."""
-    value = cast(dict[str, Any], obj).get(name) if type(obj) is dict else None
+    value = _get(obj, name)
     if type(value) is not kind:
         raise InventoryError(f"{where}: {name} must be a {kind.__name__}")
     return value
 
 
-def _evidence(value: object, where: str) -> ContentEvidence | FieldEvidence | None:
+def _evidence(value: Any, where: str) -> ContentEvidence | FieldEvidence | None:
     if value is None:
         return None
-    if type(value) is dict and "field" in value:
-        return FieldEvidence(
-            _field(value, "field", str, where), cast(dict[str, Any], value).get("value")
-        )
+    if _get(value, "field") is not None:
+        return FieldEvidence(_field(value, "field", str, where), _get(value, "value"))
     locations = tuple(
         (_field(loc, "line", int, where), _field(loc, "column", int, where))
         for loc in _field(value, "locations", list, where)
@@ -424,10 +426,10 @@ def read_findings(path: Path) -> FindingsFile:
     """
     where = f"findings file {path}"
     try:
-        data = json.loads(path.read_text(encoding="utf-8-sig"))
+        data: Any = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError) as exc:  # ValueError: malformed UTF-8 or JSON
         raise InventoryError(f"cannot read {where}: {exc}") from exc
-    version = cast(dict[str, Any], data).get("schema_version") if type(data) is dict else None
+    version = _get(data, "schema_version")
     if type(version) is not int or version != SCHEMA_VERSION:
         raise InventoryError(
             f"{where}: schema_version {version!r} is not supported;"
@@ -439,7 +441,7 @@ def read_findings(path: Path) -> FindingsFile:
         cls = _field(item, "class", str, at)
         if cls not in CLASSES:
             raise InventoryError(f"{at}: unknown class {cls!r}")
-        rule, reason = item.get("rule"), item.get("reason")
+        rule, reason = _get(item, "rule"), _get(item, "reason")
         findings.append(
             Finding(
                 _field(item, "kind", str, at),
@@ -447,7 +449,7 @@ def read_findings(path: Path) -> FindingsFile:
                 cls,
                 rule if isinstance(rule, str) else None,
                 reason if isinstance(reason, str) else None,
-                _evidence(item.get("evidence"), f"{at}: evidence"),
+                _evidence(_get(item, "evidence"), f"{at}: evidence"),
             )
         )
     hit = _field(data, "rules_hit", dict, where)
