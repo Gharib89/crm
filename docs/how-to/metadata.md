@@ -137,6 +137,35 @@ The human table includes an `IsManaged` column. Filters are rejected with the
 entity-definition cache (`--cache-metadata` / `--refresh-metadata`), which stores only
 logical/set names.
 
+## Keep only entities that hold data
+
+```bash
+# every row gains a `usage` object; rows proven unused are dropped
+crm --json metadata entities --in-use
+
+# strict: only entities proven to hold records
+crm --json metadata entities --in-use --exclude-unknown
+```
+
+Each row carries `usage`: `{state, signal, value, as_of, reason}`.
+
+- `state` is `used`, `unused` or `unknown`. `--in-use` drops `unused` rows and keeps
+  `unknown` ones, so an entity the probe could not read is never hidden;
+  `--exclude-unknown` also drops them. `--exclude-unknown` alone is a usage error.
+- `signal` is `record_presence`. `value` is the record count when the server gave
+  one, else `null` (the entity holds at least one row). `as_of` is the UTC time
+  the signal was read. `reason` says why a row is `unknown`: virtual, elastic or
+  private entities are not probed, and an entity the caller may not read or the
+  server refuses carries the server's message.
+- Without the flag the rows are unchanged and nothing is probed.
+- `RetrieveTotalRecordCount` is a snapshot and reads `0` on a young org, so a zero is
+  confirmed with a one-row read of the entity: a row makes it `used`, none makes it
+  `unused`. A whole org costs one read per empty entity (about 80 seconds for 896
+  entities on Dataverse). Progress prints on stderr as `[crm] usage stage=entities
+  done=n/total`; stdout stays the JSON envelope.
+- `--top` limits the entities probed. `--in-use` cannot combine with the metadata cache
+  (`--cache-metadata`), which stores only names.
+
 ## Create a custom entity
 
 ```bash

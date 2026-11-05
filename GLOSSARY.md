@@ -488,6 +488,14 @@ _Avoid_: snapshot (the artifact is the same whatever stage it was taken at),
 baseline (the role one plays in a comparison, not a kind of artifact),
 spec (the apply desired state), org brief (a capped summary for orientation).
 
+**Usage**:
+One component's `{state, signal, value, as_of, reason}`, read by a listing's `--in-use`
+flag. `state` is `used`, `unused` or `unknown`: `unknown` (a failed read, a source with no
+signal) is never `unused`. Only positive evidence or a confirmed empty entity changes a
+row. `--in-use` drops `unused` rows; `--exclude-unknown` also drops `unknown` ones.
+Owned by [`crm/core/usage.py`](crm/core/usage.py).
+_Avoid_: activity, in-use state (the field is `usage.state`).
+
 **Component key**:
 The natural identity of a component within its kind, such as an entity's logical
 name, a web resource's name, or a plug-in type's assembly plus full type name, by
