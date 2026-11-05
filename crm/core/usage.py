@@ -515,7 +515,7 @@ def probe_v9_plugin_types(
         Step(
             r["sdkmessageprocessingstepid"],
             r["_eventhandler_value"],
-            r.get("statecode") == 0,
+            r.get("statecode") != 1,  # 1 is disabled; an unread state is never a proof
             r.get("mode") == 0,
             bool(r.get("asyncautodelete")),
             _message_name(r),
@@ -608,3 +608,41 @@ def probe_legacy_plugins(
     ev = read_legacy_plugin_evidence(client, time_cap=time_cap, monotonic=monotonic)
     assembly_ids = [str(r["id"]) for r in _fetch_all(client, "pluginassembly", ("name",))]
     return plugin_usage(steps, types, ev, assembly_ids=assembly_ids, clock=clock)
+
+
+PLUGIN_KINDS = ("plugin-assemblies", "plugin-types", "plugin-steps")  # `legacy components` kinds
+
+
+def annotate_v9_types(
+    backend: D365Backend, items: list[dict[str, Any]], *, exclude_unknown: bool
+) -> list[dict[str, Any]]:
+    """Give each `plugin list-types` row a `usage`, dropping the unused rows."""
+    types = [
+        PluginType(
+            it["plugintypeid"],
+            it.get("_pluginassemblyid_value") or "",
+            it.get("typename") or "",
+            bool(it.get("isworkflowactivity")),
+        )
+        for it in items
+    ]
+    states = probe_v9_plugin_types(backend, types)
+    rows = [
+        {k: v for k, v in it.items() if k not in ("_pluginassemblyid_value", "isworkflowactivity")}
+        for it in items
+    ]
+    return attach(rows, states, key=lambda r: r["plugintypeid"], exclude_unknown=exclude_unknown)
+
+
+def annotate_legacy_components(
+    client: LegacyClient, data: dict[str, list[dict[str, Any]]], *, exclude_unknown: bool
+) -> dict[str, list[dict[str, Any]]]:
+    """Give each plug-in component row read by `legacy components` its `usage`."""
+    steps, types, assemblies = probe_legacy_plugins(client)
+    by_kind = dict(zip(PLUGIN_KINDS, (assemblies, types, steps), strict=True))
+    return {
+        kind: attach(
+            rows, by_kind[kind], key=lambda r: str(r["id"]), exclude_unknown=exclude_unknown
+        )
+        for kind, rows in data.items()
+    }

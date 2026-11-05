@@ -124,9 +124,6 @@ def legacy_metadata(
     _emit_with_failures(ctx, data, _meta(ctx, client), errors, len(entities), "entities", "entity")
 
 
-_PLUGIN_KINDS = ("plugin-assemblies", "plugin-types", "plugin-steps")
-
-
 @legacy_group.command("components")
 @click.argument("kinds", nargs=-1, type=click.Choice(list(legacy_reads.KINDS)))
 @click.option(
@@ -178,10 +175,10 @@ def legacy_components(
     step with an async job row is used; every other step is `unknown`.
     """
     if in_use:
-        wrong = [k for k in kinds if k not in _PLUGIN_KINDS]
+        wrong = [k for k in kinds if k not in usage.PLUGIN_KINDS]
         if wrong:
             raise click.UsageError(f"--in-use does not apply to {', '.join(wrong)}.")
-        kinds = kinds or tuple(_PLUGIN_KINDS)
+        kinds = kinds or tuple(usage.PLUGIN_KINDS)
     if entity is not None:
         wrong = [k for k in kinds if k not in legacy_reads.ENTITY_KINDS]
         if wrong:
@@ -200,16 +197,7 @@ def legacy_components(
         scope = legacy_reads.resolve_scope(client, names, solution, entity)
         data, errors = legacy_reads.read_components(client, names, out_dir, scope)
         if in_use:
-            steps, types, assemblies = usage.probe_legacy_plugins(client)
-            by_kind = {
-                "plugin-assemblies": assemblies,
-                "plugin-types": types,
-                "plugin-steps": steps,
-            }
-            for name, rows in data.items():
-                data[name] = usage.attach(
-                    rows, by_kind[name], key=lambda r: str(r["id"]), exclude_unknown=exclude_unknown
-                )
+            data = usage.annotate_legacy_components(client, data, exclude_unknown=exclude_unknown)
     _emit_with_failures(
         ctx, {**data, "errors": errors}, _meta(ctx, client), errors, len(names), "kinds", "kind"
     )

@@ -155,22 +155,7 @@ def list_types_cmd(ctx: CLIContext, assembly, in_use: bool, exclude_unknown: boo
         result = plugin_mod.list_types(backend, assembly=assembly, usage_columns=in_use)
         items = result["value"]
         if in_use:
-            types = [
-                usage.PluginType(
-                    it["plugintypeid"],
-                    it.get("_pluginassemblyid_value") or "",
-                    it.get("typename") or "",
-                    bool(it.get("isworkflowactivity")),
-                )
-                for it in items
-            ]
-            states = usage.probe_v9_plugin_types(backend, types)
-            for it in items:
-                it.pop("_pluginassemblyid_value", None)
-                it.pop("isworkflowactivity", None)
-            items = usage.attach(
-                items, states, key=lambda r: r["plugintypeid"], exclude_unknown=exclude_unknown
-            )
+            items = usage.annotate_v9_types(backend, items, exclude_unknown=exclude_unknown)
     if ctx.json_mode:
         ctx.emit(True, data=items, meta={"count": len(items)})
         return
