@@ -38,7 +38,7 @@ def legacy_group():
     """Read a legacy CRM 2011 org over its read-only SOAP endpoint.
 
     Runs only on a crm2011 profile, which `crm profile add` saves when the org
-    has no Web API. Tested on CRM 2011 UR15 (5.0.9690.3557), Linux.
+    has no Web API. Tested on CRM 2011 UR15 (5.0.9690.3557), on Linux and Windows.
     """
 
 

@@ -171,3 +171,4 @@ nav:
       - Skill & CLI sync: contributing/skill-and-cli.md
       - File-boundary encoding: contributing/encoding.md
       - D365 Web API quirks: contributing/d365-web-api-quirks.md
+      - Windows test VM: contributing/windows-test-vm.md

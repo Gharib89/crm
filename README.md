@@ -310,7 +310,7 @@ enforcement is a server-side read-only security role. See
 A legacy **CRM 2011** org (no Web API) is detected by `crm profile add` and saved
 as an always-read-only `crm2011` profile; `crm legacy whoami` / `version` / `metadata` /
 `components` / `dependencies` / `export-solution` read it over a read-only SOAP transport
-(tested on CRM 2011 UR15 (5.0.9690.3557), Linux). `crm inventory extract` also runs on
+(tested on CRM 2011 UR15 (5.0.9690.3557), on Linux and Windows). `crm inventory extract` also runs on
 it, and on v9 on-prem and cloud profiles over the Web API: it writes the migration
 inventory (manifest v1 plus raw artifacts), whole-org or narrowed with `--solution`,
 checkpointed so an interrupted run resumes; `crm inventory diff` compares two inventories
