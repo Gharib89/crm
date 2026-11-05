@@ -1,33 +1,31 @@
 # Remediation: from work packages to small patches
 
-Steps 4 and 5 of the workflow. `crm inventory packages <inventory> --source-map
-<map> --findings <assess file> --out <folder>` is offline and writes
-`index.json` plus one `<package id>.json` per package. Passing `--findings`
-merges each blocker, deprecated, optional and unknown finding into the package
-holding its component; without it a package lists only its unknowns. Findings
-never change which packages exist. Run it once per target, from that target's
-findings file. A findings file made from another inventory is refused.
+Steps 4 and 5 of the workflow. Run `crm inventory packages <inventory>
+--source-map <map> --findings <assess file> --out <folder>` once per target,
+from that target's findings file, so each package carries its compatibility
+findings.
 
 ## Read the output
 
-The summary gives package counts, the `compatibility` counts and the
+The summary gives the package counts, the `compatibility` counts and the
 `packages_sha256` that verification names (`reference/verification.md`). In the
 package folder:
 
-- **A package** is a connected group of components, so a shared library and its
-  consumers are one package. Its file holds `source`, `consumers`, `findings`,
-  `edges`, `expected_behavior` and `verification`.
-- **`unplaced`** counts findings whose component sits in no package (an entity,
-  a system web resource). They are not dropped: list each as its own task or a
-  manual-review entry.
-- **An unknown edge** is a reference the graph could not resolve (a dynamic
-  name, an ISV page, another host's URL). It is an unknown, never a pass.
-- **`expected_behavior`** reads `unknown` until a scenario seeds the package;
-  ask the user for the expected behavior before tests are written.
+- **A package file** (`<package id>.json`) holds `source`, `consumers`,
+  `findings`, `edges`, `expected_behavior` and `verification`. A shared library
+  and its consumers are one package.
+- **`index.json`** lists the packages and everything no package holds:
+  `compatibility.unplaced` (findings whose component sits in no package) and the
+  unknown edges from nodes no package holds. List each as its own task or a
+  manual-review entry; none is dropped.
+- **An unknown edge** inside a package is a reference the graph could not resolve
+  (a dynamic name, an ISV page, another host's URL). It is an unknown, never a
+  pass.
+- **`expected_behavior`** reads `unknown` until a scenario seeds the package.
+  Ask the user for the expected behavior, put each answer in a scenarios file
+  and re-run `packages` with `--scenarios`, before tests are written.
 
 ## Write one task per finding, six fields each
-
-Build the task from the package file, then fill what the file cannot supply:
 
 1. **Component and source references**: the `source` entries. A `candidate`,
    `stale` or `missing_source` reference is named as such, with its open
@@ -41,7 +39,7 @@ Build the task from the package file, then fill what the file cannot supply:
 6. **Tests needed**: the package's `verification` requirement ids and the kind of
    test each needs.
 
-A task missing a field names it as an unknown; it does not guess one.
+A task missing a field names it as an unknown.
 
 ## Patch small, build, then deploy
 
@@ -51,9 +49,10 @@ A task missing a field names it as an unknown; it does not guess one.
   checked, not edited again.
 - Run the repository's own build and checks on the patched tree before anything
   is deployed. Deployment to the target follows `reference/verification.md`.
-- Re-run `assess` and `packages` after a patch lands in a new extraction. The
-  `packages_sha256` changes with the inventory, and a results file recorded
-  against the old one is refused.
+- A new extraction changes `packages_sha256`, and a results file recorded
+  against the old one is refused: re-run `map-source`, `assess` and `packages`
+  from the new inventory.
 
-Done when every package task carries all six fields, the `unplaced` findings
-have tasks or entries, and each patch builds clean in the repository.
+Done when every package task, every `unplaced` finding and every unknown edge in
+`index.json` has its six fields or a named unknown, and each patch builds clean
+in the repository.
