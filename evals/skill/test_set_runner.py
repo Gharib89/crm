@@ -64,7 +64,8 @@ def test_set_task_spec_count():
     # kinds counted apart: `do` predicate tasks scored on org state (20 — +3 bulk cluster
     # #895: update-delta, delete-population, delete-from-list; +2 records cluster #896:
     # note-attach, reassign-parent; +1 security cluster #898: assign-role-team), `feasibility`
-    # tasks scored field-by-field on an answer key (#891, 15 — +1 bulk dedupe-merge #895, +1
+    # tasks scored field-by-field on an answer key (#891, 20 — +5 `migration-*` #1067, run against
+    # the `crm-migration` skill over a fixture workspace; +1 bulk dedupe-merge #895, +1
     # records paging-count #896, +3 solutions-ALM cluster #897: missing-dependency,
     # managed-component-delete, unmanaged-to-managed; +2 security cluster #898: privilege-toggle,
     # uncovered-impersonation; +3 metadata cluster #899: field-type-change, optionset-read,
@@ -74,8 +75,7 @@ def test_set_task_spec_count():
     # ribbon-custom-icon — `source: firsthand`, topping up the feasibility slots community
     # sources under-produce, one per previously feasibility-uncovered reference domain), and
     # diagnostic tasks scored by the --analyze pass (#572, 2: `trial-import-diagnosis` +
-    # `diagnostic-data-quality`; +5 `migration-*` feasibility tasks #1067, run against the
-    # `crm-migration` skill over a fixture workspace).
+    # `diagnostic-data-quality`).
     specs = _specs()
     do_predicate = [s for s in specs if s.kind == "do" and not s.is_diagnostic]
     feasibility = [s for s in specs if s.is_feasibility]

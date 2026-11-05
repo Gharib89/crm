@@ -41,6 +41,42 @@ def _cli(*args: str) -> dict:
     return json.loads(run.output)["data"]
 
 
+def _run_pipeline(out: Path, results_packages: Path, *, scenarios: bool) -> dict[str, Path]:
+    """Run the four offline stages over the process fixture into ``out``."""
+    inv = str(PROCESS / "inventory")
+    smap, findings, packages, report = (
+        out / "source-map.json",
+        out / "findings.json",
+        out / "packages",
+        out / "verification-report.json",
+    )
+    _cli("inventory", "map-source", inv, "--repo", str(PROCESS / "repo"), "--out", str(smap))
+    _cli("inventory", "assess", inv, "--target", "online", "--out", str(findings))
+    extra = ["--scenarios", str(PROCESS / "scenarios.json")] if scenarios else []
+    _cli(
+        "inventory",
+        "packages",
+        inv,
+        "--source-map",
+        str(smap),
+        *extra,
+        "--findings",
+        str(findings),
+        "--out",
+        str(packages),
+    )
+    _cli(
+        "inventory",
+        "verify",
+        str(results_packages),
+        "--results",
+        str(RESULTS / "results.json"),
+        "--out",
+        str(report),
+    )
+    return {"map": smap, "findings": findings, "packages": packages, "report": report}
+
+
 def _task_by_id() -> dict:
     return {parse_task_file(p).id: parse_task_file(p) for p in TASKS}
 
@@ -135,47 +171,12 @@ def test_the_five_migration_tasks_load():
 def test_answer_keys_match_the_real_pipeline(tmp_path):
     specs = _task_by_id()
     manifest = json.loads((PROCESS / "inventory" / "manifest.json").read_text(encoding="utf-8"))
-    smap = tmp_path / "map.json"
-    _cli(
-        "inventory",
-        "map-source",
-        str(PROCESS / "inventory"),
-        "--repo",
-        str(PROCESS / "repo"),
-        "--out",
-        str(smap),
-    )
-    findings = tmp_path / "findings.json"
-    _cli(
-        "inventory",
-        "assess",
-        str(PROCESS / "inventory"),
-        "--target",
-        "online",
-        "--out",
-        str(findings),
-    )
-    packages = tmp_path / "packages"
-    _cli(
-        "inventory",
-        "packages",
-        str(PROCESS / "inventory"),
-        "--source-map",
-        str(smap),
-        "--findings",
-        str(findings),
-        "--out",
-        str(packages),
-    )
-    report = tmp_path / "report.json"
-    _cli(
-        "inventory",
-        "verify",
-        str(RESULTS / "packages"),
-        "--results",
-        str(RESULTS / "results.json"),
-        "--out",
-        str(report),
+    made = _run_pipeline(tmp_path, RESULTS / "packages", scenarios=False)
+    smap, findings, packages, report = (
+        made["map"],
+        made["findings"],
+        made["packages"],
+        made["report"],
     )
 
     incomplete = sorted(k for k, v in manifest["coverage"].items() if v["status"] != "complete")
@@ -206,7 +207,7 @@ def test_answer_keys_match_the_real_pipeline(tmp_path):
     }
     assert lookup["status"] == "ambiguous"
     assert key["migration-ambiguous-code-mapping"]["candidate_files"] == lookup["files"]
-    assembly = {f["class"] for f in findings_for(findings, "Contoso.Plugins")}
+    assembly = {f["class"] for f in _findings_for(findings, "Contoso.Plugins")}
     assert assembly == {"unknown"}
     assert key["migration-missing-capability-unknown"]["assembly_class"] == "unknown"
     assert key["migration-supported-remediation"] == {
@@ -218,7 +219,7 @@ def test_answer_keys_match_the_real_pipeline(tmp_path):
     assert "complete" not in verdicts
 
 
-def findings_for(path: Path, key: str) -> list[dict]:
+def _findings_for(path: Path, key: str) -> list[dict]:
     data = json.loads(path.read_text(encoding="utf-8"))["findings"]
     return [f for f in data if f["key"] == key]
 
@@ -240,49 +241,12 @@ def _strip_times(text: str) -> str:
 
 
 def test_worked_example_reproduces_byte_for_byte(tmp_path):
-    smap = tmp_path / "source-map.json"
-    _cli(
-        "inventory",
-        "map-source",
-        str(PROCESS / "inventory"),
-        "--repo",
-        str(PROCESS / "repo"),
-        "--out",
-        str(smap),
-    )
-    findings = tmp_path / "findings.json"
-    _cli(
-        "inventory",
-        "assess",
-        str(PROCESS / "inventory"),
-        "--target",
-        "online",
-        "--out",
-        str(findings),
-    )
-    packages = tmp_path / "packages"
-    _cli(
-        "inventory",
-        "packages",
-        str(PROCESS / "inventory"),
-        "--source-map",
-        str(smap),
-        "--scenarios",
-        str(PROCESS / "scenarios.json"),
-        "--findings",
-        str(findings),
-        "--out",
-        str(packages),
-    )
-    report = tmp_path / "verification-report.json"
-    _cli(
-        "inventory",
-        "verify",
-        str(EXAMPLE / "packages"),
-        "--results",
-        str(RESULTS / "results.json"),
-        "--out",
-        str(report),
+    made = _run_pipeline(tmp_path, EXAMPLE / "packages", scenarios=True)
+    smap, findings, packages, report = (
+        made["map"],
+        made["findings"],
+        made["packages"],
+        made["report"],
     )
 
     assert _strip_times(findings.read_text("utf-8")) == _strip_times(
