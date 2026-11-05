@@ -33,6 +33,7 @@ ADR_DIR = REPO_ROOT / "docs" / "adr"
 
 EXPECTED_REFERENCES = {
     "setup.md",
+    "inventory.md",
     "customization-lifecycle.md",
     "customizations-as-code.md",
     "records.md",

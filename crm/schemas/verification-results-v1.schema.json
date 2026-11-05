@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Gharib89/crm/blob/main/crm/schemas/verification-results-v1.schema.json",
+  "title": "crm verification results, schema_version 1",
+  "description": "The recorded outcome of each verification requirement of a `crm inventory packages` output, which `crm inventory verify` judges (ADR 0032). A reader refuses an unknown schema_version and ignores a field it does not define.",
+  "type": "object",
+  "required": ["schema_version", "packages_sha256", "results"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "packages_sha256": {
+      "description": "The packages output these results were recorded against: a SHA-256 over the lines `<file sha256>  <file name>`, index.json first, then each package file in index order. `crm inventory verify` refuses a results file whose value differs.",
+      "$ref": "#/$defs/sha256"
+    },
+    "results": {"type": "array", "items": {"$ref": "#/$defs/result"}}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "result": {
+      "description": "One requirement's recorded outcome with its evidence. A pass without evidence is not a pass.",
+      "type": "object",
+      "required": ["package", "requirement", "outcome", "evidence"],
+      "properties": {
+        "package": {"description": "The work package id (`pkg-...`).", "type": "string"},
+        "requirement": {"description": "The verification requirement id (`req-...`).", "type": "string"},
+        "outcome": {"enum": ["pass", "fail", "blocked", "not_tested"]},
+        "evidence": {
+          "description": "Artifacts the check produced, each a path relative to the results file's folder and its SHA-256.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "sha256"],
+            "properties": {
+              "path": {"type": "string", "minLength": 1, "pattern": "^(?!/)(?!(\\.(/+|$))+$)(?!.*(^|/)\\.\\.(/|$))[^\\\\:\\u0000]+$"},
+              "sha256": {"$ref": "#/$defs/sha256"}
+            }
+          }
+        },
+        "expected": {"description": "The assertion the check expected.", "type": ["string", "null"]},
+        "actual": {"description": "What the check observed.", "type": ["string", "null"]},
+        "deployed": {
+          "description": "The deployed artifacts the check exercised: component id (`<kind>:<key>`) and content hash.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["component", "sha256"],
+            "properties": {"component": {"type": "string"}, "sha256": {"$ref": "#/$defs/sha256"}}
+          }
+        },
+        "errors": {"description": "Error messages or trace references.", "type": "array", "items": {"type": "string"}},
+        "environment": {
+          "description": "Where the check ran.",
+          "type": ["object", "null"],
+          "required": ["profile", "org"],
+          "properties": {"profile": {"type": "string"}, "org": {"type": "string"}}
+        },
+        "open_decisions": {"description": "Manual decisions still open.", "type": "array", "items": {"type": "string"}},
+        "negative_control": {
+          "description": "True when the result records a deliberately introduced regression, so its expected outcome is fail.",
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}
