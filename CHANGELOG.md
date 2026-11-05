@@ -9,6 +9,19 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.92.6 (2026-11-05)
+
+### Bug Fixes
+
+- **evals**: Eval paired, record and review paths follow the task's skill
+  ([#1110](https://github.com/Gharib89/crm/pull/1110),
+  [`025834d`](https://github.com/Gharib89/crm/commit/025834d9e74453b3a5a8c965c055979c9f0af185))
+
+- **evals**: Pin subprocess encoding in test, name skill arg
+  ([#1110](https://github.com/Gharib89/crm/pull/1110),
+  [`025834d`](https://github.com/Gharib89/crm/commit/025834d9e74453b3a5a8c965c055979c9f0af185))
+
+
 ## v1.92.5 (2026-11-05)
 
 ### Bug Fixes
