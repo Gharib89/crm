@@ -7,6 +7,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -526,16 +527,17 @@ def test_reference_reader_keeps_unresolvable_and_skips_platform_refs(tmp_path):
     ]
 
 
-def _write(folder: Path, records: list[inv.Record]) -> Path:
+def _write(folder: Path, records: list[inv.Record], scope: inv.Scope | None = None) -> Path:
+    counts = Counter(r.kind for r in records)
     manifest = inv.Inventory(
         inv.SCHEMA_VERSION,
         inv.Source("cloud", ORG, None, "9.2.0.0000"),
         "2026-11-01T10:00:00Z",
         "1.88.0",
-        inv.Scope("org", ()),
+        scope or inv.Scope("org", ()),
         "published",
         tuple(records),
-        {r.kind: inv.KindCoverage("complete", 1, 1, False, ()) for r in records},
+        {k: inv.KindCoverage("complete", 1, n, False, ()) for k, n in counts.items()},
         (),
     )
     (folder / inv.MANIFEST_NAME).write_text(inv.dump_manifest(manifest), encoding="utf-8")
@@ -788,7 +790,7 @@ def test_cli_findings_write_and_summarize(inputs, tmp_path):
 
 #: SHA-256 of each file `packages` wrote for the fixture on main, before --findings existed.
 GOLDEN = {
-    "index.json": "c6117ea47ed6fd90813b9e902f90c7b5fcb24b30162ab9840f75ff444efa4285",
+    "index.json": "eac0e9969a94825303e1e6e8b1150f5c99685413a9a440c2e0e0fbb421adccb2",
     "pkg-1624e18a798c.json": "18211175dc603e00c3eb001a40735732a94a2c67138213e8716ce5f369304a86",
     "pkg-564e3c958900.json": "3d1b41fea0cd47e22acdd5c9a07843dee49e6bc00185ddb6cc75b2713df99984",
     "pkg-7acad39bcd7d.json": "91befc3bcaeb217da8f73eb40d04c7377a93ef9231e42daeb67851bf3cb29b67",
@@ -881,3 +883,80 @@ def test_findings_file_with_a_byte_order_mark_is_read(inputs, tmp_path):
         + ["--findings", str(path), "--out", str(tmp_path / "out")],
     )
     assert run.exit_code == 0, run.output
+
+
+# A ribbon naming stock libraries a partial read leaves out, as a ribbon on a stock entity does.
+_STOCK_RIBBON = (
+    '<RibbonDiffXml><CommandDefinitions><CommandDefinition Id="a"><Actions>'
+    '<JavaScriptFunction Library="$webresource:stock_/a.js" FunctionName="A" />'
+    '<JavaScriptFunction Library="$webresource:stock_/b.js" FunctionName="B" />'
+    "</Actions></CommandDefinition></CommandDefinitions></RibbonDiffXml>"
+)
+_PARTIAL_SCOPES = {
+    "solutions": inv.Scope("solutions", ("Contoso",)),
+    "default": inv.Scope("org", (), system="excluded"),
+}
+
+
+def _ribbon_inventory(tmp_path: Path, scope: inv.Scope, *, dynamic: bool) -> Path:
+    folder = tmp_path / "inv"
+    ribbon = _STOCK_RIBBON
+    records = [_record("entity", {"logical_name": "new_project"}, folder)]
+    if dynamic:  # the ribbon also uses a present library whose own reference is dynamic
+        records.append(
+            _web_resource("new_/d.js", "Xrm.Navigation.openWebResource(page);\n", folder)
+        )
+        use = '<JavaScriptFunction Library="$webresource:new_/d.js" FunctionName="D" />'
+        ribbon = ribbon.replace("</Actions>", use + "</Actions>")
+    records.append(
+        _record("ribbon", {"entity": "new_project"}, folder, files=[("ribbon.xml", ribbon)])
+    )
+    (tmp_path / "repo").mkdir()
+    return _write(folder, records, scope)
+
+
+@pytest.mark.parametrize("scope_name", ["solutions", "default"])
+def test_a_miss_in_a_partial_read_is_out_of_scope(tmp_path, scope_name):
+    folder = _ribbon_inventory(tmp_path, _PARTIAL_SCOPES[scope_name], dynamic=False)
+    result = build_packages(folder, map_source(folder, tmp_path / "repo"))
+    assert {(e.reason, e.reference) for e in result.unattached_out_of_scope} == {
+        ("out_of_scope", "stock_/a.js"),
+        ("out_of_scope", "stock_/b.js"),
+    }
+
+
+def test_a_miss_in_a_whole_org_read_stays_not_in_inventory(tmp_path):
+    folder = _ribbon_inventory(tmp_path, inv.Scope("org", ()), dynamic=False)
+    result = build_packages(folder, map_source(folder, tmp_path / "repo"))
+    (package,) = result.packages
+    assert {e.reason for e in package.edges} == {"not_in_inventory"}
+    assert result.summary()["unknowns"] == 2
+    assert result.summary()["out_of_scope"] == 0
+
+
+def test_out_of_scope_edges_only_form_no_package_but_are_listed(tmp_path):
+    folder = _ribbon_inventory(tmp_path, _PARTIAL_SCOPES["solutions"], dynamic=False)
+    result = build_packages(folder, map_source(folder, tmp_path / "repo"))
+    summary = result.summary()
+    assert result.packages == ()
+    assert (summary["unknowns"], summary["unattached_unknowns"], summary["out_of_scope"]) == (
+        0,
+        0,
+        2,
+    )
+    assert [e["reference"] for e in result.index()["unattached_out_of_scope"]] == [
+        "stock_/a.js",
+        "stock_/b.js",
+    ]
+
+
+def test_out_of_scope_stays_out_of_the_unknown_totals_of_a_package(tmp_path):
+    folder = _ribbon_inventory(tmp_path, _PARTIAL_SCOPES["solutions"], dynamic=True)
+    result = build_packages(folder, map_source(folder, tmp_path / "repo"))
+    (package,) = result.packages
+    reasons = sorted(f.reason for f in package.findings if f.type == "unknown_edge")
+    assert reasons == ["dynamic", "out_of_scope", "out_of_scope"]  # listed, never dropped
+    assert package.unknowns() == 2  # the dynamic edge and d.js's missing source status
+    summary = result.summary()
+    assert (summary["unknowns"], summary["out_of_scope"]) == (2, 2)
+    assert result.index()["packages"][0]["out_of_scope"] == 2

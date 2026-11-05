@@ -114,6 +114,11 @@ same inventory is refused.
   `unreadable`; extraction
   gaps; doubtful source map statuses), plus `index.json` `unattached_gaps` and
   `unattached_unknowns`, the ones in no package. Each needs a human look.
+- **`out_of_scope` is the exception.** On an inventory that did not read the whole
+  org, a web resource name it holds no record for is not proven missing (it may be
+  stock, or another solution's). Those edges are counted apart (`data.out_of_scope`,
+  `unattached_out_of_scope`), not in `unknowns`: mention the count, do not list them
+  as findings, and read the whole org when one must be settled.
 - **`{"status": "unknown"}` in a field means no data, not no work.** No
   `expected_behavior` means no scenario seeds the package: ask the user for one.
 - **Scenarios are a JSON file**: `{"scenarios": [{"name", "seeds": ["<kind>:<component

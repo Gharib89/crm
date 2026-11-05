@@ -385,7 +385,7 @@ The graph's edges come from:
 
 A reference read cannot resolve is an **unknown edge**, never dropped: it sits in
 its package's findings, or, when its component is in no package (an entity, a system
-web resource), in `unattached_unknowns`. Its `reason` is one of:
+web resource), in `unattached_unknowns` (an `out_of_scope` one in `unattached_out_of_scope`). Its `reason` is one of:
 
 | Reason | Meaning |
 |---|---|
@@ -393,7 +393,8 @@ web resource), in `unattached_unknowns`. Its `reason` is one of:
 | `isv_page` | an `/ISV/` page: a custom ASP.NET page outside the inventory |
 | `external_url` | a URL on a host other than the inventory's org |
 | `unresolved_url` | a URL on the org's host, or a relative ribbon or sitemap URL, that names no web resource or ISV page (a custom page beside the CRM server, say); a URL under a folder the server ships (`/_root/`, `/tools/`, `/main.aspx` and the like, after an on-prem `/<org>` prefix) is skipped |
-| `not_in_inventory` | a name or key the inventory holds no record for |
+| `not_in_inventory` | a name or key the inventory holds no record for, in an inventory that read the whole org |
+| `out_of_scope` | a web resource name the inventory holds no record for, in an inventory that did not read the whole org (`--solution`, or the default scope that leaves stock out): it may be a stock platform library or another solution's, so it is not proven missing. Listed, but counted apart from `unknowns`, and alone it forms no package |
 | `unreadable` | an artifact that does not parse, or a malformed URL |
 
 Only web resources, plug-in assemblies and types, steps and images, processes, forms,
@@ -440,8 +441,9 @@ plus one `<package id>.json` per package:
 |---|---|
 | `schema_version` | the packages format version, `1` |
 | `inventory` | the inventory it was built from, as in the source map |
-| `packages`, `members`, `largest` | how many packages, their members in all, and the largest package's size; in `index.json`, `packages` is the list (`id`, `file`, `members`, `unknowns`, `scenarios`) |
-| `unknowns` | the findings across all packages |
+| `packages`, `members`, `largest` | how many packages, their members in all, and the largest package's size; in `index.json`, `packages` is the list (`id`, `file`, `members`, `unknowns`, `out_of_scope`, `scenarios`) |
+| `unknowns` | the findings across all packages, without the `out_of_scope` edges |
+| `out_of_scope` | the `out_of_scope` unknown edges, in packages and in none; in `index.json`, those in no package are listed under `unattached_out_of_scope` |
 | `scenarios`, `unmatched_scenarios`, `seeds_not_found`, `seeds_unpackaged` | the scenario count, the names no package holds, each `{scenario, seed}` not in the inventory, and each one in the inventory but in no package; in `index.json`, `scenarios` lists each one's packages and seeds |
 | `unattached_gaps`, `unattached_unknowns` | extraction gaps on no package member, and unknown edges from a component in no package: counts in `data`, the lists in `index.json` |
 | `incomplete` | each kind not read `complete` in the inventory: its components may be missing from the graph |
