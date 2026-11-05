@@ -1,4 +1,4 @@
-"""Migration inventory manifest v1: schema, reader, writer and normalization (ADR 0032)."""
+"""Migration inventory manifest v2 and the v1 upgrade: schema, reader, writer (ADR 0032)."""
 
 # pyright: basic
 
@@ -138,12 +138,10 @@ def test_component_key_escapes_the_separator_so_two_keys_never_collide() -> None
     assert inventory.component_key("view", {"entity": "a%7C", "name": "b"}) == "a%257C|b"
 
 
-def test_component_key_fills_the_named_default_for_an_application_ribbon_and_default_sitemap() -> (
-    None
-):
-    assert inventory.component_key("ribbon", {"entity": None}) == "application"
+def test_component_key_gives_the_application_ribbon_and_default_sitemap_the_empty_key() -> None:
+    assert inventory.component_key("ribbon", {"entity": None}) == ""
     assert inventory.component_key("ribbon", {"entity": "account"}) == "account"
-    assert inventory.component_key("sitemap", {"unique_name": None}) == "default"
+    assert inventory.component_key("sitemap", {"unique_name": None}) == ""
 
 
 def test_component_key_nests_a_member_key_as_one_escaped_part() -> None:
@@ -201,9 +199,9 @@ def test_binary_artifact_uses_the_raw_hash_for_both() -> None:
 
 
 def _manifest() -> dict[str, Any]:
-    """A minimal valid v1 manifest: one entity and one form, both kinds covered."""
+    """A minimal valid v2 manifest: one entity and one form, both kinds covered."""
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "source": {
             "platform": "onprem",
             "org_url": "https://internalcrm.contoso.local/Contoso",
@@ -273,7 +271,7 @@ def test_reader_returns_typed_records_and_ignores_fields_it_does_not_know() -> N
 
     inv = inventory.parse_manifest(manifest)
 
-    assert inv.schema_version == 1
+    assert inv.schema_version == 2
     assert inv.source.platform == "onprem"
     assert [(r.kind, r.key) for r in inv.records] == [
         ("entity", "account"),
@@ -283,10 +281,15 @@ def test_reader_returns_typed_records_and_ignores_fields_it_does_not_know() -> N
     assert inv.coverage["form"].status == "complete"
 
 
-def test_reader_refuses_an_unknown_schema_version_naming_both_versions() -> None:
-    manifest = {"schema_version": 2, "records": "a shape v1 does not know"}
+@pytest.mark.parametrize("version", [3, 0, "2", None, True])
+def test_reader_refuses_an_unknown_schema_version_naming_the_readable_ones(
+    version: object,
+) -> None:
+    manifest = {"schema_version": version, "records": "a shape v2 does not know"}
 
-    with pytest.raises(inventory.InventoryError, match=r"schema_version 2.*schema_version 1"):
+    with pytest.raises(
+        inventory.InventoryError, match=rf"schema_version {version!r}.*schema_version 1 and 2"
+    ):
         inventory.parse_manifest(manifest)
 
 
@@ -515,7 +518,7 @@ def test_written_manifest_reads_back_to_the_same_inventory(tmp_path: Path) -> No
 
 FIXTURES = Path(__file__).parent / "fixtures" / "inventory"
 SCHEMA_FILE = (
-    Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v1.schema.json"
+    Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v2.schema.json"
 )
 SAMPLES = ("legacy", "v9", "cloud")
 
@@ -553,6 +556,8 @@ def test_schema_file_is_a_valid_draft_2020_12_schema_whose_kinds_match_the_reade
             expected = {"type": "integer"}
         elif (kind, name) in inventory.NULLABLE_KEY_FIELDS:
             expected = {"type": ["string", "null"], "minLength": 1}
+        elif name in inventory._REFERENCE_FIELDS:  # may be "": see component_key
+            expected = {"type": "string"}
         assert {k: v for k, v in spec.items() if k != "description"} == expected, (kind, name)
 
 
@@ -627,7 +632,11 @@ def test_samples_carry_the_cases_the_diff_source_map_and_packages_slices_reuse()
 @pytest.mark.parametrize(
     ("name", "schema_refuses", "message"),
     [
-        ("unknown-schema-version", True, r"schema_version 2 is not supported.*schema_version 1"),
+        (
+            "unknown-schema-version",
+            True,
+            r"schema_version 3 is not supported.*schema_version 1 and 2",
+        ),
         # JSON Schema cannot cross-check records against coverage; the reader does.
         ("kind-without-coverage", False, r"no coverage entry for kind 'form'"),
         ("complete-truncated", True, r"coverage\.entity is complete but truncated"),
@@ -642,3 +651,101 @@ def test_negative_fixture_fails_the_reader_and_where_expressible_the_schema(
     assert bool(_schema_errors(manifest)) is schema_refuses
     with pytest.raises(inventory.InventoryError, match=message):
         inventory.parse_manifest(manifest)
+
+
+def _v1_application_ribbon() -> dict[str, Any]:
+    """A v1 manifest: an entity `application` and the application ribbon, both keyed so."""
+    manifest = _manifest()
+    manifest["schema_version"] = 1
+    for kind, fields in (("entity", {"logical_name": "application"}), ("ribbon", {"entity": None})):
+        manifest["records"].append(
+            {"kind": kind, "key": "application", "id": None, "display_name": None,
+             "origin": "custom", "managed": False, "publication_state": "published",
+             "fields": fields, "artifacts": []}
+        )  # fmt: skip
+        manifest["coverage"].setdefault(kind, dict(manifest["coverage"]["form"], records=0))
+        manifest["coverage"][kind]["records"] += 1
+    return manifest
+
+
+def test_reader_upgrades_a_v1_manifest_holding_the_application_collision() -> None:
+    parsed = inventory.parse_manifest(_v1_application_ribbon())
+
+    keys = [(r.kind, r.key) for r in parsed.records]
+    assert ("ribbon", "") in keys and ("entity", "application") in keys
+    assert ("ribbon", "application") not in keys
+    assert not parsed.ambiguous()
+
+
+def test_reader_refuses_a_v1_application_ribbon_keyed_by_anything_but_its_v1_key() -> None:
+    manifest = _v1_application_ribbon()
+    manifest["records"][-1]["key"] = "other"
+
+    with pytest.raises(
+        inventory.InventoryError, match=r"key 'other' does not match.*'application'"
+    ):
+        inventory.parse_manifest(manifest)
+
+
+def test_reader_refuses_the_v1_key_on_a_v2_manifest() -> None:
+    manifest = _v1_application_ribbon()
+    manifest["schema_version"] = 2
+
+    with pytest.raises(inventory.InventoryError, match="does not match"):
+        inventory.parse_manifest(manifest)
+
+
+@pytest.mark.parametrize("version", [1, 2])
+def test_reader_refuses_an_empty_key_on_any_other_kind(version: int) -> None:
+    manifest = _manifest()
+    manifest["schema_version"] = version
+    manifest["records"][0]["key"] = ""
+
+    with pytest.raises(inventory.InventoryError, match="key must be a non-empty string"):
+        inventory.parse_manifest(manifest)
+
+
+def test_a_membership_or_dependency_may_reference_the_application_ribbon_or_default_sitemap() -> (
+    None
+):
+    member = {"solution": "contoso", "member_kind": "sitemap", "member_key": ""}
+    assert inventory.component_key("solution_membership", member) == "contoso|sitemap|"
+    dep = {"dependent_kind": "ribbon", "dependent_key": "", "required_kind": "entity",
+           "required_key": "account", "dependency_type": 2}  # fmt: skip
+    assert inventory.component_key("dependency", dep) == "ribbon||entity|account|2"
+    with pytest.raises(inventory.KeyFieldValueError):
+        inventory.component_key("solution_membership", {**member, "member_kind": "entity"})
+
+
+def test_the_v1_schema_still_validates_a_v1_manifest_and_the_v2_schema_the_empty_key() -> None:
+    v1_file = SCHEMA_FILE.with_name("inventory-manifest-v1.schema.json")
+    v1_schema = json.loads(v1_file.read_text(encoding="utf-8"))
+    v1 = _v1_application_ribbon()
+    assert list(jsonschema.Draft202012Validator(v1_schema).iter_errors(v1)) == []
+    v2 = copy.deepcopy(v1)
+    v2["schema_version"] = 2
+    v2["records"][-1]["key"] = ""
+    assert _schema_errors(v2) == []
+
+
+def test_an_unknown_empty_named_field_does_not_open_the_empty_key_exception() -> None:
+    fields = {"entity": "", "logical_name": "x", "": "ribbon"}
+    with pytest.raises(inventory.KeyFieldValueError):
+        inventory.component_key("attribute", fields)
+
+
+def test_a_gap_may_name_the_empty_key_of_the_application_ribbon_but_no_other_kind() -> None:
+    manifest = _manifest()
+    manifest["gaps"].append(
+        {"kind": "ribbon", "key": "", "description": None, "reason": "unreadable"}
+    )
+    schema = json.loads(SCHEMA_FILE.read_text(encoding="utf-8"))
+    jsonschema.Draft202012Validator(schema).validate(manifest)
+    (gap,) = [g for g in inventory.parse_manifest(manifest).gaps if g.key == ""]
+    assert gap.kind == "ribbon"
+
+    manifest["gaps"][-1]["kind"] = "entity"
+    with pytest.raises(inventory.InventoryError, match="must name a key or a description"):
+        inventory.parse_manifest(manifest)
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.Draft202012Validator(schema).validate(manifest)

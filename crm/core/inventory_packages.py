@@ -937,7 +937,7 @@ def build_packages(
     mapped = {_id(c.kind, c.key): c for c in source_map.components}
     gaps: dict[str, list[ExtractionGap]] = {}
     for gap in inv.gaps:
-        if gap.kind and gap.key:
+        if gap.kind and gap.key is not None:
             gaps.setdefault(_id(gap.kind, gap.key), []).append(gap)
     read_scenarios = _scenarios(scenarios) if scenarios is not None else []
 
@@ -1064,7 +1064,7 @@ def build_packages(
         "extracted_at": inv.extracted_at,
     }
     unattached = tuple(
-        g for g in inv.gaps if not (g.kind and g.key and _id(g.kind, g.key) in attached)
+        g for g in inv.gaps if not (g.kind and g.key is not None and _id(g.kind, g.key) in attached)
     )
     # An unknown edge from a node no package holds (an entity, a system web resource).
     loose = [e for e in edges if e.target is None and e.source not in packaged]

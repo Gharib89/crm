@@ -9,6 +9,7 @@ behave alike. It touches no org; both sides are manifests on disk.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -16,7 +17,7 @@ from typing import Any, cast
 
 from crm.core.inventory import (
     KINDS,
-    SCHEMA_VERSION,
+    READ_VERSIONS,
     ExtractionGap,
     Inventory,
     InventoryError,
@@ -187,10 +188,11 @@ def read_pair(a: Path, b: Path) -> tuple[Inventory, Inventory]:
     versions = [_schema_version(d) for d in data]
     # Only when both decode to objects: a non-object is refused below as not an object.
     readable = all(isinstance(d, dict) for d in data)
-    if readable and any(type(v) is not int or v != SCHEMA_VERSION for v in versions):
+    if readable and any(type(v) is not int or v not in READ_VERSIONS for v in versions):
         raise InventoryError(
             f"cannot diff: A has schema_version {versions[0]!r} and B has schema_version "
-            f"{versions[1]!r}; this crm reads schema_version {SCHEMA_VERSION}"
+            f"{versions[1]!r}; this crm reads schema_version "
+            f"{' and '.join(map(str, READ_VERSIONS))}"
         )
     out: list[Inventory] = []
     for label, folder, decoded in (("A", a, data[0]), ("B", b, data[1])):
@@ -225,16 +227,30 @@ def _field_changes(x: Record, y: Record) -> tuple[FieldChange, ...]:
     return tuple(out)
 
 
+_ARTIFACT_SUFFIX = re.compile(r".*-[0-9a-f]{12}\.(.+)")
+
+
+def _artifact_name(path: str) -> str:
+    """The artifact's name within its record (`form.xml`), without the slug and digest."""
+    m = _ARTIFACT_SUFFIX.fullmatch(path.rsplit("/", 1)[-1])
+    return m.group(1) if m else path
+
+
 def _artifact_changes(x: Record, y: Record) -> tuple[ArtifactChange, ...]:
-    # A unique key's artifact path is a function of kind, key and artifact name
-    # (`artifact_path`), so the same artifact has the same path in both inventories.
-    ha = {art.path: art.normalized_sha256 for art in x.artifacts}
-    hb = {art.path: art.normalized_sha256 for art in y.artifacts}
-    return tuple(
-        ArtifactChange(path, ha.get(path), hb.get(path))
-        for path in sorted(set(ha) | set(hb))
-        if ha.get(path) != hb.get(path)
-    )
+    # Paired records pair their artifacts by name within the record, not by path: the
+    # path carries the key's slug and digest, which a key change (v1 to v2 for the
+    # application ribbon and default sitemap, #1070) moves for the same artifact.
+    ha = {_artifact_name(art.path): art for art in x.artifacts}
+    hb = {_artifact_name(art.path): art for art in y.artifacts}
+    changes: list[ArtifactChange] = []
+    for name in ha.keys() | hb.keys():
+        a, b = ha.get(name), hb.get(name)
+        shown = b or a
+        ah = a.normalized_sha256 if a else None
+        bh = b.normalized_sha256 if b else None
+        if shown and ah != bh:
+            changes.append(ArtifactChange(shown.path, ah, bh))
+    return tuple(sorted(changes, key=lambda c: c.path))
 
 
 def _statuses(kind: str, a: Inventory, b: Inventory) -> tuple[str, str]:

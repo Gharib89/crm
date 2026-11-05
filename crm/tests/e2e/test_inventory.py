@@ -54,7 +54,7 @@ def test_inventory_extract_is_valid_and_repeatable(cli, tmp_path):
     first = _extract(cli, tmp_path / "one", solution)
     schema_path = Path(inventory.__file__).parent.parent / "schemas"
     schema = json.loads(
-        (schema_path / "inventory-manifest-v1.schema.json").read_text(encoding="utf-8")
+        (schema_path / "inventory-manifest-v2.schema.json").read_text(encoding="utf-8")
     )
     jsonschema.Draft202012Validator(schema).validate(first)
     parsed = inventory.read_inventory(tmp_path / "one")

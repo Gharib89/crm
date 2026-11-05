@@ -1,7 +1,7 @@
 # How-to: inventory
 
 `crm inventory extract` reads an org's customizations into a **migration
-inventory**: a `manifest.json` in [inventory manifest v1](../reference/inventory-manifest.md)
+inventory**: a `manifest.json` in [inventory manifest v2](../reference/inventory-manifest.md)
 format plus the raw artifacts it points at. An inventory describes what is
 deployed; it is never a desired state for `crm apply`
 ([ADR 0032](../adr/0032-inventory-descriptive-contract-keyed-by-component-key.md)).
@@ -283,8 +283,11 @@ sources and the incomplete kinds.
 
 A difference is a result, not a failure: the command exits **0**. It exits **1**
 when either folder holds no readable manifest, or one of them has a
-`schema_version` this crm cannot read (the error names both versions). The same
-two inventories give the same `--out` bytes, and swapping `A` and `B` swaps
+`schema_version` this crm cannot read (the error names both versions and the
+ones it reads, 1 and 2). A v1 manifest is upgraded on read, so a v1 extract and a v2
+one of the same org pair their application ribbons and default sitemaps (key `""`
+in v2, see the [manifest reference](../reference/inventory-manifest.md#versioning)).
+The same two inventories give the same `--out` bytes, and swapping `A` and `B` swaps
 `added` and `removed`.
 
 Agreement is evidence, not proof: equal keys, fields and hashes say the recorded
@@ -413,7 +416,7 @@ Each package file holds five fields. A field with nothing in it holds one
 | `consumers` | each form, ribbon, sitemap, process or step member, with the entities it sits on and the components that depend on it |
 | `findings` | the unknowns: each unknown edge, each extraction gap on a member, and each member mapped `stale`, `ambiguous` or `missing_source` |
 | `expected_behavior` | each scenario that seeds a member: its name, its `expected_behavior` lines and every package it spans, followed by an unknown entry when it names no lines |
-| `verification` | what a check must cover: a form's libraries and handlers, a ribbon command's or sitemap entry's web resources, a step's message, entity, stage, mode, filtering attributes and images, a process's category and entity (its trigger is unknown in manifest v1) |
+| `verification` | what a check must cover: a form's libraries and handlers, a ribbon command's or sitemap entry's web resources, a step's message, entity, stage, mode, filtering attributes and images, a process's category and entity (its trigger is unknown in manifest v2) |
 
 Each `verification` entry carries an `id`, `req-` plus a hash of the package id, the
 requirement kind and the member, so a later run can match recorded results to it.

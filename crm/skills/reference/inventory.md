@@ -6,8 +6,8 @@ CRM 2011 orgs); the other five read files only and need no profile.
 ## Extracting an inventory (`crm inventory extract`)
 
 A migration inventory is a read-only, descriptive record of an org's customizations: a
-`manifest.json` (schema v1: records keyed by component key, per-kind coverage,
-extraction gaps) plus raw artifacts (XML, XAML, web resource content, assembly
+`manifest.json` (schema v2, which also reads v1: records keyed by component key,
+per-kind coverage, extraction gaps) plus raw artifacts (XML, XAML, web resource content, assembly
 binaries). It describes what is deployed; it is never a spec for `crm apply`.
 
 - **It runs for tens of minutes on a large org** (each entity costs a metadata

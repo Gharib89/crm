@@ -366,7 +366,7 @@
         {
           "content": "text",
           "normalized_sha256": "9235fa863015b1dd9a72b57077d85812df98de0ff48ee99027fd0af3a50bf5ee",
-          "path": "artifacts/ribbon/application-a0c04255d266.ribbon.xml",
+          "path": "artifacts/ribbon/component-97765dd63feb.ribbon.xml",
           "sha256": "9235fa863015b1dd9a72b57077d85812df98de0ff48ee99027fd0af3a50bf5ee"
         }
       ],
@@ -375,7 +375,7 @@
         "entity": null
       },
       "id": null,
-      "key": "application",
+      "key": "",
       "kind": "ribbon",
       "managed": null,
       "origin": "system",
@@ -386,7 +386,7 @@
         {
           "content": "text",
           "normalized_sha256": "1f8558b12f1fb281c44a5fecd90bcbcdbd8a1981f820be9dab40103e04bdfaf9",
-          "path": "artifacts/sitemap/default-968c1c9e4675.sitemap.xml",
+          "path": "artifacts/sitemap/component-4133918a0a31.sitemap.xml",
           "sha256": "1f8558b12f1fb281c44a5fecd90bcbcdbd8a1981f820be9dab40103e04bdfaf9"
         }
       ],
@@ -395,7 +395,7 @@
         "unique_name": null
       },
       "id": null,
-      "key": "default",
+      "key": "",
       "kind": "sitemap",
       "managed": null,
       "origin": "system",
@@ -534,7 +534,7 @@
       "publication_state": "published"
     }
   ],
-  "schema_version": 1,
+  "schema_version": 2,
   "scope": {
     "mode": "org",
     "solutions": []

@@ -1,15 +1,15 @@
-# Inventory manifest v1
+# Inventory manifest v2
 
 A **migration inventory** is one extraction's descriptive record of an org's
 customizations ([ADR 0032](../adr/0032-inventory-descriptive-contract-keyed-by-component-key.md)).
-This page defines its format, `schema_version` 1, which the CRM 2011 path and
+This page defines its format, `schema_version` 2, which the CRM 2011 path and
 the v9 on-prem and cloud paths all emit. `crm inventory extract` writes one
 on any profile: a `crm2011` profile over SOAP, a v9 on-prem or cloud profile
 over the Web API ([How-to: inventory](../how-to/inventory.md)).
 
 The format ships in the `crm` wheel as a JSON Schema (draft 2020-12),
-`crm/schemas/inventory-manifest-v1.schema.json` (the standalone binaries leave
-it out, since no command loads it), and as typed records with a
+`crm/schemas/inventory-manifest-v2.schema.json` (the standalone binaries leave
+it out, since no command loads it; the v1 schema stays beside it for old manifests), and as typed records with a
 reader and writer in `crm/core/inventory.py` (`read_inventory`,
 `parse_manifest`, `dump_manifest`, `SCHEMA_VERSION`). The reader checks the
 contract without `jsonschema`, and it also checks the rules the schema cannot
@@ -37,7 +37,7 @@ reader refuses an artifact path that two records share.
 
 | Field | Value |
 |---|---|
-| `schema_version` | `1` |
+| `schema_version` | `2` (the reader also takes `1`, see [Versioning](#versioning)) |
 | `source.platform` | `crm2011`, `onprem` or `cloud` |
 | `source.org_url` | the org's `http` or `https` URL, never with credentials in it |
 | `source.organization_id` | the organization id, or `null` |
@@ -74,7 +74,8 @@ one key. The code fields (`form_type`, `stage`, `mode`, `image_type`,
 `category`, `dependency_type`) are the platform's integer codes, written in
 decimal, which CRM 2011 and v9 share. Every other key field is a non-empty
 string, and only the four fields the Notes column calls nullable may be
-`null`, written as an empty part. A
+`null`, written as an empty part. The one other empty value is a reference to the
+application ribbon or default sitemap (below). A
 field holding another component's key (`plugin_type`, `step`, `member_key`,
 `dependent_key`, `required_key`) nests it as one escaped part. The reader
 refuses a record whose `key` differs from the key its fields give
@@ -96,10 +97,10 @@ refuses a record whose `key` differs from the key its fields give
 | `step_image` | `step`, `alias`, `image_type` | |
 | `process` | `category`, `primary_entity`, `name` | `category` is the `workflow.category` code; `primary_entity` is nullable |
 | `solution` | `unique_name` | |
-| `solution_membership` | `solution`, `member_kind`, `member_key` | |
-| `dependency` | `dependent_kind`, `dependent_key`, `required_kind`, `required_key`, `dependency_type` | |
-| `ribbon` | `entity` | `null` is the application ribbon, key `application` |
-| `sitemap` | `unique_name` | `null` is the default sitemap, key `default` |
+| `solution_membership` | `solution`, `member_kind`, `member_key` | `member_key` is `""` when `member_kind` is `ribbon` or `sitemap` and the member is the application ribbon or default sitemap |
+| `dependency` | `dependent_kind`, `dependent_key`, `required_kind`, `required_key`, `dependency_type` | a key field is `""` on the same terms: its kind field is `ribbon` or `sitemap` and the component is the application ribbon or default sitemap |
+| `ribbon` | `entity` | `null` is the application ribbon, key `""` (empty): no entity logical name is empty, so it never meets the ribbon of an entity named `application` |
+| `sitemap` | `unique_name` | `null` is the default sitemap, key `""` (empty), for the same reason: a sitemap named `default` keeps its own key |
 
 ### Fields beyond the key
 
@@ -128,7 +129,8 @@ Equal counts never prove two orgs equivalent: compare coverage first.
 
 `gaps` lists what the source cannot expose, as `{kind, key, description,
 reason}`. `kind` may be `null`, and each entry names a `key` or a
-`description`. Typical gaps are an assembly registered on disk or in the GAC,
+`description`. A `ribbon` or `sitemap` gap names the application ribbon or default
+sitemap with the key `""`; no other kind may. Typical gaps are an assembly registered on disk or in the GAC,
 an ISV page, an external integration, and SQL report data sources.
 
 ## Normalization
@@ -156,8 +158,32 @@ an ISV page, an external integration, and SQL report data sources.
 
 `schema_version` is an integer that changes only on a breaking change; an
 additive field keeps the version. A reader refuses an unknown `schema_version`
-with an error naming both versions, before it reads anything else, and ignores
-fields it does not know.
+with an error naming the versions it reads (`1 and 2`), before it reads anything
+else, and ignores fields it does not know.
+
+**v1 to v2 (#1070).** v1 keyed the application ribbon `application` and the
+default sitemap `default`, names an entity or a sitemap can hold, so two records
+shared one key. v2 keys both `""`, the one part no entity logical name or
+sitemap unique name can be. `schema_version` 2 is the only change, and it is a
+break because a v2 record may carry an empty `key`, which the v1 schema forbids.
+The reader accepts v1 and upgrades it on read: a `ribbon` record whose
+`fields.entity` is null, or a `sitemap` record whose `fields.unique_name` is
+null, takes key `""`, decided by the field and not by the old key, so a v1
+manifest that holds the collision upgrades to distinct keys. The result reads as
+v2, so `diff` pairs a v1 manifest with a v2 one. A v1 gap keyed `application` or
+`default` is re-keyed to `""`, and gains a twin instead where the key is ambiguous (the
+original stays, since it may name an entity's ribbon or a named sitemap). A v1 record that is neither of
+those keeps its key. A v1 `solution_membership` or `dependency` row that references
+the application ribbon or default sitemap (its `member_key`, `dependent_key` or
+`required_key` `application` or `default`) is re-keyed to `""` too, unless the manifest
+also holds an entity `application` ribbon or a sitemap named `default`: the row cannot
+say which of the two it meant, so it keeps the v1 reference and does not pair with its
+v2 twin in a diff. A v1 null ribbon or sitemap keyed by any other name is
+refused. One consequence: artifact file names are derived from the key, so a
+v2 extraction names these two files `component-<hash>` where a v1 one named
+them `application-<hash>` and `default-<hash>`; `diff` pairs a record's
+artifacts by their name within the record (`ribbon.xml`), not by path, so it is
+unaffected.
 
 ## What the existing read paths give an extractor
 

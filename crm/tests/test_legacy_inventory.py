@@ -30,7 +30,7 @@ from crm.utils.d365_backend import (
 from crm.utils.safe_xml import fromstring
 
 _URL = "https://crm.contoso.local/contoso"
-_SCHEMA = Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v1.schema.json"
+_SCHEMA = Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v2.schema.json"
 
 
 def _id(n: int) -> str:
@@ -266,12 +266,12 @@ def test_a_full_extraction_writes_a_valid_manifest_and_drops_the_checkpoint(read
         "Update|new_project|40|0|Contoso.Plugins%7CContoso.Plugins.ProjectPlugin|Project: Update"
     ]
     assert _keys(data, "relationship") == ["account_new_project"]
-    assert _keys(data, "ribbon") == ["account", "application", "new_project"]
+    assert _keys(data, "ribbon") == ["", "account", "new_project"]
     assert {r["origin"] for r in data["records"] if r["kind"] == "ribbon"} == {"unknown"}
     entities = {r["key"]: r for r in data["records"] if r["kind"] == "entity"}
     assert entities["account"]["display_name"] == "Account"
     assert entities["new_project_account"]["display_name"] is None
-    assert _keys(data, "sitemap") == ["default"]
+    assert _keys(data, "sitemap") == [""]
     assert _keys(data, "solution_membership") == [
         "contoso|entity|new_project",
         "contoso|web_resource|new_/scripts/project.js",
@@ -317,7 +317,7 @@ def test_the_gaps_name_what_soap_cannot_see(reads, tmp_path):
     assert "on disk" in by_text["Legacy.OnDisk"]["reason"]
     isv = [g["description"] for g in gaps if (g["description"] or "").startswith("ISV page")]
     assert isv == [
-        "ISV page /ISV/InstallationPackageSendOptions.aspx, referenced from sitemap default",
+        "ISV page /ISV/InstallationPackageSendOptions.aspx, referenced from sitemap (default)",
         "ISV page /ISV/ManagerApproval.aspx, referenced from web_resource new_/scripts/project.js",
     ]
     descriptions = [g["description"] or "" for g in gaps]

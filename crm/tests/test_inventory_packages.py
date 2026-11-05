@@ -118,6 +118,10 @@ def _write_inventory(folder: Path) -> Path:
         ),
         _record("ribbon", {"entity": "new_project"}, folder, files=[("ribbon.xml", RIBBON)]),
         _record("sitemap", {"unique_name": None}, folder, files=[("sitemap.xml", SITEMAP)]),
+        # An org entity named `application` beside the application ribbon (#1070).
+        _record("entity", {"logical_name": "application"}, folder),
+        _record("ribbon", {"entity": None}, folder, files=[("ribbon.xml", RIBBON)]),
+        _record("ribbon", {"entity": "application"}, folder, files=[("ribbon.xml", RIBBON)]),
         _record("plugin_assembly", {"name": "Contoso.Plugins"}, folder),
         _record("plugin_assembly", {"name": "Contoso.Billing"}, folder),
         _record(
@@ -252,6 +256,13 @@ def _dicts(entries) -> list[dict]:
     return [e.to_dict() for e in entries]
 
 
+def test_the_application_ribbon_and_an_application_entity_ribbon_are_two_nodes(inputs):
+    result = _packages(inputs)
+
+    ribbons = {m for p in result.packages for m in p.members if m.startswith("ribbon:")}
+    assert {"ribbon:", "ribbon:application", "ribbon:new_project"} <= ribbons
+
+
 def test_shared_library_and_consumers_fall_in_one_package(inputs):
     result = _packages(inputs)
     js = _package_of(result, "web_resource:new_/scripts/shared.js")
@@ -344,8 +355,8 @@ def test_dynamic_and_isv_references_become_unknown_edges(inputs):
             "reference": 'page + ".html"',
         }
     ]
-    sitemap = _package_of(result, "sitemap:default").to_dict()
-    assert sitemap["members"] == ["sitemap:default"]
+    sitemap = _package_of(result, "sitemap:").to_dict()
+    assert sitemap["members"] == ["sitemap:"]
     assert [(f["reason"], f["reference"]) for f in sitemap["findings"]] == [
         ("isv_page", "/ISV/reports/summary.aspx"),
         ("unresolved_url", "/ContosoApp/approve.aspx"),
@@ -790,10 +801,10 @@ def test_cli_findings_write_and_summarize(inputs, tmp_path):
 
 #: SHA-256 of each file `packages` wrote for the fixture (`index.json` holds `out_of_scope`).
 GOLDEN = {
-    "index.json": "eac0e9969a94825303e1e6e8b1150f5c99685413a9a440c2e0e0fbb421adccb2",
-    "pkg-1624e18a798c.json": "18211175dc603e00c3eb001a40735732a94a2c67138213e8716ce5f369304a86",
-    "pkg-564e3c958900.json": "3d1b41fea0cd47e22acdd5c9a07843dee49e6bc00185ddb6cc75b2713df99984",
-    "pkg-7acad39bcd7d.json": "91befc3bcaeb217da8f73eb40d04c7377a93ef9231e42daeb67851bf3cb29b67",
+    "index.json": "1163c6aa247f7d2674b338ce7a8fc53bab80c574c1aff010ac8546e14bbbaba1",
+    "pkg-053da551dc3a.json": "7ad1189450cdd172ec0b4e5290d6bdb2fb102326a1fd2fbd97030019248a9bfd",
+    "pkg-0f1a47282248.json": "0fb3649e9fb122cbcbd3d4270d55d70eed75c661d9ccdcb3c98fe7ed011c78c3",
+    "pkg-564e3c958900.json": "af0666aceef3dd9c70dd9d4e11a4746884fdea57554d108f78e8840b1d9f3890",
     "pkg-9df52d9dd343.json": "b464f07f472fbc7e0cb30ddb2a05c83230c241fcd90cb462bae2b06e1c3adc84",
 }
 
@@ -983,3 +994,20 @@ def test_the_other_inventory_commands_still_render_their_table(inputs, tmp_path)
         ["inventory", "assess", str(folder), "--target", "online", "--out", str(tmp_path / "a")],
     )
     assert assessed.exit_code == 0, assessed.output
+
+
+def test_a_gap_on_the_empty_keyed_ribbon_attaches_to_its_package(inputs):
+    folder, source_map, scenarios = inputs
+    path = folder / inv.MANIFEST_NAME
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["gaps"].append({"kind": "ribbon", "key": "", "description": None, "reason": "unreadable"})
+    path.write_text(json.dumps(data), encoding="utf-8")
+    source_map.write_text(
+        dump_source_map(map_source(folder, folder.parent / "repo")), encoding="utf-8"
+    )
+
+    result = build_packages(folder, read_source_map(source_map), scenarios)
+
+    assert result.summary()["unattached_gaps"] == 1
+    package = _package_of(result, "ribbon:")
+    assert any(f.get("type") == "extraction_gap" for f in package.to_dict()["findings"])

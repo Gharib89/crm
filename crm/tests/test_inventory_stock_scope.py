@@ -227,7 +227,7 @@ def test_the_ribbon_rule_keeps_a_custom_entry_and_drops_a_stock_only_ribbon(
     }
     monkeypatch.setattr(legacy_reads, "ribbon_xml", lambda c, e: xml.get(e, "<R/>").encode())
     _extract(FakeClient(org=_org()), tmp_path / "inv", include_system=False)
-    assert _keys(_manifest(tmp_path / "inv"), "ribbon") == ["application", "new_project"]
+    assert _keys(_manifest(tmp_path / "inv"), "ribbon") == ["", "new_project"]
 
 
 def test_a_global_option_set_that_is_managed_is_stock(monkeypatch, tmp_path):

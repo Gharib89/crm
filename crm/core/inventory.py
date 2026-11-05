@@ -1,11 +1,11 @@
-"""Migration inventory manifest v1: the contract every extractor emits (ADR 0032).
+"""Migration inventory manifest v2: the contract every extractor emits (ADR 0032).
 
 A migration inventory is a folder holding ``manifest.json`` (the inventory
 manifest) and ``artifacts/<kind>/<file>``. This module owns the format both the
 CRM 2011 path and the v9/cloud paths write: the component key per kind, artifact
 paths and hashes, the typed records, a deterministic writer and a reader that
 applies the version rule. The JSON Schema of the same format ships at
-``crm/schemas/inventory-manifest-v1.schema.json``; the reader validates
+``crm/schemas/inventory-manifest-v2.schema.json``; the reader validates
 structure without it, so no runtime code depends on ``jsonschema``.
 """
 
@@ -16,7 +16,7 @@ import json
 import re
 import xml.etree.ElementTree as ET
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -56,7 +56,8 @@ KEY_FIELDS: dict[str, tuple[str, ...]] = {
 KINDS: tuple[str, ...] = tuple(KEY_FIELDS)
 
 #: Key fields holding a platform integer code (shared by CRM 2011 and v9, so keys
-#: match across stages). Every other key field is a non-empty string.
+#: match across stages). Every other key field is a non-empty string, except that a
+#: key reference (`_REFERENCE_FIELDS`) to the application ribbon or default sitemap is "".
 INTEGER_KEY_FIELDS = frozenset(
     ("form_type", "stage", "mode", "image_type", "category", "dependency_type")
 )
@@ -70,8 +71,12 @@ NULLABLE_KEY_FIELDS = frozenset(
     )
 )
 
-#: The key a null single-part key takes: the application ribbon, the default sitemap.
-_NULL_KEY: dict[str, str] = {"ribbon": "application", "sitemap": "default"}
+#: The key a v1 manifest gave a null single-part key (the application ribbon, the
+#: default sitemap). v2 keys them ``""``, which no entity logical name or sitemap
+#: unique name can be; the reader upgrades a v1 record by its field, not its key.
+_V1_NULL_KEY: dict[str, str] = {"ribbon": "application", "sitemap": "default"}
+#: The kinds whose key may be (or be referenced as) the empty key.
+_EMPTY_KEY_KINDS = frozenset(_V1_NULL_KEY)
 
 
 class InventoryError(Exception):
@@ -80,6 +85,15 @@ class InventoryError(Exception):
 
 class KeyFieldValueError(InventoryError):
     """A key field present but holding a value the key contract refuses (empty or mistyped)."""
+
+
+#: Key-reference fields mapped to the field naming the referenced kind. A reference
+#: to the application ribbon or default sitemap is the empty key, which is legal here.
+_REFERENCE_FIELDS = {
+    "member_key": "member_kind",
+    "dependent_key": "dependent_kind",
+    "required_key": "required_kind",
+}
 
 
 def _key_part(kind: str, name: str, value: object) -> str:
@@ -104,8 +118,10 @@ def component_key(kind: str, fields: Mapping[str, Any]) -> str:
     and ``|`` (as ``%25`` and ``%7C``) so two different field tuples never give
     one key. An integer field (`INTEGER_KEY_FIELDS`) is written in decimal;
     only `NULLABLE_KEY_FIELDS` may be null, as the empty part, so a null and
-    an empty string never meet. A null ribbon entity is ``application`` and a
-    null sitemap name ``default``.
+    an empty string never meet. The application ribbon (null entity) and the
+    default sitemap (null name) therefore key ``""``, never a name an entity or
+    sitemap can hold. A reference to either, in a membership's or dependency's
+    key-reference field (`_REFERENCE_FIELDS`), is that same empty key.
 
     Raises:
         InventoryError: the kind is unknown, or a key field is missing or mistyped.
@@ -116,9 +132,12 @@ def component_key(kind: str, fields: Mapping[str, Any]) -> str:
     missing = [name for name in names if name not in fields]
     if missing:
         raise InventoryError(f"{kind} record lacks key field(s): {', '.join(missing)}")
-    if kind in _NULL_KEY and fields[names[0]] is None:
-        return _NULL_KEY[kind]
-    return "|".join(_key_part(kind, name, fields[name]) for name in names)
+    parts: list[str] = []
+    for name in names:
+        referenced = fields.get(_REFERENCE_FIELDS[name]) if name in _REFERENCE_FIELDS else None
+        parts.append("" if fields[name] == "" and referenced in _EMPTY_KEY_KINDS
+                     else _key_part(kind, name, fields[name]))  # fmt: skip
+    return "|".join(parts)
 
 
 def artifact_path(kind: str, key: str, name: str, *, discriminator: str | None = None) -> str:
@@ -195,7 +214,9 @@ def artifact_hashes(data: bytes, *, text: bool, ribbon: bool = False) -> Artifac
     return ArtifactHashes(sha256=raw, normalized_sha256=hashlib.sha256(normalized).hexdigest())
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+#: The versions the reader accepts; v1 is upgraded on read (see `_record`).
+READ_VERSIONS = (1, 2)
 MANIFEST_NAME = "manifest.json"
 
 PLATFORMS = ("crm2011", "onprem", "cloud")
@@ -430,13 +451,24 @@ def _defined_fields(kind: str, fields: dict[str, Any], where: str) -> None:
         _strings(fields["activities"], f"{where}.activities")
 
 
-def _record(value: object, where: str) -> Record:
+def _record(value: object, where: str, version: int = SCHEMA_VERSION) -> Record:
     obj = _obj(value, where)
     kind = _str(obj, "kind", where, choices=KINDS)
-    key = _str(obj, "key", where)
+    key = _req(obj, "key", where)
+    # Only the application ribbon and default sitemap key "" (below, by their fields).
+    if not isinstance(key, str) or (not key and kind not in _EMPTY_KEY_KINDS):
+        raise InventoryError(f"{where}.key must be a non-empty string")
     fields = _obj(_req(obj, "fields", where), f"{where}.fields")
     _defined_fields(kind, fields, f"{where}.fields")
     expected = component_key(kind, fields)
+    if version == 1 and kind in _V1_NULL_KEY and fields[KEY_FIELDS[kind][0]] is None:
+        # Upgrade: v1 keyed this record by a name an entity or sitemap can hold.
+        if key != _V1_NULL_KEY[kind]:
+            raise InventoryError(
+                f"{where} key {key!r} does not match its fields' component key "
+                f"{_V1_NULL_KEY[kind]!r}"
+            )
+        key = expected
     if key != expected:
         raise InventoryError(
             f"{where} key {key!r} does not match its fields' component key {expected!r}"
@@ -483,9 +515,64 @@ def _gap(value: object, where: str) -> ExtractionGap:
         description=_opt_str(obj, "description", where),
         reason=_str(obj, "reason", where),
     )
-    if not gap.key and not gap.description:
+    # The empty key names the application ribbon or default sitemap, and only those.
+    names_a_key = bool(gap.key) or (gap.key == "" and kind in _EMPTY_KEY_KINDS)
+    if not names_a_key and not gap.description:
         raise InventoryError(f"{where} must name a key or a description")
     return gap
+
+
+def _null_record_kinds(records: tuple[Record, ...]) -> tuple[set[str], set[str]]:
+    """The kinds holding a null ribbon or sitemap, and those where no record shares its v1 key.
+
+    A v1 reference to `application` names the application ribbon only where no entity
+    `application` has a ribbon of its own; where one does, the reference is ambiguous.
+    """
+    held = {kind for kind in _V1_NULL_KEY if any(r.kind == kind and r.key == "" for r in records)}
+    unambiguous = {
+        kind
+        for kind in held
+        if not any(r.kind == kind and r.key == _V1_NULL_KEY[kind] for r in records)
+    }
+    return held, unambiguous
+
+
+def _upgrade_references(records: tuple[Record, ...]) -> tuple[Record, ...]:
+    """Re-key an unambiguous v1 reference to the application ribbon or default sitemap to `""`."""
+    _, upgradable = _null_record_kinds(records)
+    out: list[Record] = []
+    for record in records:
+        fields = dict(record.fields)
+        for name, kind_field in _REFERENCE_FIELDS.items():
+            kind = fields.get(kind_field)
+            if kind in upgradable and fields.get(name) == _V1_NULL_KEY[kind]:
+                fields[name] = ""
+        if fields != record.fields:
+            record = replace(record, fields=fields, key=component_key(record.kind, fields))
+        out.append(record)
+    return tuple(out)
+
+
+def _upgrade_gaps(
+    gaps: tuple[ExtractionGap, ...], records: tuple[Record, ...]
+) -> tuple[ExtractionGap, ...]:
+    """Re-key a v1 gap on the application ribbon or default sitemap to its v2 key.
+
+    Where the v1 key is ambiguous (an entity `application` has a ribbon too), or the gap
+    names no kind, the original stays beside its twin: it may still be another record's.
+    """
+    held, unambiguous = _null_record_kinds(records)
+    out: list[ExtractionGap] = []
+    for gap in gaps:
+        keep = True
+        for kind, old in _V1_NULL_KEY.items():
+            if gap.key != old or gap.kind not in (None, kind) or kind not in held:
+                continue
+            out.append(ExtractionGap(kind, "", gap.description, gap.reason))
+            keep = gap.kind is None or kind not in unambiguous
+        if keep:
+            out.append(gap)
+    return tuple(out)
 
 
 def _extracted_at(obj: dict[str, Any]) -> str:
@@ -496,25 +583,29 @@ def _extracted_at(obj: dict[str, Any]) -> str:
 
 
 def parse_manifest(data: object) -> Inventory:
-    """Build an `Inventory` from a decoded manifest, applying the v1 contract.
+    """Build an `Inventory` from a decoded manifest, applying the v2 contract.
 
-    The version rule runs first: an unknown ``schema_version`` is refused
-    whatever else the manifest holds. Fields v1 does not define are ignored.
+    The version rule runs first: a ``schema_version`` outside `READ_VERSIONS`
+    is refused whatever else the manifest holds. A v1 manifest is upgraded: its
+    application ribbon and default sitemap take the v2 key ``""``, and the
+    result reads as v2. Fields the contract does not define are ignored.
 
     Raises:
         InventoryError: the manifest breaks the contract; the message names where.
     """
     obj = _obj(data, "manifest")
     version = obj.get("schema_version")
-    if type(version) is not int or version != SCHEMA_VERSION:
+    if type(version) is not int or version not in READ_VERSIONS:
         raise InventoryError(
             f"manifest schema_version {version!r} is not supported; "
-            f"this crm reads schema_version {SCHEMA_VERSION}"
+            f"this crm reads schema_version {' and '.join(map(str, READ_VERSIONS))}"
         )
     records = tuple(
-        _record(r, f"records[{i}]")
+        _record(r, f"records[{i}]", version)
         for i, r in enumerate(_list(_req(obj, "records", "manifest"), "records"))
     )
+    if version == 1:
+        records = _upgrade_references(records)
     raw_coverage = _obj(_req(obj, "coverage", "manifest"), "coverage")
     unknown = sorted(set(raw_coverage) - set(KINDS))
     if unknown:
@@ -534,6 +625,9 @@ def parse_manifest(data: object) -> Inventory:
                 f"coverage.{kind} counts {entry.records} records "
                 f"but the manifest holds {counts.get(kind, 0)}"
             )
+    gaps = tuple(
+        _gap(g, f"gaps[{i}]") for i, g in enumerate(_list(_req(obj, "gaps", "manifest"), "gaps"))
+    )
     seen: set[str] = set()
     for record in records:
         for artifact in record.artifacts:
@@ -549,10 +643,7 @@ def parse_manifest(data: object) -> Inventory:
         publication=_str(obj, "publication", "manifest", choices=("published",)),
         records=records,
         coverage=coverage,
-        gaps=tuple(
-            _gap(g, f"gaps[{i}]")
-            for i, g in enumerate(_list(_req(obj, "gaps", "manifest"), "gaps"))
-        ),
+        gaps=_upgrade_gaps(gaps, records) if version == 1 else gaps,
     )
 
 
