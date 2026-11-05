@@ -51,6 +51,40 @@ runs it too. It reads every v1 kind (`scope.mode: "org"` unless you pass
 Each entity gets one metadata read and one ribbon read, so the whole-org read takes
 tens of minutes on a large org.
 
+### Migration scope: stock components are left out
+
+By default the inventory holds what someone built or changed. A **stock** component
+(one the platform or an installed managed solution ships) is left out: a row that is
+managed (`ismanaged`), or owned by a managed solution, on every kind that has the
+column; for entities, attributes, relationships and option sets, one that is not
+custom or is managed. The same rule runs on `crm2011` and v9, since both read
+`ismanaged` and the owning solution. `--include-system` keeps stock and reproduces
+the full read, for an audit or a baseline you will `diff` against another full
+extract. The manifest header records the choice (`scope.system`: `excluded`, or
+`included`, which is also what a manifest without the field means).
+
+- A stock web resource, plug-in assembly, form, view, process or sitemap costs no
+  payload read: the rows are read without their bodies, and the bodies are fetched
+  only for the rows kept.
+- A stock entity that a kept attribute, relationship, form, view or ribbon names stays
+  as a reference row, and a kept step keeps its plug-in type and assembly, so keys
+  resolve.
+- The ribbon of a custom entity is kept. The ribbon of a system entity, and the
+  application ribbon, is kept when it holds an entry outside the platform's own id
+  families (`Mscrm.`, `AIBuilder.`, `msdyn`, and the other families in the code), or a
+  `HideCustomAction`; one whose ids all fall in those families, or that holds none, is
+  left out. A button hidden through a `CommandDefinition` display-rule override reuses
+  stock ids, so that ribbon is left out; use `--include-system` to keep every ribbon.
+- A solution membership or dependency naming a left-out component is not dropped
+  silently: it is counted in a gap whose reason starts `platform:`. A kind whose rows
+  carry no `ismanaged` is kept whole and noted as a gap.
+- **Known limit:** a managed component customized in place keeps `ismanaged: true`, so
+  the default scope misses it. Use `--include-system` to audit those.
+- `--solution` names its own scope and keeps stock, so `--include-system` changes
+  nothing there, and the manifest records `scope.system` as `included`.
+- `crm inventory diff` refuses two manifests that differ in `scope.system`, since every
+  stock component would read as added or removed; re-extract one side.
+
 ### Progress
 
 A long extract prints progress on **stderr**, so stdout (the table, or the `--json`
@@ -144,7 +178,8 @@ that page's paging cookie. `extracted_at` stays the first run's start time.
 - it holds a checkpoint of **another org** (a different profile URL);
 - it holds a checkpoint of **another scope** (a different `--solution` set, or a
   narrowed run against a whole-org checkpoint, or the reverse): "holds a checkpoint
-  of another scope";
+  of another scope", or of **another stock scope** (`--include-system` against a
+  default checkpoint, or the reverse);
 - it holds files but **no checkpoint**, which includes a finished inventory, so a
   new extraction is never mixed into an old one. Pass an empty or new folder.
 
@@ -190,6 +225,9 @@ names the endpoint:
   that cannot be tied to its assembly, type or step, or a step with no message name,
   which a `--solution` run leaves out),
   counted per kind and component type;
+- **rows naming a stock component the default scope left out**: a membership or
+  dependency of a kept component, counted per kind with a `platform:` reason, and
+  **kinds with no `ismanaged`** (kept whole, since nothing says they are stock);
 - **rows the key contract cannot hold** (a component key field the org left empty,
   such as a plug-in step with no name), counted per kind with the first error;
 - the **source identity and build**, when its `WhoAmI` or `RetrieveVersion` read
@@ -223,8 +261,9 @@ What a side could not read is never reported as removed, added or changed: a
 record or artifact missing on a side whose extraction gap names the key is no
 difference. A key a gap names is `not_comparable` unless a field or a hash differs
 anyway (then `changed`, the gap in its `reason`), and both sides' gaps are listed
-in the result. Different scopes or source platforms are allowed; the header states both
-sides and flags `same_platform` and `same_scope`.
+in the result. Different `--solution` scopes or source platforms are allowed; the header states both
+sides and flags `same_platform` and `same_scope`. Two manifests that differ in
+`scope.system` (one default, one `--include-system`) are refused.
 
 `data` holds the summary, and `--out FILE` writes the same summary plus every
 key's entry:

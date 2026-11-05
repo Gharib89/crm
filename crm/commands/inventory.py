@@ -100,16 +100,26 @@ class ProgressLines:
     metavar="UNIQUE_NAME",
     help="Narrow the inventory to this solution (repeatable); default: the whole org.",
 )
+@click.option(
+    "--include-system",
+    is_flag=True,
+    help="Keep the stock components too (managed, or owned by a managed solution).",
+)
 @click.option("--quiet", "-q", is_flag=True, help="Suppress the progress lines on stderr.")
 @pass_ctx
-def inventory_extract_cmd(ctx: CLIContext, out_dir: Path, solutions: tuple[str, ...], quiet: bool):
+def inventory_extract_cmd(
+    ctx: CLIContext, out_dir: Path, solutions: tuple[str, ...], include_system: bool, quiet: bool
+):
     """Extract the org's migration inventory into DIR: read-only.
 
     Runs on every profile: a crm2011 profile is read over the CRM 2011 SOAP
     endpoint, a v9 on-prem or Dataverse online profile over the Web API. It
     reads every v1 kind and never publishes or writes to the org, so a
-    read-only profile runs it. --solution narrows the records to those
-    solutions, their members and their entities' parts. Each finished read is
+    read-only profile runs it. By default it keeps the migration scope and
+    leaves stock components out (managed, or owned by a managed solution;
+    their payloads are never fetched), still counting any edge to one;
+    --include-system keeps them. --solution narrows the records to those
+    solutions, their members and their entities' parts, and keeps stock. Each finished read is
     checkpointed under DIR/.checkpoint, so re-running the same command after
     an interruption resumes, reusing the finished reads. A failed kind is
     recorded in the manifest's coverage and the run goes on (exit code 1); the
@@ -137,6 +147,7 @@ def inventory_extract_cmd(ctx: CLIContext, out_dir: Path, solutions: tuple[str, 
                 out_dir,
                 cli_version=__version__,
                 solutions=solutions,
+                include_system=include_system,
                 progress=None if quiet else ProgressLines(sys.stderr.write),
             )
         except OSError as exc:

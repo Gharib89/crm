@@ -44,7 +44,7 @@ reader refuses an artifact path that two records share.
 | `source.version` | the org's build or version string |
 | `extracted_at` | when the extraction ran, an RFC 3339 date-time (`2026-11-04T10:00:00Z`); the only time field |
 | `cli_version` | the `crm` version that wrote the manifest |
-| `scope` | `{"mode": "org", "solutions": []}`, or `{"mode": "solutions", "solutions": [<unique name>...]}` |
+| `scope` | `{"mode": "org", "solutions": []}`, or `{"mode": "solutions", "solutions": [<unique name>...]}`; plus `"system": "excluded"` when stock components were left out (the default org-wide run). Absent or `"included"` means a full read (`--include-system`, or `--solution`) |
 | `publication` | `published`: extractors read the published customization only and never publish |
 
 ## Records

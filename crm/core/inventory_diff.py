@@ -99,7 +99,7 @@ def _side(inv: Inventory) -> dict[str, Any]:
         "version": inv.source.version,
         "org_url": inv.source.org_url,
         "extracted_at": inv.extracted_at,
-        "scope": {"mode": inv.scope.mode, "solutions": sorted(inv.scope.solutions)},
+        "scope": inv.scope.to_dict(),
     }
 
 
@@ -198,6 +198,12 @@ def read_pair(a: Path, b: Path) -> tuple[Inventory, Inventory]:
             out.append(parse_manifest(decoded))
         except InventoryError as exc:
             raise InventoryError(f"{label} ({folder}): {exc}") from exc
+    if out[0].scope.system != out[1].scope.system:
+        raise InventoryError(
+            "cannot diff: A and B differ in stock scope (scope.system"
+            f" {out[0].scope.system} vs {out[1].scope.system}), so every stock component would"
+            " read as added or removed; re-extract one side with or without --include-system"
+        )
     return out[0], out[1]
 
 

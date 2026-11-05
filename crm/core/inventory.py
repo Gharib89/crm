@@ -188,12 +188,27 @@ class Source:
     version: str
 
 
+SYSTEM_SCOPES = ("included", "excluded")
+
+
 @dataclass(frozen=True)
 class Scope:
-    """What the extraction read: the whole org (``org``) or the named ``solutions``."""
+    """What the extraction read: the whole org (``org``) or the named ``solutions``.
+
+    *system* says whether stock components (managed, or owned by a managed
+    solution) are ``included`` or ``excluded``; a manifest without it is full.
+    """
 
     mode: str
     solutions: tuple[str, ...]
+    system: str = "included"
+
+    def to_dict(self) -> dict[str, Any]:
+        """The manifest form; ``system`` is written only when stock is excluded."""
+        out: dict[str, Any] = {"mode": self.mode, "solutions": sorted(self.solutions)}
+        if self.system != "included":
+            out["system"] = self.system
+        return out
 
 
 @dataclass(frozen=True)
@@ -340,7 +355,8 @@ def _scope(value: object) -> Scope:
         raise InventoryError(
             "scope.solutions must name solutions exactly when scope.mode is 'solutions'"
         )
-    return Scope(mode=mode, solutions=solutions)
+    system = _str(obj, "system", "scope", choices=SYSTEM_SCOPES) if "system" in obj else "included"
+    return Scope(mode=mode, solutions=solutions, system=system)
 
 
 def _artifact(value: object, kind: str, where: str) -> Artifact:
@@ -553,7 +569,7 @@ def dump_manifest(inv: Inventory) -> str:
         "source": asdict(inv.source),
         "extracted_at": inv.extracted_at,
         "cli_version": inv.cli_version,
-        "scope": {"mode": inv.scope.mode, "solutions": sorted(inv.scope.solutions)},
+        "scope": inv.scope.to_dict(),
         "publication": inv.publication,
         "records": records,
         "coverage": {

@@ -224,11 +224,12 @@ def reads(monkeypatch):
     return calls
 
 
-def _extract(client, out: Path):
+def _extract(client, out: Path, *, include_system: bool = True):
     return inventory_extract.extract(
         inventory_extract.LegacySource(client),
         out,
         cli_version="9.9.9",
+        include_system=include_system,
         now=lambda: "2026-11-04T10:00:00Z",
     )
 
