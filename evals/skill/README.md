@@ -123,7 +123,7 @@ blocks CI. Run it on demand.
   and the `evals/results/<run-id>/` layout (`run.json` + `trials.jsonl`, transcripts by ref).
   Each `TrialRecord` also carries the ADR-0028 `invoked` signal (did the agent load the
   skill?, `None` = not captured), measured separately from `passed` (parsed by
-  `trace.parse_invoked`), and an optional `judge` verdict (the advisory L2 read; `None`
+  `trace.parse_invoked`, which looks for the task's own `skill`), and an optional `judge` verdict (the advisory L2 read; `None`
   when no judge ran), recorded alongside `passed` but never mixed into it.
 - `report.py` — the **reporting surfaces** (#893, ADR 0028): `build_report` renders the
   per-run `report.md` (metadata, per-task table with per-trial verdicts, macro pass rates +
@@ -402,7 +402,7 @@ run` writes a durable run dir:
 ```
 evals/skill/runs/<UTC-ts>/<task-id>.<target>.json   # {prompt, raw_trace, commands[],
                                                     #  metrics, correctness_verdict,
-                                                    #  skill_sha, target, efficacy_review?}
+                                                    #  skill, skill_sha, target, efficacy_review?}
 ```
 
 The filename is keyed by task **and** target, so a `--target both` run persisting both legs
@@ -431,7 +431,9 @@ concrete skill edit that would have helped, or `none`). It writes each verdict b
 record and emits `report.md` (a per-task table + the clustered skill-fixes digest) into the
 run dir.
 
-The reviewer reads `crm/skills/` **live from disk**; the record stamps the skill **git SHA**.
+The reviewer reads each record's own skill tree (`crm/skills/` for `crm`,
+`crm/migration-skill/` for `crm-migration`) **live from disk**; the record stamps that
+skill's name and **git tree SHA** (older records without a `skill` count as `crm`).
 So after editing the skill you can re-run `review` over the *same* saved traces to ask "did
 my fix help?" at zero live cost — the `run → review → read report → edit skill → re-review`
 loop.

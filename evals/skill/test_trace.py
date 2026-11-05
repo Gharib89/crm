@@ -127,6 +127,17 @@ def test_parse_invoked_false_when_skill_never_used():
     assert trace.parse_invoked(SAMPLE) is False
 
 
+def test_parse_invoked_matches_the_named_skill_only():
+    # A crm-migration task's trial invokes `crm-migration`; matching only `crm` recorded
+    # invoked=False for it (#1088). Each skill name matches itself and not the other.
+    mig = _line(_assistant_tool_use("Skill", {"skill": "crm-migration"}))
+    crm = _line(_assistant_tool_use("Skill", {"skill": "crm"}))
+    assert trace.parse_invoked(mig, "crm-migration") is True
+    assert trace.parse_invoked(mig, "crm") is False
+    assert trace.parse_invoked(mig) is False  # default stays crm
+    assert trace.parse_invoked(crm, "crm-migration") is False
+
+
 def test_parse_invoked_ignores_other_skills():
     raw = _line(_assistant_tool_use("Skill", {"skill": "tdd"}))
     assert trace.parse_invoked(raw) is False

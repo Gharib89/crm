@@ -12,6 +12,7 @@ a **stub reviewer** — Claude is never invoked.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -268,6 +269,37 @@ def test_run_review_cmd_writes_back_records_and_report(tmp_path):
     # ...and a report.md was emitted into the run dir.
     report = (run_dir / "report.md").read_text(encoding="utf-8")
     assert "| a |" in report and "| b |" in report
+
+
+def test_skill_dir_maps_each_skill_to_its_source_tree():
+    assert review.skill_dir("crm").parts[-2:] == ("crm", "skills")
+    assert review.skill_dir("crm-migration").parts[-2:] == ("crm", "migration-skill")
+    assert (review.skill_dir("crm-migration") / "SKILL.md").is_file()
+
+
+def test_run_review_cmd_reads_each_records_own_skill_text(tmp_path):
+    # A crm-migration record is judged against the migration skill, not crm's (#1088); an
+    # old record without `skill` loads as crm.
+    from evals.skill import record as record_mod
+
+    run_dir = tmp_path / "20260626T020000Z"
+    mig = _rec("m")
+    mig.skill = "crm-migration"
+    record_mod.write_record(run_dir, _rec("c"))
+    record_mod.write_record(run_dir, mig)
+    legacy = json.loads((run_dir / "c.json").read_text(encoding="utf-8"))
+    del legacy["skill"]
+    (run_dir / "c.json").write_text(json.dumps(legacy), encoding="utf-8")
+    prompts: list[str] = []
+    rc = review.run_review_cmd(
+        run_dir=run_dir,
+        reviewer=_stub_reviewer(prompts),
+        skill_reader=lambda d: f"TEXT:{Path(d).name}",
+    )
+    assert rc == 0
+    by_task = {t: next(p for p in prompts if f"Do {t}." in p) for t in ("c", "m")}
+    assert "TEXT:skills" in by_task["c"]
+    assert "TEXT:migration-skill" in by_task["m"]
 
 
 def test_run_review_cmd_record_flag_appends_guarded_efficacy(tmp_path):

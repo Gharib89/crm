@@ -193,6 +193,7 @@ def run_pair(
     transcripts_dir: Path | None = None,
     progress: Callable[[str], None] | None = None,
     judge: Judge | None = None,
+    skill: str = "crm",
     **leg_kwargs: object,
 ) -> list[TrialRecord]:
     """Run ``task_file`` with-skill (and, when ``paired``, bare) k times each, resetting first.
@@ -210,7 +211,8 @@ def run_pair(
     ``judge`` (if given) is the advisory L2 judge (:mod:`evals.skill.judge`): after each leg
     it scores the transcript on ``(task_prompt, transcript)`` — **blind to the leg**, which
     is never passed — and the verdict lands on that leg's ``TrialRecord.judge``, alongside
-    the L1 ``passed`` it never touches. Returns the flat list of per-leg
+    the L1 ``passed`` it never touches. ``skill`` is the task's shipped skill, whose
+    invocation the ``invoked`` signal looks for. Returns the flat list of per-leg
     :class:`~evals.skill.results.TrialRecord`s.
     """
     # The judge needs the task's prompt; parse it once (only when judging) so the non-judge
@@ -257,7 +259,7 @@ def run_pair(
             # (a terminal result event → non-empty metrics) without loading it; None when the
             # transcript never completed (crash/truncation), so "did not invoke" is unknown
             # rather than falsely asserted.
-            if trace.parse_invoked(result.transcript):
+            if trace.parse_invoked(result.transcript, skill):
                 invoked: bool | None = True
             elif metrics:
                 invoked = False
@@ -486,7 +488,9 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
         # The resolved (post-gating) corpus identity: --resume validates it so rows from
         # two different task selections (or a corpus edit between attempts) can never mix.
         "tasks": sorted(f.stem for f in task_files),
-        "skill_sha": record_mod.skill_sha(repo_root),
+        "skill_sha": record_mod.skills_stamp(
+            (parse_task_file(f).skill for f in task_files), repo_root
+        ),
     }
 
     prior_trials: list[TrialRecord] = []
@@ -569,6 +573,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
                     transcripts_dir=run_dir / "transcripts",
                     progress=_stderr,
                     judge=judge,
+                    skill=parse_task_file(task_file).skill,
                     **leg_kwargs,
                 )
                 trials.extend(records)

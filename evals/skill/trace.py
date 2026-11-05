@@ -78,14 +78,15 @@ def parse_commands(raw_trace: str) -> list[str]:
     return commands
 
 
-def parse_invoked(raw_trace: str) -> bool:
-    """Whether the agent invoked the ``crm`` skill via the ``Skill`` tool.
+def parse_invoked(raw_trace: str, skill: str = "crm") -> bool:
+    """Whether the agent invoked ``skill`` (default ``crm``) via the ``Skill`` tool.
 
     ADR 0028 measures invocation *separately* from success — a skill-leg trial can pass
     without ever loading the skill (found the path another way), or invoke it and still
     fail; the report's invocation-vs-success split needs that signal. Walks ``assistant``
-    events for a ``Skill`` ``tool_use`` whose input names ``crm`` (the skill install slug),
-    ignoring other skills. The bare leg has no skill installed, so this is ``False`` there.
+    events for a ``Skill`` ``tool_use`` whose input names ``skill`` (the skill install slug;
+    the task's own, so a ``crm-migration`` task matches ``crm-migration``), ignoring others.
+    The bare leg has no skill installed, so this is ``False`` there.
     """
     for event in iter_events(raw_trace):
         if event.get("type") != "assistant":
@@ -98,8 +99,8 @@ def parse_invoked(raw_trace: str) -> bool:
                 continue
             if block.get("name") != "Skill":
                 continue
-            skill = (block.get("input") or {}).get("skill")
-            if isinstance(skill, str) and skill.strip().lower() == "crm":
+            invoked = (block.get("input") or {}).get("skill")
+            if isinstance(invoked, str) and invoked.strip().lower() == skill:
                 return True
     return False
 

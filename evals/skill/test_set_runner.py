@@ -335,6 +335,18 @@ def test_run_dir_persists_one_record_per_scored_task(tmp_path):
     assert all(r.efficacy_review is None and not r.counterfactual for r in recs)
 
 
+def test_records_are_stamped_with_their_own_skill_and_tree_sha(tmp_path):
+    # The corpus mixes crm and crm-migration tasks: stamp per record, not once per run (#1088).
+    run_dir = tmp_path / "mixed"
+    run_set(TASKS_DIR, active_target="cloud", run_one=_trace_stub({}), run_dir=run_dir)
+    skills = {s.id: s.skill for s in _specs()}
+    recs = record_mod.load_records(run_dir)
+    assert {r.skill for r in recs} == {"crm", "crm-migration"}
+    for r in recs:
+        assert r.skill == skills[r.task_id]
+        assert r.skill_sha == record_mod.skill_sha(skill=r.skill)
+
+
 def test_no_run_dir_writes_nothing(tmp_path):
     # The default (no run_dir) persists nothing — imported callers/tests opt in.
     run_set(TASKS_DIR, active_target="cloud", run_one=_trace_stub({}))
