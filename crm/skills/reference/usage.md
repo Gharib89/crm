@@ -2,7 +2,8 @@
 
 Ask a listing for the components that hold data or fire, so a migration spends its
 effort on what matters. Flags: `crm metadata entities --help`,
-`crm legacy metadata --help`.
+`crm legacy metadata --help`, `crm plugin list-types --help`,
+`crm legacy components --help`.
 
 ## The `usage` object
 
@@ -10,7 +11,8 @@ With `--in-use`, every listed row gains `usage`: `{state, signal, value, as_of, 
 Without the flag the rows are unchanged and nothing is probed.
 
 - `state`: `used`, `unused` or `unknown`.
-- `signal`: what was read. Entities use `record_presence`.
+- `signal`: what was read. Entities use `record_presence`; plug-ins use
+  `plugin_step_runs`, `async_job` or `plugin_trace`.
 - `value`: a count, or `null` when only existence is known. A 2011 count capped by the
   server's 50,000 aggregate limit reads `50000` with `reason: "at least 50,000"`.
 - `as_of`: UTC time the signal was read.
@@ -34,3 +36,17 @@ Without the flag the rows are unchanged and nothing is probed.
   long timeout, and use `--top` to bound a trial run.
 - `--in-use` does not combine with `--cache-metadata`, and `legacy metadata --in-use`
   takes no entity names.
+
+## Plug-in steps, types and assemblies
+
+`crm plugin list-types --in-use` (v9) and `crm legacy components --in-use` (2011) roll
+step usage up to types and assemblies. Only a disabled step is provably unused.
+
+- **A synchronous step leaves no run record**, so it stays `unknown` however long it
+  has existed. Most steps are synchronous; expect most rows `unknown` and treat them as
+  live. `used` needs an async job row (or a trace log row when tracing is on).
+- **An absent job row proves nothing**: `asyncautodelete` steps lose successful jobs,
+  and bulk-delete jobs purge old ones. Tracing is off by default and keeps about a day.
+- A workflow-activity type has no steps and reads `unknown`, not `unused`.
+- 2011 has no trace log. Its async job read stops at a 120 second cap and the steps it
+  did not reach stay `unknown`; read the `reason`.
