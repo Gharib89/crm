@@ -141,8 +141,8 @@ check and reads files only.
 
 ## Assessing compatibility (`crm inventory assess`)
 
-`crm inventory assess INVENTORY --target T --out FILE` runs the compatibility rules
-shipped with crm over an inventory and writes a findings file.
+`crm inventory assess` runs the compatibility rules shipped with crm over an
+inventory, for one target, and writes a findings file.
 
 - **Every component gets a finding**, keyed by component key: `blocker`,
   `deprecated` or `optional` from a rule hit, `unknown` with a `reason`, or `clear`
