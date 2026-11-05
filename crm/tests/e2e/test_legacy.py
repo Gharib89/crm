@@ -99,6 +99,14 @@ def test_legacy_components_in_use_labels_plugin_rows(cli):
 
 
 @covers("legacy components")
+def test_legacy_components_in_use_labels_process_rows(cli):
+    data = _legacy(cli, "components", "processes", "--in-use")
+    assert data["errors"] == []
+    assert {p["usage"]["state"] for p in data["processes"]} <= {"used", "unknown"}
+    assert all(p["statecode"] != 0 for p in data["processes"])  # a draft is dropped as unused
+
+
+@covers("legacy components")
 def test_legacy_components_scoped_by_solution_and_entity(cli):
     solutions = _legacy(cli, "components", "solutions")["solutions"]
     system = {"Default", "Active", "Basic", "System"}

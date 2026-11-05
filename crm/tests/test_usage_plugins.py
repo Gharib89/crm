@@ -371,6 +371,8 @@ def _rm(records, *, more=False):
 
 
 _LEGACY = {
+    "workflow": [],
+    "processsession": [],
     "pluginassembly": [
         {"id": "a1", "name": "One"},
         {"id": "a2", "name": "Two"},
@@ -441,7 +443,10 @@ def _legacy_org(jobs=(("s1",),), jobs_fault=False, probe_fault=None):
     def respond(request, context):
         context.headers.update(_XML)
         root = fromstring(request.body)
-        entity = fromstring(root.findtext(f".//{{{_CRM}}}Query") or "")[0].get("name")
+        query = root.findtext(f".//{{{_CRM}}}Query") or ""
+        entity = fromstring(query)[0].get("name")
+        if entity == "asyncoperation" and 'value="10"' in query:  # the workflow jobs: none here
+            return _rm([])
         if entity == "asyncoperation":
             seen["jobs"] += 1
             if jobs_fault:
@@ -511,12 +516,12 @@ def test_legacy_in_use_rejects_a_kind_that_is_not_a_plug_in(crm_home):
 def test_legacy_in_use_with_an_entity_and_no_kind_reads_the_entity_plugin_kinds(
     crm_home, monkeypatch
 ):
-    # `--entity` admits only plugin-steps of the three kinds: the default must not trip its check
+    # `--entity` admits plugin-steps and processes: the default must not trip its check
     from crm.core import legacy_reads
 
     monkeypatch.setattr(legacy_reads, "resolve_scope", lambda *a: legacy_reads.EVERYTHING)
     data = _components("--in-use", "--entity", "account")
-    assert set(data) == {"plugin-steps", "errors"}
+    assert set(data) == {"plugin-steps", "processes", "errors"}
 
 
 def test_legacy_a_failed_job_read_is_no_signal_and_steps_stay_unknown(crm_home):

@@ -9,6 +9,32 @@ crm --json workflow list --entity cwx_ticket --category 0
 ```
 `--category` filters by kind. Accepts an integer (`0`–`5`) or a friendly name: `workflow`, `dialog`, `businessrule`, `action`, `bpf`, `flow` (case-insensitive). `--on-demand` restricts to on-demand workflows.
 
+## Keep only workflows that run
+
+```bash
+crm --json workflow list --in-use                    # drop definitions proven unused
+crm --json workflow list --in-use --exclude-unknown  # proven-used definitions only
+```
+
+`--in-use` adds a `usage` object to each definition (three bulk reads: the definitions
+and their activation copies, the async jobs grouped by activation, and the process
+sessions grouped by process; never one read per definition):
+
+- A definition that is **not activated** (draft, `statecode` 0) is `unused`
+  (`reason: "not activated"`): it cannot run. A row with no `statecode` is never a draft.
+- A definition with an **async job row** (operation type workflow) or a **process
+  session row** is `used`. A job names the activation copy the server made when the
+  workflow was activated, so the read maps it back to its definition.
+- Everything else is `unknown`, and `reason` says why. Real-time workflows, business
+  rules, actions and business process flows write no async job; cloud flow runs live
+  outside Dataverse; a workflow with `asyncautodelete` loses its successful jobs; and
+  the out-of-the-box bulk delete job purges old ones. **A missing record never makes a
+  row `unused`.**
+
+See [metadata](metadata.md#keep-only-entities-that-hold-data) for the `usage` shape.
+The same flags apply to the `processes` kind of `crm legacy components` on CRM 2011
+([legacy](legacy.md#read-solution-components)).
+
 ## Find duplicate workflow definitions
 
 After repeated solution imports (especially a failed import that gets retried), an org can accumulate multiple workflow *definitions* sharing one name. There is no dedicated flag for this — it is a client-side group-by over what `list` already returns:

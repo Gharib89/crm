@@ -22,6 +22,14 @@ from typing import Any, Literal
 
 from crm.core.legacy import LegacyClient
 from crm.core.legacy_reads import connection_wide
+from crm.core.workflow import (
+    CATEGORY_ACTION,
+    CATEGORY_BPF,
+    CATEGORY_BUSINESS_RULE,
+    CATEGORY_DIALOG,
+    CATEGORY_MODERN_FLOW,
+    TYPE_DEFINITION,
+)
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 
 UsageState = Literal["used", "unused", "unknown"]
@@ -434,13 +442,13 @@ def plugin_usage(
     return by_step, by_type, by_assembly
 
 
-def _job_fetch(extra: str = "") -> str:
+def _job_fetch(group_by: str = "owningextensionid", operation_type: int = 1) -> str:
     return (
         '<fetch aggregate="true"><entity name="asyncoperation">'
-        '<attribute name="owningextensionid" alias="step" groupby="true"/>'
+        f'<attribute name="{group_by}" alias="step" groupby="true"/>'
         '<attribute name="asyncoperationid" alias="n" aggregate="count"/>'
-        f'<filter><condition attribute="operationtype" operator="eq" value="1"/>{extra}</filter>'
-        "</entity></fetch>"
+        f'<filter><condition attribute="operationtype" operator="eq" value="{operation_type}"/>'
+        "</filter></entity></fetch>"
     )
 
 
@@ -537,10 +545,48 @@ def _ref(value: object) -> str:
     return str(value.get("id") or "") if isinstance(value, dict) else ""  # pyright: ignore
 
 
-def _fetch_all(client: LegacyClient, entity: str, columns: Sequence[str]) -> list[dict[str, Any]]:
+def _fetch_all(
+    client: LegacyClient, entity: str, columns: Sequence[str], where: str = ""
+) -> list[dict[str, Any]]:
     attrs = "".join(f'<attribute name="{c}"/>' for c in columns)
-    xml = f'<fetch><entity name="{entity}">{attrs}</entity></fetch>'
+    flt = f"<filter>{where}</filter>" if where else ""
+    xml = f'<fetch><entity name="{entity}">{attrs}{flt}</entity></fetch>'
     return [r for page in client.retrieve_multiple(xml) for r in page]
+
+
+def _read_ids(
+    client: LegacyClient,
+    fetch: str,
+    column: str,
+    what: str,
+    *,
+    time_cap: float,
+    monotonic: Callable[[], float],
+) -> tuple[set[str], str | None]:
+    """The distinct lookup ids of *column* over *fetch*, read page by page; plus why it is partial.
+
+    Stops at *time_cap* seconds or `JOB_ROW_CAP` rows, or on a failed read: the
+    ids already seen are kept and the gap names *what* stopped and why.
+    """
+    deadline = monotonic() + time_cap
+    ids: set[str] = set()
+    gap = None
+    rows = 0
+    try:
+        for page in client.pages(fetch):
+            ids.update(_ref(r.get(column)) for r in page.records)
+            rows += len(page.records)
+            if page.more and monotonic() >= deadline:
+                gap = f"{what} stopped at the {time_cap:g} s time cap"
+                break
+            if page.more and rows >= JOB_ROW_CAP:
+                gap = f"{what} stopped at the {JOB_ROW_CAP} row cap"
+                break
+    except D365Error as exc:
+        if connection_wide(exc):
+            raise
+        gap = f"{what} failed: {exc}"
+    return ids - {""}, gap
 
 
 def read_legacy_plugin_evidence(
@@ -557,31 +603,20 @@ def read_legacy_plugin_evidence(
     `JOB_ROW_CAP` rows: steps not seen when it stops stay `unknown`.
     There is no `plugintracelog` entity.
     """
-    gap = "no plug-in trace log on CRM 2011"
     fetch = (
         '<fetch><entity name="asyncoperation"><attribute name="owningextensionid"/>'
         '<filter><condition attribute="operationtype" operator="eq" value="1"/></filter>'
         "</entity></fetch>"
     )
-    deadline = monotonic() + time_cap
-    jobs: set[str] = set()
-    jobs_gap = None
-    rows = 0
-    try:
-        for page in client.pages(fetch):
-            jobs.update(_ref(r.get("owningextensionid")) for r in page.records)
-            rows += len(page.records)
-            if page.more and monotonic() >= deadline:
-                jobs_gap = f"async job read stopped at the {time_cap:g} s time cap"
-                break
-            if page.more and rows >= JOB_ROW_CAP:
-                jobs_gap = f"async job read stopped at the {JOB_ROW_CAP} row cap"
-                break
-    except D365Error as exc:
-        if connection_wide(exc):
-            raise
-        jobs_gap = f"async job read failed: {exc}"
-    return Evidence(frozenset(jobs - {""}), frozenset(), jobs_gap, gap)
+    jobs, gap = _read_ids(
+        client,
+        fetch,
+        "owningextensionid",
+        "async job read",
+        time_cap=time_cap,
+        monotonic=monotonic,
+    )
+    return Evidence(frozenset(jobs), frozenset(), gap, "no plug-in trace log on CRM 2011")
 
 
 def probe_legacy_plugins(
@@ -623,6 +658,7 @@ def probe_legacy_plugins(
 
 
 PLUGIN_KINDS = ("plugin-assemblies", "plugin-types", "plugin-steps")  # `legacy components` kinds
+USAGE_KINDS = (*PLUGIN_KINDS, "processes")  # the kinds `--in-use` applies to
 
 
 def annotate_v9_types(
@@ -656,11 +692,14 @@ def annotate_v9_types(
 def annotate_legacy_components(
     client: LegacyClient, data: dict[str, list[dict[str, Any]]], *, exclude_unknown: bool
 ) -> dict[str, list[dict[str, Any]]]:
-    """Give each plug-in component row read by `legacy components` its `usage`."""
-    by_kind: dict[str, dict[str, Usage]]
+    """Give each plug-in or process row read by `legacy components` its `usage`."""
+    by_kind: dict[str, dict[str, Usage]] = {}
     try:
-        steps, types, assemblies = probe_legacy_plugins(client)
-        by_kind = dict(zip(PLUGIN_KINDS, (assemblies, types, steps), strict=True))
+        if any(k in data for k in PLUGIN_KINDS):
+            steps, types, assemblies = probe_legacy_plugins(client)
+            by_kind.update(zip(PLUGIN_KINDS, (assemblies, types, steps), strict=True))
+        if "processes" in data:
+            by_kind["processes"] = probe_legacy_processes(client)
     except D365Error as exc:
         if connection_wide(exc):
             raise
@@ -673,3 +712,227 @@ def annotate_legacy_components(
         )
         for kind, rows in data.items()
     }
+
+
+# ── workflows and processes (slice #1094) ────────────────────────────────
+
+PROCESS_SIGNAL = "process_runs"
+TYPE_ACTIVATION = 2  # a `workflow` row the server copies from a definition when it activates
+_DRAFT = 0  # statecode of a process that is not activated
+_NO_JOB = {  # kinds whose runs write no async job, so an absent job proves nothing
+    CATEGORY_DIALOG: "dialog",
+    CATEGORY_BUSINESS_RULE: "business rule",
+    CATEGORY_ACTION: "action",
+    CATEGORY_BPF: "business process flow",
+}
+
+
+@dataclass(frozen=True)
+class Process:
+    """A process definition with what decides its usage; `draft` is statecode 0 and nothing else."""
+
+    id: str
+    category: int
+    draft: bool
+    sync: bool
+    autodelete: bool
+
+
+@dataclass(frozen=True)
+class ProcessEvidence:
+    """Definition ids that own an async job row or a process session row.
+
+    *gap* says why a read is incomplete or missing; it only explains an `unknown`.
+    """
+
+    jobs: frozenset[str] = frozenset()
+    sessions: frozenset[str] = frozenset()
+    gap: str | None = None
+
+
+def _process_usage(p: Process, ev: ProcessEvidence, as_of: str) -> Usage:
+    if p.draft:
+        return Usage("unused", PROCESS_SIGNAL, None, as_of, "not activated")
+    if p.id in ev.jobs:
+        return Usage("used", "async_job", None, as_of)
+    if p.id in ev.sessions:
+        return Usage("used", "process_session", None, as_of)
+    if p.category == CATEGORY_MODERN_FLOW:
+        why = "cloud flow: run history is kept outside Dataverse"
+    elif p.category in _NO_JOB:
+        why = f"{_NO_JOB[p.category]}: runs write no async job"
+    elif p.sync:
+        why = "real-time workflow: runs write no async job"
+    elif p.autodelete:
+        why = "successful async jobs of this workflow are deleted"
+    else:
+        why = "no async job found (job history may have been purged)"
+    if ev.gap:
+        why += f"; {ev.gap}"
+    return Usage("unknown", PROCESS_SIGNAL, None, as_of, why)
+
+
+def process_usage(
+    processes: Sequence[Process], ev: ProcessEvidence, *, clock: Callable[[], str] = _now
+) -> dict[str, Usage]:
+    """Usage of every process definition, keyed by id (rules in spec #1094)."""
+    as_of = clock()
+    return {p.id: _process_usage(p, ev, as_of) for p in processes}
+
+
+def _definition_ids(ids: set[str] | frozenset[str], parents: dict[str, str]) -> frozenset[str]:
+    """Map activation ids to their definition: a job names the activation, not the definition."""
+    return frozenset(parents.get(i, i) for i in ids)
+
+
+def _v9_ids(backend: D365Backend, entity_set: str, fetch: str) -> set[str]:
+    got = as_dict(backend.get(entity_set, params={"fetchXml": fetch}))
+    return {str(r["step"]) for r in got.get("value", []) if r.get("step")}
+
+
+def read_v9_process_evidence(backend: D365Backend, parents: dict[str, str]) -> ProcessEvidence:
+    """Async job and process session rows grouped by process (one aggregate each).
+
+    A refused aggregate (e.g. its record limit) is recorded as a gap: the
+    definitions it would have proven stay `unknown`.
+    """
+    jobs: set[str] = set()
+    sessions: set[str] = set()
+    gaps: list[str] = []
+    reads = (
+        ("asyncoperations", _job_fetch("workflowactivationid", 10), jobs, "async job read"),
+        (
+            "processsessions",
+            '<fetch aggregate="true"><entity name="processsession">'
+            '<attribute name="processid" alias="step" groupby="true"/>'
+            '<attribute name="processsessionid" alias="n" aggregate="count"/>'
+            "</entity></fetch>",
+            sessions,
+            "process session read",
+        ),
+    )
+    for entity_set, fetch, into, what in reads:
+        try:
+            into.update(_v9_ids(backend, entity_set, fetch))
+        except D365Error as exc:
+            if connection_wide(exc):
+                raise
+            gaps.append(f"{what} failed: {exc}")
+    return ProcessEvidence(
+        _definition_ids(jobs, parents), _definition_ids(sessions, parents), "; ".join(gaps) or None
+    )
+
+
+def probe_v9_processes(
+    backend: D365Backend, *, clock: Callable[[], str] = _now
+) -> dict[str, Usage]:
+    """Usage of every v9 process definition: three bulk reads, none per definition."""
+    select = "workflowid,category,statecode,mode,asyncautodelete"
+    defs = backend.get_collection(
+        "workflows", params={"$select": select, "$filter": f"type eq {TYPE_DEFINITION}"}
+    )
+    acts = backend.get_collection(
+        "workflows",
+        params={
+            "$select": "workflowid,_parentworkflowid_value",
+            "$filter": f"type eq {TYPE_ACTIVATION}",
+        },
+    )
+    parents = {
+        a["workflowid"]: a["_parentworkflowid_value"]
+        for a in acts
+        if a.get("_parentworkflowid_value")
+    }
+    processes = [
+        Process(
+            r["workflowid"],
+            int(r.get("category") or 0),
+            r.get("statecode") == _DRAFT,  # an unread state is never proof of a draft
+            r.get("mode") == 1,  # 1 is real-time (synchronous), 0 is background
+            bool(r.get("asyncautodelete")),
+        )
+        for r in defs
+    ]
+    return process_usage(processes, read_v9_process_evidence(backend, parents), clock=clock)
+
+
+def probe_legacy_processes(
+    client: LegacyClient,
+    *,
+    time_cap: float = JOB_TIME_CAP,
+    clock: Callable[[], str] = _now,
+    monotonic: Callable[[], float] = time.monotonic,
+) -> dict[str, Usage]:
+    """Usage of every CRM 2011 process definition, keyed by row id.
+
+    Same capped, unfiltered page reads as the plug-in jobs: the `asyncoperation`
+    read carries only the operation type filter, and a session or job read that
+    stops early leaves the definitions it did not reach `unknown`.
+    """
+    defs = _fetch_all(
+        client,
+        "workflow",
+        ("category", "statecode", "asyncautodelete"),
+        f'<condition attribute="type" operator="eq" value="{TYPE_DEFINITION}"/>',
+    )
+    acts = _fetch_all(
+        client,
+        "workflow",
+        ("parentworkflowid",),
+        f'<condition attribute="type" operator="eq" value="{TYPE_ACTIVATION}"/>',
+    )
+    parents = {str(a["id"]): _ref(a.get("parentworkflowid")) for a in acts}
+    job_fetch = (
+        '<fetch><entity name="asyncoperation"><attribute name="workflowactivationid"/>'
+        '<filter><condition attribute="operationtype" operator="eq" value="10"/></filter>'
+        "</entity></fetch>"
+    )
+    session_fetch = (
+        '<fetch><entity name="processsession"><attribute name="processid"/></entity></fetch>'
+    )
+    jobs, jobs_gap = _read_ids(
+        client,
+        job_fetch,
+        "workflowactivationid",
+        "async job read",
+        time_cap=time_cap,
+        monotonic=monotonic,
+    )
+    sessions, sessions_gap = _read_ids(
+        client,
+        session_fetch,
+        "processid",
+        "process session read",
+        time_cap=time_cap,
+        monotonic=monotonic,
+    )
+    gap = "; ".join(g for g in (jobs_gap, sessions_gap) if g) or None
+    processes = [
+        Process(
+            str(r["id"]),
+            int(r.get("category") or 0),
+            r.get("statecode") == _DRAFT,  # an unset state is never proof of a draft
+            False,  # 2011 workflows carry no mode column
+            bool(r.get("asyncautodelete")),
+        )
+        for r in defs
+    ]
+    ev = ProcessEvidence(_definition_ids(jobs, parents), _definition_ids(sessions, parents), gap)
+    return process_usage(processes, ev, clock=clock)
+
+
+def annotate_v9_processes(
+    backend: D365Backend, items: list[dict[str, Any]], *, exclude_unknown: bool
+) -> list[dict[str, Any]]:
+    """Give each `workflow list` row a `usage`, dropping the unused rows."""
+    try:
+        states = probe_v9_processes(backend)
+    except D365Error as exc:
+        if connection_wide(exc):
+            raise
+        # a failed probe read is no evidence: keep the listed rows, labelled unknown
+        gone = Usage("unknown", PROCESS_SIGNAL, None, _now(), f"usage probe failed: {exc}")
+        states = {it["workflowid"]: gone for it in items}
+    unread = Usage("unknown", PROCESS_SIGNAL, None, _now(), "created after the usage read")
+    by_id = {it["workflowid"]: states.get(it["workflowid"], unread) for it in items}
+    return attach(items, by_id, key=lambda r: r["workflowid"], exclude_unknown=exclude_unknown)

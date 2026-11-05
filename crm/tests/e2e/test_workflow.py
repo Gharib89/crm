@@ -172,6 +172,19 @@ def test_workflow_list(cli):
     assert len(env["data"]) > 0, "expected at least one workflow on a live org"
 
 
+@covers("workflow list")
+def test_workflow_list_in_use_never_calls_an_absent_record_unused(cli):
+    """Every row is labelled; only a process that is not activated is proven unused."""
+    plain = json.loads(cli(["--json", "workflow", "list"]).stdout)["data"]
+    result = cli(["--json", "workflow", "list", "--in-use"])
+    assert result.returncode == 0, result.stderr
+    rows = json.loads(result.stdout)["data"]
+    assert len(rows) <= len(plain)
+    assert {r["usage"]["state"] for r in rows} <= {"used", "unknown"}
+    assert all(r["usage"]["reason"] for r in rows if r["usage"]["state"] == "unknown")
+    assert all(r["statecode"] != 0 for r in rows)  # a draft is dropped as unused
+
+
 @covers("workflow migration-assess")
 def test_workflow_migration_assess(cli):
     """Workflow migration-assess returns a list of assessment verdicts (read-only)."""
