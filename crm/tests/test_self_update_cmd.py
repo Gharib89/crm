@@ -488,6 +488,17 @@ class TestSkillRefresh:
         assert seen.get("version") == update_mod.current_version()  # never ""
 
 
+def test_frozen_bundle_root_is_the_package_dir_holding_both_skills(tmp_path):
+    # #1062: the finisher refreshes each registry entry from its own skill's
+    # folder, so it needs the package dir, not the crm skill folder alone.
+    from crm.commands.self_update import _frozen_package_dir
+
+    pkg = tmp_path / "crm" / "_internal" / "crm"
+    (pkg / "skills").mkdir(parents=True)
+    (pkg / "skills" / "SKILL.md").write_text("NEW", encoding="utf-8")
+    assert _frozen_package_dir(tmp_path / "crm") == pkg
+
+
 class TestCompletionRefresh:
     """Non-`--check` self-update re-syncs a CLI-installed completion script; absent a
     marker it leaves completion untouched, and a refresh failure never fails the update.

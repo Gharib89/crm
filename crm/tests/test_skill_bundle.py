@@ -127,6 +127,9 @@ def test_plugin_manifest_valid():
     assert "./crm/skills" in skills, (
         "manifest must point at the canonical ./crm/skills container (single source of truth)"
     )
+    # #1062: the Claude Code plugin loader reads each listed path, so the second
+    # shipped skill needs its own entry (npx skills finds it either way).
+    assert "./crm/migration-skill" in skills, "manifest must list ./crm/migration-skill"
     for entry in skills:
         assert isinstance(entry, str) and entry.startswith("./"), (
             f"skills entry {entry!r} must be a relative path starting with './'"
@@ -141,7 +144,7 @@ def test_plugin_manifest_makes_crm_skill_discoverable():
     """
     manifest = json.loads(PLUGIN_MANIFEST.read_text(encoding="utf-8"))
     discoverable = _skills_discoverable_via_manifest(manifest)
-    assert "crm" in discoverable, (
+    assert {"crm", "crm-migration"} <= discoverable, (
         f"crm skill not discoverable via plugin.json skills={manifest.get('skills')!r}; "
         f"discoverable={sorted(discoverable)}"
     )

@@ -19,7 +19,14 @@ setup(
     # run on demand, never shipped to users who install only the wheel.
     packages=find_packages(exclude=["evals", "evals.*"]),
     package_data={
-        "crm": ["skills/*.md", "skills/reference/*.md", "README.md", "schemas/*.json"],
+        "crm": [
+            "skills/*.md",
+            "skills/reference/*.md",
+            "migration-skill/*.md",
+            "migration-skill/reference/*.md",
+            "README.md",
+            "schemas/*.json",
+        ],
     },
     install_requires=[
         # 8.4.0 first ships click.exceptions.NoSuchCommand and its

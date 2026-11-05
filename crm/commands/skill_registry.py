@@ -7,7 +7,11 @@ config-style state writes (ADR-0002 split).
 
 Format is a top-level object so future keys land without a break::
 
-    {"skills": [{"target": "claude", "dest": "/abs/path", "installed_version": "2.10.0"}]}
+    {"skills": [{"target": "claude", "dest": "/abs/path", "installed_version": "2.10.0",
+                 "skill": "crm"}]}
+
+``skill`` names the shipped skill the dest holds (ADR 0033); an entry written
+before it existed has none and reads as ``crm``.
 
 Read tolerantly (missing/corrupt → empty list) and written atomically (the state
 home's writer) so a reader never sees a torn/partial file. The atomic
@@ -25,6 +29,9 @@ from pathlib import Path
 from typing import Any
 
 from crm.core.state_home import atomic_write_json, read_json, state_home
+
+# Shipped skill name -> its bundle folder inside the `crm` package (ADR 0033).
+SKILL_FOLDERS: dict[str, str] = {"crm": "skills", "crm-migration": "migration-skill"}
 
 
 def _normalize(dest: str) -> str:
@@ -53,11 +60,13 @@ def _write_skills(skills: list[dict[str, Any]]) -> None:
     atomic_write_json(registry_path(), {"skills": skills})
 
 
-def record_install(target: str, dest: str, installed_version: str) -> None:
+def record_install(target: str, dest: str, installed_version: str, skill: str = "crm") -> None:
     """Add or update the entry for `dest` (dedup by resolved dest path)."""
     key = _normalize(dest)
     skills = [s for s in read_skills() if s.get("dest") != key]
-    skills.append({"target": target, "dest": key, "installed_version": installed_version})
+    skills.append(
+        {"target": target, "dest": key, "installed_version": installed_version, "skill": skill}
+    )
     _write_skills(skills)
 
 
@@ -70,11 +79,16 @@ def remove_install(dest: str) -> None:
 # ── Skill tree copy + self-update refresh ───────────────────────────────
 
 
-def bundled_skill_dir() -> Path:
-    """The skill bundle shipped inside the *running* package (SKILL.md + reference/)."""
+def bundled_package_dir() -> Path:
+    """The *running* `crm` package dir, which holds every shipped skill's bundle."""
     import crm as _crm_pkg
 
-    return Path(_crm_pkg.__file__).resolve().parent / "skills"
+    return Path(_crm_pkg.__file__).resolve().parent
+
+
+def bundled_skill_dir(skill: str = "crm") -> Path:
+    """One skill's bundle shipped inside the running package (SKILL.md + reference/)."""
+    return bundled_package_dir() / SKILL_FOLDERS[skill]
 
 
 def install_tree(src_dir: Path, dest_dir: Path) -> None:
@@ -95,8 +109,9 @@ def install_tree(src_dir: Path, dest_dir: Path) -> None:
     )
 
 
-def refresh_skills(target_version: str, src_dir: Path) -> list[dict[str, Any]]:
-    """Re-sync recorded skill dests to `target_version`, copying from `src_dir`.
+def refresh_skills(target_version: str, package_dir: Path) -> list[dict[str, Any]]:
+    """Re-sync recorded skill dests to `target_version`, each from its own skill's
+    bundle folder under `package_dir` (an entry with no ``skill`` is ``crm``).
 
     Per recorded dest: in-sync → skipped (no copy); vanished folder → pruned
     (entry dropped, folder not recreated); otherwise re-copy → refreshed. A copy
@@ -126,6 +141,11 @@ def refresh_skills(target_version: str, src_dir: Path) -> list[dict[str, Any]]:
             changed = True
             continue  # drop the entry; do not recreate the folder
         try:
+            src_dir = package_dir / SKILL_FOLDERS[entry.get("skill", "crm")]
+            # install_tree clears the dest before copying, so a bundle without
+            # this skill (an older release) must fail here, dest untouched.
+            if not (src_dir / "SKILL.md").is_file():
+                raise FileNotFoundError(src_dir / "SKILL.md")
             install_tree(src_dir, Path(dest))
         except Exception:
             # Report the intended target so callers see what the refresh aimed

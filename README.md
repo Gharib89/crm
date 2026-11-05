@@ -46,6 +46,10 @@ Two surfaces feed AI agents:
   Code, Copilot CLI, …) after `crm skill install` (or, without the CLI,
   `npx skills add Gharib89/crm --skill crm -g -y`): a thin `SKILL.md` router plus
   `reference/*.md` files loaded on demand.
+  A second skill, **`crm/migration-skill/`** (`crm-migration`), teaches
+  assessing and verifying a CRM 2011 or on-prem to Dataverse online migration.
+  It defers to `crm` for every command, so install both:
+  `crm skill install --skill crm --skill crm-migration`.
 - **`llms.txt` / `llms-full.txt`** — published at the docs-site root for *any*
   web-fetch agent: [`/llms.txt`](https://crm-cli-docs.pages.dev/llms.txt) is a
   curated index, [`/llms-full.txt`](https://crm-cli-docs.pages.dev/llms-full.txt)

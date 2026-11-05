@@ -21,7 +21,7 @@ def test_default_target_is_claude():
     # No --target/--dest → resolves to the claude skills dir, not copilot.
     import crm.commands.skill as skill_mod
 
-    assert skill_mod._resolve_skill_dest(None, None) == skill_mod.SKILL_TARGETS["claude"]
+    assert skill_mod._resolve_skill_dest(None, None) == skill_mod.SKILL_TARGETS["claude"] / "crm"
 
 
 def test_install_copies_tree(tmp_path: Path, monkeypatch):
@@ -177,3 +177,196 @@ def test_uninstall_dest_echoes_directory_on_success_and_noop(tmp_path: Path, mon
     assert noop["data"]["removed"] is False
     assert removed["data"]["dest"] == str(dest.resolve())
     assert noop["data"]["dest"] == str(dest.resolve())
+
+
+# ── #1062: a second shipped skill, `crm-migration`, beside `crm` ─────────────
+_PKG = Path(__file__).resolve().parent.parent
+
+
+def _tree(root: Path) -> dict[str, bytes]:
+    """Every file under `root`, keyed by its relative POSIX path."""
+    return {
+        p.relative_to(root).as_posix(): p.read_bytes()
+        for p in sorted(root.rglob("*"))
+        if p.is_file() and "__pycache__" not in p.parts
+    }
+
+
+def _with_targets(monkeypatch, base: Path) -> None:
+    import crm.commands.skill as skill_mod
+
+    monkeypatch.setattr(skill_mod, "SKILL_TARGETS", {"claude": base})
+
+
+def test_target_folders_are_unchanged_for_the_crm_skill():
+    # A bare install resolves to the same folder per target as before #1062.
+    import crm.commands.skill as skill_mod
+
+    home = Path.home()
+    assert skill_mod._resolve_skill_dest("claude", None, "crm") == home / ".claude/skills/crm"
+    assert skill_mod._resolve_skill_dest("copilot", None, "crm") == home / ".copilot/skills/crm"
+    assert skill_mod._resolve_skill_dest("cursor", None, "crm") == home / ".cursor/rules/crm"
+
+
+def test_bare_install_writes_the_crm_bundle_to_the_crm_folder(tmp_path: Path, monkeypatch):
+    import json
+
+    runner = _runner(tmp_path, monkeypatch)
+    _with_targets(monkeypatch, tmp_path / "skills")
+    result = runner.invoke(cli, ["--json", "skill", "install"])
+    assert result.exit_code == 0, result.output
+    assert _tree(tmp_path / "skills" / "crm") == _tree(_PKG / "skills")
+    assert sorted(p.name for p in (tmp_path / "skills").iterdir()) == ["crm"]
+    data = json.loads(result.output)["data"]
+    assert data["skill"] == "crm"
+    assert data["dest"] == str(tmp_path / "skills" / "crm")
+
+
+def test_migration_skill_installs_into_its_own_folder(tmp_path: Path, monkeypatch):
+    import json
+
+    runner = _runner(tmp_path, monkeypatch)
+    _with_targets(monkeypatch, tmp_path / "skills")
+    result = runner.invoke(cli, ["--json", "skill", "install", "--skill", "crm-migration"])
+    assert result.exit_code == 0, result.output
+    assert _tree(tmp_path / "skills" / "crm-migration") == _tree(_PKG / "migration-skill")
+    assert json.loads(result.output)["data"]["skill"] == "crm-migration"
+
+
+def test_installing_one_skill_leaves_the_other_byte_identical(tmp_path: Path, monkeypatch):
+    runner = _runner(tmp_path, monkeypatch)
+    base = tmp_path / "skills"
+    _with_targets(monkeypatch, base)
+    assert runner.invoke(cli, ["skill", "install"]).exit_code == 0
+    crm_before = _tree(base / "crm")
+    assert runner.invoke(cli, ["skill", "install", "--skill", "crm-migration"]).exit_code == 0
+    assert _tree(base / "crm") == crm_before
+    mig_before = _tree(base / "crm-migration")
+    assert runner.invoke(cli, ["skill", "install", "--force"]).exit_code == 0
+    assert _tree(base / "crm-migration") == mig_before
+
+
+def test_repeated_skill_installs_both(tmp_path: Path, monkeypatch):
+    import json
+
+    runner = _runner(tmp_path, monkeypatch)
+    _with_targets(monkeypatch, tmp_path / "skills")
+    result = runner.invoke(
+        cli, ["--json", "skill", "install", "--skill", "crm", "--skill", "crm-migration"]
+    )
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)["data"]
+    assert [s["skill"] for s in data["skills"]] == ["crm", "crm-migration"]
+    assert (tmp_path / "skills" / "crm" / "SKILL.md").is_file()
+    assert (tmp_path / "skills" / "crm-migration" / "SKILL.md").is_file()
+
+
+def test_dest_with_several_skills_is_a_usage_error(tmp_path: Path, monkeypatch):
+    runner = _runner(tmp_path, monkeypatch)
+    for verb in ("install", "uninstall"):
+        result = runner.invoke(
+            cli,
+            ["skill", verb, "--dest", str(tmp_path / "x"), "--skill", "crm"]
+            + ["--skill", "crm-migration"],
+        )
+        assert result.exit_code == 2, (verb, result.output)
+    assert not (tmp_path / "x").exists()
+
+
+def test_install_records_the_skill_name(tmp_path: Path, monkeypatch):
+    from crm.commands import skill_registry as reg
+
+    runner = _runner(tmp_path, monkeypatch)
+    _with_targets(monkeypatch, tmp_path / "skills")
+    runner.invoke(cli, ["skill", "install", "--skill", "crm-migration"])
+    assert [e["skill"] for e in reg.read_skills()] == ["crm-migration"]
+
+
+def test_uninstall_one_skill_keeps_the_other(tmp_path: Path, monkeypatch):
+    from crm.commands import skill_registry as reg
+
+    runner = _runner(tmp_path, monkeypatch)
+    base = tmp_path / "skills"
+    _with_targets(monkeypatch, base)
+    runner.invoke(cli, ["skill", "install", "--skill", "crm", "--skill", "crm-migration"])
+    crm_before = _tree(base / "crm")
+    result = runner.invoke(cli, ["--json", "skill", "uninstall", "--skill", "crm-migration"])
+    assert result.exit_code == 0, result.output
+    assert not (base / "crm-migration").exists()
+    assert _tree(base / "crm") == crm_before
+    assert [e["skill"] for e in reg.read_skills()] == ["crm"]
+
+
+def test_failed_second_install_reports_the_skill_already_installed(tmp_path: Path, monkeypatch):
+    """A multi-skill install failing partway names what it already installed (PR #1081)."""
+    import json
+
+    import crm.commands.skill_registry as reg
+
+    runner = _runner(tmp_path, monkeypatch)
+    _with_targets(monkeypatch, tmp_path / "skills")
+    real = reg.install_tree
+
+    def fail_migration(src_dir, dest_dir):
+        if dest_dir.name == "crm-migration":
+            raise OSError("disk full")
+        real(src_dir, dest_dir)
+
+    monkeypatch.setattr(reg, "install_tree", fail_migration)
+    result = runner.invoke(
+        cli, ["--json", "skill", "install", "--skill", "crm", "--skill", "crm-migration"]
+    )
+    assert result.exit_code == 1
+    env = json.loads(result.output)
+    assert "crm-migration" in env["error"] and "already installed: crm" in env["error"]
+    assert [r["skill"] for r in env["meta"]["completed_skills"]] == ["crm"]
+    assert env["meta"]["failed_skill"] == "crm-migration"
+
+
+def test_failed_second_uninstall_reports_the_skill_already_removed(tmp_path: Path, monkeypatch):
+    import json
+
+    import crm.commands.skill as skill_mod
+
+    runner = _runner(tmp_path, monkeypatch)
+    _with_targets(monkeypatch, tmp_path / "skills")
+    both = ["--skill", "crm", "--skill", "crm-migration"]
+    assert runner.invoke(cli, ["skill", "install", *both]).exit_code == 0
+    real = skill_mod._uninstall_one
+
+    def fail_migration(dest_dir):
+        if dest_dir.name == "crm-migration":
+            raise OSError("busy")
+        return real(dest_dir)
+
+    monkeypatch.setattr(skill_mod, "_uninstall_one", fail_migration)
+    result = runner.invoke(cli, ["--json", "skill", "uninstall", *both])
+    assert result.exit_code == 1
+    env = json.loads(result.output)
+    assert "already removed: crm" in env["error"]
+    assert [r["skill"] for r in env["meta"]["completed_skills"]] == ["crm"]
+    assert env["meta"]["failed_skill"] == "crm-migration"
+
+
+def test_failed_uninstall_does_not_call_a_skill_never_installed_removed(
+    tmp_path: Path, monkeypatch
+):
+    import json
+
+    import crm.commands.skill as skill_mod
+
+    runner = _runner(tmp_path, monkeypatch)
+    _with_targets(monkeypatch, tmp_path / "skills")
+    real = skill_mod._uninstall_one
+
+    def fail_migration(dest_dir):
+        if dest_dir.name == "crm-migration":
+            raise OSError("busy")
+        return real(dest_dir)
+
+    monkeypatch.setattr(skill_mod, "_uninstall_one", fail_migration)
+    result = runner.invoke(
+        cli, ["--json", "skill", "uninstall", "--skill", "crm", "--skill", "crm-migration"]
+    )
+    assert result.exit_code == 1
+    assert "already removed" not in json.loads(result.output)["error"]

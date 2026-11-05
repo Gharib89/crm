@@ -263,3 +263,15 @@ def test_containment_and_frontmatter_waiver_keys_name_real_files():
     for waivers in (SELF_CONTAINMENT_WAIVERS, FRONTMATTER_WAIVERS):
         unknown = {key for key in waivers if key not in real}
         assert not unknown, f"waiver key(s) not naming a real skill file: {sorted(unknown)}"
+
+
+# ── #1062: the crm-migration tree passes every rule too ──────────────────────
+def test_migration_tree_passes_every_rule():
+    from crm.tests.skill_coverage import MIGRATION_SKILL_DIR
+
+    router, refs = skill_tree(MIGRATION_SKILL_DIR)
+    assert refs, "the crm-migration skill ships at least one reference page"
+    assert check_self_containment(router, refs) == []
+    assert check_link_integrity(router, refs) == []
+    assert check_thinness(router, refs) == []
+    assert check_frontmatter(router, expected_name="crm-migration") == []

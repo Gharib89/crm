@@ -2,16 +2,18 @@
 
 ## Source of truth
 
-`crm/skills/` is the canonical agent skill — a thin `SKILL.md` router plus
-`reference/*.md` files loaded on demand. The package ships the whole tree
-(`package_data` in `setup.py`; bundled in `crm.spec`) and `crm skill install`
-copies it into an agent's skill directory:
+Two agent skills ship, each a thin `SKILL.md` router plus `reference/*.md`
+files loaded on demand: `crm/skills/` (the `crm` skill) and
+`crm/migration-skill/` (the `crm-migration` skill, ADR 0033). The package ships
+both trees (`package_data` in `setup.py`; bundled in `crm.spec`) and
+`crm skill install --skill <name>` (default `crm`) copies one into an agent's
+skill directory, at `<name>` under the target's root:
 
 | Target | Destination |
 | --- | --- |
-| `claude` | `~/.claude/skills/crm/` |
-| `copilot` | `~/.copilot/skills/crm/` |
-| `cursor` | `~/.cursor/rules/crm/` |
+| `claude` | `~/.claude/skills/<name>/` |
+| `copilot` | `~/.copilot/skills/<name>/` |
+| `cursor` | `~/.cursor/rules/<name>/` |
 
 ```bash
 crm skill install --target claude --force

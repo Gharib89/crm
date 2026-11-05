@@ -22,3 +22,7 @@ pyinstaller crm.spec
 echo
 echo "Built: $REPO_ROOT/dist/crm/  (onedir bundle; launcher: dist/crm/crm)"
 "$REPO_ROOT/dist/crm/crm" --version
+# Both shipped skills ride in the bundle (crm.spec datas, #1062).
+for skill in skills migration-skill; do
+  test -f "$REPO_ROOT/dist/crm/_internal/crm/$skill/SKILL.md" || { echo "missing bundled $skill" >&2; exit 1; }
+done

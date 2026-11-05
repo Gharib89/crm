@@ -23,6 +23,10 @@ curl -fsSL https://pub-bbeb86c46454443ca76521dd4d29818e.r2.dev/install.sh | sh
 
 Open a new shell so PATH updates, then verify with `crm --version`.
 
+A second skill, `crm-migration`, owns the workflow and evidence rules for
+migrating an org (CRM 2011 or on-premises) to the cloud; install it with
+`crm skill install --skill crm-migration`.
+
 ## Configure
 
 The CLI authenticates with **Windows Integrated auth** for on-prem (`ntlm` by

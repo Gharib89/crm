@@ -35,27 +35,28 @@ from crm.commands._tty import _stdin_is_tty
 from crm.core import update as update_mod
 
 
-def _frozen_skill_src(install_dir: Path) -> Path | None:
-    """The new bundled skill tree under a freshly-swapped frozen install.
+def _frozen_package_dir(install_dir: Path) -> Path | None:
+    """The new `crm` package dir (holding every skill bundle) under a
+    freshly-swapped frozen install.
 
     The running process still executes the OLD code (and on posix its old
     package dir has been deleted by the swap), so the refresh must read the new
     tree off disk under `install_dir` rather than via the in-memory package.
     """
     hit = next(install_dir.glob("**/crm/skills/SKILL.md"), None)
-    return hit.parent if hit else None
+    return hit.parent.parent if hit else None
 
 
-def _refresh_skills(target_version: str, src_dir: Path | None) -> list[dict[str, Any]]:
+def _refresh_skills(target_version: str, package_dir: Path | None) -> list[dict[str, Any]]:
     """Re-sync recorded skills, never raising — a skill failure must not fail the
     binary update. A missing source tree → no refresh. A genuine failure (e.g. an
     unreadable registry) is surfaced as an error entry in `data.skills` rather than
     silently dropped, so the reported outcome never falsely reads as 'nothing to do'.
     """
-    if src_dir is None or not (src_dir / "SKILL.md").exists():
+    if package_dir is None or not (package_dir / "skills" / "SKILL.md").exists():
         return []
     try:
-        return skill_registry.refresh_skills(target_version, src_dir)
+        return skill_registry.refresh_skills(target_version, package_dir)
     except Exception as exc:
         return [
             {
@@ -136,7 +137,7 @@ def _inprocess_refresh(
     Attaches results to `data` under `--json`; returns them for human-mode emit.
     """
     version = update_mod.current_version()
-    skills = _refresh_skills(version, skill_registry.bundled_skill_dir())
+    skills = _refresh_skills(version, skill_registry.bundled_package_dir())
     completion = _refresh_completion(version, completion_registry.generate_source)
     if ctx.json_mode:
         data["skills"] = skills
@@ -190,7 +191,7 @@ def _finisher_refresh(to_version: str, install: Path) -> list[str]:
     run should print; an empty list means everything re-synced cleanly.
     """
     warnings: list[str] = []
-    for entry in _refresh_skills(to_version, _frozen_skill_src(install)):
+    for entry in _refresh_skills(to_version, _frozen_package_dir(install)):
         if entry.get("status") == "error":
             warnings.append(
                 f"Could not refresh the installed crm agent skill: {entry.get('error')}"
@@ -233,7 +234,7 @@ def _frozen_update(ctx: CLIContext) -> None:
     # the running process is still the old version, so refresh to `to_version`.
     # Fall back to current_version() when already up-to-date (no `to_version` key).
     new_version = str(result.get("to_version") or update_mod.current_version())
-    skills = _refresh_skills(new_version, _frozen_skill_src(target))
+    skills = _refresh_skills(new_version, _frozen_package_dir(target))
     # The completion *content* comes from invoking the binary on PATH, which after
     # the swap is the NEW build (sys.executable's file was replaced in place) — so
     # we shell out rather than render in-process (still the old code post-swap).

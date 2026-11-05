@@ -56,7 +56,7 @@ reviews:
         real-looking GUIDs in tests/docs (placeholders are Contoso /
         internalcrm.contoso.local). Every new/changed command or flag ships
         docs in the same PR (docs/how-to/<group>.md, docs/reference/cli.md,
-        README.md if user-facing, crm/skills/ if workflow-visible); never
+        README.md if user-facing, crm/skills/ and crm/migration-skill/ if workflow-visible); never
         hand-edit CHANGELOG.md — python-semantic-release generates it.
     - path: "crm/commands/**"
       instructions: >-
