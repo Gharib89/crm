@@ -110,7 +110,7 @@ security boundary (the real boundary is a server-side read-only role).
 A CRM 2011 org has no Web API. `crm profile add` detects one itself (Web API 404 on
 an NTLM profile, then a `5.x` build answered over SOAP) and saves a **`crm2011`
 profile**; its JSON output carries `platform: "crm2011"`, where a normal profile says
-`v9`. Verified only on CRM 2011 UR15 (5.0.9690.3557), Linux: on another build or OS,
+`v9`. Verified only on CRM 2011 UR15 (5.0.9690.3557), on Linux and Windows: on another build or OS,
 tell the user it is untested.
 
 - **Only `crm legacy`, `crm inventory extract` and the offline `crm inventory
