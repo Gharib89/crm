@@ -49,27 +49,27 @@ def test_an_async_step_with_a_job_row_is_used():
 
 def test_a_sync_step_with_no_evidence_is_unknown_and_names_sync():
     got, _, _ = _states([_step("s", sync=True)])
-    assert got["s"].state == "unknown" and "synchronous" in got["s"].reason
+    assert got["s"].state == "unknown" and "synchronous" in (got["s"].reason or "")
 
 
 def test_an_autodelete_async_step_without_a_row_is_unknown():
     got, _, _ = _states([_step("s", autodelete=True)])
-    assert got["s"].state == "unknown" and "deleted" in got["s"].reason
+    assert got["s"].state == "unknown" and "deleted" in (got["s"].reason or "")
 
 
 def test_an_async_step_without_a_row_is_unknown_not_unused():
     got, _, _ = _states([_step("s")])
-    assert got["s"].state == "unknown" and "purged" in got["s"].reason
+    assert got["s"].state == "unknown" and "purged" in (got["s"].reason or "")
 
 
 def test_a_job_read_gap_is_the_reason_for_an_async_step():
     got, _, _ = _states([_step("s")], ev=Evidence(jobs_gap="async job read failed: boom"))
-    assert got["s"].reason.startswith("async job read failed")
+    assert (got["s"].reason or "").startswith("async job read failed")
 
 
 def test_tracing_off_keeps_a_trace_only_step_unknown_and_says_why():
     got, _, _ = _states([_step("s", sync=True)], ev=Evidence(trace_gap="plug-in trace log is off"))
-    assert got["s"].state == "unknown" and "trace log is off" in got["s"].reason
+    assert got["s"].state == "unknown" and "trace log is off" in (got["s"].reason or "")
 
 
 def test_a_trace_hit_on_type_and_message_makes_a_sync_step_used():
@@ -104,7 +104,7 @@ def test_types_and_assemblies_roll_up():
         "t4": "unused",
         "t5": "unknown",
     }
-    assert "workflow" in by_type["t5"].reason
+    assert "workflow" in (by_type["t5"].reason or "")
     assert {k: v.state for k, v in by_asm.items()} == {
         "a1": "used",
         "a2": "unknown",
@@ -216,8 +216,10 @@ def test_v9_job_aggregate_names_the_owning_step_and_operation_type(make_fake_bac
     (xml,) = [k["params"]["fetchXml"] for v, p, k in backend.calls if p == "asyncoperations"]
     root = fromstring(xml)
     assert root.get("aggregate") == "true"
-    assert root.find(".//attribute[@groupby='true']").get("name") == "owningextensionid"
-    assert root.find(".//condition").attrib == {
+    group, cond = root.find(".//attribute[@groupby='true']"), root.find(".//condition")
+    assert group is not None and cond is not None
+    assert group.get("name") == "owningextensionid"
+    assert cond.attrib == {
         "attribute": "operationtype",
         "operator": "eq",
         "value": "1",
@@ -228,7 +230,7 @@ def test_v9_a_refused_job_aggregate_leaves_async_steps_unknown(make_fake_backend
     got, _ = _v9_probe(
         make_fake_backend, job_error=D365Error("AggregateQueryRecordLimit", status=400)
     )
-    assert got["t1"].state == "unknown" and "async job read failed" in got["t1"].reason
+    assert got["t1"].state == "unknown" and "async job read failed" in (got["t1"].reason or "")
 
 
 def test_v9_a_missing_tracing_setting_is_no_signal_not_an_error(make_fake_backend):
@@ -408,7 +410,7 @@ def _legacy_org(jobs=(("s1",),), jobs_fault=False):
                 ],
                 more=more,
             )
-        return _rm(_LEGACY[entity])
+        return _rm(_LEGACY[entity or ""])
 
     return respond, seen
 
@@ -475,7 +477,7 @@ def test_legacy_a_job_read_past_its_time_cap_stops_and_names_the_cap():
             LegacyClient(profile, "pw"), time_cap=5, monotonic=lambda: next(ticks)
         )
     assert ev.jobs == {"s1"} and seen["jobs"] == 1  # page 2 (s3) was never requested
-    assert "5 s time cap" in ev.jobs_gap
+    assert "5 s time cap" in (ev.jobs_gap or "")
 
 
 def test_legacy_has_no_trace_entity_and_that_is_recorded_as_no_signal(crm_home):

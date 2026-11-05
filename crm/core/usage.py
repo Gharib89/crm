@@ -484,6 +484,11 @@ def read_v9_plugin_evidence(backend: D365Backend, *, trace_on: bool) -> Evidence
     return Evidence(jobs, traces, jobs_gap, trace_gap)
 
 
+def _message_name(step_row: dict[str, Any]) -> str:
+    message: dict[str, Any] = step_row.get("sdkmessageid") or {}
+    return str(message.get("name") or "").lower()
+
+
 def probe_v9_plugin_types(
     backend: D365Backend,
     types: Sequence[PluginType],
@@ -499,7 +504,8 @@ def probe_v9_plugin_types(
         if exc.status != 400:
             raise
         org = {}
-    trace_on = bool((org.get("value") or [{}])[0].get("plugintracelogsetting"))
+    org_rows: list[dict[str, Any]] = org.get("value") or [{}]
+    trace_on = bool(org_rows[0].get("plugintracelogsetting"))
     select = "sdkmessageprocessingstepid,statecode,mode,asyncautodelete,_eventhandler_value"
     params = {"$select": select}
     if trace_on:
@@ -512,7 +518,7 @@ def probe_v9_plugin_types(
             r.get("statecode") == 0,
             r.get("mode") == 0,
             bool(r.get("asyncautodelete")),
-            ((r.get("sdkmessageid") or {}).get("name") or "").lower(),
+            _message_name(r),
             names.get(r["_eventhandler_value"], ""),
         )
         for r in backend.get_collection("sdkmessageprocessingsteps", params=params)
