@@ -17,8 +17,10 @@ from crm.commands._helpers import (
     _journal,
     _solution_option,
     d365_errors,
+    in_use_options,
 )
 from crm.core import plugin as plugin_mod
+from crm.core import usage
 
 
 @click.group("plugin")
@@ -138,12 +140,37 @@ def register_type_cmd(ctx: CLIContext, assembly, type_name, friendly_name, name,
 @click.option(
     "--assembly", default=None, help="Filter to plug-in types of this assembly (by name)."
 )
+@in_use_options
 @pass_ctx
-def list_types_cmd(ctx: CLIContext, assembly):
-    """List registered plug-in types (optionally for one assembly)."""
+def list_types_cmd(ctx: CLIContext, assembly, in_use: bool, exclude_unknown: bool):
+    """List registered plug-in types (optionally for one assembly).
+
+    `--in-use` adds a `usage` object per type, rolled up from its steps: a
+    disabled step is `unused`, a step with a run record is `used`, anything
+    else is `unknown`. A type is `unused` only when every step is disabled or
+    it has none (a workflow activity is `unknown`).
+    """
     with d365_errors(ctx):
-        result = plugin_mod.list_types(ctx.backend(), assembly=assembly)
-    items = result["value"]
+        backend = ctx.backend()
+        result = plugin_mod.list_types(backend, assembly=assembly, usage_columns=in_use)
+        items = result["value"]
+        if in_use:
+            types = [
+                usage.PluginType(
+                    it["plugintypeid"],
+                    it.get("_pluginassemblyid_value") or "",
+                    it.get("typename") or "",
+                    bool(it.get("isworkflowactivity")),
+                )
+                for it in items
+            ]
+            states = usage.probe_v9_plugin_types(backend, types)
+            for it in items:
+                it.pop("_pluginassemblyid_value", None)
+                it.pop("isworkflowactivity", None)
+            items = usage.attach(
+                items, states, key=lambda r: r["plugintypeid"], exclude_unknown=exclude_unknown
+            )
     if ctx.json_mode:
         ctx.emit(True, data=items, meta={"count": len(items)})
         return

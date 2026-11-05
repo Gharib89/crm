@@ -89,6 +89,16 @@ def test_legacy_components_pages_and_writes_payloads(cli, tmp_path):
 
 
 @covers("legacy components")
+def test_legacy_components_in_use_labels_plugin_rows(cli):
+    data = _legacy(cli, "components", "plugin-steps", "--in-use")
+    assert data["errors"] == []
+    assert {s["usage"]["state"] for s in data["plugin-steps"]} <= {"used", "unknown"}
+    assert all(
+        s["usage"]["reason"] for s in data["plugin-steps"] if s["usage"]["state"] == "unknown"
+    )
+
+
+@covers("legacy components")
 def test_legacy_components_scoped_by_solution_and_entity(cli):
     solutions = _legacy(cli, "components", "solutions")["solutions"]
     system = {"Default", "Active", "Basic", "System"}

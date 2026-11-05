@@ -321,3 +321,284 @@ def probe_legacy_entities(
         return name, u
 
     return dict(_map(probe, list(primary_ids)))
+
+
+# ── Plug-in steps, types and assemblies (slice #1093) ────────────────────
+
+STEP_SIGNAL = "plugin_step_runs"
+JOB_TIME_CAP = 120.0  # seconds a CRM 2011 async job read may run before it stops
+
+
+@dataclass(frozen=True)
+class Step:
+    """A processing step with what decides its usage; *message* is its SDK message name."""
+
+    id: str
+    type_id: str
+    enabled: bool
+    sync: bool
+    autodelete: bool
+    message: str = ""
+    type_name: str = ""
+
+
+@dataclass(frozen=True)
+class PluginType:
+    id: str
+    assembly_id: str
+    typename: str
+    workflow: bool = False
+
+
+@dataclass(frozen=True)
+class Evidence:
+    """Run records read for the steps: job rows by step id, trace hits by (type, message).
+
+    *jobs_gap* says why the job read is incomplete or missing; *trace_gap* why
+    there is no trace signal (tracing off, no such entity). Both only explain an
+    `unknown`: a missing record never makes a row `unused`.
+    """
+
+    jobs: frozenset[str] = frozenset()
+    traces: frozenset[tuple[str, str]] = frozenset()
+    jobs_gap: str | None = None
+    trace_gap: str | None = None
+
+
+def _step_usage(step: Step, ev: Evidence, as_of: str) -> Usage:
+    if not step.enabled:
+        return Usage("unused", STEP_SIGNAL, None, as_of, "disabled")
+    if step.id in ev.jobs:
+        return Usage("used", "async_job", None, as_of)
+    if (step.type_name, step.message.lower()) in ev.traces:
+        return Usage("used", "plugin_trace", None, as_of)
+    if step.sync:
+        why = ["synchronous step: no run record exists"]
+    elif step.autodelete:
+        why = ["successful async jobs of this step are deleted"]
+    else:
+        why = [ev.jobs_gap or "no async job found (job history may have been purged)"]
+    if ev.trace_gap:
+        why.append(ev.trace_gap)
+    return Usage("unknown", STEP_SIGNAL, None, as_of, "; ".join(why))
+
+
+def roll_up(children: Sequence[Usage], as_of: str, *, orphan: str | None = None) -> Usage:
+    """A parent's usage from its children: `used` if any is, `unused` only if all are.
+
+    No children means nothing can fire: `unused`, unless *orphan* names why the
+    parent can still run (it then reads `unknown`).
+    """
+    if any(c.state == "used" for c in children):
+        return Usage("used", STEP_SIGNAL, None, as_of)
+    if not children and orphan:
+        return Usage("unknown", STEP_SIGNAL, None, as_of, orphan)
+    if all(c.state == "unused" for c in children):
+        return Usage("unused", STEP_SIGNAL, None, as_of, "every step is disabled or none exists")
+    why = next((c.reason for c in children if c.state == "unknown" and c.reason), None)
+    return Usage(
+        "unknown", STEP_SIGNAL, None, as_of, "no run record" + (f", e.g. {why}" if why else "")
+    )
+
+
+def plugin_usage(
+    steps: Sequence[Step],
+    types: Sequence[PluginType],
+    ev: Evidence,
+    *,
+    assembly_ids: Sequence[str] = (),
+    clock: Callable[[], str] = _now,
+) -> tuple[dict[str, Usage], dict[str, Usage], dict[str, Usage]]:
+    """Usage of every step, type and assembly, each keyed by id (rules in spec #1093).
+
+    *assembly_ids* adds assemblies that own no type, which read `unused`.
+    """
+    as_of = clock()
+    by_step = {s.id: _step_usage(s, ev, as_of) for s in steps}
+    step_states: dict[str, list[Usage]] = {t.id: [] for t in types}
+    for s in steps:
+        if s.type_id in step_states:
+            step_states[s.type_id].append(by_step[s.id])
+    by_type = {
+        t.id: roll_up(
+            step_states[t.id],
+            as_of,
+            orphan="workflow activity: invoked by workflows, not steps" if t.workflow else None,
+        )
+        for t in types
+    }
+    by_assembly = {
+        a: roll_up([by_type[t.id] for t in types if t.assembly_id == a], as_of)
+        for a in {t.assembly_id for t in types} | set(assembly_ids)
+    }
+    return by_step, by_type, by_assembly
+
+
+def _job_fetch(extra: str = "") -> str:
+    return (
+        '<fetch aggregate="true"><entity name="asyncoperation">'
+        '<attribute name="owningextensionid" alias="step" groupby="true"/>'
+        '<attribute name="asyncoperationid" alias="n" aggregate="count"/>'
+        f'<filter><condition attribute="operationtype" operator="eq" value="1"/>{extra}</filter>'
+        "</entity></fetch>"
+    )
+
+
+def _trace_fetch() -> str:
+    return (
+        '<fetch aggregate="true"><entity name="plugintracelog">'
+        '<attribute name="typename" alias="type" groupby="true"/>'
+        '<attribute name="messagename" alias="message" groupby="true"/>'
+        '<attribute name="plugintracelogid" alias="n" aggregate="count"/>'
+        "</entity></fetch>"
+    )
+
+
+def read_v9_plugin_evidence(backend: D365Backend, *, trace_on: bool) -> Evidence:
+    """Async job rows grouped by step (one aggregate) and, when tracing is on, trace hits.
+
+    Tracing off or unreadable is recorded as no signal; so is a job aggregate
+    the server refuses (e.g. its record limit), which keeps those steps `unknown`.
+    """
+    jobs: frozenset[str] = frozenset()
+    jobs_gap = None
+    try:
+        got = as_dict(backend.get("asyncoperations", params={"fetchXml": _job_fetch()}))
+        jobs = frozenset(str(r["step"]) for r in got.get("value", []) if r.get("step"))
+    except D365Error as exc:
+        if connection_wide(exc):
+            raise
+        jobs_gap = f"async job read failed: {exc}"
+    traces: frozenset[tuple[str, str]] = frozenset()
+    trace_gap = "plug-in trace log is off" if not trace_on else None
+    if trace_on:
+        try:
+            got = as_dict(backend.get("plugintracelogs", params={"fetchXml": _trace_fetch()}))
+            traces = frozenset(
+                (str(r["type"]), str(r["message"]).lower()) for r in got.get("value", [])
+            )
+        except D365Error as exc:
+            if connection_wide(exc):
+                raise
+            trace_gap = f"plug-in trace log unreadable: {exc}"
+    return Evidence(jobs, traces, jobs_gap, trace_gap)
+
+
+def probe_v9_plugin_types(
+    backend: D365Backend,
+    types: Sequence[PluginType],
+    *,
+    clock: Callable[[], str] = _now,
+) -> dict[str, Usage]:
+    """Usage of each v9 plug-in type, rolled up from its steps: three bulk reads, none per step."""
+    try:  # the column is absent before 9.0.x on some on-prem builds: no trace signal then
+        org = as_dict(
+            backend.get("organizations", params={"$select": "plugintracelogsetting", "$top": "1"})
+        )
+    except D365Error as exc:
+        if exc.status != 400:
+            raise
+        org = {}
+    trace_on = bool((org.get("value") or [{}])[0].get("plugintracelogsetting"))
+    select = "sdkmessageprocessingstepid,statecode,mode,asyncautodelete,_eventhandler_value"
+    params = {"$select": select}
+    if trace_on:
+        params["$expand"] = "sdkmessageid($select=name)"
+    names = {t.id: t.typename for t in types}
+    steps = [
+        Step(
+            r["sdkmessageprocessingstepid"],
+            r["_eventhandler_value"],
+            r.get("statecode") == 0,
+            r.get("mode") == 0,
+            bool(r.get("asyncautodelete")),
+            ((r.get("sdkmessageid") or {}).get("name") or "").lower(),
+            names.get(r["_eventhandler_value"], ""),
+        )
+        for r in backend.get_collection("sdkmessageprocessingsteps", params=params)
+        if r.get("_eventhandler_value")
+    ]
+    ev = read_v9_plugin_evidence(backend, trace_on=trace_on)
+    return plugin_usage(steps, types, ev, clock=clock)[1]
+
+
+def _ref(value: object) -> str:
+    return str(value.get("id") or "") if isinstance(value, dict) else ""  # pyright: ignore
+
+
+def _fetch_all(client: LegacyClient, entity: str, columns: Sequence[str]) -> list[dict[str, Any]]:
+    attrs = "".join(f'<attribute name="{c}"/>' for c in columns)
+    xml = f'<fetch><entity name="{entity}">{attrs}</entity></fetch>'
+    return [r for page in client.retrieve_multiple(xml) for r in page]
+
+
+def read_legacy_plugin_evidence(
+    client: LegacyClient,
+    *,
+    time_cap: float = JOB_TIME_CAP,
+    monotonic: Callable[[], float] = time.monotonic,
+) -> Evidence:
+    """Step ids that own an async job row, read page by page until *time_cap* seconds pass.
+
+    CRM 2011 refuses `asyncoperation` aggregates (the 50,000 limit) and filtered
+    scans of it can run for minutes, so the read is plain and bounded: steps not
+    seen when it stops stay `unknown`. There is no `plugintracelog` entity.
+    """
+    gap = "no plug-in trace log on CRM 2011"
+    fetch = (
+        '<fetch><entity name="asyncoperation"><attribute name="owningextensionid"/>'
+        '<filter><condition attribute="operationtype" operator="eq" value="1"/>'
+        '<condition attribute="owningextensionid" operator="not-null"/></filter></entity></fetch>'
+    )
+    deadline = monotonic() + time_cap
+    jobs: set[str] = set()
+    jobs_gap = None
+    try:
+        for page in client.pages(fetch):
+            jobs.update(_ref(r.get("owningextensionid")) for r in page.records)
+            if page.more and monotonic() >= deadline:
+                jobs_gap = f"async job read stopped at the {time_cap:g} s time cap"
+                break
+    except D365Error as exc:
+        if connection_wide(exc):
+            raise
+        jobs_gap = f"async job read failed: {exc}"
+    return Evidence(frozenset(jobs - {""}), frozenset(), jobs_gap, gap)
+
+
+def probe_legacy_plugins(
+    client: LegacyClient,
+    *,
+    time_cap: float = JOB_TIME_CAP,
+    clock: Callable[[], str] = _now,
+    monotonic: Callable[[], float] = time.monotonic,
+) -> tuple[dict[str, Usage], dict[str, Usage], dict[str, Usage]]:
+    """Usage of every CRM 2011 plug-in step, type and assembly, each keyed by row id."""
+    types = [
+        PluginType(
+            str(r["id"]),
+            _ref(r.get("pluginassemblyid")),
+            str(r.get("typename") or ""),
+            bool(r.get("isworkflowactivity")),
+        )
+        for r in _fetch_all(
+            client, "plugintype", ("typename", "pluginassemblyid", "isworkflowactivity")
+        )
+    ]
+    steps = [
+        Step(
+            str(r["id"]),
+            _ref(r.get("plugintypeid")),
+            r.get("statecode") == 0,
+            r.get("mode") == 0,
+            bool(r.get("asyncautodelete")),
+        )
+        for r in _fetch_all(
+            client,
+            "sdkmessageprocessingstep",
+            ("plugintypeid", "statecode", "mode", "asyncautodelete"),
+        )
+    ]
+    ev = read_legacy_plugin_evidence(client, time_cap=time_cap, monotonic=monotonic)
+    assembly_ids = [str(r["id"]) for r in _fetch_all(client, "pluginassembly", ("name",))]
+    return plugin_usage(steps, types, ev, assembly_ids=assembly_ids, clock=clock)

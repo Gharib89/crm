@@ -124,6 +124,9 @@ def legacy_metadata(
     _emit_with_failures(ctx, data, _meta(ctx, client), errors, len(entities), "entities", "entity")
 
 
+_PLUGIN_KINDS = ("plugin-assemblies", "plugin-types", "plugin-steps")
+
+
 @legacy_group.command("components")
 @click.argument("kinds", nargs=-1, type=click.Choice(list(legacy_reads.KINDS)))
 @click.option(
@@ -142,6 +145,7 @@ def legacy_metadata(
     metavar="LOGICALNAME",
     help=f"Read only the components of this entity ({', '.join(legacy_reads.ENTITY_KINDS)}).",
 )
+@in_use_options
 @pass_ctx
 def legacy_components(
     ctx: CLIContext,
@@ -149,6 +153,8 @@ def legacy_components(
     out_dir: Path | None,
     solution: str | None,
     entity: str | None,
+    in_use: bool,
+    exclude_unknown: bool,
 ):
     """Read solution components: read-only, paged to the last page over SOAP.
 
@@ -165,7 +171,17 @@ def legacy_components(
     that name an entity (all of them when no KIND is given). Both together
     apply both. An unknown solution or entity fails with exit code 1 before any
     kind is read.
+
+    `--in-use` applies to `plugin-assemblies`, `plugin-types` and `plugin-steps`
+    (all three when no KIND is given): each row gains a `usage` object and the
+    rows proven unused are dropped. Only a disabled step is proven unused; a
+    step with an async job row is used; every other step is `unknown`.
     """
+    if in_use:
+        wrong = [k for k in kinds if k not in _PLUGIN_KINDS]
+        if wrong:
+            raise click.UsageError(f"--in-use does not apply to {', '.join(wrong)}.")
+        kinds = kinds or tuple(_PLUGIN_KINDS)
     if entity is not None:
         wrong = [k for k in kinds if k not in legacy_reads.ENTITY_KINDS]
         if wrong:
@@ -183,6 +199,17 @@ def legacy_components(
         client = ctx.legacy_client()
         scope = legacy_reads.resolve_scope(client, names, solution, entity)
         data, errors = legacy_reads.read_components(client, names, out_dir, scope)
+        if in_use:
+            steps, types, assemblies = usage.probe_legacy_plugins(client)
+            by_kind = {
+                "plugin-assemblies": assemblies,
+                "plugin-types": types,
+                "plugin-steps": steps,
+            }
+            for name, rows in data.items():
+                data[name] = usage.attach(
+                    rows, by_kind[name], key=lambda r: str(r["id"]), exclude_unknown=exclude_unknown
+                )
     _emit_with_failures(
         ctx, {**data, "errors": errors}, _meta(ctx, client), errors, len(names), "kinds", "kind"
     )
