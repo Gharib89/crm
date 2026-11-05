@@ -480,3 +480,47 @@ def test_a_v1_gap_on_the_application_ribbon_still_holds_after_the_upgrade() -> N
     assert _entry(diff, "ribbon", "").verdict == "not_comparable"
     assert _entry(diff, "ribbon", "application").verdict == "not_comparable"
     assert _entry(diff, "sitemap", "").verdict == "unchanged"
+
+
+def _with_references(version: int, *, collision: bool = False) -> dict[str, Any]:
+    """The v9 sample plus a membership of its default sitemap and a dependency of its ribbon."""
+    manifest = _with_name_collisions(version) if collision else _sample("v9")
+    old = {"ribbon": "application", "sitemap": "default"}
+    rows = [
+        ("solution_membership", {"solution": "contoso", "member_kind": "sitemap",
+                                 "member_key": old["sitemap"] if version == 1 else ""}),
+        ("dependency", {"dependent_kind": "ribbon",
+                        "dependent_key": old["ribbon"] if version == 1 else "",
+                        "required_kind": "entity", "required_key": "account",
+                        "dependency_type": 2}),
+    ]  # fmt: skip
+    for kind, fields in rows:
+        manifest["records"].append(
+            {"kind": kind, "key": inventory.component_key(kind, fields), "id": None,
+             "display_name": None, "origin": "custom", "managed": False,
+             "publication_state": "published", "fields": fields, "artifacts": []}
+        )  # fmt: skip
+        manifest["coverage"][kind]["records"] += 1
+    if version == 1:
+        for record in manifest["records"]:
+            if record["kind"] in old and None in record["fields"].values():
+                record["key"] = old[record["kind"]]
+    manifest["schema_version"] = version
+    return manifest
+
+
+def test_v1_rows_referencing_the_null_ribbon_and_sitemap_diff_cleanly_against_v2() -> None:
+    v1 = inventory.parse_manifest(_with_references(1))
+    v2 = inventory.parse_manifest(_with_references(2))
+
+    assert {(r.kind, r.key) for r in v1.records} == {(r.kind, r.key) for r in v2.records}
+    assert {e.verdict for e in diff_inventories(v1, v2).entries} == {"unchanged"}
+
+
+def test_a_v1_reference_stays_where_an_entity_ribbon_makes_it_ambiguous() -> None:
+    v1 = inventory.parse_manifest(_with_references(1, collision=True))
+
+    (dep,) = [
+        r for r in v1.records if r.kind == "dependency" and r.fields["dependent_kind"] == "ribbon"
+    ]
+    assert dep.fields["dependent_key"] == "application"

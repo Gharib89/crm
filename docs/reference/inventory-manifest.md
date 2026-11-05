@@ -173,10 +173,12 @@ manifest that holds the collision upgrades to distinct keys. The result reads as
 v2, so `diff` pairs a v1 manifest with a v2 one. A v1 gap keyed `application` or
 `default` gains a twin keyed `""` (the original stays, since it may name an entity's
 ribbon or a named sitemap). A v1 record that is neither of
-those keeps its key, and so does a v1 `solution_membership` or `dependency` row that
-references one of them (its `member_key`, `dependent_key` or `required_key` stays
-`application` or `default`); v2 writes `""` there, so such a row of a v1 manifest does not
-pair with its v2 twin in a diff. A v1 null ribbon or sitemap keyed by any other name is
+those keeps its key. A v1 `solution_membership` or `dependency` row that references
+the application ribbon or default sitemap (its `member_key`, `dependent_key` or
+`required_key` `application` or `default`) is re-keyed to `""` too, unless the manifest
+also holds an entity `application` ribbon or a sitemap named `default`: the row cannot
+say which of the two it meant, so it keeps the v1 reference and does not pair with its
+v2 twin in a diff. A v1 null ribbon or sitemap keyed by any other name is
 refused. One consequence: artifact file names are derived from the key, so a
 v2 extraction names these two files `component-<hash>` where a v1 one named
 them `application-<hash>` and `default-<hash>`; `diff` pairs a record's

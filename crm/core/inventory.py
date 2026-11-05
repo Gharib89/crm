@@ -16,7 +16,7 @@ import json
 import re
 import xml.etree.ElementTree as ET
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -522,6 +522,32 @@ def _gap(value: object, where: str) -> ExtractionGap:
     return gap
 
 
+def _upgrade_references(records: tuple[Record, ...]) -> tuple[Record, ...]:
+    """Re-key a v1 reference to the application ribbon or default sitemap to `""`.
+
+    A v1 `member_key` or `dependent_key` of `application` names the application
+    ribbon only where no entity `application` has a ribbon of its own: the row cannot say
+    which, so an org holding the collision keeps the v1 reference.
+    """
+    upgradable = {
+        kind
+        for kind, old in _V1_NULL_KEY.items()
+        if any(r.kind == kind and r.key == "" for r in records)
+        and not any(r.kind == kind and r.key == old for r in records)
+    }
+    out: list[Record] = []
+    for record in records:
+        fields = dict(record.fields)
+        for name, kind_field in _REFERENCE_FIELDS.items():
+            kind = fields.get(kind_field)
+            if kind in upgradable and fields.get(name) == _V1_NULL_KEY[kind]:
+                fields[name] = ""
+        if fields != record.fields:
+            record = replace(record, fields=fields, key=component_key(record.kind, fields))
+        out.append(record)
+    return tuple(out)
+
+
 def _upgrade_gaps(
     gaps: tuple[ExtractionGap, ...], records: tuple[Record, ...]
 ) -> tuple[ExtractionGap, ...]:
@@ -570,6 +596,8 @@ def parse_manifest(data: object) -> Inventory:
         _record(r, f"records[{i}]", version)
         for i, r in enumerate(_list(_req(obj, "records", "manifest"), "records"))
     )
+    if version == 1:
+        records = _upgrade_references(records)
     raw_coverage = _obj(_req(obj, "coverage", "manifest"), "coverage")
     unknown = sorted(set(raw_coverage) - set(KINDS))
     if unknown:
