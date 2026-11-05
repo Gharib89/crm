@@ -9,6 +9,35 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.99.0 (2026-11-05)
+
+### Bug Fixes
+
+- **inventory**: Convert review fixes: one entry path, narrowed detection, real OSError text
+  ([#1122](https://github.com/Gharib89/crm/pull/1122),
+  [`a989e46`](https://github.com/Gharib89/crm/commit/a989e463dd57655284ac4f48fe54d1ebb1278d41))
+
+- **inventory**: Convert review fixes: package id and metadata checks, scoped Xrm and optional
+  chains, LF-only diffs, distinct output names ([#1122](https://github.com/Gharib89/crm/pull/1122),
+  [`a989e46`](https://github.com/Gharib89/crm/commit/a989e463dd57655284ac4f48fe54d1ebb1278d41))
+
+- **inventory**: Convert round 2: qualified Xrm to manual review, more binding forms, package file
+  version check ([#1122](https://github.com/Gharib89/crm/pull/1122),
+  [`a989e46`](https://github.com/Gharib89/crm/commit/a989e463dd57655284ac4f48fe54d1ebb1278d41))
+
+### Features
+
+- **inventory**: Crm inventory convert engine with the global context transform
+  ([#1122](https://github.com/Gharib89/crm/pull/1122),
+  [`a989e46`](https://github.com/Gharib89/crm/commit/a989e463dd57655284ac4f48fe54d1ebb1278d41))
+
+### Testing
+
+- **evals**: Refresh the worked example's findings for the rules sha
+  ([#1122](https://github.com/Gharib89/crm/pull/1122),
+  [`a989e46`](https://github.com/Gharib89/crm/commit/a989e463dd57655284ac4f48fe54d1ebb1278d41))
+
+
 ## v1.98.0 (2026-11-05)
 
 ### Bug Fixes
