@@ -9,6 +9,29 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.93.1 (2026-11-05)
+
+### Bug Fixes
+
+- **inventory**: Order nested ribbon rule lists before keying their parents
+  ([#1114](https://github.com/Gharib89/crm/pull/1114),
+  [`3021a7e`](https://github.com/Gharib89/crm/commit/3021a7e4ee4aa2a001e86e18a9329698d144e4c6))
+
+- **inventory**: Ribbon normalized hash ignores rule and command sibling order
+  ([#1114](https://github.com/Gharib89/crm/pull/1114),
+  [`3021a7e`](https://github.com/Gharib89/crm/commit/3021a7e4ee4aa2a001e86e18a9329698d144e4c6))
+
+- **inventory**: Scope the older-extract ribbon note in the migration skill
+  ([#1114](https://github.com/Gharib89/crm/pull/1114),
+  [`3021a7e`](https://github.com/Gharib89/crm/commit/3021a7e4ee4aa2a001e86e18a9329698d144e4c6))
+
+### Testing
+
+- **inventory**: Make the nested ribbon rule order test discriminate
+  ([#1114](https://github.com/Gharib89/crm/pull/1114),
+  [`3021a7e`](https://github.com/Gharib89/crm/commit/3021a7e4ee4aa2a001e86e18a9329698d144e4c6))
+
+
 ## v1.93.0 (2026-11-05)
 
 ### Bug Fixes
