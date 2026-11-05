@@ -77,6 +77,15 @@ def test_v9_bad_name_does_not_lose_the_rest_of_the_chunk(make_fake_backend, stat
     assert max(sizes) <= 50
 
 
+def test_v9_zero_without_an_entity_set_is_unknown_and_unread(make_fake_backend):
+    backend = make_fake_backend(responses={"get": _v9_org({}, rows=set())})
+    target = EntityTarget(name="odd", set_name="", primary_id="oddid")
+    got = usage.probe_v9_entities(backend, [target], clock=lambda: AS_OF)
+    assert got["odd"].state == "unknown"
+    # one count request only: an empty set name would GET the service root
+    assert [p for _, p, _ in backend.calls if not p.startswith("RetrieveTotal")] == []
+
+
 def test_v9_virtual_and_private_are_not_probed(make_fake_backend):
     backend = make_fake_backend(forbid=("get",))
     targets = [_target("v", skip="virtual table"), _target("p", skip="private entity")]

@@ -227,8 +227,8 @@ def probe_v9_entities(
             u = unknown(n)
         elif n > 0:
             u = Usage("used", SIGNAL, n, as_of)
-        elif not by_name[name].primary_id:
-            u = unknown("no primary id attribute to confirm a zero count")
+        elif not by_name[name].primary_id or not by_name[name].set_name:
+            u = unknown("no entity set or primary id attribute to confirm a zero count")
         else:
             try:
                 present = _exists_v9(backend, by_name[name])

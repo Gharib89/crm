@@ -147,12 +147,16 @@ def _answer(request, context):
     return (_FIXTURES / ("rm_solution.xml" if entity == "account" else "rm_empty.xml")).read_text()
 
 
-def _legacy(*flags):
+def _legacy(*flags, requests_seen=None):
     with requests_mock.Mocker() as m:
         m.post(_ENDPOINT, text=_answer)
         result = CliRunner().invoke(
             cli, ["--json", "--profile", "legacy", "legacy", "metadata", *flags]
         )
+        if requests_seen is not None:
+            requests_seen.extend(
+                fromstring(r.body).findtext(f".//{{{_CRM}}}RequestName") for r in m.request_history
+            )
     assert result.exit_code == 0, result.output
     return json.loads(result.stdout)["data"]
 
@@ -165,6 +169,12 @@ def test_legacy_in_use_uses_the_primary_id_from_metadata(crm_home):
     }
     strict = _legacy("--in-use", "--exclude-unknown")
     assert [r["logical_name"] for r in strict] == ["account"]
+
+
+def test_legacy_in_use_reads_the_entity_metadata_once(crm_home):
+    seen: list[str] = []
+    _legacy("--in-use", requests_seen=seen)
+    assert seen.count("RetrieveAllEntities") == 1
 
 
 def test_legacy_without_the_flag_has_no_usage(crm_home):

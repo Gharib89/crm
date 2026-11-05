@@ -106,11 +106,13 @@ def legacy_metadata(
         if option_sets:
             data = legacy_reads.list_option_sets(client)
         elif not entities:
-            data = legacy_reads.list_entities(client)
-            if in_use:
+            if not in_use:
+                data = legacy_reads.list_entities(client)
+            else:
+                data, primary_ids = legacy_reads.list_entities_with_primary_ids(client)
                 states = usage.probe_legacy_entities(
                     client,
-                    legacy_reads.entity_primary_ids(client),
+                    primary_ids,
                     progress=usage.UsageProgress(sys.stderr.write, "entities"),
                 )
                 data = usage.attach(
