@@ -81,6 +81,31 @@ crm --json plugin list-types --assembly Contoso.Plugins
 Returned columns: `typename`, `friendlyname`, `plugintypeid`. Filter to a single
 assembly with `--assembly NAME`.
 
+### Keep only types that run
+
+```bash
+crm --json plugin list-types --in-use                    # drop types proven unused
+crm --json plugin list-types --in-use --exclude-unknown  # proven-used types only
+```
+
+`--in-use` adds a `usage` object to each type, rolled up from its steps (three bulk
+reads: the steps, the async jobs grouped by step, and the tracing setting; never one
+read per step):
+
+- A **disabled** step is `unused` (`reason: "disabled"`); a type is `unused` only when
+  every step is disabled or it has none. A workflow activity or a custom API
+  implementation has no steps by design, so it is `unknown`.
+- A step with an **async job row** (or, with plug-in tracing on, a trace log row for the
+  step) is `used`, and so is its type.
+- Everything else is `unknown`, and `reason` says why. Most steps are synchronous, which
+  leave no run record at all; a step with `asyncautodelete` loses its successful jobs;
+  tracing is off by default and its log lasts about a day; completed system jobs are
+  bulk-deleted. **A missing record never makes a row `unused`.**
+
+See [metadata](metadata.md#keep-only-entities-that-hold-data) for the `usage` shape.
+The same flags apply to `crm legacy components` on CRM 2011
+([legacy](legacy.md#read-solution-components)).
+
 ## Register a webhook
 
 Webhooks are `serviceendpoint` rows (contract=8). The platform POSTs the JSON

@@ -235,7 +235,7 @@ For per-domain detail:
 | web resources (upload, bulk push, continuous redeploy) and ribbon / command-bar buttons | `reference/webresource-ribbon.md` |
 | charts and dashboards: author headlessly, edit XML layers, splice/remove tiles | `reference/charts-dashboards.md` |
 | themes (org branding) and reports (SSRS RDL upload / link registration) | `reference/themes-reports.md` |
-| automation: plug-in assemblies, webhooks & service endpoints, steps, workflows, SLA lifecycle (create / add-kpi / activate) | `reference/automation.md` |
+| automation: plug-in assemblies, webhooks & service endpoints, steps, workflows, SLA lifecycle (create / add-kpi / activate); which plug-in steps run (`--in-use`, `unknown` vs `unused`) | `reference/automation.md`, `reference/usage.md` |
 | composing classic-workflow **step XAML** to hand `workflow update --xaml-file` (on-prem logic path): the provenance wall, the direct-PATCH routine, the snippet library | `reference/workflow-xaml.md` |
 | security: roles & assignment | `reference/security.md` |
 | field (column) security: profiles, column permissions, assign to users/teams | `reference/fieldsec.md` |

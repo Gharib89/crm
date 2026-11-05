@@ -178,6 +178,18 @@ def test_plugin_list_types_returns_list(cli):
     )
 
 
+@covers("plugin list-types")
+def test_plugin_list_types_in_use_never_calls_an_absent_record_unused(cli):
+    """Every row is labelled; a type is unused only when every step is disabled or absent."""
+    import json as _json
+
+    plain = _json.loads(cli(["--json", "plugin", "list-types"]).stdout)["data"]
+    rows = _json.loads(cli(["--json", "plugin", "list-types", "--in-use"]).stdout)["data"]
+    assert len(rows) <= len(plain)
+    assert {r["usage"]["state"] for r in rows} <= {"used", "unknown"}
+    assert all(r["usage"]["reason"] for r in rows if r["usage"]["state"] == "unknown")
+
+
 @covers(
     "plugin register-assembly",
     "plugin register-type",

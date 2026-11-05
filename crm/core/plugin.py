@@ -204,6 +204,7 @@ def list_types(
     backend: D365Backend,
     *,
     assembly: str | None = None,
+    usage_columns: bool = False,
 ) -> dict[str, Any]:
     """List registered plug-in types (the `plugintypes` entity set).
 
@@ -220,9 +221,13 @@ def list_types(
     Column names verified against MS Learn's plugintype entity reference:
     `typename` (fully qualified class name), `friendlyname` (display name),
     `assemblyname` (owning assembly name).
+
+    With `usage_columns`, each row also carries `_pluginassemblyid_value` and
+    `isworkflowactivity`, which the `--in-use` rollup reads.
     """
     params: dict[str, str] = {
-        "$select": "plugintypeid,typename,friendlyname,assemblyname",
+        "$select": "plugintypeid,typename,friendlyname,assemblyname"
+        + (",_pluginassemblyid_value,isworkflowactivity" if usage_columns else ""),
     }
     if assembly is not None:
         pid = _resolve_id_by_name(backend, assembly)

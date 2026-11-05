@@ -142,6 +142,7 @@ def legacy_metadata(
     metavar="LOGICALNAME",
     help=f"Read only the components of this entity ({', '.join(legacy_reads.ENTITY_KINDS)}).",
 )
+@in_use_options
 @pass_ctx
 def legacy_components(
     ctx: CLIContext,
@@ -149,6 +150,8 @@ def legacy_components(
     out_dir: Path | None,
     solution: str | None,
     entity: str | None,
+    in_use: bool,
+    exclude_unknown: bool,
 ):
     """Read solution components: read-only, paged to the last page over SOAP.
 
@@ -165,7 +168,19 @@ def legacy_components(
     that name an entity (all of them when no KIND is given). Both together
     apply both. An unknown solution or entity fails with exit code 1 before any
     kind is read.
+
+    `--in-use` applies to `plugin-assemblies`, `plugin-types` and `plugin-steps`
+    (all three when no KIND is given): each row gains a `usage` object and the
+    rows proven unused are dropped. Only a disabled step is proven unused; a
+    step with an async job row is used; every other step is `unknown`.
     """
+    if in_use:
+        wrong = [k for k in kinds if k not in usage.PLUGIN_KINDS]
+        if wrong:
+            raise click.UsageError(f"--in-use does not apply to {', '.join(wrong)}.")
+        kinds = kinds or tuple(
+            k for k in usage.PLUGIN_KINDS if entity is None or k in legacy_reads.ENTITY_KINDS
+        )
     if entity is not None:
         wrong = [k for k in kinds if k not in legacy_reads.ENTITY_KINDS]
         if wrong:
@@ -183,6 +198,8 @@ def legacy_components(
         client = ctx.legacy_client()
         scope = legacy_reads.resolve_scope(client, names, solution, entity)
         data, errors = legacy_reads.read_components(client, names, out_dir, scope)
+        if in_use:
+            data = usage.annotate_legacy_components(client, data, exclude_unknown=exclude_unknown)
     _emit_with_failures(
         ctx, {**data, "errors": errors}, _meta(ctx, client), errors, len(names), "kinds", "kind"
     )

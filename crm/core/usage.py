@@ -16,7 +16,7 @@ import threading
 import time
 from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -321,3 +321,355 @@ def probe_legacy_entities(
         return name, u
 
     return dict(_map(probe, list(primary_ids)))
+
+
+# ── Plug-in steps, types and assemblies (slice #1093) ────────────────────
+
+STEP_SIGNAL = "plugin_step_runs"
+JOB_TIME_CAP = 120.0  # seconds a CRM 2011 async job read may run before it stops
+JOB_ROW_CAP = 100_000  # rows it may read before it stops
+
+
+@dataclass(frozen=True)
+class Step:
+    """A processing step with what decides its usage."""
+
+    id: str
+    type_id: str
+    enabled: bool
+    sync: bool
+    autodelete: bool
+
+
+@dataclass(frozen=True)
+class PluginType:
+    id: str
+    assembly_id: str
+    typename: str
+    outside: str = ""  # why the type can run with no step (a workflow activity, a custom API)
+
+
+@dataclass(frozen=True)
+class Evidence:
+    """Run records read for the steps: step ids with a job row, and with a trace log row.
+
+    *jobs_gap* says why the job read is incomplete or missing; *trace_gap* why
+    there is no trace signal (tracing off, no such entity). Both only explain an
+    `unknown`: a missing record never makes a row `unused`.
+    """
+
+    jobs: frozenset[str] = frozenset()
+    traces: frozenset[str] = frozenset()
+    jobs_gap: str | None = None
+    trace_gap: str | None = None
+
+
+def _step_usage(step: Step, ev: Evidence, as_of: str) -> Usage:
+    if not step.enabled:
+        return Usage("unused", STEP_SIGNAL, None, as_of, "disabled")
+    if step.id in ev.jobs:
+        return Usage("used", "async_job", None, as_of)
+    if step.id in ev.traces:
+        return Usage("used", "plugin_trace", None, as_of)
+    if step.sync:
+        why = ["synchronous step: no run record exists"]
+    elif step.autodelete:
+        why = ["successful async jobs of this step are deleted"]
+    else:
+        why = [ev.jobs_gap or "no async job found (job history may have been purged)"]
+    if ev.trace_gap:
+        why.append(ev.trace_gap)
+    return Usage("unknown", STEP_SIGNAL, None, as_of, "; ".join(why))
+
+
+def roll_up(children: Sequence[Usage], as_of: str, *, orphan: str = "") -> Usage:
+    """A parent's usage from its children: `used` if any is, `unused` only if all are.
+
+    No children, or only disabled ones, means nothing can fire through a step:
+    `unused`, unless *orphan* names why the parent can still run without one
+    (it then reads `unknown`).
+    """
+    if any(c.state == "used" for c in children):
+        return Usage("used", STEP_SIGNAL, None, as_of)
+    if orphan and all(c.state == "unused" for c in children):
+        return Usage("unknown", STEP_SIGNAL, None, as_of, orphan)
+    if all(c.state == "unused" for c in children):
+        return Usage("unused", STEP_SIGNAL, None, as_of, "every step is disabled or none exists")
+    why = next((c.reason for c in children if c.state == "unknown" and c.reason), None)
+    return Usage(
+        "unknown", STEP_SIGNAL, None, as_of, "no run record" + (f", e.g. {why}" if why else "")
+    )
+
+
+def plugin_usage(
+    steps: Sequence[Step],
+    types: Sequence[PluginType],
+    ev: Evidence,
+    *,
+    assembly_ids: Sequence[str] = (),
+    clock: Callable[[], str] = _now,
+) -> tuple[dict[str, Usage], dict[str, Usage], dict[str, Usage]]:
+    """Usage of every step, type and assembly, each keyed by id (rules in spec #1093).
+
+    *assembly_ids* adds assemblies that own no type, which read `unused`.
+    """
+    as_of = clock()
+    by_step = {s.id: _step_usage(s, ev, as_of) for s in steps}
+    step_states: dict[str, list[Usage]] = {t.id: [] for t in types}
+    for s in steps:
+        if s.type_id in step_states:
+            step_states[s.type_id].append(by_step[s.id])
+    by_type = {
+        t.id: roll_up(
+            step_states[t.id],
+            as_of,
+            orphan=t.outside,
+        )
+        for t in types
+    }
+    by_assembly = {
+        a: roll_up([by_type[t.id] for t in types if t.assembly_id == a], as_of)
+        for a in {t.assembly_id for t in types} | set(assembly_ids)
+    }
+    return by_step, by_type, by_assembly
+
+
+def _job_fetch(extra: str = "") -> str:
+    return (
+        '<fetch aggregate="true"><entity name="asyncoperation">'
+        '<attribute name="owningextensionid" alias="step" groupby="true"/>'
+        '<attribute name="asyncoperationid" alias="n" aggregate="count"/>'
+        f'<filter><condition attribute="operationtype" operator="eq" value="1"/>{extra}</filter>'
+        "</entity></fetch>"
+    )
+
+
+def _trace_fetch() -> str:
+    return (
+        '<fetch aggregate="true"><entity name="plugintracelog">'
+        '<attribute name="pluginstepid" alias="step" groupby="true"/>'
+        '<attribute name="plugintracelogid" alias="n" aggregate="count"/>'
+        "</entity></fetch>"
+    )
+
+
+def read_v9_plugin_evidence(backend: D365Backend, *, trace_on: bool) -> Evidence:
+    """Async job rows grouped by step (one aggregate) and, when tracing is on, trace hits.
+
+    Tracing off or unreadable is recorded as no signal; so is a job aggregate
+    the server refuses (e.g. its record limit), which keeps those steps `unknown`.
+    """
+    jobs: frozenset[str] = frozenset()
+    jobs_gap = None
+    try:
+        got = as_dict(backend.get("asyncoperations", params={"fetchXml": _job_fetch()}))
+        jobs = frozenset(str(r["step"]) for r in got.get("value", []) if r.get("step"))
+    except D365Error as exc:
+        if connection_wide(exc):
+            raise
+        jobs_gap = f"async job read failed: {exc}"
+    traces: frozenset[str] = frozenset()
+    trace_gap = "plug-in trace log is off" if not trace_on else None
+    if trace_on:
+        try:
+            got = as_dict(backend.get("plugintracelogs", params={"fetchXml": _trace_fetch()}))
+            traces = frozenset(str(r["step"]) for r in got.get("value", []) if r.get("step"))
+        except D365Error as exc:
+            if connection_wide(exc):
+                raise
+            trace_gap = f"plug-in trace log unreadable: {exc}"
+    return Evidence(jobs, traces, jobs_gap, trace_gap)
+
+
+WORKFLOW = "workflow activity: invoked by workflows, not by steps"
+CUSTOM_API = "custom API implementation: invoked by the API, not by steps"
+
+
+def _custom_api_types(backend: D365Backend) -> set[str]:
+    """Plug-in types that implement a custom API (none where the table does not exist)."""
+    try:
+        rows = backend.get_collection("customapis", params={"$select": "_plugintypeid_value"})
+    except D365Error as exc:
+        if exc.status not in (400, 404):
+            raise
+        return set()
+    return {r["_plugintypeid_value"] for r in rows if r.get("_plugintypeid_value")}
+
+
+def probe_v9_plugin_types(
+    backend: D365Backend,
+    types: Sequence[PluginType],
+    *,
+    clock: Callable[[], str] = _now,
+) -> dict[str, Usage]:
+    """Usage of each v9 plug-in type, rolled up from its steps: three bulk reads, none per step."""
+    try:  # the column is absent before 9.0.x on some on-prem builds: no trace signal then
+        org = as_dict(
+            backend.get("organizations", params={"$select": "plugintracelogsetting", "$top": "1"})
+        )
+    except D365Error as exc:
+        if exc.status != 400:
+            raise
+        org = {}
+    org_rows: list[dict[str, Any]] = org.get("value") or [{}]
+    trace_on = bool(org_rows[0].get("plugintracelogsetting"))
+    select = "sdkmessageprocessingstepid,statecode,mode,asyncautodelete,_eventhandler_value"
+    api_types = _custom_api_types(backend)
+    types = [
+        replace(t, outside=CUSTOM_API) if t.id in api_types and not t.outside else t for t in types
+    ]
+    steps = [
+        Step(
+            r["sdkmessageprocessingstepid"],
+            r["_eventhandler_value"],
+            r.get("statecode") != 1,  # 1 is disabled; an unread state is never a proof
+            r.get("mode") == 0,
+            bool(r.get("asyncautodelete")),
+        )
+        for r in backend.get_collection("sdkmessageprocessingsteps", params={"$select": select})
+        if r.get("_eventhandler_value")
+    ]
+    ev = read_v9_plugin_evidence(backend, trace_on=trace_on)
+    return plugin_usage(steps, types, ev, clock=clock)[1]
+
+
+def _ref(value: object) -> str:
+    return str(value.get("id") or "") if isinstance(value, dict) else ""  # pyright: ignore
+
+
+def _fetch_all(client: LegacyClient, entity: str, columns: Sequence[str]) -> list[dict[str, Any]]:
+    attrs = "".join(f'<attribute name="{c}"/>' for c in columns)
+    xml = f'<fetch><entity name="{entity}">{attrs}</entity></fetch>'
+    return [r for page in client.retrieve_multiple(xml) for r in page]
+
+
+def read_legacy_plugin_evidence(
+    client: LegacyClient,
+    *,
+    time_cap: float = JOB_TIME_CAP,
+    monotonic: Callable[[], float] = time.monotonic,
+) -> Evidence:
+    """Step ids that own an async job row, read page by page until *time_cap* seconds pass.
+
+    CRM 2011 refuses `asyncoperation` aggregates (the 50,000 limit) and filtered
+    scans of it can run for minutes, so the read carries no `not-null` filter (rows
+    with no owning step are dropped here) and stops at *time_cap* seconds or
+    `JOB_ROW_CAP` rows: steps not seen when it stops stay `unknown`.
+    There is no `plugintracelog` entity.
+    """
+    gap = "no plug-in trace log on CRM 2011"
+    fetch = (
+        '<fetch><entity name="asyncoperation"><attribute name="owningextensionid"/>'
+        '<filter><condition attribute="operationtype" operator="eq" value="1"/></filter>'
+        "</entity></fetch>"
+    )
+    deadline = monotonic() + time_cap
+    jobs: set[str] = set()
+    jobs_gap = None
+    rows = 0
+    try:
+        for page in client.pages(fetch):
+            jobs.update(_ref(r.get("owningextensionid")) for r in page.records)
+            rows += len(page.records)
+            if page.more and monotonic() >= deadline:
+                jobs_gap = f"async job read stopped at the {time_cap:g} s time cap"
+                break
+            if page.more and rows >= JOB_ROW_CAP:
+                jobs_gap = f"async job read stopped at the {JOB_ROW_CAP} row cap"
+                break
+    except D365Error as exc:
+        if connection_wide(exc):
+            raise
+        jobs_gap = f"async job read failed: {exc}"
+    return Evidence(frozenset(jobs - {""}), frozenset(), jobs_gap, gap)
+
+
+def probe_legacy_plugins(
+    client: LegacyClient,
+    *,
+    time_cap: float = JOB_TIME_CAP,
+    clock: Callable[[], str] = _now,
+    monotonic: Callable[[], float] = time.monotonic,
+) -> tuple[dict[str, Usage], dict[str, Usage], dict[str, Usage]]:
+    """Usage of every CRM 2011 plug-in step, type and assembly, each keyed by row id."""
+    types = [
+        PluginType(
+            str(r["id"]),
+            _ref(r.get("pluginassemblyid")),
+            str(r.get("typename") or ""),
+            WORKFLOW if r.get("isworkflowactivity") else "",
+        )
+        for r in _fetch_all(
+            client, "plugintype", ("typename", "pluginassemblyid", "isworkflowactivity")
+        )
+    ]
+    steps = [
+        Step(
+            str(r["id"]),
+            _ref(r.get("plugintypeid")),
+            r.get("statecode") != 1,  # 1 is disabled; an unread state is never a proof
+            r.get("mode") == 0,
+            bool(r.get("asyncautodelete")),
+        )
+        for r in _fetch_all(
+            client,
+            "sdkmessageprocessingstep",
+            ("plugintypeid", "statecode", "mode", "asyncautodelete"),
+        )
+    ]
+    ev = read_legacy_plugin_evidence(client, time_cap=time_cap, monotonic=monotonic)
+    assembly_ids = [str(r["id"]) for r in _fetch_all(client, "pluginassembly", ("name",))]
+    return plugin_usage(steps, types, ev, assembly_ids=assembly_ids, clock=clock)
+
+
+PLUGIN_KINDS = ("plugin-assemblies", "plugin-types", "plugin-steps")  # `legacy components` kinds
+
+
+def annotate_v9_types(
+    backend: D365Backend, items: list[dict[str, Any]], *, exclude_unknown: bool
+) -> list[dict[str, Any]]:
+    """Give each `plugin list-types` row a `usage`, dropping the unused rows."""
+    types = [
+        PluginType(
+            it["plugintypeid"],
+            it.get("_pluginassemblyid_value") or "",
+            it.get("typename") or "",
+            WORKFLOW if it.get("isworkflowactivity") else "",
+        )
+        for it in items
+    ]
+    try:
+        states = probe_v9_plugin_types(backend, types)
+    except D365Error as exc:
+        if connection_wide(exc):
+            raise
+        # a failed probe read is no evidence: keep the listed rows, labelled unknown
+        gone = Usage("unknown", STEP_SIGNAL, None, _now(), f"usage probe failed: {exc}")
+        states = {t.id: gone for t in types}
+    rows = [
+        {k: v for k, v in it.items() if k not in ("_pluginassemblyid_value", "isworkflowactivity")}
+        for it in items
+    ]
+    return attach(rows, states, key=lambda r: r["plugintypeid"], exclude_unknown=exclude_unknown)
+
+
+def annotate_legacy_components(
+    client: LegacyClient, data: dict[str, list[dict[str, Any]]], *, exclude_unknown: bool
+) -> dict[str, list[dict[str, Any]]]:
+    """Give each plug-in component row read by `legacy components` its `usage`."""
+    by_kind: dict[str, dict[str, Usage]]
+    try:
+        steps, types, assemblies = probe_legacy_plugins(client)
+        by_kind = dict(zip(PLUGIN_KINDS, (assemblies, types, steps), strict=True))
+    except D365Error as exc:
+        if connection_wide(exc):
+            raise
+        # a failed probe read is no evidence: keep the rows already read, labelled unknown
+        gone = Usage("unknown", STEP_SIGNAL, None, _now(), f"usage probe failed: {exc}")
+        by_kind = {k: {str(r["id"]): gone for r in rows} for k, rows in data.items()}
+    return {
+        kind: attach(
+            rows, by_kind[kind], key=lambda r: str(r["id"]), exclude_unknown=exclude_unknown
+        )
+        for kind, rows in data.items()
+    }
