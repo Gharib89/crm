@@ -9,6 +9,49 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.93.3 (2026-11-05)
+
+### Bug Fixes
+
+- **inventory**: A membership or dependency may reference the empty-keyed ribbon or sitemap
+  ([#1116](https://github.com/Gharib89/crm/pull/1116),
+  [`adb1360`](https://github.com/Gharib89/crm/commit/adb1360a84a83ce60ba0c2da563ff1c1b0e8a61a))
+
+- **inventory**: A v1 gap on the application ribbon keeps its record, and a gap may name the empty
+  key ([#1116](https://github.com/Gharib89/crm/pull/1116),
+  [`adb1360`](https://github.com/Gharib89/crm/commit/adb1360a84a83ce60ba0c2da563ff1c1b0e8a61a))
+
+- **inventory**: Key the application ribbon and default sitemap off names an entity can hold
+  ([#1116](https://github.com/Gharib89/crm/pull/1116),
+  [`adb1360`](https://github.com/Gharib89/crm/commit/adb1360a84a83ce60ba0c2da563ff1c1b0e8a61a))
+
+- **inventory**: Key the application ribbon and default sitemap off names an entity cannot hold
+  (#1070) ([#1116](https://github.com/Gharib89/crm/pull/1116),
+  [`adb1360`](https://github.com/Gharib89/crm/commit/adb1360a84a83ce60ba0c2da563ff1c1b0e8a61a))
+
+- **inventory**: Pair a record's artifacts by name in diff, and gate the empty reference key on its
+  field ([#1116](https://github.com/Gharib89/crm/pull/1116),
+  [`adb1360`](https://github.com/Gharib89/crm/commit/adb1360a84a83ce60ba0c2da563ff1c1b0e8a61a))
+
+- **inventory**: Re-key an unambiguous v1 gap instead of duplicating it
+  ([#1116](https://github.com/Gharib89/crm/pull/1116),
+  [`adb1360`](https://github.com/Gharib89/crm/commit/adb1360a84a83ce60ba0c2da563ff1c1b0e8a61a))
+
+- **inventory**: Upgrade a v1 membership or dependency row that references the null ribbon or
+  sitemap ([#1116](https://github.com/Gharib89/crm/pull/1116),
+  [`adb1360`](https://github.com/Gharib89/crm/commit/adb1360a84a83ce60ba0c2da563ff1c1b0e8a61a))
+
+### Documentation
+
+- **adr**: File the 0032 amendment under ## Amendments as the repo convention says
+  ([#1116](https://github.com/Gharib89/crm/pull/1116),
+  [`adb1360`](https://github.com/Gharib89/crm/commit/adb1360a84a83ce60ba0c2da563ff1c1b0e8a61a))
+
+- **inventory**: State the empty-reference rule where the key rule is stated
+  ([#1116](https://github.com/Gharib89/crm/pull/1116),
+  [`adb1360`](https://github.com/Gharib89/crm/commit/adb1360a84a83ce60ba0c2da563ff1c1b0e8a61a))
+
+
 ## v1.93.2 (2026-11-05)
 
 ### Bug Fixes
