@@ -9,6 +9,55 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.92.4 (2026-11-05)
+
+### Bug Fixes
+
+- **inventory**: Fix first-read page lines and zero-page reuse in extract progress
+  ([#1089](https://github.com/Gharib89/crm/pull/1089),
+  [`542bc78`](https://github.com/Gharib89/crm/commit/542bc7861e5ee18f31ebcc80ac38169ad17dfafc))
+
+- **inventory**: Round an ETA to whole minutes before splitting hours
+  ([#1089](https://github.com/Gharib89/crm/pull/1089),
+  [`542bc78`](https://github.com/Gharib89/crm/commit/542bc7861e5ee18f31ebcc80ac38169ad17dfafc))
+
+- **inventory**: Show stage, progress and ETA on stderr during inventory extract
+  ([#1089](https://github.com/Gharib89/crm/pull/1089),
+  [`542bc78`](https://github.com/Gharib89/crm/commit/542bc7861e5ee18f31ebcc80ac38169ad17dfafc))
+
+### Documentation
+
+- **inventory**: Note extract progress in the README command table
+  ([#1089](https://github.com/Gharib89/crm/pull/1089),
+  [`542bc78`](https://github.com/Gharib89/crm/commit/542bc7861e5ee18f31ebcc80ac38169ad17dfafc))
+
+### Testing
+
+- **inventory**: Scrub JSON-escaped Windows paths in the quiet stdout test
+  ([#1089](https://github.com/Gharib89/crm/pull/1089),
+  [`542bc78`](https://github.com/Gharib89/crm/commit/542bc7861e5ee18f31ebcc80ac38169ad17dfafc))
+
+- **inventory**: Type the extract progress tests for pyright
+  ([#1089](https://github.com/Gharib89/crm/pull/1089),
+  [`542bc78`](https://github.com/Gharib89/crm/commit/542bc7861e5ee18f31ebcc80ac38169ad17dfafc))
+
+- **skills**: Crm-migration eval tasks and a fixture-based worked example
+  ([#1087](https://github.com/Gharib89/crm/pull/1087),
+  [`b5896e3`](https://github.com/Gharib89/crm/commit/b5896e3b077aba18a7884a52a30b3e362a3d5a52))
+
+- **skills**: Grade migration answer keys by exact counts
+  ([#1087](https://github.com/Gharib89/crm/pull/1087),
+  [`b5896e3`](https://github.com/Gharib89/crm/commit/b5896e3b077aba18a7884a52a30b3e362a3d5a52))
+
+- **skills**: Remove the sandbox when the fixture copy fails
+  ([#1087](https://github.com/Gharib89/crm/pull/1087),
+  [`b5896e3`](https://github.com/Gharib89/crm/commit/b5896e3b077aba18a7884a52a30b3e362a3d5a52))
+
+- **skills**: Self-review fixes for the migration evals
+  ([#1087](https://github.com/Gharib89/crm/pull/1087),
+  [`b5896e3`](https://github.com/Gharib89/crm/commit/b5896e3b077aba18a7884a52a30b3e362a3d5a52))
+
+
 ## v1.92.3 (2026-11-05)
 
 ### Bug Fixes
