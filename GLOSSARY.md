@@ -497,6 +497,17 @@ Two records sharing a key in one migration inventory are **ambiguous**, never
 silently matched.
 _Avoid_: id (means the GUID), name (not unique for every kind).
 
+**Solution membership**:
+A component is a member of a solution when the solution holds it directly or holds
+the parent that carries it: an entity carries its forms and views, a plug-in
+assembly its plug-in types, a step its images. It is what the solution exports. A
+direct holding is one `solutioncomponent` row, which a migration inventory records
+as a `solution_membership` record. CRM 2011 keeps no row for views and most entity
+forms, so `crm legacy components --solution` reads them through their entity; on
+v9 and cloud an entity held without its subcomponents carries only the ones the
+solution lists on their own.
+_Avoid_: solution contents.
+
 **Kind coverage**:
 How completely a migration inventory read one component kind: complete, partial,
 unsupported, or failed, with the evidence that says so. A capped or truncated read

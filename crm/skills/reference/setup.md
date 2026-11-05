@@ -128,6 +128,7 @@ tell the user it is untested.
   assembly with `binary: "unavailable"` has no binary in the org, so do not
   retry it. Pass `--out` for any read that includes web resources, processes or
   forms, so the JSON stays small.
+- **`legacy components --solution` also returns its member entities' forms and views**, system ones included.
 - **A dependency read takes an id from an earlier read**: the `metadata_id` of a
   `legacy metadata` row for an entity, attribute, relationship or option set, the
   `id` of a `legacy components` row for a kind it reads. Each row names both
