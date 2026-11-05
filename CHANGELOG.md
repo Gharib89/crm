@@ -9,6 +9,32 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.93.2 (2026-11-05)
+
+### Bug Fixes
+
+- **inventory**: Document out_of_scope in packages help and regenerate eval fixtures
+  ([#1115](https://github.com/Gharib89/crm/pull/1115),
+  [`68a9b93`](https://github.com/Gharib89/crm/commit/68a9b93bebe4827962c9fe9a9d43306cfcfd4b40))
+
+- **inventory**: Keep the out_of_scope table line to the packages command
+  ([#1115](https://github.com/Gharib89/crm/pull/1115),
+  [`68a9b93`](https://github.com/Gharib89/crm/commit/68a9b93bebe4827962c9fe9a9d43306cfcfd4b40))
+
+- **inventory**: Packages report a miss in a partial read as out_of_scope, not an unknown
+  ([#1115](https://github.com/Gharib89/crm/pull/1115),
+  [`68a9b93`](https://github.com/Gharib89/crm/commit/68a9b93bebe4827962c9fe9a9d43306cfcfd4b40))
+
+- **inventory**: Show the out_of_scope count in the packages table
+  ([#1115](https://github.com/Gharib89/crm/pull/1115),
+  [`68a9b93`](https://github.com/Gharib89/crm/commit/68a9b93bebe4827962c9fe9a9d43306cfcfd4b40))
+
+### Testing
+
+- **inventory**: Type the package reasons check ([#1115](https://github.com/Gharib89/crm/pull/1115),
+  [`68a9b93`](https://github.com/Gharib89/crm/commit/68a9b93bebe4827962c9fe9a9d43306cfcfd4b40))
+
+
 ## v1.93.1 (2026-11-05)
 
 ### Bug Fixes
