@@ -9,6 +9,51 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.92.5 (2026-11-05)
+
+### Bug Fixes
+
+- **inventory**: One on-disk copy per payload, and member-only payload reads for --solution
+  ([#1108](https://github.com/Gharib89/crm/pull/1108),
+  [`8f547da`](https://github.com/Gharib89/crm/commit/8f547da1e623a3ba12b167d6fd4ad92398e7c831))
+
+- **inventory**: One on-disk copy per payload, member-only payload reads for --solution
+  ([#1108](https://github.com/Gharib89/crm/pull/1108),
+  [`8f547da`](https://github.com/Gharib89/crm/commit/8f547da1e623a3ba12b167d6fd4ad92398e7c831))
+
+- **inventory**: Reuse a saved content batch only for the ids it was fetched for
+  ([#1108](https://github.com/Gharib89/crm/pull/1108),
+  [`8f547da`](https://github.com/Gharib89/crm/commit/8f547da1e623a3ba12b167d6fd4ad92398e7c831))
+
+- **inventory**: Self-review fixes: named component types, assembly and failed-batch tests
+  ([#1108](https://github.com/Gharib89/crm/pull/1108),
+  [`8f547da`](https://github.com/Gharib89/crm/commit/8f547da1e623a3ba12b167d6fd4ad92398e7c831))
+
+- **inventory**: Type the content carrier; allowlist ADR 0034's unshipped verb so main's
+  docs-example gate passes ([#1108](https://github.com/Gharib89/crm/pull/1108),
+  [`8f547da`](https://github.com/Gharib89/crm/commit/8f547da1e623a3ba12b167d6fd4ad92398e7c831))
+
+### Documentation
+
+- **adr**: ADR 0034, deterministic code conversion writes patches only
+  ([#1107](https://github.com/Gharib89/crm/pull/1107),
+  [`5bf0b22`](https://github.com/Gharib89/crm/commit/5bf0b22a0d5d68b0fda3e2c77b68f74dd1f5cd65))
+
+- **glossary**: Use Transform, not conversion rule, in code conversion terms
+  ([#1107](https://github.com/Gharib89/crm/pull/1107),
+  [`5bf0b22`](https://github.com/Gharib89/crm/commit/5bf0b22a0d5d68b0fda3e2c77b68f74dd1f5cd65))
+
+### Testing
+
+- **inventory**: Compare artifact paths with forward slashes so the copy-fallback test holds on
+  Windows ([#1108](https://github.com/Gharib89/crm/pull/1108),
+  [`8f547da`](https://github.com/Gharib89/crm/commit/8f547da1e623a3ba12b167d6fd4ad92398e7c831))
+
+- **inventory**: Type PayloadBackend for pyright
+  ([#1108](https://github.com/Gharib89/crm/pull/1108),
+  [`8f547da`](https://github.com/Gharib89/crm/commit/8f547da1e623a3ba12b167d6fd4ad92398e7c831))
+
+
 ## v1.92.4 (2026-11-05)
 
 ### Bug Fixes
