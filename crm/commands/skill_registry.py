@@ -142,6 +142,10 @@ def refresh_skills(target_version: str, package_dir: Path) -> list[dict[str, Any
             continue  # drop the entry; do not recreate the folder
         try:
             src_dir = package_dir / SKILL_FOLDERS[entry.get("skill", "crm")]
+            # install_tree clears the dest before copying, so a bundle without
+            # this skill (an older release) must fail here, dest untouched.
+            if not (src_dir / "SKILL.md").is_file():
+                raise FileNotFoundError(src_dir / "SKILL.md")
             install_tree(src_dir, Path(dest))
         except Exception:
             # Report the intended target so callers see what the refresh aimed

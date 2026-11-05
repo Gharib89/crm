@@ -214,3 +214,27 @@ def test_refresh_copies_a_migration_entry_from_the_migration_bundle(tmp_path):
     assert results[0]["status"] == "refreshed"
     assert (dest / "SKILL.md").read_text(encoding="utf-8") == "NEW-MIGRATION"
     assert reg.read_skills()[0]["skill"] == "crm-migration"
+
+
+def test_refresh_leaves_a_skill_alone_when_the_bundle_lacks_its_folder(tmp_path):
+    """A bundle without `migration-skill/` (an older release) must not wipe the
+    installed crm-migration files before failing (PR #1081 review).
+    """
+    import shutil
+
+    from crm.commands import skill_registry as reg
+
+    src = _make_src(tmp_path)
+    shutil.rmtree(src / "migration-skill")
+    dest = tmp_path / "crm-migration"
+    (dest / "reference").mkdir(parents=True)
+    (dest / "SKILL.md").write_text("OLD-MIGRATION", encoding="utf-8")
+    (dest / "reference" / "x.md").write_text("old ref", encoding="utf-8")
+    reg.record_install("claude", str(dest), "1.0.0", skill="crm-migration")
+
+    results = reg.refresh_skills("2.0.0", src)
+
+    assert results[0]["status"] == "error"
+    assert (dest / "SKILL.md").read_text(encoding="utf-8") == "OLD-MIGRATION"
+    assert (dest / "reference" / "x.md").read_text(encoding="utf-8") == "old ref"
+    assert reg.read_skills()[0]["installed_version"] == "1.0.0"
