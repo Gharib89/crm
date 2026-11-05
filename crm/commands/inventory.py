@@ -624,7 +624,7 @@ def inventory_convert_cmd(
         ctx.emit(False, error=str(exc))
         return
     except OSError as exc:
-        ctx.emit(False, error=f"--out {out_dir}: {exc}")
+        ctx.emit(False, error=str(exc))
         return
     if ctx.json_mode:
         ctx.emit(True, data={**result.summary(), "out": str(out_dir)})

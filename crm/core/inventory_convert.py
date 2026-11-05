@@ -27,11 +27,11 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from crm.core.code_parse import error_count, parse
 from crm.core.inventory import MANIFEST_NAME, InventoryError, normalize_text, read_inventory
-from crm.core.inventory_assess import ContentEvidence, load_rules, read_findings
+from crm.core.inventory_assess import ContentEvidence, ContentPattern, load_rules, read_findings
 from crm.core.inventory_source_map import read_source_map
 from crm.core.inventory_transforms import TRANSFORMS, Edit, Plan, Transform
 
@@ -64,7 +64,7 @@ class Entry:
     key: str
     rule: str
     transform: str
-    status: str  # "patched" | "manual-review"
+    status: Literal["patched", "manual-review"]
     edits: int = 0
     original_sha256: str | None = None
     patched_sha256: str | None = None
@@ -244,43 +244,40 @@ def convert(
             )
         record = records.get((f.kind, f.key))
         path = f.evidence.path
+        detection = rule.detection
+        plan, source, patched, reason = Plan((), ()), b"", None, ""
         if (
             record is None
             or record.fields.get("web_resource_type") not in transform.web_resource_types
         ):
             reason = f"transform {rule.transform} does not read this web resource type"
-            for pkg in held.get(f"{f.kind}:{f.key}", [UNPACKAGED]):
-                entries.append(Entry(pkg, f.kind, f.key, rule.id, rule.transform, "manual-review"))
-                entries[-1].manual_review.append(ManualReview(path, None, rule.id, reason))
-            continue
-        try:
-            raw = (inventory_dir / path).read_bytes()
-        except OSError:
-            raw = b""
-        if _hex(raw) != f.evidence.sha256:
-            reason = "artifact changed since extraction"
-            plan, source = Plan((), ()), b""
         else:
-            source = normalize_text(raw)
-            plan = transform.plan(parse(transform.language, source))
-            reason = ""
-        if not plan.edits and not plan.unproven and not reason:
-            continue
-        patched = _apply(source, plan.edits) if plan.edits else None
-        if plan.edits and not reason:
+            try:
+                raw = (inventory_dir / path).read_bytes()
+            except OSError as exc:
+                raw, reason = b"", f"artifact unreadable: {exc.strerror or exc}"
+            if not reason and _hex(raw) != f.evidence.sha256:
+                reason = "artifact changed since extraction"
+            if not reason:
+                source = normalize_text(raw)
+                plan = transform.plan(parse(transform.language, source))
+        if plan.edits:
+            patched = _apply(source, plan.edits)
             if patched is None:
                 reason = "the planned edits overlap"
-            else:
-                pattern = cast(Any, rule.detection).pattern
-                reason = _gate(pattern, transform, source, patched, len(plan.edits)) or ""
+            elif isinstance(detection, ContentPattern):
+                reason = _gate(detection.pattern, transform, source, patched, len(plan.edits)) or ""
+            if reason:
+                reason = f"emit gate rejected the rewrite: {reason}"
+        if not plan.edits and not plan.unproven and not reason:
+            continue
         for pkg in held.get(f"{f.kind}:{f.key}", [UNPACKAGED]):
             entry = Entry(pkg, f.kind, f.key, rule.id, rule.transform, "manual-review")
             entry.manual_review = [
                 ManualReview(path, u.line, rule.id, u.reason) for u in plan.unproven
             ]
             if reason:
-                msg = f"emit gate rejected the rewrite: {reason}" if plan.edits else reason
-                entry.manual_review.insert(0, ManualReview(path, None, rule.id, msg))
+                entry.manual_review.insert(0, ManualReview(path, None, rule.id, reason))
             elif patched is not None:
                 entry.status, entry.edits = "patched", len(plan.edits)
                 entry.original_sha256, entry.patched_sha256 = _hex(source), _hex(patched)
