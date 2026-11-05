@@ -328,6 +328,9 @@ def test_legacy_a_failed_process_probe_keeps_the_plugin_usage(crm_home):  # noqa
             context.status_code = 500
             context.headers.update(_XML)
             return "<x/>"
+        if 'name="workflow"' in query:  # the kind listing: two activated processes
+            context.headers.update(_XML)
+            return _rm(_L_DEFS[1:3])
         return respond(request, context)
 
     data = _components("--in-use", org=(faulty, None))
