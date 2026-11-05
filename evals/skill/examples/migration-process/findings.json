@@ -153,7 +153,7 @@
       }
     }
   ],
-  "generated_at": "2026-11-05T22:45:49Z",
+  "generated_at": "2026-11-05T23:18:21Z",
   "incomplete": {
     "dependency": "unsupported"
   },
@@ -167,7 +167,7 @@
   },
   "rules": {
     "schema_version": 1,
-    "sha256": "4df4da12903307b54108d9d1b5ebde7d46b9a22d36dc59ce2a6382979480a0ab",
+    "sha256": "8a056af357d2744358c3d4292d1bf66337caa9ebfffcaed8fe536913e16f2ec2",
     "version": 1
   },
   "rules_hit": {
