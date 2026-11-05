@@ -18,6 +18,11 @@ package folder:
   `compatibility.unplaced` (findings whose component sits in no package) and the
   unknown edges from nodes no package holds. List each as its own task or a
   manual-review entry; none is dropped.
+- **`usage`** on a package or finding is not read when absent, and stays under
+  every filter. A derived `unused` (an entity with no records) is unconfirmed:
+  the data may have been deleted or migrated. A package or finding dropped by
+  `--in-use` or `--exclude-unknown` is unassessed, its blockers with it: name
+  the flags and the summary's `usage_filtered` in the report.
 - **An unknown edge** inside a package is a reference the graph could not resolve
   (a dynamic name, an ISV page, another host's URL). It is an unknown, never a
   pass.

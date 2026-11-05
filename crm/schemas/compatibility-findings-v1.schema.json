@@ -139,6 +139,11 @@
         ]
       }
     },
+    "usage_filtered": {
+      "description": "How many findings `--in-use` or `--exclude-unknown` dropped; absent when none was.",
+      "type": "integer",
+      "minimum": 1
+    },
     "incomplete": {
       "description": "Each kind whose coverage is not complete, with its status.",
       "type": "object",
@@ -275,6 +280,47 @@
               }
             }
           ]
+        },
+        "usage": {
+          "type": "object",
+          "description": "The row's usage: read by `extract --with-usage`, or derived from the manifest (signal referenced_by or entity_rollup). Absent means not read, never unused.",
+          "required": [
+            "state",
+            "signal",
+            "value",
+            "as_of",
+            "reason"
+          ],
+          "properties": {
+            "state": {
+              "enum": [
+                "used",
+                "unused",
+                "unknown"
+              ]
+            },
+            "signal": {
+              "type": "string",
+              "minLength": 1
+            },
+            "value": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "as_of": {
+              "type": "string",
+              "minLength": 1
+            },
+            "reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
         }
       }
     }

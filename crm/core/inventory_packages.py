@@ -39,6 +39,8 @@ from crm.core.inventory import (
 from crm.core.inventory_assess import Finding as AssessFinding
 from crm.core.inventory_assess import FindingsFile
 from crm.core.inventory_source_map import SourceMap
+from crm.core.inventory_usage_filter import derive_usage, keeps, package_usage, rank
+from crm.core.usage import Usage
 from crm.utils.safe_xml import fromstring
 
 #: The compatibility classes a package counts; ``clear`` is merged nowhere.
@@ -254,6 +256,9 @@ class WorkPackage:
     expected_behavior: tuple[ExpectedBehavior | Unknown, ...]
     verification: tuple[Requirement | Unknown, ...]
     scenarios: tuple[str, ...]
+    #: The members' usage rolled up (`usage_filter.package_usage`); None when none was read or
+    #: derived, which is not `unused`.
+    usage: Usage | None = None
 
     def unknowns(self) -> int:
         """The unknown edges, gaps and source statuses of the graph, not assess findings."""
@@ -286,6 +291,7 @@ class WorkPackage:
             "expected_behavior": [b.to_dict() for b in self.expected_behavior],
             "verification": [r.to_dict() for r in self.verification],
             "scenarios": list(self.scenarios),
+            **({} if self.usage is None else {"usage": self.usage.to_dict()}),
         }
 
 
@@ -315,6 +321,8 @@ class PackagesResult:
     unplaced: tuple[AssessFinding, ...] = ()
     #: Out-of-scope edges from nodes no package holds, apart from ``unattached_unknowns``.
     unattached_out_of_scope: tuple[Edge, ...] = ()
+    #: Packages `--in-use` or `--exclude-unknown` left out.
+    usage_filtered: int = 0
 
     def _compatibility(self) -> dict[str, Any]:
         totals = [p.counts() for p in self.packages]
@@ -353,6 +361,7 @@ class PackagesResult:
             "out_of_scope": sum(p.out_of_scope_count() for p in self.packages)
             + len(self.unattached_out_of_scope),
             "incomplete": dict(self.incomplete),
+            "usage_filtered": self.usage_filtered,
         } | compatibility
 
     def index(self) -> dict[str, Any]:
@@ -383,6 +392,7 @@ class PackagesResult:
                     "out_of_scope": p.out_of_scope_count(),
                     **({"counts": p.counts()} if merged else {}),
                     "scenarios": list(p.scenarios),
+                    **({} if p.usage is None else {"usage": p.usage.to_dict()}),
                 }
                 for p in self.packages
             ],
@@ -682,6 +692,19 @@ def _references(inv: Inventory, folder: Path) -> _Refs:
     return refs
 
 
+def _nodes(inv: Inventory) -> dict[str, Record]:
+    nodes: dict[str, Record] = {}
+    for record in inv.records:
+        if record.kind not in _NOT_NODES:
+            nodes.setdefault(_id(record.kind, record.key), record)
+    return nodes
+
+
+def reference_edges(inv: Inventory, folder: Path) -> set[Edge]:
+    """The edges naming a reference: artifact references and the platform's dependency records."""
+    return _references(inv, folder).edges | _structural(inv, _nodes(inv))
+
+
 # ── The graph and its packages ─────────────────────────────────────────────
 
 
@@ -901,6 +924,10 @@ def build_packages(
     source_map: SourceMap,
     scenarios: Path | None = None,
     findings_file: FindingsFile | None = None,
+    *,
+    in_use: bool = False,
+    exclude_unknown: bool = False,
+    sort: str = "default",
 ) -> PackagesResult:
     """Build the dependency graph of the inventory at *inventory_dir* and group it into packages.
 
@@ -909,6 +936,10 @@ def build_packages(
     *findings_file*, when given, must name the same inventory: each of its
     blocker, deprecated, optional and unknown findings joins the package holding
     its component, or is listed as unplaced. It never changes which packages exist.
+    Each package gets the `usage` of its members rolled up: read by `extract --with-usage`
+    or derived from the manifest (`inventory_usage_filter`). *in_use* drops a package whose
+    usage is `unused`, *exclude_unknown* also one that is `unknown`; a package with no usage
+    (none was read or derived) stays. *sort* ``usage`` lists used packages first.
 
     Raises:
         InventoryError: an input cannot be read, or the source map or findings
@@ -926,14 +957,10 @@ def build_packages(
             "the findings file was made from another inventory (its manifest_sha256 differs);"
             " re-run `crm inventory assess` on this one"
         )
-    nodes: dict[str, Record] = {}
-    for record in inv.records:
-        if record.kind not in _NOT_NODES:
-            nodes.setdefault(_id(record.kind, record.key), record)
+    nodes = _nodes(inv)
     refs = _references(inv, inventory_dir)
-    edges = sorted(
-        refs.edges | _structural(inv, nodes) | _source_edges(source_map), key=Edge.sort_key
-    )
+    structural = _structural(inv, nodes)
+    edges = sorted(refs.edges | structural | _source_edges(source_map), key=Edge.sort_key)
     mapped = {_id(c.kind, c.key): c for c in source_map.components}
     gaps: dict[str, list[ExtractionGap]] = {}
     for gap in inv.gaps:
@@ -947,7 +974,9 @@ def build_packages(
             judged.setdefault(_id(f.kind, f.key), []).append(f)
     placed: set[str] = set()
 
-    drafts: list[tuple[str, set[str], list[str], list[Edge], list[Finding]]] = []
+    usages = derive_usage(inv.records, refs.edges | structural, inv.extracted_at)
+    drafts: list[tuple[str, set[str], list[str], list[Edge], list[Finding], Usage | None]] = []
+    filtered = 0
     attached: set[str] = set()
     packaged: set[str] = set()
     for group in _groups(nodes, edges):
@@ -993,9 +1022,14 @@ def build_packages(
                 ]
         attached |= members & gaps.keys()
         packaged |= in_group
+        usage = package_usage((usages.get(m) for m in sorted(members)), inv.extracted_at)
+        if not keeps(usage, in_use=in_use, exclude_unknown=exclude_unknown):
+            filtered += 1
+            continue
         package_id = f"pkg-{hashlib.sha256('\n'.join(sorted(members)).encode()).hexdigest()[:12]}"
-        drafts.append((package_id, members, group, group_edges, findings))
+        drafts.append((package_id, members, group, group_edges, findings, usage))
 
+    drafts.sort(key=lambda d: (rank(d[5].state if d[5] else None) if sort == "usage" else 0, d[0]))
     where = {m: d[0] for d in drafts for m in d[1]}
     reports: list[ScenarioReport] = []
     tagged: dict[str, list[ExpectedBehavior]] = {}
@@ -1013,7 +1047,7 @@ def build_packages(
             tagged.setdefault(package_id, []).append(ExpectedBehavior(name, behavior, spans))
 
     packages: list[WorkPackage] = []
-    for package_id, members, group, group_edges, findings in sorted(drafts):
+    for package_id, members, group, group_edges, findings, usage in drafts:
         source: list[SourceRef] = [
             SourceRef(c.kind, c.key, c.status, c.files, c.projects, c.reason)
             for c in (mapped[m] for m in sorted(members) if m in mapped)
@@ -1054,6 +1088,7 @@ def build_packages(
                 tuple(_requirements(package_id, members, nodes, group_edges, refs.handlers))
                 or (Unknown("no member kind states a verification requirement"),),
                 tuple(b.scenario for b in behaviors),
+                usage,
             )
         )
     header = {
@@ -1080,4 +1115,5 @@ def build_packages(
         findings_file.target if findings_file else None,
         unplaced,
         tuple(e for e in loose if e.reason == OUT_OF_SCOPE),
+        filtered,
     )

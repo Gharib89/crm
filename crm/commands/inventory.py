@@ -13,9 +13,9 @@ import click
 
 from crm import __version__
 from crm.cli import CLIContext, pass_ctx
-from crm.commands._helpers import d365_errors
+from crm.commands._helpers import d365_errors, in_use_options
 from crm.core import inventory_extract
-from crm.core.inventory import InventoryError
+from crm.core.inventory import InventoryError, read_inventory
 from crm.core.inventory_assess import CLASSES, TARGETS, assess, dump_findings, read_findings
 from crm.core.inventory_diff import VERDICTS, diff_inventories, dump_diff, read_pair
 from crm.core.inventory_extract import Progress
@@ -23,9 +23,11 @@ from crm.core.inventory_packages import (
     COMPAT_CLASSES,
     build_packages,
     read_packages,
+    reference_edges,
     write_packages,
 )
 from crm.core.inventory_source_map import STATUSES, dump_source_map, map_source, read_source_map
+from crm.core.inventory_usage_filter import SORTS, filter_findings
 from crm.core.inventory_verify import dump_report, verify
 from crm.core.usage import JOB_TIME_CAP
 from crm.core.webapi_inventory import WebApiSource
@@ -35,6 +37,18 @@ from crm.utils.d365_backend import PLATFORM_CRM2011
 @click.group("inventory")
 def inventory_group():
     """Extract, compare, map to source, package, verify and assess migration inventories."""
+
+
+def _usage_options(fn):
+    """The shared `--in-use` / `--exclude-unknown` pair plus `--sort` (`packages`, `assess`)."""
+    return in_use_options(
+        click.option(
+            "--sort",
+            type=click.Choice(SORTS),
+            default="default",
+            help="`usage` lists used rows first, then unknown or not read, then unused.",
+        )(fn)
+    )
 
 
 def _eta(seconds: float) -> str:
@@ -345,6 +359,7 @@ def inventory_map_source_cmd(ctx: CLIContext, inventory: Path, repo: Path, out_f
     type=click.Path(file_okay=False, path_type=Path),
     help="An empty or new folder for index.json plus one file per work package.",
 )
+@_usage_options
 @pass_ctx
 def inventory_packages_cmd(
     ctx: CLIContext,
@@ -353,6 +368,9 @@ def inventory_packages_cmd(
     scenarios_file: Path | None,
     findings_file: Path | None,
     out_dir: Path,
+    in_use: bool,
+    exclude_unknown: bool,
+    sort: str,
 ):
     """Group INVENTORY into work packages over its dependency graph: offline.
 
@@ -382,6 +400,19 @@ def inventory_packages_cmd(
     bytes for the same inputs. Returns the package count and sizes, the
     unknown counts, the scenario seeds not found or in no package, and the
     packages_sha256 a verification results file names (`crm inventory verify`).
+
+    Each package carries a `usage` ({state, signal, value, as_of, reason}): its
+    members' usage rolled up, `used` if any member is and `unused` only if every
+    member is. A member's usage is the one `extract --with-usage` read, else
+    derived from the inventory alone: a web resource a form, ribbon or sitemap
+    references is `used`, an unreferenced one `unknown` (never `unused`), and a
+    form, view or ribbon of an entity with no records is `unused` at low
+    confidence. A package with no usage at all (nothing read or derived) has no
+    `usage` field: not read. --in-use drops a package whose usage is `unused`,
+    --exclude-unknown (which needs --in-use) also one that is `unknown`; neither
+    drops a package that has no usage. --sort usage lists used packages first, then unknown, then
+    unused. usage_filtered counts the dropped packages; a scenario lists only
+    the packages that remain.
     """
     try:
         result = build_packages(
@@ -389,6 +420,9 @@ def inventory_packages_cmd(
             read_source_map(source_map_file),
             scenarios_file,
             read_findings(findings_file) if findings_file else None,
+            in_use=in_use,
+            exclude_unknown=exclude_unknown,
+            sort=sort,
         )
         write_packages(result, out_dir)
         sha = read_packages(out_dir).sha256
@@ -399,10 +433,17 @@ def inventory_packages_cmd(
     if ctx.json_mode:
         ctx.emit(True, data=data)
         return
-    headers = ["package", "members", "unknowns", "scenarios"]
+    headers = ["package", "members", "unknowns", "usage", "scenarios"]
     counts = [list(p.counts().values()) if "compatibility" in data else [] for p in result.packages]
     rows = [
-        [p.id, len(p.members), p.unknowns(), *c, ", ".join(p.scenarios)]
+        [
+            p.id,
+            len(p.members),
+            p.unknowns(),
+            f"{p.usage.state} ({p.usage.signal})" if p.usage else "not read",
+            *c,
+            ", ".join(p.scenarios),
+        ]
         for p, c in zip(result.packages, counts, strict=True)
     ]
     meta = {
@@ -429,9 +470,11 @@ def inventory_packages_cmd(
         meta["out of scope"] = f"{data['out_of_scope']} (see index.json)"
     if data["incomplete"]:
         meta["incomplete"] = ", ".join(f"{k} ({v})" for k, v in data["incomplete"].items())
+    if data["usage_filtered"]:
+        meta["dropped by usage"] = str(data["usage_filtered"])
     if "compatibility" in data:
         comp = data["compatibility"]
-        headers[3:3] = list(COMPAT_CLASSES)
+        headers[4:4] = list(COMPAT_CLASSES)
         meta["findings"] = f"target {comp['target']}, " + ", ".join(
             f"{comp[c]} {c}" for c in COMPAT_CLASSES
         )
@@ -528,8 +571,17 @@ def inventory_verify_cmd(
     type=click.Path(dir_okay=False, path_type=Path),
     help="Write the findings file, every component's findings, to this JSON file.",
 )
+@_usage_options
 @pass_ctx
-def inventory_assess_cmd(ctx: CLIContext, inventory: Path, target: str, out_file: Path):
+def inventory_assess_cmd(
+    ctx: CLIContext,
+    inventory: Path,
+    target: str,
+    out_file: Path,
+    in_use: bool,
+    exclude_unknown: bool,
+    sort: str,
+):
     """Run the compatibility rules shipped with crm over INVENTORY for --target: offline.
 
     Reads the inventory folder and touches no org. Each rule hit carries its
@@ -542,10 +594,39 @@ def inventory_assess_cmd(ctx: CLIContext, inventory: Path, target: str, out_file
     verdict, so blockers exit 0; an unreadable inventory, an unknown
     schema_version or an --out inside the inventory exits 1. --out gets the
     findings file (its own schema_version), sorted, so two runs differ only in
-    generated_at. Returns the counts per class and per kind and the out path.
+    generated_at. Returns the counts per class, per kind and per usage, and the
+    out path.
+
+    Each finding carries its row's `usage` ({state, signal, value, as_of,
+    reason}) when it has one: what `extract --with-usage` read, else derived from
+    the inventory alone (a web resource a form, ribbon or sitemap references is
+    `used`, an unreferenced one `unknown`, never `unused`; a form, view or ribbon
+    of an entity with no records is `unused`, low confidence). A row with no
+    usage was not read (counted `not_read`). --in-use drops the findings of
+    `unused` rows (a blocker on one goes with it), --exclude-unknown, which needs
+    --in-use, also those of `unknown` rows; neither drops a row with no usage.
+    --sort usage lists used rows first.
     """
     try:
         result = assess(inventory, target, out=out_file)
+        parsed = read_inventory(inventory)
+        try:
+            edges = reference_edges(parsed, inventory)
+        except InventoryError:
+            # An unreadable artifact must not cost the assessment it already holds; only a
+            # run that asked for usage needs the references.
+            if in_use or exclude_unknown or sort != "default":
+                raise
+        else:
+            result = filter_findings(
+                result,
+                parsed.records,
+                edges,
+                parsed.extracted_at,
+                in_use=in_use,
+                exclude_unknown=exclude_unknown,
+                sort=sort,
+            )
         out_file.write_text(dump_findings(result), encoding="utf-8")
     except InventoryError as exc:
         ctx.emit(False, error=str(exc))

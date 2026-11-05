@@ -288,9 +288,12 @@ class Finding:
     rule: str | None
     reason: str | None
     evidence: ContentEvidence | FieldEvidence | None
+    #: The row's usage (`crm.core.usage.Usage.to_dict`), set by the usage filter; absent means
+    #: not read, never unused.
+    usage: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "kind": self.kind,
             "key": self.key,
             "class": self.cls,
@@ -298,6 +301,9 @@ class Finding:
             "reason": self.reason,
             "evidence": None if self.evidence is None else self.evidence.to_dict(),
         }
+        if self.usage is not None:
+            out["usage"] = self.usage
+        return out
 
 
 @dataclass(frozen=True)
@@ -310,12 +316,14 @@ class AssessResult:
     findings: tuple[Finding, ...]
     unattached_gaps: tuple[dict[str, Any], ...]
     incomplete: dict[str, str]
+    usage_filtered: int = 0
 
     def summary(self) -> dict[str, Any]:
         by_kind: dict[str, dict[str, int]] = {}
         for f in self.findings:
             row = by_kind.setdefault(f.kind, {})
             row[f.cls] = row.get(f.cls, 0) + 1
+        states = [f.usage["state"] if f.usage else "not_read" for f in self.findings]
         return {
             "schema_version": SCHEMA_VERSION,
             "inventory": self.inventory,
@@ -324,9 +332,11 @@ class AssessResult:
             "counts": {
                 "by_class": {c: sum(f.cls == c for f in self.findings) for c in CLASSES},
                 "by_kind": {k: by_kind[k] for k in sorted(by_kind)},
+                "by_usage": {s: states.count(s) for s in ("used", "unknown", "unused", "not_read")},
             },
             "unattached_gaps": len(self.unattached_gaps),
             "incomplete": self.incomplete,
+            "usage_filtered": self.usage_filtered,
         }
 
 
@@ -362,6 +372,8 @@ def dump_findings(result: AssessResult, *, generated_at: str | None = None) -> s
         "unattached_gaps": list(result.unattached_gaps),
         "incomplete": result.incomplete,
     }
+    if result.usage_filtered:
+        body["usage_filtered"] = result.usage_filtered
     return json.dumps(body, sort_keys=True, ensure_ascii=False, indent=2) + "\n"
 
 
