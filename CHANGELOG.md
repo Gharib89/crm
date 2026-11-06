@@ -9,6 +9,41 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.104.0 (2026-11-06)
+
+### Bug Fixes
+
+- **inventory**: Keep async, named-expression and parameter-default helpers whole
+  ([#1127](https://github.com/Gharib89/crm/pull/1127),
+  [`3bc1ecf`](https://github.com/Gharib89/crm/commit/3bc1ecfae67e73f519aec742cd2dc240e217b646))
+
+- **inventory**: Keep computed-reference, shadowed-receiver and escaped-name helpers whole
+  ([#1127](https://github.com/Gharib89/crm/pull/1127),
+  [`3bc1ecf`](https://github.com/Gharib89/crm/commit/3bc1ecfae67e73f519aec742cd2dc240e217b646))
+
+- **inventory**: Keep helpers a form registers or another resource names whole
+  ([#1127](https://github.com/Gharib89/crm/pull/1127),
+  [`3bc1ecf`](https://github.com/Gharib89/crm/commit/3bc1ecfae67e73f519aec742cd2dc240e217b646))
+
+### Documentation
+
+- **inventory**: Document call-graph threading of formContext and the ledger call_graph counts
+  ([#1127](https://github.com/Gharib89/crm/pull/1127),
+  [`3bc1ecf`](https://github.com/Gharib89/crm/commit/3bc1ecfae67e73f519aec742cd2dc240e217b646))
+
+### Features
+
+- **inventory**: Convert threads formContext through the call graph to helper functions
+  ([#1127](https://github.com/Gharib89/crm/pull/1127),
+  [`3bc1ecf`](https://github.com/Gharib89/crm/commit/3bc1ecfae67e73f519aec742cd2dc240e217b646))
+
+### Testing
+
+- **inventory**: Type the ribbon-diff record stub for pyright
+  ([#1127](https://github.com/Gharib89/crm/pull/1127),
+  [`3bc1ecf`](https://github.com/Gharib89/crm/commit/3bc1ecfae67e73f519aec742cd2dc240e217b646))
+
+
 ## v1.103.0 (2026-11-06)
 
 ### Bug Fixes
