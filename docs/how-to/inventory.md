@@ -728,15 +728,16 @@ comment is never rewritten. A shadowed or locally bound `Xrm`, a qualified `wind
 | Rule | Transform | Rewritten | Manual review |
 |---|---|---|---|
 | `web-resource-xrm-page` | `global-context` | `Xrm.Page.context.<m>()` to `Xrm.Utility.getGlobalContext().<m>()` for `getClientUrl`, `getVersion`, `getQueryStringParameters`, `isOutlookClient`, `isOutlookOnline`, `prependOrgName` | an alias, any other use of `Xrm.Page.context`, an unknown method |
-| `web-resource-context-settings` | `context-settings` | a direct call on `Xrm.Page.context` or `Xrm.Utility.getGlobalContext()`: `getUserName`, `getUserId`, `getUserLcid`, `getUserRoles` to `userSettings.userName`, `.userId`, `.languageId`, `.roles`; `getTimeZoneOffsetMinutes()` to `userSettings.getTimeZoneOffsetMinutes()`; `getOrgLcid`, `getOrgUniqueName`, `getIsAutoSaveEnabled` to `organizationSettings.languageId`, `.uniqueName`, `.isAutoSaveEnabled` | a call with arguments; a `getUserRoles()` result read as a list |
+| `web-resource-context-settings` | `context-settings` | a direct call on `Xrm.Page.context` or `Xrm.Utility.getGlobalContext()`: `getUserName`, `getUserId`, `getUserLcid` to `userSettings.userName`, `.userId`, `.languageId`; `getTimeZoneOffsetMinutes()` to `userSettings.getTimeZoneOffsetMinutes()`; `getOrgLcid`, `getOrgUniqueName`, `getIsAutoSaveEnabled` to `organizationSettings.languageId`, `.uniqueName`, `.isAutoSaveEnabled` | a call with arguments; every `getUserRoles()` call (manual review) |
 | `web-resource-grid-row` | `grid-row` | `<row>.getData().getEntity()` to `<row>.data.entity` | `getData()` or `getEntity()` alone (the file does not prove the receiver) |
 | `web-resource-xrm-mobile-offline` | `mobile-offline` | `Xrm.Mobile.offline.<m>(...)` to `Xrm.WebApi.offline.<m>(...)` for `createRecord`, `retrieveRecord`, `retrieveMultipleRecords`, `updateRecord`, `deleteRecord` | `isOfflineEnabled` and any other use |
 | `web-resource-entity-save` | `entity-save` | `<x>.data.entity.save()` to `<x>.data.save()` | `save(saveOption)` with an argument |
 | `web-resource-xrm-utility` | `xrm-utility-review` | nothing | `openEntityForm`, `openQuickCreate`, `openWebResource`, `alertDialog`, `confirmDialog`, `isActivityType`: the signature or sync behaviour changes |
 | `web-resource-keypress` | `keypress-review` | nothing | `addOnKeyPress`, `removeOnKeyPress`, `fireOnKeyPress`, `showAutoComplete`, `hideAutoComplete`: no API replacement |
 
-`getUserRoles()` returned GUID strings and `userSettings.roles` holds `{id, name}` lookups, so a
-rewritten call changes the element type: check each later read. `data.save` is asynchronous and
+`getUserRoles()` returned GUID strings and `userSettings.roles` holds `{id, name}` lookups, so
+the call changes the element type for whatever reads the list, and is always a manual-review
+entry. `data.save` is asynchronous and
 takes a `saveOptions` object. A component whose findings name several transforms gets all their
 edits in one patch, the transforms running in findings order, one ledger entry per rule.
 

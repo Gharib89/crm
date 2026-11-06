@@ -282,15 +282,6 @@ CONTEXT_SETTINGS = {
     "getUserName": b"userSettings.userName",
     "getUserRoles": b"userSettings.roles",
 }
-#: Parents under which a ``getUserRoles()`` result is only passed on, never read as a list.
-_ROLES_PASSED_ON = frozenset(
-    (
-        "return_statement",
-        "arguments",
-        "pair",
-        "expression_statement",
-    )
-)
 
 
 def _context_receiver(node: Node) -> tuple[Node, bool] | None:
@@ -316,8 +307,8 @@ def _plan_context_settings(root: Node) -> Plan:
 
     The context is ``Xrm.Page.context`` or ``Xrm.Utility.getGlobalContext()``. Only a
     direct no-argument call is rewritten. ``getUserRoles()`` holds GUID strings and
-    ``userSettings.roles`` holds lookup objects, so a call whose result is read as a list
-    (indexed, iterated, member-accessed) is unproven; one that is only passed on is rewritten.
+    ``userSettings.roles`` holds lookup objects, which a callee can read as strings
+    whatever the call site shows, so it is always unproven.
     """
     nodes = _walk(root)
     shadowed = any(_binds_xrm(n) for n in nodes)
@@ -347,12 +338,10 @@ def _plan_context_settings(root: Node) -> Plan:
             dropped += prop_node.text if prop_node is not None and prop_node.text else b""
             if b"\n" in dropped:
                 reason = "the call spans lines"
-            elif name == b"getUserRoles" and (
-                call.parent is None or call.parent.type not in _ROLES_PASSED_ON
-            ):
+            elif name == b"getUserRoles":
                 reason = (
                     "getUserRoles() returned GUID strings and userSettings.roles holds"
-                    " {id, name} lookups: this call's result is read as a list"
+                    " {id, name} lookups: every read of the list needs review"
                 )
         if reason is not None or call is None or recv.text is None or m.text is None:
             unproven.append(Unproven(line, reason or "not a direct call"))

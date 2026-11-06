@@ -277,6 +277,12 @@ def convert(
                 f"rule {rule.id} names transform {rule.transform!r}, not registered"
             )
         groups.setdefault((f.kind, f.key, f.evidence.path), {}).setdefault(rule.id, rule)
+    # global-context skips the methods context-settings owns. A findings file made before
+    # that rule existed holds no finding for it, so the owner joins the group here.
+    owner = rules.get("web-resource-context-settings")
+    for group in groups.values():
+        if owner is not None and any(r.transform == "global-context" for r in group.values()):
+            group.setdefault(owner.id, owner)
     sha_of = {
         (f.kind, f.key, f.evidence.path): f.evidence.sha256
         for f in findings.findings

@@ -61,9 +61,9 @@ CASES: dict[str, tuple[str, str | None, str, int]] = {
     ),
     "roles-passed-on": (
         f"check({CTX}.getUserRoles());\n",
-        f"check({GC}.userSettings.roles);\n",
+        None,
         "web-resource-context-settings",
-        0,
+        1,
     ),
     "roles-read-as-list": (
         f"var first = {CTX}.getUserRoles()[0];\nvar n = {CTX}.getUserRoles().length;\n",
@@ -201,7 +201,14 @@ def run(tmp_path_factory: pytest.TempPathFactory) -> dict:
     res = CliRunner().invoke(cli, [*args, "--packages", str(packages), "--out", str(out)])
     assert res.exit_code == 0, res.output
     ledger = json.loads((out / "ledger.json").read_text(encoding="utf-8"))
-    return {"out": out, "entries": ledger["entries"], "findings": findings_path}
+    return {
+        "out": out,
+        "entries": ledger["entries"],
+        "findings": findings_path,
+        "folder": folder,
+        "packages": packages,
+        "root": root,
+    }
 
 
 def _entries(run: dict, case: str, rule: str | None = None) -> list[dict]:
@@ -262,3 +269,18 @@ def test_one_file_keeps_every_rules_edits_and_review_entries(run):
         ("web-resource-xrm-utility", 3),
         ("web-resource-grid-row", 5),
     }
+
+
+def test_findings_made_before_the_context_settings_rule_still_convert_its_sites(run):
+    data = json.loads(run["findings"].read_text(encoding="utf-8"))
+    data["findings"] = [f for f in data["findings"] if f["rule"] != "web-resource-context-settings"]
+    old = run["root"] / "old-findings.json"
+    old.write_text(json.dumps(data), encoding="utf-8")
+    out = run["root"] / "old-out"
+    args = ["--json", "inventory", "convert", str(run["folder"]), "--findings", str(old)]
+    res = CliRunner().invoke(cli, [*args, "--packages", str(run["packages"]), "--out", str(out)])
+    assert res.exit_code == 0, res.output
+    ledger = json.loads((out / "ledger.json").read_text(encoding="utf-8"))
+    mine = [e for e in ledger["entries"] if e["key"] == _name("user-name")]
+    patched = {e["rule"] for e in mine if e["status"] == "patched"}
+    assert "web-resource-context-settings" in patched
