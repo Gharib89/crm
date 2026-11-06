@@ -1,4 +1,4 @@
-"""Migration inventory manifest v2 and the v1 upgrade: schema, reader, writer (ADR 0032)."""
+"""Migration inventory manifest v3 and the v1 and v2 upgrades: schema, reader, writer (ADR 0032)."""
 
 # pyright: basic
 

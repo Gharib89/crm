@@ -6,12 +6,18 @@ CRM 2011 orgs); the other five read files only and need no profile.
 ## Extracting an inventory (`crm inventory extract`)
 
 A migration inventory is a read-only, descriptive record of an org's customizations: a
-`manifest.json` (schema v2, which also reads v1: records keyed by component key,
+`manifest.json` (schema v3, which also reads v1 and v2: records keyed by component key,
 per-kind coverage, extraction gaps) plus raw artifacts (XML, XAML, web resource content, assembly
 binaries). It describes what is deployed; it is never a spec for `crm apply`.
 
 - **It runs for tens of minutes on a large org** (each entity costs a metadata
   read and a ribbon read): give it a long timeout or run it in the background.
+- **Ribbon diffs come from a solution export, not the ribbon reads.** Each `ribbon_diff`
+  record is the raw customization of one entity (key: its logical name; `""` is the
+  application), and an entity with an empty diff has none. An org-wide run exports the
+  Default solution (minutes, tens of MB on CRM 2011); Dataverse online refuses that, so
+  the kind reads `unsupported` there: use `--solution` to read it. Never report an
+  `unsupported` or older-extract `ribbon_diff` as "no custom ribbon".
 - **It prints progress on stderr** (`[crm] extract stage=... done=n/total`, with an
   `eta` marked as an estimate); stdout, the JSON envelope, is unchanged. Read
   stderr to tell a slow run from a stuck one; `--quiet` silences it.
