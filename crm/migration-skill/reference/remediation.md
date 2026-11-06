@@ -76,7 +76,7 @@ Microsoft's client API deprecation table convert:
 | no-argument `data.entity.save()` to `data.save()` (now asynchronous) | `save("saveandnew")` |
 | nothing | `Xrm.Utility.openEntityForm`, `openQuickCreate`, `openWebResource`, `alertDialog`, `confirmDialog`, `isActivityType`: signature or sync behaviour changes |
 | nothing | `addOnKeyPress`, `removeOnKeyPress`, `fireOnKeyPress`, `showAutoComplete`, `hideAutoComplete`: only a custom control replaces them |
-| a registered form handler gets `executionContext` and `formContext`, its `Xrm.Page.<member>` becomes `formContext.<member>`, and the form XML sets `passExecutionContext` on every registration | `Xrm.Page` in a helper or a nested callback, an `async` handler, a handler with another caller or an already-passing registration |
+| a registered form handler gets `executionContext` and `formContext`, its `Xrm.Page.<member>` becomes `formContext.<member>`, each helper it calls (any depth) gains a `formContext` parameter that every call passes, and the form XML sets `passExecutionContext` on every registration | `Xrm.Page` in a nested callback, code no handler reaches, a helper with a caller outside its file, a callback or recursive use, an `async` handler, a handler with another caller or an already-passing registration |
 
 A shadowed `Xrm`, `window.Xrm` or `parent.Xrm`, an optional chain and a call that
 spans lines are manual review for every row. Work from `ledger.json`:
@@ -91,6 +91,9 @@ spans lines are manual review for every row. Work from `ledger.json`:
   hash. It derives from the deployed text, normalized to LF without a BOM, so
   the repository file's line endings can make `git apply` fail: normalize the
   file or apply the patched text by hand.
+- `ledger.json`'s `call_graph` counts, per package, the helpers threaded, the `Xrm.Page` functions no
+  handler reaches (`unreachable`) and the helpers a caller in another web resource holds back
+  (`boundary`); the last two are manual-review entries to remediate by hand.
 - A component with no ledger entry had no transformable finding; it still needs
   its remediation task.
 
