@@ -34,7 +34,7 @@ from crm.utils.safe_xml import fromstring
 
 _URL = "https://contoso.crm.dynamics.com"
 _SECRET = "s3cr3t-client-secret-value"
-_SCHEMA = Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v2.schema.json"
+_SCHEMA = Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v3.schema.json"
 _FMT = "@OData.Community.Display.V1.FormattedValue"
 _LOOKUP = "@Microsoft.Dynamics.CRM.lookuplogicalname"
 

@@ -1,11 +1,11 @@
-"""Migration inventory manifest v2: the contract every extractor emits (ADR 0032).
+"""Migration inventory manifest v3: the contract every extractor emits (ADR 0032).
 
 A migration inventory is a folder holding ``manifest.json`` (the inventory
 manifest) and ``artifacts/<kind>/<file>``. This module owns the format both the
 CRM 2011 path and the v9/cloud paths write: the component key per kind, artifact
 paths and hashes, the typed records, a deterministic writer and a reader that
 applies the version rule. The JSON Schema of the same format ships at
-``crm/schemas/inventory-manifest-v2.schema.json``; the reader validates
+``crm/schemas/inventory-manifest-v3.schema.json``; the reader validates
 structure without it, so no runtime code depends on ``jsonschema``.
 """
 
@@ -52,6 +52,7 @@ KEY_FIELDS: dict[str, tuple[str, ...]] = {
     ),
     "ribbon": ("entity",),
     "sitemap": ("unique_name",),
+    "ribbon_diff": ("entity",),
 }
 KINDS: tuple[str, ...] = tuple(KEY_FIELDS)
 
@@ -68,6 +69,7 @@ NULLABLE_KEY_FIELDS = frozenset(
         ("process", "primary_entity"),
         ("ribbon", "entity"),
         ("sitemap", "unique_name"),
+        ("ribbon_diff", "entity"),
     )
 )
 
@@ -77,6 +79,8 @@ NULLABLE_KEY_FIELDS = frozenset(
 _V1_NULL_KEY: dict[str, str] = {"ribbon": "application", "sitemap": "default"}
 #: The kinds whose key may be (or be referenced as) the empty key.
 _EMPTY_KEY_KINDS = frozenset(_V1_NULL_KEY)
+#: The kinds whose own record may hold the empty key: those, and the application ribbon diff.
+_EMPTY_RECORD_KINDS = _EMPTY_KEY_KINDS | {"ribbon_diff"}
 
 
 class InventoryError(Exception):
@@ -214,9 +218,12 @@ def artifact_hashes(data: bytes, *, text: bool, ribbon: bool = False) -> Artifac
     return ArtifactHashes(sha256=raw, normalized_sha256=hashlib.sha256(normalized).hexdigest())
 
 
-SCHEMA_VERSION = 2
-#: The versions the reader accepts; v1 is upgraded on read (see `_record`).
-READ_VERSIONS = (1, 2)
+SCHEMA_VERSION = 3
+#: The versions the reader accepts; v1 and v2 are upgraded on read (see `_record`,
+#: `_upgrade_ribbon_diff_coverage`).
+READ_VERSIONS = (1, 2, 3)
+#: `READ_VERSIONS` as an error message names them: ``1, 2 and 3``.
+READ_VERSIONS_TEXT = ", ".join(map(str, READ_VERSIONS[:-1])) + f" and {READ_VERSIONS[-1]}"
 MANIFEST_NAME = "manifest.json"
 
 PLATFORMS = ("crm2011", "onprem", "cloud")
@@ -484,7 +491,7 @@ def _record(value: object, where: str, version: int = SCHEMA_VERSION) -> Record:
     kind = _str(obj, "kind", where, choices=KINDS)
     key = _req(obj, "key", where)
     # Only the application ribbon and default sitemap key "" (below, by their fields).
-    if not isinstance(key, str) or (not key and kind not in _EMPTY_KEY_KINDS):
+    if not isinstance(key, str) or (not key and kind not in _EMPTY_RECORD_KINDS):
         raise InventoryError(f"{where}.key must be a non-empty string")
     fields = _obj(_req(obj, "fields", where), f"{where}.fields")
     _defined_fields(kind, fields, f"{where}.fields")
@@ -545,7 +552,7 @@ def _gap(value: object, where: str) -> ExtractionGap:
         reason=_str(obj, "reason", where),
     )
     # The empty key names the application ribbon or default sitemap, and only those.
-    names_a_key = bool(gap.key) or (gap.key == "" and kind in _EMPTY_KEY_KINDS)
+    names_a_key = bool(gap.key) or (gap.key == "" and kind in _EMPTY_RECORD_KINDS)
     if not names_a_key and not gap.description:
         raise InventoryError(f"{where} must name a key or a description")
     return gap
@@ -616,8 +623,9 @@ def parse_manifest(data: object) -> Inventory:
 
     The version rule runs first: a ``schema_version`` outside `READ_VERSIONS`
     is refused whatever else the manifest holds. A v1 manifest is upgraded: its
-    application ribbon and default sitemap take the v2 key ``""``, and the
-    result reads as v2. Fields the contract does not define are ignored.
+    application ribbon and default sitemap take the v2 key ``""``. A v1 or v2
+    manifest gains ``unsupported`` coverage for the v3 ``ribbon_diff`` kind.
+    The result reads as v3. Fields the contract does not define are ignored.
 
     Raises:
         InventoryError: the manifest breaks the contract; the message names where.
@@ -627,7 +635,7 @@ def parse_manifest(data: object) -> Inventory:
     if type(version) is not int or version not in READ_VERSIONS:
         raise InventoryError(
             f"manifest schema_version {version!r} is not supported; "
-            f"this crm reads schema_version {' and '.join(map(str, READ_VERSIONS))}"
+            f"this crm reads schema_version {READ_VERSIONS_TEXT}"
         )
     records = tuple(
         _record(r, f"records[{i}]", version)
@@ -640,6 +648,15 @@ def parse_manifest(data: object) -> Inventory:
     if unknown:
         raise InventoryError(f"coverage names unknown kind(s): {', '.join(unknown)}")
     coverage = {kind: _coverage(raw_coverage[kind], kind) for kind in sorted(raw_coverage)}
+    if version < 3 and "ribbon_diff" not in coverage:
+        # Upgrade: an older extraction never read the kind, so say so rather than leave it absent.
+        coverage["ribbon_diff"] = KindCoverage(
+            "unsupported",
+            0,
+            0,
+            False,
+            (f"not read: a schema_version {version} extraction predates the ribbon_diff kind",),
+        )
     counts: dict[str, int] = {}
     for record in records:
         counts[record.kind] = counts.get(record.kind, 0) + 1

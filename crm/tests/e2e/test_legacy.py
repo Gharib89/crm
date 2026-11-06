@@ -185,7 +185,7 @@ def test_inventory_extract_writes_a_valid_crm2011_inventory(cli, tmp_path, monke
     manifest = json.loads((out / "manifest.json").read_text())
     schema = json.loads(
         (
-            Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v2.schema.json"
+            Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v3.schema.json"
         ).read_text()
     )
     jsonschema.Draft202012Validator(schema).validate(manifest)
