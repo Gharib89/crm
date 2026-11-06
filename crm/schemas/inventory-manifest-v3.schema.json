@@ -1186,6 +1186,7 @@
             "solution_membership",
             "dependency",
             "ribbon",
+            "ribbon_diff",
             "sitemap",
             null
           ]
@@ -1221,6 +1222,7 @@
             "kind": {
               "enum": [
                 "ribbon",
+                "ribbon_diff",
                 "sitemap"
               ]
             },

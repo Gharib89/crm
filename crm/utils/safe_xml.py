@@ -28,11 +28,14 @@ stays out of the strict ``crm/core`` surface while callers still see the typed
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
+from collections.abc import Iterator
+from typing import IO
 
 from defusedxml.common import DefusedXmlException
 from defusedxml.ElementTree import fromstring as _defused_fromstring
+from defusedxml.ElementTree import iterparse as _defused_iterparse
 
-__all__ = ["fromstring"]
+__all__ = ["fromstring", "iterparse"]
 
 
 def fromstring(text: str | bytes) -> ET.Element:
@@ -50,4 +53,16 @@ def fromstring(text: str | bytes) -> ET.Element:
         # attacker-controlled DTD text (e.g. a long SYSTEM identifier), so keep
         # it off the user-facing message and logs — it stays on the chained
         # cause via ``from exc`` for debugging.
+        raise ET.ParseError("unsafe XML rejected: DTD/entity declarations are not allowed") from exc
+
+
+def iterparse(source: IO[bytes], events: tuple[str, ...]) -> Iterator[tuple[str, ET.Element]]:
+    """Stream-parse *source*, rejecting entity attacks as :func:`fromstring` does.
+
+    For a document too large to hold as a tree (a solution's ``customizations.xml``
+    runs to tens of MB): the caller clears each element it has finished with.
+    """
+    try:
+        yield from _defused_iterparse(source, events=events)
+    except DefusedXmlException as exc:
         raise ET.ParseError("unsafe XML rejected: DTD/entity declarations are not allowed") from exc

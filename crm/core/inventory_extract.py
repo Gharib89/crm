@@ -32,12 +32,14 @@ import os
 import re
 import shutil
 import time
+import zipfile
 from collections import Counter
 from collections.abc import Callable, Collection, Iterable, Iterator
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol, cast
+from xml.etree.ElementTree import ParseError
 
 from crm.core import legacy_reads
 from crm.core.inventory import (
@@ -60,6 +62,7 @@ from crm.core.inventory import (
     dump_manifest,
 )
 from crm.core.legacy import LegacyClient, Page
+from crm.core.ribbon_diff import read_ribbon_diffs
 from crm.core.usage import INVENTORY_GROUPS, JOB_TIME_CAP, GroupUsage, Usage, probe_legacy_group
 from crm.utils.d365_backend import PLATFORM_CRM2011, D365Error
 
@@ -148,6 +151,7 @@ class InventorySource(Protocol):
     platform: str
     api: str
     static_gaps: tuple[ExtractionGap, ...]
+    default_export_supported: bool  # whether the platform exports the Default solution
 
     @property
     def org_url(self) -> str: ...
@@ -163,6 +167,10 @@ class InventorySource(Protocol):
     def entity_detail(self, name: str) -> dict[str, Any]: ...
 
     def ribbon_xml(self, entity: str | None) -> bytes: ...
+
+    def export_solution(self, unique_name: str, dest: Path) -> None:
+        """Write the unmanaged export of the solution to *dest* (a zip)."""
+        ...
 
     def pages(self, fetch_xml: str, *, page_size: int, start: Page | None) -> Iterator[Page]: ...
 
@@ -187,6 +195,7 @@ class LegacySource:
     platform = PLATFORM_CRM2011
     api = "the CRM 2011 SOAP endpoint"
     static_gaps = (integration_gap(api), ssrs_gap(api))
+    default_export_supported = True
 
     def __init__(self, client: LegacyClient):
         self.client = client
@@ -212,6 +221,9 @@ class LegacySource:
 
     def ribbon_xml(self, entity: str | None) -> bytes:
         return legacy_reads.ribbon_xml(self.client, entity)
+
+    def export_solution(self, unique_name: str, dest: Path) -> None:
+        dest.write_bytes(legacy_reads.export_solution(self.client, unique_name))
 
     def pages(self, fetch_xml: str, *, page_size: int, start: Page | None) -> Iterator[Page]:
         return self.client.pages(fetch_xml, page_size=page_size, start=start)
@@ -994,6 +1006,8 @@ def extract(
         if run.unit(("ribbon",), unit, read_ribbon) is not None:
             ribbons[entity_name] = cp.staged("ribbon", entity_name or "_application", "ribbon.xml")
 
+    diff_units, diff_unsupported = _read_ribbon_diffs(source, cp, run, solutions)
+
     run.begin("build")
     built = _Builder(cp, out, rows, source.api, stock_scope)
     built.metadata(entities, option_sets, details)
@@ -1015,6 +1029,22 @@ def extract(
             and (entity_name is None or entity_name in system_entities)
             and not _ribbon_custom(ribbon),
         )
+    seen: set[str | None] = set()
+    for solution, diff_entities in diff_units:
+        for entity_name in diff_entities:
+            if entity_name in seen:
+                continue  # the first solution to hold an entity's diff wins
+            seen.add(entity_name)
+            staged = cp.staged("ribbon_diff", _diff_id(solution, entity_name), "ribbon-diff.xml")
+            built.add(
+                "ribbon_diff",
+                None,
+                {"entity": entity_name},
+                None,
+                "unknown",  # the diff layers a solution's changes over the stock ribbon
+                None,
+                [("ribbon-diff.xml", staged, True)],
+            )
     built.memberships_and_dependencies()
     if solutions:
         built.scope(solutions)
@@ -1042,6 +1072,8 @@ def extract(
         else:
             status = "complete"
         coverage[kind] = KindCoverage(status, tally.pages, n, tally.truncated, tuple(tally.errors))
+    if diff_unsupported:
+        coverage["ribbon_diff"] = KindCoverage("unsupported", 0, 0, False, (diff_unsupported,))
 
     inventory = Inventory(
         schema_version=SCHEMA_VERSION,
@@ -1066,6 +1098,7 @@ def extract(
             *source.static_gaps,
             *built.gaps(),
             *_ribbon_gaps(unlabelled),
+            *_ribbon_diff_gaps(diff_unsupported),
             *_source_gaps(run.errors),
             *usage_gaps,
         ),
@@ -1073,7 +1106,9 @@ def extract(
     (out / MANIFEST_NAME).write_text(dump_manifest(inventory), encoding="utf-8")
 
     errors = [*run.errors, *usage_errors, *(e for t in run.tallies.values() for e in t.errors)]
-    complete = not errors and all(c.status == "complete" for c in coverage.values())
+    complete = not errors and all(
+        c.status in ("complete", "unsupported") for c in coverage.values()
+    )
     if complete:
         cp.remove()
     return ExtractSummary(
@@ -1087,6 +1122,66 @@ def extract(
         resumed=resumed,
         complete=complete,
     )
+
+
+_DEFAULT_SOLUTION = "Default"
+
+
+def _diff_id(solution: str, entity: str | None) -> str:
+    return f"{solution}.{entity or '_application'}"
+
+
+def _read_ribbon_diffs(
+    source: InventorySource, cp: Checkpoint, run: _Run, solutions: tuple[str, ...]
+) -> tuple[list[tuple[str, list[str | None]]], str | None]:
+    """Export each solution in scope and keep the ribbon diffs that hold content.
+
+    The scope is the named solutions, else the Default solution, which holds every
+    customization. One checkpoint unit per solution: its zip is staged on disk, streamed
+    and deleted, and only the diffs are kept. Returns each solution's entities (``None``
+    is the application) and, when the platform cannot export the scope, why not.
+    """
+    if not solutions and not source.default_export_supported:
+        return [], (
+            f"not read: {source.api} refuses to export the Default solution, which holds"
+            " the whole org's ribbon diffs; run with --solution to read the named solutions'"
+        )
+    names = solutions or (_DEFAULT_SOLUTION,)
+    run.begin("ribbon_diffs", len(names), estimate=True)
+    units: list[tuple[str, list[str | None]]] = []
+    for name in names:
+
+        def read(name: str = name) -> list[str | None]:
+            zip_path = cp.root / "tmp" / f"{name}.zip"
+            zip_path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                source.export_solution(name, zip_path)
+                diffs = read_ribbon_diffs(zip_path)
+            except (OSError, KeyError, ValueError, zipfile.BadZipFile, ParseError) as exc:
+                raise D365Error(f"the export of {name} could not be read: {exc}") from exc
+            finally:
+                zip_path.unlink(missing_ok=True)
+            for entity, xml in diffs.items():
+                cp.stage("ribbon_diff", _diff_id(name, entity), "ribbon-diff.xml", xml)
+            return list(diffs)
+
+        data = run.unit(("ribbon_diff",), f"ribbon-diff/{name}", read)
+        if data is not None:
+            units.append((name, data))
+    return units, None
+
+
+def _ribbon_diff_gaps(unsupported: str | None) -> list[ExtractionGap]:
+    if not unsupported:
+        return []
+    return [
+        ExtractionGap(
+            kind="ribbon_diff",
+            key=None,
+            description="the ribbon diffs of the org-wide customizations",
+            reason=unsupported,
+        )
+    ]
 
 
 _USAGE_LABEL = {
@@ -1556,7 +1651,8 @@ class _Builder:
         type, step or image has no owner to keep it by and is left out. The
         unkeyed-row gaps stay org-wide.
 
-        Kept: the solutions, their memberships, each member, each record of a
+        Kept: the solutions, their memberships, each member, each ribbon diff (read
+        from the solutions' own exports), each record of a
         member entity held with its subcomponents (`attribute`,
         `local_option_set`, `form`, `view`, `ribbon`, and a `relationship` on
         either side), and each dependency whose dependent is kept. An entity
@@ -1583,6 +1679,8 @@ class _Builder:
                 return p.fields["unique_name"] in named
             if p.kind == "solution_membership":
                 return p.fields["solution"] in named
+            if p.kind == "ribbon_diff":
+                return True  # read from the named solutions' own exports
             if p.kind in ("attribute", "local_option_set", "form", "view", "ribbon"):
                 return (p.kind, p.key) in members or p.fields["entity"] in entities
             if p.kind == "relationship":

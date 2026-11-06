@@ -13,13 +13,15 @@ from __future__ import annotations
 import re
 import xml.etree.ElementTree as ET
 from collections.abc import Callable, Collection, Iterator
+from pathlib import Path
 from typing import Any, cast
 from urllib.parse import unquote
 
+from crm.core import solution_transfer
 from crm.core.inventory import ExtractionGap
 from crm.core.inventory_extract import integration_gap, ssrs_gap
 from crm.core.legacy import Page
-from crm.core.legacy_reads import unzip_ribbon
+from crm.core.legacy_reads import EXPORT_TIMEOUT, unzip_ribbon
 from crm.core.usage import GroupUsage, probe_v9_group
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 from crm.utils.safe_xml import fromstring
@@ -197,6 +199,8 @@ class WebApiSource:
         if self.platform == "onprem":
             gaps.append(ssrs_gap(self.api))
         self.static_gaps: tuple[ExtractionGap, ...] = tuple(gaps)
+        # Dataverse online refuses to export the Default solution; on-prem allows it.
+        self.default_export_supported = self.platform == "onprem"
 
     @property
     def org_url(self) -> str:
@@ -248,6 +252,9 @@ class WebApiSource:
         if not isinstance(meta, dict):
             raise D365Error(f"RetrieveEntity {name}: the response carries no EntityMetadata")
         return _reshape_entity(cast("dict[str, Any]", meta))
+
+    def export_solution(self, unique_name: str, dest: Path) -> None:
+        solution_transfer.export_solution(self.backend, unique_name, dest, timeout=EXPORT_TIMEOUT)
 
     def ribbon_xml(self, entity: str | None) -> bytes:
         if entity is None:
