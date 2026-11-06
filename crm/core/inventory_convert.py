@@ -61,6 +61,8 @@ SCHEMA_VERSION = 1
 LEDGER_NAME = "ledger.json"
 #: The package id of a component no work package holds.
 UNPACKAGED = "unpackaged"
+#: The kinds whose artifacts may call a script's functions by name.
+_CALLER_KINDS = frozenset(("web_resource", "ribbon", "sitemap"))
 #: The per-package call-graph counts of the ledger's ``call_graph``: helpers given a
 #: ``formContext``, functions no handler reaches, helpers a caller outside the file holds back.
 GRAPH_COUNTS = ("threaded", "unreachable", "boundary")
@@ -317,23 +319,18 @@ def _read_forms(
 
 
 def _other_scripts(
-    inventory_dir: Path, records: Iterable[Record], transform: Transform
+    inventory_dir: Path, records: Iterable[Record], registered: frozenset[str]
 ) -> Callable[[str], frozenset[str] | None]:
     """Map a script's path to the names the inventory's other scripts mention.
 
     None means one of those scripts is unreadable.
 
-    A function another web resource mentions may be called from there, a caller the rewrite of
-    one file cannot update, so the transform leaves its signature alone. The scan is of the
-    raw text, strings and comments included: it can only over-report.
+    A function another web resource (of any type), a ribbon or a form registration names may be
+    called from there, a caller the rewrite of one file cannot update, so the transform leaves
+    its signature alone. *registered* is every function name a form registers. The scan is of
+    the raw text, strings and comments included: it can only over-report.
     """
-    paths = [
-        r.artifacts[0].path
-        for r in records
-        if r.kind == "web_resource"
-        and r.artifacts
-        and r.fields.get("web_resource_type") in transform.web_resource_types
-    ]
+    paths = [r.artifacts[0].path for r in records if r.kind in _CALLER_KINDS and r.artifacts]
     names: dict[str, frozenset[str] | None] = {}
 
     def others(path: str) -> frozenset[str] | None:
@@ -352,7 +349,7 @@ def _other_scripts(
             if found is None:
                 return None
             seen |= found
-        return frozenset(seen)
+        return frozenset(seen) | registered
 
     return others
 
@@ -497,7 +494,12 @@ def convert(
         for gkey in handlers:
             groups[gkey].setdefault(form_rule.id, form_rule)
     lib_of = {g: n for n, g in libraries.items()}
-    others = _other_scripts(inventory_dir, inv.records, TRANSFORMS[HANDLER_TRANSFORM])
+    named = {t.function for f in forms for t in f.tags} | {k[1] for f in forms for k in f.named}
+    others = _other_scripts(
+        inventory_dir,
+        inv.records,
+        frozenset(named | {n.rsplit(".", 1)[-1] for n in named}),
+    )
     rewritten: set[tuple[str, str]] = set()
 
     def emit(

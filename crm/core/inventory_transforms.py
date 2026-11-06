@@ -761,10 +761,11 @@ def _thread_helpers(
     gains a first ``formContext`` parameter and each call passes it, so a signature never
     changes without its callers. Anything else leaves the helper whole: a name bound twice or
     used other than as a call (a callback, ``.call``, a property), a call from a nested
-    function, top-level code or a function nothing threads, a recursive cycle, and a name
-    another web resource mentions, which is a caller this run cannot update. A function
-    no registered handler reaches is counted as unreachable, one kept back by a caller outside
-    the file as a boundary, and each is a manual-review entry.
+    function, top-level code or a function nothing threads, a recursive cycle, and a name the
+    rest of the inventory names (another script, a ribbon, a form registration): that is a
+    caller this run cannot update. A function (or top-level site) no registered handler reaches
+    counts as unreachable, a helper kept back by a name used outside the file as a boundary,
+    and each is a manual-review entry.
     """
     handlers = {n.encode() for n in functions}
     live = {n.encode() for n in ready}
@@ -814,13 +815,16 @@ def _thread_helpers(
             reason = f"formContext is already used in {text}"
         units[name] = (fn, body or fn, reason, sites, problems)
 
+    def mentioned(name: bytes) -> bool:
+        return outside is None or name.rsplit(b".", 1)[-1].decode() in outside
+
     def blocked(name: bytes, at: set[bytes]) -> str | None:
         """Why *name* cannot be threaded given the functions in *at* hold a formContext."""
         text, reason = name.decode(), units[name][2]
         if reason is not None:
             return reason
-        if outside is None or name.rsplit(b".", 1)[-1].decode() in outside:
-            return f"{text} is also referenced from another web resource: its callers there stay"
+        if mentioned(name):
+            return f"{text} is also named outside this file: a caller or registration there stays"
         if name in refs:
             line = refs[name][0].start_point.row + 1
             return f"{text} is also referenced at line {line}, other than as a direct call"
@@ -895,7 +899,7 @@ def _thread_helpers(
             unproven.extend(problems)
         elif sites or problems:
             reason = blocked(name, live | threaded) or f"{name.decode()} gets no formContext"
-            if outside is None or name.rsplit(b".", 1)[-1].decode() in outside:
+            if mentioned(name):
                 boundary += 1
             elif name not in reached:
                 unreachable += 1
@@ -942,7 +946,7 @@ def _plan_handler_context(
     at least one of its sites is.
 
     A helper the handlers reach is threaded too, see `_thread_helpers`; *outside* holds the
-    names the file's other web resources mention, None where one could not be read.
+    names the rest of the inventory mentions, None where a script could not be read.
     """
     nodes = _walk(root)
     table = _definitions(nodes)

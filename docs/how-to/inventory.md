@@ -768,8 +768,7 @@ manual review, with its form handlers left unflagged, when the library defines i
 refers to it elsewhere, reads `arguments` or already uses `formContext`; when it has an
 `executionContext`-like first parameter and form `parameters`; when another registration already
 passes the context or sits on a form outside the work package or one this run does not patch; or
-when it is not a `function` declaration or a `name = function` assignment. A call from another
-web resource is not seen.
+when it is not a `function` declaration or a `name = function` assignment.
 
 A **helper** the handlers reach is threaded through the file's call graph: it gains a first
 `formContext` parameter (so positional arguments keep their order), its own `Xrm.Page.<member>`
@@ -779,12 +778,13 @@ when every use of its name is a plain, direct call from a rewritten handler or a
 These are manual review, with the helper and its callers left whole: a name defined twice or used
 other than as a call (a callback argument, `.call`, a property), a call from a nested function or
 callback, top-level code, an optional chain or a function nothing threads, a recursive cycle, a
-helper that reads `arguments` or already uses `formContext`, and a helper whose name another
-web resource of the inventory mentions (the scan reads raw text, so it can only over-report: a
-caller there cannot be updated). `Xrm.Page` that no registered handler reaches (a function
-nothing calls, or code outside any named function) is manual review too. The ledger's top-level
-`call_graph` counts, per work package, the helpers `threaded`, the sites `unreachable` and the
-helpers held back at a `boundary`.
+helper that reads `arguments` or already uses `formContext`, and a helper whose name a form
+registers (a handler this run leaves alone) or another web resource, ribbon or sitemap of the
+inventory mentions (the scan reads raw text, so it can only over-report: a caller there cannot
+be updated). `Xrm.Page` that no registered handler reaches (a function nothing calls, or code
+outside any named function) is manual review too. The ledger's top-level `call_graph` counts,
+per work package, the helpers `threaded`, the functions and top-level sites `unreachable` and
+the helpers held back at a `boundary` (a name used outside the file).
 
 An **emit gate** checks each rewritten file: the patched code must parse with no more
 error nodes, and re-running the rule's detection must find exactly the rewritten sites

@@ -13,6 +13,8 @@ import json
 
 import pytest
 
+from crm.core.code_parse import parse
+from crm.core.inventory_transforms import _plan_handler_context
 from crm.tests.test_inventory_convert_handlers import (
     LIB,
     _event,
@@ -89,7 +91,7 @@ def test_a_helper_another_web_resource_mentions_stays_whole_and_counts_as_bounda
     run, entry, counts = _run(tmp_path, js, {OTHER: "function other() { leaf(); }\n"})
     text = _text(run, entry)
     assert "  leaf();\n" in text and "function leaf() {\n  return Xrm.Page.data;\n}" in text
-    assert any("referenced from another web resource" in r for r in _reasons(entry))
+    assert any("named outside this file" in r for r in _reasons(entry))
     assert counts == {"threaded": 0, "unreachable": 0, "boundary": 1}
 
 
@@ -112,7 +114,7 @@ def test_code_no_handler_reaches_is_manual_review_and_unchanged(tmp_path):
 @pytest.mark.parametrize(
     ("name", "extra", "reason"),
     [
-        ("callback", "function onLoad2() {}\n", "nested function"),
+        ("callback", "", "nested function"),
         ("recursion", "", "recursive"),
         ("value", "", "other than as a direct call"),
         ("twice", "function leaf() {}\n", "defined more than once"),
@@ -155,3 +157,25 @@ def test_a_helper_with_an_unpatched_handler_caller_stays_whole(tmp_path):
     run = _pipeline(tmp_path, {LIB: js}, {"Main": form})
     text = _text(run, _js(run))
     assert "function leaf() {\n  return Xrm.Page.data;\n}" in text
+
+
+def test_a_helper_a_form_also_registers_stays_whole(tmp_path):
+    js = (
+        "function onLoad() {\n  Xrm.Page.ui;\n  leaf();\n}\n"
+        "function leaf() {\n  return Xrm.Page.data;\n}\n"
+    )
+    form = _xml(
+        _event("onload", _handler("onLoad")),
+        _event("onsave", _handler("leaf", passExecutionContext="true")),
+    )
+    run = _pipeline(tmp_path, {LIB: js}, {"Main": form})
+    entry = _js(run)
+    text = _text(run, entry)
+    assert "  leaf();\n" in text and "function leaf() {\n  return Xrm.Page.data;\n}" in text
+    assert any("named outside this file" in r for r in _reasons(entry))
+
+
+def test_an_unreadable_neighbour_script_keeps_every_helper_whole():
+    js = b"function onLoad() {\n  leaf();\n}\nfunction leaf() {\n  return Xrm.Page.data;\n}\n"
+    plan = _plan_handler_context(parse("javascript", js), {"onLoad": False}, None)
+    assert plan.edits == () and plan.boundary == 1
