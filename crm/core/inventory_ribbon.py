@@ -58,7 +58,7 @@ class RibbonDiff:
     rule_calls: frozenset[tuple[str, str]]
 
 
-def _key(library: str, function: str) -> tuple[str, str]:
+def action_key(library: str, function: str) -> tuple[str, str]:
     return (_web_resource_name(library) or "").lower(), function
 
 
@@ -119,7 +119,7 @@ def read_ribbon_diff(text: bytes) -> RibbonDiff | None:
             edit = Edit(m.end(), m.end(), f'<CrmParameter Value="{PARAMETER}" />'.encode())
         actions.append(
             RibbonAction(
-                _key(el.get("Library") or "", el.get("FunctionName") or ""),
+                action_key(el.get("Library") or "", el.get("FunctionName") or ""),
                 definition is not None,
                 tuple(p.get("Value") or "" for p in el.findall("CrmParameter")),
                 _not_form(command, locations.get(command, [])),
@@ -128,7 +128,8 @@ def read_ribbon_diff(text: bytes) -> RibbonDiff | None:
             )
         )
     rules = frozenset(
-        _key(r.get("Library") or "", r.get("FunctionName") or "") for r in root.iter("CustomRule")
+        action_key(r.get("Library") or "", r.get("FunctionName") or "")
+        for r in root.iter("CustomRule")
     )
     return RibbonDiff(actions, rules)
 
@@ -173,5 +174,5 @@ def ribbon_function_names(text: bytes) -> list[tuple[str, str]]:
             a.group(1).decode(): unescape(a.group(2)[1:-1].decode("utf-8", "replace"))
             for a in _ATTR.finditer(m.group(0))
         }
-        out.append(_key(attrs.get("Library", ""), attrs.get("FunctionName", "")))
+        out.append(action_key(attrs.get("Library", ""), attrs.get("FunctionName", "")))
     return out

@@ -350,6 +350,47 @@ def test_a_function_an_unmappable_diff_calls_is_not_changed_behind_it(tmp_path):
     assert "cannot be patched" in _ribbon(run, "account")["manual_review"][0]["reason"]
 
 
+def test_a_diff_that_vanished_after_assessment_still_counts_as_a_caller(tmp_path):
+    inv = tmp_path / "inv"
+    run = _pipeline(
+        tmp_path / "first",
+        CMD_JS,
+        {
+            "account": _diff_xml({"cmd.run": _call("run")}),
+            "contact": _diff_xml({"cmd.x": _call("run")}),
+        },
+    )
+    # Reuse the first run's inventory, then remove one diff before converting again.
+    folder = run["folder"]
+    (diff,) = [
+        folder / r.artifacts[0].path
+        for r in run["records"]
+        if r.kind == "ribbon_diff" and r.fields["entity"] == "contact"
+    ]
+    diff.unlink()
+    again = tmp_path / "again"
+    findings = tmp_path / "first" / "findings.json"
+    packages = tmp_path / "first" / "packages"
+    res = CliRunner().invoke(
+        cli,
+        [
+            "--json",
+            "inventory",
+            "convert",
+            str(folder),
+            "--findings",
+            str(findings),
+            "--packages",
+            str(packages),
+            "--out",
+            str(again),
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    assert not list(again.rglob("*.patched*"))
+    assert inv.name == "inv"
+
+
 def test_a_control_outside_any_custom_action_does_not_place_the_command_on_a_form(tmp_path):
     xml = _diff_xml({"cmd.run": _call("run")}, shown={}).replace(
         "<RuleDefinitions>",

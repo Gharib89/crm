@@ -62,6 +62,7 @@ from crm.core.inventory_ribbon import (
     PARAMETER,
     RibbonAction,
     RibbonDiff,
+    action_key,
     plan_ribbon_actions,
     read_ribbon_diff,
     ribbon_function_names,
@@ -391,6 +392,12 @@ def _read_ribbons(
                 ribbon.named = ribbon_function_names(ribbon.source)
         except OSError as exc:
             ribbon.problem = f"artifact unreadable: {exc.strerror or exc}"
+        if ribbon.problem and ev is not None:
+            # What the assessment saw stays a caller when the artifact is stale or gone now.
+            ribbon.named += [
+                action_key(r.get("library") or "", r.get("function") or "")
+                for r in ev.registrations
+            ]
         out.append(ribbon)
     return out
 
