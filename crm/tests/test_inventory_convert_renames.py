@@ -131,6 +131,12 @@ CASES: dict[str, tuple[str, str | None, str, int]] = {
         "web-resource-entity-save",
         1,
     ),
+    "entity-save-shadowed-xrm": (
+        "function f(Xrm) { Xrm.Page.data.entity.save(); }\n",
+        None,
+        "web-resource-entity-save",
+        1,
+    ),
     "entity-save-with-option": (
         'formContext.data.entity.save("saveandnew");\n',
         None,

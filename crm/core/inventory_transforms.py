@@ -505,7 +505,9 @@ def _plan_entity_save(root: Node) -> Plan:
     """
     edits: list[Edit] = []
     unproven: list[Unproven] = []
-    for call in _walk(root):
+    nodes = _walk(root)
+    shadowed = any(_binds_xrm(n) for n in nodes)
+    for call in nodes:
         if call.type == "member_expression":
             parent = call.parent
             if (
@@ -541,6 +543,12 @@ def _plan_entity_save(root: Node) -> Plan:
             unproven.append(
                 Unproven(line, "an optional chain: the rewrite would drop its short-circuit")
             )
+        elif (
+            _prop(_member_object(data)) == b"Page"
+            and (xrm := _member_object(_member_object(data))) is not None
+            and (problem := _xrm_problem(xrm, shadowed)) is not None
+        ):
+            unproven.append(Unproven(line, problem))
         elif not _no_args(call):
             unproven.append(
                 Unproven(
