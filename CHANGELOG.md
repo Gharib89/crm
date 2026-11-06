@@ -9,6 +9,33 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.103.0 (2026-11-06)
+
+### Bug Fixes
+
+- **inventory**: Convert needs the same work packages for form and library, and skips comments
+  before a directive ([#1126](https://github.com/Gharib89/crm/pull/1126),
+  [`c7c559f`](https://github.com/Gharib89/crm/commit/c7c559f2d1e521b74329bec1b6c57c2d43b16a61))
+
+- **inventory**: Convert requires every library package to ship each form, skips parameter defaults
+  and keeps directives first ([#1126](https://github.com/Gharib89/crm/pull/1126),
+  [`c7c559f`](https://github.com/Gharib89/crm/commit/c7c559f2d1e521b74329bec1b6c57c2d43b16a61))
+
+- **inventory**: Document the form patch gate, name the assignment shape
+  ([#1126](https://github.com/Gharib89/crm/pull/1126),
+  [`c7c559f`](https://github.com/Gharib89/crm/commit/c7c559f2d1e521b74329bec1b6c57c2d43b16a61))
+
+### Features
+
+- **inventory**: Convert threads formContext inside registered handlers and sets
+  passExecutionContext ([#1126](https://github.com/Gharib89/crm/pull/1126),
+  [`c7c559f`](https://github.com/Gharib89/crm/commit/c7c559f2d1e521b74329bec1b6c57c2d43b16a61))
+
+- **inventory**: Convert threads formContext through registered form handlers
+  ([#1126](https://github.com/Gharib89/crm/pull/1126),
+  [`c7c559f`](https://github.com/Gharib89/crm/commit/c7c559f2d1e521b74329bec1b6c57c2d43b16a61))
+
+
 ## v1.102.0 (2026-11-06)
 
 ### Bug Fixes
