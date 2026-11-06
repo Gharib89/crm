@@ -778,7 +778,8 @@ when every use of its name is a plain, direct call from a rewritten handler or a
 These are manual review, with the helper and its callers left whole: a name defined twice or used
 other than as a call (a callback argument, `.call`, a property), a call from a nested function or
 callback, top-level code, an optional chain or a function nothing threads, a recursive cycle, a
-helper that reads `arguments` or already uses `formContext`, and a helper whose name a form
+helper that is `async`, a named function expression, reads `arguments` or already uses
+`formContext`, and a helper whose name a form
 registers (a handler this run leaves alone) or another web resource, ribbon or sitemap of the
 inventory mentions (the scan reads raw text, so it can only over-report: a caller there cannot
 be updated). `Xrm.Page` that no registered handler reaches (a function nothing calls, or code

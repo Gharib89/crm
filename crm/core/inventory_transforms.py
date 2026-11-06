@@ -809,6 +809,10 @@ def _thread_helpers(
                     problems.append(Unproven(extra.start_point.row + 1, reason))
         elif params is None or body is None or body.type != "statement_block":
             reason = f"{text} has no block body to take the formContext"
+        elif fn.type == "function_expression" and fn.child_by_field_name("name") is not None:
+            reason = f"{text} is a named function expression: its inner name is not tracked"
+        elif any(c.type == "async" for c in fn.children):
+            reason = f"{text} is async: the caller's context is not valid after an await"
         elif any(n.type == "identifier" and n.text == b"arguments" for n in inside):
             reason = f"{text} reads arguments, whose positions formContext would shift"
         elif any(n.type in _NAMES and n.text == b"formContext" for n in inside):
@@ -845,7 +849,7 @@ def _thread_helpers(
                 return f"{text} is called at line {line} other than by a plain call"
             if _in_optional_chain(call, call.child_by_field_name("function")):
                 return f"an optional chain at line {line}: the rewrite would drop its short-circuit"
-            caller_body = units[owner][1] if owner in units else None
+            caller_body = table[owner][0][0].child_by_field_name("body")
             if caller_body is not None and call.start_byte < caller_body.start_byte:
                 return f"{text} is called from a parameter default at line {line}"
         return None
@@ -988,6 +992,8 @@ def _plan_handler_context(
             reason = f"{name} is also referenced at line {at}: its callers pass the old positions"
         elif params is None or body is None or body.type != "statement_block":
             reason = f"{name} has no block body to take the context"
+        elif fn.type == "function_expression" and fn.child_by_field_name("name") is not None:
+            reason = f"{name} is a named function expression: its inner name is not tracked"
         elif any(c.type == "async" for c in fn.children):
             reason = f"{name} is async: the context is not valid after an await"
         elif any(n.type == "identifier" and n.text == b"arguments" for n in inside):

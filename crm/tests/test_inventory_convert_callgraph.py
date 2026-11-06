@@ -179,3 +179,41 @@ def test_an_unreadable_neighbour_script_keeps_every_helper_whole():
     js = b"function onLoad() {\n  leaf();\n}\nfunction leaf() {\n  return Xrm.Page.data;\n}\n"
     plan = _plan_handler_context(parse("javascript", js), {"onLoad": False}, None)
     assert plan.edits == () and plan.boundary == 1
+
+
+def test_a_call_in_a_handlers_parameter_default_keeps_the_helper_whole(tmp_path):
+    js = (
+        "function onLoad(a = leaf()) {\n  Xrm.Page.ui;\n}\n"
+        "function leaf() {\n  return Xrm.Page.data;\n}\n"
+    )
+    run, entry, counts = _run(tmp_path, js)
+    text = _text(run, entry)
+    assert "a = leaf()" in text and "function leaf() {" in text
+    assert counts["threaded"] == 0
+    assert any("parameter default" in r for r in _reasons(entry))
+
+
+@pytest.mark.parametrize(
+    ("helper", "reason"),
+    [
+        (
+            "var leaf = function recur(n) {\n  return Xrm.Page.data;\n};\n",
+            "named function expression",
+        ),
+        ("async function leaf() {\n  return Xrm.Page.data;\n}\n", "is async"),
+    ],
+)
+def test_a_helper_whose_calls_or_context_cannot_be_traced_stays_whole(tmp_path, helper, reason):
+    js = f"function onLoad() {{\n  Xrm.Page.ui;\n  leaf();\n}}\n{helper}"
+    run, entry, counts = _run(tmp_path, js)
+    assert "leaf(formContext" not in _text(run, entry) and counts["threaded"] == 0
+    assert any(reason in r for r in _reasons(entry))
+
+
+def test_a_non_ascii_helper_name_is_matched_in_another_script(tmp_path):
+    js = (
+        "function onLoad() {\n  Xrm.Page.ui;\n  \u00e9leaf();\n}\n"
+        "function \u00e9leaf() {\n  return Xrm.Page.data;\n}\n"
+    )
+    run, entry, counts = _run(tmp_path, js, {OTHER: "function other() { \u00e9leaf(2); }\n"})
+    assert "function \u00e9leaf() {" in _text(run, entry) and counts["boundary"] == 1

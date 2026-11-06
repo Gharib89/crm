@@ -341,7 +341,7 @@ def _other_scripts(
                 except OSError:
                     names[each] = None
                 else:
-                    names[each] = frozenset(re.findall(r"[A-Za-z_$][\w$]*", text))
+                    names[each] = frozenset(re.findall(r"[\w$]+", text))
         seen: set[str] = set()
         for other, found in names.items():
             if other == path:
