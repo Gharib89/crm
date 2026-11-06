@@ -622,3 +622,11 @@ def test_the_registration_rules_cite_learn_and_are_detect_only():
         rule = rules[rule_id]
         assert rule.kind == kind and rule.cls == "deprecated" and rule.transform is None
         assert all(s.startswith("https://learn.microsoft.com/") for s in rule.sources)
+
+
+def test_a_registration_judged_without_its_library_rule_is_unknown_not_a_crash(tmp_path):
+    form = _form("Main", _form_xml(_handler("onload", "L.f", LEGACY)), tmp_path)
+    rules = [r for r in assess.load_rules().rules if r.id == FORM_RULE]
+    found = assess._assess_record(form, rules, tmp_path)
+    assert [f.cls for f in found] == ["unknown"]
+    assert "is not loaded" in (found[0].reason or "")

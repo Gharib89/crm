@@ -632,7 +632,10 @@ class _Libraries:
         """
         slot = (rule_id, name.lower())
         if slot not in self._known:
-            self._known[slot] = self._read(self._rules[rule_id], name)
+            rule = self._rules.get(rule_id)
+            self._known[slot] = (
+                self._read(rule, name) if rule else (False, f"library rule {rule_id} is not loaded")
+            )
         return self._known[slot]
 
     def _read(self, rule: Rule, name: str) -> tuple[bool, str | None]:
