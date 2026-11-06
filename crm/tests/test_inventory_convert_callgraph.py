@@ -253,12 +253,13 @@ def test_a_dotted_helper_on_a_single_top_level_receiver_is_still_threaded(tmp_pa
 
 def test_a_ribbon_diff_script_is_a_caller_the_scan_sees(tmp_path):
     from types import SimpleNamespace
+    from typing import Any, cast
 
     from crm.core.inventory_convert import _other_scripts
 
     (tmp_path / "d.xml").write_text("<x onclick='leaf'/>", encoding="utf-8")
     record = SimpleNamespace(kind="ribbon_diff", artifacts=[SimpleNamespace(path="d.xml")])
-    names = _other_scripts(tmp_path, [record], frozenset())("lib.js")
+    names = _other_scripts(tmp_path, cast(Any, [record]), frozenset())("lib.js")
     assert names is not None and "leaf" in names
 
 
