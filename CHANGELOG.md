@@ -9,6 +9,63 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.101.0 (2026-11-06)
+
+### Bug Fixes
+
+- **inventory**: A damaged export stream is a failed kind, fix a stale comment
+  ([#1124](https://github.com/Gharib89/crm/pull/1124),
+  [`44a7f5a`](https://github.com/Gharib89/crm/commit/44a7f5a2e627e5142feb178e08a79c38889e32a1))
+
+- **inventory**: Keep the export inside the checkpoint, time out the sync export long, run it under
+  dry-run ([#1124](https://github.com/Gharib89/crm/pull/1124),
+  [`44a7f5a`](https://github.com/Gharib89/crm/commit/44a7f5a2e627e5142feb178e08a79c38889e32a1))
+
+- **legacy**: ExportSolution waits up to 30 minutes for the zip
+  ([#1124](https://github.com/Gharib89/crm/pull/1124),
+  [`44a7f5a`](https://github.com/Gharib89/crm/commit/44a7f5a2e627e5142feb178e08a79c38889e32a1))
+
+### Documentation
+
+- **inventory**: Manifest v3, the ribbon_diff kind and its cloud limit
+  ([#1124](https://github.com/Gharib89/crm/pull/1124),
+  [`44a7f5a`](https://github.com/Gharib89/crm/commit/44a7f5a2e627e5142feb178e08a79c38889e32a1))
+
+- **skill**: State the unread ribbon_diff positively
+  ([#1124](https://github.com/Gharib89/crm/pull/1124),
+  [`44a7f5a`](https://github.com/Gharib89/crm/commit/44a7f5a2e627e5142feb178e08a79c38889e32a1))
+
+### Features
+
+- **inventory**: Extract records the ribbon diff for each entity and the application
+  ([#1124](https://github.com/Gharib89/crm/pull/1124),
+  [`44a7f5a`](https://github.com/Gharib89/crm/commit/44a7f5a2e627e5142feb178e08a79c38889e32a1))
+
+- **inventory**: Extract records the ribbon diff for each entity and the application (#1100)
+  ([#1124](https://github.com/Gharib89/crm/pull/1124),
+  [`44a7f5a`](https://github.com/Gharib89/crm/commit/44a7f5a2e627e5142feb178e08a79c38889e32a1))
+
+- **inventory**: Manifest schema v3 adds the ribbon_diff kind
+  ([#1124](https://github.com/Gharib89/crm/pull/1124),
+  [`44a7f5a`](https://github.com/Gharib89/crm/commit/44a7f5a2e627e5142feb178e08a79c38889e32a1))
+
+### Refactoring
+
+- **inventory**: Name the unsupported reason, share the test zip builders
+  ([#1124](https://github.com/Gharib89/crm/pull/1124),
+  [`44a7f5a`](https://github.com/Gharib89/crm/commit/44a7f5a2e627e5142feb178e08a79c38889e32a1))
+
+### Testing
+
+- **inventory**: E2e asserts ribbon_diff coverage; refresh the eval worked example for schema v3
+  ([#1124](https://github.com/Gharib89/crm/pull/1124),
+  [`44a7f5a`](https://github.com/Gharib89/crm/commit/44a7f5a2e627e5142feb178e08a79c38889e32a1))
+
+- **inventory**: Satisfy the typecheck gate in the ribbon diff tests
+  ([#1124](https://github.com/Gharib89/crm/pull/1124),
+  [`44a7f5a`](https://github.com/Gharib89/crm/commit/44a7f5a2e627e5142feb178e08a79c38889e32a1))
+
+
 ## v1.100.0 (2026-11-06)
 
 ### Bug Fixes
