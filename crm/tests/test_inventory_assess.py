@@ -585,9 +585,13 @@ def test_registration_findings_round_trip_and_validate(tmp_path):
     out.write_text(text, encoding="utf-8")
     back = assess.read_findings(out)
     hits = {f.rule: f for f in back.findings if f.rule in (FORM_RULE, RIBBON_RULE)}
-    assert hits[FORM_RULE].evidence.registrations[0]["function"] == "L.f"
-    assert hits[RIBBON_RULE].evidence.registrations[0]["command"] == "cmd0"
-    assert hits[FORM_RULE].evidence.match_count == 1
+    form_ev = hits[FORM_RULE].evidence
+    ribbon_ev = hits[RIBBON_RULE].evidence
+    assert isinstance(form_ev, assess.RegistrationEvidence)
+    assert isinstance(ribbon_ev, assess.RegistrationEvidence)
+    assert form_ev.registrations[0]["function"] == "L.f"
+    assert ribbon_ev.registrations[0]["command"] == "cmd0"
+    assert form_ev.match_count == 1
 
 
 @pytest.mark.parametrize(
