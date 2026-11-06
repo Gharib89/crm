@@ -233,6 +233,23 @@ def test_a_function_that_is_also_a_form_handler_is_manual_review_on_both_sides(t
     assert "form handler" in reasons
 
 
+def test_a_form_handler_a_custom_rule_also_calls_is_not_rewritten(tmp_path):
+    rule = (
+        f'<EnableRule Id="r"><CustomRule Library="$webresource:{LIB}" FunctionName="run"'
+        ' Default="true" /></EnableRule>'
+    )
+    form = _xml(_event("onload", _handler("run")))
+    run = _pipeline(
+        tmp_path,
+        CMD_JS,
+        {"account": _diff_xml({"cmd.other": _call("other")}, rules=rule)},
+        {"Main": form},
+    )
+    (form_entry,) = _entries(run, "form")
+    assert form_entry["status"] == "manual-review" and form_entry["files"] == {}
+    assert _js_status(run) != "patched"
+
+
 def test_commands_sharing_a_function_are_patched_only_with_the_same_parameters(tmp_path):
     same = _diff_xml({"cmd.a": _call("run", "OrgName"), "cmd.b": _call("run", "OrgName")})
     run = _pipeline(tmp_path / "same", CMD_JS, {"account": same})
@@ -340,7 +357,7 @@ def test_a_control_outside_any_custom_action_does_not_place_the_command_on_a_for
     )
     run = _pipeline(tmp_path, CMD_JS, {"account": xml})
     assert _ribbon(run)["status"] == "manual-review"
-    assert "not on a form" in _ribbon(run)["manual_review"][0]["reason"]
+    assert "outside any CustomAction" in _ribbon(run)["manual_review"][0]["reason"]
 
 
 def test_an_optional_chain_stays_manual_review_while_a_string_and_a_comment_stay_as_written(

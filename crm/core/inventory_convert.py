@@ -695,6 +695,7 @@ def convert(
         )
         ribbon_calls = frozenset(
             [a.key for r in ribbons if r.diff for a in r.diff.actions if a.in_command]
+            + [k for r in ribbons if r.diff for k in r.diff.rule_calls]
             + [k for r in ribbons for k in r.named]
         )
         handlers, reasons = _eligible(forms, libraries, packages_of, ribbon_calls)

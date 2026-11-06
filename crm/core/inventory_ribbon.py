@@ -65,7 +65,11 @@ def _key(library: str, function: str) -> tuple[str, str]:
 def _not_form(command: str, locations: list[str]) -> str | None:
     if locations:
         away = next((x for x in locations if not x.lower().startswith(_FORM)), None)
-        return None if away is None else f"command {command} is shown at {away}, not on a form"
+        if away is None:
+            return None
+        if not away:
+            return f"command {command} is named by a control outside any CustomAction"
+        return f"command {command} is shown at {away}, not on a form"
     if command.lower().startswith(_FORM):
         return None
     return f"command {command} names no control in this diff, and its id is not a form command's"
