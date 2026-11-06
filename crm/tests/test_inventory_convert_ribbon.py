@@ -351,7 +351,6 @@ def test_a_function_an_unmappable_diff_calls_is_not_changed_behind_it(tmp_path):
 
 
 def test_a_diff_that_vanished_after_assessment_still_counts_as_a_caller(tmp_path):
-    inv = tmp_path / "inv"
     run = _pipeline(
         tmp_path / "first",
         CMD_JS,
@@ -388,7 +387,10 @@ def test_a_diff_that_vanished_after_assessment_still_counts_as_a_caller(tmp_path
     )
     assert res.exit_code == 0, res.output
     assert not list(again.rglob("*.patched*"))
-    assert inv.name == "inv"
+    entries = json.loads((again / "ledger.json").read_text(encoding="utf-8"))["entries"]
+    account = _ribbon({**run, "entries": entries}, "account")
+    assert account["status"] == "manual-review"
+    assert "cannot be patched" in account["manual_review"][0]["reason"]
 
 
 def test_a_control_outside_any_custom_action_does_not_place_the_command_on_a_form(tmp_path):
