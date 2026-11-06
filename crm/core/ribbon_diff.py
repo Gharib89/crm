@@ -51,7 +51,9 @@ def read_ribbon_diffs(zip_path: Path) -> dict[str | None, bytes]:
             path.pop()
             if "RibbonDiffXml" in path:
                 continue  # inside a diff: kept whole until the diff itself ends
-            depth = len(path)  # 1 is a child of the document root
+            # Depth counts ancestors: 1 is a child of the document root (the application's
+            # diff), 2 an `Entities/Entity`, 3 a child of an entity (its diff and its `Name`).
+            depth = len(path)
             if elem.tag == "Name" and path[-2:] == ["Entities", "Entity"]:
                 entity = (elem.text or "").strip().lower()
             elif elem.tag == "RibbonDiffXml" and depth in (1, 3):

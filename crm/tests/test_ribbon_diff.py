@@ -9,16 +9,10 @@ from xml.etree.ElementTree import ParseError
 import pytest
 
 from crm.core.ribbon_diff import read_ribbon_diffs
+from crm.tests.ribbon_zip import CUSTOM_ACTIONS, EMPTY_DIFF
 
-_CUSTOM = (
-    "<CustomActions><CustomAction Id='new.A' Location='Mscrm.Form.new_a.MainTab'>"
-    "<CommandUIDefinition/></CustomAction></CustomActions>"
-)
-_EMPTY = (
-    "<RibbonDiffXml><CustomActions/><Templates><RibbonTemplates/></Templates>"
-    "<CommandDefinitions/><RuleDefinitions><TabDisplayRules/><DisplayRules/>"
-    "<EnableRules/></RuleDefinitions><LocLabels/></RibbonDiffXml>"
-)
+_CUSTOM = CUSTOM_ACTIONS
+_EMPTY = EMPTY_DIFF
 
 
 def _entity(name: str, diff: str) -> str:
@@ -56,8 +50,8 @@ def test_keeps_the_application_and_each_entity_diff_that_holds_content(tmp_path)
     diffs = read_ribbon_diffs(_zip(tmp_path, doc))
     assert set(diffs) == {None, "new_project"}
     assert diffs["new_project"].startswith(b"<RibbonDiffXml>")
-    assert b"new.A" in diffs["new_project"]
-    assert b"new.A" in diffs[None]
+    assert b"new.Project.Do" in diffs["new_project"]
+    assert b"new.Project.Do" in diffs[None]
 
 
 def test_template_and_rule_content_count_one_level_down(tmp_path):

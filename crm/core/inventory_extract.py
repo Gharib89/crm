@@ -1006,7 +1006,7 @@ def extract(
         if run.unit(("ribbon",), unit, read_ribbon) is not None:
             ribbons[entity_name] = cp.staged("ribbon", entity_name or "_application", "ribbon.xml")
 
-    diff_units, diff_unsupported = _read_ribbon_diffs(source, cp, run, solutions)
+    diff_units, diff_unsupported_reason = _read_ribbon_diffs(source, cp, run, solutions)
 
     run.begin("build")
     built = _Builder(cp, out, rows, source.api, stock_scope)
@@ -1072,8 +1072,10 @@ def extract(
         else:
             status = "complete"
         coverage[kind] = KindCoverage(status, tally.pages, n, tally.truncated, tuple(tally.errors))
-    if diff_unsupported:
-        coverage["ribbon_diff"] = KindCoverage("unsupported", 0, 0, False, (diff_unsupported,))
+    if diff_unsupported_reason:
+        coverage["ribbon_diff"] = KindCoverage(
+            "unsupported", 0, 0, False, (diff_unsupported_reason,)
+        )
 
     inventory = Inventory(
         schema_version=SCHEMA_VERSION,
@@ -1098,7 +1100,7 @@ def extract(
             *source.static_gaps,
             *built.gaps(),
             *_ribbon_gaps(unlabelled),
-            *_ribbon_diff_gaps(diff_unsupported),
+            *_ribbon_diff_gaps(diff_unsupported_reason),
             *_source_gaps(run.errors),
             *usage_gaps,
         ),
@@ -1171,15 +1173,15 @@ def _read_ribbon_diffs(
     return units, None
 
 
-def _ribbon_diff_gaps(unsupported: str | None) -> list[ExtractionGap]:
-    if not unsupported:
+def _ribbon_diff_gaps(unsupported_reason: str | None) -> list[ExtractionGap]:
+    if not unsupported_reason:
         return []
     return [
         ExtractionGap(
             kind="ribbon_diff",
             key=None,
             description="the ribbon diffs of the org-wide customizations",
-            reason=unsupported,
+            reason=unsupported_reason,
         )
     ]
 
