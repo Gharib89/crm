@@ -692,7 +692,7 @@ registration, and how forms and ribbon diffs call those scripts:
 | `web-resource-odata-v2`: the `OrganizationData.svc` OData v2 endpoint | deprecated | both |
 | `web-resource-jquery-static`: the jQuery 2.1.1 the app shipped, removed online | blocker | `online` |
 | `form-handler-no-execution-context`: an enabled form handler without `passExecutionContext` whose library carries a `web-resource-xrm-page` finding (kind `form`) | deprecated | both |
-| `ribbon-action-no-primary-control`: a ribbon `JavaScriptFunction` on a `$webresource:` library with a `web-resource-xrm-page` finding and no `PrimaryControl` among its `CrmParameter`s (kind `ribbon_diff`) | deprecated | both |
+| `ribbon-action-no-primary-control`: a ribbon `JavaScriptFunction` on a web resource library (`$webresource:` or a `/WebResources/` path) with a `web-resource-xrm-page` finding and no `PrimaryControl` among its `CrmParameter`s (kind `ribbon_diff`) | deprecated | both |
 | `assembly-storage-online`, `assembly-storage-onprem`: an assembly stored on disk or in the GAC | blocker online, optional on-prem | one each |
 | `assembly-isolation-none`, `assembly-isolation-none-onprem`: an assembly registered without isolation | blocker online, optional on-prem | one each |
 

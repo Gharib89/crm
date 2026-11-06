@@ -682,13 +682,31 @@ def _form_handlers(root: Element) -> list[dict[str, Any]]:
 _WEB_RESOURCE = "$webresource:"
 
 
+def _web_resource_name(library: str) -> str | None:
+    """The web resource a ribbon action's ``Library`` names, or None for a platform script.
+
+    ``$webresource:<name>`` and a ``/WebResources/<name>`` path (with or without an org prefix)
+    name the org's web resource. Any other value is returned as it stands, so the inventory
+    lookup finds no such library and the registration is unknown, never clear.
+    """
+    lowered = library.lower()
+    if lowered.startswith("/_static/"):
+        return None
+    if lowered.startswith(_WEB_RESOURCE):
+        return library[len(_WEB_RESOURCE) :]
+    marker = "/webresources/"
+    at = lowered.find(marker)
+    return library[at + len(marker) :] if at >= 0 else library
+
+
 def _ribbon_actions(root: Element, parameter: str) -> list[dict[str, Any]]:
     """The ribbon ``JavaScriptFunction`` actions on a web resource that pass no *parameter*."""
     out: list[dict[str, Any]] = []
     for command in root.iter("CommandDefinition"):
         for action in command.iter("JavaScriptFunction"):
-            library = action.get("Library") or ""
-            if not library.lower().startswith(_WEB_RESOURCE):
+            raw = action.get("Library") or ""
+            library = _web_resource_name(raw)
+            if library is None:
                 continue  # a platform script (/_static/...) is not a web resource of the org
             passed = [p.get("Value") or "" for p in action.findall("CrmParameter")]
             if parameter not in passed:
@@ -696,7 +714,7 @@ def _ribbon_actions(root: Element, parameter: str) -> list[dict[str, Any]]:
                     {
                         "command": command.get("Id") or "",
                         "function": action.get("FunctionName") or "",
-                        "library": library[len(_WEB_RESOURCE) :],
+                        "library": library,
                         "crm_parameters": passed,
                     }
                 )

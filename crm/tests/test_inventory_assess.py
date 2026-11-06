@@ -643,3 +643,24 @@ def test_a_library_name_shared_by_two_web_resources_is_unknown_in_either_order(t
         found = assess._assess_record(form, selected, tmp_path, libs)
         assert [f.cls for f in found] == ["unknown"]
         assert "more than one web resource" in (found[0].reason or "")
+
+
+def test_a_ribbon_action_naming_a_library_by_path_or_unknown_form_is_judged_not_skipped(tmp_path):
+    diff = _diff(
+        "account",
+        _js_raw("/WebResources/" + LEGACY, "Legacy.byPath"),
+        _js_raw("/org/WebResources/" + CLEAN, "Clean.byPath"),
+        _js_raw("https://example.invalid/other.js", "Other.go"),
+        _js_raw("/_static/_common/scripts/RibbonActions.js", "Mscrm.go"),
+        folder=tmp_path,
+    )
+    result = assess.assess(_registrations(tmp_path, [diff]), "online")
+    found = _rule_findings(result, diff.key, RIBBON_RULE)
+    by_cls = {f.cls: f for f in found}
+    assert by_cls["deprecated"].evidence.match_count == 1
+    assert by_cls["deprecated"].evidence.registrations[0]["function"] == "Legacy.byPath"
+    assert (
+        by_cls["unknown"].reason
+        == "library https://example.invalid/other.js is not in the inventory"
+    )
+    assert len(found) == 2

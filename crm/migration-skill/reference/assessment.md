@@ -63,7 +63,7 @@ Two rules judge how a component calls a script, not the script itself:
 finding when the library the registration calls carries an `Xrm.Page` finding
 (`web-resource-xrm-page`) and the registration hands that library no context: an
 enabled form handler without `passExecutionContext`, or a `JavaScriptFunction` on
-a `$webresource:` library without `PrimaryControl` among its `CrmParameter`s.
+a web resource library (`$webresource:` or a `/WebResources/` path) without `PrimaryControl` among its `CrmParameter`s.
 
 - **Evidence** is `registrations`, one entry per flagged registration (form:
   `event`, `attribute`, `function`, `library`, the current
