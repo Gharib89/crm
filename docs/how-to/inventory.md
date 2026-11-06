@@ -775,7 +775,8 @@ A **ribbon command** function takes the context the same way, from `PrimaryContr
 `executionContext` ([Learn](https://learn.microsoft.com/power-apps/developer/model-driven-apps/pass-data-page-parameter-ribbon-actions#form-and-grid-context-in-ribbon-actions)),
 and the ribbon diff's actions are patched in the same work package (the diff travels with its
 entity's ribbon). `SelectedControl` is the grid context, so only a command shown on a form
-(every control naming it sits under a `Mscrm.Form.` location) is converted. The emit gate checks
+(every control naming it sits under a `Mscrm.Form.` location) is converted, and only when no other
+web resource names the function and no `CustomRule` calls it. The emit gate checks
 the patched diff still maps to its actions and exactly the planned ones now pass `PrimaryControl`.
 
 A **helper** the handlers and commands reach is threaded through the file's call graph: it gains a first

@@ -26,6 +26,7 @@ from crm.utils.safe_xml import fromstring
 
 PARAMETER = "PrimaryControl"
 _TAG = re.compile(rb"<JavaScriptFunction\b(?:\"[^\"]*\"|'[^']*'|[^>\"'])*>")
+_RULE = re.compile(rb"<CustomRule\b(?:\"[^\"]*\"|'[^']*'|[^>\"'])*>")
 _FORM = "mscrm.form."
 
 
@@ -156,13 +157,14 @@ _ATTR = re.compile(rb"([\w:.-]+)\s*=\s*(\"[^\"]*\"|'[^']*')")
 
 
 def ribbon_function_names(text: bytes) -> list[tuple[str, str]]:
-    """The ``(lowercase library, function)`` of every ``<JavaScriptFunction>`` the text shows.
+    """The ``(lowercase library, function)`` of every ``<JavaScriptFunction>`` and ``<CustomRule>``
+    the text shows.
 
     For a diff that cannot be mapped: it still calls these, so a function they name must not
     have its signature changed behind them.
     """
     out: list[tuple[str, str]] = []
-    for m in _TAG.finditer(text):
+    for m in (*_TAG.finditer(text), *_RULE.finditer(text)):
         attrs = {
             a.group(1).decode(): unescape(a.group(2)[1:-1].decode("utf-8", "replace"))
             for a in _ATTR.finditer(m.group(0))

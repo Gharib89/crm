@@ -61,10 +61,17 @@ def _diff_xml(
     )
 
 
-def _pipeline(root: Path, js: str, diffs: dict[str, str], forms: dict[str, str] | None = None):
+def _pipeline(
+    root: Path,
+    js: str,
+    diffs: dict[str, str],
+    forms: dict[str, str] | None = None,
+    scripts: dict[str, str] | None = None,
+):
     folder = root / "inv"
     folder.mkdir(parents=True)
     records = [_script(LIB, js, folder)]
+    records += [_script(name, text, folder) for name, text in (scripts or {}).items()]
     for entity, xml in diffs.items():
         records.append(
             _record(
@@ -256,6 +263,29 @@ def test_a_custom_rule_calling_the_function_keeps_it_whole(tmp_path):
     run = _pipeline(tmp_path, CMD_JS, {"account": _diff_xml({"cmd.run": _call("run")}, rules=rule)})
     assert _ribbon(run)["status"] == "manual-review" and _js_status(run) != "patched"
     assert "CustomRule" in _ribbon(run)["manual_review"][0]["reason"]
+
+
+def test_a_custom_rule_of_an_unmappable_diff_keeps_the_function_whole(tmp_path):
+    rule = (
+        f'<EnableRule Id="r"><CustomRule Library="$webresource:{LIB}" FunctionName="run"'
+        ' Default="true" /></EnableRule>'
+    )
+    bad = _diff_xml({"cmd.other": _call("other")}, rules=rule).replace(
+        "<RuleDefinitions>", "<!-- <JavaScriptFunction FunctionName='x' /> --><RuleDefinitions>"
+    )
+    good = _diff_xml({"cmd.run": _call("run")})
+    run = _pipeline(tmp_path, CMD_JS, {"account": good, "contact": bad})
+    assert not list(run["out"].rglob("*.patched*"))
+    assert "cannot be patched" in _ribbon(run, "account")["manual_review"][0]["reason"]
+
+
+def test_a_function_another_web_resource_calls_is_manual_review(tmp_path):
+    other = {"new_/scripts/caller.js": "function go() {\n  run();\n}\n"}
+    run = _pipeline(
+        tmp_path, CMD_JS, {"account": _diff_xml({"cmd.run": _call("run")})}, scripts=other
+    )
+    assert _ribbon(run)["status"] == "manual-review" and _js_status(run) != "patched"
+    assert "another web resource" in _ribbon(run)["manual_review"][0]["reason"]
 
 
 def test_a_shadowed_xrm_or_a_nested_callback_stays_manual_review(tmp_path):

@@ -428,7 +428,10 @@ def _identifiers(text: str) -> frozenset[str]:
 
 
 def _other_scripts(
-    inventory_dir: Path, records: Iterable[Record], registered: frozenset[str]
+    inventory_dir: Path,
+    records: Iterable[Record],
+    registered: frozenset[str],
+    kinds: frozenset[str] = _CALLER_KINDS,
 ) -> Callable[[str], frozenset[str] | None]:
     """Map a script's path to the names the inventory's other scripts mention.
 
@@ -439,7 +442,7 @@ def _other_scripts(
     its signature alone. *registered* is every function name a form registers. The scan is of
     the raw text, strings and comments included: it can only over-report.
     """
-    paths = [r.artifacts[0].path for r in records if r.kind in _CALLER_KINDS and r.artifacts]
+    paths = [r.artifacts[0].path for r in records if r.kind in kinds and r.artifacts]
     names: dict[str, frozenset[str] | None] = {}
 
     def others(path: str) -> frozenset[str] | None:
@@ -515,6 +518,7 @@ def _eligible_commands(
     libraries: dict[str, tuple[str, str, str]],
     packages: Callable[[str, str], set[str]],
     handlers: frozenset[tuple[str, str]],
+    scripts: Callable[[str], frozenset[str] | None],
 ) -> tuple[dict[tuple[str, str, str], frozenset[str]], dict[tuple[str, str], str]]:
     """Which ribbon command functions of each library may be rewritten, and why the others may not.
 
@@ -522,7 +526,8 @@ def _eligible_commands(
     inventory, is a command action this run patches in exactly the work packages that ship the
     library, on a command shown on a form, with the same ``CrmParameter`` list, and none passes
     ``PrimaryControl`` already. A function a form handler, a ribbon ``CustomRule`` or an element
-    outside a command also calls would be called with the wrong arguments, so it stays.
+    outside a command also calls would be called with the wrong arguments, so it stays, as does
+    one another web resource names (*scripts* maps a library's path to those names).
     """
     regs: dict[tuple[str, str], list[tuple[_Ribbon, RibbonAction]]] = {}
     reasons: dict[tuple[str, str], str] = {}
@@ -550,6 +555,8 @@ def _eligible_commands(
             reasons[key] = f"{key[1]} is also called by a ribbon CustomRule"
         elif key in handlers:
             reasons[key] = f"{key[1]} is also registered on a form handler"
+        elif (names := scripts(group[2])) is None or key[1].rsplit(".", 1)[-1] in names:
+            reasons[key] = f"{key[1]} is also named in another web resource: its callers stay"
         elif any(not r.target for r, _ in found):
             reasons[key] = f"{key[1]} is also called from a ribbon diff this run does not patch"
         elif away:
@@ -662,6 +669,9 @@ def convert(
     command_reasons: dict[tuple[str, str], str] = {}
     handlers: dict[tuple[str, str, str], dict[str, bool]] = {}
     commands: dict[tuple[str, str, str], frozenset[str]] = {}
+    web_callers = _other_scripts(
+        inventory_dir, inv.records, frozenset(), frozenset(("web_resource",))
+    )
     libraries: dict[str, tuple[str, str, str]] = {}
     if form_rule is not None or ribbon_rule is not None:
         script_types = TRANSFORMS[HANDLER_TRANSFORM].web_resource_types
@@ -688,7 +698,9 @@ def convert(
             + [k for r in ribbons for k in r.named]
         )
         handlers, reasons = _eligible(forms, libraries, packages_of, ribbon_calls)
-        commands, command_reasons = _eligible_commands(ribbons, libraries, packages_of, form_calls)
+        commands, command_reasons = _eligible_commands(
+            ribbons, libraries, packages_of, form_calls, web_callers
+        )
         # One rule owns a library's context rewrite: the form rule when handlers are rewritten.
         for gkey in handlers.keys() | commands.keys():
             owner = form_rule if handlers.get(gkey) and form_rule is not None else ribbon_rule
