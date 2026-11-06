@@ -64,7 +64,8 @@ class Transform:
 
     A transform with *needs_handlers* is also given the form handlers that call the file:
     each registered function name, mapped to whether any registration passes it positional
-    ``parameters``.
+    ``parameters``. It is also given the ribbon command functions (``commands``) that the
+    ribbon diffs call.
     """
 
     language: str
@@ -978,7 +979,10 @@ def _thread_helpers(
 
 
 def _plan_handler_context(
-    root: Node, functions: Mapping[str, bool], outside: frozenset[str] | None = frozenset()
+    root: Node,
+    functions: Mapping[str, bool],
+    outside: frozenset[str] | None = frozenset(),
+    commands: frozenset[str] = frozenset(),
 ) -> Plan:
     """Give each registered handler in *functions* an ``executionContext`` and a ``formContext``.
 
@@ -993,8 +997,14 @@ def _plan_handler_context(
     and ``Xrm.Page.context``, which `global-context` owns. A handler is rewritten when at least one
     of its sites is, or when it calls a threaded helper.
 
-    A helper the handlers reach is threaded too, see `_thread_helpers`; *outside* holds the
-    names the rest of the inventory mentions, None where a script could not be read.
+    A ribbon command function in *commands* is rewritten the same way, except that the platform
+    passes ``PrimaryControl`` (the form context itself, per the Learn page on ribbon action
+    parameters) as its first argument: it gets a ``primaryControl`` parameter and
+    ``var formContext = primaryControl;``. The ribbon patch adds the ``CrmParameter``, so a
+    function both a handler and a command, or reading ``primaryControl``, stays whole.
+
+    A helper the handlers and commands reach is threaded too, see `_thread_helpers`; *outside*
+    holds the names the rest of the inventory mentions, None where a script could not be read.
     """
     nodes = _walk(root)
     table = _definitions(nodes)
@@ -1004,7 +1014,9 @@ def _plan_handler_context(
     done: list[str] = []
     ready: dict[str, tuple[list[Edit], list[Edit]]] = {}
     cleared = 0
-    for name, has_parameters in sorted(functions.items()):
+    roots = {**dict.fromkeys(commands, False), **functions}
+    for name, has_parameters in sorted(roots.items()):
+        command = name in commands and name not in functions
         defs = table.get(name.encode(), [])
         if not defs:
             continue
@@ -1019,17 +1031,22 @@ def _plan_handler_context(
         ]
         first = params.named_children[0] if params is not None and params.named_children else None
         has_context = (
-            first is not None
+            not command
+            and first is not None
             and first.type == "identifier"
             and _CONTEXT_PARAM.fullmatch((first.text or b"").decode()) is not None
         )
         context = (
-            (first.text or b"").decode()
+            "primaryControl"
+            if command
+            else (first.text or b"").decode()
             if has_context and first is not None
             else "executionContext"
         )
         reason: str | None = None
-        if len(defs) > 1:
+        if name in commands and name in functions:
+            reason = f"{name} is both a form handler and a ribbon command"
+        elif len(defs) > 1:
             reason = f"{name} is defined more than once in this file"
         elif other:
             at = other[0].start_point.row + 1
@@ -1044,8 +1061,12 @@ def _plan_handler_context(
             reason = f"{name} reads arguments, whose positions the context would shift"
         elif any(n.type in _NAMES and n.text == b"formContext" for n in inside):
             reason = f"formContext is already used in {name}"
-        elif not has_context and any(
-            n.type in _NAMES and n.text == b"executionContext" for n in inside
+        elif command and any(n.type in _NAMES and n.text == b"primaryControl" for n in inside):
+            reason = f"primaryControl is already used in {name}"
+        elif (
+            not command
+            and not has_context
+            and any(n.type in _NAMES and n.text == b"executionContext" for n in inside)
         ):
             reason = f"executionContext is already used in {name}"
         elif has_context and has_parameters:
@@ -1063,7 +1084,8 @@ def _plan_handler_context(
         if not has_context:
             lead = first.start_byte if first is not None else params.start_byte + 1
             tail = b", " if first is not None else b""
-            own.append(Edit(lead, lead, b"executionContext" + tail))
+            name_ = "primaryControl" if command else "executionContext"
+            own.append(Edit(lead, lead, name_.encode() + tail))
         brace, glue = body.start_byte + 1, ""
         for stmt in body.named_children:
             if stmt.type == "comment":
@@ -1075,11 +1097,10 @@ def _plan_handler_context(
                 break
             brace = stmt.end_byte
             glue = "" if (stmt.text or b"").endswith(b";") else ";"
-        own.append(
-            Edit(brace, brace, f"{glue} var formContext = {context}.getFormContext();".encode())
-        )
+        source = context if command else f"{context}.getFormContext()"
+        own.append(Edit(brace, brace, f"{glue} var formContext = {source};".encode()))
         ready[name] = (sites, own)
-    graph = _thread_helpers(nodes, table, functions, set(ready), shadowed, outside)
+    graph = _thread_helpers(nodes, table, roots, set(ready), shadowed, outside)
     for name, (sites, own) in ready.items():
         if sites or name in graph.done:
             edits.extend(own + sites)
