@@ -166,7 +166,7 @@
       }
     }
   ],
-  "generated_at": "2026-11-06T03:02:39Z",
+  "generated_at": "2026-11-06T04:49:16Z",
   "incomplete": {
     "dependency": "unsupported",
     "ribbon_diff": "unsupported"
@@ -181,7 +181,7 @@
   },
   "rules": {
     "schema_version": 1,
-    "sha256": "9e14016acdf570d33788cddd3c13ca8bc1f26ec768ec42864d9ed7b9e0cf573a",
+    "sha256": "0e6d27dacfc320ceeb6774e27232a64d44f8244dae59254fcab1bf163fa3c47f",
     "version": 2
   },
   "rules_hit": {
