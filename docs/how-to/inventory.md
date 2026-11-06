@@ -668,6 +668,11 @@ registration:
 | `web-resource-xrm-page`: the `Xrm.Page` object | deprecated | both |
 | `web-resource-xrm-utility`: `Xrm.Utility.openEntityForm`, `alertDialog` and the other deprecated methods | deprecated | both |
 | `web-resource-get-server-url`: `getServerUrl()` | deprecated | both |
+| `web-resource-context-settings`: `getUserName()`, `getUserId()` and the other context methods that moved to `userSettings` and `organizationSettings` | deprecated | both |
+| `web-resource-grid-row`: `GridRow.getData()` and `GridRowData.getEntity()` | deprecated | both |
+| `web-resource-xrm-mobile-offline`: `Xrm.Mobile.offline` | deprecated | both |
+| `web-resource-entity-save`: `formContext.data.entity.save()` | deprecated | both |
+| `web-resource-keypress`: `addOnKeyPress` and the other key-press and auto-complete methods | deprecated | both |
 | `web-resource-crmform`: CRM 4.0 `crmForm` scripting | blocker | both |
 | `web-resource-soap-2007`: the `/MSCrmServices/2007/` endpoint | blocker | both |
 | `web-resource-soap-2011`: the 2011 `Organization.svc` or `Discovery.svc` SOAP endpoint | deprecated | both |
@@ -715,19 +720,30 @@ inventory, the `assess` findings and the `packages` output, and writes only unde
 opts in with an optional `transform` id in the rules file; `web-resource-xrm-page` names
 `global-context`. A component is converted only when its finding's rule names a transform.
 
-`global-context` rewrites `Xrm.Page.context.<method>(...)` to
-`Xrm.Utility.getGlobalContext().<method>(...)` in JavaScript web resources (type 3).
-The code is parsed with tree-sitter, so strings and comments are never rewritten. Only a
-direct call of a method that keeps its name is rewritten (`getClientUrl`, `getUserId`,
-`getUserRoles`, `getUserLcid`, `getOrgLcid`, `getOrgUniqueName`,
-`getTimeZoneOffsetMinutes`, `getVersion`, `isOutlookClient`, `isOutlookOnline`,
-`prependOrgName`, `getQueryStringParameters`). An alias, a method that moved (such as
-`getUserName`) and an HTML web resource become **manual-review entries** with file, line,
-rule and reason, and are left unchanged.
+Each transform reads JavaScript web resources (type 3), parsed with tree-sitter, so a string or
+comment is never rewritten. A shadowed or locally bound `Xrm`, a qualified `window.Xrm` or
+`parent.Xrm`, an optional chain, a call spanning lines and an HTML web resource become
+**manual-review entries** with file, line, rule and reason, and are left unchanged.
+
+| Rule | Transform | Rewritten | Manual review |
+|---|---|---|---|
+| `web-resource-xrm-page` | `global-context` | `Xrm.Page.context.<m>()` to `Xrm.Utility.getGlobalContext().<m>()` for `getClientUrl`, `getVersion`, `getQueryStringParameters`, `isOutlookClient`, `isOutlookOnline`, `prependOrgName` | an alias, any other use of `Xrm.Page.context`, an unknown method |
+| `web-resource-context-settings` | `context-settings` | a direct call on `Xrm.Page.context` or `Xrm.Utility.getGlobalContext()`: `getUserName`, `getUserId`, `getUserLcid` to `userSettings.userName`, `.userId`, `.languageId`; `getTimeZoneOffsetMinutes()` to `userSettings.getTimeZoneOffsetMinutes()`; `getOrgLcid`, `getOrgUniqueName`, `getIsAutoSaveEnabled` to `organizationSettings.languageId`, `.uniqueName`, `.isAutoSaveEnabled` | a call with arguments; every `getUserRoles()` call (manual review) |
+| `web-resource-grid-row` | `grid-row` | `<row>.getData().getEntity()` to `<row>.data.entity` | `getData()` or `getEntity()` alone (the file does not prove the receiver) |
+| `web-resource-xrm-mobile-offline` | `mobile-offline` | `Xrm.Mobile.offline.<m>(...)` to `Xrm.WebApi.offline.<m>(...)` for `createRecord`, `retrieveRecord`, `retrieveMultipleRecords`, `updateRecord`, `deleteRecord` | `isOfflineEnabled` and any other use |
+| `web-resource-entity-save` | `entity-save` | `<x>.data.entity.save()` to `<x>.data.save()` | `save(saveOption)` with an argument |
+| `web-resource-xrm-utility` | `xrm-utility-review` | nothing | `openEntityForm`, `openQuickCreate`, `openWebResource`, `alertDialog`, `confirmDialog`, `isActivityType`: the signature or sync behaviour changes |
+| `web-resource-keypress` | `keypress-review` | nothing | `addOnKeyPress`, `removeOnKeyPress`, `fireOnKeyPress`, `showAutoComplete`, `hideAutoComplete`: no API replacement |
+
+`getUserRoles()` returned GUID strings and `userSettings.roles` holds `{id, name}` lookups, so
+the call changes the element type for whatever reads the list, and is always a manual-review
+entry. `data.save` is asynchronous and
+takes a `saveOptions` object. A component whose findings name several transforms gets all their
+edits in one patch, the transforms running in findings order, one ledger entry per rule.
 
 An **emit gate** checks each rewritten file: the patched code must parse with no more
 error nodes, and re-running the rule's detection must find exactly the rewritten sites
-fewer. A rejected plan writes nothing and becomes a manual-review entry.
+fewer, and the rewrite must keep the line count (so manual-review line numbers stay valid). A rejected plan writes nothing and becomes a manual-review entry.
 
 Under `--out`, per work package and component:
 
@@ -736,7 +752,7 @@ Under `--out`, per work package and component:
 | `<package id>/<stem>.diff` | unified diff against the extracted text, normalized (no BOM, LF) |
 | `<package id>/<stem>.patched.js` | the patched text |
 | `<package id>/<stem>.repo.diff` | diff against the repository file, only when `--source-map` marks the web resource `matched` by hash |
-| `ledger.json` | `schema_version` 1; one entry per package and component key: `status` (`patched` or `manual-review`), `edits`, `original_sha256`, `patched_sha256`, `repo_path`, `files`, `manual_review` |
+| `ledger.json` | `schema_version` 1; one entry per package, component key and rule: `status` (`patched` or `manual-review`), `edits`, `original_sha256`, `patched_sha256`, `repo_path`, `files`, `manual_review` |
 
 A component with no transformable finding writes nothing. `--out` must be new or empty
 and not inside the inventory. The repo diff derives from the deployed, normalized text, so
