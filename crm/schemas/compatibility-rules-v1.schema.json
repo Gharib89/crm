@@ -69,7 +69,8 @@
             "solution_membership",
             "dependency",
             "ribbon",
-            "sitemap"
+            "sitemap",
+            "ribbon_diff"
           ]
         },
         "class": {
@@ -162,6 +163,46 @@
                 "values": {
                   "type": "array",
                   "minItems": 1
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "type",
+                "library_rule"
+              ],
+              "properties": {
+                "type": {
+                  "const": "form_handler_context"
+                },
+                "library_rule": {
+                  "description": "Id of a content_pattern rule: a form handler that does not pass the execution context is a hit when its library's text matches that rule.",
+                  "type": "string",
+                  "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "type",
+                "library_rule",
+                "parameter"
+              ],
+              "properties": {
+                "type": {
+                  "const": "ribbon_action_parameter"
+                },
+                "library_rule": {
+                  "description": "Id of a content_pattern rule: a ribbon JavaScriptFunction lacking the parameter is a hit when its web resource library's text matches that rule.",
+                  "type": "string",
+                  "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+                },
+                "parameter": {
+                  "description": "The CrmParameter Value the action must pass.",
+                  "type": "string",
+                  "minLength": 1
                 }
               }
             }

@@ -673,8 +673,8 @@ applies (see [Convert code](#convert-code)). The rules file is
 [`crm/rules/compatibility-rules.json`](https://github.com/Gharib89/crm/blob/main/crm/rules/compatibility-rules.json),
 published with its format,
 [`compatibility-rules-v1.schema.json`](https://github.com/Gharib89/crm/blob/main/crm/schemas/compatibility-rules-v1.schema.json).
-Version 1 covers web resource scripts (HTML and JavaScript) and plug-in assembly
-registration:
+The rules cover web resource scripts (HTML and JavaScript), plug-in assembly
+registration, and how forms and ribbon diffs call those scripts:
 
 | Rule | Class | Targets |
 |---|---|---|
@@ -691,6 +691,8 @@ registration:
 | `web-resource-soap-2011`: the 2011 `Organization.svc` or `Discovery.svc` SOAP endpoint | deprecated | both |
 | `web-resource-odata-v2`: the `OrganizationData.svc` OData v2 endpoint | deprecated | both |
 | `web-resource-jquery-static`: the jQuery 2.1.1 the app shipped, removed online | blocker | `online` |
+| `form-handler-no-execution-context`: an enabled form handler without `passExecutionContext` whose library carries a `web-resource-xrm-page` finding (kind `form`) | deprecated | both |
+| `ribbon-action-no-primary-control`: a ribbon `JavaScriptFunction` on a `$webresource:` library with a `web-resource-xrm-page` finding and no `PrimaryControl` among its `CrmParameter`s (kind `ribbon_diff`) | deprecated | both |
 | `assembly-storage-online`, `assembly-storage-onprem`: an assembly stored on disk or in the GAC | blocker online, optional on-prem | one each |
 | `assembly-isolation-none`, `assembly-isolation-none-onprem`: an assembly registered without isolation | blocker online, optional on-prem | one each |
 
@@ -699,8 +701,8 @@ never by GUID:
 
 | Class | When |
 |---|---|
-| `blocker`, `deprecated`, `optional` | a rule matched; the evidence is the artifact `path`, its `sha256`, the first ten match `locations` (line and column) and the `match_count`, or for a registration rule the recorded `field` and `value` |
-| `unknown` | no rule applies to the component (reason `no rule`: a kind no rule covers, or a binary web resource); a rule needs a field the inventory did not record (`field isolation_mode not recorded`, an inventory extracted before crm recorded it); a script artifact is missing or its hash differs from the manifest; an extraction gap names the component (`extraction gap: <reason>`); its kind was not read complete (`kind coverage partial`); or the inventory's source version is not a dotted version (extract writes `unknown` when it cannot read it), so no rule's version range can be decided |
+| `blocker`, `deprecated`, `optional` | a rule matched; the evidence is the artifact `path`, its `sha256`, the first ten match `locations` (line and column) and the `match_count`, for a plug-in registration rule the recorded `field` and `value`, and for the two form and ribbon rules the `path`, `sha256`, `match_count` and `registrations`: per flagged handler its `event`, `attribute`, `function`, `library` and current `passExecutionContext`, per flagged action its `command`, `function`, `library` and `crm_parameters` |
+| `unknown` | no rule applies to the component (reason `no rule`: a kind no rule covers, or a binary web resource); a rule needs a field the inventory did not record (`field isolation_mode not recorded`, an inventory extracted before crm recorded it); a script artifact is missing or its hash differs from the manifest; an extraction gap names the component (`extraction gap: <reason>`); its kind was not read complete (`kind coverage partial`); a form or ribbon rule cannot read its library (`library <name> is not in the inventory`, `is not a script web resource`, or the library's artifact problem) or its own XML (`artifact is not well-formed XML`); or the inventory's source version is not a dotted version (extract writes `unknown` when it cannot read it), so no rule's version range can be decided |
 | `clear` | the rules that apply found nothing |
 
 A gap or incomplete coverage adds an `unknown` beside the rule findings, so a component

@@ -330,3 +330,291 @@ def test_get_server_url_matches_the_context_method_only(tmp_path, content, hit):
     rules = [r for r in assess.load_rules().rules if r.id == "web-resource-get-server-url"]
     found = assess._assess_record(record, rules, folder)
     assert ([f.cls for f in found] == ["deprecated"]) is hit
+
+
+# ── Registrations: form handlers and ribbon actions (#1101) ─────────────────
+
+LEGACY = "new_/scripts/legacy.js"
+CLEAN = "new_/scripts/clean.js"
+
+
+def _handler(event, function, library, *, passed=None, enabled="true", attribute=None) -> str:
+    flag = "" if passed is None else f' passExecutionContext="{str(passed).lower()}"'
+    attr = "" if attribute is None else f' attribute="{attribute}"'
+    return (
+        f'<event name="{event}"{attr}><Handlers><Handler functionName="{function}" '
+        f'libraryName="{library}" enabled="{enabled}"{flag} /></Handlers></event>'
+    )
+
+
+def _form_xml(*events: str, internal: str = "") -> bytes:
+    return (f"<form><events>{''.join(events)}{internal}</events></form>").encode()
+
+
+def _form(name: str, xml: bytes, folder: Path) -> inv.Record:
+    fields = {"entity": "account", "form_type": 2, "name": name}
+    return _record("form", fields, folder, files=[("form.xml", xml, True)])
+
+
+def _diff(entity: str, *actions: str, folder: Path) -> inv.Record:
+    commands = "".join(
+        f'<CommandDefinition Id="cmd{i}"><Actions>{a}</Actions></CommandDefinition>'
+        for i, a in enumerate(actions)
+    )
+    xml = f"<RibbonDiffXml><CommandDefinitions>{commands}</CommandDefinitions></RibbonDiffXml>"
+    return _record(
+        "ribbon_diff", {"entity": entity}, folder, files=[("ribbon-diff.xml", xml.encode(), True)]
+    )
+
+
+def _js(library: str, function: str, *params: str) -> str:
+    inner = "".join(f'<CrmParameter Value="{p}" />' for p in params)
+    return (
+        f'<JavaScriptFunction Library="$webresource:{library}" FunctionName="{function}">'
+        f"{inner}</JavaScriptFunction>"
+    )
+
+
+def _js_raw(library: str, function: str) -> str:
+    return f'<JavaScriptFunction Library="{library}" FunctionName="{function}" />'
+
+
+def _registrations(folder: Path, records: list[inv.Record], *, version="5.0.9690.4376") -> Path:
+    records = [_script(LEGACY, XRM_PAGE_JS, folder), _script(CLEAN, CLEAN_JS, folder), *records]
+    counts: dict[str, int] = {}
+    for record in records:
+        counts[record.kind] = counts.get(record.kind, 0) + 1
+    manifest = inv.Inventory(
+        schema_version=inv.SCHEMA_VERSION,
+        source=inv.Source("crm2011", ORG, None, version),
+        extracted_at="2026-11-01T10:00:00Z",
+        cli_version="1.101.0",
+        scope=inv.Scope("org", ()),
+        publication="published",
+        records=tuple(records),
+        coverage={k: inv.KindCoverage("complete", 1, n, False, ()) for k, n in counts.items()},
+        gaps=(),
+    )
+    (folder / inv.MANIFEST_NAME).write_text(inv.dump_manifest(manifest), encoding="utf-8")
+    return folder
+
+
+def _rule_findings(result, key: str, rule: str) -> list:
+    return [f for f in _findings(result, key) if f.rule == rule]
+
+
+FORM_RULE = "form-handler-no-execution-context"
+RIBBON_RULE = "ribbon-action-no-primary-control"
+
+
+def test_a_handler_without_the_context_on_an_xrm_page_library_is_a_finding(tmp_path):
+    folder = tmp_path / "f"
+    folder.mkdir()
+    xml = _form_xml(
+        _handler("onload", "Legacy.onLoad", LEGACY, passed=False),
+        _handler("onsave", "Legacy.onSave", LEGACY, passed=True),
+        _handler("onchange", "Legacy.onName", LEGACY, passed=False, attribute="name"),
+        _handler("onload", "Clean.onLoad", CLEAN, passed=False),
+        _handler("onload", "Legacy.off", LEGACY, passed=False, enabled="false"),
+    )
+    form = _form("Information", xml, folder)
+    result = assess.assess(_registrations(folder, [form]), "online")
+    (hit,) = _rule_findings(result, form.key, FORM_RULE)
+    assert (hit.cls, hit.reason) == ("deprecated", None)
+    evidence = hit.evidence
+    assert evidence.path == form.artifacts[0].path and evidence.sha256 == form.artifacts[0].sha256
+    assert evidence.match_count == 2
+    assert evidence.registrations == (
+        {
+            "event": "onchange",
+            "attribute": "name",
+            "function": "Legacy.onName",
+            "library": LEGACY,
+            "passExecutionContext": False,
+        },
+        {
+            "event": "onload",
+            "attribute": None,
+            "function": "Legacy.onLoad",
+            "library": LEGACY,
+            "passExecutionContext": False,
+        },
+    )
+
+
+def test_a_missing_flag_reads_as_not_passing_and_internal_handlers_are_left_alone(tmp_path):
+    folder = tmp_path / "f"
+    folder.mkdir()
+    xml = _form_xml(
+        _handler("onload", "Legacy.onLoad", LEGACY),
+        internal='<event name="onsave"><InternalHandlers><Handler functionName="x" '
+        f'libraryName="{LEGACY}" passExecutionContext="false" /></InternalHandlers></event>',
+    )
+    form = _form("Information", xml, folder)
+    result = assess.assess(_registrations(folder, [form]), "online")
+    (hit,) = _rule_findings(result, form.key, FORM_RULE)
+    assert hit.evidence.match_count == 1
+    assert hit.evidence.registrations[0]["passExecutionContext"] is False
+
+
+def test_handlers_that_pass_the_context_or_use_a_clean_library_are_clear(tmp_path):
+    folder = tmp_path / "f"
+    folder.mkdir()
+    passing = _form(
+        "Passing", _form_xml(_handler("onload", "Legacy.onLoad", LEGACY, passed=True)), folder
+    )
+    clean = _form(
+        "Clean", _form_xml(_handler("onload", "Clean.onLoad", CLEAN, passed=False)), folder
+    )
+    none = _form("Empty", _form_xml(), folder)
+    result = assess.assess(_registrations(folder, [passing, clean, none]), "online")
+    for form in (passing, clean, none):
+        assert _classes(result, form.key) == {"clear"}, form.key
+
+
+def test_a_library_the_inventory_cannot_judge_makes_the_form_unknown(tmp_path):
+    folder = tmp_path / "f"
+    folder.mkdir()
+    absent = _form(
+        "Absent",
+        _form_xml(_handler("onload", "M.f", "new_/scripts/missing.js", passed=False)),
+        folder,
+    )
+    image = _record(
+        "web_resource",
+        {"name": "new_/img/a.png", "web_resource_type": 5},
+        folder,
+        files=[("content.png", b"\x89PNG", False)],
+    )
+    typed = _form(
+        "Typed", _form_xml(_handler("onload", "M.f", "new_/img/a.png", passed=False)), folder
+    )
+    result = assess.assess(_registrations(folder, [absent, image, typed]), "online")
+    (a,) = _findings(result, absent.key)
+    assert (a.cls, a.rule) == ("unknown", FORM_RULE)
+    assert a.reason == "library new_/scripts/missing.js is not in the inventory"
+    (t,) = _findings(result, typed.key)
+    assert (t.cls, t.rule) == ("unknown", FORM_RULE)
+    assert t.reason == "library new_/img/a.png is not a script web resource"
+
+
+def test_an_unreadable_form_artifact_is_unknown(tmp_path):
+    folder = tmp_path / "f"
+    folder.mkdir()
+    form = _form("Broken", b"<form><events>", folder)
+    result = assess.assess(_registrations(folder, [form]), "online")
+    (found,) = _findings(result, form.key)
+    assert found.cls == "unknown" and "not well-formed XML" in found.reason
+
+
+def test_a_library_artifact_changed_since_extraction_makes_the_form_unknown(tmp_path):
+    folder = tmp_path / "f"
+    folder.mkdir()
+    form = _form("Information", _form_xml(_handler("onload", "L.f", LEGACY, passed=False)), folder)
+    _registrations(folder, [form])
+    record = next(r for r in inv.read_inventory(folder).records if r.key == LEGACY)
+    (folder / record.artifacts[0].path).write_text("// edited\n", encoding="utf-8")
+    result = assess.assess(folder, "online")
+    (found,) = _findings(result, form.key)
+    assert found.cls == "unknown"
+    assert found.reason == f"library {LEGACY}: artifact changed since extraction: " + (
+        record.artifacts[0].path
+    )
+
+
+def test_a_ribbon_action_without_primary_control_on_an_xrm_page_library_is_a_finding(tmp_path):
+    folder = tmp_path / "r"
+    folder.mkdir()
+    diff = _diff(
+        "account",
+        _js(LEGACY, "Legacy.approve"),
+        _js(LEGACY, "Legacy.reject", "FirstPrimaryItemId", "SelectedControl"),
+        _js(LEGACY, "Legacy.ok", "PrimaryControl"),
+        _js(CLEAN, "Clean.go"),
+        '<Url Address="/main.aspx" />',
+        _js_raw("/_static/_common/scripts/RibbonActions.js", "Mscrm.go"),
+        folder=folder,
+    )
+    result = assess.assess(_registrations(folder, [diff]), "online")
+    (hit,) = _rule_findings(result, diff.key, RIBBON_RULE)
+    assert hit.cls == "deprecated"
+    assert hit.evidence.match_count == 2
+    assert hit.evidence.registrations == (
+        {
+            "command": "cmd0",
+            "function": "Legacy.approve",
+            "library": LEGACY,
+            "crm_parameters": [],
+        },
+        {
+            "command": "cmd1",
+            "function": "Legacy.reject",
+            "library": LEGACY,
+            "crm_parameters": ["FirstPrimaryItemId", "SelectedControl"],
+        },
+    )
+
+
+def test_ribbon_actions_that_pass_primary_control_are_clear(tmp_path):
+    folder = tmp_path / "r"
+    folder.mkdir()
+    diff = _diff("account", _js(LEGACY, "Legacy.ok", "PrimaryControl"), folder=folder)
+    result = assess.assess(_registrations(folder, [diff]), "online")
+    assert _classes(result, diff.key) == {"clear"}
+
+
+def test_a_ribbon_library_missing_from_the_inventory_is_unknown(tmp_path):
+    folder = tmp_path / "r"
+    folder.mkdir()
+    diff = _diff("account", _js("new_/scripts/gone.js", "Gone.f"), folder=folder)
+    result = assess.assess(_registrations(folder, [diff]), "online")
+    (found,) = _findings(result, diff.key)
+    assert (found.cls, found.rule) == ("unknown", RIBBON_RULE)
+    assert found.reason == "library new_/scripts/gone.js is not in the inventory"
+
+
+def test_registration_findings_round_trip_and_validate(tmp_path):
+    folder = tmp_path / "rt"
+    folder.mkdir()
+    form = _form("Information", _form_xml(_handler("onload", "L.f", LEGACY, passed=False)), folder)
+    diff = _diff("account", _js(LEGACY, "Legacy.approve"), folder=folder)
+    text = assess.dump_findings(assess.assess(_registrations(folder, [form, diff]), "online"))
+    schema = json.loads((SCHEMAS / "compatibility-findings-v1.schema.json").read_text())
+    jsonschema.validate(json.loads(text), schema)
+    out = tmp_path / "findings.json"
+    out.write_text(text, encoding="utf-8")
+    back = assess.read_findings(out)
+    hits = {f.rule: f for f in back.findings if f.rule in (FORM_RULE, RIBBON_RULE)}
+    assert hits[FORM_RULE].evidence.registrations[0]["function"] == "L.f"
+    assert hits[RIBBON_RULE].evidence.registrations[0]["command"] == "cmd0"
+    assert hits[FORM_RULE].evidence.match_count == 1
+
+
+@pytest.mark.parametrize(
+    ("kind", "rule_id", "change", "match"),
+    [
+        ("form", FORM_RULE, lambda r: r["detection"].update(library_rule="nope"), "library_rule"),
+        (
+            "form",
+            FORM_RULE,
+            lambda r: r["detection"].update(library_rule="assembly-storage-online"),
+            "library_rule",
+        ),
+        ("form", FORM_RULE, lambda r: r.update(kind="view"), "form_handler_context"),
+        ("ribbon_diff", RIBBON_RULE, lambda r: r.update(kind="form"), "ribbon_action_parameter"),
+        ("ribbon_diff", RIBBON_RULE, lambda r: r["detection"].pop("parameter"), "parameter"),
+    ],
+)
+def test_a_malformed_registration_rule_is_refused(kind, rule_id, change, match):
+    data = json.loads(assess.RULES_PATH.read_text(encoding="utf-8"))
+    change(next(r for r in data["rules"] if r["id"] == rule_id))
+    with pytest.raises(inv.InventoryError, match=match):
+        assess.parse_rules(data)
+
+
+def test_the_registration_rules_cite_learn_and_are_detect_only():
+    rules = {r.id: r for r in assess.load_rules().rules}
+    for rule_id, kind in ((FORM_RULE, "form"), (RIBBON_RULE, "ribbon_diff")):
+        rule = rules[rule_id]
+        assert rule.kind == kind and rule.cls == "deprecated" and rule.transform is None
+        assert all(s.startswith("https://learn.microsoft.com/") for s in rule.sources)
