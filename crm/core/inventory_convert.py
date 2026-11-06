@@ -33,6 +33,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, cast
+from xml.etree.ElementTree import ParseError
 
 from crm.core.code_parse import error_count, parse
 from crm.core.inventory import MANIFEST_NAME, InventoryError, Record, normalize_text, read_inventory
@@ -42,7 +43,10 @@ from crm.core.inventory_assess import (
     Finding,
     FormHandlerContext,
     RegistrationEvidence,
+    RibbonActionParameter,
     Rule,
+    # The gate counts actions the way the ribbon rule does, so it reuses assess's reader.
+    _ribbon_actions,  # pyright: ignore[reportPrivateUsage]
     load_rules,
     read_findings,
 )
@@ -54,8 +58,18 @@ from crm.core.inventory_form_handlers import (
 )
 from crm.core.inventory_packages import PACKAGE_ID
 from crm.core.inventory_packages import SCHEMA_VERSION as PACKAGES_VERSION
+from crm.core.inventory_ribbon import (
+    PARAMETER,
+    RibbonAction,
+    RibbonDiff,
+    action_key,
+    plan_ribbon_actions,
+    read_ribbon_diff,
+    ribbon_function_names,
+)
 from crm.core.inventory_source_map import read_source_map
 from crm.core.inventory_transforms import HANDLER_TRANSFORM, TRANSFORMS, Edit, Plan, Transform
+from crm.utils.safe_xml import fromstring
 
 #: The format version of the ledger.
 SCHEMA_VERSION = 1
@@ -246,10 +260,24 @@ def _form_gate(original: bytes, patched: bytes, n: int) -> str | None:
     return None
 
 
+def _ribbon_gate(original: bytes, patched: bytes, n: int) -> str | None:
+    """The emit gate for a ribbon patch: the XML still maps, and exactly *n* actions now pass."""
+    try:
+        before = _ribbon_actions(fromstring(original.decode("utf-8")), PARAMETER)
+        after = _ribbon_actions(fromstring(patched.decode("utf-8")), PARAMETER)
+    except (ParseError, ValueError):
+        return "the patched ribbon no longer parses"
+    if read_ribbon_diff(patched) is None:
+        return "the patched ribbon's actions can no longer be mapped to its text"
+    if len(before) - len(after) != n:
+        return f"the patch adds {PARAMETER} to {len(before) - len(after)} of {n} actions"
+    return None
+
+
 def _pattern(rule: Rule, rules: dict[str, Rule]) -> re.Pattern[str] | None:
     """The content pattern a rule's rewrite is gated on: its own, or its library rule's."""
     d = rule.detection
-    if isinstance(d, FormHandlerContext):
+    if isinstance(d, FormHandlerContext | RibbonActionParameter):
         d = rules[d.library_rule].detection
     return d.pattern if isinstance(d, ContentPattern) else None
 
@@ -319,6 +347,61 @@ def _read_forms(
     return out
 
 
+@dataclass
+class _Ribbon:
+    """A ribbon diff read and mapped, or the reason it cannot be. A *target* carries the ribbon
+    finding, so this run patches it; any other diff is only read for what it calls.
+    """
+
+    key: str
+    path: str
+    source: bytes
+    diff: RibbonDiff | None
+    problem: str
+    target: bool
+    #: The ``(library, function)`` calls the diff makes, for one that cannot be mapped.
+    named: list[tuple[str, str]]
+
+
+def _read_ribbons(
+    inventory_dir: Path, records: list[Record], findings: Iterable[Finding], rule: Rule
+) -> list[_Ribbon]:
+    """Read every ribbon diff against its hash, noting which carry *rule*'s finding."""
+    hits = {
+        f.key: f.evidence
+        for f in findings
+        if f.rule == rule.id and f.cls != "clear" and isinstance(f.evidence, RegistrationEvidence)
+    }
+    out: list[_Ribbon] = []
+    for rec in records:
+        ev = hits.get(rec.key) if rec.kind == "ribbon_diff" else None
+        if rec.kind != "ribbon_diff" or not (ev or rec.artifacts):
+            continue
+        path, sha = (ev.path, ev.sha256) if ev else (rec.artifacts[0].path, rec.artifacts[0].sha256)
+        ribbon = _Ribbon(rec.key, path, b"", None, "", ev is not None, [])
+        try:
+            raw = (inventory_dir / path).read_bytes()
+            ribbon.source = normalize_text(raw)
+            if _hex(raw) != sha:
+                ribbon.problem = "artifact changed since extraction"
+            else:
+                ribbon.diff = read_ribbon_diff(ribbon.source)
+                if ribbon.diff is None:
+                    ribbon.problem = "the ribbon's actions cannot be mapped to its text"
+            if ribbon.problem:
+                ribbon.named = ribbon_function_names(ribbon.source)
+        except OSError as exc:
+            ribbon.problem = f"artifact unreadable: {exc.strerror or exc}"
+        if ribbon.problem and ev is not None:
+            # What the assessment saw stays a caller when the artifact is stale or gone now.
+            ribbon.named += [
+                action_key(r.get("library") or "", r.get("function") or "")
+                for r in ev.registrations
+            ]
+        out.append(ribbon)
+    return out
+
+
 _ESCAPE = re.compile(r"\\u\{([0-9a-fA-F]{1,6})\}|\\u([0-9a-fA-F]{4})")
 _ASCII_BREAK = re.compile(r"[^\x00-\x2f\x3a-\x40\x5b-\x5e\x60\x7b-\x7f]+")
 
@@ -352,7 +435,10 @@ def _identifiers(text: str) -> frozenset[str]:
 
 
 def _other_scripts(
-    inventory_dir: Path, records: Iterable[Record], registered: frozenset[str]
+    inventory_dir: Path,
+    records: Iterable[Record],
+    registered: frozenset[str],
+    kinds: frozenset[str] = _CALLER_KINDS,
 ) -> Callable[[str], frozenset[str] | None]:
     """Map a script's path to the names the inventory's other scripts mention.
 
@@ -363,7 +449,7 @@ def _other_scripts(
     its signature alone. *registered* is every function name a form registers. The scan is of
     the raw text, strings and comments included: it can only over-report.
     """
-    paths = [r.artifacts[0].path for r in records if r.kind in _CALLER_KINDS and r.artifacts]
+    paths = [r.artifacts[0].path for r in records if r.kind in kinds and r.artifacts]
     names: dict[str, frozenset[str] | None] = {}
 
     def others(path: str) -> frozenset[str] | None:
@@ -391,6 +477,7 @@ def _eligible(
     forms: list[_Form],
     libraries: dict[str, tuple[str, str, str]],
     packages: Callable[[str, str], set[str]],
+    commands: frozenset[tuple[str, str]] = frozenset(),
 ) -> tuple[dict[tuple[str, str, str], dict[str, bool]], dict[tuple[str, str], str]]:
     """Which registered functions of each library may be rewritten, and why the others may not.
 
@@ -417,7 +504,9 @@ def _eligible(
         if group is None or key in reasons or all(t.passes and f.target for f, t in found):
             continue
         mine = packages(group[0], group[1])
-        if any(t.passes for _, t in found):
+        if key in commands:
+            reasons[key] = f"{key[1]} is also called by a ribbon command"
+        elif any(t.passes for _, t in found):
             reasons[key] = f"{key[1]} is already registered with passExecutionContext on a form"
         elif any(not f.target for f, _ in found):
             reasons[key] = f"{key[1]} is also registered on a form this run does not patch"
@@ -429,6 +518,66 @@ def _eligible(
         else:
             functions.setdefault(group, {})[key[1]] = any(t.parameters.strip() for _, t in found)
     return functions, reasons
+
+
+def _eligible_commands(
+    ribbons: list[_Ribbon],
+    libraries: dict[str, tuple[str, str, str]],
+    packages: Callable[[str, str], set[str]],
+    handlers: frozenset[tuple[str, str]],
+    scripts: Callable[[str], frozenset[str] | None],
+) -> tuple[dict[tuple[str, str, str], frozenset[str]], dict[tuple[str, str], str]]:
+    """Which ribbon command functions of each library may be rewritten, and why the others may not.
+
+    A function is rewritten only when every action calling it, on any ribbon diff of the
+    inventory, is a command action this run patches in exactly the work packages that ship the
+    library, on a command shown on a form, with the same ``CrmParameter`` list, and none passes
+    ``PrimaryControl`` already. A function a form handler, a ribbon ``CustomRule`` or an element
+    outside a command also calls would be called with the wrong arguments, so it stays, as does
+    one another web resource names (*scripts* maps a library's path to those names).
+    """
+    regs: dict[tuple[str, str], list[tuple[_Ribbon, RibbonAction]]] = {}
+    reasons: dict[tuple[str, str], str] = {}
+    called: set[tuple[str, str]] = set()
+    for ribbon in ribbons:
+        for action in ribbon.diff.actions if ribbon.diff else ():
+            regs.setdefault(action.key, []).append((ribbon, action))
+        called |= ribbon.diff.rule_calls if ribbon.diff else frozenset()
+        for key in ribbon.named:
+            reasons[key] = (
+                f"{key[1]} is called from a ribbon diff that cannot be patched: {ribbon.problem}"
+            )
+    found_commands: dict[tuple[str, str, str], set[str]] = {}
+    for key, found in regs.items():
+        group = libraries.get(key[0])
+        if group is None or key in reasons or all(a.passes for _, a in found):
+            continue
+        mine = packages(group[0], group[1])
+        away = next((a.not_form for _, a in found if a.not_form), None)
+        if any(a.passes for _, a in found):
+            reasons[key] = f"{key[1]} is already called with {PARAMETER} by a ribbon action"
+        elif not all(a.in_command for _, a in found):
+            reasons[key] = f"{key[1]} is also called by a ribbon element outside a command"
+        elif key in called:
+            reasons[key] = f"{key[1]} is also called by a ribbon CustomRule"
+        elif key in handlers:
+            reasons[key] = f"{key[1]} is also registered on a form handler"
+        elif (names := scripts(group[2])) is None or key[1].rsplit(".", 1)[-1] in names:
+            reasons[key] = f"{key[1]} is also named in another web resource: its callers stay"
+        elif any(not r.target for r, _ in found):
+            reasons[key] = f"{key[1]} is also called from a ribbon diff this run does not patch"
+        elif away:
+            reasons[key] = f"{key[1]}: {away}"
+        elif len({a.parameters for _, a in found}) > 1:
+            reasons[key] = f"{key[1]} is called with different CrmParameters by different commands"
+        elif any(packages("ribbon_diff", r.key) != mine for r, _ in found):
+            reasons[key] = (
+                f"{key[1]} is not called from ribbon diffs in exactly the work packages"
+                " that ship its library"
+            )
+        else:
+            found_commands.setdefault(group, set()).add(key[1])
+    return {g: frozenset(v) for g, v in found_commands.items()}, reasons
 
 
 def convert(
@@ -472,6 +621,13 @@ def convert(
             if c.status == "matched" and c.files
         }
     held = _members(packages_dir, manifest_sha)
+    # Packages do not group the ribbon diff, but the entity's effective ribbon holds every action
+    # the diff adds, so it is linked to exactly the libraries the diff calls: the diff travels
+    # with it. The application's diff (key "") pairs with the ribbon keyed "application".
+    for member, pids in list(held.items()):
+        if member.startswith("ribbon:"):
+            entity = member.split(":", 1)[1]
+            held.setdefault(f"ribbon_diff:{'' if entity == 'application' else entity}", pids)
     records = {(r.kind, r.key): r for r in inv.records}
     rules = {r.id: r for r in load_rules().rules}
 
@@ -507,12 +663,24 @@ def convert(
 
     # Form handlers: the library's functions that are registered, read from the forms. A
     # library with convertible ones joins its group with the form rule, which runs last.
-    form_rule = next((r for r in rules.values() if r.transform == HANDLER_TRANSFORM), None)
+    def owner_of(kind: str) -> Rule | None:
+        return next(
+            (r for r in rules.values() if r.transform == HANDLER_TRANSFORM and r.kind == kind),
+            None,
+        )
+
+    form_rule, ribbon_rule = owner_of("form"), owner_of("ribbon_diff")
     forms: list[_Form] = []
+    ribbons: list[_Ribbon] = []
     reasons: dict[tuple[str, str], str] = {}
+    command_reasons: dict[tuple[str, str], str] = {}
     handlers: dict[tuple[str, str, str], dict[str, bool]] = {}
+    commands: dict[tuple[str, str, str], frozenset[str]] = {}
+    web_callers = _other_scripts(
+        inventory_dir, inv.records, frozenset(), frozenset(("web_resource",))
+    )
     libraries: dict[str, tuple[str, str, str]] = {}
-    if form_rule is not None:
+    if form_rule is not None or ribbon_rule is not None:
         script_types = TRANSFORMS[HANDLER_TRANSFORM].web_resource_types
         for gkey in groups:
             rec = records.get((gkey[0], gkey[1]))
@@ -522,10 +690,30 @@ def convert(
         def packages_of(kind: str, key: str) -> set[str]:
             return set(held.get(f"{kind}:{key}", [UNPACKAGED]))
 
-        forms = _read_forms(inventory_dir, list(inv.records), findings.findings, form_rule)
-        handlers, reasons = _eligible(forms, libraries, packages_of)
-        for gkey in handlers:
-            groups[gkey].setdefault(form_rule.id, form_rule)
+        if form_rule is not None:
+            forms = _read_forms(inventory_dir, list(inv.records), findings.findings, form_rule)
+        if ribbon_rule is not None:
+            ribbons = _read_ribbons(
+                inventory_dir, list(inv.records), findings.findings, ribbon_rule
+            )
+        form_calls = frozenset(
+            [(t.library.lower(), t.function) for f in forms for t in f.tags if t.enabled]
+            + [k for f in forms if f.problem for k in f.named]
+        )
+        ribbon_calls = frozenset(
+            [a.key for r in ribbons if r.diff for a in r.diff.actions if a.in_command]
+            + [k for r in ribbons if r.diff for k in r.diff.rule_calls]
+            + [k for r in ribbons for k in r.named]
+        )
+        handlers, reasons = _eligible(forms, libraries, packages_of, ribbon_calls)
+        commands, command_reasons = _eligible_commands(
+            ribbons, libraries, packages_of, form_calls, web_callers
+        )
+        # One rule owns a library's context rewrite: the form rule when handlers are rewritten.
+        for gkey in handlers.keys() | commands.keys():
+            owner = form_rule if handlers.get(gkey) and form_rule is not None else ribbon_rule
+            if owner is not None:
+                groups[gkey].setdefault(owner.id, owner)
     lib_of = {g: n for n, g in libraries.items()}
     named = {t.function for f in forms for t in f.tags} | {k[1] for f in forms for k in f.named}
     others = _other_scripts(
@@ -592,7 +780,12 @@ def convert(
             ):
                 tree = parse(transform.language, current)
                 plan = (
-                    transform.plan(tree, handlers.get((kind, key, path), {}), others(path))
+                    transform.plan(
+                        tree,
+                        handlers.get((kind, key, path), {}),
+                        others(path),
+                        commands.get((kind, key, path), frozenset()),
+                    )
                     if transform.needs_handlers
                     else transform.plan(tree)
                 )
@@ -645,6 +838,40 @@ def convert(
                 form.path,
                 [(cast(Rule, form_rule), plan, reason, applied)],
                 form.source,
+                patched,
+            )
+    for ribbon in (r for r in ribbons if r.target and ribbon_rule is not None):
+        plan, reason, applied, patched = Plan((), ()), ribbon.problem, False, ribbon.source
+        if not reason and ribbon.diff is not None:
+            gone = {
+                a.key: command_reasons.get(a.key)
+                or f"{a.key[1]} was not rewritten in {a.key[0]}: see the library's entries"
+                for a in ribbon.diff.actions
+                if a.in_command
+                and not a.passes
+                and a.key[0] in libraries
+                and a.key not in rewritten
+            }
+            plan = plan_ribbon_actions(ribbon.diff.actions, rewritten, gone)
+            if plan.edits:
+                patched = _apply(ribbon.source, plan.edits) or b""
+                if not patched:
+                    reason = "the planned edits overlap"
+                elif patched.count(b"\n") != ribbon.source.count(b"\n"):
+                    reason = "the rewrite changes the line count"
+                else:
+                    reason = _ribbon_gate(ribbon.source, patched, len(plan.edits)) or ""
+                if reason:
+                    reason = f"emit gate rejected the rewrite: {reason}"
+                else:
+                    applied = True
+        if plan.edits or plan.unproven or reason:
+            emit(
+                "ribbon_diff",
+                ribbon.key,
+                ribbon.path,
+                [(cast(Rule, ribbon_rule), plan, reason, applied)],
+                ribbon.source,
                 patched,
             )
     entries.sort(key=lambda e: (e.package, e.kind, e.key))

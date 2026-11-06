@@ -509,6 +509,7 @@
         "library_rule": "web-resource-xrm-page",
         "parameter": "PrimaryControl"
       },
+      "transform": "form-handler-context",
       "fix": "Add <CrmParameter Value=\"PrimaryControl\" /> as the first parameter of the action and take the form context from that argument in the function. Only actions on a $webresource: library are judged; one whose library cannot be read is unknown, not clear.",
       "sources": [
         "https://learn.microsoft.com/power-apps/developer/model-driven-apps/pass-data-page-parameter-ribbon-actions#form-and-grid-context-in-ribbon-actions",

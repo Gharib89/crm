@@ -750,6 +750,7 @@ comment is never rewritten. A shadowed or locally bound `Xrm`, a qualified `wind
 | `web-resource-xrm-utility` | `xrm-utility-review` | nothing | `openEntityForm`, `openQuickCreate`, `openWebResource`, `alertDialog`, `confirmDialog`, `isActivityType`: the signature or sync behaviour changes |
 | `web-resource-keypress` | `keypress-review` | nothing | `addOnKeyPress`, `removeOnKeyPress`, `fireOnKeyPress`, `showAutoComplete`, `hideAutoComplete`: no API replacement |
 | `form-handler-no-execution-context` | `form-handler-context` | in a registered form handler: an `executionContext` first parameter (or the existing one), `var formContext = executionContext.getFormContext();` after the opening brace, each `Xrm.Page.<member>` in its own body to `formContext.<member>`; a helper the handler calls (any number of hops) gains a first `formContext` parameter and every call passes it; and `passExecutionContext="true"` on every enabled registration of it, on the form XML in the same work package | see below |
+| `ribbon-action-no-primary-control` | `form-handler-context` | a ribbon `JavaScriptFunction` on a form command whose function now takes the form context: `<CrmParameter Value="PrimaryControl" />` added as the first parameter (the existing ones keep their order behind it), and the function gets a first `primaryControl` parameter with `var formContext = primaryControl;` after its opening brace, its `Xrm.Page.<member>` becoming `formContext.<member>`, its helpers threaded as for a handler | a command on a grid, subgrid, home page or application ribbon location (`PrimaryControl` is the grid context there), or one no control in the diff names whose id is not `Mscrm.Form.*`; a function that is also a form handler, also called by a `CustomRule`, or called by another command with different `CrmParameter`s, another diff outside the work package or one already passing `PrimaryControl` |
 
 `getUserRoles()` returned GUID strings and `userSettings.roles` holds `{id, name}` lookups, so
 the call changes the element type for whatever reads the list, and is always a manual-review
@@ -770,7 +771,15 @@ refers to it elsewhere, reads `arguments` or already uses `formContext`; when it
 passes the context or sits on a form outside the work package or one this run does not patch; or
 when it is not a `function` declaration or a `name = function` assignment.
 
-A **helper** the handlers reach is threaded through the file's call graph: it gains a first
+A **ribbon command** function takes the context the same way, from `PrimaryControl` instead of
+`executionContext` ([Learn](https://learn.microsoft.com/power-apps/developer/model-driven-apps/pass-data-page-parameter-ribbon-actions#form-and-grid-context-in-ribbon-actions)),
+and the ribbon diff's actions are patched in the same work package (the diff travels with its
+entity's ribbon). `SelectedControl` is the grid context, so only a command shown on a form
+(every control naming it sits under a `Mscrm.Form.` location) is converted, and only when no other
+web resource names the function and no `CustomRule` calls it. The emit gate checks
+the patched diff still maps to its actions and exactly the planned ones now pass `PrimaryControl`.
+
+A **helper** the handlers and commands reach is threaded through the file's call graph: it gains a first
 `formContext` parameter (so positional arguments keep their order), its own `Xrm.Page.<member>`
 becomes `formContext.<member>`, and every call to it passes `formContext`. A handler with no
 `Xrm.Page` of its own is rewritten when it calls a threaded helper. A helper is threaded only
