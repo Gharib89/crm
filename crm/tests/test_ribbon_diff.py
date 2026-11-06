@@ -1,5 +1,7 @@
 """`read_ribbon_diffs` streams a solution zip's ribbon diffs (#1100)."""
 
+# pyright: basic
+
 from __future__ import annotations
 
 import zipfile

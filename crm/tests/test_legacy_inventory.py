@@ -12,6 +12,7 @@ import base64
 import copy
 import json
 from pathlib import Path
+from typing import Any
 
 import jsonschema
 import pytest
@@ -207,7 +208,7 @@ class FakeClient:
 @pytest.fixture
 def reads(monkeypatch):
     """Patch the metadata and ribbon reads; return the per-read call counts."""
-    calls: dict[str, int] = {}
+    calls: dict[str, Any] = {}
 
     def count(name, value):
         def fn(*args):
@@ -234,12 +235,13 @@ def reads(monkeypatch):
     return calls
 
 
-def _extract(client, out: Path, *, include_system: bool = True):
+def _extract(client, out: Path, *, include_system: bool = True, solutions: tuple[str, ...] = ()):
     return inventory_extract.extract(
         inventory_extract.LegacySource(client),
         out,
         cli_version="9.9.9",
         include_system=include_system,
+        solutions=solutions,
         now=lambda: "2026-11-04T10:00:00Z",
     )
 
@@ -675,13 +677,7 @@ def test_a_scoped_run_exports_each_named_solution_and_the_first_holder_wins(
     monkeypatch.setattr(legacy_reads, "export_solution", lambda c, name: zips[name])
     monkeypatch.setitem(_ORG, "solution", [[*_ORG["solution"][0], _second_solution()]])
     out = tmp_path / "inv"
-    inventory_extract.extract(
-        inventory_extract.LegacySource(FakeClient()),
-        out,
-        cli_version="9.9.9",
-        solutions=("second", "contoso"),
-        now=lambda: "2026-11-04T10:00:00Z",
-    )
+    _extract(FakeClient(), out, include_system=False, solutions=("second", "contoso"))
     records = _diff_records(_manifest(out))
     assert sorted(records) == ["contact", "new_project"]
     (artifact,) = records["new_project"]["artifacts"]
