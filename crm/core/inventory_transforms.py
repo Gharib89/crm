@@ -1084,8 +1084,7 @@ def _plan_handler_context(
         if not has_context:
             lead = first.start_byte if first is not None else params.start_byte + 1
             tail = b", " if first is not None else b""
-            name_ = "primaryControl" if command else "executionContext"
-            own.append(Edit(lead, lead, name_.encode() + tail))
+            own.append(Edit(lead, lead, context.encode() + tail))
         brace, glue = body.start_byte + 1, ""
         for stmt in body.named_children:
             if stmt.type == "comment":

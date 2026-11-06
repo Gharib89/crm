@@ -45,6 +45,7 @@ from crm.core.inventory_assess import (
     RegistrationEvidence,
     RibbonActionParameter,
     Rule,
+    # The gate counts actions the way the ribbon rule does, so it reuses assess's reader.
     _ribbon_actions,  # pyright: ignore[reportPrivateUsage]
     load_rules,
     read_findings,
@@ -59,6 +60,7 @@ from crm.core.inventory_packages import PACKAGE_ID
 from crm.core.inventory_packages import SCHEMA_VERSION as PACKAGES_VERSION
 from crm.core.inventory_ribbon import (
     PARAMETER,
+    RibbonAction,
     RibbonDiff,
     plan_ribbon_actions,
     read_ribbon_diff,
@@ -522,7 +524,7 @@ def _eligible_commands(
     ``PrimaryControl`` already. A function a form handler, a ribbon ``CustomRule`` or an element
     outside a command also calls would be called with the wrong arguments, so it stays.
     """
-    regs: dict[tuple[str, str], list[tuple[_Ribbon, Any]]] = {}
+    regs: dict[tuple[str, str], list[tuple[_Ribbon, RibbonAction]]] = {}
     reasons: dict[tuple[str, str], str] = {}
     called: set[tuple[str, str]] = set()
     for ribbon in ribbons:

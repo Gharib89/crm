@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from html import unescape
 from xml.etree.ElementTree import Element, ParseError
 
+# The ribbon rule and this patch must read a library name the same way, so share assess's reader.
 from crm.core.inventory_assess import _web_resource_name  # pyright: ignore[reportPrivateUsage]
 from crm.core.inventory_transforms import Edit, Plan, Unproven
 from crm.utils.safe_xml import fromstring
@@ -34,7 +35,6 @@ class RibbonAction:
 
     #: ``(lowercase library web resource name, function)``; the library is "" for a platform script.
     key: tuple[str, str]
-    command: str
     #: False for a function outside any ``<CommandDefinition>``: never patched, only a caller.
     in_command: bool
     parameters: tuple[str, ...]
@@ -93,7 +93,9 @@ def read_ribbon_diff(text: bytes) -> RibbonDiff | None:
         up = parents.get(el)
         while up is not None and up.tag != "CustomAction":
             up = parents.get(up)
-        locations.setdefault(command, []).append(up.get("Location") or "" if up is not None else "")
+        locations.setdefault(command, []).append(
+            (up.get("Location") or "") if up is not None else ""
+        )
     owner: dict[Element, Element] = {}
     for definition in root.iter("CommandDefinition"):
         for el in definition.iter("JavaScriptFunction"):
@@ -112,8 +114,7 @@ def read_ribbon_diff(text: bytes) -> RibbonDiff | None:
             edit = Edit(m.end(), m.end(), f'<CrmParameter Value="{PARAMETER}" />'.encode())
         actions.append(
             RibbonAction(
-                _key(unescape(el.get("Library") or ""), el.get("FunctionName") or ""),
-                command,
+                _key(el.get("Library") or "", el.get("FunctionName") or ""),
                 definition is not None,
                 tuple(p.get("Value") or "" for p in el.findall("CrmParameter")),
                 _not_form(command, locations.get(command, [])),

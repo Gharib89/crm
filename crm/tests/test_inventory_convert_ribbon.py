@@ -281,3 +281,52 @@ def test_a_ribbon_that_cannot_be_mapped_to_its_text_is_not_patched(tmp_path):
     run = _pipeline(tmp_path, CMD_JS, {"account": xml})
     assert _ribbon(run)["status"] == "manual-review" and _js_status(run) != "patched"
     assert not list(run["out"].rglob("*.patched*"))
+
+
+def test_quoted_attribute_values_with_a_bracket_or_escapes_are_read_and_patched(tmp_path):
+    action = (
+        "<JavaScriptFunction Library='$webresource:new_/scripts/acct.js' "
+        "FunctionName='r&#117;n' Note=\"a>b\" />"
+    )
+    run = _pipeline(tmp_path, CMD_JS, {"account": _diff_xml({"cmd.run": action})})
+    assert _ribbon(run)["status"] == "patched" and _js(run)["status"] == "patched"
+    assert 'Note="a>b" ><CrmParameter Value="PrimaryControl" />' in _text(run, _ribbon(run))
+
+
+def test_a_function_an_unmappable_diff_calls_is_not_changed_behind_it(tmp_path):
+    good = _diff_xml({"cmd.run": _call("run")})
+    bad = _diff_xml({"cmd.run": _call("run")}).replace(
+        "<RuleDefinitions>", "<!-- <JavaScriptFunction FunctionName='x' /> --><RuleDefinitions>"
+    )
+    run = _pipeline(tmp_path, CMD_JS, {"account": good, "contact": bad})
+    assert not list(run["out"].rglob("*.patched*"))
+    assert "cannot be patched" in _ribbon(run, "account")["manual_review"][0]["reason"]
+
+
+def test_a_control_outside_any_custom_action_does_not_place_the_command_on_a_form(tmp_path):
+    xml = _diff_xml({"cmd.run": _call("run")}, shown={}).replace(
+        "<RuleDefinitions>",
+        '<Templates><Button Id="t" Command="cmd.run" /></Templates><RuleDefinitions>',
+    )
+    run = _pipeline(tmp_path, CMD_JS, {"account": xml})
+    assert _ribbon(run)["status"] == "manual-review"
+    assert "not on a form" in _ribbon(run)["manual_review"][0]["reason"]
+
+
+def test_an_optional_chain_stays_manual_review_while_a_string_and_a_comment_stay_as_written(
+    tmp_path,
+):
+    js = (
+        "function run() {\n"
+        "  var s = 'Xrm.Page.x'; // Xrm.Page.y\n"
+        "  var a = Xrm.Page?.getAttribute('a');\n"
+        "  return Xrm.Page.getAttribute(s);\n"
+        "}\n"
+    )
+    run = _pipeline(tmp_path, js, {"account": _diff_xml({"cmd.run": _call("run")})})
+    text = _text(run, _js(run))
+    assert (
+        "var s = 'Xrm.Page.x'; // Xrm.Page.y" in text
+        and "return formContext.getAttribute(s);" in text
+    )
+    assert [m["line"] for m in _js(run)["manual_review"]] == [3]
