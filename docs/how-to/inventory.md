@@ -773,7 +773,7 @@ web resource is not seen.
 
 An **emit gate** checks each rewritten file: the patched code must parse with no more
 error nodes, and re-running the rule's detection must find exactly the rewritten sites
-fewer, and the rewrite must keep the line count (so manual-review line numbers stay valid). A rejected plan writes nothing and becomes a manual-review entry.
+fewer, and the rewrite must keep the line count (so manual-review line numbers stay valid). A rejected plan writes nothing and becomes a manual-review entry. A form patch is gated the same way: the patched XML must still map to its handlers and exactly the planned handlers must now pass the context. The handler transform's JS rewrite is gated on its library rule's pattern (`web-resource-xrm-page`), which must lose exactly the rewritten `Xrm.Page` sites.
 
 Under `--out`, per work package and component:
 

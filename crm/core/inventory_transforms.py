@@ -664,8 +664,9 @@ def _definitions(nodes: list[Node], name: bytes) -> list[tuple[Node, Node]]:
             if ident is not None and ident.text == name:
                 found.append((n, ident))
         elif n.type in ("assignment_expression", "variable_declarator"):
-            left = n.child_by_field_name("left" if n.type[0] == "a" else "name")
-            right = n.child_by_field_name("right" if n.type[0] == "a" else "value")
+            assign = n.type == "assignment_expression"
+            left = n.child_by_field_name("left" if assign else "name")
+            right = n.child_by_field_name("right" if assign else "value")
             if (
                 left is not None
                 and left.text == name

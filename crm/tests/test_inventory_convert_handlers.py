@@ -289,6 +289,13 @@ def test_xrm_page_in_a_nested_callback_or_an_async_handler_is_manual_review(tmp_
     )
 
 
+def test_xrm_page_in_a_string_stays_in_a_converted_handler(tmp_path):
+    js = "function onLoad() {\n  var s = 'Xrm.Page.x';\n  return Xrm.Page.getAttribute(s);\n}\n"
+    run = _pipeline(tmp_path, {LIB: js}, {"Main": _xml(_event("onload", _handler("onLoad")))})
+    assert "var s = 'Xrm.Page.x';" in _text(run, _js(run))
+    assert "return formContext.getAttribute(s);" in _text(run, _js(run))
+
+
 def test_a_handler_body_without_xrm_page_is_left_alone(tmp_path):
     js = "function onLoad() {\n  return 1;\n}\nfunction other() {\n  return Xrm.Page.a;\n}\n"
     xml = _xml(_event("onload", _handler("onLoad"), _handler("other")))
