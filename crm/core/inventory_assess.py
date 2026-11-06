@@ -619,11 +619,10 @@ class _Libraries:
     ) -> None:
         self._folder = folder
         self._rules = {r.id: r for r in rules}
-        self._by_name = {
-            str(r.fields["name"]).lower(): r
-            for r in records
-            if r.kind == "web_resource" and isinstance(r.fields.get("name"), str)
-        }
+        self._by_name: dict[str, list[Record]] = {}
+        for r in records:
+            if r.kind == "web_resource" and isinstance(r.fields.get("name"), str):
+                self._by_name.setdefault(str(r.fields["name"]).lower(), []).append(r)
         self._known: dict[tuple[str, str], tuple[bool, str | None]] = {}
 
     def carries(self, rule_id: str, name: str) -> tuple[bool, str | None]:
@@ -639,9 +638,12 @@ class _Libraries:
         return self._known[slot]
 
     def _read(self, rule: Rule, name: str) -> tuple[bool, str | None]:
-        record = self._by_name.get(name.lower())
-        if record is None:
+        matches = self._by_name.get(name.lower(), [])
+        if not matches:
             return False, f"library {name} is not in the inventory"
+        if len(matches) > 1:
+            return False, f"library {name} names more than one web resource"
+        record = matches[0]
         if not rule.selects(record):
             return False, f"library {name} is not a script web resource"
         texts, problem = _texts(record, self._folder)

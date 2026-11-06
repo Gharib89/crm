@@ -630,3 +630,16 @@ def test_a_registration_judged_without_its_library_rule_is_unknown_not_a_crash(t
     found = assess._assess_record(form, rules, tmp_path)
     assert [f.cls for f in found] == ["unknown"]
     assert "is not loaded" in (found[0].reason or "")
+
+
+def test_a_library_name_shared_by_two_web_resources_is_unknown_in_either_order(tmp_path):
+    legacy = _script(LEGACY, XRM_PAGE_JS, tmp_path / "a")
+    other = _script(LEGACY, CLEAN_JS, tmp_path / "b")
+    form = _form("Main", _form_xml(_handler("onload", "L.f", LEGACY)), tmp_path)
+    rules = {r.id: r for r in assess.load_rules().rules}
+    selected = [rules[FORM_RULE]]
+    for order in ((legacy, other), (other, legacy)):
+        libs = assess._Libraries(order, tmp_path, tuple(rules.values()))
+        found = assess._assess_record(form, selected, tmp_path, libs)
+        assert [f.cls for f in found] == ["unknown"]
+        assert "more than one web resource" in (found[0].reason or "")
