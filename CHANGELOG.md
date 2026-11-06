@@ -9,6 +9,43 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.105.0 (2026-11-06)
+
+### Bug Fixes
+
+- **inventory**: Hold form handlers a readable CustomRule calls and name an unplaced control in its
+  reason ([#1132](https://github.com/Gharib89/crm/pull/1132),
+  [`6a225cf`](https://github.com/Gharib89/crm/commit/6a225cf53ea9426fba897f4f3a7912e166a45175))
+
+- **inventory**: Keep a vanished ribbon diff's assessed callers
+  ([#1132](https://github.com/Gharib89/crm/pull/1132),
+  [`6a225cf`](https://github.com/Gharib89/crm/commit/6a225cf53ea9426fba897f4f3a7912e166a45175))
+
+- **inventory**: Keep ribbon command functions whole when another script or CustomRule calls them
+  ([#1132](https://github.com/Gharib89/crm/pull/1132),
+  [`6a225cf`](https://github.com/Gharib89/crm/commit/6a225cf53ea9426fba897f4f3a7912e166a45175))
+
+- **inventory**: Read ribbon library names once and test adversarial ribbon XML
+  ([#1132](https://github.com/Gharib89/crm/pull/1132),
+  [`6a225cf`](https://github.com/Gharib89/crm/commit/6a225cf53ea9426fba897f4f3a7912e166a45175))
+
+### Features
+
+- **inventory**: Convert patches ribbon diffs with PrimaryControl for threaded command functions
+  ([#1132](https://github.com/Gharib89/crm/pull/1132),
+  [`6a225cf`](https://github.com/Gharib89/crm/commit/6a225cf53ea9426fba897f4f3a7912e166a45175))
+
+### Testing
+
+- **evals**: Refresh worked-example findings for the ribbon rule transform
+  ([#1132](https://github.com/Gharib89/crm/pull/1132),
+  [`6a225cf`](https://github.com/Gharib89/crm/commit/6a225cf53ea9426fba897f4f3a7912e166a45175))
+
+- **inventory**: Assert why a vanished ribbon diff holds the function back
+  ([#1132](https://github.com/Gharib89/crm/pull/1132),
+  [`6a225cf`](https://github.com/Gharib89/crm/commit/6a225cf53ea9426fba897f4f3a7912e166a45175))
+
+
 ## v1.104.0 (2026-11-06)
 
 ### Bug Fixes
