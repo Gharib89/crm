@@ -125,6 +125,12 @@ CASES: dict[str, tuple[str, str | None, str, int]] = {
         "web-resource-entity-save",
         0,
     ),
+    "entity-save-reference": (
+        "var s = formContext.data.entity.save.bind(formContext.data.entity);\n",
+        None,
+        "web-resource-entity-save",
+        1,
+    ),
     "entity-save-with-option": (
         'formContext.data.entity.save("saveandnew");\n',
         None,
@@ -161,6 +167,11 @@ MULTI = (
 )
 
 
+#: assess reports only web-resource-xrm-page here: context-settings' detection cannot see
+#: through the comment, so convert must still account for the site.
+COMMENT_CHAIN = f"var id = {CTX}./* who */getUserId();\n"
+
+
 def _name(case: str) -> str:
     return f"new_/scripts/{case}.js"
 
@@ -170,7 +181,7 @@ def run(tmp_path_factory: pytest.TempPathFactory) -> dict:
     root = tmp_path_factory.mktemp("renames")
     folder = root / "inv"
     folder.mkdir()
-    sources = {c: v[0] for c, v in CASES.items()} | {"multi": MULTI}
+    sources = {c: v[0] for c, v in CASES.items()} | {"multi": MULTI, "comment-chain": COMMENT_CHAIN}
     records = [_record(_name(c), text, folder) for c, text in sources.items()]
     manifest = inv.Inventory(
         schema_version=inv.SCHEMA_VERSION,
@@ -284,3 +295,9 @@ def test_findings_made_before_the_context_settings_rule_still_convert_its_sites(
     mine = [e for e in ledger["entries"] if e["key"] == _name("user-name")]
     patched = {e["rule"] for e in mine if e["status"] == "patched"}
     assert "web-resource-context-settings" in patched
+
+
+def test_a_site_only_global_context_detects_is_still_accounted_for(run):
+    entries = _entries(run, "comment-chain")
+    assert entries and not [e for e in entries if e["status"] == "patched"]
+    assert all(e["manual_review"] for e in entries)

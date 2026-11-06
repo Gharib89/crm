@@ -493,6 +493,10 @@ register("mobile-offline", Transform("javascript", (3,), _plan_mobile_offline))
 # ── entity-save: formContext.data.entity.save() to formContext.data.save() ──
 
 
+def _member_object(node: Node | None) -> Node | None:
+    return node.child_by_field_name("object") if node is not None else None
+
+
 def _plan_entity_save(root: Node) -> Plan:
     """Rewrite a no-argument ``<x>.data.entity.save()`` to ``<x>.data.save()``.
 
@@ -502,6 +506,22 @@ def _plan_entity_save(root: Node) -> Plan:
     edits: list[Edit] = []
     unproven: list[Unproven] = []
     for call in _walk(root):
+        if call.type == "member_expression":
+            parent = call.parent
+            if (
+                _prop(call) == b"save"
+                and _prop(call.child_by_field_name("object")) == b"entity"
+                and _prop(_member_object(call.child_by_field_name("object"))) == b"data"
+                and not (
+                    parent is not None
+                    and parent.type == "call_expression"
+                    and parent.child_by_field_name("function") == call
+                )
+            ):
+                unproven.append(
+                    Unproven(call.start_point.row + 1, "entity.save is used other than as a call")
+                )
+            continue
         if call.type != "call_expression":
             continue
         save = call.child_by_field_name("function")
