@@ -44,13 +44,18 @@ class Unproven:
 class Plan:
     """What a transform proved. *done* names the registered functions a handler transform
     rewrote. *cleared* is how many sites of the rule's detection the edits remove, where that
-    is not one per edit.
+    is not one per edit. *threaded*, *unreachable* and *boundary* count the helpers it gave a
+    ``formContext``, the functions no handler reaches and the helpers a caller outside the
+    file keeps from being rewritten.
     """
 
     edits: tuple[Edit, ...]
     unproven: tuple[Unproven, ...]
     done: tuple[str, ...] = ()
     cleared: int | None = None
+    threaded: int = 0
+    unreachable: int = 0
+    boundary: int = 0
 
 
 @dataclass(frozen=True)
@@ -655,29 +660,326 @@ _NESTED = frozenset(
 _NAMES = frozenset(("identifier", "property_identifier", "shorthand_property_identifier"))
 
 
-def _definitions(nodes: list[Node], name: bytes) -> list[tuple[Node, Node]]:
-    """Each ``(function node, node naming it)`` of the registered function *name*."""
-    found: list[tuple[Node, Node]] = []
+def _definitions(nodes: list[Node]) -> dict[bytes, list[tuple[Node, Node]]]:
+    """Each named function of the file by name: ``(function node, node naming it)`` pairs."""
+    found: dict[bytes, list[tuple[Node, Node]]] = {}
     for n in nodes:
         if n.type == "function_declaration":
             ident = n.child_by_field_name("name")
-            if ident is not None and ident.text == name:
-                found.append((n, ident))
+            if ident is not None and ident.text is not None:
+                found.setdefault(ident.text, []).append((n, ident))
         elif n.type in ("assignment_expression", "variable_declarator"):
             assign = n.type == "assignment_expression"
             left = n.child_by_field_name("left" if assign else "name")
             right = n.child_by_field_name("right" if assign else "value")
             if (
                 left is not None
-                and left.text == name
+                and left.text is not None
                 and right is not None
                 and right.type == "function_expression"
             ):
-                found.append((right, left.child_by_field_name("property") or left))
+                found.setdefault(left.text, []).append(
+                    (right, left.child_by_field_name("property") or left)
+                )
     return found
 
 
-def _plan_handler_context(root: Node, functions: Mapping[str, bool]) -> Plan:
+def _context_sites(
+    fn: Node, body: Node, inside: list[Node], shadowed: bool
+) -> tuple[list[Edit], list[Unproven]]:
+    """The ``Xrm.Page`` sites of function *fn* that become ``formContext``, and those that stay."""
+    sites: list[Edit] = []
+    problems: list[Unproven] = []
+    for page in inside:
+        xrm = page.child_by_field_name("object") if _prop(page) == b"Page" else None
+        if xrm is None or not _is_xrm(xrm):
+            continue
+        use = page.parent
+        at = page.start_point.row + 1
+        member = _prop(use) if use is not None and _member_object(use) == page else None
+        nested, up = False, page.parent
+        while up is not None and up != fn:
+            nested = nested or up.type in _NESTED
+            up = up.parent
+        reason = _xrm_problem(xrm, shadowed)
+        if reason is None and page.start_byte < body.start_byte:
+            reason = "Xrm.Page is in a parameter default: it runs before the body's formContext"
+        elif reason is None and _in_optional_chain(page, xrm, use):
+            reason = "an optional chain: the rewrite would drop its short-circuit"
+        elif reason is None and member is None:
+            reason = "Xrm.Page is used other than as a member access"
+        elif reason is None and member == b"context":
+            continue
+        elif reason is None and nested:
+            reason = "Xrm.Page is in a nested function: the context is valid only during the event"
+        elif reason is None and b"\n" in (page.text or b""):
+            reason = "Xrm.Page spans lines"
+        if reason is not None:
+            problems.append(Unproven(at, reason))
+        else:
+            sites.append(Edit(page.start_byte, page.end_byte, b"formContext"))
+    return sites, problems
+
+
+def _receiver_unsafe(nodes: list[Node], head: bytes) -> bool:
+    """True when *head*, the receiver of a dotted helper, may mean something else at a call.
+
+    One top-level binding is the namespace itself. A binding inside a function (a local, a
+    parameter, a catch variable) shadows it there, and a second one makes the namespace
+    ambiguous, so a call resolved by its text could reach another object.
+    """
+    count = 0
+    for n in nodes:
+        if n.text != head or n.type not in ("identifier", "shorthand_property_identifier_pattern"):
+            continue
+        up = n.parent
+        if up is None:
+            continue
+        if up.type in _DECLARES:
+            binds = up.child_by_field_name("name") == n
+        elif up.type in _ASSIGNS:
+            binds = up.child_by_field_name("left") == n
+        elif up.type in ("arrow_function", "catch_clause"):
+            binds = up.child_by_field_name("parameter") == n
+        elif up.type in ("function_declaration", "generator_function_declaration"):
+            binds = up.child_by_field_name("name") == n
+        else:
+            binds = up.type in _PATTERNS or up.type in ("formal_parameters", "required_parameter")
+        if not binds:
+            continue
+        count += 1
+        while up is not None:
+            if up.type in _NESTED and up.child_by_field_name("name") != n:
+                return True
+            up = up.parent
+    return count > 1
+
+
+def _call_name(call: Node) -> tuple[bytes, Node] | None:
+    """The dotted name *call* invokes and the node holding its last part, else None."""
+    fn = call.child_by_field_name("function")
+    if fn is None or fn.text is None:
+        return None
+    if fn.type == "identifier":
+        return fn.text, fn
+    prop = fn.child_by_field_name("property") if fn.type == "member_expression" else None
+    return (fn.text, prop) if prop is not None else None
+
+
+def _owner(node: Node, defined: Mapping[int, bytes]) -> tuple[bytes | None, bool]:
+    """The named function holding *node*, and whether an unnamed function sits between."""
+    nested, up = False, node.parent
+    while up is not None:
+        if up.id in defined:
+            return defined[up.id], nested
+        nested = nested or up.type in _NESTED
+        up = up.parent
+    return None, nested
+
+
+def _thread_helpers(
+    nodes: list[Node],
+    table: Mapping[bytes, list[tuple[Node, Node]]],
+    functions: Mapping[str, bool],
+    ready: set[str],
+    shadowed: bool,
+    outside: frozenset[str] | None,
+) -> Plan:
+    """Pass ``formContext`` down the file's call graph from the rewritten handlers.
+
+    *ready* names the handlers that can take a ``formContext``; the plan's *done* names those of
+    them that call a threaded helper, which a handler with no site of its own needs.
+
+    A helper is threaded when it (or a helper it calls) reads ``Xrm.Page`` and every use of its
+    name is a direct, plain call from a rewritten handler or an already threaded helper: it
+    gains a first ``formContext`` parameter and each call passes it, so a signature never
+    changes without its callers. Anything else leaves the helper whole: a name bound twice or
+    used other than as a call (a callback, ``.call``, a property), a call from a nested
+    function, top-level code or a function nothing threads, a recursive cycle, and a name the
+    rest of the inventory names (another script, a ribbon, a form registration): that is a
+    caller this run cannot update. A function (or top-level site) no registered handler reaches
+    counts as unreachable, a helper kept back by a name used outside the file as a boundary,
+    and each is a manual-review entry.
+    """
+    handlers = {n.encode() for n in functions}
+    live = {n.encode() for n in ready}
+    defined = {fn.id: name for name, defs in table.items() for fn, _ in defs}
+    accounted = {ident.id for defs in table.values() for _, ident in defs}
+    calls: dict[bytes, list[tuple[Node, bytes | None, bool]]] = {}
+    for n in nodes:
+        named = _call_name(n) if n.type == "call_expression" else None
+        if named is not None and named[0] in table:
+            owner, nested = _owner(n, defined)
+            calls.setdefault(named[0], []).append((n, owner, nested))
+            accounted.add(named[1].id)
+    by_last: dict[bytes, list[bytes]] = {}
+    for name in table:
+        by_last.setdefault(name.rsplit(b".", 1)[-1], []).append(name)
+    refs: dict[bytes, list[Node]] = {}
+    for n in nodes:
+        if n.type in _NAMES and n.text in by_last and n.id not in accounted:
+            for name in by_last[n.text or b""]:
+                refs.setdefault(name, []).append(n)
+        elif n.type == "subscript_expression":
+            index = n.child_by_field_name("index")
+            if index is not None and index.type in ("string", "template_string"):
+                for name in by_last.get((index.text or b"")[1:-1], []):
+                    refs.setdefault(name, []).append(n)
+    callees: dict[bytes | None, set[bytes]] = {}
+    for callee, found in calls.items():
+        for _, owner, _ in found:
+            callees.setdefault(owner, set()).add(callee)
+
+    units: dict[bytes, tuple[Node, Node, str | None, list[Edit], list[Unproven]]] = {}
+    for name, defs in table.items():
+        fn = defs[0][0]
+        if name in handlers or _owner(fn, defined)[0] is not None:
+            continue
+        params, body = fn.child_by_field_name("parameters"), fn.child_by_field_name("body")
+        inside = _walk(fn)
+        sites, problems = _context_sites(fn, body or fn, inside, shadowed)
+        reason: str | None = None
+        text = name.decode()
+        if len(defs) > 1:
+            reason = f"{text} is defined more than once in this file"
+            for extra, _ in defs[1:]:
+                more, left = _context_sites(extra, extra, _walk(extra), shadowed)
+                if more or left:
+                    problems.append(Unproven(extra.start_point.row + 1, reason))
+        elif params is None or body is None or body.type != "statement_block":
+            reason = f"{text} has no block body to take the formContext"
+        elif fn.type == "function_expression" and fn.child_by_field_name("name") is not None:
+            reason = f"{text} is a named function expression: its inner name is not tracked"
+        elif any(c.type == "async" for c in fn.children):
+            reason = f"{text} is async: the caller's context is not valid after an await"
+        elif any(n.type == "identifier" and n.text == b"arguments" for n in inside):
+            reason = f"{text} reads arguments, whose positions formContext would shift"
+        elif any(n.type in _NAMES and n.text == b"formContext" for n in inside):
+            reason = f"formContext is already used in {text}"
+        elif b"." in name and _receiver_unsafe(nodes, name.split(b".")[0]):
+            reason = f"the receiver of {text} is bound inside a function or twice"
+        units[name] = (fn, body or fn, reason, sites, problems)
+
+    def mentioned(name: bytes) -> bool:
+        return outside is None or name.rsplit(b".", 1)[-1].decode() in outside
+
+    def blocked(name: bytes, at: set[bytes]) -> str | None:
+        """Why *name* cannot be threaded given the functions in *at* hold a formContext."""
+        text, reason = name.decode(), units[name][2]
+        if reason is not None:
+            return reason
+        if mentioned(name):
+            return f"{text} is also named outside this file: a caller or registration there stays"
+        if name in refs:
+            line = refs[name][0].start_point.row + 1
+            return f"{text} is also referenced at line {line}, other than as a direct call"
+        if name not in calls:
+            return f"nothing in this file calls {text}"
+        for call, owner, nested in calls[name]:
+            line = call.start_point.row + 1
+            args = call.child_by_field_name("arguments")
+            if owner is None:
+                return f"{text} is called outside any function at line {line}"
+            if nested:
+                return f"{text} is called from a nested function at line {line}"
+            if owner == name:
+                return f"{text} is recursive"
+            if owner not in at:
+                return f"{text} is called at line {line} by {owner.decode()}, which gets none"
+            if args is None or args.type != "arguments":
+                return f"{text} is called at line {line} other than by a plain call"
+            if _in_optional_chain(call, call.child_by_field_name("function")):
+                return f"an optional chain at line {line}: the rewrite would drop its short-circuit"
+            caller_body = table[owner][0][0].child_by_field_name("body")
+            if caller_body is not None and call.start_byte < caller_body.start_byte:
+                return f"{text} is called from a parameter default at line {line}"
+        return None
+
+    threaded: set[bytes] = set()
+    changed = True
+    while changed:
+        changed = False
+        for name in sorted(units):
+            if name not in threaded and blocked(name, live | threaded) is None:
+                threaded.add(name)
+                changed = True
+    changed = True
+    while changed:
+        changed = False
+        for name in sorted(threaded):
+            if not units[name][3] and not callees.get(name, set()) & threaded:
+                threaded.discard(name)
+                changed = True
+
+    reached: set[bytes] = (handlers & set(table)) | callees.get(None, set())
+    queue = list(reached)
+    while queue:
+        for nxt in callees.get(queue.pop(), set()) - reached:
+            reached.add(nxt)
+            queue.append(nxt)
+
+    edits: list[Edit] = []
+    unproven: list[Unproven] = []
+    unreachable = boundary = cleared = 0
+    for name, (fn, _body, _, sites, problems) in sorted(units.items()):
+        line = fn.start_point.row + 1
+        if name in threaded:
+            params = fn.child_by_field_name("parameters")
+            first = (
+                params.named_children[0] if params is not None and params.named_children else None
+            )
+            lead = (
+                first.start_byte if first is not None else (params.start_byte + 1 if params else 0)
+            )
+            edits.append(Edit(lead, lead, b"formContext" + (b", " if first is not None else b"")))
+            edits.extend(sites)
+            cleared += len(sites)
+            for call, _, _ in calls[name]:
+                args = call.child_by_field_name("arguments")
+                if args is not None:
+                    pad = b", " if args.named_child_count else b""
+                    edits.append(
+                        Edit(args.start_byte + 1, args.start_byte + 1, b"formContext" + pad)
+                    )
+            unproven.extend(problems)
+        elif sites or problems:
+            reason = blocked(name, live | threaded) or f"{name.decode()} gets no formContext"
+            if mentioned(name):
+                boundary += 1
+            elif name not in reached:
+                unreachable += 1
+                reason = f"no registered handler reaches {name.decode()}: {reason}"
+            unproven.append(Unproven(line, reason))
+    for page in nodes:
+        xrm = page.child_by_field_name("object") if _prop(page) == b"Page" else None
+        if xrm is None or not _is_xrm(xrm) or _owner(page, defined)[0] is not None:
+            continue
+        if _prop(page.parent) == b"context" and _member_object(page.parent) == page:
+            continue
+        line = page.start_point.row + 1
+        if _owner(page, defined)[1]:
+            unproven.append(
+                Unproven(line, "Xrm.Page is in a function this pass does not track (not counted)")
+            )
+            continue
+        unreachable += 1
+        unproven.append(
+            Unproven(line, "Xrm.Page is outside any function: no registered handler reaches it")
+        )
+    used = tuple(
+        sorted(
+            owner.decode()
+            for name in threaded
+            for _, owner, _ in calls[name]
+            if owner is not None and owner in live
+        )
+    )
+    return Plan(tuple(edits), tuple(unproven), used, cleared, len(threaded), unreachable, boundary)
+
+
+def _plan_handler_context(
+    root: Node, functions: Mapping[str, bool], outside: frozenset[str] | None = frozenset()
+) -> Plan:
     """Give each registered handler in *functions* an ``executionContext`` and a ``formContext``.
 
     A handler gets the parameter in first position (the platform passes the context before
@@ -688,17 +990,22 @@ def _plan_handler_context(root: Node, functions: Mapping[str, bool]) -> Plan:
     valid only during the event, so a site in a nested function or in an async handler is
     unproven. So is a function the file defines twice or refers to elsewhere (a caller would
     pass the old positions), one that reads ``arguments`` or already uses ``formContext``,
-    and ``Xrm.Page.context``, which `global-context` owns. A function is rewritten only when
-    at least one of its sites is.
+    and ``Xrm.Page.context``, which `global-context` owns. A handler is rewritten when at least one
+    of its sites is, or when it calls a threaded helper.
+
+    A helper the handlers reach is threaded too, see `_thread_helpers`; *outside* holds the
+    names the rest of the inventory mentions, None where a script could not be read.
     """
     nodes = _walk(root)
+    table = _definitions(nodes)
     shadowed = any(_binds_xrm(n) for n in nodes)
     edits: list[Edit] = []
     unproven: list[Unproven] = []
     done: list[str] = []
+    ready: dict[str, tuple[list[Edit], list[Edit]]] = {}
     cleared = 0
     for name, has_parameters in sorted(functions.items()):
-        defs = _definitions(nodes, name.encode())
+        defs = table.get(name.encode(), [])
         if not defs:
             continue
         fn = defs[0][0]
@@ -729,6 +1036,8 @@ def _plan_handler_context(root: Node, functions: Mapping[str, bool]) -> Plan:
             reason = f"{name} is also referenced at line {at}: its callers pass the old positions"
         elif params is None or body is None or body.type != "statement_block":
             reason = f"{name} has no block body to take the context"
+        elif fn.type == "function_expression" and fn.child_by_field_name("name") is not None:
+            reason = f"{name} is a named function expression: its inner name is not tracked"
         elif any(c.type == "async" for c in fn.children):
             reason = f"{name} is async: the context is not valid after an await"
         elif any(n.type == "identifier" and n.text == b"arguments" for n in inside):
@@ -748,45 +1057,13 @@ def _plan_handler_context(root: Node, functions: Mapping[str, bool]) -> Plan:
             continue
         if params is None or body is None:
             continue
-        sites: list[Edit] = []
-        problems: list[Unproven] = []
-        for page in inside:
-            xrm = page.child_by_field_name("object") if _prop(page) == b"Page" else None
-            if xrm is None or not _is_xrm(xrm):
-                continue
-            use = page.parent
-            at = page.start_point.row + 1
-            member = _prop(use) if use is not None and _member_object(use) == page else None
-            nested, up = False, page.parent
-            while up is not None and up != fn:
-                nested = nested or up.type in _NESTED
-                up = up.parent
-            reason = _xrm_problem(xrm, shadowed)
-            if reason is None and page.start_byte < body.start_byte:
-                reason = "Xrm.Page is in a parameter default: it runs before the body's formContext"
-            elif reason is None and _in_optional_chain(page, xrm, use):
-                reason = "an optional chain: the rewrite would drop its short-circuit"
-            elif reason is None and member is None:
-                reason = "Xrm.Page is used other than as a member access"
-            elif reason is None and member == b"context":
-                continue
-            elif reason is None and nested:
-                reason = (
-                    "Xrm.Page is in a nested function: the context is valid only during the event"
-                )
-            elif reason is None and b"\n" in (page.text or b""):
-                reason = "Xrm.Page spans lines"
-            if reason is not None:
-                problems.append(Unproven(at, reason))
-            else:
-                sites.append(Edit(page.start_byte, page.end_byte, b"formContext"))
+        sites, problems = _context_sites(fn, body, inside, shadowed)
         unproven.extend(problems)
-        if not sites:
-            continue
+        own: list[Edit] = []
         if not has_context:
             lead = first.start_byte if first is not None else params.start_byte + 1
             tail = b", " if first is not None else b""
-            edits.append(Edit(lead, lead, b"executionContext" + tail))
+            own.append(Edit(lead, lead, b"executionContext" + tail))
         brace, glue = body.start_byte + 1, ""
         for stmt in body.named_children:
             if stmt.type == "comment":
@@ -798,15 +1075,29 @@ def _plan_handler_context(root: Node, functions: Mapping[str, bool]) -> Plan:
                 break
             brace = stmt.end_byte
             glue = "" if (stmt.text or b"").endswith(b";") else ";"
-        edits.append(
+        own.append(
             Edit(brace, brace, f"{glue} var formContext = {context}.getFormContext();".encode())
         )
-        edits.extend(sites)
-        done.append(name)
-        cleared += len(sites)
+        ready[name] = (sites, own)
+    graph = _thread_helpers(nodes, table, functions, set(ready), shadowed, outside)
+    for name, (sites, own) in ready.items():
+        if sites or name in graph.done:
+            edits.extend(own + sites)
+            done.append(name)
+            cleared += len(sites)
+    edits.extend(graph.edits)
+    unproven.extend(graph.unproven)
     edits.sort(key=lambda e: (e.start, e.end))
     unproven.sort(key=lambda u: u.line)
-    return Plan(tuple(edits), tuple(unproven), tuple(done), cleared)
+    return Plan(
+        tuple(edits),
+        tuple(unproven),
+        tuple(done),
+        cleared + (graph.cleared or 0),
+        graph.threaded,
+        graph.unreachable,
+        graph.boundary,
+    )
 
 
 register(HANDLER_TRANSFORM, Transform("javascript", (3,), _plan_handler_context, True))

@@ -749,7 +749,7 @@ comment is never rewritten. A shadowed or locally bound `Xrm`, a qualified `wind
 | `web-resource-entity-save` | `entity-save` | `<x>.data.entity.save()` to `<x>.data.save()` | `save(saveOption)` with an argument |
 | `web-resource-xrm-utility` | `xrm-utility-review` | nothing | `openEntityForm`, `openQuickCreate`, `openWebResource`, `alertDialog`, `confirmDialog`, `isActivityType`: the signature or sync behaviour changes |
 | `web-resource-keypress` | `keypress-review` | nothing | `addOnKeyPress`, `removeOnKeyPress`, `fireOnKeyPress`, `showAutoComplete`, `hideAutoComplete`: no API replacement |
-| `form-handler-no-execution-context` | `form-handler-context` | in a registered form handler: an `executionContext` first parameter (or the existing one), `var formContext = executionContext.getFormContext();` after the opening brace, each `Xrm.Page.<member>` in its own body to `formContext.<member>`; and `passExecutionContext="true"` on every enabled registration of it, on the form XML in the same work package | see below |
+| `form-handler-no-execution-context` | `form-handler-context` | in a registered form handler: an `executionContext` first parameter (or the existing one), `var formContext = executionContext.getFormContext();` after the opening brace, each `Xrm.Page.<member>` in its own body to `formContext.<member>`; a helper the handler calls (any number of hops) gains a first `formContext` parameter and every call passes it; and `passExecutionContext="true"` on every enabled registration of it, on the form XML in the same work package | see below |
 
 `getUserRoles()` returned GUID strings and `userSettings.roles` holds `{id, name}` lookups, so
 the call changes the element type for whatever reads the list, and is always a manual-review
@@ -760,7 +760,7 @@ edits in one patch, the transforms running in findings order, one ledger entry p
 `form-handler-context` rewrites a handler and its registrations together or not at all. The context
 is the first argument the platform passes, so the form's positional `parameters` keep their order
 behind it. The declaration sits on the line of the opening brace, so no line moves. Only handler
-bodies change: `Xrm.Page` in a helper stays for the call-graph work, and `Xrm.Page.context` stays
+bodies and the helpers they reach change, and `Xrm.Page.context` stays
 with `global-context`. The context is valid only during the event
 ([Learn](https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/clientapi-execution-context#use-context-objects-asynchronously)),
 so a site in a nested function and any `async` handler are manual review. A function is also
@@ -768,8 +768,26 @@ manual review, with its form handlers left unflagged, when the library defines i
 refers to it elsewhere, reads `arguments` or already uses `formContext`; when it has an
 `executionContext`-like first parameter and form `parameters`; when another registration already
 passes the context or sits on a form outside the work package or one this run does not patch; or
-when it is not a `function` declaration or a `name = function` assignment. A call from another
-web resource is not seen.
+when it is not a `function` declaration or a `name = function` assignment.
+
+A **helper** the handlers reach is threaded through the file's call graph: it gains a first
+`formContext` parameter (so positional arguments keep their order), its own `Xrm.Page.<member>`
+becomes `formContext.<member>`, and every call to it passes `formContext`. A handler with no
+`Xrm.Page` of its own is rewritten when it calls a threaded helper. A helper is threaded only
+when every use of its name is a plain, direct call from a rewritten handler or a threaded helper.
+These are manual review, with the helper and its callers left whole: a name defined twice or used
+other than as a call (a callback argument, `.call`, a property), a call from a nested function or
+callback, top-level code, an optional chain or a function nothing threads, a recursive cycle, a
+helper that is `async`, a named function expression, reads `arguments` or already uses
+`formContext`, a name also used as a computed property (`ns["leaf"]`), a dotted helper whose
+receiver is rebound inside a function or twice, and a helper whose name a form
+registers (a handler this run leaves alone) or another web resource, ribbon (or ribbon diff) or
+sitemap of the inventory mentions (the scan reads raw text with `\u` escapes decoded, so it can
+only over-report: a caller there cannot be updated). `Xrm.Page` that no registered handler reaches
+(a function nothing calls, or code outside any function) is manual review too, as is `Xrm.Page`
+in an arrow function, callback or object method this pass does not track (not counted). The ledger's top-level `call_graph` counts,
+per work package, the helpers `threaded`, the functions and top-level sites `unreachable` and
+the helpers held back at a `boundary` (a name used outside the file).
 
 An **emit gate** checks each rewritten file: the patched code must parse with no more
 error nodes, and re-running the rule's detection must find exactly the rewritten sites
@@ -782,7 +800,7 @@ Under `--out`, per work package and component:
 | `<package id>/<stem>.diff` | unified diff against the extracted text, normalized (no BOM, LF) |
 | `<package id>/<stem>.patched.js` | the patched text |
 | `<package id>/<stem>.repo.diff` | diff against the repository file, only when `--source-map` marks the web resource `matched` by hash |
-| `ledger.json` | `schema_version` 1; one entry per package, component key and rule: `status` (`patched` or `manual-review`), `edits`, `original_sha256`, `patched_sha256`, `repo_path`, `files`, `manual_review` |
+| `ledger.json` | `schema_version` 1; one entry per package, component key and rule: `status` (`patched` or `manual-review`), `edits`, `original_sha256`, `patched_sha256`, `repo_path`, `files`, `manual_review`; a top-level `call_graph` maps each package holding a converted library to its `threaded`, `unreachable` and `boundary` counts |
 
 A component with no transformable finding writes nothing. `--out` must be new or empty
 and not inside the inventory. The repo diff derives from the deployed, normalized text, so
