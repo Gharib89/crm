@@ -1151,10 +1151,12 @@ def _read_ribbon_diffs(
     names = solutions or (_DEFAULT_SOLUTION,)
     run.begin("ribbon_diffs", len(names), estimate=True)
     units: list[tuple[str, list[str | None]]] = []
-    for name in names:
+    for index, name in enumerate(names):
 
-        def read(name: str = name) -> list[str | None]:
-            zip_path = cp.root / "tmp" / f"{name}.zip"
+        def read(name: str = name, index: int = index) -> list[str | None]:
+            # The file name is ours, never the user's solution name: a name like
+            # ``/tmp/backup`` must not point the export (or its cleanup) outside the checkpoint.
+            zip_path = cp.root / "tmp" / f"export-{index}.zip"
             zip_path.parent.mkdir(parents=True, exist_ok=True)
             try:
                 source.export_solution(name, zip_path)

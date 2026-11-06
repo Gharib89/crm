@@ -133,11 +133,15 @@ def _export_solution_sync(
     *,
     managed: bool,
     started: float,
+    timeout: int | None = None,
 ) -> dict[str, Any]:
-    """Synchronous fallback: ExportSolution returns the zip bytes inline."""
+    """Synchronous fallback: ExportSolution returns the zip bytes inline.
+
+    The whole export rides one HTTP request, so ``timeout`` is its read timeout.
+    """
     import time as _time
 
-    resp = as_dict(backend.post("ExportSolution", json_body=body))
+    resp = as_dict(backend.post("ExportSolution", json_body=body, timeout=timeout))
     encoded = resp.get("ExportSolutionFile")
     if not encoded:
         raise D365Error("ExportSolution returned no ExportSolutionFile payload.")
@@ -207,6 +211,7 @@ def export_solution(
                 output_path,
                 managed=managed,
                 started=started,
+                timeout=timeout,
             )
         raise
     if "_dry_run" in resp:

@@ -217,6 +217,9 @@ class FakeBackend:
         self.paths: list[str] = []
         self.fetch_xml: dict[str, str] = {}  # entity set -> its last FetchXML
 
+    def as_live(self):
+        return self
+
     def get(self, path: str, *, params: dict | None = None, extra_headers: dict | None = None):
         self.paths.append(path)
         if path == "WhoAmI":

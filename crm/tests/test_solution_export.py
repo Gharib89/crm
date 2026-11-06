@@ -59,3 +59,34 @@ def test_export_async_error_other_than_unavailable_propagates(backend, tmp_path)
         )
         with pytest.raises(D365Error, match="boom"):
             transfer.export_solution(backend, "CRMWorx", tmp_path / "x.zip")
+
+
+def test_sync_fallback_passes_the_export_timeout(backend, tmp_path):
+    from crm.core import solution_transfer as transfer
+
+    encoded = base64.b64encode(_ZIP_BYTES).decode("ascii")
+    with requests_mock.Mocker() as m:
+        m.post(
+            backend.url_for("ExportSolutionAsync"),
+            status_code=400,
+            json={"error": {"code": "0x80040224", "message": "ExportSolutionAsync is not enabled"}},
+        )
+        m.post(backend.url_for("ExportSolution"), json={"ExportSolutionFile": encoded})
+        transfer.export_solution(backend, "CRMWorx", tmp_path / "x.zip", timeout=1800)
+    assert m.request_history[-1].timeout == 1800
+
+
+def test_a_dry_run_backend_still_exports_through_its_live_twin(dry_backend, tmp_path):
+    from crm.core import solution_transfer as transfer
+
+    encoded = base64.b64encode(_ZIP_BYTES).decode("ascii")
+    live = dry_backend.as_live()
+    assert live is not dry_backend and not live.dry_run and dry_backend.dry_run
+    with requests_mock.Mocker() as m:
+        m.post(
+            live.url_for("ExportSolutionAsync"), json={"AsyncOperationId": "a", "ExportJobId": "j"}
+        )
+        m.get(requests_mock.ANY, json={"statuscode": 30, "statecode": 3})
+        m.post(live.url_for("DownloadSolutionExportData"), json={"ExportSolutionFile": encoded})
+        transfer.export_solution(live, "CRMWorx", tmp_path / "x.zip")
+    assert (tmp_path / "x.zip").read_bytes() == _ZIP_BYTES

@@ -666,6 +666,20 @@ def test_a_failed_export_is_recorded_and_never_complete(reads, monkeypatch, tmp_
     assert coverage["status"] == "failed" and "timed out" in coverage["errors"][0]
 
 
+def test_a_solution_name_cannot_point_the_export_outside_the_checkpoint(
+    reads, monkeypatch, tmp_path
+):
+    outside = tmp_path / "backup"
+    outside.with_suffix(".zip").write_bytes(b"keep me")
+
+    def refuse(client, name):
+        raise D365Error("no such solution", status=500)
+
+    monkeypatch.setattr(legacy_reads, "export_solution", refuse)
+    _extract(FakeClient(), tmp_path / "inv", solutions=(str(outside),))
+    assert outside.with_suffix(".zip").read_bytes() == b"keep me"
+
+
 def test_a_scoped_run_exports_each_named_solution_and_the_first_holder_wins(
     reads, monkeypatch, tmp_path
 ):

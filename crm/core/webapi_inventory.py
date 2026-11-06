@@ -254,7 +254,10 @@ class WebApiSource:
         return _reshape_entity(cast("dict[str, Any]", meta))
 
     def export_solution(self, unique_name: str, dest: Path) -> None:
-        solution_transfer.export_solution(self.backend, unique_name, dest, timeout=EXPORT_TIMEOUT)
+        # A read: --dry-run must not preview it away (reads-execute rule).
+        solution_transfer.export_solution(
+            self.backend.as_live(), unique_name, dest, timeout=EXPORT_TIMEOUT
+        )
 
     def ribbon_xml(self, entity: str | None) -> bytes:
         if entity is None:
