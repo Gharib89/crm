@@ -191,7 +191,8 @@
             "solution_membership",
             "dependency",
             "ribbon",
-            "sitemap"
+            "sitemap",
+            "ribbon_diff"
           ]
         },
         "key": {
@@ -262,6 +263,34 @@
                         "minimum": 1
                       }
                     }
+                  }
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "path",
+                "sha256",
+                "registrations",
+                "match_count"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "sha256": {
+                  "$ref": "#/$defs/sha256"
+                },
+                "match_count": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "registrations": {
+                  "description": "The flagged registrations, at most ten. A form handler: event, attribute, function, library and the current passExecutionContext flag. A ribbon action: command, function, library and its crm_parameters.",
+                  "type": "array",
+                  "items": {
+                    "type": "object"
                   }
                 }
               }

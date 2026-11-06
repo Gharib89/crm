@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "version": 1,
+  "version": 2,
   "rules": [
     {
       "id": "web-resource-xrm-page",
@@ -464,6 +464,55 @@
       "sources": [
         "https://learn.microsoft.com/dynamics365/customerengagement/on-premises/developer/register-deploy-plugins?view=op-9-1#security-restrictions",
         "https://learn.microsoft.com/power-apps/developer/data-platform/reference/entities/pluginassembly"
+      ]
+    },
+    {
+      "id": "form-handler-no-execution-context",
+      "kind": "form",
+      "class": "deprecated",
+      "title": "An enabled form handler does not pass the execution context to a library that uses Xrm.Page",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "form_handler_context",
+        "library_rule": "web-resource-xrm-page"
+      },
+      "fix": "Select 'Pass execution context as first parameter' on the handler (passExecutionContext=\"true\") and take formContext from executionContext.getFormContext() in the function. Only enabled handlers are judged; a handler whose library cannot be read is unknown, not clear.",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/clientapi-execution-context",
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/clientapi-form-context",
+        "https://learn.microsoft.com/power-platform/important-changes-coming#some-client-apis-are-deprecated"
+      ]
+    },
+    {
+      "id": "ribbon-action-no-primary-control",
+      "kind": "ribbon_diff",
+      "class": "deprecated",
+      "title": "A ribbon JavaScriptFunction calls a library that uses Xrm.Page without PrimaryControl among its CrmParameters",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "ribbon_action_parameter",
+        "library_rule": "web-resource-xrm-page",
+        "parameter": "PrimaryControl"
+      },
+      "fix": "Add <CrmParameter Value=\"PrimaryControl\" /> as the first parameter of the action and take the form context from that argument in the function. Only actions on a $webresource: library are judged; one whose library cannot be read is unknown, not clear.",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/pass-data-page-parameter-ribbon-actions#form-and-grid-context-in-ribbon-actions",
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/clientapi-form-context",
+        "https://learn.microsoft.com/power-platform/important-changes-coming#some-client-apis-are-deprecated"
       ]
     }
   ]

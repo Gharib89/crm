@@ -10,7 +10,9 @@ component key: a rule's class with its evidence, ``unknown`` with a reason (no
 rule covers it, an extraction gap, a kind not read complete, a field or artifact
 the rule needs is missing) or ``clear`` (the rules that apply found nothing). The
 findings file's format is ``crm/schemas/compatibility-findings-v1.schema.json``.
-This module touches no org.
+A **registration rule** reads how a form or a ribbon diff calls a script library and
+judges the call against what the library's own text finds (ADR 0034). This module
+touches no org.
 """
 
 from __future__ import annotations
@@ -18,10 +20,12 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
+from xml.etree.ElementTree import Element, ParseError
 
 from crm.core.inventory import (
     KINDS,
@@ -32,6 +36,7 @@ from crm.core.inventory import (
     normalize_text,
     parse_manifest,
 )
+from crm.utils.safe_xml import fromstring
 
 #: The format version of the findings file.
 SCHEMA_VERSION = 1
@@ -79,6 +84,25 @@ class FieldIn:
 
 
 @dataclass(frozen=True)
+class FormHandlerContext:
+    """A form event handler that does not pass the execution context to a library carrying
+    *library_rule*'s content pattern.
+    """
+
+    library_rule: str
+
+
+@dataclass(frozen=True)
+class RibbonActionParameter:
+    """A ribbon ``JavaScriptFunction`` with no ``CrmParameter`` *parameter*, calling a library
+    carrying *library_rule*'s content pattern.
+    """
+
+    library_rule: str
+    parameter: str
+
+
+@dataclass(frozen=True)
 class Rule:
     """One compatibility rule, applying from source version *source_from* to *source_before*."""
 
@@ -89,7 +113,7 @@ class Rule:
     source_from: str
     source_before: str | None
     targets: tuple[str, ...]
-    detection: ContentPattern | FieldIn
+    detection: ContentPattern | FieldIn | FormHandlerContext | RibbonActionParameter
     fix: str
     sources: tuple[str, ...]
     #: Id of a registered code transform (`inventory_convert`) that rewrites what this rule
@@ -150,7 +174,9 @@ def _transform(obj: dict[str, Any], where: str) -> str | None:
     return value
 
 
-def _detection(value: object, kind: str, where: str) -> ContentPattern | FieldIn:
+def _detection(
+    value: object, kind: str, where: str
+) -> ContentPattern | FieldIn | FormHandlerContext | RibbonActionParameter:
     obj = _obj(value, where)
     detection_type = obj.get("type")
     if detection_type == "content_pattern":
@@ -169,8 +195,21 @@ def _detection(value: object, kind: str, where: str) -> ContentPattern | FieldIn
     if detection_type == "field_in":
         values = _items(obj, "values", where)
         return FieldIn(_text(obj, "field", where), tuple(values))
+    if detection_type == "form_handler_context":
+        if kind != "form":
+            raise InventoryError(f"rules file {where}: form_handler_context applies to form only")
+        return FormHandlerContext(_text(obj, "library_rule", where))
+    if detection_type == "ribbon_action_parameter":
+        if kind != "ribbon_diff":
+            raise InventoryError(
+                f"rules file {where}: ribbon_action_parameter applies to ribbon_diff only"
+            )
+        return RibbonActionParameter(
+            _text(obj, "library_rule", where), _text(obj, "parameter", where)
+        )
     raise InventoryError(
-        f"rules file {where}.type {detection_type!r} is not content_pattern or field_in"
+        f"rules file {where}.type {detection_type!r} is not content_pattern, field_in, "
+        "form_handler_context or ribbon_action_parameter"
     )
 
 
@@ -241,6 +280,16 @@ def parse_rules(data: object, sha256: str = "") -> Rules:
     ids = [r.id for r in rules]
     if len(set(ids)) != len(ids):
         raise InventoryError("rules file holds two rules with one id")
+    content = {r.id for r in rules if isinstance(r.detection, ContentPattern)}
+    for r in rules:
+        d = r.detection
+        if not isinstance(d, FormHandlerContext | RibbonActionParameter):
+            continue
+        if d.library_rule not in content:
+            raise InventoryError(
+                f"rules file rule {r.id}: library_rule {d.library_rule!r} "
+                "is not a content_pattern rule"
+            )
     return Rules(version, sha256, rules)
 
 
@@ -276,6 +325,30 @@ class ContentEvidence:
 
 
 @dataclass(frozen=True)
+class RegistrationEvidence:
+    """The registrations a registration rule flagged in one artifact, as the XML records them.
+
+    A form handler is ``event``, ``attribute``, ``function``, ``library`` and the current
+    ``passExecutionContext`` flag; a ribbon action is ``command``, ``function``, ``library`` and
+    its ``crm_parameters``. *match_count* counts every one; *registrations* keeps the first
+    `MAX_LOCATIONS`.
+    """
+
+    path: str
+    sha256: str
+    registrations: tuple[dict[str, Any], ...]
+    match_count: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "path": self.path,
+            "sha256": self.sha256,
+            "registrations": list(self.registrations),
+            "match_count": self.match_count,
+        }
+
+
+@dataclass(frozen=True)
 class FieldEvidence:
     """The recorded field value a field rule matched."""
 
@@ -300,7 +373,7 @@ class Finding:
     cls: str
     rule: str | None
     reason: str | None
-    evidence: ContentEvidence | FieldEvidence | None
+    evidence: ContentEvidence | RegistrationEvidence | FieldEvidence | None
     #: The row's usage (`crm.core.usage.Usage.to_dict`), set by the usage filter; absent means
     #: not read, never unused.
     usage: dict[str, Any] | None = None
@@ -416,11 +489,23 @@ def _field(obj: Any, name: str, kind: type, where: str) -> Any:
     return value
 
 
-def _evidence(value: Any, where: str) -> ContentEvidence | FieldEvidence | None:
+def _evidence(
+    value: Any, where: str
+) -> ContentEvidence | RegistrationEvidence | FieldEvidence | None:
     if value is None:
         return None
     if _get(value, "field") is not None:
         return FieldEvidence(_field(value, "field", str, where), _get(value, "value"))
+    if _get(value, "registrations") is not None:
+        registrations = _field(value, "registrations", list, where)
+        if not all(type(r) is dict for r in registrations):
+            raise InventoryError(f"{where}: registrations must be a list of objects")
+        return RegistrationEvidence(
+            _field(value, "path", str, where),
+            _field(value, "sha256", str, where),
+            tuple(registrations),
+            _field(value, "match_count", int, where),
+        )
     locations = tuple(
         (_field(loc, "line", int, where), _field(loc, "column", int, where))
         for loc in _field(value, "locations", list, where)
@@ -521,19 +606,172 @@ def _texts(record: Record, folder: Path) -> tuple[dict[str, str], str | None]:
     return texts, None
 
 
-def _assess_record(record: Record, rules: list[Rule], folder: Path) -> list[Finding]:
+class _Libraries:
+    """The web resources of an inventory by lowercased name, and what a content rule finds in each.
+
+    A registration rule asks whether a script library carries the pattern of another rule
+    (``Xrm.Page``), however that library's own range or targets read; the answer is the
+    library's text, so a library no script text decides is unknown, never clear.
+    """
+
+    def __init__(
+        self, records: tuple[Record, ...], folder: Path, rules: tuple[Rule, ...] = ()
+    ) -> None:
+        self._folder = folder
+        self._rules = {r.id: r for r in rules}
+        self._by_name: dict[str, list[Record]] = {}
+        for r in records:
+            if r.kind == "web_resource" and isinstance(r.fields.get("name"), str):
+                self._by_name.setdefault(str(r.fields["name"]).lower(), []).append(r)
+        self._known: dict[tuple[str, str], tuple[bool, str | None]] = {}
+
+    def carries(self, rule_id: str, name: str) -> tuple[bool, str | None]:
+        """``(True, None)`` when library *name* matches the rule *rule_id*, ``(False, None)`` when
+        it does not, and ``(False, why)`` when its text cannot say.
+        """
+        slot = (rule_id, name.lower())
+        if slot not in self._known:
+            rule = self._rules.get(rule_id)
+            self._known[slot] = (
+                self._read(rule, name) if rule else (False, f"library rule {rule_id} is not loaded")
+            )
+        return self._known[slot]
+
+    def _read(self, rule: Rule, name: str) -> tuple[bool, str | None]:
+        matches = self._by_name.get(name.lower(), [])
+        if not matches:
+            return False, f"library {name} is not in the inventory"
+        if len(matches) > 1:
+            return False, f"library {name} names more than one web resource"
+        record = matches[0]
+        if not rule.selects(record):
+            return False, f"library {name} is not a script web resource"
+        texts, problem = _texts(record, self._folder)
+        if problem is not None:
+            return False, f"library {name}: {problem}"
+        pattern = cast(ContentPattern, rule.detection).pattern
+        return any(pattern.search(t) for t in texts.values()), None
+
+
+def _flag(value: str | None) -> bool:
+    """A FormXml boolean; a missing ``passExecutionContext`` is false, as the platform reads it."""
+    return value is not None and value.strip().lower() == "true"
+
+
+def _form_handlers(root: Element) -> list[dict[str, Any]]:
+    """The enabled, editable handlers of a FormXml that do not pass the execution context."""
+    out: list[dict[str, Any]] = []
+    for event in root.iter("event"):
+        for handler in event.findall("Handlers/Handler"):  # not the platform's InternalHandlers
+            if not _flag(handler.get("enabled", "true")) or _flag(
+                handler.get("passExecutionContext")
+            ):
+                continue
+            out.append(
+                {
+                    "event": event.get("name") or "",
+                    "attribute": event.get("attribute"),
+                    "function": handler.get("functionName") or "",
+                    "library": handler.get("libraryName") or "",
+                    "passExecutionContext": False,
+                }
+            )
+    return sorted(out, key=_canonical)
+
+
+_WEB_RESOURCE = "$webresource:"
+
+
+def _web_resource_name(library: str) -> str | None:
+    """The web resource a ribbon action's ``Library`` names, or None for a platform script.
+
+    ``$webresource:<name>`` and a ``/WebResources/<name>`` path (with or without an org prefix)
+    name the org's web resource. Any other value is returned as it stands, so the inventory
+    lookup finds no such library and the registration is unknown, never clear.
+    """
+    lowered = library.lower()
+    if lowered.startswith("/_static/"):
+        return None
+    if lowered.startswith(_WEB_RESOURCE):
+        return library[len(_WEB_RESOURCE) :]
+    marker = "/webresources/"
+    at = lowered.find(marker)
+    return library[at + len(marker) :] if at >= 0 else library
+
+
+def _ribbon_actions(root: Element, parameter: str) -> list[dict[str, Any]]:
+    """The ribbon ``JavaScriptFunction`` actions on a web resource that pass no *parameter*."""
+    out: list[dict[str, Any]] = []
+    for command in root.iter("CommandDefinition"):
+        for action in command.iter("JavaScriptFunction"):
+            raw = action.get("Library") or ""
+            library = _web_resource_name(raw)
+            if library is None:
+                continue  # a platform script (/_static/...) is not a web resource of the org
+            passed = [p.get("Value") or "" for p in action.findall("CrmParameter")]
+            if parameter not in passed:
+                out.append(
+                    {
+                        "command": command.get("Id") or "",
+                        "function": action.get("FunctionName") or "",
+                        "library": library,
+                        "crm_parameters": passed,
+                    }
+                )
+    return sorted(out, key=_canonical)
+
+
+def _registrations(
+    rule: Rule,
+    path: str,
+    sha256: str,
+    text: str,
+    libs: _Libraries,
+    finding: Callable[..., Finding],
+) -> list[Finding]:
+    d = cast(FormHandlerContext | RibbonActionParameter, rule.detection)
+    try:
+        root = fromstring(text)
+    except ParseError:  # malformed, or carrying a DTD that safe_xml refuses
+        return [finding("unknown", rule.id, f"artifact is not well-formed XML: {path}")]
+    candidates = (
+        _form_handlers(root)
+        if isinstance(d, FormHandlerContext)
+        else _ribbon_actions(root, d.parameter)
+    )
+    hits: list[dict[str, Any]] = []
+    unknown: set[str] = set()
+    for candidate in candidates:
+        carries, why = libs.carries(d.library_rule, candidate["library"])
+        if why is not None:
+            unknown.add(why)
+        elif carries:
+            hits.append(candidate)
+    out = [finding("unknown", rule.id, why) for why in sorted(unknown)]
+    if hits:
+        evidence = RegistrationEvidence(path, sha256, tuple(hits[:MAX_LOCATIONS]), len(hits))
+        out.append(finding(rule.cls, rule.id, None, evidence))
+    return out
+
+
+def _assess_record(
+    record: Record,
+    rules: list[Rule],
+    folder: Path,
+    libs: _Libraries | None = None,
+) -> list[Finding]:
     def finding(
         cls: str,
         rule: str | None,
         reason: str | None,
-        evidence: ContentEvidence | FieldEvidence | None = None,
+        evidence: ContentEvidence | RegistrationEvidence | FieldEvidence | None = None,
     ) -> Finding:
         return Finding(record.kind, record.key, cls, rule, reason, evidence)
 
     if not rules:
         return [finding("unknown", None, "no rule")]
     out: list[Finding] = []
-    content = [r for r in rules if isinstance(r.detection, ContentPattern)]
+    content = [r for r in rules if not isinstance(r.detection, FieldIn)]
     texts: dict[str, str] = {}
     if content:
         texts, problem = _texts(record, folder)
@@ -542,6 +780,12 @@ def _assess_record(record: Record, rules: list[Rule], folder: Path) -> list[Find
     sha = {a.path: a.sha256 for a in record.artifacts}
     for rule in rules:
         d = rule.detection
+        if isinstance(d, FormHandlerContext | RibbonActionParameter):
+            for path, text in sorted(texts.items()):
+                out += _registrations(
+                    rule, path, sha[path], text, libs or _Libraries((), folder), finding
+                )
+            continue
         if isinstance(d, FieldIn):
             value = record.fields.get(d.field)
             if value is None:
@@ -595,13 +839,14 @@ def assess(
     if version is not None:
         active = [r for r in active if r.applies(version)]
     unversioned = f"source version {inv.source.version!r} is not a dotted version"
+    libs = _Libraries(inv.records, folder, rules.rules)
     findings: list[Finding] = []
     for record in inv.records:
         selected = [r for r in active if r.selects(record)]
         if version is None and selected:
             findings.append(Finding(record.kind, record.key, "unknown", None, unversioned, None))
         else:
-            findings += _assess_record(record, selected, folder)
+            findings += _assess_record(record, selected, folder, libs)
         status = inv.coverage[record.kind].status
         if status != "complete":
             findings.append(

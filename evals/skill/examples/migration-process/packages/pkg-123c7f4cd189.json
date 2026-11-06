@@ -125,13 +125,30 @@
   ],
   "findings": [
     {
-      "class": "unknown",
+      "class": "deprecated",
       "component": "form:new_project|2|Information",
-      "evidence": null,
-      "reason": "no rule",
+      "evidence": {
+        "match_count": 1,
+        "path": "artifacts/form/new_project-2-information-5df68dd866ea.form.xml",
+        "registrations": [
+          {
+            "attribute": null,
+            "event": "onload",
+            "function": "Project.onLoad",
+            "library": "new_/scripts/project.js",
+            "passExecutionContext": false
+          }
+        ],
+        "sha256": "74b368f5e003d10ae88ebc6f3be2282d7eedad2184ad4f181e7a610fdbcf2167"
+      },
+      "reason": null,
       "reference": null,
-      "rule": null,
-      "sources": [],
+      "rule": "form-handler-no-execution-context",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/clientapi-execution-context",
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/clientapi-form-context",
+        "https://learn.microsoft.com/power-platform/important-changes-coming#some-client-apis-are-deprecated"
+      ],
       "status": null,
       "type": "compatibility"
     },

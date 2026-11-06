@@ -55,6 +55,30 @@ Dataverse online does not require. Enter its findings as "deprecated but
 working" conversion candidates marked "needs redesign"; they become confirmed
 blockers only when the plan requires the conversion.
 
+## Read the registration findings
+
+Two rules judge how a component calls a script, not the script itself:
+`form-handler-no-execution-context` (kind `form`) and
+`ribbon-action-no-primary-control` (kind `ribbon_diff`). Each is a `deprecated`
+finding when the library the registration calls carries an `Xrm.Page` finding
+(`web-resource-xrm-page`) and the registration hands that library no context: an
+enabled form handler without `passExecutionContext`, or a `JavaScriptFunction` on
+a web resource library (`$webresource:` or a `/WebResources/` path) without `PrimaryControl` among its `CrmParameter`s.
+
+- **Evidence** is `registrations`, one entry per flagged registration (form:
+  `event`, `attribute`, `function`, `library`, the current
+  `passExecutionContext`; ribbon: `command`, `function`, `library`,
+  `crm_parameters`), with `match_count` for the total. Quote the entries.
+- **`clear`** means every enabled handler or action in scope passes the context or
+  calls a library with no `Xrm.Page` text. It says nothing about the library.
+- **`unknown`** reasons: `library <name> is not in the inventory`, `library <name>
+  is not a script web resource`, `library <name>: <artifact problem>`, `artifact is
+  not well-formed XML`. Resolve them as the list above does; a missing library is
+  often a platform or managed script, so name it in the entry.
+- **Fix registration and function together.** The context becomes the handler's
+  first argument, so setting the flag shifts every parameter the handler already
+  configures; edit the function in the same change as the library's own finding.
+
 Done when every component carries one of the four classes with its rule or
 evidence, or an entry open on a named question, and no `clear` or `unknown` is
 left unjudged.

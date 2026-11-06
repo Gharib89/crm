@@ -9,12 +9,25 @@
       "rule": null
     },
     {
-      "class": "unknown",
-      "evidence": null,
+      "class": "deprecated",
+      "evidence": {
+        "match_count": 1,
+        "path": "artifacts/form/new_project-2-information-5df68dd866ea.form.xml",
+        "registrations": [
+          {
+            "attribute": null,
+            "event": "onload",
+            "function": "Project.onLoad",
+            "library": "new_/scripts/project.js",
+            "passExecutionContext": false
+          }
+        ],
+        "sha256": "74b368f5e003d10ae88ebc6f3be2282d7eedad2184ad4f181e7a610fdbcf2167"
+      },
       "key": "new_project|2|Information",
       "kind": "form",
-      "reason": "no rule",
-      "rule": null
+      "reason": null,
+      "rule": "form-handler-no-execution-context"
     },
     {
       "class": "unknown",
@@ -153,7 +166,7 @@
       }
     }
   ],
-  "generated_at": "2026-11-06T00:40:26Z",
+  "generated_at": "2026-11-06T02:18:00Z",
   "incomplete": {
     "dependency": "unsupported",
     "ribbon_diff": "unsupported"
@@ -168,8 +181,8 @@
   },
   "rules": {
     "schema_version": 1,
-    "sha256": "7d8ee7a7c327c8aaa2cc7a661a720ec44ebbafe5babaafc0ec33608871274a94",
-    "version": 1
+    "sha256": "6aa86086d1443af9ee77e1871b1a863f2df82b5ceec8084a75cc5cba22486da6",
+    "version": 2
   },
   "rules_hit": {
     "assembly-isolation-none": {
@@ -190,6 +203,16 @@
         "https://learn.microsoft.com/power-apps/developer/data-platform/reference/entities/pluginassembly"
       ],
       "title": "Assembly stored outside the database (on disk or the GAC), which Dataverse online cannot run"
+    },
+    "form-handler-no-execution-context": {
+      "class": "deprecated",
+      "fix": "Select 'Pass execution context as first parameter' on the handler (passExecutionContext=\"true\") and take formContext from executionContext.getFormContext() in the function. Only enabled handlers are judged; a handler whose library cannot be read is unknown, not clear.",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/clientapi-execution-context",
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/clientapi-form-context",
+        "https://learn.microsoft.com/power-platform/important-changes-coming#some-client-apis-are-deprecated"
+      ],
+      "title": "An enabled form handler does not pass the execution context to a library that uses Xrm.Page"
     },
     "web-resource-crmform": {
       "class": "blocker",

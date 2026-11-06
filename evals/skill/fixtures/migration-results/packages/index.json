@@ -1,10 +1,10 @@
 {
   "compatibility": {
     "blocker": 1,
-    "deprecated": 1,
+    "deprecated": 2,
     "optional": 0,
     "target": "online",
-    "unknown": 10,
+    "unknown": 9,
     "unplaced": [
       {
         "class": "unknown",
@@ -32,9 +32,9 @@
     {
       "counts": {
         "blocker": 1,
-        "deprecated": 1,
+        "deprecated": 2,
         "optional": 0,
-        "unknown": 4
+        "unknown": 3
       },
       "file": "pkg-123c7f4cd189.json",
       "id": "pkg-123c7f4cd189",

@@ -182,14 +182,15 @@ inventory, for one target, and writes a findings file.
 - **Every component gets a finding**, keyed by component key: `blocker`,
   `deprecated` or `optional` from a rule hit, `unknown` with a `reason`, or `clear`
   (the rules that apply found nothing). `clear` means only that the rules that apply
-  found nothing, and they cover web resource scripts and plug-in assembly
-  registration. Judge a `clear` component from evidence.
+  found nothing, and they cover web resource scripts, plug-in assembly
+  registration and how forms and ribbon diffs call scripts. Judge a `clear` component from evidence.
 - **Resolve every `unknown`** before calling a component ready: `no rule` means no rule
   judges it (most kinds), and an `extraction gap` or `kind coverage` reason means the
   inventory never fully read it. A `source version` reason marks every ruled component
   of an inventory whose org version extract could not read: re-extract.
 - **Quote the evidence**: a script hit carries the artifact `path`, `sha256` and match
-  `locations` (line, column); a registration hit carries the `field` and `value`. The
+  `locations` (line, column); a registration hit carries the `field` and `value`; a form or ribbon hit carries
+  the flagged `registrations`. The
   fix and the Microsoft Learn sources of each rule hit are under `rules_hit`.
 - **Read `counts.by_class`, not the exit code**: a blocker exits 0.
 - **`field isolation_mode not recorded`** marks an inventory extracted by an older crm:
