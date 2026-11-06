@@ -18,6 +18,7 @@ from typing import Any, cast
 from crm.core.inventory import (
     KINDS,
     READ_VERSIONS,
+    READ_VERSIONS_TEXT,
     ExtractionGap,
     Inventory,
     InventoryError,
@@ -200,7 +201,7 @@ def read_pair(a: Path, b: Path) -> tuple[Inventory, Inventory]:
         raise InventoryError(
             f"cannot diff: A has schema_version {versions[0]!r} and B has schema_version "
             f"{versions[1]!r}; this crm reads schema_version "
-            f"{' and '.join(map(str, READ_VERSIONS))}"
+            f"{READ_VERSIONS_TEXT}"
         )
     out: list[Inventory] = []
     for label, folder, decoded in (("A", a, data[0]), ("B", b, data[1])):

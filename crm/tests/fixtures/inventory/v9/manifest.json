@@ -78,6 +78,13 @@
       "status": "complete",
       "truncated": false
     },
+    "ribbon_diff": {
+      "errors": [],
+      "pages": 0,
+      "records": 0,
+      "status": "complete",
+      "truncated": false
+    },
     "sitemap": {
       "errors": [],
       "pages": 1,
@@ -554,7 +561,7 @@
       "publication_state": "published"
     }
   ],
-  "schema_version": 2,
+  "schema_version": 3,
   "scope": {
     "mode": "org",
     "solutions": []

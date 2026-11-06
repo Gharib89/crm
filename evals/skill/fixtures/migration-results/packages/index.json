@@ -15,7 +15,8 @@
     ]
   },
   "incomplete": {
-    "dependency": "unsupported"
+    "dependency": "unsupported",
+    "ribbon_diff": "unsupported"
   },
   "inventory": {
     "extracted_at": "2026-11-01T10:00:00Z",

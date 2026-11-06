@@ -596,7 +596,8 @@ _Avoid_: TODO, warning, low-confidence rewrite.
 **Ribbon diff**:
 The customizer's own ribbon changes for one entity or the application, as a solution
 imports them. Distinct from the compiled ribbon, the effective merge of system and
-custom definitions that the org renders, which cannot be imported.
+custom definitions that the org renders, which cannot be imported. An inventory records
+it as the `ribbon_diff` kind, read from a solution export.
 _Avoid_: ribbon (ambiguous between the two), RibbonDiffXml (the element, not the concept).
 
 ## Relationships

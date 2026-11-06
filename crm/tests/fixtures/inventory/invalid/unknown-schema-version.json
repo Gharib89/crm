@@ -56,7 +56,7 @@
       "publication_state": "published"
     }
   ],
-  "schema_version": 3,
+  "schema_version": 4,
   "scope": {
     "mode": "org",
     "solutions": []

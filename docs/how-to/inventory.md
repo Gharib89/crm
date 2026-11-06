@@ -1,7 +1,7 @@
 # How-to: inventory
 
 `crm inventory extract` reads an org's customizations into a **migration
-inventory**: a `manifest.json` in [inventory manifest v2](../reference/inventory-manifest.md)
+inventory**: a `manifest.json` in [inventory manifest v3](../reference/inventory-manifest.md)
 format plus the raw artifacts it points at. An inventory describes what is
 deployed; it is never a desired state for `crm apply`
 ([ADR 0032](../adr/0032-inventory-descriptive-contract-keyed-by-component-key.md)).
@@ -48,7 +48,16 @@ runs it too. It reads every v1 kind (`scope.mode: "org"` unless you pass
   on the Web API). Dependencies are read whole, not one component at a time: the
   `dependency` entity on `crm2011`, the `dependencies` entity set on the Web API;
 - the application ribbon and the ribbon of each entity with a display label (an
-  entity with none, such as an intersect entity, has no UI and no ribbon).
+  entity with none, such as an intersect entity, has no UI and no ribbon);
+- the **ribbon diff** of the application and of each entity that has custom ribbon
+  content: the customization itself, which the merged ribbon above does not separate
+  from the stock one. It is read from a solution export (`ExportSolution`), so the
+  org-wide read exports the Default solution (CRM 2011: about 4 minutes and 90 MB on a
+  large org; the zip is streamed to disk, read once and deleted). Dataverse online
+  refuses to export the Default solution, so there the kind is `unsupported` with a gap;
+  `--solution` exports the named solutions on any platform. The records are
+  `ribbon_diff`, key the entity logical name (`""` for the application), artifact
+  `ribbon-diff.xml`; an entity with an empty diff has none.
 
 Each entity gets one metadata read and one ribbon read, so the whole-org read takes
 tens of minutes on a large org.
@@ -100,8 +109,8 @@ a second, in a `key=value` shape a script can grep:
 
 The stages run in order: `source` (3 reads), `records` (one paged read per record
 kind: `done` counts finished reads, with the current `kind` and its `pages` so far),
-`entity_detail` and `ribbons` (one unit per entity in scope), then `build`, which is
-local. The `eta` appears in `entity_detail` and `ribbons` once five units have been
+`entity_detail` and `ribbons` (one unit per entity in scope), `ribbon_diffs` (one export
+per solution in scope), then `build`, which is local. The `eta` appears in `entity_detail` and `ribbons` once five units have been
 read this run, from their average read time; it is an estimate. The `records` stage
 has no total page count, so it shows none. On a resumed run, units restored from the
 checkpoint count as done (`reused`) and do not feed the estimate. Pass `--quiet`
@@ -118,7 +127,7 @@ checkpoint count as done (`reused`) and do not feed the estimate. Pass `--quiet`
 The artifacts are web resource content (`content.js`, `content.png`, ...), the
 plug-in assembly binary (`content.dll`), workflow XAML (`workflow.xaml`), form XML
 (`form.xml`), view fetch and layout XML (`fetch.xml`, `layout.xml`), sitemap XML
-(`sitemap.xml`) and ribbon XML (`ribbon.xml`).
+(`sitemap.xml`), ribbon XML (`ribbon.xml`) and ribbon diff XML (`ribbon-diff.xml`).
 
 ## Record usage with `--with-usage`
 
@@ -158,14 +167,15 @@ crm --json inventory extract --out ./inventory --solution ContosoCore --solution
 `--solution UNIQUE_NAME` (repeatable, on every platform, matched case-insensitively)
 narrows the inventory to the named solutions: their solution records and memberships,
 each member component, each attribute, local option set, form, view and ribbon of a
-member entity, each relationship with a member entity on either side, and each
+member entity, each ribbon diff in the named solutions' exports, each relationship with a member entity on either side, and each
 dependency whose dependent component is kept. On v9 and cloud, an entity a solution
 holds without its subcomponents, or as a shell, brings only the subcomponents the
 solution lists on their own. The manifest header records the scope with each name as
 the org spells it (`scope.mode: "solutions"`, `scope.solutions`).
 
 Entity details and entity ribbons are read only for member entities, and the
-application ribbon is not read, so a narrowed run reads less per entity. The
+application ribbon is not read, so a narrowed run reads less per entity. The ribbon diffs
+are read from each named solution's own export. The
 org-wide component reads still run, because a solution membership names its
 component only by id, but a web resource's content and a plug-in assembly's binary
 are fetched only for the solutions' members (by id, in small batches), so the
@@ -249,6 +259,9 @@ names the endpoint:
   the read), nor is the ribbon of an entity with no collection label in your
   language (the Web API faulted that read on a cloud org; on-prem v9 is not
   measured), and one gap lists them all;
+- the **ribbon diffs of a whole-org run on Dataverse online**: the platform refuses to
+  export the Default solution, so none are read (`ribbon_diff` coverage is
+  `unsupported`); run with `--solution` to read the named solutions';
 - **rows naming a component this inventory does not record** (a solution
   membership or dependency on a kind v1 does not define, whose own read failed,
   whose own row has no component key, or, in a `--solution` run, that may belong to

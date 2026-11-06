@@ -567,6 +567,21 @@ class D365Backend:
         twin._dry_run = True
         return twin
 
+    def as_live(self) -> D365Backend:
+        """A twin that issues writes for real (``self`` if already live).
+
+        For a read-only POST the platform exposes as an action (the solution
+        export): under ``--dry-run`` it would be previewed, not run, yet it
+        changes nothing on the org. The twin shares this backend's session,
+        auth and read-only guard, so a profile's ``read_only`` still refuses
+        every other mutation.
+        """
+        if not self._dry_run:
+            return self
+        twin = copy.copy(self)
+        twin._dry_run = False
+        return twin
+
     # ── Auth helpers ─────────────────────────────────────────────────────
 
     def _make_auth(self, password: str) -> Any:

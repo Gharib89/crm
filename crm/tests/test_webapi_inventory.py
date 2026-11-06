@@ -22,9 +22,10 @@ import pytest
 from click.testing import CliRunner
 
 from crm.cli import cli
-from crm.core import inventory, inventory_extract
+from crm.core import inventory, inventory_extract, solution_transfer
 from crm.core import session as session_mod
 from crm.core.webapi_inventory import WebApiSource
+from crm.tests.ribbon_zip import default_zip
 from crm.utils.d365_backend import (
     _TRANSPORT_FAILURE_PREFIX,  # pyright: ignore[reportPrivateUsage]
     ConnectionProfile,
@@ -34,7 +35,7 @@ from crm.utils.safe_xml import fromstring
 
 _URL = "https://contoso.crm.dynamics.com"
 _SECRET = "s3cr3t-client-secret-value"
-_SCHEMA = Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v2.schema.json"
+_SCHEMA = Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v3.schema.json"
 _FMT = "@OData.Community.Display.V1.FormattedValue"
 _LOOKUP = "@Microsoft.Dynamics.CRM.lookuplogicalname"
 
@@ -216,6 +217,9 @@ class FakeBackend:
         self.paths: list[str] = []
         self.fetch_xml: dict[str, str] = {}  # entity set -> its last FetchXML
 
+    def as_live(self):
+        return self
+
     def get(self, path: str, *, params: dict | None = None, extra_headers: dict | None = None):
         self.paths.append(path)
         if path == "WhoAmI":
@@ -257,6 +261,19 @@ class FakeBackend:
         return body
 
 
+@pytest.fixture(autouse=True)
+def exports(monkeypatch):
+    """Stand in for the solution export; return the names it was asked for."""
+    names: list[str] = []
+
+    def export(backend, name, dest, **kwargs):
+        names.append(name)
+        Path(dest).write_bytes(default_zip())
+
+    monkeypatch.setattr(solution_transfer, "export_solution", export)
+    return names
+
+
 def _extract(backend, out: Path, solutions: tuple[str, ...] = (), include_system: bool = True):
     return inventory_extract.extract(
         WebApiSource(backend), out, cli_version="9.9.9", solutions=solutions,
@@ -287,7 +304,10 @@ def test_a_cloud_extraction_writes_a_schema_valid_manifest(tmp_path):
         "version": "9.2.26094.166",
     }
     assert data["scope"] == {"mode": "org", "solutions": []}
-    assert all(c["status"] == "complete" for c in data["coverage"].values())
+    # The platform refuses to export the Default solution, so the ribbon diffs are unread.
+    assert {k for k, c in data["coverage"].items() if c["status"] != "complete"} == {"ribbon_diff"}
+    assert data["coverage"]["ribbon_diff"]["status"] == "unsupported"
+    assert any(g["kind"] == "ribbon_diff" for g in data["gaps"])
     assert _keys(data, "step") == [
         "Update|new_project|40|0|Contoso.Plugins%7CContoso.Plugins.ProjectPlugin|Project: Update"
     ]
@@ -803,3 +823,89 @@ def test_a_failed_content_batch_is_a_partial_kind_and_the_run_goes_on(tmp_path):
     data = _manifest(out)
     assert data["coverage"]["web_resource"]["status"] == "partial"
     assert _keys(data, "web_resource") == ["new_/scripts/project.js"]  # the record, no artifact
+
+
+def _diff_records(data: dict) -> dict[str, dict]:
+    return {r["key"]: r for r in data["records"] if r["kind"] == "ribbon_diff"}
+
+
+def test_a_cloud_org_wide_run_exports_nothing_and_says_so(tmp_path, exports):
+    out = tmp_path / "inv"
+    summary = _extract(FakeBackend(), out)
+    assert exports == [] and summary.complete
+    assert summary.kinds["ribbon_diff"] == {"status": "unsupported", "records": 0}
+    (gap,) = [g for g in _manifest(out)["gaps"] if g["kind"] == "ribbon_diff"]
+    assert "Default" in gap["reason"] and "--solution" in gap["reason"]
+
+
+def test_a_scoped_run_exports_each_named_solution_and_keeps_the_diffs_with_content(
+    tmp_path, exports
+):
+    out = tmp_path / "inv"
+    summary = _extract(FakeBackend(), out, solutions=("contoso",))
+    assert exports == ["contoso"] and summary.complete
+    data = _manifest(out)
+    assert data["coverage"]["ribbon_diff"]["status"] == "complete"
+    records = _diff_records(data)
+    assert sorted(records) == ["", "new_project"]  # the application's key is empty
+    (artifact,) = records["new_project"]["artifacts"]
+    body = (out / artifact["path"]).read_bytes()
+    assert body.startswith(b"<RibbonDiffXml>") and b"new.Project.Do" in body
+    assert not list(out.rglob("*.zip")) and not (out / ".checkpoint").exists()
+
+
+def test_a_failed_export_is_a_failed_kind_never_complete(tmp_path, monkeypatch):
+    def refuse(backend, name, dest, **kwargs):
+        raise D365Error("export failed", status=500)
+
+    monkeypatch.setattr(solution_transfer, "export_solution", refuse)
+    out = tmp_path / "inv"
+    summary = _extract(FakeBackend(), out, solutions=("contoso",))
+    assert not summary.complete
+    assert summary.kinds["ribbon_diff"] == {"status": "failed", "records": 0}
+    assert _manifest(out)["coverage"]["ribbon_diff"]["status"] == "failed"
+
+
+def test_an_unreadable_export_is_a_failed_kind(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        solution_transfer, "export_solution", lambda b, n, dest, **kw: Path(dest).write_bytes(b"x")
+    )
+    out = tmp_path / "inv"
+    summary = _extract(FakeBackend(), out, solutions=("contoso",))
+    assert summary.kinds["ribbon_diff"]["status"] == "failed" and not summary.complete
+
+
+def test_a_damaged_export_stream_is_a_failed_kind(tmp_path, monkeypatch):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr(
+            "customizations.xml", "<ImportExportXml>" + "<a>b</a>" * 4000 + "</ImportExportXml>"
+        )
+    damaged = bytearray(buf.getvalue())
+    damaged[60:80] = bytes(range(200, 220))  # inside the deflate stream
+    monkeypatch.setattr(
+        solution_transfer,
+        "export_solution",
+        lambda b, n, dest, **kw: Path(dest).write_bytes(damaged),
+    )
+    summary = _extract(FakeBackend(), tmp_path / "inv", solutions=("contoso",))
+    assert summary.kinds["ribbon_diff"]["status"] == "failed" and not summary.complete
+
+
+def test_a_resume_reuses_the_exported_diffs(tmp_path, exports, monkeypatch):
+    out = tmp_path / "inv"
+    _extract(
+        FakeBackend(fail={("systemforms", 1): D365Error("boom", status=500)}), out, ("contoso",)
+    )
+    assert exports == ["contoso"]
+    summary = _extract(FakeBackend(), out, solutions=("contoso",))
+    assert exports == ["contoso"]  # the second run read no export
+    assert summary.reused["ribbon_diff"] == 1 and summary.complete
+    assert sorted(_diff_records(_manifest(out))) == ["", "new_project"]
+
+
+def test_an_onprem_org_wide_run_exports_the_default_solution(tmp_path, exports):
+    out = tmp_path / "inv"
+    summary = _extract(FakeBackend(auth_scheme="ntlm"), out)
+    assert exports == ["Default"] and summary.complete
+    assert sorted(_diff_records(_manifest(out))) == ["", "new_project"]

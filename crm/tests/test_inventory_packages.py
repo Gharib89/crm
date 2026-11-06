@@ -799,10 +799,10 @@ def test_cli_findings_write_and_summarize(inputs, tmp_path):
     assert "findings in no package" in table.output
 
 
-#: SHA-256 of each file `packages` wrote for the fixture (`index.json` holds `out_of_scope` and
-#: `usage_filtered`; a package of web resources holds a derived `usage`, #1096).
+#: SHA-256 of each file `packages` wrote for the fixture (`index.json` holds the manifest hash,
+#: `out_of_scope` and `usage_filtered`; a package of web resources holds a derived `usage`, #1096).
 GOLDEN = {
-    "index.json": "01c8317c58a2fee0f7d5815a0f13e818b2727a451b792b225707032664cf6b51",
+    "index.json": "7e55b02268bb0da7552225cb96f14d9a6cc20ad785fbfac11ddceb726b12554e",
     "pkg-053da551dc3a.json": "d2ad7733907a8eee57579c3db13db4835894c45a5c25f63b12ebde774be878a2",
     "pkg-0f1a47282248.json": "0fb3649e9fb122cbcbd3d4270d55d70eed75c661d9ccdcb3c98fe7ed011c78c3",
     "pkg-564e3c958900.json": "af0666aceef3dd9c70dd9d4e11a4746884fdea57554d108f78e8840b1d9f3890",

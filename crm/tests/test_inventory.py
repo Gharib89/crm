@@ -1,4 +1,4 @@
-"""Migration inventory manifest v2 and the v1 upgrade: schema, reader, writer (ADR 0032)."""
+"""Migration inventory manifest v3 and the v1 and v2 upgrades: schema, reader, writer (ADR 0032)."""
 
 # pyright: basic
 
@@ -199,9 +199,9 @@ def test_binary_artifact_uses_the_raw_hash_for_both() -> None:
 
 
 def _manifest() -> dict[str, Any]:
-    """A minimal valid v2 manifest: one entity and one form, both kinds covered."""
+    """A minimal valid v3 manifest: one entity and one form, both kinds covered."""
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "source": {
             "platform": "onprem",
             "org_url": "https://internalcrm.contoso.local/Contoso",
@@ -271,7 +271,7 @@ def test_reader_returns_typed_records_and_ignores_fields_it_does_not_know() -> N
 
     inv = inventory.parse_manifest(manifest)
 
-    assert inv.schema_version == 2
+    assert inv.schema_version == 3
     assert inv.source.platform == "onprem"
     assert [(r.kind, r.key) for r in inv.records] == [
         ("entity", "account"),
@@ -281,14 +281,14 @@ def test_reader_returns_typed_records_and_ignores_fields_it_does_not_know() -> N
     assert inv.coverage["form"].status == "complete"
 
 
-@pytest.mark.parametrize("version", [3, 0, "2", None, True])
+@pytest.mark.parametrize("version", [4, 0, "2", None, True])
 def test_reader_refuses_an_unknown_schema_version_naming_the_readable_ones(
     version: object,
 ) -> None:
     manifest = {"schema_version": version, "records": "a shape v2 does not know"}
 
     with pytest.raises(
-        inventory.InventoryError, match=rf"schema_version {version!r}.*schema_version 1 and 2"
+        inventory.InventoryError, match=rf"schema_version {version!r}.*schema_version 1, 2 and 3"
     ):
         inventory.parse_manifest(manifest)
 
@@ -518,7 +518,7 @@ def test_written_manifest_reads_back_to_the_same_inventory(tmp_path: Path) -> No
 
 FIXTURES = Path(__file__).parent / "fixtures" / "inventory"
 SCHEMA_FILE = (
-    Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v2.schema.json"
+    Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v3.schema.json"
 )
 SAMPLES = ("legacy", "v9", "cloud")
 
@@ -635,7 +635,7 @@ def test_samples_carry_the_cases_the_diff_source_map_and_packages_slices_reuse()
         (
             "unknown-schema-version",
             True,
-            r"schema_version 3 is not supported.*schema_version 1 and 2",
+            r"schema_version 4 is not supported.*schema_version 1, 2 and 3",
         ),
         # JSON Schema cannot cross-check records against coverage; the reader does.
         ("kind-without-coverage", False, r"no coverage entry for kind 'form'"),
@@ -717,15 +717,15 @@ def test_a_membership_or_dependency_may_reference_the_application_ribbon_or_defa
         inventory.component_key("solution_membership", {**member, "member_kind": "entity"})
 
 
-def test_the_v1_schema_still_validates_a_v1_manifest_and_the_v2_schema_the_empty_key() -> None:
+def test_the_v1_schema_still_validates_a_v1_manifest_and_the_v3_schema_the_empty_key() -> None:
     v1_file = SCHEMA_FILE.with_name("inventory-manifest-v1.schema.json")
     v1_schema = json.loads(v1_file.read_text(encoding="utf-8"))
     v1 = _v1_application_ribbon()
     assert list(jsonschema.Draft202012Validator(v1_schema).iter_errors(v1)) == []
-    v2 = copy.deepcopy(v1)
-    v2["schema_version"] = 2
-    v2["records"][-1]["key"] = ""
-    assert _schema_errors(v2) == []
+    v3 = copy.deepcopy(v1)
+    v3["schema_version"] = 3
+    v3["records"][-1]["key"] = ""
+    assert _schema_errors(v3) == []
 
 
 def test_an_unknown_empty_named_field_does_not_open_the_empty_key_exception() -> None:
@@ -749,3 +749,78 @@ def test_a_gap_may_name_the_empty_key_of_the_application_ribbon_but_no_other_kin
         inventory.parse_manifest(manifest)
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.Draft202012Validator(schema).validate(manifest)
+
+
+def _ribbon_diff_record(entity: str | None) -> dict[str, Any]:
+    key = inventory.component_key("ribbon_diff", {"entity": entity})
+    return {
+        "kind": "ribbon_diff",
+        "key": key,
+        "id": None,
+        "display_name": None,
+        "origin": "unknown",
+        "managed": None,
+        "publication_state": "published",
+        "fields": {"entity": entity},
+        "artifacts": [
+            {
+                "path": inventory.artifact_path("ribbon_diff", key, "ribbon-diff.xml"),
+                "content": "text",
+                "sha256": "a" * 64,
+                "normalized_sha256": "b" * 64,
+            }
+        ],
+    }
+
+
+def test_a_ribbon_diff_keys_by_entity_and_the_application_diff_keys_empty() -> None:
+    assert inventory.component_key("ribbon_diff", {"entity": "account"}) == "account"
+    assert inventory.component_key("ribbon_diff", {"entity": None}) == ""
+
+
+def test_the_v3_reader_and_schema_accept_a_ribbon_diff_per_entity_and_the_application() -> None:
+    manifest = _manifest()
+    manifest["records"] += [_ribbon_diff_record("account"), _ribbon_diff_record(None)]
+    manifest["coverage"]["ribbon_diff"] = {
+        "status": "complete",
+        "pages": 1,
+        "records": 2,
+        "truncated": False,
+        "errors": [],
+    }
+
+    inv = inventory.parse_manifest(manifest)
+
+    assert sorted(r.key for r in inv.records if r.kind == "ribbon_diff") == ["", "account"]
+    assert _schema_errors(manifest) == []
+
+
+def test_a_ribbon_diff_on_the_empty_key_is_the_only_kind_besides_ribbon_and_sitemap() -> None:
+    manifest = _manifest()
+    manifest["records"][0]["key"] = ""
+
+    with pytest.raises(inventory.InventoryError, match="key must be a non-empty string"):
+        inventory.parse_manifest(manifest)
+
+
+@pytest.mark.parametrize("version", [1, 2])
+def test_an_older_manifest_upgrades_with_unsupported_ribbon_diff_coverage(version: int) -> None:
+    manifest = _manifest()
+    manifest["schema_version"] = version
+
+    inv = inventory.parse_manifest(manifest)
+
+    assert inv.schema_version == 3
+    coverage = inv.coverage["ribbon_diff"]
+    assert (coverage.status, coverage.records) == ("unsupported", 0)
+    assert f"schema_version {version}" in coverage.errors[0]
+
+
+def test_a_v3_manifest_without_ribbon_diff_coverage_is_left_as_written() -> None:
+    assert "ribbon_diff" not in inventory.parse_manifest(_manifest()).coverage
+
+
+def test_the_v2_schema_stays_beside_the_v3_one_for_old_manifests() -> None:
+    v2 = json.loads(SCHEMA_FILE.with_name("inventory-manifest-v2.schema.json").read_text("utf-8"))
+    assert v2["properties"]["schema_version"] == {"const": 2}
+    assert "ribbon_diff" not in v2["properties"]["coverage"]["propertyNames"]["enum"]

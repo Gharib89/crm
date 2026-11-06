@@ -12,6 +12,7 @@ import base64
 import copy
 import json
 from pathlib import Path
+from typing import Any
 
 import jsonschema
 import pytest
@@ -22,6 +23,8 @@ from crm.core import inventory, inventory_extract, legacy_reads
 from crm.core import session as session_mod
 from crm.core.inventory_diff import diff_inventories
 from crm.core.legacy import Page
+from crm.tests import ribbon_zip
+from crm.tests.ribbon_zip import default_zip
 from crm.utils.d365_backend import (
     _TRANSPORT_FAILURE_PREFIX,  # pyright: ignore[reportPrivateUsage]
     ConnectionProfile,
@@ -30,7 +33,7 @@ from crm.utils.d365_backend import (
 from crm.utils.safe_xml import fromstring
 
 _URL = "https://crm.contoso.local/contoso"
-_SCHEMA = Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v2.schema.json"
+_SCHEMA = Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v3.schema.json"
 
 
 def _id(n: int) -> str:
@@ -205,7 +208,7 @@ class FakeClient:
 @pytest.fixture
 def reads(monkeypatch):
     """Patch the metadata and ribbon reads; return the per-read call counts."""
-    calls: dict[str, int] = {}
+    calls: dict[str, Any] = {}
 
     def count(name, value):
         def fn(*args):
@@ -222,15 +225,23 @@ def reads(monkeypatch):
         "ribbon_xml",
         count("ribbon", lambda c, e: f"<RibbonDefinitions entity='{e}'/>".encode()),
     )
+
+    def export(client, name):
+        calls["export"] = calls.get("export", 0) + 1
+        calls.setdefault("exported", []).append(name)
+        return default_zip()
+
+    monkeypatch.setattr(legacy_reads, "export_solution", export)
     return calls
 
 
-def _extract(client, out: Path, *, include_system: bool = True):
+def _extract(client, out: Path, *, include_system: bool = True, solutions: tuple[str, ...] = ()):
     return inventory_extract.extract(
         inventory_extract.LegacySource(client),
         out,
         cli_version="9.9.9",
         include_system=include_system,
+        solutions=solutions,
         now=lambda: "2026-11-04T10:00:00Z",
     )
 
@@ -616,3 +627,72 @@ def test_inventory_extract_reports_an_unreadable_out_folder_as_an_envelope(
     )
     assert result.exit_code == 1, result.output
     assert "Permission denied" in json.loads(result.output)["error"]
+
+
+def _second_solution() -> dict:
+    return {"id": _id(3), "uniquename": "second", "friendlyname": "Second", "version": "1.0",
+            "ismanaged": False, "isvisible": True,
+            "publisherid": _ref("publisher", 91, "Contoso")}  # fmt: skip
+
+
+def _diff_records(data: dict) -> dict[str, dict]:
+    return {r["key"]: r for r in data["records"] if r["kind"] == "ribbon_diff"}
+
+
+def test_an_org_wide_run_exports_the_default_solution_and_records_each_diff(reads, tmp_path):
+    out = tmp_path / "inv"
+    summary = _extract(FakeClient(), out)
+    assert reads["exported"] == ["Default"] and summary.complete
+    data = _manifest(out)
+    assert data["coverage"]["ribbon_diff"] == {
+        "status": "complete", "pages": 1, "records": 2, "truncated": False, "errors": [],
+    }  # fmt: skip
+    records = _diff_records(data)
+    assert sorted(records) == ["", "new_project"]  # the empty skeleton of account is no record
+    (artifact,) = records["new_project"]["artifacts"]
+    assert b"new.Project.Do" in (out / artifact["path"]).read_bytes()
+    assert not list(out.rglob("*.zip"))
+
+
+def test_a_failed_export_is_recorded_and_never_complete(reads, monkeypatch, tmp_path):
+    def refuse(client, name):
+        raise D365Error("ExportSolution: timed out", status=500)
+
+    monkeypatch.setattr(legacy_reads, "export_solution", refuse)
+    out = tmp_path / "inv"
+    summary = _extract(FakeClient(), out)
+    assert not summary.complete
+    coverage = _manifest(out)["coverage"]["ribbon_diff"]
+    assert coverage["status"] == "failed" and "timed out" in coverage["errors"][0]
+
+
+def test_a_solution_name_cannot_point_the_export_outside_the_checkpoint(
+    reads, monkeypatch, tmp_path
+):
+    outside = tmp_path / "backup"
+    outside.with_suffix(".zip").write_bytes(b"keep me")
+
+    def refuse(client, name):
+        raise D365Error("no such solution", status=500)
+
+    monkeypatch.setattr(legacy_reads, "export_solution", refuse)
+    _extract(FakeClient(), tmp_path / "inv", solutions=(str(outside),))
+    assert outside.with_suffix(".zip").read_bytes() == b"keep me"
+
+
+def test_a_scoped_run_exports_each_named_solution_and_the_first_holder_wins(
+    reads, monkeypatch, tmp_path
+):
+    custom = ribbon_zip.CUSTOM_DIFF.replace("Project.Do", "Other.Do")
+    zips = {
+        "contoso": ribbon_zip.solution_zip({"new_project": ribbon_zip.CUSTOM_DIFF}),
+        "second": ribbon_zip.solution_zip({"new_project": custom, "contact": custom}),
+    }
+    monkeypatch.setattr(legacy_reads, "export_solution", lambda c, name: zips[name])
+    monkeypatch.setitem(_ORG, "solution", [[*_ORG["solution"][0], _second_solution()]])
+    out = tmp_path / "inv"
+    _extract(FakeClient(), out, include_system=False, solutions=("second", "contoso"))
+    records = _diff_records(_manifest(out))
+    assert sorted(records) == ["contact", "new_project"]
+    (artifact,) = records["new_project"]["artifacts"]
+    assert b"Project.Do" in (out / artifact["path"]).read_bytes()  # contoso sorts first

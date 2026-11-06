@@ -652,16 +652,23 @@ def dependencies(
     return [dependency_row(r) for r in entity_records(collection)]
 
 
+#: Read timeout of an ExportSolution call, in seconds. The org builds the whole zip before it
+#: answers: the `Default` solution of a large org took 258 s (measured, #1100), past the
+#: profile's 120 s default.
+EXPORT_TIMEOUT = 1800
+
+
 def export_solution(client: LegacyClient, unique_name: str) -> bytes:
     """Export a solution unmanaged, as stored, and return the zip bytes.
 
     Nothing is published first: publishing would write, so the zip carries the
-    org's published customizations only.
+    org's published customizations only. The call waits up to `EXPORT_TIMEOUT`.
     """
     results = client.execute_results(
         "ExportSolution",
         parameter("SolutionName", "string", _XSD, unique_name)
         + parameter("Managed", "boolean", _XSD, "false"),
+        timeout=EXPORT_TIMEOUT,
     )
     try:
         data = base64.b64decode(

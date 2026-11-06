@@ -153,9 +153,10 @@
       }
     }
   ],
-  "generated_at": "2026-11-05T23:18:21Z",
+  "generated_at": "2026-11-06T00:40:26Z",
   "incomplete": {
-    "dependency": "unsupported"
+    "dependency": "unsupported",
+    "ribbon_diff": "unsupported"
   },
   "inventory": {
     "cli_version": "1.92.3",
@@ -167,7 +168,7 @@
   },
   "rules": {
     "schema_version": 1,
-    "sha256": "8a056af357d2744358c3d4292d1bf66337caa9ebfffcaed8fe536913e16f2ec2",
+    "sha256": "7d8ee7a7c327c8aaa2cc7a661a720ec44ebbafe5babaafc0ec33608871274a94",
     "version": 1
   },
   "rules_hit": {

@@ -441,3 +441,19 @@ class TestRecords:
         }
         assert record["rank"] == 1
         assert record["stage"] == 40
+
+
+class TestExportTimeout:
+    """ExportSolution takes minutes on a large org: it has its own read timeout (#1100)."""
+
+    def test_export_solution_sends_the_longer_timeout_and_other_reads_the_profile_one(self, client):
+        from crm.core import legacy_reads
+
+        with requests_mock.Mocker() as m:
+            _soap(m, "export_solution.xml")
+            legacy_reads.export_solution(client, "contoso_sample")
+            _soap(m, "whoami.xml")
+            client.execute("WhoAmI")
+        export, other = m.request_history
+        assert export.timeout == legacy_reads.EXPORT_TIMEOUT > client.profile.timeout
+        assert other.timeout == client.profile.timeout

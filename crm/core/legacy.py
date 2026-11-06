@@ -147,10 +147,13 @@ class LegacyClient:
         """Run an allowlisted parameterless ``Execute`` request; return its Results as text."""
         return {key: _result_text(node) for key, node in self.execute_results(request_name).items()}
 
-    def execute_results(self, request_name: str, parameters: str = "") -> dict[str, ET.Element]:
+    def execute_results(
+        self, request_name: str, parameters: str = "", *, timeout: float | None = None
+    ) -> dict[str, ET.Element]:
         """Run an allowlisted ``Execute`` request; return each Result's value element.
 
-        *parameters* is pre-rendered :func:`parameter` XML.
+        *parameters* is pre-rendered :func:`parameter` XML. *timeout* is the read
+        timeout in seconds for a request that runs long; the profile's applies by default.
         """
         body = (
             f"<Execute {_SOAP_BODY_NS}>"
@@ -161,7 +164,7 @@ class LegacyClient:
             f"<a:RequestName>{escape(request_name)}</a:RequestName>"
             "</request></Execute>"
         )
-        root = self._send("Execute", body, request_name=request_name)
+        root = self._send("Execute", body, request_name=request_name, timeout=timeout)
         results = root.find("s:Body/svc:ExecuteResponse/svc:ExecuteResult/a:Results", _NS)
         if results is None:
             raise D365Error(f"{request_name}: the SOAP response carries no ExecuteResult")
@@ -232,7 +235,14 @@ class LegacyClient:
             fetch.set("paging-cookie", page.cookie)
             number += 1
 
-    def _send(self, operation: str, body: str, *, request_name: str | None = None) -> ET.Element:
+    def _send(
+        self,
+        operation: str,
+        body: str,
+        *,
+        request_name: str | None = None,
+        timeout: float | None = None,
+    ) -> ET.Element:
         """POST one SOAP operation, the only path to the wire; the allowlist runs first."""
         if operation not in _READ_OPERATIONS:
             raise _refuse(f"operation {operation!r}")
@@ -255,7 +265,7 @@ class LegacyClient:
                     self.endpoint,
                     data=envelope.encode("utf-8"),
                     headers=headers,
-                    timeout=self.profile.timeout,
+                    timeout=timeout or self.profile.timeout,
                 )
                 break
             except requests.exceptions.SSLError as exc:
