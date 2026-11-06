@@ -779,11 +779,13 @@ These are manual review, with the helper and its callers left whole: a name defi
 other than as a call (a callback argument, `.call`, a property), a call from a nested function or
 callback, top-level code, an optional chain or a function nothing threads, a recursive cycle, a
 helper that is `async`, a named function expression, reads `arguments` or already uses
-`formContext`, and a helper whose name a form
-registers (a handler this run leaves alone) or another web resource, ribbon or sitemap of the
-inventory mentions (the scan reads raw text, so it can only over-report: a caller there cannot
-be updated). `Xrm.Page` that no registered handler reaches (a function nothing calls, or code
-outside any named function) is manual review too. The ledger's top-level `call_graph` counts,
+`formContext`, a name also used as a computed property (`ns["leaf"]`), a dotted helper whose
+receiver is rebound inside a function or twice, and a helper whose name a form
+registers (a handler this run leaves alone) or another web resource, ribbon (or ribbon diff) or
+sitemap of the inventory mentions (the scan reads raw text with `\u` escapes decoded, so it can
+only over-report: a caller there cannot be updated). `Xrm.Page` that no registered handler reaches
+(a function nothing calls, or code outside any function) is manual review too, as is `Xrm.Page`
+in an arrow function, callback or object method this pass does not track (not counted). The ledger's top-level `call_graph` counts,
 per work package, the helpers `threaded`, the functions and top-level sites `unreachable` and
 the helpers held back at a `boundary` (a name used outside the file).
 

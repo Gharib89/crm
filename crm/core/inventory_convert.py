@@ -27,6 +27,7 @@ import difflib
 import hashlib
 import json
 import re
+import unicodedata
 from collections import Counter
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -62,7 +63,7 @@ LEDGER_NAME = "ledger.json"
 #: The package id of a component no work package holds.
 UNPACKAGED = "unpackaged"
 #: The kinds whose artifacts may call a script's functions by name.
-_CALLER_KINDS = frozenset(("web_resource", "ribbon", "sitemap"))
+_CALLER_KINDS = frozenset(("web_resource", "ribbon", "ribbon_diff", "sitemap"))
 #: The per-package call-graph counts of the ledger's ``call_graph``: helpers given a
 #: ``formContext``, functions no handler reaches, helpers a caller outside the file holds back.
 GRAPH_COUNTS = ("threaded", "unreachable", "boundary")
@@ -318,6 +319,38 @@ def _read_forms(
     return out
 
 
+_ESCAPE = re.compile(r"\\u\{([0-9a-fA-F]{1,6})\}|\\u([0-9a-fA-F]{4})")
+_ASCII_BREAK = re.compile(r"[^\x00-\x2f\x3a-\x40\x5b-\x5e\x60\x7b-\x7f]+")
+
+
+def _unescape(match: re.Match[str]) -> str:
+    code = int(match.group(1) or match.group(2), 16)
+    return chr(code) if code <= 0x10FFFF else match.group(0)
+
+
+def _identifiers(text: str) -> frozenset[str]:
+    """Every word of *text* a JavaScript identifier could be, over-reporting by design.
+
+    The text is read both as written and with ``\\uXXXX`` escapes decoded. A word holding a
+    non-ASCII character is kept whole (combining marks and joiners belong to it) and also split
+    at the characters an identifier cannot hold.
+    """
+    found: set[str] = set()
+    for each in (text, _ESCAPE.sub(_unescape, text)):
+        for word in _ASCII_BREAK.findall(each) + re.findall(r"[\w$]+", each):
+            found.add(word)
+            if not word.isascii():
+                piece = ""
+                for ch in word + " ":
+                    if ch.isalnum() or ch in "_$\u200c\u200d" or unicodedata.category(ch)[0] == "M":
+                        piece += ch
+                    else:
+                        found.add(piece)
+                        piece = ""
+    found.discard("")
+    return frozenset(found)
+
+
 def _other_scripts(
     inventory_dir: Path, records: Iterable[Record], registered: frozenset[str]
 ) -> Callable[[str], frozenset[str] | None]:
@@ -341,7 +374,7 @@ def _other_scripts(
                 except OSError:
                     names[each] = None
                 else:
-                    names[each] = frozenset(re.findall(r"[\w$]+", text))
+                    names[each] = _identifiers(text)
         seen: set[str] = set()
         for other, found in names.items():
             if other == path:

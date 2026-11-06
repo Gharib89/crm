@@ -721,6 +721,40 @@ def _context_sites(
     return sites, problems
 
 
+def _receiver_unsafe(nodes: list[Node], head: bytes) -> bool:
+    """True when *head*, the receiver of a dotted helper, may mean something else at a call.
+
+    One top-level binding is the namespace itself. A binding inside a function (a local, a
+    parameter, a catch variable) shadows it there, and a second one makes the namespace
+    ambiguous, so a call resolved by its text could reach another object.
+    """
+    count = 0
+    for n in nodes:
+        if n.text != head or n.type not in ("identifier", "shorthand_property_identifier_pattern"):
+            continue
+        up = n.parent
+        if up is None:
+            continue
+        if up.type in _DECLARES:
+            binds = up.child_by_field_name("name") == n
+        elif up.type in _ASSIGNS:
+            binds = up.child_by_field_name("left") == n
+        elif up.type in ("arrow_function", "catch_clause"):
+            binds = up.child_by_field_name("parameter") == n
+        elif up.type in ("function_declaration", "generator_function_declaration"):
+            binds = up.child_by_field_name("name") == n
+        else:
+            binds = up.type in _PATTERNS or up.type in ("formal_parameters", "required_parameter")
+        if not binds:
+            continue
+        count += 1
+        while up is not None:
+            if up.type in _NESTED and up.child_by_field_name("name") != n:
+                return True
+            up = up.parent
+    return count > 1
+
+
 def _call_name(call: Node) -> tuple[bytes, Node] | None:
     """The dotted name *call* invokes and the node holding its last part, else None."""
     fn = call.child_by_field_name("function")
@@ -786,6 +820,11 @@ def _thread_helpers(
         if n.type in _NAMES and n.text in by_last and n.id not in accounted:
             for name in by_last[n.text or b""]:
                 refs.setdefault(name, []).append(n)
+        elif n.type == "subscript_expression":
+            index = n.child_by_field_name("index")
+            if index is not None and index.type in ("string", "template_string"):
+                for name in by_last.get((index.text or b"")[1:-1], []):
+                    refs.setdefault(name, []).append(n)
     callees: dict[bytes | None, set[bytes]] = {}
     for callee, found in calls.items():
         for _, owner, _ in found:
@@ -817,6 +856,8 @@ def _thread_helpers(
             reason = f"{text} reads arguments, whose positions formContext would shift"
         elif any(n.type in _NAMES and n.text == b"formContext" for n in inside):
             reason = f"formContext is already used in {text}"
+        elif b"." in name and _receiver_unsafe(nodes, name.split(b".")[0]):
+            reason = f"the receiver of {text} is bound inside a function or twice"
         units[name] = (fn, body or fn, reason, sites, problems)
 
     def mentioned(name: bytes) -> bool:
@@ -915,12 +956,15 @@ def _thread_helpers(
             continue
         if _prop(page.parent) == b"context" and _member_object(page.parent) == page:
             continue
+        line = page.start_point.row + 1
+        if _owner(page, defined)[1]:
+            unproven.append(
+                Unproven(line, "Xrm.Page is in a function this pass does not track (not counted)")
+            )
+            continue
         unreachable += 1
         unproven.append(
-            Unproven(
-                page.start_point.row + 1,
-                "Xrm.Page is outside any named function: no handler reaches it",
-            )
+            Unproven(line, "Xrm.Page is outside any function: no registered handler reaches it")
         )
     used = tuple(
         sorted(
@@ -946,8 +990,8 @@ def _plan_handler_context(
     valid only during the event, so a site in a nested function or in an async handler is
     unproven. So is a function the file defines twice or refers to elsewhere (a caller would
     pass the old positions), one that reads ``arguments`` or already uses ``formContext``,
-    and ``Xrm.Page.context``, which `global-context` owns. A function is rewritten only when
-    at least one of its sites is.
+    and ``Xrm.Page.context``, which `global-context` owns. A handler is rewritten when at least one
+    of its sites is, or when it calls a threaded helper.
 
     A helper the handlers reach is threaded too, see `_thread_helpers`; *outside* holds the
     names the rest of the inventory mentions, None where a script could not be read.

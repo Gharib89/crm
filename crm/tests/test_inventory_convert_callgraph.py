@@ -107,7 +107,7 @@ def test_code_no_handler_reaches_is_manual_review_and_unchanged(tmp_path):
     assert "var top = Xrm.Page.data;" in text
     reasons = _reasons(entry)
     assert any("no registered handler reaches orphan" in r for r in reasons)
-    assert any("outside any named function" in r for r in reasons)
+    assert any("outside any function" in r for r in reasons)
     assert counts == {"threaded": 0, "unreachable": 2, "boundary": 0}
 
 
@@ -217,3 +217,81 @@ def test_a_non_ascii_helper_name_is_matched_in_another_script(tmp_path):
     )
     run, entry, counts = _run(tmp_path, js, {OTHER: "function other() { \u00e9leaf(2); }\n"})
     assert "function \u00e9leaf() {" in _text(run, entry) and counts["boundary"] == 1
+
+
+@pytest.mark.parametrize("ref", ['ns["leaf"](2)', "ns[`leaf`](2)", "ns['leaf']"])
+def test_a_computed_property_reference_keeps_the_helper_whole(tmp_path, ref):
+    js = (
+        f"function onLoad() {{\n  Xrm.Page.ui;\n  leaf();\n  {ref};\n}}\n"
+        "function leaf() {\n  return Xrm.Page.data;\n}\n"
+    )
+    run, entry, counts = _run(tmp_path, js)
+    assert "leaf(formContext" not in _text(run, entry) and counts["threaded"] == 0
+    assert any("other than as a direct call" in r for r in _reasons(entry))
+
+
+def test_a_receiver_a_handler_rebinds_keeps_a_dotted_helper_whole(tmp_path):
+    js = (
+        "var Util = {};\n"
+        "Util.parse = function () {\n  return Xrm.Page.data;\n};\n"
+        "function onLoad() {\n  var Util = JSON;\n  Xrm.Page.ui;\n  Util.parse();\n}\n"
+    )
+    run, entry, counts = _run(tmp_path, js)
+    assert "Util.parse(formContext" not in _text(run, entry) and counts["threaded"] == 0
+    assert any("receiver" in r for r in _reasons(entry))
+
+
+def test_a_dotted_helper_on_a_single_top_level_receiver_is_still_threaded(tmp_path):
+    js = (
+        "var Util = {};\n"
+        "Util.parse = function () {\n  return Xrm.Page.data;\n};\n"
+        "function onLoad() {\n  Util.parse();\n}\n"
+    )
+    run, entry, counts = _run(tmp_path, js)
+    assert "Util.parse(formContext)" in _text(run, entry) and counts["threaded"] == 1
+
+
+def test_a_ribbon_diff_script_is_a_caller_the_scan_sees(tmp_path):
+    from types import SimpleNamespace
+
+    from crm.core.inventory_convert import _other_scripts
+
+    (tmp_path / "d.xml").write_text("<x onclick='leaf'/>", encoding="utf-8")
+    record = SimpleNamespace(kind="ribbon_diff", artifacts=[SimpleNamespace(path="d.xml")])
+    names = _other_scripts(tmp_path, [record], frozenset())("lib.js")
+    assert names is not None and "leaf" in names
+
+
+@pytest.mark.parametrize(
+    "other",
+    [
+        "le\\u0061f();",
+        "\\u{6c}eaf();",
+        "function x() { éleaf(); }",
+        "l\\u0065af‍();",
+    ],
+)
+def test_an_escaped_or_combining_spelling_in_another_script_holds_the_helper_back(tmp_path, other):
+    name = "éleaf" if "éleaf" in other else "leaf"
+    js = (
+        f"function onLoad() {{\n  Xrm.Page.ui;\n  {name}();\n}}\n"
+        f"function {name}() {{\n  return Xrm.Page.data;\n}}\n"
+    )
+    if "‍" in other:
+        name = "leaf‍"
+        js = js.replace("leaf", name)
+    run, entry, counts = _run(tmp_path, js, {OTHER: other + "\n"})
+    assert counts == {"threaded": 0, "unreachable": 0, "boundary": 1}
+
+
+def test_a_site_in_an_untracked_function_is_not_called_unreachable(tmp_path):
+    js = (
+        "function onLoad() {\n  Xrm.Page.ui;\n}\n"
+        "var ns = { run: function () { return Xrm.Page.data; } };\n"
+        "var go = () => Xrm.Page.ui;\n"
+    )
+    run, entry, counts = _run(tmp_path, js)
+    assert counts["unreachable"] == 0
+    reasons = _reasons(entry)
+    assert not any("no handler reaches" in r for r in reasons)
+    assert sum("does not track" in r for r in reasons) == 2
