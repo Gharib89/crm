@@ -9,6 +9,43 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.102.0 (2026-11-06)
+
+### Bug Fixes
+
+- **inventory**: A library name shared by two web resources is unknown, not order-dependent
+  ([#1125](https://github.com/Gharib89/crm/pull/1125),
+  [`b00ec19`](https://github.com/Gharib89/crm/commit/b00ec198d8203305efc5ebb09f14b69152bdb7a9))
+
+- **inventory**: A registration judged without its library rule is unknown, not a crash
+  ([#1125](https://github.com/Gharib89/crm/pull/1125),
+  [`b00ec19`](https://github.com/Gharib89/crm/commit/b00ec198d8203305efc5ebb09f14b69152bdb7a9))
+
+- **inventory**: Judge ribbon actions that name a web resource by path, unknown for any other
+  library ([#1125](https://github.com/Gharib89/crm/pull/1125),
+  [`b00ec19`](https://github.com/Gharib89/crm/commit/b00ec198d8203305efc5ebb09f14b69152bdb7a9))
+
+### Features
+
+- **inventory**: Compatibility rules for form handler and ribbon action registrations
+  ([#1125](https://github.com/Gharib89/crm/pull/1125),
+  [`b00ec19`](https://github.com/Gharib89/crm/commit/b00ec198d8203305efc5ebb09f14b69152bdb7a9))
+
+- **inventory**: Compatibility rules for form handler and ribbon registrations (#1101)
+  ([#1125](https://github.com/Gharib89/crm/pull/1125),
+  [`b00ec19`](https://github.com/Gharib89/crm/commit/b00ec198d8203305efc5ebb09f14b69152bdb7a9))
+
+### Testing
+
+- **evals**: Regenerate the migration worked example for the form handler rule
+  ([#1125](https://github.com/Gharib89/crm/pull/1125),
+  [`b00ec19`](https://github.com/Gharib89/crm/commit/b00ec198d8203305efc5ebb09f14b69152bdb7a9))
+
+- **inventory**: Narrow registration evidence type for pyright
+  ([#1125](https://github.com/Gharib89/crm/pull/1125),
+  [`b00ec19`](https://github.com/Gharib89/crm/commit/b00ec198d8203305efc5ebb09f14b69152bdb7a9))
+
+
 ## v1.101.0 (2026-11-06)
 
 ### Bug Fixes
