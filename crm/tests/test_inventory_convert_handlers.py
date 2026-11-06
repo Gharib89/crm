@@ -16,6 +16,7 @@ from click.testing import CliRunner
 
 from crm.cli import cli
 from crm.core import inventory_assess as assess
+from crm.core.inventory_form_handlers import form_handler_names, form_handler_tags
 from crm.core.inventory_packages import build_packages, write_packages
 from crm.core.inventory_source_map import dump_source_map, map_source, read_source_map
 from crm.tests.test_inventory_assess import _form, _registrations, _script
@@ -303,3 +304,59 @@ def test_a_handler_body_without_xrm_page_is_left_alone(tmp_path):
     text = _text(run, _form_entry(run))
     assert text.count('passExecutionContext="true"') == 1
     assert 'functionName="onLoad" libraryName="new_/scripts/acct.js" enabled="true" />' in text
+
+
+def _registered(key: str, *, target: bool = True):
+    from crm.core.inventory_convert import _Form
+    from crm.core.inventory_form_handlers import HandlerTag
+
+    tag = HandlerTag("onLoad", LIB, True, False, "", 1, None, 0)
+    return _Form(key, f"{key}.xml", b"", [tag], "", target, [(LIB.lower(), "onLoad")])
+
+
+def test_a_function_is_converted_only_when_every_library_package_ships_each_of_its_forms():
+    from crm.core.inventory_convert import _eligible
+
+    libs = {LIB.lower(): ("webresource", "lib", "x")}
+    key = (LIB.lower(), "onLoad")
+
+    def run(lib_pkgs: set[str], **form_pkgs: set[str]):
+        forms = [_registered(k) for k in form_pkgs]
+        return _eligible(forms, libs, lambda kind, k: lib_pkgs if kind != "form" else form_pkgs[k])
+
+    ok, none = run({"A"}, Main={"A"})
+    assert ok and not none
+    for lib_pkgs, forms in (
+        ({"A", "B"}, {"Main": {"A"}}),
+        ({"A"}, {"Main": {"A"}, "Quick": {"B"}}),
+    ):
+        ok, why = run(lib_pkgs, **forms)
+        assert not ok and "every work package" in why[key]
+
+
+def test_a_parameter_default_is_manual_review_and_a_directive_prologue_stays_first(tmp_path):
+    js = (
+        "function onLoad(a = Xrm.Page.getAttribute('n')) {\n  Xrm.Page.ui.x();\n}\n"
+        "function onSave() {\n  'use strict'\n  Xrm.Page.ui.y();\n}\n"
+    )
+    forms = {"Main": _xml(_event("onload", _handler("onLoad"), _handler("onSave")))}
+    run = _pipeline(tmp_path, {LIB: js}, forms)
+    text = _text(run, _js(run))
+    assert "a = Xrm.Page.getAttribute('n')" in text
+    assert "function onSave(executionContext) {\n  'use strict'; var formContext" in text
+    assert [m["line"] for m in _js(run)["manual_review"]] == [1]
+
+
+def test_xml_character_references_and_a_multiline_flag_are_read_like_the_assessor_does():
+    ref = b'<f><event><Handlers><Handler functionName="a" libraryName="l" enabled="tr&#117;e"/>'
+    tags = form_handler_tags(ref + b"</Handlers></event></f>")
+    assert tags is not None and tags[0].enabled
+    flag = b'<Handler functionName="a" libraryName="l" passExecutionContext="\nfalse\n"/>'
+    assert form_handler_tags(b"<f><event><Handlers>" + flag + b"</Handlers></event></f>") is None
+
+
+def test_the_functions_a_form_that_cannot_be_mapped_still_registers_are_named():
+    handler = b'<Handler functionName="a" libraryName="L"/>'
+    text = b"<f><x><InternalHandlers>" + handler + b"</InternalHandlers></x></f>"
+    assert form_handler_tags(text) is None
+    assert form_handler_names(text) == [("l", "a")]

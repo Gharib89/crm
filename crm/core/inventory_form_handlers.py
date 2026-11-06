@@ -10,15 +10,14 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from html import unescape
 from xml.etree.ElementTree import ParseError
-from xml.sax.saxutils import unescape
 
 from crm.core.inventory_transforms import Edit, Plan, Unproven
 from crm.utils.safe_xml import fromstring
 
 _TAG = re.compile(rb"<Handler\b(?:\"[^\"]*\"|'[^']*'|[^>\"'])*>")
 _ATTR = re.compile(rb"([\w:.-]+)\s*=\s*(\"[^\"]*\"|'[^']*')")
-_QUOTES = {"&quot;": '"', "&apos;": "'"}
 
 
 @dataclass(frozen=True)
@@ -62,8 +61,10 @@ def form_handler_tags(text: bytes) -> list[HandlerTag] | None:
         flag = None
         for a in _ATTR.finditer(m.group(0)):
             name = a.group(1).decode()
-            attrs[name] = unescape(a.group(2)[1:-1].decode("utf-8"), _QUOTES)
+            attrs[name] = unescape(a.group(2)[1:-1].decode("utf-8"))
             if name == "passExecutionContext":
+                if b"\n" in a.group(2) or b"\r" in a.group(2):
+                    return None
                 flag = (m.start() + a.start(2) + 1, m.start() + a.end(2) - 1)
         end = m.end() - (2 if m.group(0).endswith(b"/>") else 1)
         while text[end - 1 : end] in (b" ", b"\t", b"\r", b"\n"):
@@ -80,6 +81,22 @@ def form_handler_tags(text: bytes) -> list[HandlerTag] | None:
                 end,
             )
         )
+    return out
+
+
+def form_handler_names(text: bytes) -> list[tuple[str, str]]:
+    """The ``(lowercase library, function)`` of every ``<Handler>`` the text shows, mapped or not.
+
+    For a form whose handlers cannot be mapped: it still registers these, so a function they
+    name must not have its signature changed behind them.
+    """
+    out: list[tuple[str, str]] = []
+    for m in _TAG.finditer(text):
+        attrs = {
+            a.group(1).decode(): unescape(a.group(2)[1:-1].decode("utf-8", "replace"))
+            for a in _ATTR.finditer(m.group(0))
+        }
+        out.append((attrs.get("libraryName", "").lower(), attrs.get("functionName", "")))
     return out
 
 

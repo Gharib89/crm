@@ -762,7 +762,9 @@ def _plan_handler_context(root: Node, functions: Mapping[str, bool]) -> Plan:
                 nested = nested or up.type in _NESTED
                 up = up.parent
             reason = _xrm_problem(xrm, shadowed)
-            if reason is None and _in_optional_chain(page, xrm, use):
+            if reason is None and page.start_byte < body.start_byte:
+                reason = "Xrm.Page is in a parameter default: it runs before the body's formContext"
+            elif reason is None and _in_optional_chain(page, xrm, use):
                 reason = "an optional chain: the rewrite would drop its short-circuit"
             elif reason is None and member is None:
                 reason = "Xrm.Page is used other than as a member access"
@@ -785,8 +787,18 @@ def _plan_handler_context(root: Node, functions: Mapping[str, bool]) -> Plan:
             lead = first.start_byte if first is not None else params.start_byte + 1
             tail = b", " if first is not None else b""
             edits.append(Edit(lead, lead, b"executionContext" + tail))
-        brace = body.start_byte + 1
-        edits.append(Edit(brace, brace, f" var formContext = {context}.getFormContext();".encode()))
+        brace, glue = body.start_byte + 1, ""
+        for stmt in body.named_children:
+            lead_string = stmt.named_children[0] if stmt.named_children else None
+            if stmt.type != "expression_statement" or lead_string is None:
+                break
+            if lead_string.type != "string":
+                break
+            brace = stmt.end_byte
+            glue = "" if (stmt.text or b"").endswith(b";") else ";"
+        edits.append(
+            Edit(brace, brace, f"{glue} var formContext = {context}.getFormContext();".encode())
+        )
         edits.extend(sites)
         done.append(name)
         cleared += len(sites)

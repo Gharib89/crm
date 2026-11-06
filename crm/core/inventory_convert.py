@@ -44,7 +44,12 @@ from crm.core.inventory_assess import (
     load_rules,
     read_findings,
 )
-from crm.core.inventory_form_handlers import HandlerTag, form_handler_tags, plan_form_handlers
+from crm.core.inventory_form_handlers import (
+    HandlerTag,
+    form_handler_names,
+    form_handler_tags,
+    plan_form_handlers,
+)
 from crm.core.inventory_packages import PACKAGE_ID
 from crm.core.inventory_packages import SCHEMA_VERSION as PACKAGES_VERSION
 from crm.core.inventory_source_map import read_source_map
@@ -282,11 +287,13 @@ def _read_forms(
             raw = (inventory_dir / path).read_bytes()
             if _hex(raw) != sha:
                 form.problem = "artifact changed since extraction"
+                form.named += form_handler_names(normalize_text(raw))
             else:
                 form.source = normalize_text(raw)
                 tags = form_handler_tags(form.source)
                 if tags is None:
                     form.problem = "the form's handlers cannot be mapped to its text"
+                    form.named += form_handler_names(form.source)
                 else:
                     form.tags = tags
         except OSError as exc:
@@ -303,7 +310,7 @@ def _eligible(
     """Which registered functions of each library may be rewritten, and why the others may not.
 
     A function is rewritten only when every enabled registration of it, on any form of the
-    inventory, is one this run patches in a work package the library shares and none already
+    inventory, is one this run patches in every work package that ships the library and none already
     passes the context: a function whose registrations are not all set together would be
     called with the wrong arguments. Returns the functions per library group (mapped to
     whether any registration has ``parameters``) and a reason per
@@ -329,8 +336,10 @@ def _eligible(
             reasons[key] = f"{key[1]} is already registered with passExecutionContext on a form"
         elif any(not f.target for f, _ in found):
             reasons[key] = f"{key[1]} is also registered on a form this run does not patch"
-        elif any(not packages("form", f.key) & mine for f, _ in found):
-            reasons[key] = f"{key[1]} is registered on a form outside this library's work package"
+        elif any(not mine <= packages("form", f.key) for f, _ in found):
+            reasons[key] = (
+                f"{key[1]} is not registered on a form in every work package that ships its library"
+            )
         else:
             functions.setdefault(group, {})[key[1]] = any(t.parameters.strip() for _, t in found)
     return functions, reasons
