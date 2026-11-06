@@ -314,7 +314,7 @@ def _registered(key: str, *, target: bool = True):
     return _Form(key, f"{key}.xml", b"", [tag], "", target, [(LIB.lower(), "onLoad")])
 
 
-def test_a_function_is_converted_only_when_every_library_package_ships_each_of_its_forms():
+def test_a_function_is_converted_only_when_its_forms_and_library_share_exactly_the_same_packages():
     from crm.core.inventory_convert import _eligible
 
     libs = {LIB.lower(): ("webresource", "lib", "x")}
@@ -331,19 +331,19 @@ def test_a_function_is_converted_only_when_every_library_package_ships_each_of_i
         ({"A"}, {"Main": {"A"}, "Quick": {"B"}}),
     ):
         ok, why = run(lib_pkgs, **forms)
-        assert not ok and "every work package" in why[key]
+        assert not ok and "exactly the work packages" in why[key]
 
 
 def test_a_parameter_default_is_manual_review_and_a_directive_prologue_stays_first(tmp_path):
     js = (
         "function onLoad(a = Xrm.Page.getAttribute('n')) {\n  Xrm.Page.ui.x();\n}\n"
-        "function onSave() {\n  'use strict'\n  Xrm.Page.ui.y();\n}\n"
+        "function onSave() {\n  // note\n  'use strict'\n  Xrm.Page.ui.y();\n}\n"
     )
     forms = {"Main": _xml(_event("onload", _handler("onLoad"), _handler("onSave")))}
     run = _pipeline(tmp_path, {LIB: js}, forms)
     text = _text(run, _js(run))
     assert "a = Xrm.Page.getAttribute('n')" in text
-    assert "function onSave(executionContext) {\n  'use strict'; var formContext" in text
+    assert "function onSave(executionContext) {\n  // note\n  'use strict'; var formContext" in text
     assert [m["line"] for m in _js(run)["manual_review"]] == [1]
 
 

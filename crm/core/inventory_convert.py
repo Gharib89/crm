@@ -310,9 +310,9 @@ def _eligible(
     """Which registered functions of each library may be rewritten, and why the others may not.
 
     A function is rewritten only when every enabled registration of it, on any form of the
-    inventory, is one this run patches in every work package that ships the library and none already
-    passes the context: a function whose registrations are not all set together would be
-    called with the wrong arguments. Returns the functions per library group (mapped to
+    inventory, is one this run patches in exactly the work packages that ship the library, and
+    none already passes the context: a function whose registrations are not all set together
+    would be called with the wrong arguments. Returns the functions per library group (mapped to
     whether any registration has ``parameters``) and a reason per
     ``(lowercase library, function)`` left out.
     """
@@ -336,9 +336,10 @@ def _eligible(
             reasons[key] = f"{key[1]} is already registered with passExecutionContext on a form"
         elif any(not f.target for f, _ in found):
             reasons[key] = f"{key[1]} is also registered on a form this run does not patch"
-        elif any(not mine <= packages("form", f.key) for f, _ in found):
+        elif any(packages("form", f.key) != mine for f, _ in found):
             reasons[key] = (
-                f"{key[1]} is not registered on a form in every work package that ships its library"
+                f"{key[1]} is not registered on forms in exactly the work packages"
+                " that ship its library"
             )
         else:
             functions.setdefault(group, {})[key[1]] = any(t.parameters.strip() for _, t in found)

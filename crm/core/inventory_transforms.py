@@ -789,6 +789,8 @@ def _plan_handler_context(root: Node, functions: Mapping[str, bool]) -> Plan:
             edits.append(Edit(lead, lead, b"executionContext" + tail))
         brace, glue = body.start_byte + 1, ""
         for stmt in body.named_children:
+            if stmt.type == "comment":
+                continue
             lead_string = stmt.named_children[0] if stmt.named_children else None
             if stmt.type != "expression_statement" or lead_string is None:
                 break
