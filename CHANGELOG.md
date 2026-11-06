@@ -9,6 +9,33 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.100.0 (2026-11-06)
+
+### Bug Fixes
+
+- **inventory**: Entity.save on a shadowed or qualified Xrm goes to review
+  ([#1123](https://github.com/Gharib89/crm/pull/1123),
+  [`9940fc6`](https://github.com/Gharib89/crm/commit/9940fc6582ef073832102da5c5bccb598962de06))
+
+- **inventory**: Entity.save references go to review
+  ([#1123](https://github.com/Gharib89/crm/pull/1123),
+  [`9940fc6`](https://github.com/Gharib89/crm/commit/9940fc6582ef073832102da5c5bccb598962de06))
+
+- **inventory**: GetUserRoles always goes to review; stale findings keep context-settings
+  ([#1123](https://github.com/Gharib89/crm/pull/1123),
+  [`9940fc6`](https://github.com/Gharib89/crm/commit/9940fc6582ef073832102da5c5bccb598962de06))
+
+- **inventory**: Review fixes for the rename transforms
+  ([#1123](https://github.com/Gharib89/crm/pull/1123),
+  [`9940fc6`](https://github.com/Gharib89/crm/commit/9940fc6582ef073832102da5c5bccb598962de06))
+
+### Features
+
+- **inventory**: Convert transforms for the deprecation-table renames
+  ([#1123](https://github.com/Gharib89/crm/pull/1123),
+  [`9940fc6`](https://github.com/Gharib89/crm/commit/9940fc6582ef073832102da5c5bccb598962de06))
+
+
 ## v1.99.0 (2026-11-05)
 
 ### Bug Fixes
