@@ -749,12 +749,27 @@ comment is never rewritten. A shadowed or locally bound `Xrm`, a qualified `wind
 | `web-resource-entity-save` | `entity-save` | `<x>.data.entity.save()` to `<x>.data.save()` | `save(saveOption)` with an argument |
 | `web-resource-xrm-utility` | `xrm-utility-review` | nothing | `openEntityForm`, `openQuickCreate`, `openWebResource`, `alertDialog`, `confirmDialog`, `isActivityType`: the signature or sync behaviour changes |
 | `web-resource-keypress` | `keypress-review` | nothing | `addOnKeyPress`, `removeOnKeyPress`, `fireOnKeyPress`, `showAutoComplete`, `hideAutoComplete`: no API replacement |
+| `form-handler-no-execution-context` | `form-handler-context` | in a registered form handler: an `executionContext` first parameter (or the existing one), `var formContext = executionContext.getFormContext();` after the opening brace, each `Xrm.Page.<member>` in its own body to `formContext.<member>`; and `passExecutionContext="true"` on every enabled registration of it, on the form XML in the same work package | see below |
 
 `getUserRoles()` returned GUID strings and `userSettings.roles` holds `{id, name}` lookups, so
 the call changes the element type for whatever reads the list, and is always a manual-review
 entry. `data.save` is asynchronous and
 takes a `saveOptions` object. A component whose findings name several transforms gets all their
 edits in one patch, the transforms running in findings order, one ledger entry per rule.
+
+`form-handler-context` rewrites a handler and its registrations together or not at all. The context
+is the first argument the platform passes, so the form's positional `parameters` keep their order
+behind it. The declaration sits on the line of the opening brace, so no line moves. Only handler
+bodies change: `Xrm.Page` in a helper stays for the call-graph work, and `Xrm.Page.context` stays
+with `global-context`. The context is valid only during the event
+([Learn](https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/clientapi-execution-context#use-context-objects-asynchronously)),
+so a site in a nested function and any `async` handler are manual review. A function is also
+manual review, with its form handlers left unflagged, when the library defines it twice or
+refers to it elsewhere, reads `arguments` or already uses `formContext`; when it has an
+`executionContext`-like first parameter and form `parameters`; when another registration already
+passes the context or sits on a form outside the work package or one this run does not patch; or
+when it is not a `function` declaration or a `name = function` assignment. A call from another
+web resource is not seen.
 
 An **emit gate** checks each rewritten file: the patched code must parse with no more
 error nodes, and re-running the rule's detection must find exactly the rewritten sites

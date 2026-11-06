@@ -62,7 +62,7 @@ A task missing a field names it as an unknown.
 
 Run `crm inventory convert` after `assess` and `packages`; it writes only into a
 new `--out` folder (`--help` has the inputs). A finding gets a patch only when its
-rule names a transform. Every transform reads JavaScript web resources only, and
+rule names a transform. Every transform reads JavaScript web resources only (the form handler one also patches form XML), and
 one file's rules all land in one patch (one ledger entry per rule). Which rows of
 Microsoft's client API deprecation table convert:
 
@@ -76,6 +76,7 @@ Microsoft's client API deprecation table convert:
 | no-argument `data.entity.save()` to `data.save()` (now asynchronous) | `save("saveandnew")` |
 | nothing | `Xrm.Utility.openEntityForm`, `openQuickCreate`, `openWebResource`, `alertDialog`, `confirmDialog`, `isActivityType`: signature or sync behaviour changes |
 | nothing | `addOnKeyPress`, `removeOnKeyPress`, `fireOnKeyPress`, `showAutoComplete`, `hideAutoComplete`: only a custom control replaces them |
+| a registered form handler gets `executionContext` and `formContext`, its `Xrm.Page.<member>` becomes `formContext.<member>`, and the form XML sets `passExecutionContext` on every registration | `Xrm.Page` in a helper or a nested callback, an `async` handler, a handler with another caller or an already-passing registration |
 
 A shadowed `Xrm`, `window.Xrm` or `parent.Xrm`, an optional chain and a call that
 spans lines are manual review for every row. Work from `ledger.json`:

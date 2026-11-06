@@ -27,23 +27,28 @@ import difflib
 import hashlib
 import json
 import re
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, cast
 
 from crm.core.code_parse import error_count, parse
-from crm.core.inventory import MANIFEST_NAME, InventoryError, normalize_text, read_inventory
+from crm.core.inventory import MANIFEST_NAME, InventoryError, Record, normalize_text, read_inventory
 from crm.core.inventory_assess import (
     ContentEvidence,
     ContentPattern,
+    Finding,
+    FormHandlerContext,
+    RegistrationEvidence,
     Rule,
     load_rules,
     read_findings,
 )
+from crm.core.inventory_form_handlers import HandlerTag, form_handler_tags, plan_form_handlers
 from crm.core.inventory_packages import PACKAGE_ID
 from crm.core.inventory_packages import SCHEMA_VERSION as PACKAGES_VERSION
 from crm.core.inventory_source_map import read_source_map
-from crm.core.inventory_transforms import TRANSFORMS, Edit, Plan, Transform
+from crm.core.inventory_transforms import HANDLER_TRANSFORM, TRANSFORMS, Edit, Plan, Transform
 
 #: The format version of the ledger.
 SCHEMA_VERSION = 1
@@ -205,6 +210,28 @@ def _gate(
     return None
 
 
+def _form_gate(original: bytes, patched: bytes, n: int) -> str | None:
+    """The emit gate for a form patch: the XML still maps, and exactly *n* handlers now pass."""
+    before, after = form_handler_tags(original), form_handler_tags(patched)
+    if before is None or after is None:
+        return "the patched form no longer parses"
+
+    def waiting(tags: list[HandlerTag]) -> int:
+        return sum(t.enabled and not t.passes for t in tags)
+
+    if waiting(before) - waiting(after) != n:
+        return f"the patch sets the flag on {waiting(before) - waiting(after)} of {n} handlers"
+    return None
+
+
+def _pattern(rule: Rule, rules: dict[str, Rule]) -> re.Pattern[str] | None:
+    """The content pattern a rule's rewrite is gated on: its own, or its library rule's."""
+    d = rule.detection
+    if isinstance(d, FormHandlerContext):
+        d = rules[d.library_rule].detection
+    return d.pattern if isinstance(d, ContentPattern) else None
+
+
 def _diff(old: str, new: str, path: str) -> str:
     def lines(text: str) -> list[str]:
         out = re.findall(r"[^\n]*\n|[^\n]+", text)
@@ -213,6 +240,100 @@ def _diff(old: str, new: str, path: str) -> str:
         return out
 
     return "".join(difflib.unified_diff(lines(old), lines(new), f"a/{path}", f"b/{path}"))
+
+
+@dataclass
+class _Form:
+    """A form read and mapped, or the reason it cannot be. A *target* carries the handler
+    finding, so this run patches it; any other form is only read for what it registers.
+    """
+
+    key: str
+    path: str
+    source: bytes
+    tags: list[HandlerTag]
+    problem: str
+    target: bool
+    #: The ``(library, function)`` registrations the finding's evidence names.
+    named: list[tuple[str, str]]
+
+
+def _read_forms(
+    inventory_dir: Path, records: list[Record], findings: Iterable[Finding], rule: Rule
+) -> list[_Form]:
+    """Read every form of the inventory against its hash, noting which carry *rule*'s finding."""
+    hits = {
+        f.key: f.evidence
+        for f in findings
+        if f.rule == rule.id and f.cls != "clear" and isinstance(f.evidence, RegistrationEvidence)
+    }
+    out: list[_Form] = []
+    for rec in records:
+        ev = hits.get(rec.key) if rec.kind == "form" else None
+        if rec.kind != "form" or not (ev or rec.artifacts):
+            continue
+        path, sha = (ev.path, ev.sha256) if ev else (rec.artifacts[0].path, rec.artifacts[0].sha256)
+        named = [
+            (str(r.get("library", "")).lower(), str(r.get("function", "")))
+            for r in (ev.registrations if ev else ())
+        ]
+        form = _Form(rec.key, path, b"", [], "", ev is not None, named)
+        try:
+            raw = (inventory_dir / path).read_bytes()
+            if _hex(raw) != sha:
+                form.problem = "artifact changed since extraction"
+            else:
+                form.source = normalize_text(raw)
+                tags = form_handler_tags(form.source)
+                if tags is None:
+                    form.problem = "the form's handlers cannot be mapped to its text"
+                else:
+                    form.tags = tags
+        except OSError as exc:
+            form.problem = f"artifact unreadable: {exc.strerror or exc}"
+        out.append(form)
+    return out
+
+
+def _eligible(
+    forms: list[_Form],
+    libraries: dict[str, tuple[str, str, str]],
+    packages: Callable[[str, str], set[str]],
+) -> tuple[dict[tuple[str, str, str], dict[str, bool]], dict[tuple[str, str], str]]:
+    """Which registered functions of each library may be rewritten, and why the others may not.
+
+    A function is rewritten only when every enabled registration of it, on any form of the
+    inventory, is one this run patches in a work package the library shares and none already
+    passes the context: a function whose registrations are not all set together would be
+    called with the wrong arguments. Returns the functions per library group (mapped to
+    whether any registration has ``parameters``) and a reason per
+    ``(lowercase library, function)`` left out.
+    """
+    regs: dict[tuple[str, str], list[tuple[_Form, HandlerTag]]] = {}
+    reasons: dict[tuple[str, str], str] = {}
+    for form in forms:
+        for tag in form.tags:
+            if tag.enabled:
+                regs.setdefault((tag.library.lower(), tag.function), []).append((form, tag))
+        for key in form.named if form.problem else []:
+            reasons[key] = (
+                f"{key[1]} is registered on a form that cannot be patched: {form.problem}"
+            )
+    functions: dict[tuple[str, str, str], dict[str, bool]] = {}
+    for key, found in regs.items():
+        group = libraries.get(key[0])
+        if group is None or key in reasons or all(t.passes and f.target for f, t in found):
+            continue
+        mine = packages(group[0], group[1])
+        if any(t.passes for _, t in found):
+            reasons[key] = f"{key[1]} is already registered with passExecutionContext on a form"
+        elif any(not f.target for f, _ in found):
+            reasons[key] = f"{key[1]} is also registered on a form this run does not patch"
+        elif any(not packages("form", f.key) & mine for f, _ in found):
+            reasons[key] = f"{key[1]} is registered on a form outside this library's work package"
+        else:
+            functions.setdefault(group, {})[key[1]] = any(t.parameters.strip() for _, t in found)
+    return functions, reasons
 
 
 def convert(
@@ -289,6 +410,57 @@ def convert(
         if isinstance(f.evidence, ContentEvidence)
     }
 
+    # Form handlers: the library's functions that are registered, read from the forms. A
+    # library with convertible ones joins its group with the form rule, which runs last.
+    form_rule = next((r for r in rules.values() if r.transform == HANDLER_TRANSFORM), None)
+    forms: list[_Form] = []
+    reasons: dict[tuple[str, str], str] = {}
+    handlers: dict[tuple[str, str, str], dict[str, bool]] = {}
+    libraries: dict[str, tuple[str, str, str]] = {}
+    if form_rule is not None:
+        script_types = TRANSFORMS[HANDLER_TRANSFORM].web_resource_types
+        for gkey in groups:
+            rec = records.get((gkey[0], gkey[1]))
+            if rec is not None and rec.fields.get("web_resource_type") in script_types:
+                libraries[str(rec.fields.get("name", "")).lower()] = gkey
+
+        def packages_of(kind: str, key: str) -> set[str]:
+            return set(held.get(f"{kind}:{key}", [UNPACKAGED]))
+
+        forms = _read_forms(inventory_dir, list(inv.records), findings.findings, form_rule)
+        handlers, reasons = _eligible(forms, libraries, packages_of)
+        for gkey in handlers:
+            groups[gkey].setdefault(form_rule.id, form_rule)
+    lib_of = {g: n for n, g in libraries.items()}
+    rewritten: set[tuple[str, str]] = set()
+
+    def emit(
+        kind: str,
+        key: str,
+        path: str,
+        steps: list[tuple[Rule, Plan, str, bool]],
+        source: bytes,
+        current: bytes,
+    ) -> None:
+        for pkg in held.get(f"{kind}:{key}", [UNPACKAGED]):
+            files: dict[str, str] = {}
+            for rule, plan, reason, applied in steps:
+                entry = Entry(pkg, kind, key, rule.id, cast(str, rule.transform), "manual-review")
+                entry.manual_review = [
+                    ManualReview(path, u.line, rule.id, u.reason) for u in plan.unproven
+                ]
+                if reason:
+                    entry.manual_review.insert(0, ManualReview(path, None, rule.id, reason))
+                elif applied:
+                    entry.status, entry.edits = "patched", len(plan.edits)
+                    entry.original_sha256, entry.patched_sha256 = _hex(source), _hex(current)
+                    entry.repo_path = matched.get((kind, key))
+                    if not files:
+                        _write(out, entry, path, source, current)
+                        files = entry.files
+                    entry.files = dict(files)
+                entries.append(entry)
+
     entries: list[Entry] = []
     for (kind, key, path), group in groups.items():
         record = records.get((kind, key))
@@ -311,7 +483,12 @@ def convert(
                 and record is not None
                 and record.fields.get("web_resource_type") in transform.web_resource_types
             ):
-                plan = transform.plan(parse(transform.language, current))
+                tree = parse(transform.language, current)
+                plan = (
+                    transform.plan(tree, handlers.get((kind, key, path), {}))
+                    if transform.needs_handlers
+                    else transform.plan(tree)
+                )
             elif not reason:
                 reason = f"transform {rule.transform} does not read this web resource type"
             applied = False
@@ -321,35 +498,48 @@ def convert(
                     reason = "the planned edits overlap"
                 elif patched.count(b"\n") != current.count(b"\n"):
                     reason = "the rewrite changes the line count"
-                elif isinstance(rule.detection, ContentPattern):
-                    reason = (
-                        _gate(rule.detection.pattern, transform, current, patched, len(plan.edits))
-                        or ""
-                    )
+                elif (pattern := _pattern(rule, rules)) is not None:
+                    n = len(plan.edits) if plan.cleared is None else plan.cleared
+                    reason = _gate(pattern, transform, current, patched, n) or ""
                 if reason:
                     reason = f"emit gate rejected the rewrite: {reason}"
                 elif patched is not None:
                     current, applied = patched, True
+                    rewritten.update((lib_of.get((kind, key, path), ""), f) for f in plan.done)
             if plan.edits or plan.unproven or reason:
                 steps.append((rule, plan, reason, applied))
-        for pkg in held.get(f"{kind}:{key}", [UNPACKAGED]):
-            files: dict[str, str] = {}
-            for rule, plan, reason, applied in steps:
-                entry = Entry(pkg, kind, key, rule.id, cast(str, rule.transform), "manual-review")
-                entry.manual_review = [
-                    ManualReview(path, u.line, rule.id, u.reason) for u in plan.unproven
-                ]
+        emit(kind, key, path, steps, source, current)
+    for form in (f for f in forms if f.target and form_rule is not None):
+        plan, reason, applied, patched = Plan((), ()), form.problem, False, form.source
+        if not reason:
+            gone = {
+                k: reasons.get(k)
+                or f"{k[1]} was not rewritten in {k[0]}: see the library's entries"
+                for k in ((t.library.lower(), t.function) for t in form.tags)
+                if k[0] in libraries and k not in rewritten
+            }
+            plan = plan_form_handlers(form.tags, rewritten, gone)
+            if plan.edits:
+                patched = _apply(form.source, plan.edits) or b""
+                if not patched:
+                    reason = "the planned edits overlap"
+                elif patched.count(b"\n") != form.source.count(b"\n"):
+                    reason = "the rewrite changes the line count"
+                else:
+                    reason = _form_gate(form.source, patched, len(plan.edits)) or ""
                 if reason:
-                    entry.manual_review.insert(0, ManualReview(path, None, rule.id, reason))
-                elif applied:
-                    entry.status, entry.edits = "patched", len(plan.edits)
-                    entry.original_sha256, entry.patched_sha256 = _hex(source), _hex(current)
-                    entry.repo_path = matched.get((kind, key))
-                    if not files:
-                        _write(out, entry, path, source, current)
-                        files = entry.files
-                    entry.files = dict(files)
-                entries.append(entry)
+                    reason = f"emit gate rejected the rewrite: {reason}"
+                else:
+                    applied = True
+        if plan.edits or plan.unproven or reason:
+            emit(
+                "form",
+                form.key,
+                form.path,
+                [(cast(Rule, form_rule), plan, reason, applied)],
+                form.source,
+                patched,
+            )
     entries.sort(key=lambda e: (e.package, e.kind, e.key))
     result = ConvertResult(manifest_sha, tuple(entries))
     out.mkdir(parents=True, exist_ok=True)

@@ -616,11 +616,11 @@ def test_a_malformed_registration_rule_is_refused(kind, rule_id, change, match):
         assess.parse_rules(data)
 
 
-def test_the_registration_rules_cite_learn_and_are_detect_only():
+def test_the_registration_rules_cite_learn():
     rules = {r.id: r for r in assess.load_rules().rules}
     for rule_id, kind in ((FORM_RULE, "form"), (RIBBON_RULE, "ribbon_diff")):
         rule = rules[rule_id]
-        assert rule.kind == kind and rule.cls == "deprecated" and rule.transform is None
+        assert rule.kind == kind and rule.cls == "deprecated"
         assert all(s.startswith("https://learn.microsoft.com/") for s in rule.sources)
 
 

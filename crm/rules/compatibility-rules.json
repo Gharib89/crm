@@ -483,6 +483,7 @@
         "type": "form_handler_context",
         "library_rule": "web-resource-xrm-page"
       },
+      "transform": "form-handler-context",
       "fix": "Select 'Pass execution context as first parameter' on the handler (passExecutionContext=\"true\") and take formContext from executionContext.getFormContext() in the function. Only enabled handlers are judged; a handler whose library cannot be read is unknown, not clear.",
       "sources": [
         "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/clientapi-execution-context",

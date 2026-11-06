@@ -14,7 +14,8 @@ earlier one rewrote, and each owns the sites its rule describes.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import re
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -41,17 +42,30 @@ class Unproven:
 
 @dataclass(frozen=True)
 class Plan:
+    """What a transform proved. *done* names the registered functions a handler transform
+    rewrote. *cleared* is how many sites of the rule's detection the edits remove, where that
+    is not one per edit.
+    """
+
     edits: tuple[Edit, ...]
     unproven: tuple[Unproven, ...]
+    done: tuple[str, ...] = ()
+    cleared: int | None = None
 
 
 @dataclass(frozen=True)
 class Transform:
-    """A registered transform: its grammar, the web resource types it reads, its planner."""
+    """A registered transform: its grammar, the web resource types it reads, its planner.
+
+    A transform with *needs_handlers* is also given the form handlers that call the file:
+    each registered function name, mapped to whether any registration passes it positional
+    ``parameters``.
+    """
 
     language: str
     web_resource_types: tuple[int, ...]
-    plan: Callable[[Node], Plan]
+    plan: Callable[..., Plan]
+    needs_handlers: bool = False
 
 
 #: Registered transforms by id. Tests swap entries in to exercise the engine.
@@ -617,3 +631,167 @@ def _plan_keypress_review(root: Node) -> Plan:
 
 
 register("keypress-review", Transform("javascript", (3,), _plan_keypress_review))
+
+
+# ── form-handler-context: registered handlers take the execution context ────
+
+#: The id the form registration rule names. Its JS half is `_plan_handler_context`, its
+#: form XML half `inventory_form_handlers.plan_form_handlers`.
+HANDLER_TRANSFORM = "form-handler-context"
+
+#: A first parameter that already reads as the execution context.
+_CONTEXT_PARAM = re.compile(r"(?i)(e|ex|exec|execution)?_?(context|ctx)")
+_FUNCTIONS = frozenset(("function_declaration", "function_expression"))
+_NESTED = frozenset(
+    (
+        "function_declaration",
+        "function_expression",
+        "generator_function_declaration",
+        "generator_function",
+        "arrow_function",
+        "method_definition",
+    )
+)
+_NAMES = frozenset(("identifier", "property_identifier", "shorthand_property_identifier"))
+
+
+def _definitions(nodes: list[Node], name: bytes) -> list[tuple[Node, Node]]:
+    """Each ``(function node, node naming it)`` of the registered function *name*."""
+    found: list[tuple[Node, Node]] = []
+    for n in nodes:
+        if n.type == "function_declaration":
+            ident = n.child_by_field_name("name")
+            if ident is not None and ident.text == name:
+                found.append((n, ident))
+        elif n.type in ("assignment_expression", "variable_declarator"):
+            left = n.child_by_field_name("left" if n.type[0] == "a" else "name")
+            right = n.child_by_field_name("right" if n.type[0] == "a" else "value")
+            if (
+                left is not None
+                and left.text == name
+                and right is not None
+                and right.type == "function_expression"
+            ):
+                found.append((right, left.child_by_field_name("property") or left))
+    return found
+
+
+def _plan_handler_context(root: Node, functions: Mapping[str, bool]) -> Plan:
+    """Give each registered handler in *functions* an ``executionContext`` and a ``formContext``.
+
+    A handler gets the parameter in first position (the platform passes the context before
+    any form ``parameters``, so those keep their order behind it), a
+    ``var formContext = <context>.getFormContext();`` declaration after its opening brace
+    (on the same line, so no line moves), and each ``Xrm.Page.<member>`` in its own body
+    becomes ``formContext.<member>``. The Learn page on the execution context says it is
+    valid only during the event, so a site in a nested function or in an async handler is
+    unproven. So is a function the file defines twice or refers to elsewhere (a caller would
+    pass the old positions), one that reads ``arguments`` or already uses ``formContext``,
+    and ``Xrm.Page.context``, which `global-context` owns. A function is rewritten only when
+    at least one of its sites is.
+    """
+    nodes = _walk(root)
+    shadowed = any(_binds_xrm(n) for n in nodes)
+    edits: list[Edit] = []
+    unproven: list[Unproven] = []
+    done: list[str] = []
+    cleared = 0
+    for name, has_parameters in sorted(functions.items()):
+        defs = _definitions(nodes, name.encode())
+        if not defs:
+            continue
+        fn = defs[0][0]
+        line = fn.start_point.row + 1
+        params, body = fn.child_by_field_name("parameters"), fn.child_by_field_name("body")
+        last = name.rsplit(".", 1)[-1].encode()
+        inside = _walk(fn)
+        taken = {n.start_byte for _, n in defs}
+        other = [
+            n for n in nodes if n.type in _NAMES and n.text == last and n.start_byte not in taken
+        ]
+        first = params.named_children[0] if params is not None and params.named_children else None
+        has_context = (
+            first is not None
+            and first.type == "identifier"
+            and _CONTEXT_PARAM.fullmatch((first.text or b"").decode()) is not None
+        )
+        context = (
+            (first.text or b"").decode()
+            if has_context and first is not None
+            else "executionContext"
+        )
+        reason: str | None = None
+        if len(defs) > 1:
+            reason = f"{name} is defined more than once in this file"
+        elif other:
+            at = other[0].start_point.row + 1
+            reason = f"{name} is also referenced at line {at}: its callers pass the old positions"
+        elif params is None or body is None or body.type != "statement_block":
+            reason = f"{name} has no block body to take the context"
+        elif any(c.type == "async" for c in fn.children):
+            reason = f"{name} is async: the context is not valid after an await"
+        elif any(n.type == "identifier" and n.text == b"arguments" for n in inside):
+            reason = f"{name} reads arguments, whose positions the context would shift"
+        elif any(n.type in _NAMES and n.text == b"formContext" for n in inside):
+            reason = f"formContext is already used in {name}"
+        elif not has_context and any(
+            n.type in _NAMES and n.text == b"executionContext" for n in inside
+        ):
+            reason = f"executionContext is already used in {name}"
+        elif has_context and has_parameters:
+            reason = (
+                f"{context} may be a positional parameter: {name} is registered with parameters"
+            )
+        if reason is not None:
+            unproven.append(Unproven(line, reason))
+            continue
+        if params is None or body is None:
+            continue
+        sites: list[Edit] = []
+        problems: list[Unproven] = []
+        for page in inside:
+            xrm = page.child_by_field_name("object") if _prop(page) == b"Page" else None
+            if xrm is None or not _is_xrm(xrm):
+                continue
+            use = page.parent
+            at = page.start_point.row + 1
+            member = _prop(use) if use is not None and _member_object(use) == page else None
+            nested, up = False, page.parent
+            while up is not None and up != fn:
+                nested = nested or up.type in _NESTED
+                up = up.parent
+            reason = _xrm_problem(xrm, shadowed)
+            if reason is None and _in_optional_chain(page, xrm, use):
+                reason = "an optional chain: the rewrite would drop its short-circuit"
+            elif reason is None and member is None:
+                reason = "Xrm.Page is used other than as a member access"
+            elif reason is None and member == b"context":
+                continue
+            elif reason is None and nested:
+                reason = (
+                    "Xrm.Page is in a nested function: the context is valid only during the event"
+                )
+            elif reason is None and b"\n" in (page.text or b""):
+                reason = "Xrm.Page spans lines"
+            if reason is not None:
+                problems.append(Unproven(at, reason))
+            else:
+                sites.append(Edit(page.start_byte, page.end_byte, b"formContext"))
+        unproven.extend(problems)
+        if not sites:
+            continue
+        if not has_context:
+            lead = first.start_byte if first is not None else params.start_byte + 1
+            tail = b", " if first is not None else b""
+            edits.append(Edit(lead, lead, b"executionContext" + tail))
+        brace = body.start_byte + 1
+        edits.append(Edit(brace, brace, f" var formContext = {context}.getFormContext();".encode()))
+        edits.extend(sites)
+        done.append(name)
+        cleared += len(sites)
+    edits.sort(key=lambda e: (e.start, e.end))
+    unproven.sort(key=lambda u: u.line)
+    return Plan(tuple(edits), tuple(unproven), tuple(done), cleared)
+
+
+register(HANDLER_TRANSFORM, Transform("javascript", (3,), _plan_handler_context, True))
