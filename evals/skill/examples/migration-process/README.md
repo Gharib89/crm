@@ -30,7 +30,9 @@ them byte for byte, except `findings.json`'s `generated_at`.
 
 - **Assessment:** `legacy.js` is a `blocker` (`web-resource-crmform`), `project.js` is
   `deprecated` (`web-resource-xrm-page`), the plug-in assembly is `unknown` (an extraction
-  gap and unrecorded fields), and every component no rule covers is `unknown`, never `clear`.
+  gap and unrecorded fields), the form is `deprecated` too
+  (`form-handler-no-execution-context`: its `onload` handler does not pass the
+  execution context to `project.js`), and every component no rule covers is `unknown`, never `clear`.
 - **Repair backlog:** two packages. The form, ribbon and four scripts form one package
   (`pkg-123c7f4cd189`) carrying the blocker and the deprecated finding; the plug-in
   assembly, type, step and image form the other.
