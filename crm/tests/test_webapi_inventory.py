@@ -875,6 +875,23 @@ def test_an_unreadable_export_is_a_failed_kind(tmp_path, monkeypatch):
     assert summary.kinds["ribbon_diff"]["status"] == "failed" and not summary.complete
 
 
+def test_a_damaged_export_stream_is_a_failed_kind(tmp_path, monkeypatch):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr(
+            "customizations.xml", "<ImportExportXml>" + "<a>b</a>" * 4000 + "</ImportExportXml>"
+        )
+    damaged = bytearray(buf.getvalue())
+    damaged[60:80] = bytes(range(200, 220))  # inside the deflate stream
+    monkeypatch.setattr(
+        solution_transfer,
+        "export_solution",
+        lambda b, n, dest, **kw: Path(dest).write_bytes(damaged),
+    )
+    summary = _extract(FakeBackend(), tmp_path / "inv", solutions=("contoso",))
+    assert summary.kinds["ribbon_diff"]["status"] == "failed" and not summary.complete
+
+
 def test_a_resume_reuses_the_exported_diffs(tmp_path, exports, monkeypatch):
     out = tmp_path / "inv"
     _extract(

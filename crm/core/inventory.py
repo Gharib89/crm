@@ -219,8 +219,8 @@ def artifact_hashes(data: bytes, *, text: bool, ribbon: bool = False) -> Artifac
 
 
 SCHEMA_VERSION = 3
-#: The versions the reader accepts; v1 and v2 are upgraded on read (see `_record`,
-#: `_upgrade_ribbon_diff_coverage`).
+#: The versions the reader accepts; v1 and v2 are upgraded on read (see `_record` and the
+#: ribbon_diff coverage upgrade in `parse_manifest`).
 READ_VERSIONS = (1, 2, 3)
 #: `READ_VERSIONS` as an error message names them: ``1, 2 and 3``.
 READ_VERSIONS_TEXT = ", ".join(map(str, READ_VERSIONS[:-1])) + f" and {READ_VERSIONS[-1]}"

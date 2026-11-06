@@ -33,6 +33,7 @@ import re
 import shutil
 import time
 import zipfile
+import zlib
 from collections import Counter
 from collections.abc import Callable, Collection, Iterable, Iterator
 from dataclasses import dataclass, field, replace
@@ -1161,7 +1162,17 @@ def _read_ribbon_diffs(
             try:
                 source.export_solution(name, zip_path)
                 diffs = read_ribbon_diffs(zip_path)
-            except (OSError, KeyError, ValueError, zipfile.BadZipFile, ParseError) as exc:
+            # zlib.error and RuntimeError (encrypted) are what a damaged member raises
+            # past BadZipFile.
+            except (
+                OSError,
+                KeyError,
+                ValueError,
+                RuntimeError,
+                zlib.error,
+                zipfile.BadZipFile,
+                ParseError,
+            ) as exc:
                 raise D365Error(f"the export of {name} could not be read: {exc}") from exc
             finally:
                 zip_path.unlink(missing_ok=True)
