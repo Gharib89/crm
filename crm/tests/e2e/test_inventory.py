@@ -61,6 +61,8 @@ def test_inventory_extract_is_valid_and_repeatable(cli, tmp_path):
     assert parsed.source.platform in ("onprem", "cloud")
     assert parsed.scope.solutions == (solution,)
     assert [r.key for r in parsed.records if r.kind == "solution"] == [solution]
+    # The named solution's export is read for its ribbon diffs.
+    assert parsed.coverage["ribbon_diff"].status == "complete"
 
     # Each assembly records the registration facts `inventory assess` judges.
     assemblies = [r for r in parsed.records if r.kind == "plugin_assembly"]

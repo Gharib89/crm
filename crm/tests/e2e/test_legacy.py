@@ -192,6 +192,8 @@ def test_inventory_extract_writes_a_valid_crm2011_inventory(cli, tmp_path, monke
     parsed = inventory.read_inventory(out)
     assert parsed.source.platform == "crm2011"
     assert parsed.source.version.startswith("5.")
+    # The Default solution's export is read for its ribbon diffs (it can take minutes).
+    assert parsed.coverage["ribbon_diff"].status == "complete"
     assert any(
         g.description and g.description.startswith("external integrations") for g in parsed.gaps
     )
