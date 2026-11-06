@@ -27,6 +27,7 @@ import difflib
 import hashlib
 import json
 import re
+from collections import Counter
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -60,6 +61,9 @@ SCHEMA_VERSION = 1
 LEDGER_NAME = "ledger.json"
 #: The package id of a component no work package holds.
 UNPACKAGED = "unpackaged"
+#: The per-package call-graph counts of the ledger's ``call_graph``: helpers given a
+#: ``formContext``, functions no handler reaches, helpers a caller outside the file holds back.
+GRAPH_COUNTS = ("threaded", "unreachable", "boundary")
 
 
 @dataclass(frozen=True)
@@ -91,6 +95,9 @@ class Entry:
     repo_path: str | None = None
     files: dict[str, str] = field(default_factory=lambda: {})
     manual_review: list[ManualReview] = field(default_factory=lambda: [])
+    #: The call-graph counts of a handler transform's JS entry, aggregated per package in the
+    #: ledger, not written on the entry itself.
+    graph: Counter[str] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -115,9 +122,16 @@ class ConvertResult:
     entries: tuple[Entry, ...]
 
     def ledger(self) -> dict[str, Any]:
+        call_graph: dict[str, dict[str, int]] = {}
+        for e in self.entries:
+            if e.graph is not None:
+                total = call_graph.setdefault(e.package, {k: 0 for k in GRAPH_COUNTS})
+                for k in GRAPH_COUNTS:
+                    total[k] += e.graph[k]
         return {
             "schema_version": SCHEMA_VERSION,
             "inventory": {"manifest_sha256": self.manifest_sha256},
+            "call_graph": call_graph,
             "entries": [e.to_dict() for e in self.entries],
         }
 
@@ -302,6 +316,47 @@ def _read_forms(
     return out
 
 
+def _other_scripts(
+    inventory_dir: Path, records: Iterable[Record], transform: Transform
+) -> Callable[[str], frozenset[str] | None]:
+    """Map a script's path to the names the inventory's other scripts mention.
+
+    None means one of those scripts is unreadable.
+
+    A function another web resource mentions may be called from there, a caller the rewrite of
+    one file cannot update, so the transform leaves its signature alone. The scan is of the
+    raw text, strings and comments included: it can only over-report.
+    """
+    paths = [
+        r.artifacts[0].path
+        for r in records
+        if r.kind == "web_resource"
+        and r.artifacts
+        and r.fields.get("web_resource_type") in transform.web_resource_types
+    ]
+    names: dict[str, frozenset[str] | None] = {}
+
+    def others(path: str) -> frozenset[str] | None:
+        if not names:
+            for each in paths:
+                try:
+                    text = (inventory_dir / each).read_text(encoding="utf-8", errors="replace")
+                except OSError:
+                    names[each] = None
+                else:
+                    names[each] = frozenset(re.findall(r"[A-Za-z_$][\w$]*", text))
+        seen: set[str] = set()
+        for other, found in names.items():
+            if other == path:
+                continue
+            if found is None:
+                return None
+            seen |= found
+        return frozenset(seen)
+
+    return others
+
+
 def _eligible(
     forms: list[_Form],
     libraries: dict[str, tuple[str, str, str]],
@@ -442,6 +497,7 @@ def convert(
         for gkey in handlers:
             groups[gkey].setdefault(form_rule.id, form_rule)
     lib_of = {g: n for n, g in libraries.items()}
+    others = _other_scripts(inventory_dir, inv.records, TRANSFORMS[HANDLER_TRANSFORM])
     rewritten: set[tuple[str, str]] = set()
 
     def emit(
@@ -459,6 +515,12 @@ def convert(
                 entry.manual_review = [
                     ManualReview(path, u.line, rule.id, u.reason) for u in plan.unproven
                 ]
+                if rule.transform == HANDLER_TRANSFORM and kind == "web_resource":
+                    entry.graph = Counter(
+                        threaded=plan.threaded if applied else 0,
+                        unreachable=plan.unreachable,
+                        boundary=plan.boundary,
+                    )
                 if reason:
                     entry.manual_review.insert(0, ManualReview(path, None, rule.id, reason))
                 elif applied:
@@ -495,7 +557,7 @@ def convert(
             ):
                 tree = parse(transform.language, current)
                 plan = (
-                    transform.plan(tree, handlers.get((kind, key, path), {}))
+                    transform.plan(tree, handlers.get((kind, key, path), {}), others(path))
                     if transform.needs_handlers
                     else transform.plan(tree)
                 )
