@@ -411,8 +411,10 @@ def _effective_callers(
     A diff holds the actions an org added to an entity's ribbon, and the effective ribbon holds
     those and every other action, so it can call a function the diffs do not (another solution's
     diff, an action the extraction missed). Per entity, a function the effective ribbon calls more
-    often without ``PrimaryControl`` than the diff does has such a caller, and a ribbon that
-    cannot be read names every function it shows: either way the function's signature stays.
+    often without ``PrimaryControl`` than the entity's diff and the application's diff together
+    (an entity's ribbon shows the application's commands) has such a caller, as does a function
+    its ``CustomRule`` calls. A ribbon that cannot be read names every function it shows: either
+    way the function's signature stays.
     """
     mapped: dict[str, Counter[tuple[str, str]]] = {}
     for r in ribbons:
@@ -423,20 +425,23 @@ def _effective_callers(
     for rec in records:
         if rec.kind != "ribbon" or not rec.artifacts:
             continue
-        where = "the application" if rec.key == "application" else f"entity {rec.key}"
+        where = f"entity {rec.key}" if rec.key else "the application"
         try:
             raw = (inventory_dir / rec.artifacts[0].path).read_bytes()
         except OSError:
             continue
         text = normalize_text(raw)
-        calls = ribbon_calls(text) if _hex(raw) == rec.artifacts[0].sha256 else None
-        if calls is None:
+        read = ribbon_calls(text) if _hex(raw) == rec.artifacts[0].sha256 else None
+        if read is None:
             for key in ribbon_function_names(text):
                 reasons[key] = (
                     f"{key[1]} is called from the effective ribbon of {where}, which cannot be read"
                 )
             continue
-        have = mapped.get("" if rec.key == "application" else rec.key, Counter())
+        calls, rules = read
+        for key in rules:
+            reasons.setdefault(key, f"{key[1]} is called by a CustomRule of the effective ribbon")
+        have = mapped.get(rec.key, Counter()) + mapped.get("", Counter())
         for key, n in calls.items():
             if n > have[key]:
                 reasons.setdefault(
@@ -599,7 +604,6 @@ def _eligible_commands(
         group = libraries.get(key[0])
         if group is None or key in reasons or all(a.passes for _, a in found):
             continue
-
         mine = packages(group[0], group[1])
         away = next((a.not_form for _, a in found if a.not_form), None)
         if any(a.passes for _, a in found):

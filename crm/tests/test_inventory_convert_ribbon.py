@@ -291,6 +291,33 @@ def test_a_caller_only_the_effective_ribbon_holds_keeps_the_function_whole(tmp_p
     )
 
 
+def test_more_effective_only_callers_than_assess_stores_still_keep_the_function_whole(tmp_path):
+    # assess keeps the first MAX_LOCATIONS registrations; the effective ribbon is read whole
+    diff = _diff_xml({"cmd.run": _call("run")})
+    extra = {f"grid.{i}": _call("run") for i in range(assess.MAX_LOCATIONS + 2)}
+    shown = {"cmd.run": FORM_LOC} | dict.fromkeys(extra, GRID_LOC)
+    effective = _diff_xml({"cmd.run": _call("run")} | extra, shown=shown)
+    run = _pipeline(tmp_path, CMD_JS, {"account": diff}, effective={"account": effective})
+    assert _js_status(run) != "patched" and _ribbon(run)["status"] == "manual-review"
+
+
+def test_an_application_diff_command_shown_in_an_entity_ribbon_still_converts(tmp_path):
+    xml = _diff_xml({"cmd.run": _call("run")})
+    run = _pipeline(tmp_path, CMD_JS, {None: xml}, effective={"account": xml})
+    assert _ribbon(run, "")["status"] == "patched" and _js(run)["status"] == "patched"
+
+
+def test_a_custom_rule_only_the_effective_ribbon_holds_keeps_the_function_whole(tmp_path):
+    diff = _diff_xml({"cmd.run": _call("run")})
+    rule = (
+        f'<EnableRule Id="r"><CustomRule Library="$webresource:{LIB}" FunctionName="run" />'
+        "</EnableRule>"
+    )
+    effective = diff.replace("<RuleDefinitions>", f"<RuleDefinitions>{rule}")
+    run = _pipeline(tmp_path, CMD_JS, {"account": diff}, effective={"account": effective})
+    assert _js_status(run) != "patched" and _ribbon(run)["status"] == "manual-review"
+
+
 def test_an_effective_ribbon_with_no_diff_of_its_own_still_counts_as_a_caller(tmp_path):
     diff = _diff_xml({"cmd.run": _call("run")})
     run = _pipeline(tmp_path, CMD_JS, {"account": diff}, effective={"contact": _grid_too()})

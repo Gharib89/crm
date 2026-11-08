@@ -159,9 +159,12 @@ def plan_ribbon_actions(
     return Plan(tuple(edits), tuple(unproven))
 
 
-def ribbon_calls(text: bytes) -> Counter[tuple[str, str]] | None:
+def ribbon_calls(
+    text: bytes,
+) -> tuple[Counter[tuple[str, str]], frozenset[tuple[str, str]]] | None:
     """How many ``<JavaScriptFunction>`` elements call each ``(library, function)`` without
-    ``PrimaryControl``, or None when the text is not XML.
+    ``PrimaryControl``, and which functions ``CustomRule`` elements call, or None when the text
+    is not XML.
 
     For an effective ribbon, which holds the diffs' actions and every other action in the org:
     it is read for who calls a function, never edited.
@@ -170,11 +173,16 @@ def ribbon_calls(text: bytes) -> Counter[tuple[str, str]] | None:
         root = fromstring(text.decode("utf-8"))
     except (ParseError, ValueError):
         return None
-    return Counter(
+    calls = Counter(
         action_key(el.get("Library") or "", el.get("FunctionName") or "")
         for el in root.iter("JavaScriptFunction")
         if PARAMETER not in (p.get("Value") for p in el.findall("CrmParameter"))
     )
+    rules = frozenset(
+        action_key(r.get("Library") or "", r.get("FunctionName") or "")
+        for r in root.iter("CustomRule")
+    )
+    return calls, rules
 
 
 _ATTR = re.compile(rb"([\w:.-]+)\s*=\s*(\"[^\"]*\"|'[^']*')")
