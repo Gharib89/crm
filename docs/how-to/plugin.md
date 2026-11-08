@@ -226,6 +226,15 @@ crm --json plugin register-step \
     --configuration '{"key": "value"}'
 ```
 
+### Plug-in package (NuGet) → step
+
+A plug-in package with dependencies is deployed with the Power Platform CLI
+instead: `pac plugin push` creates the assembly and plug-in type rows itself, so
+the `register-assembly` and `register-type` steps above do not apply. Seed the
+package row once with `crm entity create pluginpackages`, push with `pac`, then
+register the step with `crm plugin register-step`. The bundled agent skill's
+automation reference carries the full recipe and its gotchas.
+
 ### Webhook → step
 
 ```bash

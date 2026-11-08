@@ -24,7 +24,9 @@ crm --json plugin register-assembly ./bin/Contoso.Plugins.dll --solution Contoso
 crm --json plugin register-assembly ./bin/Contoso.Plugins.dll --update --solution ContosoCore
 
 # register-type: create one plugintypes row per IPlugin class. The CLI does NOT
-# reflect the assembly — plugintype rows are never auto-created via the Web API.
+# reflect the assembly — plugintype rows are never auto-created via the Web API
+# on this route (a package pushed with `pac plugin push` does create them: see
+# "Deploy a plug-in package from a local build and verify it").
 # For a workflow activity (isworkflowactivity: true), the type's `name` column
 # is what the CLASSIC workflow designer shows as the Add-Step label — a blank
 # name there is the empty-label bug this default exists to avoid.
@@ -136,6 +138,80 @@ Gotchas (server-side, not in `--help`):
 - **Traces survive transaction rollback.** When a synchronous plug-in throws and the
   transaction rolls back, the trace rows remain — which is what makes the table useful
   for diagnosing the failure that erased everything else.
+
+### Deploy a plug-in package from a local build and verify it
+
+For a NuGet plug-in package (a plug-in plus its dependencies) the Power Platform
+CLI (`pac`) owns build scaffolding and push; `crm` owns the target check, the
+registration check, the step and the trace read. Proven on Ubuntu with PAC 2.14.1
+on .NET 10 against a Dataverse online dev org, a synthetic package
+`new_TEST1130Probe` with one dependency (Newtonsoft.Json). Use a clear synthetic
+prefix like that for every test artifact.
+
+```bash
+# 0. Target. PAC takes the same application credentials as the crm profile.
+# Confirm the org and caller with crm first, then point PAC at the same org.
+crm --profile <p> connection whoami
+pac auth create --name <n> --applicationId <app-id> --clientSecret <secret> \
+    --tenant <tenant-id> --environment <org-url>
+
+# 1. Scaffold and build. Add the dependency as a PackageReference and set
+# <PackageId> in the .csproj; the .nupkg lands in bin/Release/.
+pac plugin init --skip-signing --author test
+dotnet build -c Release
+unzip -l bin/Release/*.nupkg        # the plug-in and dependency DLLs under lib/net48/
+
+# 2. Seed the package row ONCE (first registration only). `pac plugin push` needs
+# an existing --pluginId and crm has no pluginpackages verb, so use entity create;
+# pkg.json holds name, uniquename, version and content (base64 of the .nupkg).
+crm --json entity create pluginpackages --data-file pkg.json --no-return
+
+# 3. Push. Same command for every later push of a version-bumped rebuild.
+pac plugin push --pluginId <pluginpackageid> \
+    --pluginFile bin/Release/<PackageId>.<ver>.nupkg --type Nuget
+
+# 4. Verify the registration.
+crm --json query odata pluginpackages --select name,version,uniquename
+crm --json query odata pluginassemblies --filter "name eq '<assembly>'" \
+    --select name,version,_packageid_value
+crm --json plugin list-types --assembly <assembly>
+
+# 5. Register a step (solution-scoped), then trigger it.
+crm --json solution create --name TEST1130Sol --publisher <publisher-uniquename>
+crm --json plugin register-step --plugin-type <Namespace.Class> --message Create \
+    --entity account --stage preoperation --mode sync --solution TEST1130Sol
+crm --json entity create accounts --data '{"name":"TEST1130-OK"}'
+```
+
+Read the traces with the loop above (set `plugintracelogsetting` to `2`, rerun,
+read, set back to `0`), then check the business outcome (here, a `description`
+the plug-in stamps on the created account).
+
+What the push does and what to expect:
+
+- **Push creates the `pluginassembly` (linked by `_packageid_value`) and the
+  `plugintype` rows.** No `register-assembly` or `register-type` on this path.
+  The dependency gets no row of its own. A dependency loading in the sandbox is
+  proven by the plug-in using it (the trace showed its JSON output).
+- **`pluginpackages.version` can lag.** It still read `1.0.0` after pushing
+  `1.0.1`; the assembly row read `1.0.1.0`. Check the assembly row for the
+  deployed version.
+- **Trace `typename` is assembly-qualified** (`<Class>, <assembly>, Version=...`),
+  so filter with `startswith`, as in the loop above.
+- **Traces can lag.** A read 5 s after the run returned nothing and one about
+  25 s later returned both rows (a single run, so not a bound): retry.
+
+A deliberate failure (the plug-in throws `InvalidPluginExecutionException`) gives
+a useful diagnostic. `entity create` exits 1 with `ok: false`, the plug-in's own
+message as `error`, `status` 400, `code` `0x80040265`, `category` `validation`,
+`retryable` false, and no row is created. The trace row carries the plug-in's
+trace lines in `messageblock` and the fault text plus stack in `exceptiondetails`
+(add it to `--select`).
+
+Clean up a test run in this order: the test records, the step, the package
+(its assembly and type rows go with it), the test solution, then
+`plugintracelogsetting` back to `0`. Never put credentials, org URLs, ids or
+business data in saved evidence.
 
 ### Generating early-bound classes
 
