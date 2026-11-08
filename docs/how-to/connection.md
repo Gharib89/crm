@@ -86,20 +86,21 @@ pac org who --json
 |---|---|
 | `whoami` `OrganizationId` | `OrgId` |
 | function result `EnvironmentId` (`whoami` has none) | `EnvironmentId` |
-| `whoami` `UserId` | `UserId` |
+| `whoami` `UserId` (names the caller; not part of the match) | `UserId` |
 
 The Dataverse org ID and the Power Platform environment ID are different GUIDs:
 compare each only with its own counterpart. `pac auth list` has no JSON output
 and no org ID, so use `pac org who --json`. Output was identical on Ubuntu and
 Windows (PAC 2.14.1).
 
-- **Match** (org ID equal, and environment ID equal or absent from the function result): proceed.
+- **Match** (org ID equal, and environment ID equal or absent from the function
+  result): proceed.
 - **Mismatch** (either differs): no `pac` write.
 - **Unverifiable** (`pac org who --json` exits non-zero, for example with no `pac`
   profile, or `whoami` lacks `OrganizationId`): no `pac` write.
 - **`pac` unavailable** (not on PATH): skip the `pac` steps, continue with `crm`.
 
 Only a match unlocks a `pac` write. Pass the profile and the unmanaged solution
-explicitly on every write. `connection doctor` does not call `pac` and is
-unchanged, so on-premises and CRM-only profiles are unaffected. The bundled agent skill's setup reference
-carries the same recipe for agents.
+explicitly on every write. `connection doctor` does not call `pac`, so
+on-premises and CRM-only profiles skip this check. The bundled agent skill's
+setup reference carries the same recipe for agents.

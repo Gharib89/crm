@@ -45,19 +45,19 @@ def decide(whoami: dict, org_fn: dict, pac: dict | None, pac_on_path: bool = Tru
 
 
 @pytest.mark.parametrize(
-    ("label", "pac", "org_fn", "on_path", "outcome", "writes"),
+    ("label", "pac", "org_fn", "on_path", "outcome"),
     [
-        ("match", PAC_WHO, ORG_FN, True, "match", 1),
-        ("org mismatch", {**PAC_WHO, "OrgId": "other"}, ORG_FN, True, "mismatch", 0),
-        ("env mismatch", {**PAC_WHO, "EnvironmentId": "other"}, ORG_FN, True, "mismatch", 0),
-        ("no pac profile", None, ORG_FN, True, "unverifiable", 0),
-        ("pac not on PATH", None, ORG_FN, False, "pac-unavailable", 0),
-        ("env not comparable", PAC_WHO, {"OrganizationId": ORG}, True, "match", 1),
+        ("match", PAC_WHO, ORG_FN, True, "match"),
+        ("org mismatch", {**PAC_WHO, "OrgId": "other"}, ORG_FN, True, "mismatch"),
+        ("env mismatch", {**PAC_WHO, "EnvironmentId": "other"}, ORG_FN, True, "mismatch"),
+        ("no pac profile", None, ORG_FN, True, "unverifiable"),
+        ("pac not on PATH", None, ORG_FN, False, "pac-unavailable"),
+        ("env not comparable", PAC_WHO, {"OrganizationId": ORG}, True, "match"),
     ],
 )
-def test_pac_write_only_on_confirmed_match(label, pac, org_fn, on_path, outcome, writes):
+def test_decision_table(label, pac, org_fn, on_path, outcome):
     got = decide(WHOAMI, org_fn, pac, on_path)
-    assert (got, int(got == "match")) == (outcome, writes), label
+    assert got == outcome, label
 
 
 def _recipe_section() -> str:
@@ -76,14 +76,15 @@ def test_recipe_uses_measured_fields():
 
 def test_recipe_outcome_rows_state_the_write_rule():
     rows = {
-        cells[0]: cells[2]
+        cells[0]: (cells[1], cells[2])
         for line in _recipe_section().splitlines()
         if line.startswith("|")
         for cells in [[c.strip() for c in line.strip("|").split("|")]]
         if len(cells) == 3
     }
-    assert rows["Confirmed match"].startswith("Proceed with the `pac` write")
-    assert rows["Confirmed mismatch"].startswith("No `pac` write")
-    assert rows["Unverifiable"].startswith("No `pac` write")
-    assert "Skip the `pac` steps" in rows["`pac` unavailable"]
+    assert rows["Confirmed match"][1].startswith("Proceed with the `pac` write")
+    assert "the function result has none" in rows["Confirmed match"][0]
+    assert rows["Confirmed mismatch"][1].startswith("No `pac` write")
+    assert rows["Unverifiable"][1].startswith("No `pac` write")
+    assert "Skip the `pac` steps" in rows["`pac` unavailable"][1]
     assert "zero writes" in _recipe_section()

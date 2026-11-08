@@ -151,8 +151,8 @@ tell the user it is untested.
 `crm` profile and a `pac` auth profile can point at different orgs, and a green
 `whoami` says nothing about `pac`. Before any write that goes through `pac`
 (`pac plugin push`, `pac solution import`), prove both tools hit the same
-Dataverse online org. `connection doctor` does not call `pac`, so on-premises
-and CRM-only work skips this check.
+Dataverse online org. On-premises and CRM-only work skips this check: it needs
+`pac` and an online org.
 
 Pass the same `--profile` you will write with.
 
