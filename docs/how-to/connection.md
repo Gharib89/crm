@@ -101,6 +101,6 @@ Windows (PAC 2.14.1).
 - **`pac` unavailable** (not on PATH): skip the `pac` steps, continue with `crm`.
 
 Only a match unlocks a `pac` write. Pass the profile and the unmanaged solution
-explicitly on every write. `connection doctor` does not call `pac`, so
-on-premises and CRM-only profiles skip this check. The bundled agent skill's
+explicitly on every write. On-premises and CRM-only work skips this check:
+it needs `pac` and an online org. `connection doctor` itself does not call `pac`. The bundled agent skill's
 setup reference carries the same recipe for agents.
