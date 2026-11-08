@@ -9,6 +9,7 @@ runs through `assess`, `packages` and `convert` once, then asserts what landed u
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
@@ -64,10 +65,10 @@ def _diff_xml(
 def _pipeline(
     root: Path,
     js: str,
-    diffs: dict[str, str],
+    diffs: Mapping[str | None, str],
     forms: dict[str, str] | None = None,
     scripts: dict[str, str] | None = None,
-    effective: dict[str, str] | None = None,
+    effective: Mapping[str | None, str] | None = None,
 ):
     folder = root / "inv"
     folder.mkdir(parents=True)
@@ -86,7 +87,7 @@ def _pipeline(
     # *effective* names the ribbons that hold more (or other) actions than the diffs.
     records += [
         _record("ribbon", {"entity": entity}, folder, files=[("ribbon.xml", xml.encode(), True)])
-        for entity, xml in (diffs | (effective or {})).items()
+        for entity, xml in {**diffs, **(effective or {})}.items()
     ]
     records += [_form(name, xml.encode(), folder) for name, xml in (forms or {}).items()]
     _registrations(folder, records)
