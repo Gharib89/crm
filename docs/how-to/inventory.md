@@ -776,8 +776,10 @@ A **ribbon command** function takes the context the same way, from `PrimaryContr
 and the ribbon diff's actions are patched in the same work package (the diff travels with its
 entity's ribbon). `SelectedControl` is the grid context, so only a command shown on a form
 (every control naming it sits under a `Mscrm.Form.` location) is converted, and only when no other
-web resource names the function and no `CustomRule` calls it. The emit gate checks
-the patched diff still maps to its actions and exactly the planned ones now pass `PrimaryControl`.
+web resource names the function, no `CustomRule` calls it, and no action of the entity's
+effective ribbon calls it from a command the readable diff does not carry (another solution's
+diff, or an action the extraction missed: the diffs alone would leave that caller on the old
+arguments). The emit gate checks the patched diff still maps to its actions and exactly the planned ones now pass `PrimaryControl`.
 
 A **helper** the handlers and commands reach is threaded through the file's call graph: it gains a first
 `formContext` parameter (so positional arguments keep their order), its own `Xrm.Page.<member>`

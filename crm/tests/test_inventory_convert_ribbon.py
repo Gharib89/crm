@@ -67,6 +67,7 @@ def _pipeline(
     diffs: dict[str, str],
     forms: dict[str, str] | None = None,
     scripts: dict[str, str] | None = None,
+    effective: dict[str, str] | None = None,
 ):
     folder = root / "inv"
     folder.mkdir(parents=True)
@@ -82,9 +83,10 @@ def _pipeline(
             )
         )
     # The effective ribbon holds the diff's actions, and is what links the diff to its library.
+    # *effective* names the ribbons that hold more (or other) actions than the diffs.
     records += [
         _record("ribbon", {"entity": entity}, folder, files=[("ribbon.xml", xml.encode(), True)])
-        for entity, xml in diffs.items()
+        for entity, xml in (diffs | (effective or {})).items()
     ]
     records += [_form(name, xml.encode(), folder) for name, xml in (forms or {}).items()]
     _registrations(folder, records)
@@ -270,6 +272,51 @@ def test_a_function_called_from_another_diff_is_patched_there_too_or_not_at_all(
     assert _ribbon(run)["status"] == "manual-review"
     assert "already called with PrimaryControl" in _ribbon(run)["manual_review"][0]["reason"]
     assert _js_status(run) != "patched"
+
+
+def _grid_too(*functions: str) -> str:
+    """An effective ribbon with a form command and a grid command per function."""
+    commands = {"cmd.run": _call("run")} | {f"grid.{f}": _call(f) for f in functions}
+    shown = {c: FORM_LOC if c == "cmd.run" else GRID_LOC for c in commands}
+    return _diff_xml(commands, shown=shown)
+
+
+def test_a_caller_only_the_effective_ribbon_holds_keeps_the_function_whole(tmp_path):
+    diff = _diff_xml({"cmd.run": _call("run")})
+    run = _pipeline(tmp_path, CMD_JS, {"account": diff}, effective={"account": _grid_too("run")})
+    assert _js_status(run) != "patched"
+    assert _ribbon(run)["status"] == "manual-review" and _ribbon(run)["files"] == {}
+    assert "effective ribbon of entity account from a command no readable ribbon diff" in " ".join(
+        m["reason"] for m in _ribbon(run)["manual_review"]
+    )
+
+
+def test_an_effective_ribbon_with_no_diff_of_its_own_still_counts_as_a_caller(tmp_path):
+    diff = _diff_xml({"cmd.run": _call("run")})
+    run = _pipeline(tmp_path, CMD_JS, {"account": diff}, effective={"contact": _grid_too()})
+    assert _js_status(run) != "patched" and _ribbon(run)["status"] == "manual-review"
+
+
+def test_an_effective_ribbon_calling_other_functions_changes_nothing(tmp_path):
+    diff = _diff_xml({"cmd.run": _call("run")})
+    run = _pipeline(tmp_path, CMD_JS, {"account": diff}, effective={"account": _grid_too("other")})
+    assert _ribbon(run)["status"] == "patched" and _js(run)["status"] == "patched"
+
+
+def test_an_effective_ribbon_that_cannot_be_read_names_every_function_it_shows(tmp_path):
+    from crm.core.inventory_convert import _effective_callers
+
+    folder = tmp_path / "inv"
+    folder.mkdir()
+    rec = _record(
+        "ribbon",
+        {"entity": "account"},
+        folder,
+        files=[("ribbon.xml", _grid_too("run").encode(), True)],
+    )
+    (folder / rec.artifacts[0].path).write_bytes(b"<RibbonXml>" + _call("run").encode())  # not XML
+    (reason,) = _effective_callers(folder, [rec], []).items()
+    assert reason[0] == (LIB, "run") and "cannot be read" in reason[1]
 
 
 def test_a_custom_rule_calling_the_function_keeps_it_whole(tmp_path):

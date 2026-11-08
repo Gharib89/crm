@@ -14,6 +14,7 @@ grids. So an action is patched only when its command is shown on a form, decided
 from __future__ import annotations
 
 import re
+from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass
 from html import unescape
@@ -156,6 +157,24 @@ def plan_ribbon_actions(
         elif a.key in reasons:
             unproven.append(Unproven(a.line, reasons[a.key]))
     return Plan(tuple(edits), tuple(unproven))
+
+
+def ribbon_calls(text: bytes) -> Counter[tuple[str, str]] | None:
+    """How many ``<JavaScriptFunction>`` elements call each ``(library, function)`` without
+    ``PrimaryControl``, or None when the text is not XML.
+
+    For an effective ribbon, which holds the diffs' actions and every other action in the org:
+    it is read for who calls a function, never edited.
+    """
+    try:
+        root = fromstring(text.decode("utf-8"))
+    except (ParseError, ValueError):
+        return None
+    return Counter(
+        action_key(el.get("Library") or "", el.get("FunctionName") or "")
+        for el in root.iter("JavaScriptFunction")
+        if PARAMETER not in (p.get("Value") for p in el.findall("CrmParameter"))
+    )
 
 
 _ATTR = re.compile(rb"([\w:.-]+)\s*=\s*(\"[^\"]*\"|'[^']*')")
