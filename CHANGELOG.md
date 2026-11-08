@@ -9,6 +9,29 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.105.4 (2026-11-08)
+
+### Bug Fixes
+
+- **skill**: Add a crm and PAC target check recipe
+  ([#1137](https://github.com/Gharib89/crm/pull/1137),
+  [`b5d7f3b`](https://github.com/Gharib89/crm/commit/b5d7f3bb6a55c1aeabca7118c3c26c1a5b13ec87))
+
+- **skill**: Settle the missing-EnvironmentId outcome and tie the test to the recipe
+  ([#1137](https://github.com/Gharib89/crm/pull/1137),
+  [`b5d7f3b`](https://github.com/Gharib89/crm/commit/b5d7f3bb6a55c1aeabca7118c3c26c1a5b13ec87))
+
+- **skill**: Tighten the recipe test and the on-premises note
+  ([#1137](https://github.com/Gharib89/crm/pull/1137),
+  [`b5d7f3b`](https://github.com/Gharib89/crm/commit/b5d7f3bb6a55c1aeabca7118c3c26c1a5b13ec87))
+
+### Documentation
+
+- **skill**: Align the on-premises reason in the connection how-to
+  ([#1137](https://github.com/Gharib89/crm/pull/1137),
+  [`b5d7f3b`](https://github.com/Gharib89/crm/commit/b5d7f3bb6a55c1aeabca7118c3c26c1a5b13ec87))
+
+
 ## v1.105.3 (2026-11-08)
 
 ### Bug Fixes
