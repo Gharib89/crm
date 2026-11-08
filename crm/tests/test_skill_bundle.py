@@ -36,6 +36,7 @@ EXPECTED_REFERENCES = {
     "inventory.md",
     "customization-lifecycle.md",
     "customizations-as-code.md",
+    "dataverse-mcp.md",
     "records.md",
     "bulk.md",
     "metadata.md",

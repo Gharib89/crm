@@ -48,10 +48,11 @@ dashboards. Three adjacent tools come close and each stops short:
 
 - **On-prem is excluded from cloud Git integration.** Microsoft's native
   [Dataverse Git integration](https://learn.microsoft.com/power-platform/alm/git-integration/connecting-to-git)
-  requires **managed environments** and works **only against Azure DevOps** (the
-  [only supported Git provider](https://learn.microsoft.com/power-platform/alm/git-integration/faqs)
-  — GitHub is excluded even for online), configured through the cloud maker
-  portals. All three prerequisites are cloud-only constructs, so D365 CE
+  requires **managed environments** and works against **Azure DevOps and GitHub**
+  (the
+  [FAQ](https://learn.microsoft.com/power-platform/alm/git-integration/faqs) lists
+  both as supported), configured through the cloud maker
+  portals. These prerequisites are cloud-only constructs, so D365 CE
   on-premises (v9.x) is excluded by construction — as it is from the rest of the
   cloud ALM stack (pipelines, Build Tools service connections, which target
   `*.crm.dynamics.com`). On-prem teams *can* put solution XML under source control

@@ -85,3 +85,10 @@ target, re-approve, execute the fresh plan.
   `metadata create-*`) are the faster path than editing the spec; see `forms.md`,
   `apps-sitemap.md`, `metadata.md`.
 - **N:N relationships** are outside the apply surface (apply authors 1:N).
+
+## Not the same as Power Platform's native Git integration
+
+The maker-portal Git integration (Azure DevOps and GitHub per Microsoft's FAQ)
+commits an unmanaged dev solution as YAML, and `pac solution unpack`/`clone`/`sync`
+do not read that YAML. `crm` does not drive it: tell the user, and pick one loop
+per solution. For the pack/unpack path see `reference/solutions.md`.
