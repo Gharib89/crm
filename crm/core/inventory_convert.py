@@ -29,7 +29,7 @@ import json
 import re
 import unicodedata
 from collections import Counter
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -65,6 +65,7 @@ from crm.core.inventory_ribbon import (
     action_key,
     plan_ribbon_actions,
     read_ribbon_diff,
+    ribbon_calls,
     ribbon_function_names,
 )
 from crm.core.inventory_source_map import read_source_map
@@ -402,6 +403,55 @@ def _read_ribbons(
     return out
 
 
+def _effective_callers(
+    inventory_dir: Path, records: list[Record], ribbons: list[_Ribbon]
+) -> dict[tuple[str, str], str]:
+    """The functions an effective ribbon calls from actions no readable ribbon diff carries.
+
+    A diff holds the actions an org added to an entity's ribbon, and the effective ribbon holds
+    those and every other action, so it can call a function the diffs do not (another solution's
+    diff, an action the extraction missed). Per entity, a function the effective ribbon calls more
+    often without ``PrimaryControl`` than the entity's diff and the application's diff together
+    (an entity's ribbon shows the application's commands) has such a caller, as does a function
+    its ``CustomRule`` calls. A ribbon that cannot be read names every function it shows: either
+    way the function's signature stays.
+    """
+    mapped: dict[str, Counter[tuple[str, str]]] = {}
+    for r in ribbons:
+        counts = mapped.setdefault(r.key, Counter())
+        if r.diff:
+            counts.update(a.key for a in r.diff.actions if not a.passes)
+    reasons: dict[tuple[str, str], str] = {}
+    for rec in records:
+        if rec.kind != "ribbon" or not rec.artifacts:
+            continue
+        where = f"entity {rec.key}" if rec.key else "the application"
+        try:
+            raw = (inventory_dir / rec.artifacts[0].path).read_bytes()
+        except OSError:
+            continue
+        text = normalize_text(raw)
+        read = ribbon_calls(text) if _hex(raw) == rec.artifacts[0].sha256 else None
+        if read is None:
+            for key in ribbon_function_names(text):
+                reasons[key] = (
+                    f"{key[1]} is called from the effective ribbon of {where}, which cannot be read"
+                )
+            continue
+        calls, rules = read
+        for key in rules:
+            reasons.setdefault(key, f"{key[1]} is called by a CustomRule of the effective ribbon")
+        have = mapped.get(rec.key, Counter()) + mapped.get("", Counter())
+        for key, n in calls.items():
+            if n > have[key]:
+                reasons.setdefault(
+                    key,
+                    f"{key[1]} is called by the effective ribbon of {where} from a command"
+                    " no readable ribbon diff carries",
+                )
+    return reasons
+
+
 _ESCAPE = re.compile(r"\\u\{([0-9a-fA-F]{1,6})\}|\\u([0-9a-fA-F]{4})")
 _ASCII_BREAK = re.compile(r"[^\x00-\x2f\x3a-\x40\x5b-\x5e\x60\x7b-\x7f]+")
 
@@ -526,6 +576,7 @@ def _eligible_commands(
     packages: Callable[[str, str], set[str]],
     handlers: frozenset[tuple[str, str]],
     scripts: Callable[[str], frozenset[str] | None],
+    effective: Mapping[tuple[str, str], str],
 ) -> tuple[dict[tuple[str, str, str], frozenset[str]], dict[tuple[str, str], str]]:
     """Which ribbon command functions of each library may be rewritten, and why the others may not.
 
@@ -534,7 +585,8 @@ def _eligible_commands(
     library, on a command shown on a form, with the same ``CrmParameter`` list, and none passes
     ``PrimaryControl`` already. A function a form handler, a ribbon ``CustomRule`` or an element
     outside a command also calls would be called with the wrong arguments, so it stays, as does
-    one another web resource names (*scripts* maps a library's path to those names).
+    one another web resource names (*scripts* maps a library's path to those names), and so does
+    one an effective ribbon calls from a command no diff carries (*effective*, with the reasons).
     """
     regs: dict[tuple[str, str], list[tuple[_Ribbon, RibbonAction]]] = {}
     reasons: dict[tuple[str, str], str] = {}
@@ -566,6 +618,8 @@ def _eligible_commands(
             reasons[key] = f"{key[1]} is also named in another web resource: its callers stay"
         elif any(not r.target for r, _ in found):
             reasons[key] = f"{key[1]} is also called from a ribbon diff this run does not patch"
+        elif key in effective:
+            reasons[key] = effective[key]
         elif away:
             reasons[key] = f"{key[1]}: {away}"
         elif len({a.parameters for _, a in found}) > 1:
@@ -707,7 +761,12 @@ def convert(
         )
         handlers, reasons = _eligible(forms, libraries, packages_of, ribbon_calls)
         commands, command_reasons = _eligible_commands(
-            ribbons, libraries, packages_of, form_calls, web_callers
+            ribbons,
+            libraries,
+            packages_of,
+            form_calls,
+            web_callers,
+            _effective_callers(inventory_dir, list(inv.records), ribbons),
         )
         # One rule owns a library's context rewrite: the form rule when handlers are rewritten.
         for gkey in handlers.keys() | commands.keys():
