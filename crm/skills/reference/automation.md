@@ -24,7 +24,7 @@ crm --json plugin register-assembly ./bin/Contoso.Plugins.dll --solution Contoso
 crm --json plugin register-assembly ./bin/Contoso.Plugins.dll --update --solution ContosoCore
 
 # register-type: create one plugintypes row per IPlugin class. The CLI does NOT
-# reflect the assembly — plugintype rows are never auto-created via the Web API
+# reflect the assembly: plugintype rows are never auto-created via the Web API
 # on this route (a package pushed with `pac plugin push` does create them: see
 # "Deploy a plug-in package from a local build and verify it").
 # For a workflow activity (isworkflowactivity: true), the type's `name` column
@@ -33,7 +33,8 @@ crm --json plugin register-assembly ./bin/Contoso.Plugins.dll --update --solutio
 crm --json plugin register-type --assembly Contoso.Plugins \
     --type Contoso.Plugins.AccountPostUpdate --solution ContosoCore
 
-# list-types: shows explicitly registered rows; empty until register-type is run.
+# list-types: shows explicitly registered rows; empty until register-type is run
+# (a pushed package's types show at once).
 crm --json plugin list-types --assembly Contoso.Plugins
 
 # register-webhook: creates a serviceendpoint (contract=8). The platform POSTs
@@ -119,8 +120,8 @@ orgid=$(crm --json query odata organizations --select organizationid \
         | jq -r '.data[0].organizationid')
 crm --json entity update organizations "$orgid" --data '{"plugintracelogsetting": 2}'
 
-# 2. Reproduce the plug-in run, then read its traces. typename = the plug-in
-# class; messageblock holds the ITracingService output. messagename/createdon
+# 2. Reproduce the plug-in run, then read its traces. typename starts with the
+# plug-in class (it is assembly-qualified); messageblock holds the ITracingService output. messagename/createdon
 # help when one class fires on several messages.
 crm --json query odata plugintracelogs \
     --filter "startswith(typename,'Contoso.Plugins.AccountPostUpdate')" \
@@ -150,8 +151,9 @@ prefix like that for every test artifact.
 
 ```bash
 # 0. Target. PAC takes the same application credentials as the crm profile.
-# Confirm the org and caller with crm first, then point PAC at the same org.
-crm --profile <p> connection whoami
+# Confirm the org and caller with crm first (pass the same --profile on every
+# crm command below), then point PAC at the same org.
+crm connection whoami
 pac auth create --name <n> --applicationId <app-id> --clientSecret <secret> \
     --tenant <tenant-id> --environment <org-url>
 
