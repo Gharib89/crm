@@ -67,3 +67,40 @@ regardless of `--dry-run`. Under `--json` it emits
 `{ok, data:{checks:[{check,ok,detail,hint}]}}`; the overall `ok` (and exit code) is
 the AND of the four diagnostic checks — `rate_limit` is informational and never fails
 the command.
+
+## Check that `crm` and `pac` hit the same org
+
+`crm connection whoami` proves the `crm` target only. A write that goes through
+the Power Platform CLI (`pac`) uses its own auth profile, which can point at a
+different org. On a Dataverse online dev org, compare the two before a
+`pac`-dependent write:
+
+```bash
+crm --profile <name> --json connection whoami
+crm --profile <name> --json query odata \
+    "RetrieveCurrentOrganization(AccessType=Microsoft.Dynamics.CRM.EndpointAccessType'Default')"
+pac org who --json
+```
+
+| `crm` side | `pac org who --json` |
+|---|---|
+| `whoami` `OrganizationId` | `OrgId` |
+| function result `EnvironmentId` (`whoami` has none) | `EnvironmentId` |
+| `whoami` `UserId` (names the caller; not part of the match) | `UserId` |
+
+The Dataverse org ID and the Power Platform environment ID are different GUIDs:
+compare each only with its own counterpart. `pac auth list` has no JSON output
+and no org ID, so use `pac org who --json`. Output was identical on Ubuntu and
+Windows (PAC 2.14.1).
+
+- **Match** (org ID equal, and environment ID equal or absent from the function
+  result): proceed.
+- **Mismatch** (either differs): no `pac` write.
+- **Unverifiable** (`pac org who --json` exits non-zero, for example with no `pac`
+  profile, or `whoami` lacks `OrganizationId`): no `pac` write.
+- **`pac` unavailable** (not on PATH): skip the `pac` steps, continue with `crm`.
+
+Only a match unlocks a `pac` write. Pass the profile and the unmanaged solution
+explicitly on every write. On-premises and CRM-only work skips this check:
+it needs `pac` and an online org. `connection doctor` itself does not call `pac`. The bundled agent skill's
+setup reference carries the same recipe for agents.

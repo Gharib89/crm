@@ -144,3 +144,47 @@ tell the user it is untested.
   endpoint instead of a Web API base URL. Faults map to the usual `meta.code` and
   `meta.category`. A connect timeout retries inside the CLI (bounded), so treat a
   `transport_error` as the org unreachable: check the VPN before running it again.
+
+## PAC target check before a PAC-dependent write
+
+`crm` and the Power Platform CLI (`pac`) keep separate identities and targets: a
+`crm` profile and a `pac` auth profile can point at different orgs, and a green
+`whoami` says nothing about `pac`. Before any write that goes through `pac`
+(`pac plugin push`, `pac solution import`), prove both tools hit the same
+Dataverse online org. On-premises and CRM-only work skips this check: it needs
+`pac` and an online org.
+
+Pass the same `--profile` you will write with.
+
+```bash
+crm --profile <name> --json connection whoami
+crm --profile <name> --json query odata \
+    "RetrieveCurrentOrganization(AccessType=Microsoft.Dynamics.CRM.EndpointAccessType'Default')"
+pac org who --json
+```
+
+Use `pac org who --json` for the comparison: `pac auth list` has no `--json` and
+prints no org ID. With no `pac` profile it exits 1 with `No profiles were found
+on this computer`. Measured identical on Ubuntu and Windows (PAC 2.14.1).
+
+| Identifier | `pac org who --json` | CRM side |
+|---|---|---|
+| Dataverse org ID | `OrgId` | `whoami` `OrganizationId`; also `OrganizationId` in the function result |
+| Power Platform environment ID | `EnvironmentId` | `EnvironmentId` in the function result only (`whoami` has none) |
+| Caller user ID | `UserId` | `whoami` `UserId` (names the caller; not part of the match) |
+| Org URL | `OrgUrl` | `whoami` `url`, same host |
+
+The org ID and the environment ID are different GUIDs: compare each with its own
+counterpart. For an application identity `pac` puts the app (client) ID in `User`
+and `User Email`, so compare `UserId` to identify the caller.
+
+| Outcome | When | Do |
+|---|---|---|
+| Confirmed match | `OrgId` equals `OrganizationId`, and `EnvironmentId` equals the function result's or the function result has none | Proceed with the `pac` write. |
+| Confirmed mismatch | Either pair differs | No `pac` write. Tell the user which pair differed. |
+| Unverifiable | `pac org who --json` exits non-zero, or `whoami` lacks `OrganizationId` | No `pac` write. For a `pac` exit, ask the user to fix the `pac` profile; for the CRM side, re-run `whoami` and report the error. |
+| `pac` unavailable | `pac` is not on PATH | Skip the `pac` steps and keep going with `crm`-only steps. Say so in one line. |
+
+Only a confirmed match unlocks a `pac` write; mismatch and unverifiable perform
+zero writes. Pass the profile and the unmanaged solution explicitly on every
+write; take neither from `pac` or a default.
