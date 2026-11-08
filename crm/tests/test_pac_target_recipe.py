@@ -44,15 +44,6 @@ def decide(whoami: dict, org_fn: dict, pac: dict | None, pac_on_path: bool = Tru
     return "match"
 
 
-class RecordingPac:
-    def __init__(self) -> None:
-        self.writes = 0
-
-    def push(self, outcome: str) -> None:
-        if outcome == "match":
-            self.writes += 1
-
-
 @pytest.mark.parametrize(
     ("label", "pac", "org_fn", "on_path", "outcome", "writes"),
     [
@@ -66,17 +57,33 @@ class RecordingPac:
 )
 def test_pac_write_only_on_confirmed_match(label, pac, org_fn, on_path, outcome, writes):
     got = decide(WHOAMI, org_fn, pac, on_path)
-    pac_tool = RecordingPac()
-    pac_tool.push(got)
-    assert (got, pac_tool.writes) == (outcome, writes), label
+    assert (got, int(got == "match")) == (outcome, writes), label
 
 
-def test_recipe_uses_measured_fields_and_outcomes():
+def _recipe_section() -> str:
     text = SETUP_MD.read_text(encoding="utf-8")
-    section = text[text.index("## Verify the PAC target") :]
+    start = text.index("## PAC target check")
+    end = text.find("\n## ", start + 1)
+    return text[start:] if end == -1 else text[start:end]
+
+
+def test_recipe_uses_measured_fields():
+    section = _recipe_section()
     for key in (*PAC_WHO, *WHOAMI, *ORG_FN):
         assert f"`{key}`" in section, f"recipe omits measured field {key}"
-    for word in ("Confirmed match", "Confirmed mismatch", "Unverifiable", "`pac` unavailable"):
-        assert word in section, f"recipe omits outcome {word}"
-    assert "zero writes" in section
     assert "pac org who --json" in section
+
+
+def test_recipe_outcome_rows_state_the_write_rule():
+    rows = {
+        cells[0]: cells[2]
+        for line in _recipe_section().splitlines()
+        if line.startswith("|")
+        for cells in [[c.strip() for c in line.strip("|").split("|")]]
+        if len(cells) == 3
+    }
+    assert rows["Confirmed match"].startswith("Proceed with the `pac` write")
+    assert rows["Confirmed mismatch"].startswith("No `pac` write")
+    assert rows["Unverifiable"].startswith("No `pac` write")
+    assert "Skip the `pac` steps" in rows["`pac` unavailable"]
+    assert "zero writes" in _recipe_section()

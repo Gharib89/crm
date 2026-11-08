@@ -151,10 +151,9 @@ prefix like that for every test artifact.
 
 ```bash
 # 0. Target. PAC takes the same application credentials as the crm profile.
-# Confirm the org and caller with crm first (pass the same --profile on every
-# crm command below), then point PAC at the same org and prove it with the
-# target check in reference/setup.md before any push.
-crm connection whoami
+# Point PAC at the same org, then run the PAC target check in
+# reference/setup.md (pass the same --profile on every crm command below) and
+# push only on a confirmed match.
 pac auth create --name <n> --applicationId <app-id> --clientSecret <secret> \
     --tenant <tenant-id> --environment <org-url>
 
