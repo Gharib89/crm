@@ -9,6 +9,19 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.105.3 (2026-11-08)
+
+### Bug Fixes
+
+- **skill**: Add a PAC plug-in package deploy and verify recipe
+  ([#1136](https://github.com/Gharib89/crm/pull/1136),
+  [`1bb68c0`](https://github.com/Gharib89/crm/commit/1bb68c07a8a0caa11129c0582765d175cffc8b52))
+
+- **skill**: Reconcile plug-in recipe with existing list-types and typename notes
+  ([#1136](https://github.com/Gharib89/crm/pull/1136),
+  [`1bb68c0`](https://github.com/Gharib89/crm/commit/1bb68c07a8a0caa11129c0582765d175cffc8b52))
+
+
 ## v1.105.2 (2026-11-08)
 
 ### Bug Fixes
