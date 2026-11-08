@@ -9,6 +9,25 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.105.2 (2026-11-08)
+
+### Bug Fixes
+
+- **skill**: Route Microsoft Dataverse MCP vs crm in the bundled skill
+  ([#1135](https://github.com/Gharib89/crm/pull/1135),
+  [`5e86ee6`](https://github.com/Gharib89/crm/commit/5e86ee6b2fe4ebd48370e601d882e4db68b2dd08))
+
+- **skill**: Tighten Dataverse MCP reference after self-review
+  ([#1135](https://github.com/Gharib89/crm/pull/1135),
+  [`5e86ee6`](https://github.com/Gharib89/crm/commit/5e86ee6b2fe4ebd48370e601d882e4db68b2dd08))
+
+### Documentation
+
+- **guides**: Dataverse Git integration supports GitHub as well as Azure DevOps
+  ([#1135](https://github.com/Gharib89/crm/pull/1135),
+  [`5e86ee6`](https://github.com/Gharib89/crm/commit/5e86ee6b2fe4ebd48370e601d882e4db68b2dd08))
+
+
 ## v1.105.1 (2026-11-08)
 
 ### Bug Fixes
