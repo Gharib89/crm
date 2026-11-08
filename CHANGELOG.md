@@ -9,6 +9,29 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.105.1 (2026-11-08)
+
+### Bug Fixes
+
+- **inventory**: Convert keeps ribbon command functions an effective-ribbon caller still calls
+  ([#1134](https://github.com/Gharib89/crm/pull/1134),
+  [`ce65390`](https://github.com/Gharib89/crm/commit/ce65390fe3b607c99f9414801fe26a63f791d4b1))
+
+- **inventory**: Count application diff commands and CustomRules of the effective ribbon
+  ([#1134](https://github.com/Gharib89/crm/pull/1134),
+  [`ce65390`](https://github.com/Gharib89/crm/commit/ce65390fe3b607c99f9414801fe26a63f791d4b1))
+
+- **inventory**: Keep ribbon command functions an effective-ribbon caller still calls
+  ([#1134](https://github.com/Gharib89/crm/pull/1134),
+  [`ce65390`](https://github.com/Gharib89/crm/commit/ce65390fe3b607c99f9414801fe26a63f791d4b1))
+
+### Testing
+
+- **inventory**: Type the ribbon pipeline helper for an application diff
+  ([#1134](https://github.com/Gharib89/crm/pull/1134),
+  [`ce65390`](https://github.com/Gharib89/crm/commit/ce65390fe3b607c99f9414801fe26a63f791d4b1))
+
+
 ## v1.105.0 (2026-11-06)
 
 ### Bug Fixes
