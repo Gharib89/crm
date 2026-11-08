@@ -75,14 +75,15 @@ def test_set_task_spec_count():
     # ribbon-custom-icon — `source: firsthand`, topping up the feasibility slots community
     # sources under-produce, one per previously feasibility-uncovered reference domain), and
     # diagnostic tasks scored by the --analyze pass (#572, 2: `trial-import-diagnosis` +
-    # `diagnostic-data-quality`).
+    # `diagnostic-data-quality`; +2 Dataverse MCP routing #1131: records-mcp-target-check,
+    # automation-mcp-invoke-api-retry, both feasibility).
     specs = _specs()
     do_predicate = [s for s in specs if s.kind == "do" and not s.is_diagnostic]
     feasibility = [s for s in specs if s.is_feasibility]
     diagnostic = [s for s in specs if s.is_diagnostic]
-    assert len(specs) == 42, f"expected 42 total specs, found {len(specs)}"
+    assert len(specs) == 44, f"expected 44 total specs, found {len(specs)}"
     assert len(do_predicate) == 20, f"expected 20 do predicate specs, found {len(do_predicate)}"
-    assert len(feasibility) == 20, f"expected 20 feasibility specs, found {len(feasibility)}"
+    assert len(feasibility) == 22, f"expected 22 feasibility specs, found {len(feasibility)}"
     assert len(diagnostic) == 2, f"expected 2 diagnostic specs, found {len(diagnostic)}"
 
 

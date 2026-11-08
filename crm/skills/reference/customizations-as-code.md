@@ -69,6 +69,15 @@ execute from a machine that can reach the target (on-prem is VPN-locked).
 **Verify:** after apply, `--json --dry-run apply -f spec.yaml | jq .data` is
 all-no-op (read-only check).
 
+## Native Git integration is a different loop
+
+Power Platform's built-in Git integration (Azure DevOps **and GitHub**) commits an
+unmanaged dev solution as YAML from the maker portal. It needs managed
+environments and a system administrator, and `pac solution unpack`/`clone`/`sync`
+do not read that YAML. It is not this spine: `crm` specs and plans are its own
+format, and the two do not share a repo layout. Pick one per solution, and use
+`solutions.md` (`pac solution` bridge) for the pack/unpack source-control path.
+
 ## When the plan goes stale
 
 If the target drifted since the plan was cut, `--from-plan` finds the live state no
