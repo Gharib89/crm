@@ -224,7 +224,7 @@ For per-domain detail:
 | migrating an org (CRM 2011 or on-premises) to the cloud: the staged workflow and its evidence rules (if absent, suggest `crm skill install --skill crm-migration`) | the `crm-migration` skill |
 | end-to-end customization: where to start, the order components go in, stage→publish→promote a change across dev/test/prod | `reference/customization-lifecycle.md` |
 | repo-driven customizations-as-code: spec repo layout, plan → approve → `--from-plan` promote, seeding from a live org | `reference/customizations-as-code.md` |
-| the user already has Microsoft's Dataverse MCP server (`read_query`, `invoke_api`): when to use it, proving it targets the same org as `crm`, falling back to `crm` | `reference/dataverse-mcp.md` |
+| Microsoft Dataverse MCP server tools present (`read_query`, `invoke_api`): use vs `crm`, same-org proof, fallback to `crm` | `reference/dataverse-mcp.md` |
 | records: create/read/update/delete, query (OData/FetchXML/saved), associate/lookup, clone, upsert, ad-hoc `action` | `reference/records.md` |
 | bulk data: CSV/JSONL export/import, server-side BulkDelete (`data delete`), hand-authored `$batch` files | `reference/bulk.md` |
 | metadata (read): browse schema, picklists, dependencies, export-spec, clone-entity, write-readiness brief, entity-def cache, incremental sync (`metadata changes`), relationship eligibility (`can-relate`); which entities hold data (`--in-use`, `unknown` vs `unused`) | `reference/metadata.md`, `reference/usage.md` |
