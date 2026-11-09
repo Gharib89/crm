@@ -1415,13 +1415,16 @@ class _Builder:
             self.no_managed[kind] += 1
         return _is_stock(row, self.managed_solutions)
 
-    def _chain_stock(self, kind: str, row: dict[str, Any], parent: tuple[str, object]) -> bool:
+    def _chain_stock(
+        self, kind: str, row: dict[str, Any], parent: tuple[str, object] | None = None
+    ) -> bool:
         """Stock by the row's own test, or because its parent in the plug-in chain is stock.
 
         Dataverse marks platform steps and types unmanaged, so only the assembly tells.
         """
-        parent_id = _ref_id(parent[1]) or ""
-        stock = self._stock(kind, row) or (parent[0], parent_id) in self.stock_ids
+        stock = self._stock(kind, row) or (
+            parent is not None and (parent[0], _ref_id(parent[1]) or "") in self.stock_ids
+        )
         if stock:
             self.stock_ids.add((kind, str(row["id"]).lower()))
         return stock
@@ -1527,7 +1530,7 @@ class _Builder:
                  "isolation_mode": r.get("isolationmode")},
                 r.get("name"), self._origin(r), r.get("ismanaged"),
                 self._staged("plugin_assembly", r, text=False), 91,
-                self._chain_stock("plugin_assembly", r, ("", None)),
+                self._chain_stock("plugin_assembly", r),
             )  # fmt: skip
             if key is not None and source != 0:
                 where = {1: "on disk", 2: "in the GAC"}.get(
@@ -1742,8 +1745,7 @@ class _Builder:
         """Leave out the stock records, but keep each parent a kept record needs.
 
         A stock entity holding a kept attribute, relationship, form, view or ribbon
-        stays as a reference row, and so do a kept step's plug-in type and
-        assembly, so keys and edges resolve. A membership or dependency naming a
+        stays as a reference row so keys and edges resolve. A membership or dependency naming a
         left-out component is counted into a ``platform`` gap, never dropped silently;
         one whose dependent is itself stock is stock's own edge and goes quietly.
         """
@@ -1776,7 +1778,11 @@ class _Builder:
         self.isv = {page: refs & keys for page, refs in self.isv.items()}
 
     def _keep_parents(self) -> None:
-        """Un-stock the entity a kept record names, and a kept step's type and assembly."""
+        """Un-stock the entity a kept record names.
+
+        A kept plug-in step needs no parent kept: stock flows down the chain, so a kept
+        step's type and assembly are kept in their own right.
+        """
         by_key = {(p.kind, p.key): p for p in self.pending}
         for p in self.pending:
             if p.stock or p.kind in ("solution_membership", "dependency"):
@@ -1787,21 +1793,6 @@ class _Builder:
             for name in entities:
                 if isinstance(name, str) and name:
                     parent = by_key.get(("entity", component_key("entity", {"logical_name": name})))
-                    if parent is not None:
-                        parent.stock = False
-                        _stock_origin(parent)
-        # A kept step needs its type, a type its assembly: climb the chain, children first.
-        for child, link, parent_kind in (
-            ("step_image", "step", "step"),
-            ("step", "plugin_type", "plugin_type"),
-            ("plugin_type", "assembly", "plugin_assembly"),
-        ):
-            for p in self.pending:
-                if p.kind == child and not p.stock and link in p.fields:
-                    key = p.fields[link]
-                    if parent_kind == "plugin_assembly":
-                        key = component_key(parent_kind, {"name": key})
-                    parent = by_key.get((parent_kind, key))
                     if parent is not None:
                         parent.stock = False
                         _stock_origin(parent)

@@ -30,8 +30,8 @@ binaries). It describes what is deployed; it is never a spec for `crm apply`.
 - **An extract can leave out stock components** (managed, or owned by a managed
   solution) and their payload reads; the manifest's `scope.system` says
   `excluded`, and edges into them show as `platform:` gaps. Stock flows down the
-  plug-in chain: a step or type on a managed assembly is left out even when its own
-  flag reads unmanaged. A managed component
+  plug-in chain: a type, step or image on a stock assembly is left out even when its
+  own flag reads unmanaged. A managed component
   customized in place is missed: audit it with a full-scope extract, and extract
   both stages of a `diff` with the same scope.
 - **`--with-usage` records a per-row `usage`** on entities, plug-ins and processes.
