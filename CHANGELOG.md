@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.105.5 (2026-11-09)
+
+### Bug Fixes
+
+- **inventory**: Map-source matches an extensionless web resource name by type extension
+  ([#1141](https://github.com/Gharib89/crm/pull/1141),
+  [`6c7a86a`](https://github.com/Gharib89/crm/commit/6c7a86a2c2b1198bdeb1133c097ea8289137b9de))
+
+
 ## v1.105.4 (2026-11-08)
 
 ### Bug Fixes
