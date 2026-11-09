@@ -454,6 +454,108 @@ def test_a_resume_with_another_scope_is_refused(tmp_path):
         _extract(FakeBackend(), out, solutions=("contoso",))
 
 
+_GONE_MESSAGES = [
+    ("Could not find an entity with name 'new_project'.", 404),
+    (
+        "The entity with a name = 'new_project' with namemapping = 'Logical' was not found"
+        " in the MetadataCache.",
+        500,
+    ),
+]
+
+
+class GoneBackend(FakeBackend):
+    """Faults each read of `gone`'s metadata (or ribbon) as a table deleted since the listing."""
+
+    def __init__(self, fault: D365Error, read: str = "RetrieveEntity(", gone="new_project"):
+        super().__init__()
+        self.fault, self.read, self.gone = fault, read, gone
+        self.faulted = 0
+
+    def get(self, path: str, *, params: dict | None = None, extra_headers: dict | None = None):
+        named = {str(v).strip("'") for v in (params or {}).values()}
+        if path.startswith(self.read) and self.gone in named:
+            self.faulted += 1
+            raise self.fault
+        return super().get(path, params=params, extra_headers=extra_headers)
+
+
+@pytest.mark.parametrize("read", ["RetrieveEntity(", "RetrieveEntityRibbon("])
+@pytest.mark.parametrize(("message", "status"), _GONE_MESSAGES)
+def test_a_table_deleted_since_the_listing_is_a_gap_not_an_error(tmp_path, message, status, read):
+    out = tmp_path / "inv"
+    summary = _extract(GoneBackend(D365Error(message, status=status), read), out)
+    assert summary.complete and summary.errors == []
+    assert not (out / ".checkpoint").exists()
+    data = _manifest(out)
+    assert {k for k, c in data["coverage"].items() if c["status"] != "complete"} == {"ribbon_diff"}
+    gone = {g["kind"]: g for g in data["gaps"] if "no longer exists" in (g["description"] or "")}
+    assert set(gone) == {"entity", "attribute", "relationship", "local_option_set", "ribbon"}
+    assert (
+        gone["entity"]["description"] == "new_project: no longer exists, deleted since the listing"
+    )
+
+
+def test_a_table_deleted_since_the_listing_leaves_no_record_and_no_dangling_edge(tmp_path):
+    out = tmp_path / "inv"
+    fault = D365Error(_GONE_MESSAGES[0][0], status=404)
+    summary = _extract(GoneBackend(fault), out)
+    assert summary.complete
+    data = _manifest(out)
+    assert _keys(data, "entity") == ["account", "new_project_account"]
+    assert _keys(data, "relationship") == []  # its one side is the deleted table
+    assert _keys(data, "ribbon") == ["", "account"]
+    assert not any(
+        r["fields"].get("entity") == "new_project"
+        for r in data["records"]
+        if r["kind"] in ("attribute", "local_option_set", "ribbon")
+    )
+    # The membership naming the table is counted by the existing unresolved accounting.
+    assert any(
+        (g["description"] or "").startswith("1 solution_membership row(s)")
+        and "type 1 " in g["description"]
+        for g in data["gaps"]
+    )
+    assert not any(r["kind"] == "solution_membership" and "new_project" in r["key"]
+                   for r in data["records"])  # fmt: skip
+
+
+def test_a_resume_reuses_the_outcome_recorded_for_a_deleted_table(tmp_path):
+    out = tmp_path / "inv"
+    fault = D365Error(_GONE_MESSAGES[0][0], status=404)
+    first = GoneBackend(fault)
+    first.fail = {("systemforms", 1): D365Error("boom", status=500)}  # keeps the checkpoint
+    assert not _extract(first, out).complete
+    assert first.faulted == 1
+
+    second = GoneBackend(fault)
+    summary = _extract(second, out)
+    assert summary.resumed and summary.complete and summary.errors == []
+    assert second.faulted == 0  # the recorded outcome is reused, no read for the gone table
+    assert _keys(_manifest(out), "entity") == ["account", "new_project_account"]
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        D365Error("Principal user is missing prvReadEntity privilege", status=403),
+        D365Error("An unexpected error occurred", status=500),
+        D365Error("Resource not found for the segment 'RetrieveEntity'", status=404),
+        D365Error("Could not find an entity with name 'account'.", status=404),
+    ],
+    ids=["permission", "server-fault", "bare-404", "another-entity"],
+)
+def test_any_other_fault_on_a_table_read_is_still_an_error(tmp_path, fault):
+    out = tmp_path / "inv"
+    summary = _extract(GoneBackend(fault), out)
+    assert not summary.complete
+    assert {e.split(":")[0] for e in summary.errors} == {"entity/new_project"}  # one per kind
+    data = _manifest(out)
+    assert data["coverage"]["attribute"]["status"] == "partial"
+    assert not any("no longer exists" in (g["description"] or "") for g in data["gaps"])
+    assert (out / ".checkpoint").is_dir()
+
+
 @pytest.fixture
 def crm_home(tmp_path, monkeypatch):
     monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))

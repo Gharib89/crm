@@ -12,6 +12,7 @@ from __future__ import annotations
 import base64
 import binascii
 import io
+import re
 import xml.etree.ElementTree as ET
 import zipfile
 import zlib
@@ -223,6 +224,23 @@ def connection_wide(exc: D365Error) -> bool:
     """A 401 or no HTTP response fails every later read too, so it is never per-item."""
     category, _ = classify_d365_error(exc.status, exc.code, str(exc))
     return category in ("auth_failed", "transport_error")
+
+
+def entity_gone(exc: D365Error, name: str) -> bool:
+    """Whether *exc* says the table *name* no longer exists (deleted since it was listed).
+
+    Matched on the server's two messages naming *name*, never on a bare 404 or any other
+    fault, so a permission or server fault on a live table stays an error.
+    """
+    escaped = re.escape(name)
+    return bool(
+        re.search(
+            rf"Could not find an entity with name\s+['\"]?{escaped}\b"
+            rf"|The entity with a name = ['\"]?{escaped}\b.*was not found in the MetadataCache",
+            str(exc),
+            re.IGNORECASE | re.DOTALL,
+        )
+    )
 
 
 def read_entities(
