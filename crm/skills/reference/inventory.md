@@ -62,7 +62,8 @@ binaries). It describes what is deployed; it is never a spec for `crm apply`.
 - **A table deleted mid-run is a gap, not an error.** When the entity read or
   the ribbon read answers that the table no longer exists, the table is left
   out of the records and each kind it would have fed gets a gap ("no longer
-  exists, deleted since the listing"); the run can still finish `complete` and
+  exists, deleted since the listing", and one count gap for its forms and
+  views); the run can still finish `complete` and
   a resume does not retry it. Any other fault on a table stays an error.
 - **Judge completeness by each kind's coverage in the manifest before trusting
   record counts**, and report the manifest's `gaps` to the user as manual

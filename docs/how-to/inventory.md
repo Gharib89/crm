@@ -251,8 +251,9 @@ A table deleted after the entity list was read (a process that creates and drops
 tables while the extract runs) is not a failed read. Its metadata or ribbon read
 answers `Could not find an entity with name <x>` or `The entity with a name = '<x>'
 ... was not found in the MetadataCache`; the table is left out of the records (its
-relationships, forms and views too; the forms and views are counted in one gap per kind) and each kind it would have fed gets a gap, `<x>: no longer
-exists, deleted since the listing`. The outcome is checkpointed, so a resume does
+relationships too), and each kind it would have fed gets a gap, `<x>: no longer
+exists, deleted since the listing`. The forms and views it owned are left out as
+well, counted in one gap per kind. The outcome is checkpointed, so a resume does
 not read the table again, and the kinds can still read `complete`. Only those two
 messages naming the table count: a permission fault, a server fault or any other
 404 stays an error. A solution membership naming the table is counted in the usual
