@@ -79,8 +79,8 @@ it needs no profile and no network.
   entity member with its subcomponents) are compared. Read `header.restricted`:
   `left_out` source keys were not compared (report them as out of scope), and a name in
   `missing` means the source lacks that solution, so a component only the source holds
-  went unseen. A managed
-  import reads `changed` on `origin` or `managed` alone: expected, report it apart.
+  went unseen. A managed import reads `changed` on `origin` or `managed` alone:
+  expected, report it apart.
 - **The per-key evidence is in the `--out` file** (`entries`: differing fields
   with both values, artifacts with both normalized hashes, both ids, a reason):
   pass `--out` whenever you will report keys, not just counts.
