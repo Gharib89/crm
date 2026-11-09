@@ -20,7 +20,9 @@ stage, and record the org's version beside the folder
   `excluded`; a managed component someone customized in place is missed, and so is
   a step the org registered on a managed (platform or vendor) assembly, so audit
   those with a full-scope extract. Extract every stage with the same scope: `diff`
-  refuses a pair that differs in `scope.system`.
+  refuses a whole-org pair that differs in `scope.system`. The exception is a migrated
+  solution imported managed: extract it with `--solution` and diff it against the
+  default-scope source (below).
 - **Usage is opt-in and read after the records.** `--with-usage` adds a per-row
   `usage` on entities, plug-ins and processes. A row with no `usage` was not read;
   `state: unknown` means the probe could not tell: count it as unconfirmed. Read the
@@ -63,6 +65,14 @@ After each upgrade stage, extract again and run `crm inventory diff <earlier>
 Read the header: `same_platform: false` is normal across the CRM 2011 to
 on-premises step, and `same_scope: false` means the counts do not compare like
 with like. The per-key entries exist only in the `--out` file.
+
+A `--solution` target against a default-scope source is a restricted diff: only the
+target's keys and the source's members of the same-named solutions (a custom entity
+member with its subcomponents) are compared.
+`header.restricted.left_out` counts the source keys never compared (report them as out
+of scope), and a name in `restricted.missing` means the source lacks
+that solution. A managed import reading `changed` on `origin` or `managed` alone is
+expected.
 
 Done when every `removed`, `changed`, `ambiguous` and `not_comparable` entry has
 an explanation or an open question, and the next stage starts only after.

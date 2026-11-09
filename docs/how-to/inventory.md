@@ -98,8 +98,10 @@ extract. The manifest header records the choice (`scope.system`: `excluded`, or
   the default scope misses it. Use `--include-system` to audit those.
 - `--solution` names its own scope and keeps stock, so `--include-system` changes
   nothing there, and the manifest records `scope.system` as `included`.
-- `crm inventory diff` refuses two manifests that differ in `scope.system`, since every
-  stock component would read as added or removed; re-extract one side.
+- `crm inventory diff` refuses two whole-org manifests that differ in `scope.system`,
+  since every stock component would read as added or removed; re-extract one side. A
+  `--solution` manifest against a whole-org one is not refused: the diff is
+  [restricted to the solutions](#compare-a-solution-target-with-a-whole-org-source).
 
 ### Progress
 
@@ -318,15 +320,42 @@ record or artifact missing on a side whose extraction gap names the key is no
 difference. A key a gap names is `not_comparable` unless a field or a hash differs
 anyway (then `changed`, the gap in its `reason`), and both sides' gaps are listed
 in the result. Different `--solution` scopes or source platforms are allowed; the header states both
-sides and flags `same_platform` and `same_scope`. Two manifests that differ in
+sides and flags `same_platform` and `same_scope`. Two whole-org manifests that differ in
 `scope.system` (one default, one `--include-system`) are refused.
+
+### Compare a `--solution` target with a whole-org source
+
+To check a migrated solution against its source, extract the target with
+`--solution <name>` (a managed import is stock, so the default scope would drop it) and
+leave the source at the default scope:
+
+```bash
+crm inventory extract --solution Pilot --out ./inv-target
+crm --json inventory diff ./inv-source ./inv-target --out ./diff.json
+```
+
+With exactly one side a `--solution` run and the other a whole-org run, `diff` skips the
+stock-scope refusal and compares only the narrowed side's keys plus the whole-org side's
+rows of the **same-named solutions**: the solution, its memberships, the members they
+name and the subcomponents (attributes, forms, views, ribbons, option sets, relationships)
+of each **custom** entity member. A source member the target lacks reads `removed`, not
+silently dropped. The other whole-org keys are not compared, only counted. The header's
+`restricted` says so: `narrowed` (`a` or `b`), `solutions`, `missing` (named solutions
+the whole-org side does not hold, compared by the narrowed side's keys alone) and
+`left_out` (whole-org keys outside the comparison). Rows the narrowed side flags as stock
+compare like custom ones, so a migrated component can read `changed` on `origin` or
+`managed` alone. Such a key counts under `by_origin.custom` (the first origin across the
+sides), so read its `fields` to tell an origin-only change from real drift. A **stock** entity the
+solution holds is compared by the members listed, since the manifest cannot tell a full
+hold from a shell: its other subcomponents are left out. Two `--solution` manifests diff
+as before.
 
 `data` holds the summary, and `--out FILE` writes the same summary plus every
 key's entry:
 
 | Key | Value |
 |---|---|
-| `header` | each side's `platform`, `version`, `org_url`, `extracted_at` and `scope`; `same_platform`, `same_scope`; `basis`, the evidence the verdicts rest on |
+| `header` | each side's `platform`, `version`, `org_url`, `extracted_at` and `scope`; `same_platform`, `same_scope`; `basis`, the evidence the verdicts rest on; `restricted` only for a `--solution` side against a whole-org side (see above) |
 | `counts` | per kind, the number of keys per verdict (a verdict with no key is left out) |
 | `by_origin` | per origin (`custom`, `system`, `unknown`), the number of keys per verdict, so platform-added system components don't drown custom drift; a key whose origin differs between the sides counts under the first of `custom`, `unknown`, `system` |
 | `incomplete` | each kind not read `complete` on both sides, `{a, b}` its status there (`absent` with no coverage entry), listed even when neither side holds a record |

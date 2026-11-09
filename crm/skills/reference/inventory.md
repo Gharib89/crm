@@ -34,7 +34,7 @@ binaries). It describes what is deployed; it is never a spec for `crm apply`.
   is left out even when its own flag reads unmanaged. That includes steps the org
   registered itself on such an assembly. A managed component customized in place is missed:
   audit it and those steps with a full-scope extract, and extract both stages of a
-  `diff` with the same scope.
+  `diff` with the same scope, unless one side is a `--solution` run (see Comparing).
 - **`--with-usage` records a per-row `usage`** on entities, plug-ins and processes.
   A row with no `usage` was not read, which differs from `state: unknown` (the
   probe could not tell); count `unknown` as unconfirmed. A failed probe leaves its
@@ -73,6 +73,14 @@ it needs no profile and no network.
 - **Exit 0 means it compared, not that they match.** Read `data.counts` (per kind)
   and `data.by_origin`; report `custom` drift first, since `system` components
   differ across platform versions on their own.
+- **A `--solution` side against a whole-org side is a restricted diff.** Extract the
+  migrated target with `--solution` and the source at the default scope: only the
+  narrowed side's keys and the source's members of the same-named solutions (a custom
+  entity member with its subcomponents) are compared. Read `header.restricted`:
+  `left_out` source keys were not compared (report them as out of scope), and a name in
+  `missing` means the source lacks that solution, so a component only the source holds
+  went unseen. A managed import reads `changed` on `origin` or `managed` alone:
+  expected, report it apart.
 - **The per-key evidence is in the `--out` file** (`entries`: differing fields
   with both values, artifacts with both normalized hashes, both ids, a reason):
   pass `--out` whenever you will report keys, not just counts.
