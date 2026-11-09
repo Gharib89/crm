@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import json
 import re
+import time
 import urllib.parse
 from pathlib import Path
 from typing import Any, cast
@@ -20,7 +21,13 @@ from crm.core import dependencies, entity, metadata_cache
 # Module-qualified so the moved names do not resolve as crm.core.solution.<name>.
 from crm.core import solution_components as _components
 from crm.core.batch import run_batched
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict
+from crm.utils.d365_backend import (
+    D365Backend,
+    D365Error,
+    ResponseLostError,
+    as_dict,
+    classify_d365_error,
+)
 from crm.utils.d365_types import BatchOperation
 
 # ── Create publisher / solution ─────────────────────────────────────────────
@@ -234,7 +241,11 @@ def clone_as_patch(
 
 
 def uninstall_solution(
-    backend: D365Backend, unique_name: str, *, force: bool = False
+    backend: D365Backend,
+    unique_name: str,
+    *,
+    force: bool = False,
+    timeout: int | None = None,
 ) -> dict[str, Any]:
     """Uninstall a solution: DELETE /solutions(<id>).
 
@@ -245,6 +256,12 @@ def uninstall_solution(
     confusing server fault into an actionable error. Returns
     `{uninstalled, solution, solutionid}` on a real run, or the entity.delete
     `_dry_run` preview (plus solution / solutionid) under --dry-run.
+
+    A large uninstall outlives the read timeout while the server keeps running
+    it, and a re-sent DELETE is refused by that same operation (#1172). So a read
+    timeout does not re-send: the call polls the solution row until it is gone
+    (`timeout` seconds, else profile.async_timeout) and raises
+    `UninstallStillRunning` if it never goes.
     """
     info = solution_info(backend, unique_name)
     sol_id = info["solutionid"]
@@ -258,10 +275,79 @@ def uninstall_solution(
                 code="UninstallBlocked",
             )
 
-    result = entity.delete(backend, "solutions", sol_id)
-    if result.get("_dry_run"):
-        return {**result, "solution": unique_name, "solutionid": sol_id}
+    seen_failures = None if backend.dry_run else _failed_uninstall_ids(backend, sol_id)
+    try:
+        result = backend.delete(
+            entity.build_record_path("solutions", sol_id), resend_on_read_timeout=False
+        )
+    except ResponseLostError:
+        _wait_for_uninstall(backend, unique_name, sol_id, seen_failures, timeout)
+    else:
+        if isinstance(result, dict) and result.get("_dry_run"):
+            return {**result, "solution": unique_name, "solutionid": sol_id}
     return {"uninstalled": True, "solution": unique_name, "solutionid": sol_id}
+
+
+def _failed_uninstall_rows(backend: D365Backend, sol_id: str) -> list[dict[str, Any]]:
+    """The solution's failed Uninstall rows in msdyn_solutionhistories (online orgs only)."""
+    return backend.get_collection(
+        "msdyn_solutionhistories",
+        params={
+            "$select": "msdyn_solutionhistoryid,msdyn_exceptionmessage",
+            "$filter": f"msdyn_solutionid eq {sol_id} and msdyn_operation eq 1"
+            " and msdyn_result eq false",
+        },
+    )
+
+
+def _failed_uninstall_ids(backend: D365Backend, sol_id: str) -> set[str] | None:
+    """Ids of the failed Uninstall rows already there, or None where the table is unreadable.
+
+    On-prem has no msdyn_solutionhistories, so the read fails and the wait falls
+    back to the solution row alone.
+    """
+    try:
+        return {str(r["msdyn_solutionhistoryid"]) for r in _failed_uninstall_rows(backend, sol_id)}
+    except D365Error:
+        return None
+
+
+def _wait_for_uninstall(
+    backend: D365Backend,
+    unique_name: str,
+    sol_id: str,
+    seen_failures: set[str] | None,
+    timeout: int | None,
+) -> None:
+    """Poll until `solutions(<sol_id>)` is gone; raise on a new failed history row or timeout."""
+    effective = timeout if timeout is not None else backend.profile.async_timeout
+    deadline = time.monotonic() + effective
+    interval = backend.profile.async_poll_initial
+    while True:
+        try:
+            backend.get(f"solutions({sol_id})", params={"$select": "solutionid"})
+        except D365Error as exc:
+            if classify_d365_error(exc.status, exc.code, str(exc))[0] == "not_found":
+                return
+            raise
+        if seen_failures is not None:
+            for row in _failed_uninstall_rows(backend, sol_id):
+                if str(row["msdyn_solutionhistoryid"]) not in seen_failures:
+                    raise D365Error(
+                        f"Uninstall of {unique_name!r} failed on the server: "
+                        f"{row.get('msdyn_exceptionmessage') or '(no message)'}",
+                        code="UninstallFailed",
+                    )
+        if time.monotonic() >= deadline:
+            raise D365Error(
+                f"Uninstall of {unique_name!r} was sent but the solution still exists "
+                f"after {effective}s: it may still be running on the server. Do not "
+                "re-run it; check `crm solution list` and the org's solution history, "
+                "or raise --timeout.",
+                code="UninstallStillRunning",
+            )
+        time.sleep(min(interval, max(0.0, deadline - time.monotonic())))
+        interval = min(interval * 2, backend.profile.async_poll_max)
 
 
 def delete_and_promote(backend: D365Backend, unique_name: str) -> dict[str, Any]:

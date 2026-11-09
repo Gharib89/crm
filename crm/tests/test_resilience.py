@@ -18,6 +18,7 @@ from crm.utils.d365_backend import (
     ConnectionProfile,
     D365Backend,
     D365Error,
+    ResponseLostError,
     _compute_delay,
     _customization_lock_code,
     _is_response_retryable,
@@ -1094,3 +1095,33 @@ class TestConnectionProfileValidation:
         }
         with pytest.raises(D365Error, match="async_poll_max"):
             ConnectionProfile(**kwargs)
+
+
+# ── resend_on_read_timeout=False (#1172) ─────────────────────────────────
+
+
+class TestResendOnReadTimeout:
+    def test_default_still_retries_a_delete_read_timeout(self, backend, monkeypatch):
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        url = backend.url_for("solutions(abc)")
+        with requests_mock.Mocker() as m:
+            m.delete(url, [{"exc": requests.exceptions.ReadTimeout}, {"status_code": 204}])
+            backend.delete("solutions(abc)")
+        assert m.call_count == 2
+
+    def test_opt_out_raises_response_lost_after_one_send(self, backend, monkeypatch):
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        url = backend.url_for("solutions(abc)")
+        with requests_mock.Mocker() as m:
+            m.delete(url, exc=requests.exceptions.ReadTimeout)
+            with pytest.raises(ResponseLostError, match="HTTP transport failure"):
+                backend.delete("solutions(abc)", resend_on_read_timeout=False)
+        assert m.call_count == 1
+
+    def test_opt_out_still_retries_a_connect_timeout(self, backend, monkeypatch):
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        url = backend.url_for("solutions(abc)")
+        with requests_mock.Mocker() as m:
+            m.delete(url, [{"exc": requests.exceptions.ConnectTimeout}, {"status_code": 204}])
+            backend.delete("solutions(abc)", resend_on_read_timeout=False)
+        assert m.call_count == 2

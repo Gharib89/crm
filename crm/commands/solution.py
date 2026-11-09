@@ -910,14 +910,23 @@ def solution_clone_as_patch(ctx: CLIContext, parent_solution, display, version):
     is_flag=True,
     help="Uninstall even if dependency blockers exist (skip the pre-check).",
 )
+@click.option(
+    "--timeout",
+    type=int,
+    default=None,
+    help="Seconds to wait for a long uninstall to finish after the request times out. "
+    "Overrides profile.async_timeout.",
+)
 @_destructive_option
 @pass_ctx
-def solution_uninstall(ctx: CLIContext, unique_name, force, yes):
+def solution_uninstall(ctx: CLIContext, unique_name, force, timeout, yes):
     """Uninstall (delete) a solution (DELETE /solutions).
 
     Pre-checks RetrieveDependenciesForUninstall and refuses with the blocker
     list unless --force. For a managed base solution the server also uninstalls
-    its patches.
+    its patches. A large uninstall can outlast the request timeout: the DELETE is
+    not re-sent, and the verb waits for the solution to disappear (up to
+    --timeout) instead of failing while the server finishes.
     """
     _confirm_destructive(
         ctx,
@@ -930,7 +939,7 @@ def solution_uninstall(ctx: CLIContext, unique_name, force, yes):
         ),
     )
     with d365_errors(ctx):
-        info = sol_mod.uninstall_solution(ctx.backend(), unique_name, force=force)
+        info = sol_mod.uninstall_solution(ctx.backend(), unique_name, force=force, timeout=timeout)
     ctx.emit(True, data=info)
     _journal(ctx, unique_name, info)
 
