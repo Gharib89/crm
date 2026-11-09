@@ -345,14 +345,14 @@
                   },
                   "format": {
                     "type": "string",
-                    "description": "The type's Format enum name (Text, TextArea, DateOnly, ...), for the types that have one."
+                    "description": "The type's Format enum name (Text, TextArea, DateOnly, ...). String, Memo, Integer and DateTime only."
                   },
                   "default_value": {
                     "type": [
                       "boolean",
                       "integer"
                     ],
-                    "description": "Boolean DefaultValue, or the Picklist's DefaultFormValue (-1 is no default)."
+                    "description": "Boolean and Picklist only: the Boolean DefaultValue, or the Picklist's DefaultFormValue (-1 is no default)."
                   },
                   "precision": {
                     "type": "integer",
