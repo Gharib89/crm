@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 from crm.core.inventory import (
+    ATTRIBUTE_FACET_FIELDS,
     ENTITY_OWNED_KINDS,
     KINDS,
     READ_VERSIONS,
@@ -278,6 +279,11 @@ def _field_changes(x: Record, y: Record, usage: bool = False) -> tuple[FieldChan
         if not _same(getattr(x, name), getattr(y, name))
     ]
     for name in sorted(set(x.fields) | set(y.fields)):
+        # A manifest written before the facets existed lacks them: one side's absence is
+        # not a change, or every column would read as changed (#1156).
+        if x.kind == "attribute" and name in ATTRIBUTE_FACET_FIELDS:
+            if name not in x.fields or name not in y.fields:
+                continue
         va, vb = x.fields.get(name), y.fields.get(name)
         if not _same(va, vb):
             out.append(FieldChange(f"fields.{name}", va, vb))

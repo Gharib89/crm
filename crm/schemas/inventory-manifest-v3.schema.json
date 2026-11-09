@@ -338,6 +338,37 @@
                   "logical_name": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "max_length": {
+                    "type": "integer",
+                    "description": "String and Memo only. Every facet is recorded only for the types that define it, and is optional: a manifest written before they existed has none, and the diff compares a facet only where both sides recorded it."
+                  },
+                  "format": {
+                    "type": "string",
+                    "description": "The type's Format enum name (Text, TextArea, DateOnly, ...). String, Memo, Integer and DateTime only."
+                  },
+                  "default_value": {
+                    "type": [
+                      "boolean",
+                      "integer"
+                    ],
+                    "description": "Boolean and Picklist only: the Boolean DefaultValue, or the Picklist's DefaultFormValue (-1 is no default)."
+                  },
+                  "precision": {
+                    "type": "integer",
+                    "description": "Decimal, Money and Double only."
+                  },
+                  "min_value": {
+                    "type": "number",
+                    "description": "Decimal, Money, Integer and Double only."
+                  },
+                  "max_value": {
+                    "type": "number",
+                    "description": "Decimal, Money, Integer and Double only."
+                  },
+                  "option_set_global": {
+                    "type": "boolean",
+                    "description": "Picklist only: whether its option set is a global one."
                   }
                 }
               },

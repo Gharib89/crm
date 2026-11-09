@@ -164,7 +164,7 @@ def _entity_metadata(name: str) -> dict:
          "RequiredLevel": {"Value": "SystemRequired"}},
         {"LogicalName": "new_active", "MetadataId": _id(450 + len(name)),
          "AttributeType": "Boolean", "IsCustomAttribute": True, "IsManaged": False,
-         "RequiredLevel": {"Value": "None"},
+         "RequiredLevel": {"Value": "None"}, "DefaultValue": False,
          "OptionSet": {"Name": f"{name}_new_active", "MetadataId": _id(470 + len(name)),
                        "IsGlobal": False, "IsCustomOptionSet": True, "OptionSetType": "Boolean",
                        "TrueOption": {"Value": 1, "Label": _label("Yes")},
@@ -331,6 +331,12 @@ def test_a_cloud_extraction_writes_a_schema_valid_manifest(tmp_path):
         {"value": 0, "label": "No"},
         {"value": 1, "label": "Yes"},
     ]
+    flag = next(r for r in data["records"] if r["key"] == "account|new_active")
+    assert flag["kind"] == "attribute"
+    assert flag["fields"]["default_value"] is False
+    assert "option_set_global" not in flag["fields"]  # a picklist's flag, not a Boolean's
+    key_column = next(r for r in data["records"] if r["key"] == "account|accountid")
+    assert "default_value" not in key_column["fields"]
     assert _keys(data, "ribbon") == ["", "account", "new_project"]
     solution = next(r for r in data["records"] if r["key"] == "contoso")
     assert solution["fields"]["publisher"] == "Contoso"

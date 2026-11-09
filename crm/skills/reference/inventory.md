@@ -94,6 +94,12 @@ it needs no profile and no network.
 - **The per-key evidence is in the `--out` file** (`entries`: differing fields
   with both values, artifacts with both normalized hashes, both ids, a reason):
   pass `--out` whenever you will report keys, not just counts.
+- **An older extract hides column facet drift.** An `attribute` record now carries its
+  type facets (`max_length`, `format`, `default_value`, `precision`, `min_value`,
+  `max_value`, `option_set_global`) where its type defines them, on every platform.
+  `diff` compares a facet only where both stages recorded it, so a facet missing on
+  either side is unknown, not equal: re-extract that side before reporting a length or
+  format as matching.
 - **An older extract reads every ribbon `changed` once.** A ribbon's
   `normalized_sha256` now ignores the order of its rule and command siblings,
   and a manifest written before that hashed the raw text: re-extract the older

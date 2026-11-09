@@ -235,6 +235,18 @@ READ_VERSIONS = (1, 2, 3)
 #: `READ_VERSIONS` as an error message names them: ``1, 2 and 3``.
 READ_VERSIONS_TEXT = ", ".join(map(str, READ_VERSIONS[:-1])) + f" and {READ_VERSIONS[-1]}"
 MANIFEST_NAME = "manifest.json"
+#: The optional `fields` of an `attribute` record that a column rebuild needs. A manifest
+#: written before they existed has none, so the diff compares a facet only where both
+#: sides recorded it (`inventory_diff._field_changes`).
+ATTRIBUTE_FACET_FIELDS = (
+    "max_length",
+    "format",
+    "default_value",
+    "precision",
+    "min_value",
+    "max_value",
+    "option_set_global",
+)
 
 PLATFORMS = ("crm2011", "onprem", "cloud")
 ORIGINS = ("custom", "system", "unknown")

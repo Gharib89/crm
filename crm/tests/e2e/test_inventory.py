@@ -67,6 +67,10 @@ def test_inventory_extract_is_valid_and_repeatable(cli, tmp_path):
     # Each assembly records the registration facts `inventory assess` judges.
     assemblies = [r for r in parsed.records if r.kind == "plugin_assembly"]
     assert all({"source_type", "isolation_mode"} <= set(r.fields) for r in assemblies)
+
+    # A String column records the length a rebuild needs (#1156).
+    strings = [r for r in parsed.records if r.kind == "attribute" and r.fields["type"] == "String"]
+    assert all(isinstance(r.fields.get("max_length"), int) for r in strings)
     findings_file = tmp_path / "findings.json"
     proc = cli(
         ["--json", "inventory", "assess", str(tmp_path / "one"), "--target", "online",

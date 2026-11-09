@@ -328,6 +328,13 @@ within each kind, never by GUID, and each key gets one verdict:
 | `ambiguous` | the key repeats on either side, so it is never matched |
 | `not_comparable` | the kind's coverage is not `complete` on both sides (`partial`, `failed`, `unsupported`, or no entry), or an extraction gap names the key and nothing else differs |
 
+An `attribute` record's type facets (`max_length`, `format`, `default_value`,
+`precision`, `min_value`, `max_value`, `option_set_global`, see the
+[manifest reference](../reference/inventory-manifest.md#attribute-facets)) are
+compared only where both manifests recorded them, so an older extract, which has
+none, shows no facet change. A length that differs on both reads as one
+`fields.max_length` change.
+
 What a side could not read is never reported as removed, added or changed: a
 record or artifact missing on a side whose extraction gap names the key is no
 difference. A key a gap names is `not_comparable` unless a field or a hash differs
