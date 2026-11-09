@@ -78,8 +78,13 @@ extract. The manifest header records the choice (`scope.system`: `excluded`, or
   payload read: the rows are read without their bodies, and the bodies are fetched
   only for the rows kept.
 - A stock entity that a kept attribute, relationship, form, view or ribbon names stays
-  as a reference row, and a kept step keeps its plug-in type and assembly, so keys
-  resolve.
+  as a reference row (read `origin: system` when it is managed), so keys resolve.
+- Stock flows down the plug-in chain: a plug-in type on a stock assembly, a step on a
+  stock type and an image on a stock step are all left out, whatever their own
+  `ismanaged` says (Dataverse marks platform steps unmanaged). Steps on the org's own
+  assemblies are kept with their type and assembly, but a step the org registered on a
+  managed (platform or vendor) assembly is left out too: audit those with
+  `--include-system`.
 - The ribbon of a custom entity is kept. The ribbon of a system entity, and the
   application ribbon, is kept when it holds an entry outside the platform's own id
   families (`Mscrm.`, `AIBuilder.`, `msdyn`, and the other families in the code), or a

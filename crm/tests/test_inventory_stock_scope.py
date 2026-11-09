@@ -309,3 +309,56 @@ def test_ribbon_custom_reads_the_entry_ids(tmp_path, xml, custom):
     path = tmp_path / "ribbon.xml"
     path.write_text(xml, encoding="utf-8")
     assert inventory_extract._ribbon_custom(path) is custom
+
+
+def _platform_chain_org() -> dict:
+    """The org plus a platform plug-in chain whose own rows read unmanaged (as on Dataverse)."""
+    org = _org()
+    unmanaged = _ref("solution", 2)
+    org["plugintype"][0].append(
+        {"id": _id(32), "typename": "Microsoft.Stock.Plugin", "friendlyname": "Stock",
+         "pluginassemblyid": _ref("pluginassembly", 22, "Microsoft.Stock"),
+         "isworkflowactivity": False, "ismanaged": False, "solutionid": unmanaged}
+    )  # fmt: skip
+    org["sdkmessageprocessingstep"][0].append(
+        {"id": _id(42), "name": "Stock: Update", "stage": 40, "mode": 0, "rank": 1,
+         "plugintypeid": _ref("plugintype", 32), "statecode": 0, "filteringattributes": None,
+         "supporteddeployment": 0, "ismanaged": False, "solutionid": unmanaged,
+         "message.name": "Update", "filter.primaryobjecttypecode": "new_project"}
+    )  # fmt: skip
+    org["sdkmessageprocessingstepimage"][0].append(
+        {"id": _id(43), "name": "pre", "entityalias": "stockpre", "imagetype": 0,
+         "attributes": None, "messagepropertyname": "Target",
+         "sdkmessageprocessingstepid": _ref("step", 42), "ismanaged": False,
+         "solutionid": unmanaged}
+    )  # fmt: skip
+    return org
+
+
+def test_a_step_on_a_managed_assembly_is_stock_with_its_type_and_assembly(tmp_path):
+    out = tmp_path / "default"
+    _extract(FakeClient(org=_platform_chain_org()), out, include_system=False)
+    data = _manifest(out)
+    assert _keys(data, "plugin_assembly") == ["Contoso.Plugins", "Legacy.OnDisk"]
+    assert _keys(data, "plugin_type") == ["Contoso.Plugins|Contoso.Plugins.ProjectPlugin"]
+    assert [k.split("|")[-1] for k in _keys(data, "step")] == ["Project: Update"]
+    assert len(_keys(data, "step_image")) == 1
+    assert not [
+        r
+        for r in data["records"]
+        if r["kind"] != "solution" and r["origin"] == "custom" and r["managed"]
+    ]
+
+
+def test_a_managed_entity_kept_as_a_parent_reads_origin_system(tmp_path):
+    cp = inventory_extract.Checkpoint(tmp_path)
+    builder = inventory_extract._Builder(cp, tmp_path, {}, "web-api", True)
+    builder.add("entity", "e1", {"logical_name": "msdyn_thing", "object_type_code": 1},
+                None, "custom", True, [], 1)  # fmt: skip
+    builder.add("attribute", "a1", {"entity": "msdyn_thing", "logical_name": "new_x",
+                                    "type": "String", "required_level": "None",
+                                    "option_set": None},
+                None, "custom", False, [], 2)  # fmt: skip
+    builder.drop_stock()
+    entity = next(p for p in builder.pending if p.kind == "entity")
+    assert (entity.managed, entity.origin) == (True, "system")

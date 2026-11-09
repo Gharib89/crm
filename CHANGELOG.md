@@ -9,6 +9,27 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.105.8 (2026-11-09)
+
+### Bug Fixes
+
+- **inventory**: Drop the plug-in parent climb the chain rule made dead
+  ([#1149](https://github.com/Gharib89/crm/pull/1149),
+  [`4aac3e0`](https://github.com/Gharib89/crm/commit/4aac3e0e6dfec7ccaac79a2bdcbd9cad95b839b6))
+
+- **inventory**: Stock flows down the plug-in chain on Dataverse online
+  ([#1149](https://github.com/Gharib89/crm/pull/1149),
+  [`4aac3e0`](https://github.com/Gharib89/crm/commit/4aac3e0e6dfec7ccaac79a2bdcbd9cad95b839b6))
+
+- **skill**: State that steps on a managed assembly leave the default scope
+  ([#1149](https://github.com/Gharib89/crm/pull/1149),
+  [`4aac3e0`](https://github.com/Gharib89/crm/commit/4aac3e0e6dfec7ccaac79a2bdcbd9cad95b839b6))
+
+- **skill**: Use one term for the managed assembly rule
+  ([#1149](https://github.com/Gharib89/crm/pull/1149),
+  [`4aac3e0`](https://github.com/Gharib89/crm/commit/4aac3e0e6dfec7ccaac79a2bdcbd9cad95b839b6))
+
+
 ## v1.105.7 (2026-11-09)
 
 ### Bug Fixes
