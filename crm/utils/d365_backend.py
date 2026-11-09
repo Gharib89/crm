@@ -80,6 +80,14 @@ class D365Error(RuntimeError):
         self.stage: str | None = None
 
 
+class ResponseLostError(D365Error):
+    """The request was sent but its response was lost to a read timeout.
+
+    Raised only for a call made with ``resend_on_read_timeout=False``: the server
+    may still be running the operation, so the backend did not re-send it.
+    """
+
+
 ErrorCategory = Literal[
     "not_found",
     "auth_failed",
@@ -744,6 +752,7 @@ class D365Backend:
         solution: str | None = None,
         etag: str | None = None,
         timeout: int | None = None,
+        resend_on_read_timeout: bool = True,
     ) -> dict[str, Any] | str | None:
         """Issue an HTTP request and return parsed JSON (or None for 204).
 
@@ -754,6 +763,11 @@ class D365Backend:
 
         timeout overrides profile.timeout for this call only (long-running
         synchronous actions, e.g. the on-prem ImportSolution fallback).
+
+        resend_on_read_timeout=False raises ResponseLostError on a read timeout
+        instead of re-sending (#1172): the request reached the server, so for a
+        long non-idempotent DELETE (solution uninstall) the re-send collides with
+        the operation still running. Connect-phase failures keep the retry.
 
         caller_id tri-state:
           - None (default): use the CRM_AS_USER env default (self._default_caller_id).
@@ -891,6 +905,8 @@ class D365Backend:
                     timeout=timeout if timeout is not None else self.profile.timeout,
                 )
             except requests.RequestException as exc:
+                if isinstance(exc, requests.exceptions.ReadTimeout) and not resend_on_read_timeout:
+                    raise ResponseLostError(f"{_TRANSPORT_FAILURE_PREFIX}: {exc}") from exc
                 # Non-idempotent POST (#84): a lost response may have committed,
                 # so do not auto-retry the re-send unless the caller opts in.
                 post_blocks_retry = method.upper() == "POST" and not self._retry_on_ambiguous
