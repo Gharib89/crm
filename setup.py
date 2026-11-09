@@ -62,7 +62,10 @@ setup(
         # Syntax trees for `crm inventory convert` (ADR 0034): a rewrite matches a real
         # call, never text in a string or comment. Imported lazily (crm/core/code_parse.py)
         # to keep CLI cold-start cheap; wheels cover Python 3.13 on Linux, Windows, macOS.
-        "tree-sitter>=0.25",
+        # Capped below 0.26: 0.26.0 segfaults the JavaScript binding intermittently
+        # (#1151). Lift the cap only after a repeated `_plan_global_context` probe
+        # on the newer release runs clean.
+        "tree-sitter>=0.25,<0.26",
         "tree-sitter-javascript>=0.25",
         "tree-sitter-c-sharp>=0.23",
     ],
