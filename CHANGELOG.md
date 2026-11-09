@@ -9,6 +9,32 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.107.2 (2026-11-09)
+
+### Bug Fixes
+
+- **profile**: Bound the browser sign-in wait and announce it, fail with login_failed on timeout
+  ([#1169](https://github.com/Gharib89/crm/pull/1169),
+  [`f4e2008`](https://github.com/Gharib89/crm/commit/f4e20084b823f2c2956209372e0add8a166b1a26))
+
+- **profile**: Bound the browser sign-in wait and fail with login_failed on timeout
+  ([#1169](https://github.com/Gharib89/crm/pull/1169),
+  [`f4e2008`](https://github.com/Gharib89/crm/commit/f4e20084b823f2c2956209372e0add8a166b1a26))
+
+- **profile**: Carry msal's own text in the sign-in timeout error
+  ([#1169](https://github.com/Gharib89/crm/pull/1169),
+  [`f4e2008`](https://github.com/Gharib89/crm/commit/f4e20084b823f2c2956209372e0add8a166b1a26))
+
+- **profile**: Catch RuntimeError for the sign-in timeout so msal before 1.30 works
+  ([#1169](https://github.com/Gharib89/crm/pull/1169),
+  [`f4e2008`](https://github.com/Gharib89/crm/commit/f4e20084b823f2c2956209372e0add8a166b1a26))
+
+### Documentation
+
+- **profile**: Fix a docstring typo ([#1169](https://github.com/Gharib89/crm/pull/1169),
+  [`f4e2008`](https://github.com/Gharib89/crm/commit/f4e20084b823f2c2956209372e0add8a166b1a26))
+
+
 ## v1.107.1 (2026-11-09)
 
 ### Bug Fixes
