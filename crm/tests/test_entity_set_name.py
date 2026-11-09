@@ -50,10 +50,10 @@ def test_a_v9_extract_records_each_entitys_set_name_and_none_for_an_empty_one(tm
 
 
 def test_the_v9_entity_listing_selects_entity_set_name() -> None:
-    seen: list[dict] = []
+    seen: list[dict[str, str]] = []
 
     class Backend:
-        def get_collection(self, path, params=None):
+        def get_collection(self, path, params):
             seen.append(params)
             return [{"LogicalName": "account", "EntitySetName": ""}]
 
