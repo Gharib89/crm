@@ -52,6 +52,10 @@ A browser opens for the sign-in (authorization code with PKCE, on a loopback
 redirect). On success the profile records your non-secret `username` and
 `home_account_id`, and the tokens go into an encrypted cache.
 
+crm prints a line to stderr when the browser opens, then waits up to 300 seconds
+for the sign-in to finish. If it does not, `login` fails with `login_failed`
+instead of hanging (see Troubleshooting).
+
 - **Terminal only.** `login` is refused under `--json` or with no TTY (error
   code `login_requires_tty`).
 - **No browser available.** It fails at once and names `--device-code`.
@@ -97,6 +101,7 @@ fail under Conditional Access; log in again with the browser flow then.
 | `login_requires_tty` | `login` ran under `--json` or without a TTY. Run it from an interactive shell. |
 | `wrong_tenant` | The signed-in account belongs to another tenant than the profile's `tenant_id`. Check that `tenant_id` is the tenant GUID (`crm profile edit`), or use an account of that tenant. |
 | `AADSTS65001` or `AADSTS90094` | The app has no consent for Dataverse. An administrator grants admin consent to `user_impersonation` (step 1.5). |
+| `login` waits, then fails with `login_failed` ("not finished within 300 s") | The browser sign-in never returned to crm: it was not finished, or Entra stopped on an "Approval required" page (admin consent missing for `user_impersonation`, step 1.5). Finish the sign-in, or have an administrator grant consent, then log in again. |
 | Device code blocked (Conditional Access) | The tenant forbids device code. Run `crm profile login` without `--device-code` on a machine with a browser. |
 | "No web browser is available" | Headless host. Use `--device-code`, or log in on a machine with a browser. |
 | Works, then fails after a rename | Run `crm profile login <new-name>`. |
