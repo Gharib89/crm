@@ -263,3 +263,20 @@ def test_a_project_type_guid_inside_a_choose_block_is_still_a_whole_file_review(
     )
     plan = plan_csproj(text)
     assert plan.patched is None and "ProjectTypeGuids" in plan.review[0].reason
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        "<PropertyGroup Condition=\" '$(Configuration)' == 'Release' \">"
+        "<TargetFrameworkVersion>v4.8</TargetFrameworkVersion></PropertyGroup>",
+        "<PropertyGroup><TargetFrameworkVersion>v4.8</TargetFrameworkVersion></PropertyGroup>",
+    ],
+)
+def test_a_conditional_or_repeated_framework_declaration_is_a_whole_file_review(
+    extra: str,
+) -> None:
+    text = OLD_STYLE.replace("</Project>", extra + "\n</Project>")
+    plan = plan_csproj(text)
+    assert plan.patched is None
+    assert "TargetFrameworkVersion" in plan.review[0].reason and plan.review[0].line is None

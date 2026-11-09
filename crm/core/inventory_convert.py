@@ -1003,11 +1003,12 @@ def _write_project(
 ) -> dict[str, str]:
     """Write a project's diff against its repository path and the full patched project.
 
-    The folder path is folded into the file name, so two projects of one name never collide.
+    The folder path is folded into the file name, "_" escaped as "_u" and "/" as "__", so the
+    fold is injective: no two project paths share a file.
     """
     folder = out / package
     folder.mkdir(parents=True, exist_ok=True)
-    stem = rel.removesuffix(".csproj").replace("/", "__")
+    stem = rel.removesuffix(".csproj").replace("_", "_u").replace("/", "__")
     new = patched.decode("utf-8")
     files = {
         "diff": (f"{stem}.diff", _diff(source.decode("utf-8"), new, rel)),

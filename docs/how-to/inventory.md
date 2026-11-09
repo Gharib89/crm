@@ -883,7 +883,7 @@ package holding it (`unpackaged` when none does); a patched entry has `edits` 1 
 the project's path.
 Its `rule` and `transform` are both `csproj-sdk-net462`: the repository, not the inventory, is what
 it detects on, so no rules-file rule names it. Per project, `--out/<package id>/` holds
-`<repo path, "/" as "__">.diff` against the repository path and `.patched.csproj`, the full
+`<repo path, "/" as "__" and "_" as "_u">.diff` against the repository path and `.patched.csproj`, the full
 project: copy it over the original, since the diff is against LF text and can fail on a CRLF file.
 Builds stay outside convert's gate, on any host with the .NET SDK (Linux is enough).
 

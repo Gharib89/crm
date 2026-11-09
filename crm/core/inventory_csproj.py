@@ -117,7 +117,25 @@ def plan_csproj(text: str) -> CsprojPlan:
     output = (props["outputtype"].text or "").strip() if "outputtype" in props else "Library"
     if output.lower() != "library":
         return _whole(f"the project type is {output}, not a class library")
-    version = props.get("targetframeworkversion")
+    declared = [
+        p
+        for g in root.iter("PropertyGroup")
+        for p in g
+        if p.tag.lower() == "targetframeworkversion"
+    ]
+    plain = [
+        p
+        for g in root.findall("PropertyGroup")
+        if "Condition" not in g.attrib
+        for p in g
+        if p.tag.lower() == "targetframeworkversion" and "Condition" not in p.attrib
+    ]
+    if len(declared) != len(plain) or len(plain) > 1:
+        return _whole(
+            "TargetFrameworkVersion is declared under a condition or more than once: the"
+            " retarget cannot pick one framework for every configuration"
+        )
+    version = plain[0] if plain else None
     framework = _target(version.text if version is not None else None)
     if framework is None:
         return _whole(

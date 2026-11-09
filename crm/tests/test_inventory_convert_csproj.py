@@ -213,3 +213,15 @@ def test_a_non_utf8_project_is_a_manual_review_entry_not_a_traceback(world: Worl
     (entry,) = _entries(world.out, "Contoso.Plugins")
     assert entry["status"] == "manual-review" and entry["files"] == {}
     assert "unreadable" in entry["manual_review"][0]["reason"]
+
+
+def test_project_paths_that_fold_alike_get_distinct_files(world: World) -> None:
+    from crm.core.inventory_convert import _write_project
+
+    out = world.out
+    a = _write_project(out, "pkg", "src/A/B.csproj", b"a\n", b"b\n")
+    b = _write_project(out, "pkg", "src/A__B.csproj", b"a\n", b"b\n")
+    c = _write_project(out, "pkg", "src/A_/B.csproj", b"a\n", b"b\n")
+    d = _write_project(out, "pkg", "src/A/_B.csproj", b"a\n", b"b\n")
+    names = [f["patched"] for f in (a, b, c, d)]
+    assert len(set(names)) == 4
