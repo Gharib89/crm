@@ -67,8 +67,8 @@ with a `web-resource-odata-v2` finding and has no OData v2 adapter listed ahead
 of it (an adapter defines `global.CrmODataV2 =`); its evidence is the first such
 `library`. `web-resource-page-no-odata-adapter` does the same for an HTML page: a
 `<script src>` naming such a script, or an OData v2 URL in a string of an inline script,
-with no adapter `<script src>` ahead of it; its evidence is the first such `library` or
-the inline `line`. The URL in a comment or in markup is no call. A page whose scripts
+with no adapter `<script src>` ahead of it; its evidence is the first such `library`, or
+`inline` holding the page line of the first inline call. The URL in a comment or in markup is no call. A page whose scripts
 cannot be placed (a tag in a comment, a script that writes another, an unclosed script)
 or whose library cannot be read is `unknown`; a `src` matches only the web resource it
 resolves to against the page's own name, never one that shares a file name. The other two are each a `deprecated`
