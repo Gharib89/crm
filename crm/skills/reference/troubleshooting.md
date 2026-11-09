@@ -36,8 +36,6 @@ account. `AADSTS65001`/`AADSTS90094` mean the tenant's app lacks admin consent t
 `user_impersonation`. `login_failed` after `login`'s bounded wait means the
 browser sign-in never returned: either it was not finished, or Entra stopped on
 an "Approval required" page, which needs an administrator to grant that consent.
-Delegated sign-in is verified offline only, not yet against a live tenant: relay
-any unexpected live result to the user as a likely crm defect.
 
 Note `status is None` is **not** a reliable transport-failure signal — client-side
 validation errors also have no status. Only the `transport_error` message prefix marks

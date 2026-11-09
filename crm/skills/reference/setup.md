@@ -91,6 +91,9 @@ Access often blocks it). `login` is refused under `--json`/no TTY
 loop on it. Later commands read an encrypted token cache silently and never open a
 browser. `set-password`/`delete-password` do not apply, and `rename` drops the
 cache (log in again). Error handling: `reference/troubleshooting.md`.
+Delegated sign-in is verified offline only, not yet against a live tenant: tell the
+user so before recommending it, and relay any unexpected live result as a likely
+crm defect.
 
 **No `.env`, no credential env vars.** The CLI reads credentials and connection
 config ONLY from a saved profile (or a per-run `--password`). There is no `.env`
