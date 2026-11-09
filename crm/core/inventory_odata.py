@@ -284,16 +284,37 @@ def _literal(node: Node) -> str | None:
 _PARAM_PARENTS = frozenset(
     ("formal_parameters", "assignment_pattern", "rest_pattern", "catch_clause")
 )
+_SCOPES = frozenset(
+    (
+        "program",
+        "function_declaration",
+        "function_expression",
+        "function",
+        "generator_function",
+        "generator_function_declaration",
+        "arrow_function",
+        "method_definition",
+    )
+)
 
 
-def _xhr_names(root: Node) -> frozenset[str]:
-    """Variables every binding of which in the file is `new XMLHttpRequest()`.
+def _scope(node: Node) -> int:
+    """The id of the function or program *node* sits in: its binding scope, as `var` hoists."""
+    cur = node.parent
+    while cur is not None and cur.type not in _SCOPES:
+        cur = cur.parent
+    return cur.id if cur is not None else -1
 
-    The adapter assumes the native request object, so a name also bound to anything else (a
-    parameter, another value, a reassignment) is not proven one.
+
+def _xhr_names(root: Node) -> frozenset[tuple[int, str]]:
+    """The (scope, name) pairs every binding of which is `new XMLHttpRequest()` in that scope.
+
+    The adapter assumes the native request object, so a name also bound to anything else in the
+    scope (a parameter, another value, a reassignment) is not proven one, and a call in another
+    function than the declaration is not tied to it.
     """
-    xhr: set[str] = set()
-    other: set[str] = set()
+    xhr: set[tuple[int, str]] = set()
+    other: set[tuple[int, str]] = set()
     stack = [root]
     while stack:
         node = stack.pop()
@@ -309,18 +330,18 @@ def _xhr_names(root: Node) -> frozenset[str]:
             if parent.type in _PARAM_PARENTS or (
                 parent.type == "arrow_function" and parent.child_by_field_name("parameter") == node
             ):
-                other.add((node.text or b"").decode())
+                other.add((_scope(node), (node.text or b"").decode()))
         if name is None or name.type != "identifier":
             continue
-        label = (name.text or b"").decode()
+        key = (_scope(name), (name.text or b"").decode())
         ctor = value.child_by_field_name("constructor") if value is not None else None
         is_xhr = value is not None and value.type == "new_expression" and ctor is not None
-        (xhr if is_xhr and ctor and ctor.text == b"XMLHttpRequest" else other).add(label)
+        (xhr if is_xhr and ctor and ctor.text == b"XMLHttpRequest" else other).add(key)
     return frozenset(xhr - other)
 
 
 def _site(
-    call: Node, url: Node, target: Target, xhr: frozenset[str]
+    call: Node, url: Node, target: Target, xhr: frozenset[tuple[int, str]]
 ) -> tuple[list[Edit], tuple[Used, ...]]:
     fn = call.child_by_field_name("function")
     args = call.child_by_field_name("arguments")
@@ -363,10 +384,10 @@ def _site(
     template = _HOLE.join("".join(_literal(p) or "" for p in run) for run in runs)
     template = template[len(prefix) :]
     result = translate(template, target)
-    if (recv.text or b"").decode() not in xhr:
+    if (_scope(call), (recv.text or b"").decode()) not in xhr:
         raise _No(
-            "the receiver of open is not a variable bound only to new XMLHttpRequest():"
-            " the adapter needs the native request object"
+            "the receiver of open is not a variable bound only to new XMLHttpRequest() in its own"
+            " function: the adapter needs the native request object"
         )
     segments = result.text.split(_HOLE)
     edits: list[Edit] = []

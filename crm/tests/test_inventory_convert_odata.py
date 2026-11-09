@@ -166,6 +166,12 @@ CASES: dict[str, tuple[str, str | None, int]] = {
         None,
         1,
     ),
+    "other-function-receiver": (
+        "function a() { var req = new XMLHttpRequest(); }\n"
+        f'function b() {{ req.open("GET", "{SVC}/AccountSet?$select=Name", false); }}\n',
+        None,
+        1,
+    ),
     "skip": (
         f'req.open("GET", "{SVC}/AccountSet?$select=Name&$skip=10", false);\n',
         None,
