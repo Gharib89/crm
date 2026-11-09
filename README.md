@@ -505,7 +505,9 @@ Usage errors may omit `meta`; non-usage Click-layer failures include an empty
 `server_error`, `transport_error`) and `meta.retryable` flags the transient classes.
 The backend auto-retries the transient transport / `429` / `5xx` classes for
 idempotent verbs (`concurrency_conflict` (412) is flagged `retryable` too but is
-never auto-retried — refetch a fresh ETag and retry), but a non-idempotent `POST`
+never auto-retried — refetch a fresh ETag and retry; an async operation that fails on
+the org-wide customization lock, such as `solution import`, classifies the same way,
+so wait and re-run), but a non-idempotent `POST`
 (record create, action, associate) is **not** retried by default — a lost response
 may mean the write already landed. Pass
 `--retry-on-ambiguous` (env: `CRM_RETRY_ON_AMBIGUOUS`) to opt back into retrying

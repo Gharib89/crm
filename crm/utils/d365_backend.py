@@ -123,6 +123,11 @@ def validate_profile_name(name: str) -> str:
     return name
 
 
+_LOCK_MESSAGE_RE = re.compile(
+    r"cannot start the requested operation.*because there is another.*running", re.DOTALL
+)
+
+
 def classify_d365_error(
     status: int | None, code: str | None, message: str | None
 ) -> tuple[ErrorCategory, bool]:
@@ -170,6 +175,11 @@ def classify_d365_error(
         return ("throttled", True)
     if 500 <= status < 600:
         return ("server_error", True)
+    # An async operation reports its failure in the row, not the HTTP status, so a
+    # customization-lock collision (#741's family) arrives as a status like 31 that
+    # would read as `validation`. The op never started, so it is transient (#1152).
+    if any(c in haystack for c in _CUSTOMIZATION_LOCK_CODES) or _LOCK_MESSAGE_RE.search(haystack):
+        return ("concurrency_conflict", True)
     return ("validation", False)
 
 
@@ -1259,9 +1269,13 @@ class D365Backend:
             if state == 3:
                 if status == 30:
                     return op
+                # `friendlymessage` is often generic ("An unexpected error
+                # occurred."); `message` holds the real cause, so carry both (#1152).
+                friendly, detail = op.get("friendlymessage"), op.get("message")
+                text = " ".join(dict.fromkeys(m for m in (friendly, detail) if m))
                 raise D365Error(
                     f"Async operation {async_operation_id} ended with statuscode={status}: "
-                    f"{op.get('friendlymessage') or op.get('message') or '(no message)'}",
+                    f"{text or '(no message)'}",
                     status=status if isinstance(status, int) else None,
                     response_body=op,
                 )
