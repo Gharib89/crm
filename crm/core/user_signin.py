@@ -169,7 +169,9 @@ def _interactive(
 
     MSAL raises, rather than returns an error, when the wait runs out: a
     ``RuntimeError`` subclass (``BrowserInteractionTimeoutError``) from msal 1.30, a plain
-    ``RuntimeError`` before it, and setup.py allows ``msal>=1.20``.
+    ``RuntimeError`` before it, and setup.py allows ``msal>=1.20``. Other rare msal
+    ``RuntimeError`` s on this path (ID token checks) land here too, so the message carries
+    msal's own text.
     """
 
     def before_ui(**_kw: Any) -> None:
@@ -192,7 +194,7 @@ def _interactive(
             "Entra stopped on a page that never returns to crm, such as 'Approval required': "
             "an administrator must grant admin consent to the app's Dataverse "
             "user_impersonation permission (see the delegated sign-in how-to in the crm "
-            "docs). Finish the sign-in or get consent, then run the login again.",
+            f"docs). Finish the sign-in or get consent, then run the login again. (msal: {exc})",
             status=401,
             code="login_failed",
         ) from exc

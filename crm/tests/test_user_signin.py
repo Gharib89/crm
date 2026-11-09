@@ -323,6 +323,7 @@ class TestLogin:
         assert "administrator must grant admin consent" in text
         assert "user_impersonation" in text
         assert "delegated sign-in how-to" in text
+        assert "msal: User did not complete the flow in time" in text
         assert token_store.load("dev") == ""
 
     @pytest.mark.parametrize("code", ["AADSTS65001", "AADSTS90094"])
