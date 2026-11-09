@@ -82,7 +82,9 @@ extract. The manifest header records the choice (`scope.system`: `excluded`, or
 - Stock flows down the plug-in chain: a plug-in type on a stock assembly, a step on a
   stock type and an image on a stock step are all left out, whatever their own
   `ismanaged` says (Dataverse marks platform steps unmanaged). Steps on the org's own
-  assemblies are kept with their type and assembly.
+  assemblies are kept with their type and assembly, but a step the org registered on a
+  managed (platform or vendor) assembly is left out too: audit those with
+  `--include-system`.
 - The ribbon of a custom entity is kept. The ribbon of a system entity, and the
   application ribbon, is kept when it holds an entry outside the platform's own id
   families (`Mscrm.`, `AIBuilder.`, `msdyn`, and the other families in the code), or a

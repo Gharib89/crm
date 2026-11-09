@@ -31,9 +31,10 @@ binaries). It describes what is deployed; it is never a spec for `crm apply`.
   solution) and their payload reads; the manifest's `scope.system` says
   `excluded`, and edges into them show as `platform:` gaps. Stock flows down the
   plug-in chain: a type, step or image on a stock assembly is left out even when its
-  own flag reads unmanaged. A managed component
-  customized in place is missed: audit it with a full-scope extract, and extract
-  both stages of a `diff` with the same scope.
+  own flag reads unmanaged, including steps the org registered itself on a managed
+  (platform or vendor) assembly. A managed component customized in place is missed:
+  audit it and those steps with a full-scope extract, and extract both stages of a
+  `diff` with the same scope.
 - **`--with-usage` records a per-row `usage`** on entities, plug-ins and processes.
   A row with no `usage` was not read, which differs from `state: unknown` (the
   probe could not tell); count `unknown` as unconfirmed. A failed probe leaves its
