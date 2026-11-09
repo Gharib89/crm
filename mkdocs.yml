@@ -124,6 +124,7 @@ nav:
       - CRMWorx walkthrough: guides/crmworx-walkthrough.md
   - How-to:
       - profile: how-to/profile.md
+      - delegated sign-in: how-to/delegated-signin.md
       - connection: how-to/connection.md
       - connectionrole: how-to/connectionrole.md
       - entity: how-to/entity.md
