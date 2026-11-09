@@ -63,9 +63,8 @@ A task missing a field names it as an unknown.
 Run `crm inventory convert` after `assess` and `packages`; it writes only into a
 new `--out` folder (`--help` has the inputs). A finding gets a patch only when its
 rule names a transform. Every transform reads JavaScript web resources only (the form handler one also patches form XML), and
-one file's rules all land in one patch (one ledger entry per rule). The one C# step
-is separate: with `--source-map` and `--repo`, each plug-in assembly the map matched to one
-project gets that project rewritten to SDK-style `net462` (see "Plug-in projects" below). Which rows of
+one file's rules all land in one patch (one ledger entry per rule). Plug-in projects
+are the one C# step (see "Plug-in projects" below). Which rows of
 Microsoft's client API deprecation table convert:
 
 | Rewritten (`patched`) | Manual review, code untouched |
@@ -106,18 +105,16 @@ entry has a task, and each patch builds clean in the repository.
 
 ## Plug-in projects: retarget, then build outside convert
 
-With `--repo` (the checkout `map-source` read), convert rewrites each matched plug-in project
-to SDK-style `net462`: the SDK 5.0 `Microsoft.Xrm.Sdk` and `Microsoft.Crm.Sdk.Proxy` references become
-the `Microsoft.CrmSdk.CoreAssemblies` package, explicit items and strong-name signing stay. Its
-ledger entry is `kind` `plugin_assembly`, keyed by the assembly, per work package, with
-`rule` and `transform` `csproj-sdk-net462`. The full project is `<project path>.patched.csproj`;
-copy it over the original rather than applying the diff (CRLF).
+A plug-in project is converted when the source map matched its assembly to exactly one project
+and `--repo` names the checkout. Its ledger entry is `kind` `plugin_assembly`, keyed by the
+assembly, one per work package, `rule` and `transform` both `csproj-sdk-net462`. Apply the
+`.patched.csproj` by copying it over the project (the diff is against LF text, so a CRLF file
+refuses it).
 
-- A `Microsoft.Xrm.Client` or `Microsoft.Xrm.Sdk.Workflow` reference (the package carries neither)
-  and any ILMerge use are `manual-review` entries on a patched project: the reference or merge
-  step is kept as written and each is a task.
-- A project that is not a class library, is already SDK-style or is unreadable has one whole-file
-  `manual-review` entry and no patch.
-- **Convert never builds.** Builds happen outside convert, on the build worker: a Linux host with
-  the .NET SDK is enough (a pilot built 9 of 9 converted projects that way), and a failed build is
-  a task on that project.
+- `patched` entries with `manual-review` lines: a `Microsoft.Xrm.Client` or
+  `Microsoft.Xrm.Sdk.Workflow` reference (the `Microsoft.CrmSdk.CoreAssemblies` package carries
+  neither) or an ILMerge step stays as written. Each is a task.
+- A whole-file `manual-review` entry with no patch: the project is not a class library, is
+  already SDK-style, or is unreadable.
+- Builds happen outside convert, on the build worker. A Linux host with the .NET SDK is enough
+  (a pilot built 9 of 9 converted projects that way). A failed build is a task on that project.
