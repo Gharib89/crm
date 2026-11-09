@@ -197,6 +197,14 @@ def test_only_the_condition_that_fired_is_named(world: World) -> None:
     assert framework_only.evidence.sdk_references == ()
 
 
+def test_an_absent_framework_version_counts_one_match_and_has_no_location(world: World) -> None:
+    text = PACKAGE_STYLE.replace("<TargetFrameworkVersion>v4.6.2</TargetFrameworkVersion>", "")
+    _project(world).write_text(text, encoding="utf-8")
+    (hit,) = _hits(_assess(world))
+    assert (hit.evidence.fired, hit.evidence.target_framework_version) == (("framework",), None)
+    assert (hit.evidence.match_count, hit.evidence.locations) == (1, ())
+
+
 def test_a_floor_project_with_package_references_yields_no_finding(world: World) -> None:
     _project(world).write_text(PACKAGE_STYLE, encoding="utf-8")
     result = _assess(world)
