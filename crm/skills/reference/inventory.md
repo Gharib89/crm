@@ -59,6 +59,11 @@ binaries). It describes what is deployed; it is never a spec for `crm apply`.
   content that is not base64, a fault the server repeats): stop and report
   those errors and the kinds' coverage to the user. An auth or transport
   failure stops the run with no `data`; re-running resumes it.
+- **A table deleted mid-run is a gap, not an error.** When the entity read or
+  the ribbon read answers that the table no longer exists, the table is left
+  out of the records and each kind it would have fed gets a gap ("no longer
+  exists, deleted since the listing"); the run can still finish `complete` and
+  a resume does not retry it. Any other fault on a table stays an error.
 - **Judge completeness by each kind's coverage in the manifest before trusting
   record counts**, and report the manifest's `gaps` to the user as manual
   follow-up: they name what the inventory could not capture, both what the
