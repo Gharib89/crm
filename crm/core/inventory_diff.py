@@ -16,9 +16,11 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 from crm.core.inventory import (
+    ENTITY_OWNED_KINDS,
     KINDS,
     READ_VERSIONS,
     READ_VERSIONS_TEXT,
+    RELATIONSHIP_SIDES,
     ExtractionGap,
     Inventory,
     InventoryError,
@@ -120,10 +122,6 @@ def _gaps(inv: Inventory) -> list[dict[str, Any]]:
 
 #: A diff side: ``a`` the earlier inventory, ``b`` the later.
 Side = Literal["a", "b"]
-
-#: Kinds a custom entity owns by its ``entity`` field; a relationship names its entities by sides.
-_ENTITY_OWNED = ("attribute", "local_option_set", "form", "view", "ribbon")
-_RELATIONSHIP_SIDES = ("referenced_entity", "referencing_entity", "entity1", "entity2")
 
 
 @dataclass(frozen=True)
@@ -424,10 +422,10 @@ def _restricted_keys(
     owned = {r.key for r in whole.records if r.kind == "entity" and r.origin == "custom"}
     owned &= entity_members
     for r in whole.records:
-        if r.kind in _ENTITY_OWNED and r.fields.get("entity") in owned:
+        if r.kind in ENTITY_OWNED_KINDS and r.fields.get("entity") in owned:
             keys.add((r.kind, r.key))
         elif r.kind == "relationship" and owned.intersection(
-            r.fields.get(side) for side in _RELATIONSHIP_SIDES
+            r.fields.get(side) for side in RELATIONSHIP_SIDES
         ):
             keys.add((r.kind, r.key))
     missing = tuple(n for n in narrowed.scope.solutions if n.casefold() not in found)
@@ -449,8 +447,9 @@ def diff_inventories(a: Inventory, b: Inventory) -> InventoryDiff:
     then key, so the result does not depend on manifest order.
 
     One ``--solution`` side against a whole-org side is *restricted*: only the narrowed
-    side's keys and the whole-org side's rows of the same-named solutions are compared,
-    and ``InventoryDiff.restriction`` says so and counts the keys left out.
+    side's keys and the whole-org side's rows of the same-named solutions (the solution,
+    its memberships, their members and a custom entity member's subcomponents) are
+    compared, and ``InventoryDiff.restriction`` says so and counts the keys left out.
     """
     groups: tuple[dict[tuple[str, str], list[Record]], ...] = ({}, {})
     for inv, group in zip((a, b), groups, strict=True):

@@ -44,9 +44,11 @@ from xml.etree.ElementTree import ParseError
 
 from crm.core import legacy_reads
 from crm.core.inventory import (
+    ENTITY_OWNED_KINDS,
     KEY_FIELDS,
     KINDS,
     MANIFEST_NAME,
+    RELATIONSHIP_SIDES,
     SCHEMA_VERSION,
     Artifact,
     ArtifactHashes,
@@ -75,8 +77,6 @@ _ENTITY = 1
 _WEB_RESOURCE = 61
 _ASSEMBLY = 91
 
-# The relationship fields naming an entity, 1:N and N:N.
-_RELATIONSHIP_SIDES = ("referenced_entity", "referencing_entity", "entity1", "entity2")
 # The component types a scoped run reads only for member entities (RetrieveEntity):
 # attribute, local option set, relationship.
 _ENTITY_DETAIL_TYPES = frozenset({2, _OPTION_SET, 10})
@@ -1720,10 +1720,10 @@ class _Builder:
                 return p.fields["solution"] in named
             if p.kind == "ribbon_diff":
                 return True  # read from the named solutions' own exports
-            if p.kind in ("attribute", "local_option_set", "form", "view", "ribbon"):
+            if p.kind in ENTITY_OWNED_KINDS:
                 return (p.kind, p.key) in members or p.fields["entity"] in entities
             if p.kind == "relationship":
-                sides = {p.fields.get(k) for k in _RELATIONSHIP_SIDES}
+                sides = {p.fields.get(k) for k in RELATIONSHIP_SIDES}
                 return (p.kind, p.key) in members or not sides.isdisjoint(entities)
             return (p.kind, p.key) in members
 
@@ -1789,7 +1789,7 @@ class _Builder:
                 continue
             entities = [p.fields.get("entity")]
             if p.kind == "relationship":
-                entities = [p.fields.get(k) for k in _RELATIONSHIP_SIDES]
+                entities = [p.fields.get(k) for k in RELATIONSHIP_SIDES]
             for name in entities:
                 if isinstance(name, str) and name:
                     parent = by_key.get(("entity", component_key("entity", {"logical_name": name})))

@@ -76,9 +76,10 @@ it needs no profile and no network.
 - **A `--solution` side against a whole-org side is a restricted diff.** Extract the
   migrated target with `--solution` and the source at the default scope: only the
   narrowed side's keys and the source's members of the same-named solutions (a custom
-  entity member with its subcomponents) are compared. Read `header.restricted`: `left_out` source keys were not compared (report
-  them as out of scope), and a name in `missing` means the source
-  lacks that solution, so a component only the source holds went unseen. A managed
+  entity member with its subcomponents) are compared. Read `header.restricted`:
+  `left_out` source keys were not compared (report them as out of scope), and a name in
+  `missing` means the source lacks that solution, so a component only the source holds
+  went unseen. A managed
   import reads `changed` on `origin` or `managed` alone: expected, report it apart.
 - **The per-key evidence is in the `--out` file** (`entries`: differing fields
   with both values, artifacts with both normalized hashes, both ids, a reason):
