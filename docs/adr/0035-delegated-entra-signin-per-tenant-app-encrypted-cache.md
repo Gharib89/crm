@@ -59,3 +59,17 @@ explicitly (#1129).
 - Windows WAM broker support (`msal[broker]`) touches the five PyInstaller sites.
   It is added only if the live proof hits a Conditional Access policy that
   requires a compliant device.
+
+## Addendum (2026-11-09): live proof blocked at admin consent
+
+The owner-run live proof (#1146) did not complete. In the tenant that hosts the
+cloud test org, the public-client app was registered, but admin consent was
+refused (the signing account is not a tenant admin) and the tenant blocks user
+consent (AADSTS90094). `crm profile add --auth-scheme oauth-user` worked. No
+sign-in, cached reuse, device-code or revocation step ran, so delegated sign-in is
+proven offline only. #1146 was closed as not planned and reopens once an
+administrator grants consent. Running the proof in another tenant the owner
+administers would change the tenant this ADR names and needs a further addendum.
+The attempt found that `crm profile login` waited forever on the consent page
+(#1164, fixed by a bounded wait). The WAM broker decision above still waits on the
+proof's result.
