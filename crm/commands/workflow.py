@@ -21,6 +21,7 @@ from crm.commands._helpers import (
 )
 from crm.core import usage
 from crm.core import workflow as workflow_mod
+from crm.utils.d365_backend import is_cloud
 
 _CATEGORY_NAMES = {
     "workflow": workflow_mod.CATEGORY_WORKFLOW,
@@ -180,7 +181,7 @@ def workflow_migration_assess(ctx: CLIContext, primary_entity):
         backend = ctx.backend()
         items = workflow_mod.assess_workflow_migrations(backend, primary_entity=primary_entity)
     meta: dict[str, object] = {"count": len(items)}
-    if backend.profile.auth_scheme != "oauth":
+    if not is_cloud(backend.profile):
         meta["note"] = (
             "Cloud flows don't exist on on-prem; the migration target must be a "
             "Dataverse online environment. This report assesses readiness only."

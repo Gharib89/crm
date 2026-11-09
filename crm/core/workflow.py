@@ -22,7 +22,7 @@ from crm.core import entity as entity_ops
 from crm.core import metadata as metadata_ops
 from crm.core import solution as solution_ops
 from crm.utils import safe_xml
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict, is_cloud, odata_literal
 
 # `workflow.category` values per the SDK
 CATEGORY_WORKFLOW = 0
@@ -938,7 +938,7 @@ def _replace_workflow_xaml(
        ``would_activate``.
     """
     # 1. Cloud gate — refuse before any read or write on a Dataverse connection.
-    if backend.profile.auth_scheme == "oauth":
+    if is_cloud(backend.profile):
         raise D365Error(
             "Editing workflow step XAML is on-premises only. Dataverse rejects a "
             "definition whose XAML was not authored by its web designer "

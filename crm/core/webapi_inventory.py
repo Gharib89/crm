@@ -23,7 +23,7 @@ from crm.core.inventory_extract import integration_gap, ssrs_gap
 from crm.core.legacy import Page
 from crm.core.legacy_reads import EXPORT_TIMEOUT, unzip_ribbon
 from crm.core.usage import GroupUsage, probe_v9_group
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict, is_cloud
 from crm.utils.safe_xml import fromstring
 
 # FetchXML entity -> (Web API entity set, primary id column), for the extractor's reads.
@@ -194,7 +194,7 @@ class WebApiSource:
     def __init__(self, backend: D365Backend):
         self.backend = backend
         # Client-credentials OAuth reaches only Dataverse online; every other scheme is on-prem.
-        self.platform = "cloud" if backend.profile.auth_scheme == "oauth" else "onprem"
+        self.platform = "cloud" if is_cloud(backend.profile) else "onprem"
         gaps = [integration_gap(self.api)]
         if self.platform == "onprem":
             gaps.append(ssrs_gap(self.api))

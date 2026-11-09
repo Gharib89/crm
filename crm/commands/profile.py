@@ -25,6 +25,7 @@ from crm.utils.d365_backend import (
     ConnectionProfile,
     D365Backend,
     D365Error,
+    is_cloud,
     validate_profile_name,
 )
 
@@ -548,7 +549,7 @@ def profile_use(ctx: CLIContext, name, clear):
 def _use_label(name: str, active: str | None) -> str:
     try:
         p = session_mod.load_profile(name)
-        target = "cloud" if p.auth_scheme == "oauth" else "on-prem"
+        target = "cloud" if is_cloud(p) else "on-prem"
         flag = "  (active)" if name == active else ""
         return f"{name}  {target}  {p.url}{flag}"
     except _PROFILE_LOAD_ERRORS:
@@ -613,7 +614,7 @@ def profile_list(ctx: CLIContext):
                 {
                     "name": n,
                     "active": n == active,
-                    "target": "cloud" if p.auth_scheme == "oauth" else "on-prem",
+                    "target": "cloud" if is_cloud(p) else "on-prem",
                     "url": p.url,
                     "credential_storage": _credential_storage(n),
                     "publisher_prefix": p.publisher_prefix,
