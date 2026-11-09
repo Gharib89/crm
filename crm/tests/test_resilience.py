@@ -740,6 +740,20 @@ class TestClassifyAsyncLock:
 
         assert classify_d365_error(31, "0x80071151", "boom") == ("concurrency_conflict", True)
 
+    def test_lock_code_on_http_400_is_retryable_conflict(self):
+        from crm.utils.d365_backend import classify_d365_error
+
+        assert classify_d365_error(400, "0x80071151", "publish blocked") == (
+            "concurrency_conflict",
+            True,
+        )
+
+    def test_lock_phrase_split_across_unrelated_text_stays_validation(self):
+        from crm.utils.d365_backend import classify_d365_error
+
+        msg = "Cannot start the requested operation: bad payload. Another field is running late."
+        assert classify_d365_error(31, None, msg) == ("validation", False)
+
     def test_unrelated_status_31_stays_validation(self):
         from crm.utils.d365_backend import classify_d365_error
 

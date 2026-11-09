@@ -45,7 +45,8 @@ in the envelope but is never auto-retried — for **idempotent verbs**
 post-exhaustion hint — act on it only after the error surfaces.
 Two cases never auto-retry:
 
-- `concurrency_conflict` (412) — refetch a fresh ETag and retry.
+- `concurrency_conflict` (412) — refetch a fresh ETag and retry. (The same category also
+  flags a customization-lock failure: no ETag involved, wait and re-run.)
 - Any non-idempotent `POST` (record create, action, associate) — a lost response may
   mean the write **already landed**, so the backend surfaces the error rather than risk
   a duplicate side effect. To retry a create safely, re-run it as an upsert-by-id
