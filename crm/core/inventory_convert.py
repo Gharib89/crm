@@ -1045,6 +1045,8 @@ def convert(
                             )
             if plan.edits or plan.unproven or reason:
                 steps.append((rule, plan, reason, applied))
+        # A page with a rewritten inline script needs its registration even where the findings
+        # file holds no page-rule hit (made before the rule, or filtered by hand).
         if page and page_rule is not None and ((kind, key, path) in page_targets or staged):
             step = (
                 (Plan((), ()), problem, False, source)

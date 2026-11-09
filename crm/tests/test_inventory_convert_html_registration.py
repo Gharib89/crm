@@ -301,7 +301,7 @@ def test_two_runs_give_byte_identical_patches(run, tmp_path):
         assert _patched(run, first) == _patched(again, second)
 
 
-def test_an_inline_rewrite_is_not_unguarded_when_the_findings_lack_the_page_rule(tmp_path):
+def test_an_inline_rewrite_is_guarded_when_the_findings_lack_the_page_rule(tmp_path):
     bare = _pipeline(tmp_path / "bare", PAGES, without=RULE)
     assert bare["res"].exit_code == 0, bare["res"].output
     (entry,) = _entries(bare, "Inline", ODATA_RULE)
