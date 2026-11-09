@@ -71,6 +71,10 @@ def test_inventory_extract_is_valid_and_repeatable(cli, tmp_path):
     # A String column records the length a rebuild needs (#1156).
     strings = [r for r in parsed.records if r.kind == "attribute" and r.fields["type"] == "String"]
     assert all(isinstance(r.fields.get("max_length"), int) for r in strings)
+
+    # The v9 extract names each entity's set, which `inventory convert` reads (#1167).
+    entities = [r for r in parsed.records if r.kind == "entity"]
+    assert all(r.fields.get("entity_set_name") for r in entities)
     findings_file = tmp_path / "findings.json"
     proc = cli(
         ["--json", "inventory", "assess", str(tmp_path / "one"), "--target", "online",
