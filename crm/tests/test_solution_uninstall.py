@@ -102,6 +102,34 @@ class TestLostResponse:
         flt = unquote_plus(history[0].url)
         assert "msdyn_status eq 1" in flt and "msdyn_result eq false" in flt
 
+    def test_history_read_failing_mid_wait_does_not_fail_the_uninstall(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("solutions"),
+                json={"value": [{"solutionid": _SOL_ID, "uniquename": "Pilot"}]},
+            )
+            m.get(
+                backend.url_for("msdyn_solutionhistories"),
+                [{"json": {"value": []}}, {"status_code": 503}],
+            )
+            m.delete(backend.url_for(f"solutions({_SOL_ID})"), exc=requests.exceptions.ReadTimeout)
+            m.get(backend.url_for(f"solutions({_SOL_ID})"), [{"json": {}}, _NOT_FOUND])
+            out = _uninstall(backend, timeout=60)
+        assert out["uninstalled"] is True
+        assert len(_deletes(m)) == 1
+
+    def test_unreadable_history_before_the_delete_fails_fast(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("solutions"),
+                json={"value": [{"solutionid": _SOL_ID, "uniquename": "Pilot"}]},
+            )
+            m.get(backend.url_for("msdyn_solutionhistories"), status_code=403, json={})
+            m.delete(backend.url_for(f"solutions({_SOL_ID})"), status_code=204)
+            with pytest.raises(D365Error):
+                _uninstall(backend)
+        assert _deletes(m) == []
+
     def test_failed_row_from_before_the_delete_is_not_this_uninstall(self, backend):
         old = {"msdyn_solutionhistoryid": "row-0", "msdyn_exceptionmessage": "an older failure"}
         with requests_mock.Mocker() as m:

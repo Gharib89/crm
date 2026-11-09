@@ -305,15 +305,36 @@ def _failed_uninstall_rows(backend: D365Backend, sol_id: str) -> list[dict[str, 
 
 
 def _failed_uninstall_ids(backend: D365Backend, sol_id: str) -> set[str] | None:
-    """Ids of the failed Uninstall rows already there, or None where the table is unreadable.
+    """Ids of the failed Uninstall rows already there, or None where there is no history table.
 
-    On-prem has no msdyn_solutionhistories, so the read fails and the wait falls
-    back to the solution row alone.
+    On-prem has no msdyn_solutionhistories, so the read answers not-found (or a
+    400 on the unknown set) and the wait falls back to the solution row alone.
+    Any other failure (403, 5xx, transport) raises: nothing is sent yet, so the
+    caller fails fast rather than silently losing the online early exit.
     """
     try:
         return {str(r["msdyn_solutionhistoryid"]) for r in _failed_uninstall_rows(backend, sol_id)}
+    except D365Error as exc:
+        if classify_d365_error(exc.status, exc.code, str(exc))[0] in ("not_found", "validation"):
+            return None
+        raise
+
+
+def _new_failed_rows(
+    backend: D365Backend, sol_id: str, seen: set[str] | None
+) -> list[dict[str, Any]]:
+    """Failed Uninstall rows that appeared since `seen`; none where history is unavailable.
+
+    A failed history read mid-wait is skipped: the DELETE was sent and may still
+    succeed, so the solution-row poll and the deadline decide the outcome.
+    """
+    if seen is None:
+        return []
+    try:
+        rows = _failed_uninstall_rows(backend, sol_id)
     except D365Error:
-        return None
+        return []
+    return [r for r in rows if str(r["msdyn_solutionhistoryid"]) not in seen]
 
 
 def _wait_for_uninstall(
@@ -334,14 +355,13 @@ def _wait_for_uninstall(
             if classify_d365_error(exc.status, exc.code, str(exc))[0] == "not_found":
                 return
             raise
-        if seen_failures is not None:
-            for row in _failed_uninstall_rows(backend, sol_id):
-                if str(row["msdyn_solutionhistoryid"]) not in seen_failures:
-                    raise D365Error(
-                        f"Uninstall of {unique_name!r} failed on the server: "
-                        f"{row.get('msdyn_exceptionmessage') or '(no message)'}",
-                        code="UninstallFailed",
-                    )
+        failed = _new_failed_rows(backend, sol_id, seen_failures)
+        if failed:
+            raise D365Error(
+                f"Uninstall of {unique_name!r} failed on the server: "
+                f"{failed[0].get('msdyn_exceptionmessage') or '(no message)'}",
+                code="UninstallFailed",
+            )
         if time.monotonic() >= deadline:
             raise D365Error(
                 f"Uninstall of {unique_name!r} was sent but the solution still exists "
