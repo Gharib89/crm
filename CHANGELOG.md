@@ -9,6 +9,27 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.109.1 (2026-11-09)
+
+### Bug Fixes
+
+- **migration-skill**: Correct environment and control_escaped wording after review
+  ([#1176](https://github.com/Gharib89/crm/pull/1176),
+  [`b7c12f3`](https://github.com/Gharib89/crm/commit/b7c12f369c5f0cd670755bec9ba743e4e80a6f77))
+
+- **migration-skill**: Record the post-revert green run as an ordinary result
+  ([#1176](https://github.com/Gharib89/crm/pull/1176),
+  [`b7c12f3`](https://github.com/Gharib89/crm/commit/b7c12f369c5f0cd670755bec9ba743e4e80a6f77))
+
+- **migration-skill**: State evidence location, offline environment and negative-control recording
+  ([#1176](https://github.com/Gharib89/crm/pull/1176),
+  [`b7c12f3`](https://github.com/Gharib89/crm/commit/b7c12f369c5f0cd670755bec9ba743e4e80a6f77))
+
+- **migration-skill**: State evidence location, offline environment and negative-control recording
+  in verification.md ([#1176](https://github.com/Gharib89/crm/pull/1176),
+  [`b7c12f3`](https://github.com/Gharib89/crm/commit/b7c12f369c5f0cd670755bec9ba743e4e80a6f77))
+
+
 ## v1.109.0 (2026-11-09)
 
 ### Bug Fixes
