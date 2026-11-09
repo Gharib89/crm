@@ -66,6 +66,15 @@ from crm.core.inventory_form_libraries import (
     library_id,
     plan_adapter_library,
 )
+from crm.core.inventory_html import (
+    HTML_PAGE,
+    inline_errors,
+    plan_inline,
+    plan_page_adapter,
+    resolve_src,
+    script_tags,
+)
+from crm.core.inventory_html import adapter_gate as page_adapter_gate
 from crm.core.inventory_odata import ADAPTER_NAME, Target, read_target, render_adapter
 from crm.core.inventory_packages import PACKAGE_ID
 from crm.core.inventory_packages import SCHEMA_VERSION as PACKAGES_VERSION
@@ -83,6 +92,7 @@ from crm.core.inventory_source_map import mapped_projects, read_source_map, requ
 from crm.core.inventory_transforms import (
     ADAPTER_TRANSFORM,
     HANDLER_TRANSFORM,
+    PAGE_ADAPTER_TRANSFORM,
     TRANSFORMS,
     Edit,
     Plan,
@@ -256,15 +266,30 @@ def _apply(source: bytes, edits: tuple[Edit, ...]) -> bytes | None:
 
 
 def _gate(
-    pattern: Any, transform: Transform, original: bytes, patched: bytes, n: int
+    pattern: Any,
+    transform: Transform,
+    original: bytes,
+    patched: bytes,
+    n: int,
+    page: bool = False,
 ) -> str | None:
-    """The emit gate: None when the patch may be written, else why it may not."""
+    """The emit gate: None when the patch may be written, else why it may not. On a *page* the
+    syntax errors are counted in its inline scripts, the markup around them not being code.
+    """
     try:
         before_text, after_text = original.decode("utf-8"), patched.decode("utf-8")
     except UnicodeDecodeError:
         return "the text is not UTF-8"
-    before = error_count(parse(transform.language, original))
-    after = error_count(parse(transform.language, patched))
+    if page:
+        before, after = (
+            inline_errors(original, transform.language),
+            inline_errors(patched, transform.language),
+        )
+        if before is None or after is None:
+            return "the patched page's <script> tags can no longer be placed in its text"
+    else:
+        before = error_count(parse(transform.language, original))
+        after = error_count(parse(transform.language, patched))
     if after > before:
         return f"the patched code has {after - before} new syntax error node(s)"
     left = len(pattern.findall(before_text)) - len(pattern.findall(after_text))
@@ -748,8 +773,20 @@ def convert(
     # transforms run in findings order, each on the text the one before left, so every
     # rule's edits land in one patch and none is dropped.
     groups: dict[tuple[str, str, str], dict[str, Rule]] = {}
+    #: The pages carrying the adapter rule's finding, each with the sha256 of the text it read.
+    page_targets: dict[tuple[str, str, str], str] = {}
+    page_rule = next((r for r in rules.values() if r.transform == PAGE_ADAPTER_TRANSFORM), None)
     for f in findings.findings:
         rule = rules.get(f.rule or "")
+        if (
+            page_rule is not None
+            and rule is page_rule
+            and f.cls != "clear"
+            and isinstance(f.evidence, RegistrationEvidence)
+        ):
+            page_targets[(f.kind, f.key, f.evidence.path)] = f.evidence.sha256
+            groups.setdefault((f.kind, f.key, f.evidence.path), {})
+            continue
         if (
             rule is None
             or rule.transform is None
@@ -772,7 +809,7 @@ def convert(
         (f.kind, f.key, f.evidence.path): f.evidence.sha256
         for f in findings.findings
         if isinstance(f.evidence, ContentEvidence)
-    }
+    } | page_targets
 
     # Form handlers: the library's functions that are registered, read from the forms. A
     # library with convertible ones joins its group with the form rule, which runs last.
@@ -880,12 +917,65 @@ def convert(
                     entry.files = dict(files)
                 entries.append(entry)
 
+    def adapter_name(package: str) -> str:
+        return (adapter_resource or "").replace("{package}", package)
+
     entries: list[Entry] = []
     adapter_uses: dict[str, set[Used]] = {}
     #: Each library (lowercase name) the odata-v2 transform rewrote, with its work packages.
     rewrote: dict[str, set[str]] = {}
-    for (kind, key, path), group in groups.items():
+
+    def is_page(record: Record | None) -> bool:
+        return record is not None and record.fields.get("web_resource_type") == HTML_PAGE
+
+    def page_step(
+        key: str, name: str, source: bytes, current: bytes
+    ) -> tuple[Plan, str, bool, bytes] | None:
+        """The adapter rule's step on a page as ``(plan, reason, applied, patched)``, or None when
+        the page already loads the adapter ahead of every script this run rewrote.
+        """
+        where = set(held.get(f"web_resource:{key}", [UNPACKAGED]))
+        resource = adapter_name(min(where)) if adapter_resource is not None else ""
+        found = plan_page_adapter(current, source, name, resource, rewrote.keys())
+        loaded = {
+            n.lower()
+            for t in script_tags(current) or ()
+            if t.src is not None and (n := resolve_src(name, t.src)) is not None
+        } & rewrote.keys()
+        if isinstance(found, str):
+            reason = found
+        elif adapter_resource is None:
+            reason = "the adapter's web resource name is not known: pass --adapter-resource"
+        elif any(rewrote[n] != where for n in loaded):
+            reason = (
+                "the page is not in exactly the work packages that ship the scripts it loads"
+                " that were rewritten"
+            )
+        elif "{package}" in adapter_resource and len(where) != 1:
+            reason = "the page sits in several work packages, whose adapters have different names"
+        else:
+            reason = ""
+        if reason:
+            return Plan((), ()), reason, False, current
+        if found is None or isinstance(found, str):
+            return None
+        plan = Plan((found,), ())
+        patched = _apply(current, plan.edits) or b""
+        if patched.count(b"\n") != current.count(b"\n"):
+            reason = "the rewrite changes the line count"
+        else:
+            reason = page_adapter_gate(current, patched, source, name, resource, rewrote.keys())
+        if reason:
+            return plan, f"emit gate rejected the rewrite: {reason}", False, current
+        return plan, "", True, patched
+
+    # Pages go last: a page's registration needs every library's rewrite settled first.
+    for (kind, key, path), group in sorted(
+        groups.items(), key=lambda g: is_page(records.get((g[0][0], g[0][1])))
+    ):
         record = records.get((kind, key))
+        page = is_page(record)
+        staged: list[Plan] = []
         source, problem = b"", ""
         try:
             raw = (inventory_dir / path).read_bytes()
@@ -905,18 +995,28 @@ def convert(
                 and record is not None
                 and record.fields.get("web_resource_type") in transform.web_resource_types
             ):
-                tree = parse(transform.language, current)
-                if transform.needs_handlers:
-                    plan = transform.plan(
-                        tree,
-                        handlers.get((kind, key, path), {}),
-                        others(path),
-                        commands.get((kind, key, path), frozenset()),
+                if page:
+                    got = plan_inline(
+                        current,
+                        transform.language,
+                        (lambda root, t=transform: t.plan(root, target))
+                        if transform.needs_target
+                        else transform.plan,
                     )
-                elif transform.needs_target:
-                    plan = transform.plan(tree, target)
+                    plan, reason = (Plan((), ()), got) if isinstance(got, str) else (got, "")
                 else:
-                    plan = transform.plan(tree)
+                    tree = parse(transform.language, current)
+                    if transform.needs_handlers:
+                        plan = transform.plan(
+                            tree,
+                            handlers.get((kind, key, path), {}),
+                            others(path),
+                            commands.get((kind, key, path), frozenset()),
+                        )
+                    elif transform.needs_target:
+                        plan = transform.plan(tree, target)
+                    else:
+                        plan = transform.plan(tree)
             elif not reason:
                 reason = f"transform {rule.transform} does not read this web resource type"
             applied = False
@@ -928,20 +1028,54 @@ def convert(
                     reason = "the rewrite changes the line count"
                 elif (pattern := _pattern(rule, rules)) is not None:
                     n = len(plan.edits) if plan.cleared is None else plan.cleared
-                    reason = _gate(pattern, transform, current, patched, n) or ""
+                    reason = _gate(pattern, transform, current, patched, n, page) or ""
                 if reason:
                     reason = f"emit gate rejected the rewrite: {reason}"
                 elif patched is not None:
                     current, applied = patched, True
-                    for pkg in held.get(f"{kind}:{key}", [UNPACKAGED]):
-                        adapter_uses.setdefault(pkg, set()).update(plan.adapter)
-                    rewritten.update((lib_of.get((kind, key, path), ""), f) for f in plan.done)
-                    if rule.transform == "odata-v2" and record is not None:
-                        rewrote[str(record.fields.get("name", "")).lower()] = set(
-                            held.get(f"{kind}:{key}", [UNPACKAGED])
-                        )
+                    if page:
+                        staged.append(plan)
+                    else:
+                        for pkg in held.get(f"{kind}:{key}", [UNPACKAGED]):
+                            adapter_uses.setdefault(pkg, set()).update(plan.adapter)
+                        rewritten.update((lib_of.get((kind, key, path), ""), f) for f in plan.done)
+                        if rule.transform == "odata-v2" and record is not None:
+                            rewrote[str(record.fields.get("name", "")).lower()] = set(
+                                held.get(f"{kind}:{key}", [UNPACKAGED])
+                            )
             if plan.edits or plan.unproven or reason:
                 steps.append((rule, plan, reason, applied))
+        # A page with a rewritten inline script needs its registration even where the findings
+        # file holds no page-rule hit (made before the rule, or filtered by hand).
+        if page and page_rule is not None and ((kind, key, path) in page_targets or staged):
+            step = (
+                (Plan((), ()), problem, False, source)
+                if problem
+                else page_step(
+                    key, str(record.fields.get("name", "")) if record else "", source, current
+                )
+            )
+            if step is not None:
+                step_plan, step_reason, step_applied, current = step
+                steps.append((page_rule, step_plan, step_reason, step_applied))
+                if not step_applied:
+                    # No registration, so the page's rewritten calls would have no adapter: the
+                    # page stays as it was and says why on each entry.
+                    steps = [
+                        (
+                            r,
+                            p,
+                            f"the adapter cannot be registered on this page: {step_reason}",
+                            False,
+                        )
+                        if ap
+                        else (r, p, rs, ap)
+                        for r, p, rs, ap in steps
+                    ]
+                    staged, current = [], source
+        for plan in staged:
+            for pkg in held.get(f"{kind}:{key}", [UNPACKAGED]):
+                adapter_uses.setdefault(pkg, set()).update(plan.adapter)
         emit(kind, key, path, steps, source, current)
     # The adapter's web resource name per work package: known now, before any file is written, so
     # a name that cannot serve every package refuses the run.
@@ -956,9 +1090,6 @@ def convert(
             f" the work packages {', '.join(adapter_pkgs)} differ: put {{package}} in the name"
             " to give each package its own"
         )
-
-    def adapter_name(package: str) -> str:
-        return (adapter_resource or "").replace("{package}", package)
 
     def adapter_step(form: _Form, current: bytes) -> tuple[Plan, str, bool, bytes] | None:
         """The adapter rule's step on *form* as ``(plan, reason, applied, patched)``, or None when

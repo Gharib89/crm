@@ -610,7 +610,9 @@ def inventory_verify_cmd(
     "adapter_resource",
     help="The web resource name the OData v2 adapter will have in the target org; {package}"
     " expands to the work package id. A form that lists a rewritten library gets the adapter"
-    " listed ahead of it. Without it each such form is a manual-review entry.",
+    " listed ahead of it, and an HTML page that loads a rewritten library or holds a rewritten"
+    " inline script gets a script tag for it. Without it each such form or page is a"
+    " manual-review entry.",
 )
 @click.option(
     "--out",
@@ -658,7 +660,10 @@ def inventory_convert_cmd(
     have in the org, `{package}` expanding to the work package id) a form that lists a
     rewritten library gets a `Library` element for the adapter immediately ahead of the first
     such library, on the same line, and the ledger's `adapters` entry records that name: upload
-    the adapter under it and publish. Without the flag each such form is a manual-review entry,
+    the adapter under it and publish. An HTML web resource (also read by the OData v2
+    transform, in its inline scripts) gets a `<script src>` for the adapter immediately ahead
+    of its first rewritten script, on the same line; its inline rewrite stays only when that
+    registration is proven. Without the flag each such form or page is a manual-review entry,
     and several work packages with adapters need `{package}` in the name (exit 1 otherwise,
     before anything is written). A component with no
     transformable finding writes nothing. Nothing is written outside --out; apply a

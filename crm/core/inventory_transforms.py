@@ -1142,3 +1142,8 @@ register(HANDLER_TRANSFORM, Transform("javascript", (3,), _plan_handler_context,
 #: the rule names, and no web resource type selects it.
 ADAPTER_TRANSFORM = "form-odata-adapter"
 register(ADAPTER_TRANSFORM, Transform("javascript", (), lambda *_: Plan((), ())))
+
+#: The web-resource-kind transform that loads the OData v2 adapter in an HTML page. Like
+#: `ADAPTER_TRANSFORM` it has no script half: `inventory_html` plans its edit.
+PAGE_ADAPTER_TRANSFORM = "html-odata-adapter"
+register(PAGE_ADAPTER_TRANSFORM, Transform("javascript", (), lambda *_: Plan((), ())))

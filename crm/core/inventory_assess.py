@@ -37,6 +37,7 @@ from crm.core.inventory import (
     parse_manifest,
 )
 from crm.core.inventory_csproj import detect_csproj
+from crm.core.inventory_html import HTML_PAGE, inline_hits, resolve_src, script_tags
 from crm.core.inventory_source_map import mapped_projects, read_source_map, require_inventory
 from crm.utils.safe_xml import fromstring
 
@@ -124,6 +125,16 @@ class FormLibraryOrder:
 
 
 @dataclass(frozen=True)
+class HtmlLibraryOrder:
+    """An HTML web resource whose script loaded by ``src``, or inline, carries *library_rule*'s
+    content pattern with no script matching *adapter_pattern* ahead of it.
+    """
+
+    library_rule: str
+    adapter_pattern: re.Pattern[str]
+
+
+@dataclass(frozen=True)
 class Rule:
     """One compatibility rule, applying from source version *source_from* to *source_before*."""
 
@@ -140,6 +151,7 @@ class Rule:
         | FormHandlerContext
         | RibbonActionParameter
         | FormLibraryOrder
+        | HtmlLibraryOrder
         | PluginProject
     )
     fix: str
@@ -159,6 +171,8 @@ class Rule:
         if record.kind != self.kind:
             return False
         d = self.detection
+        if isinstance(d, HtmlLibraryOrder):
+            return record.fields.get("web_resource_type") == HTML_PAGE
         return not isinstance(d, ContentPattern) or (
             record.fields.get("web_resource_type") in d.web_resource_types
         )
@@ -210,6 +224,7 @@ def _detection(
     | FormHandlerContext
     | RibbonActionParameter
     | FormLibraryOrder
+    | HtmlLibraryOrder
     | PluginProject
 ):
     obj = _obj(value, where)
@@ -244,6 +259,18 @@ def _detection(
                 f"rules file {where}.adapter_pattern does not compile: {exc}"
             ) from exc
         return FormLibraryOrder(_text(obj, "library_rule", where), adapter)
+    if detection_type == "html_library_order":
+        if kind != "web_resource":
+            raise InventoryError(
+                f"rules file {where}: html_library_order applies to web_resource only"
+            )
+        try:
+            adapter = re.compile(_text(obj, "adapter_pattern", where))
+        except re.error as exc:
+            raise InventoryError(
+                f"rules file {where}.adapter_pattern does not compile: {exc}"
+            ) from exc
+        return HtmlLibraryOrder(_text(obj, "library_rule", where), adapter)
     if detection_type == "ribbon_action_parameter":
         if kind != "ribbon_diff":
             raise InventoryError(
@@ -260,7 +287,8 @@ def _detection(
         return PluginProject()
     raise InventoryError(
         f"rules file {where}.type {detection_type!r} is not content_pattern, field_in, "
-        "form_handler_context, form_library_order, ribbon_action_parameter or plugin_project"
+        "form_handler_context, form_library_order, html_library_order, ribbon_action_parameter"
+        " or plugin_project"
     )
 
 
@@ -334,7 +362,9 @@ def parse_rules(data: object, sha256: str = "") -> Rules:
     content = {r.id for r in rules if isinstance(r.detection, ContentPattern)}
     for r in rules:
         d = r.detection
-        if not isinstance(d, FormHandlerContext | RibbonActionParameter | FormLibraryOrder):
+        if not isinstance(
+            d, FormHandlerContext | RibbonActionParameter | FormLibraryOrder | HtmlLibraryOrder
+        ):
             continue
         if d.library_rule not in content:
             raise InventoryError(
@@ -743,6 +773,17 @@ class _Libraries:
             )
         return self._known[slot]
 
+    def known(self, name: str) -> bool:
+        """True when a web resource of that name is in the inventory."""
+        return name.lower() in self._by_name
+
+    def pattern(self, rule_id: str) -> re.Pattern[str] | None:
+        """The content pattern of rule *rule_id*, or None when it is not a loaded content rule."""
+        rule = self._rules.get(rule_id)
+        return (
+            rule.detection.pattern if rule and isinstance(rule.detection, ContentPattern) else None
+        )
+
     def _read(
         self, rule: Rule, name: str, pattern: re.Pattern[str] | None
     ) -> tuple[bool, str | None]:
@@ -857,6 +898,56 @@ def _library_order(
     return out
 
 
+def _html_order(
+    rule: Rule,
+    d: HtmlLibraryOrder,
+    path: str,
+    sha256: str,
+    text: str,
+    page: str,
+    libs: _Libraries,
+    finding: Callable[..., Finding],
+) -> list[Finding]:
+    """A page is a hit when a script it loads, or an inline script, carries *d*'s library rule with
+    no adapter script ahead of it.
+
+    A ``src`` that names no web resource of the inventory (another host, a path above the root,
+    a name the inventory lacks) is not a patched library and is never matched by file name.
+    """
+    data = text.encode("utf-8")
+    tags = script_tags(data)
+    if tags is None:
+        return [finding("unknown", rule.id, f"the page's <script> tags cannot be placed: {path}")]
+    call = libs.pattern(d.library_rule)
+    inline = inline_hits(data, tags, call) if call is not None else {}
+    unknown: set[str] = set()
+    adapter_seen, first = False, None
+    for i, tag in enumerate(tags):
+        body = data[tag.body[0] : tag.body[1]].decode("utf-8")
+        if tag.src is None:
+            if tag.javascript and d.adapter_pattern.search(body):
+                adapter_seen = True
+            elif first is None and not adapter_seen and i in inline:
+                first = {"inline": inline[i]}
+            continue
+        name = resolve_src(page, tag.src)
+        if name is None or not libs.known(name):
+            continue
+        is_adapter, why = libs.carries(d.library_rule, name, d.adapter_pattern)
+        if why is not None:
+            unknown.add(why)
+        elif is_adapter:
+            adapter_seen = True
+        elif first is None and not adapter_seen and libs.carries(d.library_rule, name)[0]:
+            first = {"library": name}
+    out = [finding("unknown", rule.id, why) for why in sorted(unknown)]
+    if first is not None:
+        out.append(
+            finding(rule.cls, rule.id, None, RegistrationEvidence(path, sha256, (first,), 1))
+        )
+    return out
+
+
 def _registrations(
     rule: Rule,
     path: str,
@@ -954,6 +1045,19 @@ def _assess_record(
             for path, text in sorted(texts.items()):
                 out += _registrations(
                     rule, path, sha[path], text, libs or _Libraries((), folder), finding
+                )
+            continue
+        if isinstance(d, HtmlLibraryOrder):
+            for path, text in sorted(texts.items()):
+                out += _html_order(
+                    rule,
+                    d,
+                    path,
+                    sha[path],
+                    text,
+                    str(record.fields.get("name", "")),
+                    libs or _Libraries((), folder),
+                    finding,
                 )
             continue
         if isinstance(d, PluginProject):

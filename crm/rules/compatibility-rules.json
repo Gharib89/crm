@@ -541,6 +541,32 @@
       ]
     },
     {
+      "id": "web-resource-page-no-odata-adapter",
+      "kind": "web_resource",
+      "class": "deprecated",
+      "title": "An HTML web resource loads a script with an OData v2 call, or calls the endpoint inline, and does not load the OData v2 adapter ahead of it",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "html_library_order",
+        "library_rule": "web-resource-odata-v2",
+        "adapter_pattern": "global\\.CrmODataV2\\s*="
+      },
+      "transform": "html-odata-adapter",
+      "fix": "Load the web resource holding the generated OData v2 adapter (crm-odata-v2-adapter.js) with a script tag ahead of the first script that calls the OData v2 endpoint, loaded by src or written inline. A page whose script tags or libraries cannot be read is unknown, not clear.",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/best-practices/business-logic/do-not-use-odata-v2-endpoint",
+        "https://learn.microsoft.com/power-platform/important-changes-coming",
+        "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/avoid-crm2011-service-odata"
+      ]
+    },
+    {
       "id": "ribbon-action-no-primary-control",
       "kind": "ribbon_diff",
       "class": "deprecated",
