@@ -111,8 +111,8 @@ entry has a task, and each patch builds clean in the repository.
 
 A plug-in project is converted when the source map matched its assembly to exactly one project
 and `--repo` names the checkout. Its ledger entry is `kind` `plugin_assembly`, keyed by the
-assembly, one per work package, `rule` and `transform` both `csproj-sdk-net462` (the rule id
-`assess` flagged the same project with, when given the map and `--repo`). Apply the
+assembly, one per work package, `rule` and `transform` both `csproj-sdk-net462`, the id of the `assess` blocker on the
+same project. Apply the
 `.patched.csproj` by copying it over the project (the diff is against LF text, so a CRLF file
 refuses it).
 

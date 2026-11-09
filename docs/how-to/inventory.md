@@ -804,8 +804,10 @@ documentation says the same, so the rule applies to both targets. Both pages are
 `sources`, under `rules_hit`. A project at 4.6.2 or later with package references yields no finding
 of this rule, so the assembly keeps its other findings, or `clear`. The evidence's `fired` lists
 the condition that held (`framework`, `sdk_references` or both), `locations` the declaration and
-each reference, and `match_count` their number. The detector is the one `convert` retargets by,
-so the two cannot disagree on a project.
+each reference, and `match_count` their number. One function decides the floor and the SDK 5.0
+references for both commands, so `assess` and `convert` agree on them. `convert` also refuses a
+project that is not a class library (a `ProjectTypeGuids` entry or an `OutputType` other than
+`Library`) as a whole-file manual review, which `assess` does not.
 
 An assembly the map leaves unmapped is not read and gets no finding of this rule, so a run without
 both flags is as it was. A project that is missing, not UTF-8 or not well-formed XML, or whose

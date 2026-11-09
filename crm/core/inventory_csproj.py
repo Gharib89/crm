@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import cast
 from xml.etree.ElementTree import Element, ParseError, indent, tostring
 
 from crm.utils.safe_xml import fromstring
@@ -104,24 +103,22 @@ def _below_floor(version: str | None) -> bool:
     return parts is None or parts < FLOOR
 
 
-def _target(version: str | None) -> str | None:
-    """The SDK ``TargetFramework`` for an old ``TargetFrameworkVersion``, or None if unreadable."""
-    if version is None:
-        return "net" + "".join(map(str, FLOOR))
-    parts = _parse_version(version)
-    return None if parts is None else "net" + "".join(map(str, max(parts, FLOOR)))
+def _target(version: str | None) -> str:
+    """The SDK ``TargetFramework`` for a validated version text, the floor if below."""
+    parts = None if _below_floor(version) else _parse_version(version or "")
+    return "net" + "".join(map(str, parts or FLOOR))
 
 
-def _read(text: str) -> tuple[Element | None, str | None]:
-    """The project's root, namespace stripped, or None and why it is not an MSBuild project."""
+def _read(text: str) -> Element | str:
+    """The project's root, namespace stripped, or why it is not an MSBuild project."""
     try:
         root = fromstring(text.lstrip("\ufeff").encode("utf-8"))
     except ParseError:
-        return None, "the project is not well-formed XML"
+        return "the project is not well-formed XML"
     _local(root)
     if root.tag != "Project":
-        return None, "not an MSBuild project: the root element is not Project"
-    return root, None
+        return "not an MSBuild project: the root element is not Project"
+    return root
 
 
 def _declared_version(root: Element) -> tuple[str | None, str | None]:
@@ -177,7 +174,7 @@ class Detection:
     4.6.2 and *sdk_references* the ``Microsoft.Xrm.Sdk`` and ``Microsoft.Crm.Sdk.Proxy``
     references, in file order. *sites* are the 1-based (line, column) of the framework
     declaration, when it is below the floor, and of each SDK reference, found in the text as
-    written (a commented-out copy can be located too). An SDK-style project holds none of it.
+    written, outside comments. An SDK-style project holds none of it.
     """
 
     reason: str | None = None
@@ -191,7 +188,13 @@ def _position(text: str, offset: int) -> tuple[int, int]:
     return text.count("\n", 0, offset) + 1, offset - (text.rfind("\n", 0, offset) + 1) + 1
 
 
+def _blank_comments(text: str) -> str:
+    """*text* with each XML comment replaced by spaces, so offsets and lines stay put."""
+    return re.sub(r"<!--.*?-->", lambda m: re.sub(r"[^\n]", " ", m[0]), text, flags=re.DOTALL)
+
+
 def _sites(text: str, framework: bool) -> tuple[tuple[int, int], ...]:
+    text = _blank_comments(text)
     found: list[int] = []
     declaration = re.search(r"<(?:\w+:)?TargetFrameworkVersion\b", text, re.IGNORECASE)
     if framework and declaration:
@@ -204,9 +207,9 @@ def _sites(text: str, framework: bool) -> tuple[tuple[int, int], ...]:
 
 def detect_csproj(text: str) -> Detection:
     """Judge one project's *text* the way `plan_csproj` does, without rewriting it."""
-    root, problem = _read(text)
-    if root is None:
-        return Detection(reason=problem)
+    root = _read(text)
+    if isinstance(root, str):
+        return Detection(reason=root)
     if root.get("Sdk") is not None:
         return Detection()
     declared, problem = _declared_version(root)
@@ -219,9 +222,9 @@ def detect_csproj(text: str) -> Detection:
 
 def plan_csproj(text: str) -> CsprojPlan:
     """Convert one old-style project's *text* (BOM and line endings are not significant)."""
-    root, problem = _read(text)
-    if root is None:
-        return _whole(cast(str, problem))
+    root = _read(text)
+    if isinstance(root, str):
+        return _whole(root)
     if root.get("Sdk") is not None:
         return _whole("already SDK-style: the retarget reads old-style projects only")
     props = {p.tag.lower(): p for g in root.iter("PropertyGroup") for p in g}
@@ -233,7 +236,7 @@ def plan_csproj(text: str) -> CsprojPlan:
     version, problem = _declared_version(root)
     if problem is not None:
         return _whole(problem)
-    framework = cast(str, _target(version))
+    framework = _target(version)
 
     review: list[Review] = []
     if "ilmerge" in text.lower():

@@ -407,6 +407,10 @@ class FieldEvidence:
         return {"field": self.field, "value": self.value}
 
 
+#: What a finding's *evidence* holds, by the kind of rule that raised it.
+Evidence = ContentEvidence | RegistrationEvidence | ProjectEvidence | FieldEvidence
+
+
 @dataclass(frozen=True)
 class Finding:
     """One compatibility finding on the component *kind*/*key*; *cls* is one of `CLASSES`.
@@ -421,7 +425,7 @@ class Finding:
     cls: str
     rule: str | None
     reason: str | None
-    evidence: ContentEvidence | RegistrationEvidence | ProjectEvidence | FieldEvidence | None
+    evidence: Evidence | None
     #: The row's usage (`crm.core.usage.Usage.to_dict`), set by the usage filter; absent means
     #: not read, never unused.
     usage: dict[str, Any] | None = None
@@ -537,9 +541,7 @@ def _field(obj: Any, name: str, kind: type, where: str) -> Any:
     return value
 
 
-def _evidence(
-    value: Any, where: str
-) -> ContentEvidence | RegistrationEvidence | ProjectEvidence | FieldEvidence | None:
+def _evidence(value: Any, where: str) -> Evidence | None:
     if value is None:
         return None
     if _get(value, "field") is not None:
@@ -861,11 +863,7 @@ def _assess_record(
         cls: str,
         rule: str | None,
         reason: str | None,
-        evidence: ContentEvidence
-        | RegistrationEvidence
-        | ProjectEvidence
-        | FieldEvidence
-        | None = None,
+        evidence: Evidence | None = None,
     ) -> Finding:
         return Finding(record.kind, record.key, cls, rule, reason, evidence)
 
@@ -956,9 +954,9 @@ def assess(
     inv = parse_manifest(data)
     projects: dict[str, str] = {}
     if source_map is not None:
-        map_ = read_source_map(source_map)
-        require_inventory(map_, hashlib.sha256(raw).hexdigest())
-        projects = mapped_projects(map_)
+        mapping = read_source_map(source_map)
+        require_inventory(mapping, hashlib.sha256(raw).hexdigest())
+        projects = mapped_projects(mapping)
     version = _dotted(inv.source.version)
     active = [r for r in rules.rules if target in r.targets]
     if version is not None:

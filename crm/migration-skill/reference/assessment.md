@@ -81,19 +81,19 @@ a web resource library (`$webresource:` or a `/WebResources/` path) without `Pri
 
 ## Read the plug-in project finding
 
-`csproj-sdk-net462` judges the project, not the registered assembly. It runs only when
-`assess` is given the source map and the repository (`reference/source-mapping.md`), and
-only for an assembly the map matched to exactly one project. Without them, or for an
-unmapped assembly, no project was read: a `clear` there says nothing about the build.
+`csproj-sdk-net462` judges the project, not the registered assembly, and only for an
+assembly the source map (`reference/source-mapping.md`) matched to exactly one project,
+with the map and the repository passed to `assess`. Anywhere else no project was read:
+a `clear` there says nothing about the build.
 
-- **`blocker`** means the project targets .NET Framework below 4.6.2 (a project that
-  declares no version counts) or references the SDK 5.0 `Microsoft.Xrm.Sdk` or
+- **`blocker`** means the project targets .NET Framework below 4.6.2 (`target_framework_version`
+  null: none declared, which counts) or references the SDK 5.0 `Microsoft.Xrm.Sdk` or
   `Microsoft.Crm.Sdk.Proxy`. The evidence's `fired` says which: `framework`,
   `sdk_references` or both. Quote it with `target_framework_version`, `sdk_references` and
   the repository `path`. The floor's source is in `rules_hit`.
-- **`unknown`** reasons start `project <path>`: the file is missing, not UTF-8 or not
-  well-formed XML, or declares its framework under a condition. Fix the repository or the
-  map, then re-run.
+- **`unknown`** reasons start `project <path>` and say why the project could not be
+  judged (unreadable, not an MSBuild project, or no single unconditional framework
+  version). Fix the repository or the map, then re-run.
 - The same project is what `convert --repo` retargets (`reference/remediation.md`), so a
   blocker here has a patch there; an SDK-style project is neither flagged nor patched.
 

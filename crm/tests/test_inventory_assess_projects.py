@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from dataclasses import replace
@@ -108,6 +109,54 @@ def test_detector_says_why_it_cannot_judge(text: str, reason: str) -> None:
     assert reason in (detect_csproj(text).reason or "")
 
 
+_MSBUILD = "http://schemas.microsoft.com/developer/msbuild/2003"
+
+
+def _project_with(framework: str, *references: str, before: str = "") -> str:
+    items = "".join(f"    {ref}\n" for ref in references)
+    return (
+        f'<Project xmlns="{_MSBUILD}" xmlns:m="{_MSBUILD}">\n{before}'
+        f"  <PropertyGroup>\n    <TargetFrameworkVersion>{framework}</TargetFrameworkVersion>\n"
+        f"  </PropertyGroup>\n  <ItemGroup>\n{items}  </ItemGroup>\n</Project>\n"
+    )
+
+
+@pytest.mark.parametrize(
+    ("text", "lines"),
+    [
+        pytest.param(
+            _project_with("v4.6.2", '<!-- <Reference Include="Microsoft.Xrm.Sdk" /> -->'),
+            [],
+            id="a commented-out reference",
+        ),
+        pytest.param(
+            _project_with(
+                "v4.0",
+                before="  <!--\n  <PropertyGroup>\n"
+                "    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>\n"
+                "  </PropertyGroup>\n  -->\n",
+            ),
+            [8],
+            id="a commented-out framework declaration comes first",
+        ),
+        pytest.param(
+            _project_with("v4.6.2", "<Reference Include='Microsoft.Xrm.Sdk, Version=5.0.0.0' />"),
+            [6],
+            id="a single-quoted include",
+        ),
+        pytest.param(
+            _project_with("v4.6.2", '<m:Reference Include="Microsoft.Crm.Sdk.Proxy" />'),
+            [6],
+            id="a prefixed tag",
+        ),
+    ],
+)
+def test_detector_sites_agree_with_what_it_counts(text: str, lines: list[int]) -> None:
+    found = detect_csproj(text)
+    assert len(found.sites) == len(found.sdk_references) + found.below_floor
+    assert [line for line, _ in found.sites] == lines
+
+
 # ── assess reads the mapped projects ────────────────────────────────────────
 
 
@@ -145,12 +194,10 @@ def test_a_floor_project_with_package_references_yields_no_finding(world: World)
 
 
 def test_the_evidence_hash_is_the_normalized_project_and_locates_each_site(world: World) -> None:
-    import hashlib
-
     path = _project(world)
     path.write_bytes(path.read_text(encoding="utf-8").replace("\n", "\r\n").encode("utf-8"))
     (hit,) = _hits(_assess(world))
-    lines = OLD_STYLE.lstrip("﻿").splitlines()
+    lines = OLD_STYLE.lstrip("\ufeff").splitlines()
     want = [i for i, ln in enumerate(lines, 1) if "TargetFrameworkVersion" in ln]
     want += [i for i, ln in enumerate(lines, 1) if 'Include="Microsoft.' in ln]
     assert sorted(line for line, _ in hit.evidence.locations) == sorted(want)

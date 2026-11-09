@@ -218,13 +218,10 @@ inventory, for one target, and writes a findings file.
   of an inventory whose org version extract could not read: re-extract.
 - **Quote the evidence**: a script hit carries the artifact `path`, `sha256` and match
   `locations` (line, column); a registration hit carries the `field` and `value`; a form or ribbon hit carries
-  the flagged `registrations`. The
+  the flagged `registrations`; a plug-in project hit carries the repository `path`,
+  `target_framework_version` (null: none declared, which counts as below 4.6.2),
+  `sdk_references` and `fired` (`framework`, `sdk_references` or both). The
   fix and the Microsoft Learn sources of each rule hit are under `rules_hit`.
-- **Pass the source map and `--repo` together to judge plug-in projects.** Only then does
-  `assess` read the project of each assembly the map matched to exactly one project, and
-  raise `csproj-sdk-net462` (below .NET Framework 4.6.2, or SDK 5.0 references; the evidence
-  says which). An assembly without a mapped project is not judged on this, and an unreadable
-  project is `unknown`.
 - **Read `counts.by_class`, not the exit code**: a blocker exits 0.
 - **`field isolation_mode not recorded`** marks an inventory extracted by an older crm:
   re-extract to judge the isolation rules.
