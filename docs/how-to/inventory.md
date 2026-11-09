@@ -874,11 +874,13 @@ library), is not touched. Without `--repo` no project is read, and `--repo` with
 These are **manual-review entries**. A `Microsoft.Xrm.Client` or `Microsoft.Xrm.Sdk.Workflow`
 reference (the package carries neither) and any ILMerge use are flagged on a patched project, the
 reference or merge step kept as written. A project that is not a class library, is already
-SDK-style, sets `ProjectTypeGuids`, has a `TargetFrameworkVersion` that is not a version, is not well-formed or no longer
-exists under `--repo` is left untouched, with one whole-file entry (no `line`).
+SDK-style, sets `ProjectTypeGuids`, has a `TargetFrameworkVersion` that is not a version, is not
+well-formed, or is missing or not UTF-8 under `--repo`, is left untouched, with one whole-file
+entry (no `line`).
 
 The ledger entry has `kind` `plugin_assembly`, the assembly's component key, one entry per work
-package holding it (`unpackaged` when none does); a patched entry has `edits` 1 and `repo_path` the project's path.
+package holding it (`unpackaged` when none does); a patched entry has `edits` 1 and `repo_path`
+the project's path.
 Its `rule` and `transform` are both `csproj-sdk-net462`: the repository, not the inventory, is what
 it detects on, so no rules-file rule names it. Per project, `--out/<package id>/` holds
 `<repo path, "/" as "__">.diff` against the repository path and `.patched.csproj`, the full
