@@ -60,14 +60,14 @@ def test_second_save_uses_new_nonce_and_same_key(kr):
     token_store.save("p", CACHE)
     second = token_store.cache_path("p").read_bytes()
     n = len(token_store._MAGIC)
-    assert first[n : n + 12] != second[n : n + 12]
+    assert first[n : n + token_store._NONCE_LEN] != second[n : n + token_store._NONCE_LEN]
     assert kr.store == key
 
 
 def test_fail_backend_writes_plaintext_0600(no_kr):
     assert token_store.save("p", CACHE) == "plaintext"
     path = token_store.cache_path("p")
-    assert path.read_text() == CACHE
+    assert path.read_text(encoding="utf-8") == CACHE
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     assert token_store.load("p") == CACHE
 
@@ -99,7 +99,7 @@ def test_flipped_byte_loads_empty(kr):
 
 def test_wrong_key_loads_empty(kr):
     token_store.save("p", CACHE)
-    kr.store[("crm", "token-cache-key:p")] = base64.b64encode(b"\x01" * 32).decode()
+    kr.store[("crm", token_store._key_account("p"))] = base64.b64encode(b"\x01" * 32).decode()
     assert token_store.load("p") == ""
 
 
@@ -111,7 +111,7 @@ def test_missing_key_loads_empty(kr):
 
 def test_undecodable_key_loads_empty(kr):
     token_store.save("p", CACHE)
-    kr.store[("crm", "token-cache-key:p")] = "not base64!"
+    kr.store[("crm", token_store._key_account("p"))] = "not base64!"
     assert token_store.load("p") == ""
 
 

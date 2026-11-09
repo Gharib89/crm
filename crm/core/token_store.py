@@ -4,10 +4,11 @@ A delegated cache holds a refresh token carrying the user's full Dataverse role,
 and one account serializes to far more than Windows Credential Manager's
 2,560-byte blob limit, so the cache cannot live in the keyring. It is an
 AES-256-GCM file in the state home; only its 32-byte key goes in the OS keyring
-(service ``crm``, account ``token-cache-key:<profile>``, so it never collides
-with a profile secret). With no usable keyring the file is plaintext ``0600``,
-the same rule profile secrets follow, and ``save`` returns ``"plaintext"`` so the
-caller surfaces the warning (``crm/core`` cannot import ``crm/commands``).
+(service ``crm``, account ``token-cache-key/<profile>``; ``/`` is barred from
+profile names, so it never collides with a profile secret). With no usable
+keyring the file is plaintext ``0600``, the same rule profile secrets follow,
+and ``save`` returns ``"plaintext"`` so the caller surfaces the warning
+(``crm/core`` cannot import ``crm/commands``).
 
 App sign-in's ``msal_token_cache.json`` is separate and unchanged.
 """
@@ -40,7 +41,7 @@ def cache_path(profile: str) -> Path:
 
 
 def _key_account(profile: str) -> str:
-    return f"token-cache-key:{profile}"
+    return f"token-cache-key/{profile}"
 
 
 def _read_key(profile: str) -> bytes | None:
