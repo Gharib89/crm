@@ -195,7 +195,7 @@ def _filter(value: str, entity: TargetEntity) -> str:
             if (
                 len(w) == 5
                 and [t[1] for t in (w[0], w[2], w[4])] == ["(", ",", ")"]
-                and w[1][0] in ("str", "hole")
+                and w[1][0] == "str"
                 and w[3][0] == "name"
             ):
                 out.append(f"{lead}contains({_attribute(w[3][1], entity)},{w[1][1]})")
@@ -208,6 +208,10 @@ def _filter(value: str, entity: TargetEntity) -> str:
             out.append(lead + text)
         elif kind == "name":
             out.append(lead + (text if text in _KEYWORDS else _attribute(text, entity)))
+        elif kind == "hole":
+            raise _No(
+                "a non-literal piece of $filter outside a string or guid literal may be v2 syntax"
+            )
         elif kind == "guid":
             out.append(lead + (group if group != _HOLE else _HOLE))
         elif kind == "date":
