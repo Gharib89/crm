@@ -63,7 +63,8 @@ A task missing a field names it as an unknown.
 Run `crm inventory convert` after `assess` and `packages`; it writes only into a
 new `--out` folder (`--help` has the inputs). A finding gets a patch only when its
 rule names a transform. Every transform reads JavaScript web resources only (the form handler one also patches form XML), and
-one file's rules all land in one patch (one ledger entry per rule). Which rows of
+one file's rules all land in one patch (one ledger entry per rule). Plug-in projects
+are the one C# step (see "Plug-in projects" below). Which rows of
 Microsoft's client API deprecation table convert:
 
 | Rewritten (`patched`) | Manual review, code untouched |
@@ -101,3 +102,19 @@ spans lines are manual review for every row. Work from `ledger.json`:
 Done when every package task, every `unplaced` finding and every unknown edge in
 `index.json` has its six fields or a named unknown, every `manual-review` ledger
 entry has a task, and each patch builds clean in the repository.
+
+## Plug-in projects: retarget, then build outside convert
+
+A plug-in project is converted when the source map matched its assembly to exactly one project
+and `--repo` names the checkout. Its ledger entry is `kind` `plugin_assembly`, keyed by the
+assembly, one per work package, `rule` and `transform` both `csproj-sdk-net462`. Apply the
+`.patched.csproj` by copying it over the project (the diff is against LF text, so a CRLF file
+refuses it).
+
+- `patched` entries with `manual-review` lines: a `Microsoft.Xrm.Client` or
+  `Microsoft.Xrm.Sdk.Workflow` reference (the `Microsoft.CrmSdk.CoreAssemblies` package carries
+  neither) or an ILMerge step stays as written. Each is a task.
+- A whole-file `manual-review` entry with no patch: the project is not a class library, is
+  already SDK-style, or is unreadable.
+- Builds happen outside convert, on the build worker. A Linux host with the .NET SDK is enough
+  (a pilot built 9 of 9 converted projects that way). A failed build is a task on that project.
