@@ -9,6 +9,22 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.107.1 (2026-11-09)
+
+### Bug Fixes
+
+- **inventory**: A scoped run keeps a type the solution lists directly
+  ([#1163](https://github.com/Gharib89/crm/pull/1163),
+  [`feeab2e`](https://github.com/Gharib89/crm/commit/feeab2e0263fff91a02090e3c02f5732bd2dc31b))
+
+- **inventory**: Extract --solution skips a managed solution's ribbon diff and keeps plug-in types
+  ([#1163](https://github.com/Gharib89/crm/pull/1163),
+  [`feeab2e`](https://github.com/Gharib89/crm/commit/feeab2e0263fff91a02090e3c02f5732bd2dc31b))
+
+- **inventory**: Self-review round 1 fixes ([#1163](https://github.com/Gharib89/crm/pull/1163),
+  [`feeab2e`](https://github.com/Gharib89/crm/commit/feeab2e0263fff91a02090e3c02f5732bd2dc31b))
+
+
 ## v1.107.0 (2026-11-09)
 
 ### Bug Fixes
