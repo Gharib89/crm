@@ -158,9 +158,8 @@ def inventory_extract_cmd(
     plug-in types included), and keeps stock. A managed solution cannot be
     exported, so its ribbon diff is not read: it is recorded as a gap, and
     `ribbon_diff` reads `unsupported` when every named solution is managed.
-    Each finished read is
-    checkpointed under DIR/.checkpoint, so re-running the same command after
-    an interruption resumes, reusing the finished reads. A failed kind is
+    Each finished read is checkpointed under DIR/.checkpoint, so re-running
+    the same command after an interruption resumes, reusing the finished reads. A failed kind is
     recorded in the manifest's coverage and the run goes on (exit code 1); the
     checkpoint is removed once every read succeeds. Returns a short summary;
     the manifest holds the records, coverage and gaps.

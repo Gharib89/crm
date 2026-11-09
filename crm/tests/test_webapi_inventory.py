@@ -954,9 +954,15 @@ def test_a_mixed_scope_reads_the_unmanaged_diffs_and_gaps_the_managed_solution(t
     assert "fabrikam" in gap["description"]
 
 
-def test_a_managed_export_fault_on_an_unflagged_solution_is_a_one_line_gap(tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    "fault",
+    [_MANAGED_FAULT, "ExportManagedSolutionError", "Managed solutions cannot be exported."],
+)
+def test_a_managed_export_fault_on_an_unflagged_solution_is_a_one_line_gap(
+    tmp_path, monkeypatch, fault
+):
     def refuse(backend, name, dest, **kwargs):
-        raise D365Error(_MANAGED_FAULT, status=400)
+        raise D365Error(fault, status=400)
 
     monkeypatch.setattr(solution_transfer, "export_solution", refuse)
     out = tmp_path / "inv"
@@ -1019,3 +1025,21 @@ def test_a_scoped_run_keeps_the_types_of_the_assemblies_it_keeps(tmp_path):
     ]  # the type of the assembly outside the scope is left out
     (step,) = [r for r in data["records"] if r["kind"] == "step"]
     assert step["fields"]["plugin_type"] == "Contoso.Plugins|Contoso.Plugins.ProjectPlugin"
+
+
+def test_a_resume_keeps_the_gap_of_a_solution_the_server_refused_to_export(tmp_path, monkeypatch):
+    calls: list[str] = []
+
+    def refuse(backend, name, dest, **kwargs):
+        calls.append(name)
+        raise D365Error(_MANAGED_FAULT, status=400)
+
+    monkeypatch.setattr(solution_transfer, "export_solution", refuse)
+    out = tmp_path / "inv"
+    first = FakeBackend(fail={("systemforms", 1): D365Error("boom", status=500)})
+    assert not _extract(first, out, solutions=("contoso",)).complete
+    summary = _extract(FakeBackend(), out, solutions=("contoso",))
+    assert calls == ["contoso"] and summary.complete  # the second run did not export again
+    assert summary.kinds["ribbon_diff"] == {"status": "unsupported", "records": 0}
+    (gap,) = [g for g in _manifest(out)["gaps"] if g["kind"] == "ribbon_diff"]
+    assert "contoso" in gap["description"]
