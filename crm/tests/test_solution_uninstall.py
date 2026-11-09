@@ -87,6 +87,21 @@ class TestLostResponse:
                 _uninstall(backend, timeout=60)
         assert len(_deletes(m)) == 1
 
+    def test_history_filter_reads_finished_failed_rows_only(self, backend):
+        # A still-running Uninstall row can read result=false too; only a
+        # Completed (msdyn_status 1) row may end the wait (#1179 review).
+        from urllib.parse import unquote_plus
+
+        with requests_mock.Mocker() as m:
+            _mock_org(backend, m, history=[[], []])
+            m.delete(backend.url_for(f"solutions({_SOL_ID})"), exc=requests.exceptions.ReadTimeout)
+            m.get(backend.url_for(f"solutions({_SOL_ID})"), [{"json": {}}, _NOT_FOUND])
+            _uninstall(backend, timeout=60)
+        history = [r for r in m.request_history if "msdyn_solutionhistories" in r.url]
+        assert history
+        flt = unquote_plus(history[0].url)
+        assert "msdyn_status eq 1" in flt and "msdyn_result eq false" in flt
+
     def test_failed_row_from_before_the_delete_is_not_this_uninstall(self, backend):
         old = {"msdyn_solutionhistoryid": "row-0", "msdyn_exceptionmessage": "an older failure"}
         with requests_mock.Mocker() as m:

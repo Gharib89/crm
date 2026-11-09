@@ -912,7 +912,7 @@ def solution_clone_as_patch(ctx: CLIContext, parent_solution, display, version):
 )
 @click.option(
     "--timeout",
-    type=int,
+    type=click.IntRange(min=0),
     default=None,
     help="Seconds to wait for a long uninstall to finish after the request times out. "
     "Overrides profile.async_timeout.",

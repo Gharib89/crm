@@ -292,13 +292,14 @@ def uninstall_solution(
 
 
 def _failed_uninstall_rows(backend: D365Backend, sol_id: str) -> list[dict[str, Any]]:
-    """The solution's failed Uninstall rows in msdyn_solutionhistories (online orgs only)."""
+    """The solution's finished, failed Uninstall rows in msdyn_solutionhistories (online only)."""
     return backend.get_collection(
         "msdyn_solutionhistories",
         params={
             "$select": "msdyn_solutionhistoryid,msdyn_exceptionmessage",
+            # msdyn_status 1 = Completed: a row still running reads result false too (#1179).
             "$filter": f"msdyn_solutionid eq {sol_id} and msdyn_operation eq 1"
-            " and msdyn_result eq false",
+            " and msdyn_status eq 1 and msdyn_result eq false",
         },
     )
 

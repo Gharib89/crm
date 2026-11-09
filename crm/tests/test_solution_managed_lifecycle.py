@@ -326,6 +326,19 @@ class TestUninstallCommand:
         assert result.exit_code == 0, result.output
         assert captured == {"unique_name": "ManagedApp", "force": True, "timeout": 900}
 
+    def test_negative_timeout_is_a_usage_error_before_any_backend(self, monkeypatch):
+        called = {"core": False}
+        monkeypatch.setattr(
+            "crm.core.solution.uninstall_solution", lambda *a, **k: called.update(core=True)
+        )
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: called.update(core=True))
+        result = CliRunner().invoke(
+            cli,
+            ["--json", "solution", "uninstall", "--solution", "X", "--timeout", "-1", "--yes"],
+        )
+        assert result.exit_code == 2, result.output
+        assert called["core"] is False
+
     def test_abort_without_yes_on_non_tty(self, monkeypatch):
         # Under --json there is no interactive prompt: the helper must fail fast
         # with a clean envelope naming --yes.
