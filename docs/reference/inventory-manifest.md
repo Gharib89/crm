@@ -121,8 +121,8 @@ and the reader and the schema both check their shape when present:
 An `attribute` record also carries the facets its type defines (the table's Types
 column), so a column can be rebuilt as the source has it. Each is optional: another
 type omits it even where the metadata carries a value, and the same keys and units come
-from CRM 2011 and from v9 and Dataverse online. The schema types them; a reader ignores any it does not know, so adding them
-needed no `schema_version` bump.
+from CRM 2011 and from v9 and Dataverse online. The schema types them; a reader ignores
+any it does not know, so adding them needed no `schema_version` bump.
 
 | Field | Value | Types |
 |---|---|---|

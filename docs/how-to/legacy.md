@@ -72,9 +72,10 @@ entity with no label, such as an intersect entity), `custom`,
 `object_type_code`, `metadata_id` and `managed`. With entity names, `data` is `{"entities": [...], "errors":
 [...]}`, each entity carrying its attributes, relationships and option sets. An
 attribute also carries the type facets its type defines and the source returns:
-`max_length` (String, Memo), `format`, `default_value` (Boolean, Picklist),
-`precision`, `min_value`, `max_value` and `option_set_global` (Picklist), the same keys
-and units as `inventory extract` (see the [manifest
+`max_length` (String, Memo), `format` (String, Memo, Integer, DateTime),
+`default_value` (Boolean, Picklist), `precision` (Decimal, Money, Double), `min_value`
+and `max_value` (Decimal, Money, Integer, Double) and `option_set_global` (Picklist),
+the same keys and units as `inventory extract` (see the [manifest
 reference](../reference/inventory-manifest.md#attribute-facets)); an attribute leaves
 out the facets its type does not define. Entities,
 attributes, relationships and option sets each carry their `metadata_id` (the id
