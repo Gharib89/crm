@@ -225,3 +225,11 @@ def test_project_paths_that_fold_alike_get_distinct_files(world: World) -> None:
     d = _write_project(out, "pkg", "src/A/_B.csproj", b"a\n", b"b\n")
     names = [f["patched"] for f in (a, b, c, d)]
     assert len(set(names)) == 4
+
+
+def test_cli_repo_without_a_source_map_is_a_usage_error(world: World) -> None:
+    args = ["inventory", "convert", str(world.inventory), "--findings", str(world.findings)]
+    args += ["--packages", str(world.packages), "--repo", str(world.repo)]
+    res = CliRunner().invoke(cli, args + ["--out", str(world.out)])
+    assert res.exit_code == 2, res.output
+    assert not world.out.exists()

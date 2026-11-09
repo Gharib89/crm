@@ -861,7 +861,7 @@ With `--repo` (the checkout `map-source` read) and `--source-map`, convert also 
 plug-in assembly the map marks `matched` to exactly one `.csproj`; an assembly the map leaves
 `ambiguous`, `candidate` or `missing_source`, and a project only referenced by others (a shared
 library), is not touched. Without `--repo` no project is read, and `--repo` without
-`--source-map` exits **1**. The project is rewritten as a whole to SDK-style:
+`--source-map` is a usage error (exit **2**). The project is rewritten as a whole to SDK-style:
 
 | Old-style project | SDK-style result |
 |---|---|

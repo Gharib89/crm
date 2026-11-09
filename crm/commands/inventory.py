@@ -635,8 +635,11 @@ def inventory_convert_cmd(
     transformable finding writes nothing. Nothing is written outside --out; apply a
     patch yourself with `git apply`. An unreadable input, an input made from another
     inventory, a non-empty --out or one inside the inventory exits 1. Returns the
-    counts of patched components and manual-review entries, and the out path.
+    counts of patched components and manual-review entries, and the out path. --repo
+    without --source-map is a usage error (exit 2).
     """
+    if repo_dir is not None and source_map_file is None:
+        raise click.UsageError("--repo needs --source-map: the map names each project's path.")
     try:
         result = convert(
             inventory,
