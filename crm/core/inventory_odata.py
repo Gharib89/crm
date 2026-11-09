@@ -281,7 +281,47 @@ def _literal(node: Node) -> str | None:
     return text[1:-1]
 
 
-def _site(call: Node, url: Node, target: Target) -> tuple[list[Edit], tuple[Used, ...]]:
+_PARAM_PARENTS = frozenset(
+    ("formal_parameters", "assignment_pattern", "rest_pattern", "catch_clause")
+)
+
+
+def _xhr_names(root: Node) -> frozenset[str]:
+    """Variables every binding of which in the file is `new XMLHttpRequest()`.
+
+    The adapter assumes the native request object, so a name also bound to anything else (a
+    parameter, another value, a reassignment) is not proven one.
+    """
+    xhr: set[str] = set()
+    other: set[str] = set()
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        stack.extend(node.children)
+        name: Node | None = None
+        value: Node | None = None
+        if node.type == "variable_declarator":
+            name, value = node.child_by_field_name("name"), node.child_by_field_name("value")
+        elif node.type == "assignment_expression":
+            name, value = node.child_by_field_name("left"), node.child_by_field_name("right")
+        elif node.type == "identifier" and node.parent is not None:
+            parent = node.parent
+            if parent.type in _PARAM_PARENTS or (
+                parent.type == "arrow_function" and parent.child_by_field_name("parameter") == node
+            ):
+                other.add((node.text or b"").decode())
+        if name is None or name.type != "identifier":
+            continue
+        label = (name.text or b"").decode()
+        ctor = value.child_by_field_name("constructor") if value is not None else None
+        is_xhr = value is not None and value.type == "new_expression" and ctor is not None
+        (xhr if is_xhr and ctor and ctor.text == b"XMLHttpRequest" else other).add(label)
+    return frozenset(xhr - other)
+
+
+def _site(
+    call: Node, url: Node, target: Target, xhr: frozenset[str]
+) -> tuple[list[Edit], tuple[Used, ...]]:
     fn = call.child_by_field_name("function")
     args = call.child_by_field_name("arguments")
     recv = fn.child_by_field_name("object") if fn is not None else None
@@ -323,6 +363,11 @@ def _site(call: Node, url: Node, target: Target) -> tuple[list[Edit], tuple[Used
     template = _HOLE.join("".join(_literal(p) or "" for p in run) for run in runs)
     template = template[len(prefix) :]
     result = translate(template, target)
+    if (recv.text or b"").decode() not in xhr:
+        raise _No(
+            "the receiver of open is not a variable bound only to new XMLHttpRequest():"
+            " the adapter needs the native request object"
+        )
     segments = result.text.split(_HOLE)
     edits: list[Edit] = []
     for n, (run, segment) in enumerate(zip(runs, segments, strict=True)):
@@ -395,6 +440,7 @@ def _plan_odata(root: Node, target: Target | None) -> Plan:
             )
         else:
             sites.setdefault(call.id, (call, top))
+    xhr = _xhr_names(root)
     edits: list[Edit] = []
     used: list[Used] = []
     done = 0
@@ -403,7 +449,7 @@ def _plan_odata(root: Node, target: Target | None) -> Plan:
         try:
             if target is None:
                 raise _No("no --target-inventory: the Web API names cannot be resolved")
-            found, selected = _site(call, url, target)
+            found, selected = _site(call, url, target, xhr)
         except _No as why:
             unproven.append(Unproven(line, str(why)))
             continue

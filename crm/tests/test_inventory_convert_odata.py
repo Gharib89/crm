@@ -150,6 +150,22 @@ CASES: dict[str, tuple[str, str | None, int]] = {
         None,
         1,
     ),
+    "foreign-receiver": (
+        f'var req = customTransport;\nreq.open("GET", "{SVC}/AccountSet?$select=Name", false);\n',
+        None,
+        1,
+    ),
+    "reassigned-receiver": (
+        "var req = new XMLHttpRequest();\nreq = other();\n"
+        f'req.open("GET", "{SVC}/AccountSet?$select=Name", false);\n',
+        None,
+        1,
+    ),
+    "parameter-receiver": (
+        f'function f(req) {{ req.open("GET", "{SVC}/AccountSet?$select=Name", false); }}\n',
+        None,
+        1,
+    ),
     "skip": (
         f'req.open("GET", "{SVC}/AccountSet?$select=Name&$skip=10", false);\n',
         None,
@@ -162,10 +178,12 @@ CASES: dict[str, tuple[str, str | None, int]] = {
     ),
 }
 MIXED = (
+    "var a = new XMLHttpRequest(), b = new XMLHttpRequest();\n"
     f'a.open("GET", "{SVC}/AccountSet?$select=Name", false);\n'
     f'b.open("GET", "{SVC}/FooSet?$select=Name", false);\n'
 )
 MIXED_AFTER = (
+    "var a = new XMLHttpRequest(), b = new XMLHttpRequest();\n"
     f'CrmODataV2.open(a, "GET", "{NEW}/accounts?$select=name", false);\n'
     f'b.open("GET", "{SVC}/FooSet?$select=Name", false);\n'
 )
@@ -299,7 +317,7 @@ def test_a_file_converts_the_calls_it_can_and_lists_the_others(run):
     (entry,) = _entries(run["entries"], "mixed")
     assert entry["status"] == "patched" and entry["edits"] == 2
     assert _patched(run, entry) == MIXED_AFTER
-    assert len(entry["manual_review"]) == 1 and entry["manual_review"][0]["line"] == 2
+    assert len(entry["manual_review"]) == 1 and entry["manual_review"][0]["line"] == 3
 
 
 def test_an_endpoint_in_a_comment_is_not_a_site(run):
