@@ -70,7 +70,13 @@ whole org costs one read per entity (about two minutes for 425 entities).
 With no entity, `data` is a list of `logical_name`, `display_name` (null for an
 entity with no label, such as an intersect entity), `custom`,
 `object_type_code`, `metadata_id` and `managed`. With entity names, `data` is `{"entities": [...], "errors":
-[...]}`, each entity carrying its attributes, relationships and option sets. Entities,
+[...]}`, each entity carrying its attributes, relationships and option sets. An
+attribute also carries the type facets its type defines and the source returns:
+`max_length` (String, Memo), `format`, `default_value` (Boolean, Picklist),
+`precision`, `min_value`, `max_value` and `option_set_global`, the same keys and units
+as `inventory extract` (see the [manifest
+reference](../reference/inventory-manifest.md#attribute-facets)); an attribute leaves
+out the facets its type does not define. Entities,
 attributes, relationships and option sets each carry their `metadata_id` (the id
 [`legacy dependencies`](#read-dependencies) takes), and entities, attributes and
 relationships carry `managed`. The

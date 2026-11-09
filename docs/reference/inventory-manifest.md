@@ -116,6 +116,29 @@ and the reader and the schema both check their shape when present:
 | `form` | `handlers` | `[{event, attribute, function, library, enabled}]`, `attribute` `null` for a form-level event |
 | `process` | `activities` | plug-in type keys of the custom workflow activities the definition uses |
 
+### Attribute facets
+
+An `attribute` record also carries the facets its type defines, so a column can be
+rebuilt as the source has it. Each is optional: a type omits the facets it does not
+define, and the same keys and units come from CRM 2011 and from v9 and Dataverse
+online. The schema types them; a reader ignores any it does not know, so adding them
+needed no `schema_version` bump.
+
+| Field | Value | Types |
+|---|---|---|
+| `max_length` | integer | String, Memo |
+| `format` | the type's `Format` enum name (`Text`, `TextArea`, `DateOnly`, ...) | String, Memo, Integer, DateTime |
+| `default_value` | a boolean, or a picklist's `DefaultFormValue` integer (`-1` is no default) | Boolean, Picklist |
+| `precision` | integer | Decimal, Money, Double |
+| `min_value`, `max_value` | number; a whole value is an integer on both platforms | Decimal, Money, Integer, Double |
+| `option_set_global` | boolean: whether the option set is a global one | any attribute with an option set |
+
+A source that returns nothing for a facet leaves it out; there is no `null`.
+`inventory diff` compares a facet only where **both** manifests recorded it, so
+a manifest extracted before they existed does not read every column as changed. Both
+sides carrying it and differing is a `fields.<name>` change, `fields.max_length`
+for a changed length.
+
 ## Kind coverage
 
 `coverage` maps each kind to `{status, pages, records, truncated, errors}`.

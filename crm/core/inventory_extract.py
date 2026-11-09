@@ -44,6 +44,7 @@ from xml.etree.ElementTree import ParseError
 
 from crm.core import legacy_reads
 from crm.core.inventory import (
+    ATTRIBUTE_FACET_FIELDS,
     KEY_FIELDS,
     KINDS,
     MANIFEST_NAME,
@@ -1470,7 +1471,8 @@ class _Builder:
                 self.add(
                     "attribute", a.get("metadata_id"),
                     {"entity": entity, "logical_name": a["logical_name"], "type": a["type"],
-                     "required_level": a["required_level"], "option_set": a["option_set"]},
+                     "required_level": a["required_level"], "option_set": a["option_set"],
+                     **{f: a[f] for f in ATTRIBUTE_FACET_FIELDS if f in a}},
                     None, "custom" if a["custom"] else "system", a.get("managed"), [], 2,
                 )  # fmt: skip
                 local = local_sets.get(a["option_set"] or "")

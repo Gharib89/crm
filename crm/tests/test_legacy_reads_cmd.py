@@ -116,6 +116,11 @@ def test_metadata_entity_detail(crm_home):
     assert attrs["accountid"]["type"] == "Uniqueidentifier"
     assert attrs["name"]["required_level"] == "ApplicationRequired"
     assert attrs["name"]["option_set"] is None
+    assert attrs["name"]["max_length"] == 160
+    assert attrs["address1_addresstypecode"]["default_value"] == 1
+    assert attrs["donotemail"]["default_value"] is False
+    assert "new_tier" in attrs and "default_value" not in attrs["new_tier"]  # a nil default
+    assert "max_length" not in attrs["accountid"]
     assert attrs["new_tier"]["custom"] is True
     assert attrs["new_tier"]["option_set"] == "new_tier"
     assert attrs["address1_addresstypecode"]["option_set"] == "account_address1_addresstypecode"

@@ -76,6 +76,13 @@ it needs no profile and no network.
 - **The per-key evidence is in the `--out` file** (`entries`: differing fields
   with both values, artifacts with both normalized hashes, both ids, a reason):
   pass `--out` whenever you will report keys, not just counts.
+- **An `attribute` record carries its type facets** (`max_length`, `format`,
+  `default_value`, `precision`, `min_value`, `max_value`, `option_set_global`) where
+  its type defines them, the same on every platform; `crm legacy metadata <entity>`
+  returns them too. `diff` compares a facet only where both stages recorded it, so
+  an extract made before facets existed never reads columns as changed: re-extract
+  that side before concluding a length matches, since no facet on a side is unknown,
+  not equal. Read a rebuilt column's length from `max_length`.
 - **An older extract reads every ribbon `changed` once.** A ribbon's
   `normalized_sha256` now ignores the order of its rule and command siblings,
   and a manifest written before that hashed the raw text: re-extract the older

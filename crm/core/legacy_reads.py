@@ -42,6 +42,50 @@ def _flag(el: ET.Element, path: str) -> bool:
     return el.findtext(path, "", _MD) == "true"
 
 
+#: Attribute record key -> the `AttributeMetadata` properties that carry it, first one present
+#: winning; the Web API and the SOAP service name them alike. A type defines only its own
+#: (Boolean `DefaultValue`, Picklist `DefaultFormValue`), so an attribute omits the rest.
+ATTRIBUTE_FACETS: tuple[tuple[str, str], ...] = (
+    ("max_length", "MaxLength"),
+    ("format", "Format"),
+    ("default_value", "DefaultValue"),
+    ("default_value", "DefaultFormValue"),
+    ("precision", "Precision"),
+    ("min_value", "MinValue"),
+    ("max_value", "MaxValue"),
+)
+
+
+def facet_number(value: float) -> float:
+    """An integral float as an int, so ``1.0`` and ``1`` are one value on every platform."""
+    return int(value) if isinstance(value, float) and value.is_integer() else value
+
+
+def _facet_value(text: str) -> object:
+    if text in ("true", "false"):
+        return text == "true"
+    for parse in (int, float):
+        try:
+            return facet_number(parse(text))
+        except ValueError:
+            continue
+    return text
+
+
+def _facets(
+    attr: ET.Element, option_set: ET.Element | None, set_name: str | None
+) -> dict[str, Any]:
+    """The type facets *attr* defines; a nil or absent property is not recorded."""
+    out: dict[str, Any] = {}
+    for key, prop in ATTRIBUTE_FACETS:
+        text = attr.findtext(f"c:{prop}", "", _MD)
+        if text and key not in out:
+            out[key] = _facet_value(text)
+    if option_set is not None and set_name:
+        out["option_set_global"] = _flag(option_set, "c:IsGlobal")
+    return out
+
+
 def _result(results: dict[str, ET.Element], key: str, request: str) -> ET.Element:
     if key not in results:
         raise D365Error(f"{request}: the response carries no {key}")
@@ -184,6 +228,7 @@ def entity_detail(client: LegacyClient, name: str) -> dict[str, Any]:
                 "managed": _flag(attr, "c:IsManaged"),
                 "required_level": attr.findtext("c:RequiredLevel/a:Value", None, _MD),
                 "option_set": set_name,
+                **_facets(attr, option_set, set_name),
             }
         )
     return {
