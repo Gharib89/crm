@@ -25,6 +25,11 @@ _AUTHORITY = "https://login.microsoftonline.com/{}"
 _CONSENT_CODES = ("AADSTS65001", "AADSTS90094")
 _CA_CODES = ("AADSTS53003", "AADSTS530036")
 
+BROWSER_SIGNIN_TIMEOUT_S = 300
+"""How long the browser flow waits for the loopback redirect. MSAL defaults to
+forever, and an Entra page that never redirects back (the admin approval page)
+would hang the command silently; 300 s leaves room for MFA and a password manager."""
+
 
 def scope_for(profile: ConnectionProfile) -> str:
     """The org's delegated Dataverse scope (``user_impersonation``)."""
@@ -157,6 +162,37 @@ def _no_browser() -> bool:
     return False
 
 
+def _interactive(
+    app: Any, scopes: list[str], profile: ConnectionProfile, announce: Callable[[str], None]
+) -> dict[str, Any]:
+    """The bounded browser flow. MSAL raises, rather than returns an error, on timeout."""
+    import msal  # type: ignore[import-untyped]
+
+    timeout_error: Any = getattr(msal, "BrowserInteractionTimeoutError")  # noqa: B009
+    try:
+        result: dict[str, Any] = app.acquire_token_interactive(
+            scopes,
+            login_hint=profile.username or None,
+            timeout=BROWSER_SIGNIN_TIMEOUT_S,
+            on_before_launching_ui=lambda **_kw: announce(
+                "A browser window opened for sign-in; crm is waiting for you to finish "
+                f"(gives up after {BROWSER_SIGNIN_TIMEOUT_S} s)."
+            ),
+        )
+    except timeout_error as exc:
+        raise D365Error(
+            f"Sign-in failed: the browser sign-in was not finished within "
+            f"{BROWSER_SIGNIN_TIMEOUT_S} s. Either it was not completed in the browser, or "
+            "Entra stopped on a page that never returns to crm, such as 'Approval required': "
+            "an administrator must grant admin consent to the app's Dataverse "
+            "user_impersonation permission (see the delegated sign-in how-to in the crm "
+            "docs). Finish the sign-in or get consent, then run the login again.",
+            status=401,
+            code="login_failed",
+        ) from exc
+    return result
+
+
 def login(
     profile: ConnectionProfile,
     *,
@@ -186,7 +222,7 @@ def login(
             announce(str(flow["message"]))
             result = app.acquire_token_by_device_flow(flow)
     else:
-        result = app.acquire_token_interactive(scopes, login_hint=profile.username or None)
+        result = _interactive(app, scopes, profile, announce)
     if "access_token" not in result:
         fix = _fix_for(result, device_code=device_code)
         detail = (

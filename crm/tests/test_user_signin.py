@@ -28,6 +28,10 @@ HOME_ID = "uid.utid"
 ACCOUNT = {"home_account_id": HOME_ID, "username": "dev@example.com"}
 
 
+class BrowserInteractionTimeoutError(RuntimeError):
+    """MSAL raises this (not an error dict) when `timeout` passes with no redirect."""
+
+
 class FakeMsal:
     """A stand-in `msal` module; `state` records calls and scripts the answers."""
 
@@ -39,6 +43,7 @@ class FakeMsal:
         self.accounts: list[dict[str, str]] = [dict(ACCOUNT)]
         self.removed: list[dict[str, str]] = []
         self.calls: list[str] = []
+        self.interactive_kwargs: dict[str, Any] = {}
         fake = self
 
         class SerializableTokenCache:
@@ -71,8 +76,16 @@ class FakeMsal:
                 self.cache.has_state_changed = True  # type: ignore[union-attr]
                 return fake.silent
 
-            def acquire_token_interactive(self, scopes, login_hint=None):
+            def acquire_token_interactive(
+                self, scopes, login_hint=None, timeout=None, on_before_launching_ui=None
+            ):
                 fake.calls.append("interactive")
+                fake.interactive_kwargs = {"timeout": timeout}
+                if on_before_launching_ui:
+                    on_before_launching_ui(ui="browser")  # MSAL calls it just before it waits
+                fake.calls.append("wait")
+                if isinstance(fake.interactive, Exception):
+                    raise fake.interactive
                 self.cache.has_state_changed = True  # type: ignore[union-attr]
                 return fake.interactive
 
@@ -90,6 +103,8 @@ class FakeMsal:
         mod: Any = types.ModuleType("msal")
         mod.SerializableTokenCache = SerializableTokenCache
         mod.PublicClientApplication = PublicClientApplication
+        mod.BrowserInteractionTimeoutError = BrowserInteractionTimeoutError
+        self.timeout_error = BrowserInteractionTimeoutError
         self.module = mod
 
 
@@ -274,7 +289,34 @@ class TestLogin:
             _profile(home_account_id=None), device_code=True, announce=shown.append
         )
         assert out["account"] == HOME_ID
-        assert shown == ["go to the page"]
+        assert shown == ["go to the page"]  # the device message only: no extra browser line
+
+    def test_browser_flow_is_bounded_and_announced_before_the_wait(self, msal, monkeypatch):
+        monkeypatch.setattr(webbrowser, "get", lambda *a: object())
+        msal.interactive = _ok()
+        shown: list[str] = []
+
+        def announce(msg: str) -> None:
+            shown.append(msg)
+            msal.calls.append("announce")
+
+        user_signin.login(_profile(home_account_id=None), device_code=False, announce=announce)
+        timeout = msal.interactive_kwargs["timeout"]
+        assert timeout == user_signin.BROWSER_SIGNIN_TIMEOUT_S
+        assert isinstance(timeout, int) and timeout > 0
+        assert len(shown) == 1 and "browser" in shown[0]
+        assert msal.calls.index("announce") < msal.calls.index("wait")
+
+    def test_browser_timeout_is_a_login_failed_naming_both_causes(self, msal, monkeypatch):
+        monkeypatch.setattr(webbrowser, "get", lambda *a: object())
+        msal.interactive = msal.timeout_error("User did not complete the flow in time")
+        with pytest.raises(D365Error) as ei:
+            user_signin.login(_profile(), device_code=False)
+        assert ei.value.code == "login_failed" and ei.value.status == 401
+        text = str(ei.value)
+        assert "not finished" in text and "admin" in text and "user_impersonation" in text
+        assert "delegated sign-in how-to" in text
+        assert token_store.load("dev") == ""
 
     @pytest.mark.parametrize("code", ["AADSTS65001", "AADSTS90094"])
     def test_consent_errors_name_the_fix(self, msal, monkeypatch, code):
@@ -321,6 +363,19 @@ class TestProfileLoginCommand:
         assert r.exit_code == 0, r.output
         saved = session_mod.load_profile("dev")
         assert saved.home_account_id == HOME_ID and saved.username == "dev@example.com"
+
+    def test_login_timeout_exits_nonzero_with_login_failed(self, msal, monkeypatch):
+        self._tty(monkeypatch)
+        monkeypatch.setattr(webbrowser, "get", lambda *a: object())
+        msal.interactive = msal.timeout_error("User did not complete the flow in time")
+        session_mod.save_profile(_profile(home_account_id=None))
+        r = CliRunner().invoke(cli, ["profile", "login", "dev"])
+        assert r.exit_code == 1, r.output
+        # `profile login` refuses --json, so text mode is the only surface; the stable
+        # `login_failed` code is asserted on the D365Error in the core test above.
+        assert "Sign-in failed" in r.output and "not finished" in r.output
+        assert "Traceback" not in r.output
+        assert session_mod.load_profile("dev").home_account_id is None
 
     def test_refuses_a_non_delegated_profile(self, msal, monkeypatch):
         self._tty(monkeypatch)
