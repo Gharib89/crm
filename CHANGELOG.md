@@ -9,6 +9,33 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.109.4 (2026-11-09)
+
+### Bug Fixes
+
+- **inventory**: Record an attribute's format only for the types that define one
+  ([#1165](https://github.com/Gharib89/crm/pull/1165),
+  [`9a9fb0e`](https://github.com/Gharib89/crm/commit/9a9fb0eebd321d93529b0f99ba104b0f9dcf09d2))
+
+- **inventory**: Record attribute type facets on both metadata readers
+  ([#1165](https://github.com/Gharib89/crm/pull/1165),
+  [`9a9fb0e`](https://github.com/Gharib89/crm/commit/9a9fb0eebd321d93529b0f99ba104b0f9dcf09d2))
+
+- **inventory**: Record each facet only for the types the brief lists
+  ([#1165](https://github.com/Gharib89/crm/pull/1165),
+  [`9a9fb0e`](https://github.com/Gharib89/crm/commit/9a9fb0eebd321d93529b0f99ba104b0f9dcf09d2))
+
+### Documentation
+
+- **inventory**: Name each facet's types in the schema and legacy page
+  ([#1165](https://github.com/Gharib89/crm/pull/1165),
+  [`9a9fb0e`](https://github.com/Gharib89/crm/commit/9a9fb0eebd321d93529b0f99ba104b0f9dcf09d2))
+
+- **inventory**: Name the types of format and default_value in the schema
+  ([#1165](https://github.com/Gharib89/crm/pull/1165),
+  [`9a9fb0e`](https://github.com/Gharib89/crm/commit/9a9fb0eebd321d93529b0f99ba104b0f9dcf09d2))
+
+
 ## v1.109.3 (2026-11-09)
 
 ### Bug Fixes
