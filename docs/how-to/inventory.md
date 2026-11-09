@@ -337,7 +337,8 @@ silently dropped. The other whole-org keys are not compared, only counted. The h
 the whole-org side does not hold, compared by the narrowed side's keys alone) and
 `left_out` (whole-org keys outside the comparison). Rows the narrowed side flags as stock
 compare like custom ones, so a migrated component can read `changed` on `origin` or
-`managed` alone; `by_origin` keeps that apart from custom drift. A **stock** entity the
+`managed` alone. Such a key counts under `by_origin.custom` (the first origin across the
+sides), so read its `fields` to tell an origin-only change from real drift. A **stock** entity the
 solution holds is compared by the members listed, since the manifest cannot tell a full
 hold from a shell: its other subcomponents are left out. Two `--solution` manifests diff
 as before.
