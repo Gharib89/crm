@@ -142,7 +142,7 @@ def _declared_version(root: Element) -> tuple[str | None, str | None]:
             " retarget cannot pick one framework for every configuration"
         )
     version = plain[0].text if plain else None
-    if plain and (version is None or _parse_version(version) is None):
+    if version is not None and _parse_version(version) is None:
         return None, f"TargetFrameworkVersion {version!r} is not a version"
     return version, None
 

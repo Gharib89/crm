@@ -17,7 +17,7 @@ from click.testing import CliRunner
 from crm.cli import cli
 from crm.core import inventory as inv
 from crm.core import inventory_assess as assess
-from crm.core.inventory_csproj import detect_csproj
+from crm.core.inventory_csproj import detect_csproj, plan_csproj
 from crm.tests.test_inventory_convert_csproj import World
 from crm.tests.test_inventory_csproj import OLD_STYLE
 
@@ -80,6 +80,17 @@ def test_detector_counts_an_absent_framework_version_as_below() -> None:
     text = PACKAGE_STYLE.replace("<TargetFrameworkVersion>v4.6.2</TargetFrameworkVersion>", "")
     found = detect_csproj(text)
     assert (found.declared, found.below_floor) == (None, True)
+
+
+@pytest.mark.parametrize(
+    "empty", ["<TargetFrameworkVersion />", "<TargetFrameworkVersion></TargetFrameworkVersion>"]
+)
+def test_an_empty_framework_version_is_absent_for_detector_and_retarget(empty: str) -> None:
+    text = PACKAGE_STYLE.replace("<TargetFrameworkVersion>v4.6.2</TargetFrameworkVersion>", empty)
+    found = detect_csproj(text)
+    assert (found.reason, found.declared, found.below_floor) == (None, None, True)
+    plan = plan_csproj(text)
+    assert plan.patched is not None and "<TargetFramework>net462</TargetFramework>" in plan.patched
 
 
 def test_detector_finds_nothing_in_a_floor_project_with_package_references() -> None:
