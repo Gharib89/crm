@@ -208,6 +208,7 @@ class ConnectionProfile:
     auth_scheme: str = "ntlm"  # one of AUTH_SCHEMES
     tenant_id: str | None = None  # oauth: AAD tenant (non-secret)
     client_id: str | None = None  # oauth: app-registration id (non-secret)
+    home_account_id: str | None = None  # oauth-user: account bound by `profile login` (non-secret)
     adfs_url: str | None = None  # adfs: STS override; None = discover from the org
     publisher_prefix: str | None = None  # schema-name prefix, e.g. "new"
     read_only: bool = False  # guardrail: backend refuses org mutations
@@ -285,6 +286,7 @@ class ConnectionProfile:
             "auth_scheme": self.auth_scheme,
             "tenant_id": self.tenant_id,
             "client_id": self.client_id,
+            "home_account_id": self.home_account_id,
             "adfs_url": self.adfs_url,
             "publisher_prefix": self.publisher_prefix,
             "read_only": self.read_only,
@@ -311,6 +313,7 @@ class ConnectionProfile:
             auth_scheme=d.get("auth_scheme", "ntlm"),
             tenant_id=d.get("tenant_id"),
             client_id=d.get("client_id"),
+            home_account_id=d.get("home_account_id"),
             adfs_url=d.get("adfs_url"),
             publisher_prefix=d.get("publisher_prefix"),
             read_only=d.get("read_only", False),
@@ -354,7 +357,7 @@ def is_cloud(profile: ConnectionProfile) -> bool:
     Use this for "is the target cloud" checks; compare ``auth_scheme`` directly only
     where the question is how the profile authenticates (a client secret, say).
     """
-    return profile.auth_scheme == "oauth"
+    return profile.auth_scheme in ("oauth", "oauth-user")
 
 
 def _action_name(path: str) -> str:
@@ -515,7 +518,7 @@ class D365Backend:
                 "Web API; this command does not support it. Use `crm legacy` (for "
                 f"example `crm legacy whoami --profile {profile.name}`)."
             )
-        if profile.auth_scheme != "oauth" and not profile.username:
+        if not is_cloud(profile) and not profile.username:
             raise D365Error(f"Profile {profile.name!r} is missing the username.")
 
         # Deferred transport import (#247). Surface a broken/partial install
@@ -635,6 +638,10 @@ class D365Backend:
             return HttpNegotiateAuth()  # type: ignore[no-any-return]
         if scheme == "oauth":
             return self._make_oauth_auth(password)
+        if scheme == "oauth-user":
+            from crm.core.user_signin import UserBearerAuth
+
+            return UserBearerAuth(self.profile)
         if scheme == "adfs":
             if not password:
                 raise D365Error(

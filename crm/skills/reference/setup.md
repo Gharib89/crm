@@ -78,6 +78,20 @@ cloud only. The bearer token is cached at `~/.crm/msal_token_cache.json` (`0600`
 root follows `CRM_HOME`).
 The app registration needs an **application user** with a security role in Dynamics.
 
+**Delegated sign-in (`oauth-user`)** runs as the signed-in person (their own roles,
+no stored secret) instead of an application user. The tenant registers its OWN
+public-client Entra app: platform *Mobile and desktop* with redirect
+`http://localhost`, *allow public client flows* on, Dynamics CRM delegated
+`user_impersonation`, admin consent granted once. `tenant_id` must be the tenant
+GUID, not a domain. `profile add` saves it with no live test; the user then runs
+`crm profile login` **themselves in a terminal** (browser sign-in by default;
+`--device-code` only when asked, since Microsoft discourages it and Conditional
+Access often blocks it). `login` is refused under `--json`/no TTY
+(`login_requires_tty`), so an agent cannot do it: tell the user to run it, never
+loop on it. Later commands read an encrypted token cache silently and never open a
+browser. `set-password`/`delete-password` do not apply, and `rename` drops the
+cache (log in again). Error handling: `reference/troubleshooting.md`.
+
 **No `.env`, no credential env vars.** The CLI reads credentials and connection
 config ONLY from a saved profile (or a per-run `--password`). There is no `.env`
 autoload and no `D365_*` / `CRM_*` environment-variable reading. The one retained

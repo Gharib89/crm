@@ -1,7 +1,7 @@
 # How-to: profile
 
 Set up and switch connection targets. A **profile** holds the server URL, auth
-scheme, identity fields (NTLM username/domain, AD FS username, or OAuth tenant/client id), and the
+scheme, identity fields (NTLM username/domain, AD FS username, or OAuth tenant/client id; `oauth-user` also records the signed-in username), and the
 optional `publisher_prefix` used by scaffolding/schema-name derivation. The
 secret (NTLM/AD FS password or OAuth client secret) is stored alongside it. This is
 the only place credentials come from — there is no `.env` and no credential
@@ -119,6 +119,29 @@ org, the error hint names `--auth-scheme adfs`.
 - **Not supported:** AD FS OAuth, MFA, certificate trust, and Windows-integrated
   AD FS endpoints.
 
+### Delegated sign-in (`oauth-user`)
+
+`--auth-scheme oauth-user` signs in to a cloud org as yourself (your own security
+roles, no stored secret). `add` saves the profile with no live test and no secret
+(`--password` / `--client-secret` are a usage error), then `crm profile login`
+completes the sign-in from a terminal. The cloud wizard asks app sign-in vs
+delegated sign-in; a scripted cloud add still infers `oauth`. The tenant must
+register its own Entra app first: see [How-to: delegated
+sign-in](delegated-signin.md).
+
+## Sign in to a delegated profile
+
+```bash
+crm profile login          # the active profile
+crm profile login me
+crm profile login me --device-code
+```
+
+`login` applies only to `oauth-user` profiles and needs a terminal (refused under
+`--json` or with no TTY: code `login_requires_tty`). It opens a browser by default;
+`--device-code` is used only on request. See [How-to: delegated
+sign-in](delegated-signin.md) for the errors and the `reauth_required` contract.
+
 ## Switch the active profile
 
 ```bash
@@ -235,6 +258,9 @@ the rename still completes and the response carries a warning with a
 **concurrent session** that is still pointing at `old-name` breaks after the
 rename, exactly like `crm profile rm`.
 
+A delegated (`oauth-user`) profile's cached sign-in does not follow a rename: run
+`crm profile login new-name` again.
+
 `rename` is the safe way to relabel a profile in place — unlike deleting it and
 re-running `add`, it carries the stored secret and cached metadata over.
 
@@ -246,7 +272,7 @@ crm profile rm old-profile          # prompts for confirmation
 crm profile rm old-profile --yes    # skip the prompt
 ```
 
-Removes the profile and its stored secret. If it was the active profile, the active
+Removes the profile, its stored secret and any cached delegated sign-in tokens. If it was the active profile, the active
 pointer is cleared. Omitting `NAME` on a TTY shows the same arrow-key picker as
 `profile use`; under `--json` or with no TTY a missing `NAME` is still a usage
 error (exit 2).
@@ -265,6 +291,7 @@ crm profile delete-password --profile prod
 ```
 
 `set-password` works the same for an NTLM password and an OAuth client secret.
+Both verbs error on an `oauth-user` profile, which has no secret: use `profile login`.
 Its TTY prompt echoes `*` per keystroke, same as the `add` wizard's secret
 prompt above.
 

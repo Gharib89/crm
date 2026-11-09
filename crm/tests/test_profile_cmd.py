@@ -426,8 +426,28 @@ class TestAddWizard:
             )  # blank publisher-prefix, read-only N (both prompted)
         assert result.exit_code == 0, result.output
         assert captured["default"] == "ntlm"  # on-prem host -> inferred ntlm
-        assert captured["values"] == list(AUTH_SCHEMES)
+        # oauth-user is offered only on a cloud URL, as the app/delegated question
+        assert captured["values"] == [s for s in AUTH_SCHEMES if s != "oauth-user"]
         assert session_mod.load_profile("wiz").auth_scheme == "oauth"
+
+    def test_cloud_url_asks_app_or_delegated_sign_in(self, crm_home, monkeypatch):
+        monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
+        captured = {}
+
+        def _fake_select(title, items, default=None):
+            captured["values"] = [v for v, _ in items]
+            return "oauth-user"
+
+        monkeypatch.setattr("crm.commands.profile.select_one", _fake_select)
+        result = CliRunner().invoke(
+            cli,
+            ["profile", "add", "--url", "https://o.crm.dynamics.com", "--tenant-id", "t1",
+             "--client-id", "c1", "--name", "wiz2"],
+            input="\n\n",
+        )  # fmt: skip
+        assert result.exit_code == 0, result.output
+        assert captured["values"] == ["oauth", "oauth-user"]
+        assert session_mod.load_profile("wiz2").auth_scheme == "oauth-user"
 
     def test_auth_scheme_picker_cancel_aborts(self, crm_home, monkeypatch):
         # Esc/Ctrl-C at the picker (select_one -> None) aborts cleanly; no

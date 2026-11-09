@@ -17,7 +17,7 @@ only the four keys above.
 | `category` | trigger | `retryable` | recovery |
 |---|---|---|---|
 | `not_found` | 404 / code `0x80040217` | no | record doesn't exist, or wrong entity set / GUID |
-| `auth_failed` | 401 | no | NTLM: check the profile's domain / username + password (re-run `crm profile set-password`). OAuth: app-registration (client id/secret, tenant) + an application user with a role |
+| `auth_failed` | 401 | no | NTLM: check the profile's domain / username + password (re-run `crm profile set-password`). OAuth: app-registration (client id/secret, tenant) + an application user with a role; code `reauth_required`: see below |
 | `forbidden` | 403 | no | the user lacks the privilege; for `security assign-role` this also fires when the role's business unit differs from the target's (roles are BU-scoped — assign one from the same BU) |
 | `concurrency_conflict` | 412, or an async operation failing on the org-wide customization lock (`0x80071151`, "another … running") | yes | 412: another change won the race, retrieve a fresh ETag and retry. Lock: wait for the other operation to finish, then re-run |
 | `duplicate_detected` | code `0x80040237` | no | a matching record exists; merge/resolve or pass `--suppress-dup-detection` |
@@ -25,6 +25,15 @@ only the four keys above.
 | `throttled` | 429 | yes | service-protection limit; the backend honors `Retry-After` (idempotent verbs only) |
 | `server_error` | 5xx | yes | transient server fault; only 502/503/504 auto-retry (idempotent verbs) — a bare 500 surfaces immediately (retry yourself only if the operation is safe to re-run) |
 | `transport_error` | request never got a response; message starts `HTTP transport failure` | yes | network / TLS / timeout before any response (idempotent verbs only) |
+
+**`reauth_required`** (an `oauth-user` profile; `meta.status` 401, category
+`auth_failed`) means the cached delegated sign-in is missing, expired or revoked.
+Do not retry and do not re-run `profile add`: tell the user to run
+`crm profile login <name>` in a terminal (`login_requires_tty` under `--json`).
+`wrong_tenant` from `login` means the account's tenant differs from the profile's
+`tenant_id` (nothing saved): fix `tenant_id` with `profile edit` or use another
+account. `AADSTS65001`/`AADSTS90094` mean the tenant's app lacks admin consent to
+`user_impersonation`.
 
 Note `status is None` is **not** a reliable transport-failure signal — client-side
 validation errors also have no status. Only the `transport_error` message prefix marks

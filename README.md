@@ -61,7 +61,7 @@ Two surfaces feed AI agents:
 |--------------------------|--------------------|----------------------------------------|
 | Python                   | ≥ 3.13             |                                        |
 | Dynamics 365 CE on-prem  | 9.0 / 9.1 / 9.2    | Reachable from your machine over HTTPS |
-| Auth                     | NTLM or AD FS (on-prem) · OAuth (online) | NTLM = Windows Integrated; AD FS = username/password for an IFD org (`--auth-scheme adfs`); OAuth = client-credentials for Dataverse cloud. |
+| Auth                     | NTLM or AD FS (on-prem) · OAuth (online) | NTLM = Windows Integrated; AD FS = username/password for an IFD org (`--auth-scheme adfs`); OAuth = client-credentials for Dataverse cloud; `oauth-user` = delegated sign-in as yourself (`crm profile login`). |
 
 The D365 server is a **hard runtime dependency** — without it the CLI has nothing
 to talk to. E2E tests fail loudly if credentials are missing.
@@ -253,7 +253,7 @@ command run with no profile configured launches this wizard automatically; under
 
 For scripting, pass flags instead. The auth scheme is inferred from the URL
 (`*.dynamics.*` → OAuth, anything else → NTLM); override with `--auth-scheme`
-(`adfs` for an on-prem IFD org fronted by AD FS; see the [profile how-to](docs/how-to/profile.md)).
+(`adfs` for an on-prem IFD org fronted by AD FS; see the [profile how-to](docs/how-to/profile.md); `oauth-user` to sign in to a cloud org as yourself, see below).
 
 **On-prem (NTLM):**
 
@@ -276,6 +276,17 @@ crm profile add \
     --tenant-id <aad-tenant-id> --client-id <app-registration-id> \
     --password "$CLIENT_SECRET" \
     --name online
+```
+
+**Online, as yourself (delegated sign-in):** register your own public-client Entra app
+once per tenant, then save a profile with no secret and sign in from a terminal. Other
+commands reuse the encrypted token cache silently, and fail with `reauth_required` when
+a new `crm profile login` is due. See the [delegated sign-in how-to](docs/how-to/delegated-signin.md).
+
+```bash
+crm profile add --url https://contoso.crm.dynamics.com --auth-scheme oauth-user \
+    --tenant-id <tenant-guid> --client-id <app-client-id> --name me
+crm profile login me
 ```
 
 The app registration needs an **application user** in Dynamics with a suitable
@@ -356,7 +367,7 @@ behavior — logging, retries, stage-only — but never supply connection config
   Windows).
 - `crm profile set-password --profile NAME` stores or replaces the secret for an
   existing profile (NTLM password or OAuth client secret alike); never contacts the
-  server. `crm profile delete-password --profile NAME` removes it.
+  server. An `oauth-user` profile has no secret: use `crm profile login`. `crm profile delete-password --profile NAME` removes it.
 - `crm profile list` shows each profile's storage type (keyring / plaintext / none).
 
 Secret resolution order: `--password` (per-run override) > stored secret (plaintext
@@ -666,8 +677,9 @@ See `D365.md` in the project root for the full SOP.
 
 ## Limits / Out of Scope
 
-- AD FS OAuth, MFA, certificate credentials, and OAuth flows other than
-  client-credentials (device-code, interactive, ROPC) — on-prem uses NTLM (or
+- AD FS OAuth, certificate credentials, and OAuth flows other than
+  client-credentials and the per-tenant delegated sign-in (`oauth-user`; ROPC is
+  unsupported). On-prem uses NTLM (or
   username/password through AD FS for an IFD org), cloud uses OAuth 2.0
   client-credentials (secret) against the public cloud only.
 - Plugin / workflow source code deployment — use solution import for that.

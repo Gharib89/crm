@@ -48,6 +48,9 @@ registration needs an **application user** with a security role in Dynamics. The
 bearer token is cached under `~/.crm/` (`0600`) and reused until it expires;
 username / password / domain are not used in this mode.
 
+To sign in to a cloud org as yourself instead, use `--auth-scheme oauth-user` and
+`crm profile login`; see [How-to: delegated sign-in](../how-to/delegated-signin.md).
+
 Attach a schema-name prefix so scaffolding and column-name derivation don't need
 a per-command flag:
 

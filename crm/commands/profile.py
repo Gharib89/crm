@@ -151,7 +151,7 @@ def _adfs_note(profile, exc):
     probed when the org answered at all: after a transport failure the probe
     would just wait out a second timeout.
     """
-    if profile.auth_scheme in ("oauth", "adfs") or exc.status is None:
+    if is_cloud(profile) or profile.auth_scheme == "adfs" or exc.status is None:
         return ""
     from crm.utils.adfs import sts_hint
 
@@ -185,7 +185,8 @@ def _tls_note(exc):
     "auth_opt",
     type=click.Choice(AUTH_SCHEMES),
     default=None,
-    help="Override the auth scheme inferred from the URL (adfs = on-prem IFD via AD FS).",
+    help="Override the auth scheme inferred from the URL (adfs = on-prem IFD via AD FS; "
+    "oauth-user = cloud delegated sign-in as yourself, completed by `crm profile login`).",
 )
 @click.option("--username", default=None, help="NTLM / AD FS: username.")
 @click.option("--domain", default=None, help="NTLM: AD domain (blank for UPN).")
@@ -278,7 +279,14 @@ def profile_add(
     url = ConnectionProfile.normalize_url(url)
     auth_scheme = auth_opt or infer_auth_scheme(url)
     if interactive and auth_opt is None:
-        chosen = select_one("Auth scheme", [(s, s) for s in AUTH_SCHEMES], default=auth_scheme)
+        if auth_scheme == "oauth":
+            choices = [
+                ("oauth", "App sign-in (application user, client secret)"),
+                ("oauth-user", "Delegated sign-in (your own account, via `crm profile login`)"),
+            ]
+        else:
+            choices = [(s, s) for s in AUTH_SCHEMES if s != "oauth-user"]
+        chosen = select_one("Auth scheme", choices, default=auth_scheme)
         if chosen is None:
             ctx.emit(False, error="aborted by user")
             return
@@ -291,7 +299,12 @@ def profile_add(
             "(DOMAIN\\user) if your AD FS server wants it."
         )
 
-    if auth_scheme == "oauth":
+    if auth_scheme == "oauth-user" and password_opt is not None:
+        raise click.UsageError(
+            "--password / --client-secret do not apply to --auth-scheme oauth-user: "
+            "delegated sign-in stores no secret."
+        )
+    if auth_scheme in ("oauth", "oauth-user"):
         if not tenant_id:
             if not interactive:
                 raise click.UsageError("--tenant-id is required for an OAuth profile.")
@@ -353,13 +366,16 @@ def profile_add(
             "Make this profile read-only (block org mutations)?", default=False
         )
     secret = password_opt
-    if not secret and interactive:
+    if auth_scheme == "oauth-user":
+        pass  # no secret; `profile login` signs in
+    elif not secret and interactive:
         label = "Client secret" if auth_scheme == "oauth" else "Password"
         secret = prompt_secret(label)
-    if not secret:
+    if not secret and auth_scheme != "oauth-user":
         raise click.UsageError(
             "--password (or --client-secret) is required (no TTY to prompt for it)."
         )
+    secret = secret or ""  # only oauth-user reaches here without one (and returns early)
 
     if name in session_mod.list_profiles() and not yes:
         _confirm_destructive(
@@ -390,6 +406,10 @@ def profile_add(
     except D365Error as exc:
         # Invalid name / auth scheme — emit the clean envelope, not a traceback.
         _handle_d365_error(ctx, exc)
+        return
+
+    if auth_scheme == "oauth-user":
+        _save_oauth_user_profile(ctx, profile)
         return
 
     # Test the live connection with the normalized URL BEFORE persisting anything,
@@ -497,6 +517,42 @@ def profile_add(
     }
     ctx.emit(True, data=data, meta={"profile": name}, warnings=warnings or None)
     ctx.hint("profile_add")
+
+
+def _save_oauth_user_profile(ctx: CLIContext, profile: ConnectionProfile) -> None:
+    """Save and activate a delegated sign-in profile.
+
+    No live test: there is no credential until `profile login` runs.
+    """
+    try:
+        session_mod.save_profile(profile)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    except OSError as exc:
+        ctx.emit(False, error=f"Could not write profile {profile.name!r}: {exc}")
+        return
+    state = session_mod.load_session(ctx.session_name)
+    state["active_profile"] = profile.name
+    session_mod.save_session(state, ctx.session_name)
+    ctx.profile_name = profile.name
+    ctx.password = None
+    ctx.invalidate_backend()
+    ctx.emit(
+        True,
+        data={
+            "profile": profile.name,
+            "auth_scheme": "oauth-user",
+            "credential_storage": "none",
+            "active": True,
+            "read_only": profile.read_only,
+            "platform": profile.platform,
+            "user_id": None,
+            "api_version": profile.api_version,
+        },
+        meta={"profile": profile.name},
+        warnings=[f"not signed in yet: run `crm profile login {profile.name}`"],
+    )
 
 
 @profile_group.command("use")
@@ -750,7 +806,7 @@ def profile_edit(
     # it surface later as a confusing backend-build error.
     if not p.url:
         raise click.UsageError("--url cannot be empty.")
-    if p.auth_scheme == "oauth":
+    if is_cloud(p):
         if not p.tenant_id or not p.client_id:
             raise click.UsageError("an OAuth profile needs tenant_id and client_id.")
     elif not p.username:
@@ -778,6 +834,13 @@ def profile_rm(ctx: CLIContext, name, yes):
     _confirm_destructive(ctx, "profile", name, yes, skip_on_dry_run=False)
     keyring_store.delete_secret(name)
     session_mod.clear_profile_secret(name)
+    from crm.core import token_store  # lazy: pulls in cryptography, off the local fast path
+
+    cache_warnings = []
+    try:
+        token_store.delete(name)  # the bound account's cached tokens (a no-op without one)
+    except OSError as exc:
+        cache_warnings.append(f"Could not remove the token cache: {exc}")
     session_mod.delete_profile(name)
     state = session_mod.load_session(ctx.session_name)
     if state.get("active_profile") == name:
@@ -785,7 +848,7 @@ def profile_rm(ctx: CLIContext, name, yes):
         session_mod.save_session(state, ctx.session_name)
         ctx.profile_name = None
         ctx.invalidate_backend()
-    ctx.emit(True, data={"profile": name, "removed": True})
+    ctx.emit(True, data={"profile": name, "removed": True}, warnings=cache_warnings or None)
 
 
 @profile_group.command("rename")
@@ -827,9 +890,24 @@ def profile_rename(ctx: CLIContext, old, new):
     # Capture any keyring-stored secret before the file move (inline plaintext
     # `_secret` rides along inside the file itself).
     kr_secret = keyring_store.get_secret(old)
+    try:
+        signed_in_user = session_mod.load_profile(old).auth_scheme == "oauth-user"
+    except _PROFILE_LOAD_ERRORS:
+        signed_in_user = False
     session_mod.rename_profile(old, new)
 
     warnings = []
+    if signed_in_user:
+        # The token cache and its key are named after the profile, so they do not follow.
+        from crm.core import token_store
+
+        try:
+            token_store.delete(old)
+        except OSError as exc:
+            warnings.append(f"Could not remove the old token cache: {exc}")
+        warnings.append(
+            f"Delegated sign-in does not carry over a rename: run `crm profile login {new}`."
+        )
     if kr_secret is not None:
         try:
             keyring_store.set_secret(new, kr_secret)
@@ -870,6 +948,93 @@ def profile_rename(ctx: CLIContext, old, new):
     )
 
 
+@profile_group.command("login")
+@click.argument("name", required=False)
+@click.option(
+    "--device-code",
+    is_flag=True,
+    help="Sign in with a device code instead of a browser (some tenants block it).",
+)
+@pass_ctx
+def profile_login(ctx: CLIContext, name, device_code):
+    """Sign in to an oauth-user profile as yourself and cache the token.
+
+    Interactive only: a browser opens (auth code with PKCE on loopback). The
+    token is cached encrypted; every other command reuses it silently.
+    """
+    if ctx.json_mode or not _stdin_is_tty():
+        _handle_d365_error(
+            ctx,
+            D365Error(
+                "`crm profile login` is interactive: run it from a terminal, without --json.",
+                code="login_requires_tty",
+            ),
+        )
+        return
+    if not name:
+        name = (
+            ctx.profile_name
+            or session_mod.load_session(ctx.session_name).get("active_profile")
+            or _pick_profile(ctx, "Select profile to sign in")
+        )
+        if name is None:
+            return
+    try:
+        profile = session_mod.load_profile(name)
+    except FileNotFoundError:
+        _handle_d365_error(ctx, D365Error(f"Profile {name!r} not found."))
+        return
+    if profile.auth_scheme != "oauth-user":
+        ctx.emit(
+            False,
+            error=(
+                f"profile {name!r} uses {profile.auth_scheme} sign-in; `profile login` applies "
+                "only to --auth-scheme oauth-user profiles."
+            ),
+        )
+        return
+    from crm.core import user_signin
+
+    with d365_errors(ctx, hint=f"Run crm profile login {name} to retry"):
+        result = user_signin.login(
+            profile, device_code=device_code, announce=lambda m: click.echo(m, err=True)
+        )
+    profile.home_account_id = result["account"]
+    profile.username = result["username"]
+    try:
+        session_mod.save_profile(profile)
+    except OSError as exc:
+        ctx.emit(False, error=f"Signed in, but could not write profile {name!r}: {exc}")
+        return
+    ctx.invalidate_backend()
+    warnings = []
+    if result["previous"]:
+        warnings.append(
+            f"profile {name!r} was bound to a different account; now bound to {result['username']}."
+        )
+    if result["storage"] == "plaintext":
+        warnings.append("OS keyring unavailable: the token cache is stored in PLAINTEXT (0600).")
+    ctx.emit(
+        True,
+        data={
+            "profile": name,
+            "username": result["username"],
+            "tenant_id": result["tid"],
+            "credential_storage": result["storage"],
+            "rebound": bool(result["previous"]),
+        },
+        meta={"profile": name},
+        warnings=warnings or None,
+    )
+
+
+def _delegated_signin_notice(name: str) -> str:
+    return (
+        f"profile {name!r} uses delegated sign-in and has no secret; "
+        f"sign in with `crm profile login {name}`."
+    )
+
+
 @profile_group.command("set-password")
 @click.option("--profile", "profile_name", required=True, help="Profile to store the secret for.")
 @click.option(
@@ -893,6 +1058,9 @@ def profile_set_password(
     except FileNotFoundError:
         _handle_d365_error(ctx, D365Error(f"Profile {profile_name!r} not found."))
         return
+    if profile.auth_scheme == "oauth-user":
+        ctx.emit(False, error=_delegated_signin_notice(profile_name))
+        return
     secret = password_opt
     if not secret and _stdin_is_tty() and not ctx.json_mode:
         label = "client secret" if profile.auth_scheme == "oauth" else "password"
@@ -911,6 +1079,13 @@ def profile_set_password(
 @pass_ctx
 def profile_delete_password(ctx: CLIContext, profile_name):
     """Remove a stored secret (OS keyring AND plaintext)."""
+    try:
+        delegated = session_mod.load_profile(profile_name).auth_scheme == "oauth-user"
+    except _PROFILE_LOAD_ERRORS:
+        delegated = False  # missing or unreadable profile: plain cleanup
+    if delegated:
+        ctx.emit(False, error=_delegated_signin_notice(profile_name))
+        return
     removed_keyring = keyring_store.delete_secret(profile_name)
     removed_plaintext = session_mod.clear_profile_secret(profile_name)
     removed = removed_keyring or removed_plaintext

@@ -29,6 +29,7 @@ from crm.utils.d365_backend import (
     ConnectionProfile,
     D365Backend,
     D365Error,
+    is_cloud,
 )
 
 # ── Profile + credential resolution ─────────────────────────────────────
@@ -63,6 +64,10 @@ def resolve_credentials(
         profile = session_mod.load_profile(profile_name)
     except FileNotFoundError as exc:
         raise D365Error(f"Profile {profile_name!r} not found.") from exc
+
+    if profile.auth_scheme == "oauth-user":
+        # Delegated sign-in stores no secret: the token cache is its credential.
+        return ResolvedCredentials(profile=profile, password="")
 
     secret = password_override
     if not secret:
@@ -327,12 +332,12 @@ def profile_structural_problem(profile: ConnectionProfile, *, has_secret: bool) 
     url_problem = url_structural_problem(profile.url)
     if url_problem is not None:
         return url_problem[0]
-    if profile.auth_scheme == "oauth":
+    if is_cloud(profile):
         if not profile.tenant_id or not profile.client_id:
             return "OAuth profile is missing tenant_id or client_id"
     elif not profile.username:
         return "on-prem profile is missing a username"
-    if not has_secret:
+    if profile.auth_scheme != "oauth-user" and not has_secret:
         return "no secret (password / client secret) provided"
     return None
 
