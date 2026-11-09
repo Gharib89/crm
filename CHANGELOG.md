@@ -9,6 +9,37 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.109.2 (2026-11-09)
+
+### Bug Fixes
+
+- **inventory**: Extract records a table deleted since the listing as a gap, not a read error
+  ([#1177](https://github.com/Gharib89/crm/pull/1177),
+  [`6e01d6a`](https://github.com/Gharib89/crm/commit/6e01d6abf51bf2efc840d9d3eb2ddf0aa48a8150))
+
+- **inventory**: Leave the forms and views of a deleted table out too, and prove the matcher refuses
+  near misses ([#1177](https://github.com/Gharib89/crm/pull/1177),
+  [`6e01d6a`](https://github.com/Gharib89/crm/commit/6e01d6abf51bf2efc840d9d3eb2ddf0aa48a8150))
+
+- **inventory**: Record a table deleted since the listing as a gap on extract (#1159)
+  ([#1177](https://github.com/Gharib89/crm/pull/1177),
+  [`6e01d6a`](https://github.com/Gharib89/crm/commit/6e01d6abf51bf2efc840d9d3eb2ddf0aa48a8150))
+
+### Documentation
+
+- **inventory**: Describe a table deleted mid-run as a gap in help, how-to and skill
+  ([#1177](https://github.com/Gharib89/crm/pull/1177),
+  [`6e01d6a`](https://github.com/Gharib89/crm/commit/6e01d6abf51bf2efc840d9d3eb2ddf0aa48a8150))
+
+- **inventory**: Name the forms and views gap of a deleted table in the how-to and skill
+  ([#1177](https://github.com/Gharib89/crm/pull/1177),
+  [`6e01d6a`](https://github.com/Gharib89/crm/commit/6e01d6abf51bf2efc840d9d3eb2ddf0aa48a8150))
+
+- **inventory**: The forms and views gap is one per kind
+  ([#1177](https://github.com/Gharib89/crm/pull/1177),
+  [`6e01d6a`](https://github.com/Gharib89/crm/commit/6e01d6abf51bf2efc840d9d3eb2ddf0aa48a8150))
+
+
 ## v1.109.1 (2026-11-09)
 
 ### Bug Fixes

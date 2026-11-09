@@ -161,8 +161,10 @@ def inventory_extract_cmd(
     Each finished read is checkpointed under DIR/.checkpoint, so re-running
     the same command after an interruption resumes, reusing the finished reads. A failed kind is
     recorded in the manifest's coverage and the run goes on (exit code 1); the
-    checkpoint is removed once every read succeeds. Returns a short summary;
-    the manifest holds the records, coverage and gaps.
+    checkpoint is removed once every read succeeds. A table deleted since the
+    entity list was read is no failed read: it is left out of the records and
+    recorded as a gap, and a resume does not read it again. Returns a short
+    summary; the manifest holds the records, coverage and gaps.
 
     Progress goes to stderr, one `[crm] extract` line per stage start and per
     tick (about one a second), with an ETA marked as an estimate where the
