@@ -56,6 +56,7 @@ from crm.core.inventory_form_handlers import (
     form_handler_tags,
     plan_form_handlers,
 )
+from crm.core.inventory_odata import ADAPTER_NAME, Target, read_target, render_adapter
 from crm.core.inventory_packages import PACKAGE_ID
 from crm.core.inventory_packages import SCHEMA_VERSION as PACKAGES_VERSION
 from crm.core.inventory_ribbon import (
@@ -69,7 +70,7 @@ from crm.core.inventory_ribbon import (
     ribbon_function_names,
 )
 from crm.core.inventory_source_map import read_source_map
-from crm.core.inventory_transforms import HANDLER_TRANSFORM, TRANSFORMS, Edit, Plan, Transform
+from crm.core.inventory_transforms import HANDLER_TRANSFORM, TRANSFORMS, Edit, Plan, Transform, Used
 from crm.utils.safe_xml import fromstring
 
 #: The format version of the ledger.
@@ -138,6 +139,8 @@ class Entry:
 class ConvertResult:
     manifest_sha256: str
     entries: tuple[Entry, ...]
+    #: The generated OData v2 adapter module of each work package that has one.
+    adapters: Mapping[str, dict[str, Any]] = field(default_factory=lambda: {})
 
     def ledger(self) -> dict[str, Any]:
         call_graph: dict[str, dict[str, int]] = {}
@@ -150,6 +153,7 @@ class ConvertResult:
             "schema_version": SCHEMA_VERSION,
             "inventory": {"manifest_sha256": self.manifest_sha256},
             "call_graph": call_graph,
+            "adapters": self.adapters,
             "entries": [e.to_dict() for e in self.entries],
         }
 
@@ -641,6 +645,7 @@ def convert(
     out: Path,
     *,
     source_map_path: Path | None = None,
+    target_inventory: Path | None = None,
 ) -> ConvertResult:
     """Plan, gate and write the conversion of every component carrying a transformable finding.
 
@@ -654,6 +659,7 @@ def convert(
     if out.exists() and any(out.iterdir()):
         raise InventoryError(f"--out {out} is not empty; name a new or empty folder")
     inv = read_inventory(inventory_dir)
+    target: Target | None = read_target(target_inventory) if target_inventory is not None else None
     manifest_sha = _hex((inventory_dir / MANIFEST_NAME).read_bytes())
     findings = read_findings(findings_path)
     if findings.manifest_sha256 != manifest_sha:
@@ -816,6 +822,7 @@ def convert(
                 entries.append(entry)
 
     entries: list[Entry] = []
+    adapter_uses: dict[str, set[Used]] = {}
     for (kind, key, path), group in groups.items():
         record = records.get((kind, key))
         source, problem = b"", ""
@@ -838,16 +845,17 @@ def convert(
                 and record.fields.get("web_resource_type") in transform.web_resource_types
             ):
                 tree = parse(transform.language, current)
-                plan = (
-                    transform.plan(
+                if transform.needs_handlers:
+                    plan = transform.plan(
                         tree,
                         handlers.get((kind, key, path), {}),
                         others(path),
                         commands.get((kind, key, path), frozenset()),
                     )
-                    if transform.needs_handlers
-                    else transform.plan(tree)
-                )
+                elif transform.needs_target:
+                    plan = transform.plan(tree, target)
+                else:
+                    plan = transform.plan(tree)
             elif not reason:
                 reason = f"transform {rule.transform} does not read this web resource type"
             applied = False
@@ -864,6 +872,8 @@ def convert(
                     reason = f"emit gate rejected the rewrite: {reason}"
                 elif patched is not None:
                     current, applied = patched, True
+                    for pkg in held.get(f"{kind}:{key}", [UNPACKAGED]):
+                        adapter_uses.setdefault(pkg, set()).update(plan.adapter)
                     rewritten.update((lib_of.get((kind, key, path), ""), f) for f in plan.done)
             if plan.edits or plan.unproven or reason:
                 steps.append((rule, plan, reason, applied))
@@ -933,8 +943,23 @@ def convert(
                 ribbon.source,
                 patched,
             )
+    adapters: dict[str, dict[str, Any]] = {}
+    for pkg, used in sorted(adapter_uses.items()):
+        if not used:
+            continue
+        text = render_adapter(used)
+        (out / pkg).mkdir(parents=True, exist_ok=True)
+        (out / pkg / ADAPTER_NAME).write_text(text, encoding="utf-8", newline="")
+        adapters[pkg] = {
+            "file": f"{pkg}/{ADAPTER_NAME}",
+            "sha256": _hex(text.encode("utf-8")),
+            "entity_sets": sorted({u.set_name for u in used}),
+        }
+        for e in entries:
+            if e.package == pkg and e.transform == "odata-v2" and e.status == "patched":
+                e.files["adapter"] = f"{pkg}/{ADAPTER_NAME}"
     entries.sort(key=lambda e: (e.package, e.kind, e.key))
-    result = ConvertResult(manifest_sha, tuple(entries))
+    result = ConvertResult(manifest_sha, tuple(entries), adapters)
     out.mkdir(parents=True, exist_ok=True)
     (out / LEDGER_NAME).write_text(
         json.dumps(result.ledger(), sort_keys=True, ensure_ascii=False, indent=2) + "\n",

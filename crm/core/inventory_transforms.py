@@ -17,7 +17,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 if TYPE_CHECKING:
     from tree_sitter import Node
@@ -40,13 +40,25 @@ class Unproven:
     reason: str
 
 
+class Used(NamedTuple):
+    """An attribute a rewritten call selects, for the OData adapter's table: the Web API entity
+    set and entity, the attribute's logical name, the spelling the v2 call used and its type.
+    """
+
+    set_name: str
+    entity: str
+    attribute: str
+    v2_name: str
+    kind: str
+
+
 @dataclass(frozen=True)
 class Plan:
     """What a transform proved. *done* names the registered functions a handler transform
     rewrote. *cleared* is how many sites of the rule's detection the edits remove, where that
     is not one per edit. *threaded*, *unreachable* and *boundary* count the helpers it gave a
     ``formContext``, the functions no handler reaches and the helpers a caller outside the
-    file keeps from being rewritten.
+    file keeps from being rewritten. *adapter* lists what the rewritten OData calls select.
     """
 
     edits: tuple[Edit, ...]
@@ -56,6 +68,7 @@ class Plan:
     threaded: int = 0
     unreachable: int = 0
     boundary: int = 0
+    adapter: tuple[Used, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -65,13 +78,15 @@ class Transform:
     A transform with *needs_handlers* is also given the form handlers that call the file:
     each registered function name, mapped to whether any registration passes it positional
     ``parameters``. It is also given the ribbon command functions (``commands``) that the
-    ribbon diffs call.
+    ribbon diffs call. A transform with *needs_target* is given the target inventory's names
+    (None when the run has none).
     """
 
     language: str
     web_resource_types: tuple[int, ...]
     plan: Callable[..., Plan]
     needs_handlers: bool = False
+    needs_target: bool = False
 
 
 #: Registered transforms by id. Tests swap entries in to exercise the engine.
