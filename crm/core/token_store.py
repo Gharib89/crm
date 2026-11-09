@@ -96,7 +96,15 @@ def save(profile: str, serialized: str) -> Literal["keyring", "plaintext"]:
     if key is None:
         key = AESGCM.generate_key(bit_length=256)
         keyring_store.set_secret(_key_account(profile), base64.b64encode(key).decode("ascii"))
-    nonce = os.urandom(_NONCE_LEN)
-    ciphertext = AESGCM(key).encrypt(nonce, serialized.encode("utf-8"), None)
-    atomic_write(path, _MAGIC + nonce + ciphertext, mode=0o600, lock=True)
+    # Reading then storing the key is not atomic with the file write, so a second
+    # process's first save can replace the key between them. Re-read it after the
+    # write and re-encrypt under the winner, so the file always matches the keyring.
+    for _ in range(2):
+        nonce = os.urandom(_NONCE_LEN)
+        ciphertext = AESGCM(key).encrypt(nonce, serialized.encode("utf-8"), None)
+        atomic_write(path, _MAGIC + nonce + ciphertext, mode=0o600, lock=True)
+        current = _read_key(profile)
+        if current is None or current == key:
+            break
+        key = current
     return "keyring"

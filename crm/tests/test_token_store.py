@@ -137,3 +137,22 @@ def test_profiles_do_not_share_a_cache_or_key(kr):
     token_store.save("b", "B")
     assert (token_store.load("a"), token_store.load("b")) == ("A", "B")
     assert token_store.cache_path("a") != token_store.cache_path("b")
+
+
+def test_concurrent_first_save_key_swap_still_loads(kr, monkeypatch):
+    """A second process replacing the key between the read and the write must not
+    strand the file under a key the keyring no longer holds.
+    """
+    other = base64.b64encode(b"\x02" * 32).decode()
+    real_write = token_store.atomic_write
+    calls = []
+
+    def racing_write(*args, **kwargs):
+        if not calls:
+            kr.store[("crm", token_store._key_account("p"))] = other
+        calls.append(1)
+        real_write(*args, **kwargs)
+
+    monkeypatch.setattr(token_store, "atomic_write", racing_write)
+    token_store.save("p", CACHE)
+    assert token_store.load("p") == CACHE
