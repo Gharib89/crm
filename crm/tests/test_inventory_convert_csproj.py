@@ -204,3 +204,12 @@ def test_cli_takes_repo_and_counts_the_project_patches(world: World) -> None:
     assert res.exit_code == 0, res.output
     data = json.loads(res.output)["data"]
     assert data["patched"] == 2 and data["manual_review"] == 1
+
+
+def test_a_non_utf8_project_is_a_manual_review_entry_not_a_traceback(world: World) -> None:
+    path = world.repo / "src/Contoso.Plugins/Contoso.Plugins.csproj"
+    path.write_bytes(path.read_bytes().replace(b"Contoso.snk", b"Contoso\xe9.snk"))
+    world.run()
+    (entry,) = _entries(world.out, "Contoso.Plugins")
+    assert entry["status"] == "manual-review" and entry["files"] == {}
+    assert "unreadable" in entry["manual_review"][0]["reason"]

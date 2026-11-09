@@ -953,8 +953,9 @@ def convert(
                 ribbon.source,
                 patched,
             )
-    for key, rel in sorted(projects.items() if repo is not None else ()):
-        entries.extend(_project_entries(out, cast(Path, repo), key, rel, held))
+    if repo is not None:
+        for key, rel in sorted(projects.items()):
+            entries.extend(_project_entries(out, repo, key, rel, held))
     entries.sort(key=lambda e: (e.package, e.kind, e.key))
     result = ConvertResult(manifest_sha, tuple(entries))
     out.mkdir(parents=True, exist_ok=True)
@@ -975,18 +976,17 @@ def _project_entries(
     ]
     try:
         source = normalize_text((repo / rel).read_bytes())
-    except OSError as exc:
-        reasons = [
-            ManualReview(rel, None, CSPROJ_TRANSFORM, f"project unreadable: {exc.strerror or exc}")
-        ]
+        text = source.decode("utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        reason = f"project unreadable: {getattr(exc, 'strerror', None) or exc}"
         for entry in entries:
-            entry.manual_review = reasons
+            entry.manual_review = [ManualReview(rel, None, CSPROJ_TRANSFORM, reason)]
         return entries
-    plan = plan_csproj(source.decode("utf-8", errors="replace"))
+    plan = plan_csproj(text)
     review = [ManualReview(rel, r.line, CSPROJ_TRANSFORM, r.reason) for r in plan.review]
     if plan.patched is None:
         for entry in entries:
-            entry.manual_review = review
+            entry.manual_review = list(review)
         return entries
     patched = plan.patched.encode("utf-8")
     files = _write_project(out, entries[0].package, rel, source, patched)

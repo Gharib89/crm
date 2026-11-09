@@ -214,6 +214,12 @@ def test_a_project_with_no_sdk_reference_gets_no_package() -> None:
             "already SDK-style",
         ),
         (OLD_STYLE.replace("v4.0", "four"), "TargetFrameworkVersion"),
+        (
+            OLD_STYLE.replace(
+                "<OutputType>", "<ProjectTypeGuids>{3AC096D0}</ProjectTypeGuids><OutputType>"
+            ),
+            "ProjectTypeGuids",
+        ),
         ("<Project", "well-formed"),
         ('<Other xmlns="x"/>', "not an MSBuild project"),
     ],

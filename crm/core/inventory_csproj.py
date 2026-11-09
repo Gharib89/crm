@@ -112,6 +112,8 @@ def plan_csproj(text: str) -> CsprojPlan:
     if root.get("Sdk") is not None:
         return _whole("already SDK-style: the retarget reads old-style projects only")
     props = {p.tag.lower(): p for g in root.findall("PropertyGroup") for p in g}
+    if "projecttypeguids" in props:
+        return _whole("ProjectTypeGuids marks a project type other than a plain class library")
     output = (props["outputtype"].text or "").strip() if "outputtype" in props else "Library"
     if output.lower() != "library":
         return _whole(f"the project type is {output}, not a class library")
