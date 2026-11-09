@@ -334,7 +334,7 @@ def test_a_cloud_extraction_writes_a_schema_valid_manifest(tmp_path):
     flag = next(r for r in data["records"] if r["key"] == "account|new_active")
     assert flag["kind"] == "attribute"
     assert flag["fields"]["default_value"] is False
-    assert flag["fields"]["option_set_global"] is False
+    assert "option_set_global" not in flag["fields"]  # a picklist's flag, not a Boolean's
     key_column = next(r for r in data["records"] if r["key"] == "account|accountid")
     assert "default_value" not in key_column["fields"]
     assert _keys(data, "ribbon") == ["", "account", "new_project"]

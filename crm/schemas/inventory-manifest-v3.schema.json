@@ -341,7 +341,7 @@
                   },
                   "max_length": {
                     "type": "integer",
-                    "description": "String and Memo only. Optional on every facet below: a manifest written before they existed has none, and the diff compares a facet only where both sides recorded it."
+                    "description": "String and Memo only. Every facet is recorded only for the types that define it, and is optional: a manifest written before they existed has none, and the diff compares a facet only where both sides recorded it."
                   },
                   "format": {
                     "type": "string",
@@ -365,7 +365,7 @@
                   },
                   "option_set_global": {
                     "type": "boolean",
-                    "description": "Whether the attribute's option set is a global one; recorded only where the attribute has an option set."
+                    "description": "Picklist only: whether its option set is a global one."
                   }
                 }
               },

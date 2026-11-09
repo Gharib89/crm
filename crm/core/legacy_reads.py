@@ -15,7 +15,7 @@ import io
 import xml.etree.ElementTree as ET
 import zipfile
 import zlib
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -43,8 +43,7 @@ def _flag(el: ET.Element, path: str) -> bool:
 
 
 #: Attribute record key -> the `AttributeMetadata` properties that carry it, first one present
-#: winning; the Web API and the SOAP service name them alike. A type defines only its own
-#: (Boolean `DefaultValue`, Picklist `DefaultFormValue`), so an attribute omits the rest.
+#: winning; the Web API and the SOAP service name them alike.
 ATTRIBUTE_FACETS: tuple[tuple[str, str], ...] = (
     ("max_length", "MaxLength"),
     ("format", "Format"),
@@ -54,22 +53,27 @@ ATTRIBUTE_FACETS: tuple[tuple[str, str], ...] = (
     ("min_value", "MinValue"),
     ("max_value", "MaxValue"),
 )
+_NUMBER_TYPES = ("Decimal", "Money", "Integer", "Double")
+#: The attribute types that record each facet (and `option_set_global`, a picklist's
+#: own). The metadata carries more: the Web API sends `Format` on a Lookup, which CRM 2011
+#: does not, so the types alone keep both readers on the same keys.
+_FACET_TYPES: dict[str, tuple[str, ...]] = {
+    "max_length": ("String", "Memo"),
+    "format": ("String", "Memo", "Integer", "DateTime"),
+    "default_value": ("Boolean", "Picklist"),
+    "precision": ("Decimal", "Money", "Double"),
+    "min_value": _NUMBER_TYPES,
+    "max_value": _NUMBER_TYPES,
+    "option_set_global": ("Picklist",),
+}
 
 
-_FORMAT_TYPES = frozenset(("String", "Memo", "Integer", "DateTime"))
+def facet_keys(attr_type: str) -> frozenset[str]:
+    """The facet keys an attribute of *attr_type* records."""
+    return frozenset(k for k, types in _FACET_TYPES.items() if attr_type in types)
 
 
-def facet_props(attr_type: str) -> Iterator[tuple[str, str]]:
-    """`ATTRIBUTE_FACETS` for an attribute of *attr_type*: the Web API also sends a
-    meaningless ``Format`` on a Lookup that CRM 2011 does not, so only the types that
-    define one record it.
-    """
-    for key, prop in ATTRIBUTE_FACETS:
-        if key != "format" or attr_type in _FORMAT_TYPES:
-            yield key, prop
-
-
-def facet_number(value: float) -> float:
+def facet_number(value: Any) -> Any:
     """An integral float as an int, so ``1.0`` and ``1`` are one value on every platform."""
     return int(value) if isinstance(value, float) and value.is_integer() else value
 
@@ -90,11 +94,12 @@ def _facets(
 ) -> dict[str, Any]:
     """The type facets *attr* defines; a nil or absent property is not recorded."""
     out: dict[str, Any] = {}
-    for key, prop in facet_props(attr.findtext("c:AttributeType", "", _MD)):
+    keys = facet_keys(attr.findtext("c:AttributeType", "", _MD))
+    for key, prop in ATTRIBUTE_FACETS:
         text = attr.findtext(f"c:{prop}", "", _MD)
-        if text and key not in out:
+        if key in keys and text and key not in out:
             out[key] = _facet_value(text)
-    if option_set is not None and set_name:
+    if "option_set_global" in keys and option_set is not None and set_name:
         out["option_set_global"] = _flag(option_set, "c:IsGlobal")
     return out
 

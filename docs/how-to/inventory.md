@@ -309,8 +309,8 @@ within each kind, never by GUID, and each key gets one verdict:
 An `attribute` record's type facets (`max_length`, `format`, `default_value`,
 `precision`, `min_value`, `max_value`, `option_set_global`, see the
 [manifest reference](../reference/inventory-manifest.md#attribute-facets)) are
-compared only where both manifests recorded them: a facet one side never recorded, an
-older extract's, is no difference. A changed length on both reads as one
+compared only where both manifests recorded them, so an older extract, which has
+none, shows no facet change. A length that differs on both reads as one
 `fields.max_length` change.
 
 What a side could not read is never reported as removed, added or changed: a

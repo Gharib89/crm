@@ -48,6 +48,11 @@ _JSON_ATTRS: list[dict[str, Any]] = [
     {"LogicalName": "pre_when", "AttributeType": "DateTime", "Format": "DateOnly"},
     {"LogicalName": "pre_owner", "AttributeType": "Lookup", "Format": "None", "MinValue": None},
     {"LogicalName": "pre_entityid", "AttributeType": "Uniqueidentifier"},
+    # Kinds the brief leaves out record nothing, though the metadata carries values.
+    {"LogicalName": "pre_big", "AttributeType": "BigInt", "MinValue": -9223372036854775808,
+     "MaxValue": 9223372036854775807},
+    {"LogicalName": "pre_state", "AttributeType": "State", "DefaultFormValue": 0,
+     "OptionSet": {"Name": "pre_state", "IsGlobal": False, "OptionSetType": "State"}},
 ]  # fmt: skip
 
 _EXPECTED: dict[str, dict[str, Any]] = {
@@ -57,12 +62,14 @@ _EXPECTED: dict[str, dict[str, Any]] = {
     "pre_amount": {"precision": 2, "min_value": 0, "max_value": 922337203685477},
     "pre_count": {"format": "None", "min_value": -2147483648, "max_value": 2147483647},
     "pre_ratio": {"precision": 2, "min_value": 0.5, "max_value": 1000000000},
-    "pre_flag": {"default_value": False, "option_set_global": False},
+    "pre_flag": {"default_value": False},
     "pre_tier": {"default_value": 2, "option_set_global": False},
     "pre_kind": {"default_value": -1, "option_set_global": True},
     "pre_when": {"format": "DateOnly"},
     "pre_owner": {},
     "pre_entityid": {},
+    "pre_big": {},
+    "pre_state": {},
 }
 
 

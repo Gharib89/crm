@@ -118,10 +118,10 @@ and the reader and the schema both check their shape when present:
 
 ### Attribute facets
 
-An `attribute` record also carries the facets its type defines, so a column can be
-rebuilt as the source has it. Each is optional: a type omits the facets it does not
-define, and the same keys and units come from CRM 2011 and from v9 and Dataverse
-online. The schema types them; a reader ignores any it does not know, so adding them
+An `attribute` record also carries the facets its type defines (the table's Types
+column), so a column can be rebuilt as the source has it. Each is optional: another
+type omits it even where the metadata carries a value, and the same keys and units come
+from CRM 2011 and from v9 and Dataverse online. The schema types them; a reader ignores any it does not know, so adding them
 needed no `schema_version` bump.
 
 | Field | Value | Types |
@@ -131,7 +131,7 @@ needed no `schema_version` bump.
 | `default_value` | a boolean, or a picklist's `DefaultFormValue` integer (`-1` is no default) | Boolean, Picklist |
 | `precision` | integer | Decimal, Money, Double |
 | `min_value`, `max_value` | number; a whole value is an integer on both platforms | Decimal, Money, Integer, Double |
-| `option_set_global` | boolean: whether the option set is a global one | any attribute with an option set |
+| `option_set_global` | boolean: whether the option set is a global one | Picklist |
 
 A source that returns nothing for a facet leaves it out; there is no `null`.
 `inventory diff` compares a facet only where **both** manifests recorded it, so
