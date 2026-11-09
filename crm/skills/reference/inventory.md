@@ -16,8 +16,12 @@ binaries). It describes what is deployed; it is never a spec for `crm apply`.
   record is the raw customization of one entity (key: its logical name; `""` is the
   application), and an entity with an empty diff has none. An org-wide run exports the
   Default solution (minutes, tens of MB on CRM 2011); Dataverse online refuses that, so
-  the kind reads `unsupported` there: use `--solution` to read it. An `unsupported`
-  `ribbon_diff` (or one from an older extract) is unread: report "ribbon diffs unknown".
+  the kind reads `unsupported` there: use `--solution` to read it. A managed solution
+  cannot be exported either (a migration target is usually imported managed): each
+  managed `--solution` is a `ribbon_diff` gap and the run still exits 0, and the kind
+  reads `unsupported` only when every named solution is managed. An `unsupported`
+  `ribbon_diff`, a managed solution's gap, or one from an older extract is unread:
+  report "ribbon diffs unknown".
 - **It prints progress on stderr** (`[crm] extract stage=... done=n/total`, with an
   `eta` marked as an estimate); stdout, the JSON envelope, is unchanged. Read
   stderr to tell a slow run from a stuck one; `--quiet` silences it.

@@ -174,16 +174,21 @@ crm --json inventory extract --out ./inventory --solution ContosoCore --solution
 `--solution UNIQUE_NAME` (repeatable, on every platform, matched case-insensitively)
 narrows the inventory to the named solutions: their solution records and memberships,
 each member component, each attribute, local option set, form, view and ribbon of a
-member entity, each ribbon diff in the named solutions' exports, each relationship with a member entity on either side, and each
-dependency whose dependent component is kept. On v9 and cloud, an entity a solution
+member entity, each ribbon diff in the named solutions' exports, each relationship with a member entity on either side, each
+plug-in type of a member assembly (a type is usually not a solution component, so it
+also follows its assembly), and each dependency whose dependent component is kept. On v9 and cloud, an entity a solution
 holds without its subcomponents, or as a shell, brings only the subcomponents the
 solution lists on their own. The manifest header records the scope with each name as
 the org spells it (`scope.mode: "solutions"`, `scope.solutions`).
 
 Entity details and entity ribbons are read only for member entities, and the
 application ribbon is not read, so a narrowed run reads less per entity. The ribbon diffs
-are read from each named solution's own export. The
-org-wide component reads still run, because a solution membership names its
+are read from each named solution's own export. A managed solution cannot be exported
+(the platform answers `ExportManagedSolutionError`), so it is not: its ribbon diff is
+an extraction gap with a one-line reason, and when every named solution is managed
+(the usual shape of a migration target) the run still exits 0 with `ribbon_diff`
+coverage `unsupported`. In a mix, the unmanaged solutions' diffs are read and the
+managed ones are gaps. The org-wide component reads still run, because a solution membership names its
 component only by id, but a web resource's content and a plug-in assembly's binary
 are fetched only for the solutions' members (by id, in small batches), so the
 largest payloads cost in proportion to the solution, not the org. Form, view,
@@ -269,6 +274,9 @@ names the endpoint:
 - the **ribbon diffs of a whole-org run on Dataverse online**: the platform refuses to
   export the Default solution, so none are read (`ribbon_diff` coverage is
   `unsupported`); run with `--solution` to read the named solutions';
+- the **ribbon diff of a managed solution** in a `--solution` run: a managed solution
+  cannot be exported, so each is a `ribbon_diff` gap, and the kind reads `unsupported`
+  when every named solution is managed;
 - **rows naming a component this inventory does not record** (a solution
   membership or dependency on a kind v1 does not define, whose own read failed,
   whose own row has no component key, or, in a `--solution` run, that may belong to

@@ -233,7 +233,10 @@ org: 258 s and 88 MB for the Default solution).
 
 Dataverse online refuses to export the Default solution, so a whole-org run on a cloud
 profile reads no diffs: `ribbon_diff` coverage is `unsupported` with a gap saying why, and
-a `--solution` run reads the named solutions'. A failed export is `failed`, or `partial`
+a `--solution` run reads the named solutions'. A managed solution cannot be exported
+either, so each one named is a `ribbon_diff` gap with a one-line reason (the server's
+fault is never recorded), and the kind is `unsupported` when every named solution is
+managed. A failed export is `failed`, or `partial`
 where some solutions read, never `complete`; a re-run resumes it from its checkpoint.
 
 ## What the existing read paths give an extractor
