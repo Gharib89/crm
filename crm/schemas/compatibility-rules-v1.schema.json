@@ -188,6 +188,29 @@
               "required": [
                 "type",
                 "library_rule",
+                "adapter_pattern"
+              ],
+              "properties": {
+                "type": {
+                  "const": "form_library_order"
+                },
+                "library_rule": {
+                  "description": "Id of a content_pattern rule: a form is a hit when it lists a script library matching that rule with no adapter library before it.",
+                  "type": "string",
+                  "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+                },
+                "adapter_pattern": {
+                  "description": "A Python regular expression: a library whose text matches it is the adapter.",
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "type",
+                "library_rule",
                 "parameter"
               ],
               "properties": {

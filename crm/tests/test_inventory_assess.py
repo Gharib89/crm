@@ -503,8 +503,9 @@ def test_an_unreadable_form_artifact_is_unknown(tmp_path):
     folder.mkdir()
     form = _form("Broken", b"<form><events>", folder)
     result = assess.assess(_registrations(folder, [form]), "online")
-    (found,) = _findings(result, form.key)
-    assert found.cls == "unknown" and "not well-formed XML" in found.reason
+    found = _findings(result, form.key)
+    assert found and all(f.cls == "unknown" for f in found)
+    assert all("not well-formed XML" in f.reason for f in found)
 
 
 def test_a_library_artifact_changed_since_extraction_makes_the_form_unknown(tmp_path):

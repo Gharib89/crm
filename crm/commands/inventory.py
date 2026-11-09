@@ -606,6 +606,13 @@ def inventory_verify_cmd(
     " retarget of each plug-in project the map matches to an assembly.",
 )
 @click.option(
+    "--adapter-resource",
+    "adapter_resource",
+    help="The web resource name the OData v2 adapter will have in the target org; {package}"
+    " expands to the work package id. A form that lists a rewritten library gets the adapter"
+    " listed ahead of it. Without it each such form is a manual-review entry.",
+)
+@click.option(
     "--out",
     "out_dir",
     required=True,
@@ -621,6 +628,7 @@ def inventory_convert_cmd(
     source_map_file: Path | None,
     target_inventory: Path | None,
     repo_dir: Path | None,
+    adapter_resource: str | None,
     out_dir: Path,
 ):
     """Rewrite the code of INVENTORY that a compatibility rule can prove: offline.
@@ -646,7 +654,13 @@ def inventory_convert_cmd(
     `XMLHttpRequest` GET of the OData v2 endpoint is rewritten to the Web API with the
     names of --target-inventory and routed through a generated adapter module per work
     package (`crm-odata-v2-adapter.js`, listed under the ledger's `adapters`) that hands
-    the caller v2-shaped JSON: upload it and load it before the patched scripts. A component with no
+    the caller v2-shaped JSON. With --adapter-resource (the web resource name the adapter will
+    have in the org, `{package}` expanding to the work package id) a form that lists a
+    rewritten library gets a `Library` element for the adapter immediately ahead of the first
+    such library, on the same line, and the ledger's `adapters` entry records that name: upload
+    the adapter under it and publish. Without the flag each such form is a manual-review entry,
+    and several work packages with adapters need `{package}` in the name (exit 1 otherwise,
+    before anything is written). A component with no
     transformable finding writes nothing. Nothing is written outside --out; apply a
     patch yourself with `git apply`. An unreadable input, an input made from another
     inventory, a non-empty --out or one inside the inventory exits 1. Returns the
@@ -664,6 +678,7 @@ def inventory_convert_cmd(
             source_map_path=source_map_file,
             target_inventory=target_inventory,
             repo=repo_dir,
+            adapter_resource=adapter_resource,
         )
     except InventoryError as exc:
         ctx.emit(False, error=str(exc))
