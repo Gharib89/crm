@@ -236,8 +236,8 @@ class WebApiSource:
         rows = self.backend.get_collection(
             "EntityDefinitions",
             params={
-                "$select": "LogicalName,DisplayName,DisplayCollectionName,IsCustomEntity,"
-                "ObjectTypeCode,MetadataId,IsManaged"
+                "$select": "LogicalName,DisplayName,DisplayCollectionName,EntitySetName,"
+                "IsCustomEntity,ObjectTypeCode,MetadataId,IsManaged"
             },
         )
         return [
@@ -245,6 +245,7 @@ class WebApiSource:
                 "logical_name": e.get("LogicalName") or "",
                 "display_name": _label(e.get("DisplayName")),
                 "collection_name": _label(e.get("DisplayCollectionName")),
+                "entity_set_name": e.get("EntitySetName") or None,
                 "custom": bool(e.get("IsCustomEntity")),
                 "object_type_code": e.get("ObjectTypeCode") or 0,
                 "metadata_id": e.get("MetadataId"),

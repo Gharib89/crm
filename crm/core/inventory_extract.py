@@ -1563,7 +1563,9 @@ class _Builder:
         for e in entities:
             self.add(
                 "entity", e.get("metadata_id"),
-                {"logical_name": e["logical_name"], "object_type_code": e["object_type_code"]},
+                {"logical_name": e["logical_name"], "object_type_code": e["object_type_code"],
+                 # Only the Web API names a set; never derive one by pluralising.
+                 **({"entity_set_name": e["entity_set_name"]} if e.get("entity_set_name") else {})},
                 e.get("display_name"), "custom" if e["custom"] else "system", e.get("managed"),
                 [], 1,
             )  # fmt: skip
