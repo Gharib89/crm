@@ -18,9 +18,10 @@ from click.testing import CliRunner
 
 from crm.cli import cli
 from crm.core import inventory_assess as assess
-from crm.core.inventory_form_libraries import form_library_tags
+from crm.core.inventory_form_libraries import form_library_tags, plan_adapter_library
 from crm.core.inventory_packages import build_packages, write_packages
 from crm.core.inventory_source_map import map_source
+from crm.core.inventory_transforms import Edit
 from crm.tests.test_inventory_assess import _form
 from crm.tests.test_inventory_convert import _record
 from crm.tests.test_inventory_convert_odata import SVC, _entity, _write
@@ -287,6 +288,29 @@ def test_a_library_list_a_text_scan_and_a_parse_disagree_on_is_not_mapped():
     assert form_library_tags(b"<form><formLibraries><Library name='a'") is None
     tags = form_library_tags(b"<form><formLibraries><Library name='a' /></formLibraries></form>")
     assert tags is not None and [t.name for t in tags] == ["a"]
+
+
+def test_library_tags_survive_awkward_but_valid_markup():
+    text = (
+        b"<form><formLibraries>"
+        b'<Library name="a&amp;b" libraryUniqueId="{1}"></Library>'
+        b'<Library libraryUniqueId="x>y" name="c" />'
+        b"</formLibraries></form>"
+    )
+    tags = form_library_tags(text)
+    assert tags is not None and [t.name for t in tags] == ["a&b", "c"]
+    assert text[tags[1].start :].startswith(b'<Library libraryUniqueId="x>y"')
+
+
+def test_the_inserted_element_escapes_the_adapter_name():
+    text = b'<form><formLibraries><Library name="a" /></formLibraries></form>'
+    tags = form_library_tags(text)
+    assert tags is not None
+    edit = plan_adapter_library(tags, 'x&"<y', {"a"}, "{G}")
+    assert isinstance(edit, Edit)
+    patched = text[: edit.start] + edit.text + text[edit.end :]
+    again = form_library_tags(patched)
+    assert again is not None and [t.name for t in again] == ['x&"<y', "a"]
 
 
 def test_a_form_whose_library_list_cannot_be_mapped_is_manual_review(tmp_path):
