@@ -122,6 +122,14 @@ def _write_inventory(folder: Path) -> Path:
         _record("entity", {"logical_name": "application"}, folder),
         _record("ribbon", {"entity": None}, folder, files=[("ribbon.xml", RIBBON)]),
         _record("ribbon", {"entity": "application"}, folder, files=[("ribbon.xml", RIBBON)]),
+        # The raw ribbon diffs: one per entity, plus the application-level one (#1139).
+        _record(
+            "ribbon_diff", {"entity": "new_project"}, folder, files=[("ribbon-diff.xml", RIBBON)]
+        ),
+        _record("ribbon_diff", {"entity": None}, folder, files=[("ribbon-diff.xml", RIBBON)]),
+        _record(
+            "ribbon_diff", {"entity": "application"}, folder, files=[("ribbon-diff.xml", RIBBON)]
+        ),
         _record("plugin_assembly", {"name": "Contoso.Plugins"}, folder),
         _record("plugin_assembly", {"name": "Contoso.Billing"}, folder),
         _record(
@@ -261,6 +269,51 @@ def test_the_application_ribbon_and_an_application_entity_ribbon_are_two_nodes(i
 
     ribbons = {m for p in result.packages for m in p.members if m.startswith("ribbon:")}
     assert {"ribbon:", "ribbon:application", "ribbon:new_project"} <= ribbons
+
+
+def test_a_ribbon_diff_joins_the_package_of_the_library_its_commands_call(inputs):
+    result = _packages(inputs)
+    js = _package_of(result, "web_resource:new_/scripts/shared.js")
+
+    diffs = {"ribbon_diff:", "ribbon_diff:application", "ribbon_diff:new_project"}
+    assert diffs <= set(js.members)
+    consumers = {(c["kind"], c["key"]) for c in _dicts(js.consumers)}
+    assert ("ribbon_diff", "new_project") in consumers
+    requirements = [r for r in _dicts(js.verification) if r["kind"] == "ribbon_command"]
+    assert {"ribbon_diff:new_project"} <= {r["member"] for r in requirements}
+
+
+def test_a_ribbon_diff_seed_and_finding_land_in_its_package(inputs, tmp_path):
+    folder, source_map, _ = inputs
+    scenarios = tmp_path / "ribbon-scenarios.json"
+    seed = "ribbon_diff:new_project"
+    scenarios.write_text(
+        json.dumps({"scenarios": [{"name": "Approve", "seeds": [seed], "expected_behavior": []}]}),
+        encoding="utf-8",
+    )
+    data = json.loads(_findings_file(folder, tmp_path).read_text(encoding="utf-8"))
+    data["findings"].append(
+        {
+            "kind": "ribbon_diff",
+            "key": "new_project",
+            "class": "blocker",
+            "rule": "script-sample",
+            "reason": None,
+            "evidence": {"field": "x", "value": 1},
+        }
+    )
+    findings = tmp_path / "ribbon-findings.json"
+    findings.write_text(json.dumps(data), encoding="utf-8")
+
+    result = build_packages(folder, read_source_map(source_map), scenarios, read_findings(findings))
+
+    assert result.summary()["seeds_unpackaged"] == []
+    js = _package_of(result, "web_resource:new_/scripts/shared.js")
+    assert js.scenarios == ("Approve",)
+    assert seed in {f["component"] for f in _compat(js)}
+    assert ("ribbon_diff", "new_project") not in {
+        (f["kind"], f["key"]) for f in result.index()["compatibility"]["unplaced"]
+    }
 
 
 def test_shared_library_and_consumers_fall_in_one_package(inputs):
@@ -802,11 +855,11 @@ def test_cli_findings_write_and_summarize(inputs, tmp_path):
 #: SHA-256 of each file `packages` wrote for the fixture (`index.json` holds the manifest hash,
 #: `out_of_scope` and `usage_filtered`; a package of web resources holds a derived `usage`, #1096).
 GOLDEN = {
-    "index.json": "7e55b02268bb0da7552225cb96f14d9a6cc20ad785fbfac11ddceb726b12554e",
-    "pkg-053da551dc3a.json": "d2ad7733907a8eee57579c3db13db4835894c45a5c25f63b12ebde774be878a2",
+    "index.json": "4e1b6b201894e153e9f70a4828ac3691eee742ffe9419033f936919e8b0986ce",
     "pkg-0f1a47282248.json": "0fb3649e9fb122cbcbd3d4270d55d70eed75c661d9ccdcb3c98fe7ed011c78c3",
-    "pkg-564e3c958900.json": "af0666aceef3dd9c70dd9d4e11a4746884fdea57554d108f78e8840b1d9f3890",
+    "pkg-564e3c958900.json": "367372bb7cbdbd2b2d66a95aeb9bd9e1ca089b8e97c7af51e568568837a4fc8d",
     "pkg-9df52d9dd343.json": "df58c9ed70805d01c4ec244cbb665a4434520a15ced472200f76176542fae84e",
+    "pkg-f690f1de8c9e.json": "1ca2b3b0f7a2d468d961f9f8c3487e82380055f8a77d56e6661678a3454ba37c",
 }
 
 

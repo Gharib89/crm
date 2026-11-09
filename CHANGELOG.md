@@ -9,6 +9,34 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.105.6 (2026-11-09)
+
+### Bug Fixes
+
+- **inventory**: Place ribbon_diff components in the package of the libraries they call
+  ([#1142](https://github.com/Gharib89/crm/pull/1142),
+  [`8b1f87b`](https://github.com/Gharib89/crm/commit/8b1f87b8ca7fc35037e2644e9cf12e3543f66dfb))
+
+- **inventory**: Place ribbon_diff components in the packages of the libraries they call
+  ([#1142](https://github.com/Gharib89/crm/pull/1142),
+  [`8b1f87b`](https://github.com/Gharib89/crm/commit/8b1f87b8ca7fc35037e2644e9cf12e3543f66dfb))
+
+### Documentation
+
+- **inventory**: Name ribbon diffs among the package reference kinds
+  ([#1142](https://github.com/Gharib89/crm/pull/1142),
+  [`8b1f87b`](https://github.com/Gharib89/crm/commit/8b1f87b8ca7fc35037e2644e9cf12e3543f66dfb))
+
+
+## v1.105.5 (2026-11-09)
+
+### Bug Fixes
+
+- **inventory**: Map-source matches an extensionless web resource name by type extension
+  ([#1141](https://github.com/Gharib89/crm/pull/1141),
+  [`6c7a86a`](https://github.com/Gharib89/crm/commit/6c7a86a2c2b1198bdeb1133c097ea8289137b9de))
+
+
 ## v1.105.4 (2026-11-08)
 
 ### Bug Fixes
