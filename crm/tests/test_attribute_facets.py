@@ -46,7 +46,7 @@ _JSON_ATTRS: list[dict[str, Any]] = [
     {"LogicalName": "pre_kind", "AttributeType": "Picklist", "DefaultFormValue": -1,
      "OptionSet": {"Name": "shared_kind", "IsGlobal": True, "OptionSetType": "Picklist"}},
     {"LogicalName": "pre_when", "AttributeType": "DateTime", "Format": "DateOnly"},
-    {"LogicalName": "pre_owner", "AttributeType": "Lookup", "MinValue": None},
+    {"LogicalName": "pre_owner", "AttributeType": "Lookup", "Format": "None", "MinValue": None},
     {"LogicalName": "pre_entityid", "AttributeType": "Uniqueidentifier"},
 ]  # fmt: skip
 

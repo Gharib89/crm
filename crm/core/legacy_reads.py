@@ -15,7 +15,7 @@ import io
 import xml.etree.ElementTree as ET
 import zipfile
 import zlib
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -56,6 +56,19 @@ ATTRIBUTE_FACETS: tuple[tuple[str, str], ...] = (
 )
 
 
+_FORMAT_TYPES = frozenset(("String", "Memo", "Integer", "DateTime"))
+
+
+def facet_props(attr_type: str) -> Iterator[tuple[str, str]]:
+    """`ATTRIBUTE_FACETS` for an attribute of *attr_type*: the Web API also sends a
+    meaningless ``Format`` on a Lookup that CRM 2011 does not, so only the types that
+    define one record it.
+    """
+    for key, prop in ATTRIBUTE_FACETS:
+        if key != "format" or attr_type in _FORMAT_TYPES:
+            yield key, prop
+
+
 def facet_number(value: float) -> float:
     """An integral float as an int, so ``1.0`` and ``1`` are one value on every platform."""
     return int(value) if isinstance(value, float) and value.is_integer() else value
@@ -77,7 +90,7 @@ def _facets(
 ) -> dict[str, Any]:
     """The type facets *attr* defines; a nil or absent property is not recorded."""
     out: dict[str, Any] = {}
-    for key, prop in ATTRIBUTE_FACETS:
+    for key, prop in facet_props(attr.findtext("c:AttributeType", "", _MD)):
         text = attr.findtext(f"c:{prop}", "", _MD)
         if text and key not in out:
             out[key] = _facet_value(text)

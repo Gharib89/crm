@@ -21,7 +21,7 @@ from crm.core import solution_transfer
 from crm.core.inventory import ExtractionGap
 from crm.core.inventory_extract import integration_gap, ssrs_gap
 from crm.core.legacy import Page
-from crm.core.legacy_reads import ATTRIBUTE_FACETS, EXPORT_TIMEOUT, facet_number, unzip_ribbon
+from crm.core.legacy_reads import EXPORT_TIMEOUT, facet_number, facet_props, unzip_ribbon
 from crm.core.usage import GroupUsage, probe_v9_group
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, is_cloud
 from crm.utils.safe_xml import fromstring
@@ -117,7 +117,7 @@ def _many_to_many(rel: dict[str, Any]) -> dict[str, Any]:
 def _facets(attr: dict[str, Any], option_set: dict[str, Any] | None) -> dict[str, Any]:
     """The type facets *attr* carries, keyed and valued as the SOAP reader records them."""
     out: dict[str, Any] = {}
-    for key, prop in ATTRIBUTE_FACETS:
+    for key, prop in facet_props(attr.get("AttributeType") or ""):
         value = attr.get(prop)
         if value is not None and key not in out:
             out[key] = facet_number(value)
