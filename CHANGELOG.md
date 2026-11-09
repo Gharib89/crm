@@ -9,6 +9,52 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.110.1 (2026-11-09)
+
+### Bug Fixes
+
+- **inventory**: Assess flags plug-in projects below 4.6.2 or with SDK 5.0 references
+  ([#1185](https://github.com/Gharib89/crm/pull/1185),
+  [`7941547`](https://github.com/Gharib89/crm/commit/794154726ebb657fc1605c651dd92068e82b0e8c))
+
+- **inventory**: Document that an absent framework version is one match with no location
+  ([#1185](https://github.com/Gharib89/crm/pull/1185),
+  [`7941547`](https://github.com/Gharib89/crm/commit/794154726ebb657fc1605c651dd92068e82b0e8c))
+
+- **inventory**: Locate plug-in project sites outside comments, share the floor check
+  ([#1185](https://github.com/Gharib89/crm/pull/1185),
+  [`7941547`](https://github.com/Gharib89/crm/commit/794154726ebb657fc1605c651dd92068e82b0e8c))
+
+- **inventory**: Treat an empty TargetFrameworkVersion as absent, as convert did
+  ([#1185](https://github.com/Gharib89/crm/pull/1185),
+  [`7941547`](https://github.com/Gharib89/crm/commit/794154726ebb657fc1605c651dd92068e82b0e8c))
+
+
+## v1.110.0 (2026-11-09)
+
+### Documentation
+
+- **inventory**: Document convert --adapter-resource and the form library rule
+  ([#1186](https://github.com/Gharib89/crm/pull/1186),
+  [`d465561`](https://github.com/Gharib89/crm/commit/d465561448db29bee360dfef9b19cb026897e8bb))
+
+### Features
+
+- **inventory**: Convert lists the OData v2 adapter in forms
+  ([#1186](https://github.com/Gharib89/crm/pull/1186),
+  [`d465561`](https://github.com/Gharib89/crm/commit/d465561448db29bee360dfef9b19cb026897e8bb))
+
+- **inventory**: Convert lists the OData v2 adapter in forms (#1180)
+  ([#1186](https://github.com/Gharib89/crm/pull/1186),
+  [`d465561`](https://github.com/Gharib89/crm/commit/d465561448db29bee360dfef9b19cb026897e8bb))
+
+### Testing
+
+- **inventory**: Cover awkward library markup and adapter name escaping
+  ([#1186](https://github.com/Gharib89/crm/pull/1186),
+  [`d465561`](https://github.com/Gharib89/crm/commit/d465561448db29bee360dfef9b19cb026897e8bb))
+
+
 ## v1.109.5 (2026-11-09)
 
 ### Bug Fixes

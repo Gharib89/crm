@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "version": 2,
+  "version": 3,
   "rules": [
     {
       "id": "web-resource-xrm-page",
@@ -465,6 +465,28 @@
       "sources": [
         "https://learn.microsoft.com/dynamics365/customerengagement/on-premises/developer/register-deploy-plugins?view=op-9-1#security-restrictions",
         "https://learn.microsoft.com/power-apps/developer/data-platform/reference/entities/pluginassembly"
+      ]
+    },
+    {
+      "id": "csproj-sdk-net462",
+      "kind": "plugin_assembly",
+      "class": "blocker",
+      "title": "The plug-in project targets .NET Framework below 4.6.2 or references the SDK 5.0 Microsoft.Xrm.Sdk or Microsoft.Crm.Sdk.Proxy assemblies",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "plugin_project"
+      },
+      "fix": "Retarget the project to .NET Framework 4.6.2 or later (4.8 for the newest platform features) and take Microsoft.Xrm.Sdk and Microsoft.Crm.Sdk.Proxy from the Microsoft.CrmSdk.CoreAssemblies package instead of the SDK 5.0 assemblies. `crm inventory convert --source-map MAP --repo REPO` writes the SDK-style project; the assembly is rebuilt and re-registered afterwards. Judged only for an assembly the source map matches to exactly one project: an unmapped assembly is not read, and an unreadable project is unknown.",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/data-platform/supported-customizations#support-for-net-framework-versions",
+        "https://learn.microsoft.com/dynamics365/customerengagement/on-premises/developer/visual-studio-dot-net-framework?view=op-9-1"
       ]
     },
     {

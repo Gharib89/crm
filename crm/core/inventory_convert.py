@@ -88,7 +88,7 @@ from crm.core.inventory_ribbon import (
     ribbon_calls,
     ribbon_function_names,
 )
-from crm.core.inventory_source_map import read_source_map
+from crm.core.inventory_source_map import mapped_projects, read_source_map, require_inventory
 from crm.core.inventory_transforms import (
     ADAPTER_TRANSFORM,
     HANDLER_TRANSFORM,
@@ -107,8 +107,8 @@ LEDGER_NAME = "ledger.json"
 #: The package id of a component no work package holds.
 UNPACKAGED = "unpackaged"
 #: The transform id of the plug-in project retarget. Its ledger entries carry it as their
-#: ``rule`` too: the repository, not the inventory, is what it detects on, so no rules-file
-#: rule names it.
+#: ``rule`` too, the id of the rules-file rule `assess --source-map --repo` flags the same
+#: project with: the repository, not the inventory, is what both detect on.
 CSPROJ_TRANSFORM = "csproj-sdk-net462"
 #: The kinds whose artifacts may call a script's functions by name.
 _CALLER_KINDS = frozenset(("web_resource", "ribbon", "ribbon_diff", "sitemap"))
@@ -751,21 +751,13 @@ def convert(
     projects: dict[str, str] = {}
     if source_map_path is not None:
         source_map = read_source_map(source_map_path)
-        if source_map.inventory.get("manifest_sha256") != manifest_sha:
-            raise InventoryError(
-                "the source map was made from another inventory (its manifest_sha256 differs);"
-                " re-run `crm inventory map-source` on this one"
-            )
+        require_inventory(source_map, manifest_sha)
         matched = {
             (c.kind, c.key): c.files[0]
             for c in source_map.components
             if c.status == "matched" and c.files
         }
-        projects = {
-            c.key: c.projects[0]
-            for c in source_map.components
-            if c.kind == "plugin_assembly" and c.status == "matched" and len(c.projects) == 1
-        }
+        projects = mapped_projects(source_map)
     held = _members(packages_dir, manifest_sha)
     # Packages do not group the ribbon diff, but the entity's effective ribbon holds every action
     # the diff adds, so it is linked to exactly the libraries the diff calls: the diff travels
