@@ -9,6 +9,29 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.110.2 (2026-11-09)
+
+### Bug Fixes
+
+- **inventory**: Record entity_set_name in the v9 extract
+  ([#1184](https://github.com/Gharib89/crm/pull/1184),
+  [`32d8d47`](https://github.com/Gharib89/crm/commit/32d8d474e25ca3e3b46f9f5cff14e5622edc16d9))
+
+- **inventory**: Record entity_set_name in the v9 extract so convert resolves OData v2 sites
+  ([#1184](https://github.com/Gharib89/crm/pull/1184),
+  [`32d8d47`](https://github.com/Gharib89/crm/commit/32d8d474e25ca3e3b46f9f5cff14e5622edc16d9))
+
+- **inventory**: Type the entity listing test's stub backend
+  ([#1184](https://github.com/Gharib89/crm/pull/1184),
+  [`32d8d47`](https://github.com/Gharib89/crm/commit/32d8d474e25ca3e3b46f9f5cff14e5622edc16d9))
+
+### Documentation
+
+- **inventory**: The v9 extract records entity_set_name
+  ([#1184](https://github.com/Gharib89/crm/pull/1184),
+  [`32d8d47`](https://github.com/Gharib89/crm/commit/32d8d474e25ca3e3b46f9f5cff14e5622edc16d9))
+
+
 ## v1.110.1 (2026-11-09)
 
 ### Bug Fixes
