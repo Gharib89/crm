@@ -9,6 +9,55 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.109.0 (2026-11-09)
+
+### Bug Fixes
+
+- **inventory**: Adapter keeps v2's null-membered objects for empty option, money and lookup values
+  ([#1168](https://github.com/Gharib89/crm/pull/1168),
+  [`5fe56f9`](https://github.com/Gharib89/crm/commit/5fe56f9839b281805982eb02a7a25219c27b8c97))
+
+- **inventory**: Convert keeps grouped filters, sends $skip to review and tightens the docs
+  ([#1168](https://github.com/Gharib89/crm/pull/1168),
+  [`5fe56f9`](https://github.com/Gharib89/crm/commit/5fe56f9839b281805982eb02a7a25219c27b8c97))
+
+- **inventory**: Convert rewrites open() only on a variable proven to be an XMLHttpRequest
+  ([#1168](https://github.com/Gharib89/crm/pull/1168),
+  [`5fe56f9`](https://github.com/Gharib89/crm/commit/5fe56f9839b281805982eb02a7a25219c27b8c97))
+
+- **inventory**: Convert sends a run-time $filter value outside a literal to manual review
+  ([#1168](https://github.com/Gharib89/crm/pull/1168),
+  [`5fe56f9`](https://github.com/Gharib89/crm/commit/5fe56f9839b281805982eb02a7a25219c27b8c97))
+
+- **inventory**: Convert ties the XMLHttpRequest receiver to its own function's binding
+  ([#1168](https://github.com/Gharib89/crm/pull/1168),
+  [`5fe56f9`](https://github.com/Gharib89/crm/commit/5fe56f9839b281805982eb02a7a25219c27b8c97))
+
+### Documentation
+
+- Mark delegated sign-in as not yet verified live
+  ([#1170](https://github.com/Gharib89/crm/pull/1170),
+  [`7617234`](https://github.com/Gharib89/crm/commit/76172345b8aa77997fedfc052c01e8b8d0576ad9))
+
+- **inventory**: Document the odata-v2 convert transform and its adapter
+  ([#1168](https://github.com/Gharib89/crm/pull/1168),
+  [`5fe56f9`](https://github.com/Gharib89/crm/commit/5fe56f9839b281805982eb02a7a25219c27b8c97))
+
+- **migration-skill**: List the odata-v2 skip and paging limits
+  ([#1168](https://github.com/Gharib89/crm/pull/1168),
+  [`5fe56f9`](https://github.com/Gharib89/crm/commit/5fe56f9839b281805982eb02a7a25219c27b8c97))
+
+- **skill**: Put the not-verified-live caveat in the setup reference
+  ([#1170](https://github.com/Gharib89/crm/pull/1170),
+  [`7617234`](https://github.com/Gharib89/crm/commit/76172345b8aa77997fedfc052c01e8b8d0576ad9))
+
+### Features
+
+- **inventory**: Convert rewrites sync OData v2 calls to the Web API through a v2-shape adapter
+  ([#1168](https://github.com/Gharib89/crm/pull/1168),
+  [`5fe56f9`](https://github.com/Gharib89/crm/commit/5fe56f9839b281805982eb02a7a25219c27b8c97))
+
+
 ## v1.108.0 (2026-11-09)
 
 ### Bug Fixes
