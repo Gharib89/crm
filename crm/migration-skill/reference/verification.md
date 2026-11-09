@@ -65,8 +65,16 @@ skill's inventory page gives its shape. Set `packages_sha256` from
 A requirement takes the worst of its results, so a later `pass` never clears an
 earlier `fail`: fix the component, then replace the failed result.
 
+Keep every evidence file inside the results file's folder and cite it by a path
+relative to that folder; `..`, an absolute path, `\` and `:` are refused. Copy a
+step log kept elsewhere into the folder first, then cite its new path and
+SHA-256.
+
 Record `deployed` (component and hash) for the artifact the test exercised, and
-`environment` with the profile and org from the `whoami` check.
+`environment` with the profile and org from the `whoami` check. A result
+produced with no org (a unit suite on a local checkout) records
+`{"profile": "local", "org": "none"}`; a recorded `environment` needs both keys
+as strings, so `{"runner": "pytest"}` is refused.
 
 **A failing assertion is a finding.** Fix the component and re-run the same
 assertion; changing the expected value, loosening a match or skipping the check
@@ -74,7 +82,37 @@ to turn it green hides the defect. Change an assertion only when the user
 confirms the expected behavior was wrong, and record that as an `open_decisions`
 entry.
 
-A deliberate regression recorded with `"negative_control": true` must `fail`.
+**A negative control shows a check can catch the defect it guards.** Make the
+regression in a throwaway export or copy that never reaches the branch or the
+target. Run the check and record it with `"negative_control": true`, then revert
+the regression and run the same check green, recorded as an ordinary result
+(no `negative_control`) with its own evidence: the gate derives a requirement's
+status from its ordinary results alone, so a control row cannot stand in for it.
+The gate maps the control's outcome:
+
+- `fail`: `held`. The check caught the regression.
+- `pass`: `escaped`. The check missed it. Record it as it ran: the gate marks a
+  requirement whose own checks pass `not_tested` with reason `control_escaped`,
+  and the report names the control as a test gap.
+- `blocked` (or `not_tested`): `not_run`.
+
+When the only check that covers a pattern runs on the target (a browser case
+needing the regression deployed), keep the target untouched: record the control
+`blocked` with the reason in `errors`.
+
+A worked control row, a unit suite run offline against a throwaway copy:
+
+```json
+{
+  "package": "pkg-example",
+  "requirement": "req-example",
+  "outcome": "fail",
+  "negative_control": true,
+  "evidence": [{"path": "evidence/control-unit.txt", "sha256": "9e71be1f6eab21541fd197ed90f19d113c67cb05074533d7c38c668e900adb21"}],
+  "actual": "unit suite failed on the seeded regression: 1 failed, 41 passed",
+  "environment": {"profile": "local", "org": "none"}
+}
+```
 
 Done when every requirement of every package has a result, or is named as
 unrecorded in the final report.
