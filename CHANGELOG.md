@@ -9,6 +9,35 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.111.0 (2026-11-09)
+
+### Bug Fixes
+
+- **inventory**: Cover near-miss script tags and an unreadable page library
+  ([#1187](https://github.com/Gharib89/crm/pull/1187),
+  [`05dc706`](https://github.com/Gharib89/crm/commit/05dc7068fa16acd455732d254b25a4e970d11986))
+
+- **inventory**: Guard an inline rewrite when the findings hold no page-rule hit
+  ([#1187](https://github.com/Gharib89/crm/pull/1187),
+  [`05dc706`](https://github.com/Gharib89/crm/commit/05dc7068fa16acd455732d254b25a4e970d11986))
+
+- **inventory**: Name the real evidence key of the page rule in the migration skill
+  ([#1187](https://github.com/Gharib89/crm/pull/1187),
+  [`05dc706`](https://github.com/Gharib89/crm/commit/05dc7068fa16acd455732d254b25a4e970d11986))
+
+### Features
+
+- **inventory**: Convert registers the OData v2 adapter on HTML web resources
+  ([#1187](https://github.com/Gharib89/crm/pull/1187),
+  [`05dc706`](https://github.com/Gharib89/crm/commit/05dc7068fa16acd455732d254b25a4e970d11986))
+
+### Refactoring
+
+- **inventory**: Name the page registration trigger and the guard test plainly
+  ([#1187](https://github.com/Gharib89/crm/pull/1187),
+  [`05dc706`](https://github.com/Gharib89/crm/commit/05dc7068fa16acd455732d254b25a4e970d11986))
+
+
 ## v1.110.2 (2026-11-09)
 
 ### Bug Fixes
