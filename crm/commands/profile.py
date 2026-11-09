@@ -1028,7 +1028,7 @@ def profile_login(ctx: CLIContext, name, device_code):
     )
 
 
-def _no_secret_message(name: str) -> str:
+def _delegated_signin_notice(name: str) -> str:
     return (
         f"profile {name!r} uses delegated sign-in and has no secret; "
         f"sign in with `crm profile login {name}`."
@@ -1059,7 +1059,7 @@ def profile_set_password(
         _handle_d365_error(ctx, D365Error(f"Profile {profile_name!r} not found."))
         return
     if profile.auth_scheme == "oauth-user":
-        ctx.emit(False, error=_no_secret_message(profile_name))
+        ctx.emit(False, error=_delegated_signin_notice(profile_name))
         return
     secret = password_opt
     if not secret and _stdin_is_tty() and not ctx.json_mode:
@@ -1084,7 +1084,7 @@ def profile_delete_password(ctx: CLIContext, profile_name):
     except _PROFILE_LOAD_ERRORS:
         delegated = False  # missing or unreadable profile: plain cleanup
     if delegated:
-        ctx.emit(False, error=_no_secret_message(profile_name))
+        ctx.emit(False, error=_delegated_signin_notice(profile_name))
         return
     removed_keyring = keyring_store.delete_secret(profile_name)
     removed_plaintext = session_mod.clear_profile_secret(profile_name)
