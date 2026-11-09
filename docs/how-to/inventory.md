@@ -422,8 +422,8 @@ no org and needs no profile. A source map made from another inventory (its
 The graph's edges come from:
 
 - **The inventory**: platform dependencies; form libraries, event handlers and Url
-  controls (read from each form's XML); ribbon and sitemap `$webresource:` references
-  and URLs; a web resource's `src`, `href`, `openWebResource` and `/WebResources/`
+  controls (read from each form's XML); ribbon, ribbon diff and sitemap `$webresource:`
+  references and URLs; a web resource's `src`, `href`, `openWebResource` and `/WebResources/`
   strings; a step to its plug-in type and assembly, an image to its step; a process
   to its activities.
 - **The source map**: a component to its files and C# projects, and a plug-in
