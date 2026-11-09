@@ -1136,3 +1136,9 @@ def _plan_handler_context(
 
 
 register(HANDLER_TRANSFORM, Transform("javascript", (3,), _plan_handler_context, True))
+
+#: The form-kind transform that lists the OData v2 adapter in a form's library list. It has no
+#: script half: `inventory_form_libraries` plans its XML edit, so this entry only registers the id
+#: the rule names, and no web resource type selects it.
+ADAPTER_TRANSFORM = "form-odata-adapter"
+register(ADAPTER_TRANSFORM, Transform("javascript", (), lambda *_: Plan((), ())))

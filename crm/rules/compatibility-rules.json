@@ -493,6 +493,32 @@
       ]
     },
     {
+      "id": "form-library-no-odata-adapter",
+      "kind": "form",
+      "class": "deprecated",
+      "title": "A form loads a library with an OData v2 call and does not load the OData v2 adapter ahead of it",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "form_library_order",
+        "library_rule": "web-resource-odata-v2",
+        "adapter_pattern": "global\\.CrmODataV2\\s*="
+      },
+      "transform": "form-odata-adapter",
+      "fix": "List the web resource holding the generated OData v2 adapter (crm-odata-v2-adapter.js) in the form's libraries, ahead of the first library that calls the OData v2 endpoint. A library that cannot be read is unknown, not clear.",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/best-practices/business-logic/do-not-use-odata-v2-endpoint",
+        "https://learn.microsoft.com/power-platform/important-changes-coming",
+        "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/avoid-crm2011-service-odata"
+      ]
+    },
+    {
       "id": "ribbon-action-no-primary-control",
       "kind": "ribbon_diff",
       "class": "deprecated",

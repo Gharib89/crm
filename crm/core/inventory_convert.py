@@ -60,6 +60,12 @@ from crm.core.inventory_form_handlers import (
     form_handler_tags,
     plan_form_handlers,
 )
+from crm.core.inventory_form_libraries import (
+    adapter_gate,
+    form_library_tags,
+    library_id,
+    plan_adapter_library,
+)
 from crm.core.inventory_odata import ADAPTER_NAME, Target, read_target, render_adapter
 from crm.core.inventory_packages import PACKAGE_ID
 from crm.core.inventory_packages import SCHEMA_VERSION as PACKAGES_VERSION
@@ -74,7 +80,15 @@ from crm.core.inventory_ribbon import (
     ribbon_function_names,
 )
 from crm.core.inventory_source_map import read_source_map
-from crm.core.inventory_transforms import HANDLER_TRANSFORM, TRANSFORMS, Edit, Plan, Transform, Used
+from crm.core.inventory_transforms import (
+    ADAPTER_TRANSFORM,
+    HANDLER_TRANSFORM,
+    TRANSFORMS,
+    Edit,
+    Plan,
+    Transform,
+    Used,
+)
 from crm.utils.safe_xml import fromstring
 
 #: The format version of the ledger.
@@ -319,28 +333,48 @@ class _Form:
     target: bool
     #: The ``(library, function)`` registrations the finding's evidence names.
     named: list[tuple[str, str]]
+    #: The form carries the adapter rule's finding, so this run lists the adapter in it.
+    adapter: bool = False
+
+
+def _hits(findings: Iterable[Finding], rule: Rule | None) -> dict[str, RegistrationEvidence]:
+    """The registration evidence of each component carrying one of *rule*'s findings."""
+    return {
+        f.key: f.evidence
+        for f in findings
+        if rule is not None
+        and f.rule == rule.id
+        and f.cls != "clear"
+        and isinstance(f.evidence, RegistrationEvidence)
+    }
 
 
 def _read_forms(
-    inventory_dir: Path, records: list[Record], findings: Iterable[Finding], rule: Rule
+    inventory_dir: Path,
+    records: list[Record],
+    findings: Iterable[Finding],
+    rule: Rule | None,
+    adapter_rule: Rule | None,
 ) -> list[_Form]:
-    """Read every form of the inventory against its hash, noting which carry *rule*'s finding."""
-    hits = {
-        f.key: f.evidence
-        for f in findings
-        if f.rule == rule.id and f.cls != "clear" and isinstance(f.evidence, RegistrationEvidence)
-    }
+    """Read every form of the inventory against its hash, noting which carry *rule*'s finding
+    and which carry *adapter_rule*'s.
+    """
+    findings = list(findings)
+    hits, listed = _hits(findings, rule), _hits(findings, adapter_rule)
     out: list[_Form] = []
     for rec in records:
         ev = hits.get(rec.key) if rec.kind == "form" else None
-        if rec.kind != "form" or not (ev or rec.artifacts):
+        seen = ev or listed.get(rec.key)
+        if rec.kind != "form" or not (seen or rec.artifacts):
             continue
-        path, sha = (ev.path, ev.sha256) if ev else (rec.artifacts[0].path, rec.artifacts[0].sha256)
+        path, sha = (
+            (seen.path, seen.sha256) if seen else (rec.artifacts[0].path, rec.artifacts[0].sha256)
+        )
         named = [
             (str(r.get("library", "")).lower(), str(r.get("function", "")))
             for r in (ev.registrations if ev else ())
         ]
-        form = _Form(rec.key, path, b"", [], "", ev is not None, named)
+        form = _Form(rec.key, path, b"", [], "", ev is not None, named, rec.key in listed)
         try:
             raw = (inventory_dir / path).read_bytes()
             if _hex(raw) != sha:
@@ -655,16 +689,23 @@ def convert(
     source_map_path: Path | None = None,
     target_inventory: Path | None = None,
     repo: Path | None = None,
+    adapter_resource: str | None = None,
 ) -> ConvertResult:
     """Plan, gate and write the conversion of every component carrying a transformable finding.
 
     With *repo*, the application repository the source map was made from, each plug-in
     assembly the map matches to one project also gets the SDK-style retarget of that project.
+    *adapter_resource* is the web resource name the OData v2 adapter will have in the target org
+    (``{package}`` expands to the work package id): a form listing a rewritten library gets the
+    adapter listed ahead of it, and without the name it is a manual-review entry.
 
     Raises:
-        InventoryError: an input cannot be read or belongs to another inventory, or
-            *out* is inside the inventory or not empty.
+        InventoryError: an input cannot be read or belongs to another inventory, *out* is inside
+            the inventory or not empty, or *adapter_resource* is blank or names one web resource
+            for the adapters of several work packages.
     """
+    if adapter_resource is not None and not adapter_resource.strip():
+        raise InventoryError("--adapter-resource must name the adapter's web resource")
     if repo is not None and source_map_path is None:
         raise InventoryError("--repo needs --source-map: the map names each assembly's project")
     inv_root, out_root = inventory_dir.resolve(), out.resolve()
@@ -750,6 +791,7 @@ def convert(
         )
 
     form_rule, ribbon_rule = owner_of("form"), owner_of("ribbon_diff")
+    adapter_rule = next((r for r in rules.values() if r.transform == ADAPTER_TRANSFORM), None)
     forms: list[_Form] = []
     ribbons: list[_Ribbon] = []
     reasons: dict[tuple[str, str], str] = {}
@@ -760,7 +802,7 @@ def convert(
         inventory_dir, inv.records, frozenset(), frozenset(("web_resource",))
     )
     libraries: dict[str, tuple[str, str, str]] = {}
-    if form_rule is not None or ribbon_rule is not None:
+    if form_rule is not None or ribbon_rule is not None or adapter_rule is not None:
         script_types = TRANSFORMS[HANDLER_TRANSFORM].web_resource_types
         for gkey in groups:
             rec = records.get((gkey[0], gkey[1]))
@@ -770,8 +812,10 @@ def convert(
         def packages_of(kind: str, key: str) -> set[str]:
             return set(held.get(f"{kind}:{key}", [UNPACKAGED]))
 
-        if form_rule is not None:
-            forms = _read_forms(inventory_dir, list(inv.records), findings.findings, form_rule)
+        if form_rule is not None or adapter_rule is not None:
+            forms = _read_forms(
+                inventory_dir, list(inv.records), findings.findings, form_rule, adapter_rule
+            )
         if ribbon_rule is not None:
             ribbons = _read_ribbons(
                 inventory_dir, list(inv.records), findings.findings, ribbon_rule
@@ -808,6 +852,8 @@ def convert(
     )
     rewritten: set[tuple[str, str]] = set()
 
+    pending: list[tuple[str, str]] = []
+
     def emit(
         kind: str,
         key: str,
@@ -836,13 +882,16 @@ def convert(
                     entry.original_sha256, entry.patched_sha256 = _hex(source), _hex(current)
                     entry.repo_path = matched.get((kind, key))
                     if not files:
-                        _write(out, entry, path, source, current)
-                        files = entry.files
+                        written = _outputs(entry, path, source, current)
+                        pending.extend(written.values())
+                        files = {label: rel for label, (rel, _) in written.items()}
                     entry.files = dict(files)
                 entries.append(entry)
 
     entries: list[Entry] = []
     adapter_uses: dict[str, set[Used]] = {}
+    #: Each library (lowercase name) the odata-v2 transform rewrote, with its work packages.
+    rewrote: dict[str, set[str]] = {}
     for (kind, key, path), group in groups.items():
         record = records.get((kind, key))
         source, problem = b"", ""
@@ -895,40 +944,109 @@ def convert(
                     for pkg in held.get(f"{kind}:{key}", [UNPACKAGED]):
                         adapter_uses.setdefault(pkg, set()).update(plan.adapter)
                     rewritten.update((lib_of.get((kind, key, path), ""), f) for f in plan.done)
+                    if rule.transform == "odata-v2" and record is not None:
+                        rewrote[str(record.fields.get("name", "")).lower()] = set(
+                            held.get(f"{kind}:{key}", [UNPACKAGED])
+                        )
             if plan.edits or plan.unproven or reason:
                 steps.append((rule, plan, reason, applied))
         emit(kind, key, path, steps, source, current)
-    for form in (f for f in forms if f.target and form_rule is not None):
-        plan, reason, applied, patched = Plan((), ()), form.problem, False, form.source
-        if not reason:
-            gone = {
-                k: reasons.get(k)
-                or f"{k[1]} was not rewritten in {k[0]}: see the library's entries"
-                for k in ((t.library.lower(), t.function) for t in form.tags)
-                if k[0] in libraries and k not in rewritten
-            }
-            plan = plan_form_handlers(form.tags, rewritten, gone)
-            if plan.edits:
-                patched = _apply(form.source, plan.edits) or b""
-                if not patched:
-                    reason = "the planned edits overlap"
-                elif patched.count(b"\n") != form.source.count(b"\n"):
-                    reason = "the rewrite changes the line count"
-                else:
-                    reason = _form_gate(form.source, patched, len(plan.edits)) or ""
-                if reason:
-                    reason = f"emit gate rejected the rewrite: {reason}"
-                else:
-                    applied = True
-        if plan.edits or plan.unproven or reason:
-            emit(
-                "form",
-                form.key,
-                form.path,
-                [(cast(Rule, form_rule), plan, reason, applied)],
-                form.source,
-                patched,
+    # The adapter's web resource name per work package: known now, before any file is written, so
+    # a name that cannot serve every package refuses the run.
+    adapter_pkgs = sorted(pkg for pkg, used in adapter_uses.items() if used)
+    if (
+        adapter_resource is not None
+        and "{package}" not in adapter_resource
+        and len(adapter_pkgs) > 1
+    ):
+        raise InventoryError(
+            f"--adapter-resource {adapter_resource!r} names one web resource, but the adapters of"
+            f" the work packages {', '.join(adapter_pkgs)} differ: put {{package}} in the name"
+            " to give each package its own"
+        )
+
+    def adapter_name(package: str) -> str:
+        return (adapter_resource or "").replace("{package}", package)
+
+    def adapter_step(form: _Form, current: bytes) -> tuple[Plan, str, bool, bytes] | None:
+        """The adapter rule's step on *form* as ``(plan, reason, applied, patched)``, or None when
+        the form already lists the adapter ahead of the libraries it serves.
+        """
+        reason = form.problem if not form.source else ""
+        tags = None if reason else form_library_tags(current)
+        if not reason and tags is None:
+            reason = "the form's library list cannot be mapped to its text"
+        if tags is None:
+            return Plan((), ()), reason, False, current
+        listed = {t.name.lower() for t in tags}
+        mine = {n for n in rewrote if n in listed}
+        where = set(held.get(f"form:{form.key}", [UNPACKAGED]))
+        if not mine:
+            reason = (
+                "no library the form lists had its OData v2 calls rewritten in this run:"
+                " see the libraries' entries"
             )
+        elif adapter_resource is None:
+            reason = "the adapter's web resource name is not known: pass --adapter-resource"
+        elif any(rewrote[n] != where for n in mine):
+            reason = (
+                "the form is not in exactly the work packages that ship the libraries"
+                " it lists that were rewritten"
+            )
+        elif "{package}" in adapter_resource and len(where) != 1:
+            reason = "the form sits in several work packages, whose adapters have different names"
+        if reason:
+            return Plan((), ()), reason, False, current
+        name = adapter_name(next(iter(where)))
+        found = plan_adapter_library(tags, name, mine, library_id(form.key, name))
+        if found is None:
+            return None
+        if isinstance(found, str):
+            return Plan((), ()), found, False, current
+        plan = Plan((found,), ())
+        patched = _apply(current, plan.edits) or b""
+        if patched.count(b"\n") != current.count(b"\n"):
+            reason = "the rewrite changes the line count"
+        else:
+            reason = adapter_gate(current, patched, name, mine) or ""
+        if reason:
+            return plan, f"emit gate rejected the rewrite: {reason}", False, current
+        return plan, "", True, patched
+
+    for form in forms:
+        steps: list[tuple[Rule, Plan, str, bool]] = []
+        current = form.source
+        if form.target and form_rule is not None:
+            plan, reason, applied, patched = Plan((), ()), form.problem, False, form.source
+            if not reason:
+                gone = {
+                    k: reasons.get(k)
+                    or f"{k[1]} was not rewritten in {k[0]}: see the library's entries"
+                    for k in ((t.library.lower(), t.function) for t in form.tags)
+                    if k[0] in libraries and k not in rewritten
+                }
+                plan = plan_form_handlers(form.tags, rewritten, gone)
+                if plan.edits:
+                    patched = _apply(form.source, plan.edits) or b""
+                    if not patched:
+                        reason = "the planned edits overlap"
+                    elif patched.count(b"\n") != form.source.count(b"\n"):
+                        reason = "the rewrite changes the line count"
+                    else:
+                        reason = _form_gate(form.source, patched, len(plan.edits)) or ""
+                    if reason:
+                        reason = f"emit gate rejected the rewrite: {reason}"
+                    else:
+                        applied = True
+            if plan.edits or plan.unproven or reason:
+                steps.append((form_rule, plan, reason, applied))
+            if applied:
+                current = patched
+        if form.adapter and adapter_rule is not None and (step := adapter_step(form, current)):
+            steps.append((adapter_rule, *step[:3]))
+            current = step[3]
+        if steps:
+            emit("form", form.key, form.path, steps, form.source, current)
     for ribbon in (r for r in ribbons if r.target and ribbon_rule is not None):
         plan, reason, applied, patched = Plan((), ()), ribbon.problem, False, ribbon.source
         if not reason and ribbon.diff is not None:
@@ -963,6 +1081,9 @@ def convert(
                 ribbon.source,
                 patched,
             )
+    for rel, text in pending:
+        (out / rel).parent.mkdir(parents=True, exist_ok=True)
+        (out / rel).write_text(text, encoding="utf-8", newline="")
     adapters: dict[str, dict[str, Any]] = {}
     for pkg, used in sorted(adapter_uses.items()):
         if not used:
@@ -975,6 +1096,8 @@ def convert(
             "sha256": _hex(text.encode("utf-8")),
             "entity_sets": sorted({u.set_name for u in used}),
         }
+        if adapter_resource is not None:
+            adapters[pkg]["web_resource"] = adapter_name(pkg)
         for e in entries:
             if e.package == pkg and e.transform == "odata-v2" and e.status == "patched":
                 e.files["adapter"] = f"{pkg}/{ADAPTER_NAME}"
@@ -1044,10 +1167,11 @@ def _write_project(
     return {label: f"{package}/{fname}" for label, (fname, _) in files.items()}
 
 
-def _write(out: Path, entry: Entry, path: str, source: bytes, patched: bytes) -> None:
-    """Write the diff, the patched file and, for a matched source, the repo-path diff."""
-    folder = out / entry.package
-    folder.mkdir(parents=True, exist_ok=True)
+def _outputs(entry: Entry, path: str, source: bytes, patched: bytes) -> dict[str, tuple[str, str]]:
+    """The diff, the patched file and, for a matched source, the repo-path diff, each as its
+    label and ``(path under out, text)``. Nothing is written: convert writes them all once every
+    check that could still refuse the run has passed.
+    """
     name = Path(path).name
     stem, sep, ext = name.rpartition(".content")
     if not sep:
@@ -1059,6 +1183,4 @@ def _write(out: Path, entry: Entry, path: str, source: bytes, patched: bytes) ->
     }
     if entry.repo_path is not None:
         files["repo_diff"] = (f"{stem}.repo.diff", _diff(old, new, entry.repo_path))
-    for label, (fname, text) in files.items():
-        (folder / fname).write_text(text, encoding="utf-8", newline="")
-        entry.files[label] = f"{entry.package}/{fname}"
+    return {label: (f"{entry.package}/{fname}", text) for label, (fname, text) in files.items()}
