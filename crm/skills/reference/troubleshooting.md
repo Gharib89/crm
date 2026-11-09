@@ -19,7 +19,7 @@ only the four keys above.
 | `not_found` | 404 / code `0x80040217` | no | record doesn't exist, or wrong entity set / GUID |
 | `auth_failed` | 401 | no | NTLM: check the profile's domain / username + password (re-run `crm profile set-password`). OAuth: app-registration (client id/secret, tenant) + an application user with a role |
 | `forbidden` | 403 | no | the user lacks the privilege; for `security assign-role` this also fires when the role's business unit differs from the target's (roles are BU-scoped — assign one from the same BU) |
-| `concurrency_conflict` | 412 | yes | another change won the race — retrieve a fresh ETag and retry |
+| `concurrency_conflict` | 412, or an async operation failing on the org-wide customization lock (`0x80071151`, "another … running") | yes | 412: another change won the race, retrieve a fresh ETag and retry. Lock: wait for the other operation to finish, then re-run |
 | `duplicate_detected` | code `0x80040237` | no | a matching record exists; merge/resolve or pass `--suppress-dup-detection` |
 | `validation` | other 4xx (e.g. 400), or a status-less client-side error (bad CLI input, schema/spec validation) | no | fix the request: bad payload / CLI input, alternate key, or OData syntax |
 | `throttled` | 429 | yes | service-protection limit; the backend honors `Retry-After` (idempotent verbs only) |
@@ -45,7 +45,8 @@ in the envelope but is never auto-retried — for **idempotent verbs**
 post-exhaustion hint — act on it only after the error surfaces.
 Two cases never auto-retry:
 
-- `concurrency_conflict` (412) — refetch a fresh ETag and retry.
+- `concurrency_conflict` (412) — refetch a fresh ETag and retry. (The same category also
+  flags a customization-lock failure: no ETag involved, wait and re-run.)
 - Any non-idempotent `POST` (record create, action, associate) — a lost response may
   mean the write **already landed**, so the backend surfaces the error rather than risk
   a duplicate side effect. To retry a create safely, re-run it as an upsert-by-id
@@ -60,7 +61,11 @@ deliberate `POST` exception: `PublishAllXml` is idempotent, so it auto-retries t
 org-wide publish-lock error (`0x80071151`, "another … `PublishAll` operation is
 running") with bounded backoff. A concurrent publish (another dev, a second run)
 resolves itself, so don't hand-retry a lock collision — the original error surfaces
-only if the lock never frees.
+only if the lock never frees. An `ImportSolutionAsync` that hits the same lock fails
+inside its asyncoperation row (a status such as 31, not an HTTP error), so `solution
+import` is not auto-retried: the error carries the row's `message` and classifies as
+`concurrency_conflict` with `retryable: true`, so wait and re-run. It cites
+`import_job_id` only when that ImportJob row exists.
 
 ## Connection diagnostics
 
