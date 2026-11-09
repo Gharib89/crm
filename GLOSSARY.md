@@ -289,6 +289,26 @@ async export variants create a transient server-side `asyncoperation` row —
 accepted, conceptually a read.
 _Avoid_: whitelisted write.
 
+### Sign-in
+
+**Cloud profile**:
+A profile whose target is Dataverse online, whatever its sign-in. Cloud-only gates
+ask this question, never which scheme the profile uses.
+_Avoid_: oauth profile.
+
+**App sign-in**:
+Signing in to a cloud org as an Entra app with a client secret. The org applies
+its application user's security roles.
+_Avoid_: client credentials (as a user-facing name), service principal login, S2S.
+
+**Delegated sign-in**:
+Signing in to a cloud org as a person, through an app the tenant registered for
+that purpose. The org applies that person's own security roles. Only an explicit
+login is interactive. Every other command reuses the cached sign-in or fails
+asking for a new login
+([ADR 0035](docs/adr/0035-delegated-entra-signin-per-tenant-app-encrypted-cache.md)).
+_Avoid_: user auth, interactive auth, user OAuth.
+
 ### Apply / desired state
 
 **Customization write**:
