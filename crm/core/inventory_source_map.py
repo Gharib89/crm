@@ -346,6 +346,26 @@ def read_source_map(path: Path) -> SourceMap:
     return parse_source_map(data)
 
 
+def require_inventory(source_map: SourceMap, manifest_sha256: str) -> None:
+    """Refuse a *source_map* made from another inventory than the one with *manifest_sha256*."""
+    if source_map.inventory.get("manifest_sha256") != manifest_sha256:
+        raise InventoryError(
+            "the source map was made from another inventory (its manifest_sha256 differs);"
+            " re-run `crm inventory map-source` on this one"
+        )
+
+
+def mapped_projects(source_map: SourceMap) -> dict[str, str]:
+    """Each plug-in assembly's key to its project's repository path, for the assemblies the
+    map marks ``matched`` to exactly one project.
+    """
+    return {
+        c.key: c.projects[0]
+        for c in source_map.components
+        if c.kind == "plugin_assembly" and c.status == "matched" and len(c.projects) == 1
+    }
+
+
 # ── Repository scan ─────────────────────────────────────────────────────────
 
 

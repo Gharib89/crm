@@ -36,6 +36,8 @@ from crm.core.inventory import (
     normalize_text,
     parse_manifest,
 )
+from crm.core.inventory_csproj import detect_csproj
+from crm.core.inventory_source_map import mapped_projects, read_source_map, require_inventory
 from crm.utils.safe_xml import fromstring
 
 #: The format version of the findings file.
@@ -103,6 +105,15 @@ class RibbonActionParameter:
 
 
 @dataclass(frozen=True)
+class PluginProject:
+    """The plug-in project the source map names for an assembly: below .NET Framework 4.6.2, or
+    referencing the SDK 5.0 ``Microsoft.Xrm.Sdk`` or ``Microsoft.Crm.Sdk.Proxy``.
+
+    The repository, not the inventory, is what this detects on, so the inventory loop skips it.
+    """
+
+
+@dataclass(frozen=True)
 class Rule:
     """One compatibility rule, applying from source version *source_from* to *source_before*."""
 
@@ -113,7 +124,7 @@ class Rule:
     source_from: str
     source_before: str | None
     targets: tuple[str, ...]
-    detection: ContentPattern | FieldIn | FormHandlerContext | RibbonActionParameter
+    detection: ContentPattern | FieldIn | FormHandlerContext | RibbonActionParameter | PluginProject
     fix: str
     sources: tuple[str, ...]
     #: Id of a registered code transform (`inventory_convert`) that rewrites what this rule
@@ -176,7 +187,7 @@ def _transform(obj: dict[str, Any], where: str) -> str | None:
 
 def _detection(
     value: object, kind: str, where: str
-) -> ContentPattern | FieldIn | FormHandlerContext | RibbonActionParameter:
+) -> ContentPattern | FieldIn | FormHandlerContext | RibbonActionParameter | PluginProject:
     obj = _obj(value, where)
     detection_type = obj.get("type")
     if detection_type == "content_pattern":
@@ -207,9 +218,15 @@ def _detection(
         return RibbonActionParameter(
             _text(obj, "library_rule", where), _text(obj, "parameter", where)
         )
+    if detection_type == "plugin_project":
+        if kind != "plugin_assembly":
+            raise InventoryError(
+                f"rules file {where}: plugin_project applies to plugin_assembly only"
+            )
+        return PluginProject()
     raise InventoryError(
         f"rules file {where}.type {detection_type!r} is not content_pattern, field_in, "
-        "form_handler_context or ribbon_action_parameter"
+        "form_handler_context, ribbon_action_parameter or plugin_project"
     )
 
 
@@ -349,6 +366,37 @@ class RegistrationEvidence:
 
 
 @dataclass(frozen=True)
+class ProjectEvidence:
+    """What a plug-in project holds that the rule flagged.
+
+    *path* is the project's repository path and *sha256* its normalized text. *fired* names the
+    conditions that held, ``framework`` (the declared *target_framework_version*, None when
+    absent, is below 4.6.2) and ``sdk_references`` (the SDK 5.0 assemblies in *sdk_references*).
+    It carries a content finding's *locations* and *match_count* too, so a reader that predates it
+    reads it as one.
+    """
+
+    path: str
+    sha256: str
+    locations: tuple[tuple[int, int], ...]
+    match_count: int
+    target_framework_version: str | None
+    sdk_references: tuple[str, ...]
+    fired: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "path": self.path,
+            "sha256": self.sha256,
+            "locations": [{"line": line, "column": col} for line, col in self.locations],
+            "match_count": self.match_count,
+            "target_framework_version": self.target_framework_version,
+            "sdk_references": list(self.sdk_references),
+            "fired": list(self.fired),
+        }
+
+
+@dataclass(frozen=True)
 class FieldEvidence:
     """The recorded field value a field rule matched."""
 
@@ -373,7 +421,7 @@ class Finding:
     cls: str
     rule: str | None
     reason: str | None
-    evidence: ContentEvidence | RegistrationEvidence | FieldEvidence | None
+    evidence: ContentEvidence | RegistrationEvidence | ProjectEvidence | FieldEvidence | None
     #: The row's usage (`crm.core.usage.Usage.to_dict`), set by the usage filter; absent means
     #: not read, never unused.
     usage: dict[str, Any] | None = None
@@ -491,7 +539,7 @@ def _field(obj: Any, name: str, kind: type, where: str) -> Any:
 
 def _evidence(
     value: Any, where: str
-) -> ContentEvidence | RegistrationEvidence | FieldEvidence | None:
+) -> ContentEvidence | RegistrationEvidence | ProjectEvidence | FieldEvidence | None:
     if value is None:
         return None
     if _get(value, "field") is not None:
@@ -510,6 +558,23 @@ def _evidence(
         (_field(loc, "line", int, where), _field(loc, "column", int, where))
         for loc in _field(value, "locations", list, where)
     )
+    if _get(value, "fired") is not None:
+        framework = _get(value, "target_framework_version")
+        if framework is not None and type(framework) is not str:
+            raise InventoryError(f"{where}: target_framework_version must be a string or null")
+        fired = _field(value, "fired", list, where)
+        references = _field(value, "sdk_references", list, where)
+        if not all(type(n) is str for n in [*fired, *references]):
+            raise InventoryError(f"{where}: fired and sdk_references must be lists of strings")
+        return ProjectEvidence(
+            _field(value, "path", str, where),
+            _field(value, "sha256", str, where),
+            locations,
+            _field(value, "match_count", int, where),
+            framework,
+            tuple(references),
+            tuple(fired),
+        )
     return ContentEvidence(
         _field(value, "path", str, where),
         _field(value, "sha256", str, where),
@@ -754,24 +819,60 @@ def _registrations(
     return out
 
 
+def _project_findings(rule: Rule, record: Record, repo: Path, rel: str) -> list[Finding]:
+    """The finding for the project at *rel* under *repo*: a hit with its evidence, ``unknown``
+    when it cannot be read or judged, nothing when it is at the floor with no SDK 5.0 reference.
+    """
+    try:
+        data = normalize_text((repo / rel).read_bytes())
+        text = data.decode("utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        why = f"unreadable: {getattr(exc, 'strerror', None) or exc}"
+        return [Finding(record.kind, record.key, "unknown", rule.id, f"project {rel} {why}", None)]
+    found = detect_csproj(text)
+    if found.reason is not None:
+        reason = f"project {rel}: {found.reason}"
+        return [Finding(record.kind, record.key, "unknown", rule.id, reason, None)]
+    fired = (("framework",) if found.below_floor else ()) + (
+        ("sdk_references",) if found.sdk_references else ()
+    )
+    if not fired:
+        return []
+    evidence = ProjectEvidence(
+        rel,
+        hashlib.sha256(data).hexdigest(),
+        found.sites[:MAX_LOCATIONS],
+        len(found.sdk_references) + found.below_floor,
+        found.declared,
+        found.sdk_references,
+        fired,
+    )
+    return [Finding(record.kind, record.key, rule.cls, rule.id, None, evidence)]
+
+
 def _assess_record(
     record: Record,
     rules: list[Rule],
     folder: Path,
     libs: _Libraries | None = None,
+    project: tuple[Path, str] | None = None,
 ) -> list[Finding]:
     def finding(
         cls: str,
         rule: str | None,
         reason: str | None,
-        evidence: ContentEvidence | RegistrationEvidence | FieldEvidence | None = None,
+        evidence: ContentEvidence
+        | RegistrationEvidence
+        | ProjectEvidence
+        | FieldEvidence
+        | None = None,
     ) -> Finding:
         return Finding(record.kind, record.key, cls, rule, reason, evidence)
 
     if not rules:
         return [finding("unknown", None, "no rule")]
     out: list[Finding] = []
-    content = [r for r in rules if not isinstance(r.detection, FieldIn)]
+    content = [r for r in rules if not isinstance(r.detection, FieldIn | PluginProject)]
     texts: dict[str, str] = {}
     if content:
         texts, problem = _texts(record, folder)
@@ -785,6 +886,10 @@ def _assess_record(
                 out += _registrations(
                     rule, path, sha[path], text, libs or _Libraries((), folder), finding
                 )
+            continue
+        if isinstance(d, PluginProject):
+            if project is not None:
+                out += _project_findings(rule, record, *project)
             continue
         if isinstance(d, FieldIn):
             value = record.fields.get(d.field)
@@ -802,7 +907,13 @@ def _assess_record(
 
 
 def assess(
-    folder: Path, target: str, *, rules: Rules | None = None, out: Path | None = None
+    folder: Path,
+    target: str,
+    *,
+    rules: Rules | None = None,
+    out: Path | None = None,
+    source_map: Path | None = None,
+    repo: Path | None = None,
 ) -> AssessResult:
     """Run *rules* (default: the packaged ones) over the inventory at *folder* for *target*.
 
@@ -818,14 +929,23 @@ def assess(
     *unattached_gaps*. *out*, the file the caller will write, is refused inside
     the inventory folder.
 
+    With *source_map* and *repo*, the application repository the map was made from, each plug-in
+    assembly the map matches to exactly one project is also judged by what that project holds
+    (`PluginProject`), the same projects `convert` retargets. Without them no project is read.
+
     Raises:
         InventoryError: the inventory or rules file is unreadable or breaks its
-            format, *target* is unknown, or *out* lies inside the inventory.
+            format, *target* is unknown, *out* lies inside the inventory, or the source map
+            was made from another inventory or is given without *repo*.
     """
     if target not in TARGETS:
         raise InventoryError(f"target {target!r} is not one of {TARGETS}")
     if out is not None and out.resolve().is_relative_to(folder.resolve()):
         raise InventoryError(f"--out {out} lies inside the inventory folder: pass another path")
+    if (repo is None) != (source_map is None):
+        raise InventoryError(
+            "--source-map and --repo go together: the map names each project's path"
+        )
     rules = rules or load_rules()
     path = folder / MANIFEST_NAME
     try:
@@ -834,6 +954,11 @@ def assess(
     except (OSError, ValueError) as exc:  # ValueError: malformed UTF-8 or JSON
         raise InventoryError(f"cannot read {path}: {exc}") from exc
     inv = parse_manifest(data)
+    projects: dict[str, str] = {}
+    if source_map is not None:
+        map_ = read_source_map(source_map)
+        require_inventory(map_, hashlib.sha256(raw).hexdigest())
+        projects = mapped_projects(map_)
     version = _dotted(inv.source.version)
     active = [r for r in rules.rules if target in r.targets]
     if version is not None:
@@ -842,11 +967,16 @@ def assess(
     libs = _Libraries(inv.records, folder, rules.rules)
     findings: list[Finding] = []
     for record in inv.records:
-        selected = [r for r in active if r.selects(record)]
+        project = (repo, projects[record.key]) if repo and record.key in projects else None
+        selected = [
+            r
+            for r in active
+            if r.selects(record) and (project or not isinstance(r.detection, PluginProject))
+        ]
         if version is None and selected:
             findings.append(Finding(record.kind, record.key, "unknown", None, unversioned, None))
         else:
-            findings += _assess_record(record, selected, folder, libs)
+            findings += _assess_record(record, selected, folder, libs, project)
         status = inv.coverage[record.kind].status
         if status != "complete":
             findings.append(

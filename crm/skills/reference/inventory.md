@@ -210,7 +210,8 @@ inventory, for one target, and writes a findings file.
   `deprecated` or `optional` from a rule hit, `unknown` with a `reason`, or `clear`
   (the rules that apply found nothing). `clear` means only that the rules that apply
   found nothing, and they cover web resource scripts, plug-in assembly
-  registration and how forms and ribbon diffs call scripts. Judge a `clear` component from evidence.
+  registration, how forms and ribbon diffs call scripts and, given the source map and the
+  repository, the plug-in projects. Judge a `clear` component from evidence.
 - **Resolve every `unknown`** before calling a component ready: `no rule` means no rule
   judges it (most kinds), and an `extraction gap` or `kind coverage` reason means the
   inventory never fully read it. A `source version` reason marks every ruled component
@@ -219,6 +220,11 @@ inventory, for one target, and writes a findings file.
   `locations` (line, column); a registration hit carries the `field` and `value`; a form or ribbon hit carries
   the flagged `registrations`. The
   fix and the Microsoft Learn sources of each rule hit are under `rules_hit`.
+- **Pass the source map and `--repo` together to judge plug-in projects.** Only then does
+  `assess` read the project of each assembly the map matched to exactly one project, and
+  raise `csproj-sdk-net462` (below .NET Framework 4.6.2, or SDK 5.0 references; the evidence
+  says which). An assembly without a mapped project is not judged on this, and an unreadable
+  project is `unknown`.
 - **Read `counts.by_class`, not the exit code**: a blocker exits 0.
 - **`field isolation_mode not recorded`** marks an inventory extracted by an older crm:
   re-extract to judge the isolation rules.

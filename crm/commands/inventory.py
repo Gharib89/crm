@@ -697,6 +697,19 @@ def inventory_convert_cmd(
     type=click.Path(dir_okay=False, path_type=Path),
     help="Write the findings file, every component's findings, to this JSON file.",
 )
+@click.option(
+    "--source-map",
+    "source_map_file",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="The source map `crm inventory map-source --out` wrote for this inventory; with --repo,"
+    " judges each plug-in project it matches to an assembly.",
+)
+@click.option(
+    "--repo",
+    "repo_dir",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    help="The application repository --source-map was made from.",
+)
 @_usage_options
 @pass_ctx
 def inventory_assess_cmd(
@@ -704,6 +717,8 @@ def inventory_assess_cmd(
     inventory: Path,
     target: str,
     out_file: Path,
+    source_map_file: Path | None,
+    repo_dir: Path | None,
     in_use: bool,
     exclude_unknown: bool,
     sort: str,
@@ -732,9 +747,20 @@ def inventory_assess_cmd(
     `unused` rows (a blocker on one goes with it), --exclude-unknown, which needs
     --in-use, also those of `unknown` rows; neither drops a row with no usage.
     --sort usage lists used rows first.
+
+    --source-map with --repo (the checkout the map was made from; one without the
+    other is a usage error, exit 2) also reads each plug-in project the map matches to
+    exactly one assembly: a blocker `csproj-sdk-net462` when the project targets .NET
+    Framework below 4.6.2 (no declared version counts) or references the SDK 5.0
+    Microsoft.Xrm.Sdk or Microsoft.Crm.Sdk.Proxy, its evidence naming the repository path,
+    the sha256, the declared version and the references; a project that cannot be read or
+    parsed is unknown with a reason. A map from another inventory exits 1. Without both,
+    no project is read and the findings are as before.
     """
+    if (source_map_file is None) != (repo_dir is None):
+        raise click.UsageError("--source-map and --repo go together: the map names each project.")
     try:
-        result = assess(inventory, target, out=out_file)
+        result = assess(inventory, target, out=out_file, source_map=source_map_file, repo=repo_dir)
         parsed = read_inventory(inventory)
         try:
             edges = reference_edges(parsed, inventory)

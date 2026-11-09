@@ -205,6 +205,18 @@
                   "minLength": 1
                 }
               }
+            },
+            {
+              "description": "A plug-in assembly whose project, as the source map names it, is below .NET Framework 4.6.2 or references the SDK 5.0 Microsoft.Xrm.Sdk or Microsoft.Crm.Sdk.Proxy. The repository, not the inventory, is read, so only `crm inventory assess --source-map --repo` runs it.",
+              "type": "object",
+              "required": [
+                "type"
+              ],
+              "properties": {
+                "type": {
+                  "const": "plugin_project"
+                }
+              }
             }
           ]
         },

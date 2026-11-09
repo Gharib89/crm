@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import cast
 from xml.etree.ElementTree import Element, ParseError, indent, tostring
 
 from crm.utils.safe_xml import fromstring
@@ -56,6 +57,9 @@ _DROPPED = frozenset(
 #: Imports the SDK makes itself.
 _SDK_IMPORT = re.compile(r"Microsoft\.(Common\.props|CSharp\.targets)", re.IGNORECASE)
 _VERSION = re.compile(r"v(\d+(?:\.\d+)*)", re.IGNORECASE)
+_REFERENCE = re.compile(
+    r"<(?:\w+:)?Reference\b[^>]*?\bInclude\s*=\s*([\"'])\s*([^,\"']*)", re.IGNORECASE
+)
 
 
 @dataclass(frozen=True)
@@ -89,34 +93,39 @@ def _local(root: Element) -> None:
         el.tag = el.tag.rpartition("}")[2]
 
 
+def _parse_version(version: str) -> tuple[int, ...] | None:
+    match = _VERSION.fullmatch(version.strip())
+    return None if match is None else tuple(int(p) for p in match.group(1).split("."))
+
+
+def _below_floor(version: str | None) -> bool:
+    """True when *version*, a ``TargetFrameworkVersion`` text, is under `FLOOR` (absent counts)."""
+    parts = None if version is None else _parse_version(version)
+    return parts is None or parts < FLOOR
+
+
 def _target(version: str | None) -> str | None:
     """The SDK ``TargetFramework`` for an old ``TargetFrameworkVersion``, or None if unreadable."""
     if version is None:
         return "net" + "".join(map(str, FLOOR))
-    match = _VERSION.fullmatch(version.strip())
-    if match is None:
-        return None
-    parts = tuple(int(p) for p in match.group(1).split("."))
-    return "net" + "".join(map(str, max(parts, FLOOR)))
+    parts = _parse_version(version)
+    return None if parts is None else "net" + "".join(map(str, max(parts, FLOOR)))
 
 
-def plan_csproj(text: str) -> CsprojPlan:
-    """Convert one old-style project's *text* (BOM and line endings are not significant)."""
+def _read(text: str) -> tuple[Element | None, str | None]:
+    """The project's root, namespace stripped, or None and why it is not an MSBuild project."""
     try:
-        root = fromstring(text.lstrip("﻿").encode("utf-8"))
+        root = fromstring(text.lstrip("\ufeff").encode("utf-8"))
     except ParseError:
-        return _whole("the project is not well-formed XML")
+        return None, "the project is not well-formed XML"
     _local(root)
     if root.tag != "Project":
-        return _whole("not an MSBuild project: the root element is not Project")
-    if root.get("Sdk") is not None:
-        return _whole("already SDK-style: the retarget reads old-style projects only")
-    props = {p.tag.lower(): p for g in root.iter("PropertyGroup") for p in g}
-    if "projecttypeguids" in props:
-        return _whole("ProjectTypeGuids marks a project type other than a plain class library")
-    output = (props["outputtype"].text or "").strip() if "outputtype" in props else "Library"
-    if output.lower() != "library":
-        return _whole(f"the project type is {output}, not a class library")
+        return None, "not an MSBuild project: the root element is not Project"
+    return root, None
+
+
+def _declared_version(root: Element) -> tuple[str | None, str | None]:
+    """The one unconditional ``TargetFrameworkVersion`` text (None: absent), or None and why not."""
     declared = [
         p
         for g in root.iter("PropertyGroup")
@@ -131,17 +140,100 @@ def plan_csproj(text: str) -> CsprojPlan:
         if p.tag.lower() == "targetframeworkversion" and "Condition" not in p.attrib
     ]
     if len(declared) != len(plain) or len(plain) > 1:
-        return _whole(
+        return None, (
             "TargetFrameworkVersion is declared under a condition or more than once: the"
             " retarget cannot pick one framework for every configuration"
         )
-    version = plain[0] if plain else None
-    framework = _target(version.text if version is not None else None)
-    if framework is None:
-        return _whole(
-            f"TargetFrameworkVersion {version.text if version is not None else ''!r}"
-            " is not a version"
-        )
+    version = plain[0].text if plain else None
+    if plain and (version is None or _parse_version(version) is None):
+        return None, f"TargetFrameworkVersion {version!r} is not a version"
+    return version, None
+
+
+def _sdk_references(root: Element) -> list[tuple[Element, Element]]:
+    """Each SDK 5.0 ``Reference`` the package replaces, with its item group.
+
+    Descendants too: a Choose/When block nests item groups an old project may use.
+    """
+    return [
+        (group, ref)
+        for group in root.iter("ItemGroup")
+        for ref in group.findall("Reference")
+        if _include(ref).lower() in _REPLACED
+    ]
+
+
+def _include(ref: Element) -> str:
+    """The assembly name a ``Reference`` includes, without its version and token."""
+    return ref.get("Include", "").split(",")[0].strip()
+
+
+@dataclass(frozen=True)
+class Detection:
+    """What a project holds that the retarget acts on: the one decision assess and convert share.
+
+    *reason* is set when the project cannot be judged. *declared* is its
+    ``TargetFrameworkVersion`` text (None when absent), *below_floor* whether that is under
+    4.6.2 and *sdk_references* the ``Microsoft.Xrm.Sdk`` and ``Microsoft.Crm.Sdk.Proxy``
+    references, in file order. *sites* are the 1-based (line, column) of the framework
+    declaration, when it is below the floor, and of each SDK reference, found in the text as
+    written (a commented-out copy can be located too). An SDK-style project holds none of it.
+    """
+
+    reason: str | None = None
+    declared: str | None = None
+    below_floor: bool = False
+    sdk_references: tuple[str, ...] = ()
+    sites: tuple[tuple[int, int], ...] = ()
+
+
+def _position(text: str, offset: int) -> tuple[int, int]:
+    return text.count("\n", 0, offset) + 1, offset - (text.rfind("\n", 0, offset) + 1) + 1
+
+
+def _sites(text: str, framework: bool) -> tuple[tuple[int, int], ...]:
+    found: list[int] = []
+    declaration = re.search(r"<(?:\w+:)?TargetFrameworkVersion\b", text, re.IGNORECASE)
+    if framework and declaration:
+        found.append(declaration.start())
+    for m in _REFERENCE.finditer(text):
+        if m.group(2).strip().lower() in _REPLACED:
+            found.append(m.start())
+    return tuple(_position(text, i) for i in sorted(found))
+
+
+def detect_csproj(text: str) -> Detection:
+    """Judge one project's *text* the way `plan_csproj` does, without rewriting it."""
+    root, problem = _read(text)
+    if root is None:
+        return Detection(reason=problem)
+    if root.get("Sdk") is not None:
+        return Detection()
+    declared, problem = _declared_version(root)
+    if problem is not None:
+        return Detection(reason=problem)
+    names = tuple(_include(ref) for _, ref in _sdk_references(root))
+    below = _below_floor(declared)
+    return Detection(None, declared, below, names, _sites(text, below))
+
+
+def plan_csproj(text: str) -> CsprojPlan:
+    """Convert one old-style project's *text* (BOM and line endings are not significant)."""
+    root, problem = _read(text)
+    if root is None:
+        return _whole(cast(str, problem))
+    if root.get("Sdk") is not None:
+        return _whole("already SDK-style: the retarget reads old-style projects only")
+    props = {p.tag.lower(): p for g in root.iter("PropertyGroup") for p in g}
+    if "projecttypeguids" in props:
+        return _whole("ProjectTypeGuids marks a project type other than a plain class library")
+    output = (props["outputtype"].text or "").strip() if "outputtype" in props else "Library"
+    if output.lower() != "library":
+        return _whole(f"the project type is {output}, not a class library")
+    version, problem = _declared_version(root)
+    if problem is not None:
+        return _whole(problem)
+    framework = cast(str, _target(version))
 
     review: list[Review] = []
     if "ilmerge" in text.lower():
@@ -152,15 +244,14 @@ def plan_csproj(text: str) -> CsprojPlan:
                 " under the SDK-style build",
             )
         )
-    replaced = False
-    # Descendants too: a Choose/When block nests item groups an old project may use.
+    sdk = _sdk_references(root)
+    for group, ref in sdk:
+        group.remove(ref)
+    replaced = bool(sdk)
     for group in root.iter("ItemGroup"):
         for ref in group.findall("Reference"):
-            name = ref.get("Include", "").split(",")[0].strip()
-            if name.lower() in _REPLACED:
-                group.remove(ref)
-                replaced = True
-            elif name.lower() in _REVIEWED:
+            name = _include(ref)
+            if name.lower() in _REVIEWED:
                 review.append(Review(_line_of(text, name), _REVIEWED[name.lower()]))
 
     out = Element("Project", {"Sdk": "Microsoft.NET.Sdk"})
