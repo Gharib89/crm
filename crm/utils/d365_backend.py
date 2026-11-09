@@ -123,6 +123,11 @@ def validate_profile_name(name: str) -> str:
     return name
 
 
+_LOCK_MESSAGE_RE = re.compile(
+    r"cannot start the requested operation.*because there is another.*running", re.DOTALL
+)
+
+
 def classify_d365_error(
     status: int | None, code: str | None, message: str | None
 ) -> tuple[ErrorCategory, bool]:
@@ -132,7 +137,10 @@ def classify_d365_error(
     transient classes. The backend auto-retries transport / ``throttled`` (429) /
     ``server_error`` (5xx) failures, so for those ``retryable`` is a post-exhaustion
     hint; ``concurrency_conflict`` (412) is retryable only after the caller refetches
-    a fresh ETag — the backend does not auto-retry it.
+    a fresh ETag — the backend does not auto-retry it. A customization-lock failure
+    (the ``_CUSTOMIZATION_LOCK_CODES`` or the "another ... running" text, on any
+    otherwise-unclassified status) is also ``concurrency_conflict``/retryable: the
+    operation never started, so wait for the lock and re-run.
 
     Mapping is status-first, except a few D365 error codes that carry meaning the
     HTTP status alone misses (``0x80040217`` object-not-found, and the
@@ -170,6 +178,11 @@ def classify_d365_error(
         return ("throttled", True)
     if 500 <= status < 600:
         return ("server_error", True)
+    # A customization-lock collision (#741's family) rides a status that would read
+    # as `validation`: an async operation's row status (31), or the on-prem 400
+    # publish path. The op never started, so it is transient (#1152).
+    if any(c in haystack for c in _CUSTOMIZATION_LOCK_CODES) or _LOCK_MESSAGE_RE.search(haystack):
+        return ("concurrency_conflict", True)
     return ("validation", False)
 
 
@@ -1266,9 +1279,13 @@ class D365Backend:
             if state == 3:
                 if status == 30:
                     return op
+                # `friendlymessage` is often generic ("An unexpected error
+                # occurred."); `message` holds the real cause, so carry both (#1152).
+                friendly, detail = op.get("friendlymessage"), op.get("message")
+                text = " ".join(dict.fromkeys(m for m in (friendly, detail) if m))
                 raise D365Error(
                     f"Async operation {async_operation_id} ended with statuscode={status}: "
-                    f"{op.get('friendlymessage') or op.get('message') or '(no message)'}",
+                    f"{text or '(no message)'}",
                     status=status if isinstance(status, int) else None,
                     response_body=op,
                 )

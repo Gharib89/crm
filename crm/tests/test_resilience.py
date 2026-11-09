@@ -720,6 +720,47 @@ class TestResolveRetryMax:
         assert _resolve_retry_max(profile) == profile.retry_max
 
 
+# ── classify_d365_error: async-op customization lock (#1152) ──────────────
+
+
+class TestClassifyAsyncLock:
+    LOCK = (
+        "Async operation x ended with statuscode=31: Cannot start the requested "
+        "operation [PublishAll] because there is another [PublishAll] running at "
+        "this time. Please try again later."
+    )
+
+    def test_lock_text_on_status_31_is_retryable_conflict(self):
+        from crm.utils.d365_backend import classify_d365_error
+
+        assert classify_d365_error(31, None, self.LOCK) == ("concurrency_conflict", True)
+
+    def test_lock_code_on_status_31_is_retryable_conflict(self):
+        from crm.utils.d365_backend import classify_d365_error
+
+        assert classify_d365_error(31, "0x80071151", "boom") == ("concurrency_conflict", True)
+
+    def test_lock_code_on_http_400_is_retryable_conflict(self):
+        from crm.utils.d365_backend import classify_d365_error
+
+        assert classify_d365_error(400, "0x80071151", "publish blocked") == (
+            "concurrency_conflict",
+            True,
+        )
+
+    def test_lock_phrase_split_across_unrelated_text_stays_validation(self):
+        from crm.utils.d365_backend import classify_d365_error
+
+        msg = "Cannot start the requested operation: bad payload. Another field is running late."
+        assert classify_d365_error(31, None, msg) == ("validation", False)
+
+    def test_unrelated_status_31_stays_validation(self):
+        from crm.utils.d365_backend import classify_d365_error
+
+        msg = "Async operation x ended with statuscode=31: missing dependency"
+        assert classify_d365_error(31, None, msg) == ("validation", False)
+
+
 # ── poll_async_operation ────────────────────────────────────────────────
 
 
@@ -762,6 +803,41 @@ class TestPollAsyncOperation:
                 backend.poll_async_operation(self.OP_ID)
         assert "missing dependency" in str(exc_info.value)
         assert exc_info.value.status == 31
+
+    def test_failure_surfaces_message_beside_friendlymessage(self, backend, monkeypatch):
+        """The server's real cause rides `message`; `friendlymessage` is generic (#1152)."""
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        with requests_mock.Mocker() as m:
+            m.get(
+                self._op_url(backend),
+                json={
+                    "statecode": 3,
+                    "statuscode": 31,
+                    "friendlymessage": "An unexpected error occurred.",
+                    "message": "System.IndexOutOfRangeException at GenerateFromFullAssemblyName",
+                },
+            )
+            with pytest.raises(D365Error) as exc_info:
+                backend.poll_async_operation(self.OP_ID)
+        text = str(exc_info.value)
+        assert "An unexpected error occurred." in text
+        assert "IndexOutOfRangeException" in text
+
+    def test_failure_with_identical_messages_does_not_repeat(self, backend, monkeypatch):
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        with requests_mock.Mocker() as m:
+            m.get(
+                self._op_url(backend),
+                json={
+                    "statecode": 3,
+                    "statuscode": 31,
+                    "friendlymessage": "Same text",
+                    "message": "Same text",
+                },
+            )
+            with pytest.raises(D365Error) as exc_info:
+                backend.poll_async_operation(self.OP_ID)
+        assert str(exc_info.value).count("Same text") == 1
 
     def test_raises_on_cancellation(self, backend, monkeypatch):
         monkeypatch.setattr(time, "sleep", lambda s: None)

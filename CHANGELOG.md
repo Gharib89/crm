@@ -9,6 +9,44 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.105.9 (2026-11-09)
+
+### Bug Fixes
+
+- **solution**: Surface the async failure cause and cite import_job_id only when it exists
+  ([#1155](https://github.com/Gharib89/crm/pull/1155),
+  [`6140ba6`](https://github.com/Gharib89/crm/commit/6140ba62753c09c5886e78b9633e99c1442a7e7d))
+
+- **solution**: Surface the async import failure cause and cite import_job_id only when it exists
+  ([#1155](https://github.com/Gharib89/crm/pull/1155),
+  [`6140ba6`](https://github.com/Gharib89/crm/commit/6140ba62753c09c5886e78b9633e99c1442a7e7d))
+
+- **solution**: Sweep lock-class docs and cover lock-text edge cases
+  ([#1155](https://github.com/Gharib89/crm/pull/1155),
+  [`6140ba6`](https://github.com/Gharib89/crm/commit/6140ba62753c09c5886e78b9633e99c1442a7e7d))
+
+
+## v1.105.8 (2026-11-09)
+
+### Bug Fixes
+
+- **inventory**: Drop the plug-in parent climb the chain rule made dead
+  ([#1149](https://github.com/Gharib89/crm/pull/1149),
+  [`4aac3e0`](https://github.com/Gharib89/crm/commit/4aac3e0e6dfec7ccaac79a2bdcbd9cad95b839b6))
+
+- **inventory**: Stock flows down the plug-in chain on Dataverse online
+  ([#1149](https://github.com/Gharib89/crm/pull/1149),
+  [`4aac3e0`](https://github.com/Gharib89/crm/commit/4aac3e0e6dfec7ccaac79a2bdcbd9cad95b839b6))
+
+- **skill**: State that steps on a managed assembly leave the default scope
+  ([#1149](https://github.com/Gharib89/crm/pull/1149),
+  [`4aac3e0`](https://github.com/Gharib89/crm/commit/4aac3e0e6dfec7ccaac79a2bdcbd9cad95b839b6))
+
+- **skill**: Use one term for the managed assembly rule
+  ([#1149](https://github.com/Gharib89/crm/pull/1149),
+  [`4aac3e0`](https://github.com/Gharib89/crm/commit/4aac3e0e6dfec7ccaac79a2bdcbd9cad95b839b6))
+
+
 ## v1.105.7 (2026-11-09)
 
 ### Bug Fixes

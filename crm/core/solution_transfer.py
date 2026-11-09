@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, BinaryIO
 
 from crm.utils import safe_xml
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict, classify_d365_error
 
 
 def _async_export_unavailable(exc: D365Error) -> bool:
@@ -24,6 +24,15 @@ def _async_export_unavailable(exc: D365Error) -> bool:
     return "exportsolutionasync" in msg and (
         "not enabled" in msg or "not supported" in msg or "resource not found" in msg
     )
+
+
+def _import_job_missing(backend: D365Backend, import_job_id: str) -> bool:
+    """True only when `importjobs(<id>)` answers not-found; any other outcome is unknown."""
+    try:
+        backend.get(f"importjobs({import_job_id})", params={"$select": "importjobid"})
+    except D365Error as exc:
+        return classify_d365_error(exc.status, exc.code, str(exc))[0] == "not_found"
+    return False
 
 
 def _import_job_id_rejected(exc: D365Error) -> bool:  # pyright: ignore[reportUnusedFunction]
@@ -409,12 +418,17 @@ def import_solution(
             on_progress=None if quiet else _on_progress,
         )
     except D365Error as exc:
-        raise D365Error(
-            f"{exc} (import_job_id={import_job_id})",
-            status=exc.status,
-            code=exc.code,
-            response_body=exc.response_body,
-        ) from exc
+        # The id is client-generated: a failure before the server creates the
+        # ImportJob leaves nothing for `import-result` to find, so cite it only
+        # when the row exists (#1152).
+        if not _import_job_missing(backend, import_job_id):
+            raise D365Error(
+                f"{exc} (import_job_id={import_job_id})",
+                status=exc.status,
+                code=exc.code,
+                response_body=exc.response_body,
+            ) from exc
+        raise
 
     # Final importjobs read for the canonical progress + timestamps + the per-
     # component result envelope (data column).

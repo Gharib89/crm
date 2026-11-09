@@ -7,6 +7,7 @@ All HTTP is mocked via `requests_mock`. No live D365 server needed.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 import pytest
@@ -2181,6 +2182,50 @@ class TestImportSolutionAsync:
 
             with pytest.raises(D365Error, match="missing dependency"):
                 st_mod.import_solution(backend, zip_path, quiet=True)
+
+    def _failed_import(self, backend, tmp_path, monkeypatch, job_row):
+        import time as _t
+
+        monkeypatch.setattr(_t, "sleep", lambda s: None)
+        zip_path = tmp_path / "in.zip"
+        zip_path.write_bytes(b"PK\x03\x04stub")
+        with requests_mock.Mocker() as m:
+            m.post(
+                backend.url_for("ImportSolutionAsync"),
+                json={"AsyncOperationId": self.OP_ID, "ImportJobKey": "x"},
+            )
+            m.get(
+                requests_mock.ANY,
+                json={
+                    "statecode": 3,
+                    "statuscode": 31,
+                    "friendlymessage": "An unexpected error occurred.",
+                    "message": "System.IndexOutOfRangeException",
+                },
+            )
+            m.get(re.compile(r"importjobs\("), **job_row)
+            from crm.core import solution_transfer as st_mod
+
+            with pytest.raises(D365Error) as exc_info:
+                st_mod.import_solution(backend, zip_path, quiet=True)
+        return exc_info.value
+
+    def test_import_failure_omits_import_job_id_when_no_row(self, backend, tmp_path, monkeypatch):
+        """A failure before the server creates the ImportJob must not cite its id (#1152)."""
+        err = self._failed_import(
+            backend,
+            tmp_path,
+            monkeypatch,
+            {"status_code": 404, "json": {"error": {"message": "Does Not Exist"}}},
+        )
+        assert "IndexOutOfRangeException" in str(err)
+        assert "import_job_id" not in str(err)
+
+    def test_import_failure_cites_import_job_id_when_row_exists(
+        self, backend, tmp_path, monkeypatch
+    ):
+        err = self._failed_import(backend, tmp_path, monkeypatch, {"json": {"progress": 40.0}})
+        assert "import_job_id=" in str(err)
 
     def test_import_dry_run_short_circuits(self, profile, tmp_path):
         zip_path = tmp_path / "in.zip"
