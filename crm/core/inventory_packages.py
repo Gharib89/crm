@@ -52,11 +52,11 @@ INDEX_NAME = "index.json"
 #: The kinds a work package groups; every other component is context.
 CONNECTING_KINDS = frozenset(
     ("web_resource", "plugin_assembly", "plugin_type", "step", "step_image", "process")
-    + ("form", "ribbon", "sitemap")
+    + ("form", "ribbon", "ribbon_diff", "sitemap")
 )
 #: Kinds that carry source; a system-origin one does not bridge two groups.
 _SOURCE_KINDS = frozenset(("web_resource", "plugin_assembly", "plugin_type"))
-_CONSUMER_KINDS = frozenset(("form", "ribbon", "sitemap", "process", "step"))
+_CONSUMER_KINDS = frozenset(("form", "ribbon", "ribbon_diff", "sitemap", "process", "step"))
 #: Source map statuses that leave a package's source in doubt.
 _DOUBTFUL = frozenset(("stale", "missing_source", "ambiguous"))
 #: Records that are edges or metadata, never graph nodes.
@@ -670,19 +670,21 @@ def _references(inv: Inventory, folder: Path) -> _Refs:
         partial=partial,
     )
     for record in inv.records:
-        if record.kind not in ("form", "ribbon", "sitemap", "web_resource"):
+        if record.kind not in ("form", "ribbon", "ribbon_diff", "sitemap", "web_resource"):
             continue
         source = _id(record.kind, record.key)
         texts = _texts(folder, record)
         if record.kind == "form":
             _form(refs, source, record, texts)
-        edge_type = {"ribbon": "ribbon_reference", "sitemap": "sitemap_reference"}.get(
-            record.kind, "web_resource_reference"
-        )
+        edge_type = {
+            "ribbon": "ribbon_reference",
+            "ribbon_diff": "ribbon_reference",
+            "sitemap": "sitemap_reference",
+        }.get(record.kind, "web_resource_reference")
         for _, text in texts:
             for name in _WR_TOKEN.findall(text):
                 refs.link_name(source, name, edge_type)
-            if record.kind in ("ribbon", "sitemap"):
+            if record.kind in ("ribbon", "ribbon_diff", "sitemap"):
                 for value in _URL_ATTR.findall(text):
                     path = "/" + value.strip().lower().lstrip("/")
                     if not refs.link_url(source, value, edge_type) and not refs.platform_page(path):
@@ -847,10 +849,12 @@ def _requirements(
                 if h["library"] and h["library"].lower() in lowered
             ]
             out.append(req("form_script", member, {"libraries": libraries, "handlers": on}))
-        elif record.kind in ("ribbon", "sitemap") and (libraries or member in unknown):
+        elif record.kind in ("ribbon", "ribbon_diff", "sitemap") and (
+            libraries or member in unknown
+        ):
             out.append(
                 req(
-                    "ribbon_command" if record.kind == "ribbon" else "sitemap_entry",
+                    "sitemap_entry" if record.kind == "sitemap" else "ribbon_command",
                     member,
                     {"web_resources": libraries, "unknown": sorted(set(unknown.get(member, [])))},
                 )
@@ -901,7 +905,7 @@ def _consumers(
         )
         out.append(Consumer(record.kind, record.key, tuple(used)))
         entity = record.fields.get(
-            "entity" if record.kind in ("form", "ribbon") else "primary_entity"
+            "entity" if record.kind in ("form", "ribbon", "ribbon_diff") else "primary_entity"
         )
         if isinstance(entity, str) and entity:
             entities.setdefault(_id("entity", entity), set()).add(member)
