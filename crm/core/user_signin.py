@@ -170,7 +170,7 @@ def _interactive(
     MSAL raises, rather than returns an error, when the wait runs out: a
     ``RuntimeError`` subclass (``BrowserInteractionTimeoutError``) from msal 1.30, a plain
     ``RuntimeError`` before it, and setup.py allows ``msal>=1.20``. Other rare msal
-    ``RuntimeError`` s on this path (ID token checks) land here too, so the message carries
+    ``RuntimeError``s on this path (ID token checks) land here too, so the message carries
     msal's own text.
     """
 
