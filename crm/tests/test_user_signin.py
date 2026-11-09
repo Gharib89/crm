@@ -103,7 +103,6 @@ class FakeMsal:
         mod: Any = types.ModuleType("msal")
         mod.SerializableTokenCache = SerializableTokenCache
         mod.PublicClientApplication = PublicClientApplication
-        mod.BrowserInteractionTimeoutError = BrowserInteractionTimeoutError
         self.timeout_error = BrowserInteractionTimeoutError
         self.module = mod
 
@@ -302,19 +301,27 @@ class TestLogin:
 
         user_signin.login(_profile(home_account_id=None), device_code=False, announce=announce)
         timeout = msal.interactive_kwargs["timeout"]
-        assert timeout == user_signin.BROWSER_SIGNIN_TIMEOUT_S
-        assert isinstance(timeout, int) and timeout > 0
-        assert len(shown) == 1 and "browser" in shown[0]
+        assert timeout == 300
+        assert len(shown) == 1
+        assert "browser" in shown[0]
         assert msal.calls.index("announce") < msal.calls.index("wait")
 
-    def test_browser_timeout_is_a_login_failed_naming_both_causes(self, msal, monkeypatch):
+    @pytest.mark.parametrize("old_msal", [False, True], ids=["msal-1.30+", "msal-before-1.30"])
+    def test_browser_timeout_is_a_login_failed_naming_both_causes(
+        self, msal, monkeypatch, old_msal
+    ):
         monkeypatch.setattr(webbrowser, "get", lambda *a: object())
-        msal.interactive = msal.timeout_error("User did not complete the flow in time")
+        # msal before 1.30 (setup.py allows >=1.20) raised a plain RuntimeError
+        raised = RuntimeError if old_msal else msal.timeout_error
+        msal.interactive = raised("User did not complete the flow in time")
         with pytest.raises(D365Error) as ei:
             user_signin.login(_profile(), device_code=False)
-        assert ei.value.code == "login_failed" and ei.value.status == 401
+        assert ei.value.code == "login_failed"
+        assert ei.value.status == 401
         text = str(ei.value)
-        assert "not finished" in text and "admin" in text and "user_impersonation" in text
+        assert "not finished within" in text
+        assert "administrator must grant admin consent" in text
+        assert "user_impersonation" in text
         assert "delegated sign-in how-to" in text
         assert token_store.load("dev") == ""
 

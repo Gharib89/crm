@@ -163,23 +163,29 @@ def _no_browser() -> bool:
 
 
 def _interactive(
-    app: Any, scopes: list[str], profile: ConnectionProfile, announce: Callable[[str], None]
+    app: Any, scopes: list[str], login_hint: str | None, announce: Callable[[str], None]
 ) -> dict[str, Any]:
-    """The bounded browser flow. MSAL raises, rather than returns an error, on timeout."""
-    import msal  # type: ignore[import-untyped]
+    """The bounded browser flow.
 
-    timeout_error: Any = getattr(msal, "BrowserInteractionTimeoutError")  # noqa: B009
+    MSAL raises, rather than returns an error, when the wait runs out: a
+    ``RuntimeError`` subclass (``BrowserInteractionTimeoutError``) from msal 1.30, a plain
+    ``RuntimeError`` before it, and setup.py allows ``msal>=1.20``.
+    """
+
+    def before_ui(**_kw: Any) -> None:
+        announce(
+            "A browser window opened for sign-in; crm is waiting for you to finish "
+            f"(gives up after {BROWSER_SIGNIN_TIMEOUT_S} s)."
+        )
+
     try:
         result: dict[str, Any] = app.acquire_token_interactive(
             scopes,
-            login_hint=profile.username or None,
+            login_hint=login_hint,
             timeout=BROWSER_SIGNIN_TIMEOUT_S,
-            on_before_launching_ui=lambda **_kw: announce(
-                "A browser window opened for sign-in; crm is waiting for you to finish "
-                f"(gives up after {BROWSER_SIGNIN_TIMEOUT_S} s)."
-            ),
+            on_before_launching_ui=before_ui,
         )
-    except timeout_error as exc:
+    except RuntimeError as exc:
         raise D365Error(
             f"Sign-in failed: the browser sign-in was not finished within "
             f"{BROWSER_SIGNIN_TIMEOUT_S} s. Either it was not completed in the browser, or "
@@ -222,7 +228,7 @@ def login(
             announce(str(flow["message"]))
             result = app.acquire_token_by_device_flow(flow)
     else:
-        result = _interactive(app, scopes, profile, announce)
+        result = _interactive(app, scopes, profile.username or None, announce)
     if "access_token" not in result:
         fix = _fix_for(result, device_code=device_code)
         detail = (
