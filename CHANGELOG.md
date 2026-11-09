@@ -9,6 +9,47 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.108.0 (2026-11-09)
+
+### Bug Fixes
+
+- **inventory**: --repo without --source-map is a usage error, exit 2
+  ([#1166](https://github.com/Gharib89/crm/pull/1166),
+  [`1c890f0`](https://github.com/Gharib89/crm/commit/1c890f0d88b108a71015b7e20039b0dce25977c2))
+
+- **inventory**: A non-UTF-8 project is a manual-review entry, ProjectTypeGuids is not a plain
+  library ([#1166](https://github.com/Gharib89/crm/pull/1166),
+  [`1c890f0`](https://github.com/Gharib89/crm/commit/1c890f0d88b108a71015b7e20039b0dce25977c2))
+
+- **inventory**: Project files get an injective name, a conditional framework declaration is manual
+  review ([#1166](https://github.com/Gharib89/crm/pull/1166),
+  [`1c890f0`](https://github.com/Gharib89/crm/commit/1c890f0d88b108a71015b7e20039b0dce25977c2))
+
+- **inventory**: The csproj retarget reads references and project types inside Choose blocks
+  ([#1166](https://github.com/Gharib89/crm/pull/1166),
+  [`1c890f0`](https://github.com/Gharib89/crm/commit/1c890f0d88b108a71015b7e20039b0dce25977c2))
+
+- **inventory**: Write a plug-in project's files under every package that holds it
+  ([#1166](https://github.com/Gharib89/crm/pull/1166),
+  [`1c890f0`](https://github.com/Gharib89/crm/commit/1c890f0d88b108a71015b7e20039b0dce25977c2))
+
+### Documentation
+
+- **inventory**: List the non-UTF-8 project among the untouched cases
+  ([#1166](https://github.com/Gharib89/crm/pull/1166),
+  [`1c890f0`](https://github.com/Gharib89/crm/commit/1c890f0d88b108a71015b7e20039b0dce25977c2))
+
+- **inventory**: README and skill reference for the plug-in project retarget
+  ([#1166](https://github.com/Gharib89/crm/pull/1166),
+  [`1c890f0`](https://github.com/Gharib89/crm/commit/1c890f0d88b108a71015b7e20039b0dce25977c2))
+
+### Features
+
+- **inventory**: Convert retargets plug-in projects to SDK-style net462 with CoreAssemblies
+  ([#1166](https://github.com/Gharib89/crm/pull/1166),
+  [`1c890f0`](https://github.com/Gharib89/crm/commit/1c890f0d88b108a71015b7e20039b0dce25977c2))
+
+
 ## v1.107.2 (2026-11-09)
 
 ### Bug Fixes

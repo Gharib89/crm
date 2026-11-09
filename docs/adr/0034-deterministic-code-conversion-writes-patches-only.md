@@ -95,8 +95,9 @@ graph.
   shapes, which leaves consumer code untouched. Async remains an optional finding.
 - **C# retarget.** Old-style csproj files become SDK-style, targeting `net462`, with
   `Microsoft.CrmSdk.CoreAssemblies` in place of SDK 5.0 HintPaths and signing kept.
-  `Microsoft.Xrm.Client` usage gets a manual-review entry. Builds run on a Windows
-  worker (#1059), outside convert's gate.
+  `Microsoft.Xrm.Client` usage gets a manual-review entry. Builds run outside convert's
+  gate, on Linux with the .NET SDK: the pilot built 9 of 9 converted projects that way
+  (#1059), so no Windows worker is needed.
 
 ## Surface and slices
 
