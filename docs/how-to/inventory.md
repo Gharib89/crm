@@ -800,7 +800,7 @@ response. The call site keeps its `req.open` arguments and the sync or async fla
 synchronous when it was not), so only `req.open(` becomes `CrmODataV2.open(req, `. The adapter `crm-odata-v2-adapter.js`, written
 once per work package next to the patched files, defines `CrmODataV2` and an instance-level `responseText` getter that
 returns the v4 body in the v2 shape: `d.results`, `d.__count` (a string), `{Value}` for option sets and money (money as a
-string), `/Date(ms)/` dates, lookups as `{Id, LogicalName, Name}`, and an error as `{message: {lang, value}}`. It also sets the
+string), `/Date(ms)/` dates, lookups as `{Id, LogicalName, Name}` (an empty option set, money or lookup keeps its object with null members, as v2 sent it), and an error as `{message: {lang, value}}`. It also sets the
 `OData-MaxVersion` and `OData-Version` headers and asks for the annotations the lookups need. A v2 reply carried `d.__next` for the next page; the adapter does not map `@odata.nextLink`, so a caller that follows pages sees the first one only. Entity set and attribute names
 come from the target inventory (`--target-inventory DIR`, a v9 extract), never from pluralising a name, and a `$select` is
 required because the v2 attribute spelling comes from it. Upload the adapter as a web resource and load it before the patched

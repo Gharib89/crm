@@ -404,7 +404,14 @@ def test_the_adapter_returns_v2_shapes_for_v4_payloads(run, tmp_path):
                         "createdon": "2020-01-01T00:00:00Z",
                         f"revenue{ann}": "$1,500.50",
                     },
-                    {"accountid": "a2", "name": None, "_parentcustomerid_value": None},
+                    {
+                        "accountid": "a2",
+                        "name": None,
+                        "revenue": None,
+                        "statuscode": None,
+                        "createdon": None,
+                        "_parentcustomerid_value": None,
+                    },
                 ],
             },
         },
@@ -433,7 +440,9 @@ def test_the_adapter_returns_v2_shapes_for_v4_payloads(run, tmp_path):
     assert first["StatusCode"] == {"Value": 1}
     assert first["ParentCustomerId"] == {"Id": "p1", "LogicalName": "account", "Name": "Parent"}
     assert first["CreatedOn"] == "/Date(1577836800000)/"
-    assert second["Name"] is None and second["ParentCustomerId"] is None
+    assert second["Name"] is None and second["CreatedOn"] is None
+    assert second["Revenue"] == {"Value": None} and second["StatusCode"] == {"Value": None}
+    assert second["ParentCustomerId"] == {"Id": None, "LogicalName": None, "Name": None}
     assert one["json"] == {"d": {"Name": "Acme"}} and one["async"] is True
     assert error["json"] == {"error": {"code": "0x1", "message": {"lang": "en-US", "value": "bad"}}}
     assert many["headers"]["OData-Version"] == "4.0"
