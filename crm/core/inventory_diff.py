@@ -119,12 +119,49 @@ def _gaps(inv: Inventory) -> list[dict[str, Any]]:
 
 
 @dataclass(frozen=True)
+class Restriction:
+    """The comparison was cut to a ``--solution`` side's solutions, so it is not a full diff.
+
+    *narrowed* is the ``--solution`` side (``a`` or ``b``) and *solutions* its scope. *missing*
+    names the solutions the whole-org side does not hold, which it can only compare by the
+    narrowed side's keys. *left_out* counts the whole-org keys outside the comparison.
+    """
+
+    narrowed: str
+    solutions: tuple[str, ...]
+    missing: tuple[str, ...]
+    left_out: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "narrowed": self.narrowed,
+            "solutions": list(self.solutions),
+            "missing": list(self.missing),
+            "left_out": self.left_out,
+        }
+
+    def describe(self) -> str:
+        """One line for the table output."""
+        text = (
+            f"{self.narrowed.upper()} narrowed to {', '.join(self.solutions)}; "
+            f"{self.left_out} key(s) of the whole-org side left out"
+        )
+        if self.missing:
+            whole = "B" if self.narrowed == "a" else "A"
+            text += (
+                f"; {', '.join(self.missing)} not on {whole}, compared by the narrowed keys alone"
+            )
+        return text
+
+
+@dataclass(frozen=True)
 class InventoryDiff:
     """The per-key comparison of inventory *a* (the earlier stage) with *b*."""
 
     a: Inventory
     b: Inventory
     entries: tuple[KeyDiff, ...]
+    restriction: Restriction | None = None
 
     def _tally(self, group: Callable[[KeyDiff], str]) -> dict[str, dict[str, int]]:
         out: dict[str, dict[str, int]] = {}
@@ -157,15 +194,18 @@ class InventoryDiff:
     def summary(self) -> dict[str, Any]:
         """Return the header, counts, incomplete kinds and gaps, without per-key entries."""
         a, b = _side(self.a), _side(self.b)
+        header: dict[str, Any] = {
+            "a": a,
+            "b": b,
+            "same_platform": a["platform"] == b["platform"],
+            "same_scope": _same_scope(self.a, self.b),
+            "usage_compared": self.a.scope.usage_read and self.b.scope.usage_read,
+            "basis": _BASIS,
+        }
+        if self.restriction is not None:
+            header["restricted"] = self.restriction.to_dict()
         return {
-            "header": {
-                "a": a,
-                "b": b,
-                "same_platform": a["platform"] == b["platform"],
-                "same_scope": _same_scope(self.a, self.b),
-                "usage_compared": self.a.scope.usage_read and self.b.scope.usage_read,
-                "basis": _BASIS,
-            },
+            "header": header,
             "counts": self.counts(),
             "by_origin": self.by_origin(),
             "incomplete": self.incomplete(),
@@ -209,7 +249,9 @@ def read_pair(a: Path, b: Path) -> tuple[Inventory, Inventory]:
             out.append(parse_manifest(decoded))
         except InventoryError as exc:
             raise InventoryError(f"{label} ({folder}): {exc}") from exc
-    if out[0].scope.system != out[1].scope.system:
+    # A --solution side keeps stock, so against a whole-org side the check would always fire;
+    # diff_inventories restricts that pair to the solutions instead.
+    if _narrowed_side(*out) is None and out[0].scope.system != out[1].scope.system:
         raise InventoryError(
             "cannot diff: A and B differ in stock scope (scope.system"
             f" {out[0].scope.system} vs {out[1].scope.system}), so every stock component would"
@@ -339,6 +381,34 @@ def _diff_key(
     return KeyDiff(kind, key, verdict, origin, fields, artifacts, ids, gap)
 
 
+def _narrowed_side(a: Inventory, b: Inventory) -> str | None:
+    """Return ``a`` or ``b`` when only that side is a ``--solution`` run, the other whole-org."""
+    return {("solutions", "org"): "a", ("org", "solutions"): "b"}.get((a.scope.mode, b.scope.mode))
+
+
+def _restricted_keys(
+    narrowed: Inventory, whole: Inventory
+) -> tuple[set[tuple[str, str]], tuple[str, ...]]:
+    """Return the keys to compare and the narrowed solutions the whole-org side lacks.
+
+    The narrowed side's own keys, plus the whole-org side's rows of the same-named
+    solutions: each solution, its memberships and the members they name. A source member
+    the target dropped then reads ``removed`` instead of falling out of the comparison.
+    """
+    named = {name.casefold() for name in narrowed.scope.solutions}
+    keys = {(r.kind, r.key) for r in narrowed.records}
+    found: set[str] = set()
+    for r in whole.records:
+        if r.kind == "solution" and str(r.fields["unique_name"]).casefold() in named:
+            found.add(str(r.fields["unique_name"]).casefold())
+            keys.add((r.kind, r.key))
+        elif r.kind == "solution_membership" and str(r.fields["solution"]).casefold() in named:
+            keys.add((r.kind, r.key))
+            keys.add((str(r.fields["member_kind"]), str(r.fields["member_key"])))
+    missing = tuple(n for n in narrowed.scope.solutions if n.casefold() not in found)
+    return keys, missing
+
+
 def diff_inventories(a: Inventory, b: Inventory) -> InventoryDiff:
     """Compare *a* (the earlier stage) with *b*, one `KeyDiff` per component key.
 
@@ -352,6 +422,10 @@ def diff_inventories(a: Inventory, b: Inventory) -> InventoryDiff:
     unless something else differs.
     GUIDs are compared only when both sides record one. Entries sort by kind,
     then key, so the result does not depend on manifest order.
+
+    One ``--solution`` side against a whole-org side is *restricted*: only the narrowed
+    side's keys and the whole-org side's rows of the same-named solutions are compared,
+    and ``InventoryDiff.restriction`` says so and counts the keys left out.
     """
     groups: tuple[dict[tuple[str, str], list[Record]], ...] = ({}, {})
     for inv, group in zip((a, b), groups, strict=True):
@@ -359,8 +433,21 @@ def diff_inventories(a: Inventory, b: Inventory) -> InventoryDiff:
             group.setdefault((record.kind, record.key), []).append(record)
     ga, gb = groups
     usage = a.scope.usage_read and b.scope.usage_read
+    all_keys = set(ga) | set(gb)
+    restriction = None
+    side = _narrowed_side(a, b)
+    if side is not None:
+        narrowed, whole = (a, b) if side == "a" else (b, a)
+        keep, missing = _restricted_keys(narrowed, whole)
+        restriction = Restriction(
+            side,
+            narrowed.scope.solutions,
+            missing,
+            len(all_keys - keep),
+        )
+        all_keys &= keep
     entries = tuple(
         _diff_key(kind, key, ga.get((kind, key), []), gb.get((kind, key), []), a, b, usage)
-        for kind, key in sorted(set(ga) | set(gb))
+        for kind, key in sorted(all_keys)
     )
-    return InventoryDiff(a, b, entries)
+    return InventoryDiff(a, b, entries, restriction)
