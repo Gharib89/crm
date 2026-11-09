@@ -56,6 +56,16 @@ KEY_FIELDS: dict[str, tuple[str, ...]] = {
 }
 KINDS: tuple[str, ...] = tuple(KEY_FIELDS)
 
+#: The kinds an entity owns, each naming it in its ``entity`` field.
+ENTITY_OWNED_KINDS: tuple[str, ...] = ("attribute", "local_option_set", "form", "view", "ribbon")
+#: The relationship fields naming an entity, 1:N and N:N.
+RELATIONSHIP_SIDES: tuple[str, ...] = (
+    "referenced_entity",
+    "referencing_entity",
+    "entity1",
+    "entity2",
+)
+
 #: Key fields holding a platform integer code (shared by CRM 2011 and v9, so keys
 #: match across stages). Every other key field is a non-empty string, except that a
 #: key reference (`_REFERENCE_FIELDS`) to the application ribbon or default sitemap is "".
