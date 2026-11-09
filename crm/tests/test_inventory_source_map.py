@@ -292,3 +292,58 @@ def test_cli_refuses_an_unreadable_inventory(tmp_path: Path) -> None:
     )
     assert result.exit_code == 1
     assert "manifest.json" in json.loads(result.output)["error"]
+
+
+def _map_names(tmp_path: Path, names: dict[str, int], repo_files: list[str]):
+    """Map-source over web resources named `names` (name -> type code) against `repo_files`."""
+    folder = tmp_path / "inv"
+    folder.mkdir()
+    records = [
+        _record(
+            "web_resource",
+            {"name": name, "web_resource_type": code},
+            folder,
+            files=[("content.bin", b"deployed\n")],
+        )
+        for name, code in names.items()
+    ]
+    manifest = inv.Inventory(
+        schema_version=inv.SCHEMA_VERSION,
+        source=inv.Source("onprem", ORG, None, "9.1.0.0000"),
+        extracted_at="2026-11-01T10:00:00Z",
+        cli_version="1.87.0",
+        scope=inv.Scope("org", ()),
+        publication="published",
+        records=tuple(records),
+        coverage={"web_resource": inv.KindCoverage("complete", 1, len(records), False, ())},
+        gaps=(),
+    )
+    (folder / inv.MANIFEST_NAME).write_text(inv.dump_manifest(manifest), encoding="utf-8")
+    repo = tmp_path / "repo"
+    for rel in repo_files:
+        (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+        (repo / rel).write_text("repo copy\n", encoding="utf-8")
+    return map_source(folder, repo)
+
+
+def test_extensionless_name_matches_the_files_stem_with_the_types_extension(
+    tmp_path: Path,
+) -> None:
+    source_map = _map_names(
+        tmp_path,
+        {"pre_noext": 3, "pre_page": 1, "pre_htm": 1, "pre_style": 3, "pre_/Scripts/deep": 3},
+        [
+            "a/pre_noext.js",
+            "a/Pre_Page.html",
+            "a/pre_htm.htm",
+            "a/pre_style.css",
+            "b/Scripts/deep.js",
+        ],
+    )
+    got = {c.key: (c.status, c.files) for c in source_map.components}
+    assert got["pre_noext"] == ("stale", ("a/pre_noext.js",))
+    assert got["pre_page"] == ("stale", ("a/Pre_Page.html",))
+    assert got["pre_htm"] == ("stale", ("a/pre_htm.htm",))
+    # A different type's extension is not a match.
+    assert got["pre_style"] == ("missing_source", ())
+    assert got["pre_/Scripts/deep"] == ("stale", ("b/Scripts/deep.js",))

@@ -353,7 +353,7 @@ Each component gets one status:
 | Status | Web resource | Plug-in assembly or type |
 |---|---|---|
 | `matched` | a repo file's normalized hash (the inventory's BOM and CRLF normalization) equals the deployed `normalized_sha256` | an assembly: one project builds it; a type: a C# declaration of its full name sits in a project that builds its assembly (a `partial` class lists each file) |
-| `stale` | one file lines up by name (its path ends with the web resource name, else it shares the file name) but the content differs: which side is newer is unknown | |
+| `stale` | one file lines up by name (its path ends with the web resource name, else it shares the file name; a name with no file extension also matches the file name plus the extension its type implies, `.htm` or `.html` for HTML) but the content differs: which side is newer is unknown | |
 | `ambiguous` | several files hold the deployed content, or line up by name: all are listed | several projects build the assembly, or declare the type in it, or full (not `partial`) copies of the type sit in several files of one project |
 | `candidate` | minified content on one side only keeps the hashes apart (a line of 500 characters or more, or `.min.` in the name), or the file looks generated (a `.ts` source for a `.js`, an un-minified name for a `.min.js`); `reason` says which | the type is declared in a project that builds another assembly, or the assembly's project exists but the type is not found |
 | `missing_source` | no candidate at all | no candidate at all |
@@ -422,8 +422,8 @@ no org and needs no profile. A source map made from another inventory (its
 The graph's edges come from:
 
 - **The inventory**: platform dependencies; form libraries, event handlers and Url
-  controls (read from each form's XML); ribbon and sitemap `$webresource:` references
-  and URLs; a web resource's `src`, `href`, `openWebResource` and `/WebResources/`
+  controls (read from each form's XML); ribbon, ribbon diff and sitemap `$webresource:`
+  references and URLs; a web resource's `src`, `href`, `openWebResource` and `/WebResources/`
   strings; a step to its plug-in type and assembly, an image to its step; a process
   to its activities.
 - **The source map**: a component to its files and C# projects, and a plug-in
