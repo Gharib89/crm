@@ -173,8 +173,8 @@ crm --json inventory extract --out ./inventory --solution ContosoCore --solution
 narrows the inventory to the named solutions: their solution records and memberships,
 each member component, each attribute, local option set, form, view and ribbon of a
 member entity, each ribbon diff in the named solutions' exports, each relationship with a member entity on either side, each
-plug-in type of a member assembly (a type is not a solution component, so it follows its
-assembly), and each dependency whose dependent component is kept. On v9 and cloud, an entity a solution
+plug-in type of a member assembly (a type is usually not a solution component, so it
+also follows its assembly), and each dependency whose dependent component is kept. On v9 and cloud, an entity a solution
 holds without its subcomponents, or as a shell, brings only the subcomponents the
 solution lists on their own. The manifest header records the scope with each name as
 the org spells it (`scope.mode: "solutions"`, `scope.solutions`).

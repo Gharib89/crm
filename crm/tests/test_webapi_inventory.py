@@ -1043,3 +1043,17 @@ def test_a_resume_keeps_the_gap_of_a_solution_the_server_refused_to_export(tmp_p
     assert summary.kinds["ribbon_diff"] == {"status": "unsupported", "records": 0}
     (gap,) = [g for g in _manifest(out)["gaps"] if g["kind"] == "ribbon_diff"]
     assert "contoso" in gap["description"]
+
+
+def test_a_scoped_run_keeps_a_type_the_solution_lists_without_its_assembly(tmp_path):
+    org = _org_with_plugin_types()
+    org["solutioncomponents"][0] = [
+        r for r in org["solutioncomponents"][0] if r["componenttype"] != 91
+    ]
+    org["solutioncomponents"][0].append(
+        {"solutioncomponentid": _id(104), "componenttype": 90, "objectid": _id(32),
+         **_lookup("solutionid", "solution", 2)}
+    )  # fmt: skip
+    out = tmp_path / "inv"
+    _extract(FakeBackend(org=org), out, solutions=("contoso",))
+    assert _keys(_manifest(out), "plugin_type") == ["Contoso.InGac|Contoso.InGac.Hook"]

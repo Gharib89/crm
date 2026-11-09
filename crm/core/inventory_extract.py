@@ -1770,8 +1770,8 @@ class _Builder:
             if p.kind == "relationship":
                 sides = {p.fields.get(k) for k in _RELATIONSHIP_SIDES}
                 return (p.kind, p.key) in members or not sides.isdisjoint(entities)
-            if p.kind == "plugin_type":  # not a solution component: it follows its assembly
-                return p.fields["assembly"] in assemblies
+            if p.kind == "plugin_type":  # usually no component: it follows its assembly
+                return (p.kind, p.key) in members or p.fields["assembly"] in assemblies
             return (p.kind, p.key) in members
 
         kept = [p for p in self.pending if p.kind != "dependency" and held(p)]
