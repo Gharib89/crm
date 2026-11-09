@@ -179,6 +179,11 @@ verify with `solution import-result <id>`, then promote separately.
 - `uninstall` **pre-checks** `RetrieveDependenciesForUninstall` and refuses (no
   DELETE) when blockers exist; `--force` skips the check. Inspect blockers first
   with `solution dependencies <name>`.
+- A large `apply-upgrade` / `--promote` can outlast the request timeout. The call is
+  not re-sent: the verb waits (`--timeout`, else the profile's `async_timeout`) until
+  the base name resolves to a new solution id, then returns the usual envelope. Error
+  code `PromoteStillRunning` means the promote may still be running or failed; read
+  `solution list` before any re-run.
 - All three are gated destructive verbs (`--yes`) except `clone-as-patch` (a
   create). `--dry-run` previews every one without mutating.
 

@@ -322,16 +322,17 @@ def test_diff_lines_split_on_lf_only(world):
     assert diff.count("\n-") == 1 and "@@ -1,2 +1,2 @@" in diff
 
 
-def test_names_that_slug_alike_keep_distinct_files(tmp_path):
-    from crm.core.inventory_convert import Entry, _write
+def test_names_that_slug_alike_keep_distinct_files():
+    from crm.core.inventory_convert import Entry, _outputs
 
-    out = tmp_path / "o"
+    diffs = set()
     for path in (
         "artifacts/web_resource/main.content-aaa.content.js",
         "artifacts/web_resource/main.content.extra-bbb.content.js",
     ):
-        _write(out, Entry("pkg-x", "web_resource", path, "r", "t", "patched"), path, b"a\n", b"b\n")
-    assert len(list((out / "pkg-x").glob("*.diff"))) == 2
+        entry = Entry("pkg-x", "web_resource", path, "r", "t", "patched")
+        diffs.add(_outputs(entry, path, b"a\n", b"b\n")["diff"][0])
+    assert len(diffs) == 2
 
 
 def test_an_artifact_changed_since_extraction_is_manual_review(world):

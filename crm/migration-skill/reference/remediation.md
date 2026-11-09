@@ -94,8 +94,12 @@ spans lines are manual review for every row. Work from `ledger.json`:
   hash. It derives from the deployed text, normalized to LF without a BOM, so
   the repository file's line endings can make `git apply` fail: normalize the
   file or apply the patched text by hand.
-- **`adapters`** in `ledger.json` lists each package that needs `crm-odata-v2-adapter.js`. Upload it as a web resource and
-  load it before the patched scripts: convert does not register it on forms or ribbons.
+- **`adapters`** in `ledger.json` lists each package that needs `crm-odata-v2-adapter.js`. Upload it as a web resource
+  and publish. Run convert with `--adapter-resource <name>` (the name you will upload it under; `{package}` expands per
+  package) and each form that loads a patched script lists the adapter just before its first patched library, in one
+  patch with any handler fix, and the entry records the name as `web_resource`. Without the flag, or where the list
+  cannot be proven (adapter listed after, no patched library, packages differ), the form is a manual-review entry.
+  Ribbons and HTML web resources are not registered: load the adapter there by hand.
   It returns the first page only: v2's `d.__next` has no counterpart, so a caller that follows pages needs review.
 - `ledger.json`'s `call_graph` counts, per package, the helpers threaded, the `Xrm.Page` functions no
   handler reaches (`unreachable`) and the helpers a name used outside their file holds back
