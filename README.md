@@ -677,7 +677,7 @@ See `D365.md` in the project root for the full SOP.
 
 - AD FS OAuth, certificate credentials, and OAuth flows other than
   client-credentials and the per-tenant delegated sign-in (`oauth-user`; ROPC is
-  unsupported) — on-prem uses NTLM (or
+  unsupported). On-prem uses NTLM (or
   username/password through AD FS for an IFD org), cloud uses OAuth 2.0
   client-credentials (secret) against the public cloud only.
 - Plugin / workflow source code deployment — use solution import for that.
