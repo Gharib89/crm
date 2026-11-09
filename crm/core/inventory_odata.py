@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from crm.core.inventory import read_inventory
+from crm.core.inventory_html import HTML_PAGE
 from crm.core.inventory_transforms import Edit, Plan, Transform, Unproven, Used, register
 
 if TYPE_CHECKING:
@@ -486,7 +487,7 @@ def _plan_odata(root: Node, target: Target | None) -> Plan:
     return Plan(tuple(edits), tuple(unproven), cleared=done, adapter=tuple(used))
 
 
-register("odata-v2", Transform("javascript", (1, 3), _plan_odata, needs_target=True))
+register("odata-v2", Transform("javascript", (HTML_PAGE, 3), _plan_odata, needs_target=True))
 
 # ── the adapter module ──────────────────────────────────────────────────────
 

@@ -69,11 +69,19 @@ def test_a_tag_name_and_attributes_are_read_case_insensitively():
         '<script src="a.js" />',
         "<script>var a;",
         b"<script>\xff</script>",
+        "<script-x>a</script-x><script>b</script>",
+        '<div title="<script>">x</div><script>a</script>',
     ],
 )
 def test_a_page_the_parser_and_the_scan_disagree_on_is_refused(markup):
     text = markup if isinstance(markup, bytes) else markup.encode()
     assert script_tags(text) is None
+
+
+def test_a_near_miss_tag_name_is_no_script_and_a_spaced_close_tag_is_one():
+    assert script_tags(b"<scripts>a</scripts><p>b</p>") == []
+    tag = _only(b"<script>a</script\n>")
+    assert tag.body == (8, 9)
 
 
 @pytest.mark.parametrize(

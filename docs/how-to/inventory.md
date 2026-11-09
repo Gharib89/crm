@@ -845,7 +845,9 @@ root, or a name matching only by file name in another folder, is not the library
 JavaScript grammar and its calls are rewritten inside the `<script>` body. The page gets one patch: the adapter tag goes
 before whichever rewritten script comes first. The page's registration is all or nothing: when the adapter cannot be
 registered (no flag, a different package, an unreadable tag layout), the page's inline rewrite is dropped too and both
-entries are manual review, because a rewritten call without the adapter would throw. The ledger's `adapters` entry records
+entries are manual review, because a rewritten call without the adapter would throw. Assess matches an adapter
+`<script src>` only to a web resource in the inventory, so the finding clears once the adapter is uploaded and
+extracted. The ledger's `adapters` entry records
 the name under `web_resource` when the flag is given. Upload the adapter under that name and publish the solution; convert never
 touches the org.
 

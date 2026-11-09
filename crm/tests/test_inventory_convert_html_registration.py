@@ -11,6 +11,7 @@ and the adapter's recorded web resource name.
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -174,6 +175,17 @@ def test_a_page_whose_scripts_cannot_be_read_is_unknown_not_clear(run):
     (unknown,) = [f for f in _finding(run, "Unreadable") if f.cls == "unknown"]
     assert "<script>" in unknown.reason
     assert _hits(run, "Unreadable") == []
+
+
+def test_a_page_whose_library_cannot_be_read_is_unknown_not_clear(run, tmp_path):
+    folder = tmp_path / "inv"
+    shutil.copytree(run["folder"], folder)
+    (record,) = [r for r in run["records"] if r.fields["name"] == ACCT]
+    (folder / record.artifacts[0].path).unlink()
+    result = assess.assess(folder, "online")
+    keys = _keys(run, "Lib")
+    unknown = [f for f in result.findings if f.key in keys and f.rule == RULE]
+    assert [f.cls for f in unknown] == ["unknown"] and "acct.js" in (unknown[0].reason or "")
 
 
 def test_convert_inserts_the_adapter_before_the_first_patched_library(run):
