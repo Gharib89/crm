@@ -211,6 +211,29 @@
               "required": [
                 "type",
                 "library_rule",
+                "adapter_pattern"
+              ],
+              "properties": {
+                "type": {
+                  "const": "html_library_order"
+                },
+                "library_rule": {
+                  "description": "Id of a content_pattern rule: an HTML page is a hit when a script it loads by src, or an inline script, matches that rule with no adapter script before it.",
+                  "type": "string",
+                  "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+                },
+                "adapter_pattern": {
+                  "description": "A Python regular expression: a library whose text matches it is the adapter.",
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "type",
+                "library_rule",
                 "parameter"
               ],
               "properties": {

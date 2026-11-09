@@ -57,14 +57,21 @@ blockers only when the plan requires the conversion.
 
 ## Read the registration findings
 
-Three rules judge how a component calls a script, not the script itself:
+Four rules judge how a component calls a script, not the script itself:
 `form-handler-no-execution-context` (kind `form`),
-`form-library-no-odata-adapter` (kind `form`) and
+`form-library-no-odata-adapter` (kind `form`),
+`web-resource-page-no-odata-adapter` (kind `web_resource`, HTML pages only) and
 `ribbon-action-no-primary-control` (kind `ribbon_diff`).
 `form-library-no-odata-adapter` flags a form whose library list names a script
 with a `web-resource-odata-v2` finding and has no OData v2 adapter listed ahead
 of it (an adapter defines `global.CrmODataV2 =`); its evidence is the first such
-`library`. The other two are each a `deprecated`
+`library`. `web-resource-page-no-odata-adapter` does the same for an HTML page: a
+`<script src>` naming such a script, or an OData v2 URL in a string of an inline script,
+with no adapter `<script src>` ahead of it; its evidence is the first such `library` or
+the inline `line`. The URL in a comment or in markup is no call. A page whose scripts
+cannot be placed (a tag in a comment, a script that writes another, an unclosed script)
+or whose library cannot be read is `unknown`; a `src` matches only the web resource it
+resolves to against the page's own name, never one that shares a file name. The other two are each a `deprecated`
 finding when the library the registration calls carries an `Xrm.Page` finding
 (`web-resource-xrm-page`) and the registration hands that library no context: an
 enabled form handler without `passExecutionContext`, or a `JavaScriptFunction` on

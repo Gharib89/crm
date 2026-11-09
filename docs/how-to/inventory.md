@@ -754,6 +754,7 @@ registration, and how forms and ribbon diffs call those scripts:
 | `web-resource-jquery-static`: the jQuery 2.1.1 the app shipped, removed online | blocker | `online` |
 | `form-handler-no-execution-context`: an enabled form handler without `passExecutionContext` whose library carries a `web-resource-xrm-page` finding (kind `form`) | deprecated | both |
 | `form-library-no-odata-adapter`: a form whose library list names a script web resource with a `web-resource-odata-v2` finding and has no OData v2 adapter listed ahead of it (an adapter is a library defining `global.CrmODataV2 =`; kind `form`) | deprecated | both |
+| `web-resource-page-no-odata-adapter`: an HTML web resource (type 1) that loads a script web resource with a `web-resource-odata-v2` finding through `<script src>`, or holds the OData v2 URL in a string of an inline script, and loads no OData v2 adapter ahead of it (kind `web_resource`); a page whose scripts cannot be placed or read is `unknown` | deprecated | both |
 | `ribbon-action-no-primary-control`: a ribbon `JavaScriptFunction` on a web resource library (`$webresource:` or a `/WebResources/` path) with a `web-resource-xrm-page` finding and no `PrimaryControl` among its `CrmParameter`s (kind `ribbon_diff`) | deprecated | both |
 | `assembly-storage-online`, `assembly-storage-onprem`: an assembly stored on disk or in the GAC | blocker online, optional on-prem | one each |
 | `assembly-isolation-none`, `assembly-isolation-none-onprem`: an assembly registered without isolation | blocker online, optional on-prem | one each |
@@ -799,8 +800,9 @@ opts in with an optional `transform` id in the rules file; `web-resource-xrm-pag
 
 Each transform reads JavaScript web resources (type 3), parsed with tree-sitter, so a string or
 comment is never rewritten. A shadowed or locally bound `Xrm`, a qualified `window.Xrm` or
-`parent.Xrm`, an optional chain, a call spanning lines and an HTML web resource become
-**manual-review entries** with file, line, rule and reason, and are left unchanged.
+`parent.Xrm`, an optional chain and a call spanning lines become **manual-review entries** with
+file, line, rule and reason, and are left unchanged. An HTML web resource (type 1) is read by
+`odata-v2` alone, in its inline scripts; every other transform sends it to manual review.
 
 | Rule | Transform | Rewritten | Manual review |
 |---|---|---|---|
@@ -811,8 +813,9 @@ comment is never rewritten. A shadowed or locally bound `Xrm`, a qualified `wind
 | `web-resource-entity-save` | `entity-save` | `<x>.data.entity.save()` to `<x>.data.save()` | `save(saveOption)` with an argument |
 | `web-resource-xrm-utility` | `xrm-utility-review` | nothing | `openEntityForm`, `openQuickCreate`, `openWebResource`, `alertDialog`, `confirmDialog`, `isActivityType`: the signature or sync behaviour changes |
 | `web-resource-keypress` | `keypress-review` | nothing | `addOnKeyPress`, `removeOnKeyPress`, `fireOnKeyPress`, `showAutoComplete`, `hideAutoComplete`: no API replacement |
-| `web-resource-odata-v2` | `odata-v2` | with `--target-inventory`: `req.open("GET", "<org>/XRMServices/2011/OrganizationData.svc/<Set>Set?$select=...", <async>)` on a variable bound only to `new XMLHttpRequest()` in the same function to `CrmODataV2.open(req, "GET", "/api/data/v9.0/<set>?$select=...", <async>)`, the entity set and attribute names read from the target inventory | a receiver bound to anything else (a parameter, another value, a reassignment), a `$filter` value built at run time outside a string or guid literal, a write, an `$expand`, a `$skip` (the Web API pages through `@odata.nextLink`), a `$select`-less query, a `$.ajax` or `fetch` call, a URL not built from string pieces, an entity or attribute the target inventory does not hold, an entity record with no `entity_set_name` |
+| `web-resource-odata-v2` | `odata-v2` | with `--target-inventory`, in a script web resource and in the inline scripts of an HTML page: `req.open("GET", "<org>/XRMServices/2011/OrganizationData.svc/<Set>Set?$select=...", <async>)` on a variable bound only to `new XMLHttpRequest()` in the same function to `CrmODataV2.open(req, "GET", "/api/data/v9.0/<set>?$select=...", <async>)`, the entity set and attribute names read from the target inventory | a receiver bound to anything else (a parameter, another value, a reassignment), a `$filter` value built at run time outside a string or guid literal, a write, an `$expand`, a `$skip` (the Web API pages through `@odata.nextLink`), a `$select`-less query, a `$.ajax` or `fetch` call, a URL not built from string pieces, an entity or attribute the target inventory does not hold, an entity record with no `entity_set_name` |
 | `form-library-no-odata-adapter` | `form-odata-adapter` | with `--adapter-resource`: a `<Library name="<adapter>" libraryUniqueId="{...}" />` inserted on the line of the form's first library that `odata-v2` rewrote in this run, so the adapter loads first | no `--adapter-resource`; an unmappable library list; no library of the form was rewritten in this run; the adapter already listed after that library; the rewritten libraries and the form sit in different work packages; `{package}` in the name with a form in several packages |
+| `web-resource-page-no-odata-adapter` | `html-odata-adapter` | with `--adapter-resource`: `<script src="<adapter>"></script>` (the adapter's name relative to the page's folder) inserted on the same line immediately before the first script of the page that this run rewrote, a patched `<script src>` library or an inline script whose OData v2 calls `odata-v2` rewrote in place (the line count never changes) | no `--adapter-resource`; a page whose `<script>` tags cannot be placed (a tag in a comment or CDATA section, a script that writes another, `<script />`, an unclosed script, a page that is not UTF-8); no script of the page was rewritten in this run (a library whose call stayed in manual review gets no adapter edit); the adapter already loaded after that script; the rewritten libraries and the page sit in different work packages; `{package}` in the name with a page in several packages |
 | `form-handler-no-execution-context` | `form-handler-context` | in a registered form handler: an `executionContext` first parameter (or the existing one), `var formContext = executionContext.getFormContext();` after the opening brace, each `Xrm.Page.<member>` in its own body to `formContext.<member>`; a helper the handler calls (any number of hops) gains a first `formContext` parameter and every call passes it; and `passExecutionContext="true"` on every enabled registration of it, on the form XML in the same work package | see below |
 | `ribbon-action-no-primary-control` | `form-handler-context` | a ribbon `JavaScriptFunction` on a form command whose function now takes the form context: `<CrmParameter Value="PrimaryControl" />` added as the first parameter (the existing ones keep their order behind it), and the function gets a first `primaryControl` parameter with `var formContext = primaryControl;` after its opening brace, its `Xrm.Page.<member>` becoming `formContext.<member>`, its helpers threaded as for a handler | a command on a grid, subgrid, home page or application ribbon location (`PrimaryControl` is the grid context there), or one no control in the diff names whose id is not `Mscrm.Form.*`; a function that is also a form handler, also called by a `CustomRule`, or called by another command with different `CrmParameter`s, another diff outside the work package, a caller the entity's effective ribbon holds that no readable diff carries, or one already passing `PrimaryControl` |
 
@@ -833,9 +836,17 @@ adapter web resource (`{package}` expands to the work package id; the same name 
 before anything is written). The `<Library>` element goes immediately before the first library the form lists that
 `odata-v2` rewrote, on the same line, with a `libraryUniqueId` derived from the form and the adapter name, so a rerun
 writes the same patch. A form that also needs the handler fix gets one combined patch. A form that already lists the
-adapter ahead of its rewritten libraries is left alone. Convert registers the adapter on forms only: a ribbon or an HTML
-web resource that loads a patched script is not covered. The ledger's `adapters` entry records the name under
-`web_resource` when the flag is given. Upload the adapter under that name and publish the solution; convert never
+adapter ahead of its rewritten libraries is left alone. A ribbon that loads a patched script is not covered.
+
+`html-odata-adapter` does the same for an HTML page. It finds each `<script>` with the standard library's HTML parser and
+checks every position against a plain scan of the page, so a page the two disagree on is not edited. A `src` resolves
+against the page's own web resource name (a leading `/WebResources/` is dropped); an address on another host or above the
+root, or a name matching only by file name in another folder, is not the library. An inline classic script is parsed with the
+JavaScript grammar and its calls are rewritten inside the `<script>` body. The page gets one patch: the adapter tag goes
+before whichever rewritten script comes first. The page's registration is all or nothing: when the adapter cannot be
+registered (no flag, a different package, an unreadable tag layout), the page's inline rewrite is dropped too and both
+entries are manual review, because a rewritten call without the adapter would throw. The ledger's `adapters` entry records
+the name under `web_resource` when the flag is given. Upload the adapter under that name and publish the solution; convert never
 touches the org.
 
 `getUserRoles()` returned GUID strings and `userSettings.roles` holds `{id, name}` lookups, so

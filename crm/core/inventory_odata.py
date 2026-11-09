@@ -486,7 +486,7 @@ def _plan_odata(root: Node, target: Target | None) -> Plan:
     return Plan(tuple(edits), tuple(unproven), cleared=done, adapter=tuple(used))
 
 
-register("odata-v2", Transform("javascript", (3,), _plan_odata, needs_target=True))
+register("odata-v2", Transform("javascript", (1, 3), _plan_odata, needs_target=True))
 
 # ── the adapter module ──────────────────────────────────────────────────────
 
