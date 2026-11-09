@@ -1318,6 +1318,12 @@ class _Pending:
     stock: bool = False
 
 
+def _stock_origin(parent: _Pending) -> None:
+    """A managed row kept only as a reference parent is platform stock, never `custom`."""
+    if parent.managed is True and parent.origin == "custom":
+        parent.origin = "system"
+
+
 class _Builder:
     """Turns the units' rows into records, resolving cross-kind keys and finding gaps."""
 
@@ -1357,6 +1363,8 @@ class _Builder:
         self.managed_solutions = _managed_ids(solutions)
         # (kind, the stock kind its row names) -> rows the stock scope left an edge to.
         self.platform_edges: Counter[tuple[str, str]] = Counter()
+        # Stock plug-in rows by (kind, source id): stock flows down assembly, type, step, image.
+        self.stock_ids: set[tuple[str, str]] = set()
 
     def add(
         self,
@@ -1406,6 +1414,17 @@ class _Builder:
         if row.get("ismanaged") is None:
             self.no_managed[kind] += 1
         return _is_stock(row, self.managed_solutions)
+
+    def _chain_stock(self, kind: str, row: dict[str, Any], parent: tuple[str, object]) -> bool:
+        """Stock by the row's own test, or because its parent in the plug-in chain is stock.
+
+        Dataverse marks platform steps and types unmanaged, so only the assembly tells.
+        """
+        parent_id = _ref_id(parent[1]) or ""
+        stock = self._stock(kind, row) or (parent[0], parent_id) in self.stock_ids
+        if stock:
+            self.stock_ids.add((kind, str(row["id"]).lower()))
+        return stock
 
     def _origin(self, row: dict[str, Any]) -> str:
         solution = _ref_id(row.get("solutionid"))
@@ -1508,7 +1527,7 @@ class _Builder:
                  "isolation_mode": r.get("isolationmode")},
                 r.get("name"), self._origin(r), r.get("ismanaged"),
                 self._staged("plugin_assembly", r, text=False), 91,
-                self._stock("plugin_assembly", r),
+                self._chain_stock("plugin_assembly", r, ("", None)),
             )  # fmt: skip
             if key is not None and source != 0:
                 where = {1: "on disk", 2: "in the GAC"}.get(
@@ -1533,7 +1552,7 @@ class _Builder:
                 {"assembly": assembly, "type_name": r["typename"],
                  "workflow_activity": r.get("isworkflowactivity")},
                 r.get("friendlyname"), self._origin(r), r.get("ismanaged"), [], 90,
-                self._stock("plugin_type", r),
+                self._chain_stock("plugin_type", r, ("plugin_assembly", r.get("pluginassemblyid"))),
             )  # fmt: skip
         types = self.by_id.get("plugin_type", {})
         for r in rows.get("step", []):
@@ -1551,7 +1570,7 @@ class _Builder:
                  "filtering_attributes": r.get("filteringattributes"),
                  "state": r.get("statecode"), "supported_deployment": r.get("supporteddeployment")},
                 r.get("name"), self._origin(r), r.get("ismanaged"), [], 92,
-                self._stock("step", r),
+                self._chain_stock("step", r, ("plugin_type", r.get("plugintypeid"))),
             )  # fmt: skip
         steps = self.by_id.get("step", {})
         for r in rows.get("step_image", []):
@@ -1565,7 +1584,9 @@ class _Builder:
                  "attributes": r.get("attributes"),
                  "message_property": r.get("messagepropertyname")},
                 r.get("name"), self._origin(r), r.get("ismanaged"), [], 93,
-                self._stock("step_image", r),
+                self._chain_stock(
+                    "step_image", r, ("step", r.get("sdkmessageprocessingstepid"))
+                ),
             )  # fmt: skip
         for r in rows.get("process", []):
             self.add(
@@ -1768,6 +1789,7 @@ class _Builder:
                     parent = by_key.get(("entity", component_key("entity", {"logical_name": name})))
                     if parent is not None:
                         parent.stock = False
+                        _stock_origin(parent)
         # A kept step needs its type, a type its assembly: climb the chain, children first.
         for child, link, parent_kind in (
             ("step_image", "step", "step"),
@@ -1782,6 +1804,7 @@ class _Builder:
                     parent = by_key.get((parent_kind, key))
                     if parent is not None:
                         parent.stock = False
+                        _stock_origin(parent)
 
     def finish(self) -> list[Record]:
         """Write each record's artifacts and return the records.
