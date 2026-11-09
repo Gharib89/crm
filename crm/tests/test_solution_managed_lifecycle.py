@@ -229,6 +229,7 @@ class TestUninstall:
                 },
             )
             self._mock_info(m, backend)
+            m.get(backend.url_for("msdyn_solutionhistories"), json={"value": []})
             m.delete(backend.url_for(f"solutions({_SOL_ID})"), status_code=204)
             out = sol_mod.uninstall_solution(backend, "ManagedApp", force=True)
         assert out["uninstalled"] is True
@@ -302,8 +303,8 @@ class TestUninstallCommand:
     def test_wires_force_and_yes(self, monkeypatch):
         captured = {}
 
-        def fake(backend, unique_name, *, force):
-            captured.update(unique_name=unique_name, force=force)
+        def fake(backend, unique_name, *, force, timeout):
+            captured.update(unique_name=unique_name, force=force, timeout=timeout)
             return {"uninstalled": True, "solution": unique_name, "solutionid": _SOL_ID}
 
         monkeypatch.setattr("crm.core.solution.uninstall_solution", fake)
@@ -317,11 +318,26 @@ class TestUninstallCommand:
                 "--solution",
                 "ManagedApp",
                 "--force",
+                "--timeout",
+                "900",
                 "--yes",
             ],
         )
         assert result.exit_code == 0, result.output
-        assert captured == {"unique_name": "ManagedApp", "force": True}
+        assert captured == {"unique_name": "ManagedApp", "force": True, "timeout": 900}
+
+    def test_negative_timeout_is_a_usage_error_before_any_backend(self, monkeypatch):
+        called = {"core": False}
+        monkeypatch.setattr(
+            "crm.core.solution.uninstall_solution", lambda *a, **k: called.update(core=True)
+        )
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: called.update(core=True))
+        result = CliRunner().invoke(
+            cli,
+            ["--json", "solution", "uninstall", "--solution", "X", "--timeout", "-1", "--yes"],
+        )
+        assert result.exit_code == 2, result.output
+        assert called["core"] is False
 
     def test_abort_without_yes_on_non_tty(self, monkeypatch):
         # Under --json there is no interactive prompt: the helper must fail fast
