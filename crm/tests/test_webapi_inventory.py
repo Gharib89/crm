@@ -505,10 +505,13 @@ def test_a_table_deleted_since_the_listing_leaves_no_record_and_no_dangling_edge
     assert _keys(data, "entity") == ["account", "new_project_account"]
     assert _keys(data, "relationship") == []  # its one side is the deleted table
     assert _keys(data, "ribbon") == ["", "account"]
-    assert not any(
-        r["fields"].get("entity") == "new_project"
-        for r in data["records"]
-        if r["kind"] in ("attribute", "local_option_set", "ribbon")
+    # The rows it owns, whichever read listed them, are left out and counted.
+    assert not any(r["fields"].get("entity") == "new_project" for r in data["records"])
+    assert _keys(data, "form") == ["account|2|Account"]
+    assert _keys(data, "view") == []
+    assert any(
+        (g["description"] or "") == "1 form row(s) of a table deleted since the listing"
+        for g in data["gaps"]
     )
     # The membership naming the table is counted by the existing unresolved accounting.
     assert any(
@@ -542,8 +545,23 @@ def test_a_resume_reuses_the_outcome_recorded_for_a_deleted_table(tmp_path):
         D365Error("An unexpected error occurred", status=500),
         D365Error("Resource not found for the segment 'RetrieveEntity'", status=404),
         D365Error("Could not find an entity with name 'account'.", status=404),
+        D365Error("Could not find an entity with name 'new_project_account'.", status=404),
+        D365Error(
+            "The entity with a name = 'account' with namemapping = 'Logical' was not found"
+            " in the MetadataCache.",
+            status=500,
+        ),
+        D365Error("The entity with a name = 'new_project' was not found", status=500),
     ],
-    ids=["permission", "server-fault", "bare-404", "another-entity"],
+    ids=[
+        "permission",
+        "server-fault",
+        "bare-404",
+        "another-entity",
+        "near-miss-name",
+        "cache-another-entity",
+        "cache-no-tail",
+    ],  # fmt: skip
 )
 def test_any_other_fault_on_a_table_read_is_still_an_error(tmp_path, fault):
     out = tmp_path / "inv"

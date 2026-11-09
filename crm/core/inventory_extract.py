@@ -624,6 +624,10 @@ def _is_gone(data: object) -> bool:
     return data == _GONE
 
 
+def _gone_on(name: str) -> Callable[[D365Error], bool]:
+    return lambda exc: legacy_reads.entity_gone(exc, name)
+
+
 class _Run:
     def __init__(
         self,
@@ -1027,7 +1031,7 @@ def extract(
             ("attribute", "relationship", "local_option_set"),
             f"entity/{name}",
             lambda name=name: source.entity_detail(name),
-            gone=lambda exc, name=name: legacy_reads.entity_gone(exc, name),
+            gone=_gone_on(name),
         )
         if _is_gone(detail):
             deleted[name] = entity
@@ -1055,9 +1059,7 @@ def extract(
             ("ribbon",),
             unit,
             read_ribbon,
-            gone=(lambda exc, name=entity_name: legacy_reads.entity_gone(exc, name))
-            if entity_name
-            else None,
+            gone=_gone_on(entity_name) if entity_name else None,
         )
         if _is_gone(ribbon):
             deleted[str(entity_name)] = next(e for e in live if e["logical_name"] == entity_name)
@@ -1072,8 +1074,8 @@ def extract(
     )
 
     run.begin("build")
-    built = _Builder(cp, out, rows, source.api, stock_scope)
-    built.metadata(entities, option_sets, details, deleted)
+    built = _Builder(cp, out, rows, source.api, stock_scope, deleted)
+    built.metadata(entities, option_sets, details)
     built.components()
     # A custom (unmanaged) entity's ribbon is the entity's own, whatever ids it holds.
     system_entities = {
@@ -1437,9 +1439,13 @@ class _Builder:
         rows: dict[str, list[dict[str, Any]]],
         api: str,
         stock_scope: bool = False,
+        deleted: Collection[str] = (),
     ):
         self.cp = cp
         self.stock_scope = stock_scope
+        # Tables deleted since the listing: nothing of theirs is recorded.
+        self.deleted = frozenset(deleted)
+        self.of_deleted: Counter[str] = Counter()
         self.no_managed: Counter[str] = Counter()
         self.api = api
         self.out = out
@@ -1493,6 +1499,9 @@ class _Builder:
         Raises:
             InventoryError: an unknown kind or a missing key field, a builder bug.
         """
+        if kind in ENTITY_OWNED_KINDS and fields.get("entity") in self.deleted:
+            self.of_deleted[kind] += 1
+            return None
         try:
             key = component_key(kind, fields)
         except KeyFieldValueError as exc:
@@ -1549,7 +1558,6 @@ class _Builder:
         entities: list[dict[str, Any]],
         option_sets: list[dict[str, Any]],
         details: list[dict[str, Any]],
-        deleted: Collection[str] = (),
     ) -> None:
         for e in entities:
             self.add(
@@ -1595,7 +1603,7 @@ class _Builder:
                     if r["schema_name"] in seen_relationships:
                         continue
                     seen_relationships.add(r["schema_name"])
-                    if any(r.get(side) in deleted for side in RELATIONSHIP_SIDES):
+                    if any(r.get(side) in self.deleted for side in RELATIONSHIP_SIDES):
                         continue  # one side is a table deleted since the listing
                     fields = {
                         k: v for k, v in r.items() if k not in ("metadata_id", "custom", "managed")
@@ -1982,6 +1990,15 @@ class _Builder:
                     description=f"{n} {kind} row(s) naming a stock {target} that this inventory"
                     " leaves out",
                     reason=_PLATFORM_REASON,
+                )
+            )  # fmt: skip
+        for kind, n in sorted(self.of_deleted.items()):
+            gaps.append(
+                ExtractionGap(
+                    kind=kind, key=None,
+                    description=f"{n} {kind} row(s) of a table deleted since the listing",
+                    reason="the table was deleted after the entity list was read, so the rows"
+                    " it owns are left out",
                 )
             )  # fmt: skip
         for kind, n in sorted(self.no_managed.items()):
