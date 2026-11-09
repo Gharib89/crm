@@ -114,6 +114,16 @@ class PluginProject:
 
 
 @dataclass(frozen=True)
+class FormLibraryOrder:
+    """A form whose library list names a script carrying *library_rule*'s content pattern with no
+    library matching *adapter_pattern* ahead of it.
+    """
+
+    library_rule: str
+    adapter_pattern: re.Pattern[str]
+
+
+@dataclass(frozen=True)
 class Rule:
     """One compatibility rule, applying from source version *source_from* to *source_before*."""
 
@@ -124,7 +134,14 @@ class Rule:
     source_from: str
     source_before: str | None
     targets: tuple[str, ...]
-    detection: ContentPattern | FieldIn | FormHandlerContext | RibbonActionParameter | PluginProject
+    detection: (
+        ContentPattern
+        | FieldIn
+        | FormHandlerContext
+        | RibbonActionParameter
+        | FormLibraryOrder
+        | PluginProject
+    )
     fix: str
     sources: tuple[str, ...]
     #: Id of a registered code transform (`inventory_convert`) that rewrites what this rule
@@ -187,7 +204,14 @@ def _transform(obj: dict[str, Any], where: str) -> str | None:
 
 def _detection(
     value: object, kind: str, where: str
-) -> ContentPattern | FieldIn | FormHandlerContext | RibbonActionParameter | PluginProject:
+) -> (
+    ContentPattern
+    | FieldIn
+    | FormHandlerContext
+    | RibbonActionParameter
+    | FormLibraryOrder
+    | PluginProject
+):
     obj = _obj(value, where)
     detection_type = obj.get("type")
     if detection_type == "content_pattern":
@@ -210,6 +234,16 @@ def _detection(
         if kind != "form":
             raise InventoryError(f"rules file {where}: form_handler_context applies to form only")
         return FormHandlerContext(_text(obj, "library_rule", where))
+    if detection_type == "form_library_order":
+        if kind != "form":
+            raise InventoryError(f"rules file {where}: form_library_order applies to form only")
+        try:
+            adapter = re.compile(_text(obj, "adapter_pattern", where))
+        except re.error as exc:
+            raise InventoryError(
+                f"rules file {where}.adapter_pattern does not compile: {exc}"
+            ) from exc
+        return FormLibraryOrder(_text(obj, "library_rule", where), adapter)
     if detection_type == "ribbon_action_parameter":
         if kind != "ribbon_diff":
             raise InventoryError(
@@ -226,7 +260,7 @@ def _detection(
         return PluginProject()
     raise InventoryError(
         f"rules file {where}.type {detection_type!r} is not content_pattern, field_in, "
-        "form_handler_context, ribbon_action_parameter or plugin_project"
+        "form_handler_context, form_library_order, ribbon_action_parameter or plugin_project"
     )
 
 
@@ -300,7 +334,7 @@ def parse_rules(data: object, sha256: str = "") -> Rules:
     content = {r.id for r in rules if isinstance(r.detection, ContentPattern)}
     for r in rules:
         d = r.detection
-        if not isinstance(d, FormHandlerContext | RibbonActionParameter):
+        if not isinstance(d, FormHandlerContext | RibbonActionParameter | FormLibraryOrder):
             continue
         if d.library_rule not in content:
             raise InventoryError(
@@ -690,21 +724,28 @@ class _Libraries:
         for r in records:
             if r.kind == "web_resource" and isinstance(r.fields.get("name"), str):
                 self._by_name.setdefault(str(r.fields["name"]).lower(), []).append(r)
-        self._known: dict[tuple[str, str], tuple[bool, str | None]] = {}
+        self._known: dict[tuple[str, str, str], tuple[bool, str | None]] = {}
 
-    def carries(self, rule_id: str, name: str) -> tuple[bool, str | None]:
+    def carries(
+        self, rule_id: str, name: str, pattern: re.Pattern[str] | None = None
+    ) -> tuple[bool, str | None]:
         """``(True, None)`` when library *name* matches the rule *rule_id*, ``(False, None)`` when
-        it does not, and ``(False, why)`` when its text cannot say.
+        it does not, and ``(False, why)`` when its text cannot say. A *pattern* replaces the rule's
+        own, the rule still deciding which web resources are scripts.
         """
-        slot = (rule_id, name.lower())
+        slot = (rule_id, name.lower(), pattern.pattern if pattern else "")
         if slot not in self._known:
             rule = self._rules.get(rule_id)
             self._known[slot] = (
-                self._read(rule, name) if rule else (False, f"library rule {rule_id} is not loaded")
+                self._read(rule, name, pattern)
+                if rule
+                else (False, f"library rule {rule_id} is not loaded")
             )
         return self._known[slot]
 
-    def _read(self, rule: Rule, name: str) -> tuple[bool, str | None]:
+    def _read(
+        self, rule: Rule, name: str, pattern: re.Pattern[str] | None
+    ) -> tuple[bool, str | None]:
         matches = self._by_name.get(name.lower(), [])
         if not matches:
             return False, f"library {name} is not in the inventory"
@@ -716,8 +757,8 @@ class _Libraries:
         texts, problem = _texts(record, self._folder)
         if problem is not None:
             return False, f"library {name}: {problem}"
-        pattern = cast(ContentPattern, rule.detection).pattern
-        return any(pattern.search(t) for t in texts.values()), None
+        found = pattern or cast(ContentPattern, rule.detection).pattern
+        return any(found.search(t) for t in texts.values()), None
 
 
 def _flag(value: str | None) -> bool:
@@ -788,6 +829,34 @@ def _ribbon_actions(root: Element, parameter: str) -> list[dict[str, Any]]:
     return sorted(out, key=_canonical)
 
 
+def _library_order(
+    rule: Rule,
+    d: FormLibraryOrder,
+    path: str,
+    sha256: str,
+    root: Element,
+    libs: _Libraries,
+    finding: Callable[..., Finding],
+) -> list[Finding]:
+    """A form is a hit when a library carrying *d*'s library rule loads with no adapter ahead."""
+    unknown: set[str] = set()
+    adapter_seen, first = False, None
+    for lib in root.findall("./formLibraries/Library"):
+        name = lib.get("name") or ""
+        is_adapter, why = libs.carries(d.library_rule, name, d.adapter_pattern)
+        if why is not None:
+            unknown.add(why)
+        elif is_adapter:
+            adapter_seen = True
+        elif first is None and not adapter_seen and libs.carries(d.library_rule, name)[0]:
+            first = name
+    out = [finding("unknown", rule.id, why) for why in sorted(unknown)]
+    if first is not None:
+        evidence = RegistrationEvidence(path, sha256, ({"library": first},), 1)
+        out.append(finding(rule.cls, rule.id, None, evidence))
+    return out
+
+
 def _registrations(
     rule: Rule,
     path: str,
@@ -796,11 +865,13 @@ def _registrations(
     libs: _Libraries,
     finding: Callable[..., Finding],
 ) -> list[Finding]:
-    d = cast(FormHandlerContext | RibbonActionParameter, rule.detection)
+    d = cast(FormHandlerContext | RibbonActionParameter | FormLibraryOrder, rule.detection)
     try:
         root = fromstring(text)
     except ParseError:  # malformed, or carrying a DTD that safe_xml refuses
         return [finding("unknown", rule.id, f"artifact is not well-formed XML: {path}")]
+    if isinstance(d, FormLibraryOrder):
+        return _library_order(rule, d, path, sha256, root, libs, finding)
     candidates = (
         _form_handlers(root)
         if isinstance(d, FormHandlerContext)
@@ -879,7 +950,7 @@ def _assess_record(
     sha = {a.path: a.sha256 for a in record.artifacts}
     for rule in rules:
         d = rule.detection
-        if isinstance(d, FormHandlerContext | RibbonActionParameter):
+        if isinstance(d, FormHandlerContext | RibbonActionParameter | FormLibraryOrder):
             for path, text in sorted(texts.items()):
                 out += _registrations(
                     rule, path, sha[path], text, libs or _Libraries((), folder), finding
