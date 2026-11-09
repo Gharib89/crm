@@ -725,9 +725,50 @@ def test_a_source_subcomponent_of_a_custom_member_entity_the_target_dropped_read
 
     assert _entry(diff, "attribute", "new_project|new_legacycode").verdict == "removed"
     assert _entry(diff, "attribute", "new_project|new_name").verdict == "unchanged"
+    # A dependency whose dependent is a kept form reads removed too.
+    (dependency,) = [e for e in diff.entries if e.kind == "dependency"]
+    assert dependency.verdict == "removed"
     # A stock entity's rows and the other entities' subcomponents stay out of the comparison.
     kept = {(e.kind, e.key) for e in diff.entries}
     assert ("entity", "account") not in kept and ("form", "account|2|Account") not in kept
+
+
+def test_a_source_ribbon_diff_of_a_custom_member_entity_the_target_dropped_reads_removed() -> None:
+    whole = _whole_org()
+    whole["records"].append(_membership("ContosoCore", "new_project", "entity"))
+    whole["records"].append(
+        _copy_of(
+            whole,
+            ("attribute", "new_project|new_name"),
+            kind="ribbon_diff",
+            key="new_project",
+            fields={"entity": "new_project"},
+        )
+    )
+    whole["records"].append(
+        _copy_of(
+            whole,
+            ("attribute", "new_project|new_name"),
+            kind="ribbon_diff",
+            key="account",
+            fields={"entity": "account"},
+        )
+    )
+
+    def edit(m: dict[str, Any]) -> None:
+        for kind, key in (
+            ("entity", "new_project"),
+            ("solution_membership", "ContosoCore|entity|new_project"),
+        ):
+            m["records"].append(copy.deepcopy(_record(whole, kind, key)))
+
+    diff = diff_inventories(
+        inventory.parse_manifest(_recounted(whole)), inventory.parse_manifest(_narrowed(edit))
+    )
+
+    assert _entry(diff, "ribbon_diff", "new_project").verdict == "removed"
+    # A stock entity's ribbon diff stays out of the comparison.
+    assert ("ribbon_diff", "account") not in {(e.kind, e.key) for e in diff.entries}
 
 
 def test_a_stock_flagged_target_row_compares_like_a_custom_one() -> None:

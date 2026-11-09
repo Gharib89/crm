@@ -402,8 +402,9 @@ def _restricted_keys(
 
     The narrowed side's own keys, plus the whole-org side's rows of the same-named
     solutions: each solution, its memberships and the members they name, and the
-    subcomponents of each custom entity member (a solution holds its own entity whole; a
-    stock entity may be held as a shell, which the manifest cannot tell from a full hold).
+    subcomponents and ribbon diff of each custom entity member (a solution holds its own
+    entity whole; a stock entity may be held as a shell, which the manifest cannot tell
+    from a full hold), and the dependencies of every component kept.
     A source member the target dropped then reads ``removed``, not falls out of the comparison.
     """
     named = {name.casefold() for name in narrowed.scope.solutions}
@@ -422,12 +423,18 @@ def _restricted_keys(
     owned = {r.key for r in whole.records if r.kind == "entity" and r.origin == "custom"}
     owned &= entity_members
     for r in whole.records:
-        if r.kind in ENTITY_OWNED_KINDS and r.fields.get("entity") in owned:
+        if r.kind in (*ENTITY_OWNED_KINDS, "ribbon_diff") and r.fields.get("entity") in owned:
             keys.add((r.kind, r.key))
         elif r.kind == "relationship" and owned.intersection(
             r.fields.get(side) for side in RELATIONSHIP_SIDES
         ):
             keys.add((r.kind, r.key))
+    keys |= {
+        (r.kind, r.key)
+        for r in whole.records
+        if r.kind == "dependency"
+        and (str(r.fields["dependent_kind"]), str(r.fields["dependent_key"])) in keys
+    }
     missing = tuple(n for n in narrowed.scope.solutions if n.casefold() not in found)
     return keys, missing
 
