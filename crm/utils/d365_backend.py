@@ -335,6 +335,15 @@ READ_SAFE_ACTIONS: frozenset[str] = frozenset(
 )
 
 
+def is_cloud(profile: ConnectionProfile) -> bool:
+    """True for a cloud profile: the target is Dataverse online, whatever its sign-in.
+
+    Use this for "is the target cloud" checks; compare ``auth_scheme`` directly only
+    where the question is how the profile authenticates (a client secret, say).
+    """
+    return profile.auth_scheme == "oauth"
+
+
 def _action_name(path: str) -> str:
     """The bare action name from a Web API path, for the read-safe check.
 
