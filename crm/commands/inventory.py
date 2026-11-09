@@ -154,7 +154,11 @@ def inventory_extract_cmd(
     leaves stock components out (managed, or owned by a managed solution;
     their payloads are never fetched), still counting any edge to one;
     --include-system keeps them. --solution narrows the records to those
-    solutions, their members and their entities' parts, and keeps stock. Each finished read is
+    solutions, their members and their entities' parts (a member assembly's
+    plug-in types included), and keeps stock. A managed solution cannot be
+    exported, so its ribbon diff is not read: it is recorded as a gap, and
+    `ribbon_diff` reads `unsupported` when every named solution is managed.
+    Each finished read is
     checkpointed under DIR/.checkpoint, so re-running the same command after
     an interruption resumes, reusing the finished reads. A failed kind is
     recorded in the manifest's coverage and the run goes on (exit code 1); the

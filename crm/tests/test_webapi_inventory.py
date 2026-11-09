@@ -909,3 +909,113 @@ def test_an_onprem_org_wide_run_exports_the_default_solution(tmp_path, exports):
     summary = _extract(FakeBackend(auth_scheme="ntlm"), out)
     assert exports == ["Default"] and summary.complete
     assert sorted(_diff_records(_manifest(out))) == ["", "new_project"]
+
+
+_MANAGED_FAULT = (
+    "ExportManagedSolutionError: Managed solutions cannot be exported."
+    "<OrganizationServiceFault xmlns='x'><Message>Managed solutions cannot be exported."
+    "</Message>" + "<Detail>" + "frame " * 300 + "</Detail></OrganizationServiceFault>"
+)
+
+
+def _org_with_managed_solution() -> dict:
+    org = copy.deepcopy(_ORG)
+    org["solutions"][0].append(
+        {"solutionid": _id(3), "uniquename": "fabrikam", "friendlyname": "Fabrikam",
+         "version": "2.0", "ismanaged": True, "isvisible": True,
+         **_lookup("publisherid", "publisher", 92, "Fabrikam")}
+    )  # fmt: skip
+    return org
+
+
+def test_a_managed_solution_is_not_exported_and_its_ribbon_diff_is_unsupported(tmp_path, exports):
+    out = tmp_path / "inv"
+    summary = _extract(FakeBackend(org=_org_with_managed_solution()), out, solutions=("fabrikam",))
+    assert exports == [] and summary.complete and summary.errors == []
+    assert summary.kinds["ribbon_diff"] == {"status": "unsupported", "records": 0}
+    data = _manifest(out)
+    assert data["coverage"]["ribbon_diff"]["status"] == "unsupported"
+    (gap,) = [g for g in data["gaps"] if g["kind"] == "ribbon_diff"]
+    assert "fabrikam" in gap["description"]
+    assert "managed" in gap["reason"] and "\n" not in gap["reason"] and "<" not in gap["reason"]
+    assert "ExportManagedSolutionError" not in (out / "manifest.json").read_text(encoding="utf-8")
+
+
+def test_a_mixed_scope_reads_the_unmanaged_diffs_and_gaps_the_managed_solution(tmp_path, exports):
+    out = tmp_path / "inv"
+    summary = _extract(
+        FakeBackend(org=_org_with_managed_solution()), out, solutions=("contoso", "fabrikam")
+    )
+    assert exports == ["contoso"] and summary.complete
+    data = _manifest(out)
+    assert data["coverage"]["ribbon_diff"]["status"] == "complete"
+    assert sorted(_diff_records(data)) == ["", "new_project"]
+    (gap,) = [g for g in data["gaps"] if g["kind"] == "ribbon_diff"]
+    assert "fabrikam" in gap["description"]
+
+
+def test_a_managed_export_fault_on_an_unflagged_solution_is_a_one_line_gap(tmp_path, monkeypatch):
+    def refuse(backend, name, dest, **kwargs):
+        raise D365Error(_MANAGED_FAULT, status=400)
+
+    monkeypatch.setattr(solution_transfer, "export_solution", refuse)
+    out = tmp_path / "inv"
+    summary = _extract(FakeBackend(), out, solutions=("contoso",))
+    assert summary.complete and summary.errors == []
+    assert summary.kinds["ribbon_diff"] == {"status": "unsupported", "records": 0}
+    data = _manifest(out)
+    (gap,) = [g for g in data["gaps"] if g["kind"] == "ribbon_diff"]
+    assert "\n" not in gap["reason"] and "<" not in gap["reason"] and len(gap["reason"]) < 200
+    assert "Fault" not in (out / "manifest.json").read_text(encoding="utf-8")
+
+
+def _org_with_plugin_types() -> dict:
+    org = copy.deepcopy(_ORG)
+    org["plugintypes"][0] += [
+        {
+            "plugintypeid": _id(31),
+            "typename": "Contoso.Plugins.Other",
+            "friendlyname": "Other",
+            "isworkflowactivity": True,
+            "ismanaged": False,
+            "solutionid": _id(2),
+            **_lookup("pluginassemblyid", "pluginassembly", 20, "Contoso.Plugins"),
+        },
+        {
+            "plugintypeid": _id(32),
+            "typename": "Contoso.InGac.Hook",
+            "friendlyname": "Hook",
+            "isworkflowactivity": False,
+            "ismanaged": False,
+            "solutionid": _id(2),
+            **_lookup("pluginassemblyid", "pluginassembly", 21, "Contoso.InGac"),
+        },
+    ]
+    org["solutioncomponents"][0] += [
+        {
+            "solutioncomponentid": _id(102),
+            "componenttype": 91,
+            "objectid": _id(20),
+            **_lookup("solutionid", "solution", 2),
+        },
+        {
+            "solutioncomponentid": _id(103),
+            "componenttype": 92,
+            "objectid": _id(40),
+            **_lookup("solutionid", "solution", 2),
+        },
+    ]
+    return org
+
+
+def test_a_scoped_run_keeps_the_types_of_the_assemblies_it_keeps(tmp_path):
+    out = tmp_path / "inv"
+    assert _extract(FakeBackend(org=_org_with_plugin_types()), out, solutions=("contoso",)).complete
+    data = _manifest(out)
+    assert _keys(data, "plugin_assembly") == ["Contoso.Plugins"]
+    assert _keys(data, "plugin_type") == [
+        "Contoso.Plugins|Contoso.Plugins.Other",
+        "Contoso.Plugins|Contoso.Plugins.ProjectPlugin",
+    ]  # the type of the assembly outside the scope is left out
+    (step,) = [r for r in data["records"] if r["kind"] == "step"]
+    assert step["fields"]["plugin_type"] == "Contoso.Plugins|Contoso.Plugins.ProjectPlugin"

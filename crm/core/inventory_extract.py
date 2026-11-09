@@ -1007,7 +1007,9 @@ def extract(
         if run.unit(("ribbon",), unit, read_ribbon) is not None:
             ribbons[entity_name] = cp.staged("ribbon", entity_name or "_application", "ribbon.xml")
 
-    diff_units, diff_unsupported_reason = _read_ribbon_diffs(source, cp, run, solutions)
+    diff_units, diff_unsupported_reason, diff_managed = _read_ribbon_diffs(
+        source, cp, run, solutions, rows["solution"]
+    )
 
     run.begin("build")
     built = _Builder(cp, out, rows, source.api, stock_scope)
@@ -1101,7 +1103,7 @@ def extract(
             *source.static_gaps,
             *built.gaps(),
             *_ribbon_gaps(unlabelled),
-            *_ribbon_diff_gaps(diff_unsupported_reason),
+            *_ribbon_diff_gaps(diff_unsupported_reason, diff_managed),
             *_source_gaps(run.errors),
             *usage_gaps,
         ),
@@ -1134,27 +1136,51 @@ def _diff_id(solution: str, entity: str | None) -> str:
     return f"{solution}.{entity or '_application'}"
 
 
+_MANAGED_DIFF_REASON = "a managed solution cannot be exported, so its ribbon diff is not read"
+# What the server answers an export of a managed solution with (the full fault is several KB).
+_MANAGED_EXPORT_FAULT = re.compile(
+    r"ExportManagedSolutionError|Managed solutions cannot be exported"
+)
+
+
 def _read_ribbon_diffs(
-    source: InventorySource, cp: Checkpoint, run: _Run, solutions: tuple[str, ...]
-) -> tuple[list[tuple[str, list[str | None]]], str | None]:
+    source: InventorySource,
+    cp: Checkpoint,
+    run: _Run,
+    solutions: tuple[str, ...],
+    solution_rows: list[dict[str, Any]],
+) -> tuple[list[tuple[str, list[str | None]]], str | None, list[str]]:
     """Export each solution in scope and keep the ribbon diffs that hold content.
 
     The scope is the named solutions, else the Default solution, which holds every
     customization. One checkpoint unit per solution: its zip is staged on disk, streamed
-    and deleted, and only the diffs are kept. Returns each solution's entities (``None``
-    is the application) and, when the platform cannot export the scope, why not.
+    and deleted, and only the diffs are kept. A managed solution cannot be exported, so it
+    is not: its name is returned for a gap, whether its row says ``ismanaged`` or the
+    server answers the export with the managed-solution fault. Returns each solution's
+    entities (``None`` is the application), why the platform cannot export the scope when
+    it cannot (every named solution managed included), and the managed names skipped.
     """
     if not solutions and not source.default_export_supported:
-        return [], (
-            f"not read: {source.api} refuses to export the Default solution, which holds"
-            " the whole org's ribbon diffs; run with --solution to read the named solutions'"
+        return (
+            [],
+            (
+                f"not read: {source.api} refuses to export the Default solution, which holds"
+                " the whole org's ribbon diffs; run with --solution to read the named solutions'"
+            ),
+            [],
         )
     names = solutions or (_DEFAULT_SOLUTION,)
-    run.begin("ribbon_diffs", len(names), estimate=True)
+    managed = {
+        str(r.get("uniquename")).lower() for r in solution_rows if r.get("ismanaged") is True
+    }
+    skipped = [n for n in names if n.lower() in managed]
+    run.begin("ribbon_diffs", len(names) - len(skipped), estimate=True)
     units: list[tuple[str, list[str | None]]] = []
     for index, name in enumerate(names):
+        if name in skipped:
+            continue
 
-        def read(name: str = name, index: int = index) -> list[str | None]:
+        def read(name: str = name, index: int = index) -> list[str | None] | dict[str, bool]:
             # The file name is ours, never the user's solution name: a name like
             # ``/tmp/backup`` must not point the export (or its cleanup) outside the checkpoint.
             zip_path = cp.root / "tmp" / f"export-{index}.zip"
@@ -1162,6 +1188,10 @@ def _read_ribbon_diffs(
             try:
                 source.export_solution(name, zip_path)
                 diffs = read_ribbon_diffs(zip_path)
+            except D365Error as exc:
+                if _MANAGED_EXPORT_FAULT.search(str(exc)):
+                    return {"managed": True}  # saved, so a resume does not export it again
+                raise
             # zlib.error and RuntimeError (encrypted) are what a damaged member raises
             # past BadZipFile.
             except (
@@ -1181,12 +1211,24 @@ def _read_ribbon_diffs(
             return list(diffs)
 
         data = run.unit(("ribbon_diff",), f"ribbon-diff/{name}", read)
-        if data is not None:
+        if isinstance(data, dict):
+            skipped.append(name)
+        elif data is not None:
             units.append((name, data))
-    return units, None
+    return units, (_MANAGED_DIFF_REASON if len(skipped) == len(names) else None), skipped
 
 
-def _ribbon_diff_gaps(unsupported_reason: str | None) -> list[ExtractionGap]:
+def _ribbon_diff_gaps(unsupported_reason: str | None, managed: list[str]) -> list[ExtractionGap]:
+    if managed:
+        return [
+            ExtractionGap(
+                kind="ribbon_diff",
+                key=None,
+                description=f"the ribbon diff of managed solution {name}",
+                reason=_MANAGED_DIFF_REASON,
+            )
+            for name in managed
+        ]
     if not unsupported_reason:
         return []
     return [
@@ -1687,10 +1729,11 @@ class _Builder:
 
         A membership or dependency row naming a component the run did not record is
         kept by the same rule (its solution, its dependent); an orphaned plug-in
-        type, step or image has no owner to keep it by and is left out. The
+        step or image has no owner to keep it by and is left out. The
         unkeyed-row gaps stay org-wide.
 
-        Kept: the solutions, their memberships, each member, each ribbon diff (read
+        Kept: the solutions, their memberships, each member, each plug-in type of a
+        member assembly, each ribbon diff (read
         from the solutions' own exports), each record of a
         member entity held with its subcomponents (`attribute`,
         `local_option_set`, `form`, `view`, `ribbon`, and a `relationship` on
@@ -1713,6 +1756,8 @@ class _Builder:
             and (p.fields["solution"], p.fields["member_key"]) not in self.shells
         }
 
+        assemblies = {key for kind, key in members if kind == "plugin_assembly"}
+
         def held(p: _Pending) -> bool:
             if p.kind == "solution":
                 return p.fields["unique_name"] in named
@@ -1725,6 +1770,8 @@ class _Builder:
             if p.kind == "relationship":
                 sides = {p.fields.get(k) for k in _RELATIONSHIP_SIDES}
                 return (p.kind, p.key) in members or not sides.isdisjoint(entities)
+            if p.kind == "plugin_type":  # not a solution component: it follows its assembly
+                return p.fields["assembly"] in assemblies
             return (p.kind, p.key) in members
 
         kept = [p for p in self.pending if p.kind != "dependency" and held(p)]
