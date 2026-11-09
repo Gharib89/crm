@@ -13,6 +13,9 @@ and writes, under *out* only, per work package:
 - ``ledger.json``: one entry per work package, component key and rule, with a
   **manual-review entry** (file, line, rule, reason) for each site a rule matches but
   the transform cannot prove.
+- with a source map and the repository, ``<project>.diff`` and ``<project>.patched.csproj``
+  for each plug-in assembly the map matches to one project: the SDK-style retarget
+  (`inventory_csproj`), its ledger entry keyed by the assembly and held in its work packages.
 
 The emit gate writes a patch only if the patched code parses with no more error
 nodes than the original and re-running the rule's detection finds exactly the
@@ -50,6 +53,7 @@ from crm.core.inventory_assess import (
     load_rules,
     read_findings,
 )
+from crm.core.inventory_csproj import plan_csproj
 from crm.core.inventory_form_handlers import (
     HandlerTag,
     form_handler_names,
@@ -78,6 +82,10 @@ SCHEMA_VERSION = 1
 LEDGER_NAME = "ledger.json"
 #: The package id of a component no work package holds.
 UNPACKAGED = "unpackaged"
+#: The transform id of the plug-in project retarget. Its ledger entries carry it as their
+#: ``rule`` too: the repository, not the inventory, is what it detects on, so no rules-file
+#: rule names it.
+CSPROJ_TRANSFORM = "csproj-sdk-net462"
 #: The kinds whose artifacts may call a script's functions by name.
 _CALLER_KINDS = frozenset(("web_resource", "ribbon", "ribbon_diff", "sitemap"))
 #: The per-package call-graph counts of the ledger's ``call_graph``: helpers given a
@@ -646,13 +654,19 @@ def convert(
     *,
     source_map_path: Path | None = None,
     target_inventory: Path | None = None,
+    repo: Path | None = None,
 ) -> ConvertResult:
     """Plan, gate and write the conversion of every component carrying a transformable finding.
+
+    With *repo*, the application repository the source map was made from, each plug-in
+    assembly the map matches to one project also gets the SDK-style retarget of that project.
 
     Raises:
         InventoryError: an input cannot be read or belongs to another inventory, or
             *out* is inside the inventory or not empty.
     """
+    if repo is not None and source_map_path is None:
+        raise InventoryError("--repo needs --source-map: the map names each assembly's project")
     inv_root, out_root = inventory_dir.resolve(), out.resolve()
     if out_root == inv_root or inv_root in out_root.parents:
         raise InventoryError(f"--out {out} is inside the inventory; name a folder outside it")
@@ -668,6 +682,7 @@ def convert(
             " re-run `crm inventory assess` on this one"
         )
     matched: dict[tuple[str, str], str] = {}
+    projects: dict[str, str] = {}
     if source_map_path is not None:
         source_map = read_source_map(source_map_path)
         if source_map.inventory.get("manifest_sha256") != manifest_sha:
@@ -679,6 +694,11 @@ def convert(
             (c.kind, c.key): c.files[0]
             for c in source_map.components
             if c.status == "matched" and c.files
+        }
+        projects = {
+            c.key: c.projects[0]
+            for c in source_map.components
+            if c.kind == "plugin_assembly" and c.status == "matched" and len(c.projects) == 1
         }
     held = _members(packages_dir, manifest_sha)
     # Packages do not group the ribbon diff, but the entity's effective ribbon holds every action
@@ -958,6 +978,9 @@ def convert(
         for e in entries:
             if e.package == pkg and e.transform == "odata-v2" and e.status == "patched":
                 e.files["adapter"] = f"{pkg}/{ADAPTER_NAME}"
+    if repo is not None:
+        for key, rel in sorted(projects.items()):
+            entries.extend(_project_entries(out, repo, key, rel, held))
     entries.sort(key=lambda e: (e.package, e.kind, e.key))
     result = ConvertResult(manifest_sha, tuple(entries), adapters)
     out.mkdir(parents=True, exist_ok=True)
@@ -966,6 +989,59 @@ def convert(
         encoding="utf-8",
     )
     return result
+
+
+def _project_entries(
+    out: Path, repo: Path, key: str, rel: str, held: Mapping[str, list[str]]
+) -> list[Entry]:
+    """One ledger entry per work package holding assembly *key*, from its project *rel*."""
+    entries = [
+        Entry(pkg, "plugin_assembly", key, CSPROJ_TRANSFORM, CSPROJ_TRANSFORM, "manual-review")
+        for pkg in held.get(f"plugin_assembly:{key}", [UNPACKAGED])
+    ]
+    try:
+        source = normalize_text((repo / rel).read_bytes())
+        text = source.decode("utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        reason = f"project unreadable: {getattr(exc, 'strerror', None) or exc}"
+        for entry in entries:
+            entry.manual_review = [ManualReview(rel, None, CSPROJ_TRANSFORM, reason)]
+        return entries
+    plan = plan_csproj(text)
+    review = [ManualReview(rel, r.line, CSPROJ_TRANSFORM, r.reason) for r in plan.review]
+    if plan.patched is None:
+        for entry in entries:
+            entry.manual_review = list(review)
+        return entries
+    patched = plan.patched.encode("utf-8")
+    for entry in entries:
+        entry.manual_review = list(review)
+        entry.status, entry.edits = "patched", 1
+        entry.original_sha256, entry.patched_sha256 = _hex(source), _hex(patched)
+        entry.repo_path = rel
+        entry.files = _write_project(out, entry.package, rel, source, patched)
+    return entries
+
+
+def _write_project(
+    out: Path, package: str, rel: str, source: bytes, patched: bytes
+) -> dict[str, str]:
+    """Write a project's diff against its repository path and the full patched project.
+
+    The folder path is folded into the file name, "_" escaped as "_u" and "/" as "__", so the
+    fold is injective: no two project paths share a file.
+    """
+    folder = out / package
+    folder.mkdir(parents=True, exist_ok=True)
+    stem = rel.removesuffix(".csproj").replace("_", "_u").replace("/", "__")
+    new = patched.decode("utf-8")
+    files = {
+        "diff": (f"{stem}.diff", _diff(source.decode("utf-8"), new, rel)),
+        "patched": (f"{stem}.patched.csproj", new),
+    }
+    for fname, text in files.values():
+        (folder / fname).write_text(text, encoding="utf-8", newline="")
+    return {label: f"{package}/{fname}" for label, (fname, _) in files.items()}
 
 
 def _write(out: Path, entry: Entry, path: str, source: bytes, patched: bytes) -> None:
