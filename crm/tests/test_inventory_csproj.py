@@ -78,7 +78,7 @@ def _props(root: ET.Element) -> dict[str, str]:
 
 
 def _refs(root: ET.Element) -> list[str]:
-    return [r.get("Include", "") for g in root.findall("ItemGroup") for r in g.findall("Reference")]
+    return [r.get("Include", "") for g in root.iter("ItemGroup") for r in g.findall("Reference")]
 
 
 def test_fixture_converts_to_sdk_style_net462() -> None:
@@ -235,3 +235,31 @@ def test_entity_declarations_are_refused_not_expanded() -> None:
     text = '<!DOCTYPE p [<!ENTITY x "y">]><Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003"/>'
     plan = plan_csproj(text)
     assert plan.patched is None and "well-formed" in plan.review[0].reason
+
+
+def test_references_inside_a_choose_block_are_replaced_and_reviewed() -> None:
+    text = OLD_STYLE.replace(
+        '<Import Project="$(MSBuildToolsPath)\\Microsoft.CSharp.targets" />',
+        "<Choose><When Condition=\" '$(X)' == '1' \"><ItemGroup>\n"
+        '<Reference Include="Microsoft.Xrm.Sdk, Version=5.0.0.0" />\n'
+        '<Reference Include="Microsoft.Xrm.Client, Version=5.0.0.0" />\n'
+        "</ItemGroup></When></Choose>\n"
+        '<Import Project="$(MSBuildToolsPath)\\Microsoft.CSharp.targets" />',
+    )
+    plan, root = _plan(text)
+    assert "Microsoft.Xrm.Sdk, Version=5.0.0.0" not in _refs(root)
+    assert "Microsoft.Xrm.Client, Version=5.0.0.0" in _refs(root)
+    (item,) = plan.review
+    assert "Microsoft.Xrm.Client" in item.reason
+
+
+def test_a_project_type_guid_inside_a_choose_block_is_still_a_whole_file_review() -> None:
+    text = OLD_STYLE.replace(
+        '<Import Project="$(MSBuildToolsPath)\\Microsoft.CSharp.targets" />',
+        "<Choose><When Condition=\" '$(X)' == '1' \"><PropertyGroup>"
+        "<ProjectTypeGuids>{3AC096D0}</ProjectTypeGuids>"
+        "</PropertyGroup></When></Choose>\n"
+        '<Import Project="$(MSBuildToolsPath)\\Microsoft.CSharp.targets" />',
+    )
+    plan = plan_csproj(text)
+    assert plan.patched is None and "ProjectTypeGuids" in plan.review[0].reason

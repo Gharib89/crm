@@ -111,7 +111,7 @@ def plan_csproj(text: str) -> CsprojPlan:
         return _whole("not an MSBuild project: the root element is not Project")
     if root.get("Sdk") is not None:
         return _whole("already SDK-style: the retarget reads old-style projects only")
-    props = {p.tag.lower(): p for g in root.findall("PropertyGroup") for p in g}
+    props = {p.tag.lower(): p for g in root.iter("PropertyGroup") for p in g}
     if "projecttypeguids" in props:
         return _whole("ProjectTypeGuids marks a project type other than a plain class library")
     output = (props["outputtype"].text or "").strip() if "outputtype" in props else "Library"
@@ -135,7 +135,8 @@ def plan_csproj(text: str) -> CsprojPlan:
             )
         )
     replaced = False
-    for group in root.findall("ItemGroup"):
+    # Descendants too: a Choose/When block nests item groups an old project may use.
+    for group in root.iter("ItemGroup"):
         for ref in group.findall("Reference"):
             name = ref.get("Include", "").split(",")[0].strip()
             if name.lower() in _REPLACED:
