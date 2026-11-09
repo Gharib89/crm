@@ -10,6 +10,12 @@ Only an explicit `crm profile login` is interactive. Every other command reuses
 the cached sign-in silently, or fails with a stable `reauth_required` error that
 tells you to log in again.
 
+!!! warning "Not yet verified against a live tenant"
+    Delegated sign-in is tested offline only (a faked `msal`). The live proof
+    ([#1146](https://github.com/Gharib89/crm/issues/1146)) is blocked until a tenant
+    administrator grants admin consent (step 1.5), so no live sign-in has completed
+    yet. Report what you see on a real tenant in an issue.
+
 ## 1. Register an Entra app (once per tenant)
 
 Each tenant registers its **own** public-client app. There is no shared app.
@@ -82,8 +88,8 @@ fail under Conditional Access; log in again with the browser flow then.
   browser and never print a token.
 - The cache is an AES-256-GCM encrypted file in the state home (`CRM_HOME`,
   default `~/.crm/`), with the key in the OS keyring. Where no keyring exists
-  (typical WSL or headless), the key falls back to a `0600` plaintext file and
-  `login` warns.
+  (typical WSL or headless), the token cache itself is a plaintext `0600` file
+  and `login` warns.
 - With no signed-in account, or an expired or revoked sign-in, a command fails
   with `reauth_required` (HTTP status 401, category `auth_failed`) and the hint
   `Run crm profile login <name>`.
@@ -102,6 +108,6 @@ fail under Conditional Access; log in again with the browser flow then.
 | `wrong_tenant` | The signed-in account belongs to another tenant than the profile's `tenant_id`. Check that `tenant_id` is the tenant GUID (`crm profile edit`), or use an account of that tenant. |
 | `AADSTS65001` or `AADSTS90094` | The app has no consent for Dataverse. An administrator grants admin consent to `user_impersonation` (step 1.5). |
 | `login` waits, then fails with `login_failed` ("not finished within 300 s") | The browser sign-in never returned to crm: it was not finished, or Entra stopped on an "Approval required" page (admin consent missing for `user_impersonation`, step 1.5). Finish the sign-in, or have an administrator grant consent, then log in again. |
-| Device code blocked (Conditional Access) | The tenant forbids device code. Run `crm profile login` without `--device-code` on a machine with a browser. |
+| Device code blocked (Conditional Access) | The tenant forbids device code. Run `crm profile login` without `--device-code` on a machine with a browser. crm matches the block on the documented codes `AADSTS53003` and `AADSTS530036`, not yet seen live. |
 | "No web browser is available" | Headless host. Use `--device-code`, or log in on a machine with a browser. |
 | Works, then fails after a rename | Run `crm profile login <new-name>`. |
