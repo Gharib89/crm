@@ -9,6 +9,45 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.106.0 (2026-11-09)
+
+### Bug Fixes
+
+- **auth**: Cache the MSAL app per backend, login hints, guard cache delete in rm
+  ([#1157](https://github.com/Gharib89/crm/pull/1157),
+  [`7fcd6c3`](https://github.com/Gharib89/crm/commit/7fcd6c3b0851bc9ef5e93402706ee939048a70e0))
+
+- **auth**: Login hint for any oauth-user 401, tolerate an unwritable token cache
+  ([#1157](https://github.com/Gharib89/crm/pull/1157),
+  [`7fcd6c3`](https://github.com/Gharib89/crm/commit/7fcd6c3b0851bc9ef5e93402706ee939048a70e0))
+
+- **auth**: Self-review fixes for delegated sign-in
+  ([#1157](https://github.com/Gharib89/crm/pull/1157),
+  [`7fcd6c3`](https://github.com/Gharib89/crm/commit/7fcd6c3b0851bc9ef5e93402706ee939048a70e0))
+
+- **profile**: Rename helper so CodeQL does not read its text as a secret
+  ([#1157](https://github.com/Gharib89/crm/pull/1157),
+  [`7fcd6c3`](https://github.com/Gharib89/crm/commit/7fcd6c3b0851bc9ef5e93402706ee939048a70e0))
+
+### Documentation
+
+- Delegated sign-in how-to, profile login, skill references
+  ([#1157](https://github.com/Gharib89/crm/pull/1157),
+  [`7fcd6c3`](https://github.com/Gharib89/crm/commit/7fcd6c3b0851bc9ef5e93402706ee939048a70e0))
+
+- Drop em dash in README limits ([#1157](https://github.com/Gharib89/crm/pull/1157),
+  [`7fcd6c3`](https://github.com/Gharib89/crm/commit/7fcd6c3b0851bc9ef5e93402706ee939048a70e0))
+
+### Features
+
+- Oauth-user scheme and crm profile login ([#1157](https://github.com/Gharib89/crm/pull/1157),
+  [`7fcd6c3`](https://github.com/Gharib89/crm/commit/7fcd6c3b0851bc9ef5e93402706ee939048a70e0))
+
+- Oauth-user scheme and crm profile login (#1145)
+  ([#1157](https://github.com/Gharib89/crm/pull/1157),
+  [`7fcd6c3`](https://github.com/Gharib89/crm/commit/7fcd6c3b0851bc9ef5e93402706ee939048a70e0))
+
+
 ## v1.105.9 (2026-11-09)
 
 ### Bug Fixes
