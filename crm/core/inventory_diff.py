@@ -13,7 +13,7 @@ import re
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from crm.core.inventory import (
     KINDS,
@@ -118,6 +118,14 @@ def _gaps(inv: Inventory) -> list[dict[str, Any]]:
     return gaps
 
 
+#: A diff side: ``a`` the earlier inventory, ``b`` the later.
+Side = Literal["a", "b"]
+
+#: Kinds a custom entity owns by its ``entity`` field; a relationship names its entities by sides.
+_ENTITY_OWNED = ("attribute", "local_option_set", "form", "view", "ribbon")
+_RELATIONSHIP_SIDES = ("referenced_entity", "referencing_entity", "entity1", "entity2")
+
+
 @dataclass(frozen=True)
 class Restriction:
     """The comparison was cut to a ``--solution`` side's solutions, so it is not a full diff.
@@ -127,7 +135,7 @@ class Restriction:
     narrowed side's keys. *left_out* counts the whole-org keys outside the comparison.
     """
 
-    narrowed: str
+    narrowed: Side
     solutions: tuple[str, ...]
     missing: tuple[str, ...]
     left_out: int
@@ -381,9 +389,12 @@ def _diff_key(
     return KeyDiff(kind, key, verdict, origin, fields, artifacts, ids, gap)
 
 
-def _narrowed_side(a: Inventory, b: Inventory) -> str | None:
+def _narrowed_side(a: Inventory, b: Inventory) -> Side | None:
     """Return ``a`` or ``b`` when only that side is a ``--solution`` run, the other whole-org."""
-    return {("solutions", "org"): "a", ("org", "solutions"): "b"}.get((a.scope.mode, b.scope.mode))
+    modes = (a.scope.mode, b.scope.mode)
+    if modes == ("solutions", "org"):
+        return "a"
+    return "b" if modes == ("org", "solutions") else None
 
 
 def _restricted_keys(
@@ -392,12 +403,15 @@ def _restricted_keys(
     """Return the keys to compare and the narrowed solutions the whole-org side lacks.
 
     The narrowed side's own keys, plus the whole-org side's rows of the same-named
-    solutions: each solution, its memberships and the members they name. A source member
-    the target dropped then reads ``removed`` instead of falling out of the comparison.
+    solutions: each solution, its memberships and the members they name, and the
+    subcomponents of each custom entity member (a solution holds its own entity whole; a
+    stock entity may be held as a shell, which the manifest cannot tell from a full hold).
+    A source member the target dropped then reads ``removed``, not falls out of the comparison.
     """
     named = {name.casefold() for name in narrowed.scope.solutions}
     keys = {(r.kind, r.key) for r in narrowed.records}
     found: set[str] = set()
+    entity_members: set[str] = set()
     for r in whole.records:
         if r.kind == "solution" and str(r.fields["unique_name"]).casefold() in named:
             found.add(str(r.fields["unique_name"]).casefold())
@@ -405,6 +419,17 @@ def _restricted_keys(
         elif r.kind == "solution_membership" and str(r.fields["solution"]).casefold() in named:
             keys.add((r.kind, r.key))
             keys.add((str(r.fields["member_kind"]), str(r.fields["member_key"])))
+            if r.fields["member_kind"] == "entity":
+                entity_members.add(str(r.fields["member_key"]))
+    owned = {r.key for r in whole.records if r.kind == "entity" and r.origin == "custom"}
+    owned &= entity_members
+    for r in whole.records:
+        if r.kind in _ENTITY_OWNED and r.fields.get("entity") in owned:
+            keys.add((r.kind, r.key))
+        elif r.kind == "relationship" and owned.intersection(
+            r.fields.get(side) for side in _RELATIONSHIP_SIDES
+        ):
+            keys.add((r.kind, r.key))
     missing = tuple(n for n in narrowed.scope.solutions if n.casefold() not in found)
     return keys, missing
 
@@ -440,10 +465,10 @@ def diff_inventories(a: Inventory, b: Inventory) -> InventoryDiff:
         narrowed, whole = (a, b) if side == "a" else (b, a)
         keep, missing = _restricted_keys(narrowed, whole)
         restriction = Restriction(
-            side,
-            narrowed.scope.solutions,
-            missing,
-            len(all_keys - keep),
+            narrowed=side,
+            solutions=narrowed.scope.solutions,
+            missing=missing,
+            left_out=len(all_keys - keep),
         )
         all_keys &= keep
     entries = tuple(

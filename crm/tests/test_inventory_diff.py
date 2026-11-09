@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import copy
 import json
+import shutil
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +16,8 @@ from click.testing import CliRunner
 
 from crm.cli import cli
 from crm.core import inventory
-from crm.core.inventory_diff import diff_inventories
+from crm.core.inventory import InventoryError
+from crm.core.inventory_diff import diff_inventories, read_pair
 
 FIXTURES = Path(__file__).parent / "fixtures" / "inventory"
 
@@ -545,13 +548,13 @@ _MEMBERS = {
 }
 
 
-def _membership(solution: str, member: str) -> dict[str, Any]:
+def _membership(solution: str, member: str, kind: str = "web_resource") -> dict[str, Any]:
     return {
         "artifacts": [],
         "display_name": None,
-        "fields": {"member_key": member, "member_kind": "web_resource", "solution": solution},
+        "fields": {"member_key": member, "member_kind": kind, "solution": solution},
         "id": None,
-        "key": f"{solution}|web_resource|{member}",
+        "key": f"{solution}|{kind}|{member}",
         "kind": "solution_membership",
         "managed": False,
         "origin": "custom",
@@ -579,7 +582,7 @@ def _whole_org(solution: str | None = "ContosoCore") -> dict[str, Any]:
     return _recounted(m)
 
 
-def _narrowed(edit=None) -> dict[str, Any]:
+def _narrowed(edit: Callable[[dict[str, Any]], None] | None = None) -> dict[str, Any]:
     """The same org read with `--solution ContosoCore`: the solution and what it holds."""
     m = _whole_org()
     m["scope"] = {"mode": "solutions", "solutions": ["ContosoCore"], "system": "included"}
@@ -661,8 +664,6 @@ def test_two_whole_org_sides_and_two_narrowed_sides_carry_no_restriction() -> No
 
 
 def _manifest_folder(tmp_path: Path, name: str, manifest: dict[str, Any]) -> Path:
-    import shutil
-
     folder = tmp_path / name
     shutil.copytree(FIXTURES / "v9", folder)
     (folder / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
@@ -670,9 +671,6 @@ def _manifest_folder(tmp_path: Path, name: str, manifest: dict[str, Any]) -> Pat
 
 
 def test_read_pair_skips_the_stock_scope_check_for_a_narrowed_side_only(tmp_path: Path) -> None:
-    from crm.core.inventory import InventoryError
-    from crm.core.inventory_diff import read_pair
-
     whole = _manifest_folder(tmp_path, "whole", _whole_org())
     narrowed = _manifest_folder(tmp_path, "narrowed", _narrowed())
     full = _whole_org()
@@ -698,3 +696,79 @@ def test_cli_states_the_restriction_in_json_and_in_the_table(no_profile, tmp_pat
     assert table.exit_code == 0, table.output
     assert "narrowed to ContosoCore" in table.output
     assert "left out" in table.output
+
+
+def _copy_of(manifest: dict[str, Any], src: tuple[str, str], **changes: Any) -> dict[str, Any]:
+    """A record of *manifest* copied under a new key, with no artifact files to collide."""
+    record = copy.deepcopy(_record(manifest, *src))
+    record["artifacts"] = []
+    record.update(changes)
+    return record
+
+
+def test_a_source_subcomponent_of_a_custom_member_entity_the_target_dropped_reads_removed() -> None:
+    whole = _whole_org()
+    whole["records"].append(_membership("ContosoCore", "new_project", "entity"))
+
+    def edit(m: dict[str, Any]) -> None:
+        # The target holds the entity and one of its two attributes.
+        for kind, key in (
+            ("entity", "new_project"),
+            ("solution_membership", "ContosoCore|entity|new_project"),
+            ("attribute", "new_project|new_name"),
+        ):
+            m["records"].append(copy.deepcopy(_record(whole, kind, key)))
+
+    diff = diff_inventories(
+        inventory.parse_manifest(_recounted(whole)), inventory.parse_manifest(_narrowed(edit))
+    )
+
+    assert _entry(diff, "attribute", "new_project|new_legacycode").verdict == "removed"
+    assert _entry(diff, "attribute", "new_project|new_name").verdict == "unchanged"
+    # A stock entity's rows and the other entities' subcomponents stay out of the comparison.
+    kept = {(e.kind, e.key) for e in diff.entries}
+    assert ("entity", "account") not in kept and ("form", "account|2|Account") not in kept
+
+
+def test_a_stock_flagged_target_row_compares_like_a_custom_one() -> None:
+    def edit(m: dict[str, Any]) -> None:
+        record = _record(m, "web_resource", "new_/scripts/project.js")
+        record["origin"], record["managed"] = "system", True
+
+    diff = diff_inventories(
+        inventory.parse_manifest(_whole_org()), inventory.parse_manifest(_narrowed(edit))
+    )
+
+    entry = _entry(diff, "web_resource", "new_/scripts/project.js")
+    assert entry.verdict == "changed"
+    assert [(f.name, f.a, f.b) for f in entry.fields] == [
+        ("origin", "custom", "system"),
+        ("managed", False, True),
+    ]
+
+
+def test_a_narrowed_side_naming_two_solutions_restricts_to_both() -> None:
+    whole = _whole_org()
+    whole["records"] += [
+        _copy_of(whole, ("solution", "ContosoCore"), key="Other", fields={"unique_name": "Other"}),
+        _membership("Other", "new_/scripts/other.js"),
+        _copy_of(
+            whole,
+            ("web_resource", "new_/scripts/project.js"),
+            key="new_/scripts/other.js",
+            fields={"name": "new_/scripts/other.js"},
+        ),
+    ]
+
+    def edit(m: dict[str, Any]) -> None:
+        m["scope"]["solutions"] = ["ContosoCore", "Other"]
+        m["records"].append(copy.deepcopy(_record(whole, "solution", "Other")))
+
+    diff = diff_inventories(
+        inventory.parse_manifest(_recounted(whole)), inventory.parse_manifest(_narrowed(edit))
+    )
+
+    assert _entry(diff, "web_resource", "new_/scripts/other.js").verdict == "removed"
+    assert _entry(diff, "solution", "Other").verdict == "unchanged"
+    restriction = diff.summary()["header"]["restricted"]
+    assert restriction["solutions"] == ["ContosoCore", "Other"] and restriction["missing"] == []

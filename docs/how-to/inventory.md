@@ -101,7 +101,7 @@ extract. The manifest header records the choice (`scope.system`: `excluded`, or
 - `crm inventory diff` refuses two whole-org manifests that differ in `scope.system`,
   since every stock component would read as added or removed; re-extract one side. A
   `--solution` manifest against a whole-org one is not refused: the diff is
-  [restricted to the solutions](#compare-two-inventories).
+  [restricted to the solutions](#compare-a-solution-target-with-a-whole-org-source).
 
 ### Progress
 
@@ -329,17 +329,18 @@ crm --json inventory diff ./inv-source ./inv-target --out ./diff.json
 
 With exactly one side a `--solution` run and the other a whole-org run, `diff` skips the
 stock-scope refusal and compares only the narrowed side's keys plus the whole-org side's
-rows of the **same-named solutions** (the solution, its memberships and the members they
-name). A source member the target lacks reads `removed`, not silently dropped. The
-whole-org keys outside that set are not compared and not reported. The header's
+rows of the **same-named solutions**: the solution, its memberships, the members they
+name and the subcomponents (attributes, forms, views, ribbons, option sets, relationships)
+of each **custom** entity member. A source member the target lacks reads `removed`, not
+silently dropped. The other whole-org keys are not compared, only counted. The header's
 `restricted` says so: `narrowed` (`a` or `b`), `solutions`, `missing` (named solutions
 the whole-org side does not hold, compared by the narrowed side's keys alone) and
 `left_out` (whole-org keys outside the comparison). Rows the narrowed side flags as stock
 compare like custom ones, so a migrated component can read `changed` on `origin` or
-`managed` alone; `by_origin` keeps that apart from custom drift. A member entity's
-subcomponents (attributes, forms, views) are compared where the narrowed side holds
-them, but a subcomponent only the whole-org side holds is left out unless the solution
-lists it itself. Two `--solution` manifests diff as before.
+`managed` alone; `by_origin` keeps that apart from custom drift. A **stock** entity the
+solution holds is compared by the members listed, since the manifest cannot tell a full
+hold from a shell: its other subcomponents are left out. Two `--solution` manifests diff
+as before.
 
 `data` holds the summary, and `--out FILE` writes the same summary plus every
 key's entry:

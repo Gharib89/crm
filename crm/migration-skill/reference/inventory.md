@@ -67,7 +67,8 @@ on-premises step, and `same_scope: false` means the counts do not compare like
 with like. The per-key entries exist only in the `--out` file.
 
 A `--solution` target against a default-scope source is a restricted diff: only the
-target's keys and the source's members of the same-named solutions are compared.
+target's keys and the source's members of the same-named solutions (a custom entity
+member with its subcomponents) are compared.
 `header.restricted.left_out` counts the source keys never compared (report them as out
 of scope), and a name in `restricted.missing` means the source lacks
 that solution. A managed import reading `changed` on `origin` or `managed` alone is
