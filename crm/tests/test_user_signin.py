@@ -215,11 +215,14 @@ class TestLogin:
         assert out["account"] == "new.id" and out["previous"] == HOME_ID
         assert msal.removed == [ACCOUNT]
 
-    def test_device_code_flow(self, msal, capsys):
+    def test_device_code_flow(self, msal):
         msal.device_result = _ok()
-        out = user_signin.login(_profile(home_account_id=None), device_code=True)
+        shown: list[str] = []
+        out = user_signin.login(
+            _profile(home_account_id=None), device_code=True, announce=shown.append
+        )
         assert out["account"] == HOME_ID
-        assert "go to the page" in capsys.readouterr().err
+        assert shown == ["go to the page"]
 
     @pytest.mark.parametrize("code", ["AADSTS65001", "AADSTS90094"])
     def test_consent_errors_name_the_fix(self, msal, monkeypatch, code):
@@ -316,7 +319,7 @@ class TestProfileVerbs:
                 : 4 if verb == "delete-password" else 6
             ],
         )
-        assert r.exit_code == 2
+        assert r.exit_code == 1
         assert "profile login dev" in r.output
 
     def test_rm_removes_the_cached_account(self, msal):

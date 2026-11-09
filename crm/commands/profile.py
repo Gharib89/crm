@@ -897,7 +897,10 @@ def profile_rename(ctx: CLIContext, old, new):
         # The token cache and its key are named after the profile, so they do not follow.
         from crm.core import token_store
 
-        token_store.delete(old)
+        try:
+            token_store.delete(old)
+        except OSError as exc:
+            warnings.append(f"Could not remove the old token cache: {exc}")
         warnings.append(
             f"Delegated sign-in does not carry over a rename: run `crm profile login {new}`."
         )
@@ -989,10 +992,16 @@ def profile_login(ctx: CLIContext, name, device_code):
     from crm.core import user_signin
 
     with d365_errors(ctx):
-        result = user_signin.login(profile, device_code=device_code)
+        result = user_signin.login(
+            profile, device_code=device_code, announce=lambda m: click.echo(m, err=True)
+        )
     profile.home_account_id = result["account"]
     profile.username = result["username"]
-    session_mod.save_profile(profile)
+    try:
+        session_mod.save_profile(profile)
+    except OSError as exc:
+        ctx.emit(False, error=f"Signed in, but could not write profile {name!r}: {exc}")
+        return
     ctx.invalidate_backend()
     warnings = []
     if result["previous"]:
@@ -1015,8 +1024,8 @@ def profile_login(ctx: CLIContext, name, device_code):
     )
 
 
-def _no_secret_error(name: str) -> click.UsageError:
-    return click.UsageError(
+def _no_secret_message(name: str) -> str:
+    return (
         f"profile {name!r} uses delegated sign-in and has no secret; "
         f"sign in with `crm profile login {name}`."
     )
@@ -1046,7 +1055,8 @@ def profile_set_password(
         _handle_d365_error(ctx, D365Error(f"Profile {profile_name!r} not found."))
         return
     if profile.auth_scheme == "oauth-user":
-        raise _no_secret_error(profile_name)
+        ctx.emit(False, error=_no_secret_message(profile_name))
+        return
     secret = password_opt
     if not secret and _stdin_is_tty() and not ctx.json_mode:
         label = "client secret" if profile.auth_scheme == "oauth" else "password"
@@ -1066,10 +1076,12 @@ def profile_set_password(
 def profile_delete_password(ctx: CLIContext, profile_name):
     """Remove a stored secret (OS keyring AND plaintext)."""
     try:
-        if session_mod.load_profile(profile_name).auth_scheme == "oauth-user":
-            raise _no_secret_error(profile_name)
+        delegated = session_mod.load_profile(profile_name).auth_scheme == "oauth-user"
     except _PROFILE_LOAD_ERRORS:
-        pass  # missing or unreadable profile: fall through to the plain cleanup
+        delegated = False  # missing or unreadable profile: plain cleanup
+    if delegated:
+        ctx.emit(False, error=_no_secret_message(profile_name))
+        return
     removed_keyring = keyring_store.delete_secret(profile_name)
     removed_plaintext = session_mod.clear_profile_secret(profile_name)
     removed = removed_keyring or removed_plaintext

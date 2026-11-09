@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import urllib.parse
 import webbrowser
+from collections.abc import Callable
 from typing import Any
 
 from crm.core import token_store
@@ -117,7 +118,7 @@ def _fix_for(result: dict[str, Any], *, device_code: bool) -> str | None:
         return (
             "the app registration lacks consent for Dataverse: have an administrator grant "
             "admin consent to its user_impersonation permission (see "
-            "docs/how-to/delegated-signin.md)"
+            "the delegated sign-in how-to in the crm docs)"
         )
     if device_code and any(code in text for code in _CA_CODES):
         return (
@@ -135,7 +136,12 @@ def _no_browser() -> bool:
     return False
 
 
-def login(profile: ConnectionProfile, *, device_code: bool) -> dict[str, Any]:
+def login(
+    profile: ConnectionProfile,
+    *,
+    device_code: bool,
+    announce: Callable[[str], None] = lambda _msg: None,
+) -> dict[str, Any]:
     """Sign in and return ``{account, username, tid, storage, previous}``.
 
     Refuses a token from a tenant other than the profile's ``tenant_id``, which
@@ -156,9 +162,7 @@ def login(profile: ConnectionProfile, *, device_code: bool) -> dict[str, Any]:
         if "user_code" not in flow:
             result: dict[str, Any] = flow
         else:
-            import click
-
-            click.echo(flow["message"], err=True)
+            announce(str(flow["message"]))
             result = app.acquire_token_by_device_flow(flow)
     else:
         result = app.acquire_token_interactive(scopes, login_hint=profile.username or None)
