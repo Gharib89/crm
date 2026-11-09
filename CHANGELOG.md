@@ -9,6 +9,51 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.105.7 (2026-11-09)
+
+### Bug Fixes
+
+- **inventory**: Cap tree-sitter below 0.26, which segfaults the JavaScript binding
+  ([#1154](https://github.com/Gharib89/crm/pull/1154),
+  [`1e3c9e5`](https://github.com/Gharib89/crm/commit/1e3c9e5e31844d8f31e1b925911fe3ad48023d40))
+
+### Chores
+
+- **auth**: Add encrypted token store for delegated sign-in
+  ([#1150](https://github.com/Gharib89/crm/pull/1150),
+  [`e4f2bda`](https://github.com/Gharib89/crm/commit/e4f2bdae2302be797b205eaa5183b7b6b5fb3c26))
+
+- **auth**: Address self-review of the token store
+  ([#1150](https://github.com/Gharib89/crm/pull/1150),
+  [`e4f2bda`](https://github.com/Gharib89/crm/commit/e4f2bdae2302be797b205eaa5183b7b6b5fb3c26))
+
+- **auth**: Assert file mode on POSIX only in token store tests
+  ([#1150](https://github.com/Gharib89/crm/pull/1150),
+  [`e4f2bda`](https://github.com/Gharib89/crm/commit/e4f2bdae2302be797b205eaa5183b7b6b5fb3c26))
+
+- **auth**: Re-encrypt under the keyring's key after a racing first save
+  ([#1150](https://github.com/Gharib89/crm/pull/1150),
+  [`e4f2bda`](https://github.com/Gharib89/crm/commit/e4f2bdae2302be797b205eaa5183b7b6b5fb3c26))
+
+### Documentation
+
+- **adr**: Record delegated Entra sign-in design (ADR 0035)
+  ([#1147](https://github.com/Gharib89/crm/pull/1147),
+  [`ca337ec`](https://github.com/Gharib89/crm/commit/ca337ec30c067debad6899c1e6fe015a9fac38ac))
+
+### Refactoring
+
+- Route cloud-profile checks through one is_cloud predicate
+  ([#1148](https://github.com/Gharib89/crm/pull/1148),
+  [`e1cadcb`](https://github.com/Gharib89/crm/commit/e1cadcbf30fa6d8db5455ae212be38600c915950))
+
+### Testing
+
+- **docs**: Allowlist the proposed profile login verb in ADR 0035
+  ([#1147](https://github.com/Gharib89/crm/pull/1147),
+  [`ca337ec`](https://github.com/Gharib89/crm/commit/ca337ec30c067debad6899c1e6fe015a9fac38ac))
+
+
 ## v1.105.6 (2026-11-09)
 
 ### Bug Fixes
