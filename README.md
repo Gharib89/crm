@@ -281,7 +281,8 @@ crm profile add \
 **Online, as yourself (delegated sign-in):** register your own public-client Entra app
 once per tenant, then save a profile with no secret and sign in from a terminal. Other
 commands reuse the encrypted token cache silently, and fail with `reauth_required` when
-a new `crm profile login` is due. See the [delegated sign-in how-to](docs/how-to/delegated-signin.md).
+a new `crm profile login` is due. Not yet verified against a live tenant (tested offline only,
+[#1146](https://github.com/Gharib89/crm/issues/1146)). See the [delegated sign-in how-to](docs/how-to/delegated-signin.md).
 
 ```bash
 crm profile add --url https://contoso.crm.dynamics.com --auth-scheme oauth-user \
