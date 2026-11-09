@@ -233,6 +233,9 @@ def inventory_diff_cmd(ctx: CLIContext, a: Path, b: Path, out_file: Path | None)
     unchanged, ambiguous (the key repeats) or not_comparable (a kind's coverage
     is not complete on both sides, or what one side lacks its extraction gap
     explains).
+    One side extracted with --solution against a whole-org side compares only the
+    narrowed side's keys and the whole-org side's members of the same-named
+    solutions; the header's `restricted` says so and counts the keys left out.
     Differences exit 0; an unreadable inventory exits 1. Returns the header
     (both sources and scopes), counts per kind and verdict, counts per origin,
     the kinds not read complete on both sides, and both sides' gaps; --out
@@ -267,6 +270,8 @@ def inventory_diff_cmd(ctx: CLIContext, a: Path, b: Path, out_file: Path | None)
         meta["incomplete"] = ", ".join(
             f"{kind} (A {s['a']}, B {s['b']})" for kind, s in incomplete.items()
         )
+    if diff.restriction is not None:
+        meta["restricted"] = diff.restriction.describe()
     if warning:
         meta["warning"] = warning
     if out_file is not None:

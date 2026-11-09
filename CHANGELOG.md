@@ -9,6 +9,45 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.107.0 (2026-11-09)
+
+### Bug Fixes
+
+- **inventory**: Compare a custom entity member's subcomponents in a restricted diff
+  ([#1162](https://github.com/Gharib89/crm/pull/1162),
+  [`ae5f6b8`](https://github.com/Gharib89/crm/commit/ae5f6b8ced5b10b7482400a64e177a360d62284f))
+
+- **inventory**: Compare a member entity's ribbon diff and kept dependencies in a restricted diff
+  ([#1162](https://github.com/Gharib89/crm/pull/1162),
+  [`ae5f6b8`](https://github.com/Gharib89/crm/commit/ae5f6b8ced5b10b7482400a64e177a360d62284f))
+
+### Documentation
+
+- **inventory**: Document diffing a --solution target against a default-scope source
+  ([#1162](https://github.com/Gharib89/crm/pull/1162),
+  [`ae5f6b8`](https://github.com/Gharib89/crm/commit/ae5f6b8ced5b10b7482400a64e177a360d62284f))
+
+- **inventory**: Say a migrated component's origin-only change counts under by_origin.custom
+  ([#1162](https://github.com/Gharib89/crm/pull/1162),
+  [`ae5f6b8`](https://github.com/Gharib89/crm/commit/ae5f6b8ced5b10b7482400a64e177a360d62284f))
+
+### Features
+
+- **inventory**: Diff a --solution narrowed target against a default-scope source
+  ([#1162](https://github.com/Gharib89/crm/pull/1162),
+  [`ae5f6b8`](https://github.com/Gharib89/crm/commit/ae5f6b8ced5b10b7482400a64e177a360d62284f))
+
+### Refactoring
+
+- **inventory**: Annotate the shared inventory tuples
+  ([#1162](https://github.com/Gharib89/crm/pull/1162),
+  [`ae5f6b8`](https://github.com/Gharib89/crm/commit/ae5f6b8ced5b10b7482400a64e177a360d62284f))
+
+- **inventory**: Share the entity-owned kinds and relationship sides
+  ([#1162](https://github.com/Gharib89/crm/pull/1162),
+  [`ae5f6b8`](https://github.com/Gharib89/crm/commit/ae5f6b8ced5b10b7482400a64e177a360d62284f))
+
+
 ## v1.106.0 (2026-11-09)
 
 ### Bug Fixes
