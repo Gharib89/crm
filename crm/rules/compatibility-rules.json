@@ -331,6 +331,7 @@
           3
         ]
       },
+      "transform": "odata-v2",
       "fix": "Call the Web API (Xrm.WebApi, or /api/data/v9.x/) and drop helper libraries such as SDK.REST.js.",
       "sources": [
         "https://learn.microsoft.com/power-apps/developer/model-driven-apps/best-practices/business-logic/do-not-use-odata-v2-endpoint",

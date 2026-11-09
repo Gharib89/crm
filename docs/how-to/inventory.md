@@ -791,8 +791,21 @@ comment is never rewritten. A shadowed or locally bound `Xrm`, a qualified `wind
 | `web-resource-entity-save` | `entity-save` | `<x>.data.entity.save()` to `<x>.data.save()` | `save(saveOption)` with an argument |
 | `web-resource-xrm-utility` | `xrm-utility-review` | nothing | `openEntityForm`, `openQuickCreate`, `openWebResource`, `alertDialog`, `confirmDialog`, `isActivityType`: the signature or sync behaviour changes |
 | `web-resource-keypress` | `keypress-review` | nothing | `addOnKeyPress`, `removeOnKeyPress`, `fireOnKeyPress`, `showAutoComplete`, `hideAutoComplete`: no API replacement |
+| `web-resource-odata-v2` | `odata-v2` | with `--target-inventory`: `req.open("GET", "<org>/XRMServices/2011/OrganizationData.svc/<Set>Set?$select=...", <async>)` on a variable bound only to `new XMLHttpRequest()` in the same function to `CrmODataV2.open(req, "GET", "/api/data/v9.0/<set>?$select=...", <async>)`, the entity set and attribute names read from the target inventory | a receiver bound to anything else (a parameter, another value, a reassignment), a `$filter` value built at run time outside a string or guid literal, a write, an `$expand`, a `$skip` (the Web API pages through `@odata.nextLink`), a `$select`-less query, a `$.ajax` or `fetch` call, a URL not built from string pieces, an entity or attribute the target inventory does not hold, an entity record with no `entity_set_name` |
 | `form-handler-no-execution-context` | `form-handler-context` | in a registered form handler: an `executionContext` first parameter (or the existing one), `var formContext = executionContext.getFormContext();` after the opening brace, each `Xrm.Page.<member>` in its own body to `formContext.<member>`; a helper the handler calls (any number of hops) gains a first `formContext` parameter and every call passes it; and `passExecutionContext="true"` on every enabled registration of it, on the form XML in the same work package | see below |
 | `ribbon-action-no-primary-control` | `form-handler-context` | a ribbon `JavaScriptFunction` on a form command whose function now takes the form context: `<CrmParameter Value="PrimaryControl" />` added as the first parameter (the existing ones keep their order behind it), and the function gets a first `primaryControl` parameter with `var formContext = primaryControl;` after its opening brace, its `Xrm.Page.<member>` becoming `formContext.<member>`, its helpers threaded as for a handler | a command on a grid, subgrid, home page or application ribbon location (`PrimaryControl` is the grid context there), or one no control in the diff names whose id is not `Mscrm.Form.*`; a function that is also a form handler, also called by a `CustomRule`, or called by another command with different `CrmParameter`s, another diff outside the work package, a caller the entity's effective ribbon holds that no readable diff carries, or one already passing `PrimaryControl` |
+
+`odata-v2` moves a synchronous or asynchronous OData v2 `GET` onto the Web API without touching the code that reads the
+response. The call site keeps its `req.open` arguments and the sync or async flag (a call never becomes
+synchronous when it was not), so only `req.open(` becomes `CrmODataV2.open(req, `. The adapter `crm-odata-v2-adapter.js`, written
+once per work package next to the patched files, defines `CrmODataV2` and an instance-level `responseText` getter that
+returns the v4 body in the v2 shape: `d.results`, `d.__count` (a string), `{Value}` for option sets and money (money as a
+string), `/Date(ms)/` dates, lookups as `{Id, LogicalName, Name}` (an empty option set, money or lookup keeps its object with null members, as v2 sent it), and an error as `{message: {lang, value}}`. It also sets the
+`OData-MaxVersion` and `OData-Version` headers and asks for the annotations the lookups need. A v2 reply carried `d.__next` for the next page; the adapter does not map `@odata.nextLink`, so a caller that follows pages sees the first one only. Entity set and attribute names
+come from the target inventory (`--target-inventory DIR`, a v9 extract), never from pluralising a name, and a `$select` is
+required because the v2 attribute spelling comes from it. Upload the adapter as a web resource and load it before the patched
+scripts: convert does not register it on forms or ribbons. The extract does not yet record `entity_set_name`, so a target
+inventory without that field sends every site to manual review.
 
 `getUserRoles()` returned GUID strings and `userSettings.roles` holds `{id, name}` lookups, so
 the call changes the element type for whatever reads the list, and is always a manual-review
@@ -853,7 +866,7 @@ Under `--out`, per work package and component:
 | `<package id>/<stem>.diff` | unified diff against the extracted text, normalized (no BOM, LF) |
 | `<package id>/<stem>.patched.js` | the patched text |
 | `<package id>/<stem>.repo.diff` | diff against the repository file, only when `--source-map` marks the web resource `matched` by hash |
-| `ledger.json` | `schema_version` 1; one entry per package, component key and rule: `status` (`patched` or `manual-review`), `edits`, `original_sha256`, `patched_sha256`, `repo_path`, `files`, `manual_review`; a top-level `call_graph` maps each package holding a converted library to its `threaded`, `unreachable` and `boundary` counts |
+| `ledger.json` | `schema_version` 1; one entry per package, component key and rule: `status` (`patched` or `manual-review`), `edits`, `original_sha256`, `patched_sha256`, `repo_path`, `files`, `manual_review`; a top-level `call_graph` maps each package holding a converted library to its `threaded`, `unreachable` and `boundary` counts; a top-level `adapters` maps each package that needs the OData v2 adapter to its `file`, `sha256` and `entity_sets`; a patched `odata-v2` entry also lists the adapter under `files.adapter` |
 
 ### Plug-in projects
 
