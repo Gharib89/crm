@@ -589,6 +589,14 @@ def inventory_verify_cmd(
     " each web resource it links to a file by hash.",
 )
 @click.option(
+    "--target-inventory",
+    "target_inventory",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    help="An inventory extracted from the target org: its entity set and attribute names"
+    " are the Web API names the OData v2 rewrite writes. Without it each v2 call is a"
+    " manual-review entry.",
+)
+@click.option(
     "--repo",
     "repo_dir",
     type=click.Path(exists=True, file_okay=False, path_type=Path),
@@ -609,6 +617,7 @@ def inventory_convert_cmd(
     findings_file: Path,
     packages_dir: Path,
     source_map_file: Path | None,
+    target_inventory: Path | None,
     repo_dir: Path | None,
     out_dir: Path,
 ):
@@ -631,7 +640,11 @@ def inventory_convert_cmd(
     each manual-review entry (file, line, rule, reason) where a rule matches but the
     rewrite is not proven. A patch is written only if the patched code parses with no
     new error nodes and re-running the rule finds exactly the rewritten sites fewer;
-    otherwise the code stays untouched and the ledger says why. A component with no
+    otherwise the code stays untouched and the ledger says why. A sync or async
+    `XMLHttpRequest` GET of the OData v2 endpoint is rewritten to the Web API with the
+    names of --target-inventory and routed through a generated adapter module per work
+    package (`crm-odata-v2-adapter.js`, listed under the ledger's `adapters`) that hands
+    the caller v2-shaped JSON: upload it and load it before the patched scripts. A component with no
     transformable finding writes nothing. Nothing is written outside --out; apply a
     patch yourself with `git apply`. An unreadable input, an input made from another
     inventory, a non-empty --out or one inside the inventory exits 1. Returns the
@@ -647,6 +660,7 @@ def inventory_convert_cmd(
             packages_dir,
             out_dir,
             source_map_path=source_map_file,
+            target_inventory=target_inventory,
             repo=repo_dir,
         )
     except InventoryError as exc:
