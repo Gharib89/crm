@@ -85,8 +85,10 @@ entry.
 **A negative control shows a check can catch the defect it guards.** Make the
 regression in a throwaway export or copy that never reaches the branch or the
 target. Run the check and record it with `"negative_control": true`, then revert
-the regression and show the same check green. The gate maps the control's
-outcome:
+the regression and run the same check green, recorded as an ordinary result
+(no `negative_control`) with its own evidence: the gate derives a requirement's
+status from its ordinary results alone, so a control row cannot stand in for it.
+The gate maps the control's outcome:
 
 - `fail`: `held`. The check caught the regression.
 - `pass`: `escaped`. The check missed it. Record it as it ran: the gate marks a
