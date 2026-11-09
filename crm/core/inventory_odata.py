@@ -45,6 +45,8 @@ _PATH = re.compile(
     r"(\(guid'(?:[0-9a-f-]{36}|\x00)'\))?(?:\?(.*))?",
     re.S,
 )
+#: Length of the ``(guid'`` that opens a by-key segment.
+_GUID_OPEN = len("(guid'")
 _LOOKUPS = frozenset(("lookup", "customer", "owner"))
 #: Attribute types a v2 filter reads through ``/Value``.
 _VALUES = frozenset(("picklist", "state", "status", "money"))
@@ -200,7 +202,7 @@ def _filter(value: str, entity: TargetEntity) -> str:
                 i += 6
                 continue
             raise _No("substringof is translated only as substringof(<string>, <attribute>)")
-        if kind == "name" and nxt == "(":
+        if kind == "name" and nxt == "(" and text not in _KEYWORDS:
             if text not in _FUNCTIONS:
                 raise _No(f"the $filter function {text} is not translated")
             out.append(lead + text)
@@ -231,7 +233,7 @@ def translate(template: str, target: Target) -> _Url:
         raise _No(f"entity {v2_set[:-3]} is not in the target inventory")
     if entity.set_name is None:
         raise _No(f"the target inventory records no entity set name for {entity.logical}")
-    key = f"({m.group(2)[len(chr(40) + 'guid' + chr(39)) : -2]})" if m.group(2) else ""
+    key = f"({m.group(2)[_GUID_OPEN:-2]})" if m.group(2) else ""
     params: list[str] = []
     used: tuple[Used, ...] = ()
     for part in (m.group(3) or "").split("&"):
@@ -245,7 +247,7 @@ def translate(template: str, target: Target) -> _Url:
             params.append(f"$filter={_filter(value, entity)}")
         elif name == "$orderby":
             params.append(f"$orderby={_orderby(value, entity)}")
-        elif name in ("$top", "$skip") and re.fullmatch(r"\d+|\x00", value):
+        elif name == "$top" and re.fullmatch(r"\d+|\x00", value):
             params.append(part)
         elif name == "$inlinecount" and value == "allpages":
             params.append("$count=true")

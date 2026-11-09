@@ -627,7 +627,7 @@ def inventory_convert_cmd(
     each manual-review entry (file, line, rule, reason) where a rule matches but the
     rewrite is not proven. A patch is written only if the patched code parses with no
     new error nodes and re-running the rule finds exactly the rewritten sites fewer;
-    otherwise the code stays untouched and the ledger says why. A synchronous
+    otherwise the code stays untouched and the ledger says why. A sync or async
     `XMLHttpRequest` GET of the OData v2 endpoint is rewritten to the Web API with the
     names of --target-inventory and routed through a generated adapter module per work
     package (`crm-odata-v2-adapter.js`, listed under the ledger's `adapters`) that hands

@@ -83,6 +83,15 @@ CASES: dict[str, tuple[str, str | None, int]] = {
         '$count=true", false);\n',
         0,
     ),
+    "grouped-filter": (
+        "var req = new XMLHttpRequest();\n"
+        f'req.open("GET", "{SVC}/AccountSet?$select=Name&$filter=StatusCode/Value eq 1 and '
+        "(Name eq 'a' or not (Name eq 'b'))\", false);\n",
+        "var req = new XMLHttpRequest();\n"
+        f'CrmODataV2.open(req, "GET", "{NEW}/accounts?$select=name&$filter=statuscode eq 1 and '
+        "(name eq 'a' or not (name eq 'b'))\", false);\n",
+        0,
+    ),
     "split-literals": (
         "var req = new XMLHttpRequest();\n"
         f'req.open("GET", {HEAD} + "{SVC}/AccountSet?$select=Name" +\n'
@@ -138,6 +147,11 @@ CASES: dict[str, tuple[str, str | None, int]] = {
     "unsupported-filter-function": (
         f'req.open("GET", "{SVC}/AccountSet?$select=Name&$filter=tolower(Name) eq \'a\'",'
         f" false);\n",
+        None,
+        1,
+    ),
+    "skip": (
+        f'req.open("GET", "{SVC}/AccountSet?$select=Name&$skip=10", false);\n',
         None,
         1,
     ),
