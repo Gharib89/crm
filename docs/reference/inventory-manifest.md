@@ -139,6 +139,18 @@ a manifest extracted before they existed does not read every column as changed. 
 sides carrying it and differing is a `fields.<name>` change, `fields.max_length`
 for a changed length.
 
+### Entity set name
+
+A v9 or Dataverse extract records the server's `EntitySetName` as `entity_set_name`
+on each `entity` record (the Web API collection name, `accounts` for `account`); an
+entity whose set name the server returns empty records none. A CRM 2011 extract
+records none: the platform has no Web API. `inventory convert --target-inventory`
+reads it to resolve an OData v2 call and never derives a set name by pluralising. The
+field is optional and free-form, so adding it needed no `schema_version` bump, and
+`inventory diff` skips it where only one side recorded it, so an older extract does
+not read every entity as changed. Both sides carrying it and differing is a
+`fields.entity_set_name` change.
+
 ## Kind coverage
 
 `coverage` maps each kind to `{status, pages, records, truncated, errors}`.

@@ -140,13 +140,13 @@ _ORG: dict[str, list[list[dict]]] = {
 
 _ENTITIES = [
     {"LogicalName": "account", "DisplayName": _label("Account"), "IsCustomEntity": False,
-     "DisplayCollectionName": _label("Accounts"),
+     "DisplayCollectionName": _label("Accounts"), "EntitySetName": "accounts",
      "ObjectTypeCode": 1, "MetadataId": _id(200), "IsManaged": True},
     {"LogicalName": "new_project", "DisplayName": _label("Project"), "IsCustomEntity": True,
-     "DisplayCollectionName": _label("Projects"),
+     "DisplayCollectionName": _label("Projects"), "EntitySetName": "new_projects",
      "ObjectTypeCode": 10001, "MetadataId": _id(201), "IsManaged": False},
     {"LogicalName": "new_project_account", "DisplayName": _label(None), "IsCustomEntity": True,
-     "DisplayCollectionName": _label(None),
+     "DisplayCollectionName": _label(None), "EntitySetName": None,
      "ObjectTypeCode": 10002, "MetadataId": _id(202), "IsManaged": False},
 ]  # fmt: skip
 _OPTION_SETS = [

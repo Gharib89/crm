@@ -100,6 +100,10 @@ it needs no profile and no network.
   `diff` compares a facet only where both stages recorded it, so a facet missing on
   either side is unknown, not equal: re-extract that side before reporting a length or
   format as matching.
+- **Only a v9 extract names entity sets.** An `entity` record from a v9 or Dataverse
+  source carries `entity_set_name`, which `convert --target-inventory` reads for OData v2
+  sites; a CRM 2011 extract or an older one has none (`diff` skips it where one side
+  lacks it), so extract the convert target from the v9 org.
 - **An older extract reads every ribbon `changed` once.** A ribbon's
   `normalized_sha256` now ignores the order of its rule and command siblings,
   and a manifest written before that hashed the raw text: re-extract the older
