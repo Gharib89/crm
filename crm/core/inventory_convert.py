@@ -989,12 +989,12 @@ def _project_entries(
             entry.manual_review = list(review)
         return entries
     patched = plan.patched.encode("utf-8")
-    files = _write_project(out, entries[0].package, rel, source, patched)
     for entry in entries:
         entry.manual_review = list(review)
         entry.status, entry.edits = "patched", 1
         entry.original_sha256, entry.patched_sha256 = _hex(source), _hex(patched)
-        entry.repo_path, entry.files = rel, dict(files)
+        entry.repo_path = rel
+        entry.files = _write_project(out, entry.package, rel, source, patched)
     return entries
 
 

@@ -233,3 +233,17 @@ def test_cli_repo_without_a_source_map_is_a_usage_error(world: World) -> None:
     res = CliRunner().invoke(cli, args + ["--out", str(world.out)])
     assert res.exit_code == 2, res.output
     assert not world.out.exists()
+
+
+def test_an_assembly_held_by_two_packages_gets_its_files_under_each(world: World) -> None:
+    from crm.core.inventory_convert import _project_entries
+
+    held = {"plugin_assembly:Contoso.Plugins": ["wp-a", "wp-b"]}
+    entries = _project_entries(
+        world.out, world.repo, "Contoso.Plugins", "src/Contoso.Plugins/Contoso.Plugins.csproj", held
+    )
+    assert [e.package for e in entries] == ["wp-a", "wp-b"]
+    for e in entries:
+        assert e.status == "patched"
+        assert all((world.out / path).is_file() for path in e.files.values())
+        assert all(path.startswith(f"{e.package}/") for path in e.files.values())
