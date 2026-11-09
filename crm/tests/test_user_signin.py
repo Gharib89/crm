@@ -193,6 +193,41 @@ class TestSilentAcquire:
         assert r.exit_code == 1 and "set-password" not in r.output
         assert "crm profile login dev to retry" in r.output
 
+    def test_server_401_without_a_code_hints_login_not_set_password(self):
+        from crm.commands._helpers.errors import _handle_d365_error
+
+        emitted: dict[str, Any] = {}
+        ctx: Any = types.SimpleNamespace(
+            _backend=types.SimpleNamespace(profile=_profile()),
+            legacy_profile_name=None,
+            profile_name="dev",
+            json_mode=True,
+            emit=lambda ok, **kw: emitted.update(kw),
+        )
+        _handle_d365_error(ctx, D365Error("user disabled", status=401))
+        assert emitted["meta"]["hint"] == "Run crm profile login dev"
+        assert "set-password" not in emitted["error"]
+
+    def test_unwritable_cache_does_not_fail_a_silent_token(self, msal, monkeypatch):
+        def boom(name, blob):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(token_store, "save", boom)
+        assert user_signin.acquire_silent(_profile()) == "TOK"
+
+    def test_login_reports_an_unwritable_cache_as_an_error(self, msal, monkeypatch):
+        monkeypatch.setattr(webbrowser, "get", lambda *a: object())
+        msal.interactive = _ok()
+
+        def boom(name, blob):
+            raise OSError(28, "No space left on device")
+
+        monkeypatch.setattr(token_store, "save", boom)
+        with pytest.raises(D365Error) as ei:
+            user_signin.login(_profile(home_account_id=None), device_code=False)
+        assert ei.value.code == "cache_write_failed"
+        assert "Signed in, but the token cache" in str(ei.value)
+
 
 class TestLogin:
     def test_browser_sign_in_binds_the_account(self, msal, monkeypatch):

@@ -50,7 +50,9 @@ def _handle_d365_error(
             or ctx.profile_name
             or "<name>"
         )
-        if exc.code in ("reauth_required", "login_failed", "wrong_tenant"):  # delegated: no secret
+        delegated = getattr(getattr(backend, "profile", None), "auth_scheme", None) == "oauth-user"
+        if delegated or exc.code in ("reauth_required", "login_failed", "wrong_tenant"):
+            # delegated: no secret to set, the user signs in again
             hint = f"Run crm profile login {pname}"
         else:
             hint = f"run: crm profile set-password --profile {pname}"

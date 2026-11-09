@@ -117,7 +117,10 @@ class UserBearerAuth:
         if not token:
             err = res.get("error", "no token returned")
             raise _reauth(profile, f"the cached sign-in was rejected ({err})")
-        _save_cache(profile, self._cache)
+        try:
+            _save_cache(profile, self._cache)
+        except OSError:
+            pass  # the token is in hand; an unwritable cache only costs the next run a refresh
         return str(token)
 
     def __call__(self, request: Any) -> Any:
@@ -210,7 +213,14 @@ def login(
         for stale in app.get_accounts():
             if stale.get("home_account_id") == previous:
                 app.remove_account(stale)
-    storage = _save_cache(profile, cache)
+    try:
+        storage = _save_cache(profile, cache)
+    except OSError as exc:
+        raise D365Error(
+            f"Signed in, but the token cache could not be written ({exc.strerror or exc}). "
+            "Fix the state home's permissions or free space, then run the login again.",
+            code="cache_write_failed",
+        ) from exc
     return {
         "account": home_id,
         "username": str(account.get("username") or claims.get("preferred_username") or ""),
