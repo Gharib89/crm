@@ -589,6 +589,13 @@ def inventory_verify_cmd(
     " each web resource it links to a file by hash.",
 )
 @click.option(
+    "--repo",
+    "repo_dir",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    help="The application repository --source-map was made from; adds the SDK-style net462"
+    " retarget of each plug-in project the map matches to an assembly.",
+)
+@click.option(
     "--out",
     "out_dir",
     required=True,
@@ -602,18 +609,24 @@ def inventory_convert_cmd(
     findings_file: Path,
     packages_dir: Path,
     source_map_file: Path | None,
+    repo_dir: Path | None,
     out_dir: Path,
 ):
     """Rewrite the code of INVENTORY that a compatibility rule can prove: offline.
 
     Reads the inventory folder, the --findings file and the --packages folder, and
-    touches no org and no repository. A component whose finding names a registered
+    touches no org and writes no repository. A component whose finding names a registered
     transform (today `Xrm.Page.context.<method>()` to
     `Xrm.Utility.getGlobalContext().<method>()` in a JavaScript web resource) is
     parsed with tree-sitter; only a real call is rewritten, never text in a string
     or comment. Per work package, --out gets a unified diff against the extracted
     text, the full patched file, and, with --source-map, a repo-path diff for a web
-    resource the map links to a file by hash. `ledger.json` (its own schema_version)
+    resource the map links to a file by hash. With --repo (the checkout the map was made
+    from) each plug-in assembly the map matches to one project also gets that project
+    rewritten to SDK-style `net462` with the `Microsoft.CrmSdk.CoreAssemblies` package in
+    place of SDK 5.0 references, signing kept; a `Microsoft.Xrm.Client` or ILMerge use, or a
+    project that is not a class library, is a manual-review entry. The build stays outside
+    convert. `ledger.json` (its own schema_version)
     records each patch with the SHA-256 of the original and the patched text, and
     each manual-review entry (file, line, rule, reason) where a rule matches but the
     rewrite is not proven. A patch is written only if the patched code parses with no
@@ -622,11 +635,19 @@ def inventory_convert_cmd(
     transformable finding writes nothing. Nothing is written outside --out; apply a
     patch yourself with `git apply`. An unreadable input, an input made from another
     inventory, a non-empty --out or one inside the inventory exits 1. Returns the
-    counts of patched components and manual-review entries, and the out path.
+    counts of patched components and manual-review entries, and the out path. --repo
+    without --source-map is a usage error (exit 2).
     """
+    if repo_dir is not None and source_map_file is None:
+        raise click.UsageError("--repo needs --source-map: the map names each project's path.")
     try:
         result = convert(
-            inventory, findings_file, packages_dir, out_dir, source_map_path=source_map_file
+            inventory,
+            findings_file,
+            packages_dir,
+            out_dir,
+            source_map_path=source_map_file,
+            repo=repo_dir,
         )
     except InventoryError as exc:
         ctx.emit(False, error=str(exc))

@@ -767,7 +767,7 @@ inside the inventory folder exits **1**.
 
 ```bash
 crm --json inventory convert ./inv --findings ./findings.json --packages ./pkgs \
-  --source-map ./source-map.json --out ./patches
+  --source-map ./source-map.json --repo ./app-repo --out ./patches
 git apply ./patches/<package id>/<stem>.repo.diff
 ```
 
@@ -854,6 +854,38 @@ Under `--out`, per work package and component:
 | `<package id>/<stem>.patched.js` | the patched text |
 | `<package id>/<stem>.repo.diff` | diff against the repository file, only when `--source-map` marks the web resource `matched` by hash |
 | `ledger.json` | `schema_version` 1; one entry per package, component key and rule: `status` (`patched` or `manual-review`), `edits`, `original_sha256`, `patched_sha256`, `repo_path`, `files`, `manual_review`; a top-level `call_graph` maps each package holding a converted library to its `threaded`, `unreachable` and `boundary` counts |
+
+### Plug-in projects
+
+With `--repo` (the checkout `map-source` read) and `--source-map`, convert also retargets each
+plug-in assembly the map marks `matched` to exactly one `.csproj`; an assembly the map leaves
+`ambiguous`, `candidate` or `missing_source`, and a project only referenced by others (a shared
+library), is not touched. Without `--repo` no project is read, and `--repo` without
+`--source-map` is a usage error (exit **2**). The project is rewritten as a whole to SDK-style:
+
+| Old-style project | SDK-style result |
+|---|---|
+| `TargetFrameworkVersion` below 4.6.2 (or absent) | `<TargetFramework>net462</TargetFramework>`; a project already on 4.6.2 or later keeps it (`net472`, `net48`) |
+| `Microsoft.Xrm.Sdk` and `Microsoft.Crm.Sdk.Proxy` references (the SDK 5.0 `HintPath` ones) | one `Microsoft.CrmSdk.CoreAssemblies` package reference, version `9.0.2.60` |
+| `SignAssembly` and `AssemblyOriginatorKeyFile` | kept |
+| explicit `Compile`, `None`, `EmbeddedResource` and `ProjectReference` items, other references, conditional property groups | kept as written; `EnableDefaultItems` and `GenerateAssemblyInfo` are `false`, so the project builds exactly its listed files and keeps its own `AssemblyInfo.cs` |
+| `Configuration`, `Platform`, `ProjectGuid`, `ProductVersion`, `SchemaVersion`, `AppDesignerFolder`, `TargetFrameworkProfile`, `OutputType`, `FileAlignment` and the `Microsoft.Common.props` and `Microsoft.CSharp.targets` imports | dropped (the SDK supplies them) |
+
+These are **manual-review entries**. A `Microsoft.Xrm.Client` or `Microsoft.Xrm.Sdk.Workflow`
+reference (the package carries neither) and any ILMerge use are flagged on a patched project, the
+reference or merge step kept as written. A project that is not a class library, is already
+SDK-style, sets `ProjectTypeGuids`, has a `TargetFrameworkVersion` that is not a version, is not
+well-formed, or is missing or not UTF-8 under `--repo`, is left untouched, with one whole-file
+entry (no `line`).
+
+The ledger entry has `kind` `plugin_assembly`, the assembly's component key, one entry per work
+package holding it (`unpackaged` when none does); a patched entry has `edits` 1 and `repo_path`
+the project's path.
+Its `rule` and `transform` are both `csproj-sdk-net462`: the repository, not the inventory, is what
+it detects on, so no rules-file rule names it. Per project, `--out/<package id>/` holds
+`<repo path, "/" as "__" and "_" as "_u">.diff` against the repository path and `.patched.csproj`, the full
+project: copy it over the original, since the diff is against LF text and can fail on a CRLF file.
+Builds stay outside convert's gate, on any host with the .NET SDK (Linux is enough).
 
 A component with no transformable finding writes nothing. `--out` must be new or empty
 and not inside the inventory. The repo diff derives from the deployed, normalized text, so
