@@ -9,6 +9,31 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.110.0 (2026-11-09)
+
+### Documentation
+
+- **inventory**: Document convert --adapter-resource and the form library rule
+  ([#1186](https://github.com/Gharib89/crm/pull/1186),
+  [`d465561`](https://github.com/Gharib89/crm/commit/d465561448db29bee360dfef9b19cb026897e8bb))
+
+### Features
+
+- **inventory**: Convert lists the OData v2 adapter in forms
+  ([#1186](https://github.com/Gharib89/crm/pull/1186),
+  [`d465561`](https://github.com/Gharib89/crm/commit/d465561448db29bee360dfef9b19cb026897e8bb))
+
+- **inventory**: Convert lists the OData v2 adapter in forms (#1180)
+  ([#1186](https://github.com/Gharib89/crm/pull/1186),
+  [`d465561`](https://github.com/Gharib89/crm/commit/d465561448db29bee360dfef9b19cb026897e8bb))
+
+### Testing
+
+- **inventory**: Cover awkward library markup and adapter name escaping
+  ([#1186](https://github.com/Gharib89/crm/pull/1186),
+  [`d465561`](https://github.com/Gharib89/crm/commit/d465561448db29bee360dfef9b19cb026897e8bb))
+
+
 ## v1.109.5 (2026-11-09)
 
 ### Bug Fixes
