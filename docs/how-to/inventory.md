@@ -247,6 +247,18 @@ checkpoint is kept, so a re-run on the same `DIR` retries only the reads that
 failed. A page that reports more records but carries no paging cookie marks its
 kind `truncated` and `partial`.
 
+A table deleted after the entity list was read (a process that creates and drops
+tables while the extract runs) is not a failed read. Its metadata or ribbon read
+answers `Could not find an entity with name <x>` or `The entity with a name = '<x>'
+... was not found in the MetadataCache`; the table is left out of the records (its
+relationships too), and each kind it would have fed gets a gap, `<x>: no longer
+exists, deleted since the listing`. The forms and views it owned are left out as
+well, counted in one gap per kind. The outcome is checkpointed, so a resume does
+not read the table again, and the kinds can still read `complete`. Only those two
+messages naming the table count: a permission fault, a server fault or any other
+404 stays an error. A solution membership naming the table is counted in the usual
+unresolved-reference gap.
+
 An auth failure (401) or an unreachable org is not per read: it stops the run with
 the standard error envelope and no summary. The checkpoint keeps every finished
 read, so re-run once the org answers again.

@@ -268,6 +268,22 @@ def _ribbon_gaps(unlabelled: list[str]) -> list[ExtractionGap]:
     ]
 
 
+def _deleted_gaps(deleted: dict[str, dict[str, Any]]) -> list[ExtractionGap]:
+    """One gap per kind a table deleted since the listing would have fed, naming the table."""
+    return [
+        ExtractionGap(
+            kind=kind,
+            key=None,
+            description=f"{name}: no longer exists, deleted since the listing",
+            reason="the table was deleted after the entity list was read, so its records are"
+            " left out; a resume does not read it again",
+        )
+        for name, entity in sorted(deleted.items())
+        for kind in ("entity", "attribute", "relationship", "local_option_set", "ribbon")
+        if kind != "ribbon" or _ribbon_readable(entity)
+    ]
+
+
 def _source_gaps(errors: list[str]) -> list[ExtractionGap]:
     """One gap per failed source read, so the manifest says why its build is unknown."""
     return [
@@ -601,6 +617,18 @@ class Checkpoint:
         shutil.rmtree(self.root)
 
 
+#: The checkpointed outcome of a table read that found the table deleted since the listing.
+_GONE: dict[str, Any] = {"gone": True}
+
+
+def _is_gone(data: object) -> bool:
+    return data == _GONE
+
+
+def _gone_on(name: str) -> Callable[[D365Error], bool]:
+    return lambda exc: legacy_reads.entity_gone(exc, name)
+
+
 class _Run:
     def __init__(
         self,
@@ -655,8 +683,18 @@ class _Run:
             self._spent += seconds
         self._report()
 
-    def unit(self, kinds: Iterable[str], unit: str, read: Callable[[], Any]) -> Any:
-        """Return *unit*'s saved data, or read and save it; a per-item failure returns None."""
+    def unit(
+        self,
+        kinds: Iterable[str],
+        unit: str,
+        read: Callable[[], Any],
+        gone: Callable[[D365Error], bool] | None = None,
+    ) -> Any:
+        """Return *unit*'s saved data, or read and save it; a per-item failure returns None.
+
+        A failure *gone* accepts is no failure: the unit is saved as `_GONE`, so a resume
+        does not read it again, and no error is tallied (`_is_gone` tells the caller).
+        """
         tallies = [self.tally(k) for k in kinds]
         data = self.cp.load(unit)
         if data is not None:
@@ -671,6 +709,12 @@ class _Run:
         except D365Error as exc:
             if legacy_reads.connection_wide(exc):
                 raise
+            if gone is not None and gone(exc):
+                self.cp.save(unit, _GONE)
+                for t in tallies:
+                    t.pages += 1
+                self._finish(reused=False, seconds=self._clock() - began)
+                return _GONE
             for t in tallies:
                 t.errors.append(f"{unit}: {exc}")
             if not tallies:
@@ -978,6 +1022,9 @@ def extract(
     else:
         entities_read = entities
     details: list[dict[str, Any]] = []
+    # Tables deleted since the listing (a race with another process): left out everywhere
+    # and recorded as gaps, not read errors, so a resume can finish.
+    deleted: dict[str, dict[str, Any]] = {}
     run.begin("entity_detail", len(entities_read), estimate=True)
     for entity in entities_read:
         name = str(entity["logical_name"])
@@ -985,15 +1032,19 @@ def extract(
             ("attribute", "relationship", "local_option_set"),
             f"entity/{name}",
             lambda name=name: source.entity_detail(name),
+            gone=_gone_on(name),
         )
-        if detail is not None:
+        if _is_gone(detail):
+            deleted[name] = entity
+        elif detail is not None:
             details.append(detail)
     ribbons: dict[str | None, Path] = {}
     # An entity with no display label (measured on UR15) or no collection label (a
     # cloud org) faults its ribbon read ("Could not find localized ... name"), so it
     # is not read.
-    labelled = [str(e["logical_name"]) for e in entities_read if _ribbon_readable(e)]
-    unlabelled = sorted(str(e["logical_name"]) for e in entities_read if not _ribbon_readable(e))
+    live = [e for e in entities_read if str(e["logical_name"]) not in deleted]
+    labelled = [str(e["logical_name"]) for e in live if _ribbon_readable(e)]
+    unlabelled = sorted(str(e["logical_name"]) for e in live if not _ribbon_readable(e))
     # The application ribbon belongs to no solution's entities, so a scoped run skips it.
     ribbon_units = [*([] if solutions else [None]), *labelled]
     run.begin("ribbons", len(ribbon_units), estimate=True)
@@ -1005,15 +1056,26 @@ def extract(
             cp.stage("ribbon", entity_name or "_application", "ribbon.xml", xml)
             return "ribbon.xml"
 
-        if run.unit(("ribbon",), unit, read_ribbon) is not None:
+        ribbon = run.unit(
+            ("ribbon",),
+            unit,
+            read_ribbon,
+            gone=_gone_on(entity_name) if entity_name else None,
+        )
+        if _is_gone(ribbon):
+            deleted[str(entity_name)] = next(e for e in live if e["logical_name"] == entity_name)
+        elif ribbon is not None:
             ribbons[entity_name] = cp.staged("ribbon", entity_name or "_application", "ribbon.xml")
+    # A table found gone by its ribbon read was read before: drop what that read gave.
+    details = [d for d in details if d["logical_name"] not in deleted]
+    entities = [e for e in entities if e["logical_name"] not in deleted]
 
     diff_units, diff_unsupported_reason, diff_managed = _read_ribbon_diffs(
         source, cp, run, solutions, rows["solution"]
     )
 
     run.begin("build")
-    built = _Builder(cp, out, rows, source.api, stock_scope)
+    built = _Builder(cp, out, rows, source.api, stock_scope, deleted)
     built.metadata(entities, option_sets, details)
     built.components()
     # A custom (unmanaged) entity's ribbon is the entity's own, whatever ids it holds.
@@ -1104,6 +1166,7 @@ def extract(
             *source.static_gaps,
             *built.gaps(),
             *_ribbon_gaps(unlabelled),
+            *_deleted_gaps(deleted),
             *_ribbon_diff_gaps(diff_unsupported_reason, diff_managed),
             *_source_gaps(run.errors),
             *usage_gaps,
@@ -1377,9 +1440,13 @@ class _Builder:
         rows: dict[str, list[dict[str, Any]]],
         api: str,
         stock_scope: bool = False,
+        deleted: Collection[str] = (),
     ):
         self.cp = cp
         self.stock_scope = stock_scope
+        # Tables deleted since the listing: nothing of theirs is recorded.
+        self.deleted = frozenset(deleted)
+        self.of_deleted: Counter[str] = Counter()
         self.no_managed: Counter[str] = Counter()
         self.api = api
         self.out = out
@@ -1433,6 +1500,9 @@ class _Builder:
         Raises:
             InventoryError: an unknown kind or a missing key field, a builder bug.
         """
+        if kind in ENTITY_OWNED_KINDS and fields.get("entity") in self.deleted:
+            self.of_deleted[kind] += 1
+            return None
         try:
             key = component_key(kind, fields)
         except KeyFieldValueError as exc:
@@ -1535,6 +1605,8 @@ class _Builder:
                     if r["schema_name"] in seen_relationships:
                         continue
                     seen_relationships.add(r["schema_name"])
+                    if any(r.get(side) in self.deleted for side in RELATIONSHIP_SIDES):
+                        continue  # one side is a table deleted since the listing
                     fields = {
                         k: v for k, v in r.items() if k not in ("metadata_id", "custom", "managed")
                     }
@@ -1920,6 +1992,15 @@ class _Builder:
                     description=f"{n} {kind} row(s) naming a stock {target} that this inventory"
                     " leaves out",
                     reason=_PLATFORM_REASON,
+                )
+            )  # fmt: skip
+        for kind, n in sorted(self.of_deleted.items()):
+            gaps.append(
+                ExtractionGap(
+                    kind=kind, key=None,
+                    description=f"{n} {kind} row(s) of a table deleted since the listing",
+                    reason="the table was deleted after the entity list was read, so the rows"
+                    " it owns are left out",
                 )
             )  # fmt: skip
         for kind, n in sorted(self.no_managed.items()):
