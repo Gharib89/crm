@@ -76,6 +76,7 @@ Microsoft's client API deprecation table convert:
 | no-argument `data.entity.save()` to `data.save()` (now asynchronous) | `save("saveandnew")` |
 | nothing | `Xrm.Utility.openEntityForm`, `openQuickCreate`, `openWebResource`, `alertDialog`, `confirmDialog`, `isActivityType`: signature or sync behaviour changes |
 | nothing | `addOnKeyPress`, `removeOnKeyPress`, `fireOnKeyPress`, `showAutoComplete`, `hideAutoComplete`: only a custom control replaces them |
+| given a target inventory, a `GET` on an `XMLHttpRequest` variable to `OrganizationData.svc` with a `$select`, onto `/api/data/v9.0/<set>`; the sync or async flag is kept and a generated `crm-odata-v2-adapter.js` returns the v2 response shape | a write, `$expand`, no `$select`, an `$ajax` call, an entity or attribute missing from the target inventory (names are never pluralised), an entity record with no `entity_set_name` |
 | a registered form handler gets `executionContext` and `formContext`, its `Xrm.Page.<member>` becomes `formContext.<member>`, each helper it calls (any depth) gains a `formContext` parameter that every call passes, and the form XML sets `passExecutionContext` on every registration | `Xrm.Page` in a nested callback, code no handler reaches, a helper whose name is used outside its file, a callback or recursive use, an `async` handler, a handler with another caller or an already-passing registration |
 | a ribbon command function on a form gets a `primaryControl` parameter and the ribbon diff adds `PrimaryControl` as the action's first `CrmParameter` (the others keep their order) | a grid, subgrid, home page or application command, a function that is also a form handler or has a `CustomRule`, a differing command or an effective-ribbon action no diff carries as another caller, an already-passing action |
 
@@ -92,6 +93,8 @@ spans lines are manual review for every row. Work from `ledger.json`:
   hash. It derives from the deployed text, normalized to LF without a BOM, so
   the repository file's line endings can make `git apply` fail: normalize the
   file or apply the patched text by hand.
+- **`adapters`** in `ledger.json` lists each package that needs `crm-odata-v2-adapter.js`. Upload it as a web resource and
+  load it before the patched scripts: convert does not register it on forms or ribbons.
 - `ledger.json`'s `call_graph` counts, per package, the helpers threaded, the `Xrm.Page` functions no
   handler reaches (`unreachable`) and the helpers a name used outside their file holds back
   (`boundary`); the last two are manual-review entries to remediate by hand.
