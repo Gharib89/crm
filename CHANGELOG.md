@@ -9,6 +9,33 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.109.3 (2026-11-09)
+
+### Bug Fixes
+
+- **solution**: End the uninstall wait only on a completed failed row; validate --timeout in Click
+  ([#1179](https://github.com/Gharib89/crm/pull/1179),
+  [`75803c0`](https://github.com/Gharib89/crm/commit/75803c0863ea496df3f47abff6aaf696e31c719a))
+
+- **solution**: Reject a negative uninstall timeout; tidy review nits
+  ([#1179](https://github.com/Gharib89/crm/pull/1179),
+  [`75803c0`](https://github.com/Gharib89/crm/commit/75803c0863ea496df3f47abff6aaf696e31c719a))
+
+- **solution**: Skip a failed history read mid-wait; fail fast on an unreadable history before the
+  DELETE ([#1179](https://github.com/Gharib89/crm/pull/1179),
+  [`75803c0`](https://github.com/Gharib89/crm/commit/75803c0863ea496df3f47abff6aaf696e31c719a))
+
+- **solution**: Uninstall waits after a read timeout instead of re-sending the DELETE
+  ([#1179](https://github.com/Gharib89/crm/pull/1179),
+  [`75803c0`](https://github.com/Gharib89/crm/commit/75803c0863ea496df3f47abff6aaf696e31c719a))
+
+### Testing
+
+- **solution**: Update uninstall tests for the timeout wait and history read
+  ([#1179](https://github.com/Gharib89/crm/pull/1179),
+  [`75803c0`](https://github.com/Gharib89/crm/commit/75803c0863ea496df3f47abff6aaf696e31c719a))
+
+
 ## v1.109.2 (2026-11-09)
 
 ### Bug Fixes
