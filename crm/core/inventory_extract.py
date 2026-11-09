@@ -113,7 +113,7 @@ _PLATFORM_REASON = (
 
 # Web resource types whose content is text, by webresourcetype code.
 _TEXT_WEB_RESOURCES = frozenset((1, 2, 3, 4, 9))
-_WEB_RESOURCE_EXT = dict(
+WEB_RESOURCE_EXT = dict(
     enumerate(("htm", "css", "js", "xml", "png", "jpg", "gif", "xap", "xsl", "ico"), start=1)
 )
 _ISV_PAGE = re.compile(r"/ISV/[^\s\"'<>?#)\\,;]+", re.IGNORECASE)
@@ -801,7 +801,7 @@ class _Run:
             if read.kind == "web_resource":
                 code = row.get("webresourcetype")
                 name = (
-                    f"content.{_WEB_RESOURCE_EXT.get(code if isinstance(code, int) else 0, 'bin')}"
+                    f"content.{WEB_RESOURCE_EXT.get(code if isinstance(code, int) else 0, 'bin')}"
                 )
                 data = base64.b64decode(value, validate=True)
             elif read.kind == "plugin_assembly":

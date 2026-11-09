@@ -28,6 +28,7 @@ from crm.core.inventory import (
     artifact_hashes,
     read_inventory,
 )
+from crm.core.inventory_extract import WEB_RESOURCE_EXT
 
 #: The source map's own format version. A reader refuses any other value,
 #: whatever else the file holds, the inventory manifest's version rule.
@@ -668,15 +669,33 @@ def _consumers(
 # ── Matching ────────────────────────────────────────────────────────────────
 
 
-def _name_hits(name: str, files: list[_File]) -> list[_File]:
-    """Files whose path ends with the web resource name's path, else share its file name."""
+def _name_hits(name: str, files: list[_File], code: object = None) -> list[_File]:
+    """Files whose path ends with the web resource name's path, else share its file name.
+
+    A last segment with no deployable extension also matches the file name plus the
+    extension its web resource type implies (HTML: ``.htm`` or ``.html``), since a CRM
+    name may omit the extension the repository file carries.
+    """
     parts = name.lower().split("/")
     deployable = [f for f in files if posixpath.splitext(f.lower)[1] in _DEPLOYABLE]
-    if len(parts) > 1:
-        suffix = [f for f in deployable if f.lower.split("/")[-len(parts) :] == parts]
-        if suffix:
-            return suffix
-    return [f for f in deployable if posixpath.basename(f.lower) == parts[-1]]
+    if posixpath.splitext(parts[-1])[1] not in _DEPLOYABLE:
+        implied = WEB_RESOURCE_EXT.get(code if isinstance(code, int) else 0)
+        if implied is not None:
+            exts = ("htm", "html") if implied == "htm" else (implied,)
+            names = [parts[:-1] + [f"{parts[-1]}.{e}"] for e in exts]
+            return _name_hits_in(names, deployable)
+    return _name_hits_in([parts], deployable)
+
+
+def _name_hits_in(names: list[list[str]], deployable: list[_File]) -> list[_File]:
+    """The existing suffix-then-basename match, over each candidate path."""
+    hits: list[_File] = []
+    for parts in names:
+        suffix = [
+            f for f in deployable if len(parts) > 1 and f.lower.split("/")[-len(parts) :] == parts
+        ]
+        hits += suffix or [f for f in deployable if posixpath.basename(f.lower) == parts[-1]]
+    return hits
 
 
 def _derived_hits(name: str, files: list[_File]) -> list[_File]:
@@ -697,7 +716,7 @@ def _paths(files: Iterable[_File]) -> tuple[str, ...]:
 def _web_resource(record: Record, data: list[bytes], files: list[_File]) -> ComponentSource:
     kind, key = record.kind, record.key
     artifact = record.artifacts[0] if record.artifacts else None
-    names = _name_hits(key, files)
+    names = _name_hits(key, files, record.fields.get("web_resource_type"))
     if artifact is not None:
         text = artifact.content == "text"
         hits = [
