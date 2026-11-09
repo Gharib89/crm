@@ -96,6 +96,12 @@ class TestLostResponse:
             out = _uninstall(backend, timeout=60)
         assert out["uninstalled"] is True
 
+    def test_negative_timeout_is_refused_before_any_http(self, backend):
+        with requests_mock.Mocker() as m:
+            with pytest.raises(D365Error, match=">= 0"):
+                _uninstall(backend, timeout=-1)
+        assert m.request_history == []
+
     def test_connect_timeout_keeps_the_retry(self, backend):
         with requests_mock.Mocker() as m:
             _mock_org(backend, m)

@@ -905,10 +905,10 @@ class D365Backend:
                     timeout=timeout if timeout is not None else self.profile.timeout,
                 )
             except requests.RequestException as exc:
-                # Non-idempotent POST (#84): a lost response may have committed,
-                # so do not auto-retry the re-send unless the caller opts in.
                 if isinstance(exc, requests.exceptions.ReadTimeout) and not resend_on_read_timeout:
                     raise ResponseLostError(f"{_TRANSPORT_FAILURE_PREFIX}: {exc}") from exc
+                # Non-idempotent POST (#84): a lost response may have committed,
+                # so do not auto-retry the re-send unless the caller opts in.
                 post_blocks_retry = method.upper() == "POST" and not self._retry_on_ambiguous
                 if attempt >= max_retries or post_blocks_retry or not _is_transport_retryable(exc):
                     raise D365Error(f"{_TRANSPORT_FAILURE_PREFIX}: {exc}") from exc

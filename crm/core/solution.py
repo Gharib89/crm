@@ -260,9 +260,12 @@ def uninstall_solution(
     A large uninstall outlives the read timeout while the server keeps running
     it, and a re-sent DELETE is refused by that same operation (#1172). So a read
     timeout does not re-send: the call polls the solution row until it is gone
-    (`timeout` seconds, else profile.async_timeout) and raises
-    `UninstallStillRunning` if it never goes.
+    (`timeout` seconds, else profile.async_timeout). It raises D365Error with
+    code `UninstallFailed` (a new failed history row, online only) or
+    `UninstallStillRunning` (the solution never went).
     """
+    if timeout is not None and timeout < 0:
+        raise D365Error(f"uninstall timeout must be >= 0, got {timeout!r}")
     info = solution_info(backend, unique_name)
     sol_id = info["solutionid"]
 
@@ -343,7 +346,7 @@ def _wait_for_uninstall(
                 f"Uninstall of {unique_name!r} was sent but the solution still exists "
                 f"after {effective}s: it may still be running on the server. Do not "
                 "re-run it; check `crm solution list` and the org's solution history, "
-                "or raise --timeout.",
+                "or raise the wait timeout.",
                 code="UninstallStillRunning",
             )
         time.sleep(min(interval, max(0.0, deadline - time.monotonic())))
