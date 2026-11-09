@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import base64
+import os
 import stat
 
 import pytest
@@ -25,6 +26,12 @@ class _FakeKeyring:
 
     def get_keyring(self):
         return self
+
+
+def _assert_private(path):
+    """Mode bits are enforced on POSIX only; Windows reports 0o666 regardless."""
+    if os.name == "posix":
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
 @pytest.fixture
@@ -50,7 +57,7 @@ def test_encrypted_round_trip_keeps_plaintext_off_disk(kr):
     blob = token_store.cache_path("p").read_bytes()
     assert b"super-secret-refresh-token" not in blob
     assert token_store.load("p") == CACHE
-    assert stat.S_IMODE(token_store.cache_path("p").stat().st_mode) == 0o600
+    _assert_private(token_store.cache_path("p"))
 
 
 def test_second_save_uses_new_nonce_and_same_key(kr):
@@ -68,7 +75,7 @@ def test_fail_backend_writes_plaintext_0600(no_kr):
     assert token_store.save("p", CACHE) == "plaintext"
     path = token_store.cache_path("p")
     assert path.read_text(encoding="utf-8") == CACHE
-    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    _assert_private(path)
     assert token_store.load("p") == CACHE
 
 
