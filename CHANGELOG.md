@@ -9,6 +9,27 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.110.1 (2026-11-09)
+
+### Bug Fixes
+
+- **inventory**: Assess flags plug-in projects below 4.6.2 or with SDK 5.0 references
+  ([#1185](https://github.com/Gharib89/crm/pull/1185),
+  [`7941547`](https://github.com/Gharib89/crm/commit/794154726ebb657fc1605c651dd92068e82b0e8c))
+
+- **inventory**: Document that an absent framework version is one match with no location
+  ([#1185](https://github.com/Gharib89/crm/pull/1185),
+  [`7941547`](https://github.com/Gharib89/crm/commit/794154726ebb657fc1605c651dd92068e82b0e8c))
+
+- **inventory**: Locate plug-in project sites outside comments, share the floor check
+  ([#1185](https://github.com/Gharib89/crm/pull/1185),
+  [`7941547`](https://github.com/Gharib89/crm/commit/794154726ebb657fc1605c651dd92068e82b0e8c))
+
+- **inventory**: Treat an empty TargetFrameworkVersion as absent, as convert did
+  ([#1185](https://github.com/Gharib89/crm/pull/1185),
+  [`7941547`](https://github.com/Gharib89/crm/commit/794154726ebb657fc1605c651dd92068e82b0e8c))
+
+
 ## v1.110.0 (2026-11-09)
 
 ### Documentation

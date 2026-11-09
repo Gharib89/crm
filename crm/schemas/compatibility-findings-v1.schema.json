@@ -264,6 +264,30 @@
                       }
                     }
                   }
+                },
+                "target_framework_version": {
+                  "description": "A plug-in project finding only: the project's declared TargetFrameworkVersion, null when it declares none.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "sdk_references": {
+                  "description": "A plug-in project finding only: the SDK 5.0 Microsoft.Xrm.Sdk and Microsoft.Crm.Sdk.Proxy references the project holds.",
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "fired": {
+                  "description": "A plug-in project finding only: which conditions held, `framework` (below 4.6.2, an absent version included) and `sdk_references`. locations are the framework declaration and each reference as the project's text has them.",
+                  "type": "array",
+                  "items": {
+                    "enum": [
+                      "framework",
+                      "sdk_references"
+                    ]
+                  }
                 }
               }
             },

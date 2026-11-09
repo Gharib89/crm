@@ -84,6 +84,24 @@ a web resource library (`$webresource:` or a `/WebResources/` path) without `Pri
   first argument, so setting the flag shifts every parameter the handler already
   configures; edit the function in the same change as the library's own finding.
 
+## Read the plug-in project finding
+
+`csproj-sdk-net462` judges the project, not the registered assembly, and only for an
+assembly the source map (`reference/source-mapping.md`) matched to exactly one project,
+with the map and the repository passed to `assess`. Anywhere else no project was read:
+a `clear` there says nothing about the build.
+
+- **`blocker`** means the project targets .NET Framework below 4.6.2 (`target_framework_version`
+  null: none declared, which counts) or references the SDK 5.0 `Microsoft.Xrm.Sdk` or
+  `Microsoft.Crm.Sdk.Proxy`. The evidence's `fired` says which: `framework`,
+  `sdk_references` or both. Quote it with `target_framework_version`, `sdk_references` and
+  the repository `path`. The floor's source is in `rules_hit`.
+- **`unknown`** reasons start `project <path>` and say why the project could not be
+  judged (unreadable, not an MSBuild project, or no single unconditional framework
+  version). Fix the repository or the map, then re-run.
+- The same project is what `convert --repo` retargets (`reference/remediation.md`), so a
+  blocker here has a patch there; an SDK-style project is neither flagged nor patched.
+
 Done when every component carries one of the four classes with its rule or
 evidence, or an entry open on a named question, and no `clear` or `unknown` is
 left unjudged.

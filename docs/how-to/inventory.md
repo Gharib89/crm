@@ -720,11 +720,14 @@ The same inputs give the same `--out` bytes.
 
 ```bash
 crm --json inventory assess ./inv --target online --out ./findings.json
+crm --json inventory assess ./inv --target online --out ./findings.json \
+  --source-map ./source-map.json --repo ./app-repo
 ```
 
-`crm inventory assess INVENTORY --target onprem-9.1|online --out FILE` runs the
-**compatibility rules** that ship with crm over an inventory and writes a findings file.
-It is offline: it reads the inventory folder and touches no org
+`crm inventory assess INVENTORY --target onprem-9.1|online --out FILE [--source-map MAP --repo REPO]`
+runs the **compatibility rules** that ship with crm over an inventory and writes a findings file.
+It is offline: it reads the inventory folder (and, with `--source-map` and `--repo`, the plug-in
+projects it names) and touches no org
 ([ADR 0033](../adr/0033-second-shipped-skill-and-compatibility-rules-as-data.md)).
 
 Each rule names the component kind, the source versions it applies to (compared with the
@@ -755,6 +758,7 @@ registration, and how forms and ribbon diffs call those scripts:
 | `form-handler-no-execution-context`: an enabled form handler without `passExecutionContext` whose library carries a `web-resource-xrm-page` finding (kind `form`) | deprecated | both |
 | `form-library-no-odata-adapter`: a form whose library list names a script web resource with a `web-resource-odata-v2` finding and has no OData v2 adapter listed ahead of it (an adapter is a library defining `global.CrmODataV2 =`; kind `form`) | deprecated | both |
 | `ribbon-action-no-primary-control`: a ribbon `JavaScriptFunction` on a web resource library (`$webresource:` or a `/WebResources/` path) with a `web-resource-xrm-page` finding and no `PrimaryControl` among its `CrmParameter`s (kind `ribbon_diff`) | deprecated | both |
+| `csproj-sdk-net462`: the plug-in project targets .NET Framework below 4.6.2 (no declared version counts) or references the SDK 5.0 `Microsoft.Xrm.Sdk` or `Microsoft.Crm.Sdk.Proxy` (kind `plugin_assembly`, with `--source-map` and `--repo`; see [Plug-in projects](#plug-in-projects-found-by-assess)) | blocker | both |
 | `assembly-storage-online`, `assembly-storage-onprem`: an assembly stored on disk or in the GAC | blocker online, optional on-prem | one each |
 | `assembly-isolation-none`, `assembly-isolation-none-onprem`: an assembly registered without isolation | blocker online, optional on-prem | one each |
 
@@ -763,8 +767,8 @@ never by GUID:
 
 | Class | When |
 |---|---|
-| `blocker`, `deprecated`, `optional` | a rule matched; the evidence is the artifact `path`, its `sha256`, the first ten match `locations` (line and column) and the `match_count`, for a plug-in registration rule the recorded `field` and `value`, and for the two form and ribbon rules the `path`, `sha256`, `match_count` and `registrations`: per flagged handler its `event`, `attribute`, `function`, `library` and current `passExecutionContext`, per flagged action its `command`, `function`, `library` and `crm_parameters` |
-| `unknown` | no rule applies to the component (reason `no rule`: a kind no rule covers, or a binary web resource); a rule needs a field the inventory did not record (`field isolation_mode not recorded`, an inventory extracted before crm recorded it); a script artifact is missing or its hash differs from the manifest; an extraction gap names the component (`extraction gap: <reason>`); its kind was not read complete (`kind coverage partial`); a form or ribbon rule cannot read its library (`library <name> is not in the inventory`, `is not a script web resource`, or the library's artifact problem) or its own XML (`artifact is not well-formed XML`); or the inventory's source version is not a dotted version (extract writes `unknown` when it cannot read it), so no rule's version range can be decided |
+| `blocker`, `deprecated`, `optional` | a rule matched; the evidence is the artifact `path`, its `sha256`, the first ten match `locations` (line and column) and the `match_count`, for a plug-in registration rule the recorded `field` and `value`, and for the two form and ribbon rules the `path`, `sha256`, `match_count` and `registrations`: per flagged handler its `event`, `attribute`, `function`, `library` and current `passExecutionContext`, per flagged action its `command`, `function`, `library` and `crm_parameters`; for a plug-in project the repository `path`, the `sha256` of its normalized text, `target_framework_version`, `sdk_references` and `fired` (see below) |
+| `unknown` | no rule applies to the component (reason `no rule`: a kind no rule covers, or a binary web resource); a rule needs a field the inventory did not record (`field isolation_mode not recorded`, an inventory extracted before crm recorded it); a script artifact is missing or its hash differs from the manifest; an extraction gap names the component (`extraction gap: <reason>`); its kind was not read complete (`kind coverage partial`); a form or ribbon rule cannot read its library (`library <name> is not in the inventory`, `is not a script web resource`, or the library's artifact problem) or its own XML (`artifact is not well-formed XML`); a mapped plug-in project cannot be read or judged (`project <path> unreadable: ...`, `project <path>: the project is not well-formed XML`); or the inventory's source version is not a dotted version (extract writes `unknown` when it cannot read it), so no rule's version range can be decided |
 | `clear` | the rules that apply found nothing |
 
 A gap or incomplete coverage adds an `unknown` beside the rule findings, so a component
@@ -780,8 +784,38 @@ in `generated_at`.
 `data` holds the same header, `counts` (`by_class`, and `by_kind`: each kind's findings
 per class), the `unattached_gaps` count, `incomplete` and `out`. Without `--json` it
 prints one row per kind with its findings per class. Findings are a verdict, so a blocker
-still exits **0**; an unreadable inventory, an unknown `schema_version` or an `--out`
-inside the inventory folder exits **1**.
+still exits **0**; an unreadable inventory, an unknown `schema_version`, a source map made
+from another inventory or an `--out` inside the inventory folder exits **1**. `--source-map`
+without `--repo`, or `--repo` without `--source-map`, is a usage error (exit **2**).
+
+### Plug-in projects found by assess
+
+The inventory holds no project file, so `csproj-sdk-net462` reads the repository: with
+`--source-map` and `--repo`, each plug-in assembly the map marks `matched` to exactly one
+`.csproj` (the projects [convert](#plug-in-projects) retargets) gets a `blocker` finding when
+its project
+
+- declares a `TargetFrameworkVersion` below 4.6.2, or none, or
+- references the SDK 5.0 `Microsoft.Xrm.Sdk` or `Microsoft.Crm.Sdk.Proxy` as a `Reference` item
+  (a `PackageReference` is not one).
+
+The floor is the one Microsoft documents: Dataverse supports a plug-in or custom workflow
+activity assembly that targets .NET Framework 4.6.2 through 4.8, and the on-premises 9.1
+documentation says the same, so the rule applies to both targets. Both pages are in the rule's
+`sources`, under `rules_hit`. A project at 4.6.2 or later with package references yields no finding
+of this rule, so the assembly keeps its other findings, or `clear`. The evidence's `fired` lists
+the condition that held (`framework`, `sdk_references` or both), `locations` the declaration and
+each reference, and `match_count` their number; a project that declares no version counts as one
+framework match with no location. One function decides the floor and the SDK 5.0
+references for both commands, so `assess` and `convert` agree on them. `convert` also refuses a
+project that is not a class library (a `ProjectTypeGuids` entry or an `OutputType` other than
+`Library`) as a whole-file manual review, which `assess` does not.
+
+An assembly the map leaves unmapped is not read and gets no finding of this rule, so a run without
+both flags is as it was. A project that is missing, not UTF-8 or not well-formed XML, or whose
+`TargetFrameworkVersion` is declared under a condition or is not a version, is `unknown` with the
+reason. An SDK-style project, which declares `TargetFramework` instead, is never flagged: convert
+refuses it too.
 
 ## Convert code
 
@@ -926,8 +960,9 @@ entry (no `line`).
 The ledger entry has `kind` `plugin_assembly`, the assembly's component key, one entry per work
 package holding it (`unpackaged` when none does); a patched entry has `edits` 1 and `repo_path`
 the project's path.
-Its `rule` and `transform` are both `csproj-sdk-net462`: the repository, not the inventory, is what
-it detects on, so no rules-file rule names it. Per project, `--out/<package id>/` holds
+Its `rule` and `transform` are both `csproj-sdk-net462`, the id of the rule
+[`assess --source-map --repo`](#plug-in-projects-found-by-assess) flags the project with: the
+repository, not the inventory, is what it detects on, and one detector decides both. Per project, `--out/<package id>/` holds
 `<repo path, "/" as "__" and "_" as "_u">.diff` against the repository path and `.patched.csproj`, the full
 project: copy it over the original, since the diff is against LF text and can fail on a CRLF file.
 Builds stay outside convert's gate, on any host with the .NET SDK (Linux is enough).
