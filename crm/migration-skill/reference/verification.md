@@ -73,8 +73,8 @@ SHA-256.
 Record `deployed` (component and hash) for the artifact the test exercised, and
 `environment` with the profile and org from the `whoami` check. A result
 produced with no org (a unit suite on a local checkout) records
-`{"profile": "local", "org": "none"}`; both keys are required strings, and any
-other shape is refused.
+`{"profile": "local", "org": "none"}`; a recorded `environment` needs both keys
+as strings, so `{"runner": "pytest"}` is refused.
 
 **A failing assertion is a finding.** Fix the component and re-run the same
 assertion; changing the expected value, loosening a match or skipping the check
@@ -83,19 +83,19 @@ confirms the expected behavior was wrong, and record that as an `open_decisions`
 entry.
 
 **A negative control shows a check can catch the defect it guards.** Make the
-regression in a throwaway export or copy, never on the branch and never
-deployed. Run the check and record it with `"negative_control": true`, then
-revert the regression and show the same check green. The gate maps the control's
+regression in a throwaway export or copy that never reaches the branch or the
+target. Run the check and record it with `"negative_control": true`, then revert
+the regression and show the same check green. The gate maps the control's
 outcome:
 
 - `fail`: `held`. The check caught the regression.
-- `pass`: `escaped`. The check missed it. Record it as it ran: the gate marks the
-  requirement `not_tested` with reason `control_escaped`, and the report names
-  the control as a test gap.
+- `pass`: `escaped`. The check missed it. Record it as it ran: the gate marks a
+  requirement whose own checks pass `not_tested` with reason `control_escaped`,
+  and the report names the control as a test gap.
 - `blocked` (or `not_tested`): `not_run`.
 
 When the only check that covers a pattern runs on the target (a browser case
-needing the regression deployed), do not deploy a regression. Record the control
+needing the regression deployed), keep the target untouched: record the control
 `blocked` with the reason in `errors`.
 
 A worked control row, a unit suite run offline against a throwaway copy:
