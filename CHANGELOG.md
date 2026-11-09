@@ -9,6 +9,21 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.109.5 (2026-11-09)
+
+### Bug Fixes
+
+- **solution**: Apply-upgrade waits after a read timeout instead of failing while the promote runs
+  ([#1183](https://github.com/Gharib89/crm/pull/1183),
+  [`6e3011b`](https://github.com/Gharib89/crm/commit/6e3011bf07bb0c784faa0c333db04fa20e785255))
+
+### Documentation
+
+- **solution**: Document the apply-upgrade promote wait and PromoteStillRunning
+  ([#1183](https://github.com/Gharib89/crm/pull/1183),
+  [`6e3011b`](https://github.com/Gharib89/crm/commit/6e3011bf07bb0c784faa0c333db04fa20e785255))
+
+
 ## v1.109.4 (2026-11-09)
 
 ### Bug Fixes

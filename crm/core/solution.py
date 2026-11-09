@@ -374,20 +374,72 @@ def _wait_for_uninstall(
         interval = min(interval * 2, backend.profile.async_poll_max)
 
 
-def delete_and_promote(backend: D365Backend, unique_name: str) -> dict[str, Any]:
+def delete_and_promote(
+    backend: D365Backend, unique_name: str, *, timeout: int | None = None
+) -> dict[str, Any]:
     """Replace a managed base solution with its staged holding upgrade.
 
     Calls the DeleteAndPromote action, which deletes the base solution plus all
     of its patches and renames the holding solution to the base's unique name.
     Run this after a successful `stage-and-upgrade` holding import. Returns
     `{promoted, solution, solutionid}` on a real run.
+
+    The base's solutionid is read first (reads-execute rule, so a missing base
+    fails fast and `--dry-run` still checks it). A large promote outlives the read
+    timeout while the server keeps running it (#1178), and a POST is never
+    re-sent, so a read timeout waits instead (`timeout` seconds, else
+    profile.async_timeout) for the promote to settle. It raises D365Error with
+    code `PromoteStillRunning` when it has not by then.
     """
     if not unique_name:
         raise D365Error("solution unique name required.")
-    result = as_dict(backend.post("DeleteAndPromote", json_body={"UniqueName": unique_name}))
+    if timeout is not None and timeout < 0:
+        raise D365Error(f"promote timeout must be >= 0, got {timeout!r}")
+    base_id = solution_info(backend, unique_name)["solutionid"]
+    try:
+        result = as_dict(
+            backend.post(
+                "DeleteAndPromote",
+                json_body={"UniqueName": unique_name},
+                resend_on_read_timeout=False,
+            )
+        )
+    except ResponseLostError:
+        promoted_id = _wait_for_promote(backend, unique_name, base_id, timeout)
+        return {"promoted": True, "solution": unique_name, "solutionid": promoted_id}
     if result.get("_dry_run"):
         return result
     return {"promoted": True, "solution": unique_name, "solutionid": result.get("SolutionId")}
+
+
+def _wait_for_promote(
+    backend: D365Backend, unique_name: str, base_id: str, timeout: int | None
+) -> str:
+    """Poll until `unique_name` resolves to a solution other than `base_id`; return its id.
+
+    The holding solution takes the base's unique name when the promote lands, so
+    the row's existence proves nothing: no row (the base is gone, the rename not
+    yet) and the old id both mean still running. A failed promote is
+    indistinguishable from a slow one here, so both end at the deadline.
+    """
+    effective = timeout if timeout is not None else backend.profile.async_timeout
+    deadline = time.monotonic() + effective
+    interval = backend.profile.async_poll_initial
+    while True:
+        row = backend.find_one("solutions", "uniquename", unique_name, select="solutionid")
+        if row is not None and row["solutionid"] != base_id:
+            return row["solutionid"]
+        if time.monotonic() >= deadline:
+            raise D365Error(
+                f"DeleteAndPromote for {unique_name!r} was sent but the solution is still "
+                f"the same after {effective}s: the promote may still be running on the "
+                "server, or it failed (a failed promote ends here too). Do not re-run it; "
+                "check `crm solution list` and the org's solution history, or raise the "
+                "wait timeout.",
+                code="PromoteStillRunning",
+            )
+        time.sleep(min(interval, max(0.0, deadline - time.monotonic())))
+        interval = min(interval * 2, backend.profile.async_poll_max)
 
 
 def _bump_revision(version: str) -> str:

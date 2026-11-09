@@ -969,9 +969,10 @@ def solution_uninstall(ctx: CLIContext, unique_name, force, timeout, yes):
 )
 @click.option(
     "--timeout",
-    type=int,
+    type=click.IntRange(min=0),
     default=None,
-    help="Async operation timeout in seconds. Overrides profile.async_timeout.",
+    help="Async operation timeout in seconds, for the import and the promote wait. "
+    "Overrides profile.async_timeout.",
 )
 @click.option(
     "--no-retry", is_flag=True, help="Disable the 429/5xx retry loop for this invocation."
@@ -1033,7 +1034,9 @@ def solution_stage_and_upgrade_cmd(
             )
             # Promote only a real, succeeded stage — never under --dry-run.
             if promote and not info.get("_dry_run"):
-                info["promote"] = sol_mod.delete_and_promote(ctx.backend(), solution_name)
+                info["promote"] = sol_mod.delete_and_promote(
+                    ctx.backend(), solution_name, timeout=timeout
+                )
         warnings = info.pop("warnings", None)
         ctx.emit(True, data=info, warnings=warnings)
         _journal(ctx, zip_path, info)
@@ -1041,15 +1044,25 @@ def solution_stage_and_upgrade_cmd(
 
 @solution_group.command("apply-upgrade")
 @click.argument("unique_name")
+@click.option(
+    "--timeout",
+    type=click.IntRange(min=0),
+    default=None,
+    help="Seconds to wait for a long promote to finish after the request times out. "
+    "Overrides profile.async_timeout.",
+)
 @_destructive_option
 @pass_ctx
-def solution_apply_upgrade_cmd(ctx: CLIContext, unique_name, yes):
+def solution_apply_upgrade_cmd(ctx: CLIContext, unique_name, timeout, yes):
     """Apply a previously-staged holding-solution upgrade (DeleteAndPromote).
 
     Promotes a solution already staged via `stage-and-upgrade` (run without
     --promote), replacing the base solution and deleting its patches. This is
     the separate-promote path that decouples stage-time from promote-time;
-    `stage-and-upgrade --promote` remains the one-shot path.
+    `stage-and-upgrade --promote` remains the one-shot path. A large promote can
+    outlast the request timeout: the call is not re-sent, and the verb waits for
+    the base solution to be replaced (up to --timeout) instead of failing while
+    the server finishes.
     """
     _confirm_destructive(
         ctx,
@@ -1063,7 +1076,7 @@ def solution_apply_upgrade_cmd(ctx: CLIContext, unique_name, yes):
         ),
     )
     with d365_errors(ctx):
-        info = sol_mod.delete_and_promote(ctx.backend(), unique_name)
+        info = sol_mod.delete_and_promote(ctx.backend(), unique_name, timeout=timeout)
     ctx.emit(True, data=info)
     _journal(ctx, unique_name, info)
 

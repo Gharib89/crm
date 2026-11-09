@@ -320,6 +320,8 @@ crm solution apply-upgrade CRMWorx --yes
 ```
 Promotes a solution already staged via `stage-and-upgrade` (run **without** `--promote`), decoupling stage-time from promote-time — the same `DeleteAndPromote` the one-shot `stage-and-upgrade --promote` runs, replacing the base solution and deleting its patches. Gated as destructive (`--yes`).
 
+A large promote can take minutes, longer than the profile `timeout` (default 120 s). The verb reads the base solution's id first (so a missing base fails fast, also under `--dry-run`), and when the `DeleteAndPromote` call times out waiting for its response it does **not** re-send it. It polls until the base's unique name resolves to a different solution id (the holding solution takes the name over, so the solution still existing is not the signal; no row for the name yet also means still running), then returns the normal `{promoted, solution, solutionid}` envelope, `solutionid` being the promoted solution's id. The wait lasts `--timeout` seconds (else profile `async_timeout`; `stage-and-upgrade --promote` forwards its own `--timeout` to it); past it the verb fails with `PromoteStillRunning`, meaning the promote may still be running on the server, or failed (the two look alike from the client): check `solution list` before re-running. ([#1178](https://github.com/Gharib89/crm/issues/1178))
+
 **Uninstall a solution** (`DELETE /solutions(<id>)`):
 
 ```bash

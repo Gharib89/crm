@@ -140,6 +140,7 @@ class TestCloneAsPatch:
 class TestDeleteAndPromote:
     def test_posts_unique_name_and_parses_id(self, backend):
         with requests_mock.Mocker() as m:
+            m.get(backend.url_for("solutions"), json={"value": [{"solutionid": _SOL_ID}]})
             m.post(backend.url_for("DeleteAndPromote"), json={"SolutionId": _SOL_ID})
             out = sol_mod.delete_and_promote(backend, "CRMWorx")
         assert out["promoted"] is True
@@ -149,6 +150,7 @@ class TestDeleteAndPromote:
 
     def test_dry_run_previews_no_post(self, dry_backend):
         with requests_mock.Mocker() as m:
+            m.get(dry_backend.url_for("solutions"), json={"value": [{"solutionid": _SOL_ID}]})
             out = sol_mod.delete_and_promote(dry_backend, "CRMWorx")
         assert out["_dry_run"] is True
         assert "promoted" not in out
@@ -474,7 +476,7 @@ class TestStageAndUpgradeCommand:
         )
         monkeypatch.setattr(
             "crm.core.solution.delete_and_promote",
-            lambda backend, name: {"promoted": True, "solution": name},
+            lambda backend, name, **kw: {"promoted": True, "solution": name},
         )
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = CliRunner().invoke(
@@ -499,7 +501,7 @@ class TestApplyUpgradeCommand:
     def test_wires_core_and_emits_json(self, monkeypatch):
         captured = {}
 
-        def fake(backend, name):
+        def fake(backend, name, **kw):
             captured.update(name=name)
             return {"promoted": True, "solution": name, "solutionid": _SOL_ID}
 
@@ -542,7 +544,7 @@ class TestApplyUpgradeCommand:
         assert "--yes" in result.output
 
     def test_core_error_exit_1(self, monkeypatch):
-        def boom(backend, name):
+        def boom(backend, name, **kw):
             raise D365Error("no holding solution staged")
 
         monkeypatch.setattr("crm.core.solution.delete_and_promote", boom)
@@ -566,6 +568,7 @@ class TestApplyUpgradeCommand:
         # no real promote happens.
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: dry_backend)
         with requests_mock.Mocker() as m:
+            m.get(dry_backend.url_for("solutions"), json={"value": [{"solutionid": _SOL_ID}]})
             result = CliRunner().invoke(
                 cli,
                 [
