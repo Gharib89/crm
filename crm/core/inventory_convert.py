@@ -1045,7 +1045,7 @@ def convert(
                             )
             if plan.edits or plan.unproven or reason:
                 steps.append((rule, plan, reason, applied))
-        if page and page_rule is not None and (kind, key, path) in page_targets:
+        if page and page_rule is not None and ((kind, key, path) in page_targets or staged):
             step = (
                 (Plan((), ()), problem, False, source)
                 if problem

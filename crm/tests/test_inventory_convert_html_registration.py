@@ -77,7 +77,9 @@ PAGES = {
 }
 
 
-def _pipeline(root: Path, pages: dict[str, str], *, flag: str | None = None) -> dict:
+def _pipeline(
+    root: Path, pages: dict[str, str], *, flag: str | None = None, without: str | None = None
+) -> dict:
     folder = root / "inv"
     folder.mkdir(parents=True)
     records = [_record(n, js, folder) for n, js in {**SCRIPTS, ADAPTER: SCRIPTS[REAL]}.items()]
@@ -89,7 +91,13 @@ def _pipeline(root: Path, pages: dict[str, str], *, flag: str | None = None) -> 
     _write(root / "target", "onprem", target, ("entity", "attribute"))
     findings = root / "findings.json"
     result = assess.assess(folder, "online")
-    findings.write_text(assess.dump_findings(result), encoding="utf-8")
+    text = assess.dump_findings(result)
+    if without is not None:
+        # a findings file made before the rule existed, or filtered by hand
+        data = json.loads(text)
+        data["findings"] = [f for f in data["findings"] if f.get("rule") != without]
+        text = json.dumps(data)
+    findings.write_text(text, encoding="utf-8")
     repo = root / "repo"
     repo.mkdir()
     built = build_packages(folder, map_source(folder, repo), None, assess.read_findings(findings))
@@ -291,6 +299,18 @@ def test_two_runs_give_byte_identical_patches(run, tmp_path):
         (first,) = _entries(run, page)
         (second,) = _entries(again, page)
         assert _patched(run, first) == _patched(again, second)
+
+
+def test_an_inline_rewrite_is_not_unguarded_when_the_findings_lack_the_page_rule(tmp_path):
+    bare = _pipeline(tmp_path / "bare", PAGES, without=RULE)
+    assert bare["res"].exit_code == 0, bare["res"].output
+    (entry,) = _entries(bare, "Inline", ODATA_RULE)
+    assert entry["status"] == "manual-review"
+    assert "adapter" in entry["manual_review"][0]["reason"]
+    flagged = _pipeline(tmp_path / "flag", PAGES, flag=ADAPTER, without=RULE)
+    assert flagged["res"].exit_code == 0, flagged["res"].output
+    (patched,) = _entries(flagged, "Inline", ODATA_RULE)
+    assert patched["status"] == "patched" and ADAPTER_TAG in _patched(flagged, patched)
 
 
 def test_a_patch_the_gate_rejects_leaves_the_page_untouched(tmp_path, monkeypatch):
