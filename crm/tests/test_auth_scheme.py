@@ -30,7 +30,7 @@ class TestAuthSchemes:
     """One AUTH_SCHEMES tuple drives validation and every scheme choice list."""
 
     def test_tuple_keeps_set_and_order(self):
-        assert "|".join(AUTH_SCHEMES) == "ntlm|kerberos|negotiate|oauth|adfs"
+        assert "|".join(AUTH_SCHEMES) == "ntlm|kerberos|negotiate|oauth|oauth-user|adfs"
 
     @pytest.mark.parametrize("args", [["--help"], ["profile", "add", "--help"]])
     def test_options_offer_exactly_auth_schemes(self, args):

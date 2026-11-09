@@ -377,8 +377,6 @@ ALLOWLIST: dict[str, str] = {
     "apply --from-plan plan.json": "ADR 0022: proposed unshipped `--from-plan` surface",
     # ADR 0034 proposes `inventory convert`, built by #1098; drop this once it ships.
     "inventory convert": "ADR 0034: proposed unshipped verb (#1098)",
-    # ADR 0035 proposes `profile login`, built by #1145; drop this once it ships.
-    "profile login": "ADR 0035: proposed unshipped verb (#1145)",
 }
 
 

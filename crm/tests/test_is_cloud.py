@@ -13,4 +13,4 @@ def test_is_cloud_per_scheme(scheme: str) -> None:
     profile = ConnectionProfile(
         name="p", url="https://x", domain="", username="", auth_scheme=scheme
     )
-    assert is_cloud(profile) is (scheme == "oauth")
+    assert is_cloud(profile) is (scheme in ("oauth", "oauth-user"))

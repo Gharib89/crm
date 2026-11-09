@@ -108,3 +108,9 @@ def save(profile: str, serialized: str) -> Literal["keyring", "plaintext"]:
             break
         key = current
     return "keyring"
+
+
+def delete(profile: str) -> None:
+    """Remove the profile's cache file and its keyring key (a no-op for either if absent)."""
+    cache_path(profile).unlink(missing_ok=True)
+    keyring_store.delete_secret(_key_account(profile))

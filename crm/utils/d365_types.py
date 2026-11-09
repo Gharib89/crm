@@ -14,7 +14,7 @@ from typing import Any, TypedDict
 
 # Defined here, not in d365_backend (which re-exports it), so crm/cli.py can build
 # its global --auth-scheme choice without loading the backend on the fast path.
-AUTH_SCHEMES = ("ntlm", "kerberos", "negotiate", "oauth", "adfs")
+AUTH_SCHEMES = ("ntlm", "kerberos", "negotiate", "oauth", "oauth-user", "adfs")
 """Every valid ``ConnectionProfile.auth_scheme``, in the order CLI choice lists show them."""
 
 
