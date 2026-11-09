@@ -74,42 +74,60 @@ def _save_cache(profile: ConnectionProfile, cache: Any) -> str | None:
     return token_store.save(profile.name, cache.serialize())
 
 
-def acquire_silent(profile: ConnectionProfile) -> str:
-    """The bound account's access token from the cache, refreshed when due."""
-    if not profile.home_account_id:
-        raise _reauth(profile, "no account is signed in")
-    try:
-        cache = _load_cache(profile)
-        app = _build_app(profile, cache)
-        account = next(
-            (a for a in app.get_accounts() if a.get("home_account_id") == profile.home_account_id),
-            None,
-        )
-        if account is None:
-            raise _reauth(profile, "the signed-in account is not in the token cache")
-        result = app.acquire_token_silent_with_error([scope_for(profile)], account=account)
-    except D365Error:
-        raise
-    except Exception as exc:
-        raise _reauth(profile, f"token refresh failed ({type(exc).__name__})") from exc
-    res: dict[str, Any] = result or {}
-    token = res.get("access_token")
-    if not token:
-        err = res.get("error", "no token returned")
-        raise _reauth(profile, f"the cached sign-in was rejected ({err})")
-    _save_cache(profile, cache)
-    return str(token)
-
-
 class UserBearerAuth:
-    """``requests`` auth hook: a silently acquired delegated bearer token per request."""
+    """``requests`` auth hook: a silently acquired delegated bearer token per request.
+
+    The cache and MSAL app are built once, on the first request: building the app
+    checks the authority online, and MSAL serves a valid token from memory after.
+    """
 
     def __init__(self, profile: ConnectionProfile) -> None:
         self._profile = profile
+        self._cache: Any = None
+        self._app: Any = None
+
+    def token(self) -> str:
+        """The bound account's access token, refreshed from the cache when due."""
+        profile = self._profile
+        if not profile.home_account_id:
+            raise _reauth(profile, "no account is signed in")
+        try:
+            if self._app is None:
+                self._cache = _load_cache(profile)
+                self._app = _build_app(profile, self._cache)
+            account = next(
+                (
+                    a
+                    for a in self._app.get_accounts()
+                    if a.get("home_account_id") == profile.home_account_id
+                ),
+                None,
+            )
+            if account is None:
+                raise _reauth(profile, "the signed-in account is not in the token cache")
+            result = self._app.acquire_token_silent_with_error(
+                [scope_for(profile)], account=account
+            )
+        except D365Error:
+            raise
+        except Exception as exc:
+            raise _reauth(profile, f"token refresh failed ({type(exc).__name__})") from exc
+        res: dict[str, Any] = result or {}
+        token = res.get("access_token")
+        if not token:
+            err = res.get("error", "no token returned")
+            raise _reauth(profile, f"the cached sign-in was rejected ({err})")
+        _save_cache(profile, self._cache)
+        return str(token)
 
     def __call__(self, request: Any) -> Any:
-        request.headers["Authorization"] = f"Bearer {acquire_silent(self._profile)}"
+        request.headers["Authorization"] = f"Bearer {self.token()}"
         return request
+
+
+def acquire_silent(profile: ConnectionProfile) -> str:
+    """One silent acquisition on a fresh app (a convenience for one-shot callers)."""
+    return UserBearerAuth(profile).token()
 
 
 def _fix_for(result: dict[str, Any], *, device_code: bool) -> str | None:

@@ -176,6 +176,23 @@ class TestSilentAcquire:
         assert env["meta"]["hint"] == "Run crm profile login dev"
         assert "TOK" not in r.stdout
 
+    def test_app_is_built_once_per_backend(self, msal):
+        p = _profile()
+        auth: Any = D365Backend(p, "").session.auth
+        for _ in range(3):
+            auth(requests.Request("GET", p.url).prepare())
+        assert sum(c.startswith("app:") for c in msal.calls) == 1
+        assert msal.calls.count("silent") == 3
+
+    def test_login_failure_hint_is_not_set_password(self, msal, monkeypatch):
+        monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
+        monkeypatch.setattr(webbrowser, "get", lambda *a: object())
+        msal.interactive = _ok(tid="22222222-2222-2222-2222-222222222222")
+        session_mod.save_profile(_profile())
+        r = CliRunner().invoke(cli, ["profile", "login", "dev"])
+        assert r.exit_code == 1 and "set-password" not in r.output
+        assert "crm profile login dev to retry" in r.output
+
 
 class TestLogin:
     def test_browser_sign_in_binds_the_account(self, msal, monkeypatch):
@@ -328,6 +345,18 @@ class TestProfileVerbs:
         r = CliRunner().invoke(cli, ["profile", "rm", "dev", "--yes"])
         assert r.exit_code == 0, r.output
         assert token_store.load("dev") == "" and not token_store.cache_path("dev").exists()
+
+    def test_rm_survives_a_cache_delete_failure(self, msal, monkeypatch):
+        session_mod.save_profile(_profile())
+
+        def boom(name):
+            raise PermissionError("read-only")
+
+        monkeypatch.setattr(token_store, "delete", boom)
+        r = CliRunner().invoke(cli, ["--json", "profile", "rm", "dev", "--yes"])
+        assert r.exit_code == 0, r.output
+        assert "read-only" in json.loads(r.stdout)["meta"]["warnings"][0]
+        assert "dev" not in session_mod.list_profiles()
 
     def test_rename_drops_the_cache_and_says_to_log_in_again(self, msal):
         session_mod.save_profile(_profile())

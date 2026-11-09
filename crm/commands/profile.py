@@ -836,7 +836,11 @@ def profile_rm(ctx: CLIContext, name, yes):
     session_mod.clear_profile_secret(name)
     from crm.core import token_store  # lazy: pulls in cryptography, off the local fast path
 
-    token_store.delete(name)  # the bound account's cached tokens (a no-op without one)
+    cache_warnings = []
+    try:
+        token_store.delete(name)  # the bound account's cached tokens (a no-op without one)
+    except OSError as exc:
+        cache_warnings.append(f"Could not remove the token cache: {exc}")
     session_mod.delete_profile(name)
     state = session_mod.load_session(ctx.session_name)
     if state.get("active_profile") == name:
@@ -844,7 +848,7 @@ def profile_rm(ctx: CLIContext, name, yes):
         session_mod.save_session(state, ctx.session_name)
         ctx.profile_name = None
         ctx.invalidate_backend()
-    ctx.emit(True, data={"profile": name, "removed": True})
+    ctx.emit(True, data={"profile": name, "removed": True}, warnings=cache_warnings or None)
 
 
 @profile_group.command("rename")
@@ -991,7 +995,7 @@ def profile_login(ctx: CLIContext, name, device_code):
         return
     from crm.core import user_signin
 
-    with d365_errors(ctx):
+    with d365_errors(ctx, hint=f"Run crm profile login {name} to retry"):
         result = user_signin.login(
             profile, device_code=device_code, announce=lambda m: click.echo(m, err=True)
         )
