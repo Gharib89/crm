@@ -1147,3 +1147,8 @@ register(ADAPTER_TRANSFORM, Transform("javascript", (), lambda *_: Plan((), ()))
 #: `ADAPTER_TRANSFORM` it has no script half: `inventory_html` plans its edit.
 PAGE_ADAPTER_TRANSFORM = "html-odata-adapter"
 register(PAGE_ADAPTER_TRANSFORM, Transform("javascript", (), lambda *_: Plan((), ())))
+
+#: The ribbon_diff-kind transform that loads the OData v2 adapter ahead of a command's patched
+#: actions. Like `ADAPTER_TRANSFORM` it has no script half: `inventory_ribbon` plans its edit.
+RIBBON_ADAPTER_TRANSFORM = "ribbon-odata-adapter"
+register(RIBBON_ADAPTER_TRANSFORM, Transform("javascript", (), lambda *_: Plan((), ())))

@@ -567,6 +567,32 @@
       ]
     },
     {
+      "id": "ribbon-action-no-odata-adapter",
+      "kind": "ribbon_diff",
+      "class": "deprecated",
+      "title": "A ribbon command calls a library with an OData v2 call and does not load the OData v2 adapter ahead of it",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "ribbon_library_order",
+        "library_rule": "web-resource-odata-v2",
+        "adapter_pattern": "global\\.CrmODataV2\\s*="
+      },
+      "transform": "ribbon-odata-adapter",
+      "fix": "Add an action that calls CrmODataV2.load from the web resource holding the generated OData v2 adapter (crm-odata-v2-adapter.js) ahead of the first action that calls the OData v2 endpoint, in every command that has one. A CustomRule runs at render, before any action, so a rule that calls such a library needs a separate answer. A library that cannot be read is unknown, not clear.",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/best-practices/business-logic/do-not-use-odata-v2-endpoint",
+        "https://learn.microsoft.com/power-platform/important-changes-coming",
+        "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/avoid-crm2011-service-odata"
+      ]
+    },
+    {
       "id": "ribbon-action-no-primary-control",
       "kind": "ribbon_diff",
       "class": "deprecated",
