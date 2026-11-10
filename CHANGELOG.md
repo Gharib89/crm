@@ -9,6 +9,27 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.112.0 (2026-11-10)
+
+### Bug Fixes
+
+- **inventory**: Flag help and migration skill name the ribbon adapter
+  ([#1188](https://github.com/Gharib89/crm/pull/1188),
+  [`9b06b8b`](https://github.com/Gharib89/crm/commit/9b06b8bb4a978abc91be2ea7ed55625948e166a9))
+
+### Documentation
+
+- **inventory**: README names the ribbon adapter action
+  ([#1188](https://github.com/Gharib89/crm/pull/1188),
+  [`9b06b8b`](https://github.com/Gharib89/crm/commit/9b06b8bb4a978abc91be2ea7ed55625948e166a9))
+
+### Features
+
+- **inventory**: Convert registers the OData v2 adapter on ribbon commands
+  ([#1188](https://github.com/Gharib89/crm/pull/1188),
+  [`9b06b8b`](https://github.com/Gharib89/crm/commit/9b06b8bb4a978abc91be2ea7ed55625948e166a9))
+
+
 ## v1.111.0 (2026-11-09)
 
 ### Bug Fixes
