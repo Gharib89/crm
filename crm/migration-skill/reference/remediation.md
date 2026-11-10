@@ -100,10 +100,13 @@ spans lines are manual review for every row. Work from `ledger.json`:
   patch with any handler fix, and the entry records the name as `web_resource`. An HTML page gets an adapter
   `<script src>` just before its first rewritten script, a patched library or a rewritten inline script, in one patch.
   Without the flag, or where the registration cannot be proven (adapter listed after, no patched script, packages
-  differ, the page's script tags unreadable), the form or page is a manual-review entry and the page's inline rewrite
+  differ, the page's script tags unreadable), the form, page or ribbon command is a manual-review entry and the page's inline rewrite
   is dropped with it, because a rewritten call without the adapter throws.
-  Ribbons are not registered: load the adapter there by hand.
-  It returns the first page only: v2's `d.__next` has no counterpart, so a caller that follows pages needs review.
+  A ribbon command gets an action calling `CrmODataV2.load` from the adapter just before its first patched action, one
+  per command, in one patch with any `PrimaryControl` fix. A `CustomRule` that calls a patched library is not patched
+  (a rule runs at render, before any action): its manual-review entry names the rule and its commands, so load the
+  adapter for it by hand. On an on-prem target, run a patched ribbon command to prove it loads the adapter before calling it done.
+  The adapter returns the first page only: v2's `d.__next` has no counterpart, so a caller that follows pages needs review.
 - `ledger.json`'s `call_graph` counts, per package, the helpers threaded, the `Xrm.Page` functions no
   handler reaches (`unreachable`) and the helpers a name used outside their file holds back
   (`boundary`); the last two are manual-review entries to remediate by hand.

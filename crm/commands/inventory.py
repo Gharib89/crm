@@ -611,7 +611,8 @@ def inventory_verify_cmd(
     help="The web resource name the OData v2 adapter will have in the target org; {package}"
     " expands to the work package id. A form that lists a rewritten library gets the adapter"
     " listed ahead of it, and an HTML page that loads a rewritten library or holds a rewritten"
-    " inline script gets a script tag for it. Without it each such form or page is a"
+    " inline script gets a script tag for it, and a ribbon command that calls a rewritten library"
+    " gets an adapter action ahead of it. Without it each such form, page or command is a"
     " manual-review entry.",
 )
 @click.option(

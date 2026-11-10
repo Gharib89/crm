@@ -234,6 +234,29 @@
               "required": [
                 "type",
                 "library_rule",
+                "adapter_pattern"
+              ],
+              "properties": {
+                "type": {
+                  "const": "ribbon_library_order"
+                },
+                "library_rule": {
+                  "description": "Id of a content_pattern rule: a ribbon command is a hit when an action calls a script library matching that rule with no adapter action before it, and a CustomRule calling such a library is a hit too.",
+                  "type": "string",
+                  "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+                },
+                "adapter_pattern": {
+                  "description": "A Python regular expression: a library whose text matches it is the adapter.",
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "type",
+                "library_rule",
                 "parameter"
               ],
               "properties": {

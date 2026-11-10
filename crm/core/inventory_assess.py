@@ -135,6 +135,16 @@ class HtmlLibraryOrder:
 
 
 @dataclass(frozen=True)
+class RibbonLibraryOrder:
+    """A ribbon command whose action calls a script carrying *library_rule*'s content pattern with
+    no action matching *adapter_pattern* ahead of it, or a ``CustomRule`` calling such a script.
+    """
+
+    library_rule: str
+    adapter_pattern: re.Pattern[str]
+
+
+@dataclass(frozen=True)
 class Rule:
     """One compatibility rule, applying from source version *source_from* to *source_before*."""
 
@@ -152,6 +162,7 @@ class Rule:
         | RibbonActionParameter
         | FormLibraryOrder
         | HtmlLibraryOrder
+        | RibbonLibraryOrder
         | PluginProject
     )
     fix: str
@@ -225,6 +236,7 @@ def _detection(
     | RibbonActionParameter
     | FormLibraryOrder
     | HtmlLibraryOrder
+    | RibbonLibraryOrder
     | PluginProject
 ):
     obj = _obj(value, where)
@@ -271,6 +283,18 @@ def _detection(
                 f"rules file {where}.adapter_pattern does not compile: {exc}"
             ) from exc
         return HtmlLibraryOrder(_text(obj, "library_rule", where), adapter)
+    if detection_type == "ribbon_library_order":
+        if kind != "ribbon_diff":
+            raise InventoryError(
+                f"rules file {where}: ribbon_library_order applies to ribbon_diff only"
+            )
+        try:
+            adapter = re.compile(_text(obj, "adapter_pattern", where))
+        except re.error as exc:
+            raise InventoryError(
+                f"rules file {where}.adapter_pattern does not compile: {exc}"
+            ) from exc
+        return RibbonLibraryOrder(_text(obj, "library_rule", where), adapter)
     if detection_type == "ribbon_action_parameter":
         if kind != "ribbon_diff":
             raise InventoryError(
@@ -287,8 +311,8 @@ def _detection(
         return PluginProject()
     raise InventoryError(
         f"rules file {where}.type {detection_type!r} is not content_pattern, field_in, "
-        "form_handler_context, form_library_order, html_library_order, ribbon_action_parameter"
-        " or plugin_project"
+        "form_handler_context, form_library_order, html_library_order, ribbon_library_order, "
+        "ribbon_action_parameter or plugin_project"
     )
 
 
@@ -363,7 +387,12 @@ def parse_rules(data: object, sha256: str = "") -> Rules:
     for r in rules:
         d = r.detection
         if not isinstance(
-            d, FormHandlerContext | RibbonActionParameter | FormLibraryOrder | HtmlLibraryOrder
+            d,
+            FormHandlerContext
+            | RibbonActionParameter
+            | FormLibraryOrder
+            | HtmlLibraryOrder
+            | RibbonLibraryOrder,
         ):
             continue
         if d.library_rule not in content:
@@ -848,6 +877,9 @@ def _web_resource_name(library: str) -> str | None:
     return library[at + len(marker) :] if at >= 0 else library
 
 
+RULE_OWNERS = frozenset(("EnableRule", "DisplayRule", "TabDisplayRule", "GroupDisplayRule"))
+
+
 def _ribbon_actions(root: Element, parameter: str) -> list[dict[str, Any]]:
     """The ribbon ``JavaScriptFunction`` actions on a web resource that pass no *parameter*."""
     out: list[dict[str, Any]] = []
@@ -894,6 +926,67 @@ def _library_order(
     out = [finding("unknown", rule.id, why) for why in sorted(unknown)]
     if first is not None:
         evidence = RegistrationEvidence(path, sha256, ({"library": first},), 1)
+        out.append(finding(rule.cls, rule.id, None, evidence))
+    return out
+
+
+def _ribbon_order(
+    rule: Rule,
+    d: RibbonLibraryOrder,
+    path: str,
+    sha256: str,
+    root: Element,
+    libs: _Libraries,
+    finding: Callable[..., Finding],
+) -> list[Finding]:
+    """A ribbon diff is a hit when a command's action calls a library carrying *d*'s library rule
+    with no adapter action ahead of it, or a ``CustomRule`` calls such a library.
+    """
+    unknown: set[str] = set()
+    hits: list[dict[str, Any]] = []
+    parents = {c: p for p in root.iter() for c in p}
+    for command in root.iter("CommandDefinition"):
+        adapter_seen, first = False, None
+        for action in command.iter("JavaScriptFunction"):
+            library = _web_resource_name(action.get("Library") or "")
+            if library is None:
+                continue
+            is_adapter, why = libs.carries(d.library_rule, library, d.adapter_pattern)
+            if why is not None:
+                unknown.add(why)
+            elif is_adapter:
+                adapter_seen = True
+            elif first is None and not adapter_seen and libs.carries(d.library_rule, library)[0]:
+                first = {
+                    "command": command.get("Id") or "",
+                    "function": action.get("FunctionName") or "",
+                    "library": library,
+                }
+        if first is not None:
+            hits.append(first)
+    for custom in root.iter("CustomRule"):
+        library = _web_resource_name(custom.get("Library") or "")
+        if library is None:
+            continue
+        carries, why = libs.carries(d.library_rule, library)
+        if why is not None:
+            unknown.add(why)
+        elif carries:
+            owner = parents.get(custom)
+            while owner is not None and not (owner.tag in RULE_OWNERS and owner.get("Id")):
+                owner = parents.get(owner)
+            hits.append(
+                {
+                    "rule": (owner.get("Id") or "") if owner is not None else "",
+                    "function": custom.get("FunctionName") or "",
+                    "library": library,
+                }
+            )
+    out = [finding("unknown", rule.id, why) for why in sorted(unknown)]
+    if hits:
+        evidence = RegistrationEvidence(
+            path, sha256, tuple(sorted(hits, key=_canonical)[:MAX_LOCATIONS]), len(hits)
+        )
         out.append(finding(rule.cls, rule.id, None, evidence))
     return out
 
@@ -956,13 +1049,18 @@ def _registrations(
     libs: _Libraries,
     finding: Callable[..., Finding],
 ) -> list[Finding]:
-    d = cast(FormHandlerContext | RibbonActionParameter | FormLibraryOrder, rule.detection)
+    d = cast(
+        FormHandlerContext | RibbonActionParameter | FormLibraryOrder | RibbonLibraryOrder,
+        rule.detection,
+    )
     try:
         root = fromstring(text)
     except ParseError:  # malformed, or carrying a DTD that safe_xml refuses
         return [finding("unknown", rule.id, f"artifact is not well-formed XML: {path}")]
     if isinstance(d, FormLibraryOrder):
         return _library_order(rule, d, path, sha256, root, libs, finding)
+    if isinstance(d, RibbonLibraryOrder):
+        return _ribbon_order(rule, d, path, sha256, root, libs, finding)
     candidates = (
         _form_handlers(root)
         if isinstance(d, FormHandlerContext)
@@ -1041,7 +1139,9 @@ def _assess_record(
     sha = {a.path: a.sha256 for a in record.artifacts}
     for rule in rules:
         d = rule.detection
-        if isinstance(d, FormHandlerContext | RibbonActionParameter | FormLibraryOrder):
+        if isinstance(
+            d, FormHandlerContext | RibbonActionParameter | FormLibraryOrder | RibbonLibraryOrder
+        ):
             for path, text in sorted(texts.items()):
                 out += _registrations(
                     rule, path, sha[path], text, libs or _Libraries((), folder), finding

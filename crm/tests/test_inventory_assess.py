@@ -569,9 +569,11 @@ def test_a_ribbon_library_missing_from_the_inventory_is_unknown(tmp_path):
     folder.mkdir()
     diff = _diff("account", _js("new_/scripts/gone.js", "Gone.f"), folder=folder)
     result = assess.assess(_registrations(folder, [diff]), "online")
-    (found,) = _findings(result, diff.key)
-    assert (found.cls, found.rule) == ("unknown", RIBBON_RULE)
-    assert found.reason == "library new_/scripts/gone.js is not in the inventory"
+    # Each ribbon rule that reads the library reports it unknown on its own.
+    found = [f for f in _findings(result, diff.key) if f.rule == RIBBON_RULE]
+    assert [(f.cls, f.reason) for f in found] == [
+        ("unknown", "library new_/scripts/gone.js is not in the inventory")
+    ]
 
 
 def test_registration_findings_round_trip_and_validate(tmp_path):

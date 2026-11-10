@@ -84,15 +84,19 @@ from crm.core.inventory_ribbon import (
     RibbonDiff,
     action_key,
     plan_ribbon_actions,
+    plan_ribbon_adapter,
     read_ribbon_diff,
+    ribbon_adapter_gate,
     ribbon_calls,
     ribbon_function_names,
+    unproven_rules,
 )
 from crm.core.inventory_source_map import mapped_projects, read_source_map, require_inventory
 from crm.core.inventory_transforms import (
     ADAPTER_TRANSFORM,
     HANDLER_TRANSFORM,
     PAGE_ADAPTER_TRANSFORM,
+    RIBBON_ADAPTER_TRANSFORM,
     TRANSFORMS,
     Edit,
     Plan,
@@ -433,24 +437,32 @@ class _Ribbon:
     target: bool
     #: The ``(library, function)`` calls the diff makes, for one that cannot be mapped.
     named: list[tuple[str, str]]
+    #: The diff carries the adapter rule's finding, so this run loads the adapter in its commands.
+    adapter: bool = False
 
 
 def _read_ribbons(
-    inventory_dir: Path, records: list[Record], findings: Iterable[Finding], rule: Rule
+    inventory_dir: Path,
+    records: list[Record],
+    findings: Iterable[Finding],
+    rule: Rule | None,
+    adapter_rule: Rule | None,
 ) -> list[_Ribbon]:
-    """Read every ribbon diff against its hash, noting which carry *rule*'s finding."""
-    hits = {
-        f.key: f.evidence
-        for f in findings
-        if f.rule == rule.id and f.cls != "clear" and isinstance(f.evidence, RegistrationEvidence)
-    }
+    """Read every ribbon diff against its hash, noting which carry *rule*'s finding and which
+    carry *adapter_rule*'s.
+    """
+    findings = list(findings)
+    hits, listed = _hits(findings, rule), _hits(findings, adapter_rule)
     out: list[_Ribbon] = []
     for rec in records:
         ev = hits.get(rec.key) if rec.kind == "ribbon_diff" else None
-        if rec.kind != "ribbon_diff" or not (ev or rec.artifacts):
+        seen = ev or listed.get(rec.key)
+        if rec.kind != "ribbon_diff" or not (seen or rec.artifacts):
             continue
-        path, sha = (ev.path, ev.sha256) if ev else (rec.artifacts[0].path, rec.artifacts[0].sha256)
-        ribbon = _Ribbon(rec.key, path, b"", None, "", ev is not None, [])
+        path, sha = (
+            (seen.path, seen.sha256) if seen else (rec.artifacts[0].path, rec.artifacts[0].sha256)
+        )
+        ribbon = _Ribbon(rec.key, path, b"", None, "", ev is not None, [], rec.key in listed)
         try:
             raw = (inventory_dir / path).read_bytes()
             ribbon.source = normalize_text(raw)
@@ -464,11 +476,11 @@ def _read_ribbons(
                 ribbon.named = ribbon_function_names(ribbon.source)
         except OSError as exc:
             ribbon.problem = f"artifact unreadable: {exc.strerror or exc}"
-        if ribbon.problem and ev is not None:
+        if ribbon.problem and seen is not None:
             # What the assessment saw stays a caller when the artifact is stale or gone now.
             ribbon.named += [
                 action_key(r.get("library") or "", r.get("function") or "")
-                for r in ev.registrations
+                for r in seen.registrations
             ]
         out.append(ribbon)
     return out
@@ -821,6 +833,9 @@ def convert(
 
     form_rule, ribbon_rule = owner_of("form"), owner_of("ribbon_diff")
     adapter_rule = next((r for r in rules.values() if r.transform == ADAPTER_TRANSFORM), None)
+    ribbon_adapter_rule = next(
+        (r for r in rules.values() if r.transform == RIBBON_ADAPTER_TRANSFORM), None
+    )
     forms: list[_Form] = []
     ribbons: list[_Ribbon] = []
     reasons: dict[tuple[str, str], str] = {}
@@ -831,7 +846,12 @@ def convert(
         inventory_dir, inv.records, frozenset(), frozenset(("web_resource",))
     )
     libraries: dict[str, tuple[str, str, str]] = {}
-    if form_rule is not None or ribbon_rule is not None or adapter_rule is not None:
+    if (
+        form_rule is not None
+        or ribbon_rule is not None
+        or adapter_rule is not None
+        or ribbon_adapter_rule is not None
+    ):
         script_types = TRANSFORMS[HANDLER_TRANSFORM].web_resource_types
         for gkey in groups:
             rec = records.get((gkey[0], gkey[1]))
@@ -845,9 +865,13 @@ def convert(
             forms = _read_forms(
                 inventory_dir, list(inv.records), findings.findings, form_rule, adapter_rule
             )
-        if ribbon_rule is not None:
+        if ribbon_rule is not None or ribbon_adapter_rule is not None:
             ribbons = _read_ribbons(
-                inventory_dir, list(inv.records), findings.findings, ribbon_rule
+                inventory_dir,
+                list(inv.records),
+                findings.findings,
+                ribbon_rule,
+                ribbon_adapter_rule,
             )
         form_calls = frozenset(
             [(t.library.lower(), t.function) for f in forms for t in f.tags if t.enabled]
@@ -1170,40 +1194,99 @@ def convert(
             current = step[3]
         if steps:
             emit("form", form.key, form.path, steps, form.source, current)
-    for ribbon in (r for r in ribbons if r.target and ribbon_rule is not None):
-        plan, reason, applied, patched = Plan((), ()), ribbon.problem, False, ribbon.source
-        if not reason and ribbon.diff is not None:
-            gone = {
-                a.key: command_reasons.get(a.key)
-                or f"{a.key[1]} was not rewritten in {a.key[0]}: see the library's entries"
-                for a in ribbon.diff.actions
-                if a.in_command
-                and not a.passes
-                and a.key[0] in libraries
-                and a.key not in rewritten
-            }
-            plan = plan_ribbon_actions(ribbon.diff.actions, rewritten, gone)
-            if plan.edits:
-                patched = _apply(ribbon.source, plan.edits) or b""
-                if not patched:
-                    reason = "the planned edits overlap"
-                elif patched.count(b"\n") != ribbon.source.count(b"\n"):
-                    reason = "the rewrite changes the line count"
-                else:
-                    reason = _ribbon_gate(ribbon.source, patched, len(plan.edits)) or ""
-                if reason:
-                    reason = f"emit gate rejected the rewrite: {reason}"
-                else:
-                    applied = True
-        if plan.edits or plan.unproven or reason:
-            emit(
-                "ribbon_diff",
-                ribbon.key,
-                ribbon.path,
-                [(cast(Rule, ribbon_rule), plan, reason, applied)],
-                ribbon.source,
-                patched,
+
+    def ribbon_adapter_step(
+        ribbon: _Ribbon, current: bytes
+    ) -> tuple[Plan, str, bool, bytes] | None:
+        """The adapter rule's step on *ribbon* as ``(plan, reason, applied, patched)``, or None
+        when every command already loads the adapter ahead of the libraries it serves.
+        """
+        diff = None if ribbon.problem else read_ribbon_diff(current)
+        if diff is None:
+            reason = ribbon.problem or "the ribbon's actions cannot be mapped to its text"
+            return Plan((), ()), reason, False, current
+        where = set(held.get(f"ribbon_diff:{ribbon.key}", [UNPACKAGED]))
+        called = {a.key[0] for a in diff.actions if a.in_command} & rewrote.keys()
+        # Rule callers are reported whatever else keeps the commands from being patched.
+        rules_only = Plan((), tuple(unproven_rules(diff, rewrote.keys())))
+        if not called:
+            if rules_only.unproven:
+                return rules_only, "", False, current
+            reason = (
+                "no library the ribbon's commands call had its OData v2 calls rewritten in this"
+                " run: see the libraries' entries"
             )
+        elif adapter_resource is None:
+            reason = "the adapter's web resource name is not known: pass --adapter-resource"
+        elif any(rewrote[n] != where for n in called):
+            reason = (
+                "the ribbon is not in exactly the work packages that ship the libraries"
+                " its commands call that were rewritten"
+            )
+        elif "{package}" in adapter_resource and len(where) != 1:
+            reason = "the ribbon sits in several work packages, whose adapters have different names"
+        else:
+            reason = ""
+        if reason:
+            return rules_only, reason, False, current
+        name = adapter_name(next(iter(where)))
+        plan = plan_ribbon_adapter(diff, name, rewrote.keys())
+        if not plan.edits and not plan.unproven:
+            return None
+        if not plan.edits:
+            return plan, "", False, current
+        patched = _apply(current, plan.edits) or b""
+        if not patched:
+            reason = "the planned edits overlap"
+        elif patched.count(b"\n") != current.count(b"\n"):
+            reason = "the rewrite changes the line count"
+        else:
+            reason = ribbon_adapter_gate(current, patched, name, rewrote.keys()) or ""
+        if reason:
+            return plan, f"emit gate rejected the rewrite: {reason}", False, current
+        return plan, "", True, patched
+
+    for ribbon in ribbons:
+        steps = []
+        current = ribbon.source
+        if ribbon.target and ribbon_rule is not None:
+            plan, reason, applied, patched = Plan((), ()), ribbon.problem, False, ribbon.source
+            if not reason and ribbon.diff is not None:
+                gone = {
+                    a.key: command_reasons.get(a.key)
+                    or f"{a.key[1]} was not rewritten in {a.key[0]}: see the library's entries"
+                    for a in ribbon.diff.actions
+                    if a.in_command
+                    and not a.passes
+                    and a.key[0] in libraries
+                    and a.key not in rewritten
+                }
+                plan = plan_ribbon_actions(ribbon.diff.actions, rewritten, gone)
+                if plan.edits:
+                    patched = _apply(ribbon.source, plan.edits) or b""
+                    if not patched:
+                        reason = "the planned edits overlap"
+                    elif patched.count(b"\n") != ribbon.source.count(b"\n"):
+                        reason = "the rewrite changes the line count"
+                    else:
+                        reason = _ribbon_gate(ribbon.source, patched, len(plan.edits)) or ""
+                    if reason:
+                        reason = f"emit gate rejected the rewrite: {reason}"
+                    else:
+                        applied = True
+            if plan.edits or plan.unproven or reason:
+                steps.append((ribbon_rule, plan, reason, applied))
+            if applied:
+                current = patched
+        if (
+            ribbon.adapter
+            and ribbon_adapter_rule is not None
+            and (step := ribbon_adapter_step(ribbon, current))
+        ):
+            steps.append((ribbon_adapter_rule, *step[:3]))
+            current = step[3]
+        if steps:
+            emit("ribbon_diff", ribbon.key, ribbon.path, steps, ribbon.source, current)
     for rel, text in pending:
         (out / rel).parent.mkdir(parents=True, exist_ok=True)
         (out / rel).write_text(text, encoding="utf-8", newline="")
