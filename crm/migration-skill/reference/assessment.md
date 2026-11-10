@@ -76,7 +76,7 @@ resolves to against the page's own name, never one that shares a file name.
 `ribbon-action-no-odata-adapter` flags a ribbon command whose action calls such a script with no
 action on an adapter ahead of it (evidence: `command`, `function`, `library` of the first such
 action), and a `CustomRule` calling one (evidence: `rule`, `function`, `library`): a rule runs at
-render, before any action can load the adapter. The other two are each a `deprecated`
+render, before any action can load the adapter. `form-handler-no-execution-context` and `ribbon-action-no-primary-control` are each a `deprecated`
 finding when the library the registration calls carries an `Xrm.Page` finding
 (`web-resource-xrm-page`) and the registration hands that library no context: an
 enabled form handler without `passExecutionContext`, or a `JavaScriptFunction` on
