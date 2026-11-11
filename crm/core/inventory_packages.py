@@ -9,7 +9,8 @@ project, project to referenced project). A reference that cannot be resolved
 statically is an ``unknown`` edge with no target, kept for manual review.
 
 A **work package** is a connected group of that graph holding a source-mapped
-component or an unknown, so a shared library and every consumer of it land in
+component or an unknown (or, with findings, a process with a blocker or
+deprecated finding), so a shared library and every consumer of it land in
 one package. Only repairable kinds and source nodes join a group: entities,
 attributes, option sets and views are context, and a system web resource or
 plug-in does not bridge two groups. Everything here reads files and touches no org.
@@ -45,6 +46,8 @@ from crm.utils.safe_xml import fromstring
 
 #: The compatibility classes a package counts; ``clear`` is merged nowhere.
 COMPAT_CLASSES = ("blocker", "deprecated", "optional", "unknown")
+#: A finding of these classes on a process makes a package of its group.
+PACKAGE_FORCING_CLASSES = ("blocker", "deprecated")
 
 #: The format version of the index and package files.
 SCHEMA_VERSION = 1
@@ -939,7 +942,9 @@ def build_packages(
     matches); *scenarios*, when given, is a scenario file (see `_scenarios`).
     *findings_file*, when given, must name the same inventory: each of its
     blocker, deprecated, optional and unknown findings joins the package holding
-    its component, or is listed as unplaced. It never changes which packages exist.
+    its component, or is listed as unplaced. A blocker or deprecated finding on a
+    ``process`` also makes a package of its group when no other rule did, so an
+    isolated dialog or workflow is judged by ``verify``; no other finding creates one.
     Each package gets the `usage` of its members rolled up: read by `extract --with-usage`
     or derived from the manifest (`inventory_usage_filter`). *in_use* drops a package whose
     usage is `unused`, *exclude_unknown* also one that is `unknown`; a package with no usage
@@ -977,6 +982,14 @@ def build_packages(
         if f.cls != "clear":
             judged.setdefault(_id(f.kind, f.key), []).append(f)
     placed: set[str] = set()
+    # A process finding that blocks or retires the process forces a package (see docstring).
+    forced = {
+        m
+        for m, found in judged.items()
+        if m in nodes
+        and nodes[m].kind == "process"
+        and any(f.cls in PACKAGE_FORCING_CLASSES for f in found)
+    }
 
     usages = derive_usage(inv.records, refs.edges | structural, inv.extracted_at)
     drafts: list[tuple[str, set[str], list[str], list[Edge], list[Finding], Usage | None]] = []
@@ -1004,7 +1017,7 @@ def build_packages(
         ]
         # An edge outside the read is listed, but alone it does not make a package.
         if not members or not (
-            any(not f.out_of_scope for f in findings) or members & mapped.keys()
+            any(not f.out_of_scope for f in findings) or members & mapped.keys() or members & forced
         ):
             continue
         if findings_file is not None:

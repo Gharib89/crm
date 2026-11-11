@@ -184,7 +184,9 @@ same inventory is refused.
   the same inventory; another inventory's is refused, exit 1). Blocker, deprecated,
   optional and unknown findings join the package holding their component; read each
   package's `counts` and the `compatibility.unplaced` list in `index.json`, findings no
-  package holds, which still need a human look. `clear` is not merged.
+  package holds, which still need a human look. `clear` is not merged. A blocker or
+  deprecated finding on a process is the one kind that creates a package (a package of one
+  for an isolated dialog), so `verify` judges that process too.
 
 ## Judging recorded verification results (`crm inventory verify`)
 
