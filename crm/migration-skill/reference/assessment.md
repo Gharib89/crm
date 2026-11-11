@@ -19,6 +19,11 @@ Read `counts.by_class` in the summary, not the exit code: a blocker exits 0.
 | `unknown` | Unknown |
 | `clear` | None yet: judge it from the component's source or runtime evidence |
 
+A plug-in step whose primary entity is `systemuser` (`step-on-systemuser`, online target only)
+is a `blocker`: enter it as "Confirmed blocker". The on-premises-to-online migration needs no
+step on the System User entity. Every other step is `clear` online, which says nothing about
+its stage, mode or configuration: judge those from the plug-in's source.
+
 A classic dialog (`process-dialog`, a process of category 1) is `deprecated`:
 enter it as "Deprecated but working" and name the replacement, a business
 process flow or a canvas app. There is no automatic conversion.
@@ -184,6 +189,29 @@ for a short name and a fully qualified one) to find it. Without the flag the fiv
   ask the plug-in owner. `convert` rewrites no address, so repair each cited line by hand: use
   a relative URL, or read the org URL at run time, and prove it in the target
   (`reference/verification.md`).
+
+## Roll the findings up as a readiness checklist
+
+`crm inventory readiness <findings>` reads a file `assess --target online` wrote (one for
+`onprem-9.1` is a usage error) and prints one row per gate: `pass`, `fail`, `warn` or
+`unknown`, with the components behind it and a basis. It is offline and re-judges nothing.
+
+- **This is a checklist.** It replaces neither the on-premises-to-online (OP2OL) service,
+  Lifecycle Services nor Microsoft's nomination, and it performs no upgrade hop. Microsoft
+  Learn documents the hops 2011 (UR14 or later) to 2013 and 8.2 to 9.0 only; the hops between
+  are undocumented there, so mark each one an unknown.
+- **A `crm2011` profile stays read-only.** The checklist reads the extracted inventory, never
+  the org.
+- **Quote the basis.** `OP2OL whitepaper` marks a documented OP2OL gate; `Dataverse online
+  requirement` marks a rule that blocks online but is not one. `warn` is isolation mode none:
+  the migration converts it to sandbox mode and the code may still fail there.
+- **`unknown` stays open.** A kind with an extraction gap (the SSRS data sources for the
+  report row), a rule whose input `assess` was not given (`--source-host`, or `--source-map`
+  with `--repo`) and a version that is not dotted read `unknown`; enter each as an open question.
+- **Manual rows carry no status.** Collation, database size, TDE, integrity checks and the
+  target users and licences are database-side or tenant-side: ask the owner of each and record
+  the answer, never a `pass`.
+- Exit 0 means the checklist was produced, whatever its rows say.
 
 Done when every component carries one of the four classes with its rule or
 evidence, or an entry open on a named question, and no `clear` or `unknown` is

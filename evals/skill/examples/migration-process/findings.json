@@ -70,11 +70,11 @@
       "rule": null
     },
     {
-      "class": "unknown",
+      "class": "clear",
       "evidence": null,
       "key": "Update|new_project|20|0|Contoso.Plugins%7CContoso.Plugins.ProjectUpdate|ProjectUpdate: Update of new_project",
       "kind": "step",
-      "reason": "no rule",
+      "reason": null,
       "rule": null
     },
     {
@@ -166,7 +166,7 @@
       }
     }
   ],
-  "generated_at": "2026-11-11T12:20:17Z",
+  "generated_at": "2026-11-11T15:45:44Z",
   "incomplete": {
     "dependency": "unsupported",
     "report": "unsupported",
@@ -182,8 +182,8 @@
   },
   "rules": {
     "schema_version": 1,
-    "sha256": "f99a7fd3588eec0c70d1d87ef87ae93b72ec961eeee3b24afd84178c123b734b",
-    "version": 5
+    "sha256": "421ba7953f54fc03afa43471658342540c9976cdfa941b9660047ad2cc5c3eed",
+    "version": 11
   },
   "rules_hit": {
     "assembly-isolation-none": {

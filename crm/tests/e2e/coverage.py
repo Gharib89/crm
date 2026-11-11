@@ -42,7 +42,8 @@ LOCAL_GROUPS = frozenset(
 # compares two inventory folders on disk, `inventory map-source` reads one and a repo,
 # `inventory packages` reads one and its source map, `inventory verify` reads a
 # packages folder and a results file, `inventory assess` reads one and the packaged rules,
-# `inventory check-applied` reads a convert output and a repo)
+# `inventory check-applied` reads a convert output and a repo, `inventory readiness` reads a
+# findings file)
 # — unit-tested elsewhere.
 LOCAL_VERBS = frozenset(
     {
@@ -53,6 +54,7 @@ LOCAL_VERBS = frozenset(
         "inventory assess",
         "inventory convert",
         "inventory check-applied",
+        "inventory readiness",
     }
 )
 

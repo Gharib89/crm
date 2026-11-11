@@ -4,7 +4,7 @@
     "deprecated": 2,
     "optional": 0,
     "target": "online",
-    "unknown": 9,
+    "unknown": 8,
     "unplaced": [
       {
         "class": "unknown",
@@ -58,7 +58,7 @@
         "blocker": 0,
         "deprecated": 0,
         "optional": 0,
-        "unknown": 6
+        "unknown": 5
       },
       "file": "pkg-4bd0d6c9dc4b.json",
       "id": "pkg-4bd0d6c9dc4b",

@@ -13,7 +13,9 @@ matches one to an application repository (see [Map an inventory to source](#map-
 `crm inventory verify` judges recorded verification results against them (see
 [Verify work packages](#verify-work-packages)), and `crm inventory assess` runs the
 packaged compatibility rules over one (see
-[Assess compatibility](#assess-compatibility)), and `crm inventory convert` writes
+[Assess compatibility](#assess-compatibility)), and `crm inventory readiness` reads its findings as a
+per-gate checklist for a move to Dataverse online (see
+[Readiness checklist](#readiness-checklist)), and `crm inventory convert` writes
 patches for the code a rule can rewrite (see [Convert code](#convert-code)), and `crm inventory check-applied` proves a repository carries them (see
 [Check that a repository carries the patches](#check-that-a-repository-carries-the-patches)); packages and assess can drop unused rows (see
 [Filter and sort packages and findings by usage](#filter-and-sort-packages-and-findings-by-usage)).
@@ -855,6 +857,7 @@ registration, how forms and ribbon diffs call those scripts, classic dialogs (pr
 | `source-host-web-resource`, `source-host-sitemap`, `source-host-ribbon`, `source-host-ribbon-diff`, `source-host-process`: the stored text of a script or HTML web resource (types 1 and 3), the site map, a ribbon, a ribbon difference or a process definition names a host given with `--source-host`; the rules do not run without one (see [Source host found by assess](#source-host-found-by-assess)) | blocker | both |
 | `assembly-storage-online`, `assembly-storage-onprem`: an assembly stored on disk or in the GAC | blocker online, optional on-prem | one each |
 | `assembly-isolation-none`, `assembly-isolation-none-onprem`: an assembly registered without isolation | blocker online, optional on-prem | one each |
+| `step-on-systemuser`: a plug-in step whose primary entity is `systemuser` (kind `step`); the on-premises-to-online migration needs none | blocker | `online` |
 | `process-dialog`: a classic dialog (a `process` record of category 1); Microsoft deprecates dialogs and documents business process flows or canvas apps as the replacement, with no automatic conversion | deprecated | both |
 | `workflow-wait-condition`: a classic workflow (category 0) whose stored XAML holds a wait condition, the `Postpone` activity with or without a namespace prefix; a cloud flow has no equivalent (Microsoft's feature capability comparison) | optional | both |
 | `workflow-custom-activity`: a classic workflow (category 0) whose stored XAML holds an `ActivityReference` whose `AssemblyQualifiedName` names an assembly other than `Microsoft.Crm.Workflow`; a cloud flow cannot run it | optional | both |
@@ -885,7 +888,7 @@ never by GUID:
 |---|---|
 | `blocker`, `deprecated`, `optional` | a rule matched; the evidence is the artifact `path`, its `sha256`, the first ten match `locations` (line and column) and the `match_count`, for a plug-in registration rule or `process-dialog` the recorded `field` and `value`, and for the two form and ribbon rules the `path`, `sha256`, `match_count` and `registrations`: per flagged handler its `event`, `attribute`, `function`, `library` and current `passExecutionContext`, per flagged action its `command`, `function`, `library` and `crm_parameters`; for a plug-in project the repository `path`, the `sha256` of its normalized text, `target_framework_version`, `sdk_references` and `fired` (see below) |
 | `unknown` | no rule applies to the component (reason `no rule`: a kind no rule covers, or a binary web resource); a rule needs a field the inventory did not record (`field isolation_mode not recorded`, an inventory extracted before crm recorded it); a script artifact is missing or its hash differs from the manifest; an extraction gap names the component (`extraction gap: <reason>`); its kind was not read complete (`kind coverage partial`); a form or ribbon rule cannot read its library (`library <name> is not in the inventory`, `is not a script web resource`, or the library's artifact problem) or its own XML (`artifact is not well-formed XML`); a mapped plug-in project cannot be read or judged (`project <path> unreadable: ...`, `project <path>: the project is not well-formed XML`); or the inventory's source version is not a dotted version (extract writes `unknown` when it cannot read it), so no rule's version range can be decided |
-| `clear` | the rules that apply found nothing. For a process that means only that the packaged process rules found nothing (`process-dialog`, and for a classic workflow the two XAML rules): nothing about its mode or trigger, and a business process flow, an action and a modern flow have no rule, so they read `clear`; a report is `clear` on `online` when it is a custom Reporting Services report on the `fetch` provider, a stock report or a custom link, Excel or Power BI report (outside `report-sql-datasource`), and `unknown` `no rule` on `onprem-9.1`, which has no report rule |
+| `clear` | the rules that apply found nothing. For a process that means only that the packaged process rules found nothing (`process-dialog`, and for a classic workflow the two XAML rules): nothing about its mode or trigger, and a business process flow, an action and a modern flow have no rule, so they read `clear`; a plug-in step on `online` is `clear` when its primary entity is not `systemuser` (it was `unknown` `no rule` before `step-on-systemuser`, and on `onprem-9.1` it still is): `clear` says nothing about its stage, mode or configuration, which the inventory does not judge; a report is `clear` on `online` when it is a custom Reporting Services report on the `fetch` provider, a stock report or a custom link, Excel or Power BI report (outside `report-sql-datasource`), and `unknown` `no rule` on `onprem-9.1`, which has no report rule |
 
 A gap or incomplete coverage adds an `unknown` beside the rule findings, so a component
 read only in part keeps both. The findings file
@@ -981,6 +984,46 @@ Each flagged file gives one `blocker` per rule. Its evidence is the file's repos
 file, naming no rule, with the reason, and the project's other files still report. These rules detect and
 record only: they name no transform, so [convert](#convert-code) reads no `.cs` file and writes
 no patch or ledger entry for them. The sandbox refactor stays work for a human or an agent.
+
+## Readiness checklist
+
+```bash
+crm --json inventory assess ./inv --target online --out ./findings.json
+crm --json inventory readiness ./findings.json
+```
+
+`crm inventory readiness FINDINGS` reads the file `assess --target online --out` wrote and prints
+a checklist for a move to Dataverse online: one row per gate, each `pass`, `fail`, `warn` or
+`unknown`, with the components behind it, the rule that decided it and its **basis**. It is
+offline and judges nothing again: every status is rolled up from the findings and the rules
+that made them. A findings file written for `onprem-9.1` is a usage error (exit **2**) that
+names the `assess` command to run, as is one made with other rules than this crm ships.
+
+**This is a checklist.** It does not replace the on-premises-to-online (OP2OL) service,
+Lifecycle Services or Microsoft's nomination process, and it performs none of the upgrade hops.
+Microsoft Learn documents only 2011 (UR14 or later) to 2013 and 8.2 to 9.0; the hops between
+are not documented there, and the OP2OL gates are in the
+[OP2OL whitepaper](https://aka.ms/op2olwhitepaper). A `crm2011` profile stays read-only
+([ADR 0031](../adr/0031-legacy-crm2011-read-only-soap-adapter.md)): readiness reads an inventory
+extracted from one, never the org.
+
+| Row | Status |
+|---|---|
+| `source-version` | `pass` when the inventory's recorded version is 9.0 or later, `fail` below it (the version is in the note), `unknown` when it is not a dotted version. Basis: the whitepaper |
+| one per online `blocker` rule | `fail` when a component has that rule's finding. `warn` instead for `assembly-isolation-none`: the migration converts non-sandboxed plug-ins to sandbox mode, and the code may still fail there. `unknown` when the rule's kind has an extraction gap, a kind not read complete or an `unknown` finding (a binary web resource, for a web resource rule, reads `no rule`), or when the rule needs an input the findings file does not show (`--source-host`, or `--source-map` with `--repo`). Otherwise `pass`, counting the components of that kind, and `pass (0 components)` when there are none |
+| manual gates | Listed last, with no status: database collation, size, TDE, integrity checks, target users and licences, and the rest of the whitepaper's list. The API cannot see them, so they are never `pass` |
+
+Rows come from the packaged rules that are `blocker` for `online`, so a rule added later shows up
+with no change to the command. Each row's basis says where its gate comes from: the OP2OL
+whitepaper (`source-version`, `step-on-systemuser`, `assembly-isolation-none`), or
+`Dataverse online requirement` for a rule that blocks online but is not a documented OP2OL gate
+(disk or GAC assembly storage, `crmForm` scripting and the rest). The report row stays `unknown`
+while the findings file carries the extraction gap for shared SSRS data sources: a custom SQL
+report is judged by its recorded data provider, and the data source itself lives in SSRS.
+
+`--json` returns `rows` (`gate`, `status`, `components`, `rules`, `basis`, `note`), `manual`, the
+source `inventory` version and the `target`. The exit code is **0** whenever the checklist was
+produced, whatever its rows say.
 
 ## Convert code
 
