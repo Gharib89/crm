@@ -14,7 +14,8 @@ matches one to an application repository (see [Map an inventory to source](#map-
 [Verify work packages](#verify-work-packages)), and `crm inventory assess` runs the
 packaged compatibility rules over one (see
 [Assess compatibility](#assess-compatibility)), and `crm inventory convert` writes
-patches for the code a rule can rewrite (see [Convert code](#convert-code)); packages and assess can drop unused rows (see
+patches for the code a rule can rewrite (see [Convert code](#convert-code)), and `crm inventory check-applied` proves a repository carries them (see
+[Check that a repository carries the patches](#check-that-a-repository-carries-the-patches)); packages and assess can drop unused rows (see
 [Filter and sort packages and findings by usage](#filter-and-sort-packages-and-findings-by-usage)).
 
 Extraction runs on **every profile**. A `crm2011` profile is read over the CRM 2011
@@ -1102,3 +1103,32 @@ and not inside the inventory. The repo diff derives from the deployed, normalize
 `git apply` can fail on a repository file with other line endings: convert it first, or
 apply the `.patched.js` by hand. `data` holds `patched`, `manual_review`, `entries` and
 `out`; an unreadable or foreign input or a bad `--out` exits **1**.
+
+## Check that a repository carries the patches
+
+```bash
+git -C ./app-repo apply "$PWD/patches/<package id>/<stem>.repo.diff"
+crm --json inventory check-applied ./patches --repo ./app-repo
+```
+
+`crm inventory check-applied CONVERT_OUT --repo PATH` is the gate between applying
+convert's patches and building. It reads `ledger.json` and the checkout, writes nothing
+(not the repository, not `CONVERT_OUT`), touches no org and needs no profile. For each
+ledger entry that patches a repository file it hashes the file the way convert did
+(no byte order mark, LF line endings, so a CRLF or BOM file compares correctly) and
+reports one status:
+
+| Status | The file's normalized hash |
+|---|---|
+| `applied` | equals the entry's patched hash |
+| `not_applied` | equals its original hash: the patch was left out |
+| `diverged` | equals neither: the file was edited since extraction |
+| `missing` | the file is not in the repository |
+| `not_checkable` | an entry with no repository file (a manual-review entry, or a patch for an inventory artifact only); listed with the reason |
+
+Exit **0** when every checkable entry is `applied`; **1** otherwise, with the rows that are
+not. A missing or empty `CONVERT_OUT`, or a ledger whose `schema_version` this crm does not
+read, is a usage error (exit **2**). `data` holds `all_applied`, `counts` per status and
+one row per entry (`package`, `kind`, `key`, `rule`, `status`, `path`, `reason`); with
+`--json` the envelope's `ok` is `false` on exit 1. Convert's contract is unchanged:
+it still writes only under `--out`, and applying a patch stays your `git apply`.

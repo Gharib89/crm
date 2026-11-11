@@ -2,8 +2,8 @@
 
 Inbound PRs arrive from several shipping streams — the cloud-ship routine, codex
 runs, and teammates' agent sessions — each stopping at its own merge gate with
-tests green and review-bot rounds (Codex, plus the Claude fallback when Codex
-exits not reviewed) addressed; CodeRabbit is manual, driven only by this gate. The **`merge-gate` skill**
+tests green and review-bot rounds (Claude Code, plus the Codex fallback when Claude
+exits not reviewed or is capped with findings) addressed; CodeRabbit is manual, driven only by this gate. The **`merge-gate` skill**
 (`.claude/skills/merge-gate/`, source of truth) is the maintainer's independent
 second gate: run locally (the only environment with the live-org profiles), it
 re-verifies the PR instead of trusting the author agent's claims, and leaves it
@@ -25,10 +25,10 @@ never does.
    CodeRabbit round at all — CodeRabbit owns iteration, but it does not
    auto-review this repo, so the gate posts `@coderabbitai review` to start a
    round (open PRs only): once up front if the PR carries no round, and after
-   each fix push. The ship reviewers (Codex, Claude) are not re-requested:
+   each fix push. The ship reviewers (Claude, Codex) are not re-requested:
    their threads are dispositioned once. Converged = the most recent
    *triggered* CodeRabbit round returned no new substantive threads (or CodeRabbit
-   declined to review and the verdict records it) and every Codex and Claude thread
+   declined to review and the verdict records it) and every Claude and Codex thread
    is dispositioned.
 5. **Posts a verdict** comment (checklist with evidence, fixes pushed, review
    dispositions) and sets `gate-passed` or `gate-failed`.
