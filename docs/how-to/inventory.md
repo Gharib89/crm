@@ -941,8 +941,10 @@ A file is flagged when its syntax tree holds an object creation or a member acce
 resolves to a listed type through the file's own `using` directives, `using` aliases, `using static`
 or a fully qualified name. A `using` alone, a comment, a string literal and a type of the same name
 declared in the same file are not uses, and `Path`, `Stream` and `MemoryStream` are not file
-access. A bare call under `using static` counts as a use of that type unless the file declares a
-method of that name. The files read are the `.cs` files under the project's folder, less `bin`,
+access. A target-typed `new(...)` takes its type from the declaration it initializes. A bare call, or a
+bare capitalized name such as `LocalMachine`, under `using static` counts as a use of every listed
+type imported that way unless the file declares the name: the syntax tree cannot say which type
+owns the member, so a name like `Path.Combine` next to `using static System.IO.File` over-reports. The files read are the `.cs` files under the project's folder, less `bin`,
 `obj` and any folder holding another project: a shared library reached through a
 `ProjectReference`, or a file linked from outside the folder, is not scanned.
 

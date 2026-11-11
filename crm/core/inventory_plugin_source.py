@@ -137,6 +137,16 @@ class _Imports:
         else:
             self.namespaces.append(target)
 
+    def static_member(self, name: str, at: Node) -> bool:
+        """Whether the bare *name* may be a static member imported by ``using static``."""
+        first = name.partition(".")[0]
+        return not (
+            first in self.types
+            or first in self.aliases
+            or first in self.methods
+            or self._hidden(first, at)
+        )
+
     def resolve(self, name: str, at: Node) -> str | None:
         """The listed full type name *name*, written at node *at*, stands for, or None."""
         first, _, rest = name.partition(".")
@@ -150,6 +160,16 @@ class _Imports:
         return next((c for c in candidates if c in self.listed), None)
 
 
+def _declared_type(node: Node) -> Node | None:
+    """The declared type a target-typed ``new(...)`` is created as, from its declaration."""
+    parent = node.parent
+    for _ in range(2):  # the initializer: variable_declarator, or an equals_value_clause in it
+        if parent is None or parent.type in ("variable_declaration", "property_declaration"):
+            break
+        parent = parent.parent
+    return parent.child_by_field_name("type") if parent is not None else None
+
+
 def _position(source: bytes, node: Node) -> tuple[int, int]:
     """The 1-based (line, column) of *node*, the column in characters, not bytes."""
     start = node.start_byte
@@ -160,16 +180,18 @@ def _position(source: bytes, node: Node) -> tuple[int, int]:
 def type_uses(source: bytes, listed: Collection[str]) -> dict[str, list[tuple[int, int]]] | None:
     """Each listed full type name *source* uses, with the 1-based (line, column) of every use.
 
-    *source* must be valid UTF-8. A bare call under ``using static`` is attributed to the first
-    listed type imported that way, unless the file declares a method of that name: the syntax
-    tree cannot say which type declares the method. Returns None when the file has syntax errors,
-    since a tree recovered from them proves nothing.
+    *source* must be valid UTF-8. A bare call, or a bare capitalized name that no ``using``
+    resolves and the file does not declare, is attributed to every listed type imported by
+    ``using static``: the syntax tree cannot say which type declares the member, so such a name
+    can over-report (``Path.Combine`` next to ``using static System.IO.File``). A target-typed
+    ``new(...)`` takes its type from the declaration it initializes. Returns None when the file
+    has syntax errors, since a tree recovered from them proves nothing.
     """
     root = parse("c_sharp", source)
     if error_count(root):
         return None
     imports = _Imports(root, listed)
-    static = next((s for s in imports.static if s in listed), None)
+    static_types = [s for s in imports.static if s in listed]
     found: dict[str, list[tuple[int, int]]] = {}
 
     def add(full: str | None, node: Node) -> None:
@@ -195,12 +217,24 @@ def type_uses(source: bytes, listed: Collection[str]) -> dict[str, list[tuple[in
             target = node.child_by_field_name("expression")
             name = _dotted(target)
             if target is not None and name is not None:
-                add(imports.resolve(name, target), target)
-        elif node.type == "invocation_expression" and static is not None:
+                full = imports.resolve(name, target)
+                if full is not None:
+                    add(full, target)
+                elif target.type == "identifier" and name[0].isupper():
+                    if imports.static_member(name, target):
+                        for owner in static_types:
+                            add(owner, target)
+        elif node.type == "implicit_object_creation_expression":
+            declared = _declared_type(node)
+            name = _dotted(declared)
+            if declared is not None and name is not None:
+                add(imports.resolve(name, declared), node)
+        elif node.type == "invocation_expression" and static_types:
             if (
                 function is not None
                 and function.type == "identifier"
-                and (function.text or b"").decode() not in imports.methods
+                and imports.static_member((function.text or b"").decode(), function)
             ):
-                add(static, function)
+                for owner in static_types:
+                    add(owner, function)
     return {name: sorted(sites) for name, sites in found.items()}

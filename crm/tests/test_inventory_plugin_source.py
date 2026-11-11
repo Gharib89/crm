@@ -159,3 +159,28 @@ def test_nameof_of_a_type_member_is_not_a_use() -> None:
 def test_a_using_statement_variable_hides_the_type_only_in_its_statement() -> None:
     body = 'using (var File = new MemoryStream()) { File.Dispose(); } File.Delete("p");'
     assert _uses(body, "using System.IO;") == {"System.IO.File": [(3, 59)]}
+
+
+def test_a_bare_static_member_under_using_static_is_a_use() -> None:
+    found = _uses('var k = LocalMachine.OpenSubKey("k");', "using static Microsoft.Win32.Registry;")
+    assert found == {"Microsoft.Win32.Registry": [(3, 9)]}
+
+
+def test_every_listed_using_static_type_is_credited() -> None:
+    usings = "using static System.IO.File;\nusing static Microsoft.Win32.Registry;"
+    found = _uses('var t = ReadAllText("p");', usings)
+    assert set(found) == {"System.IO.File", "Microsoft.Win32.Registry"}
+
+
+@pytest.mark.parametrize(
+    "body",
+    ['SqlConnection c = new("x");', "System.Data.SqlClient.SqlConnection c = new();"],
+    ids=["simple", "qualified"],
+)
+def test_a_target_typed_new_takes_its_type_from_the_declaration(body: str) -> None:
+    found = _uses(body, "using System.Data.SqlClient;")
+    assert set(found) == {"System.Data.SqlClient.SqlConnection"}
+
+
+def test_a_target_typed_new_of_an_unlisted_type_is_not_a_use() -> None:
+    assert _uses("MemoryStream m = new();", "using System.IO;") == {}
