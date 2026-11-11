@@ -292,6 +292,10 @@ def _field_changes(x: Record, y: Record, usage: bool = False) -> tuple[FieldChan
             and (name not in x.fields or name not in y.fields)
         ):
             continue
+        # A CRM 2011 extract, or one written before #1213, does not say whether a form is
+        # active: one side's absence is neither a change nor agreement.
+        if x.kind == "form" and name == "active" and (name not in x.fields or name not in y.fields):
+            continue
         va, vb = x.fields.get(name), y.fields.get(name)
         if not _same(va, vb):
             out.append(FieldChange(f"fields.{name}", va, vb))

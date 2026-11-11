@@ -112,9 +112,11 @@ _ORG: dict[str, list[list[dict]]] = {
     ]],
     "systemforms": [[
         {"formid": _id(60), "name": "Account", "objecttypecode": "account", "type": 2,
-         "ismanaged": False, "solutionid": _id(1), "formxml": "<form/>"},
+         "ismanaged": False, "solutionid": _id(1), "formxml": "<form/>",
+         "formactivationstate": 1},
         {"formid": _id(61), "name": "Project", "objecttypecode": "new_project", "type": 2,
-         "ismanaged": False, "solutionid": _id(2), "formxml": "<form/>"},
+         "ismanaged": False, "solutionid": _id(2), "formxml": "<form/>",
+         "formactivationstate": 0},
     ]],
     "savedqueries": [[
         {"savedqueryid": _id(70), "name": "Active Projects", "returnedtypecode": "new_project",
