@@ -109,19 +109,33 @@ CASES: dict[str, tuple[str, str | None, str, int]] = {
         "function f(Xrm) { return Xrm.Page.context.getServerUrl(); }\n"
         "var a = window.Xrm.Page.context.getServerUrl();\n"
         f"var b = {CTX}?.getServerUrl();\nvar c = {CTX}.getServerUrl?.();\n"
+        "var p = parent.Xrm.Page.context.getServerUrl();\n"
         'var d = Xrm["Page"].context.getServerUrl();\n'
         f"var e = {CTX}.getServerUrl(1);\nvar f = {CTX}.getServerUrl;\n"
         f"var g = {GC}\n  .getServerUrl(\n);\n"
         "var h = foo.getServerUrl();\n",
         None,
         "web-resource-get-server-url",
-        9,
+        10,
     ),
     "server-url-own-get-global-context": (
         "function GetGlobalContext() { return ctx; }\nvar a = GetGlobalContext().getServerUrl();\n",
         None,
         "web-resource-get-server-url",
         1,
+    ),
+    "server-url-bound-get-global-context": (
+        "var GetGlobalContext = make();\nvar a = GetGlobalContext().getServerUrl();\n"
+        "function g(GetGlobalContext) { return GetGlobalContext().getServerUrl(); }\n",
+        None,
+        "web-resource-get-server-url",
+        2,
+    ),
+    "server-url-spaced-xrm": (
+        f"var a = {GC}. getServerUrl ();\nvar b = {CTX} . getServerUrl();\n",
+        f"var a = {GC}. getClientUrl ();\nvar b = {GC} . getClientUrl();\n",
+        "web-resource-get-server-url",
+        0,
     ),
     "server-url-text-only": (
         '// ctx.getServerUrl()\nvar s = "ctx.getServerUrl()";\n'
