@@ -207,6 +207,7 @@ def test_json_output_is_the_rows_in_the_envelope(tmp_path):
         "note",
     }
     assert data["target"] == "online" and data["manual"]
+    assert data["source_version"] == "9.1.0.1"
 
 
 def test_human_output_lists_every_row_and_exits_0_on_a_fail(tmp_path):

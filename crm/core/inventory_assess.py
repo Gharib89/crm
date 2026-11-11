@@ -868,9 +868,9 @@ def read_findings(path: Path) -> FindingsFile:
     target = _field(data, "target", str, where)
     if target not in TARGETS:
         raise InventoryError(f"{where}: target {target!r} is not one of {', '.join(TARGETS)}")
-    gaps = _get(data, "unattached_gaps") or []
-    hosts = _get(data, "source_hosts") or []
-    incomplete = _get(data, "incomplete") or {}
+    gaps: list[Any] = _get(data, "unattached_gaps") or []
+    hosts: list[Any] = _get(data, "source_hosts") or []
+    incomplete: dict[Any, Any] = _get(data, "incomplete") or {}
     return FindingsFile(
         sha,
         target,
@@ -879,7 +879,7 @@ def read_findings(path: Path) -> FindingsFile:
         str(_get(header, "version") or ""),
         str(_get(_get(data, "rules"), "sha256") or ""),
         tuple(h for h in hosts if type(h) is str),
-        tuple(g for g in gaps if type(g) is dict),
+        tuple(cast(dict[str, Any], g) for g in gaps if type(g) is dict),
         {str(k): str(v) for k, v in incomplete.items()},
     )
 

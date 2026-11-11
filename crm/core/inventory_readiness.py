@@ -15,9 +15,11 @@ from typing import Any
 from crm.core.inventory import InventoryError
 from crm.core.inventory_assess import (
     Finding,
+    FindingsFile,
     HostPattern,
     PluginProject,
     PluginSource,
+    Rule,
     Rules,
     load_rules,
     read_findings,
@@ -100,14 +102,14 @@ class Row:
 
 @dataclass(frozen=True)
 class Readiness:
-    inventory: str
+    source_version: str
     target: str
     rows: tuple[Row, ...]
     manual: tuple[dict[str, str], ...]
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "inventory": self.inventory,
+            "source_version": self.source_version,
             "target": self.target,
             "rows": [r.to_dict() for r in self.rows],
             "manual": list(self.manual),
@@ -130,7 +132,7 @@ def _version_row(text: str) -> Row:
     return Row("source-version", "pass" if ok else "fail", 0, (), WHITEPAPER, note)
 
 
-def _rule_row(rule: Any, findings: list[Finding], found: Any) -> Row:
+def _rule_row(rule: Rule, findings: list[Finding], found: FindingsFile) -> Row:
     info = OP2OL_GATES.get(rule.id, GateInfo())
     of_kind = [f for f in findings if f.kind == rule.kind]
     total = {f.key for f in of_kind}

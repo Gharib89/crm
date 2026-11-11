@@ -900,7 +900,7 @@ def inventory_readiness_cmd(ctx: CLIContext, findings: Path):
     ctx.emit(
         True,
         table={"headers": ["gate", "status", "components", "basis", "note"], "rows": rows},
-        meta={"inventory source version": result.inventory, "target": result.target},
+        meta={"source version": result.source_version, "target": result.target},
     )
 
 
