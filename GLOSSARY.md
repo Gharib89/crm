@@ -610,7 +610,7 @@ _Avoid_: codemod, fixer, conversion rule.
 
 **Manual-review entry**:
 A place where a compatibility rule with a transform matched legacy code but the transform
-could not prove an equivalent rewrite, recorded with its file, line, rule and reason and left unchanged.
+could not prove an equivalent rewrite, recorded with its file, line, rule and reason and left unchanged. It may also carry a `snippet` of the statement, the rule's `replacement` and, for a `getUserRoles()` call, a `return_use`: optional fields a reader that ignores unknown fields can skip.
 _Avoid_: TODO, warning, low-confidence rewrite.
 
 **Ribbon diff**:

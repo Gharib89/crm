@@ -152,6 +152,7 @@ def test_a_project_referencing_xrm_client_yields_a_manual_review_entry(world: Wo
     assert review["rule"] == CSPROJ_TRANSFORM
     assert review["file"] == "src/Contoso.Client/Contoso.Client.csproj"
     assert "Microsoft.Xrm.Client" in review["reason"] and review["line"] is not None
+    assert not {"snippet", "replacement", "return_use"} & set(review)
 
 
 def test_an_unmapped_assembly_has_no_entry(world: World) -> None:
