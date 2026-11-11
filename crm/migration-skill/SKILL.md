@@ -62,8 +62,8 @@ applies; the Workflow below governs the rest.
 7. **Patch, build and verify on the cloud dev or test org.** Workflow steps
    5 to 7, unchanged. Done when they hold.
 
-The staged path's "stop before the next stage" instruction does not apply on
-this route: there is no next stage to hold.
+The staged path's rule to hold before the next stage does not apply on this
+route: there is no next stage.
 
 ## Workflow
 

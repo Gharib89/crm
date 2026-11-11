@@ -367,9 +367,9 @@ Ask that team for:
 
 | Request | What it lets you conclude |
 |---|---|
-| One read-only `crm inventory extract` at the 9.1 stage, in the same scope | Two diffs (2011 to 9.1, 9.1 to cloud) replace the single one, and each entry is tied to the hop it appeared in |
+| One read-only `crm inventory extract` at the 9.1 stage, with usage, in the same scope | Two diffs (2011 to 9.1, 9.1 to cloud) replace the single one, and each entry is tied to the hop it appeared in |
 | The components they disabled, removed or changed to pass each hop and the on-premises to online validation | A `removed` or `changed` entry is a deliberate act, not a loss; an entry absent from the list is unexplained |
-| The upgrade logs | Components the upgrade tooling dropped or rewrote without anyone recording it |
+| The upgrade logs of each hop and of the validation | Components the upgrade tooling dropped or rewrote without anyone recording it |
 | Whether forms were merged | A `removed` form is a merge, not a lost form |
 | Which SQL objects and SQL-based reports were dropped | A `removed` SQL-based report or component was dropped on purpose, and the cloud org no longer has that behavior |
 
