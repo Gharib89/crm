@@ -1094,7 +1094,7 @@ def _isolated_inputs(tmp_path: Path):
     source_map.write_text(
         dump_source_map(map_source(folder, _write_repo(tmp_path / "repo"))), encoding="utf-8"
     )
-    return folder, source_map, None
+    return folder, source_map
 
 
 def _process_findings(folder: Path, tmp_path: Path, hits: dict[str, str]) -> Path:
@@ -1128,7 +1128,7 @@ HITS = {"dialog": "deprecated", "workflow": "blocker", "optional": "optional", "
 
 
 def _built(tmp_path: Path, hits: dict[str, str] | None = HITS, **kwargs):
-    folder, source_map, _ = _isolated_inputs(tmp_path)
+    folder, source_map = _isolated_inputs(tmp_path)
     findings = (
         read_findings(_process_findings(folder, tmp_path, hits)) if hits is not None else None
     )
@@ -1161,7 +1161,7 @@ def test_optional_or_unknown_process_finding_forms_no_package(tmp_path):
 
 
 def test_a_blocker_on_another_kind_still_forms_no_package(tmp_path):
-    folder, source_map, _ = _isolated_inputs(tmp_path)
+    folder, source_map = _isolated_inputs(tmp_path)
     data = json.loads(_process_findings(folder, tmp_path, HITS).read_text(encoding="utf-8"))
     data["findings"].append(
         {
@@ -1181,7 +1181,7 @@ def test_a_blocker_on_another_kind_still_forms_no_package(tmp_path):
 
 
 def test_a_process_already_in_a_package_forms_no_second_one(tmp_path):
-    folder, source_map, _ = _isolated_inputs(tmp_path)
+    folder, source_map = _isolated_inputs(tmp_path)
     plain = build_packages(folder, read_source_map(source_map))
     findings = read_findings(_process_findings(folder, tmp_path, {"dialog": "blocker"}))
     found = build_packages(folder, read_source_map(source_map), None, findings)
@@ -1196,25 +1196,27 @@ def test_a_process_already_in_a_package_forms_no_second_one(tmp_path):
 
 
 def test_process_packages_leave_the_other_ids_and_bytes_alone(tmp_path):
-    folder, found = _built(tmp_path)
-    _, plain = _built(tmp_path / "again", hits=None)
-    old = {p.id: p for p in plain.packages}
-    new = {p.id: p for p in found.packages}
-    assert set(old) < set(new) and len(new) == len(old) + 2
-    for pid, package in old.items():
-        assert _dicts([package]) == _dicts([new[pid]]) or package.members == new[pid].members
-    one, two = tmp_path / "one", tmp_path / "two"
+    _, found = _built(tmp_path)
+    _, base = _built(tmp_path / "base", hits={"dialog": "optional", "workflow": "optional"})
+    assert {p.id for p in base.packages} < {p.id for p in found.packages}
+    assert len(found.packages) == len(base.packages) + 2
+    one, two, again = tmp_path / "one", tmp_path / "two", tmp_path / "again"
     write_packages(found, one)
-    write_packages(_built(tmp_path / "third")[1], two)
+    write_packages(base, two)
+    write_packages(_built(tmp_path / "third")[1], again)
+    for p in base.packages:
+        assert (one / f"{p.id}.json").read_bytes() == (two / f"{p.id}.json").read_bytes()
     for p in one.iterdir():
-        assert p.read_bytes() == (two / p.name).read_bytes()
+        assert p.read_bytes() == (again / p.name).read_bytes()
 
 
-def test_filters_keep_working_on_process_packages(tmp_path):
-    _, result = _built(tmp_path, in_use=True, exclude_unknown=True, sort="usage")
-    assert result.summary()["compatibility"]["unplaced"] == len(result.unplaced)
-    for p in result.index()["packages"]:
-        assert p["counts"].keys() == {"blocker", "deprecated", "optional", "unknown"}
+def test_filters_apply_to_process_packages(tmp_path):
+    _, every = _built(tmp_path)
+    _, kept = _built(tmp_path / "f", in_use=True, exclude_unknown=True, sort="usage")
+    ids = {p.id for p in every.packages}
+    assert {p.id for p in kept.packages} <= ids
+    assert len(kept.packages) + kept.usage_filtered == len(every.packages)
+    assert kept.summary()["compatibility"]["unplaced"] == len(kept.unplaced)
 
 
 def _packages_folder(tmp_path: Path):
@@ -1251,7 +1253,7 @@ def test_verify_judges_a_process_only_package(tmp_path):
         return found["verdict"]
 
     body = b"ok\n"
-    (run).mkdir()
+    run.mkdir(exist_ok=True)
     (run / "e.txt").write_bytes(body)
     good = [{"path": "e.txt", "sha256": hashlib.sha256(body).hexdigest()}]
     assert verdict(None) == "not_tested"
@@ -1271,4 +1273,5 @@ def test_convert_writes_no_ledger_entry_for_a_process_only_package(tmp_path):
     )  # fmt: skip
     assert res.exit_code == 0, res.output
     entries = json.loads((dest / "ledger.json").read_text(encoding="utf-8"))["entries"]
-    assert not [e for e in entries if e["kind"] == "process" and "dialog" in e["key"].lower()]
+    keys = {inv.component_key("process", f) for f in ISOLATED.values()}
+    assert not [e for e in entries if e["kind"] == "process" and e["key"] in keys]

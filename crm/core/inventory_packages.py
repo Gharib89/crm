@@ -45,6 +45,8 @@ from crm.utils.safe_xml import fromstring
 
 #: The compatibility classes a package counts; ``clear`` is merged nowhere.
 COMPAT_CLASSES = ("blocker", "deprecated", "optional", "unknown")
+#: A finding of these classes on a process makes a package of its group.
+PACKAGE_FORCING_CLASSES = ("blocker", "deprecated")
 
 #: The format version of the index and package files.
 SCHEMA_VERSION = 1
@@ -980,12 +982,12 @@ def build_packages(
             judged.setdefault(_id(f.kind, f.key), []).append(f)
     placed: set[str] = set()
     # A process finding that blocks or retires the process forces a package (see docstring).
-    forcing = {
+    forced = {
         m
         for m, found in judged.items()
         if m in nodes
         and nodes[m].kind == "process"
-        and any(f.cls in ("blocker", "deprecated") for f in found)
+        and any(f.cls in PACKAGE_FORCING_CLASSES for f in found)
     }
 
     usages = derive_usage(inv.records, refs.edges | structural, inv.extracted_at)
@@ -1014,9 +1016,7 @@ def build_packages(
         ]
         # An edge outside the read is listed, but alone it does not make a package.
         if not members or not (
-            any(not f.out_of_scope for f in findings)
-            or members & mapped.keys()
-            or members & forcing
+            any(not f.out_of_scope for f in findings) or members & mapped.keys() or members & forced
         ):
             continue
         if findings_file is not None:
