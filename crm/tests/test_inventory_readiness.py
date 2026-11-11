@@ -87,6 +87,8 @@ def test_each_gate_reads_the_findings_of_its_rule(tmp_path):
     # counted under a failure, and the steps off systemuser are `clear`.
     assert rows["assembly-storage-online"].components == 1
     assert rows["step-on-systemuser"].components == 1
+    # The clean assembly is counted: storage fails 1 of 3 assemblies, and says 2 pass it.
+    assert "2 of 3 pass this gate" in rows["assembly-storage-online"].note
     assert rows["csproj-sdk-net462"].status == "unknown"  # needs --source-map and --repo
 
 
@@ -232,3 +234,15 @@ def test_a_usage_filtered_findings_file_is_refused(tmp_path):
         readiness.readiness(path)
     res = CliRunner().invoke(cli, ["inventory", "readiness", str(path)])
     assert res.exit_code == 2 and "usage_filtered" in res.output
+
+
+@pytest.mark.parametrize(
+    ("field", "value"), [("incomplete", ["x"]), ("unattached_gaps", "ab"), ("source_hosts", "ab")]
+)
+def test_a_malformed_findings_field_is_a_usage_error_not_a_traceback(tmp_path, field, value):
+    path = _findings_file(tmp_path)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data[field] = value
+    path.write_text(json.dumps(data), encoding="utf-8")
+    res = CliRunner().invoke(cli, ["inventory", "readiness", str(path)])
+    assert res.exit_code == 2 and field in res.output

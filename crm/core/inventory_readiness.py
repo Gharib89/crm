@@ -156,7 +156,9 @@ def _rule_row(rule: Rule, findings: list[Finding], found: FindingsFile) -> Row:
     ids = (rule.id,)
     if hits:
         status = "warn" if info.warn else "fail"
-        return Row(rule.id, status, len(hits), ids, info.basis, info.warn or rule.title)
+        passed = len(total - hits - {f.key for f in unknown})
+        note = f"{info.warn or rule.title} ({passed} of {len(total)} pass this gate)"
+        return Row(rule.id, status, len(hits), ids, info.basis, note)
     if reasons:
         shown = sorted(reasons)[:_REASONS_SHOWN]
         more = len(reasons) - len(shown)

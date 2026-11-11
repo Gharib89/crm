@@ -769,6 +769,16 @@ def _field(obj: Any, name: str, kind: type, where: str) -> Any:
     return value
 
 
+def _listed(obj: Any, name: str, kind: type, where: str) -> Any:
+    """``obj[name]`` when present: a *kind*, or absent/empty (an empty *kind*)."""
+    value = _get(obj, name)
+    if not value:
+        return kind()
+    if type(value) is not kind:
+        raise InventoryError(f"{where}: {name} must be a {kind.__name__}")
+    return value
+
+
 def _evidence(value: Any, where: str) -> Evidence | None:
     if value is None:
         return None
@@ -870,9 +880,9 @@ def read_findings(path: Path) -> FindingsFile:
     target = _field(data, "target", str, where)
     if target not in TARGETS:
         raise InventoryError(f"{where}: target {target!r} is not one of {', '.join(TARGETS)}")
-    gaps: list[Any] = _get(data, "unattached_gaps") or []
-    hosts: list[Any] = _get(data, "source_hosts") or []
-    incomplete: dict[Any, Any] = _get(data, "incomplete") or {}
+    gaps: list[Any] = _listed(data, "unattached_gaps", list, where)
+    hosts: list[Any] = _listed(data, "source_hosts", list, where)
+    incomplete: dict[Any, Any] = _listed(data, "incomplete", dict, where)
     usage_filtered = _get(data, "usage_filtered") or 0
     return FindingsFile(
         sha,
