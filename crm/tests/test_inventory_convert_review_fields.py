@@ -24,7 +24,7 @@ CTX = "Xrm.Page.context"
 NEW_FIELDS = ("snippet", "replacement", "return_use")
 LONG_ARG = "x" * 300
 
-#: case: (source, line of the site, expected snippet, expected return_use or None)
+#: case: (source, line of the site, expected snippet, expected return_use)
 ROLES: dict[str, tuple[str, int, str, str]] = {
     "assigned": (
         f"var r = {CTX}.getUserRoles();\n",
@@ -69,6 +69,18 @@ ROLES: dict[str, tuple[str, int, str, str]] = {
         1,
         f"var n = ({CTX}.getUserRoles()).length;",
         "member",
+    ),
+    "one-line-if-header": (
+        f"if ({CTX}.getUserRoles().length) {{ foo(); }}\n",
+        1,
+        f"if ({CTX}.getUserRoles().length) {{ foo(); }}",
+        "member",
+    ),
+    "one-line-if-body": (
+        f"if (ok) {{ check({CTX}.getUserRoles()); }}\n",
+        1,
+        f"check({CTX}.getUserRoles());",
+        "argument",
     ),
     "discarded": (f"{CTX}.getUserRoles();\n", 1, f"{CTX}.getUserRoles();", "discarded"),
     "other": (

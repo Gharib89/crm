@@ -143,24 +143,37 @@ class ManualReview:
 
     def to_dict(self) -> dict[str, Any]:
         base = {"file": self.file, "line": self.line, "rule": self.rule, "reason": self.reason}
-        extra = {"snippet": self.snippet, "replacement": self.replacement}
-        extra["return_use"] = self.return_use
-        return base | {k: v for k, v in extra.items() if v is not None}
+        optional = {
+            "snippet": self.snippet,
+            "replacement": self.replacement,
+            "return_use": self.return_use,
+        }
+        return base | {k: v for k, v in optional.items() if v is not None}
 
 
 #: The most characters of a manual-review entry's ``snippet``, its closing ``...`` included.
 SNIPPET_MAX = 240
-_STATEMENTS = ("lexical_declaration", "variable_declaration")
+_DECLARATIONS = ("lexical_declaration", "variable_declaration")
 
 
-def _snippet(source: bytes, line: int, root: Node | None) -> str | None:
-    """The source text of the statement holding 1-based *line*, trimmed and capped at
+def _is_statement(node: Node) -> bool:
+    return node.type.endswith("_statement") or node.type in _DECLARATIONS
+
+
+def _snippet(source: bytes, line: int, root: Node | None, column: int | None = None) -> str | None:
+    """The source text of the statement holding 1-based *line* (at 0-based *column* when the
+    transform gave one, else the innermost statement on the line), trimmed and capped at
     `SNIPPET_MAX`; with no JavaScript tree *root* (an HTML page, XML), the line itself.
     """
     row = line - 1
     if root is None:
         lines = source.split(b"\n")
         text = lines[row] if 0 <= row < len(lines) else b""
+    elif column is not None:
+        node = root.descendant_for_point_range((row, column), (row, column))
+        while node is not None and not _is_statement(node):
+            node = node.parent
+        text = node.text if node is not None and node.text else b""
     else:
         best: Node | None = None
         stack = [root]
@@ -169,12 +182,10 @@ def _snippet(source: bytes, line: int, root: Node | None) -> str | None:
             if not node.start_point.row <= row <= node.end_point.row:
                 continue
             stack.extend(node.children)
-            if node.type.endswith("_statement") or node.type in _STATEMENTS:
-                if (
-                    best is None
-                    or node.end_byte - node.start_byte <= best.end_byte - best.start_byte
-                ):
-                    best = node
+            if _is_statement(node) and (
+                best is None or node.end_byte - node.start_byte <= best.end_byte - best.start_byte
+            ):
+                best = node
         text = best.text if best is not None and best.text else b""
     out = text.decode("utf-8", "replace").strip()
     if len(out) > SNIPPET_MAX:
@@ -981,7 +992,7 @@ def convert(
                         u.line,
                         rule.id,
                         u.reason,
-                        _snippet(source, u.line, tree),
+                        _snippet(source, u.line, tree, u.column),
                         rule.fix,
                         u.return_use,
                     )

@@ -17,7 +17,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Literal, NamedTuple
 
 if TYPE_CHECKING:
     from tree_sitter import Node
@@ -32,17 +32,21 @@ class Edit:
     text: bytes
 
 
+ReturnUse = Literal["assigned", "returned", "argument", "member", "discarded", "other"]
+
+
 @dataclass(frozen=True)
 class Unproven:
     """A site (1-based *line*) the rule matches but the transform will not rewrite, and why.
 
-    *return_use* is how the site's call result is read, where the transform knows it (see
-    `_return_use`).
+    *column* (0-based) pins the site within its line and *return_use* is how the site's call
+    result is read, where the transform knows them (see `_return_use`).
     """
 
     line: int
     reason: str
-    return_use: str | None = None
+    return_use: ReturnUse | None = None
+    column: int | None = None
 
 
 class Used(NamedTuple):
@@ -342,7 +346,7 @@ def _context_receiver(node: Node) -> tuple[Node, bool] | None:
     return None
 
 
-def _return_use(call: Node | None) -> str:
+def _return_use(call: Node | None) -> ReturnUse:
     """How the value of *call* is read, for a reviewer finishing a rewrite the transform will
     not: ``assigned``, ``returned``, ``argument``, ``member`` (a property, method or index read
     off the result), ``discarded`` or ``other``.
@@ -412,7 +416,9 @@ def _plan_context_settings(root: Node) -> Plan:
                 )
         if reason is not None or call is None or recv.text is None or m.text is None:
             use = _return_use(call) if name == b"getUserRoles" else None
-            unproven.append(Unproven(line, reason or "not a direct call", use))
+            unproven.append(
+                Unproven(line, reason or "not a direct call", use, m.start_point.column)
+            )
             continue
         gap = m.text[len(recv.text) : len(m.text) - len(name)]
         head = _GLOBAL_CONTEXT if direct else recv.text
