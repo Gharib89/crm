@@ -329,8 +329,8 @@ def _detection(
             raise InventoryError(f"rules file {where}.web_resource_types must hold integers")
         return ContentPattern(pattern, tuple(cast(list[int], types)))
     if detection_type == "host_pattern":
-        types = obj.get("web_resource_types", [])
-        if not isinstance(types, list) or not all(type(t) is int for t in types):
+        types = _items(obj, "web_resource_types", where) if "web_resource_types" in obj else []
+        if not all(type(t) is int for t in types):
             raise InventoryError(f"rules file {where}.web_resource_types must hold integers")
         if bool(types) != (kind == "web_resource"):
             raise InventoryError(
@@ -703,7 +703,7 @@ def dump_findings(result: AssessResult, *, generated_at: str | None = None) -> s
     stamp = generated_at or datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     used = sorted({f.rule for f in result.findings if f.rule})
     by_id = {r.id: r for r in result.rules.rules}
-    body = {
+    body: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
         "generated_at": stamp,
         "inventory": result.inventory,

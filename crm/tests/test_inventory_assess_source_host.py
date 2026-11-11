@@ -116,6 +116,7 @@ def test_the_match_is_case_insensitive_and_whole_host(folder):
 def test_a_fully_qualified_host_matches_only_itself(folder):
     js = ("web_resource", "new_hit.js")
     hit = _hits(assess.assess(folder, "online", source_hosts=("crm01.contoso.com",)))[js]
+    assert isinstance(hit.evidence, assess.ContentEvidence)
     assert hit.evidence.locations == ((3, 16),)
 
 
