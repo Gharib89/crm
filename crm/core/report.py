@@ -25,8 +25,10 @@ may carry more than one category — one ``reportcategory`` record per area.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, NamedTuple
+from xml.etree.ElementTree import Element, ParseError
 
+from crm.utils import safe_xml
 from crm.utils.d365_backend import (
     D365Backend,
     D365Error,
@@ -64,6 +66,71 @@ _LIST_SELECT = "reportid,name,filename,reporttypecode,ispersonal,description"
 _GET_SELECT = _LIST_SELECT + ",bodyurl,bodytext,languagecode"
 
 
+class RdlProvider(NamedTuple):
+    """A report's data provider: ``fetch``, ``sql`` or ``unknown`` (with a reason)."""
+
+    provider: str
+    reason: str | None = None
+
+
+def _local(tag: str) -> str:
+    """Tag name without its namespace, so the 2005 and 2008 RDL schemas read alike."""
+    return tag.rpartition("}")[2]
+
+
+def _child_text(node: Element, *path: str) -> str | None:
+    for name in path:
+        nxt = next((c for c in node if _local(c.tag) == name), None)
+        if nxt is None:
+            return None
+        node = nxt
+    return (node.text or "").strip()
+
+
+def classify_rdl(text: str) -> RdlProvider:
+    """Classify the data provider of an RDL document, structurally and without I/O.
+
+    ``sql`` if any data source uses the ``SQL`` provider; otherwise ``unknown`` if
+    any source cannot be resolved (a shared ``DataSourceReference`` whose
+    definition lives only in SSRS, an unrecognised provider, no source at all);
+    otherwise ``fetch`` (every source is ``MSCRMFETCH``). Never raises.
+    """
+    if not text.strip():
+        return RdlProvider("unknown", "no RDL body")
+    try:
+        root = safe_xml.fromstring(text.lstrip("\ufeff"))
+    except ParseError:
+        return RdlProvider("unknown", "RDL is not parseable XML")
+    if _local(root.tag) != "Report":
+        return RdlProvider("unknown", "not a report definition (root is not Report)")
+    sources = [
+        s
+        for container in root
+        if _local(container.tag) == "DataSources"
+        for s in container
+        if _local(s.tag) == "DataSource"
+    ]
+    if not sources:
+        return RdlProvider("unknown", "report has no data source")
+    unresolved: list[str] = []
+    for source in sources:
+        provider = _child_text(source, "ConnectionProperties", "DataProvider")
+        ref = _child_text(source, "DataSourceReference")
+        if provider is not None and provider.casefold() == "sql":
+            return RdlProvider("sql")
+        if provider is not None and provider.casefold() == "mscrmfetch":
+            continue
+        if provider:
+            unresolved.append(f"unrecognised data provider {provider!r}")
+        elif ref:
+            unresolved.append(f"shared data source {ref!r} is defined only in Reporting Services")
+        else:
+            unresolved.append("data source names no provider")
+    if unresolved:
+        return RdlProvider("unknown", unresolved[0])
+    return RdlProvider("fetch")
+
+
 def _normalize_report_id(report_id: str) -> str:
     """Strip braces and validate *report_id* as a GUID (raises on a bad id),
     matching the id discipline of the other by-id core verbs.
@@ -88,6 +155,10 @@ def _project(row: dict[str, Any], *, full: bool = False) -> dict[str, Any]:
         rec["bodyurl"] = row.get("bodyurl")
         rec["bodytext"] = row.get("bodytext")
         rec["languagecode"] = row.get("languagecode")
+        provider = classify_rdl(row.get("bodytext") or "")
+        rec["data_provider"] = provider.provider
+        if provider.reason:
+            rec["data_provider_reason"] = provider.reason
     return rec
 
 

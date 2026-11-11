@@ -3,12 +3,15 @@
 # pyright: basic
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 import requests_mock
 
 from crm.core import report
 from crm.utils.d365_backend import D365Error
 
+_FIXTURES = Path(__file__).parent / "fixtures" / "report"
 _REPORT_ID = "11112222-3333-4444-5555-666677778888"
 _NEW_ID = "99998888-7777-6666-5555-444433332222"
 _RC_ID = "aaaabbbb-cccc-dddd-eeee-ffff00001111"
@@ -49,8 +52,26 @@ class TestGetReport:
         with requests_mock.Mocker() as m:
             m.get(backend.url_for(f"reports({_REPORT_ID})"), json=_ROW)
             result = report.get_report(backend, _REPORT_ID)
+        assert result["data_provider"] == "unknown"
+        assert result["data_provider_reason"]
         assert result["bodytext"] == "<Report/>"
         assert result["name"] == "Quarterly Sales"
+
+    def test_fetch_rdl_reports_provider_without_reason(self, backend):
+        row = {**_ROW, "bodytext": (_FIXTURES / "fetch.rdl").read_text("utf-8")}
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(f"reports({_REPORT_ID})"), json=row)
+            result = report.get_report(backend, _REPORT_ID)
+        assert result["data_provider"] == "fetch"
+        assert "data_provider_reason" not in result
+
+    @pytest.mark.parametrize("body", [None, ""])
+    def test_no_body_is_unknown_with_reason(self, backend, body):
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(f"reports({_REPORT_ID})"), json={**_ROW, "bodytext": body})
+            result = report.get_report(backend, _REPORT_ID)
+        assert result["data_provider"] == "unknown"
+        assert "no RDL body" in result["data_provider_reason"]
 
     def test_invalid_id_raises(self, backend):
         with pytest.raises(D365Error):
