@@ -157,7 +157,11 @@ def inventory_extract_cmd(
     solutions, their members and their entities' parts (a member assembly's
     plug-in types included), and keeps stock. A managed solution cannot be
     exported, so its ribbon diff is not read: it is recorded as a gap, and
-    `ribbon_diff` reads `unsupported` when every named solution is managed.
+    `ribbon_diff` reads `unsupported` when every named solution is managed. A whole-org
+    run on Dataverse online, which cannot export the Default solution, rebuilds the diffs
+    from the unmanaged rows of the ribbon diff and ribbon command tables: `ribbon_diff`
+    reads `partial`, with a gap for the rules, templates, labels and managed diffs it
+    omits, and `unsupported` only if a table read faults (the run still exits 0).
     Each finished read is checkpointed under DIR/.checkpoint, so re-running
     the same command after an interruption resumes, reusing the finished reads. A failed kind is
     recorded in the manifest's coverage and the run goes on (exit code 1); the

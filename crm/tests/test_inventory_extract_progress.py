@@ -53,11 +53,13 @@ def _stage(events: list[Progress], name: str) -> list[Progress]:
 def test_each_stage_starts_and_ends_with_its_total(tmp_path):
     events = _run(FakeBackend(), tmp_path / "inv")
     stages = list(dict.fromkeys(e.stage for e in events))
-    assert stages == ["source", "records", "entity_detail", "ribbons", "build"]
+    # A cloud org reads its ribbon diffs from the ribbon tables: one more stage.
+    assert stages == ["source", "records", "entity_detail", "ribbons", "ribbon_diffs", "build"]
     for name, total in (
         ("source", 3),
         ("records", len(inventory_extract._V9_READS)),  # pyright: ignore[reportPrivateUsage]
         ("entity_detail", len(_ENTITIES)),
+        ("ribbon_diffs", 1),
     ):
         got = _stage(events, name)
         assert (got[0].done, got[0].total) == (0, total)

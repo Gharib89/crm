@@ -54,7 +54,10 @@ runs it too. It reads every v1 kind (`scope.mode: "org"` unless you pass
   from the stock one. It is read from a solution export (`ExportSolution`), so the
   org-wide read exports the Default solution (CRM 2011: about 4 minutes and 90 MB on a
   large org; the zip is streamed to disk, read once and deleted). Dataverse online
-  refuses to export the Default solution, so there the kind is `unsupported` with a gap;
+  refuses to export the Default solution, so there an org-wide run reads the unmanaged
+  rows of the `ribbondiffs` and `ribboncommands` tables instead (Default-only
+  customizations included) and rebuilds one diff per entity: the kind is `partial` with a
+  gap, and `unsupported` only if those tables cannot be read;
   `--solution` exports the named solutions on any platform. The records are
   `ribbon_diff`, key the entity logical name (`""` for the application), artifact
   `ribbon-diff.xml`; an entity with an empty diff has none.
@@ -283,9 +286,13 @@ names the endpoint:
   the read), nor is the ribbon of an entity with no collection label in your
   language (the Web API faulted that read on a cloud org; on-prem v9 is not
   measured), and one gap lists them all;
-- the **ribbon diffs of a whole-org run on Dataverse online**: the platform refuses to
-  export the Default solution, so none are read (`ribbon_diff` coverage is
-  `unsupported`); run with `--solution` to read the named solutions';
+- **parts of the ribbon diffs of a whole-org run on Dataverse online**: the platform
+  refuses to export the Default solution, so the diffs are rebuilt from the unmanaged
+  rows of the ribbon tables (`ribbon_diff` coverage is `partial`). Each holds its
+  `CustomActions` and `CommandDefinitions`; its `RuleDefinitions`, `Templates` and
+  `LocLabels` are not read (no rule content or label table was measured), nor is any
+  managed diff. If a table read faults the kind is `unsupported` with the reason and
+  the run still exits 0; `--solution` reads the named solutions' whole diffs;
 - the **ribbon diff of a managed solution** in a `--solution` run: a managed solution
   cannot be exported, so each is a `ribbon_diff` gap, and the kind reads `unsupported`
   when every named solution is managed;
@@ -890,6 +897,7 @@ file, line, rule and reason, and are left unchanged. An HTML web resource (type 
 |---|---|---|---|
 | `web-resource-xrm-page` | `global-context` | `Xrm.Page.context.<m>()` to `Xrm.Utility.getGlobalContext().<m>()` for `getClientUrl`, `getVersion`, `getQueryStringParameters`, `isOutlookClient`, `isOutlookOnline`, `prependOrgName` | an alias, any other use of `Xrm.Page.context`, an unknown method |
 | `web-resource-context-settings` | `context-settings` | a direct call on `Xrm.Page.context` or `Xrm.Utility.getGlobalContext()`: `getUserName`, `getUserId`, `getUserLcid` to `userSettings.userName`, `.userId`, `.languageId`; `getTimeZoneOffsetMinutes()` to `userSettings.getTimeZoneOffsetMinutes()`; `getOrgLcid`, `getOrgUniqueName`, `getIsAutoSaveEnabled` to `organizationSettings.languageId`, `.uniqueName`, `.isAutoSaveEnabled` | a call with arguments; every `getUserRoles()` call (manual review) |
+| `web-resource-get-server-url` | `server-url` | `<ctx>.getServerUrl()` to `<ctx>.getClientUrl()` (only the method name changes) when `<ctx>` is `Xrm.Page.context`, `Xrm.Utility.getGlobalContext()` or the standalone page form `GetGlobalContext()` | any other receiver (`foo.getServerUrl()`), a file that declares or binds its own `GetGlobalContext`, a call with arguments, a non-call read of `getServerUrl`. The equivalence of the two methods on a 2011 org is the rule's judgment (no Microsoft Learn page names `getServerUrl`): `inventory verify` proves the behaviour |
 | `web-resource-grid-row` | `grid-row` | `<row>.getData().getEntity()` to `<row>.data.entity` | `getData()` or `getEntity()` alone (the file does not prove the receiver) |
 | `web-resource-xrm-mobile-offline` | `mobile-offline` | `Xrm.Mobile.offline.<m>(...)` to `Xrm.WebApi.offline.<m>(...)` for `createRecord`, `retrieveRecord`, `retrieveMultipleRecords`, `updateRecord`, `deleteRecord` | `isOfflineEnabled` and any other use |
 | `web-resource-entity-save` | `entity-save` | `<x>.data.entity.save()` to `<x>.data.save()` | `save(saveOption)` with an argument |
