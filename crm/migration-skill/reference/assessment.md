@@ -155,7 +155,7 @@ ambiguous assembly, no source was read: a `clear` there says nothing about the c
   and `match_count`. `locations` holds only the first ten uses (line and column), so re-read
   the file for the rest before calling the refactor done.
 - **`unknown`** reasons start `source <path>` and say the file is unreadable, not UTF-8 or
-  failed to parse. One `unknown` per file, with no rule; the project's other files still
+  has syntax errors. One `unknown` per file, with no rule; the project's other files still
   report. Open the file: fix a real syntax error or the map, or name the file in the entry
   when it is valid C# the parser rejects, then re-run.
 - **Scope**: the project's own `.cs` files. A shared library reached by a `ProjectReference`

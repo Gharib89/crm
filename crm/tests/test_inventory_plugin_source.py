@@ -48,12 +48,21 @@ def test_a_using_imports_types_not_child_namespaces() -> None:
 
 @pytest.mark.parametrize(
     "declaration",
-    ["string File;", "string File { get; set; }", "void N(string File) { }"],
-    ids=["field", "property", "parameter"],
+    ["string File;", "string File { get; set; }"],
+    ids=["field", "property"],
 )
-def test_a_member_or_parameter_named_like_a_type_hides_the_import(declaration: str) -> None:
+def test_a_member_named_like_a_type_hides_the_import(declaration: str) -> None:
     source = f"using System.IO;\nclass P {{ {declaration} void M() {{ File.Trim(); }} }}\n"
     assert type_uses(source.encode(), LISTED) == {}
+
+
+def test_a_parameter_named_like_a_type_hides_the_import_in_its_method_only() -> None:
+    source = (
+        "using System.IO;\nclass P { void N(string File) { File.Trim(); } "
+        'void M() { File.Delete("p"); } }\n'
+    )
+    found = type_uses(source.encode(), LISTED) or {}
+    assert [len(sites) for sites in found.values()] == [1]
 
 
 def test_a_local_variable_named_like_a_type_hides_the_import() -> None:
@@ -126,3 +135,22 @@ def test_a_syntax_error_is_none() -> None:
 def test_the_column_counts_characters_not_bytes() -> None:
     source = 'using System.IO;\nclass P { void M() { var s = "é€"; File.Delete(s); } }\n'
     assert type_uses(source.encode(), LISTED) == {"System.IO.File": [(2, 36)]}
+
+
+def test_a_member_of_one_class_does_not_hide_the_type_in_another() -> None:
+    source = (
+        'using System.IO;\nclass A { string File; }\nclass B { void M() { File.Delete("p"); } }\n'
+    )
+    assert set(type_uses(source.encode(), LISTED) or {}) == {"System.IO.File"}
+
+
+def test_a_local_variable_hides_the_type_only_in_its_block() -> None:
+    source = (
+        "using System.IO;\n"
+        'class P { void M() { { var File = "x"; File.Trim(); } File.Delete("p"); } }\n'
+    )
+    assert type_uses(source.encode(), LISTED) == {"System.IO.File": [(2, 55)]}
+
+
+def test_nameof_of_a_type_member_is_not_a_use() -> None:
+    assert _uses("var n = nameof(File.Delete);", "using System.IO;") == {}

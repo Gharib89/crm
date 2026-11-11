@@ -1327,14 +1327,7 @@ def _assess_record(
                     sources = _read_sources(*project, listed)
                     # No single rule reads a file it cannot parse: one unknown per file.
                     out += [
-                        Finding(
-                            record.kind,
-                            record.key,
-                            "unknown",
-                            None,
-                            f"source {x.path} {x.problem}",
-                            None,
-                        )
+                        finding("unknown", None, f"source {x.path} {x.problem}")
                         for x in sources
                         if x.problem is not None
                     ]

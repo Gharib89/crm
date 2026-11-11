@@ -5,7 +5,7 @@
 ``using`` directives, ``using`` aliases, ``using static`` or a fully qualified name, to a listed
 full type name. A ``using`` alone, a comment and a string literal are not uses, and a type of the
 same simple name declared in the same file (a type, a variable, a parameter, a field or a
-property) wins over an import. Only the syntax tree is read, so
+property in scope) wins over an import. Only the syntax tree is read, so
 nothing is compiled and no type is looked up in another file.
 """
 
@@ -31,9 +31,26 @@ _TYPE_DECLARATIONS = frozenset(
     )
 )
 _METHOD_DECLARATIONS = frozenset(("method_declaration", "local_function_statement"))
-#: Declarations whose name can hide a type of the same name: a parameter, a variable, a field or a
-#: property called `File` is the member, not `System.IO.File`.
+#: Declarations whose name can hide a type of the same name inside their scope: a parameter, a
+#: variable, a field or a property called `File` is the member, not `System.IO.File`. Variables
+#: bound by `foreach`, `catch`, patterns, `out var`, tuples and LINQ are not tracked.
 _MEMBER_DECLARATIONS = frozenset(("parameter", "variable_declarator", "property_declaration"))
+#: The nodes a member declaration is visible in.
+_SCOPES = frozenset(
+    (
+        *_TYPE_DECLARATIONS,
+        "block",
+        "method_declaration",
+        "constructor_declaration",
+        "local_function_statement",
+        "lambda_expression",
+        "anonymous_method_expression",
+        "accessor_declaration",
+        "operator_declaration",
+        "for_statement",
+        "foreach_statement",
+    )
+)
 
 
 def _dotted(node: Node | None) -> str | None:
@@ -61,8 +78,10 @@ class _Imports:
         self.namespaces: list[str] = []
         self.aliases: dict[str, str] = {}
         self.static: list[str] = []
-        #: Names this file declares that win over an import: types, variables and members.
+        #: Types this file declares: they win over an import everywhere in the file.
         self.types: set[str] = set()
+        #: Variables and members that win over an import, by name, inside the scope nodes (ids).
+        self.scoped: dict[str, set[int]] = {}
         self.methods: set[str] = set()
         stack = [root]
         while stack:
@@ -72,14 +91,33 @@ class _Imports:
                 self._using(node)
             elif node.type in _METHOD_DECLARATIONS:
                 self._declared(node, self.methods)
-            elif node.type in _TYPE_DECLARATIONS or node.type in _MEMBER_DECLARATIONS:
+            elif node.type in _TYPE_DECLARATIONS:
                 self._declared(node, self.types)
+            elif node.type in _MEMBER_DECLARATIONS:
+                self._scoped(node)
 
     @staticmethod
     def _declared(node: Node, into: set[str]) -> None:
         name = node.child_by_field_name("name")
         if name is not None:
             into.add((name.text or b"").decode())
+
+    def _scoped(self, node: Node) -> None:
+        name = node.child_by_field_name("name")
+        scope = node.parent
+        while scope is not None and scope.type not in _SCOPES:
+            scope = scope.parent
+        if name is not None and scope is not None:
+            self.scoped.setdefault((name.text or b"").decode(), set()).add(scope.id)
+
+    def _hidden(self, name: str, at: Node) -> bool:
+        ids = self.scoped.get(name)
+        node = at.parent
+        while ids and node is not None:
+            if node.id in ids:
+                return True
+            node = node.parent
+        return False
 
     def _using(self, node: Node) -> None:
         names = node.named_children
@@ -97,10 +135,10 @@ class _Imports:
         else:
             self.namespaces.append(target)
 
-    def resolve(self, name: str) -> str | None:
-        """The listed full type name *name* stands for here, or None."""
+    def resolve(self, name: str, at: Node) -> str | None:
+        """The listed full type name *name*, written at node *at*, stands for, or None."""
         first, _, rest = name.partition(".")
-        if first in self.types:
+        if first in self.types or self._hidden(first, at):
             return None
         if first in self.aliases:
             candidates = [self.aliases[first] + (f".{rest}" if rest else "")]
@@ -139,23 +177,28 @@ def type_uses(source: bytes, listed: Collection[str]) -> dict[str, list[tuple[in
     stack = [root]
     while stack:
         node = stack.pop()
+        function = node.child_by_field_name("function")
+        if (
+            node.type == "invocation_expression"
+            and (function.text if function else b"") == b"nameof"
+        ):
+            continue  # a name, not a use: `nameof(File.Delete)` never runs File
         stack.extend(reversed(node.children))
         if node.type == "object_creation_expression":
             kind = node.child_by_field_name("type")
             name = _dotted(kind)
             if kind is not None and name is not None:
-                add(imports.resolve(name), kind)
+                add(imports.resolve(name, kind), kind)
         elif node.type == "member_access_expression":
             target = node.child_by_field_name("expression")
             name = _dotted(target)
             if target is not None and name is not None:
-                add(imports.resolve(name), target)
+                add(imports.resolve(name, target), target)
         elif node.type == "invocation_expression" and static is not None:
-            function = node.child_by_field_name("function")
             if (
                 function is not None
                 and function.type == "identifier"
-                and (function.text or b"").decode() not in {"nameof", *imports.methods}
+                and (function.text or b"").decode() not in imports.methods
             ):
                 add(static, function)
     return {name: sorted(sites) for name, sites in found.items()}
