@@ -9,6 +9,37 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.112.4 (2026-11-11)
+
+### Bug Fixes
+
+- **inventory**: Drop ten leftover no-op expressions
+  ([#1218](https://github.com/Gharib89/crm/pull/1218),
+  [`9e8fe9e`](https://github.com/Gharib89/crm/commit/9e8fe9ee3e1767b2ea1e303d54afaef9db48b4d0))
+
+- **inventory**: Every JavaScript transform pins its unproven sites to a column
+  ([#1218](https://github.com/Gharib89/crm/pull/1218),
+  [`9e8fe9e`](https://github.com/Gharib89/crm/commit/9e8fe9ee3e1767b2ea1e303d54afaef9db48b4d0))
+
+- **inventory**: Manual-review entries carry snippet, replacement and return use
+  ([#1218](https://github.com/Gharib89/crm/pull/1218),
+  [`9e8fe9e`](https://github.com/Gharib89/crm/commit/9e8fe9ee3e1767b2ea1e303d54afaef9db48b4d0))
+
+- **inventory**: Pin a snippet to the call site's column and tighten the field types
+  ([#1218](https://github.com/Gharib89/crm/pull/1218),
+  [`9e8fe9e`](https://github.com/Gharib89/crm/commit/9e8fe9ee3e1767b2ea1e303d54afaef9db48b4d0))
+
+- **inventory**: Read each snippet from the text its step planned on, and fall back to the line
+  ([#1218](https://github.com/Gharib89/crm/pull/1218),
+  [`9e8fe9e`](https://github.com/Gharib89/crm/commit/9e8fe9ee3e1767b2ea1e303d54afaef9db48b4d0))
+
+### Documentation
+
+- **inventory**: Document the manual-review snippet, replacement and return_use fields
+  ([#1218](https://github.com/Gharib89/crm/pull/1218),
+  [`9e8fe9e`](https://github.com/Gharib89/crm/commit/9e8fe9ee3e1767b2ea1e303d54afaef9db48b4d0))
+
+
 ## v1.112.3 (2026-11-11)
 
 ### Bug Fixes
