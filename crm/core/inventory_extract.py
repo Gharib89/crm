@@ -66,7 +66,7 @@ from crm.core.inventory import (
     dump_manifest,
 )
 from crm.core.legacy import LegacyClient, Page
-from crm.core.ribbon_diff import read_ribbon_diffs
+from crm.core.ribbon_diff import read_ribbon_diffs, rebuild_ribbon_diffs
 from crm.core.usage import INVENTORY_GROUPS, JOB_TIME_CAP, GroupUsage, Usage, probe_legacy_group
 from crm.utils.d365_backend import PLATFORM_CRM2011, D365Error
 
@@ -174,6 +174,14 @@ class InventorySource(Protocol):
         """Write the unmanaged export of the solution to *dest* (a zip)."""
         ...
 
+    def ribbon_table_rows(self) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """The unmanaged rows of the ribbon diff and ribbon command tables (#1198).
+
+        Read only where `default_export_supported` is false: the way to the org-wide diffs
+        when the Default solution cannot be exported.
+        """
+        ...
+
     def pages(self, fetch_xml: str, *, page_size: int, start: Page | None) -> Iterator[Page]: ...
 
     def probe_usage(
@@ -226,6 +234,9 @@ class LegacySource:
 
     def export_solution(self, unique_name: str, dest: Path) -> None:
         dest.write_bytes(legacy_reads.export_solution(self.client, unique_name))
+
+    def ribbon_table_rows(self) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        raise NotImplementedError("CRM 2011 exports the Default solution; no table read is needed")
 
     def pages(self, fetch_xml: str, *, page_size: int, start: Page | None) -> Iterator[Page]:
         return self.client.pages(fetch_xml, page_size=page_size, start=start)
@@ -1075,6 +1086,10 @@ def extract(
     diff_units, diff_unsupported_reason, diff_managed = _read_ribbon_diffs(
         source, cp, run, solutions, rows["solution"]
     )
+    # Read from the tables: what they hold is read, but never the whole diff (the gap says so).
+    from_tables = (
+        not solutions and not source.default_export_supported and not diff_unsupported_reason
+    )
 
     run.begin("build")
     built = _Builder(cp, out, rows, source.api, stock_scope, deleted)
@@ -1144,6 +1159,8 @@ def extract(
         coverage["ribbon_diff"] = KindCoverage(
             "unsupported", 0, 0, False, (diff_unsupported_reason,)
         )
+    elif from_tables and coverage["ribbon_diff"].status == "complete":
+        coverage["ribbon_diff"] = replace(coverage["ribbon_diff"], status="partial")
 
     inventory = Inventory(
         schema_version=SCHEMA_VERSION,
@@ -1169,7 +1186,7 @@ def extract(
             *built.gaps(),
             *_ribbon_gaps(unlabelled),
             *_deleted_gaps(deleted),
-            *_ribbon_diff_gaps(diff_unsupported_reason, diff_managed),
+            *_ribbon_diff_gaps(diff_unsupported_reason, diff_managed, from_tables),
             *_source_gaps(run.errors),
             *usage_gaps,
         ),
@@ -1178,7 +1195,8 @@ def extract(
 
     errors = [*run.errors, *usage_errors, *(e for t in run.tallies.values() for e in t.errors)]
     complete = not errors and all(
-        c.status in ("complete", "unsupported") for c in coverage.values()
+        c.status in ("complete", "unsupported") or (k == "ribbon_diff" and from_tables)
+        for k, c in coverage.items()
     )
     if complete:
         cp.remove()
@@ -1227,14 +1245,7 @@ def _read_ribbon_diffs(
     it cannot (every named solution managed included), and the managed names skipped.
     """
     if not solutions and not source.default_export_supported:
-        return (
-            [],
-            (
-                f"not read: {source.api} refuses to export the Default solution, which holds"
-                " the whole org's ribbon diffs; run with --solution to read the named solutions'"
-            ),
-            [],
-        )
+        return _read_ribbon_tables(source, cp, run)
     names = solutions or (_DEFAULT_SOLUTION,)
     managed = {
         str(r.get("uniquename")).lower() for r in solution_rows if r.get("ismanaged") is True
@@ -1284,7 +1295,62 @@ def _read_ribbon_diffs(
     return units, (_MANAGED_DIFF_REASON if len(skipped) == len(names) else None), skipped
 
 
-def _ribbon_diff_gaps(unsupported_reason: str | None, managed: list[str]) -> list[ExtractionGap]:
+def _read_ribbon_tables(
+    source: InventorySource, cp: Checkpoint, run: _Run
+) -> tuple[list[tuple[str, list[str | None]]], str | None, list[str]]:
+    """Read the org-wide ribbon diffs from the ribbon tables, where Default cannot be exported.
+
+    A table that cannot be read, or a row that is not well formed, leaves the kind
+    unsupported with the reason, as before the tables were read: never a failed run.
+    """
+    run.begin("ribbon_diffs", 1)
+
+    def read() -> list[str | None] | dict[str, str]:
+        try:
+            diffs = rebuild_ribbon_diffs(*source.ribbon_table_rows())
+        except D365Error as exc:
+            if legacy_reads.connection_wide(exc):
+                raise
+            return {"fault": str(exc)}
+        except ParseError as exc:
+            return {"fault": f"a ribbon row is not well formed: {exc}"}
+        for entity, xml in diffs.items():
+            cp.stage("ribbon_diff", _diff_id("tables", entity), "ribbon-diff.xml", xml)
+        return list(diffs)
+
+    data = run.unit(("ribbon_diff",), "ribbon-diff/tables", read)
+    if isinstance(data, dict):
+        return (
+            [],
+            (
+                f"not read: {source.api} refuses to export the Default solution, which holds the"
+                " whole org's ribbon diffs, and the ribbon tables could not be read"
+                f" ({data['fault']}); run with --solution to read the named solutions'"
+            ),
+            [],
+        )
+    return ([("tables", data)] if data is not None else []), None, []
+
+
+_TABLE_DIFF_GAP = (
+    "read from the unmanaged rows of the ribbon diff and ribbon command tables, because the"
+    " platform refuses to export the Default solution: the CustomActions and CommandDefinitions"
+    " of each diff, not its RuleDefinitions, Templates or LocLabels, and no managed diff"
+)
+
+
+def _ribbon_diff_gaps(
+    unsupported_reason: str | None, managed: list[str], from_tables: bool = False
+) -> list[ExtractionGap]:
+    if from_tables:
+        return [
+            ExtractionGap(
+                kind="ribbon_diff",
+                key=None,
+                description="parts of the ribbon diffs of the org-wide customizations",
+                reason=_TABLE_DIFF_GAP,
+            )
+        ]
     if managed:
         return [
             ExtractionGap(

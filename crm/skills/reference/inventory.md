@@ -16,7 +16,9 @@ binaries). It describes what is deployed; it is never a spec for `crm apply`.
   record is the raw customization of one entity (key: its logical name; `""` is the
   application), and an entity with an empty diff has none. An org-wide run exports the
   Default solution (minutes, tens of MB on CRM 2011); Dataverse online refuses that, so
-  the kind reads `unsupported` there: use `--solution` to read it. A managed solution
+  there the diffs are rebuilt from the ribbon tables' unmanaged rows and the kind reads
+  `partial` (no rules, templates or labels, no managed diff): use `--solution` for a
+  whole diff. It reads `unsupported` if the tables fault. A managed solution
   cannot be exported either (a migration target is usually imported managed): each
   managed `--solution` is a `ribbon_diff` gap and the run still exits 0, and the kind
   reads `unsupported` only when every named solution is managed. An `unsupported`

@@ -280,6 +280,18 @@ class WebApiSource:
             self.backend.as_live(), unique_name, dest, timeout=EXPORT_TIMEOUT
         )
 
+    def ribbon_table_rows(self) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        unmanaged = {"$filter": "ismanaged eq false"}
+        return (
+            self.backend.get_collection(
+                "ribbondiffs", params={**unmanaged, "$select": "entity,diffid,rdx"}
+            ),
+            self.backend.get_collection(
+                "ribboncommands",
+                params={**unmanaged, "$select": "entity,command,commanddefinition"},
+            ),
+        )
+
     def ribbon_xml(self, entity: str | None) -> bytes:
         if entity is None:
             body = as_dict(self.backend.get("RetrieveApplicationRibbon()"))

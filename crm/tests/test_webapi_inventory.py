@@ -242,7 +242,9 @@ class FakeBackend:
         exc = self.fail.pop((path, 1), None)
         if exc is not None:
             raise exc
-        rows = {"EntityDefinitions": _ENTITIES, "GlobalOptionSetDefinitions": _OPTION_SETS}[path]
+        rows = {"EntityDefinitions": _ENTITIES, "GlobalOptionSetDefinitions": _OPTION_SETS}.get(
+            path, self.org.get(path, [])
+        )
         return copy.deepcopy(rows)
 
     def _fetch(self, entity_set: str, fetch_xml: str, headers: dict) -> dict:
@@ -306,9 +308,9 @@ def test_a_cloud_extraction_writes_a_schema_valid_manifest(tmp_path):
         "version": "9.2.26094.166",
     }
     assert data["scope"] == {"mode": "org", "solutions": []}
-    # The platform refuses to export the Default solution, so the ribbon diffs are unread.
+    # The platform refuses to export the Default solution, so the diffs come from the tables.
     assert {k for k, c in data["coverage"].items() if c["status"] != "complete"} == {"ribbon_diff"}
-    assert data["coverage"]["ribbon_diff"]["status"] == "unsupported"
+    assert data["coverage"]["ribbon_diff"]["status"] == "partial"
     assert any(g["kind"] == "ribbon_diff" for g in data["gaps"])
     assert _keys(data, "step") == [
         "Update|new_project|40|0|Contoso.Plugins%7CContoso.Plugins.ProjectPlugin|Project: Update"
@@ -957,13 +959,63 @@ def _diff_records(data: dict) -> dict[str, dict]:
     return {r["key"]: r for r in data["records"] if r["kind"] == "ribbon_diff"}
 
 
-def test_a_cloud_org_wide_run_exports_nothing_and_says_so(tmp_path, exports):
+_TABLE_ORG = {
+    **_ORG,
+    "ribbondiffs": [
+        {"entity": "new_project", "diffid": "d1", "rdx": "<CustomAction Id='new.Project.Do'/>"},
+        {"entity": None, "diffid": "d2", "rdx": "<CustomAction Id='app.Do'/>"},
+    ],
+    "ribboncommands": [
+        {"entity": "new_project", "command": "c1",
+         "commanddefinition": "<CommandDefinition Id='c1'><Actions/></CommandDefinition>"},
+    ],
+}  # fmt: skip
+
+
+def test_a_cloud_org_wide_run_exports_nothing_and_reads_the_ribbon_tables(tmp_path, exports):
     out = tmp_path / "inv"
-    summary = _extract(FakeBackend(), out)
-    assert exports == [] and summary.complete
+    backend = FakeBackend(org=_TABLE_ORG)
+    summary = _extract(backend, out)
+    assert exports == [] and summary.complete and summary.errors == []
+    assert summary.kinds["ribbon_diff"] == {"status": "partial", "records": 2}
+    assert {"ribbondiffs", "ribboncommands"} <= set(backend.paths)
+    data = _manifest(out)
+    records = _diff_records(data)
+    assert sorted(records) == ["", "new_project"]  # the application's key is empty
+    (artifact,) = records["new_project"]["artifacts"]
+    body = (out / artifact["path"]).read_bytes()
+    assert b"new.Project.Do" in body and b"<CommandDefinition Id='c1'>" in body
+    (gap,) = [g for g in data["gaps"] if g["kind"] == "ribbon_diff"]
+    assert "RuleDefinitions" in gap["reason"] and "managed" in gap["reason"]
+    assert not (out / ".checkpoint").exists()
+
+
+def test_a_faulted_ribbon_table_read_stays_unsupported_and_does_not_fail_the_run(tmp_path):
+    out = tmp_path / "inv"
+    fault = {("ribboncommands", 1): D365Error("no such entity set", status=404)}
+    summary = _extract(FakeBackend(org=_TABLE_ORG, fail=fault), out)
+    assert summary.complete and summary.errors == []
     assert summary.kinds["ribbon_diff"] == {"status": "unsupported", "records": 0}
     (gap,) = [g for g in _manifest(out)["gaps"] if g["kind"] == "ribbon_diff"]
     assert "Default" in gap["reason"] and "--solution" in gap["reason"]
+    assert "no such entity set" in gap["reason"]
+
+
+def test_a_malformed_ribbon_row_stays_unsupported_and_does_not_fail_the_run(tmp_path):
+    org = {**_TABLE_ORG, "ribbondiffs": [{"entity": "a", "diffid": "d", "rdx": "<CustomAction"}]}
+    summary = _extract(FakeBackend(org=org), tmp_path / "inv")
+    assert summary.complete and summary.kinds["ribbon_diff"]["status"] == "unsupported"
+
+
+def test_a_resume_does_not_read_the_ribbon_tables_again(tmp_path):
+    out = tmp_path / "inv"
+    first = FakeBackend(org=_TABLE_ORG, fail={("systemforms", 1): D365Error("boom", status=500)})
+    assert not _extract(first, out).complete
+    second = FakeBackend(org=_TABLE_ORG)
+    summary = _extract(second, out)
+    assert summary.complete and summary.reused["ribbon_diff"] == 1
+    assert "ribbondiffs" not in second.paths
+    assert summary.kinds["ribbon_diff"] == {"status": "partial", "records": 2}
 
 
 def test_a_scoped_run_exports_each_named_solution_and_keeps_the_diffs_with_content(

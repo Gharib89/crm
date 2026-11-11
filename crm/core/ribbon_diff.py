@@ -12,9 +12,11 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 import zipfile
+from collections.abc import Iterable, Mapping
 from pathlib import Path
+from typing import Any
 
-from crm.utils.safe_xml import iterparse
+from crm.utils.safe_xml import fromstring, iterparse
 
 CUSTOMIZATIONS = "customizations.xml"
 # Children that hold the content directly, and those that hold it one level down.
@@ -66,4 +68,39 @@ def read_ribbon_diffs(zip_path: Path) -> dict[str | None, bytes]:
                 elem.clear()
             elif depth >= 3 or (depth == 1 and elem.tag != "Entities"):
                 elem.clear()
+    return diffs
+
+
+def rebuild_ribbon_diffs(
+    diff_rows: Iterable[Mapping[str, Any]], command_rows: Iterable[Mapping[str, Any]]
+) -> dict[str | None, bytes]:
+    """One ``RibbonDiffXml`` per entity (``None``: the application) from the unmanaged rows of the
+    ``ribbondiffs`` (``rdx``) and ``ribboncommands`` (``commanddefinition``) tables (#1198).
+
+    Dataverse online refuses to export the Default solution but answers these tables, which hold
+    every unmanaged customization, Default-only ones included. Only ``CustomActions`` and
+    ``CommandDefinitions`` are rebuilt: no rule or localized-label table was measured. Rows are
+    grouped by ``entity``, never by ``solutionid`` (always the Active solution's for unmanaged
+    rows). The keys match `read_ribbon_diffs`.
+
+    Raises:
+        xml.etree.ElementTree.ParseError: a row's fragment is malformed, or declares an entity.
+    """
+    parts: dict[str | None, tuple[list[str], list[str]]] = {}
+    for rows, column, slot in ((diff_rows, "rdx", 0), (command_rows, "commanddefinition", 1)):
+        for row in rows:
+            fragment = row.get(column)
+            if fragment:
+                entity = (row.get("entity") or "").lower() or None
+                parts.setdefault(entity, ([], []))[slot].append(fragment)
+    diffs: dict[str | None, bytes] = {}
+    for entity, (actions, commands) in parts.items():
+        text = "<RibbonDiffXml>"
+        if actions:
+            text += f"<CustomActions>{''.join(actions)}</CustomActions>"
+        if commands:
+            text += f"<CommandDefinitions>{''.join(commands)}</CommandDefinitions>"
+        text += "</RibbonDiffXml>"
+        fromstring(text)  # a fragment that is not well formed must not become a stored diff
+        diffs[entity] = text.encode("utf-8")
     return diffs
