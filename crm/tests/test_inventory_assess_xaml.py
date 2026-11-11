@@ -75,6 +75,7 @@ def test_a_wait_condition_is_optional(tmp_path, xaml, target):
     (hit,) = found
     assert (hit.cls, hit.rule, hit.reason) == ("optional", "workflow-wait-condition", None)
     (artifact,) = record.artifacts
+    assert isinstance(hit.evidence, assess.ContentEvidence)
     assert hit.evidence.path == artifact.path and hit.evidence.sha256 == artifact.sha256
     assert hit.evidence.locations == ((1, 11),) and hit.evidence.match_count == 1
 
@@ -84,6 +85,7 @@ def test_a_custom_activity_is_optional_and_an_out_of_box_one_is_clear(tmp_path, 
     _, found = _assess(tmp_path, "Custom flow", 0, CUSTOM, target)
     (hit,) = found
     assert (hit.cls, hit.rule) == ("optional", "workflow-custom-activity")
+    assert isinstance(hit.evidence, assess.ContentEvidence)
     assert hit.evidence.match_count == 1
     for sample in (OOB, NONE):
         _, found = _assess(tmp_path, "Plain flow", 0, sample, target)
