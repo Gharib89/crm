@@ -577,7 +577,8 @@ class D365Backend:
             self._solution_managed[solution] = bool(row and row.get("ismanaged"))
         if self._solution_managed[solution]:
             raise D365Error(
-                f"Solution {solution!r} is managed; a managed solution takes no new components.",
+                f"Solution {solution!r} is managed; a managed solution takes no new "
+                "components, so this write is refused.",
                 code="CannotModifyManagedSolution",
             )
 

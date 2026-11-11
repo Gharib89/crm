@@ -144,9 +144,9 @@ def no_managed_solution_lookup(
 
     Tests that send a ``solution=`` write mock only that write; the guard's extra
     ``solutions`` GET would hit an unmocked URL. ``test_managed_solution_guard.py``
-    opts back in with ``@pytest.mark.managed_guard`` to test the real guard.
+    opts back in with ``@pytest.mark.managed_guard`` to test the real guard; live e2e keeps it.
     """
-    if request.node.get_closest_marker("managed_guard"):
+    if request.node.get_closest_marker("managed_guard") or request.node.get_closest_marker("e2e"):
         return
     monkeypatch.setattr(D365Backend, "_refuse_managed_solution", lambda self, solution: None)
 

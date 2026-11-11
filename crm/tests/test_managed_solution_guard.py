@@ -17,10 +17,11 @@ from crm.utils.d365_backend import D365Error
 pytestmark = pytest.mark.managed_guard
 
 _SOL_ID = "22222222-2222-2222-2222-222222222222"
+_BU = "44444444-4444-4444-4444-444444444444"
 
 
-def _mock_solutions(m, backend, *, managed: bool | None):
-    rows = [] if managed is None else [{"solutionid": _SOL_ID, "ismanaged": managed}]
+def _mock_solutions(m, backend, *, managed: bool = False, missing: bool = False):
+    rows = [] if missing else [{"solutionid": _SOL_ID, "ismanaged": managed}]
     return m.get(backend.url_for("solutions"), json={"value": rows})
 
 
@@ -78,7 +79,7 @@ def test_several_writes_one_lookup(backend):
 
 def test_unknown_solution_keeps_todays_behaviour(backend):
     with requests_mock.Mocker() as m:
-        _mock_solutions(m, backend, managed=None)
+        _mock_solutions(m, backend, missing=True)
         m.post(backend.url_for("roles"), status_code=204)
         entity_mod.create(backend, "roles", {"name": "r"}, solution="Nope")
         assert len(_writes(m, "/roles")) == 1
@@ -90,3 +91,27 @@ def test_read_with_solution_is_not_guarded(backend):
         m.get(backend.url_for("roles"), json={"value": []})
         backend.get("roles", solution="Pilot")
         assert sols.call_count == 0
+
+
+def test_create_role_cli_exits_1_with_code_and_sends_no_create(backend, inject_backend):
+    import json
+
+    from click.testing import CliRunner
+
+    from crm.cli import cli
+
+    inject_backend(backend)
+    with requests_mock.Mocker() as m:
+        _mock_solutions(m, backend, managed=True)
+        m.get(backend.url_for("roles"), json={"value": []})
+        m.post(backend.url_for("roles"), status_code=204)
+        result = CliRunner().invoke(
+            cli,
+            ["--json", "security", "create-role", "r", "--business-unit", _BU]
+            + ["--solution", "Pilot", "--yes"],
+        )
+    assert result.exit_code == 1, result.output
+    env = json.loads(result.stdout)
+    assert env["ok"] is False
+    assert env["meta"]["code"] == "CannotModifyManagedSolution"
+    assert _writes(m, "/roles") == []
