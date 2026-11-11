@@ -115,3 +115,65 @@ def test_create_role_cli_exits_1_with_code_and_sends_no_create(backend, inject_b
     assert env["ok"] is False
     assert env["meta"]["code"] == "CannotModifyManagedSolution"
     assert _writes(m, "/roles") == []
+
+
+def test_delete_with_managed_solution_is_still_sent(backend):
+    with requests_mock.Mocker() as m:
+        sols = _mock_solutions(m, backend, managed=True)
+        m.delete(backend.url_for("roles(1)"), status_code=204)
+        backend.delete("roles(1)", solution="Pilot")
+        assert sols.call_count == 0
+        assert [r.method for r in m.request_history] == ["DELETE"]
+
+
+def test_create_entity_cli_refused(backend, inject_backend, tmp_path):
+    import json
+
+    from click.testing import CliRunner
+
+    from crm.cli import cli
+
+    inject_backend(backend)
+    with requests_mock.Mocker() as m:
+        m.get(requests_mock.ANY, status_code=404, json={"error": {"message": "not found"}})
+        m.post(requests_mock.ANY, status_code=204)
+        _mock_solutions(m, backend, managed=True)
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "metadata",
+                "create-entity",
+                "--display",
+                "Project",
+                "--schema-name",
+                "new_Project",
+            ]
+            + ["--solution", "Pilot", "--no-publish"],
+        )
+    assert result.exit_code == 1, result.output
+    assert json.loads(result.stdout)["meta"]["code"] == "CannotModifyManagedSolution"
+    assert [r for r in m.request_history if r.method == "POST"] == []
+
+
+def test_apply_cli_refused(backend, inject_backend, tmp_path):
+    import json
+
+    from click.testing import CliRunner
+
+    from crm.cli import cli
+
+    inject_backend(backend)
+    spec = tmp_path / "spec.yaml"
+    spec.write_text(
+        "solution:\n  unique_name: Pilot\n"
+        "entities:\n  - schema_name: new_Project\n    display_name: Project\n"
+    )
+    with requests_mock.Mocker() as m:
+        m.get(requests_mock.ANY, json={"value": []})
+        m.post(requests_mock.ANY, status_code=204)
+        _mock_solutions(m, backend, managed=True)
+        result = CliRunner().invoke(cli, ["--json", "apply", "-f", str(spec), "--yes"])
+    assert result.exit_code == 1, result.output
+    assert "is managed" in json.loads(result.stdout)["error"]
+    assert [r for r in m.request_history if r.method == "POST"] == []

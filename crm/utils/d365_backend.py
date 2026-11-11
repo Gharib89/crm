@@ -873,7 +873,9 @@ class D365Backend:
         # Solution-context header, set after the extra_headers merge so it wins
         # on conflict — same compose-precedence as the sibling MSCRM.* headers.
         if solution:
-            if method.upper() != "GET":
+            # DELETE is exempt: hard metadata deletes forward an optional --solution
+            # that does not scope the delete (ADR 0020).
+            if method.upper() not in ("GET", "DELETE"):
                 self._refuse_managed_solution(solution)
             headers["MSCRM.SolutionUniqueName"] = solution
 
