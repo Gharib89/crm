@@ -351,6 +351,39 @@ in the result. Different `--solution` scopes or source platforms are allowed; th
 sides and flags `same_platform` and `same_scope`. Two whole-org manifests that differ in
 `scope.system` (one default, one `--include-system`) are refused.
 
+### Compare when another team ran the upgrade hops (cloud-first)
+
+When the database was moved through every stage by another team, you hold the CRM 2011
+source (read-only) and the finished cloud org, and nothing between them. The `crm-migration`
+skill calls this the cloud-first route. In order:
+
+1. Confirm both orgs: `crm legacy whoami` on the 2011 source, `crm connection whoami` on the cloud org.
+2. Extract the 2011 source with `--with-usage`.
+3. Extract the cloud org with `--with-usage` and the same scope. Two scopes compare different things.
+4. `crm inventory diff` the 2011 inventory against the cloud one.
+5. Ask the team that ran the hops for a handover (below).
+6. Map the cloud inventory to the application repository with `crm inventory map-source`, then run
+   `assess`, `packages` and `convert` against it: it records the deployed
+   code, and the OData v2 rewrite needs the entity set names only a v9 extract records.
+7. Patch, build and verify on the cloud dev or test org.
+
+With no stage observed between the two, a `removed` or `changed` entry cannot be tied to a hop.
+Each one becomes a question for the team that ran the hops, or an unknown in the report; none is
+read as a defect or as expected on its own. The staged path's rule of stopping before the next stage
+does not apply: there is no next stage.
+
+Ask that team for:
+
+| Request | What it lets you conclude |
+|---|---|
+| One read-only `crm inventory extract` at the 9.1 stage, with usage, in the same scope | Two diffs (2011 to 9.1, 9.1 to cloud) replace the single one, and each entry is tied to the hop it appeared in |
+| The components they disabled, removed or changed to pass each hop and the on-premises to online validation | A `removed` or `changed` entry is a deliberate act, not a loss; an entry absent from the list is unexplained |
+| The upgrade logs of each hop and of the validation | Components the upgrade tooling dropped or rewrote without anyone recording it |
+| Whether forms were merged | If yes, a `removed` form may be a merge and not a lost one; if no, it is lost |
+| Which SQL objects and SQL-based reports were dropped | A `removed` SQL-based report or component was dropped on purpose, and the cloud org no longer has that behavior |
+
+A missing item is an unknown, never a guess.
+
 ### Compare a `--solution` target with a whole-org source
 
 To check a migrated solution against its source, extract the target with
