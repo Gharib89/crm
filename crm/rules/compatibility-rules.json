@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "version": 11,
+  "version": 12,
   "rules": [
     {
       "id": "web-resource-xrm-page",
@@ -24,6 +24,7 @@
         ]
       },
       "transform": "global-context",
+      "checker_rule": "web-use-client-context",
       "fix": "Use the form context: take executionContext.getFormContext() in a form handler (pass the execution context as the first parameter), or PrimaryControl in a ribbon command.",
       "sources": [
         "https://learn.microsoft.com/power-platform/important-changes-coming#some-client-apis-are-deprecated",
@@ -252,6 +253,7 @@
           3
         ]
       },
+      "checker_rule": "web-avoid-2011-api",
       "fix": "Rewrite against the client API: crmForm.all.<attribute>.DataValue becomes formContext.getAttribute(\"<attribute>\").getValue(). crmForm is not part of the documented 9.x client API, and only the documented API is supported. Tool judgment: no Microsoft Learn page names crmForm; the sources are the closest statements.",
       "sources": [
         "https://learn.microsoft.com/dynamics365/customerengagement/on-premises/customize/customizations-supported?view=op-9-1",
@@ -306,6 +308,7 @@
         ]
       },
       "transform": "soap-2011-review",
+      "checker_rule": "web-avoid-crm2011-service-soap",
       "fix": "Call the Web API (Xrm.WebApi, or /api/data/v9.x/).",
       "sources": [
         "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/avoid-crm2011-service-soap",
@@ -334,6 +337,7 @@
         ]
       },
       "transform": "odata-v2",
+      "checker_rule": "web-avoid-crm2011-service-odata",
       "fix": "Call the Web API (Xrm.WebApi, or /api/data/v9.x/) and drop helper libraries such as SDK.REST.js.",
       "sources": [
         "https://learn.microsoft.com/power-apps/developer/model-driven-apps/best-practices/business-logic/do-not-use-odata-v2-endpoint",

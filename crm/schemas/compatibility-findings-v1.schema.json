@@ -153,6 +153,44 @@
         "minLength": 1
       }
     },
+    "checker_report": {
+      "description": "The Solution Checker report `--checker-report` merged in: the SHA-256 of the file as given, how many results it held and how many a packaged finding already covered (skipped); absent when none was given. Its findings name the checker rule id and carry content evidence; each rule is in rules_hit.",
+      "type": "object",
+      "required": [
+        "sha256",
+        "results",
+        "skipped_duplicates"
+      ],
+      "properties": {
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "results": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skipped_duplicates": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "checker_unmatched": {
+      "description": "The checker results that named no component the inventory holds a text for, or that carry no usable line or severity: never findings, never dropped. Absent when no report was given.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "rule",
+          "severity",
+          "uri",
+          "line",
+          "column",
+          "message",
+          "reason"
+        ]
+      }
+    },
     "incomplete": {
       "description": "Each kind whose coverage is not complete, with its status.",
       "type": "object",
@@ -252,6 +290,11 @@
                   "$ref": "#/$defs/sha256"
                 },
                 "match_count": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "end_line": {
+                  "description": "A Solution Checker finding only, when its result spans lines: the last line (locations holds the first).",
                   "type": "integer",
                   "minimum": 1
                 },

@@ -1,0 +1,437 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "Solution Checker (synthetic fixture)",
+          "rules": [
+            {
+              "id": "web-avoid-crm2011-service-soap",
+              "name": "web-avoid-crm2011-service-soap",
+              "shortDescription": {
+                "text": "Avoid the CRM 2011 SOAP endpoint"
+              },
+              "fullDescription": {
+                "text": "Avoid the CRM 2011 SOAP endpoint."
+              },
+              "help": {
+                "text": "Move calls to the Web API."
+              },
+              "helpUri": "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/avoid-crm2011-service-soap"
+            },
+            {
+              "id": "web-avoid-2011-api",
+              "name": "web-avoid-2011-api",
+              "shortDescription": {
+                "text": "Avoid the 2011 API"
+              },
+              "fullDescription": {
+                "text": "Avoid the 2011 API."
+              },
+              "help": {
+                "text": "Use the current client API."
+              },
+              "helpUri": "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/avoid-2011-api"
+            },
+            {
+              "id": "web-use-client-context",
+              "name": "web-use-client-context",
+              "shortDescription": {
+                "text": "Use the client context"
+              },
+              "fullDescription": {
+                "text": "Use the client context."
+              },
+              "help": {
+                "text": "Use getFormContext."
+              },
+              "helpUri": "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/use-client-context"
+            },
+            {
+              "id": "web-use-strict-mode",
+              "name": "web-use-strict-mode",
+              "shortDescription": {
+                "text": "Use strict mode"
+              },
+              "fullDescription": {
+                "text": "Use strict mode."
+              },
+              "help": {
+                "text": "Add 'use strict'."
+              },
+              "helpUri": "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/use-strict-mode"
+            },
+            {
+              "id": "web-use-async",
+              "name": "web-use-async",
+              "shortDescription": {
+                "text": "Use async calls"
+              },
+              "fullDescription": {
+                "text": "Use async calls."
+              },
+              "help": {
+                "text": "Do not make synchronous calls."
+              },
+              "helpUri": "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/use-async"
+            },
+            {
+              "id": "web-avoid-eval",
+              "name": "web-avoid-eval",
+              "shortDescription": {
+                "text": "Avoid eval"
+              },
+              "fullDescription": {
+                "text": "Avoid eval."
+              },
+              "help": {
+                "text": "Do not call eval."
+              },
+              "helpUri": "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/avoid-eval"
+            },
+            {
+              "id": "web-use-example-low",
+              "name": "web-use-example-low",
+              "shortDescription": {
+                "text": "Example low rule"
+              },
+              "fullDescription": {
+                "text": "Example low rule."
+              },
+              "help": {
+                "text": "Tidy up."
+              },
+              "helpUri": "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/use-example-low"
+            },
+            {
+              "id": "web-use-example-info",
+              "name": "web-use-example-info",
+              "shortDescription": {
+                "text": "Example info rule"
+              },
+              "fullDescription": {
+                "text": "Example info rule."
+              },
+              "help": {
+                "text": "Consider this."
+              },
+              "helpUri": "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/use-example-info"
+            },
+            {
+              "id": "meta-remove-example",
+              "name": "meta-remove-example",
+              "shortDescription": {
+                "text": "Remove an example"
+              },
+              "fullDescription": {
+                "text": "Remove an example."
+              },
+              "help": {
+                "text": "Remove it."
+              },
+              "helpUri": "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/meta/remove-example"
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "web-avoid-crm2011-service-soap",
+          "message": {
+            "text": "web-avoid-crm2011-service-soap at line 2"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "/new_/scripts/legacy.js"
+                },
+                "region": {
+                  "startLine": 2,
+                  "startColumn": 12,
+                  "endLine": 2,
+                  "endColumn": 20
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "Critical"
+          },
+          "level": "error"
+        },
+        {
+          "ruleId": "web-avoid-crm2011-service-soap",
+          "message": {
+            "text": "web-avoid-crm2011-service-soap at line 7"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "/new_/scripts/legacy.js"
+                },
+                "region": {
+                  "startLine": 7,
+                  "startColumn": 3,
+                  "endLine": 7,
+                  "endColumn": 11
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "Critical"
+          },
+          "level": "error"
+        },
+        {
+          "ruleId": "web-use-client-context",
+          "message": {
+            "text": "web-use-client-context at line 3"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "/new_/scripts/legacy.js"
+                },
+                "region": {
+                  "startLine": 3,
+                  "startColumn": 1,
+                  "endLine": 3,
+                  "endColumn": 9
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "Medium"
+          }
+        },
+        {
+          "ruleId": "web-avoid-2011-api",
+          "message": {
+            "text": "web-avoid-2011-api at line 4"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "/new_/scripts/legacy.js"
+                },
+                "region": {
+                  "startLine": 4,
+                  "startColumn": 5,
+                  "endLine": 5,
+                  "endColumn": 13
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "High"
+          },
+          "level": "error"
+        },
+        {
+          "ruleId": "web-use-async",
+          "message": {
+            "text": "web-use-async at line 4"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "/new_/scripts/legacy.js"
+                },
+                "region": {
+                  "startLine": 4,
+                  "startColumn": 9,
+                  "endLine": 4,
+                  "endColumn": 17
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "Critical"
+          },
+          "level": "error"
+        },
+        {
+          "ruleId": "web-avoid-eval",
+          "message": {
+            "text": "web-avoid-eval at line 4"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "/new_/scripts/legacy.js"
+                },
+                "region": {
+                  "startLine": 4,
+                  "startColumn": 1,
+                  "endLine": 4,
+                  "endColumn": 9
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "Critical"
+          },
+          "level": "error"
+        },
+        {
+          "ruleId": "web-use-strict-mode",
+          "message": {
+            "text": "web-use-strict-mode at line 1"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "/new_/scripts/legacy.js"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1,
+                  "endLine": 1,
+                  "endColumn": 9
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "Medium"
+          }
+        },
+        {
+          "ruleId": "web-use-example-low",
+          "message": {
+            "text": "web-use-example-low at line 6"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "/new_/scripts/legacy.js"
+                },
+                "region": {
+                  "startLine": 6,
+                  "startColumn": 1,
+                  "endLine": 6,
+                  "endColumn": 9
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "Low"
+          }
+        },
+        {
+          "ruleId": "web-use-example-info",
+          "message": {
+            "text": "web-use-example-info at line 6"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "/new_/scripts/legacy.js"
+                },
+                "region": {
+                  "startLine": 6,
+                  "startColumn": 3,
+                  "endLine": 6,
+                  "endColumn": 11
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "Informational"
+          }
+        },
+        {
+          "ruleId": "web-use-strict-mode",
+          "message": {
+            "text": "web-use-strict-mode at line 1"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "/new_/scripts/only-checker.js"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1,
+                  "endLine": 1,
+                  "endColumn": 9
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "Medium"
+          }
+        },
+        {
+          "ruleId": "web-use-async",
+          "message": {
+            "text": "web-use-async at line 3"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "/new_/scripts/missing.js"
+                },
+                "region": {
+                  "startLine": 3,
+                  "startColumn": 1,
+                  "endLine": 3,
+                  "endColumn": 9
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "Critical"
+          },
+          "level": "error"
+        },
+        {
+          "ruleId": "meta-remove-example",
+          "message": {
+            "text": "meta-remove-example at line 1"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "/solution.xml"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1,
+                  "endLine": 1,
+                  "endColumn": 9
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "Medium"
+          }
+        }
+      ]
+    }
+  ]
+}
