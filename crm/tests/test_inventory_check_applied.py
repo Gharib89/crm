@@ -151,3 +151,22 @@ def test_the_repository_and_the_convert_output_are_byte_identical_after_the_run(
     assert applied.run("--json").exit_code == 1
     assert applied.run().exit_code == 1
     assert _snapshot(applied.repo, applied.out) == before
+
+
+def test_a_ledger_entry_without_its_identity_is_a_usage_error(applied):
+    ledger = applied.out / LEDGER_NAME
+    data = json.loads(ledger.read_text(encoding="utf-8"))
+    del data["entries"][0]["key"]
+    ledger.write_text(json.dumps(data), encoding="utf-8")
+    res = applied.run()
+    assert res.exit_code == 2 and "lacks" in res.output
+
+
+def test_a_repo_path_that_leaves_the_repository_is_missing(applied):
+    ledger = applied.out / LEDGER_NAME
+    data = json.loads(ledger.read_text(encoding="utf-8"))
+    entry = next(e for e in data["entries"] if e["key"] == CTX_NAME)
+    entry["repo_path"] = "../repo-outside.js"
+    ledger.write_text(json.dumps(data), encoding="utf-8")
+    res = applied.run("--json")
+    assert res.exit_code == 1 and _rows(res)[CTX_NAME]["status"] == "missing"

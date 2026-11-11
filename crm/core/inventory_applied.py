@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, cast
 
@@ -47,18 +47,7 @@ class AppliedReport:
         return {
             "all_applied": self.ok,
             "counts": {s: counts[s] for s in STATUSES},
-            "rows": [
-                {
-                    "package": r.package,
-                    "kind": r.kind,
-                    "key": r.key,
-                    "rule": r.rule,
-                    "status": r.status,
-                    "path": r.path,
-                    "reason": r.reason,
-                }
-                for r in self.rows
-            ],
+            "rows": [asdict(r) for r in self.rows],
         }
 
 
@@ -89,7 +78,10 @@ def check_applied(out: Path, repo: Path) -> AppliedReport:
     """
     rows: list[Row] = []
     for e in _read_ledger(out):
-        who = (e["package"], e["kind"], e["key"], e["rule"])
+        try:
+            who = (e["package"], e["kind"], e["key"], e["rule"])
+        except KeyError as exc:
+            raise InventoryError(f"{out / LEDGER_NAME}: an entry lacks {exc}") from exc
         rel, original, patched = (
             e.get("repo_path"),
             e.get("original_sha256"),
@@ -108,10 +100,14 @@ def check_applied(out: Path, repo: Path) -> AppliedReport:
                 )
             )
             continue
+        path = (repo / rel).resolve()
         try:
-            digest = hashlib.sha256(normalize_text((repo / rel).read_bytes())).hexdigest()
-        except OSError:
-            rows.append(Row(*who, "missing", rel, "the file is not in the repository"))
+            if not path.is_relative_to(repo.resolve()):
+                raise OSError("the path leaves the repository")
+            digest = hashlib.sha256(normalize_text(path.read_bytes())).hexdigest()
+        except OSError as exc:
+            reason = f"the file cannot be read: {exc.strerror or exc}"
+            rows.append(Row(*who, "missing", rel, reason))
             continue
         status = (
             "applied" if digest == patched else "not_applied" if digest == original else "diverged"

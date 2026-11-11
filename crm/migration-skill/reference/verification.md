@@ -16,21 +16,23 @@ serves as a source stays read-only (`environments.md`).
 
 ## Deploy and re-extract: the loop's second half
 
-Starts once the loop in `reference/remediation.md` has a green build. Each step
+Starts once the loop in `remediation.md` has a green build. Each step
 has its gate; stop at the first that fails.
 
 1. Confirm the target (above). Gate: whoami matches the named dev or test org.
 2. Deploy by the route that fits the component. A web resource: `crm webresource
    push`. A plug-in assembly: `crm plugin register-assembly`. Form, ribbon or
-   sitemap XML: repack with `crm solution pack`, then bring it in with the
-   solution import verb and an explicit `--solution`. Gate: the command exits 0
-   and, for XML, the solution is published.
+   sitemap XML: repack with `crm solution pack`, import the zip with `crm
+   solution import`, then `crm solution publish-all` (the import's `--publish`
+   activates workflows only, it does not publish customizations). Gate: the
+   command exits 0 and, for XML, the publish ran.
 3. Re-extract the target scoped to that solution, then `crm inventory map-source`
    it against the repository. Gate: each deployed component is `matched`.
 4. Test and record results as below, then `crm inventory verify`. Gate: the verdict.
 
-A production org, a `crm2011` profile and hosted CI are out of bounds. A package
-is complete only when `verify` says so.
+Out of bounds for the whole loop, from the first patch to the last deploy: a
+production org, a `crm2011` profile and hosted CI. A package is complete only
+when `verify` says so.
 
 ## Collect errors and traces with existing commands
 

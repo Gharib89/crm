@@ -142,11 +142,8 @@ gate that fails.
    extract), `missing` a moved or deleted file. `not_checkable` rows are manual
    review or inventory-only patches: they stay tasks.
 4. Build and check in the repository's own toolchain. Gate: green.
-5. Continue in `reference/verification.md`: confirm the target, deploy, re-extract,
+5. Continue in `verification.md`: confirm the target, deploy, re-extract,
    `map-source`, record results, `verify`.
-
-Out of bounds for the whole loop: a production org, a `crm2011` profile and
-hosted CI.
 
 ## Plug-in projects: retarget, then build outside convert
 
