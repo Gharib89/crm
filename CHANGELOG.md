@@ -9,6 +9,43 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.117.0 (2026-11-11)
+
+### Bug Fixes
+
+- **inventory**: A using statement variable hides a type only inside the statement
+  ([#1234](https://github.com/Gharib89/crm/pull/1234),
+  [`1d20e27`](https://github.com/Gharib89/crm/commit/1d20e272b8d02b22f9cbf5e5523840f772e921bb))
+
+- **inventory**: Plug-in source member names hide a type only in their scope; nameof arguments are
+  no use ([#1234](https://github.com/Gharib89/crm/pull/1234),
+  [`1d20e27`](https://github.com/Gharib89/crm/commit/1d20e272b8d02b22f9cbf5e5523840f772e921bb))
+
+- **inventory**: Plug-in source rules skip shadowed names, nameof and child namespaces; one unknown
+  per bad file ([#1234](https://github.com/Gharib89/crm/pull/1234),
+  [`1d20e27`](https://github.com/Gharib89/crm/commit/1d20e272b8d02b22f9cbf5e5523840f772e921bb))
+
+- **inventory**: Plug-in source scan covers static members under using static and target-typed new
+  ([#1234](https://github.com/Gharib89/crm/pull/1234),
+  [`1d20e27`](https://github.com/Gharib89/crm/commit/1d20e272b8d02b22f9cbf5e5523840f772e921bb))
+
+- **inventory**: Plug-in source scan tracks pattern, out, catch, foreach and lambda bindings and
+  nullable target-typed new ([#1234](https://github.com/Gharib89/crm/pull/1234),
+  [`1d20e27`](https://github.com/Gharib89/crm/commit/1d20e272b8d02b22f9cbf5e5523840f772e921bb))
+
+### Documentation
+
+- **inventory**: An unreadable plug-in source file is one unknown with no rule
+  ([#1234](https://github.com/Gharib89/crm/pull/1234),
+  [`1d20e27`](https://github.com/Gharib89/crm/commit/1d20e272b8d02b22f9cbf5e5523840f772e921bb))
+
+### Features
+
+- **inventory**: Assess flags SQL, file system and registry use in plug-in source for the online
+  target ([#1234](https://github.com/Gharib89/crm/pull/1234),
+  [`1d20e27`](https://github.com/Gharib89/crm/commit/1d20e272b8d02b22f9cbf5e5523840f772e921bb))
+
+
 ## v1.116.0 (2026-11-11)
 
 ### Bug Fixes
