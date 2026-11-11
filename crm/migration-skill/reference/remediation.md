@@ -71,6 +71,7 @@ Microsoft's client API deprecation table convert:
 |---|---|
 | `Xrm.Page.context.getClientUrl()` and the other same-name methods to `Xrm.Utility.getGlobalContext()` | any other use of `Xrm.Page.context`, an alias |
 | `getUserName`, `getUserId`, `getUserLcid`, `getOrgLcid`, `getOrgUniqueName`, `getIsAutoSaveEnabled` to the `userSettings` or `organizationSettings` property; `getTimeZoneOffsetMinutes()` to `userSettings` | a call with arguments |
+| `getServerUrl()` on `Xrm.Page.context`, `Xrm.Utility.getGlobalContext()` or `GetGlobalContext()` to `getClientUrl()` (the 2011 equivalence is the rule's judgment: prove it with `inventory verify`) | any other receiver, a `GetGlobalContext` the file defines itself, a call with arguments |
 | nothing for `getUserRoles()` | every `getUserRoles()` call: roles become `{id, name}` lookups, not GUID strings, so each read of the list needs review |
 | `row.getData().getEntity()` to `row.data.entity` | `getData()` or `getEntity()` alone |
 | `Xrm.Mobile.offline` record methods to `Xrm.WebApi.offline` | `isOfflineEnabled`, other uses |
