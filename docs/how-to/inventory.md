@@ -549,7 +549,8 @@ web resource), in `unattached_unknowns` (an `out_of_scope` one in `unattached_ou
 Only web resources, plug-in assemblies and types, steps and images, processes, forms,
 ribbons and sitemaps join a group, with the source nodes; entities, attributes, option
 sets and views are context. A system web resource or plug-in does not bridge two groups.
-A group is a package when it holds a source-mapped component or an unknown. A package's
+A group is a package when it holds a source-mapped component or an unknown, or, with
+`--findings`, a process with a `blocker` or `deprecated` finding. A package's
 `id` is `pkg-` plus a hash of its sorted member ids, so the same members give the same
 id on every run.
 
@@ -618,8 +619,12 @@ blocker, deprecated, optional and unknown finding whose component is in a packag
 that package's `findings` list as a `compatibility` finding, keeping its `class`, `rule`
 id, `evidence` and `sources` (the Microsoft Learn pages of its rule). A shared library's
 finding appears once, in the package holding the library. `clear` findings are not
-merged. Findings never create or regroup packages, so a finding whose component is in no
-package is `unplaced`. Without the flag the output is byte-identical to before.
+merged. A `blocker` or `deprecated` finding on a process creates a package for the
+process's group when no package holds it: an isolated dialog or workflow becomes a package
+of one, carrying its `process_trigger` requirement, so `verify` judges it. `optional` and
+`unknown` findings on a process create none, and findings never regroup packages. A finding
+on any other kind whose component is in no package is `unplaced`. Without the flag the
+output is byte-identical to before.
 
 Every package in `index.json` gains `counts` (`blocker`, `deprecated`, `optional`,
 `unknown`; `unknown` includes the graph's unknown edges and gaps), and the summary and

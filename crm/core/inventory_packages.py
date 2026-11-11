@@ -939,7 +939,9 @@ def build_packages(
     matches); *scenarios*, when given, is a scenario file (see `_scenarios`).
     *findings_file*, when given, must name the same inventory: each of its
     blocker, deprecated, optional and unknown findings joins the package holding
-    its component, or is listed as unplaced. It never changes which packages exist.
+    its component, or is listed as unplaced. A blocker or deprecated finding on a
+    ``process`` also makes a package of its group when no other rule did, so an
+    isolated dialog or workflow is judged by ``verify``; no other finding creates one.
     Each package gets the `usage` of its members rolled up: read by `extract --with-usage`
     or derived from the manifest (`inventory_usage_filter`). *in_use* drops a package whose
     usage is `unused`, *exclude_unknown* also one that is `unknown`; a package with no usage
@@ -977,6 +979,14 @@ def build_packages(
         if f.cls != "clear":
             judged.setdefault(_id(f.kind, f.key), []).append(f)
     placed: set[str] = set()
+    # A process finding that blocks or retires the process forces a package (see docstring).
+    forcing = {
+        m
+        for m, found in judged.items()
+        if m in nodes
+        and nodes[m].kind == "process"
+        and any(f.cls in ("blocker", "deprecated") for f in found)
+    }
 
     usages = derive_usage(inv.records, refs.edges | structural, inv.extracted_at)
     drafts: list[tuple[str, set[str], list[str], list[Edge], list[Finding], Usage | None]] = []
@@ -1004,7 +1014,9 @@ def build_packages(
         ]
         # An edge outside the read is listed, but alone it does not make a package.
         if not members or not (
-            any(not f.out_of_scope for f in findings) or members & mapped.keys()
+            any(not f.out_of_scope for f in findings)
+            or members & mapped.keys()
+            or members & forcing
         ):
             continue
         if findings_file is not None:

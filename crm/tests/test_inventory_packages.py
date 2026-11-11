@@ -16,7 +16,7 @@ from click.testing import CliRunner
 from crm.cli import cli
 from crm.core import inventory as inv
 from crm.core.inventory_assess import assess, dump_findings, read_findings
-from crm.core.inventory_packages import build_packages, write_packages
+from crm.core.inventory_packages import build_packages, read_packages, write_packages
 from crm.core.inventory_source_map import (
     dump_source_map,
     map_source,
@@ -93,8 +93,23 @@ def _web_resource(name: str, content: str, folder: Path, ext: str = "js") -> inv
     return _record("web_resource", fields, folder, files=[(f"content.{ext}", content)])
 
 
-def _write_inventory(folder: Path) -> Path:
-    """One representative process: shared and process scripts, a ribbon, a plug-in step."""
+def _isolated(category: int, name: str) -> dict:
+    return {"category": category, "primary_entity": "new_project", "name": name}
+
+
+ISOLATED = {
+    "dialog": _isolated(1, "Retire project dialog"),
+    "workflow": _isolated(0, "Notify owner"),
+    "optional": _isolated(0, "Only optional"),
+    "unknown": _isolated(0, "Only unknown"),
+}
+
+
+def _write_inventory(folder: Path, *, isolated: bool = False) -> Path:
+    """One representative process: shared and process scripts, a ribbon, a plug-in step.
+
+    *isolated* adds processes that record no activities, so each sits in a group of its own.
+    """
     folder.mkdir(parents=True, exist_ok=True)
     records = [
         _record("entity", {"logical_name": "new_project"}, folder),
@@ -171,6 +186,8 @@ def _write_inventory(folder: Path) -> Path:
             origin="unknown",
         ),
     ]
+    if isolated:
+        records += [_record("process", f, folder) for f in ISOLATED.values()]
     counts: dict[str, int] = {}
     for record in records:
         counts[record.kind] = counts.get(record.kind, 0) + 1
@@ -825,7 +842,7 @@ def test_without_findings_the_output_is_unchanged(inputs, tmp_path):
     assert [p.id for p in merged.packages] == [p.id for p in plain.packages]
 
 
-def test_findings_never_create_a_package(inputs, tmp_path):
+def test_findings_on_a_packaged_fixture_create_no_package(inputs, tmp_path):
     result = _merged(inputs, tmp_path)
     plain = _packages(inputs)
     assert [p.members for p in result.packages] == [p.members for p in plain.packages]
@@ -1065,3 +1082,193 @@ def test_a_gap_on_the_empty_keyed_ribbon_attaches_to_its_package(inputs):
     assert result.summary()["unattached_gaps"] == 1
     package = _package_of(result, "ribbon:")
     assert any(f.get("type") == "extraction_gap" for f in package.to_dict()["findings"])
+
+
+def _process_id(name: str) -> str:
+    return f"process:{inv.component_key('process', ISOLATED[name])}"
+
+
+def _isolated_inputs(tmp_path: Path):
+    folder = _write_inventory(tmp_path / "inv", isolated=True)
+    source_map = tmp_path / "source-map.json"
+    source_map.write_text(
+        dump_source_map(map_source(folder, _write_repo(tmp_path / "repo"))), encoding="utf-8"
+    )
+    return folder, source_map, None
+
+
+def _process_findings(folder: Path, tmp_path: Path, hits: dict[str, str]) -> Path:
+    """The assess output with each named process's findings replaced by one at the given class."""
+    data = json.loads(dump_findings(assess(folder, "online")))
+    keys = {_process_id(n).split(":", 1)[1] for n in hits} | {PROCESS_KEY}
+    data["findings"] = [
+        f for f in data["findings"] if not (f["kind"] == "process" and f["key"] in keys)
+    ]
+    for name, cls in hits.items():
+        key = _process_id(name).split(":", 1)[1]
+        data["findings"].append(
+            {"kind": "process", "key": key, "class": cls, "rule": f"rule-{cls}", "reason": None,
+             "evidence": {"field": "category", "value": 1}}
+        )  # fmt: skip
+        data["rules_hit"][f"rule-{cls}"] = {
+            "class": cls,
+            "title": "t",
+            "fix": "f",
+            "sources": [LEARN],
+        }
+    path = tmp_path / "process-findings.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return path
+
+
+PROCESS_KEY = inv.component_key(
+    "process", {"category": 0, "primary_entity": "new_project", "name": "Project approval"}
+)
+HITS = {"dialog": "deprecated", "workflow": "blocker", "optional": "optional", "unknown": "unknown"}
+
+
+def _built(tmp_path: Path, hits: dict[str, str] | None = HITS, **kwargs):
+    folder, source_map, _ = _isolated_inputs(tmp_path)
+    findings = (
+        read_findings(_process_findings(folder, tmp_path, hits)) if hits is not None else None
+    )
+    return folder, build_packages(folder, read_source_map(source_map), None, findings, **kwargs)
+
+
+def test_blocker_or_deprecated_process_finding_forms_a_package_of_one(tmp_path):
+    _, result = _built(tmp_path)
+    for name, cls in (("dialog", "deprecated"), ("workflow", "blocker")):
+        package = _package_of(result, _process_id(name))
+        assert package.members == (_process_id(name),)
+        (finding,) = _compat(package)
+        assert finding["class"] == cls and finding["rule"] == f"rule-{cls}"
+        assert finding["evidence"] == {"field": "category", "value": 1}
+        assert finding["sources"] == [LEARN]
+        (requirement,) = _dicts(package.verification)
+        assert requirement["kind"] == "process_trigger"
+        assert requirement["details"]["category"] == ISOLATED[name]["category"]
+        assert requirement["details"]["primary_entity"] == "new_project"
+        assert package.id == "pkg-" + hashlib.sha256(_process_id(name).encode()).hexdigest()[:12]
+
+
+def test_optional_or_unknown_process_finding_forms_no_package(tmp_path):
+    _, result = _built(tmp_path)
+    held = {m for p in result.packages for m in p.members}
+    assert _process_id("optional") not in held and _process_id("unknown") not in held
+    unplaced = {f["key"] for f in result.index()["compatibility"]["unplaced"]}
+    assert {_process_id(n).split(":", 1)[1] for n in ("optional", "unknown")} <= unplaced
+    assert result.summary()["compatibility"]["unplaced"] == len(result.unplaced)
+
+
+def test_a_blocker_on_another_kind_still_forms_no_package(tmp_path):
+    folder, source_map, _ = _isolated_inputs(tmp_path)
+    data = json.loads(_process_findings(folder, tmp_path, HITS).read_text(encoding="utf-8"))
+    data["findings"].append(
+        {
+            "kind": "web_resource",
+            "key": "new_/lonely.js",
+            "class": "blocker",
+            "rule": "rule-blocker",
+            "reason": None,
+            "evidence": {"field": "x", "value": 1},
+        }
+    )
+    path = tmp_path / "other.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    result = build_packages(folder, read_source_map(source_map), None, read_findings(path))
+    assert "web_resource:new_/lonely.js" not in {m for p in result.packages for m in p.members}
+    assert "new_/lonely.js" in {f["key"] for f in result.index()["compatibility"]["unplaced"]}
+
+
+def test_a_process_already_in_a_package_forms_no_second_one(tmp_path):
+    folder, source_map, _ = _isolated_inputs(tmp_path)
+    plain = build_packages(folder, read_source_map(source_map))
+    findings = read_findings(_process_findings(folder, tmp_path, {"dialog": "blocker"}))
+    found = build_packages(folder, read_source_map(source_map), None, findings)
+    plugins = _package_of(found, "plugin_assembly:Contoso.Billing")
+    assert plugins.id == _package_of(plain, "plugin_assembly:Contoso.Billing").id
+    assert sum("process:" + PROCESS_KEY in p.members for p in found.packages) == 1
+    members = [m for p in found.packages for m in p.members]
+    assert len(members) == len(set(members))
+    assert [p.id for p in plain.packages] == [
+        p.id for p in found.packages if p.id in {q.id for q in plain.packages}
+    ]
+
+
+def test_process_packages_leave_the_other_ids_and_bytes_alone(tmp_path):
+    folder, found = _built(tmp_path)
+    _, plain = _built(tmp_path / "again", hits=None)
+    old = {p.id: p for p in plain.packages}
+    new = {p.id: p for p in found.packages}
+    assert set(old) < set(new) and len(new) == len(old) + 2
+    for pid, package in old.items():
+        assert _dicts([package]) == _dicts([new[pid]]) or package.members == new[pid].members
+    one, two = tmp_path / "one", tmp_path / "two"
+    write_packages(found, one)
+    write_packages(_built(tmp_path / "third")[1], two)
+    for p in one.iterdir():
+        assert p.read_bytes() == (two / p.name).read_bytes()
+
+
+def test_filters_keep_working_on_process_packages(tmp_path):
+    _, result = _built(tmp_path, in_use=True, exclude_unknown=True, sort="usage")
+    assert result.summary()["compatibility"]["unplaced"] == len(result.unplaced)
+    for p in result.index()["packages"]:
+        assert p["counts"].keys() == {"blocker", "deprecated", "optional", "unknown"}
+
+
+def _packages_folder(tmp_path: Path):
+    folder, result = _built(tmp_path)
+    out = tmp_path / "packages"
+    write_packages(result, out)
+    return folder, out, result
+
+
+def test_verify_judges_a_process_only_package(tmp_path):
+    _, out, result = _packages_folder(tmp_path)
+    package = _package_of(result, _process_id("dialog"))
+    (req,) = _dicts(package.verification)
+    env = {"profile": "test-org", "org": ORG}
+    run = tmp_path / "run"
+
+    def verdict(outcome: str | None, evidence=(), **extra) -> str:
+        results = [] if outcome is None else [
+            {"package": package.id, "requirement": req["id"], "outcome": outcome,
+             "evidence": evidence, "environment": env, **extra}
+        ]  # fmt: skip
+        run.mkdir(exist_ok=True)
+        data = {
+            "schema_version": 1,
+            "packages_sha256": read_packages(out).sha256,
+            "results": results,
+        }
+        (run / "results.json").write_text(json.dumps(data), encoding="utf-8")
+        res = CliRunner().invoke(
+            cli, ["--json", "inventory", "verify", str(out), "--results", str(run / "results.json")]
+        )
+        assert res.exit_code == 0, res.output
+        (found,) = [p for p in json.loads(res.output)["data"]["packages"] if p["id"] == package.id]
+        return found["verdict"]
+
+    body = b"ok\n"
+    (run).mkdir()
+    (run / "e.txt").write_bytes(body)
+    good = [{"path": "e.txt", "sha256": hashlib.sha256(body).hexdigest()}]
+    assert verdict(None) == "not_tested"
+    assert verdict("blocked", errors=["no org"]) == "blocked"
+    assert verdict("pass") == "not_tested"
+    assert verdict("pass", good) == "complete"
+
+
+def test_convert_writes_no_ledger_entry_for_a_process_only_package(tmp_path):
+    folder, out, _ = _packages_folder(tmp_path)
+    findings = tmp_path / "process-findings.json"
+    dest = tmp_path / "out"
+    res = CliRunner().invoke(
+        cli,
+        ["--json", "inventory", "convert", str(folder), "--findings", str(findings),
+         "--packages", str(out), "--out", str(dest)],
+    )  # fmt: skip
+    assert res.exit_code == 0, res.output
+    entries = json.loads((dest / "ledger.json").read_text(encoding="utf-8"))["entries"]
+    assert not [e for e in entries if e["kind"] == "process" and "dialog" in e["key"].lower()]

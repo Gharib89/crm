@@ -406,7 +406,9 @@ def inventory_packages_cmd(
     component, keeping its class, rule id, evidence and Microsoft Learn sources,
     and counts them per package; a clear finding is not merged, a finding whose
     component is in no package is listed as unplaced, and a findings file made
-    from another inventory exits 1. Findings never change which packages exist.
+    from another inventory exits 1. A blocker or deprecated finding on a process
+    also makes a package of its group when none holds it (a package of one for an
+    isolated dialog); no other finding creates a package.
     --out gets index.json and one <package id>.json per package, the same
     bytes for the same inputs. Returns the package count and sizes, the
     unknown counts, the scenario seeds not found or in no package, and the
