@@ -170,3 +170,21 @@ def test_a_repo_path_that_leaves_the_repository_is_missing(applied):
     ledger.write_text(json.dumps(data), encoding="utf-8")
     res = applied.run("--json")
     assert res.exit_code == 1 and _rows(res)[CTX_NAME]["status"] == "missing"
+
+
+@pytest.mark.parametrize("bad", ["not an object", None])
+def test_a_ledger_entry_that_is_not_an_object_is_a_usage_error(applied, bad):
+    ledger = applied.out / LEDGER_NAME
+    data = json.loads(ledger.read_text(encoding="utf-8"))
+    data["entries"].append(bad)
+    ledger.write_text(json.dumps(data), encoding="utf-8")
+    assert applied.run().exit_code == 2
+
+
+def test_a_repo_path_that_is_not_a_string_is_a_usage_error(applied):
+    ledger = applied.out / LEDGER_NAME
+    data = json.loads(ledger.read_text(encoding="utf-8"))
+    entry = next(e for e in data["entries"] if e["key"] == CTX_NAME)
+    entry["repo_path"] = 7
+    ledger.write_text(json.dumps(data), encoding="utf-8")
+    assert applied.run().exit_code == 2

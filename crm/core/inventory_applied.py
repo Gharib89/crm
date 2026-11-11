@@ -65,8 +65,8 @@ def _read_ledger(out: Path) -> list[dict[str, Any]]:
             f" this crm reads ledger schema_version {SCHEMA_VERSION}"
         )
     entries = body.get("entries")
-    if not isinstance(entries, list):
-        raise InventoryError(f"{path}: entries must be a list")
+    if not isinstance(entries, list) or not all(isinstance(e, dict) for e in entries):  # pyright: ignore[reportUnknownVariableType]
+        raise InventoryError(f"{path}: entries must be a list of objects")
     return cast(list[dict[str, Any]], entries)
 
 
@@ -87,6 +87,8 @@ def check_applied(out: Path, repo: Path) -> AppliedReport:
             e.get("original_sha256"),
             e.get("patched_sha256"),
         )
+        if rel is not None and not isinstance(rel, str):
+            raise InventoryError(f"{out / LEDGER_NAME}: repo_path of {who[2]} must be a string")
         if e.get("status") != "patched":
             rows.append(Row(*who, "not_checkable", rel, "a manual-review entry: no patch to check"))
             continue
