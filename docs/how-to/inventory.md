@@ -365,7 +365,7 @@ skill calls this the cloud-first route. In order:
 6. Map the cloud inventory to the application repository with `crm inventory map-source`, then run
    `assess`, `packages` and `convert` against it: it records the deployed
    code, and the OData v2 rewrite needs the entity set names only a v9 extract records.
-7. Verify on the cloud dev or test org.
+7. Patch, build and verify on the cloud dev or test org.
 
 With no stage observed between the two, a `removed` or `changed` entry cannot be tied to a hop.
 Each one becomes a question for the team that ran the hops, or an unknown in the report; none is
