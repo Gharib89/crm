@@ -146,9 +146,13 @@ def no_managed_solution_lookup(
     ``solutions`` GET would hit an unmocked URL. ``test_managed_solution_guard.py``
     opts back in with ``@pytest.mark.managed_guard`` to test the real guard; live e2e keeps it.
     """
-    if request.node.get_closest_marker("managed_guard") or request.node.get_closest_marker("e2e"):
+    if "managed_guard" in request.keywords or "e2e" in request.keywords:
         return
-    monkeypatch.setattr(D365Backend, "_refuse_managed_solution", lambda self, solution: None)
+
+    def _no_guard(self: D365Backend, solution: str) -> None:
+        return None
+
+    monkeypatch.setattr(D365Backend, "_refuse_managed_solution", _no_guard)
 
 
 @pytest.fixture(autouse=True)
