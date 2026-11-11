@@ -309,7 +309,7 @@ def test_cli_writes_findings_and_counts_with_blockers_exiting_0(inventory, tmp_p
 
 def test_cli_refuses_an_unknown_schema_version(inventory, tmp_path):
     manifest = json.loads((inventory / inv.MANIFEST_NAME).read_text())
-    manifest["schema_version"] = 4
+    manifest["schema_version"] = 5
     (inventory / inv.MANIFEST_NAME).write_text(json.dumps(manifest))
     out = tmp_path / "findings.json"
     res = CliRunner().invoke(

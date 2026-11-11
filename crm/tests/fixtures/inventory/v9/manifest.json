@@ -71,6 +71,13 @@
       "status": "complete",
       "truncated": false
     },
+    "report": {
+      "errors": [],
+      "pages": 1,
+      "records": 1,
+      "status": "complete",
+      "truncated": false
+    },
     "ribbon": {
       "errors": [],
       "pages": 1,
@@ -392,6 +399,31 @@
       "artifacts": [
         {
           "content": "text",
+          "normalized_sha256": "2bc19a0fa85fdff4991724514133b63dc131d6741570def57905598f8aba1334",
+          "path": "artifacts/report/new_-project-summary-2bc19a0fa85f.report.rdl",
+          "sha256": "2bc19a0fa85fdff4991724514133b63dc131d6741570def57905598f8aba1334"
+        }
+      ],
+      "display_name": null,
+      "fields": {
+        "custom": true,
+        "data_provider": "fetch",
+        "language": 1033,
+        "name": "Project summary",
+        "personal": false,
+        "report_type": 1
+      },
+      "id": "00000000-0000-0000-0000-000000000050",
+      "key": "Project summary",
+      "kind": "report",
+      "managed": false,
+      "origin": "custom",
+      "publication_state": "published"
+    },
+    {
+      "artifacts": [
+        {
+          "content": "text",
           "normalized_sha256": "9235fa863015b1dd9a72b57077d85812df98de0ff48ee99027fd0af3a50bf5ee",
           "path": "artifacts/ribbon/component-97765dd63feb.ribbon.xml",
           "sha256": "9235fa863015b1dd9a72b57077d85812df98de0ff48ee99027fd0af3a50bf5ee"
@@ -561,7 +593,7 @@
       "publication_state": "published"
     }
   ],
-  "schema_version": 3,
+  "schema_version": 4,
   "scope": {
     "mode": "org",
     "solutions": []

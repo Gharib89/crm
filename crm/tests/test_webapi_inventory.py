@@ -35,7 +35,7 @@ from crm.utils.safe_xml import fromstring
 
 _URL = "https://contoso.crm.dynamics.com"
 _SECRET = "s3cr3t-client-secret-value"
-_SCHEMA = Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v3.schema.json"
+_SCHEMA = Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v4.schema.json"
 _FMT = "@OData.Community.Display.V1.FormattedValue"
 _LOOKUP = "@Microsoft.Dynamics.CRM.lookuplogicalname"
 
@@ -408,7 +408,7 @@ def test_disk_and_gac_assemblies_are_extraction_gaps(tmp_path):
         assert gap["kind"] == "plugin_assembly" and where in gap["reason"]
     descriptions = [g["description"] or "" for g in data["gaps"]]
     # SSRS reports on cloud are FetchXML-based: no SQL data source gap.
-    assert not any(d.startswith("SQL data sources") for d in descriptions)
+    assert not any(d.startswith("shared data sources") for d in descriptions)
 
 
 def test_an_onprem_v9_profile_is_platform_onprem_with_the_ssrs_gap(tmp_path):
@@ -416,7 +416,55 @@ def test_an_onprem_v9_profile_is_platform_onprem_with_the_ssrs_gap(tmp_path):
     _extract(FakeBackend(auth_scheme="ntlm"), out)
     data = _manifest(out)
     assert data["source"]["platform"] == "onprem"
-    assert any((g["description"] or "").startswith("SQL data sources") for g in data["gaps"])
+    assert any((g["description"] or "").startswith("shared data sources") for g in data["gaps"])
+
+
+_FETCH_RDL = (
+    "<Report><DataSources><DataSource Name='CRM'><ConnectionProperties>"
+    "<DataProvider>MSCRMFETCH</DataProvider></ConnectionProperties></DataSource>"
+    "</DataSources></Report>"
+)
+
+
+def _reports(*rows: dict) -> dict:
+    return {
+        **_ORG,
+        "reports": [[
+            {"ismanaged": False, "solutionid": _id(2), "reporttypecode": 1, "ispersonal": False,
+             "iscustomreport": True, "languagecode": 1033, **row}
+            for row in rows
+        ]],
+    }  # fmt: skip
+
+
+def test_each_report_is_a_record_with_its_data_provider_and_a_bodyless_one_a_gap(tmp_path):
+    out = tmp_path / "inv"
+    org = _reports(
+        {"reportid": _id(90), "name": "Sales", "bodytext": _FETCH_RDL},
+        {"reportid": _id(91), "name": "Bodyless"},
+        {"reportid": _id(92), "name": "Link", "reporttypecode": 3},
+    )
+    backend = FakeBackend(auth_scheme="ntlm", org=org)
+
+    assert _extract(backend, out).complete
+    data = _manifest(out)
+
+    assert _keys(data, "report") == ["Bodyless", "Link", "Sales"]
+    fields = {r["key"]: r["fields"] for r in data["records"] if r["kind"] == "report"}
+    assert fields["Sales"]["data_provider"] == "fetch" and fields["Sales"]["report_type"] == 1
+    assert fields["Bodyless"]["data_provider"] == "unknown"
+    assert "data_provider_reason" in fields["Link"]
+    report_gaps = [g for g in data["gaps"] if g["kind"] == "report"]
+    assert [(g["key"], g["reason"]) for g in report_gaps] == [
+        ("Bodyless", "RDL body not returned by the Web API")
+    ]
+    assert data["coverage"]["report"]["status"] == "complete"
+    (artifact,) = next(r for r in data["records"] if r["key"] == "Sales")["artifacts"]
+    assert (out / artifact["path"]).read_text(encoding="utf-8") == _FETCH_RDL
+    # The shared data sources are still an SSRS gap on on-prem, and it names no component.
+    ssrs = [g for g in data["gaps"] if (g["description"] or "").startswith("shared data sources")]
+    assert [(g["kind"], g["key"]) for g in ssrs] == [(None, None)]
+    assert "defined in SSRS" in ssrs[0]["reason"]
 
 
 def test_no_credential_reaches_any_output_file(tmp_path):
