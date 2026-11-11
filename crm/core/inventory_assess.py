@@ -334,8 +334,8 @@ def _detection(
             raise InventoryError(f"rules file {where}.web_resource_types must hold integers")
         if bool(types) != (kind == "web_resource"):
             raise InventoryError(
-                f"rules file {where}: web_resource_types is for a web_resource rule only,"
-                " which needs it"
+                f"rules file {where}: host_pattern needs web_resource_types on a web_resource"
+                " rule and takes none on another kind"
             )
         return HostPattern(NO_HOSTS, tuple(cast(list[int], types)))
     if detection_type == "xaml_pattern":

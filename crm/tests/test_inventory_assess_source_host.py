@@ -179,7 +179,7 @@ def test_a_host_must_be_a_bare_name(folder, bad):
         assess.assess(folder, "online", source_hosts=(bad,))
 
 
-def test_packages_and_convert_read_the_findings_unchanged(folder, tmp_path):
+def test_the_findings_file_reads_back_with_the_new_rules(folder, tmp_path):
     out = tmp_path / "f.json"
     result = assess.assess(folder, "online", source_hosts=("crm01",))
     out.write_text(assess.dump_findings(result), encoding="utf-8")
