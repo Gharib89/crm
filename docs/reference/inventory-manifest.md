@@ -139,6 +139,16 @@ a manifest extracted before they existed does not read every column as changed. 
 sides carrying it and differing is a `fields.<name>` change, `fields.max_length`
 for a changed length.
 
+### Form activation
+
+A v9 or Dataverse extract records whether a `form` is active as the boolean
+`fields.active`, read from `systemform.formactivationstate`. A source that does not
+return the column (a CRM 2011 extract, one written before this field existed, or a row
+with a null value) records none: the form's activation is not read. The field is optional,
+so adding it needed no `schema_version` bump, and `inventory diff` skips it where only one
+side recorded it, so a missing value is never a difference or agreement. Both sides
+carrying it and differing is a `fields.active` change.
+
 ### Entity set name
 
 A v9 or Dataverse extract records the server's `EntitySetName` as `entity_set_name`

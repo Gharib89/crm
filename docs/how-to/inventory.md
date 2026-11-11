@@ -335,6 +335,13 @@ compared only where both manifests recorded them, so an older extract, which has
 none, shows no facet change. A length that differs on both reads as one
 `fields.max_length` change.
 
+A `form` record carries `active` (a v9 or cloud extract only), which `diff`
+compares only where both manifests recorded it, so a CRM 2011 or older extract shows no
+activation change. The CRM 2013 upgrade added new forms beside the 2011 ones and left
+activation to the customer, so a form that is `active: false` in the later stage
+while its counterpart was in use on the source is not shown to users there: treat the
+`fields.active` change as a form to activate or retire, not as a match.
+
 What a side could not read is never reported as removed, added or changed: a
 record or artifact missing on a side whose extraction gap names the key is no
 difference. A key a gap names is `not_comparable` unless a field or a hash differs

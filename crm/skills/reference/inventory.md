@@ -104,6 +104,12 @@ it needs no profile and no network.
   source carries `entity_set_name`, which `convert --target-inventory` reads for OData v2
   sites; a CRM 2011 extract or an older one has none (`diff` skips it where one side
   lacks it), so extract the convert target from the v9 org.
+- **A v9 extract records whether each form is active.** A `form` record carries
+  `active` (from `formactivationstate`); a CRM 2011 extract or an older one has none, and
+  `diff` skips it where one side lacks it, so unread is never "agrees". After the CRM
+  2013 upgrade the new forms sit beside the 2011 ones and the customer chooses which to
+  activate: a form `active: false` in the later stage that is in use on the source is
+  invisible to its users, so report it as a finding, not as a match.
 - **An older extract reads every ribbon `changed` once.** A ribbon's
   `normalized_sha256` now ignores the order of its rule and command siblings,
   and a manifest written before that hashed the raw text: re-extract the older
