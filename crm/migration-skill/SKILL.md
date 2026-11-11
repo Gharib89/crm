@@ -48,8 +48,10 @@ rest.
    a listed unknown, and both manifests state the same scope.
 4. **Diff the two.** `crm inventory diff` 2011 against cloud. With no stage
    observed between them, read `removed` and `changed` as
-   `reference/inventory.md` says. Done when each entry has an explanation, a
-   question for the team that ran the hops, or an unknown.
+   `reference/inventory.md` says. Then run the arrival checklist
+   (`reference/arrival.md`) on the cloud org, for state the diff does not show.
+   Done when each entry has an explanation, a question for the team that ran
+   the hops, or an unknown, and each checklist item is answered or an unknown.
 5. **Request the handover.** Ask that team for each item
    `reference/handover.md` lists, and record each answer, or its absence as an unknown. A 9.1 extract, if they
    supply one, replaces the single diff with two (2011 to 9.1, 9.1 to cloud).
