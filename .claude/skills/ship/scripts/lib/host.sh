@@ -207,6 +207,16 @@
 #   host_pr_merge <pr> <subject> <head>  -> exit 0 once the host reports merged
 #                                           The host refuses the merge when the PR's head is
 #                                           not <head>, the head the merge gate read.
+#   host_branch_protections <branch>     -> {branch,protected,required_checks,required_reviews,bypass}
+#                                           what the host itself enforces on <branch>, read-only.
+#                                           protected: yes | no | unknown. required_checks: the
+#                                           check names that must pass, or unknown. required_reviews:
+#                                           the approvals required, 0 where none, or unknown.
+#                                           bypass: whether a repository admin can merge past it
+#                                           (yes | no), n/a where nothing protects the branch, or
+#                                           unknown. A read the token or plan refuses (403, a 404
+#                                           that is not "not protected") is unknown, never none;
+#                                           the answer itself is always exit 0.
 #   host_prs_open                        -> [{number,title,head_ref,author,url,created_at}]
 #   host_issues_ready <label>            -> [{number,title,created_at}] oldest first, unassigned, not PRs
 

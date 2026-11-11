@@ -148,3 +148,45 @@ host_pr_comment() { # <pr> <body-file>
 }
 host_pr_set_body() { azx repos pr update "${ORG[@]}" --id "$1" --description "$(cat "$2")" >/dev/null; }
 host_pr_set_title() { azx repos pr update "${ORG[@]}" --id "$1" --title "$2" >/dev/null; }
+
+# What Azure DevOps branch policy enforces on <branch>, read-only. An empty
+# policy list is the unprotected answer (there is no 404 here); a failed read is
+# `unknown`, never none. Only enabled, blocking policies count. The repository's
+# policies are read whole and matched to the branch here, because `az repos
+# policy list --branch` is an exact refName match (its help says so) and would
+# miss a policy scoped by prefix or to the default branch, which reads as none,
+# the unsafe direction. Whether the caller may bypass them is a permission
+# (PolicyExempt) this read does not evaluate, so `bypass` is `unknown` wherever
+# a policy applies. Type ids: minimum reviewers fa4e907d-..., build 0609b952-...,
+# status cbdc66da-....
+host_branch_protections() { # <branch>
+  local repo pol
+  repo=$(azx repos show "${PRJ[@]}" --repository "$SHIP_REPO") \
+    && jq -e '(.id | type == "string" and length > 0) and (.defaultBranch | type == "string" and length > 0)' <<<"$repo" >/dev/null \
+    && pol=$(azx repos policy list "${PRJ[@]}" --repository-id "$(jq -er '.id' <<<"$repo")") \
+    && jq -e 'type == "array" and all(.[]; (.isEnabled | type == "boolean") and
+      (if .isEnabled then (.isBlocking | type == "boolean") else true end) and
+      (if .isEnabled and .isBlocking then
+        (.settings.scope | type == "array" and length > 0 and all(.[];
+          (.repositoryId == null or (.repositoryId | type == "string" and length > 0)) and
+          (.matchKind == "DefaultBranch" or ((.matchKind == "Exact" or .matchKind == "Prefix") and (.refName | type == "string" and length > 0)))))
+       else true end))' <<<"$pol" >/dev/null \
+    || { jq -n --arg b "$1" '{branch: $b, protected: "unknown", required_checks: "unknown", required_reviews: "unknown", bypass: "unknown"}'; return 0; }
+  jq --arg b "$1" --arg rid "$(jq -r '.id' <<<"$repo")" --arg def "$(jq -r '.defaultBranch // ""' <<<"$repo")" '
+    ("refs/heads/" + $b) as $ref
+    | def applies: .settings.scope // [] | any(.[]; (.repositoryId == null or .repositoryId == $rid) and
+        (if .matchKind == "Prefix" then (.refName as $n | $ref | startswith($n))
+         elif .matchKind == "DefaultBranch" then $ref == $def
+         else .refName == $ref end));
+    [.[] | select(.isEnabled and .isBlocking and applies)] as $p
+    | if any($p[]; (.type.id | type != "string" or length == 0) or
+        (.type.id == "fa4e907d-c16b-4a4c-9dfa-4906e5d171dd" and
+          (.settings.minimumApproverCount | type != "number" or . < 0 or floor != .))) then
+      {branch: $b, protected: "unknown", required_checks: "unknown", required_reviews: "unknown", bypass: "unknown"}
+    else {branch: $b,
+    protected: (if ($p | length) > 0 then "yes" else "no" end),
+    required_checks: [$p[] | select(.type.id | IN("0609b952-1397-4640-95ec-e00a01b2c241", "cbdc66da-9728-4af8-aada-9a5a32e4a226"))
+      | .settings | (.displayName // .statusName // "unnamed required check")] | unique,
+    required_reviews: ([0, ($p[] | select(.type.id == "fa4e907d-c16b-4a4c-9dfa-4906e5d171dd") | .settings.minimumApproverCount)] | max),
+    bypass: (if ($p | length) > 0 then "unknown" else "n/a" end)} end' <<<"$pol"
+}

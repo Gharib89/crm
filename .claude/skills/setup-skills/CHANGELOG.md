@@ -7,6 +7,15 @@ released version. See
 
 <!-- version list -->
 
+## v0.29.0 (2026-11-11)
+
+### Features
+
+- **ship**: Move find-docs to 681554c, hyperframes and media-use to 3e04a59
+  ([#1159](https://github.com/Gharib89/skills/pull/1159),
+  [`0d23bda`](https://github.com/Gharib89/skills/commit/0d23bda846ac5abdcafdbaf51ef5307f93c7403e))
+
+
 ## v0.28.0 (2026-10-30)
 
 ### Features

@@ -7,6 +7,51 @@ released version. See
 
 <!-- version list -->
 
+## v0.58.0 (2026-11-11)
+
+### Features
+
+- **ship**: Move find-docs to 681554c, hyperframes and media-use to 3e04a59
+  ([#1159](https://github.com/Gharib89/skills/pull/1159),
+  [`0d23bda`](https://github.com/Gharib89/skills/commit/0d23bda846ac5abdcafdbaf51ef5307f93c7403e))
+
+
+## v0.57.0 (2026-11-09)
+
+### Features
+
+- **ship**: Update-pr-body --drop-records rewrites a wrapped section once more
+  ([#1130](https://github.com/Gharib89/skills/pull/1130),
+  [`abe43df`](https://github.com/Gharib89/skills/commit/abe43df67566109693fac2ebda8e2f9678103229))
+
+
+## v0.56.0 (2026-11-09)
+
+### Features
+
+- **ship**: Collapse long PR body sections in details blocks on GitHub
+  ([#1127](https://github.com/Gharib89/skills/pull/1127),
+  [`229de1e`](https://github.com/Gharib89/skills/commit/229de1efa25a46d28572f92cfd0f53c1f1639ebb))
+
+
+## v0.55.0 (2026-11-06)
+
+### Features
+
+- **ship**: Merge gate reports the host's own protections, read-only
+  ([#1108](https://github.com/Gharib89/skills/pull/1108),
+  [`d7f542a`](https://github.com/Gharib89/skills/commit/d7f542abfbd01de281fddbd5a67def4133a05583))
+
+
+## v0.54.3 (2026-11-06)
+
+### Bug Fixes
+
+- **ship**: Quote profile-schema as a string in SKILL.md metadata
+  ([#1107](https://github.com/Gharib89/skills/pull/1107),
+  [`e920ba2`](https://github.com/Gharib89/skills/commit/e920ba23029484b0ebaa584c38c27561ceedc090))
+
+
 ## v0.54.2 (2026-10-30)
 
 ### Bug Fixes

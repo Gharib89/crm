@@ -228,3 +228,41 @@ host_pr_reviewer_blocked() { # <pr> <login>
     api "$R/pulls/$1/reviews"   --paginate --jq '.[] | {login: .user.login, body, at: .submitted_at}'
   } | jq -s --arg l "$2" "$_gh_blocked_select"
 }
+
+# What GitHub itself enforces on <branch>, read-only. Two sources, both needed:
+# the classic branch protection and the rulesets that apply to the branch. A
+# source that cannot be read makes the fields it feeds `unknown`, never none:
+# the classic read answers 404 both for "Branch not protected" (the only 404
+# that means none) and for a protected branch the token cannot administer (a
+# bare "Not Found"), and a free private repo answers 403. gh's message is the
+# only thing that tells them apart, so the classic read keeps its stderr. A
+# ruleset's bypass actors are not in the rules read, so a ruleset-only answer
+# leaves `bypass` unknown. `copilot_code_review` gates no merge.
+host_branch_protections() { # <branch>
+  local b=$1 cls rules err e; err=$(mktemp); trap 'rm -f "$err"; trap - RETURN' RETURN
+  # `@uri` and `--paginate`, as host_copilot_review_on_push reads the same rules:
+  # a slash in the name addresses another route, and a rule on page two read as
+  # absent would turn a protected branch into none.
+  e=$(jq -rn --arg b "$b" '$b | @uri') || return 1
+  if cls=$(api "$R/branches/$e/protection" 2>"$err"); then :
+  elif grep -q 'Branch not protected' "$err"; then cls=null
+  else cls=unknown; fi
+  if rules=$(api "$R/rules/branches/$e" --paginate --jq '.[]' 2>/dev/null); then rules=$(jq -s -c . <<<"$rules"); else rules=unknown; fi
+  jq -n --arg b "$b" --arg c "$cls" --arg r "$rules" '
+    def src: if . == "unknown" then "unknown" else fromjson end;
+    ($c | src) as $cls | ($r | src) as $rules
+    | ([$rules | arrays[] | select(.type != "copilot_code_review")]) as $rr
+    | ($cls != "unknown" and $cls != null) as $classic
+    | (if $classic or ($rr | length) > 0 then "yes"
+       elif $cls == null and $rules != "unknown" then "no" else "unknown" end) as $p
+    | ($cls == "unknown" or $rules == "unknown") as $blind
+    | {branch: $b, protected: $p,
+       required_checks: (if $p == "no" then [] elif $blind then "unknown" else
+         [($cls | objects | .required_status_checks | (.checks[]?.context, .contexts[]?)),
+          ($rr[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]?.context)] | unique end),
+       required_reviews: (if $p == "no" then 0 elif $blind then "unknown" else
+         [0, ($cls | objects | .required_pull_request_reviews.required_approving_review_count // 0),
+          ($rr[] | select(.type == "pull_request") | .parameters.required_approving_review_count // 0)] | max end),
+       bypass: (if $p == "no" then "n/a" elif $blind or ($rr | length) > 0 then "unknown"
+                elif $cls.enforce_admins.enabled and (($cls.required_pull_request_reviews.bypass_pull_request_allowances // {}) | [.users[]?, .teams[]?, .apps[]?] | length == 0) then "no" else "yes" end)}'
+}

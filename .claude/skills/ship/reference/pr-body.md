@@ -6,6 +6,7 @@
 - [The Change outline](#the-change-outline)
 - [Special things to note: the folded deviations](#special-things-to-note-the-folded-deviations)
 - [Needs attention: what the run left for someone](#needs-attention-what-the-run-left-for-someone)
+- [Collapsing long sections](#collapsing-long-sections)
 - [Writing and reading it back](#writing-and-reading-it-back)
 
 The body is written once at `open-pr` and rewritten a section at a time after
@@ -39,7 +40,8 @@ write into. Every variant carries:
   ran, or `None applicable: <reason>`.
 - **`## Review`**, one placeholder line per reviewer at open, filled at the
   phase-7 exit with its exit word, what its rounds found and what became of
-  the findings ([review-loop.md](review-loop.md#the-exit)).
+  the findings ([review-loop.md](review-loop.md#the-exit)). Its long part, and
+  Verification's, is [collapsed](#collapsing-long-sections) on GitHub.
 - **The attribution footer**, where the environment provides one for pull
   request descriptions, in the body file `open-pr` is handed. The body **ends**
   with it, under a `## ` heading of its own that ship adds where no template
@@ -118,10 +120,41 @@ here only once filed: a folded one goes under `## Special things to note`, and a
 noted one stays in the merge summary. It is written from the Run file's record,
 not the deviations log.
 
+## Collapsing long sections
+
+A reviewer reads the short summary first, so the detail behind it folds away.
+The host is the profile's Host. On a GitHub host, the long part of
+`## Review` and `## Verification` goes inside a column-0 `<details>` block with
+a one-line `<summary>`. The long part is whatever an entry carries beyond its
+one line: a reviewer's per-round findings under Review, and a verification's
+command output or multi-line note on what ran under Verification. Wrap it when
+any entry carries more than three lines of detail; a section within that bound
+stays plain. The `## ` heading, the exit word and any one-line entry stay
+outside the block. So the one line per entry stays visible first (each
+reviewer's exit-word line, each verification's result line, or the
+`None applicable: <reason>` line), and the block follows them with the
+detail. The section surgery treats the block as the section's own content,
+never as a heading ([mechanics.md](mechanics.md#section-surgery)).
+`## Why the change` and the Door line are never wrapped. On an Azure DevOps
+host, write no `<details>` block: it renders no HTML, as the Change outline
+notes.
+
+Write a wrapped section once, in the write that finishes it. Only that write
+carries the block: the `## Review` placeholder written at open and any interim
+write carry none. Review is finished at the phase-7 exit, and Verification at
+the write that carries its phase-3 results. A section write keeps the old
+section's `<details>` blocks verbatim below the new content by default, so a
+plain second write of a wrapped section leaves the first block behind. Where a
+finished wrapped section must change anyway, rewrite it with
+`--section <name> --drop-records` and a body file carrying the whole new
+`<details>` block: every old block is dropped, so the body file must carry all
+the section keeps.
+
 ## Writing and reading it back
 
 `update-pr-body <pr> --section <name> --body-file <path>` replaces one section
-and writes its `## <name>` line itself, so the file holds the content alone.
+and writes its `## <name>` line itself, so the file holds the content alone;
+`--drop-records`, section mode only, skips carrying the old `<details>` blocks.
 `--preamble` replaces everything above the first heading, where the closing line
 sits, carrying the old closing line over when the new content lacks one; a body
 with no heading is preamble entire. A column-0 `<details>` block is a
