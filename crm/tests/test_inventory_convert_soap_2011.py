@@ -36,6 +36,7 @@ CASES: dict[str, str] = {
         'x.open("POST", "/XRMServices/2011/Discovery.svc");\n'
     ),
     "same-line": 'a("/XRMServices/2011/Organization.svc"); b("/XRMServices/2011/Discovery.svc");\n',
+    "template": 'x.open("POST", `${f("/XRMServices/2011/Organization.svc")}/web`);\n',
     "comment-only": "// was /XRMServices/2011/Organization.svc/web\nvar z = 1;\n",
     "mixed": (
         "var c = Xrm.Page.context.getClientUrl();\n"
@@ -149,6 +150,10 @@ def test_two_sites_give_two_entries(run):
 
 def test_two_sites_on_one_line_give_two_entries(run):
     assert [m["line"] for m in _reviews(run, NAMES["same-line"])] == [1, 1]
+
+
+def test_a_string_inside_a_template_substitution_is_one_site(run):
+    assert [m["line"] for m in _reviews(run, NAMES["template"])] == [1]
 
 
 def test_the_inventory_bytes_are_unchanged_by_convert(run):

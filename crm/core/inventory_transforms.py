@@ -770,15 +770,27 @@ def _plan_soap_2011_review(root: Node) -> Plan:
     A synchronous SOAP call cannot be proved equivalent to an asynchronous Web API call with
     a different response shape, so the script is never rewritten (ADR 0034).
     """
-    unproven = [
-        Unproven.at(
-            n,
-            f"{m.group(1).decode()}.svc is the 2011 SOAP endpoint: a synchronous SOAP call"
-            " cannot be proved equivalent to an asynchronous Web API call",
-        )
+    named = {
+        n.id: m
         for n in _walk(root)
         if n.type in ("string", "template_string") and (m := _SOAP_2011.search(n.text or b""))
-    ]
+    }
+    sites = [n for n in _walk(root) if n.id in named]
+    unproven: list[Unproven] = []
+    for n in sites:
+        # A string inside a template's substitution is part of the template's own site.
+        parent, nested = n.parent, False
+        while parent is not None and not nested:
+            nested = parent.id in named
+            parent = parent.parent
+        if not nested:
+            unproven.append(
+                Unproven.at(
+                    n,
+                    f"{named[n.id].group(1).decode()}.svc is the 2011 SOAP endpoint: a synchronous"
+                    " SOAP call cannot be proved equivalent to an asynchronous Web API call",
+                )
+            )
     return _finish([], unproven)
 
 
