@@ -9,6 +9,31 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.114.0 (2026-11-11)
+
+### Bug Fixes
+
+- **inventory**: Check-applied refuses a ledger entry that is not an object or has a non-string
+  repo_path ([#1230](https://github.com/Gharib89/crm/pull/1230),
+  [`32243bc`](https://github.com/Gharib89/crm/commit/32243bcd0187771c5af4eb0863f9c2e9d469961a))
+
+- **inventory**: Check-applied rejects malformed entries and escaping paths, skill steps corrected
+  ([#1230](https://github.com/Gharib89/crm/pull/1230),
+  [`32243bc`](https://github.com/Gharib89/crm/commit/32243bcd0187771c5af4eb0863f9c2e9d469961a))
+
+### Documentation
+
+- **inventory**: Run git apply inside the repo, reword the publish note
+  ([#1230](https://github.com/Gharib89/crm/pull/1230),
+  [`32243bc`](https://github.com/Gharib89/crm/commit/32243bcd0187771c5af4eb0863f9c2e9d469961a))
+
+### Features
+
+- **inventory**: Check-applied verb and a command spine for the conversion loop
+  ([#1230](https://github.com/Gharib89/crm/pull/1230),
+  [`32243bc`](https://github.com/Gharib89/crm/commit/32243bcd0187771c5af4eb0863f9c2e9d469961a))
+
+
 ## v1.113.0 (2026-11-11)
 
 ### Bug Fixes
