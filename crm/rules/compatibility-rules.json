@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "version": 4,
+  "version": 5,
   "rules": [
     {
       "id": "web-resource-xrm-page",
@@ -79,6 +79,7 @@
           3
         ]
       },
+      "transform": "server-url",
       "fix": "Use Xrm.Utility.getGlobalContext().getClientUrl() (a standalone HTML web resource: ClientGlobalContext.js.aspx, then GetGlobalContext().getClientUrl()). Tool judgment: no Microsoft Learn page names getServerUrl; the sources are the closest statements.",
       "sources": [
         "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/clientapi-xrm#client-api-global-context",
