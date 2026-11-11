@@ -119,11 +119,13 @@ def test_a_custom_report_with_no_recorded_provider_is_unknown(tmp_path):
     assert (hit.cls, hit.rule, hit.reason) == ("unknown", RULE, "field data_provider not recorded")
 
 
-def test_a_report_whose_custom_flag_was_not_recorded_is_unknown_never_clear(tmp_path):
-    fields = {"name": "Odd", "report_type": 1, "custom": None, "data_provider": "sql"}
+@pytest.mark.parametrize("field", ["report_type", "custom"])
+def test_a_report_with_an_unrecorded_selector_field_is_unknown_never_clear(tmp_path, field):
+    fields = {"name": "Odd", "report_type": 1, "custom": True, "data_provider": "sql"}
+    fields[field] = None
     folder = _inventory(tmp_path, [_record("report", fields, Path("."))])
     (hit,) = [f for f in assess.assess(folder, "online").findings if f.key == "Odd"]
-    assert (hit.cls, hit.rule, hit.reason) == ("unknown", RULE, "field custom not recorded")
+    assert (hit.cls, hit.rule, hit.reason) == ("unknown", RULE, f"field {field} not recorded")
 
 
 def test_the_rule_says_online_runs_fetch_reports_and_the_migration_removes_the_rest():
