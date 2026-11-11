@@ -1022,7 +1022,7 @@ while the findings file carries the extraction gap for shared SSRS data sources:
 report is judged by its recorded data provider, and the data source itself lives in SSRS.
 
 `--json` returns `rows` (`gate`, `status`, `components`, `rules`, `basis`, `note`), `manual`, the
-source `inventory` version and the `target`. The exit code is **0** whenever the checklist was
+`source_version` and the `target`. The exit code is **0** whenever the checklist was
 produced, whatever its rows say.
 
 ## Convert code
