@@ -401,6 +401,11 @@
           "type": "string",
           "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
         },
+        "checker_rule": {
+          "description": "Id of the Solution Checker rule this rule corresponds to, as `pac solution check` writes it (it carries a family prefix such as `web-`). Optional: `crm inventory assess --checker-report` skips a checker result on lines this rule already flagged.",
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
         "sources": {
           "type": "array",
           "minItems": 1,

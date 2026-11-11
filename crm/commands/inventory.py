@@ -749,6 +749,13 @@ def inventory_convert_cmd(
     multiple=True,
     help="A host name of the source org, repeatable (crm01 or crm01.contoso.com).",
 )
+@click.option(
+    "--checker-report",
+    "checker_report",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="A Solution Checker report you already ran: the zip `pac solution check` wrote, or its"
+    " SARIF file. Read only.",
+)
 @_usage_options
 @pass_ctx
 def inventory_assess_cmd(
@@ -759,6 +766,7 @@ def inventory_assess_cmd(
     source_map_file: Path | None,
     repo_dir: Path | None,
     source_hosts: tuple[str, ...],
+    checker_report: Path | None,
     in_use: bool,
     exclude_unknown: bool,
     sort: str,
@@ -811,6 +819,24 @@ def inventory_assess_cmd(
     A plug-in step's configuration is not recorded in the inventory, so it is not read. A
     host with a scheme, port or path exits 1. The findings file lists the hosts, sorted, as
     source_hosts; without --source-host none of this runs and the file is as before.
+
+    --checker-report merges a Power Apps Solution Checker report you ran yourself (`pac
+    solution check` on an unmanaged solution; the zip it writes or the SARIF file inside) into
+    the findings. This complements the packaged rules and replaces none of them: crm only reads
+    the file, never runs `pac` or calls the checker service, and the checker does not flag
+    everything the packaged rules do. A result on a web resource the inventory holds (its
+    file is the web resource name with a leading slash) becomes a finding whose rule is the
+    checker's rule id as written (`web-avoid-2011-api`), with the artifact path, sha256 and
+    the result's lines as evidence. Class follows the severity read from the result (Critical
+    and High blocker, Medium deprecated, Low and Informational optional), except where the
+    override table `crm/rules/checker-overrides.json` names the rule (`web-use-async` and
+    `web-avoid-eval` are deprecated). A result on lines a packaged finding of the corresponding
+    rule already flags is skipped and counted (`skipped_duplicates`); a packaged finding is never
+    dropped. A result on no web resource of the inventory, from a family other than `web-`, or
+    with no line or severity goes to `checker_unmatched`, not the findings. `convert` leaves
+    checker findings alone. The findings file records the report's sha256 and result count
+    as `checker_report`; a file that is not a zip or SARIF exits 1. Without the option the
+    file has neither key.
     """
     if (source_map_file is None) != (repo_dir is None):
         raise click.UsageError("--source-map and --repo go together: the map names each project.")
@@ -822,6 +848,7 @@ def inventory_assess_cmd(
             source_map=source_map_file,
             repo=repo_dir,
             source_hosts=source_hosts,
+            checker_report=checker_report,
         )
         parsed = read_inventory(inventory)
         try:
@@ -863,6 +890,12 @@ def inventory_assess_cmd(
     }
     if data["incomplete"]:
         meta["incomplete"] = ", ".join(f"{k} ({v})" for k, v in data["incomplete"].items())
+    if "checker" in data:
+        c = data["checker"]
+        meta["checker"] = (
+            f"{c['results']} results: {c['merged']} merged, {c['skipped_duplicates']} skipped,"
+            f" {c['unmatched']} unmatched"
+        )
     ctx.emit(True, table={"headers": ["kind", *CLASSES], "rows": rows}, meta=meta)
 
 

@@ -36,6 +36,13 @@ from crm.core.inventory import (
     normalize_text,
     parse_manifest,
 )
+from crm.core.inventory_checker import (
+    OVERRIDES_PATH,
+    CheckerReport,
+    load_overrides,
+    read_report,
+    result_class,
+)
 from crm.core.inventory_csproj import detect_csproj
 from crm.core.inventory_html import HTML_PAGE, inline_hits, resolve_src, script_tags
 from crm.core.inventory_plugin_source import type_uses
@@ -238,6 +245,9 @@ class Rule:
     #: Id of a registered code transform (`inventory_convert`) that rewrites what this rule
     #: finds, or None when the rule is detect-only.
     transform: str | None = None
+    #: Id of the Solution Checker rule this rule corresponds to, as `pac solution check` writes
+    #: it; a checker result on lines this rule flagged is skipped as already covered.
+    checker_rule: str | None = None
 
     def applies(self, v: tuple[int, ...]) -> bool:
         """True when an inventory read from source version *v* is in this rule's range."""
@@ -294,6 +304,15 @@ def _transform(obj: dict[str, Any], where: str) -> str | None:
         return None
     if type(value) is not str or not _RULE_ID.fullmatch(value):
         raise InventoryError(f"rules file {where}.transform must be a lowercase-hyphen id")
+    return value
+
+
+def _checker_rule(obj: dict[str, Any], where: str) -> str | None:
+    value = obj.get("checker_rule")
+    if value is None:
+        return None
+    if type(value) is not str or not _RULE_ID.fullmatch(value):
+        raise InventoryError(f"rules file {where}.checker_rule must be a lowercase-hyphen id")
     return value
 
 
@@ -479,6 +498,7 @@ def _rule(value: object, where: str) -> Rule:
         fix=_text(obj, "fix", where),
         sources=tuple(cast(list[str], sources)),
         transform=_transform(obj, where),
+        checker_rule=_checker_rule(obj, where),
     )
 
 
@@ -544,14 +564,20 @@ class ContentEvidence:
     sha256: str
     locations: tuple[tuple[int, int], ...]
     match_count: int
+    #: A Solution Checker finding whose result spans lines: the last line, *locations* holding
+    #: the first. None for every packaged rule's finding.
+    end_line: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "path": self.path,
             "sha256": self.sha256,
             "locations": [{"line": line, "column": col} for line, col in self.locations],
             "match_count": self.match_count,
         }
+        if self.end_line is not None:
+            out["end_line"] = self.end_line
+        return out
 
 
 @dataclass(frozen=True)
@@ -658,6 +684,30 @@ class Finding:
 
 
 @dataclass(frozen=True)
+class CheckerMerge:
+    """What merging a Solution Checker report did: *merged* findings added, *skipped* results a
+    packaged finding already covered, *unmatched* results kept out of the findings, and each
+    checker rule a finding names as its ``rules_hit`` row.
+    """
+
+    sha256: str
+    results: int
+    merged: int
+    skipped: int
+    unmatched: tuple[dict[str, Any], ...]
+    rules: dict[str, dict[str, Any]]
+
+    def summary(self) -> dict[str, Any]:
+        return {
+            "sha256": self.sha256,
+            "results": self.results,
+            "merged": self.merged,
+            "skipped_duplicates": self.skipped,
+            "unmatched": len(self.unmatched),
+        }
+
+
+@dataclass(frozen=True)
 class AssessResult:
     """The findings of one inventory against one target, with what they were computed from."""
 
@@ -670,6 +720,8 @@ class AssessResult:
     usage_filtered: int = 0
     #: The source org host names the run searched for; empty when none was given.
     source_hosts: tuple[str, ...] = ()
+    #: The Solution Checker report merged in; None when none was given.
+    checker: CheckerMerge | None = None
 
     def summary(self) -> dict[str, Any]:
         by_kind: dict[str, dict[str, int]] = {}
@@ -691,6 +743,7 @@ class AssessResult:
             "incomplete": self.incomplete,
             "usage_filtered": self.usage_filtered,
             **({"source_hosts": list(self.source_hosts)} if self.source_hosts else {}),
+            **({"checker": self.checker.summary()} if self.checker else {}),
         }
 
 
@@ -703,6 +756,7 @@ def dump_findings(result: AssessResult, *, generated_at: str | None = None) -> s
     stamp = generated_at or datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     used = sorted({f.rule for f in result.findings if f.rule})
     by_id = {r.id: r for r in result.rules.rules}
+    checked = result.checker.rules if result.checker else {}
     body: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
         "generated_at": stamp,
@@ -720,6 +774,8 @@ def dump_findings(result: AssessResult, *, generated_at: str | None = None) -> s
                 "fix": by_id[i].fix,
                 "sources": list(by_id[i].sources),
             }
+            if i in by_id
+            else checked[i]
             for i in used
         },
         "findings": [f.to_dict() for f in result.findings],
@@ -730,6 +786,13 @@ def dump_findings(result: AssessResult, *, generated_at: str | None = None) -> s
         body["usage_filtered"] = result.usage_filtered
     if result.source_hosts:
         body["source_hosts"] = list(result.source_hosts)
+    if result.checker:
+        body["checker_report"] = {
+            "sha256": result.checker.sha256,
+            "results": result.checker.results,
+            "skipped_duplicates": result.checker.skipped,
+        }
+        body["checker_unmatched"] = list(result.checker.unmatched)
     return json.dumps(body, sort_keys=True, ensure_ascii=False, indent=2) + "\n"
 
 
@@ -815,11 +878,13 @@ def _evidence(value: Any, where: str) -> Evidence | None:
             tuple(references),
             tuple(fired),
         )
+    end_line = _get(value, "end_line")
     return ContentEvidence(
         _field(value, "path", str, where),
         _field(value, "sha256", str, where),
         locations,
         _field(value, "match_count", int, where),
+        end_line if type(end_line) is int else None,
     )
 
 
@@ -1476,6 +1541,8 @@ def assess(
     source_map: Path | None = None,
     repo: Path | None = None,
     source_hosts: Iterable[str] = (),
+    checker_report: Path | None = None,
+    checker_overrides: Path | None = None,
 ) -> AssessResult:
     """Run *rules* (default: the packaged ones) over the inventory at *folder* for *target*.
 
@@ -1499,10 +1566,17 @@ def assess(
     With *source_hosts*, the host names of the source org, each component whose stored text
     names one gets the `host_pattern` rule of its kind. Without, those rules do not run.
 
+    With *checker_report*, a Solution Checker report a person already produced (the zip
+    `pac solution check` writes, or its SARIF file), each result that names a web resource the
+    inventory holds joins the findings as a finding of the checker's rule (`_merge_checker`);
+    *checker_overrides* is the table of per-rule classes, the packaged one by default. The report
+    is only read: no `pac` run, no checker service call. Without it nothing changes.
+
     Raises:
         InventoryError: the inventory or rules file is unreadable or breaks its
-            format, *target* is unknown, *out* lies inside the inventory, or the source map
-            was made from another inventory or is given without *repo*.
+            format, *target* is unknown, the checker report is unreadable, *out* lies inside
+            the inventory, or the source map was made from another inventory or is given
+            without *repo*.
     """
     if target not in TARGETS:
         raise InventoryError(f"target {target!r} is not one of {TARGETS}")
@@ -1513,6 +1587,7 @@ def assess(
             "--source-map and --repo go together: the map names each project's path"
         )
     hosts = normalize_hosts(source_hosts)
+    report = read_report(checker_report) if checker_report is not None else None
     rules = rules or load_rules()
     path = folder / MANIFEST_NAME
     try:
@@ -1578,6 +1653,10 @@ def assess(
                     "reason": gap.reason,
                 }
             )
+    checker: CheckerMerge | None = None
+    if report is not None:
+        overrides = load_overrides(checker_overrides or OVERRIDES_PATH)
+        findings, checker = _merge_checker(report, overrides, inv, findings, rules, folder)
     return AssessResult(
         inventory=_header(inv, raw),
         target=target,
@@ -1586,7 +1665,111 @@ def assess(
         unattached_gaps=tuple(sorted(unattached, key=_canonical)),
         incomplete={k: c.status for k, c in sorted(inv.coverage.items()) if c.status != "complete"},
         source_hosts=hosts,
+        checker=checker,
     )
+
+
+def _merge_checker(
+    report: CheckerReport,
+    overrides: dict[str, str],
+    inv: Inventory,
+    findings: list[Finding],
+    rules: Rules,
+    folder: Path,
+) -> tuple[list[Finding], CheckerMerge]:
+    """Add one finding per checker result that names a web resource the inventory holds.
+
+    A web-family result matches the web resource whose name is the result's file without its
+    leading slash; its evidence is the inventory artifact's path and sha256 (what `convert`
+    opens) with the result's lines, and its rule is the checker's own rule id. A result is
+    skipped, and counted, only when the same component already has a packaged finding whose
+    rule names that checker rule (`Rule.checker_rule`) and whose matched lines overlap the
+    result's: a packaged finding is never dropped. A result that matches no component, or
+    cannot be placed or classed, goes to the unmatched list. A component that gains a finding
+    is no longer ``clear``.
+    """
+    by_name = {str(r.fields.get("name")): r for r in inv.records if r.kind == "web_resource"}
+    counterpart = {r.id: r.checker_rule for r in rules.rules if r.checker_rule}
+    by_id = {r.id: r for r in rules.rules}
+    records = {(r.kind, r.key): r for r in inv.records}
+    covered: dict[tuple[str, str, str], list[int]] = {}
+    for f in findings:
+        if f.rule in counterpart and isinstance(f.evidence, ContentEvidence):
+            at = (f.kind, f.key, counterpart[f.rule])
+            lines = [line for line, _ in f.evidence.locations]
+            detection = by_id[f.rule].detection
+            if f.evidence.match_count > len(lines) and isinstance(detection, ContentPattern):
+                # The evidence keeps MAX_LOCATIONS hits; a result may sit on a later one.
+                text = _texts(records[(f.kind, f.key)], folder)[0].get(f.evidence.path, "")
+                lines = [
+                    text.count("\n", 0, m.start()) + 1 for m in detection.pattern.finditer(text)
+                ]
+            covered.setdefault(at, []).extend(lines)
+    added: list[Finding] = []
+    unmatched: list[dict[str, Any]] = []
+    hit: dict[str, dict[str, Any]] = {}
+    skipped = 0
+    for r in report.results:
+        record = by_name.get(r.uri.removeprefix("/"))
+        text = next((a for a in record.artifacts if a.content == "text"), None) if record else None
+        cls = result_class(r, overrides)
+        why = (
+            "not a web resource rule family"
+            if not r.rule.startswith("web-")
+            else "file is not a web resource of the inventory"
+            if record is None
+            else "the inventory holds no text for the web resource"
+            if text is None
+            else "the result names no line"
+            if r.line is None
+            else f"severity {r.severity!r} has no class"
+            if cls is None
+            else None
+        )
+        if why is not None or record is None or text is None or r.line is None or cls is None:
+            unmatched.append(
+                {
+                    "rule": r.rule,
+                    "severity": r.severity,
+                    "uri": r.uri,
+                    "line": r.line,
+                    "column": r.column,
+                    "message": r.message,
+                    "reason": why,
+                }
+            )
+            continue
+        last = max(r.end_line or r.line, r.line)
+        if any(r.line <= n <= last for n in covered.get((record.kind, record.key, r.rule), ())):
+            skipped += 1
+            continue
+        evidence = ContentEvidence(
+            text.path, text.sha256, ((r.line, r.column),), 1, last if last > r.line else None
+        )
+        added.append(Finding(record.kind, record.key, cls, r.rule, None, evidence))
+        info = report.rules.get(r.rule)
+        row = hit.setdefault(
+            r.rule,
+            {
+                "class": cls,
+                "title": info.title if info else r.rule,
+                "fix": info.fix if info else r.rule,
+                "sources": [info.source] if info and info.source else [],
+            },
+        )
+        if CLASSES.index(cls) < CLASSES.index(row["class"]):
+            row["class"] = cls
+    touched = {(f.kind, f.key) for f in added}
+    kept = [f for f in findings if not (f.cls == "clear" and (f.kind, f.key) in touched)]
+    merge = CheckerMerge(
+        report.sha256,
+        len(report.results),
+        len(added),
+        skipped,
+        tuple(sorted(unmatched, key=_canonical)),
+        hit,
+    )
+    return kept + added, merge
 
 
 def _sorted_findings(findings: list[Finding]) -> tuple[Finding, ...]:

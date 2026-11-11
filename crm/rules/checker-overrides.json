@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "overrides": [
+    {
+      "rule": "web-use-async",
+      "class": "deprecated",
+      "why": "The checker rates it Critical, but a synchronous call does not stop a move to Dataverse online."
+    },
+    {
+      "rule": "web-avoid-eval",
+      "class": "deprecated",
+      "why": "The checker rates it Critical, but eval does not stop a move to Dataverse online."
+    }
+  ]
+}
