@@ -19,8 +19,15 @@ Read `counts.by_class` in the summary, not the exit code: a blocker exits 0.
 | `unknown` | Unknown |
 | `clear` | None yet: judge it from the component's source or runtime evidence |
 
+A classic dialog (`process-dialog`, a process of category 1) is `deprecated`:
+enter it as "Deprecated but working" and name the replacement, a business
+process flow or a canvas app. There is no automatic conversion.
+
 `clear` is not "compatible": the rules cover few kinds, and a component no rule
 covers is `unknown`.
+For a process, `clear` means only that `process-dialog` did not fire: a classic
+workflow, a business process flow and a modern flow all read `clear`, so it says
+nothing about their mode, trigger or fitness for a cloud flow.
 
 ## Quote the evidence
 

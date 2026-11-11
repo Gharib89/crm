@@ -54,7 +54,11 @@ def report_list(ctx: CLIContext) -> None:
 @click.argument("report_id")
 @pass_ctx
 def report_get(ctx: CLIContext, report_id: str) -> None:
-    """Get a single report by REPORT_ID (its RDL body / link URL included)."""
+    """Get a single report by REPORT_ID (its RDL body / link URL included).
+
+    Also returns `data_provider` (`fetch`, `sql` or `unknown`) read from the RDL's
+    data sources, and `data_provider_reason` when it is `unknown`.
+    """
     with d365_errors(ctx):
         info = report_mod.get_report(ctx.backend(), report_id)
     ctx.emit(True, data=info)

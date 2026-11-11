@@ -9,6 +9,58 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.112.2 (2026-11-11)
+
+### Bug Fixes
+
+- **inventory**: Assess flags classic dialogs as deprecated
+  ([#1216](https://github.com/Gharib89/crm/pull/1216),
+  [`96729f6`](https://github.com/Gharib89/crm/commit/96729f6096d41ffd09bb882c03da3d562e634506))
+
+### Documentation
+
+- **inventory**: Cover process-dialog in the shipped skill and the field-evidence contract
+  ([#1216](https://github.com/Gharib89/crm/pull/1216),
+  [`96729f6`](https://github.com/Gharib89/crm/commit/96729f6096d41ffd09bb882c03da3d562e634506))
+
+- **inventory**: List classic dialogs in the rule table intro
+  ([#1216](https://github.com/Gharib89/crm/pull/1216),
+  [`96729f6`](https://github.com/Gharib89/crm/commit/96729f6096d41ffd09bb882c03da3d562e634506))
+
+### Testing
+
+- **inventory**: Pin the dialog fix prose against a negated sentence
+  ([#1216](https://github.com/Gharib89/crm/pull/1216),
+  [`96729f6`](https://github.com/Gharib89/crm/commit/96729f6096d41ffd09bb882c03da3d562e634506))
+
+
+## v1.112.1 (2026-11-11)
+
+### Bug Fixes
+
+- **report**: Crm report get shows the data provider of a report's RDL
+  ([#1217](https://github.com/Gharib89/crm/pull/1217),
+  [`724b294`](https://github.com/Gharib89/crm/commit/724b2945443ebd2be6969b76e304a35cb3d4a31c))
+
+### Documentation
+
+- **out-of-scope**: Record the 2011 business-data path and legacy claims auth rejections
+  ([`6ce36c0`](https://github.com/Gharib89/crm/commit/6ce36c0e8c73cc1434576d56b4a72afdf66f9438))
+
+- **readme**: Report row names the get data_provider
+  ([#1217](https://github.com/Gharib89/crm/pull/1217),
+  [`724b294`](https://github.com/Gharib89/crm/commit/724b2945443ebd2be6969b76e304a35cb3d4a31c))
+
+- **skill**: Shorten the report get provider note
+  ([#1217](https://github.com/Gharib89/crm/pull/1217),
+  [`724b294`](https://github.com/Gharib89/crm/commit/724b2945443ebd2be6969b76e304a35cb3d4a31c))
+
+### Testing
+
+- **report**: Cover a BOM-prefixed RDL ([#1217](https://github.com/Gharib89/crm/pull/1217),
+  [`724b294`](https://github.com/Gharib89/crm/commit/724b2945443ebd2be6969b76e304a35cb3d4a31c))
+
+
 ## v1.112.0 (2026-11-10)
 
 ### Bug Fixes

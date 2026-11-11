@@ -222,7 +222,9 @@ inventory, for one target, and writes a findings file.
   (the rules that apply found nothing). `clear` means only that the rules that apply
   found nothing, and they cover web resource scripts, plug-in assembly
   registration, how forms and ribbon diffs call scripts and, given the source map and the
-  repository, the plug-in projects. Judge a `clear` component from evidence.
+  repository, the plug-in projects, and classic dialogs (`process-dialog`, deprecated, no
+  automatic conversion). A process that is not a dialog is `clear` too, which says nothing about
+  its mode or trigger. Judge a `clear` component from evidence.
 - **Resolve every `unknown`** before calling a component ready: `no rule` means no rule
   judges it (most kinds), and an `extraction gap` or `kind coverage` reason means the
   inventory never fully read it. A `source version` reason marks every ruled component

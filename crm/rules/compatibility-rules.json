@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "version": 3,
+  "version": 4,
   "rules": [
     {
       "id": "web-resource-xrm-page",
@@ -616,6 +616,32 @@
         "https://learn.microsoft.com/power-apps/developer/model-driven-apps/pass-data-page-parameter-ribbon-actions#form-and-grid-context-in-ribbon-actions",
         "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/clientapi-form-context",
         "https://learn.microsoft.com/power-platform/important-changes-coming#some-client-apis-are-deprecated"
+      ]
+    },
+    {
+      "id": "process-dialog",
+      "kind": "process",
+      "class": "deprecated",
+      "title": "Classic dialog (process category 1), deprecated with no automatic conversion",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "field_in",
+        "field": "category",
+        "values": [
+          1
+        ]
+      },
+      "fix": "Rebuild the dialog as a business process flow (guided stages on a record) or a canvas app (a scripted or free-form screen); there is no automatic conversion, so redesign it and retire the dialog.",
+      "sources": [
+        "https://learn.microsoft.com/power-automate/replace-dialogs",
+        "https://learn.microsoft.com/power-platform/important-changes-coming#process-dialogs-are-deprecated"
       ]
     }
   ]
