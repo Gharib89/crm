@@ -812,9 +812,11 @@ crm --json inventory assess ./inv --target online --out ./findings.json \
   --source-map ./source-map.json --repo ./app-repo
 crm --json inventory assess ./inv --target online --out ./findings.json \
   --source-host crm01 --source-host crm01.contoso.com
+crm --json inventory assess ./inv --target online --out ./findings.json \
+  --checker-report ./solution-check-results.zip
 ```
 
-`crm inventory assess INVENTORY --target onprem-9.1|online --out FILE [--source-map MAP --repo REPO] [--source-host HOST]...`
+`crm inventory assess INVENTORY --target onprem-9.1|online --out FILE [--source-map MAP --repo REPO] [--source-host HOST]... [--checker-report FILE]`
 runs the **compatibility rules** that ship with crm over an inventory and writes a findings file.
 It is offline: it reads the inventory folder (and, with `--source-map` and `--repo`, the plug-in
 projects it names) and touches no org
@@ -929,6 +931,50 @@ name no transform: nothing rewrites an address.
 A component with a text artifact but no other rule (a site map, a ribbon) is `clear` instead of
 `unknown: no rule` once a host is given, because a rule now judges it. A plug-in step's
 configuration is not recorded in the inventory, so no rule reads it.
+
+### Solution Checker results merged by assess
+
+[Solution Checker](https://learn.microsoft.com/en-us/power-apps/maker/data-platform/use-powerapps-checker)
+reports Critical 2011 SOAP and OData calls, `eval` and other rules the packaged rules do not all
+implement. It **complements** the packaged rules and replaces none of them: it gave no result
+for the CRM 4 form object (`crmForm`) in the captured sample, which `web-resource-crmform`
+still finds. crm never runs it, because the checker is an online service
+([ADR 0030](../adr/0030-hitl-promotion-no-automated-ci-against-live-orgs.md)). You run it yourself on an
+**unmanaged** solution that holds the web resources, then pass the result:
+
+```bash
+pac solution check --path ./solution.zip --outputDirectory ./check
+crm inventory assess ./inv --target online --out ./findings.json --checker-report ./check/<result>.zip
+```
+
+`--checker-report FILE` takes the zip `pac solution check` writes or the SARIF file inside it; a
+file that is neither, or a zip with no `.sarif` file, exits **1** naming the file. It reads the
+file and nothing else: no `pac` run, no call to the service.
+
+- **Matching.** A result names its file as the web resource's unique name with a leading slash
+  (`/new_/scripts/legacy.js`); crm looks that name up in the inventory.
+- **A matched result is a finding** whose `rule` is the checker's rule id as the report writes it
+  (`web-avoid-2011-api`). Its evidence is the inventory artifact's `path` and `sha256` with the
+  result's first line and column in `locations` (and `end_line` when it spans lines), and the
+  rule's `rules_hit` row carries the checker's title, its help text as the fix and its
+  documentation link. A web resource that gains one is no longer `clear`.
+- **Class** follows the severity in the result's properties (never the SARIF `level`, which is
+  absent on Medium results): Critical and High `blocker`, Medium `deprecated`, Low and
+  Informational `optional`. The table
+  [`crm/rules/checker-overrides.json`](https://github.com/Gharib89/crm/blob/main/crm/rules/checker-overrides.json)
+  sets the class of a named rule whatever its severity; it ships with `web-use-async` and
+  `web-avoid-eval` as `deprecated`, because neither stops a move to Dataverse online.
+- **No double counting.** A result is skipped, and counted in `skipped_duplicates`, only when the
+  same web resource already has a packaged finding whose rule names that checker rule (the rule's
+  optional `checker_rule` field) on overlapping lines. A packaged finding is never dropped.
+- **Unmatched results** (a file the inventory does not hold, a family other than `web-` such as
+  `meta-` or `flow-`, no line, no recognised severity) go to `checker_unmatched` with their rule,
+  severity, file, place, message and reason. They are never findings and never dropped.
+  Forms, plug-in assemblies and steps are not matched: the captured report held none.
+- `convert` leaves checker findings alone (they name no transform); `packages --findings` places
+  one in its web resource's package like any other.
+- The findings file records the report as `checker_report` (`sha256`, `results`,
+  `skipped_duplicates`), so two runs compare; without `--checker-report` neither key is written.
 
 ### Plug-in projects found by assess
 

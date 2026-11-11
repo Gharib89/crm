@@ -190,6 +190,26 @@ for a short name and a fully qualified one) to find it. Without the flag the fiv
   a relative URL, or read the org URL at run time, and prove it in the target
   (`reference/verification.md`).
 
+## Merge a Solution Checker report
+
+`assess --checker-report <file>` adds the results of a Power Apps Solution Checker run you
+already have. It complements the packaged rules; it replaces none, and the checker does not flag
+everything they do (the CRM 4 form object drew no result in the captured sample). `crm` reads the
+file only and never runs `pac solution check` or the service, so the user runs the checker
+first, on an unmanaged solution holding the web resources, and gives you the zip it wrote or the
+SARIF file inside.
+
+- **A matched result is a finding** on that web resource, `rule` the checker's own id
+  (`web-avoid-2011-api`). Class: Critical and High `blocker`, Medium `deprecated`, Low and
+  Informational `optional`, except the rules the override table names
+  (`crm/rules/checker-overrides.json`, which an agent can read).
+- **Quote `checker_report` and `checker_unmatched`.** `skipped_duplicates` counts results a
+  packaged finding already covers. `checker_unmatched` lists what matched no web resource (a
+  file outside the inventory, forms, plug-ins, a non-`web-` family): enter each as an open
+  question, never as a pass.
+- **`convert` rewrites none of them.** Repair each cited line by hand and prove it in the target
+  (`reference/verification.md`).
+
 ## Roll the findings up as a readiness checklist
 
 `crm inventory readiness <findings>` reads a file `assess --target online` wrote (one for
