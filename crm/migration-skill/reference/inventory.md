@@ -57,7 +57,7 @@ After each upgrade stage, extract again and run `crm inventory diff <earlier>
 |---|---|
 | `unchanged`, `identity_only` | Expected; a GUID changing with the upgrade is normal. Matching is evidence, not proof of equal behavior. |
 | `added` | Note it. |
-| `changed` | Read its entry in the `--out` file and decide whether the upgrade explains it. When every ribbon reads `changed`, one side is an older extract: re-extract it. An older extract also lacks column facets (`max_length`, `format`, ...), which `diff` then skips: re-extract it before reporting a column length as matching. |
+| `changed` | Read its entry in the `--out` file and decide whether the upgrade explains it. When every ribbon reads `changed`, one side is an older extract: re-extract it. An older extract also lacks column facets (`max_length`, `format`, ...), which `diff` then skips: re-extract it before reporting a column length as matching. A `form` whose `fields.active` changed is a form to activate or retire: the upgrade added new forms beside the old ones and left activation to the customer. A CRM 2011 or older extract records no `active`, so activation is compared only between stages that both recorded it. |
 | `removed` | Treat as a lost component: find out why before any further stage runs. |
 | `ambiguous` | The pair cannot be matched: resolve by hand and list it as an unknown. |
 | `not_comparable` | Neither a pass nor a difference. Fix the extraction and re-diff, or carry it as an unknown. |
