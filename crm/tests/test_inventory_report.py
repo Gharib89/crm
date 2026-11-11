@@ -159,6 +159,19 @@ def test_the_default_scope_leaves_out_stock_reports_and_never_fetches_their_bodi
     assert not [g for g in _manifest(tmp_path / "inv")["gaps"] if g["kind"] == "report"]
 
 
+def test_a_stock_report_sharing_a_kept_reports_name_raises_no_gap_for_it(tmp_path):
+    # The stock row is dropped unread, so its missing body must not name the custom report.
+    org = _org(
+        [
+            _report(300, "Overview", _FETCH),
+            _report(301, "Overview", None, ismanaged=True, solutionid=_ref("solution", 1)),
+        ]
+    )
+    _extract(FakeClient(org=org), tmp_path / "inv", include_system=False)
+    assert sorted(_records(tmp_path / "inv")) == ["Overview"]
+    assert not [g for g in _manifest(tmp_path / "inv")["gaps"] if g["kind"] == "report"]
+
+
 def test_include_system_keeps_stock_reports_with_their_bodies(tmp_path):
     org = _org([_report(301, "Stock", _SQL, ismanaged=True, solutionid=_ref("solution", 1))])
     _extract(FakeClient(org=org), tmp_path / "inv", include_system=True)

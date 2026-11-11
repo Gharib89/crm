@@ -1849,6 +1849,7 @@ class _Builder:
         reads only that report as not comparable. A link report has no body to expect.
         """
         payloads = self._staged("report", r)
+        stock = self._stock("report", r)
         code = r.get("reporttypecode")
         reason: str | None
         gap_reason: str | None = None  # set only for a Reporting Services report with no body
@@ -1865,10 +1866,9 @@ class _Builder:
             {"name": r["name"], "report_type": code, "personal": r.get("ispersonal"),
              "custom": r.get("iscustomreport"), "language": r.get("languagecode"),
              "data_provider": provider, **({"data_provider_reason": reason} if reason else {})},
-            r["name"], self._origin(r), r.get("ismanaged"), payloads, _REPORT,
-            self._stock("report", r),
+            r["name"], self._origin(r), r.get("ismanaged"), payloads, _REPORT, stock,
         )  # fmt: skip
-        if key is not None and gap_reason:
+        if key is not None and gap_reason and not stock:
             gap = ExtractionGap(kind="report", key=key, description=None, reason=gap_reason)
             if gap not in self.extra_gaps:
                 self.extra_gaps.append(gap)
