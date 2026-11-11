@@ -1851,11 +1851,13 @@ class _Builder:
         payloads = self._staged("report", r)
         code = r.get("reporttypecode")
         reason: str | None
+        gap_reason: str | None = None  # set only for a Reporting Services report with no body
         if payloads:
             verdict = classify_rdl(payloads[0][1].read_text(encoding="utf-8"))
             provider, reason = verdict.provider, verdict.reason
         elif code == RDL_REPORT:
-            provider, reason = "unknown", f"RDL body not returned by {self.api}"
+            provider = "unknown"
+            reason = gap_reason = f"RDL body not returned by {self.api}"
         else:
             provider, reason = "unknown", "the report has no RDL body to classify"
         key = self.add(
@@ -1866,10 +1868,8 @@ class _Builder:
             r["name"], self._origin(r), r.get("ismanaged"), payloads, _REPORT,
             self._stock("report", r),
         )  # fmt: skip
-        if key is not None and not payloads and code == RDL_REPORT:
-            gap = ExtractionGap(
-                kind="report", key=key, description=None, reason=cast("str", reason)
-            )
+        if key is not None and gap_reason:
+            gap = ExtractionGap(kind="report", key=key, description=None, reason=gap_reason)
             if gap not in self.extra_gaps:
                 self.extra_gaps.append(gap)
 

@@ -1133,7 +1133,7 @@
                       "integer",
                       "null"
                     ],
-                    "description": "The report's reporttypecode: 1 Reporting Services report, 2 other, 3 link report."
+                    "description": "The report's reporttypecode: 1 Reporting Services report, 3 link report."
                   },
                   "personal": {
                     "type": [
@@ -1164,7 +1164,7 @@
                   "data_provider_reason": {
                     "type": "string",
                     "minLength": 1,
-                    "description": "Present exactly when data_provider is unknown: one line saying why."
+                    "description": "Present with an unknown data_provider: one line saying why."
                   }
                 }
               },
