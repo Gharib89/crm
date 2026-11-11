@@ -88,6 +88,7 @@ markers = [
     "requires_onprem: only runs against an NTLM/on-prem target",
     "requires_legacy: CRM 2011 `crm legacy` test; runs only when D365_E2E_LEGACY_PROFILE names a crm2011 profile",
     "offline: e2e that needs only a local binary (no D365 org/creds), so it runs in plain CI",
+    "managed_guard: runs the real managed-solution write guard (#1189), which unit tests skip by default",
     "slow: long-running op (metadata publish, solution async import/export)",
 ]
 addopts = "-m 'not e2e'"
