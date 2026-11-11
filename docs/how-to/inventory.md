@@ -997,7 +997,9 @@ a checklist for a move to Dataverse online: one row per gate, each `pass`, `fail
 `unknown`, with the components behind it, the rule that decided it and its **basis**. It is
 offline and judges nothing again: every status is rolled up from the findings and the rules
 that made them. A findings file written for `onprem-9.1` is a usage error (exit **2**) that
-names the `assess` command to run, as is one made with other rules than this crm ships.
+names the `assess` command to run, as is one made with other rules than this crm ships or with
+`--in-use` or `--exclude-unknown` when that dropped findings (`usage_filtered`): a dropped blocker
+would read `pass`.
 
 **This is a checklist.** It does not replace the on-premises-to-online (OP2OL) service,
 Lifecycle Services or Microsoft's nomination process, and it performs none of the upgrade hops.

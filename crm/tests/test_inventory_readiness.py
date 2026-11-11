@@ -118,7 +118,13 @@ def test_a_step_off_systemuser_is_clear_not_unknown(tmp_path):
 
 @pytest.mark.parametrize(
     ("version", "status"),
-    [("9.0.0.1", "pass"), ("9.1.0.1", "pass"), ("8.2.2.112", "fail"), ("5.0.9690.4376", "fail")],
+    [
+        ("9", "pass"),
+        ("9.0.0.1", "pass"),
+        ("9.1.0.1", "pass"),
+        ("8.2.2.112", "fail"),
+        ("5.0.9690.4376", "fail"),
+    ],
 )
 def test_the_source_version_row_decides_on_9_0(tmp_path, version, status):
     row = readiness.readiness(_findings_file(tmp_path, version=version)).rows[0]
@@ -215,3 +221,14 @@ def test_human_output_lists_every_row_and_exits_0_on_a_fail(tmp_path):
     assert res.exit_code == 0, res.output
     assert "assembly-storage-online" in res.output and "fail" in res.output
     assert "manual" in res.output
+
+
+def test_a_usage_filtered_findings_file_is_refused(tmp_path):
+    path = _findings_file(tmp_path)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["usage_filtered"] = 2
+    path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(inv.InventoryError, match="--in-use"):
+        readiness.readiness(path)
+    res = CliRunner().invoke(cli, ["inventory", "readiness", str(path)])
+    assert res.exit_code == 2 and "usage_filtered" in res.output

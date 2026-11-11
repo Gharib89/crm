@@ -874,7 +874,8 @@ def inventory_readiness_cmd(ctx: CLIContext, findings: Path):
 
     FINDINGS is the file `crm inventory assess INVENTORY --target online --out FILE` wrote; one
     written for --target onprem-9.1 is a usage error (exit 2), as is one made with other rules
-    than this crm ships. Touches no org. Prints one row per gate: pass, fail, warn or unknown, the
+    than this crm ships or with --in-use or --exclude-unknown that dropped findings. Touches no
+    org. Prints one row per gate: pass, fail, warn or unknown, the
     components behind it, the rule that decided it and its basis (an OP2OL whitepaper gate, or a
     Dataverse online requirement that is not one). Gate rows come from the packaged online
     blocker rules, so a new rule adds a row. A source version below 9.0 fails the version row;

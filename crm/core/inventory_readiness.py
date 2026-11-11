@@ -126,7 +126,9 @@ def _version_row(text: str) -> Row:
             WHITEPAPER,
             f"source version {text!r} is not a dotted version",
         )
-    ok = tuple(int(p) for p in text.split("."))[: len(MIN_SOURCE_VERSION)] >= MIN_SOURCE_VERSION
+    parts = tuple(int(p) for p in text.split("."))
+    # Pad first: a bare "9" is 9.0, though (9,) sorts below (9, 0).
+    ok = (parts + (0,) * len(MIN_SOURCE_VERSION))[: len(MIN_SOURCE_VERSION)] >= MIN_SOURCE_VERSION
     need = ".".join(map(str, MIN_SOURCE_VERSION))
     note = f"source version {text}" + ("" if ok else f"; the migration needs {need} or later")
     return Row("source-version", "pass" if ok else "fail", 0, (), WHITEPAPER, note)
@@ -168,13 +170,20 @@ def readiness(findings_file: Path, rules: Rules | None = None) -> Readiness:
 
     Raises:
         InventoryError: the file is unreadable, was written for another target than
-            ``online``, or was made with other rules than *rules*.
+            ``online``, dropped findings by usage, or was made with other rules than *rules*.
     """
     found = read_findings(findings_file)
     if found.target != "online":
         raise InventoryError(
             f"findings file {findings_file} was written for --target {found.target}: run"
             " `crm inventory assess INVENTORY --target online --out FILE`, then readiness on FILE"
+        )
+    if found.usage_filtered:
+        raise InventoryError(
+            f"findings file {findings_file} dropped {found.usage_filtered} finding(s)"
+            " (usage_filtered): a dropped blocker or unknown would read pass. Re-run"
+            " `crm inventory assess INVENTORY --target online --out FILE` without"
+            " --in-use or --exclude-unknown"
         )
     rules = rules or load_rules()
     if found.rules_sha256 and found.rules_sha256 != rules.sha256:

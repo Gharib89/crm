@@ -740,7 +740,8 @@ class FindingsFile:
     *sources* maps a rule id to the Microsoft Learn URLs that justify it, so a
     reader can keep a finding's provenance without the rules file. *version* is the inventory's
     ``source.version`` text, *rules_sha256* the rules file the run used, *source_hosts* the hosts
-    it searched for, *unattached_gaps* the gaps naming no component and *incomplete* the kinds
+    it searched for, *usage_filtered* the findings `--in-use` or `--exclude-unknown` dropped,
+    *unattached_gaps* the gaps naming no component and *incomplete* the kinds
     not read complete.
     """
 
@@ -753,6 +754,7 @@ class FindingsFile:
     source_hosts: tuple[str, ...] = ()
     unattached_gaps: tuple[dict[str, Any], ...] = ()
     incomplete: dict[str, str] = field(default_factory=lambda: {})
+    usage_filtered: int = 0
 
 
 def _get(obj: Any, name: str) -> Any:
@@ -871,6 +873,7 @@ def read_findings(path: Path) -> FindingsFile:
     gaps: list[Any] = _get(data, "unattached_gaps") or []
     hosts: list[Any] = _get(data, "source_hosts") or []
     incomplete: dict[Any, Any] = _get(data, "incomplete") or {}
+    usage_filtered = _get(data, "usage_filtered") or 0
     return FindingsFile(
         sha,
         target,
@@ -881,6 +884,7 @@ def read_findings(path: Path) -> FindingsFile:
         tuple(h for h in hosts if type(h) is str),
         tuple(cast(dict[str, Any], g) for g in gaps if type(g) is dict),
         {str(k): str(v) for k, v in incomplete.items()},
+        usage_filtered if type(usage_filtered) is int else 0,
     )
 
 
