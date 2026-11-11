@@ -34,10 +34,15 @@ class Edit:
 
 @dataclass(frozen=True)
 class Unproven:
-    """A site (1-based *line*) the rule matches but the transform will not rewrite, and why."""
+    """A site (1-based *line*) the rule matches but the transform will not rewrite, and why.
+
+    *return_use* is how the site's call result is read, where the transform knows it (see
+    `_return_use`).
+    """
 
     line: int
     reason: str
+    return_use: str | None = None
 
 
 class Used(NamedTuple):
@@ -337,6 +342,33 @@ def _context_receiver(node: Node) -> tuple[Node, bool] | None:
     return None
 
 
+def _return_use(call: Node | None) -> str:
+    """How the value of *call* is read, for a reviewer finishing a rewrite the transform will
+    not: ``assigned``, ``returned``, ``argument``, ``member`` (a property, method or index read
+    off the result), ``discarded`` or ``other``.
+    """
+    if call is None:
+        return "other"
+    node, parent = call, call.parent
+    while parent is not None and parent.type == "parenthesized_expression":
+        node, parent = parent, parent.parent
+    if parent is None:
+        return "other"
+    if parent.type in ("member_expression", "subscript_expression"):
+        return "member" if parent.child_by_field_name("object") == node else "other"
+    if parent.type == "variable_declarator":
+        return "assigned" if parent.child_by_field_name("value") == node else "other"
+    if parent.type in ("assignment_expression", "augmented_assignment_expression"):
+        return "assigned" if parent.child_by_field_name("right") == node else "other"
+    if parent.type == "return_statement":
+        return "returned"
+    if parent.type == "arrow_function":
+        return "returned" if parent.child_by_field_name("body") == node else "other"
+    if parent.type == "arguments":
+        return "argument"
+    return "discarded" if parent.type == "expression_statement" else "other"
+
+
 def _plan_context_settings(root: Node) -> Plan:
     """Rewrite ``<context>.getUserName()`` and the other moved methods to the property.
 
@@ -379,7 +411,8 @@ def _plan_context_settings(root: Node) -> Plan:
                     " {id, name} lookups: every read of the list needs review"
                 )
         if reason is not None or call is None or recv.text is None or m.text is None:
-            unproven.append(Unproven(line, reason or "not a direct call"))
+            use = _return_use(call) if name == b"getUserRoles" else None
+            unproven.append(Unproven(line, reason or "not a direct call", use))
             continue
         gap = m.text[len(recv.text) : len(m.text) - len(name)]
         head = _GLOBAL_CONTEXT if direct else recv.text

@@ -35,7 +35,7 @@ from collections import Counter
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 from xml.etree.ElementTree import ParseError
 
 from crm.core.code_parse import error_count, parse
@@ -105,6 +105,9 @@ from crm.core.inventory_transforms import (
 )
 from crm.utils.safe_xml import fromstring
 
+if TYPE_CHECKING:
+    from tree_sitter import Node
+
 #: The format version of the ledger.
 SCHEMA_VERSION = 1
 LEDGER_NAME = "ledger.json"
@@ -123,15 +126,60 @@ GRAPH_COUNTS = ("threaded", "unreachable", "boundary")
 
 @dataclass(frozen=True)
 class ManualReview:
-    """A site a rule matches but the rewrite is not proven for. *line* is None for a whole file."""
+    """A site a rule matches but the rewrite is not proven for. *line* is None for a whole file.
+
+    The last three fields help a reviewer finish the edit and are written only when known:
+    the *snippet* of the statement at the site, the rule's *replacement* and the *return_use*
+    of a call whose result the transform classifies.
+    """
 
     file: str
     line: int | None
     rule: str
     reason: str
+    snippet: str | None = None
+    replacement: str | None = None
+    return_use: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {"file": self.file, "line": self.line, "rule": self.rule, "reason": self.reason}
+        base = {"file": self.file, "line": self.line, "rule": self.rule, "reason": self.reason}
+        extra = {"snippet": self.snippet, "replacement": self.replacement}
+        extra["return_use"] = self.return_use
+        return base | {k: v for k, v in extra.items() if v is not None}
+
+
+#: The most characters of a manual-review entry's ``snippet``, its closing ``...`` included.
+SNIPPET_MAX = 240
+_STATEMENTS = ("lexical_declaration", "variable_declaration")
+
+
+def _snippet(source: bytes, line: int, root: Node | None) -> str | None:
+    """The source text of the statement holding 1-based *line*, trimmed and capped at
+    `SNIPPET_MAX`; with no JavaScript tree *root* (an HTML page, XML), the line itself.
+    """
+    row = line - 1
+    if root is None:
+        lines = source.split(b"\n")
+        text = lines[row] if 0 <= row < len(lines) else b""
+    else:
+        best: Node | None = None
+        stack = [root]
+        while stack:
+            node = stack.pop()
+            if not node.start_point.row <= row <= node.end_point.row:
+                continue
+            stack.extend(node.children)
+            if node.type.endswith("_statement") or node.type in _STATEMENTS:
+                if (
+                    best is None
+                    or node.end_byte - node.start_byte <= best.end_byte - best.start_byte
+                ):
+                    best = node
+        text = best.text if best is not None and best.text else b""
+    out = text.decode("utf-8", "replace").strip()
+    if len(out) > SNIPPET_MAX:
+        out = out[: SNIPPET_MAX - 3] + "..."
+    return out or None
 
 
 @dataclass
@@ -915,12 +963,29 @@ def convert(
         source: bytes,
         current: bytes,
     ) -> None:
+        # Only a script has statements; a page's or an XML artifact's site is its line.
+        record = records.get((kind, key))
+        script = kind == "web_resource" and not is_page(record)
+        tree = (
+            parse("javascript", source)
+            if script and any(p.unproven for _, p, *_ in steps)
+            else None
+        )
         for pkg in held.get(f"{kind}:{key}", [UNPACKAGED]):
             files: dict[str, str] = {}
             for rule, plan, reason, applied in steps:
                 entry = Entry(pkg, kind, key, rule.id, cast(str, rule.transform), "manual-review")
                 entry.manual_review = [
-                    ManualReview(path, u.line, rule.id, u.reason) for u in plan.unproven
+                    ManualReview(
+                        path,
+                        u.line,
+                        rule.id,
+                        u.reason,
+                        _snippet(source, u.line, tree),
+                        rule.fix,
+                        u.return_use,
+                    )
+                    for u in plan.unproven
                 ]
                 if rule.transform == HANDLER_TRANSFORM and kind == "web_resource":
                     entry.graph = Counter(
@@ -929,7 +994,9 @@ def convert(
                         boundary=plan.boundary,
                     )
                 if reason:
-                    entry.manual_review.insert(0, ManualReview(path, None, rule.id, reason))
+                    entry.manual_review.insert(
+                        0, ManualReview(path, None, rule.id, reason, replacement=rule.fix)
+                    )
                 elif applied:
                     entry.status, entry.edits = "patched", len(plan.edits)
                     entry.original_sha256, entry.patched_sha256 = _hex(source), _hex(current)
