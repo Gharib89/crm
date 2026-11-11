@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Report xmlns="http://schemas.microsoft.com/sqlserver/reporting/2008/01/reportdefinition">
+  <DataSources>
+    <DataSource Name="CRM">
+      <ConnectionProperties>
+        <DataProvider>SQL</DataProvider>
+        <ConnectString>Data Source=(local);Initial Catalog=Contoso_MSCRM</ConnectString>
+      </ConnectionProperties>
+    </DataSource>
+  </DataSources>
+  <DataSets>
+    <DataSet Name="Accounts">
+      <Query>
+        <DataSourceName>CRM</DataSourceName>
+        <CommandText>SELECT name FROM FilteredAccount</CommandText>
+      </Query>
+    </DataSet>
+  </DataSets>
+</Report>

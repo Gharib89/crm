@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import jsonschema
@@ -41,6 +42,19 @@ def _script(name: str, content: str, folder: Path) -> inv.Record:
     return _record("web_resource", fields, folder, files=[("content.js", content.encode(), True)])
 
 
+PROCESSES = (
+    ("Intake dialog", 1),
+    ("Approve project", 0),
+    ("Project flow", 4),
+    ("Cloud flow", 5),
+)
+
+
+def _process(name: str, category: int, folder: Path) -> inv.Record:
+    fields = {"category": category, "primary_entity": "new_project", "name": name}
+    return _record("process", fields, folder)
+
+
 def _assembly(name: str, folder: Path, **fields) -> inv.Record:
     return _record("plugin_assembly", {"name": name, **fields}, folder)
 
@@ -62,6 +76,7 @@ def _write_inventory(folder: Path, *, version: str = "5.0.9690.4376") -> Path:
         _assembly("Contoso.Unrecorded", folder, source_type=0),
         _record("entity", {"logical_name": "new_project"}, folder),
         _record("view", {"entity": "new_project", "name": "Active Projects"}, folder),
+        *(_process(name, category, folder) for name, category in PROCESSES),
     ]
     counts: dict[str, int] = {}
     for record in records:
@@ -144,6 +159,43 @@ def test_a_kind_no_rule_covers_is_unknown_no_rule(inventory):
     assert (entity.cls, entity.reason, entity.rule) == ("unknown", "no rule", None)
     (logo,) = _findings(result, "new_/img/logo.png")
     assert (logo.cls, logo.reason) == ("unknown", "no rule")
+
+
+@pytest.mark.parametrize("target", ["online", "onprem-9.1"])
+def test_a_dialog_is_deprecated_and_the_other_processes_are_clear(inventory, target):
+    result = assess.assess(inventory, target)
+    (hit,) = _findings(result, "1|new_project|Intake dialog")
+    assert (hit.cls, hit.rule, hit.reason) == ("deprecated", "process-dialog", None)
+    assert hit.evidence is not None and (hit.evidence.field, hit.evidence.value) == ("category", 1)
+    for name, category in PROCESSES[1:]:
+        (other,) = _findings(result, f"{category}|new_project|{name}")
+        assert (other.cls, other.rule, other.reason) == ("clear", None, None)
+
+
+def _names_replacements_without_conversion(fix: str) -> bool:
+    replaces = re.match(r"Rebuild the dialog as a business process flow .*or a canvas app", fix)
+    return bool(replaces) and "there is no automatic conversion" in fix
+
+
+def test_the_dialog_fix_prose_check_rejects_its_negation():
+    negated = (
+        "Do not rebuild the dialog as a business process flow or a canvas app; "
+        "there is an automatic conversion."
+    )
+    assert not _names_replacements_without_conversion(negated)
+
+
+def test_the_dialog_rule_names_the_replacements_and_its_sources(inventory):
+    data = json.loads(assess.dump_findings(assess.assess(inventory, "online")))
+    rule = data["rules_hit"]["process-dialog"]
+    assert _names_replacements_without_conversion(rule["fix"])
+    assert any("replace-dialogs" in s for s in rule["sources"])
+    assert any("important-changes-coming" in s for s in rule["sources"])
+
+
+def test_the_dialog_rule_is_deprecated_from_the_2011_source():
+    (rule,) = [r for r in assess.load_rules().rules if r.id == "process-dialog"]
+    assert (rule.cls, rule.kind, rule.source_from) == ("deprecated", "process", "5.0")
 
 
 def test_partial_coverage_gives_unknown_for_its_components(inventory):

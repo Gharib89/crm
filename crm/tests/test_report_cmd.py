@@ -57,6 +57,8 @@ class TestReportGet:
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["bodytext"] == "<Report/>"
+        assert env["data"]["data_provider"] == "unknown"
+        assert env["data"]["data_provider_reason"]
 
 
 class TestReportCreate:
