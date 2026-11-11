@@ -9,6 +9,49 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.115.0 (2026-11-11)
+
+### Chores
+
+- **ship**: Claude Code primary reviewer, Codex 1-round fallback
+  ([#1231](https://github.com/Gharib89/crm/pull/1231),
+  [`e56e7c1`](https://github.com/Gharib89/crm/commit/e56e7c1d1d019562e1a52061d136d8c1f7939712))
+
+- **ship**: Make Claude Code the primary reviewer and Codex its 1-round fallback
+  ([#1231](https://github.com/Gharib89/crm/pull/1231),
+  [`e56e7c1`](https://github.com/Gharib89/crm/commit/e56e7c1d1d019562e1a52061d136d8c1f7939712))
+
+- **ship**: Merge-gate skill follows the new reviewer order
+  ([#1231](https://github.com/Gharib89/crm/pull/1231),
+  [`e56e7c1`](https://github.com/Gharib89/crm/commit/e56e7c1d1d019562e1a52061d136d8c1f7939712))
+
+### Documentation
+
+- **inventory**: Document the classic workflow XAML rules and migration-assess
+  ([#1232](https://github.com/Gharib89/crm/pull/1232),
+  [`2262ba1`](https://github.com/Gharib89/crm/commit/2262ba1e935c1a57fbb768103a739f180aeb70a4))
+
+### Features
+
+- **inventory**: Assess flags classic workflow wait conditions and custom activities from stored
+  XAML ([#1232](https://github.com/Gharib89/crm/pull/1232),
+  [`2262ba1`](https://github.com/Gharib89/crm/commit/2262ba1e935c1a57fbb768103a739f180aeb70a4))
+
+### Testing
+
+- **inventory**: Narrow evidence types in the remaining xaml tests
+  ([#1232](https://github.com/Gharib89/crm/pull/1232),
+  [`2262ba1`](https://github.com/Gharib89/crm/commit/2262ba1e935c1a57fbb768103a739f180aeb70a4))
+
+- **inventory**: Narrow rule and evidence types in the xaml tests
+  ([#1232](https://github.com/Gharib89/crm/pull/1232),
+  [`2262ba1`](https://github.com/Gharib89/crm/commit/2262ba1e935c1a57fbb768103a739f180aeb70a4))
+
+- **inventory**: Tidy the xaml rule tests after self-review
+  ([#1232](https://github.com/Gharib89/crm/pull/1232),
+  [`2262ba1`](https://github.com/Gharib89/crm/commit/2262ba1e935c1a57fbb768103a739f180aeb70a4))
+
+
 ## v1.114.0 (2026-11-11)
 
 ### Bug Fixes
