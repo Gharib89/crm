@@ -9,6 +9,33 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.112.1 (2026-11-11)
+
+### Bug Fixes
+
+- **report**: Crm report get shows the data provider of a report's RDL
+  ([#1217](https://github.com/Gharib89/crm/pull/1217),
+  [`724b294`](https://github.com/Gharib89/crm/commit/724b2945443ebd2be6969b76e304a35cb3d4a31c))
+
+### Documentation
+
+- **out-of-scope**: Record the 2011 business-data path and legacy claims auth rejections
+  ([`6ce36c0`](https://github.com/Gharib89/crm/commit/6ce36c0e8c73cc1434576d56b4a72afdf66f9438))
+
+- **readme**: Report row names the get data_provider
+  ([#1217](https://github.com/Gharib89/crm/pull/1217),
+  [`724b294`](https://github.com/Gharib89/crm/commit/724b2945443ebd2be6969b76e304a35cb3d4a31c))
+
+- **skill**: Shorten the report get provider note
+  ([#1217](https://github.com/Gharib89/crm/pull/1217),
+  [`724b294`](https://github.com/Gharib89/crm/commit/724b2945443ebd2be6969b76e304a35cb3d4a31c))
+
+### Testing
+
+- **report**: Cover a BOM-prefixed RDL ([#1217](https://github.com/Gharib89/crm/pull/1217),
+  [`724b294`](https://github.com/Gharib89/crm/commit/724b2945443ebd2be6969b76e304a35cb3d4a31c))
+
+
 ## v1.112.0 (2026-11-10)
 
 ### Bug Fixes
