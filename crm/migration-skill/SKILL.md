@@ -57,8 +57,8 @@ rest.
 6. **Map, assess, package and convert from the cloud inventory.** First
    reconcile the cloud extract with the application repository
    (`crm inventory map-source`, `reference/source-mapping.md`). Then
-   `crm inventory assess`, `packages` and `convert` read the **cloud** extract, not the 2011
-   one: it records the code actually deployed, and the OData v2 rewrite needs
+   `crm inventory assess`, `packages` and `convert` read the **cloud** extract,
+   not the 2011 one: it records the code actually deployed, and the OData v2 rewrite needs
    the entity set names only a v9 extract records. Done when Workflow steps 3
    and 4 hold against the cloud inventory and every component reconciles with
    the repository or is an unknown.
