@@ -21,7 +21,7 @@ import hashlib
 import json
 import re
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -738,13 +738,23 @@ class FindingsFile:
     """A findings file read back: the inventory it was made from, its findings, each rule's sources.
 
     *sources* maps a rule id to the Microsoft Learn URLs that justify it, so a
-    reader can keep a finding's provenance without the rules file.
+    reader can keep a finding's provenance without the rules file. *version* is the inventory's
+    ``source.version`` text, *rules_sha256* the rules file the run used, *source_hosts* the hosts
+    it searched for, *usage_filtered* the findings `--in-use` or `--exclude-unknown` dropped,
+    *unattached_gaps* the gaps naming no component and *incomplete* the kinds
+    not read complete.
     """
 
     manifest_sha256: str
     target: str
     findings: tuple[Finding, ...]
     sources: dict[str, tuple[str, ...]]
+    version: str = ""
+    rules_sha256: str = ""
+    source_hosts: tuple[str, ...] = ()
+    unattached_gaps: tuple[dict[str, Any], ...] = ()
+    incomplete: dict[str, str] = field(default_factory=lambda: {})
+    usage_filtered: int = 0
 
 
 def _get(obj: Any, name: str) -> Any:
@@ -754,6 +764,16 @@ def _get(obj: Any, name: str) -> Any:
 def _field(obj: Any, name: str, kind: type, where: str) -> Any:
     """``obj[name]``, which must be a *kind*: the reader's one check, naming *where* on failure."""
     value = _get(obj, name)
+    if type(value) is not kind:
+        raise InventoryError(f"{where}: {name} must be a {kind.__name__}")
+    return value
+
+
+def _listed(obj: Any, name: str, kind: type, where: str) -> Any:
+    """``obj[name]`` when present: a *kind*, or absent/empty (an empty *kind*)."""
+    value = _get(obj, name)
+    if not value:
+        return kind()
     if type(value) is not kind:
         raise InventoryError(f"{where}: {name} must be a {kind.__name__}")
     return value
@@ -855,11 +875,27 @@ def read_findings(path: Path) -> FindingsFile:
     sources = {
         rule: tuple(_sources(entry, f"{where}: rules_hit.{rule}")) for rule, entry in hit.items()
     }
-    sha = _field(_field(data, "inventory", dict, where), "manifest_sha256", str, where)
+    header = _field(data, "inventory", dict, where)
+    sha = _field(header, "manifest_sha256", str, where)
     target = _field(data, "target", str, where)
     if target not in TARGETS:
         raise InventoryError(f"{where}: target {target!r} is not one of {', '.join(TARGETS)}")
-    return FindingsFile(sha, target, tuple(findings), sources)
+    gaps: list[Any] = _listed(data, "unattached_gaps", list, where)
+    hosts: list[Any] = _listed(data, "source_hosts", list, where)
+    incomplete: dict[Any, Any] = _listed(data, "incomplete", dict, where)
+    usage_filtered = _get(data, "usage_filtered") or 0
+    return FindingsFile(
+        sha,
+        target,
+        tuple(findings),
+        sources,
+        str(_get(header, "version") or ""),
+        str(_get(_get(data, "rules"), "sha256") or ""),
+        tuple(h for h in hosts if type(h) is str),
+        tuple(cast(dict[str, Any], g) for g in gaps if type(g) is dict),
+        {str(k): str(v) for k, v in incomplete.items()},
+        usage_filtered if type(usage_filtered) is int else 0,
+    )
 
 
 def _locations(pattern: re.Pattern[str], text: str) -> tuple[tuple[tuple[int, int], ...], int]:

@@ -115,17 +115,6 @@
     },
     {
       "class": "unknown",
-      "component": "step:Update|new_project|20|0|Contoso.Plugins%7CContoso.Plugins.ProjectUpdate|ProjectUpdate: Update of new_project",
-      "evidence": null,
-      "reason": "no rule",
-      "reference": null,
-      "rule": null,
-      "sources": [],
-      "status": null,
-      "type": "compatibility"
-    },
-    {
-      "class": "unknown",
       "component": "step_image:Update%7Cnew_project%7C20%7C0%7CContoso.Plugins%257CContoso.Plugins.ProjectUpdate%7CProjectUpdate: Update of new_project|PreImage|0",
       "evidence": null,
       "reason": "no rule",

@@ -29,6 +29,7 @@ from crm.core.inventory_packages import (
     reference_edges,
     write_packages,
 )
+from crm.core.inventory_readiness import readiness
 from crm.core.inventory_source_map import STATUSES, dump_source_map, map_source, read_source_map
 from crm.core.inventory_usage_filter import SORTS, filter_findings
 from crm.core.inventory_verify import dump_report, verify
@@ -863,6 +864,45 @@ def inventory_assess_cmd(
     if data["incomplete"]:
         meta["incomplete"] = ", ".join(f"{k} ({v})" for k, v in data["incomplete"].items())
     ctx.emit(True, table={"headers": ["kind", *CLASSES], "rows": rows}, meta=meta)
+
+
+@inventory_group.command("readiness")
+@click.argument("findings", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@pass_ctx
+def inventory_readiness_cmd(ctx: CLIContext, findings: Path):
+    """Read a findings file as a readiness checklist for a move to Dataverse online: offline.
+
+    FINDINGS is the file `crm inventory assess INVENTORY --target online --out FILE` wrote; one
+    written for --target onprem-9.1 is a usage error (exit 2), as is one made with other rules
+    than this crm ships or with --in-use or --exclude-unknown that dropped findings. Touches no
+    org. Prints one row per gate: pass, fail, warn or unknown, the
+    components behind it, the rule that decided it and its basis (an OP2OL whitepaper gate, or a
+    Dataverse online requirement that is not one). Gate rows come from the packaged online
+    blocker rules, so a new rule adds a row. A source version below 9.0 fails the version row;
+    isolation mode none is a warn (the migration converts it to sandbox mode); a gate whose
+    component kind has an extraction gap or unknown findings, or whose input assess was not given
+    (--source-host, --source-map with --repo), is unknown, never pass. The closing manual rows are
+    the gates the API cannot see (collation, size, TDE, integrity checks, target users and
+    licences): they carry no status. This is a checklist, not the OP2OL service, Lifecycle
+    Services or the upgrade hops. Exits 0 whenever the checklist was produced, whatever its
+    rows say.
+    """
+    try:
+        result = readiness(findings)
+    except InventoryError as exc:
+        raise click.UsageError(str(exc)) from exc
+    if ctx.json_mode:
+        ctx.emit(True, data=result.to_dict())
+        return
+    rows = [[r.gate, r.display_status, r.components, r.basis, r.note] for r in result.rows]
+    rows += [
+        [m["gate"], "manual", "", m["basis"], "the API cannot see this"] for m in result.manual
+    ]
+    ctx.emit(
+        True,
+        table={"headers": ["gate", "status", "components", "basis", "note"], "rows": rows},
+        meta={"source version": result.source_version, "target": result.target},
+    )
 
 
 @inventory_group.command("check-applied")

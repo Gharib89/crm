@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "version": 10,
+  "version": 11,
   "rules": [
     {
       "id": "web-resource-xrm-page",
@@ -467,6 +467,31 @@
       "sources": [
         "https://learn.microsoft.com/dynamics365/customerengagement/on-premises/developer/register-deploy-plugins?view=op-9-1#security-restrictions",
         "https://learn.microsoft.com/power-apps/developer/data-platform/reference/entities/pluginassembly"
+      ]
+    },
+    {
+      "id": "step-on-systemuser",
+      "kind": "step",
+      "class": "blocker",
+      "title": "Plug-in step registered on the System User entity; the on-premises-to-online migration requires none",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "online"
+      ],
+      "detection": {
+        "type": "field_in",
+        "field": "primary_entity",
+        "values": [
+          "systemuser"
+        ]
+      },
+      "fix": "Unregister the step, or move its logic to a step on another entity or to a process, before the migration. A step whose primary entity is systemuser blocks it.",
+      "sources": [
+        "https://learn.microsoft.com/dynamics365/guidance/migrate/opol-crm-migration-high-level-overview",
+        "https://aka.ms/op2olwhitepaper"
       ]
     },
     {
