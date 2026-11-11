@@ -98,7 +98,7 @@ For "let the agent customize", prefer assigning the OOB `System Customizer` role
 
 ### Gotchas
 
-**`create-role` is solution-scoped** (`--solution` required — SKILL.md).
+**`create-role` is solution-scoped** (`--solution` required — SKILL.md). A managed `--solution` is refused (`CannotModifyManagedSolution`, exit 1); use an unmanaged solution.
 **`--if-exists skip` does not add the role to it.** When an existing same-name role is returned via `--if-exists
 skip`, it is reused unchanged — solution membership is not applied retroactively. To
 guarantee placement in a solution, the role must be newly created in the same call.

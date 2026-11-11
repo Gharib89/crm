@@ -105,7 +105,9 @@ edits a solution component, in any group — requires an explicit
 `--solution <unique_name>`: there is no profile default and no opt-out, and
 omitting it exits 2 at parse time, before any confirmation prompt or backend
 call (even under `--dry-run`). Pass
-`--solution Default` for a deliberate Default-Solution-only write. `apply` takes
+`--solution Default` for a deliberate Default-Solution-only write. A managed
+`--solution` target is refused before the request is sent (exit 1,
+`CannotModifyManagedSolution`). `apply` takes
 the target as the spec's mandatory top-level `solution:` block instead of a flag.
 The few exceptions (hard `metadata delete-*` verbs, N:N assign/match verbs) are
 named in their reference files.

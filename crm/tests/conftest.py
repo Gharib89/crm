@@ -137,6 +137,25 @@ def isolated_home(tmp_path: Path) -> Iterator[Path]:
 
 
 @pytest.fixture(autouse=True)
+def no_managed_solution_lookup(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Skip the backend's managed-solution write guard (#1189) in unit tests.
+
+    Tests that send a ``solution=`` write mock only that write; the guard's extra
+    ``solutions`` GET would hit an unmocked URL. ``test_managed_solution_guard.py``
+    opts back in with ``@pytest.mark.managed_guard`` to test the real guard; live e2e keeps it.
+    """
+    if "managed_guard" in request.keywords or "e2e" in request.keywords:
+        return
+
+    def _no_guard(self: D365Backend, solution: str) -> None:
+        return None
+
+    monkeypatch.setattr(D365Backend, "_refuse_managed_solution", _no_guard)
+
+
+@pytest.fixture(autouse=True)
 def no_real_keyring(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep every unit test off the developer's real OS keyring (#982).
 

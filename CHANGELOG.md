@@ -9,6 +9,27 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.112.3 (2026-11-11)
+
+### Bug Fixes
+
+- **security**: Cover create-role CLI refusal, skill cross-group note, keep guard live in e2e
+  ([#1219](https://github.com/Gharib89/crm/pull/1219),
+  [`7725266`](https://github.com/Gharib89/crm/commit/7725266be72b683ed0870992b56da45c003e963d))
+
+- **security**: Exempt DELETE from the managed-solution guard, test create-entity and apply
+  ([#1219](https://github.com/Gharib89/crm/pull/1219),
+  [`7725266`](https://github.com/Gharib89/crm/commit/7725266be72b683ed0870992b56da45c003e963d))
+
+- **security**: Refuse a managed --solution target before any write is sent
+  ([#1219](https://github.com/Gharib89/crm/pull/1219),
+  [`7725266`](https://github.com/Gharib89/crm/commit/7725266be72b683ed0870992b56da45c003e963d))
+
+- **security**: Type the managed-guard test fixture for strict pyright
+  ([#1219](https://github.com/Gharib89/crm/pull/1219),
+  [`7725266`](https://github.com/Gharib89/crm/commit/7725266be72b683ed0870992b56da45c003e963d))
+
+
 ## v1.112.2 (2026-11-11)
 
 ### Bug Fixes

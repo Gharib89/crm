@@ -561,6 +561,26 @@ class D365Backend:
         self._default_suppress_dup: bool = _resolve_bool_env("CRM_SUPPRESS_DUP")
         self._default_bypass_plugins: bool = _resolve_bool_env("CRM_BYPASS_PLUGINS")
         self._retry_on_ambiguous = retry_on_ambiguous or _resolve_bool_env("CRM_RETRY_ON_AMBIGUOUS")
+        # solution unique name -> ismanaged, one lookup per name per process (#1189).
+        self._solution_managed: dict[str, bool] = {}
+
+    def _refuse_managed_solution(self, solution: str) -> None:
+        """Raise before a write is sent when `solution` is managed (#1189).
+
+        The platform ignores MSCRM.SolutionUniqueName for a managed target and
+        creates the component unmanaged in Default while reporting success. The
+        lookup is a read, so it runs under dry-run and read-only too; an unknown
+        solution is left to the platform, as before.
+        """
+        if solution not in self._solution_managed:
+            row = self.find_one("solutions", "uniquename", solution, select="ismanaged")
+            self._solution_managed[solution] = bool(row and row.get("ismanaged"))
+        if self._solution_managed[solution]:
+            raise D365Error(
+                f"Solution {solution!r} is managed; a managed solution takes no new "
+                "components, so this write is refused.",
+                code="CannotModifyManagedSolution",
+            )
 
     @property
     def dry_run(self) -> bool:
@@ -853,6 +873,10 @@ class D365Backend:
         # Solution-context header, set after the extra_headers merge so it wins
         # on conflict — same compose-precedence as the sibling MSCRM.* headers.
         if solution:
+            # DELETE is exempt: hard metadata deletes forward an optional --solution
+            # that does not scope the delete (ADR 0020).
+            if method.upper() not in ("GET", "DELETE"):
+                self._refuse_managed_solution(solution)
             headers["MSCRM.SolutionUniqueName"] = solution
 
         if etag is not None:
