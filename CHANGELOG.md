@@ -9,6 +9,31 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.112.2 (2026-11-11)
+
+### Bug Fixes
+
+- **inventory**: Assess flags classic dialogs as deprecated
+  ([#1216](https://github.com/Gharib89/crm/pull/1216),
+  [`96729f6`](https://github.com/Gharib89/crm/commit/96729f6096d41ffd09bb882c03da3d562e634506))
+
+### Documentation
+
+- **inventory**: Cover process-dialog in the shipped skill and the field-evidence contract
+  ([#1216](https://github.com/Gharib89/crm/pull/1216),
+  [`96729f6`](https://github.com/Gharib89/crm/commit/96729f6096d41ffd09bb882c03da3d562e634506))
+
+- **inventory**: List classic dialogs in the rule table intro
+  ([#1216](https://github.com/Gharib89/crm/pull/1216),
+  [`96729f6`](https://github.com/Gharib89/crm/commit/96729f6096d41ffd09bb882c03da3d562e634506))
+
+### Testing
+
+- **inventory**: Pin the dialog fix prose against a negated sentence
+  ([#1216](https://github.com/Gharib89/crm/pull/1216),
+  [`96729f6`](https://github.com/Gharib89/crm/commit/96729f6096d41ffd09bb882c03da3d562e634506))
+
+
 ## v1.112.1 (2026-11-11)
 
 ### Bug Fixes
