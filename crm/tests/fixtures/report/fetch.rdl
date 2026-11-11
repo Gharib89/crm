@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Report xmlns="http://schemas.microsoft.com/sqlserver/reporting/2008/01/reportdefinition">
+  <DataSources>
+    <DataSource Name="CRM">
+      <ConnectionProperties>
+        <DataProvider>MSCRMFETCH</DataProvider>
+        <ConnectString>file://MSCRM</ConnectString>
+      </ConnectionProperties>
+    </DataSource>
+  </DataSources>
+  <DataSets>
+    <DataSet Name="Accounts">
+      <Query>
+        <DataSourceName>CRM</DataSourceName>
+        <CommandText>&lt;fetch&gt;&lt;entity name="account"&gt;&lt;attribute name="name"/&gt;&lt;/entity&gt;&lt;/fetch&gt;</CommandText>
+      </Query>
+    </DataSet>
+  </DataSets>
+</Report>

@@ -47,7 +47,7 @@ an external link report. Verbs: `list`, `get`, `create`, `set-category`, `delete
 
 ```bash
 crm --json report list                                 # all reports (summary cols)
-crm --json report get <id>                             # one report, body included
+crm --json report get <id>                             # one report, body included, plus data_provider (fetch|sql|unknown, with data_provider_reason when unknown)
 crm --json report create --name "Pipeline" --body-file pipeline.rdl --solution ContosoCore
 crm --json report create --name "Ext Dash" --url "https://example.com/dash" --solution ContosoCore
 crm --json report set-category <id> --category sales --solution ContosoCore
