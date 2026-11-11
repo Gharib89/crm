@@ -1210,10 +1210,13 @@ def _assess_record(
                 out += _project_findings(rule, record, *project)
             continue
         if isinstance(d, ReportDataProvider):
-            if (
-                record.fields.get("report_type") != RDL_REPORT
-                or record.fields.get("custom") is not True
-            ):
+            if record.fields.get("report_type") != RDL_REPORT:
+                continue
+            custom = record.fields.get("custom")
+            if custom is None:
+                out.append(finding("unknown", rule.id, "field custom not recorded"))
+                continue
+            if custom is not True:
                 continue
             provider = record.fields.get("data_provider")
             if provider is None:
