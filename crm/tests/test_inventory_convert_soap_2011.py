@@ -111,6 +111,7 @@ def test_the_rule_names_the_registered_review_transform():
 
 def test_the_transform_matches_what_the_rule_detects():
     rule = next(r for r in assess.load_rules().rules if r.id == RULE)
+    assert isinstance(rule.detection, assess.ContentPattern)
     assert _SOAP_2011.pattern.decode() == rule.detection.pattern.pattern
 
 
