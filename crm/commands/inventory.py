@@ -12,10 +12,12 @@ from pathlib import Path
 import click
 
 from crm import __version__
-from crm.cli import CLIContext, pass_ctx
+from crm.cli import FAILURE_EXIT_CODE, CLIContext, pass_ctx
 from crm.commands._helpers import d365_errors, in_use_options
 from crm.core import inventory_extract
 from crm.core.inventory import InventoryError, read_inventory
+from crm.core.inventory_applied import STATUSES as APPLIED_STATUSES
+from crm.core.inventory_applied import check_applied
 from crm.core.inventory_assess import CLASSES, TARGETS, assess, dump_findings, read_findings
 from crm.core.inventory_convert import convert
 from crm.core.inventory_diff import VERDICTS, diff_inventories, dump_diff, read_pair
@@ -832,3 +834,48 @@ def inventory_assess_cmd(
     if data["incomplete"]:
         meta["incomplete"] = ", ".join(f"{k} ({v})" for k, v in data["incomplete"].items())
     ctx.emit(True, table={"headers": ["kind", *CLASSES], "rows": rows}, meta=meta)
+
+
+@inventory_group.command("check-applied")
+@click.argument(
+    "convert_out", metavar="CONVERT_OUT", type=click.Path(file_okay=False, path_type=Path)
+)
+@click.option(
+    "--repo",
+    required=True,
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    help="The application repository checkout the patches were applied to; read only.",
+)
+@pass_ctx
+def inventory_check_applied_cmd(ctx: CLIContext, convert_out: Path, repo: Path):
+    """Prove a repository carries the patches of a convert output: offline.
+
+    Reads the `crm inventory convert --out` folder's ledger and the --repo checkout; writes
+    nothing, touches no org and needs no profile. Each ledger entry that patches a repository
+    file gets one status, from the file's normalized hash (no BOM, LF, as convert hashed):
+    applied (equals the entry's patched hash), not_applied (equals its original hash),
+    diverged (equals neither) or missing (the file is not there). An entry with no repository
+    file (a manual-review entry, or a patch for an inventory artifact only) is
+    not_checkable, with the reason, and does not affect the exit code. Exits 0 when every
+    checkable entry is applied, 1 otherwise; a missing or empty CONVERT_OUT, or a ledger of
+    an unknown schema_version, is a usage error (exit 2). Returns the counts and one row per
+    entry. This is the gate between applying the patches and building.
+    """
+    try:
+        report = check_applied(convert_out, repo)
+    except InventoryError as exc:
+        raise click.UsageError(str(exc)) from exc
+    data = report.summary()
+    if ctx.json_mode:
+        ctx.emit(report.ok, data=data, error=None if report.ok else "not every patch is applied")
+        return
+    rows = sorted(report.rows, key=lambda r: r.status == "applied")
+    table = {
+        "headers": ["status", "component", "path", "reason"],
+        "rows": [[r.status, r.key, r.path or "", r.reason or ""] for r in rows],
+    }
+    counts = data["counts"]
+    meta = {"counts": ", ".join(f"{s} {counts[s]}" for s in APPLIED_STATUSES)}
+    ctx.emit(True, table=table, meta=meta)
+    if not report.ok:
+        raise click.exceptions.Exit(FAILURE_EXIT_CODE)

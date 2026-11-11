@@ -41,7 +41,8 @@ LOCAL_GROUPS = frozenset(
 # Verbs that touch no Web API inside a group whose other verbs do (`inventory diff`
 # compares two inventory folders on disk, `inventory map-source` reads one and a repo,
 # `inventory packages` reads one and its source map, `inventory verify` reads a
-# packages folder and a results file, `inventory assess` reads one and the packaged rules)
+# packages folder and a results file, `inventory assess` reads one and the packaged rules,
+# `inventory check-applied` reads a convert output and a repo)
 # — unit-tested elsewhere.
 LOCAL_VERBS = frozenset(
     {
@@ -51,6 +52,7 @@ LOCAL_VERBS = frozenset(
         "inventory verify",
         "inventory assess",
         "inventory convert",
+        "inventory check-applied",
     }
 )
 
