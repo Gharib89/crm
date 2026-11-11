@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Report xmlns="http://schemas.microsoft.com/sqlserver/reporting/2008/01/reportdefinition">
+  <DataSources>
+    <DataSource Name="CRM">
+      <ConnectionProperties>
+        <DataProvider>SQL</DataProvider>
+        <ConnectString>Data Source=(local);Initial Catalog=Contoso_MSCRM</ConnectString>
+      </ConnectionProperties>
+    </DataSource>
+  </DataSources>
+  <DataSets>
+    <DataSet Name="Orders">
+      <Query>
+        <DataSourceName>CRM</DataSourceName>
+        <CommandText>SELECT a.name, o.totalamount FROM FilteredAccount a JOIN FilteredSalesOrder o ON o.customerid = a.accountid WHERE o.createdon &gt;= @From</CommandText>
+        <QueryParameters>
+          <QueryParameter Name="@From"><Value>=Parameters!From.Value</Value></QueryParameter>
+        </QueryParameters>
+      </Query>
+    </DataSet>
+    <DataSet Name="Owners">
+      <Query>
+        <DataSourceName>CRM</DataSourceName>
+        <CommandText>SELECT fullname FROM FilteredSystemUser WHERE businessunitid = @BU</CommandText>
+        <QueryParameters>
+          <QueryParameter Name="@BU"><Value>=Parameters!BU.Value</Value></QueryParameter>
+        </QueryParameters>
+      </Query>
+    </DataSet>
+  </DataSets>
+  <ReportParameters>
+    <ReportParameter Name="From"><DataType>DateTime</DataType></ReportParameter>
+    <ReportParameter Name="BU"><DataType>String</DataType></ReportParameter>
+  </ReportParameters>
+</Report>

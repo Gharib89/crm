@@ -29,6 +29,8 @@ stage, and record the org's version beside the folder
   `usage` gaps and summary `errors` before trusting a count of unused rows.
 - **`crm org brief` is orientation only.** It returns counts and key names,
   never full rows; the extracted manifest is the baseline.
+- **`crm report get <id>` shows one report's data provider** (`fetch`, `sql` or
+  `unknown`), without an extract.
 
 ## Read coverage before the records
 
