@@ -105,3 +105,7 @@ def test_provider_text_in_comment_or_command_text_is_ignored():
         "</CommandText></Query></DataSet></DataSets>",
     )
     assert classify_rdl(rdl).provider == "fetch"
+
+
+def test_leading_bom_is_tolerated():
+    assert classify_rdl("﻿" + _rdl(_provider("MSCRMFETCH"))).provider == "fetch"
