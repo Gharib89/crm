@@ -6,7 +6,7 @@ CRM 2011 orgs); the other five read files only and need no profile.
 ## Extracting an inventory (`crm inventory extract`)
 
 A migration inventory is a read-only, descriptive record of an org's customizations: a
-`manifest.json` (schema v3, which also reads v1 and v2: records keyed by component key,
+`manifest.json` (schema v4, which also reads v1 to v3: records keyed by component key,
 per-kind coverage, extraction gaps) plus raw artifacts (XML, XAML, web resource content, assembly
 binaries). It describes what is deployed; it is never a spec for `crm apply`.
 
@@ -24,6 +24,12 @@ binaries). It describes what is deployed; it is never a spec for `crm apply`.
   reads `unsupported` only when every named solution is managed. An `unsupported`
   `ribbon_diff`, a managed solution's gap, or one from an older extract is unread:
   report "ribbon diffs unknown".
+- **Each report is a `report` record with its data provider.** The key is the report
+  name, the RDL body is its one artifact, and `fields.data_provider` is `fetch`, `sql` or
+  `unknown`; Dataverse online runs only `fetch`. A Reporting Services report whose body
+  the endpoint did not return reads `unknown` with a reason and one extraction gap naming
+  it, while the `report` kind stays `complete`: read the gap, not the coverage. A manifest
+  older than v4 reads `report` as `unsupported`: report "reports unknown", never "no reports".
 - **It prints progress on stderr** (`[crm] extract stage=... done=n/total`, with an
   `eta` marked as an estimate); stdout, the JSON envelope, is unchanged. Read
   stderr to tell a slow run from a stuck one; `--quiet` silences it.
@@ -71,7 +77,7 @@ binaries). It describes what is deployed; it is never a spec for `crm apply`.
   record counts**, and report the manifest's `gaps` to the user as manual
   follow-up: they name what the inventory could not capture, both what the
   endpoint cannot read (assemblies on disk or in the GAC, ISV pages, external
-  integrations, on-premises SSRS data sources), membership or dependency
+  integrations, the shared data sources of on-premises SSRS reports), membership or dependency
   rows naming a component of a kind v1 does not record, whose read failed, or
   outside the `--solution` scope,
   and rows whose component key field the org left empty.

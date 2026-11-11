@@ -1,7 +1,7 @@
 # How-to: inventory
 
 `crm inventory extract` reads an org's customizations into a **migration
-inventory**: a `manifest.json` in [inventory manifest v3](../reference/inventory-manifest.md)
+inventory**: a `manifest.json` in [inventory manifest v4](../reference/inventory-manifest.md)
 format plus the raw artifacts it points at. An inventory describes what is
 deployed; it is never a desired state for `crm apply`
 ([ADR 0032](../adr/0032-inventory-descriptive-contract-keyed-by-component-key.md)).
@@ -62,6 +62,23 @@ runs it too. It reads every v1 kind (`scope.mode: "org"` unless you pass
   `ribbon_diff`, key the entity logical name (`""` for the application), artifact
   `ribbon-diff.xml`; an entity with an empty diff has none.
 
+- the **reports**: one `report` record per report, keyed by its `name`, read by the same
+  FetchXML read (`RetrieveMultiple` only on `crm2011`, so the SOAP allowlist gains
+  nothing; the `reports` set on the Web API) in small pages, since each row can carry a
+  large RDL body. A report's RDL body is one text artifact, `report.rdl`, and its
+  `data_provider` is what the body's data sources say: `fetch` (every data source uses
+  the FetchXML provider, what Dataverse online accepts), `sql` (a SQL data source,
+  which online cannot run), or `unknown` (a mix of other providers, or a body that
+  does not parse). Each record also holds `report_type`, `personal`, `custom` and
+  `language`; the source GUID is recorded as the record `id` but is never matched on, so
+  the same report on two orgs pairs by name. Two reports with one name are `ambiguous`
+  in a diff ([ADR 0032](../adr/0032-inventory-descriptive-contract-keyed-by-component-key.md)),
+  each keeping its own artifact path, and the run does not fail. A Reporting Services
+  report (`reporttypecode` 1) whose body the endpoint did not return reads `unknown`
+  with a one-line `data_provider_reason` naming the endpoint, never `fetch` or `sql`, and
+  gets one [extraction gap](#extraction-gaps) naming it (see below). A link report
+  (type 3) or other non-RDL report has no body and no gap.
+
 Each entity gets one metadata read and one ribbon read, so the whole-org read takes
 tens of minutes on a large org.
 
@@ -77,8 +94,8 @@ the full read, for an audit or a baseline you will `diff` against another full
 extract. The manifest header records the choice (`scope.system`: `excluded`, or
 `included`, which is also what a manifest without the field means).
 
-- A stock web resource, plug-in assembly, form, view, process or sitemap costs no
-  payload read: the rows are read without their bodies, and the bodies are fetched
+- A stock web resource, plug-in assembly, form, view, process, sitemap or report costs
+  no payload read: the rows are read without their bodies, and the bodies are fetched
   only for the rows kept.
 - A stock entity that a kept attribute, relationship, form, view or ribbon names stays
   as a reference row (read `origin: system` when it is managed), so keys resolve.
@@ -280,7 +297,15 @@ names the endpoint:
   file on the CRM web server;
 - **external integrations** (every platform): services that call the org or that
   its plug-ins and processes call;
-- the **SQL data sources of SSRS reports** (`crm2011` and on-prem v9, not cloud);
+- the **shared data sources of SSRS reports** (`crm2011` and on-prem v9, not cloud): a
+  report's shared data source is defined in SSRS, which the endpoint does not reach.
+  The gap names no component, since it is about the data sources, not a report;
+- a **Reporting Services report whose RDL body the endpoint did not return**: the
+  `report` record is written with `data_provider` `unknown` and a reason, and one gap
+  names it by `report` and its name with the same reason. The kind's coverage stays
+  `complete` when every report record was read (coverage is `partial` or `failed` only
+  when reading the records themselves faulted), and a diff reads only that report as
+  `not_comparable`;
 - the **ribbons of entities with no display label** (intersect and internal
   entities): such an entity has no UI, so its ribbon is not read (CRM 2011 faults
   the read), nor is the ribbon of an entity with no collection label in your
@@ -341,6 +366,13 @@ An `attribute` record's type facets (`max_length`, `format`, `default_value`,
 compared only where both manifests recorded them, so an older extract, which has
 none, shows no facet change. A length that differs on both reads as one
 `fields.max_length` change.
+
+A `report` is paired by name, and its `data_provider` is compared like any field,
+except where a gap names the report on either side: there a missing body makes the
+provider `unknown` by construction, so a provider that differs is the gap, not a change,
+and the report reads `not_comparable` unless something else differs. Against a manifest
+older than v4, which reads `report` coverage `unsupported`, every report is
+`not_comparable`.
 
 A `form` record carries `active` (a v9 or cloud extract only), which `diff`
 compares only where both manifests recorded it, so a CRM 2011 or older extract shows no

@@ -1,15 +1,15 @@
-# Inventory manifest v3
+# Inventory manifest v4
 
 A **migration inventory** is one extraction's descriptive record of an org's
 customizations ([ADR 0032](../adr/0032-inventory-descriptive-contract-keyed-by-component-key.md)).
-This page defines its format, `schema_version` 3, which the CRM 2011 path and
+This page defines its format, `schema_version` 4, which the CRM 2011 path and
 the v9 on-prem and cloud paths all emit. `crm inventory extract` writes one
 on any profile: a `crm2011` profile over SOAP, a v9 on-prem or cloud profile
 over the Web API ([How-to: inventory](../how-to/inventory.md)).
 
 The format ships in the `crm` wheel as a JSON Schema (draft 2020-12),
-`crm/schemas/inventory-manifest-v3.schema.json` (the standalone binaries leave
-it out, since no command loads it; the v1 and v2 schemas stay beside it for old manifests), and as typed records with a
+`crm/schemas/inventory-manifest-v4.schema.json` (the standalone binaries leave
+it out, since no command loads it; the v1, v2 and v3 schemas stay beside it for old manifests), and as typed records with a
 reader and writer in `crm/core/inventory.py` (`read_inventory`,
 `parse_manifest`, `dump_manifest`, `SCHEMA_VERSION`). The reader checks the
 contract without `jsonschema`, and it also checks the rules the schema cannot
@@ -102,6 +102,7 @@ refuses a record whose `key` differs from the key its fields give
 | `dependency` | `dependent_kind`, `dependent_key`, `required_kind`, `required_key`, `dependency_type` | a key field is `""` on the same terms: its kind field is `ribbon` or `sitemap` and the component is the application ribbon or default sitemap |
 | `ribbon` | `entity` | `null` is the application ribbon, key `""` (empty): no entity logical name is empty, so it never meets the ribbon of an entity named `application` |
 | `ribbon_diff` | `entity` | the raw `RibbonDiffXml` of one entity (its logical name) or, with `null` and key `""` (empty), of the application: what the org's customizations layer over the stock ribbon, read from a solution export. Only a diff with content is a record (an empty skeleton or `<RibbonNotSupported/>` is not). Never stock. Artifact `ribbon-diff.xml`; see [Ribbon diffs](#ribbon-diffs) |
+| `report` | `name` | one report: its RDL body is one text artifact (`report.rdl`), and `fields.data_provider` is `fetch`, `sql` or `unknown` (the classifier's answer over the body). The key is the report name; the source GUID is the record `id` and is never matched on. A same-name pair is `ambiguous` |
 | `sitemap` | `unique_name` | `null` is the default sitemap, key `""` (empty), for the same reason: a sitemap named `default` keeps its own key |
 
 ### Fields beyond the key
@@ -115,6 +116,9 @@ and the reader and the schema both check their shape when present:
 | `form` | `libraries` | web resource names of the form libraries, in load order |
 | `form` | `handlers` | `[{event, attribute, function, library, enabled}]`, `attribute` `null` for a form-level event |
 | `process` | `activities` | plug-in type keys of the custom workflow activities the definition uses |
+| `report` | `report_type`, `personal`, `custom`, `language` | the `reporttypecode` (1 Reporting Services, 3 link), `ispersonal`, `iscustomreport` and `languagecode` of the row |
+| `report` | `data_provider` | `fetch`, `sql` or `unknown`; the schema checks the value |
+| `report` | `data_provider_reason` | present only with `unknown`: one line saying why (the endpoint did not return a Reporting Services report's body, or the report has no RDL body) |
 
 ### Attribute facets
 
@@ -169,6 +173,10 @@ not read every entity as changed. Both sides carrying it and differing is a
 - A truncated read is never `complete` (schema and reader).
 - Every kind that has a record has a coverage entry (reader).
 - `records` equals the number of records of that kind in the manifest (reader).
+- A v4 manifest has a `report` coverage entry (schema; the reader adds it to an older one,
+  see v3 to v4). It is `complete` when every report row was read: a report whose body
+  the endpoint did not return is one extraction gap, not a partial kind, and the coverage
+  is `partial` or `failed` only when reading the rows themselves faulted.
 
 Equal counts never prove two orgs equivalent: compare coverage first.
 
@@ -178,7 +186,9 @@ Equal counts never prove two orgs equivalent: compare coverage first.
 reason}`. `kind` may be `null`, and each entry names a `key` or a
 `description`. A `ribbon`, `ribbon_diff` or `sitemap` gap names the application ribbon, the application
 ribbon diff or the default sitemap with the key `""`; no other kind may. Typical gaps are an assembly registered on disk or in the GAC,
-an ISV page, an external integration, and SQL report data sources.
+an ISV page, an external integration, the shared data sources of SSRS reports (no component
+named), and a Reporting Services report whose RDL body the endpoint did not return (a `report`
+gap naming its key, with the same reason as the record's `data_provider_reason`).
 
 ## Normalization
 
@@ -205,7 +215,7 @@ an ISV page, an external integration, and SQL report data sources.
 
 `schema_version` is an integer that changes only on a breaking change; an
 additive field keeps the version. A reader refuses an unknown `schema_version`
-with an error naming the versions it reads (`1, 2 and 3`), before it reads anything
+with an error naming the versions it reads (`1, 2, 3 and 4`), before it reads anything
 else, and ignores fields it does not know.
 
 **Usage (#1095).** `record.usage` and `scope.usage_read` are optional and additive, so
@@ -242,6 +252,13 @@ the matching `gaps[].kind`. A v2 record never changes, but a v2 manifest has no
 accepts v1 and v2 and upgrades them on read: it adds `ribbon_diff` coverage `unsupported`
 with the error `not read: a schema_version N extraction predates the ribbon_diff kind`, so a
 diff or an assessment reads the kind as not extracted and never as an empty, complete one.
+
+**v3 to v4 (#1205).** v4 adds the `report` kind, with a coverage entry for it, and the matching
+`gaps[].kind`. A v3 record never changes, but a v3 manifest has no `report` coverage and the v4
+schema requires one, so the version moves. The reader accepts v1, v2 and v3 and upgrades them on
+read: it adds `report` coverage `unsupported` with the error `not read: a schema_version N
+extraction predates the report kind`, so a diff or an assessment reads the kind as not extracted
+and never as an empty, complete one. The v1, v2 and v3 schema files stay for old manifests.
 
 ## Ribbon diffs
 
@@ -292,6 +309,7 @@ which pages every FetchXML read to its last page.
 | solution membership | `solution.solution_components` (`crm solution components`) | the `solutioncomponentid` (it returns `objectid`) |
 | dependency | `dependencies.retrieve_dependencies` (`crm metadata dependencies`) | reads one page only, and covers four kinds (entity, attribute, option set, relationship) |
 | ribbon | `ribbon.retrieve_entity_ribbon` and `retrieve_application_ribbon` (`crm ribbon export`) | nothing for v1 (a ribbon has no GUID) |
+| report | `report.list_reports` (`crm report list`), the RDL body via `crm report get`; the extractor reads the `report` entity by FetchXML (`RetrieveMultiple` on CRM 2011) with the body in small pages | a body-less Reporting Services row reads `unknown` |
 | ribbon diff | none (`ExportSolution` and `customizations.xml`: `ribbon_diff.read_ribbon_diffs`; online whole-org: the `ribbondiffs` and `ribboncommands` tables, `ribbon_diff.rebuild_ribbon_diffs`) | nothing |
 | sitemap | none (`sitemap._load` reads one by id, for edits) | a list reader |
 

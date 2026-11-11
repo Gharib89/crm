@@ -185,7 +185,7 @@ def test_inventory_extract_writes_a_valid_crm2011_inventory(cli, tmp_path, monke
     manifest = json.loads((out / "manifest.json").read_text())
     schema = json.loads(
         (
-            Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v3.schema.json"
+            Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v4.schema.json"
         ).read_text()
     )
     jsonschema.Draft202012Validator(schema).validate(manifest)
@@ -194,6 +194,8 @@ def test_inventory_extract_writes_a_valid_crm2011_inventory(cli, tmp_path, monke
     assert parsed.source.version.startswith("5.")
     # The Default solution's export is read for its ribbon diffs (it can take minutes).
     assert parsed.coverage["ribbon_diff"].status == "complete"
+    # Reports are read over RetrieveMultiple only, each with its data provider.
+    assert parsed.coverage["report"].status == "complete"
     assert any(
         g.description and g.description.startswith("external integrations") for g in parsed.gaps
     )

@@ -70,7 +70,8 @@
             "dependency",
             "ribbon",
             "sitemap",
-            "ribbon_diff"
+            "ribbon_diff",
+            "report"
           ]
         },
         "class": {

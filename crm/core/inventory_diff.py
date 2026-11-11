@@ -389,6 +389,14 @@ def _diff_key(
     # Both sides' gaps, A first, so swapping A and B mirrors the labels and drops neither.
     gap = "; ".join(_gap_reason(s, g) for s, g in (("A", gap_a), ("B", gap_b)) if g) or None
     fields = _field_changes(x, y, usage)
+    if kind == "report" and (gap_a or gap_b):
+        # A report whose body a side could not return is `unknown` there by
+        # construction: its provider differing is the gap, not a change.
+        fields = tuple(
+            f
+            for f in fields
+            if f.name not in ("fields.data_provider", "fields.data_provider_reason")
+        )
     artifacts = tuple(
         c
         for c in _artifact_changes(x, y)

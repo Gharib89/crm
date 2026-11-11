@@ -35,6 +35,16 @@ stage, and record the org's version beside the folder
   never full rows; the extracted manifest is the baseline.
 - **`crm report get <id>` shows one report's data provider** (`fetch`, `sql` or
   `unknown`), without an extract.
+- **An extract records each report with its data provider.** `crm inventory extract`
+  writes one `report` record per report (key: the report name), holding the RDL body
+  and `fields.data_provider`: `fetch`, `sql` or `unknown`. Online runs only `fetch`, so
+  read `sql` as a report to rebuild. An `unknown` provider is an unknown, not a pass:
+  its `data_provider_reason` says why. A Reporting Services report whose body the
+  endpoint did not return has one extraction gap naming that report; the `report` kind
+  still reads `complete`, so read the gaps, not only the coverage. Report the shared
+  data sources of SSRS reports (a gap naming no report) as manual follow-up: they are
+  defined in SSRS, which the endpoint does not reach. An extract older than v4 reads
+  `report` as `unsupported`: re-extract it.
 
 ## Read coverage before the records
 

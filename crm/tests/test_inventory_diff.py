@@ -150,7 +150,7 @@ def test_the_summary_splits_verdicts_by_origin_and_states_platforms_and_scopes()
         "identity_only": 1,
         "ambiguous": 1,
         "not_comparable": 1,
-        "unchanged": 13,
+        "unchanged": 14,
     }
     header = summary["header"]
     assert (header["a"]["platform"], header["b"]["platform"]) == ("crm2011", "onprem")
@@ -217,7 +217,7 @@ def test_cli_refuses_an_unreadable_schema_version_naming_both_versions(
 
     assert result.exit_code == 1
     error = json.loads(result.output)["error"]
-    assert "A has schema_version 3 and B has schema_version 4" in error
+    assert "A has schema_version 4 and B has schema_version 5" in error
 
 
 def test_cli_human_mode_prints_a_table_per_kind(no_profile) -> None:
@@ -313,7 +313,7 @@ def _folder(tmp_path: Path, name: str, text: str) -> Path:
     [
         (None, "cannot read"),
         ("[]", "B ("),
-        ('{"schema_version": "1"}', "A has schema_version 3 and B has schema_version '1'"),
+        ('{"schema_version": "1"}', "A has schema_version 4 and B has schema_version '1'"),
     ],
 )
 def test_cli_exits_1_when_b_holds_no_readable_manifest(
@@ -447,7 +447,7 @@ def test_a_v1_manifest_holding_the_collision_upgrades_and_diffs_cleanly_against_
     v1 = inventory.parse_manifest(_with_name_collisions(1))
     v2 = inventory.parse_manifest(_with_name_collisions(2))
 
-    assert v1.schema_version == 3
+    assert v1.schema_version == 4
     assert not v1.ambiguous()
     diff = diff_inventories(v1, v2)
     assert {e.verdict for e in diff.entries} == {"unchanged"}
