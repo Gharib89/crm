@@ -34,7 +34,8 @@ cloud-first route.
 ## The cloud-first route
 
 Work these in order; each ends on its **Done when**. They replace Workflow
-steps 1 to 2; the Workflow below governs the rest.
+steps 1 to 2, except that source mapping (`crm inventory map-source`) still
+applies; the Workflow below governs the rest.
 
 1. **Confirm both orgs.** The 2011 source and the cloud org
    (`reference/environments.md`). Done when each has a confirmed identity,
@@ -58,8 +59,8 @@ steps 1 to 2; the Workflow below governs the rest.
    one: it records the code actually deployed, and the OData v2 rewrite needs
    the entity set names only a v9 extract records. Done when workflow steps 3
    and 4 hold against the cloud inventory.
-7. **Verify on the cloud dev or test org.** Workflow steps 6 and 7, unchanged.
-   Done when they hold.
+7. **Patch, build and verify on the cloud dev or test org.** Workflow steps
+   5 to 7, unchanged. Done when they hold.
 
 The staged path's "stop before the next stage" instruction does not apply on
 this route: there is no next stage to hold.
