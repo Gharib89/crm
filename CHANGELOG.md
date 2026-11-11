@@ -9,6 +9,35 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.119.0 (2026-11-11)
+
+### Bug Fixes
+
+- **inventory**: Readiness names how many components pass a failed gate and rejects malformed
+  findings fields ([#1236](https://github.com/Gharib89/crm/pull/1236),
+  [`6e7a25d`](https://github.com/Gharib89/crm/commit/6e7a25dd64cd67762c03cc8286fb0422b4771594))
+
+- **inventory**: Readiness refuses a usage-filtered file and reads a bare 9 as 9.0
+  ([#1236](https://github.com/Gharib89/crm/pull/1236),
+  [`6e7a25d`](https://github.com/Gharib89/crm/commit/6e7a25dd64cd67762c03cc8286fb0422b4771594))
+
+- **inventory**: Type the readiness row builder and name the source version
+  ([#1236](https://github.com/Gharib89/crm/pull/1236),
+  [`6e7a25d`](https://github.com/Gharib89/crm/commit/6e7a25dd64cd67762c03cc8286fb0422b4771594))
+
+### Documentation
+
+- **inventory**: Readiness JSON names source_version
+  ([#1236](https://github.com/Gharib89/crm/pull/1236),
+  [`6e7a25d`](https://github.com/Gharib89/crm/commit/6e7a25dd64cd67762c03cc8286fb0422b4771594))
+
+### Features
+
+- **inventory**: Readiness checklist from API-visible gates
+  ([#1236](https://github.com/Gharib89/crm/pull/1236),
+  [`6e7a25d`](https://github.com/Gharib89/crm/commit/6e7a25dd64cd67762c03cc8286fb0422b4771594))
+
+
 ## v1.118.0 (2026-11-11)
 
 ### Bug Fixes
