@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import jsonschema
@@ -171,11 +172,23 @@ def test_a_dialog_is_deprecated_and_the_other_processes_are_clear(inventory, tar
         assert (other.cls, other.rule, other.reason) == ("clear", None, None)
 
 
+def _names_replacements_without_conversion(fix: str) -> bool:
+    replaces = re.match(r"Rebuild the dialog as a business process flow .*or a canvas app", fix)
+    return bool(replaces) and "there is no automatic conversion" in fix
+
+
+def test_the_dialog_fix_prose_check_rejects_its_negation():
+    negated = (
+        "Do not rebuild the dialog as a business process flow or a canvas app; "
+        "there is an automatic conversion."
+    )
+    assert not _names_replacements_without_conversion(negated)
+
+
 def test_the_dialog_rule_names_the_replacements_and_its_sources(inventory):
     data = json.loads(assess.dump_findings(assess.assess(inventory, "online")))
     rule = data["rules_hit"]["process-dialog"]
-    assert "business process flow" in rule["fix"] and "canvas app" in rule["fix"]
-    assert "no automatic conversion" in rule["fix"]
+    assert _names_replacements_without_conversion(rule["fix"])
     assert any("replace-dialogs" in s for s in rule["sources"])
     assert any("important-changes-coming" in s for s in rule["sources"])
 
