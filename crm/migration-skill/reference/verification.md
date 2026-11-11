@@ -40,11 +40,11 @@ the behavior depends on security roles, and a **business scenario** for each
 `expected_behavior` a package carries. Logic in a shared library also gets a unit
 test in the application repository.
 
-A `process_trigger` records no trigger (its `trigger` is `unknown`). A dialog runs only
-from the web application, so the check exercises what replaces it (a business process flow
-or a canvas app) or the redesigned workflow, never the dialog itself. There is no waiver:
-a package for a dialog being retired stays open, and that decision is recorded in the
-package's `open_decisions`. Report `blocked` and `not_tested` results with their reasons.
+A `process_trigger` records no trigger (`trigger` is `unknown`), so pick the check from
+the process. A dialog runs only from the web application: exercise its replacement (a
+business process flow or a canvas app), or the redesigned workflow. A dialog package has
+no waiver: one for a dialog being retired stays open, and the decision is recorded in the
+package's `open_decisions`. Report each `blocked` and `not_tested` result with its reason.
 
 A requirement with an `unknown` field or no scenario goes back to the user for
 the expected behavior; a test written without one asserts a guess.
