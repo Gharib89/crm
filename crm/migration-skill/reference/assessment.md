@@ -36,7 +36,7 @@ report is lost, not the migration stopped. The fix is to rewrite its datasets in
 Microsoft documents no converter, and the result must still pass the Dataverse RDL sandbox.
 A custom report on `fetch` is `clear`. One on `unknown` carries the record's reason: a missing
 RDL body, or a shared data source whose provider lives in SSRS. Settle it on the live org or in
-SSRS, and never read it as Fetch. Stock reports and custom link, Excel or Power BI reports are
+SSRS: until then the provider is undecided. Stock reports and custom link, Excel or Power BI reports are
 `clear` for this rule.
 
 `clear` is not "compatible": the rules cover few kinds, and a component no rule
