@@ -154,3 +154,8 @@ def test_a_local_variable_hides_the_type_only_in_its_block() -> None:
 
 def test_nameof_of_a_type_member_is_not_a_use() -> None:
     assert _uses("var n = nameof(File.Delete);", "using System.IO;") == {}
+
+
+def test_a_using_statement_variable_hides_the_type_only_in_its_statement() -> None:
+    body = 'using (var File = new MemoryStream()) { File.Dispose(); } File.Delete("p");'
+    assert _uses(body, "using System.IO;") == {"System.IO.File": [(3, 59)]}

@@ -49,6 +49,8 @@ _SCOPES = frozenset(
         "operator_declaration",
         "for_statement",
         "foreach_statement",
+        "using_statement",
+        "fixed_statement",
     )
 )
 
