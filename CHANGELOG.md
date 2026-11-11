@@ -9,6 +9,56 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.112.9 (2026-11-11)
+
+### Bug Fixes
+
+- **inventory**: A blocker or deprecated process finding forms a work package
+  ([#1225](https://github.com/Gharib89/crm/pull/1225),
+  [`3399642`](https://github.com/Gharib89/crm/commit/339964268a8350b06253beaf0b3daa2cb795632f))
+
+- **inventory**: Compare the packaged-process test against a same-findings baseline
+  ([#1225](https://github.com/Gharib89/crm/pull/1225),
+  [`3399642`](https://github.com/Gharib89/crm/commit/339964268a8350b06253beaf0b3daa2cb795632f))
+
+- **inventory**: Cover a finding on an already packaged process and the module docstring
+  ([#1225](https://github.com/Gharib89/crm/pull/1225),
+  [`3399642`](https://github.com/Gharib89/crm/commit/339964268a8350b06253beaf0b3daa2cb795632f))
+
+- **inventory**: Name the forcing classes and tighten the process-package tests
+  ([#1225](https://github.com/Gharib89/crm/pull/1225),
+  [`3399642`](https://github.com/Gharib89/crm/commit/339964268a8350b06253beaf0b3daa2cb795632f))
+
+### Documentation
+
+- **migration-skill**: Reword the process_trigger verification paragraph
+  ([#1225](https://github.com/Gharib89/crm/pull/1225),
+  [`3399642`](https://github.com/Gharib89/crm/commit/339964268a8350b06253beaf0b3daa2cb795632f))
+
+
+## v1.112.8 (2026-11-11)
+
+### Bug Fixes
+
+- **inventory**: Count the ribbon table read as a progress stage
+  ([#1224](https://github.com/Gharib89/crm/pull/1224),
+  [`17d2184`](https://github.com/Gharib89/crm/commit/17d2184c749631f8ded455067c1c6a7f893a496d))
+
+- **inventory**: Read the org-wide ribbon diffs from the ribbon tables on Dataverse online
+  ([#1224](https://github.com/Gharib89/crm/pull/1224),
+  [`17d2184`](https://github.com/Gharib89/crm/commit/17d2184c749631f8ded455067c1c6a7f893a496d))
+
+- **inventory**: Sync the manifest reference and trim the ribbon table select
+  ([#1224](https://github.com/Gharib89/crm/pull/1224),
+  [`17d2184`](https://github.com/Gharib89/crm/commit/17d2184c749631f8ded455067c1c6a7f893a496d))
+
+### Documentation
+
+- **inventory**: Ribbon diffs read from the ribbon tables on Dataverse online
+  ([#1224](https://github.com/Gharib89/crm/pull/1224),
+  [`17d2184`](https://github.com/Gharib89/crm/commit/17d2184c749631f8ded455067c1c6a7f893a496d))
+
+
 ## v1.112.7 (2026-11-11)
 
 ### Bug Fixes

@@ -54,7 +54,10 @@ runs it too. It reads every v1 kind (`scope.mode: "org"` unless you pass
   from the stock one. It is read from a solution export (`ExportSolution`), so the
   org-wide read exports the Default solution (CRM 2011: about 4 minutes and 90 MB on a
   large org; the zip is streamed to disk, read once and deleted). Dataverse online
-  refuses to export the Default solution, so there the kind is `unsupported` with a gap;
+  refuses to export the Default solution, so there an org-wide run reads the unmanaged
+  rows of the `ribbondiffs` and `ribboncommands` tables instead (Default-only
+  customizations included) and rebuilds one diff per entity: the kind is `partial` with a
+  gap, and `unsupported` only if those tables cannot be read;
   `--solution` exports the named solutions on any platform. The records are
   `ribbon_diff`, key the entity logical name (`""` for the application), artifact
   `ribbon-diff.xml`; an entity with an empty diff has none.
@@ -283,9 +286,13 @@ names the endpoint:
   the read), nor is the ribbon of an entity with no collection label in your
   language (the Web API faulted that read on a cloud org; on-prem v9 is not
   measured), and one gap lists them all;
-- the **ribbon diffs of a whole-org run on Dataverse online**: the platform refuses to
-  export the Default solution, so none are read (`ribbon_diff` coverage is
-  `unsupported`); run with `--solution` to read the named solutions';
+- **parts of the ribbon diffs of a whole-org run on Dataverse online**: the platform
+  refuses to export the Default solution, so the diffs are rebuilt from the unmanaged
+  rows of the ribbon tables (`ribbon_diff` coverage is `partial`). Each holds its
+  `CustomActions` and `CommandDefinitions`; its `RuleDefinitions`, `Templates` and
+  `LocLabels` are not read (no rule content or label table was measured), nor is any
+  managed diff. If a table read faults the kind is `unsupported` with the reason and
+  the run still exits 0; `--solution` reads the named solutions' whole diffs;
 - the **ribbon diff of a managed solution** in a `--solution` run: a managed solution
   cannot be exported, so each is a `ribbon_diff` gap, and the kind reads `unsupported`
   when every named solution is managed;
@@ -549,7 +556,8 @@ web resource), in `unattached_unknowns` (an `out_of_scope` one in `unattached_ou
 Only web resources, plug-in assemblies and types, steps and images, processes, forms,
 ribbons and sitemaps join a group, with the source nodes; entities, attributes, option
 sets and views are context. A system web resource or plug-in does not bridge two groups.
-A group is a package when it holds a source-mapped component or an unknown. A package's
+A group is a package when it holds a source-mapped component or an unknown, or, with
+`--findings`, a process with a `blocker` or `deprecated` finding. A package's
 `id` is `pkg-` plus a hash of its sorted member ids, so the same members give the same
 id on every run.
 
@@ -618,8 +626,12 @@ blocker, deprecated, optional and unknown finding whose component is in a packag
 that package's `findings` list as a `compatibility` finding, keeping its `class`, `rule`
 id, `evidence` and `sources` (the Microsoft Learn pages of its rule). A shared library's
 finding appears once, in the package holding the library. `clear` findings are not
-merged. Findings never create or regroup packages, so a finding whose component is in no
-package is `unplaced`. Without the flag the output is byte-identical to before.
+merged. A `blocker` or `deprecated` finding on a process creates a package for the
+process's group when no package holds it: an isolated dialog or workflow becomes a package
+of one, carrying its `process_trigger` requirement, so `verify` judges it. `optional` and
+`unknown` findings on a process create none, and findings never regroup packages. A finding
+on any other kind whose component is in no package is `unplaced`. Without the flag the
+output is byte-identical to before.
 
 Every package in `index.json` gains `counts` (`blocker`, `deprecated`, `optional`,
 `unknown`; `unknown` includes the graph's unknown edges and gaps), and the summary and
