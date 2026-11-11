@@ -254,8 +254,10 @@ read once and deleted, and the export call waits up to 30 minutes (measured on a
 org: 258 s and 88 MB for the Default solution).
 
 Dataverse online refuses to export the Default solution, so a whole-org run on a cloud
-profile reads no diffs: `ribbon_diff` coverage is `unsupported` with a gap saying why, and
-a `--solution` run reads the named solutions'. A managed solution cannot be exported
+profile rebuilds one diff per entity from the unmanaged rows of the `ribbondiffs` and
+`ribboncommands` tables (`CustomActions` and `CommandDefinitions` only, no managed diff):
+`ribbon_diff` coverage is `partial` with a gap saying what is not read, and `unsupported`
+(with the reason) only if a table read faults. A `--solution` run reads the named solutions'. A managed solution cannot be exported
 either, so each one named is a `ribbon_diff` gap with a one-line reason (the server's
 fault is never recorded), and the kind is `unsupported` when every named solution is
 managed. A failed export is `failed`, or `partial`
@@ -290,7 +292,7 @@ which pages every FetchXML read to its last page.
 | solution membership | `solution.solution_components` (`crm solution components`) | the `solutioncomponentid` (it returns `objectid`) |
 | dependency | `dependencies.retrieve_dependencies` (`crm metadata dependencies`) | reads one page only, and covers four kinds (entity, attribute, option set, relationship) |
 | ribbon | `ribbon.retrieve_entity_ribbon` and `retrieve_application_ribbon` (`crm ribbon export`) | nothing for v1 (a ribbon has no GUID) |
-| ribbon diff | none (`ExportSolution` and `customizations.xml`: `ribbon_diff.read_ribbon_diffs`) | nothing |
+| ribbon diff | none (`ExportSolution` and `customizations.xml`: `ribbon_diff.read_ribbon_diffs`; online whole-org: the `ribbondiffs` and `ribboncommands` tables, `ribbon_diff.rebuild_ribbon_diffs`) | nothing |
 | sitemap | none (`sitemap._load` reads one by id, for edits) | a list reader |
 
 Two more limits apply across kinds:

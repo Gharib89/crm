@@ -23,6 +23,10 @@ stage, and record the org's version beside the folder
   refuses a whole-org pair that differs in `scope.system`. The exception is a migrated
   solution imported managed: extract it with `--solution` and diff it against the
   default-scope source (below).
+- **A Dataverse online `ribbon_diff` is partial.** The platform cannot export the Default
+  solution, so a whole-org run rebuilds each diff from the unmanaged ribbon table rows:
+  its actions and commands, never its rules, templates or labels, nor any managed diff.
+  Treat a ribbon with custom rules or labels as unread, or extract it with `--solution`.
 - **Usage is opt-in and read after the records.** `--with-usage` adds a per-row
   `usage` on entities, plug-ins and processes. A row with no `usage` was not read;
   `state: unknown` means the probe could not tell: count it as unconfirmed. Read the
