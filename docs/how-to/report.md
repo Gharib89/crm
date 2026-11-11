@@ -33,7 +33,16 @@ crm report get 1111aaaa-2222-bbbb-3333-cccccccccccc
 ```
 
 Returns the full report record including `bodytext` (RDL content) or `bodyurl`
-(link URL) in the `--json` envelope. Capture the RDL to source control:
+(link URL) in the `--json` envelope, plus `data_provider`: how the RDL reads its
+data, parsed from its data sources (not matched as text):
+
+| `data_provider` | Meaning |
+|---|---|
+| `fetch` | Every data source uses the `MSCRMFETCH` provider. |
+| `sql` | Any data source uses the `SQL` provider (decides the report even beside a Fetch or shared source). |
+| `unknown` | Not decidable from the document; `data_provider_reason` says why: a shared data source reference defined only in Reporting Services (the reason names it), unparseable XML, a root that is not a report definition, an unrecognised provider (named), no data source, or no RDL body (a link report). |
+
+Capture the RDL to source control:
 
 ```bash
 crm --json report get <id> | jq -r '.data.bodytext' > report.rdl

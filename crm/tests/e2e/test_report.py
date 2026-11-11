@@ -73,6 +73,9 @@ def test_report_lifecycle(cli, unique, ephemeral_solution):
         assert env["ok"], env
         assert env["data"]["name"] == name
         assert env["data"]["bodyurl"] == "https://example.com/e2e-report"
+        # a link report has no RDL body, so its provider is unknown
+        assert env["data"]["data_provider"] == "unknown"
+        assert "no RDL body" in env["data"]["data_provider_reason"]
 
         cat = cli(
             [
