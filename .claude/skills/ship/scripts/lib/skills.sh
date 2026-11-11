@@ -3,10 +3,11 @@
 # are installed at their pins. Sourced by ../_lib.sh, never run.
 
 # ship_frontmatter <file> <key>: one `  <key>: <value>` line from a skill's
-# YAML frontmatter, value only. Stops at the closing `---`, so a body line that
-# looks like the key is body text.
+# YAML frontmatter, value only, one pair of surrounding double quotes removed
+# (`profile-schema` is a quoted string, older copies carry it bare). Stops at the
+# closing `---`, so a body line that looks like the key is body text.
 ship_frontmatter() {
-  awk -v k="  $2:" 'NR>1 && /^---$/{exit} index($0, k) == 1 {sub(/^[^:]*: */, ""); print; exit}' "$1"
+  awk -v k="  $2:" 'NR>1 && /^---$/{exit} index($0, k) == 1 {sub(/^[^:]*: */, ""); gsub(/^"|"$/, ""); print; exit}' "$1"
 }
 
 # ship_missing_skill_reasons <root> <composes>: the skills ship loads through

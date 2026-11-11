@@ -180,7 +180,8 @@ review quota, so push when the tree changed.
 The text below continues phase 9 in `SKILL.md`, after the summary is written per
 merge-gate.md.
 
-Write the summary per that file. Attended: take its `Unmet criteria` and
+Write the summary per that file, its `Host protections` line from `protections
+<pr>`. Attended: take its `Unmet criteria` and
 `Clean gate held by` lines from `run-file gate summary <pr>`, the settled
 `ci-wait` answer saved as `ci-wait.json` beside the Run file first; follow the
 `Merge:` branch, waiting for an explicit "merge" by default, or merging when

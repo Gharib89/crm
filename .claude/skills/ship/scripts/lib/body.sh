@@ -69,8 +69,10 @@ ship_body_closing_line() { # ship_body_closing_line <text>
 # The heading match is anchored at column 0 and skips fenced blocks and
 # `<details>` records by `ship_inert`, the rule _gh_add_closes reads too, so the
 # two agree on what a section boundary is. A record in the section's old content
-# is never deleted: it is carried through verbatim, in order, below the new
-# content, each one followed by a blank line.
+# is carried through verbatim, in order, below the new content, each one followed
+# by a blank line, unless the optional fourth argument is `drop`: then the old
+# records are not carried and the body file's content is all the section keeps.
+# The default carries, so only the caller that asks for `drop` can delete one.
 #
 # It compares the line to `## <section>` LITERALLY rather
 # than building an ERE around the name: `--section` takes any name, and a `.` or
@@ -103,8 +105,8 @@ ship_body_closing_line() { # ship_body_closing_line <text>
 # and rule 3 then treats as the section's end, which is a body no later
 # write can repair. The boundary match reads the body the host returns and is the
 # pre-existing rule `_gh_add_closes` agrees with.
-ship_body_replace_section() { # ship_body_replace_section <body> <section> <body-file>
-  SHIP_SECTION="$2" awk -v file="$3" "$SHIP_AWK_FENCE"'
+ship_body_replace_section() { # ship_body_replace_section <body> <section> <body-file> [drop]
+  SHIP_SECTION="$2" SHIP_DROP="${4:-}" awk -v file="$3" "$SHIP_AWK_FENCE"'
     function trimmed(line, cr) {
       if (cr) sub(/[ \t\r]*$/, "", line); else sub(/[ \t]*$/, "", line)
       return line
@@ -126,7 +128,7 @@ ship_body_replace_section() { # ship_body_replace_section <body> <section> <body
       if (skip) next
       print; print ""; dump(); print ""; skip=1; placed=1; next }
     skip && !inert && /^## / { skip=0 }
-    skip && inert == 2 { print; if (!_record) print ""; next }
+    skip && inert == 2 { if (ENVIRON["SHIP_DROP"] == "drop") next; print; if (!_record) print ""; next }
     !skip { print }
     END { if (!placed) { printf "\n%s\n\n", hd; dump(); exit 1 } }' <<<"$1"
 }

@@ -233,7 +233,7 @@ beyond that: a cap that ran out mid-findings, a docs-only fix-only diff that
 ended the loop, the primary's reason on a fallback that ran, a round that did
 not land after one that did, or the calls the reviewer was denied, summed from
 the numeric `reviewer_run.denied` over the rounds, with each non-zero round's
-run URL.
+run URL. GitHub [folds](pr-body.md#collapsing-long-sections) detail.
 
 Each reviewer's rounds and stop go in the Run file as lines, which `run-file
 close 7` requires of every reviewer on the phase-7 row, one `Round:` per round

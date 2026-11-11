@@ -84,6 +84,7 @@ contract.
 | `reflect` | 6 |
 | `update-pr-title` | 6, 7, 9 |
 | `read-pr` | 6 and 7, reading a PR back after a title or body write; 9, the `head_sha` the gate reads; its `outline_missing` is 7's check on the Change outline |
+| `protections` | 9, the summary's `Host protections` line; read-only, never a stop |
 | `poll-pr` | 7, 8 |
 | `request-review` | 7 |
 | `comment-issue` | 2, 4, 7 |
@@ -132,10 +133,12 @@ heading counts only at column 0, outside a fence and outside a `<details>`
 record: a line opening on `<details>` or `<details ...>` at column 0 through
 its matching line opening on `</details>`, nesting counted. The record's `## `
 lines are no section to `--section`, to `--preamble`'s boundary or to the
-`sections` list. A section write replaces the section's prose and carries every
-record in its old content through, verbatim and in order, below the new
-content, so no write deletes one. A `## <name>` found only inside a record is
-an absent section, created at the end. A body file that ends inside an open
+`sections` list. A section write replaces the section's prose and, by default
+in both mechanics, carries every record in its old content through, verbatim
+and in order, below the new content. `update-pr-body --section <name>
+--drop-records` skips that carry, so the body file is all the section keeps;
+`update-issue-body` has no such flag. A `## <name>` found only inside a record
+is an absent section, created at the end. A body file that ends inside an open
 fence or record is refused, exit 2.
 
 ## The vocabulary a read comes back in

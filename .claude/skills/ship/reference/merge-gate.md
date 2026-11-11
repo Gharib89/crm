@@ -58,6 +58,12 @@ references call each item, not a layout:
   and path (or its number, filed here), **Ship notes** and **Direct calls**,
   below.
 - **Timing**: `run-file timing`'s `row`, verbatim.
+- **Host protections**: `protections <pr>`'s `line`, verbatim: what the host
+  itself enforces on the base branch (protection, required checks and reviews,
+  admin bypass), read-only. Its reader is the human who answers the merge word,
+  as evidence beside Ship's own gate: no script reads it, so `unknown` or `no`
+  adds no stop and no prompt, and a repo that opts into unattended merge has
+  already chosen its policy (ADR 0011).
 - **Clean gate held by**: `gate summary`'s `clean_gate_held_by_line`, `none`
   on a clean gate.
 
