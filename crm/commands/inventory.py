@@ -786,8 +786,12 @@ def inventory_assess_cmd(
     Framework below 4.6.2 (no declared version counts) or references the SDK 5.0
     Microsoft.Xrm.Sdk or Microsoft.Crm.Sdk.Proxy, its evidence naming the repository path,
     the sha256, the declared version and the references; a project that cannot be read or
-    parsed is unknown with a reason. A map from another inventory exits 1. Without both,
-    no project is read and the findings are as before.
+    parsed is unknown with a reason. For --target online it also reads the project's own
+    C# files: a blocker `plugin-source-sql-client`, `plugin-source-filesystem` or
+    `plugin-source-registry` per file that creates or accesses a SQL client, file system or
+    registry type the sandbox blocks (the file path, its sha256, line and column locations);
+    a file that cannot be read or parsed is unknown. Nothing rewrites that code. A map from
+    another inventory exits 1. Without both, no project is read and the findings are as before.
     """
     if (source_map_file is None) != (repo_dir is None):
         raise click.UsageError("--source-map and --repo go together: the map names each project.")

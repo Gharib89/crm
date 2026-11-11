@@ -141,6 +141,26 @@ a `clear` there says nothing about the build.
 - The same project is what `convert --repo` retargets (`reference/remediation.md`), so a
   blocker here has a patch there; an SDK-style project is neither flagged nor patched.
 
+## Read the plug-in source findings
+
+`plugin-source-sql-client`, `plugin-source-filesystem` and `plugin-source-registry` read the
+C# of the same mapped project, so they need the source map and the repository passed to
+`assess`, and judge `--target online` only. Without both flags, or for an unmapped or
+ambiguous assembly, no source was read: a `clear` there says nothing about the code.
+
+- **`blocker`** is one finding per file and rule: the code creates or accesses a type the
+  online sandbox blocks (a SQL client, `File`, `Directory`, `Registry`). Quote the evidence's
+  `path`, `locations` (line and column of each use) and `match_count`. The type lists and
+  the Learn source are in `rules_hit`.
+- **`unknown`** reasons start `source <path>` and say the file is unreadable, not UTF-8 or
+  has syntax errors. The project's other files still report. Fix the file or the map, then
+  re-run.
+- **Scope**: the project's own `.cs` files only. A shared library reached by a
+  `ProjectReference` is not scanned, so name it in the entry when the plug-in calls into one.
+- **No patch exists.** `convert` never reads C#. Each blocker is a manual sandbox refactor:
+  open the cited line, move the work to the Dataverse Web API or an HTTPS service, and prove it
+  in the target (`reference/verification.md`).
+
 Done when every component carries one of the four classes with its rule or
 evidence, or an entry open on a named question, and no `clear` or `unknown` is
 left unjudged.

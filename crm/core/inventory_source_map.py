@@ -366,6 +366,29 @@ def mapped_projects(source_map: SourceMap) -> dict[str, str]:
     }
 
 
+def project_sources(repo: Path, project: str) -> tuple[str, ...]:
+    """The C# files under *repo* the map attributes to the project at *project*: those below its
+    folder with no nearer project folder, the owner `map_source` gives a declaration. A file
+    outside the folder (a linked file, a ``ProjectReference``) is not attributed.
+    """
+    folder = posixpath.dirname(project)
+    paths = [posixpath.join(folder, p) for p in _walk(repo / folder)]
+    owners: set[str] = {
+        folder,
+        *(posixpath.dirname(p) for p in paths if p.lower().endswith(".csproj")),
+    }
+    files: list[str] = []
+    for path in paths:
+        if not path.lower().endswith(".cs"):
+            continue
+        owner: str = posixpath.dirname(path)
+        while owner not in owners:
+            owner = posixpath.dirname(owner)
+        if owner == folder:
+            files.append(path)
+    return tuple(files)
+
+
 # ── Repository scan ─────────────────────────────────────────────────────────
 
 

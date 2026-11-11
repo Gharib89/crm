@@ -847,6 +847,9 @@ registration, how forms and ribbon diffs call those scripts, classic dialogs (pr
 | `ribbon-action-no-odata-adapter`: a ribbon command with a `JavaScriptFunction` on a script web resource with a `web-resource-odata-v2` finding and no action calling an OData v2 adapter ahead of it, or a `CustomRule` calling such a script (kind `ribbon_diff`); a library that cannot be read is `unknown` | deprecated | both |
 | `ribbon-action-no-primary-control`: a ribbon `JavaScriptFunction` on a web resource library (`$webresource:` or a `/WebResources/` path) with a `web-resource-xrm-page` finding and no `PrimaryControl` among its `CrmParameter`s (kind `ribbon_diff`) | deprecated | both |
 | `csproj-sdk-net462`: the plug-in project targets .NET Framework below 4.6.2 (no declared version counts) or references the SDK 5.0 `Microsoft.Xrm.Sdk` or `Microsoft.Crm.Sdk.Proxy` (kind `plugin_assembly`, with `--source-map` and `--repo`; see [Plug-in projects](#plug-in-projects-found-by-assess)) | blocker | both |
+| `plugin-source-sql-client`: the plug-in project's C# creates or accesses `SqlConnection`, `SqlCommand` or `SqlDataAdapter` from `System.Data.SqlClient` or `Microsoft.Data.SqlClient` (kind `plugin_assembly`, with `--source-map` and `--repo`; see [Plug-in source](#plug-in-source-found-by-assess)) | blocker | `online` |
+| `plugin-source-filesystem`: the plug-in project's C# creates or accesses `File`, `Directory`, `FileInfo`, `DirectoryInfo` or `FileStream` from `System.IO` (same conditions) | blocker | `online` |
+| `plugin-source-registry`: the plug-in project's C# creates or accesses `Registry` or `RegistryKey` from `Microsoft.Win32` (same conditions) | blocker | `online` |
 | `assembly-storage-online`, `assembly-storage-onprem`: an assembly stored on disk or in the GAC | blocker online, optional on-prem | one each |
 | `assembly-isolation-none`, `assembly-isolation-none-onprem`: an assembly registered without isolation | blocker online, optional on-prem | one each |
 | `process-dialog`: a classic dialog (a `process` record of category 1); Microsoft deprecates dialogs and documents business process flows or canvas apps as the replacement, with no automatic conversion | deprecated | both |
@@ -926,6 +929,29 @@ both flags is as it was. A project that is missing, not UTF-8 or not well-formed
 `TargetFrameworkVersion` is declared under a condition or is not a version, is `unknown` with the
 reason. An SDK-style project, which declares `TargetFramework` instead, is never flagged: convert
 refuses it too.
+
+### Plug-in source found by assess
+
+The three `plugin-source-*` rules read the C# of the same projects, so they need `--source-map`
+and `--repo` too, and judge `--target online` only: the on-premises 9.1 sandbox is not
+the online one. An assembly the map leaves unmapped or ambiguous is not read. A `clear`
+assembly, or any run without both flags, says nothing about its source.
+
+A file is flagged when its syntax tree holds an object creation or a member access whose type
+resolves to a listed type through the file's own `using` directives, `using` aliases, `using static`
+or a fully qualified name. A `using` alone, a comment, a string literal and a type of the same name
+declared in the same file are not uses, and `Path`, `Stream` and `MemoryStream` are not file
+access. A bare call under `using static` counts as a use of that type unless the file declares a
+method of that name. The files read are the `.cs` files under the project's folder, less `bin`,
+`obj` and any folder holding another project: a shared library reached through a
+`ProjectReference`, or a file linked from outside the folder, is not scanned.
+
+Each flagged file gives one `blocker` per rule. Its evidence is the file's repository `path`, the
+`sha256` of its normalized bytes, the first ten `locations` (line and column of each use) and the
+`match_count`. A file that cannot be read, is not UTF-8 or parses with errors is `unknown` for
+that rule with the reason, and the project's other files still report. These rules detect and
+record only: they name no transform, so [convert](#convert-code) reads no `.cs` file and writes
+no patch or ledger entry for them. The sandbox refactor stays work for a human or an agent.
 
 ## Convert code
 

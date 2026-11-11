@@ -332,6 +332,44 @@
                   "const": "plugin_project"
                 }
               }
+            },
+            {
+              "description": "A plug-in assembly whose project, as the source map names it, holds a C# file that creates an object of a listed type or accesses a member of one, resolved through the file's using directives, aliases and static imports or a fully qualified name. The repository, not the inventory, is read, so only `crm inventory assess --source-map --repo` runs it. A rule of this kind carries no transform: convert never rewrites C#.",
+              "type": "object",
+              "required": [
+                "type",
+                "entries"
+              ],
+              "properties": {
+                "type": {
+                  "const": "plugin_source"
+                },
+                "entries": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "namespace",
+                      "types"
+                    ],
+                    "properties": {
+                      "namespace": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "types": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                }
+              }
             }
           ]
         },
