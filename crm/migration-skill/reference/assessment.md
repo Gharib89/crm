@@ -165,6 +165,26 @@ ambiguous assembly, no source was read: a `clear` there says nothing about the c
   line, move the work to the Dataverse organization service (`IOrganizationService`) or an
   HTTPS service the plug-in calls, and prove it in the target (`reference/verification.md`).
 
+## Read the source host findings
+
+After a database upgrade, stored text that names the old server points at a host that will be
+switched off. Pass each host name of the source org to `assess` with `--source-host` (repeat it
+for a short name and a fully qualified one) to find it. Without the flag the five
+`source-host-*` rules do not run, and a `clear` says nothing about addresses.
+
+- **`blocker`** is one finding per component whose text names a host: a script or HTML web
+  resource, the site map, a ribbon or a process definition. Quote the evidence's `path` and
+  `match_count`; `locations` holds the first ten, so re-read the file for the rest.
+- **Comments count.** A match in a comment is reported like any other; open the line before
+  calling it dead text.
+- **Whole host, any case.** `crm01` finds `crm01.contoso.com` but not `crm010`; a host with a
+  scheme, port or path is refused. The findings file's `source_hosts` records the hosts the
+  run used, so quote it when comparing two runs.
+- **Not covered.** A plug-in step's configuration is not in the inventory, so nothing reads it:
+  ask the plug-in owner. `convert` rewrites no address, so repair each cited line by hand: use
+  a relative URL, or read the org URL at run time, and prove it in the target
+  (`reference/verification.md`).
+
 Done when every component carries one of the four classes with its rule or
 evidence, or an entry open on a named question, and no `clear` or `unknown` is
 left unjudged.

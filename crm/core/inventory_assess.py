@@ -20,8 +20,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -62,6 +62,8 @@ LEARN = "https://learn.microsoft.com/"
 MAX_LOCATIONS = 10
 _VERSION = re.compile(r"[0-9]+(\.[0-9]+)*")
 _RULE_ID = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
+NO_HOSTS = re.compile(r"(?!)")
+_HOST = re.compile(r"[a-z0-9]([a-z0-9_-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9_-]*[a-z0-9])?)*")
 
 
 def _dotted(text: str) -> tuple[int, ...] | None:
@@ -83,6 +85,19 @@ class ContentPattern:
 
     pattern: re.Pattern[str]
     web_resource_types: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class HostPattern:
+    """The source org's host names, searched in the text artifacts of the rule's kind.
+
+    The packaged rule holds no host: it carries the placeholder `NO_HOSTS`, which matches
+    nothing, and `assess` swaps in the pattern built from the hosts of the run.
+    *web_resource_types* limits a web resource rule, and is empty for any other kind.
+    """
+
+    pattern: re.Pattern[str]
+    web_resource_types: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -206,6 +221,7 @@ class Rule:
     targets: tuple[str, ...]
     detection: (
         ContentPattern
+        | HostPattern
         | XamlPattern
         | FieldIn
         | ReportDataProvider
@@ -238,9 +254,9 @@ class Rule:
             return record.fields.get("web_resource_type") == HTML_PAGE
         if isinstance(d, XamlPattern):
             return record.fields.get("category") in d.categories
-        return not isinstance(d, ContentPattern) or (
-            record.fields.get("web_resource_type") in d.web_resource_types
-        )
+        if isinstance(d, ContentPattern | HostPattern) and d.web_resource_types:
+            return record.fields.get("web_resource_type") in d.web_resource_types
+        return True
 
 
 @dataclass(frozen=True)
@@ -285,6 +301,7 @@ def _detection(
     value: object, kind: str, where: str
 ) -> (
     ContentPattern
+    | HostPattern
     | XamlPattern
     | FieldIn
     | ReportDataProvider
@@ -311,6 +328,16 @@ def _detection(
         if not all(type(t) is int for t in types):
             raise InventoryError(f"rules file {where}.web_resource_types must hold integers")
         return ContentPattern(pattern, tuple(cast(list[int], types)))
+    if detection_type == "host_pattern":
+        types = obj.get("web_resource_types", [])
+        if not isinstance(types, list) or not all(type(t) is int for t in types):
+            raise InventoryError(f"rules file {where}.web_resource_types must hold integers")
+        if bool(types) != (kind == "web_resource"):
+            raise InventoryError(
+                f"rules file {where}: web_resource_types is for a web_resource rule only,"
+                " which needs it"
+            )
+        return HostPattern(NO_HOSTS, tuple(cast(list[int], types)))
     if detection_type == "xaml_pattern":
         if kind != "process":
             raise InventoryError(f"rules file {where}: xaml_pattern applies to process only")
@@ -641,6 +668,8 @@ class AssessResult:
     unattached_gaps: tuple[dict[str, Any], ...]
     incomplete: dict[str, str]
     usage_filtered: int = 0
+    #: The source org host names the run searched for; empty when none was given.
+    source_hosts: tuple[str, ...] = ()
 
     def summary(self) -> dict[str, Any]:
         by_kind: dict[str, dict[str, int]] = {}
@@ -661,6 +690,7 @@ class AssessResult:
             "unattached_gaps": len(self.unattached_gaps),
             "incomplete": self.incomplete,
             "usage_filtered": self.usage_filtered,
+            **({"source_hosts": list(self.source_hosts)} if self.source_hosts else {}),
         }
 
 
@@ -698,6 +728,8 @@ def dump_findings(result: AssessResult, *, generated_at: str | None = None) -> s
     }
     if result.usage_filtered:
         body["usage_filtered"] = result.usage_filtered
+    if result.source_hosts:
+        body["source_hosts"] = list(result.source_hosts)
     return json.dumps(body, sort_keys=True, ensure_ascii=False, indent=2) + "\n"
 
 
@@ -1373,6 +1405,32 @@ def _assess_record(
     return out or [finding("clear", None, None)]
 
 
+def normalize_hosts(hosts: Iterable[str]) -> tuple[str, ...]:
+    """The host names of *hosts*: lowercased, deduplicated and sorted.
+
+    Raises:
+        InventoryError: a host is not a bare name (a scheme, port, path or space).
+    """
+    out: set[str] = set()
+    for host in hosts:
+        name = host.strip().lower()
+        if _HOST.fullmatch(name) is None:
+            raise InventoryError(
+                f"--source-host {host!r} is not a bare host name: give crm01 or crm01.contoso.com,"
+                " with no scheme, port or path"
+            )
+        out.add(name)
+    return tuple(sorted(out))
+
+
+def _host_regex(hosts: tuple[str, ...]) -> re.Pattern[str]:
+    """Whole-host, case-insensitive: `crm01` matches `crm01.contoso.com` but not `crm010`,
+    `crm01-test` or `a.crm01.com`.
+    """
+    names = "|".join(re.escape(h) for h in hosts)
+    return re.compile(rf"(?<![a-z0-9_.-])(?:{names})(?![a-z0-9_-])", re.IGNORECASE)
+
+
 def assess(
     folder: Path,
     target: str,
@@ -1381,6 +1439,7 @@ def assess(
     out: Path | None = None,
     source_map: Path | None = None,
     repo: Path | None = None,
+    source_hosts: Iterable[str] = (),
 ) -> AssessResult:
     """Run *rules* (default: the packaged ones) over the inventory at *folder* for *target*.
 
@@ -1401,6 +1460,9 @@ def assess(
     (`PluginProject`), the same projects `convert` retargets, and its C# files are read for the
     sandbox breaks the source rules list (`PluginSource`). Without them no project is read.
 
+    With *source_hosts*, the host names of the source org, each component whose stored text
+    names one gets the `host_pattern` rule of its kind. Without, those rules do not run.
+
     Raises:
         InventoryError: the inventory or rules file is unreadable or breaks its
             format, *target* is unknown, *out* lies inside the inventory, or the source map
@@ -1414,6 +1476,7 @@ def assess(
         raise InventoryError(
             "--source-map and --repo go together: the map names each project's path"
         )
+    hosts = normalize_hosts(source_hosts)
     rules = rules or load_rules()
     path = folder / MANIFEST_NAME
     try:
@@ -1429,6 +1492,16 @@ def assess(
         projects = mapped_projects(mapping)
     version = _dotted(inv.source.version)
     active = [r for r in rules.rules if target in r.targets]
+    if hosts:
+        host_pattern = _host_regex(hosts)
+        active = [
+            replace(r, detection=HostPattern(host_pattern, r.detection.web_resource_types))
+            if isinstance(r.detection, HostPattern)
+            else r
+            for r in active
+        ]
+    else:
+        active = [r for r in active if not isinstance(r.detection, HostPattern)]
     if version is not None:
         active = [r for r in active if r.applies(version)]
     unversioned = f"source version {inv.source.version!r} is not a dotted version"
@@ -1476,6 +1549,7 @@ def assess(
         findings=_sorted_findings(findings),
         unattached_gaps=tuple(sorted(unattached, key=_canonical)),
         incomplete={k: c.status for k, c in sorted(inv.coverage.items()) if c.status != "complete"},
+        source_hosts=hosts,
     )
 
 

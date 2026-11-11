@@ -808,9 +808,11 @@ The same inputs give the same `--out` bytes.
 crm --json inventory assess ./inv --target online --out ./findings.json
 crm --json inventory assess ./inv --target online --out ./findings.json \
   --source-map ./source-map.json --repo ./app-repo
+crm --json inventory assess ./inv --target online --out ./findings.json \
+  --source-host crm01 --source-host crm01.contoso.com
 ```
 
-`crm inventory assess INVENTORY --target onprem-9.1|online --out FILE [--source-map MAP --repo REPO]`
+`crm inventory assess INVENTORY --target onprem-9.1|online --out FILE [--source-map MAP --repo REPO] [--source-host HOST]...`
 runs the **compatibility rules** that ship with crm over an inventory and writes a findings file.
 It is offline: it reads the inventory folder (and, with `--source-map` and `--repo`, the plug-in
 projects it names) and touches no org
@@ -850,6 +852,7 @@ registration, how forms and ribbon diffs call those scripts, classic dialogs (pr
 | `plugin-source-sql-client`: the plug-in project's C# creates or accesses `SqlConnection`, `SqlCommand` or `SqlDataAdapter` from `System.Data.SqlClient` or `Microsoft.Data.SqlClient` (kind `plugin_assembly`, with `--source-map` and `--repo`; see [Plug-in source](#plug-in-source-found-by-assess)) | blocker | `online` |
 | `plugin-source-filesystem`: the plug-in project's C# creates or accesses `File`, `Directory`, `FileInfo`, `DirectoryInfo` or `FileStream` from `System.IO` (same conditions) | blocker | `online` |
 | `plugin-source-registry`: the plug-in project's C# creates or accesses `Registry` or `RegistryKey` from `Microsoft.Win32` (same conditions) | blocker | `online` |
+| `source-host-web-resource`, `source-host-sitemap`, `source-host-ribbon`, `source-host-ribbon-diff`, `source-host-process`: the stored text of a script or HTML web resource (types 1 and 3), the site map, a ribbon, a ribbon difference or a process definition names a host given with `--source-host`; the rules do not run without one (see [Source host found by assess](#source-host-found-by-assess)) | blocker | both |
 | `assembly-storage-online`, `assembly-storage-onprem`: an assembly stored on disk or in the GAC | blocker online, optional on-prem | one each |
 | `assembly-isolation-none`, `assembly-isolation-none-onprem`: an assembly registered without isolation | blocker online, optional on-prem | one each |
 | `process-dialog`: a classic dialog (a `process` record of category 1); Microsoft deprecates dialogs and documents business process flows or canvas apps as the replacement, with no automatic conversion | deprecated | both |
@@ -900,6 +903,29 @@ prints one row per kind with its findings per class. Findings are a verdict, so 
 still exits **0**; an unreadable inventory, an unknown `schema_version`, a source map made
 from another inventory or an `--out` inside the inventory folder exits **1**. `--source-map`
 without `--repo`, or `--repo` without `--source-map`, is a usage error (exit **2**).
+
+### Source host found by assess
+
+After a database upgrade the stored text of a web resource, the site map, a ribbon or a process
+still points at the source server, which the migration switches off. `--source-host HOST`, given
+once per name (`crm01`, `crm01.contoso.com`), turns on the five `source-host-*` rules, one per
+kind that holds text; Microsoft's solution checker has a `use-relative-uri` rule for web
+resources only. Each component whose text names a host gets a `blocker` with the same evidence as
+a script rule: the artifact `path`, its `sha256`, the `locations` (line and column) and the
+`match_count`. A match in a comment is reported like any other, because the rules read text, not
+syntax.
+
+The match ignores case and covers the whole host: `crm01` matches `crm01.contoso.com`, but not
+`crm010`, `crm01-test` or `a.crm01.com`. A host with a scheme, port or path exits **1**. The host
+stays on the command line and is never written to the rules file. The findings file lists the
+hosts it was run with, lowercased and sorted, as `source_hosts`, so two runs compare; without
+`--source-host` the rules do not run, the field is absent and the file is as before.
+`packages --findings` and `convert` read the new findings as they read any other, and the rules
+name no transform: nothing rewrites an address.
+
+A component with a text artifact but no other rule (a site map, a ribbon) is `clear` instead of
+`unknown: no rule` once a host is given, because a rule now judges it. A plug-in step's
+configuration is not recorded in the inventory, so no rule reads it.
 
 ### Plug-in projects found by assess
 

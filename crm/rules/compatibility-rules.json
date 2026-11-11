@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "version": 9,
+  "version": 10,
   "rules": [
     {
       "id": "web-resource-xrm-page",
@@ -819,6 +819,120 @@
         "https://learn.microsoft.com/dynamics365/customerengagement/on-premises/analytics/get-started-writing-reports?view=op-9-1",
         "https://learn.microsoft.com/previous-versions/dynamicscrm-2016/reporting-analytics-dynamics-365/dn920273(v=crm.8)",
         "https://learn.microsoft.com/power-apps/maker/model-driven-apps/rdl-sandboxing"
+      ]
+    },
+    {
+      "id": "source-host-web-resource",
+      "kind": "web_resource",
+      "class": "blocker",
+      "title": "A script or HTML web resource names the source org's host, which the migration switches off",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "host_pattern",
+        "web_resource_types": [
+          1,
+          3
+        ]
+      },
+      "fix": "After the upgrade the source server is switched off, so this text points at a host that no longer answers. Replace the absolute address with a relative one, or with the current org URL read at run time (Xrm.Utility.getGlobalContext().getClientUrl() in script). The match is on the host name the run was given, so a comment naming it is reported too.",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/use-relative-uri",
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/reference/xrm-utility/getglobalcontext"
+      ]
+    },
+    {
+      "id": "source-host-sitemap",
+      "kind": "sitemap",
+      "class": "blocker",
+      "title": "The site map names the source org's host, which the migration switches off",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "host_pattern"
+      },
+      "fix": "After the upgrade the source server is switched off, so this text points at a host that no longer answers. Replace the absolute address with a relative one, or with the current org URL read at run time (Xrm.Utility.getGlobalContext().getClientUrl() in script). The match is on the host name the run was given, so a comment naming it is reported too.",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/use-relative-uri",
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/reference/xrm-utility/getglobalcontext"
+      ]
+    },
+    {
+      "id": "source-host-ribbon",
+      "kind": "ribbon",
+      "class": "blocker",
+      "title": "A ribbon definition names the source org's host, which the migration switches off",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "host_pattern"
+      },
+      "fix": "After the upgrade the source server is switched off, so this text points at a host that no longer answers. Replace the absolute address with a relative one, or with the current org URL read at run time (Xrm.Utility.getGlobalContext().getClientUrl() in script). The match is on the host name the run was given, so a comment naming it is reported too.",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/use-relative-uri",
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/reference/xrm-utility/getglobalcontext"
+      ]
+    },
+    {
+      "id": "source-host-ribbon-diff",
+      "kind": "ribbon_diff",
+      "class": "blocker",
+      "title": "A ribbon difference definition names the source org's host, which the migration switches off",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "host_pattern"
+      },
+      "fix": "After the upgrade the source server is switched off, so this text points at a host that no longer answers. Replace the absolute address with a relative one, or with the current org URL read at run time (Xrm.Utility.getGlobalContext().getClientUrl() in script). The match is on the host name the run was given, so a comment naming it is reported too.",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/use-relative-uri",
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/reference/xrm-utility/getglobalcontext"
+      ]
+    },
+    {
+      "id": "source-host-process",
+      "kind": "process",
+      "class": "blocker",
+      "title": "A process definition names the source org's host, which the migration switches off",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "host_pattern"
+      },
+      "fix": "After the upgrade the source server is switched off, so this text points at a host that no longer answers. Replace the absolute address with a relative one, or with the current org URL read at run time (Xrm.Utility.getGlobalContext().getClientUrl() in script). The match is on the host name the run was given, so a comment naming it is reported too.",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/use-relative-uri",
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/reference/xrm-utility/getglobalcontext"
       ]
     }
   ]
