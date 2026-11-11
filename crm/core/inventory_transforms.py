@@ -117,7 +117,8 @@ def register(transform_id: str, transform: Transform) -> None:
 
 #: Methods `Xrm.Page.context` and `Xrm.Utility.getGlobalContext()` both carry under one name.
 #: A method that moved to a settings property (`getUserName` to `userSettings.userName`) is
-#: not here: the `context-settings` transform owns it, see `CONTEXT_SETTINGS`.
+#: not here: the `context-settings` transform owns it, see `CONTEXT_SETTINGS`. So does
+#: `getServerUrl`, which the `server-url` transform renames.
 SAME_METHOD = frozenset(
     (
         "getClientUrl",
@@ -184,9 +185,14 @@ _ASSIGNS = frozenset(
 
 def _binds_xrm(node: Node) -> bool:
     """True when *node* is an ``Xrm`` identifier that declares or assigns a local name."""
+    return _binds_name(node, b"Xrm")
+
+
+def _binds_name(node: Node, name: bytes) -> bool:
+    """True when *node* is an identifier *name* that declares or assigns a local name."""
     if node.type not in ("identifier", "shorthand_property_identifier_pattern"):
         return False
-    if node.text != b"Xrm" or node.parent is None:
+    if node.text != name or node.parent is None:
         return False
     parent = node.parent
     if parent.type in _DECLARES:
@@ -255,7 +261,9 @@ def _plan_global_context(root: Node) -> Plan:
             unproven.append(
                 Unproven.at(node, "Xrm.Page.context is used other than as a direct call")
             )
-        elif method.text is not None and method.text.decode() in CONTEXT_SETTINGS:
+        elif method.text is not None and (
+            method.text.decode() in CONTEXT_SETTINGS or method.text == b"getServerUrl"
+        ):
             continue
         elif method.text is None or method.text.decode() not in SAME_METHOD:
             name = method.text.decode() if method.text else "?"
@@ -434,6 +442,63 @@ def _plan_context_settings(root: Node) -> Plan:
 
 
 register("context-settings", Transform("javascript", (3,), _plan_context_settings))
+
+
+# ── server-url: context.getServerUrl() ──────────────────────────────────────
+
+
+def _is_get_global_context(node: Node) -> bool:
+    """True for a bare ``GetGlobalContext()`` call, the form a standalone page gets from
+    ``ClientGlobalContext.js.aspx``.
+    """
+    fn = node.child_by_field_name("function") if node.type == "call_expression" else None
+    is_name = fn is not None and fn.type == "identifier" and fn.text == b"GetGlobalContext"
+    return is_name and _no_args(node)
+
+
+def _plan_server_url(root: Node) -> Plan:
+    """Rename ``<context>.getServerUrl()`` to ``getClientUrl()``.
+
+    The context is ``Xrm.Page.context``, ``Xrm.Utility.getGlobalContext()`` or
+    ``GetGlobalContext()``. Only the method name is edited, so the text around it is
+    untouched. Equivalence of the two methods is the rule's judgment, not documented by
+    Microsoft: ``inventory verify`` is the proof. Any other receiver is unproven.
+    """
+    nodes = _walk(root)
+    xrm_shadowed = any(_binds_xrm(n) for n in nodes)
+    gc_bound = any(_binds_name(n, b"GetGlobalContext") for n in nodes)
+    edits: list[Edit] = []
+    unproven: list[Unproven] = []
+    for m in nodes:
+        name = m.child_by_field_name("property") if m.type == "member_expression" else None
+        recv = m.child_by_field_name("object") if name is not None else None
+        if name is None or recv is None or name.text != b"getServerUrl":
+            continue
+        call = _called(m)
+        reason: str | None = None
+        found = _context_receiver(recv)
+        if found is not None:
+            reason = _xrm_problem(found[0], xrm_shadowed)
+        elif _is_get_global_context(recv):
+            if gc_bound:
+                reason = "GetGlobalContext is bound in this file, so it may not be the global"
+        else:
+            reason = "the file does not prove the receiver is the global context"
+        chain = (*_walk(recv), *m.children, *(call.children if call else ()))
+        if reason is None and any(n.type == "optional_chain" for n in chain):
+            reason = "an optional chain: the rewrite would drop its short-circuit"
+        elif reason is None and (call is None or not _no_args(call)):
+            reason = "getServerUrl is used other than as a direct no-argument call"
+        elif reason is None and call is not None and b"\n" in (call.text or b""):
+            reason = "the call spans lines"
+        if reason is not None:
+            unproven.append(Unproven.at(m, reason))
+            continue
+        edits.append(Edit(name.start_byte, name.end_byte, b"getClientUrl"))
+    return _finish(edits, unproven)
+
+
+register("server-url", Transform("javascript", (3,), _plan_server_url))
 
 
 # ── grid-row: GridRow.getData() and GridRowData.getEntity() ─────────────────

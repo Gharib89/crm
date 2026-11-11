@@ -95,6 +95,42 @@ CASES: dict[str, tuple[str, str | None, str, int]] = {
         "web-resource-xrm-mobile-offline",
         1,
     ),
+    "server-url-receivers": (
+        f"var a = {CTX}.getServerUrl();\nvar b = {GC}.getServerUrl();\n"
+        "var c = GetGlobalContext().getServerUrl();\n"
+        "var d = GetGlobalContext(). getServerUrl ();\n",
+        f"var a = {GC}.getClientUrl();\nvar b = {GC}.getClientUrl();\n"
+        "var c = GetGlobalContext().getClientUrl();\n"
+        "var d = GetGlobalContext(). getClientUrl ();\n",
+        "web-resource-get-server-url",
+        0,
+    ),
+    "server-url-not-provable": (
+        "function f(Xrm) { return Xrm.Page.context.getServerUrl(); }\n"
+        "var a = window.Xrm.Page.context.getServerUrl();\n"
+        f"var b = {CTX}?.getServerUrl();\nvar c = {CTX}.getServerUrl?.();\n"
+        'var d = Xrm["Page"].context.getServerUrl();\n'
+        f"var e = {CTX}.getServerUrl(1);\nvar f = {CTX}.getServerUrl;\n"
+        f"var g = {GC}\n  .getServerUrl(\n);\n"
+        "var h = foo.getServerUrl();\n",
+        None,
+        "web-resource-get-server-url",
+        9,
+    ),
+    "server-url-own-get-global-context": (
+        "function GetGlobalContext() { return ctx; }\nvar a = GetGlobalContext().getServerUrl();\n",
+        None,
+        "web-resource-get-server-url",
+        1,
+    ),
+    "server-url-text-only": (
+        '// ctx.getServerUrl()\nvar s = "ctx.getServerUrl()";\n'
+        "var a = GetGlobalContext().getServerUrl();\n",
+        '// ctx.getServerUrl()\nvar s = "ctx.getServerUrl()";\n'
+        "var a = GetGlobalContext().getClientUrl();\n",
+        "web-resource-get-server-url",
+        0,
+    ),
     "grid-row": (
         "var e = row.getData().getEntity();\n",
         "var e = row.data.entity;\n",
@@ -171,7 +207,7 @@ MULTI = (
     "var e = row.getData().getEntity();\n"
     "var raw = row.getData();\n"
 )
-
+SERVER_URL_MIXED = f"var a = {GC}.getServerUrl();\nvar b = foo.getServerUrl();\n"
 
 #: assess reports only web-resource-xrm-page here: context-settings' detection cannot see
 #: through the comment, so convert must still account for the site.
@@ -188,6 +224,7 @@ def run(tmp_path_factory: pytest.TempPathFactory) -> dict:
     folder = root / "inv"
     folder.mkdir()
     sources = {c: v[0] for c, v in CASES.items()} | {"multi": MULTI, "comment-chain": COMMENT_CHAIN}
+    sources["server-url-mixed"] = SERVER_URL_MIXED
     records = [_record(_name(c), text, folder) for c, text in sources.items()]
     manifest = inv.Inventory(
         schema_version=inv.SCHEMA_VERSION,
@@ -307,3 +344,12 @@ def test_a_site_only_global_context_detects_is_still_accounted_for(run):
     entries = _entries(run, "comment-chain")
     assert entries and not [e for e in entries if e["status"] == "patched"]
     assert all(e["manual_review"] for e in entries)
+
+
+def test_a_provable_and_an_unprovable_get_server_url_share_one_patch(run):
+    (entry,) = _entries(run, "server-url-mixed", "web-resource-get-server-url")
+    assert entry["status"] == "patched"
+    assert _patched(run, entry) == f"var a = {GC}.getClientUrl();\nvar b = foo.getServerUrl();\n"
+    (review,) = entry["manual_review"]
+    assert review["line"] == 2 and review["rule"] == "web-resource-get-server-url"
+    assert "receiver" in review["reason"]
