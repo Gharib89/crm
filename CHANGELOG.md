@@ -9,6 +9,35 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.113.0 (2026-11-11)
+
+### Bug Fixes
+
+- **inventory**: A stock report dropped unread raises no gap for a kept report of the same name
+  ([#1228](https://github.com/Gharib89/crm/pull/1228),
+  [`268b035`](https://github.com/Gharib89/crm/commit/268b035f38502e3f94109b9fd10fc41e211252ac))
+
+- **inventory**: Align the report schema wording and drop a repeated condition
+  ([#1228](https://github.com/Gharib89/crm/pull/1228),
+  [`268b035`](https://github.com/Gharib89/crm/commit/268b035f38502e3f94109b9fd10fc41e211252ac))
+
+### Features
+
+- **inventory**: Extract records each report as a report kind with its data provider
+  ([#1228](https://github.com/Gharib89/crm/pull/1228),
+  [`268b035`](https://github.com/Gharib89/crm/commit/268b035f38502e3f94109b9fd10fc41e211252ac))
+
+- **inventory**: Extract records each report as a report kind with its data provider (#1205)
+  ([#1228](https://github.com/Gharib89/crm/pull/1228),
+  [`268b035`](https://github.com/Gharib89/crm/commit/268b035f38502e3f94109b9fd10fc41e211252ac))
+
+### Testing
+
+- **inventory**: Use an https URL in the malformed-script fixture (CodeQL alert 17)
+  ([#1229](https://github.com/Gharib89/crm/pull/1229),
+  [`4579140`](https://github.com/Gharib89/crm/commit/45791407a38eb6f3e6b1c63aa785b14a20a0c44a))
+
+
 ## v1.112.11 (2026-11-11)
 
 ### Bug Fixes

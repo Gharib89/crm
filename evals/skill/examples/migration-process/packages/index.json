@@ -16,6 +16,7 @@
   },
   "incomplete": {
     "dependency": "unsupported",
+    "report": "unsupported",
     "ribbon_diff": "unsupported"
   },
   "inventory": {

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Report xmlns="http://schemas.microsoft.com/sqlserver/reporting/2005/01/reportdefinition">
+  <DataSources>
+    <DataSource Name="CRM">
+      <ConnectionProperties>
+        <DataProvider>MSCRMFETCH</DataProvider>
+        <ConnectString>Data Source=https://crm.contoso.example</ConnectString>
+      </ConnectionProperties>
+    </DataSource>
+  </DataSources>
+</Report>

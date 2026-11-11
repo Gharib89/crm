@@ -66,6 +66,7 @@ from crm.core.inventory import (
     dump_manifest,
 )
 from crm.core.legacy import LegacyClient, Page
+from crm.core.report import RDL_REPORT, classify_rdl
 from crm.core.ribbon_diff import read_ribbon_diffs, rebuild_ribbon_diffs
 from crm.core.usage import INVENTORY_GROUPS, JOB_TIME_CAP, GroupUsage, Usage, probe_legacy_group
 from crm.utils.d365_backend import PLATFORM_CRM2011, D365Error
@@ -77,6 +78,7 @@ _OPTION_SET = 9
 _ENTITY = 1
 _WEB_RESOURCE = 61
 _ASSEMBLY = 91
+_REPORT = 31
 
 # The component types a scoped run reads only for member entities (RetrieveEntity):
 # attribute, local option set, relationship.
@@ -133,13 +135,12 @@ def integration_gap(api: str) -> ExtractionGap:
 
 
 def ssrs_gap(api: str) -> ExtractionGap:
-    """The on-premises gap: an SSRS report's SQL data source is configured in SSRS."""
+    """The on-premises gap: a report's shared data source is defined in SSRS."""
     return ExtractionGap(
         kind=None,
         key=None,
-        description="SQL data sources of SSRS reports",
-        reason="reports are not a v1 kind, and a report's data source is configured in"
-        f" SSRS, which {api} does not reach",
+        description="shared data sources of SSRS reports",
+        reason=f"a report's shared data source is defined in SSRS, which {api} does not reach",
     )
 
 
@@ -472,6 +473,24 @@ _READS: tuple[_Read, ...] = (
             "layoutxml",
         ),
         payloads=(("fetchxml", "fetch.xml"), ("layoutxml", "layout.xml")),
+    ),
+    _Read(
+        "report",
+        "report",
+        (
+            "name",
+            "reporttypecode",
+            "ispersonal",
+            "iscustomreport",
+            "languagecode",
+            "ismanaged",
+            "solutionid",
+            "bodytext",
+        ),
+        payloads=(("bodytext", "report.rdl"),),
+        page_size=20,  # each row carries its RDL body
+        member_type=_REPORT,
+        content_batch=20,
     ),
     _Read(
         "sitemap",
@@ -1803,6 +1822,8 @@ class _Builder:
                 r.get("name"), self._origin(r), r.get("ismanaged"), self._staged("view", r), 26,
                 self._stock("view", r),
             )  # fmt: skip
+        for r in rows.get("report", []):
+            self._report(r)
         for r in rows.get("sitemap", []):
             payloads = self._staged("sitemap", r)
             key = self.add(
@@ -1819,6 +1840,38 @@ class _Builder:
             for _, path, _ in payloads:
                 if key is not None:
                     self._scan_isv(path.read_bytes(), ("sitemap", key))
+
+    def _report(self, r: dict[str, Any]) -> None:
+        """Record one report with the data provider of its RDL body (`classify_rdl`).
+
+        A Reporting Services report the source returned no body for is `unknown`, never
+        `fetch`, and one gap names it, so the kind's coverage stays `complete` and a diff
+        reads only that report as not comparable. A link report has no body to expect.
+        """
+        payloads = self._staged("report", r)
+        stock = self._stock("report", r)
+        code = r.get("reporttypecode")
+        reason: str | None
+        gap_reason: str | None = None  # set only for a Reporting Services report with no body
+        if payloads:
+            verdict = classify_rdl(payloads[0][1].read_text(encoding="utf-8"))
+            provider, reason = verdict.provider, verdict.reason
+        elif code == RDL_REPORT:
+            provider = "unknown"
+            reason = gap_reason = f"RDL body not returned by {self.api}"
+        else:
+            provider, reason = "unknown", "the report has no RDL body to classify"
+        key = self.add(
+            "report", r["id"],
+            {"name": r["name"], "report_type": code, "personal": r.get("ispersonal"),
+             "custom": r.get("iscustomreport"), "language": r.get("languagecode"),
+             "data_provider": provider, **({"data_provider_reason": reason} if reason else {})},
+            r["name"], self._origin(r), r.get("ismanaged"), payloads, _REPORT, stock,
+        )  # fmt: skip
+        if key is not None and gap_reason and not stock:
+            gap = ExtractionGap(kind="report", key=key, description=None, reason=gap_reason)
+            if gap not in self.extra_gaps:
+                self.extra_gaps.append(gap)
 
     def _scan_isv(self, data: bytes, where: tuple[str, str]) -> None:
         for match in _ISV_PAGE.finditer(data.decode("utf-8", errors="replace")):

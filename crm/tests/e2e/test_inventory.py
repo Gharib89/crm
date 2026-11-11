@@ -54,7 +54,7 @@ def test_inventory_extract_is_valid_and_repeatable(cli, tmp_path):
     first = _extract(cli, tmp_path / "one", solution)
     schema_path = Path(inventory.__file__).parent.parent / "schemas"
     schema = json.loads(
-        (schema_path / "inventory-manifest-v3.schema.json").read_text(encoding="utf-8")
+        (schema_path / "inventory-manifest-v4.schema.json").read_text(encoding="utf-8")
     )
     jsonschema.Draft202012Validator(schema).validate(first)
     parsed = inventory.read_inventory(tmp_path / "one")
@@ -63,6 +63,13 @@ def test_inventory_extract_is_valid_and_repeatable(cli, tmp_path):
     assert [r.key for r in parsed.records if r.kind == "solution"] == [solution]
     # The named solution's export is read for its ribbon diffs.
     assert parsed.coverage["ribbon_diff"].status == "complete"
+    # Each report is read with its data provider; the kind is complete unless a read faulted.
+    assert parsed.coverage["report"].status == "complete"
+    assert all(
+        r.fields["data_provider"] in ("fetch", "sql", "unknown")
+        for r in parsed.records
+        if r.kind == "report"
+    )
 
     # Each assembly records the registration facts `inventory assess` judges.
     assemblies = [r for r in parsed.records if r.kind == "plugin_assembly"]

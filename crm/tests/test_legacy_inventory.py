@@ -33,7 +33,7 @@ from crm.utils.d365_backend import (
 from crm.utils.safe_xml import fromstring
 
 _URL = "https://crm.contoso.local/contoso"
-_SCHEMA = Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v3.schema.json"
+_SCHEMA = Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v4.schema.json"
 
 
 def _id(n: int) -> str:
@@ -333,7 +333,7 @@ def test_the_gaps_name_what_soap_cannot_see(reads, tmp_path):
     ]
     descriptions = [g["description"] or "" for g in gaps]
     assert any(d.startswith("external integrations") for d in descriptions)
-    assert any(d.startswith("SQL data sources of SSRS reports") for d in descriptions)
+    assert any(d.startswith("shared data sources of SSRS reports") for d in descriptions)
     assert any(
         d.startswith("1 solution_membership row(s)") and "type 31" in d for d in descriptions
     )

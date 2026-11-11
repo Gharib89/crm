@@ -164,6 +164,9 @@ def inventory_extract_cmd(
     from the unmanaged rows of the ribbon diff and ribbon command tables: `ribbon_diff`
     reads `partial`, with a gap for the rules, templates, labels and managed diffs it
     omits, and `unsupported` only if a table read faults (the run still exits 0).
+    Each report is a `report` record keyed by its name, with its RDL body as an artifact
+    and a `data_provider` (`fetch`, `sql` or `unknown`); a Reporting Services report whose
+    body the endpoint does not return reads `unknown` and gets an extraction gap naming it.
     Each finished read is checkpointed under DIR/.checkpoint, so re-running
     the same command after an interruption resumes, reusing the finished reads. A failed kind is
     recorded in the manifest's coverage and the run goes on (exit code 1); the

@@ -22,7 +22,7 @@ from crm.core.legacy_reads import entity_detail
 from crm.core.webapi_inventory import _reshape_entity  # pyright: ignore[reportPrivateUsage]
 
 _FIXTURES = Path(__file__).parent / "fixtures" / "inventory"
-_SCHEMA = Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v3.schema.json"
+_SCHEMA = Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v4.schema.json"
 _MD = "http://schemas.microsoft.com/xrm/2011/Metadata"
 _CT = "http://schemas.microsoft.com/xrm/2011/Contracts"
 _XSI = "http://www.w3.org/2001/XMLSchema-instance"

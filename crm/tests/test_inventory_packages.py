@@ -872,7 +872,7 @@ def test_cli_findings_write_and_summarize(inputs, tmp_path):
 #: SHA-256 of each file `packages` wrote for the fixture (`index.json` holds the manifest hash,
 #: `out_of_scope` and `usage_filtered`; a package of web resources holds a derived `usage`, #1096).
 GOLDEN = {
-    "index.json": "4e1b6b201894e153e9f70a4828ac3691eee742ffe9419033f936919e8b0986ce",
+    "index.json": "d468355729c76bf3ac75cbb0b368a1b6efad59329051c651fdc72399ef78832d",
     "pkg-0f1a47282248.json": "0fb3649e9fb122cbcbd3d4270d55d70eed75c661d9ccdcb3c98fe7ed011c78c3",
     "pkg-564e3c958900.json": "367372bb7cbdbd2b2d66a95aeb9bd9e1ca089b8e97c7af51e568568837a4fc8d",
     "pkg-9df52d9dd343.json": "df58c9ed70805d01c4ec244cbb665a4434520a15ced472200f76176542fae84e",

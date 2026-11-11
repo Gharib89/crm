@@ -166,9 +166,10 @@
       }
     }
   ],
-  "generated_at": "2026-11-06T04:49:16Z",
+  "generated_at": "2026-11-11T12:20:17Z",
   "incomplete": {
     "dependency": "unsupported",
+    "report": "unsupported",
     "ribbon_diff": "unsupported"
   },
   "inventory": {
@@ -181,8 +182,8 @@
   },
   "rules": {
     "schema_version": 1,
-    "sha256": "0e6d27dacfc320ceeb6774e27232a64d44f8244dae59254fcab1bf163fa3c47f",
-    "version": 2
+    "sha256": "f99a7fd3588eec0c70d1d87ef87ae93b72ec961eeee3b24afd84178c123b734b",
+    "version": 5
   },
   "rules_hit": {
     "assembly-isolation-none": {

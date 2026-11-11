@@ -47,6 +47,7 @@ _ENTITY_SETS: dict[str, tuple[str, str]] = {
     "systemform": ("systemforms", "formid"),
     "savedquery": ("savedqueries", "savedqueryid"),
     "sitemap": ("sitemaps", "sitemapid"),
+    "report": ("reports", "reportid"),
     "solutioncomponent": ("solutioncomponents", "solutioncomponentid"),
     "dependency": ("dependencies", "dependencyid"),
 }
