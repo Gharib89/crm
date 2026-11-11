@@ -1185,7 +1185,8 @@ def test_a_blocker_on_another_kind_still_forms_no_package(tmp_path):
 
 def test_a_process_already_in_a_package_forms_no_second_one(tmp_path):
     folder, source_map = _isolated_inputs(tmp_path)
-    plain = build_packages(folder, read_source_map(source_map))
+    soft = read_findings(_process_findings(folder, tmp_path, {"approval": "optional"}))
+    plain = build_packages(folder, read_source_map(source_map), None, soft)
     findings = read_findings(_process_findings(folder, tmp_path, {"approval": "blocker"}))
     found = build_packages(folder, read_source_map(source_map), None, findings)
     plugins = _package_of(found, "plugin_assembly:Contoso.Billing")
