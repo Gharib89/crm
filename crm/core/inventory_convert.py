@@ -35,7 +35,7 @@ from collections import Counter
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 from xml.etree.ElementTree import ParseError
 
 from crm.core.code_parse import error_count, parse
@@ -105,6 +105,9 @@ from crm.core.inventory_transforms import (
 )
 from crm.utils.safe_xml import fromstring
 
+if TYPE_CHECKING:
+    from tree_sitter import Node
+
 #: The format version of the ledger.
 SCHEMA_VERSION = 1
 LEDGER_NAME = "ledger.json"
@@ -123,15 +126,79 @@ GRAPH_COUNTS = ("threaded", "unreachable", "boundary")
 
 @dataclass(frozen=True)
 class ManualReview:
-    """A site a rule matches but the rewrite is not proven for. *line* is None for a whole file."""
+    """A site a rule matches but the rewrite is not proven for. *line* is None for a whole file.
+
+    The last three fields help a reviewer finish the edit and are written only when known:
+    the *snippet* of the statement at the site, the rule's *replacement* and the *return_use*
+    of a call whose result the transform classifies.
+    """
 
     file: str
     line: int | None
     rule: str
     reason: str
+    snippet: str | None = None
+    replacement: str | None = None
+    return_use: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {"file": self.file, "line": self.line, "rule": self.rule, "reason": self.reason}
+        base = {"file": self.file, "line": self.line, "rule": self.rule, "reason": self.reason}
+        optional = {
+            "snippet": self.snippet,
+            "replacement": self.replacement,
+            "return_use": self.return_use,
+        }
+        return base | {k: v for k, v in optional.items() if v is not None}
+
+
+#: The most characters of a manual-review entry's ``snippet``, its closing ``...`` included.
+SNIPPET_MAX = 240
+_DECLARATIONS = (
+    "lexical_declaration",
+    "variable_declaration",
+    "function_declaration",
+    "generator_function_declaration",
+    "class_declaration",
+    "method_definition",
+)
+
+
+def _is_statement(node: Node) -> bool:
+    return node.type.endswith("_statement") or node.type in _DECLARATIONS
+
+
+def _snippet(source: bytes, line: int, root: Node | None, column: int | None = None) -> str | None:
+    """The source text of the statement holding 1-based *line* (at 0-based *column* when the
+    transform gave one, else the innermost statement on the line), trimmed and capped at
+    `SNIPPET_MAX`; with no JavaScript tree *root* (an HTML page, XML), the line itself.
+    """
+    row = line - 1
+    text = b""
+    if root is not None and column is not None:
+        node = root.descendant_for_point_range((row, column), (row, column))
+        while node is not None and not _is_statement(node):
+            node = node.parent
+        text = node.text if node is not None and node.text else b""
+    elif root is not None:
+        best: Node | None = None
+        stack = [root]
+        while stack:
+            node = stack.pop()
+            if not node.start_point.row <= row <= node.end_point.row:
+                continue
+            stack.extend(node.children)
+            if _is_statement(node) and (
+                best is None or node.end_byte - node.start_byte <= best.end_byte - best.start_byte
+            ):
+                best = node
+        text = best.text if best is not None and best.text else b""
+    if not text.strip():
+        lines = source.split(b"\n")
+        text = lines[row] if 0 <= row < len(lines) else b""
+    out = text.decode("utf-8", "replace").strip()
+    if len(out) > SNIPPET_MAX:
+        out = out[: SNIPPET_MAX - 3] + "..."
+    return out or None
 
 
 @dataclass
@@ -915,12 +982,33 @@ def convert(
         source: bytes,
         current: bytes,
     ) -> None:
+        # Only a script has statements; a page's or an XML artifact's site is its line.
+        record = records.get((kind, key))
+        script = kind == "web_resource" and not is_page(record)
+        # Each step planned on the text the steps before it left, which is what its columns
+        # index, so a snippet reads that text and not the original.
+        snippets: list[list[str | None]] = []
+        text = source
+        for _, plan, _, applied in steps:
+            tree = parse("javascript", text) if script and plan.unproven else None
+            snippets.append([_snippet(text, u.line, tree, u.column) for u in plan.unproven])
+            if applied:
+                text = _apply(text, plan.edits) or text
         for pkg in held.get(f"{kind}:{key}", [UNPACKAGED]):
             files: dict[str, str] = {}
-            for rule, plan, reason, applied in steps:
+            for (rule, plan, reason, applied), snips in zip(steps, snippets, strict=True):
                 entry = Entry(pkg, kind, key, rule.id, cast(str, rule.transform), "manual-review")
                 entry.manual_review = [
-                    ManualReview(path, u.line, rule.id, u.reason) for u in plan.unproven
+                    ManualReview(
+                        path,
+                        u.line,
+                        rule.id,
+                        u.reason,
+                        snip,
+                        rule.fix,
+                        u.return_use,
+                    )
+                    for u, snip in zip(plan.unproven, snips, strict=True)
                 ]
                 if rule.transform == HANDLER_TRANSFORM and kind == "web_resource":
                     entry.graph = Counter(
@@ -929,7 +1017,9 @@ def convert(
                         boundary=plan.boundary,
                     )
                 if reason:
-                    entry.manual_review.insert(0, ManualReview(path, None, rule.id, reason))
+                    entry.manual_review.insert(
+                        0, ManualReview(path, None, rule.id, reason, replacement=rule.fix)
+                    )
                 elif applied:
                     entry.status, entry.edits = "patched", len(plan.edits)
                     entry.original_sha256, entry.patched_sha256 = _hex(source), _hex(current)

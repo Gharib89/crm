@@ -458,8 +458,8 @@ def _plan_odata(root: Node, target: Target | None) -> Plan:
             or s.type != "string"
         ):
             unproven.append(
-                Unproven(
-                    s.start_point.row + 1,
+                Unproven.at(
+                    s,
                     "an OData v2 URL outside a <request>.open(<method>, <url>) call"
                     " is a shape this rewrite does not cover",
                 )
@@ -471,13 +471,12 @@ def _plan_odata(root: Node, target: Target | None) -> Plan:
     used: list[Used] = []
     done = 0
     for call, url in sites.values():
-        line = call.start_point.row + 1
         try:
             if target is None:
                 raise _No("no --target-inventory: the Web API names cannot be resolved")
             found, selected = _site(call, url, target, xhr)
         except _No as why:
-            unproven.append(Unproven(line, str(why)))
+            unproven.append(Unproven.at(call, str(why)))
             continue
         edits.extend(found)
         used.extend(selected)
