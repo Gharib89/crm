@@ -153,7 +153,14 @@ class ManualReview:
 
 #: The most characters of a manual-review entry's ``snippet``, its closing ``...`` included.
 SNIPPET_MAX = 240
-_DECLARATIONS = ("lexical_declaration", "variable_declaration")
+_DECLARATIONS = (
+    "lexical_declaration",
+    "variable_declaration",
+    "function_declaration",
+    "generator_function_declaration",
+    "class_declaration",
+    "method_definition",
+)
 
 
 def _is_statement(node: Node) -> bool:
@@ -166,15 +173,13 @@ def _snippet(source: bytes, line: int, root: Node | None, column: int | None = N
     `SNIPPET_MAX`; with no JavaScript tree *root* (an HTML page, XML), the line itself.
     """
     row = line - 1
-    if root is None:
-        lines = source.split(b"\n")
-        text = lines[row] if 0 <= row < len(lines) else b""
-    elif column is not None:
+    text = b""
+    if root is not None and column is not None:
         node = root.descendant_for_point_range((row, column), (row, column))
         while node is not None and not _is_statement(node):
             node = node.parent
         text = node.text if node is not None and node.text else b""
-    else:
+    elif root is not None:
         best: Node | None = None
         stack = [root]
         while stack:
@@ -187,6 +192,9 @@ def _snippet(source: bytes, line: int, root: Node | None, column: int | None = N
             ):
                 best = node
         text = best.text if best is not None and best.text else b""
+    if not text.strip():
+        lines = source.split(b"\n")
+        text = lines[row] if 0 <= row < len(lines) else b""
     out = text.decode("utf-8", "replace").strip()
     if len(out) > SNIPPET_MAX:
         out = out[: SNIPPET_MAX - 3] + "..."
@@ -977,14 +985,18 @@ def convert(
         # Only a script has statements; a page's or an XML artifact's site is its line.
         record = records.get((kind, key))
         script = kind == "web_resource" and not is_page(record)
-        tree = (
-            parse("javascript", source)
-            if script and any(p.unproven for _, p, *_ in steps)
-            else None
-        )
+        # Each step planned on the text the steps before it left, which is what its columns
+        # index, so a snippet reads that text and not the original.
+        snippets: list[list[str | None]] = []
+        text = source
+        for _, plan, _, applied in steps:
+            tree = parse("javascript", text) if script and plan.unproven else None
+            snippets.append([_snippet(text, u.line, tree, u.column) for u in plan.unproven])
+            if applied:
+                text = _apply(text, plan.edits) or text
         for pkg in held.get(f"{kind}:{key}", [UNPACKAGED]):
             files: dict[str, str] = {}
-            for rule, plan, reason, applied in steps:
+            for (rule, plan, reason, applied), snips in zip(steps, snippets, strict=True):
                 entry = Entry(pkg, kind, key, rule.id, cast(str, rule.transform), "manual-review")
                 entry.manual_review = [
                     ManualReview(
@@ -992,11 +1004,11 @@ def convert(
                         u.line,
                         rule.id,
                         u.reason,
-                        _snippet(source, u.line, tree, u.column),
+                        snip,
                         rule.fix,
                         u.return_use,
                     )
-                    for u in plan.unproven
+                    for u, snip in zip(plan.unproven, snips, strict=True)
                 ]
                 if rule.transform == HANDLER_TRANSFORM and kind == "web_resource":
                     entry.graph = Counter(

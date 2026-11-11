@@ -82,6 +82,18 @@ ROLES: dict[str, tuple[str, int, str, str]] = {
         f"check({CTX}.getUserRoles());",
         "argument",
     ),
+    "after-a-rename-on-the-line": (
+        f"{CTX}.getClientUrl(); var r = {CTX}.getUserRoles();\n",
+        1,
+        f"var r = {CTX}.getUserRoles();",
+        "assigned",
+    ),
+    "default-parameter": (
+        f"function f(r = {CTX}.getUserRoles()) {{}}\n",
+        1,
+        f"function f(r = {CTX}.getUserRoles()) {{}}",
+        "other",
+    ),
     "discarded": (f"{CTX}.getUserRoles();\n", 1, f"{CTX}.getUserRoles();", "discarded"),
     "other": (
         f"var r = {CTX}.getUserRoles() || [];\n",
@@ -234,9 +246,14 @@ def test_the_existing_keys_stay_and_an_unknown_field_is_omitted_not_null(run):
 
 def test_get_user_roles_code_is_untouched_and_no_patch_is_written(run):
     for case in ROLES:
-        entries = [e for e in run["entries"] if e["key"] == ROLES_NAMES[case]]
+        entries = [
+            e
+            for e in run["entries"]
+            if e["key"] == ROLES_NAMES[case] and e["rule"] == "web-resource-context-settings"
+        ]
         assert entries and all(e["status"] == "manual-review" and e["files"] == {} for e in entries)
-    assert not list(run["out"].rglob("*roles-*patched*"))
+    # The rename case patches its getClientUrl() under another rule, never the roles site.
+    assert not list(run["out"].rglob("*roles-[!a]*patched*"))
 
 
 def _fix(rule_id: str) -> str:
