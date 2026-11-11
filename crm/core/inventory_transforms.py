@@ -93,7 +93,9 @@ class Transform:
     each registered function name, mapped to whether any registration passes it positional
     ``parameters``. It is also given the ribbon command functions (``commands``) that the
     ribbon diffs call. A transform with *needs_target* is given the target inventory's names
-    (None when the run has none).
+    (None when the run has none). A transform with *accounts_all* never lets a finding pass
+    silently: where the rule matches but no site is code it can place (a comment), the engine
+    records the whole file for review.
     """
 
     language: str
@@ -101,6 +103,7 @@ class Transform:
     plan: Callable[..., Plan]
     needs_handlers: bool = False
     needs_target: bool = False
+    accounts_all: bool = False
 
 
 #: Registered transforms by id. Tests swap entries in to exercise the engine.
@@ -756,6 +759,45 @@ def _plan_keypress_review(root: Node) -> Plan:
 
 
 register("keypress-review", Transform("javascript", (3,), _plan_keypress_review))
+
+#: The 2011 SOAP endpoints, matched the way the rule's detection pattern matches them.
+_SOAP_2011 = re.compile(rb"(?i)/XRMServices/2011/(Organization|Discovery)\.svc")
+
+
+def _plan_soap_2011_review(root: Node) -> Plan:
+    """List each string that names a 2011 SOAP endpoint, in code only (a comment is no site).
+
+    A synchronous SOAP call cannot be proved equivalent to an asynchronous Web API call with
+    a different response shape, so the script is never rewritten (ADR 0034).
+    """
+    named = {
+        n.id: m
+        for n in _walk(root)
+        if n.type in ("string", "template_string") and (m := _SOAP_2011.search(n.text or b""))
+    }
+    sites = [n for n in _walk(root) if n.id in named]
+    unproven: list[Unproven] = []
+    for n in sites:
+        # A string inside a template's substitution is part of the template's own site.
+        parent, nested = n.parent, False
+        while parent is not None and not nested:
+            nested = parent.id in named
+            parent = parent.parent
+        if not nested:
+            unproven.append(
+                Unproven.at(
+                    n,
+                    f"{named[n.id].group(1).decode()}.svc is the 2011 SOAP endpoint: a synchronous"
+                    " SOAP call cannot be proved equivalent to an asynchronous Web API call",
+                )
+            )
+    return _finish([], unproven)
+
+
+register(
+    "soap-2011-review",
+    Transform("javascript", (3,), _plan_soap_2011_review, accounts_all=True),
+)
 
 
 # ── form-handler-context: registered handlers take the execution context ────

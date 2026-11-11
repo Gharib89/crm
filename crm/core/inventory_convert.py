@@ -1139,6 +1139,10 @@ def convert(
                         plan = transform.plan(tree)
             elif not reason:
                 reason = f"transform {rule.transform} does not read this web resource type"
+            if transform.accounts_all and not (reason or plan.edits or plan.unproven):
+                # The rule matched, yet no site is code the transform can place (a comment, say):
+                # the finding is never silent, so the whole file goes to review.
+                reason = f"transform {rule.transform} found no site it can place in the code"
             applied = False
             if plan.edits:
                 patched = _apply(current, plan.edits)
