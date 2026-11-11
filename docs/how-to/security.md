@@ -121,7 +121,9 @@ still required under `--dry-run` — it is validated before any backend call.
 ### Add the role to a solution
 
 `--solution` sets `MSCRM.SolutionUniqueName` to place the new role in an
-unmanaged solution as a component.
+unmanaged solution as a component. A managed solution is refused before the
+request is sent (`CannotModifyManagedSolution`, exit 1): the platform would
+otherwise create the role unmanaged in Default and still report success.
 
 > **Note — `--if-exists skip` does not add to `--solution`.** When
 > `--if-exists skip` returns an existing same-name role, that role is reused
