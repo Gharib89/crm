@@ -40,3 +40,6 @@ htmlcov/
 
 # pytest-testmon selection data (the harness turn rung; per checkout)
 .testmondata*
+
+# Inventory data
+inventory/
