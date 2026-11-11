@@ -1085,6 +1085,9 @@ def test_a_gap_on_the_empty_keyed_ribbon_attaches_to_its_package(inputs):
 
 
 def _process_id(name: str) -> str:
+    """The component id of a named isolated process, or of the fixture's packaged one (approval)."""
+    if name == "approval":
+        return f"process:{PROCESS_KEY}"
     return f"process:{inv.component_key('process', ISOLATED[name])}"
 
 
@@ -1183,16 +1186,18 @@ def test_a_blocker_on_another_kind_still_forms_no_package(tmp_path):
 def test_a_process_already_in_a_package_forms_no_second_one(tmp_path):
     folder, source_map = _isolated_inputs(tmp_path)
     plain = build_packages(folder, read_source_map(source_map))
-    findings = read_findings(_process_findings(folder, tmp_path, {"dialog": "blocker"}))
+    findings = read_findings(_process_findings(folder, tmp_path, {"approval": "blocker"}))
     found = build_packages(folder, read_source_map(source_map), None, findings)
     plugins = _package_of(found, "plugin_assembly:Contoso.Billing")
     assert plugins.id == _package_of(plain, "plugin_assembly:Contoso.Billing").id
-    assert sum("process:" + PROCESS_KEY in p.members for p in found.packages) == 1
+    assert plugins.members == _package_of(plain, "plugin_assembly:Contoso.Billing").members
+    own = [f for f in _compat(plugins) if f["component"] == f"process:{PROCESS_KEY}"]
+    assert [f["class"] for f in own] == ["blocker"]
+    assert len(found.packages) == len(plain.packages)
     members = [m for p in found.packages for m in p.members]
     assert len(members) == len(set(members))
-    assert [p.id for p in plain.packages] == [
-        p.id for p in found.packages if p.id in {q.id for q in plain.packages}
-    ]
+    unplaced = {f["key"] for f in found.index()["compatibility"]["unplaced"]}
+    assert PROCESS_KEY not in unplaced
 
 
 def test_process_packages_leave_the_other_ids_and_bytes_alone(tmp_path):

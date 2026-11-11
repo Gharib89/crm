@@ -9,7 +9,8 @@ project, project to referenced project). A reference that cannot be resolved
 statically is an ``unknown`` edge with no target, kept for manual review.
 
 A **work package** is a connected group of that graph holding a source-mapped
-component or an unknown, so a shared library and every consumer of it land in
+component or an unknown (or, with findings, a process with a blocker or
+deprecated finding), so a shared library and every consumer of it land in
 one package. Only repairable kinds and source nodes join a group: entities,
 attributes, option sets and views are context, and a system web resource or
 plug-in does not bridge two groups. Everything here reads files and touches no org.
