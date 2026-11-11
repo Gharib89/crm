@@ -9,6 +9,29 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.112.7 (2026-11-11)
+
+### Bug Fixes
+
+- **inventory**: Convert rewrites getServerUrl to getClientUrl
+  ([#1223](https://github.com/Gharib89/crm/pull/1223),
+  [`e82d980`](https://github.com/Gharib89/crm/commit/e82d980b63c491d8a4d436fd72e15f58c1e41661))
+
+- **inventory**: Join the server-url owner to a global-context group
+  ([#1223](https://github.com/Gharib89/crm/pull/1223),
+  [`e82d980`](https://github.com/Gharib89/crm/commit/e82d980b63c491d8a4d436fd72e15f58c1e41661))
+
+### Testing
+
+- **inventory**: Cover parent.Xrm, bound GetGlobalContext and spaced Xrm for getServerUrl
+  ([#1223](https://github.com/Gharib89/crm/pull/1223),
+  [`e82d980`](https://github.com/Gharib89/crm/commit/e82d980b63c491d8a4d436fd72e15f58c1e41661))
+
+- **inventory**: The owner join adds the server-url whole-file entry for an HTML page
+  ([#1223](https://github.com/Gharib89/crm/pull/1223),
+  [`e82d980`](https://github.com/Gharib89/crm/commit/e82d980b63c491d8a4d436fd72e15f58c1e41661))
+
+
 ## v1.112.6 (2026-11-11)
 
 ### Bug Fixes
