@@ -9,6 +9,25 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.118.0 (2026-11-11)
+
+### Bug Fixes
+
+- **inventory**: Clearer host_pattern rule error, accurate test name
+  ([#1235](https://github.com/Gharib89/crm/pull/1235),
+  [`348903a`](https://github.com/Gharib89/crm/commit/348903a1afcd4b20fc44fe0759d9753ade307ec7))
+
+- **inventory**: Type the host_pattern rule parse and the findings body
+  ([#1235](https://github.com/Gharib89/crm/pull/1235),
+  [`348903a`](https://github.com/Gharib89/crm/commit/348903a1afcd4b20fc44fe0759d9753ade307ec7))
+
+### Features
+
+- **inventory**: Assess flags text that names the source org's host
+  ([#1235](https://github.com/Gharib89/crm/pull/1235),
+  [`348903a`](https://github.com/Gharib89/crm/commit/348903a1afcd4b20fc44fe0759d9753ade307ec7))
+
+
 ## v1.117.0 (2026-11-11)
 
 ### Bug Fixes
