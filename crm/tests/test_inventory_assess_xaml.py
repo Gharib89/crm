@@ -101,6 +101,7 @@ def test_a_workflow_with_both_features_gets_both_findings(tmp_path):
 def test_the_match_locations_stop_at_ten_and_the_count_does_not(tmp_path):
     _, found = _assess(tmp_path, "Many waits", 0, "\n".join([WAIT] * 12))
     (hit,) = found
+    assert isinstance(hit.evidence, assess.ContentEvidence)
     assert len(hit.evidence.locations) == 10 and hit.evidence.match_count == 12
     assert hit.evidence.locations[1] == (2, 11)
 
@@ -202,7 +203,8 @@ def test_the_published_schema_describes_xaml_pattern():
     ],
 )
 def test_the_rule_pattern_is_the_one_migration_assess_uses(rule_id, shared):
-    assert _rule_by_id(rule_id).detection.pattern.pattern == shared
+    detection = _rule_by_id(rule_id).detection
+    assert isinstance(detection, assess.XamlPattern) and detection.pattern.pattern == shared
 
 
 @pytest.mark.parametrize("sample", sorted(SAMPLES))
@@ -229,4 +231,4 @@ def test_the_rules_are_optional_modernization_with_their_fix_and_source(rule_id)
     assert "no cloud flow equivalent" in rule.fix and "Dataverse online still runs" in rule.fix
     assert "Feature capability comparison" in rule.fix
     assert any(s.endswith("/power-automate/replace-workflows-with-flows") for s in rule.sources)
-    assert rule.detection.categories == (0,)
+    assert isinstance(rule.detection, assess.XamlPattern) and rule.detection.categories == (0,)
