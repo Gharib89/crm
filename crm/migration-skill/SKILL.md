@@ -34,8 +34,8 @@ cloud-first route.
 ## The cloud-first route
 
 Work these in order; each ends on its **Done when**. They replace Workflow
-steps 1 to 2, except that source mapping (`crm inventory map-source`) still
-applies; the Workflow below governs the rest.
+steps 1 to 2, source mapping included (step 6 below); the Workflow governs the
+rest.
 
 1. **Confirm both orgs.** The 2011 source and the cloud org
    (`reference/environments.md`). Done when each has a confirmed identity,
@@ -54,11 +54,14 @@ applies; the Workflow below governs the rest.
    `reference/handover.md` lists, and record each answer, or its absence as an unknown. A 9.1 extract, if they
    supply one, replaces the single diff with two (2011 to 9.1, 9.1 to cloud).
    Done when every handover item is answered or recorded as an unknown.
-6. **Assess, package and convert from the cloud inventory.** `crm inventory
-   assess`, `packages` and `convert` read the **cloud** extract, not the 2011
+6. **Map, assess, package and convert from the cloud inventory.** First
+   reconcile the cloud extract with the application repository
+   (`crm inventory map-source`, `reference/source-mapping.md`). Then
+   `crm inventory assess`, `packages` and `convert` read the **cloud** extract, not the 2011
    one: it records the code actually deployed, and the OData v2 rewrite needs
-   the entity set names only a v9 extract records. Done when workflow steps 3
-   and 4 hold against the cloud inventory.
+   the entity set names only a v9 extract records. Done when Workflow steps 3
+   and 4 hold against the cloud inventory and every component reconciles with
+   the repository or is an unknown.
 7. **Patch, build and verify on the cloud dev or test org.** Workflow steps
    5 to 7, unchanged. Done when they hold.
 
