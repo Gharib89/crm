@@ -763,6 +763,7 @@ registration, and how forms and ribbon diffs call those scripts:
 | `csproj-sdk-net462`: the plug-in project targets .NET Framework below 4.6.2 (no declared version counts) or references the SDK 5.0 `Microsoft.Xrm.Sdk` or `Microsoft.Crm.Sdk.Proxy` (kind `plugin_assembly`, with `--source-map` and `--repo`; see [Plug-in projects](#plug-in-projects-found-by-assess)) | blocker | both |
 | `assembly-storage-online`, `assembly-storage-onprem`: an assembly stored on disk or in the GAC | blocker online, optional on-prem | one each |
 | `assembly-isolation-none`, `assembly-isolation-none-onprem`: an assembly registered without isolation | blocker online, optional on-prem | one each |
+| `process-dialog`: a classic dialog (a `process` record of category 1); Microsoft deprecates dialogs and documents business process flows or canvas apps as the replacement, with no automatic conversion | deprecated | both |
 
 Every component gets at least one **compatibility finding**, keyed by component key,
 never by GUID:
@@ -771,7 +772,7 @@ never by GUID:
 |---|---|
 | `blocker`, `deprecated`, `optional` | a rule matched; the evidence is the artifact `path`, its `sha256`, the first ten match `locations` (line and column) and the `match_count`, for a plug-in registration rule the recorded `field` and `value`, and for the two form and ribbon rules the `path`, `sha256`, `match_count` and `registrations`: per flagged handler its `event`, `attribute`, `function`, `library` and current `passExecutionContext`, per flagged action its `command`, `function`, `library` and `crm_parameters`; for a plug-in project the repository `path`, the `sha256` of its normalized text, `target_framework_version`, `sdk_references` and `fired` (see below) |
 | `unknown` | no rule applies to the component (reason `no rule`: a kind no rule covers, or a binary web resource); a rule needs a field the inventory did not record (`field isolation_mode not recorded`, an inventory extracted before crm recorded it); a script artifact is missing or its hash differs from the manifest; an extraction gap names the component (`extraction gap: <reason>`); its kind was not read complete (`kind coverage partial`); a form or ribbon rule cannot read its library (`library <name> is not in the inventory`, `is not a script web resource`, or the library's artifact problem) or its own XML (`artifact is not well-formed XML`); a mapped plug-in project cannot be read or judged (`project <path> unreadable: ...`, `project <path>: the project is not well-formed XML`); or the inventory's source version is not a dotted version (extract writes `unknown` when it cannot read it), so no rule's version range can be decided |
-| `clear` | the rules that apply found nothing |
+| `clear` | the rules that apply found nothing. For a process that means only that the packaged process rules found nothing (today, only `process-dialog`): nothing about its mode, trigger or fitness for a cloud flow, and categories other than 1 have no rule yet, so a classic workflow, a business process flow and a modern flow all read `clear` |
 
 A gap or incomplete coverage adds an `unknown` beside the rule findings, so a component
 read only in part keeps both. The findings file
