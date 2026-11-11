@@ -117,8 +117,8 @@ def register(transform_id: str, transform: Transform) -> None:
 
 #: Methods `Xrm.Page.context` and `Xrm.Utility.getGlobalContext()` both carry under one name.
 #: A method that moved to a settings property (`getUserName` to `userSettings.userName`) is
-#: not here: the `context-settings` transform owns it, see `CONTEXT_SETTINGS`. So does
-#: `getServerUrl`, which the `server-url` transform renames.
+#: not here: the `context-settings` transform owns it, see `CONTEXT_SETTINGS`.
+#: `getServerUrl` is not here either: the `server-url` transform renames it.
 SAME_METHOD = frozenset(
     (
         "getClientUrl",

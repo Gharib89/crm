@@ -226,6 +226,8 @@ SERVER_URL_MIXED = f"var a = {GC}.getServerUrl();\nvar b = foo.getServerUrl();\n
 #: assess reports only web-resource-xrm-page here: context-settings' detection cannot see
 #: through the comment, so convert must still account for the site.
 COMMENT_CHAIN = f"var id = {CTX}./* who */getUserId();\n"
+#: Same shape for getServerUrl: only xrm-page's detection sees it.
+SERVER_URL_COMMENT_CHAIN = f"var u = {CTX}./* who */getServerUrl();\n"
 
 
 def _name(case: str) -> str:
@@ -239,6 +241,7 @@ def run(tmp_path_factory: pytest.TempPathFactory) -> dict:
     folder.mkdir()
     sources = {c: v[0] for c, v in CASES.items()} | {"multi": MULTI, "comment-chain": COMMENT_CHAIN}
     sources["server-url-mixed"] = SERVER_URL_MIXED
+    sources["server-url-comment-chain"] = SERVER_URL_COMMENT_CHAIN
     records = [_record(_name(c), text, folder) for c, text in sources.items()]
     manifest = inv.Inventory(
         schema_version=inv.SCHEMA_VERSION,
@@ -367,3 +370,9 @@ def test_a_provable_and_an_unprovable_get_server_url_share_one_patch(run):
     (review,) = entry["manual_review"]
     assert review["line"] == 2 and review["rule"] == "web-resource-get-server-url"
     assert "receiver" in review["reason"]
+
+
+def test_a_get_server_url_only_global_context_detects_is_still_accounted_for(run):
+    entries = _entries(run, "server-url-comment-chain")
+    assert entries and not [e for e in entries if e["status"] == "patched"]
+    assert all(e["manual_review"] for e in entries)
