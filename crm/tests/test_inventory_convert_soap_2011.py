@@ -18,7 +18,7 @@ from crm.core import inventory as inv
 from crm.core import inventory_assess as assess
 from crm.core.inventory_packages import build_packages, write_packages
 from crm.core.inventory_source_map import dump_source_map, map_source, read_source_map
-from crm.core.inventory_transforms import TRANSFORMS
+from crm.core.inventory_transforms import _SOAP_2011, TRANSFORMS
 from crm.tests.test_inventory_convert import ORG, _record
 
 RULE = "web-resource-soap-2011"
@@ -35,6 +35,7 @@ CASES: dict[str, str] = {
         "var y = 1;\n"
         'x.open("POST", "/XRMServices/2011/Discovery.svc");\n'
     ),
+    "same-line": 'a("/XRMServices/2011/Organization.svc"); b("/XRMServices/2011/Discovery.svc");\n',
     "comment-only": "// was /XRMServices/2011/Organization.svc/web\nvar z = 1;\n",
     "mixed": (
         "var c = Xrm.Page.context.getClientUrl();\n"
@@ -81,12 +82,14 @@ def run(tmp_path_factory: pytest.TempPathFactory) -> dict:
         ),
         packages,
     )
+    before = {p: p.read_bytes() for p in folder.rglob("*") if p.is_file()}
     out = root / "out"
     args = ["--json", "inventory", "convert", str(folder), "--findings", str(findings_path)]
     res = CliRunner().invoke(cli, [*args, "--packages", str(packages), "--out", str(out)])
     assert res.exit_code == 0, res.output
     ledger = json.loads((out / "ledger.json").read_text(encoding="utf-8"))
-    return {"out": out, "entries": ledger["entries"], "folder": folder}
+    unchanged = before == {p: p.read_bytes() for p in folder.rglob("*") if p.is_file()}
+    return {"out": out, "entries": ledger["entries"], "unchanged": unchanged}
 
 
 def _entries(run: dict, name: str, rule: str = RULE) -> list[dict]:
@@ -104,7 +107,11 @@ def _fix() -> str:
 def test_the_rule_names_the_registered_review_transform():
     rule = next(r for r in assess.load_rules().rules if r.id == RULE)
     assert rule.transform == "soap-2011-review" and rule.transform in TRANSFORMS
-    assert all(r.transform in TRANSFORMS for r in assess.load_rules().rules if r.transform)
+
+
+def test_the_transform_matches_what_the_rule_detects():
+    rule = next(r for r in assess.load_rules().rules if r.id == RULE)
+    assert _SOAP_2011.pattern.decode() == rule.detection.pattern.pattern
 
 
 @pytest.mark.parametrize(
@@ -139,6 +146,14 @@ def test_two_sites_give_two_entries(run):
     assert [m["line"] for m in _reviews(run, NAMES["two-sites"])] == [1, 3]
 
 
+def test_two_sites_on_one_line_give_two_entries(run):
+    assert [m["line"] for m in _reviews(run, NAMES["same-line"])] == [1, 1]
+
+
+def test_the_inventory_bytes_are_unchanged_by_convert(run):
+    assert run["unchanged"]
+
+
 @pytest.mark.parametrize("case", sorted(CASES))
 def test_the_script_is_never_rewritten_for_this_rule(run, case):
     entries = _entries(run, NAMES[case])
@@ -171,4 +186,6 @@ def test_a_script_with_another_transformable_finding_is_patched_and_reviewed(run
 def test_the_2007_endpoint_still_has_no_transform(run):
     rule = next(r for r in assess.load_rules().rules if r.id == "web-resource-soap-2007")
     assert rule.transform is None
+    crmform = next(r for r in assess.load_rules().rules if r.id == "web-resource-crmform")
+    assert crmform.transform is None
     assert _entries(run, NAMES["soap-2007"], "web-resource-soap-2007") == []
