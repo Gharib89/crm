@@ -37,6 +37,7 @@ from crm.core.inventory import (
     parse_manifest,
 )
 from crm.core.inventory_checker import (
+    OVERRIDES_PATH,
     CheckerReport,
     load_overrides,
     read_report,
@@ -1654,7 +1655,7 @@ def assess(
             )
     checker: CheckerMerge | None = None
     if report is not None:
-        overrides = load_overrides(checker_overrides) if checker_overrides else load_overrides()
+        overrides = load_overrides(checker_overrides or OVERRIDES_PATH)
         findings, checker = _merge_checker(report, overrides, inv, findings, rules)
     return AssessResult(
         inventory=_header(inv, raw),

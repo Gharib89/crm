@@ -201,8 +201,8 @@ SARIF file inside.
 
 - **A matched result is a finding** on that web resource, `rule` the checker's own id
   (`web-avoid-2011-api`). Class: Critical and High `blocker`, Medium `deprecated`, Low and
-  Informational `optional`, except the rules the override table names
-  (`crm/rules/checker-overrides.json`, which an agent can read).
+  Informational `optional`, except `web-use-async` and `web-avoid-eval`, which are
+  `deprecated`: neither stops a move to Dataverse online.
 - **Quote `checker_report` and `checker_unmatched`.** `skipped_duplicates` counts results a
   packaged finding already covers. `checker_unmatched` lists what matched no web resource (a
   file outside the inventory, forms, plug-ins, a non-`web-` family): enter each as an open

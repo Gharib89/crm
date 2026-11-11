@@ -81,6 +81,7 @@
         ]
       },
       "transform": "server-url",
+      "checker_rule": "web-avoid-2011-api",
       "fix": "Use Xrm.Utility.getGlobalContext().getClientUrl() (a standalone HTML web resource: ClientGlobalContext.js.aspx, then GetGlobalContext().getClientUrl()). Tool judgment: no Microsoft Learn page names getServerUrl; the sources are the closest statements.",
       "sources": [
         "https://learn.microsoft.com/power-apps/developer/model-driven-apps/clientapi/clientapi-xrm#client-api-global-context",
@@ -253,7 +254,6 @@
           3
         ]
       },
-      "checker_rule": "web-avoid-2011-api",
       "fix": "Rewrite against the client API: crmForm.all.<attribute>.DataValue becomes formContext.getAttribute(\"<attribute>\").getValue(). crmForm is not part of the documented 9.x client API, and only the documented API is supported. Tool judgment: no Microsoft Learn page names crmForm; the sources are the closest statements.",
       "sources": [
         "https://learn.microsoft.com/dynamics365/customerengagement/on-premises/customize/customizations-supported?view=op-9-1",

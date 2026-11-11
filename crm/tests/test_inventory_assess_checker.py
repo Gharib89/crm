@@ -277,7 +277,8 @@ def test_packaged_rules_name_the_checker_rule_they_correspond_to():
     by_id = {r.id: r for r in assess.load_rules().rules}
     assert by_id["web-resource-soap-2011"].checker_rule == "web-avoid-crm2011-service-soap"
     assert by_id["web-resource-xrm-page"].checker_rule == "web-use-client-context"
-    assert by_id["web-resource-crmform"].checker_rule == "web-avoid-2011-api"
+    assert by_id["web-resource-get-server-url"].checker_rule == "web-avoid-2011-api"
+    assert by_id["web-resource-crmform"].checker_rule is None
     assert by_id["web-resource-odata-v2"].checker_rule == "web-avoid-crm2011-service-odata"
     assert by_id["web-resource-xrm-utility"].checker_rule is None
 
