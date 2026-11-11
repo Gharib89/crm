@@ -63,7 +63,7 @@ def _assess(tmp_path: Path, name: str, category: int, xaml: str | None, target="
     return record, [f for f in result.findings if f.key == record.key]
 
 
-def _rules(rule_id: str):
+def _rule_by_id(rule_id: str):
     (rule,) = [r for r in assess.load_rules().rules if r.id == rule_id]
     return rule
 
@@ -147,7 +147,7 @@ def test_other_categories_are_not_judged_by_the_xaml_rules(tmp_path, category):
     assert not rules & {"workflow-wait-condition", "workflow-custom-activity"}
 
 
-def _rules_with(tmp_path: Path, **detection) -> dict:
+def _rules_with(**detection) -> dict:
     data = json.loads(assess.RULES_PATH.read_text(encoding="utf-8"))
     rule = dict(_rules_json(data, "workflow-wait-condition"))
     rule["detection"] = detection
@@ -160,7 +160,7 @@ def _rules_json(data: dict, rule_id: str) -> dict:
 
 
 def test_xaml_pattern_on_another_kind_is_refused(tmp_path):
-    data = _rules_with(tmp_path, type="xaml_pattern", pattern="x", categories=[0])
+    data = _rules_with(type="xaml_pattern", pattern="x", categories=[0])
     data["rules"][0]["kind"] = "web_resource"
     with pytest.raises(InventoryError, match="xaml_pattern applies to process only"):
         assess.parse_rules(data)
@@ -177,11 +177,13 @@ def test_xaml_pattern_on_another_kind_is_refused(tmp_path):
 )
 def test_a_malformed_xaml_pattern_is_refused(tmp_path, detection, message):
     with pytest.raises(InventoryError, match=message):
-        assess.parse_rules(_rules_with(tmp_path, **detection))
+        assess.parse_rules(_rules_with(**detection))
 
 
 def test_the_published_schema_describes_xaml_pattern():
-    schema = json.loads((SCHEMAS / "compatibility-rules-v1.schema.json").read_text())
+    schema = json.loads(
+        (SCHEMAS / "compatibility-rules-v1.schema.json").read_text(encoding="utf-8")
+    )
     import jsonschema
 
     data = json.loads(assess.RULES_PATH.read_text(encoding="utf-8"))
@@ -200,7 +202,7 @@ def test_the_published_schema_describes_xaml_pattern():
     ],
 )
 def test_the_rule_pattern_is_the_one_migration_assess_uses(rule_id, shared):
-    assert _rules(rule_id).detection.pattern.pattern == shared
+    assert _rule_by_id(rule_id).detection.pattern.pattern == shared
 
 
 @pytest.mark.parametrize("sample", sorted(SAMPLES))
@@ -222,7 +224,7 @@ def test_the_custom_activity_pattern_ignores_spacing_around_the_out_of_box_assem
 
 @pytest.mark.parametrize("rule_id", ["workflow-wait-condition", "workflow-custom-activity"])
 def test_the_rules_are_optional_modernization_with_their_fix_and_source(rule_id):
-    rule = _rules(rule_id)
+    rule = _rule_by_id(rule_id)
     assert (rule.cls, rule.kind, rule.targets) == ("optional", "process", ("onprem-9.1", "online"))
     assert "no cloud flow equivalent" in rule.fix and "Dataverse online still runs" in rule.fix
     assert "Feature capability comparison" in rule.fix
