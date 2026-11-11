@@ -9,6 +9,29 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.112.8 (2026-11-11)
+
+### Bug Fixes
+
+- **inventory**: Count the ribbon table read as a progress stage
+  ([#1224](https://github.com/Gharib89/crm/pull/1224),
+  [`17d2184`](https://github.com/Gharib89/crm/commit/17d2184c749631f8ded455067c1c6a7f893a496d))
+
+- **inventory**: Read the org-wide ribbon diffs from the ribbon tables on Dataverse online
+  ([#1224](https://github.com/Gharib89/crm/pull/1224),
+  [`17d2184`](https://github.com/Gharib89/crm/commit/17d2184c749631f8ded455067c1c6a7f893a496d))
+
+- **inventory**: Sync the manifest reference and trim the ribbon table select
+  ([#1224](https://github.com/Gharib89/crm/pull/1224),
+  [`17d2184`](https://github.com/Gharib89/crm/commit/17d2184c749631f8ded455067c1c6a7f893a496d))
+
+### Documentation
+
+- **inventory**: Ribbon diffs read from the ribbon tables on Dataverse online
+  ([#1224](https://github.com/Gharib89/crm/pull/1224),
+  [`17d2184`](https://github.com/Gharib89/crm/commit/17d2184c749631f8ded455067c1c6a7f893a496d))
+
+
 ## v1.112.7 (2026-11-11)
 
 ### Bug Fixes
