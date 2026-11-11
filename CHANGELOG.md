@@ -9,6 +9,39 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.120.0 (2026-11-11)
+
+### Bug Fixes
+
+- **inventory**: Dedupe checker results past the location cap and wrap zip read errors
+  ([#1237](https://github.com/Gharib89/crm/pull/1237),
+  [`3850fe0`](https://github.com/Gharib89/crm/commit/3850fe00f66d983939199e2ce17a5817cd8c2bb1))
+
+- **inventory**: Pair web-avoid-2011-api with the getServerUrl rule
+  ([#1237](https://github.com/Gharib89/crm/pull/1237),
+  [`3850fe0`](https://github.com/Gharib89/crm/commit/3850fe00f66d983939199e2ce17a5817cd8c2bb1))
+
+- **inventory**: Satisfy strict pyright in the checker merge
+  ([#1237](https://github.com/Gharib89/crm/pull/1237),
+  [`3850fe0`](https://github.com/Gharib89/crm/commit/3850fe00f66d983939199e2ce17a5817cd8c2bb1))
+
+### Documentation
+
+- **inventory**: Document assess --checker-report
+  ([#1237](https://github.com/Gharib89/crm/pull/1237),
+  [`3850fe0`](https://github.com/Gharib89/crm/commit/3850fe00f66d983939199e2ce17a5817cd8c2bb1))
+
+### Features
+
+- **inventory**: Merge a Solution Checker report into assess
+  ([#1237](https://github.com/Gharib89/crm/pull/1237),
+  [`3850fe0`](https://github.com/Gharib89/crm/commit/3850fe00f66d983939199e2ce17a5817cd8c2bb1))
+
+- **inventory**: Merge Solution Checker results into assess
+  ([#1237](https://github.com/Gharib89/crm/pull/1237),
+  [`3850fe0`](https://github.com/Gharib89/crm/commit/3850fe00f66d983939199e2ce17a5817cd8c2bb1))
+
+
 ## v1.119.0 (2026-11-11)
 
 ### Bug Fixes
