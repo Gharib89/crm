@@ -738,7 +738,7 @@ applies (see [Convert code](#convert-code)). The rules file is
 published with its format,
 [`compatibility-rules-v1.schema.json`](https://github.com/Gharib89/crm/blob/main/crm/schemas/compatibility-rules-v1.schema.json).
 The rules cover web resource scripts (HTML and JavaScript), plug-in assembly
-registration, and how forms and ribbon diffs call those scripts:
+registration, how forms and ribbon diffs call those scripts, and classic dialogs (process records of category 1):
 
 | Rule | Class | Targets |
 |---|---|---|
