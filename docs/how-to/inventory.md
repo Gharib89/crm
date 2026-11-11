@@ -338,9 +338,10 @@ none, shows no facet change. A length that differs on both reads as one
 A `form` record carries `active` (a v9 or cloud extract only), which `diff`
 compares only where both manifests recorded it, so a CRM 2011 or older extract shows no
 activation change. The CRM 2013 upgrade added new forms beside the 2011 ones and left
-activation to the customer, so a form that is `active: false` in the later stage
-while its counterpart was in use on the source is not shown to users there: treat the
-`fields.active` change as a form to activate or retire, not as a match.
+activation to the customer, so a form that is `active: false` in the later stage is not
+shown to its users there. Against a 2011 source, read the later manifest's `form` records
+for `fields.active: false`; between two v9 stages the same fact is a `fields.active`
+change.
 
 What a side could not read is never reported as removed, added or changed: a
 record or artifact missing on a side whose extraction gap names the key is no
