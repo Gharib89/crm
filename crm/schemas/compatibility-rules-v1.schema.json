@@ -194,6 +194,25 @@
               }
             },
             {
+              "description": "A custom Reporting Services report (report_type 1, custom) judged by its recorded data_provider: a match is a hit, an `unknown` provider is an unknown finding carrying the record's data_provider_reason. Valid on kind report only.",
+              "type": "object",
+              "required": [
+                "type",
+                "provider"
+              ],
+              "properties": {
+                "type": {
+                  "const": "report_data_provider"
+                },
+                "provider": {
+                  "enum": [
+                    "fetch",
+                    "sql"
+                  ]
+                }
+              }
+            },
+            {
               "type": "object",
               "required": [
                 "type",

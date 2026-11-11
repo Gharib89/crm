@@ -29,6 +29,16 @@ assembly other than `Microsoft.Crm.Workflow`) are `optional`: enter them as "Opt
 modernization": a cloud flow has no equivalent for either, and Dataverse online still
 runs classic workflows. A classic workflow with no readable XAML is `unknown`.
 
+A custom Reporting Services report whose data provider is `sql` (`report-sql-datasource`,
+online target only) is a `blocker`: enter it as "Confirmed blocker". Dataverse online runs
+Fetch-based reports and the migration removes unconverted custom SQL-based reports, so the
+report is lost, not the migration stopped. The fix is to rewrite its datasets in FetchXML;
+Microsoft documents no converter, and the result must still pass the Dataverse RDL sandbox.
+A custom report on `fetch` is `clear`. One on `unknown` carries the record's reason: a missing
+RDL body, or a shared data source whose provider lives in SSRS. Settle it on the live org or in
+SSRS, and never read it as Fetch. Stock reports and custom link, Excel or Power BI reports are
+`clear` for this rule.
+
 `clear` is not "compatible": the rules cover few kinds, and a component no rule
 covers is `unknown`.
 For a process, `clear` means only that the process rules did not fire. The inventory

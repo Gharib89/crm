@@ -5,8 +5,9 @@ kinds: a **Reporting Services report** whose RDL is uploaded into ``bodytext``
 (``reporttypecode`` 1), or a **link report** pointing at an external URL via
 ``bodyurl`` (``reporttypecode`` 3). Reports are solution-aware, so writes honor
 ``--solution`` (``MSCRM.SolutionUniqueName``). The CLI uploads the RDL verbatim
-— it does not author or validate it (Dataverse online, for instance, only
-accepts an RDL whose data source uses the fetch data provider).
+— it does not author or validate it. Microsoft documents Dataverse online as
+supporting Fetch-based reports, and its on-premises-to-online migration removes
+custom SQL-based reports that were not converted to FetchXML.
 
 **Org visibility.** A report defaults to personal (``ispersonal = true``).
 Making it available to the whole organization is done by setting
