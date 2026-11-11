@@ -223,7 +223,6 @@ def _plan_global_context(root: Node) -> Plan:
         if _is_xrm_page_context(node):
             sites.append(node)
     for node in sites:
-        node.start_point.row + 1
         parent = node.parent
         method = (
             parent.child_by_field_name("property")
@@ -401,7 +400,6 @@ def _plan_context_settings(root: Node) -> Plan:
         if name is None or recv is None or found is None or name.decode() not in CONTEXT_SETTINGS:
             continue
         xrm, direct = found
-        m.start_point.row + 1
         call = _called(m)
         fn_node = recv.child_by_field_name("function") if not direct else None
         reason: str | None = _xrm_problem(xrm, shadowed)
@@ -469,7 +467,6 @@ def _plan_grid_row(root: Node) -> Plan:
         ):
             continue
         in_chain.add(inner.start_byte)
-        call.start_point.row + 1
         entity, data = fn.child_by_field_name("property"), data_fn.child_by_field_name("property")
         if entity is None or data is None or fn.text is None or inner.text is None:
             continue
@@ -540,7 +537,6 @@ def _plan_mobile_offline(root: Node) -> Plan:
         xrm = mobile.child_by_field_name("object") if mobile is not None else None
         if mobile is None or xrm is None or _prop(mobile) != b"Mobile" or not _is_xrm(xrm):
             continue
-        off.start_point.row + 1
         parent = off.parent
         member = (
             parent
@@ -612,7 +608,6 @@ def _plan_entity_save(root: Node) -> Plan:
             continue
         if save is None or entity is None:
             continue
-        call.start_point.row + 1
         entity_word = entity.child_by_field_name("property")
         save_word = save.child_by_field_name("property")
         if entity_word is None or save_word is None or save.text is None or entity.text is None:
@@ -755,7 +750,6 @@ def _context_sites(
         if xrm is None or not _is_xrm(xrm):
             continue
         use = page.parent
-        page.start_point.row + 1
         member = _prop(use) if use is not None and _member_object(use) == page else None
         nested, up = False, page.parent
         while up is not None and up != fn:
@@ -982,7 +976,6 @@ def _thread_helpers(
     unproven: list[Unproven] = []
     unreachable = boundary = cleared = 0
     for name, (fn, _body, _, sites, problems) in sorted(units.items()):
-        fn.start_point.row + 1
         if name in threaded:
             params = fn.child_by_field_name("parameters")
             first = (
@@ -1016,7 +1009,6 @@ def _thread_helpers(
             continue
         if _prop(page.parent) == b"context" and _member_object(page.parent) == page:
             continue
-        page.start_point.row + 1
         if _owner(page, defined)[1]:
             unproven.append(
                 Unproven.at(
@@ -1082,7 +1074,6 @@ def _plan_handler_context(
         if not defs:
             continue
         fn = defs[0][0]
-        fn.start_point.row + 1
         params, body = fn.child_by_field_name("parameters"), fn.child_by_field_name("body")
         last = name.rsplit(".", 1)[-1].encode()
         inside = _walk(fn)

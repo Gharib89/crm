@@ -471,7 +471,6 @@ def _plan_odata(root: Node, target: Target | None) -> Plan:
     used: list[Used] = []
     done = 0
     for call, url in sites.values():
-        call.start_point.row + 1
         try:
             if target is None:
                 raise _No("no --target-inventory: the Web API names cannot be resolved")
