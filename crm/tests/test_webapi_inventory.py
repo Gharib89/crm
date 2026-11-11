@@ -1237,3 +1237,8 @@ def test_a_scoped_run_keeps_a_type_the_solution_lists_without_its_assembly(tmp_p
     out = tmp_path / "inv"
     _extract(FakeBackend(org=org), out, solutions=("contoso",))
     assert _keys(_manifest(out), "plugin_type") == ["Contoso.InGac|Contoso.InGac.Hook"]
+
+
+def test_an_org_with_no_ribbon_customizations_is_partial_with_no_records(tmp_path):
+    summary = _extract(FakeBackend(), tmp_path / "inv")
+    assert summary.complete and summary.kinds["ribbon_diff"] == {"status": "partial", "records": 0}

@@ -1340,7 +1340,7 @@ _TABLE_DIFF_GAP = (
 
 
 def _ribbon_diff_gaps(
-    unsupported_reason: str | None, managed: list[str], from_tables: bool = False
+    unsupported_reason: str | None, managed: list[str], from_tables: bool
 ) -> list[ExtractionGap]:
     if from_tables:
         return [

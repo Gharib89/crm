@@ -284,11 +284,11 @@ class WebApiSource:
         unmanaged = {"$filter": "ismanaged eq false"}
         return (
             self.backend.get_collection(
-                "ribbondiffs", params={**unmanaged, "$select": "entity,diffid,rdx"}
+                "ribbondiffs", params={**unmanaged, "$select": "entity,rdx"}
             ),
             self.backend.get_collection(
                 "ribboncommands",
-                params={**unmanaged, "$select": "entity,command,commanddefinition"},
+                params={**unmanaged, "$select": "entity,commanddefinition"},
             ),
         )
 
