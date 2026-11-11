@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "version": 8,
+  "version": 9,
   "rules": [
     {
       "id": "web-resource-xrm-page",
@@ -489,6 +489,108 @@
       "sources": [
         "https://learn.microsoft.com/power-apps/developer/data-platform/supported-customizations#support-for-net-framework-versions",
         "https://learn.microsoft.com/dynamics365/customerengagement/on-premises/developer/visual-studio-dot-net-framework?view=op-9-1"
+      ]
+    },
+    {
+      "id": "plugin-source-sql-client",
+      "kind": "plugin_assembly",
+      "class": "blocker",
+      "title": "The plug-in source opens a SQL connection (SqlConnection, SqlCommand or SqlDataAdapter), which the Dataverse online sandbox does not allow",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "online"
+      ],
+      "detection": {
+        "type": "plugin_source",
+        "entries": [
+          {
+            "namespace": "System.Data.SqlClient",
+            "types": [
+              "SqlConnection",
+              "SqlCommand",
+              "SqlDataAdapter"
+            ]
+          },
+          {
+            "namespace": "Microsoft.Data.SqlClient",
+            "types": [
+              "SqlConnection",
+              "SqlCommand",
+              "SqlDataAdapter"
+            ]
+          }
+        ]
+      },
+      "fix": "Replace the direct SQL access with Dataverse Web API or IOrganizationService calls (QueryExpression, FetchXML), or move the work to a service the plug-in calls over HTTPS. The online sandbox limits a plug-in to IOrganizationService calls, Azure methods and web access. Detect-only: `crm inventory convert` never rewrites a C# file. Judged only for an assembly the source map matches to exactly one project, from `--source-map` and `--repo`: the project's own C# files are read, a project reached through a ProjectReference is not, and a file that cannot be read or parsed is unknown.",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/data-platform/write-custom-azure-aware-plugin#plug-in-registration",
+        "https://learn.microsoft.com/power-apps/developer/data-platform/register-plug-in#assembly-registration"
+      ]
+    },
+    {
+      "id": "plugin-source-filesystem",
+      "kind": "plugin_assembly",
+      "class": "blocker",
+      "title": "The plug-in source reads or writes the file system (File, Directory, FileInfo, DirectoryInfo or FileStream), which the Dataverse online sandbox does not allow",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "online"
+      ],
+      "detection": {
+        "type": "plugin_source",
+        "entries": [
+          {
+            "namespace": "System.IO",
+            "types": [
+              "File",
+              "Directory",
+              "FileInfo",
+              "DirectoryInfo",
+              "FileStream"
+            ]
+          }
+        ]
+      },
+      "fix": "Keep the data in Dataverse (a table, a file or image column, a web resource) or in an Azure service the plug-in calls over HTTPS instead of a local path. Path, Stream and MemoryStream are not file access and are not flagged. Detect-only: `crm inventory convert` never rewrites a C# file. Judged only for an assembly the source map matches to exactly one project, from `--source-map` and `--repo`: the project's own C# files are read, a project reached through a ProjectReference is not, and a file that cannot be read or parsed is unknown.",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/data-platform/write-custom-azure-aware-plugin#plug-in-registration",
+        "https://learn.microsoft.com/power-apps/developer/data-platform/register-plug-in#assembly-registration"
+      ]
+    },
+    {
+      "id": "plugin-source-registry",
+      "kind": "plugin_assembly",
+      "class": "blocker",
+      "title": "The plug-in source reads or writes the Windows registry (Registry or RegistryKey), which the Dataverse online sandbox does not allow",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "online"
+      ],
+      "detection": {
+        "type": "plugin_source",
+        "entries": [
+          {
+            "namespace": "Microsoft.Win32",
+            "types": [
+              "Registry",
+              "RegistryKey"
+            ]
+          }
+        ]
+      },
+      "fix": "Move the setting to the step's secure or unsecure configuration, an environment variable, or a configuration table in Dataverse. Detect-only: `crm inventory convert` never rewrites a C# file. Judged only for an assembly the source map matches to exactly one project, from `--source-map` and `--repo`: the project's own C# files are read, a project reached through a ProjectReference is not, and a file that cannot be read or parsed is unknown.",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/data-platform/write-custom-azure-aware-plugin#plug-in-registration",
+        "https://learn.microsoft.com/power-apps/developer/data-platform/register-plug-in#assembly-registration"
       ]
     },
     {

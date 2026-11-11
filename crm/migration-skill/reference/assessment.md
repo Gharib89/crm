@@ -141,6 +141,30 @@ a `clear` there says nothing about the build.
 - The same project is what `convert --repo` retargets (`reference/remediation.md`), so a
   blocker here has a patch there; an SDK-style project is neither flagged nor patched.
 
+## Read the plug-in source findings
+
+`plugin-source-sql-client`, `plugin-source-filesystem` and `plugin-source-registry` read the
+C# of the same mapped project, so they need the source map and the repository passed to
+`assess`, and judge `--target online` only. Without both flags, or for an unmapped or
+ambiguous assembly, no source was read: a `clear` there says nothing about the code.
+
+- **`blocker`** is one finding per file and rule, for code that creates or accesses a type the
+  online sandbox blocks: a SQL client (`plugin-source-sql-client`), the file system
+  (`plugin-source-filesystem`) or the registry (`plugin-source-registry`). The rule's `title`
+  and `sources` in `rules_hit` name the types and the Learn page. Quote the evidence's `path`
+  and `match_count`. `locations` holds only the first ten uses (line and column), so re-read
+  the file for the rest before calling the refactor done.
+- **`unknown`** reasons start `source <path>` and say the file is unreadable, not UTF-8 or
+  has syntax errors. One `unknown` per file, with no rule; the project's other files still
+  report. Open the file: fix a real syntax error or the map, or name the file in the entry
+  when it is valid C# the parser rejects, then re-run.
+- **Scope**: the project's own `.cs` files. A shared library reached by a `ProjectReference`
+  and a file linked from outside the project folder are not scanned, so name them in the
+  entry when the plug-in calls into one.
+- **Refactor by hand.** `convert` never reads C#, so a blocker has no patch. Open each cited
+  line, move the work to the Dataverse organization service (`IOrganizationService`) or an
+  HTTPS service the plug-in calls, and prove it in the target (`reference/verification.md`).
+
 Done when every component carries one of the four classes with its rule or
 evidence, or an entry open on a named question, and no `clear` or `unknown` is
 left unjudged.

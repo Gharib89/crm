@@ -38,7 +38,13 @@ from crm.core.inventory import (
 )
 from crm.core.inventory_csproj import detect_csproj
 from crm.core.inventory_html import HTML_PAGE, inline_hits, resolve_src, script_tags
-from crm.core.inventory_source_map import mapped_projects, read_source_map, require_inventory
+from crm.core.inventory_plugin_source import type_uses
+from crm.core.inventory_source_map import (
+    mapped_projects,
+    project_sources,
+    read_source_map,
+    require_inventory,
+)
 from crm.core.report import RDL_REPORT
 from crm.utils.safe_xml import fromstring
 
@@ -135,6 +141,29 @@ class PluginProject:
 
 
 @dataclass(frozen=True)
+class SourceTypes:
+    """The type names of one namespace that a plug-in source rule lists."""
+
+    namespace: str
+    types: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class PluginSource:
+    """A C# file of the plug-in project the source map names for an assembly that creates or
+    accesses one of the listed types (`crm.core.inventory_plugin_source`).
+
+    Like `PluginProject` it reads the repository, so the inventory loop skips it.
+    """
+
+    entries: tuple[SourceTypes, ...]
+
+    @property
+    def listed(self) -> frozenset[str]:
+        return frozenset(f"{e.namespace}.{t}" for e in self.entries for t in e.types)
+
+
+@dataclass(frozen=True)
 class FormLibraryOrder:
     """A form whose library list names a script carrying *library_rule*'s content pattern with no
     library matching *adapter_pattern* ahead of it.
@@ -186,6 +215,7 @@ class Rule:
         | HtmlLibraryOrder
         | RibbonLibraryOrder
         | PluginProject
+        | PluginSource
     )
     fix: str
     sources: tuple[str, ...]
@@ -264,6 +294,7 @@ def _detection(
     | HtmlLibraryOrder
     | RibbonLibraryOrder
     | PluginProject
+    | PluginSource
 ):
     obj = _obj(value, where)
     detection_type = obj.get("type")
@@ -350,10 +381,31 @@ def _detection(
                 f"rules file {where}: plugin_project applies to plugin_assembly only"
             )
         return PluginProject()
+    if detection_type == "plugin_source":
+        if kind != "plugin_assembly":
+            raise InventoryError(
+                f"rules file {where}: plugin_source applies to plugin_assembly only"
+            )
+        entries: list[SourceTypes] = []
+        for i, item in enumerate(_items(obj, "entries", where)):
+            entry = _obj(item, f"{where}.entries[{i}]")
+            names = _items(entry, "types", f"{where}.entries[{i}]")
+            if not all(isinstance(n, str) and n for n in names):
+                raise InventoryError(
+                    f"rules file {where}.entries[{i}].types must hold non-empty strings"
+                )
+            entries.append(
+                SourceTypes(
+                    _text(entry, "namespace", f"{where}.entries[{i}]"),
+                    tuple(cast(list[str], names)),
+                )
+            )
+        return PluginSource(tuple(entries))
     raise InventoryError(
         f"rules file {where}.type {detection_type!r} is not content_pattern, xaml_pattern, "
         "field_in, report_data_provider, form_handler_context, form_library_order, "
-        "html_library_order, ribbon_library_order, ribbon_action_parameter or plugin_project"
+        "html_library_order, ribbon_library_order, ribbon_action_parameter, plugin_project or "
+        "plugin_source"
     )
 
 
@@ -1153,6 +1205,59 @@ def _project_findings(rule: Rule, record: Record, repo: Path, rel: str) -> list[
     return [Finding(record.kind, record.key, rule.cls, rule.id, None, evidence)]
 
 
+@dataclass(frozen=True)
+class _Source:
+    """One C# file of a plug-in project read once for every source rule: its repository path, the
+    sha256 of its normalized bytes and its uses of the listed types, or why it could not be read.
+    """
+
+    path: str
+    sha256: str
+    uses: dict[str, list[tuple[int, int]]]
+    problem: str | None = None
+
+
+def _read_sources(repo: Path, project: str, listed: frozenset[str]) -> list[_Source]:
+    """Read each C# file the source map attributes to *project*, in path order."""
+    out: list[_Source] = []
+    for rel in project_sources(repo, project):
+        try:
+            data = normalize_text((repo / rel).read_bytes())
+        except OSError as exc:
+            why = f"unreadable: {exc.strerror or exc}"
+            out.append(_Source(rel, "", {}, why))
+            continue
+        digest = hashlib.sha256(data).hexdigest()
+        try:
+            data.decode("utf-8")
+        except UnicodeDecodeError:
+            out.append(_Source(rel, digest, {}, "is not UTF-8"))
+            continue
+        uses = type_uses(data, listed)
+        if uses is None:
+            out.append(_Source(rel, digest, {}, "has syntax errors"))
+        else:
+            out.append(_Source(rel, digest, uses))
+    return out
+
+
+def _source_findings(
+    rule: Rule, d: PluginSource, record: Record, sources: list[_Source]
+) -> list[Finding]:
+    """One finding per readable file *rule* flags."""
+    out: list[Finding] = []
+    for source in sources:
+        if source.problem is not None:
+            continue
+        sites = sorted(s for name in d.listed for s in source.uses.get(name, ()))
+        if sites:
+            evidence = ContentEvidence(
+                source.path, source.sha256, tuple(sites[:MAX_LOCATIONS]), len(sites)
+            )
+            out.append(Finding(record.kind, record.key, rule.cls, rule.id, None, evidence))
+    return out
+
+
 def _assess_record(
     record: Record,
     rules: list[Rule],
@@ -1174,8 +1279,9 @@ def _assess_record(
     content = [
         r
         for r in rules
-        if not isinstance(r.detection, FieldIn | ReportDataProvider | PluginProject)
+        if not isinstance(r.detection, FieldIn | ReportDataProvider | PluginProject | PluginSource)
     ]
+    sources: list[_Source] | None = None
     texts: dict[str, str] = {}
     if content:
         texts, problem = _texts(record, folder)
@@ -1208,6 +1314,24 @@ def _assess_record(
         if isinstance(d, PluginProject):
             if project is not None:
                 out += _project_findings(rule, record, *project)
+            continue
+        if isinstance(d, PluginSource):
+            if project is not None:
+                if sources is None:
+                    listed: frozenset[str] = frozenset(
+                        name
+                        for r in rules
+                        if isinstance(r.detection, PluginSource)
+                        for name in r.detection.listed
+                    )
+                    sources = _read_sources(*project, listed)
+                    # No single rule reads a file it cannot parse: one unknown per file.
+                    out += [
+                        finding("unknown", None, f"source {x.path} {x.problem}")
+                        for x in sources
+                        if x.problem is not None
+                    ]
+                out += _source_findings(rule, d, record, sources)
             continue
         if isinstance(d, ReportDataProvider):
             # report_type decides first: `custom` is read only for a Reporting Services report.
@@ -1274,7 +1398,8 @@ def assess(
 
     With *source_map* and *repo*, the application repository the map was made from, each plug-in
     assembly the map matches to exactly one project is also judged by what that project holds
-    (`PluginProject`), the same projects `convert` retargets. Without them no project is read.
+    (`PluginProject`), the same projects `convert` retargets, and its C# files are read for the
+    sandbox breaks the source rules list (`PluginSource`). Without them no project is read.
 
     Raises:
         InventoryError: the inventory or rules file is unreadable or breaks its
@@ -1314,7 +1439,8 @@ def assess(
         selected = [
             r
             for r in active
-            if r.selects(record) and (project or not isinstance(r.detection, PluginProject))
+            if r.selects(record)
+            and (project or not isinstance(r.detection, PluginProject | PluginSource))
         ]
         if version is None and selected:
             findings.append(Finding(record.kind, record.key, "unknown", None, unversioned, None))
