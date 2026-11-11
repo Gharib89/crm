@@ -362,7 +362,8 @@ skill calls this the cloud-first route. In order:
 3. Extract the cloud org with `--with-usage` and the same scope. Two scopes compare different things.
 4. `crm inventory diff` the 2011 inventory against the cloud one.
 5. Ask the team that ran the hops for a handover (below).
-6. Run `assess`, `packages` and `convert` against the **cloud** inventory: it records the deployed
+6. Map the cloud inventory to the application repository with `crm inventory map-source`, then run
+   `assess`, `packages` and `convert` against it: it records the deployed
    code, and the OData v2 rewrite needs the entity set names only a v9 extract records.
 7. Verify on the cloud dev or test org.
 
@@ -378,7 +379,7 @@ Ask that team for:
 | One read-only `crm inventory extract` at the 9.1 stage, with usage, in the same scope | Two diffs (2011 to 9.1, 9.1 to cloud) replace the single one, and each entry is tied to the hop it appeared in |
 | The components they disabled, removed or changed to pass each hop and the on-premises to online validation | A `removed` or `changed` entry is a deliberate act, not a loss; an entry absent from the list is unexplained |
 | The upgrade logs of each hop and of the validation | Components the upgrade tooling dropped or rewrote without anyone recording it |
-| Whether forms were merged | A `removed` form is a merge, not a lost form |
+| Whether forms were merged | If yes, a `removed` form may be a merge and not a lost one; if no, it is lost |
 | Which SQL objects and SQL-based reports were dropped | A `removed` SQL-based report or component was dropped on purpose, and the cloud org no longer has that behavior |
 
 A missing item is an unknown, never a guess.
