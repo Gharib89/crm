@@ -128,6 +128,13 @@ def test_a_report_with_an_unrecorded_selector_field_is_unknown_never_clear(tmp_p
     assert (hit.cls, hit.rule, hit.reason) == ("unknown", RULE, f"field {field} not recorded")
 
 
+def test_a_non_rdl_report_with_no_recorded_custom_flag_is_clear(tmp_path):
+    fields = {"name": "Link", "report_type": 3, "custom": None, "data_provider": "unknown"}
+    folder = _inventory(tmp_path, [_record("report", fields, Path("."))])
+    (hit,) = [f for f in assess.assess(folder, "online").findings if f.key == "Link"]
+    assert (hit.cls, hit.rule) == ("clear", None)
+
+
 def test_the_rule_says_online_runs_fetch_reports_and_the_migration_removes_the_rest():
     rule = _rule()
     assert rule.cls == "blocker" and rule.targets == ("online",) and rule.kind == "report"

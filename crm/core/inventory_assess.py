@@ -1210,13 +1210,18 @@ def _assess_record(
                 out += _project_findings(rule, record, *project)
             continue
         if isinstance(d, ReportDataProvider):
-            missing = next(
-                (f for f in ("report_type", "custom") if record.fields.get(f) is None), None
-            )
-            if missing:
-                out.append(finding("unknown", rule.id, f"field {missing} not recorded"))
+            # report_type decides first: `custom` is read only for a Reporting Services report.
+            rtype = record.fields.get("report_type")
+            if rtype is None:
+                out.append(finding("unknown", rule.id, "field report_type not recorded"))
                 continue
-            if record.fields["report_type"] != RDL_REPORT or record.fields["custom"] is not True:
+            if rtype != RDL_REPORT:
+                continue
+            custom = record.fields.get("custom")
+            if custom is None:
+                out.append(finding("unknown", rule.id, "field custom not recorded"))
+                continue
+            if custom is not True:
                 continue
             provider = record.fields.get("data_provider")
             if provider is None:
