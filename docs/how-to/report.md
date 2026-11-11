@@ -12,9 +12,13 @@ Two kinds of report are supported:
   `bodyurl`; `reporttypecode 3`.
 
 The CLI uploads RDL content verbatim — it does not author, validate, or
-transform the XML. Dataverse online only accepts RDLs whose data source uses
-the **fetch data provider**; on-prem v9.x accepts the standard D365 data
-source. Report authoring and data-source configuration remain out of scope.
+transform the XML, and does not check its data provider. Microsoft documents
+Dataverse online as supporting **Fetch-based** reports (data provider
+`MSCRMFETCH`), and its on-premises-to-online migration removes custom SQL-based
+reports that were not converted to FetchXML. On-prem v9.x also runs SQL-based
+reports. Report authoring and data-source configuration remain out of scope;
+`crm inventory assess --target online` flags the custom SQL-based reports of an
+inventory (see [Inventory](inventory.md)).
 
 ## List reports
 

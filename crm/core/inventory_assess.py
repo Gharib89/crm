@@ -39,6 +39,7 @@ from crm.core.inventory import (
 from crm.core.inventory_csproj import detect_csproj
 from crm.core.inventory_html import HTML_PAGE, inline_hits, resolve_src, script_tags
 from crm.core.inventory_source_map import mapped_projects, read_source_map, require_inventory
+from crm.core.report import RDL_REPORT
 from crm.utils.safe_xml import fromstring
 
 #: The format version of the findings file.
@@ -92,6 +93,17 @@ class FieldIn:
 
     field: str
     values: tuple[object, ...]
+
+
+@dataclass(frozen=True)
+class ReportDataProvider:
+    """A custom Reporting Services report whose recorded data provider is *provider*.
+
+    A custom report of another type (link, Excel) and a stock report are outside the rule:
+    a data provider is a property of an RDL, and Microsoft documents no outcome for stock ones.
+    """
+
+    provider: str
 
 
 @dataclass(frozen=True)
@@ -167,6 +179,7 @@ class Rule:
         ContentPattern
         | XamlPattern
         | FieldIn
+        | ReportDataProvider
         | FormHandlerContext
         | RibbonActionParameter
         | FormLibraryOrder
@@ -244,6 +257,7 @@ def _detection(
     ContentPattern
     | XamlPattern
     | FieldIn
+    | ReportDataProvider
     | FormHandlerContext
     | RibbonActionParameter
     | FormLibraryOrder
@@ -280,6 +294,10 @@ def _detection(
     if detection_type == "field_in":
         values = _items(obj, "values", where)
         return FieldIn(_text(obj, "field", where), tuple(values))
+    if detection_type == "report_data_provider":
+        if kind != "report":
+            raise InventoryError(f"rules file {where}: report_data_provider applies to report only")
+        return ReportDataProvider(_text(obj, "provider", where))
     if detection_type == "form_handler_context":
         if kind != "form":
             raise InventoryError(f"rules file {where}: form_handler_context applies to form only")
@@ -334,8 +352,8 @@ def _detection(
         return PluginProject()
     raise InventoryError(
         f"rules file {where}.type {detection_type!r} is not content_pattern, xaml_pattern, "
-        "field_in, form_handler_context, form_library_order, html_library_order, "
-        "ribbon_library_order, ribbon_action_parameter or plugin_project"
+        "field_in, report_data_provider, form_handler_context, form_library_order, "
+        "html_library_order, ribbon_library_order, ribbon_action_parameter or plugin_project"
     )
 
 
@@ -1153,7 +1171,11 @@ def _assess_record(
     if not rules:
         return [finding("unknown", None, "no rule")]
     out: list[Finding] = []
-    content = [r for r in rules if not isinstance(r.detection, FieldIn | PluginProject)]
+    content = [
+        r
+        for r in rules
+        if not isinstance(r.detection, FieldIn | ReportDataProvider | PluginProject)
+    ]
     texts: dict[str, str] = {}
     if content:
         texts, problem = _texts(record, folder)
@@ -1186,6 +1208,31 @@ def _assess_record(
         if isinstance(d, PluginProject):
             if project is not None:
                 out += _project_findings(rule, record, *project)
+            continue
+        if isinstance(d, ReportDataProvider):
+            # report_type decides first: `custom` is read only for a Reporting Services report.
+            rtype = record.fields.get("report_type")
+            if rtype is None:
+                out.append(finding("unknown", rule.id, "field report_type not recorded"))
+                continue
+            if rtype != RDL_REPORT:
+                continue
+            custom = record.fields.get("custom")
+            if custom is None:
+                out.append(finding("unknown", rule.id, "field custom not recorded"))
+                continue
+            if custom is not True:
+                continue
+            provider = record.fields.get("data_provider")
+            if provider is None:
+                out.append(finding("unknown", rule.id, "field data_provider not recorded"))
+            elif provider == "unknown":
+                reason = record.fields.get("data_provider_reason")
+                out.append(finding("unknown", rule.id, str(reason or "data provider not decided")))
+            elif provider == d.provider:
+                out.append(
+                    finding(rule.cls, rule.id, None, FieldEvidence("data_provider", provider))
+                )
             continue
         if isinstance(d, FieldIn):
             value = record.fields.get(d.field)

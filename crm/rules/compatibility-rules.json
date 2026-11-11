@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "version": 7,
+  "version": 8,
   "rules": [
     {
       "id": "web-resource-xrm-page",
@@ -694,6 +694,29 @@
       "fix": "A classic workflow's custom workflow activity (an ActivityReference to an assembly other than Microsoft.Crm.Workflow) has no cloud flow equivalent: Microsoft's Feature capability comparison lists running custom background workflow activities as supported by classic workflows only. Microsoft documents running Dataverse actions, including custom actions, from a flow, so move the activity's logic into a custom action or plug-in and call it from the flow. Dataverse online still runs classic workflows, so this is a modernization choice, not a blocker.",
       "sources": [
         "https://learn.microsoft.com/power-automate/replace-workflows-with-flows"
+      ]
+    },
+    {
+      "id": "report-sql-datasource",
+      "kind": "report",
+      "class": "blocker",
+      "title": "Custom SQL-based report: Dataverse online runs Fetch-based reports, and the migration removes custom SQL-based reports that were not converted",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "online"
+      ],
+      "detection": {
+        "type": "report_data_provider",
+        "provider": "sql"
+      },
+      "fix": "Rewrite the report's datasets in FetchXML and switch its data source to the Fetch data provider (MSCRMFETCH). Microsoft documents no converter. A rewritten report must still pass the Dataverse RDL sandbox, so a Fetch rewrite is not proof that it runs. The migration removes a custom SQL-based report that was not converted.",
+      "sources": [
+        "https://learn.microsoft.com/dynamics365/customerengagement/on-premises/analytics/get-started-writing-reports?view=op-9-1",
+        "https://learn.microsoft.com/previous-versions/dynamicscrm-2016/reporting-analytics-dynamics-365/dn920273(v=crm.8)",
+        "https://learn.microsoft.com/power-apps/maker/model-driven-apps/rdl-sandboxing"
       ]
     }
   ]

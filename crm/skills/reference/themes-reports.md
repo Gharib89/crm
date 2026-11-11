@@ -60,8 +60,10 @@ message `MakeAvailableToOrganizationReport` has no Web API binding and is never
 used. Without `--org`, reports are personal (`ispersonal=true`).
 
 **The CLI uploads RDL content verbatim** — it does not author or validate the
-XML. Dataverse online only accepts RDLs using the fetch data provider; on-prem
-v9.x uses the standard D365 data source. RDL authoring is out of scope.
+XML and checks no data provider. Microsoft documents Dataverse online as
+supporting Fetch-based reports, and its migration removes custom SQL-based
+reports that were not converted to FetchXML; on-prem v9.x also runs SQL-based
+reports. RDL authoring is out of scope.
 
 **`create` and `set-category` are solution-scoped** (see SKILL.md); `delete`
 takes no `--solution`.
