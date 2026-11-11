@@ -9,6 +9,29 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.112.5 (2026-11-11)
+
+### Bug Fixes
+
+- **inventory**: Extract records a form's activation state
+  ([#1220](https://github.com/Gharib89/crm/pull/1220),
+  [`78300b7`](https://github.com/Gharib89/crm/commit/78300b7129bcd1363312888b2f4afb9b294d376f))
+
+### Documentation
+
+- **inventory**: Lead with the form-activation hazard and say where to read it
+  ([#1220](https://github.com/Gharib89/crm/pull/1220),
+  [`78300b7`](https://github.com/Gharib89/crm/commit/78300b7129bcd1363312888b2f4afb9b294d376f))
+
+- **inventory**: Say what an inactive form means after the 2013 upgrade
+  ([#1220](https://github.com/Gharib89/crm/pull/1220),
+  [`78300b7`](https://github.com/Gharib89/crm/commit/78300b7129bcd1363312888b2f4afb9b294d376f))
+
+- **migration-skill**: Diff table names a form activation change
+  ([#1220](https://github.com/Gharib89/crm/pull/1220),
+  [`78300b7`](https://github.com/Gharib89/crm/commit/78300b7129bcd1363312888b2f4afb9b294d376f))
+
+
 ## v1.112.4 (2026-11-11)
 
 ### Bug Fixes
