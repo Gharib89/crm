@@ -1,6 +1,6 @@
 ---
 name: crm-migration
-description: Migrate a Dynamics CRM org (CRM 2011 or on-premises) to Dataverse online in stages. Use when planning the migration or its upgrade path, inventorying a legacy org, mapping its customizations to source code, assessing compatibility, or proving a repaired component works in the target before calling it done.
+description: Migrate a Dynamics CRM org (CRM 2011 or on-premises) to Dataverse online, by the staged path or cloud-first after another team ran the upgrade hops. Use when planning the migration or its upgrade path, inventorying a legacy org, mapping its customizations to source code, assessing compatibility, or proving a repaired component works in the target before calling it done.
 ---
 
 # crm-migration
@@ -9,20 +9,60 @@ This skill decides **what to do and when the evidence is enough**; the `crm`
 skill owns **how to run each command** (profiles, flags, JSON output). Load it
 before the first command.
 
-## The staged path
+## Two routes: pick one first
 
-The database moves one stage at a time:
+Ask who ran the upgrade hops.
 
-1. **CRM 2011** (the source, read over SOAP through a `crm2011` profile);
-2. the supported **intermediate on-premises upgrades**;
-3. **on-premises 9.1**;
-4. **Dataverse online** (the cloud target).
+- **Staged path:** you own the hops. The database moves one stage at a time:
+  1. **CRM 2011** (the source, read over SOAP through a `crm2011` profile);
+  2. the supported **intermediate on-premises upgrades**;
+  3. **on-premises 9.1**;
+  4. **Dataverse online** (the cloud target).
 
-Discovery and the behavior baseline happen on the source, before any upgrade.
-After each upgrade stage, extract the inventory again and `crm inventory diff`
-it against the previous stage's, so a component lost in the upgrade surfaces
-before cloud work starts. Cloud repairs are proven in the migrated dev or test
-environment.
+  Discovery and the behavior baseline happen on the source, before any upgrade.
+  After each upgrade stage, extract the inventory again and `crm inventory diff`
+  it against the previous stage's, so a component lost in the upgrade surfaces
+  before cloud work starts. Cloud repairs are proven in the migrated dev or test
+  environment.
+- **Cloud-first route:** another team already moved the database through every
+  stage. You hold the CRM 2011 source read-only and the finished cloud org, and
+  no stage between them. Follow the next section.
+
+Test: can you reach each intermediate stage yourself? Yes: staged path. No:
+cloud-first route.
+
+## The cloud-first route
+
+Work these in order; each ends on its **Done when**. They replace Workflow
+steps 1 to 2; the Workflow below governs the rest.
+
+1. **Confirm both orgs.** The 2011 source and the cloud org
+   (`reference/environments.md`). Done when each has a confirmed identity,
+   version and access mode.
+2. **Extract the 2011 source with usage.** Read usage so unused components
+   surface (`reference/inventory.md`). Done when each kind reads `complete` or
+   is a listed unknown.
+3. **Extract the cloud org with usage and the same scope.** A diff across two
+   scopes compares different things. Done when each kind reads `complete` or is
+   a listed unknown, and both manifests state the same scope.
+4. **Diff the two.** `crm inventory diff` 2011 against cloud. With no stage
+   observed between them, read `removed` and `changed` as
+   `reference/inventory.md` says. Done when each entry has an explanation, a
+   question for the team that ran the hops, or an unknown.
+5. **Request the handover.** Ask that team for each item
+   `reference/handover.md` lists, and record each answer, or its absence as an unknown. A 9.1 extract, if they
+   supply one, replaces the single diff with two (2011 to 9.1, 9.1 to cloud).
+   Done when every handover item is answered or recorded as an unknown.
+6. **Assess, package and convert from the cloud inventory.** `crm inventory
+   assess`, `packages` and `convert` read the **cloud** extract, not the 2011
+   one: it records the code actually deployed, and the OData v2 rewrite needs
+   the entity set names only a v9 extract records. Done when workflow steps 3
+   and 4 hold against the cloud inventory.
+7. **Verify on the cloud dev or test org.** Workflow steps 6 and 7, unchanged.
+   Done when they hold.
+
+The staged path's "stop before the next stage" instruction does not apply on
+this route: there is no next stage to hold.
 
 ## Workflow
 
