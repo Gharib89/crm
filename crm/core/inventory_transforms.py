@@ -17,7 +17,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Literal, NamedTuple
 
 if TYPE_CHECKING:
     from tree_sitter import Node
@@ -32,12 +32,26 @@ class Edit:
     text: bytes
 
 
+ReturnUse = Literal["assigned", "returned", "argument", "member", "discarded", "other"]
+
+
 @dataclass(frozen=True)
 class Unproven:
-    """A site (1-based *line*) the rule matches but the transform will not rewrite, and why."""
+    """A site (1-based *line*) the rule matches but the transform will not rewrite, and why.
+
+    *column* (0-based) pins the site within its line and *return_use* is how the site's call
+    result is read, where the transform knows them (see `_return_use`).
+    """
 
     line: int
     reason: str
+    return_use: ReturnUse | None = None
+    column: int | None = None
+
+    @classmethod
+    def at(cls, node: Node, reason: str, return_use: ReturnUse | None = None) -> Unproven:
+        """The site that starts at *node*."""
+        return cls(node.start_point.row + 1, reason, return_use, node.start_point.column)
 
 
 class Used(NamedTuple):
@@ -209,7 +223,6 @@ def _plan_global_context(root: Node) -> Plan:
         if _is_xrm_page_context(node):
             sites.append(node)
     for node in sites:
-        line = node.start_point.row + 1
         parent = node.parent
         method = (
             parent.child_by_field_name("property")
@@ -228,23 +241,27 @@ def _plan_global_context(root: Node) -> Plan:
         xrm = page.child_by_field_name("object") if page is not None else None
         if xrm is not None and xrm.type == "member_expression":
             unproven.append(
-                Unproven(line, "a qualified Xrm (window.Xrm, parent.Xrm) may be another frame")
+                Unproven.at(node, "a qualified Xrm (window.Xrm, parent.Xrm) may be another frame")
             )
         elif shadowed:
             unproven.append(
-                Unproven(line, "Xrm is bound in this file, so it may not be the global")
+                Unproven.at(node, "Xrm is bound in this file, so it may not be the global")
             )
         elif _in_optional_chain(node, node.child_by_field_name("object"), parent, call):
             unproven.append(
-                Unproven(line, "an optional chain: the rewrite would drop its short-circuit")
+                Unproven.at(node, "an optional chain: the rewrite would drop its short-circuit")
             )
         elif method is None or not called:
-            unproven.append(Unproven(line, "Xrm.Page.context is used other than as a direct call"))
+            unproven.append(
+                Unproven.at(node, "Xrm.Page.context is used other than as a direct call")
+            )
         elif method.text is not None and method.text.decode() in CONTEXT_SETTINGS:
             continue
         elif method.text is None or method.text.decode() not in SAME_METHOD:
             name = method.text.decode() if method.text else "?"
-            unproven.append(Unproven(line, f"{name} has no same-name method on getGlobalContext()"))
+            unproven.append(
+                Unproven.at(node, f"{name} has no same-name method on getGlobalContext()")
+            )
         else:
             edits.append(Edit(node.start_byte, node.end_byte, _GLOBAL_CONTEXT))
     edits.sort(key=lambda e: e.start)
@@ -337,6 +354,33 @@ def _context_receiver(node: Node) -> tuple[Node, bool] | None:
     return None
 
 
+def _return_use(call: Node | None) -> ReturnUse:
+    """How the value of *call* is read, for a reviewer finishing a rewrite the transform will
+    not: ``assigned``, ``returned``, ``argument``, ``member`` (a property, method or index read
+    off the result), ``discarded`` or ``other``.
+    """
+    if call is None:
+        return "other"
+    node, parent = call, call.parent
+    while parent is not None and parent.type == "parenthesized_expression":
+        node, parent = parent, parent.parent
+    if parent is None:
+        return "other"
+    if parent.type in ("member_expression", "subscript_expression"):
+        return "member" if parent.child_by_field_name("object") == node else "other"
+    if parent.type == "variable_declarator":
+        return "assigned" if parent.child_by_field_name("value") == node else "other"
+    if parent.type in ("assignment_expression", "augmented_assignment_expression"):
+        return "assigned" if parent.child_by_field_name("right") == node else "other"
+    if parent.type == "return_statement":
+        return "returned"
+    if parent.type == "arrow_function":
+        return "returned" if parent.child_by_field_name("body") == node else "other"
+    if parent.type == "arguments":
+        return "argument"
+    return "discarded" if parent.type == "expression_statement" else "other"
+
+
 def _plan_context_settings(root: Node) -> Plan:
     """Rewrite ``<context>.getUserName()`` and the other moved methods to the property.
 
@@ -356,7 +400,6 @@ def _plan_context_settings(root: Node) -> Plan:
         if name is None or recv is None or found is None or name.decode() not in CONTEXT_SETTINGS:
             continue
         xrm, direct = found
-        line = m.start_point.row + 1
         call = _called(m)
         fn_node = recv.child_by_field_name("function") if not direct else None
         reason: str | None = _xrm_problem(xrm, shadowed)
@@ -379,7 +422,8 @@ def _plan_context_settings(root: Node) -> Plan:
                     " {id, name} lookups: every read of the list needs review"
                 )
         if reason is not None or call is None or recv.text is None or m.text is None:
-            unproven.append(Unproven(line, reason or "not a direct call"))
+            use = _return_use(call) if name == b"getUserRoles" else None
+            unproven.append(Unproven.at(m, reason or "not a direct call", use))
             continue
         gap = m.text[len(recv.text) : len(m.text) - len(name)]
         head = _GLOBAL_CONTEXT if direct else recv.text
@@ -423,7 +467,6 @@ def _plan_grid_row(root: Node) -> Plan:
         ):
             continue
         in_chain.add(inner.start_byte)
-        line = call.start_point.row + 1
         entity, data = fn.child_by_field_name("property"), data_fn.child_by_field_name("property")
         if entity is None or data is None or fn.text is None or inner.text is None:
             continue
@@ -433,10 +476,10 @@ def _plan_grid_row(root: Node) -> Plan:
         dropped += call.text[len(fn.text) :] if call.text else b""
         if _in_optional_chain(call, fn, inner, data_fn):
             unproven.append(
-                Unproven(line, "an optional chain: the rewrite would drop its short-circuit")
+                Unproven.at(call, "an optional chain: the rewrite would drop its short-circuit")
             )
         elif b"\n" in dropped:
-            unproven.append(Unproven(line, "the chain spans lines"))
+            unproven.append(Unproven.at(call, "the chain spans lines"))
         else:
             edits.append(Edit(data.start_byte, call.end_byte, b"data" + gap + b"entity"))
     for call in calls:
@@ -448,8 +491,8 @@ def _plan_grid_row(root: Node) -> Plan:
             continue
         who = "GridRow" if name == b"getData" else "GridRowData"
         unproven.append(
-            Unproven(
-                call.start_point.row + 1,
+            Unproven.at(
+                call,
                 f"{name.decode()}() on a receiver the file does not prove is a {who}",
             )
         )
@@ -494,7 +537,6 @@ def _plan_mobile_offline(root: Node) -> Plan:
         xrm = mobile.child_by_field_name("object") if mobile is not None else None
         if mobile is None or xrm is None or _prop(mobile) != b"Mobile" or not _is_xrm(xrm):
             continue
-        line = off.start_point.row + 1
         parent = off.parent
         member = (
             parent
@@ -516,7 +558,7 @@ def _plan_mobile_offline(root: Node) -> Plan:
             reason = "Xrm.Mobile.offline is used other than as a direct call of a record method"
         word = mobile.child_by_field_name("property")
         if reason is not None or word is None:
-            unproven.append(Unproven(line, reason or "not a direct call"))
+            unproven.append(Unproven.at(off, reason or "not a direct call"))
         else:
             edits.append(Edit(word.start_byte, word.end_byte, b"WebApi"))
     return _finish(edits, unproven)
@@ -555,9 +597,7 @@ def _plan_entity_save(root: Node) -> Plan:
                     and parent.child_by_field_name("function") == call
                 )
             ):
-                unproven.append(
-                    Unproven(call.start_point.row + 1, "entity.save is used other than as a call")
-                )
+                unproven.append(Unproven.at(call, "entity.save is used other than as a call"))
             continue
         if call.type != "call_expression":
             continue
@@ -568,7 +608,6 @@ def _plan_entity_save(root: Node) -> Plan:
             continue
         if save is None or entity is None:
             continue
-        line = call.start_point.row + 1
         entity_word = entity.child_by_field_name("property")
         save_word = save.child_by_field_name("property")
         if entity_word is None or save_word is None or save.text is None or entity.text is None:
@@ -576,22 +615,22 @@ def _plan_entity_save(root: Node) -> Plan:
         between = save.text[len(entity.text) : len(save.text) - len(save_word.text or b"")]
         if _in_optional_chain(call, save, entity, data):
             unproven.append(
-                Unproven(line, "an optional chain: the rewrite would drop its short-circuit")
+                Unproven.at(call, "an optional chain: the rewrite would drop its short-circuit")
             )
         elif (
             _prop(_member_object(data)) == b"Page"
             and (xrm := _member_object(_member_object(data))) is not None
             and (problem := _xrm_problem(xrm, shadowed)) is not None
         ):
-            unproven.append(Unproven(line, problem))
+            unproven.append(Unproven.at(call, problem))
         elif not _no_args(call):
             unproven.append(
-                Unproven(
-                    line, "save(saveOption) takes a string; data.save takes a saveOptions object"
+                Unproven.at(
+                    call, "save(saveOption) takes a string; data.save takes a saveOptions object"
                 )
             )
         elif between.strip(b" \t") != b".":
-            unproven.append(Unproven(line, "a comment or line break sits inside entity.save"))
+            unproven.append(Unproven.at(call, "a comment or line break sits inside entity.save"))
         else:
             edits.append(Edit(entity_word.start_byte, save_word.start_byte, b""))
     return _finish(edits, unproven)
@@ -625,7 +664,7 @@ def _plan_xrm_utility_review(root: Node) -> Plan:
             continue
         if name.decode() in _UTILITY_REVIEW:
             reason = _xrm_problem(xrm, shadowed) or _UTILITY_REVIEW[name.decode()]
-            unproven.append(Unproven(n.start_point.row + 1, reason))
+            unproven.append(Unproven.at(n, reason))
     return _finish([], unproven)
 
 
@@ -639,8 +678,8 @@ _KEYPRESS = frozenset(
 def _plan_keypress_review(root: Node) -> Plan:
     """List each key-press or auto-complete call: the replacement is a custom control."""
     unproven = [
-        Unproven(
-            call.start_point.row + 1,
+        Unproven.at(
+            call,
             f"{(_prop(fn) or b'').decode()} has no API replacement: use a custom control (PCF)",
         )
         for call in _walk(root)
@@ -711,7 +750,6 @@ def _context_sites(
         if xrm is None or not _is_xrm(xrm):
             continue
         use = page.parent
-        at = page.start_point.row + 1
         member = _prop(use) if use is not None and _member_object(use) == page else None
         nested, up = False, page.parent
         while up is not None and up != fn:
@@ -731,7 +769,7 @@ def _context_sites(
         elif reason is None and b"\n" in (page.text or b""):
             reason = "Xrm.Page spans lines"
         if reason is not None:
-            problems.append(Unproven(at, reason))
+            problems.append(Unproven.at(page, reason))
         else:
             sites.append(Edit(page.start_byte, page.end_byte, b"formContext"))
     return sites, problems
@@ -861,7 +899,7 @@ def _thread_helpers(
             for extra, _ in defs[1:]:
                 more, left = _context_sites(extra, extra, _walk(extra), shadowed)
                 if more or left:
-                    problems.append(Unproven(extra.start_point.row + 1, reason))
+                    problems.append(Unproven.at(extra, reason))
         elif params is None or body is None or body.type != "statement_block":
             reason = f"{text} has no block body to take the formContext"
         elif fn.type == "function_expression" and fn.child_by_field_name("name") is not None:
@@ -938,7 +976,6 @@ def _thread_helpers(
     unproven: list[Unproven] = []
     unreachable = boundary = cleared = 0
     for name, (fn, _body, _, sites, problems) in sorted(units.items()):
-        line = fn.start_point.row + 1
         if name in threaded:
             params = fn.child_by_field_name("parameters")
             first = (
@@ -965,22 +1002,23 @@ def _thread_helpers(
             elif name not in reached:
                 unreachable += 1
                 reason = f"no registered handler reaches {name.decode()}: {reason}"
-            unproven.append(Unproven(line, reason))
+            unproven.append(Unproven.at(fn, reason))
     for page in nodes:
         xrm = page.child_by_field_name("object") if _prop(page) == b"Page" else None
         if xrm is None or not _is_xrm(xrm) or _owner(page, defined)[0] is not None:
             continue
         if _prop(page.parent) == b"context" and _member_object(page.parent) == page:
             continue
-        line = page.start_point.row + 1
         if _owner(page, defined)[1]:
             unproven.append(
-                Unproven(line, "Xrm.Page is in a function this pass does not track (not counted)")
+                Unproven.at(
+                    page, "Xrm.Page is in a function this pass does not track (not counted)"
+                )
             )
             continue
         unreachable += 1
         unproven.append(
-            Unproven(line, "Xrm.Page is outside any function: no registered handler reaches it")
+            Unproven.at(page, "Xrm.Page is outside any function: no registered handler reaches it")
         )
     used = tuple(
         sorted(
@@ -1036,7 +1074,6 @@ def _plan_handler_context(
         if not defs:
             continue
         fn = defs[0][0]
-        line = fn.start_point.row + 1
         params, body = fn.child_by_field_name("parameters"), fn.child_by_field_name("body")
         last = name.rsplit(".", 1)[-1].encode()
         inside = _walk(fn)
@@ -1089,7 +1126,7 @@ def _plan_handler_context(
                 f"{context} may be a positional parameter: {name} is registered with parameters"
             )
         if reason is not None:
-            unproven.append(Unproven(line, reason))
+            unproven.append(Unproven.at(fn, reason))
             continue
         if params is None or body is None:
             continue

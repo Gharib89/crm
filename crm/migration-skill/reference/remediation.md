@@ -87,9 +87,18 @@ spans lines are manual review for every row. Work from `ledger.json`:
 - **`patched`** entries carry a diff per component. Review it, apply with
   `git apply`, then build and re-run `verify`; a patch is a proposal until the
   package's verification requirements pass.
-- **`manual-review`** entries (file, line, rule, reason) are code the transform
-  could not prove equivalent: an alias, a getUserRoles call, an HTML web resource the OData transform does not read, or a rewrite the emit gate rejected. Each is a task with its six
-  fields; none is dropped, and none is patched by guessing.
+- **`manual-review`** entries (file, line, rule, reason; `snippet`, `replacement` and
+  `return_use` where known) are code the transform
+  could not prove equivalent: an alias, a getUserRoles call, an HTML web resource the OData transform does not read, or a rewrite the emit gate rejected. Each is a task;
+  none is dropped, and none is patched by guessing.
+  `snippet` is the statement at the site, `replacement` the rule's documented
+  fix, so finish the edit from them rather than rediscovering the constraint.
+  On a `getUserRoles()` entry, `return_use` says how the list is read:
+  `assigned`, `returned` and `argument` need the value's later reads traced;
+  `member` needs each read checked against the `{id, name}` lookups (a GUID
+  comparison from `.indexOf(id)` or `[0]` changes to `.id`; a `.length` count
+  does not); `discarded` can be deleted; `other` needs the site read by hand
+  and each use traced as for `assigned`.
 - The repository diff exists only for a web resource the source map matched by
   hash. It derives from the deployed text, normalized to LF without a BOM, so
   the repository file's line endings can make `git apply` fail: normalize the
