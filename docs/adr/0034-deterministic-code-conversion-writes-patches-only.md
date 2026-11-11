@@ -15,8 +15,11 @@ and **manual-review entries** under its own `--out`, never into a repository.
 
 - **Scope: the deterministic tier on both sides.** It covers client API renames
   (`Xrm.Page` to `formContext`, `Xrm.Page.context` to `getGlobalContext`,
-  `Xrm.Utility` to `Xrm.Navigation`) and OData v2 and 2011 SOAP calls in recognised
-  library shapes, rewritten to `Xrm.WebApi`. On the C# side it covers the project
+  `Xrm.Utility` to `Xrm.Navigation`) and OData v2 calls in recognised library shapes,
+  rewritten to `Xrm.WebApi`. 2011 SOAP calls are detected and recorded for manual
+  review only: no SOAP adapter exists, and a synchronous SOAP call cannot be proved
+  equivalent to an asynchronous Web API call with a different response shape. A
+  future SOAP rewrite needs its own ADR. On the C# side it covers the project
   retarget: .NET Framework 4.6.2 or later, SDK NuGet references, and
   `OrganizationServiceProxy` to `ServiceClient`. Sandbox refactors (SQL, file,
   registry, ISV pages, Silverlight) stay findings for a human or an agent.

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "version": 5,
+  "version": 6,
   "rules": [
     {
       "id": "web-resource-xrm-page",
@@ -305,6 +305,7 @@
           3
         ]
       },
+      "transform": "soap-2011-review",
       "fix": "Call the Web API (Xrm.WebApi, or /api/data/v9.x/).",
       "sources": [
         "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/avoid-crm2011-service-soap",
