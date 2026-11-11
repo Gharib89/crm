@@ -482,9 +482,11 @@ _READS: tuple[_Read, ...] = (
     ),  # fmt: skip
 )
 # Columns v9 has and CRM 2011 lacks: an app sitemap's unique name (one sitemap per
-# model-driven app, null for the default), and how much of a member entity a solution
-# holds (rootcomponentbehavior: 0 with its subcomponents, 1 without, 2 as a shell).
+# model-driven app, null for the default), how much of a member entity a solution
+# holds (rootcomponentbehavior: 0 with its subcomponents, 1 without, 2 as a shell), and
+# whether a form is active (formactivationstate; CRM 2011 is unmeasured, so not asked).
 _V9_COLUMNS = {
+    "form": ("formactivationstate",),
     "sitemap": ("sitemapnameunique",),
     "solution_membership": ("rootcomponentbehavior",),
 }
@@ -1720,7 +1722,10 @@ class _Builder:
         for r in rows.get("form", []):
             self.add(
                 "form", r["id"],
-                {"entity": r["objecttypecode"], "form_type": r["type"], "name": r["name"]},
+                {"entity": r["objecttypecode"], "form_type": r["type"], "name": r["name"],
+                 # Absent where the source did not return the column: not read, not inactive.
+                 **({"active": bool(r["formactivationstate"])}
+                    if r.get("formactivationstate") is not None else {})},
                 r.get("name"), self._origin(r), r.get("ismanaged"), self._staged("form", r), 60,
                 self._stock("form", r),
             )  # fmt: skip
