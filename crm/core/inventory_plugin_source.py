@@ -33,8 +33,19 @@ _TYPE_DECLARATIONS = frozenset(
 _METHOD_DECLARATIONS = frozenset(("method_declaration", "local_function_statement"))
 #: Declarations whose name can hide a type of the same name inside their scope: a parameter, a
 #: variable, a field or a property called `File` is the member, not `System.IO.File`. Variables
-#: bound by `foreach`, `catch`, patterns, `out var`, tuples and LINQ are not tracked.
-_MEMBER_DECLARATIONS = frozenset(("parameter", "variable_declarator", "property_declaration"))
+#: bound by tuple deconstruction and LINQ are not tracked.
+_MEMBER_DECLARATIONS = frozenset(
+    (
+        "parameter",
+        "variable_declarator",
+        "property_declaration",
+        "declaration_pattern",
+        "declaration_expression",
+        "catch_declaration",
+        "implicit_parameter",
+        "foreach_statement",
+    )
+)
 #: The nodes a member declaration is visible in.
 _SCOPES = frozenset(
     (
@@ -105,8 +116,12 @@ class _Imports:
             into.add((name.text or b"").decode())
 
     def _scoped(self, node: Node) -> None:
-        name = node.child_by_field_name("name")
-        scope = node.parent
+        # An implicit lambda parameter is its own name; a foreach variable is its `left` field.
+        name = node if node.type == "implicit_parameter" else None
+        name = name or node.child_by_field_name(
+            "left" if node.type == "foreach_statement" else "name"
+        )
+        scope = node if node.type == "foreach_statement" else node.parent
         while scope is not None and scope.type not in _SCOPES:
             scope = scope.parent
         if name is not None and scope is not None:
@@ -137,7 +152,7 @@ class _Imports:
         else:
             self.namespaces.append(target)
 
-    def static_member(self, name: str, at: Node) -> bool:
+    def unshadowed(self, name: str, at: Node) -> bool:
         """Whether the bare *name* may be a static member imported by ``using static``."""
         first = name.partition(".")[0]
         return not (
@@ -167,7 +182,10 @@ def _declared_type(node: Node) -> Node | None:
         if parent is None or parent.type in ("variable_declaration", "property_declaration"):
             break
         parent = parent.parent
-    return parent.child_by_field_name("type") if parent is not None else None
+    declared = parent.child_by_field_name("type") if parent is not None else None
+    if declared is not None and declared.type == "nullable_type":
+        return declared.named_children[0]
+    return declared
 
 
 def _position(source: bytes, node: Node) -> tuple[int, int]:
@@ -221,7 +239,7 @@ def type_uses(source: bytes, listed: Collection[str]) -> dict[str, list[tuple[in
                 if full is not None:
                     add(full, target)
                 elif target.type == "identifier" and name[0].isupper():
-                    if imports.static_member(name, target):
+                    if imports.unshadowed(name, target):
                         for owner in static_types:
                             add(owner, target)
         elif node.type == "implicit_object_creation_expression":
@@ -233,7 +251,7 @@ def type_uses(source: bytes, listed: Collection[str]) -> dict[str, list[tuple[in
             if (
                 function is not None
                 and function.type == "identifier"
-                and imports.static_member((function.text or b"").decode(), function)
+                and imports.unshadowed((function.text or b"").decode(), function)
             ):
                 for owner in static_types:
                     add(owner, function)

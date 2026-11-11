@@ -184,3 +184,25 @@ def test_a_target_typed_new_takes_its_type_from_the_declaration(body: str) -> No
 
 def test_a_target_typed_new_of_an_unlisted_type_is_not_a_use() -> None:
     assert _uses("MemoryStream m = new();", "using System.IO;") == {}
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "if (o is int Foo) { Foo.ToString(); }",
+        'int.TryParse("1", out var Foo); Foo.ToString();',
+        "try { } catch (System.Exception Foo) { Foo.ToString(); }",
+        "foreach (var Foo in o) { Foo.ToString(); }",
+        "Func<int, int> f = Foo => Foo.GetHashCode();",
+    ],
+    ids=["pattern", "out-var", "catch", "foreach", "lambda"],
+)
+def test_a_binding_named_like_a_name_under_using_static_is_not_a_use(body: str) -> None:
+    source = f"using static System.IO.File;\nclass P {{ void M(object o) {{ {body} }} }}\n"
+    assert type_uses(source.encode(), LISTED) == {}
+
+
+def test_a_nullable_target_typed_new_is_a_use() -> None:
+    assert set(_uses('SqlConnection? c = new("x");', "using System.Data.SqlClient;")) == {
+        "System.Data.SqlClient.SqlConnection"
+    }
