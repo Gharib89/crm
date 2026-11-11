@@ -79,6 +79,14 @@ class ContentPattern:
 
 
 @dataclass(frozen=True)
+class XamlPattern:
+    """A regular expression over the stored XAML of the processes whose category is listed."""
+
+    pattern: re.Pattern[str]
+    categories: tuple[int, ...]
+
+
+@dataclass(frozen=True)
 class FieldIn:
     """A record field whose value is one of *values*."""
 
@@ -157,6 +165,7 @@ class Rule:
     targets: tuple[str, ...]
     detection: (
         ContentPattern
+        | XamlPattern
         | FieldIn
         | FormHandlerContext
         | RibbonActionParameter
@@ -184,6 +193,8 @@ class Rule:
         d = self.detection
         if isinstance(d, HtmlLibraryOrder):
             return record.fields.get("web_resource_type") == HTML_PAGE
+        if isinstance(d, XamlPattern):
+            return record.fields.get("category") in d.categories
         return not isinstance(d, ContentPattern) or (
             record.fields.get("web_resource_type") in d.web_resource_types
         )
@@ -231,6 +242,7 @@ def _detection(
     value: object, kind: str, where: str
 ) -> (
     ContentPattern
+    | XamlPattern
     | FieldIn
     | FormHandlerContext
     | RibbonActionParameter
@@ -254,6 +266,17 @@ def _detection(
         if not all(type(t) is int for t in types):
             raise InventoryError(f"rules file {where}.web_resource_types must hold integers")
         return ContentPattern(pattern, tuple(cast(list[int], types)))
+    if detection_type == "xaml_pattern":
+        if kind != "process":
+            raise InventoryError(f"rules file {where}: xaml_pattern applies to process only")
+        try:
+            xaml = re.compile(_text(obj, "pattern", where))
+        except re.error as exc:
+            raise InventoryError(f"rules file {where}.pattern does not compile: {exc}") from exc
+        categories = _items(obj, "categories", where)
+        if not all(type(c) is int for c in categories):
+            raise InventoryError(f"rules file {where}.categories must hold integers")
+        return XamlPattern(xaml, tuple(cast(list[int], categories)))
     if detection_type == "field_in":
         values = _items(obj, "values", where)
         return FieldIn(_text(obj, "field", where), tuple(values))
@@ -310,9 +333,9 @@ def _detection(
             )
         return PluginProject()
     raise InventoryError(
-        f"rules file {where}.type {detection_type!r} is not content_pattern, field_in, "
-        "form_handler_context, form_library_order, html_library_order, ribbon_library_order, "
-        "ribbon_action_parameter or plugin_project"
+        f"rules file {where}.type {detection_type!r} is not content_pattern, xaml_pattern, "
+        "field_in, form_handler_context, form_library_order, html_library_order, "
+        "ribbon_library_order, ribbon_action_parameter or plugin_project"
     )
 
 

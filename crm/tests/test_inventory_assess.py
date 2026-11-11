@@ -50,9 +50,18 @@ PROCESSES = (
 )
 
 
-def _process(name: str, category: int, folder: Path) -> inv.Record:
+OOB_XAML = (
+    "<Activity><mxswa:ActivityReference "
+    'AssemblyQualifiedName="Microsoft.Crm.Workflow.Activities.CreateEntity, '
+    'Microsoft.Crm.Workflow, Version=9.0.0.0" /></Activity>'
+)
+
+
+def _process(name: str, category: int, folder: Path, xaml: str | None = OOB_XAML) -> inv.Record:
+    """A process record; a classic workflow (category 0) carries *xaml* as its text artifact."""
     fields = {"category": category, "primary_entity": "new_project", "name": name}
-    return _record("process", fields, folder)
+    files = [("workflow.xaml", xaml.encode(), True)] if category == 0 and xaml is not None else ()
+    return _record("process", fields, folder, files=files)
 
 
 def _assembly(name: str, folder: Path, **fields) -> inv.Record:

@@ -824,7 +824,7 @@ applies (see [Convert code](#convert-code)). The rules file is
 published with its format,
 [`compatibility-rules-v1.schema.json`](https://github.com/Gharib89/crm/blob/main/crm/schemas/compatibility-rules-v1.schema.json).
 The rules cover web resource scripts (HTML and JavaScript), plug-in assembly
-registration, how forms and ribbon diffs call those scripts, and classic dialogs (process records of category 1):
+registration, how forms and ribbon diffs call those scripts, classic dialogs (process records of category 1) and what a classic workflow's stored XAML holds (process records of category 0):
 
 | Rule | Class | Targets |
 |---|---|---|
@@ -850,6 +850,18 @@ registration, how forms and ribbon diffs call those scripts, and classic dialogs
 | `assembly-storage-online`, `assembly-storage-onprem`: an assembly stored on disk or in the GAC | blocker online, optional on-prem | one each |
 | `assembly-isolation-none`, `assembly-isolation-none-onprem`: an assembly registered without isolation | blocker online, optional on-prem | one each |
 | `process-dialog`: a classic dialog (a `process` record of category 1); Microsoft deprecates dialogs and documents business process flows or canvas apps as the replacement, with no automatic conversion | deprecated | both |
+| `workflow-wait-condition`: a classic workflow (category 0) whose stored XAML holds a wait condition, the `Postpone` activity with or without a namespace prefix; a cloud flow has no equivalent (Microsoft's feature capability comparison) | optional | both |
+| `workflow-custom-activity`: a classic workflow (category 0) whose stored XAML holds an `ActivityReference` whose `AssemblyQualifiedName` names an assembly other than `Microsoft.Crm.Workflow`; a cloud flow cannot run it | optional | both |
+
+The two workflow rules are `optional`, never `blocker`: Dataverse online still runs classic
+workflows, and Microsoft says only to consider replacing them. They read the XAML artifact, so
+a category 0 workflow with no stored XAML is `unknown` (`no text artifact`, `artifact
+unreadable: <path>` or `artifact changed since extraction: <path>`), never `clear`. Business
+process flows, actions, dialogs and modern flows are not judged by them. Real-time
+(synchronous) mode is **not** judged: the inventory does not record a process's mode, so a
+`clear` classic workflow says nothing about it. The rules share their patterns with
+`crm workflow migration-assess`, which is live, judges real-time mode too and writes no
+findings file.
 
 Every component gets at least one **compatibility finding**, keyed by component key,
 never by GUID:
@@ -858,7 +870,7 @@ never by GUID:
 |---|---|
 | `blocker`, `deprecated`, `optional` | a rule matched; the evidence is the artifact `path`, its `sha256`, the first ten match `locations` (line and column) and the `match_count`, for a plug-in registration rule or `process-dialog` the recorded `field` and `value`, and for the two form and ribbon rules the `path`, `sha256`, `match_count` and `registrations`: per flagged handler its `event`, `attribute`, `function`, `library` and current `passExecutionContext`, per flagged action its `command`, `function`, `library` and `crm_parameters`; for a plug-in project the repository `path`, the `sha256` of its normalized text, `target_framework_version`, `sdk_references` and `fired` (see below) |
 | `unknown` | no rule applies to the component (reason `no rule`: a kind no rule covers, or a binary web resource); a rule needs a field the inventory did not record (`field isolation_mode not recorded`, an inventory extracted before crm recorded it); a script artifact is missing or its hash differs from the manifest; an extraction gap names the component (`extraction gap: <reason>`); its kind was not read complete (`kind coverage partial`); a form or ribbon rule cannot read its library (`library <name> is not in the inventory`, `is not a script web resource`, or the library's artifact problem) or its own XML (`artifact is not well-formed XML`); a mapped plug-in project cannot be read or judged (`project <path> unreadable: ...`, `project <path>: the project is not well-formed XML`); or the inventory's source version is not a dotted version (extract writes `unknown` when it cannot read it), so no rule's version range can be decided |
-| `clear` | the rules that apply found nothing. For a process that means only that the packaged process rules found nothing (today, only `process-dialog`): nothing about its mode, trigger or fitness for a cloud flow, and categories other than 1 have no rule yet, so a classic workflow, a business process flow and a modern flow all read `clear` |
+| `clear` | the rules that apply found nothing. For a process that means only that the packaged process rules found nothing (`process-dialog`, and for a classic workflow the two XAML rules): nothing about its mode or trigger, and a business process flow, an action and a modern flow have no rule, so they read `clear` |
 
 A gap or incomplete coverage adds an `unknown` beside the rule findings, so a component
 read only in part keeps both. The findings file

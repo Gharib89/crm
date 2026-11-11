@@ -52,16 +52,22 @@ MIGRATION_BLOCKER_CUSTOM_ACTIVITY = "custom_activity"
 # ActivityReference whose AssemblyQualifiedName names a different assembly is a
 # custom workflow activity (verified live: first-party Microsoft.Dynamics.* /
 # Microsoft.PowerPages.* solution activities and third-party assemblies alike).
-_OOB_ACTIVITY_ASSEMBLY = "Microsoft.Crm.Workflow"
+# `AssemblyQualifiedName="<type>, <assembly>, Version=..."`: the lookahead skips
+# the out-of-box assembly, `(?!\s)` stops `\s*` backtracking past it.
+# `crm inventory assess` carries the same two patterns in its packaged rules
+# (`workflow-wait-condition`, `workflow-custom-activity`); a test keeps them equal.
+CUSTOM_ACTIVITY_PATTERN = (
+    r'AssemblyQualifiedName="[^,"]+,\s*(?!\s)(?!Microsoft\.Crm\.Workflow\s*[,"])[^,"]+'
+)
 
 # Classic wait/wait-timeout conditions compile to the `Postpone` activity in the
 # Microsoft.Xrm.Sdk.Workflow.Activities namespace (alias `mxswa` in practice).
 # Match the element local name with or without a namespace prefix so a
 # default-namespaced `<Postpone>` is still caught; ground-truthed against live
 # workflows (which always carry the `mxswa:` prefix).
-_WAIT_ACTIVITY_RE = re.compile(r"<(?:\w+:)?Postpone[\s/>]")
-# `AssemblyQualifiedName="<type>, <assembly>, Version=..."` — capture the assembly.
-_ACTIVITY_ASSEMBLY_RE = re.compile(r'AssemblyQualifiedName="[^,"]+,\s*([^,"]+)')
+WAIT_ACTIVITY_PATTERN = r"<(?:\w+:)?Postpone[\s/>]"
+_WAIT_ACTIVITY_RE = re.compile(WAIT_ACTIVITY_PATTERN)
+_CUSTOM_ACTIVITY_RE = re.compile(CUSTOM_ACTIVITY_PATTERN)
 
 # Activation state pairs
 STATE_DRAFT = (0, 1)  # (statecode, statuscode)
@@ -538,7 +544,7 @@ def assess_workflow_migration(row: dict[str, Any]) -> dict[str, Any]:
         blockers.append(MIGRATION_BLOCKER_REAL_TIME)
     if _WAIT_ACTIVITY_RE.search(xaml):
         blockers.append(MIGRATION_BLOCKER_WAIT)
-    if any(asm.strip() != _OOB_ACTIVITY_ASSEMBLY for asm in _ACTIVITY_ASSEMBLY_RE.findall(xaml)):
+    if _CUSTOM_ACTIVITY_RE.search(xaml):
         blockers.append(MIGRATION_BLOCKER_CUSTOM_ACTIVITY)
     return {
         "id": row.get("workflowid"),

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "version": 6,
+  "version": 7,
   "rules": [
     {
       "id": "web-resource-xrm-page",
@@ -644,6 +644,56 @@
       "sources": [
         "https://learn.microsoft.com/power-automate/replace-dialogs",
         "https://learn.microsoft.com/power-platform/important-changes-coming#process-dialogs-are-deprecated"
+      ]
+    },
+    {
+      "id": "workflow-wait-condition",
+      "kind": "process",
+      "class": "optional",
+      "title": "Classic workflow with a wait condition, which a cloud flow cannot express",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "xaml_pattern",
+        "pattern": "<(?:\\w+:)?Postpone[\\s/>]",
+        "categories": [
+          0
+        ]
+      },
+      "fix": "A classic workflow's wait condition (the Postpone activity) has no cloud flow equivalent: Microsoft's Feature capability comparison lists wait conditions on columns as supported by classic workflows only. Microsoft names no replacement pattern, so redesign the process, for example by splitting it at the wait into separately triggered flows. Dataverse online still runs classic workflows, so this is a modernization choice, not a blocker.",
+      "sources": [
+        "https://learn.microsoft.com/power-automate/replace-workflows-with-flows"
+      ]
+    },
+    {
+      "id": "workflow-custom-activity",
+      "kind": "process",
+      "class": "optional",
+      "title": "Classic workflow running a custom workflow activity, which a cloud flow cannot run",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "xaml_pattern",
+        "pattern": "AssemblyQualifiedName=\"[^,\"]+,\\s*(?!\\s)(?!Microsoft\\.Crm\\.Workflow\\s*[,\"])[^,\"]+",
+        "categories": [
+          0
+        ]
+      },
+      "fix": "A classic workflow's custom workflow activity (an ActivityReference to an assembly other than Microsoft.Crm.Workflow) has no cloud flow equivalent: Microsoft's Feature capability comparison lists running custom background workflow activities as supported by classic workflows only. Microsoft documents running Dataverse actions, including custom actions, from a flow, so move the activity's logic into a custom action or plug-in and call it from the flow. Dataverse online still runs classic workflows, so this is a modernization choice, not a blocker.",
+      "sources": [
+        "https://learn.microsoft.com/power-automate/replace-workflows-with-flows"
       ]
     }
   ]

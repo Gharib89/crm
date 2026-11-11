@@ -23,11 +23,18 @@ A classic dialog (`process-dialog`, a process of category 1) is `deprecated`:
 enter it as "Deprecated but working" and name the replacement, a business
 process flow or a canvas app. There is no automatic conversion.
 
+A classic workflow (category 0) is read from its stored XAML. `workflow-wait-condition`
+(a `Postpone` activity) and `workflow-custom-activity` (an `ActivityReference` to an
+assembly other than `Microsoft.Crm.Workflow`) are `optional`: enter them as "Optional
+modernization": a cloud flow has no equivalent for either, and Dataverse online still
+runs classic workflows. A classic workflow with no readable XAML is `unknown`.
+
 `clear` is not "compatible": the rules cover few kinds, and a component no rule
 covers is `unknown`.
-For a process, `clear` means only that `process-dialog` did not fire: a classic
-workflow, a business process flow and a modern flow all read `clear`, so it says
-nothing about their mode, trigger or fitness for a cloud flow.
+For a process, `clear` means only that the process rules did not fire. The inventory
+does not record a process's mode, so a `clear` classic workflow says nothing about
+real-time (synchronous) mode, and a business process flow or a modern flow has no
+rule.
 
 ## Quote the evidence
 
@@ -56,11 +63,14 @@ Read each `unknown`'s `reason` and act on it:
 `unattached_gaps` counts extraction gaps that name no component; they stay in
 the report as unknowns too.
 
-Classic workflows have their own check, `crm workflow migration-assess`. It reads
-the org through a profile and judges only their conversion to cloud flows, which
-Dataverse online does not require. Enter its findings as "deprecated but
-working" conversion candidates marked "needs redesign"; they become confirmed
-blockers only when the plan requires the conversion.
+Classic workflows also have `crm workflow migration-assess`. It is live (it reads
+the org through a profile), covers category 0 only, also judges real-time mode, and
+writes no findings file, and no package holds its verdicts. The inventory's two
+workflow rules give the same wait and custom-activity verdicts; only `migration-assess`
+sees mode. Dataverse online
+does not require the conversion, so enter its findings as "Optional modernization"
+marked "needs redesign"; they become confirmed blockers only when the plan requires
+the conversion.
 
 ## Read the registration findings
 

@@ -88,8 +88,9 @@ is missing stays open.
    rules and source or runtime evidence. `crm inventory assess` runs the
    rules shipped with crm and gives every component a finding
    (`reference/assessment.md`), which also covers `clear` and `unknown`. For
-   classic workflows, `crm workflow migration-assess` flags the cloud-flow
-   blockers. Done when
+   classic workflows, `crm workflow migration-assess` adds the real-time mode
+   check; wait conditions and custom activities are optional modernization.
+   Done when
    every component carries one of the four classes, a `clear` or `unknown`
    from `crm inventory assess` included, once evidence settles it, with the
    rule or evidence behind it.
