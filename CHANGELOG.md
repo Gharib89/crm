@@ -9,6 +9,27 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.112.11 (2026-11-11)
+
+### Bug Fixes
+
+- **inventory**: Convert records 2011 SOAP endpoint sites for review and amends ADR 0034
+  ([#1227](https://github.com/Gharib89/crm/pull/1227),
+  [`1960dc8`](https://github.com/Gharib89/crm/commit/1960dc804a973d63f46b3afd4fa0017b4b41e8d2))
+
+- **inventory**: Count a string inside a template substitution once
+  ([#1227](https://github.com/Gharib89/crm/pull/1227),
+  [`1960dc8`](https://github.com/Gharib89/crm/commit/1960dc804a973d63f46b3afd4fa0017b4b41e8d2))
+
+- **inventory**: Narrow the rule detection type in the SOAP pattern test
+  ([#1227](https://github.com/Gharib89/crm/pull/1227),
+  [`1960dc8`](https://github.com/Gharib89/crm/commit/1960dc804a973d63f46b3afd4fa0017b4b41e8d2))
+
+- **inventory**: Pin the SOAP pattern, bytes and same-line cases; clarify the skill row
+  ([#1227](https://github.com/Gharib89/crm/pull/1227),
+  [`1960dc8`](https://github.com/Gharib89/crm/commit/1960dc804a973d63f46b3afd4fa0017b4b41e8d2))
+
+
 ## v1.112.10 (2026-11-11)
 
 ### Bug Fixes
