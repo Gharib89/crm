@@ -9,6 +9,24 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.112.10 (2026-11-11)
+
+### Bug Fixes
+
+- **migration-skill**: Arrival checklist for a cloud org after a database upgrade
+  ([#1226](https://github.com/Gharib89/crm/pull/1226),
+  [`8f64993`](https://github.com/Gharib89/crm/commit/8f6499382694bd1b8fee7d3ebb1a96d5d1e12268))
+
+- **migration-skill**: Correct the appointment-method value in the mailbox read
+  ([#1226](https://github.com/Gharib89/crm/pull/1226),
+  [`8f64993`](https://github.com/Gharib89/crm/commit/8f6499382694bd1b8fee7d3ebb1a96d5d1e12268))
+
+### Chores
+
+- Ignoring inventory folder and adding uv lock
+  ([`9627174`](https://github.com/Gharib89/crm/commit/9627174660c2c9259444aeadae601c6f31effd59))
+
+
 ## v1.112.9 (2026-11-11)
 
 ### Bug Fixes
