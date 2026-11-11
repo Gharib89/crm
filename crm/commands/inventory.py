@@ -742,6 +742,12 @@ def inventory_convert_cmd(
     type=click.Path(exists=True, file_okay=False, path_type=Path),
     help="The application repository --source-map was made from.",
 )
+@click.option(
+    "--source-host",
+    "source_hosts",
+    multiple=True,
+    help="A host name of the source org, repeatable (crm01 or crm01.contoso.com).",
+)
 @_usage_options
 @pass_ctx
 def inventory_assess_cmd(
@@ -751,6 +757,7 @@ def inventory_assess_cmd(
     out_file: Path,
     source_map_file: Path | None,
     repo_dir: Path | None,
+    source_hosts: tuple[str, ...],
     in_use: bool,
     exclude_unknown: bool,
     sort: str,
@@ -792,11 +799,29 @@ def inventory_assess_cmd(
     registry type the sandbox blocks (the file path, its sha256, line and column locations);
     a file that cannot be read or parsed is unknown. Nothing rewrites that code. A map from
     another inventory exits 1. Without both, no project is read and the findings are as before.
+
+    --source-host (repeatable) names the source org's host, which stays on the command line and
+    never enters the rules file. After a database upgrade the stored text still points at a
+    server that is switched off, so a blocker `source-host-web-resource` (script and HTML web
+    resources), `source-host-sitemap`, `source-host-ribbon`, `source-host-ribbon-diff` or
+    `source-host-process` is reported per component whose text names a host, with the same
+    evidence as a content rule (matched lines, comments included). The match ignores case
+    and covers the whole host: crm01 matches crm01.contoso.com, not crm010 or crm01-test.
+    A plug-in step's configuration is not recorded in the inventory, so it is not read. A
+    host with a scheme, port or path exits 1. The findings file lists the hosts, sorted, as
+    source_hosts; without --source-host none of this runs and the file is as before.
     """
     if (source_map_file is None) != (repo_dir is None):
         raise click.UsageError("--source-map and --repo go together: the map names each project.")
     try:
-        result = assess(inventory, target, out=out_file, source_map=source_map_file, repo=repo_dir)
+        result = assess(
+            inventory,
+            target,
+            out=out_file,
+            source_map=source_map_file,
+            repo=repo_dir,
+            source_hosts=source_hosts,
+        )
         parsed = read_inventory(inventory)
         try:
             edges = reference_edges(parsed, inventory)

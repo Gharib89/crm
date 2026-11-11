@@ -147,6 +147,25 @@
               }
             },
             {
+              "description": "The source org's host names, which the run supplies (`crm inventory assess --source-host`) and the file never holds: the rule hits where the record's text artifacts name one. The rule does not run without a host. web_resource_types is required on kind web_resource and refused on any other.",
+              "type": "object",
+              "required": [
+                "type"
+              ],
+              "properties": {
+                "type": {
+                  "const": "host_pattern"
+                },
+                "web_resource_types": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "integer"
+                  }
+                }
+              }
+            },
+            {
               "type": "object",
               "required": [
                 "type",

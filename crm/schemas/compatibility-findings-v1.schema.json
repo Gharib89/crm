@@ -144,6 +144,15 @@
       "type": "integer",
       "minimum": 1
     },
+    "source_hosts": {
+      "description": "The source org host names the run searched for (`--source-host`), lowercased, deduplicated and sorted, so two runs compare; absent when none was given.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
     "incomplete": {
       "description": "Each kind whose coverage is not complete, with its status.",
       "type": "object",
