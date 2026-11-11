@@ -150,6 +150,32 @@
               "type": "object",
               "required": [
                 "type",
+                "pattern",
+                "categories"
+              ],
+              "properties": {
+                "type": {
+                  "const": "xaml_pattern"
+                },
+                "pattern": {
+                  "description": "A Python regular expression searched in the stored XAML of a process record. Valid on kind process only.",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "categories": {
+                  "description": "The process categories the rule judges (0 is a classic workflow).",
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "integer"
+                  }
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "type",
                 "field",
                 "values"
               ],
