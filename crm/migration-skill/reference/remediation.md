@@ -86,9 +86,9 @@ Microsoft's client API deprecation table convert:
 A shadowed `Xrm`, `window.Xrm` or `parent.Xrm`, an optional chain and a call that
 spans lines are manual review for every row. Work from `ledger.json`:
 
-- **`patched`** entries carry a diff per component. Review it, apply with
-  `git apply`, then build and re-run `verify`; a patch is a proposal until the
-  package's verification requirements pass.
+- **`patched`** entries carry a diff per component. Review it, apply it, prove
+  the tree carries it (see "The loop after convert"), then build; a patch is a
+  proposal until the package's verification requirements pass.
 - **`manual-review`** entries (file, line, rule, reason; `snippet`, `replacement` and
   `return_use` where known) are code the transform
   could not prove equivalent: an alias, a getUserRoles call, an HTML web resource the OData transform does not read, or a rewrite the emit gate rejected. Each is a task;
@@ -127,6 +127,26 @@ spans lines are manual review for every row. Work from `ledger.json`:
 Done when every package task, every `unplaced` finding and every unknown edge in
 `index.json` has its six fields or a named unknown, every `manual-review` ledger
 entry has a task, and each patch builds clean in the repository.
+
+## The loop after convert
+
+Convert and `check-applied` never write to the repository or an org: the steps
+that do are yours, each behind its gate. Do them in order and stop at the first
+gate that fails.
+
+1. Review each diff. Gate: you read it.
+2. `git apply --check`, then `git apply`, in the repository. Gate: the check
+   passes; a failed check means normalize the file's line endings or edit by hand.
+3. `crm inventory check-applied`. Gate: exit 0. `not_applied` is a patch left
+   out, `diverged` a file edited since extraction (re-run convert from a fresh
+   extract), `missing` a moved or deleted file. `not_checkable` rows are manual
+   review or inventory-only patches: they stay tasks.
+4. Build and check in the repository's own toolchain. Gate: green.
+5. Continue in `reference/verification.md`: confirm the target, deploy, re-extract,
+   `map-source`, record results, `verify`.
+
+Out of bounds for the whole loop: a production org, a `crm2011` profile and
+hosted CI.
 
 ## Plug-in projects: retarget, then build outside convert
 

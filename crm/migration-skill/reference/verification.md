@@ -14,6 +14,24 @@ unexpected identity ends the step: stop, name what answered, and ask the user.
 Nothing is deployed, imported or written until this passes, and a profile that
 serves as a source stays read-only (`environments.md`).
 
+## Deploy and re-extract: the loop's second half
+
+Starts once the loop in `reference/remediation.md` has a green build. Each step
+has its gate; stop at the first that fails.
+
+1. Confirm the target (above). Gate: whoami matches the named dev or test org.
+2. Deploy by the route that fits the component. A web resource: `crm webresource
+   push`. A plug-in assembly: `crm plugin register-assembly`. Form, ribbon or
+   sitemap XML: repack with `crm solution pack`, then bring it in with the
+   solution import verb and an explicit `--solution`. Gate: the command exits 0
+   and, for XML, the solution is published.
+3. Re-extract the target scoped to that solution, then `crm inventory map-source`
+   it against the repository. Gate: each deployed component is `matched`.
+4. Test and record results as below, then `crm inventory verify`. Gate: the verdict.
+
+A production org, a `crm2011` profile and hosted CI are out of bounds. A package
+is complete only when `verify` says so.
+
 ## Collect errors and traces with existing commands
 
 The `crm` skill owns the how: its troubleshooting page covers errors, retries,
