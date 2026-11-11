@@ -23,9 +23,9 @@ has its gate; stop at the first that fails.
 2. Deploy by the route that fits the component. A web resource: `crm webresource
    push`. A plug-in assembly: `crm plugin register-assembly`. Form, ribbon or
    sitemap XML: repack with `crm solution pack`, import the zip with `crm
-   solution import`, then `crm solution publish-all` (the import's `--publish`
-   activates workflows only, it does not publish customizations). Gate: the
-   command exits 0 and, for XML, the publish ran.
+   solution import`, then `crm solution publish-all` (an import publishes
+   workflows only, not customizations). Gate: the command exits 0 and, for XML,
+   the publish ran.
 3. Re-extract the target scoped to that solution, then `crm inventory map-source`
    it against the repository. Gate: each deployed component is `matched`.
 4. Test and record results as below, then `crm inventory verify`. Gate: the verdict.

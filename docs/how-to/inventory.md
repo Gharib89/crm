@@ -1063,7 +1063,7 @@ apply the `.patched.js` by hand. `data` holds `patched`, `manual_review`, `entri
 ## Check that a repository carries the patches
 
 ```bash
-git apply ./patches/<package id>/<stem>.repo.diff
+git -C ./app-repo apply "$PWD/patches/<package id>/<stem>.repo.diff"
 crm --json inventory check-applied ./patches --repo ./app-repo
 ```
 
