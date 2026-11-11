@@ -1692,7 +1692,7 @@ def _merge_checker(
     covered: dict[tuple[str, str, str], list[int]] = {}
     for f in findings:
         if f.rule in counterpart and isinstance(f.evidence, ContentEvidence):
-            at = (f.kind, f.key, cast(str, counterpart[f.rule]))
+            at = (f.kind, f.key, counterpart[f.rule])
             covered.setdefault(at, []).extend(line for line, _ in f.evidence.locations)
     added: list[Finding] = []
     unmatched: list[dict[str, Any]] = []

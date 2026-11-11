@@ -13,6 +13,7 @@ import re
 import shutil
 import zipfile
 from pathlib import Path
+from typing import Any, cast
 
 import jsonschema
 import pytest
@@ -165,7 +166,8 @@ def test_a_result_for_a_file_outside_the_inventory_or_a_non_web_rule_is_listed_n
 def test_a_result_overlapping_a_packaged_finding_of_its_rule_is_skipped_and_counted(merged):
     by_rule = _by_rule(merged, LEGACY)
     # Line 2 is the packaged soap-2011 hit, line 7 is not: only line 7 stays.
-    assert [f.evidence.locations for f in by_rule["web-avoid-crm2011-service-soap"]] == [((7, 3),)]
+    soap = by_rule["web-avoid-crm2011-service-soap"]
+    assert [cast(Any, f.evidence).locations for f in soap] == [((7, 3),)]
     # Line 3 is the packaged xrm-page hit, which names web-use-client-context as its counterpart.
     assert "web-use-client-context" not in by_rule
     assert merged.checker is not None and merged.checker.skipped == 2
@@ -319,7 +321,7 @@ def test_packages_places_a_checker_finding_and_convert_writes_nothing_for_it(
     findings = root / "findings.json"
     findings.write_text(assess.dump_findings(merged), encoding="utf-8")
     packages = root / "packages"
-    built = build_packages(
+    built: Any = build_packages(
         folder, read_source_map(source_map), None, assess.read_findings(findings)
     )
     write_packages(built, packages)
