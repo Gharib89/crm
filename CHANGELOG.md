@@ -9,6 +9,40 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.112.6 (2026-11-11)
+
+### Bug Fixes
+
+- **migration-skill**: Cloud-first route and a handover page for hops run by another team
+  ([#1222](https://github.com/Gharib89/crm/pull/1222),
+  [`d925ee2`](https://github.com/Gharib89/crm/commit/d925ee2a580a3706601c17fd503f8da7db84158f))
+
+### Documentation
+
+- How-to step 7 matches the skill ([#1222](https://github.com/Gharib89/crm/pull/1222),
+  [`d925ee2`](https://github.com/Gharib89/crm/commit/d925ee2a580a3706601c17fd503f8da7db84158f))
+
+- **migration-skill**: Align handover wording, drop unquoted-phrase quote
+  ([#1222](https://github.com/Gharib89/crm/pull/1222),
+  [`d925ee2`](https://github.com/Gharib89/crm/commit/d925ee2a580a3706601c17fd503f8da7db84158f))
+
+- **migration-skill**: Cloud-first route and a handover page for hops run by another team
+  ([#1222](https://github.com/Gharib89/crm/pull/1222),
+  [`d925ee2`](https://github.com/Gharib89/crm/commit/d925ee2a580a3706601c17fd503f8da7db84158f))
+
+- **migration-skill**: Cloud-first route keeps map-source and patch steps
+  ([#1222](https://github.com/Gharib89/crm/pull/1222),
+  [`d925ee2`](https://github.com/Gharib89/crm/commit/d925ee2a580a3706601c17fd503f8da7db84158f))
+
+- **migration-skill**: Give map-source its own step in the cloud-first route
+  ([#1222](https://github.com/Gharib89/crm/pull/1222),
+  [`d925ee2`](https://github.com/Gharib89/crm/commit/d925ee2a580a3706601c17fd503f8da7db84158f))
+
+- **migration-skill**: How-to route maps source, forms row states both answers
+  ([#1222](https://github.com/Gharib89/crm/pull/1222),
+  [`d925ee2`](https://github.com/Gharib89/crm/commit/d925ee2a580a3706601c17fd503f8da7db84158f))
+
+
 ## v1.112.5 (2026-11-11)
 
 ### Bug Fixes
