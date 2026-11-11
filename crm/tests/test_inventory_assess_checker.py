@@ -343,3 +343,69 @@ def test_packages_places_a_checker_finding_and_convert_writes_nothing_for_it(
     assert not [e for e in ledger["entries"] if e["rule"] in checker_ids]
     assert before == {p: p.read_bytes() for p in folder.rglob("*") if p.is_file()}
     shutil.rmtree(out)
+
+
+def test_a_result_on_a_packaged_hit_past_the_location_cap_is_still_skipped(tmp_path):
+    soap = 'var s = "/XRMServices/2011/Organization.svc/web";\n'
+    many = "".join(soap for _ in range(assess.MAX_LOCATIONS + 5))
+    folder = tmp_path / "inv"
+    folder.mkdir()
+    record = _record(LEGACY, many, folder)
+    manifest = inv.Inventory(
+        schema_version=inv.SCHEMA_VERSION,
+        source=inv.Source("crm2011", ORG, None, "5.0.9690.4376"),
+        extracted_at="2026-11-01T10:00:00Z",
+        cli_version="1.119.0",
+        scope=inv.Scope("org", ()),
+        publication="published",
+        records=(record,),
+        coverage={"web_resource": inv.KindCoverage("complete", 1, 1, False, ())},
+        gaps=(),
+    )
+    (folder / inv.MANIFEST_NAME).write_text(inv.dump_manifest(manifest), encoding="utf-8")
+    last = assess.MAX_LOCATIONS + 5
+    report = tmp_path / "r.sarif"
+    report.write_text(
+        json.dumps(
+            {
+                "version": "2.1.0",
+                "runs": [
+                    {
+                        "tool": {"driver": {"rules": []}},
+                        "results": [
+                            {
+                                "ruleId": "web-avoid-crm2011-service-soap",
+                                "properties": {"severity": "High"},
+                                "message": {"text": "m"},
+                                "locations": [
+                                    {
+                                        "physicalLocation": {
+                                            "artifactLocation": {"uri": f"/{LEGACY}"},
+                                            "region": {"startLine": last, "startColumn": 1},
+                                        }
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = assess.assess(folder, "online", checker_report=report)
+    assert result.checker is not None and result.checker.skipped == 1
+    assert not _rows(result, LEGACY)
+
+
+def test_an_unreadable_zip_member_is_a_clean_error_naming_the_file(folder, tmp_path, monkeypatch):
+    archive = tmp_path / "locked.zip"
+    with zipfile.ZipFile(archive, "w") as z:
+        z.writestr("r.sarif", "{}")
+
+    def locked(self, name, pwd=None):
+        raise RuntimeError("File 'r.sarif' is encrypted, password required for extraction")
+
+    monkeypatch.setattr(zipfile.ZipFile, "read", locked)
+    with pytest.raises(inv.InventoryError, match=re.escape(str(archive))):
+        assess.assess(folder, "online", checker_report=archive)

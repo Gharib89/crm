@@ -149,7 +149,13 @@ def read_report(path: Path) -> CheckerReport:
                     found, rules = _sarif(archive.read(name), f"{where}: {name}")
                     results += found
                     catalog |= rules
-        except (zipfile.BadZipFile, OSError) as exc:
+        except (
+            zipfile.BadZipFile,
+            zipfile.LargeZipFile,
+            OSError,
+            RuntimeError,
+            NotImplementedError,
+        ) as exc:
             raise InventoryError(f"cannot read {where}: {exc}") from exc
     else:
         results, catalog = _sarif(raw, where)

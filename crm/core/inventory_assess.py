@@ -1656,7 +1656,7 @@ def assess(
     checker: CheckerMerge | None = None
     if report is not None:
         overrides = load_overrides(checker_overrides or OVERRIDES_PATH)
-        findings, checker = _merge_checker(report, overrides, inv, findings, rules)
+        findings, checker = _merge_checker(report, overrides, inv, findings, rules, folder)
     return AssessResult(
         inventory=_header(inv, raw),
         target=target,
@@ -1675,6 +1675,7 @@ def _merge_checker(
     inv: Inventory,
     findings: list[Finding],
     rules: Rules,
+    folder: Path,
 ) -> tuple[list[Finding], CheckerMerge]:
     """Add one finding per checker result that names a web resource the inventory holds.
 
@@ -1689,11 +1690,21 @@ def _merge_checker(
     """
     by_name = {str(r.fields.get("name")): r for r in inv.records if r.kind == "web_resource"}
     counterpart = {r.id: r.checker_rule for r in rules.rules if r.checker_rule}
+    by_id = {r.id: r for r in rules.rules}
+    records = {(r.kind, r.key): r for r in inv.records}
     covered: dict[tuple[str, str, str], list[int]] = {}
     for f in findings:
         if f.rule in counterpart and isinstance(f.evidence, ContentEvidence):
             at = (f.kind, f.key, counterpart[f.rule])
-            covered.setdefault(at, []).extend(line for line, _ in f.evidence.locations)
+            lines = [line for line, _ in f.evidence.locations]
+            detection = by_id[f.rule].detection
+            if f.evidence.match_count > len(lines) and isinstance(detection, ContentPattern):
+                # The evidence keeps MAX_LOCATIONS hits; a result may sit on a later one.
+                text = _texts(records[(f.kind, f.key)], folder)[0].get(f.evidence.path, "")
+                lines = [
+                    text.count("\n", 0, m.start()) + 1 for m in detection.pattern.finditer(text)
+                ]
+            covered.setdefault(at, []).extend(lines)
     added: list[Finding] = []
     unmatched: list[dict[str, Any]] = []
     hit: dict[str, dict[str, Any]] = {}
