@@ -148,18 +148,22 @@ C# of the same mapped project, so they need the source map and the repository pa
 `assess`, and judge `--target online` only. Without both flags, or for an unmapped or
 ambiguous assembly, no source was read: a `clear` there says nothing about the code.
 
-- **`blocker`** is one finding per file and rule: the code creates or accesses a type the
-  online sandbox blocks (a SQL client, `File`, `Directory`, `Registry`). Quote the evidence's
-  `path`, `locations` (line and column of each use) and `match_count`. The type lists and
-  the Learn source are in `rules_hit`.
+- **`blocker`** is one finding per file and rule, for code that creates or accesses a type the
+  online sandbox blocks: a SQL client (`plugin-source-sql-client`), the file system
+  (`plugin-source-filesystem`) or the registry (`plugin-source-registry`). The rule's `title`
+  and `sources` in `rules_hit` name the types and the Learn page. Quote the evidence's `path`
+  and `match_count`. `locations` holds only the first ten uses (line and column), so re-read
+  the file for the rest before calling the refactor done.
 - **`unknown`** reasons start `source <path>` and say the file is unreadable, not UTF-8 or
-  has syntax errors. The project's other files still report. Fix the file or the map, then
-  re-run.
-- **Scope**: the project's own `.cs` files only. A shared library reached by a
-  `ProjectReference` is not scanned, so name it in the entry when the plug-in calls into one.
-- **No patch exists.** `convert` never reads C#. Each blocker is a manual sandbox refactor:
-  open the cited line, move the work to the Dataverse Web API or an HTTPS service, and prove it
-  in the target (`reference/verification.md`).
+  failed to parse. One `unknown` per file, with no rule; the project's other files still
+  report. Open the file: fix a real syntax error or the map, or name the file in the entry
+  when it is valid C# the parser rejects, then re-run.
+- **Scope**: the project's own `.cs` files. A shared library reached by a `ProjectReference`
+  and a file linked from outside the project folder are not scanned, so name them in the
+  entry when the plug-in calls into one.
+- **Refactor by hand.** `convert` never reads C#, so a blocker has no patch. Open each cited
+  line, move the work to the Dataverse organization service (`IOrganizationService`) or an
+  HTTPS service the plug-in calls, and prove it in the target (`reference/verification.md`).
 
 Done when every component carries one of the four classes with its rule or
 evidence, or an entry open on a named question, and no `clear` or `unknown` is

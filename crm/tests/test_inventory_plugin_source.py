@@ -42,8 +42,26 @@ def test_a_global_qualified_name_is_a_use() -> None:
     assert set(_uses('var t = global::System.IO.File.Exists("p");')) == {"System.IO.File"}
 
 
-def test_a_name_qualified_from_an_imported_parent_namespace_is_a_use() -> None:
-    assert set(_uses('var t = IO.File.Exists("p");', "using System;")) == {"System.IO.File"}
+def test_a_using_imports_types_not_child_namespaces() -> None:
+    assert _uses('var t = IO.File.Exists("p");', "using System;") == {}
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    ["string File;", "string File { get; set; }", "void N(string File) { }"],
+    ids=["field", "property", "parameter"],
+)
+def test_a_member_or_parameter_named_like_a_type_hides_the_import(declaration: str) -> None:
+    source = f"using System.IO;\nclass P {{ {declaration} void M() {{ File.Trim(); }} }}\n"
+    assert type_uses(source.encode(), LISTED) == {}
+
+
+def test_a_local_variable_named_like_a_type_hides_the_import() -> None:
+    assert _uses('var File = "x"; File.Trim();', "using System.IO;") == {}
+
+
+def test_nameof_under_using_static_is_not_a_use() -> None:
+    assert _uses("var n = nameof(n);", "using static System.IO.File;") == {}
 
 
 def test_a_type_alias_is_a_use() -> None:

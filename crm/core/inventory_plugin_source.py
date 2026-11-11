@@ -4,7 +4,8 @@
 **use** is an object creation or a member access whose type resolves, through the file's own
 ``using`` directives, ``using`` aliases, ``using static`` or a fully qualified name, to a listed
 full type name. A ``using`` alone, a comment and a string literal are not uses, and a type of the
-same simple name declared in the same file wins over an import. Only the syntax tree is read, so
+same simple name declared in the same file (a type, a variable, a parameter, a field or a
+property) wins over an import. Only the syntax tree is read, so
 nothing is compiled and no type is looked up in another file.
 """
 
@@ -30,6 +31,9 @@ _TYPE_DECLARATIONS = frozenset(
     )
 )
 _METHOD_DECLARATIONS = frozenset(("method_declaration", "local_function_statement"))
+#: Declarations whose name can hide a type of the same name: a parameter, a variable, a field or a
+#: property called `File` is the member, not `System.IO.File`.
+_MEMBER_DECLARATIONS = frozenset(("parameter", "variable_declarator", "property_declaration"))
 
 
 def _dotted(node: Node | None) -> str | None:
@@ -57,6 +61,7 @@ class _Imports:
         self.namespaces: list[str] = []
         self.aliases: dict[str, str] = {}
         self.static: list[str] = []
+        #: Names this file declares that win over an import: types, variables and members.
         self.types: set[str] = set()
         self.methods: set[str] = set()
         stack = [root]
@@ -65,11 +70,16 @@ class _Imports:
             stack.extend(node.children)
             if node.type == "using_directive":
                 self._using(node)
-            elif node.type in _TYPE_DECLARATIONS or node.type in _METHOD_DECLARATIONS:
-                name = node.child_by_field_name("name")
-                if name is not None:
-                    target = self.types if node.type in _TYPE_DECLARATIONS else self.methods
-                    target.add((name.text or b"").decode())
+            elif node.type in _METHOD_DECLARATIONS:
+                self._declared(node, self.methods)
+            elif node.type in _TYPE_DECLARATIONS or node.type in _MEMBER_DECLARATIONS:
+                self._declared(node, self.types)
+
+    @staticmethod
+    def _declared(node: Node, into: set[str]) -> None:
+        name = node.child_by_field_name("name")
+        if name is not None:
+            into.add((name.text or b"").decode())
 
     def _using(self, node: Node) -> None:
         names = node.named_children
@@ -95,7 +105,8 @@ class _Imports:
         if first in self.aliases:
             candidates = [self.aliases[first] + (f".{rest}" if rest else "")]
         else:
-            candidates = [name, *(f"{ns}.{name}" for ns in self.namespaces)]
+            # A using directive imports the types of a namespace, never its child namespaces.
+            candidates = [name] + ([] if rest else [f"{ns}.{name}" for ns in self.namespaces])
         return next((c for c in candidates if c in self.listed), None)
 
 
@@ -144,7 +155,7 @@ def type_uses(source: bytes, listed: Collection[str]) -> dict[str, list[tuple[in
             if (
                 function is not None
                 and function.type == "identifier"
-                and (function.text or b"").decode() not in imports.methods
+                and (function.text or b"").decode() not in {"nameof", *imports.methods}
             ):
                 add(static, function)
     return {name: sorted(sites) for name, sites in found.items()}

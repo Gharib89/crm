@@ -170,28 +170,31 @@ def test_a_file_with_a_syntax_error_is_unknown_and_the_other_files_still_report(
     _write(world, "Bad.cs", "using System.IO;\nclass B { void M( { File.Delete(p); }\n")
     _write(world, "P.cs", SANDBOX_BREAKS)
     result = _assess(world)
-    unknown = [f for f in _hits(result) if f.cls == "unknown"]
-    assert {f.rule for f in unknown} == set(RULES)
-    assert all("Bad.cs" in f.reason and "syntax error" in f.reason for f in unknown)
+    unknown = [f for f in result.findings if f.key == "Contoso.Plugins" and f.cls == "unknown"]
+    (bad,) = unknown
+    assert (
+        bad.rule is None and "Bad.cs" in (bad.reason or "") and "syntax error" in (bad.reason or "")
+    )
     assert [f.cls for f in _by_rule(result)[FILES]].count("blocker") == 1
 
 
 def test_a_file_that_is_not_utf8_is_unknown_with_a_reason(world: World) -> None:
     _write(world, "Latin.cs", b'class L { string s = "\xe9"; }\n')
-    unknown = [f for f in _hits(_assess(world)) if f.cls == "unknown"]
-    assert {f.rule for f in unknown} == set(RULES)
-    assert all("Latin.cs" in f.reason and "UTF-8" in f.reason for f in unknown)
+    result = _assess(world)
+    (latin,) = [f for f in result.findings if f.key == "Contoso.Plugins" and f.cls == "unknown"]
+    assert "Latin.cs" in (latin.reason or "") and "UTF-8" in (latin.reason or "")
 
 
 def test_a_file_that_cannot_be_read_is_unknown_with_a_reason(world: World) -> None:
     _write(world, "P.cs", SANDBOX_BREAKS).chmod(0o000)
     try:
-        unknown = [f for f in _hits(_assess(world)) if f.cls == "unknown"]
+        result = _assess(world)
+        unknown = [f for f in result.findings if f.key == "Contoso.Plugins" and f.cls == "unknown"]
     finally:
         (world.repo / FOLDER / "P.cs").chmod(0o644)
     if not unknown:
         pytest.skip("the file stays readable (running as root)")
-    assert all("unreadable" in f.reason for f in unknown)
+    assert all("unreadable" in (f.reason or "") for f in unknown)
 
 
 def test_the_files_scanned_are_the_projects_own(world: World) -> None:

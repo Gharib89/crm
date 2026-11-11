@@ -1244,12 +1244,10 @@ def _read_sources(repo: Path, project: str, listed: frozenset[str]) -> list[_Sou
 def _source_findings(
     rule: Rule, d: PluginSource, record: Record, sources: list[_Source]
 ) -> list[Finding]:
-    """One finding per file *rule* flags, and one ``unknown`` per file it cannot read or parse."""
+    """One finding per readable file *rule* flags."""
     out: list[Finding] = []
     for source in sources:
         if source.problem is not None:
-            reason = f"source {source.path} {source.problem}"
-            out.append(Finding(record.kind, record.key, "unknown", rule.id, reason, None))
             continue
         sites = sorted(s for name in d.listed for s in source.uses.get(name, ()))
         if sites:
@@ -1327,6 +1325,19 @@ def _assess_record(
                         for name in r.detection.listed
                     )
                     sources = _read_sources(*project, listed)
+                    # No single rule reads a file it cannot parse: one unknown per file.
+                    out += [
+                        Finding(
+                            record.kind,
+                            record.key,
+                            "unknown",
+                            None,
+                            f"source {x.path} {x.problem}",
+                            None,
+                        )
+                        for x in sources
+                        if x.problem is not None
+                    ]
                 out += _source_findings(rule, d, record, sources)
             continue
         if isinstance(d, ReportDataProvider):
