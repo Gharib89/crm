@@ -948,8 +948,8 @@ method of that name. The files read are the `.cs` files under the project's fold
 
 Each flagged file gives one `blocker` per rule. Its evidence is the file's repository `path`, the
 `sha256` of its normalized bytes, the first ten `locations` (line and column of each use) and the
-`match_count`. A file that cannot be read, is not UTF-8 or parses with errors is `unknown` for
-that rule with the reason, and the project's other files still report. These rules detect and
+`match_count`. A file that cannot be read, is not UTF-8 or parses with errors is one `unknown` for the
+file, naming no rule, with the reason, and the project's other files still report. These rules detect and
 record only: they name no transform, so [convert](#convert-code) reads no `.cs` file and writes
 no patch or ledger entry for them. The sandbox refactor stays work for a human or an agent.
 
