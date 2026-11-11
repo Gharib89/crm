@@ -116,10 +116,10 @@ Canonical labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-hu
 
 ### Code review
 
-`/ship`'s review loop runs the reviewers in `docs/agents/ship.md` `## Reviewers`: **Codex** first, with a **Claude Code fallback**, each capped at 2 rounds. CodeRabbit is manual and merge-gate only.
+`/ship`'s review loop runs the reviewers in `docs/agents/ship.md` `## Reviewers`: **Claude Code** first (capped at 2 rounds), with a **Codex fallback** (capped at 1 round, because Codex quota is low). CodeRabbit is manual and merge-gate only.
 
-- **Codex** (native review, the ChatGPT Codex Connector app) runs on a `@codex review` PR comment, which ship posts for each round. It reads the `## Review guidelines` section below through `AGENTS.md`. Anywhere but the request itself, write the phrase without its `@` (`codex review`): every mention starts a round or a Codex task.
-- **Claude Code** (`.github/workflows/claude-review.yml`) runs on an `@claude` PR comment. Ship posts one when Codex exits not reviewed for any reason (never-queued, blocked, silent, infra-error, unreachable) or is capped with findings. Any OWNER, MEMBER or COLLABORATOR `@claude` comment on a PR one of them authored also fires it. House rules for it live in `.github/copilot-instructions.md`.
+- **Claude Code** (`.github/workflows/claude-review.yml`) runs on an `@claude` PR comment. It is the primary: ship posts one on every PR, ahead of Codex. Any OWNER, MEMBER or COLLABORATOR `@claude` comment on a PR one of them authored also fires it. House rules for it live in `.github/copilot-instructions.md`.
+- **Codex** (native review, the ChatGPT Codex Connector app) is the fallback: ship requests one round, only when Claude Code exited not reviewed or not landed or is capped with findings still open, with a `@codex review` PR comment. It reads the `## Review guidelines` section below through `AGENTS.md`. Anywhere but the request itself, write the phrase without its `@` (`codex review`): every mention starts a round or a Codex task.
 - **Copilot** does not review this repo: its ruleset (*"Copilot auto review"*) is disabled.
 - **CodeRabbit** does not auto-review this repo (star-gated) and is not in the ship profile: it is comment-triggered with no workflow, which ship cannot express yet (Gharib89/skills#302). The **`merge-gate`** skill drives it: `@coderabbitai review` while the PR is open (a closed PR declines), after each fix push; `@coderabbitai resolve` only once every thread carries a disposition. Config in `.coderabbit.yaml`.
 

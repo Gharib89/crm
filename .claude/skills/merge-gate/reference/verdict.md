@@ -45,7 +45,7 @@ Fixes pushed by the gate
 Review dispositions   (label each finding's source: gate review / Codex / Claude / CodeRabbit)
   - <finding> → <fixed | declined: evidence>
 
-Codex: threads <dispositioned m/total | none | review didn't run>  · Claude fallback: <threads dispositioned k/total | didn't run>
+Claude Code: threads <dispositioned m/total | none | review didn't run>  · Codex fallback: <threads dispositioned k/total | didn't run>
 CodeRabbit: rounds triggered <n> (last after <sha>) → <no new substantive threads | declined: reason>
 CodeRabbit threads:  <dispositioned <m>/<total> · resolved <yes | pending> | none | skipped: no push, none pending>
 

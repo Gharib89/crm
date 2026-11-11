@@ -16,7 +16,7 @@ gaps fixed in place, and re-reviewed — so the maintainer's merge decision is a
 
 Inbound PRs come from several shipping streams (cloud-ship routine, codex,
 teammates' agents). Each has already run its own pipeline — tests, docs-sync,
-Codex rounds — and stopped at the merge gate. This skill is the independent
+Claude Code rounds — and stopped at the merge gate. This skill is the independent
 second gate: it assumes nothing the author agent claimed, and re-verifies.
 
 ## Invocation
@@ -50,7 +50,7 @@ Every comment posted to the PR starts with:
 - Skip drafts and PRs with `pushed_last_15min: true` (the author agent may
   still be working); note the skip.
 - Read the PR comments yourself: the author agent's merge summary and its
-  per-reviewer dispositions (Codex, plus the Claude fallback where it ran;
+  per-reviewer dispositions (Claude Code, plus the Codex fallback where it ran;
   CodeRabbit is manual, driven by this gate in step 6), plus the linked issue +
   brief. Each undispositioned thread the script surfaced is a gap
   the author agent left — treat it as a review finding for step 3.
@@ -137,7 +137,7 @@ to on-thread, and bulk-resolved via `@coderabbitai resolve` before the verdict:
    each CodeRabbit thread ("fixed in `<sha>`" / decline + evidence); once every
    thread is dispositioned, `@coderabbitai resolve` closes them — never earlier
    (it bulk-resolves).
-2. **The ship reviewers are not re-requested.** Codex and the Claude fallback
+2. **The ship reviewers are not re-requested.** Claude Code and the Codex fallback
    ran inside the author's ship loop, at their caps; the gate dispositions their
    threads once (step 3 for any preflight surfaced) and leaves re-review of its
    own pushes to CodeRabbit.

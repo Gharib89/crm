@@ -40,20 +40,6 @@ Push policy: Default.
 
 Self-review cap: 3
 
-### Codex
-
-Login: chatgpt-codex-connector[bot]
-Trigger: on-request
-Request: comment @codex review
-Workflow: native codex
-Cap: 2
-Resolve: resolve-thread
-Gating: no
-Fallback-for: None.
-Instructions: AGENTS.md
-
-Native Codex review through the ChatGPT Codex Connector app: ship asks for each round with a PR comment, and the round's status is read off Codex's own comments on the PR, so no workflow runs. Codex reads the `## Review guidelines` section of `AGENTS.md` (a symlink to `CLAUDE.md`), which scopes it to what this repo controls.
-
 ### Claude Code
 
 Login: claude[bot]
@@ -63,10 +49,24 @@ Workflow: .github/workflows/claude-review.yml
 Cap: 2
 Resolve: resolve-thread
 Gating: no
-Fallback-for: Codex
+Fallback-for: None.
 Instructions: .github/copilot-instructions.md
 
-Requested when Codex exits not reviewed (never-queued, blocked, silent, infra-error, unreachable) or is capped with findings. Outside ship, any OWNER, MEMBER or COLLABORATOR `@claude` comment on a PR one of them authored also fires the workflow. Copilot and CodeRabbit are not in this profile: the repo's Copilot ruleset is disabled, and CodeRabbit is comment-triggered with no workflow for a round to be read off (Gharib89/skills#302).
+Primary reviewer: ship requests it on every PR, ahead of Codex. Outside ship, any OWNER, MEMBER or COLLABORATOR `@claude` comment on a PR one of them authored also fires the workflow. Copilot and CodeRabbit are not in this profile: the repo's Copilot ruleset is disabled, and CodeRabbit is comment-triggered with no workflow for a round to be read off (Gharib89/skills#302).
+
+### Codex
+
+Login: chatgpt-codex-connector[bot]
+Trigger: on-request
+Request: comment @codex review
+Workflow: native codex
+Cap: 1
+Resolve: resolve-thread
+Gating: no
+Fallback-for: Claude Code
+Instructions: AGENTS.md
+
+Fallback for Claude Code, one round at most (Codex quota is low): ship requests it only when Claude Code exits not reviewed (never-queued, blocked, silent, infra-error, unreachable), stops not landed, or is capped with findings still open, and never when Claude Code converged (it then exits `not invoked: Claude Code reviewed`). Native Codex review through the ChatGPT Codex Connector app: ship asks for each round with a PR comment, and the round's status is read off Codex's own comments on the PR, so no workflow runs. Codex reads the `## Review guidelines` section of `AGENTS.md` (a symlink to `CLAUDE.md`), which scopes it to what this repo controls.
 
 ## Coding standards
 
