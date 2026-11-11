@@ -352,7 +352,9 @@ def test_cli_converts_and_reports_counts(world):
     assert res.exit_code == 0, res.output
     data = json.loads(res.output)["data"]
     assert data["patched"] == 3 and data["out"] == str(world.out)
-    assert data["manual_review"] == 4
+    assert (
+        data["manual_review"] == 5
+    )  # the HTML page: one whole-file entry per owner rule joined to its group, and 2 in mixed.js
 
 
 def test_cli_exits_1_for_a_non_empty_out(world, tmp_path):
