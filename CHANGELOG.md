@@ -9,6 +9,35 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.116.0 (2026-11-11)
+
+### Bug Fixes
+
+- **inventory**: A report with no recorded custom flag is unknown for the SQL rule
+  ([#1233](https://github.com/Gharib89/crm/pull/1233),
+  [`2f58bc3`](https://github.com/Gharib89/crm/commit/2f58bc3e5b846d8066852302fc3a56e7efce4139))
+
+- **inventory**: A report with no recorded type is unknown for the SQL rule
+  ([#1233](https://github.com/Gharib89/crm/pull/1233),
+  [`2f58bc3`](https://github.com/Gharib89/crm/commit/2f58bc3e5b846d8066852302fc3a56e7efce4139))
+
+- **inventory**: Judge a report's type before its custom flag in the SQL rule
+  ([#1233](https://github.com/Gharib89/crm/pull/1233),
+  [`2f58bc3`](https://github.com/Gharib89/crm/commit/2f58bc3e5b846d8066852302fc3a56e7efce4139))
+
+### Documentation
+
+- **migration-skill**: State an unknown report provider positively
+  ([#1233](https://github.com/Gharib89/crm/pull/1233),
+  [`2f58bc3`](https://github.com/Gharib89/crm/commit/2f58bc3e5b846d8066852302fc3a56e7efce4139))
+
+### Features
+
+- **inventory**: Assess flags custom SQL-based reports as blockers for the online target
+  ([#1233](https://github.com/Gharib89/crm/pull/1233),
+  [`2f58bc3`](https://github.com/Gharib89/crm/commit/2f58bc3e5b846d8066852302fc3a56e7efce4139))
+
+
 ## v1.115.0 (2026-11-11)
 
 ### Chores
