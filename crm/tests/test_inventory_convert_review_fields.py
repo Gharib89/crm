@@ -116,6 +116,11 @@ OTHERS = {
         "web-resource-xrm-utility",
         'Xrm.Utility.alertDialog("a");',
     ),
+    "utility-second-on-line": (
+        'if (ok) { go(); } Xrm.Utility.alertDialog("b");\n',
+        "web-resource-xrm-utility",
+        'Xrm.Utility.alertDialog("b");',
+    ),
     "keypress": (
         "control.addOnKeyPress(handler);\n",
         "web-resource-keypress",
