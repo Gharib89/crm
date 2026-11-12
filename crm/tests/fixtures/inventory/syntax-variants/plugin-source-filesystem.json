@@ -1,0 +1,198 @@
+{
+  "rule": "plugin-source-filesystem",
+  "transform": null,
+  "language": "c_sharp",
+  "cases": {
+    "plain": {
+      "variant": "",
+      "source": "using System.IO;\nclass P { void M() { File.Delete(p); } }",
+      "uses": {
+        "System.IO.File": [
+          [
+            2,
+            22
+          ]
+        ]
+      }
+    },
+    "fully-qualified": {
+      "variant": "",
+      "source": "class P { void M() { System.IO.File.Delete(p); } }",
+      "uses": {
+        "System.IO.File": [
+          [
+            1,
+            22
+          ]
+        ]
+      }
+    },
+    "global-qualified": {
+      "variant": "",
+      "source": "class P { void M() { global::System.IO.File.Delete(p); } }",
+      "uses": {
+        "System.IO.File": [
+          [
+            1,
+            22
+          ]
+        ]
+      }
+    },
+    "using-alias": {
+      "variant": "",
+      "source": "using Io = System.IO;\nclass P { void M() { Io.File.Delete(p); } }",
+      "uses": {
+        "System.IO.File": [
+          [
+            2,
+            22
+          ]
+        ]
+      }
+    },
+    "using-static": {
+      "variant": "using-static",
+      "source": "using static System.IO.File;\nclass P { void M() { Delete(p); } }",
+      "uses": {
+        "System.IO.File": [
+          [
+            2,
+            22
+          ]
+        ]
+      }
+    },
+    "using-static-member": {
+      "variant": "using-static",
+      "source": "using static System.IO.File;\nclass P { void M() { var x = Exists(p); } }",
+      "uses": {
+        "System.IO.File": [
+          [
+            2,
+            30
+          ]
+        ]
+      }
+    },
+    "implicit-new": {
+      "variant": "implicit-new",
+      "source": "using System.IO;\nclass P { void M() { FileStream s = new(p, FileMode.Open); } }",
+      "uses": {
+        "System.IO.FileStream": [
+          [
+            2,
+            37
+          ]
+        ]
+      }
+    },
+    "implicit-new-field": {
+      "variant": "implicit-new",
+      "source": "using System.IO;\nclass P { FileInfo f = new(p); }",
+      "uses": {
+        "System.IO.FileInfo": [
+          [
+            2,
+            24
+          ]
+        ]
+      }
+    },
+    "comment-only": {
+      "variant": "comment-node",
+      "source": "using System.IO;\nclass P { void M() { /* File.Delete(p); */ // File.Delete(p)\n } }",
+      "uses": {}
+    },
+    "string-only": {
+      "variant": "template-substitution",
+      "source": "using System.IO;\nclass P { void M() { var s = \"File.Delete(p)\"; } }",
+      "uses": {}
+    },
+    "interpolation": {
+      "variant": "template-substitution",
+      "source": "using System.IO;\nclass P { void M() { var s = $\"{File.ReadAllText(p)}\"; } }",
+      "uses": {
+        "System.IO.File": [
+          [
+            2,
+            33
+          ]
+        ]
+      }
+    },
+    "nameof": {
+      "variant": "",
+      "source": "using System.IO;\nclass P { void M() { var s = nameof(File.Delete); } }",
+      "uses": {}
+    },
+    "arrow-lambda": {
+      "variant": "arrow-handler",
+      "source": "using System.IO;\nclass P { System.Action<string> a = x => File.Delete(x); }",
+      "uses": {
+        "System.IO.File": [
+          [
+            2,
+            42
+          ]
+        ]
+      }
+    },
+    "expression-bodied-method": {
+      "variant": "method-handler",
+      "source": "using System.IO;\nclass P { void M(string p) => File.Delete(p); }",
+      "uses": {
+        "System.IO.File": [
+          [
+            2,
+            31
+          ]
+        ]
+      }
+    },
+    "local-function": {
+      "variant": "method-handler",
+      "source": "using System.IO;\nclass P { void M() { void L(string p) { File.Delete(p); } } }",
+      "uses": {
+        "System.IO.File": [
+          [
+            2,
+            41
+          ]
+        ]
+      }
+    },
+    "shadowed-by-local": {
+      "variant": "receiver-binding",
+      "source": "using System.IO;\nclass P { void M(Foo File) { File.Delete(p); } }",
+      "uses": {}
+    },
+    "shadowed-by-type": {
+      "variant": "receiver-binding",
+      "source": "using System.IO;\nclass File { }\nclass P { void M() { File.Delete(p); } }",
+      "uses": {}
+    },
+    "receiver-from-new": {
+      "variant": "receiver-binding",
+      "source": "using System.IO;\nclass P { void M() { var f = new FileInfo(p); f.Delete(); } }",
+      "uses": {
+        "System.IO.FileInfo": [
+          [
+            2,
+            34
+          ]
+        ]
+      }
+    },
+    "syntax-error": {
+      "variant": "",
+      "source": "class P { void M( { File.Delete(p); } }",
+      "uses": null
+    },
+    "other-namespace": {
+      "variant": "",
+      "source": "using Foo;\nclass P { void M() { File.Delete(p); } }",
+      "uses": {}
+    }
+  }
+}

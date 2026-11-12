@@ -1,0 +1,52 @@
+{
+  "rule": "web-resource-crmform",
+  "transform": null,
+  "language": "javascript",
+  "cases": {
+    "plain": {
+      "variant": "",
+      "source": "var v = crmForm.all.name.DataValue;",
+      "detected": true
+    },
+    "submit": {
+      "variant": "",
+      "source": "crmFormSubmit.crmFormSubmitId.value = 1;",
+      "detected": true
+    },
+    "window-qualified": {
+      "variant": "qualified-window-xrm",
+      "source": "var v = window.crmForm.all.name.DataValue;",
+      "detected": true
+    },
+    "comment-only": {
+      "variant": "comment-node",
+      "source": "// crmForm.all.name.DataValue",
+      "detected": true
+    },
+    "arrow-handler": {
+      "variant": "arrow-handler",
+      "source": "var h = () => crmForm.all.name.DataValue;",
+      "detected": true
+    },
+    "method-handler": {
+      "variant": "method-handler",
+      "source": "var o = { m() { return crmForm.all.name.DataValue; } };",
+      "detected": true
+    },
+    "template-substitution": {
+      "variant": "template-substitution",
+      "source": "var s = `${crmForm.all.name.DataValue}`;",
+      "detected": true
+    },
+    "receiver-binding": {
+      "variant": "receiver-binding",
+      "source": "var f = crmForm;\nvar v = f.all.name.DataValue;",
+      "detected": true
+    },
+    "substring-name": {
+      "variant": "",
+      "source": "var v = mycrmForms.all;",
+      "detected": false
+    }
+  }
+}

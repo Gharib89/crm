@@ -1,0 +1,7 @@
+{
+  "rule": null,
+  "transform": "ribbon-odata-adapter",
+  "language": "javascript",
+  "note": "plans no edit: the ribbon action order is read by inventory_ribbon, which has its own tests",
+  "cases": {}
+}

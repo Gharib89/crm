@@ -1,0 +1,77 @@
+{
+  "rule": "web-resource-context-settings",
+  "transform": "context-settings",
+  "language": "javascript",
+  "cases": {
+    "plain": {
+      "variant": "",
+      "source": "var n = Xrm.Page.context.getUserName();",
+      "detected": true,
+      "edits": 1,
+      "unproven": 0,
+      "rewritten": "var n = Xrm.Utility.getGlobalContext().userSettings.userName;"
+    },
+    "global-context-receiver": {
+      "variant": "",
+      "source": "var n = Xrm.Utility.getGlobalContext().getUserName();",
+      "detected": true,
+      "edits": 1,
+      "unproven": 0,
+      "rewritten": "var n = Xrm.Utility.getGlobalContext().userSettings.userName;"
+    },
+    "window-qualified": {
+      "variant": "qualified-window-xrm",
+      "source": "var n = window.Xrm.Page.context.getUserName();",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "comment-in-chain": {
+      "variant": "comment-node",
+      "source": "var n = Xrm /* a */ .Page.context.getUserName();",
+      "detected": false,
+      "edits": 1,
+      "unproven": 0,
+      "rewritten": "var n = Xrm.Utility.getGlobalContext().userSettings.userName;",
+      "limit": "the rule's regex does not match this spelling, though the transform handles it: the file is only flagged where another site matches"
+    },
+    "comment-only": {
+      "variant": "comment-node",
+      "source": "// Xrm.Page.context.getUserName()",
+      "detected": true,
+      "edits": 0,
+      "unproven": 0
+    },
+    "arrow-handler": {
+      "variant": "arrow-handler",
+      "source": "var h = () => Xrm.Page.context.getUserId();",
+      "detected": true,
+      "edits": 1,
+      "unproven": 0,
+      "rewritten": "var h = () => Xrm.Utility.getGlobalContext().userSettings.userId;"
+    },
+    "method-handler": {
+      "variant": "method-handler",
+      "source": "var o = { m() { return Xrm.Page.context.getUserId(); } };",
+      "detected": true,
+      "edits": 1,
+      "unproven": 0,
+      "rewritten": "var o = { m() { return Xrm.Utility.getGlobalContext().userSettings.userId; } };"
+    },
+    "template-substitution": {
+      "variant": "template-substitution",
+      "source": "var s = `${Xrm.Page.context.getUserName()}`;",
+      "detected": true,
+      "edits": 1,
+      "unproven": 0,
+      "rewritten": "var s = `${Xrm.Utility.getGlobalContext().userSettings.userName}`;"
+    },
+    "receiver-binding": {
+      "variant": "receiver-binding",
+      "source": "var c = Xrm.Page.context;\nvar n = c.getUserName();",
+      "detected": false,
+      "edits": 0,
+      "unproven": 0
+    }
+  }
+}

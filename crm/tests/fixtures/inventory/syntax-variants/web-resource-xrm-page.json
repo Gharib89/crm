@@ -1,0 +1,89 @@
+{
+  "rule": "web-resource-xrm-page",
+  "transform": "global-context",
+  "language": "javascript",
+  "cases": {
+    "plain": {
+      "variant": "",
+      "source": "var c = Xrm.Page.context.getClientUrl();",
+      "detected": true,
+      "edits": 1,
+      "unproven": 0,
+      "rewritten": "var c = Xrm.Utility.getGlobalContext().getClientUrl();"
+    },
+    "window-qualified": {
+      "variant": "qualified-window-xrm",
+      "source": "var c = window.Xrm.Page.context.getClientUrl();",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "parent-qualified": {
+      "variant": "qualified-window-xrm",
+      "source": "var c = parent.Xrm.Page.context.getClientUrl();",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "comment-in-chain": {
+      "variant": "comment-node",
+      "source": "var c = Xrm.Page /* c */.context // d\n  .getClientUrl();",
+      "detected": true,
+      "edits": 1,
+      "unproven": 0,
+      "rewritten": "var c = Xrm.Utility.getGlobalContext() // d\n  .getClientUrl();"
+    },
+    "comment-only": {
+      "variant": "comment-node",
+      "source": "// Xrm.Page.context.getClientUrl()\n/* Xrm.Page.context.getUserId() */",
+      "detected": true,
+      "edits": 0,
+      "unproven": 0
+    },
+    "arrow-handler": {
+      "variant": "arrow-handler",
+      "source": "var h = (e) => Xrm.Page.context.getClientUrl();",
+      "detected": true,
+      "edits": 1,
+      "unproven": 0,
+      "rewritten": "var h = (e) => Xrm.Utility.getGlobalContext().getClientUrl();"
+    },
+    "method-handler": {
+      "variant": "method-handler",
+      "source": "var o = { onLoad() { return Xrm.Page.context.getClientUrl(); } };",
+      "detected": true,
+      "edits": 1,
+      "unproven": 0,
+      "rewritten": "var o = { onLoad() { return Xrm.Utility.getGlobalContext().getClientUrl(); } };"
+    },
+    "template-substitution": {
+      "variant": "template-substitution",
+      "source": "var u = `${Xrm.Page.context.getClientUrl()}/x`;",
+      "detected": true,
+      "edits": 1,
+      "unproven": 0,
+      "rewritten": "var u = `${Xrm.Utility.getGlobalContext().getClientUrl()}/x`;"
+    },
+    "template-text": {
+      "variant": "template-substitution",
+      "source": "var u = `Xrm.Page.context.getClientUrl()`;",
+      "detected": true,
+      "edits": 0,
+      "unproven": 0
+    },
+    "receiver-binding": {
+      "variant": "receiver-binding",
+      "source": "var ctx = Xrm.Page.context;\nvar u = ctx.getClientUrl();",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "shadowed-xrm": {
+      "variant": "receiver-binding",
+      "source": "function f(Xrm) { return Xrm.Page.context.getClientUrl(); }",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    }
+  }
+}

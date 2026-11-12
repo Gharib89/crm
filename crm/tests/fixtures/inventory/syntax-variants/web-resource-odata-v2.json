@@ -1,0 +1,77 @@
+{
+  "rule": "web-resource-odata-v2",
+  "transform": "odata-v2",
+  "language": "javascript",
+  "cases": {
+    "plain": {
+      "variant": "",
+      "source": "x.open(\"GET\", \"/XRMServices/2011/OrganizationData.svc/AccountSet?$select=Name\", false);",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "client-url-prefix": {
+      "variant": "",
+      "source": "x.open(\"GET\", Xrm.Page.context.getClientUrl() + \"/XRMServices/2011/OrganizationData.svc/AccountSet?$select=Name\", false);",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "window-qualified": {
+      "variant": "qualified-window-xrm",
+      "source": "window.x.open(\"GET\", \"/XRMServices/2011/OrganizationData.svc/AccountSet?$select=Name\", false);",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "comment-in-chain": {
+      "variant": "comment-node",
+      "source": "x.open(\"GET\", /* c */ \"/XRMServices/2011/OrganizationData.svc/AccountSet?$select=Name\", false);",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "comment-only": {
+      "variant": "comment-node",
+      "source": "// x.open('GET', '/XRMServices/2011/OrganizationData.svc/AccountSet')",
+      "detected": true,
+      "edits": 0,
+      "unproven": 0
+    },
+    "arrow-handler": {
+      "variant": "arrow-handler",
+      "source": "var h = () => x.open(\"GET\", \"/XRMServices/2011/OrganizationData.svc/AccountSet?$select=Name\", false);",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "method-handler": {
+      "variant": "method-handler",
+      "source": "var o = { m() { x.open(\"GET\", \"/XRMServices/2011/OrganizationData.svc/AccountSet?$select=Name\", false); } };",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "template-substitution": {
+      "variant": "template-substitution",
+      "source": "x.open(\"GET\", `${base}/XRMServices/2011/OrganizationData.svc/AccountSet?$select=Name`, false);",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "receiver-binding": {
+      "variant": "receiver-binding",
+      "source": "var u = \"/XRMServices/2011/OrganizationData.svc/AccountSet\";\nx.open(\"GET\", u, false);",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "web-resources-url": {
+      "variant": "web-resources-url",
+      "source": "x.open(\"GET\", \"/WebResources/new_/data.json\", false);",
+      "detected": false,
+      "edits": 0,
+      "unproven": 0
+    }
+  }
+}

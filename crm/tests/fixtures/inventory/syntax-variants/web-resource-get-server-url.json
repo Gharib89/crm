@@ -1,0 +1,64 @@
+{
+  "rule": "web-resource-get-server-url",
+  "transform": "server-url",
+  "language": "javascript",
+  "cases": {
+    "plain": {
+      "variant": "",
+      "source": "var u = ctx.getServerUrl();",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "window-qualified": {
+      "variant": "qualified-window-xrm",
+      "source": "var u = window.Xrm.Page.context.getServerUrl();",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "comment-in-chain": {
+      "variant": "comment-node",
+      "source": "var u = ctx /* c */ . getServerUrl();",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "comment-only": {
+      "variant": "comment-node",
+      "source": "// ctx.getServerUrl()",
+      "detected": true,
+      "edits": 0,
+      "unproven": 0
+    },
+    "arrow-handler": {
+      "variant": "arrow-handler",
+      "source": "var h = (c) => c.getServerUrl();",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "method-handler": {
+      "variant": "method-handler",
+      "source": "var o = { m(c) { return c.getServerUrl(); } };",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "template-substitution": {
+      "variant": "template-substitution",
+      "source": "var u = `${ctx.getServerUrl()}/x`;",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "receiver-binding": {
+      "variant": "receiver-binding",
+      "source": "var g = ctx.getServerUrl;\ng();",
+      "detected": false,
+      "edits": 0,
+      "unproven": 1,
+      "limit": "the rule's regex does not match this spelling, though the transform handles it: the file is only flagged where another site matches"
+    }
+  }
+}

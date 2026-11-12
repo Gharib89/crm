@@ -1,0 +1,63 @@
+{
+  "rule": "web-resource-keypress",
+  "transform": "keypress-review",
+  "language": "javascript",
+  "cases": {
+    "plain": {
+      "variant": "",
+      "source": "c.addOnKeyPress(f);",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "window-qualified": {
+      "variant": "qualified-window-xrm",
+      "source": "window.Xrm.Page.getControl('a').addOnKeyPress(f);",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "comment-in-chain": {
+      "variant": "comment-node",
+      "source": "c /* x */ . addOnKeyPress(f);",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "comment-only": {
+      "variant": "comment-node",
+      "source": "// c.addOnKeyPress(f)",
+      "detected": true,
+      "edits": 0,
+      "unproven": 0
+    },
+    "arrow-handler": {
+      "variant": "arrow-handler",
+      "source": "var h = (c) => c.addOnKeyPress(f);",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "method-handler": {
+      "variant": "method-handler",
+      "source": "var o = { m(c) { c.addOnKeyPress(f); } };",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "template-substitution": {
+      "variant": "template-substitution",
+      "source": "var s = `${c.addOnKeyPress(f)}`;",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "receiver-binding": {
+      "variant": "receiver-binding",
+      "source": "var add = c.addOnKeyPress;\nadd(f);",
+      "detected": false,
+      "edits": 0,
+      "unproven": 0
+    }
+  }
+}

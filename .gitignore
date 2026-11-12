@@ -43,3 +43,5 @@ htmlcov/
 
 # Inventory data
 inventory/
+# the test fixtures of that name are tracked (new files need no `git add -f`)
+!crm/tests/fixtures/inventory/

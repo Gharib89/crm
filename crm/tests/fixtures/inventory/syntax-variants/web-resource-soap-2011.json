@@ -1,0 +1,84 @@
+{
+  "rule": "web-resource-soap-2011",
+  "transform": "soap-2011-review",
+  "language": "javascript",
+  "cases": {
+    "plain": {
+      "variant": "",
+      "source": "x.open(\"POST\", \"/XRMServices/2011/Organization.svc/web\");",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "client-url-prefix": {
+      "variant": "",
+      "source": "x.open(\"POST\", Xrm.Page.context.getClientUrl() + \"/XRMServices/2011/Discovery.svc\");",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "window-qualified": {
+      "variant": "qualified-window-xrm",
+      "source": "window.x.open(\"POST\", \"/XRMServices/2011/Organization.svc/web\");",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "comment-in-chain": {
+      "variant": "comment-node",
+      "source": "x.open(\"POST\", /* c */ \"/XRMServices/2011/Organization.svc/web\");",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "comment-only": {
+      "variant": "comment-node",
+      "source": "// was /XRMServices/2011/Organization.svc/web",
+      "detected": true,
+      "edits": 0,
+      "unproven": 0
+    },
+    "arrow-handler": {
+      "variant": "arrow-handler",
+      "source": "var h = () => x.open(\"POST\", \"/XRMServices/2011/Organization.svc/web\");",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "method-handler": {
+      "variant": "method-handler",
+      "source": "var o = { m() { x.open(\"POST\", \"/XRMServices/2011/Organization.svc/web\"); } };",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "template-substitution": {
+      "variant": "template-substitution",
+      "source": "x.open(\"POST\", `${base}/XRMServices/2011/Organization.svc/web`);",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "receiver-binding": {
+      "variant": "receiver-binding",
+      "source": "var u = \"/XRMServices/2011/Organization.svc/web\";\nx.open(\"POST\", u);",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "web-resources-url": {
+      "variant": "web-resources-url",
+      "source": "x.open(\"GET\", \"/WebResources/new_/data.json\");",
+      "detected": false,
+      "edits": 0,
+      "unproven": 0
+    },
+    "org-prefixed-url": {
+      "variant": "web-resources-url",
+      "source": "x.open(\"POST\", \"/Contoso/XRMServices/2011/Organization.svc/web\");",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    }
+  }
+}

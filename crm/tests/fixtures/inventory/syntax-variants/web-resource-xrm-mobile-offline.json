@@ -1,0 +1,64 @@
+{
+  "rule": "web-resource-xrm-mobile-offline",
+  "transform": "mobile-offline",
+  "language": "javascript",
+  "cases": {
+    "plain": {
+      "variant": "",
+      "source": "Xrm.Mobile.offline.isOfflineEnabled('a');",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "window-qualified": {
+      "variant": "qualified-window-xrm",
+      "source": "window.Xrm.Mobile.offline.isOfflineEnabled('a');",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "comment-in-chain": {
+      "variant": "comment-node",
+      "source": "Xrm.Mobile /* c */ .offline.isOfflineEnabled('a');",
+      "detected": false,
+      "edits": 0,
+      "unproven": 1,
+      "limit": "the rule's regex does not match this spelling, though the transform handles it: the file is only flagged where another site matches"
+    },
+    "comment-only": {
+      "variant": "comment-node",
+      "source": "// Xrm.Mobile.offline.isOfflineEnabled('a')",
+      "detected": true,
+      "edits": 0,
+      "unproven": 0
+    },
+    "arrow-handler": {
+      "variant": "arrow-handler",
+      "source": "var h = () => Xrm.Mobile.offline.isOfflineEnabled('a');",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "method-handler": {
+      "variant": "method-handler",
+      "source": "var o = { m() { return Xrm.Mobile.offline.isOfflineEnabled('a'); } };",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "template-substitution": {
+      "variant": "template-substitution",
+      "source": "var s = `${Xrm.Mobile.offline.isOfflineEnabled('a')}`;",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "receiver-binding": {
+      "variant": "receiver-binding",
+      "source": "var o = Xrm.Mobile.offline;\no.isOfflineEnabled('a');",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    }
+  }
+}
