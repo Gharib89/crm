@@ -223,10 +223,10 @@ MULTI = (
 )
 SERVER_URL_MIXED = f"var a = {GC}.getServerUrl();\nvar b = foo.getServerUrl();\n"
 
-#: assess reports only web-resource-xrm-page here: context-settings' detection cannot see
-#: through the comment, so convert must still account for the site.
+#: A comment inside the chain: context-settings' detection sees through it, so the rule patches
+#: the site (#1246).
 COMMENT_CHAIN = f"var id = {CTX}./* who */getUserId();\n"
-#: Same shape for getServerUrl: only xrm-page's detection sees it.
+#: Same shape for getServerUrl: its own rule patches it too.
 SERVER_URL_COMMENT_CHAIN = f"var u = {CTX}./* who */getServerUrl();\n"
 
 
@@ -357,10 +357,10 @@ def test_findings_made_before_the_context_settings_rule_still_convert_its_sites(
     assert "web-resource-context-settings" in patched
 
 
-def test_a_site_only_global_context_detects_is_still_accounted_for(run):
-    entries = _entries(run, "comment-chain")
-    assert entries and not [e for e in entries if e["status"] == "patched"]
-    assert all(e["manual_review"] for e in entries)
+def test_a_comment_inside_the_chain_does_not_hide_the_site_from_its_rule(run):
+    (entry,) = _entries(run, "comment-chain", "web-resource-context-settings")
+    assert entry["status"] == "patched" and not entry["manual_review"]
+    assert _patched(run, entry) == f"var id = {GC}./* who */userSettings.userId;\n"
 
 
 def test_a_provable_and_an_unprovable_get_server_url_share_one_patch(run):
@@ -372,7 +372,7 @@ def test_a_provable_and_an_unprovable_get_server_url_share_one_patch(run):
     assert "receiver" in review["reason"]
 
 
-def test_a_get_server_url_only_global_context_detects_is_still_accounted_for(run):
-    entries = _entries(run, "server-url-comment-chain")
-    assert entries and not [e for e in entries if e["status"] == "patched"]
-    assert all(e["manual_review"] for e in entries)
+def test_a_comment_inside_a_get_server_url_chain_does_not_hide_the_site_from_its_rule(run):
+    (entry,) = _entries(run, "server-url-comment-chain", "web-resource-get-server-url")
+    assert entry["status"] == "patched" and not entry["manual_review"]
+    assert _patched(run, entry) == f"var u = {GC}./* who */getClientUrl();\n"
