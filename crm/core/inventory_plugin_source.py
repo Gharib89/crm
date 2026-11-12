@@ -64,6 +64,47 @@ _SCOPES = frozenset(
         "fixed_statement",
     )
 )
+#: Parents whose identifier child is an expression: a bare static property read there is a value.
+_VALUE_PARENTS = frozenset(
+    (
+        "variable_declarator",
+        "argument",
+        "assignment_expression",
+        "binary_expression",
+        "conditional_expression",
+        "return_statement",
+        "arrow_expression_clause",
+        "parenthesized_expression",
+        "prefix_unary_expression",
+        "postfix_unary_expression",
+        "await_expression",
+        "interpolation",
+        "initializer_expression",
+        "element_access_expression",
+        "cast_expression",
+    )
+)
+
+
+def _is_value(node: Node) -> bool:
+    """Whether the bare identifier *node* is read as a value, not declared, named or typed."""
+    parent = node.parent
+    if parent is None or parent.type not in _VALUE_PARENTS:
+        return False
+    grand = parent.parent
+    if (
+        parent.type == "assignment_expression"
+        and grand is not None
+        and grand.type == "initializer_expression"
+        and (left := parent.child_by_field_name("left")) is not None
+        and left.id == node.id
+    ):
+        return False  # `new X { Member = 1 }`: a member name, not a value
+    # A declared name, a named argument's name and a cast's type are identifiers, not values.
+    return not any(
+        (field := parent.child_by_field_name(f)) is not None and field.id == node.id
+        for f in ("name", "type")
+    )
 
 
 def _dotted(node: Node | None) -> str | None:
@@ -198,12 +239,13 @@ def _position(source: bytes, node: Node) -> tuple[int, int]:
 def type_uses(source: bytes, listed: Collection[str]) -> dict[str, list[tuple[int, int]]] | None:
     """Each listed full type name *source* uses, with the 1-based (line, column) of every use.
 
-    *source* must be valid UTF-8. A bare call, or a bare capitalized name that no ``using``
-    resolves and the file does not declare, is attributed to every listed type imported by
-    ``using static``: the syntax tree cannot say which type declares the member, so such a name
-    can over-report (``Path.Combine`` next to ``using static System.IO.File``). A target-typed
-    ``new(...)`` takes its type from the declaration it initializes. Returns None when the file
-    has syntax errors, since a tree recovered from them proves nothing.
+    *source* must be valid UTF-8. A bare call, or a bare capitalized name read as a value (a
+    static property) that no ``using`` resolves and the file does not declare, is attributed to
+    every listed type imported by ``using static``: the syntax tree cannot say which type declares
+    the member, so such a name can over-report (``Path.Combine`` next to ``using static
+    System.IO.File``). A target-typed ``new(...)`` takes its type from the declaration it
+    initializes. Returns None when the file has syntax errors,
+    since a tree recovered from them proves nothing.
     """
     root = parse("c_sharp", source)
     if error_count(root):
@@ -215,6 +257,11 @@ def type_uses(source: bytes, listed: Collection[str]) -> dict[str, list[tuple[in
     def add(full: str | None, node: Node) -> None:
         if full is not None:
             found.setdefault(full, []).append(_position(source, node))
+
+    def add_static(name: str, node: Node) -> None:
+        if name[0].isupper() and imports.unshadowed(name, node):
+            for owner in static_types:
+                add(owner, node)
 
     stack = [root]
     while stack:
@@ -238,15 +285,17 @@ def type_uses(source: bytes, listed: Collection[str]) -> dict[str, list[tuple[in
                 full = imports.resolve(name, target)
                 if full is not None:
                     add(full, target)
-                elif target.type == "identifier" and name[0].isupper():
-                    if imports.unshadowed(name, target):
-                        for owner in static_types:
-                            add(owner, target)
+                elif target.type == "identifier":
+                    add_static(name, target)
         elif node.type == "implicit_object_creation_expression":
             declared = _declared_type(node)
             name = _dotted(declared)
             if declared is not None and name is not None:
                 add(imports.resolve(name, declared), node)
+        elif node.type == "identifier" and static_types and _is_value(node):
+            name = (node.text or b"").decode()
+            if imports.resolve(name, node) is None:
+                add_static(name, node)
         elif node.type == "invocation_expression" and static_types:
             if (
                 function is not None

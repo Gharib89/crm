@@ -21,11 +21,10 @@
     "comment-in-chain": {
       "variant": "comment-node",
       "source": "e.data /* c */ .entity.save();",
-      "detected": false,
+      "detected": true,
       "edits": 1,
       "unproven": 0,
-      "rewritten": "e.data /* c */ .save();",
-      "limit": "the rule's regex does not match this spelling, though the transform handles it: the file is only flagged where another site matches"
+      "rewritten": "e.data /* c */ .save();"
     },
     "comment-only": {
       "variant": "comment-node",

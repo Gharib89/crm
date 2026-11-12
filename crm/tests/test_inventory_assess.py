@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from pathlib import Path
 
 import jsonschema
@@ -233,6 +234,38 @@ def test_a_source_outside_a_rule_range_skips_that_rule(tmp_path):
     assert "deprecated" in _classes(
         assess.assess(tmp_path / "v9", "online"), "new_/scripts/legacy.js"
     )
+
+
+def _content_pattern(pattern: str):
+    data = json.loads(assess.RULES_PATH.read_text(encoding="utf-8"))
+    rule = next(r for r in data["rules"] if r["id"] == "web-resource-xrm-page")
+    rule["detection"]["pattern"] = pattern
+    parsed = assess.parse_rules(data)
+    detection = next(r for r in parsed.rules if r.id == "web-resource-xrm-page").detection
+    assert isinstance(detection, assess.ContentPattern)
+    return detection.pattern
+
+
+@pytest.mark.parametrize(
+    ("source", "hit"),
+    [
+        ("a.b", True),
+        ("a /* c */ . b", True),
+        ("a // c\n . b", True),
+        ("a /* c\n d */ .b", True),
+        ("a /* c . b", False),
+        ("a / b", False),
+    ],
+    ids=["none", "block", "line", "multi-line", "unclosed", "slash"],
+)
+def test_the_gap_token_spans_whitespace_and_comments(source, hit):
+    assert bool(_content_pattern(r"a<gap>\.<gap>b").search(source)) is hit
+
+
+def test_the_gap_token_does_not_backtrack_on_a_run_of_slashes():
+    started = time.monotonic()
+    assert not _content_pattern(r"\.<gap>b").search("x." + "/" * 40)
+    assert time.monotonic() - started < 1
 
 
 def test_an_artifact_changed_since_extraction_is_unknown(inventory):

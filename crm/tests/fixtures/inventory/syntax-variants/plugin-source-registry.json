@@ -42,8 +42,14 @@
     "using-static": {
       "variant": "using-static",
       "source": "using static Microsoft.Win32.Registry;\nclass P { void M() { var k = CurrentUser; } }",
-      "uses": {},
-      "limit": "a bare static property used as a value (not a call, not a member-access target) is not attributed to a `using static` type"
+      "uses": {
+        "Microsoft.Win32.Registry": [
+          [
+            2,
+            30
+          ]
+        ]
+      }
     },
     "using-static-member-access": {
       "variant": "using-static",

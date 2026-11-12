@@ -55,10 +55,9 @@
     "receiver-binding": {
       "variant": "receiver-binding",
       "source": "var g = ctx.getServerUrl;\ng();",
-      "detected": false,
+      "detected": true,
       "edits": 0,
-      "unproven": 1,
-      "limit": "the rule's regex does not match this spelling, though the transform handles it: the file is only flagged where another site matches"
+      "unproven": 1
     }
   }
 }
