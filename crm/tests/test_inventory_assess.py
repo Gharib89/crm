@@ -241,7 +241,9 @@ def _content_pattern(pattern: str):
     rule = next(r for r in data["rules"] if r["id"] == "web-resource-xrm-page")
     rule["detection"]["pattern"] = pattern
     parsed = assess.parse_rules(data)
-    return next(r for r in parsed.rules if r.id == "web-resource-xrm-page").detection.pattern
+    detection = next(r for r in parsed.rules if r.id == "web-resource-xrm-page").detection
+    assert isinstance(detection, assess.ContentPattern)
+    return detection.pattern
 
 
 @pytest.mark.parametrize(
