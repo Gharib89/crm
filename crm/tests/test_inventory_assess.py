@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from pathlib import Path
 
 import jsonschema
@@ -257,6 +258,12 @@ def _content_pattern(pattern: str):
 )
 def test_the_gap_token_spans_whitespace_and_comments(source, hit):
     assert bool(_content_pattern(r"a<gap>\.<gap>b").search(source)) is hit
+
+
+def test_the_gap_token_does_not_backtrack_on_a_run_of_slashes():
+    started = time.monotonic()
+    assert not _content_pattern(r"\.<gap>b").search("x." + "/" * 200)
+    assert time.monotonic() - started < 1
 
 
 def test_an_artifact_changed_since_extraction_is_unknown(inventory):

@@ -91,6 +91,15 @@ def _is_value(node: Node) -> bool:
     parent = node.parent
     if parent is None or parent.type not in _VALUE_PARENTS:
         return False
+    grand = parent.parent
+    if (
+        parent.type == "assignment_expression"
+        and grand is not None
+        and grand.type == "initializer_expression"
+        and (left := parent.child_by_field_name("left")) is not None
+        and left.id == node.id
+    ):
+        return False  # `new X { Member = 1 }`: a member name, not a value
     # A declared name, a named argument's name and a cast's type are identifiers, not values.
     return not any(
         (field := parent.child_by_field_name(f)) is not None and field.id == node.id
@@ -235,8 +244,8 @@ def type_uses(source: bytes, listed: Collection[str]) -> dict[str, list[tuple[in
     every listed type imported by ``using static``: the syntax tree cannot say which type declares
     the member, so such a name can over-report (``Path.Combine`` next to ``using static
     System.IO.File``). A target-typed ``new(...)`` takes its type from the declaration it
-    initializes. Returns None when the file
-    has syntax errors, since a tree recovered from them proves nothing.
+    initializes. Returns None when the file has syntax errors,
+    since a tree recovered from them proves nothing.
     """
     root = parse("c_sharp", source)
     if error_count(root):
@@ -248,6 +257,11 @@ def type_uses(source: bytes, listed: Collection[str]) -> dict[str, list[tuple[in
     def add(full: str | None, node: Node) -> None:
         if full is not None:
             found.setdefault(full, []).append(_position(source, node))
+
+    def add_static(name: str, node: Node) -> None:
+        if name[0].isupper() and imports.unshadowed(name, node):
+            for owner in static_types:
+                add(owner, node)
 
     stack = [root]
     while stack:
@@ -271,10 +285,8 @@ def type_uses(source: bytes, listed: Collection[str]) -> dict[str, list[tuple[in
                 full = imports.resolve(name, target)
                 if full is not None:
                     add(full, target)
-                elif target.type == "identifier" and name[0].isupper():
-                    if imports.unshadowed(name, target):
-                        for owner in static_types:
-                            add(owner, target)
+                elif target.type == "identifier":
+                    add_static(name, target)
         elif node.type == "implicit_object_creation_expression":
             declared = _declared_type(node)
             name = _dotted(declared)
@@ -282,10 +294,8 @@ def type_uses(source: bytes, listed: Collection[str]) -> dict[str, list[tuple[in
                 add(imports.resolve(name, declared), node)
         elif node.type == "identifier" and static_types and _is_value(node):
             name = (node.text or b"").decode()
-            if name[0].isupper() and imports.resolve(name, node) is None:
-                if imports.unshadowed(name, node):
-                    for owner in static_types:
-                        add(owner, node)
+            if imports.resolve(name, node) is None:
+                add_static(name, node)
         elif node.type == "invocation_expression" and static_types:
             if (
                 function is not None

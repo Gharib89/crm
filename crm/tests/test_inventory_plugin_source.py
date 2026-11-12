@@ -234,8 +234,17 @@ def test_a_bare_static_property_in_each_value_position_is_a_use(body: str) -> No
         "CurrentUser k = null;",
         "int CurrentUser = 0;",
         "var k = (CurrentUser)o;",
+        "var k = new Foo { CurrentUser = 1 };",
     ],
-    ids=["local", "member-name", "named-argument", "type-position", "declaration", "cast-type"],
+    ids=[
+        "local",
+        "member-name",
+        "named-argument",
+        "type-position",
+        "declaration",
+        "cast-type",
+        "initializer-member",
+    ],
 )
 def test_a_name_that_is_not_a_bare_value_is_not_a_use(body: str) -> None:
     source = f"{STATIC_REGISTRY}\nclass P {{ void M(object o, object x) {{ {body} }} }}\n"

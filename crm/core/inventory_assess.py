@@ -88,7 +88,8 @@ def _version(text: str, where: str) -> tuple[int, ...]:
 
 #: Written in a content_pattern where JavaScript allows whitespace or a comment between two tokens.
 GAP_TOKEN = "<gap>"
-_GAP = r"(?:\s|/\*[\s\S]*?\*/|//[^\n]*)*"
+#: Possessive, so a run of slashes cannot be split into line comments exponentially many ways.
+_GAP = r"(?:\s|/\*[\s\S]*?\*/|//[^\n]*+)*+"
 
 
 @dataclass(frozen=True)
