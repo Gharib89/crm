@@ -1,0 +1,7 @@
+{
+  "rule": null,
+  "transform": "form-odata-adapter",
+  "language": "javascript",
+  "note": "plans no edit: the adapter registration is the form XML edit in inventory_form_libraries, which has its own tests",
+  "cases": {}
+}

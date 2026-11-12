@@ -1,0 +1,61 @@
+{
+  "rule": "web-resource-grid-row",
+  "transform": "grid-row",
+  "language": "javascript",
+  "cases": {
+    "plain": {
+      "variant": "",
+      "source": "var e = row.getData().getEntity();",
+      "detected": true,
+      "edits": 1,
+      "unproven": 0,
+      "rewritten": "var e = row.data.entity;"
+    },
+    "comment-in-chain": {
+      "variant": "comment-node",
+      "source": "var e = row /* c */ .getData()\n  /* d */ .getEntity();",
+      "detected": true,
+      "edits": 1,
+      "unproven": 0,
+      "rewritten": "var e = row /* c */ .data\n  /* d */ .entity;"
+    },
+    "comment-only": {
+      "variant": "comment-node",
+      "source": "// row.getData().getEntity()",
+      "detected": true,
+      "edits": 0,
+      "unproven": 0
+    },
+    "arrow-handler": {
+      "variant": "arrow-handler",
+      "source": "var h = (r) => r.getData().getEntity();",
+      "detected": true,
+      "edits": 1,
+      "unproven": 0,
+      "rewritten": "var h = (r) => r.data.entity;"
+    },
+    "method-handler": {
+      "variant": "method-handler",
+      "source": "var o = { m(r) { return r.getData().getEntity(); } };",
+      "detected": true,
+      "edits": 1,
+      "unproven": 0,
+      "rewritten": "var o = { m(r) { return r.data.entity; } };"
+    },
+    "template-substitution": {
+      "variant": "template-substitution",
+      "source": "var s = `${r.getData().getEntity()}`;",
+      "detected": true,
+      "edits": 1,
+      "unproven": 0,
+      "rewritten": "var s = `${r.data.entity}`;"
+    },
+    "receiver-binding": {
+      "variant": "receiver-binding",
+      "source": "var d = r.getData();\nvar e = d.getEntity();",
+      "detected": true,
+      "edits": 0,
+      "unproven": 2
+    }
+  }
+}

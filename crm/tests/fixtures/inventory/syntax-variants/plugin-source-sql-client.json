@@ -1,0 +1,113 @@
+{
+  "rule": "plugin-source-sql-client",
+  "transform": null,
+  "language": "c_sharp",
+  "cases": {
+    "plain": {
+      "variant": "",
+      "source": "using System.Data.SqlClient;\nclass P { void M() { var c = new SqlConnection(s); } }",
+      "uses": {
+        "System.Data.SqlClient.SqlConnection": [
+          [
+            2,
+            34
+          ]
+        ]
+      }
+    },
+    "other-package": {
+      "variant": "",
+      "source": "using Microsoft.Data.SqlClient;\nclass P { void M() { var c = new SqlCommand(s); } }",
+      "uses": {
+        "Microsoft.Data.SqlClient.SqlCommand": [
+          [
+            2,
+            34
+          ]
+        ]
+      }
+    },
+    "implicit-new": {
+      "variant": "implicit-new",
+      "source": "using System.Data.SqlClient;\nclass P { void M() { SqlConnection c = new(s); } }",
+      "uses": {
+        "System.Data.SqlClient.SqlConnection": [
+          [
+            2,
+            40
+          ]
+        ]
+      }
+    },
+    "nullable-implicit-new": {
+      "variant": "implicit-new",
+      "source": "using System.Data.SqlClient;\nclass P { SqlConnection? c = new(); }",
+      "uses": {
+        "System.Data.SqlClient.SqlConnection": [
+          [
+            2,
+            30
+          ]
+        ]
+      }
+    },
+    "using-static": {
+      "variant": "using-static",
+      "source": "using static System.Data.SqlClient.SqlConnection;\nclass P { void M() { ClearAllPools(); } }",
+      "uses": {
+        "System.Data.SqlClient.SqlConnection": [
+          [
+            2,
+            22
+          ]
+        ]
+      }
+    },
+    "using-alias": {
+      "variant": "",
+      "source": "using Sql = System.Data.SqlClient;\nclass P { void M() { var c = new Sql.SqlConnection(s); } }",
+      "uses": {
+        "System.Data.SqlClient.SqlConnection": [
+          [
+            2,
+            34
+          ]
+        ]
+      }
+    },
+    "comment-only": {
+      "variant": "comment-node",
+      "source": "using System.Data.SqlClient;\nclass P { void M() { // new SqlConnection(s)\n } }",
+      "uses": {}
+    },
+    "interpolation": {
+      "variant": "template-substitution",
+      "source": "using System.Data.SqlClient;\nclass P { void M() { var s = $\"{new SqlConnection(x)}\"; } }",
+      "uses": {
+        "System.Data.SqlClient.SqlConnection": [
+          [
+            2,
+            37
+          ]
+        ]
+      }
+    },
+    "arrow-lambda": {
+      "variant": "arrow-handler",
+      "source": "using System.Data.SqlClient;\nclass P { System.Func<SqlConnection> f = () => new SqlConnection(); }",
+      "uses": {
+        "System.Data.SqlClient.SqlConnection": [
+          [
+            2,
+            52
+          ]
+        ]
+      }
+    },
+    "shadowed-by-local": {
+      "variant": "receiver-binding",
+      "source": "using System.Data.SqlClient;\nclass P { void M(Foo SqlConnection) { SqlConnection.Open(); } }",
+      "uses": {}
+    }
+  }
+}

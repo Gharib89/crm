@@ -1,0 +1,52 @@
+{
+  "rule": "web-resource-jquery-static",
+  "transform": null,
+  "language": "javascript",
+  "cases": {
+    "plain": {
+      "variant": "",
+      "source": "document.write(\"<script src='/_static/_common/scripts/jquery-2.1.1.min.js'></script>\");",
+      "detected": true
+    },
+    "org-prefixed": {
+      "variant": "",
+      "source": "load(\"/Contoso/_static/_common/scripts/jquery-2.1.1.js\");",
+      "detected": true
+    },
+    "upper-case": {
+      "variant": "",
+      "source": "load(\"/_STATIC/_COMMON/SCRIPTS/JQUERY-2.1.1.JS\");",
+      "detected": true
+    },
+    "comment-only": {
+      "variant": "comment-node",
+      "source": "// /_static/_common/scripts/jquery-2.1.1.min.js",
+      "detected": true
+    },
+    "arrow-handler": {
+      "variant": "arrow-handler",
+      "source": "var h = () => load(\"/_static/_common/scripts/jquery-2.1.1.min.js\");",
+      "detected": true
+    },
+    "method-handler": {
+      "variant": "method-handler",
+      "source": "var o = { m() { load(\"/_static/_common/scripts/jquery-2.1.1.min.js\"); } };",
+      "detected": true
+    },
+    "template-substitution": {
+      "variant": "template-substitution",
+      "source": "load(`${base}/_static/_common/scripts/jquery-2.1.1.min.js`);",
+      "detected": true
+    },
+    "receiver-binding": {
+      "variant": "receiver-binding",
+      "source": "var u = \"/_static/_common/scripts/jquery-2.1.1.min.js\";\nload(u);",
+      "detected": true
+    },
+    "web-resources-url": {
+      "variant": "web-resources-url",
+      "source": "load(\"/WebResources/new_/jquery-3.6.0.min.js\");",
+      "detected": false
+    }
+  }
+}

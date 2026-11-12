@@ -1,0 +1,78 @@
+{
+  "rule": "plugin-source-registry",
+  "transform": null,
+  "language": "c_sharp",
+  "cases": {
+    "plain": {
+      "variant": "",
+      "source": "using Microsoft.Win32;\nclass P { void M() { Registry.CurrentUser.OpenSubKey(k); } }",
+      "uses": {
+        "Microsoft.Win32.Registry": [
+          [
+            2,
+            22
+          ]
+        ]
+      }
+    },
+    "implicit-new-key": {
+      "variant": "implicit-new",
+      "source": "using Microsoft.Win32;\nclass P { RegistryKey k = new(); }",
+      "uses": {
+        "Microsoft.Win32.RegistryKey": [
+          [
+            2,
+            27
+          ]
+        ]
+      }
+    },
+    "fully-qualified": {
+      "variant": "",
+      "source": "class P { void M() { Microsoft.Win32.Registry.LocalMachine.GetValue(k); } }",
+      "uses": {
+        "Microsoft.Win32.Registry": [
+          [
+            1,
+            22
+          ]
+        ]
+      }
+    },
+    "using-static": {
+      "variant": "using-static",
+      "source": "using static Microsoft.Win32.Registry;\nclass P { void M() { var k = CurrentUser; } }",
+      "uses": {},
+      "limit": "a bare static property used as a value (not a call, not a member-access target) is not attributed to a `using static` type"
+    },
+    "using-static-member-access": {
+      "variant": "using-static",
+      "source": "using static Microsoft.Win32.Registry;\nclass P { void M() { CurrentUser.OpenSubKey(k); } }",
+      "uses": {
+        "Microsoft.Win32.Registry": [
+          [
+            2,
+            22
+          ]
+        ]
+      }
+    },
+    "comment-only": {
+      "variant": "comment-node",
+      "source": "using Microsoft.Win32;\nclass P { /* Registry.CurrentUser */ }",
+      "uses": {}
+    },
+    "method-handler": {
+      "variant": "method-handler",
+      "source": "using Microsoft.Win32;\nclass P { object M() => Registry.CurrentUser.GetValue(k); }",
+      "uses": {
+        "Microsoft.Win32.Registry": [
+          [
+            2,
+            25
+          ]
+        ]
+      }
+    }
+  }
+}

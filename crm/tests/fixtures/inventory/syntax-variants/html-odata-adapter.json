@@ -1,0 +1,7 @@
+{
+  "rule": null,
+  "transform": "html-odata-adapter",
+  "language": "javascript",
+  "note": "plans no edit: the script order of an HTML page is read by inventory_html, which has its own tests",
+  "cases": {}
+}

@@ -1,0 +1,52 @@
+{
+  "rule": "web-resource-soap-2007",
+  "transform": null,
+  "language": "javascript",
+  "cases": {
+    "plain": {
+      "variant": "",
+      "source": "x.open(\"POST\", \"/MSCrmServices/2007/CrmService.asmx\");",
+      "detected": true
+    },
+    "upper-case": {
+      "variant": "",
+      "source": "x.open(\"POST\", \"/MSCRMSERVICES/2007/CrmService.asmx\");",
+      "detected": true
+    },
+    "client-url-prefix": {
+      "variant": "",
+      "source": "x.open(\"POST\", Xrm.Page.context.getClientUrl() + \"/MSCrmServices/2007/CrmService.asmx\");",
+      "detected": true
+    },
+    "comment-only": {
+      "variant": "comment-node",
+      "source": "// /MSCrmServices/2007/CrmService.asmx",
+      "detected": true
+    },
+    "arrow-handler": {
+      "variant": "arrow-handler",
+      "source": "var h = () => x.open(\"POST\", \"/MSCrmServices/2007/CrmService.asmx\");",
+      "detected": true
+    },
+    "method-handler": {
+      "variant": "method-handler",
+      "source": "var o = { m() { x.open(\"POST\", \"/MSCrmServices/2007/CrmService.asmx\"); } };",
+      "detected": true
+    },
+    "template-substitution": {
+      "variant": "template-substitution",
+      "source": "x.open(\"POST\", `${base}/MSCrmServices/2007/CrmService.asmx`);",
+      "detected": true
+    },
+    "receiver-binding": {
+      "variant": "receiver-binding",
+      "source": "var u = \"/MSCrmServices/2007/CrmService.asmx\";\nx.open(\"POST\", u);",
+      "detected": true
+    },
+    "web-resources-url": {
+      "variant": "web-resources-url",
+      "source": "x.open(\"GET\", \"/WebResources/new_/data.json\");",
+      "detected": false
+    }
+  }
+}

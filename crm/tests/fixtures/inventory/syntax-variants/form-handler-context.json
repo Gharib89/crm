@@ -1,0 +1,137 @@
+{
+  "rule": null,
+  "transform": "form-handler-context",
+  "language": "javascript",
+  "cases": {
+    "declaration": {
+      "variant": "",
+      "source": "function onLoad() { Xrm.Page.getAttribute('a'); }",
+      "handlers": {
+        "onLoad": false
+      },
+      "edits": 3,
+      "unproven": 0,
+      "rewritten": "function onLoad(executionContext) { var formContext = executionContext.getFormContext(); formContext.getAttribute('a'); }"
+    },
+    "function-expression": {
+      "variant": "",
+      "source": "var onLoad = function () { Xrm.Page.getAttribute('a'); };",
+      "handlers": {
+        "onLoad": false
+      },
+      "edits": 3,
+      "unproven": 0,
+      "rewritten": "var onLoad = function (executionContext) { var formContext = executionContext.getFormContext(); formContext.getAttribute('a'); };"
+    },
+    "property-function": {
+      "variant": "",
+      "source": "Contoso.onLoad = function () { Xrm.Page.getAttribute('a'); };",
+      "handlers": {
+        "onLoad": false
+      },
+      "edits": 0,
+      "unproven": 1
+    },
+    "arrow": {
+      "variant": "arrow-handler",
+      "source": "var onLoad = () => { Xrm.Page.getAttribute('a'); };",
+      "handlers": {
+        "onLoad": false
+      },
+      "edits": 0,
+      "unproven": 1
+    },
+    "arrow-expression-body": {
+      "variant": "arrow-handler",
+      "source": "var onLoad = () => Xrm.Page.getAttribute('a');",
+      "handlers": {
+        "onLoad": false
+      },
+      "edits": 0,
+      "unproven": 1
+    },
+    "object-method": {
+      "variant": "method-handler",
+      "source": "var C = { onLoad() { Xrm.Page.getAttribute('a'); } };",
+      "handlers": {
+        "onLoad": false
+      },
+      "edits": 0,
+      "unproven": 1
+    },
+    "object-function-prop": {
+      "variant": "method-handler",
+      "source": "var C = { onLoad: function () { Xrm.Page.getAttribute('a'); } };",
+      "handlers": {
+        "onLoad": false
+      },
+      "edits": 0,
+      "unproven": 1
+    },
+    "object-arrow-prop": {
+      "variant": "arrow-handler",
+      "source": "var C = { onLoad: () => { Xrm.Page.getAttribute('a'); } };",
+      "handlers": {
+        "onLoad": false
+      },
+      "edits": 0,
+      "unproven": 1
+    },
+    "class-static": {
+      "variant": "method-handler",
+      "source": "class C { static onLoad() { Xrm.Page.getAttribute('a'); } }",
+      "handlers": {
+        "onLoad": false
+      },
+      "edits": 0,
+      "unproven": 1
+    },
+    "window-qualified": {
+      "variant": "qualified-window-xrm",
+      "source": "function onLoad() { window.Xrm.Page.getAttribute('a'); }",
+      "handlers": {
+        "onLoad": false
+      },
+      "edits": 0,
+      "unproven": 1
+    },
+    "comment-node": {
+      "variant": "comment-node",
+      "source": "function onLoad() { Xrm.Page /* c */ .getAttribute('a'); }",
+      "handlers": {
+        "onLoad": false
+      },
+      "edits": 3,
+      "unproven": 0,
+      "rewritten": "function onLoad(executionContext) { var formContext = executionContext.getFormContext(); formContext /* c */ .getAttribute('a'); }"
+    },
+    "comment-only": {
+      "variant": "comment-node",
+      "source": "function onLoad() { // Xrm.Page.getAttribute('a')\n}",
+      "handlers": {
+        "onLoad": false
+      },
+      "edits": 0,
+      "unproven": 0
+    },
+    "template-substitution": {
+      "variant": "template-substitution",
+      "source": "function onLoad() { return `${Xrm.Page.getAttribute('a').getValue()}`; }",
+      "handlers": {
+        "onLoad": false
+      },
+      "edits": 3,
+      "unproven": 0,
+      "rewritten": "function onLoad(executionContext) { var formContext = executionContext.getFormContext(); return `${formContext.getAttribute('a').getValue()}`; }"
+    },
+    "receiver-binding": {
+      "variant": "receiver-binding",
+      "source": "function onLoad() { var p = Xrm.Page; p.getAttribute('a'); }",
+      "handlers": {
+        "onLoad": false
+      },
+      "edits": 0,
+      "unproven": 1
+    }
+  }
+}

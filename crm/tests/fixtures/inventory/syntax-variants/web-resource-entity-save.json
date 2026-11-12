@@ -1,0 +1,69 @@
+{
+  "rule": "web-resource-entity-save",
+  "transform": "entity-save",
+  "language": "javascript",
+  "cases": {
+    "plain": {
+      "variant": "",
+      "source": "e.data.entity.save();",
+      "detected": true,
+      "edits": 1,
+      "unproven": 0,
+      "rewritten": "e.data.save();"
+    },
+    "window-qualified": {
+      "variant": "qualified-window-xrm",
+      "source": "window.Xrm.Page.data.entity.save();",
+      "detected": true,
+      "edits": 0,
+      "unproven": 1
+    },
+    "comment-in-chain": {
+      "variant": "comment-node",
+      "source": "e.data /* c */ .entity.save();",
+      "detected": false,
+      "edits": 1,
+      "unproven": 0,
+      "rewritten": "e.data /* c */ .save();",
+      "limit": "the rule's regex does not match this spelling, though the transform handles it: the file is only flagged where another site matches"
+    },
+    "comment-only": {
+      "variant": "comment-node",
+      "source": "// e.data.entity.save()",
+      "detected": true,
+      "edits": 0,
+      "unproven": 0
+    },
+    "arrow-handler": {
+      "variant": "arrow-handler",
+      "source": "var h = (e) => e.data.entity.save();",
+      "detected": true,
+      "edits": 1,
+      "unproven": 0,
+      "rewritten": "var h = (e) => e.data.save();"
+    },
+    "method-handler": {
+      "variant": "method-handler",
+      "source": "var o = { m(e) { e.data.entity.save(); } };",
+      "detected": true,
+      "edits": 1,
+      "unproven": 0,
+      "rewritten": "var o = { m(e) { e.data.save(); } };"
+    },
+    "template-substitution": {
+      "variant": "template-substitution",
+      "source": "var s = `${e.data.entity.save()}`;",
+      "detected": true,
+      "edits": 1,
+      "unproven": 0,
+      "rewritten": "var s = `${e.data.save()}`;"
+    },
+    "receiver-binding": {
+      "variant": "receiver-binding",
+      "source": "var ent = e.data.entity;\nent.save();",
+      "detected": false,
+      "edits": 0,
+      "unproven": 0
+    }
+  }
+}
