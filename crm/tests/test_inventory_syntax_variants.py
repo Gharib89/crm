@@ -110,12 +110,12 @@ def _check(stem: str, name: str) -> None:
     rule = RULES[f["rule"]] if f.get("rule") else None
     source = case["source"]
     if f["language"] == "c_sharp":
-        found = type_uses(source.encode(), rule.detection.listed)  # pyright: ignore
+        found = type_uses(source.encode(), rule.detection.listed)  # pyright: ignore[reportAttributeAccessIssue]
         got = None if found is None else {k: [list(s) for s in v] for k, v in found.items()}
         assert got == case["uses"]
         return
     if rule is not None:
-        assert bool(rule.detection.pattern.search(source)) is case["detected"]  # pyright: ignore
+        assert bool(rule.detection.pattern.search(source)) is case["detected"]  # pyright: ignore[reportAttributeAccessIssue]
     if f.get("transform"):
         plan = _plan(transforms.TRANSFORMS[f["transform"]], case)
         assert (len(plan.edits), len(plan.unproven)) == (case["edits"], case["unproven"])
@@ -150,3 +150,14 @@ def test_a_detector_and_transform_that_disagree_carry_a_limit():
         and not c.get("limit")
     ]
     assert not silent, f"{silent} are missed by the detector but handled by the transform"
+
+
+def test_a_transform_with_no_corpus_file_is_reported(monkeypatch):
+    brand_new = transforms.Transform("javascript", (3,), lambda root: transforms.Plan((), ()))
+    monkeypatch.setitem(transforms.TRANSFORMS, "brand-new", brand_new)
+    assert _uncovered_transforms() == ["brand-new"]
+
+
+def test_a_detector_rule_with_no_corpus_file_is_reported(monkeypatch):
+    monkeypatch.delitem(FILES, "web-resource-keypress")
+    assert _uncovered_rules() == ["web-resource-keypress"]

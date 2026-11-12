@@ -443,7 +443,7 @@ def test_the_diff_pass_carries_each_kind_a_narrowed_target_dropped():
     assert missing == ()
     labels = {(r.kind, _key(r.kind, r.fields)): r.label for r in all_rows}
     got = {labels[k] for k in keys}
-    want = {r.label for r in all_rows if r.in_diff} | {r.label for r in target_rows}
+    want = {r.label for r in all_rows if r.in_diff}
     assert got == want
 
 
