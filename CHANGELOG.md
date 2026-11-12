@@ -9,6 +9,83 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.120.1 (2026-11-12)
+
+### Bug Fixes
+
+- **inventory**: Detect comment nodes between tokens and using-static property reads
+  ([#1248](https://github.com/Gharib89/crm/pull/1248),
+  [`2bc9518`](https://github.com/Gharib89/crm/commit/2bc9518bde15f9ff6cc8f464094f1bc89351d54b))
+
+- **inventory**: Possessive gap token, skip initializer members, share static attribution
+  ([#1248](https://github.com/Gharib89/crm/pull/1248),
+  [`2bc9518`](https://github.com/Gharib89/crm/commit/2bc9518bde15f9ff6cc8f464094f1bc89351d54b))
+
+### Chores
+
+- **skills**: Refresh derived skills ([#1239](https://github.com/Gharib89/crm/pull/1239),
+  [`0dd79fe`](https://github.com/Gharib89/crm/commit/0dd79fedc80599c5940766514c75580d654a4eae))
+
+### Documentation
+
+- **ship-profile**: Drop the reviewer-config claim, scope the pointer to every PR
+  ([#1244](https://github.com/Gharib89/crm/pull/1244),
+  [`454388e`](https://github.com/Gharib89/crm/commit/454388e96631cbe61f5d32fa8b833452fa1c23f9))
+
+- **ship-profile**: Give the criterion map a stable home
+  ([#1244](https://github.com/Gharib89/crm/pull/1244),
+  [`454388e`](https://github.com/Gharib89/crm/commit/454388e96631cbe61f5d32fa8b833452fa1c23f9))
+
+- **ship-profile**: Point the profile at the checks instead of restating them
+  ([#1244](https://github.com/Gharib89/crm/pull/1244),
+  [`454388e`](https://github.com/Gharib89/crm/commit/454388e96631cbe61f5d32fa8b833452fa1c23f9))
+
+- **ship-profile**: Probe doc claims, map criteria to assertions, check scope and README rows
+  ([#1244](https://github.com/Gharib89/crm/pull/1244),
+  [`454388e`](https://github.com/Gharib89/crm/commit/454388e96631cbe61f5d32fa8b833452fa1c23f9))
+
+- **standards**: Add four retro review rules ([#1245](https://github.com/Gharib89/crm/pull/1245),
+  [`0f290e0`](https://github.com/Gharib89/crm/commit/0f290e05d018f8b3fb17c47cbc06ed291d53bfdd))
+
+- **standards**: Add four retro review rules to coding standards and copilot instructions
+  ([#1245](https://github.com/Gharib89/crm/pull/1245),
+  [`0f290e0`](https://github.com/Gharib89/crm/commit/0f290e05d018f8b3fb17c47cbc06ed291d53bfdd))
+
+- **standards**: Mirror stale-comment rule and scope on-prem caps to usage reads
+  ([#1245](https://github.com/Gharib89/crm/pull/1245),
+  [`0f290e0`](https://github.com/Gharib89/crm/commit/0f290e05d018f8b3fb17c47cbc06ed291d53bfdd))
+
+### Testing
+
+- **inventory**: Narrow the rule detection type in the gap-token helper
+  ([#1248](https://github.com/Gharib89/crm/pull/1248),
+  [`2bc9518`](https://github.com/Gharib89/crm/commit/2bc9518bde15f9ff6cc8f464094f1bc89351d54b))
+
+- **inventory**: Pin that a comment in the chain no longer hides a site from its rule
+  ([#1248](https://github.com/Gharib89/crm/pull/1248),
+  [`2bc9518`](https://github.com/Gharib89/crm/commit/2bc9518bde15f9ff6cc8f464094f1bc89351d54b))
+
+- **inventory**: Prove the corpus gates red, tighten pyright ignores
+  ([#1247](https://github.com/Gharib89/crm/pull/1247),
+  [`685e345`](https://github.com/Gharib89/crm/commit/685e345865a5c6fe082a9c49574030551f2c5f51))
+
+- **inventory**: Size the slash-run test so the old pattern fails in seconds
+  ([#1248](https://github.com/Gharib89/crm/pull/1248),
+  [`2bc9518`](https://github.com/Gharib89/crm/commit/2bc9518bde15f9ff6cc8f464094f1bc89351d54b))
+
+- **inventory**: Syntax-variant corpus and scope-pass coverage nets
+  ([#1247](https://github.com/Gharib89/crm/pull/1247),
+  [`685e345`](https://github.com/Gharib89/crm/commit/685e345865a5c6fe082a9c49574030551f2c5f51))
+
+- **inventory**: Syntax-variant corpus for transforms and detectors, scope-pass coverage test
+  ([#1247](https://github.com/Gharib89/crm/pull/1247),
+  [`685e345`](https://github.com/Gharib89/crm/commit/685e345865a5c6fe082a9c49574030551f2c5f51))
+
+- **inventory**: Type the detection lookup instead of ignoring pyright
+  ([#1247](https://github.com/Gharib89/crm/pull/1247),
+  [`685e345`](https://github.com/Gharib89/crm/commit/685e345865a5c6fe082a9c49574030551f2c5f51))
+
+
 ## v1.120.0 (2026-11-11)
 
 ### Bug Fixes
