@@ -109,13 +109,14 @@ def _check(stem: str, name: str) -> None:
     f, case = FILES[stem], FILES[stem]["cases"][name]
     rule = RULES[f["rule"]] if f.get("rule") else None
     source = case["source"]
+    detection: Any = rule.detection if rule is not None else None
     if f["language"] == "c_sharp":
-        found = type_uses(source.encode(), rule.detection.listed)  # pyright: ignore[reportAttributeAccessIssue]
+        found = type_uses(source.encode(), detection.listed)
         got = None if found is None else {k: [list(s) for s in v] for k, v in found.items()}
         assert got == case["uses"]
         return
     if rule is not None:
-        assert bool(rule.detection.pattern.search(source)) is case["detected"]  # pyright: ignore[reportAttributeAccessIssue]
+        assert bool(detection.pattern.search(source)) is case["detected"]
     if f.get("transform"):
         plan = _plan(transforms.TRANSFORMS[f["transform"]], case)
         assert (len(plan.edits), len(plan.unproven)) == (case["edits"], case["unproven"])
