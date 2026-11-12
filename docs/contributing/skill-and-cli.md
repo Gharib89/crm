@@ -63,7 +63,9 @@ before `/ship` opens the PR, and name the pass in the PR body.
 2. **Map each acceptance criterion to a named assertion.** Before the PR opens,
    list every criterion beside the test node (or the doc check) that proves it,
    and add the missing one; an unmapped criterion is untested (#1087, #1132,
-   #1216, #1225, #1236). Put the list in the PR body's `## Verification`.
+   #1216, #1225, #1236). Record each pairing as a
+   `Criterion <n>:` line in the ship Run file, which the merge summary reads;
+   outside ship, list it under the PR body's `## Change outline`.
 3. **Give each new capability its README row and help text.** Every new flag or
    output field gets its `README.md` row (where the capability is user-facing)
    and its Click group or option help text, in the docs-sync step (#1089, #1113,
