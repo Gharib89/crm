@@ -208,8 +208,9 @@ Full policy in [`docs/contributing/encoding.md`](encoding.md); the load-bearing 
 - `@odata.bind` navigation-property names must match `$metadata` casing exactly; system entities
   (`sdkmessage*`, `solution`, …) use lowercase logical names — flag a guessed PascalCase name.
 - Every on-prem fallback and CRM 2011 bulk read passes the timeout and a row cap the contract
-  names (`JOB_TIME_CAP`, `JOB_ROW_CAP` in `crm/core/usage.py`: 120 seconds, 100,000 rows): an
-  on-prem server can stall or return an unbounded set, and the cloud path never shows it.
+  names (`JOB_TIME_CAP`, `JOB_ROW_CAP` in `crm/core/usage.py` for the usage reads: 120 seconds,
+  100,000 rows): an on-prem server can stall or return an unbounded set, and the cloud path never
+  shows it.
 
 ## Docs-in-sync obligation
 
