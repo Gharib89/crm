@@ -41,6 +41,9 @@
   forced docstrings are narrative noise.
 - Sectioned docstrings use **Google style** (`Args:` / `Returns:` / `Raises:`) — the only style
   in use today; don't introduce Sphinx/NumPy variants.
+- A comment or docstring is part of the change. Before commit, grep the diff's removed or renamed
+  names across the comments and docstrings of every touched file (the Depth checks sweep wider):
+  a comment describing the old behavior reads as the current rule to the next reader.
 - Lint enforces **format only** (ruff `D2xx`/`D4xx`: quoting, blank lines, imperative mood) on
   docstrings that exist; there is deliberately no missing-docstring (`D1xx`) rule.
 
@@ -114,8 +117,11 @@ def org_brief(ctx: CLIContext):
 
 House rules on top of the shape:
 
-- Wrap file read/write in `try/except OSError` and return a clean error envelope — never let a
-  raw `OSError` traceback reach the user.
+- Malformed input never raises raw. Wrap file read/write in `try/except OSError`, type-check every
+  field parsed from a user-supplied file (wrong-typed JSON raises `TypeError`/`AttributeError`),
+  and catch every documented exception of the archive APIs used (`zipfile.BadZipFile`, and
+  `RuntimeError` for an encrypted or unsupported member). Return a clean error envelope: a
+  traceback on a bad file is a bug the user cannot act on.
 - Mutually exclusive flags raise `click.UsageError` (exit `2`); never fake it with
   `ctx.emit(False)` (exit `1`) — those are different failure classes (see Exit codes below).
   Validate untrusted input before calling `ctx.backend()`, not after.
@@ -144,6 +150,9 @@ House rules on top of the shape:
   caught `D365Error` itself (`category` and `retryable` by `classify_d365_error` in
   `crm/utils/d365_backend.py`); an `enrich(exc)` callback's `extra_meta` is strictly additive and
   raises if it names a reserved key.
+- A missing value stays unknown. A `None`, an absent field or a swallowed-error read must yield
+  `unknown`, never a definite state (used, disabled, clear, below-floor, no failures): reporting
+  "all clear" for data the run never saw is a wrong answer that looks like a right one.
 - Never `assert` for a runtime invariant in shipped code — `assert` is stripped under
   `python -O`, and the frozen PyInstaller build can run optimized. Raise `D365Error` (or the
   appropriate domain error) even for a logically-unreachable check. Enforced by ruff `S101`
@@ -198,6 +207,10 @@ Full policy in [`docs/contributing/encoding.md`](encoding.md); the load-bearing 
   `CaseInsensitiveDict`, never a plain `dict` — headers are case-insensitive on the wire.
 - `@odata.bind` navigation-property names must match `$metadata` casing exactly; system entities
   (`sdkmessage*`, `solution`, …) use lowercase logical names — flag a guessed PascalCase name.
+- Every on-prem fallback and CRM 2011 bulk read passes the timeout and a row cap the contract
+  names (`JOB_TIME_CAP`, `JOB_ROW_CAP` in `crm/core/usage.py` for the usage reads: 120 seconds,
+  100,000 rows): an on-prem server can stall or return an unbounded set, and the cloud path never
+  shows it.
 
 ## Docs-in-sync obligation
 

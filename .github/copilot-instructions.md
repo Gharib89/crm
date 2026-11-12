@@ -14,7 +14,10 @@ Your review runs at PR creation (round 1). Focus where you catch the most: corre
 
 ## House rules — correctness & error contracts
 
-- Command layer: wrap file read/write in `try/except OSError` and return a clean error envelope; mutually exclusive flags must `raise click.UsageError` (exit 2), never `ctx.emit(False)` (exit 1); validate untrusted input before calling `ctx.backend()`. Backend failures funnel through `d365_errors(ctx)`, never a hand-built envelope.
+- Command layer: malformed input never raises raw: wrap file read/write in `try/except OSError`, type-check every field parsed from a user-supplied file (wrong-typed JSON raises `TypeError`/`AttributeError`), and catch every documented exception of the archive APIs used (`zipfile.BadZipFile`, and `RuntimeError` for an encrypted or unsupported member), returning a clean error envelope; mutually exclusive flags must `raise click.UsageError` (exit 2), never `ctx.emit(False)` (exit 1); validate untrusted input before calling `ctx.backend()`. Backend failures funnel through `d365_errors(ctx)`, never a hand-built envelope.
+- A missing value stays unknown: a `None`, an absent field or a swallowed-error read must yield `unknown`, never a definite state (used, disabled, clear, below-floor, no failures).
+- Every on-prem fallback and CRM 2011 bulk read passes the timeout and a row cap the contract names (`JOB_TIME_CAP`, `JOB_ROW_CAP` in `crm/core/usage.py` for the usage reads: 120 seconds, 100,000 rows).
+- A comment or docstring is part of the change: grep the diff's removed or renamed names across the comments and docstrings of every touched file; a comment describing the old behavior reads as the current rule.
 - Exit codes (ADR 0001): 0 success, 1 operational failure, 2 usage error — failure-class detail lives in the envelope, not new exit codes.
 - Output contract (ADR 0008): `data` is curated and CLI-owned, never a raw Web API passthrough; OData paging keys move to `meta`; `_entity_id` is the one normalized GUID key.
 - Dry-run mutators must return a `{_dry_run, would_*}` preview, never the bare success key. Reads-execute rule: GETs still run live under `--dry-run`.
