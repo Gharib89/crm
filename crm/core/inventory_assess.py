@@ -86,6 +86,11 @@ def _version(text: str, where: str) -> tuple[int, ...]:
     return version
 
 
+#: Written in a content_pattern where JavaScript allows whitespace or a comment between two tokens.
+GAP_TOKEN = "<gap>"
+_GAP = r"(?:\s|/\*[\s\S]*?\*/|//[^\n]*)*"
+
+
 @dataclass(frozen=True)
 class ContentPattern:
     """A regular expression over the text artifacts of the web resource types listed."""
@@ -340,7 +345,7 @@ def _detection(
                 f"rules file {where}: content_pattern applies to web_resource only"
             )
         try:
-            pattern = re.compile(_text(obj, "pattern", where))
+            pattern = re.compile(_text(obj, "pattern", where).replace(GAP_TOKEN, _GAP))
         except re.error as exc:
             raise InventoryError(f"rules file {where}.pattern does not compile: {exc}") from exc
         types = _items(obj, "web_resource_types", where)

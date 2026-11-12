@@ -29,11 +29,10 @@
     "comment-in-chain": {
       "variant": "comment-node",
       "source": "var n = Xrm /* a */ .Page.context.getUserName();",
-      "detected": false,
+      "detected": true,
       "edits": 1,
       "unproven": 0,
-      "rewritten": "var n = Xrm.Utility.getGlobalContext().userSettings.userName;",
-      "limit": "the rule's regex does not match this spelling, though the transform handles it: the file is only flagged where another site matches"
+      "rewritten": "var n = Xrm.Utility.getGlobalContext().userSettings.userName;"
     },
     "comment-only": {
       "variant": "comment-node",

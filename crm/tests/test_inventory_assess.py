@@ -235,6 +235,30 @@ def test_a_source_outside_a_rule_range_skips_that_rule(tmp_path):
     )
 
 
+def _content_pattern(pattern: str):
+    data = json.loads(assess.RULES_PATH.read_text(encoding="utf-8"))
+    rule = next(r for r in data["rules"] if r["id"] == "web-resource-xrm-page")
+    rule["detection"]["pattern"] = pattern
+    parsed = assess.parse_rules(data)
+    return next(r for r in parsed.rules if r.id == "web-resource-xrm-page").detection.pattern
+
+
+@pytest.mark.parametrize(
+    ("source", "hit"),
+    [
+        ("a.b", True),
+        ("a /* c */ . b", True),
+        ("a // c\n . b", True),
+        ("a /* c\n d */ .b", True),
+        ("a /* c . b", False),
+        ("a / b", False),
+    ],
+    ids=["none", "block", "line", "multi-line", "unclosed", "slash"],
+)
+def test_the_gap_token_spans_whitespace_and_comments(source, hit):
+    assert bool(_content_pattern(r"a<gap>\.<gap>b").search(source)) is hit
+
+
 def test_an_artifact_changed_since_extraction_is_unknown(inventory):
     record = next(
         r for r in inv.read_inventory(inventory).records if r.key == "new_/scripts/clean.js"

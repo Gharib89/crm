@@ -206,3 +206,52 @@ def test_a_nullable_target_typed_new_is_a_use() -> None:
     assert set(_uses('SqlConnection? c = new("x");', "using System.Data.SqlClient;")) == {
         "System.Data.SqlClient.SqlConnection"
     }
+
+
+STATIC_REGISTRY = "using static Microsoft.Win32.Registry;"
+
+
+def test_a_bare_static_property_read_as_a_value_is_a_use() -> None:
+    found = _uses("var k = CurrentUser;", STATIC_REGISTRY)
+    assert found == {"Microsoft.Win32.Registry": [(3, 9)]}
+
+
+@pytest.mark.parametrize(
+    "body",
+    ["Use(CurrentUser);", "k = CurrentUser;", "return CurrentUser;", 'var s = $"{CurrentUser}";'],
+    ids=["argument", "assignment", "return", "interpolation"],
+)
+def test_a_bare_static_property_in_each_value_position_is_a_use(body: str) -> None:
+    assert set(_uses(body, STATIC_REGISTRY)) == {"Microsoft.Win32.Registry"}
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "var CurrentUser = 1; var k = CurrentUser;",
+        "var k = x.CurrentUser;",
+        "var k = x.Use(arg: 1, CurrentUser: 2);",
+        "CurrentUser k = null;",
+        "int CurrentUser = 0;",
+        "var k = (CurrentUser)o;",
+    ],
+    ids=["local", "member-name", "named-argument", "type-position", "declaration", "cast-type"],
+)
+def test_a_name_that_is_not_a_bare_value_is_not_a_use(body: str) -> None:
+    source = f"{STATIC_REGISTRY}\nclass P {{ void M(object o, object x) {{ {body} }} }}\n"
+    assert type_uses(source.encode(), LISTED) == {}
+
+
+@pytest.mark.parametrize(
+    "member",
+    ["object CurrentUser;", "object CurrentUser { get; }", "class CurrentUser { }"],
+    ids=["field", "property", "type"],
+)
+def test_a_member_or_type_named_like_the_property_is_not_a_use(member: str) -> None:
+    source = f"{STATIC_REGISTRY}\nclass P {{ {member} object M() => CurrentUser; }}\n"
+    assert type_uses(source.encode(), LISTED) == {}
+
+
+def test_a_parameter_named_like_the_property_is_not_a_use() -> None:
+    source = f"{STATIC_REGISTRY}\nclass P {{ object M(object CurrentUser) => CurrentUser; }}\n"
+    assert type_uses(source.encode(), LISTED) == {}

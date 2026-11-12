@@ -47,7 +47,7 @@
       ],
       "detection": {
         "type": "content_pattern",
-        "pattern": "\\bXrm\\.Utility\\.(openEntityForm|openQuickCreate|openWebResource|alertDialog|confirmDialog|isActivityType)\\b",
+        "pattern": "\\bXrm<gap>\\.<gap>Utility<gap>\\.<gap>(openEntityForm|openQuickCreate|openWebResource|alertDialog|confirmDialog|isActivityType)\\b",
         "web_resource_types": [
           1,
           3
@@ -74,7 +74,7 @@
       ],
       "detection": {
         "type": "content_pattern",
-        "pattern": "\\.\\s*getServerUrl\\s*\\(",
+        "pattern": "\\.<gap>getServerUrl\\b",
         "web_resource_types": [
           1,
           3
@@ -103,7 +103,7 @@
       ],
       "detection": {
         "type": "content_pattern",
-        "pattern": "\\b(?:Xrm\\s*\\.\\s*Page\\s*\\.\\s*context|Xrm\\s*\\.\\s*Utility\\s*\\.\\s*getGlobalContext\\s*\\(\\s*\\))\\s*\\.\\s*(?:getUserName|getUserId|getUserLcid|getUserRoles|getOrgLcid|getOrgUniqueName|getIsAutoSaveEnabled|getTimeZoneOffsetMinutes)\\b",
+        "pattern": "\\b(?:Xrm<gap>\\.<gap>Page<gap>\\.<gap>context|Xrm<gap>\\.<gap>Utility<gap>\\.<gap>getGlobalContext<gap>\\(<gap>\\))<gap>\\.<gap>(?:getUserName|getUserId|getUserLcid|getUserRoles|getOrgLcid|getOrgUniqueName|getIsAutoSaveEnabled|getTimeZoneOffsetMinutes)\\b",
         "web_resource_types": [
           1,
           3
@@ -163,7 +163,7 @@
       ],
       "detection": {
         "type": "content_pattern",
-        "pattern": "\\bXrm\\s*\\.\\s*Mobile\\s*\\.\\s*offline\\b",
+        "pattern": "\\bXrm<gap>\\.<gap>Mobile<gap>\\.<gap>offline\\b",
         "web_resource_types": [
           1,
           3
@@ -192,7 +192,7 @@
       ],
       "detection": {
         "type": "content_pattern",
-        "pattern": "\\.\\s*data\\s*\\.\\s*entity\\s*\\.\\s*save\\b",
+        "pattern": "\\.<gap>data<gap>\\.<gap>entity<gap>\\.<gap>save\\b",
         "web_resource_types": [
           1,
           3

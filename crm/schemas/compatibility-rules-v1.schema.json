@@ -133,7 +133,7 @@
                   "const": "content_pattern"
                 },
                 "pattern": {
-                  "description": "A Python regular expression searched in the record's text artifacts.",
+                  "description": "A Python regular expression searched in the record's text artifacts. The token <gap> stands for any run of whitespace and JavaScript comments.",
                   "type": "string",
                   "minLength": 1
                 },
