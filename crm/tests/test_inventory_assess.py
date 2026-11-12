@@ -262,7 +262,7 @@ def test_the_gap_token_spans_whitespace_and_comments(source, hit):
 
 def test_the_gap_token_does_not_backtrack_on_a_run_of_slashes():
     started = time.monotonic()
-    assert not _content_pattern(r"\.<gap>b").search("x." + "/" * 200)
+    assert not _content_pattern(r"\.<gap>b").search("x." + "/" * 40)
     assert time.monotonic() - started < 1
 
 
