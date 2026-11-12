@@ -125,6 +125,8 @@ Agent-facing: docs/agents/, .claude/skills/, crm/skills/, CLAUDE.md, .github/cop
 
 `CHANGELOG.md` is not a target: python-semantic-release owns it.
 
+Before the PR opens, a doc or skill change also passes the four checks in `docs/contributing/skill-and-cli.md` (`## Four checks before the PR opens`): probe each doc claim, map each criterion to an assertion, add the README row and help text, check the diff against the issue's scope. The profile cannot carry them as fields, so they stay there.
+
 ## Current docs
 
 Sources: context7, Microsoft Learn

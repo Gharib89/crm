@@ -48,6 +48,34 @@ then reinstall with `--force`. To detect drift against an install:
 diff -r crm/skills ~/.claude/skills/crm
 ```
 
+## Four checks before the PR opens
+
+The four classes of miss below recurred across merged PRs (retro #1240). This
+section is their single home; the ship profile (`docs/agents/ship.md`, `## Docs
+sync`) and the reviewer configs point here instead of restating them. Run each
+before `/ship` opens the PR, and name the pass in the PR body.
+
+1. **Probe every doc claim.** Each field, key, flag, default or behavior that a
+   new or edited doc, skill or help sentence names is checked against the code or
+   `crm <group> <verb> --help` before the commit (#1086, #1111, #1121, #1162,
+   #1187, #1230, #1234). Open the symbol or run the help; a sentence copied from
+   the issue or from memory is a claim, not a fact.
+2. **Map each acceptance criterion to a named assertion.** Before the PR opens,
+   list every criterion beside the test node (or the doc check) that proves it,
+   and add the missing one; an unmapped criterion is untested (#1087, #1132,
+   #1216, #1225, #1236). Put the list in the PR body's `## Verification`.
+3. **Give each new capability its README row and help text.** Every new flag or
+   output field gets its `README.md` row (where the capability is user-facing)
+   and its Click group or option help text, in the docs-sync step (#1089, #1113,
+   #1118, #1217).
+4. **Check the diff against the issue's scope.** Read the issue's `Out of scope`
+   and `Decision` lines against `git diff --stat` before review; a changed path
+   no criterion or logged deviation explains comes out (#1111, #1185).
+
+Ship's phases are fixed and its profile carries facts, not new checks, so these
+live as repo rules. A profile field for criterion mapping or a scope check would
+be an upstream change to `Gharib89/skills`.
+
 ## The bug loop used to build CRMWorx
 
 While building the walkthrough, defects were handled with a hybrid policy:
